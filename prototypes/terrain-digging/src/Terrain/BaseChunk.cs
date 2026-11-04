@@ -70,6 +70,18 @@ public sealed class BaseCache
     /// </summary>
     public void Clear() => _chunks.Clear();
 
+    /// <summary>
+    /// Forgets the generated chunks the predicate picks, so a streamed world can drop chunks far
+    /// from everyone. Like Clear, safe at any time: they regenerate identically when next asked for.
+    /// </summary>
+    public int Forget(Func<Int3, bool> drop)
+    {
+        int forgotten = 0;
+        foreach (Int3 chunk in _chunks.Keys)
+            if (drop(chunk) && _chunks.TryRemove(chunk, out _)) forgotten++;
+        return forgotten;
+    }
+
     public BaseChunk Get(Int3 chunk)
     {
         if (_chunks.TryGetValue(chunk, out Lazy<BaseChunk> lazy)) return lazy.Value;
