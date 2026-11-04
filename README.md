@@ -30,3 +30,13 @@ Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or s
 
 - [Godot 4.7.2 .NET](https://godotengine.org/download) (the "mono" / .NET build)
 - [.NET SDK](https://dotnet.microsoft.com/download) 8 or newer
+
+## Testing
+
+Every prototype has headless test scenes (`tests/*Test.tscn`, `tests/*Probe.tscn`) that exit 0 on success. Run them all before any merge to main:
+
+```powershell
+.\tools\test-all.ps1
+```
+
+Run one with `.\tools\test.ps1 -Project prototypes/<name> -Scene res://tests/<Scene>.tscn`.
