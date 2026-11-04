@@ -6,17 +6,15 @@ namespace WalkableShip;
 /// <summary>
 /// A ship with its own frame of reference.
 ///
-/// The hull you see flies through the world. Anyone aboard actually walks on a "ghost" copy
-/// of the cabin that sits still, far below the map, on its own physics layer, and is drawn at
-/// ship transform × their position on the ghost. However hard the ship turns, rolls or
-/// accelerates, the character controller only ever sees a motionless room with gravity
-/// pointing at the floor. Loose cargo works the same way.
+/// The hull you see flies through the world. Anyone aboard actually walks in the ship's
+/// cabin world: a small private physics world, never drawn, holding a motionless copy of the
+/// cabin at ship-local coordinates. They are drawn at ship transform × their position in it.
+/// However hard the ship turns, rolls or accelerates, the character controller only ever sees
+/// a still room with gravity pointing at the floor. Loose cargo works the same way, and no two
+/// ships' cabins can ever touch.
 /// </summary>
 public partial class Ship : Node3D
 {
-    /// <summary>Where the ghost cabin sits. It never moves and never rotates.</summary>
-    public static readonly Vector3 GhostOrigin = new(0, -2000, 0);
-
     public const float MaxSpeed = 120f;
     public const float GroundClearance = 0.85f;
 
@@ -43,12 +41,24 @@ public partial class Ship : Node3D
     public Vector3 TurnInput;     // x pitch, y yaw, z roll, each -1..1
     public bool Boost;
 
+    /// <summary>
+    /// The cabin's private world, in ship-local coordinates: the cabin colliders, the cargo
+    /// bodies and anyone aboard. It never moves and is never drawn.
+    /// </summary>
+    public SubViewport CabinWorld { get; private set; }
+
     public float Speed => Velocity.Length();
     public Vector3 WorldAngularVelocity => GlobalBasis * LocalAngularVelocity;
 
     /// <summary>The ship's velocity at a world-space point, including its spin.</summary>
     public Vector3 PointVelocity(Vector3 worldPoint) =>
         Velocity + WorldAngularVelocity.Cross(worldPoint - GlobalPosition);
+
+    /// <summary>The loose crates, as simulated in the cabin world. For tests.</summary>
+    public IEnumerable<RigidBody3D> Crates
+    {
+        get { foreach (var (body, _) in _cargo) yield return body; }
+    }
 
     readonly List<(RigidBody3D body, MeshInstance3D view)> _cargo = new();
     float _stuntTime;
@@ -58,7 +68,7 @@ public partial class Ship : Node3D
         ProcessPhysicsPriority = -10; // move before anything reads the ship's transform
         BuildVisuals();
         BuildHull();
-        BuildGhostCabin();
+        BuildCabinWorld();
         BuildCargo();
     }
 
@@ -176,16 +186,28 @@ public partial class Ship : Node3D
         AddShapes(hull, BlockRole.Hull);
     }
 
-    /// <summary>The motionless copy of the cabin that players aboard actually walk on.</summary>
-    void BuildGhostCabin()
+    /// <summary>
+    /// The cabin world and the motionless cabin that players aboard actually walk on. A
+    /// SubViewport with its own World3D gets its own physics space, which keeps stepping while
+    /// rendering is off (tests/WorldProbe.cs proves it).
+    /// </summary>
+    void BuildCabinWorld()
     {
-        var ghost = new StaticBody3D { Name = "GhostCabin", CollisionLayer = Layers.Interior, CollisionMask = 0, TopLevel = true };
-        AddChild(ghost);
-        ghost.GlobalPosition = GhostOrigin;
-        AddShapes(ghost, BlockRole.Ghost);
+        CabinWorld = new SubViewport
+        {
+            Name = "CabinWorld",
+            OwnWorld3D = true,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled,
+            Size = new Vector2I(2, 2),
+        };
+        AddChild(CabinWorld);
+
+        var cabin = new StaticBody3D { Name = "Cabin", CollisionLayer = Layers.Interior, CollisionMask = 0 };
+        CabinWorld.AddChild(cabin);
+        AddShapes(cabin, BlockRole.Interior);
     }
 
-    /// <summary>Loose crates: simulated on the ghost cabin, drawn inside the real ship.</summary>
+    /// <summary>Loose crates: simulated in the cabin world, drawn inside the real ship.</summary>
     void BuildCargo()
     {
         var rng = new RandomNumberGenerator { Seed = 7 };
@@ -197,7 +219,6 @@ public partial class Ship : Node3D
 
             var body = new RigidBody3D
             {
-                TopLevel = true,
                 Mass = 20f,
                 LinearDamp = 0.3f,
                 AngularDamp = 0.3f,
@@ -205,8 +226,8 @@ public partial class Ship : Node3D
                 CollisionMask = Layers.Interior,
             };
             body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
-            AddChild(body);
-            body.GlobalPosition = GhostOrigin + local;
+            CabinWorld.AddChild(body);
+            body.Position = local;
 
             var view = new MeshInstance3D
             {
@@ -222,10 +243,7 @@ public partial class Ship : Node3D
     void SyncCargoViews()
     {
         foreach (var (body, view) in _cargo)
-        {
-            Transform3D onGhost = body.GlobalTransform;
-            view.Transform = new Transform3D(onGhost.Basis, onGhost.Origin - GhostOrigin);
-        }
+            view.Transform = body.Transform; // the cabin world is in ship-local coordinates
     }
 
     static void AddShapes(Node3D body, BlockRole role)

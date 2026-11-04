@@ -1,14 +1,16 @@
+using System.Collections.Generic;
 using Godot;
 
 namespace WalkableShip;
 
 /// <summary>
 /// Builds the prototype world in code: a desert planet with mesas and a moon in the sky,
-/// one ship, one player standing in its cabin, and a ring course to fly.
+/// two ships parked side by side, one player standing in the first one's cabin, and a ring
+/// course to fly.
 /// </summary>
 public partial class Main : Node3D
 {
-    public Ship Ship { get; private set; }
+    public List<Ship> Ships { get; } = new();
     public Player Player { get; private set; }
     public RingCourse Course { get; private set; }
 
@@ -19,32 +21,43 @@ public partial class Main : Node3D
         BuildSky();
         BuildGround();
 
-        Ship = new Ship { Name = "Ship", Position = new Vector3(0, WalkableShip.Ship.GroundClearance, 0) };
-        AddChild(Ship);
+        // Each ship has its own cabin world, so there is no limit on how many can be occupied.
+        foreach (var (name, x) in new[] { ("ShipA", 0f), ("ShipB", 40f) })
+        {
+            var ship = new Ship { Name = name, Position = new Vector3(x, Ship.GroundClearance, 0) };
+            AddChild(ship);
+            Ships.Add(ship);
+        }
 
         var camera = new Camera3D { Name = "Camera", Fov = 80f, Near = 0.05f, Far = 8000f };
         AddChild(camera);
         camera.MakeCurrent();
 
-        Player = new Player { Name = "Player", Ship = Ship, Camera = camera };
-        AddChild(Player);
-        Player.GlobalPosition = WalkableShip.Ship.GhostOrigin + ShipLayout.SpawnLocal;
+        Player = new Player { Name = "Player", Ship = Ships[0], Ships = Ships, MainWorld = this, Camera = camera };
+        Player.Position = ShipLayout.SpawnLocal;
+        Ships[0].CabinWorld.AddChild(Player); // aboard, the player's body lives in the cabin world
 
-        Course = new RingCourse { Name = "Course", Ship = Ship };
+        Course = new RingCourse { Name = "Course", Player = Player };
         AddChild(Course);
 
         BuildHud();
     }
 
+    /// <summary>A cabin world gets no input of its own, so the player's always comes from here.</summary>
+    public override void _UnhandledInput(InputEvent e) => Player.HandleInput(e);
+
     public override void _Process(double delta)
     {
+        Ship ship = Player.Ship;
         string where = Player.CurrentMode switch
         {
-            WalkableShip.Player.Mode.Piloting => "Piloting",
-            WalkableShip.Player.Mode.Aboard => Ship.GravityOn ? "Aboard, walking" : "Aboard, floating (core gravity off)",
+            WalkableShip.Player.Mode.Piloting => $"Piloting {ship.Name}",
+            WalkableShip.Player.Mode.Aboard => ship.GravityOn
+                ? $"Aboard {ship.Name}, walking"
+                : $"Aboard {ship.Name}, floating (core gravity off)",
             _ => $"Outside   jetpack {Player.JetpackFuel * 100f:F0}%",
         };
-        string flight = Ship.StuntAutopilot ? "stunt autopilot" : Ship.Piloted ? "manual" : "autopilot holding course";
+        string flight = ship.StuntAutopilot ? "stunt autopilot" : ship.Piloted ? "manual" : "autopilot holding course";
         string course = Course.Finished
             ? $"Course complete: {Course.Elapsed:F1} s   (Backspace to fly it again)"
             : $"Rings {Course.Passed}/{Course.Count}   {Course.Elapsed:F1} s";
@@ -52,9 +65,9 @@ public partial class Main : Node3D
 
         _hud.Text =
             $"{where}\n" +
-            $"Ship {Ship.Speed:F0} m/s   altitude {Ship.GlobalPosition.Y:F0} m   {flight}\n" +
+            $"{ship.Name} {ship.Speed:F0} m/s   altitude {ship.GlobalPosition.Y:F0} m   {flight}\n" +
             $"{course}\n\n" +
-            "WASD move  ·  Space jump / up  ·  Ctrl down  ·  Shift sprint / boost\n" +
+            "WASD move  ·  Space jump / up  ·  Ctrl crouch / down  ·  Shift sprint / boost\n" +
             "F sit in or leave the pilot seat  ·  mouse steer  ·  Q/E roll\n" +
             "G core gravity  ·  T stunt autopilot  ·  V third person  ·  R back aboard  ·  Esc free the mouse\n" +
             $"{Engine.GetFramesPerSecond()} fps";

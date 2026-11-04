@@ -1,6 +1,6 @@
 namespace WalkableShip;
 
-/// <summary>Physics layers. The outside world and the ghost cabins never touch each other.</summary>
+/// <summary>Physics layers. Cabin interiors live in worlds of their own, so they never meet the rest.</summary>
 public static class Layers
 {
     /// <summary>The ground, rocks and anything else fixed in the world.</summary>
@@ -9,6 +9,6 @@ public static class Layers
     /// <summary>A ship's outer hull, as seen by players standing outside it.</summary>
     public const uint ShipHull = 1u << 1;
 
-    /// <summary>Ghost cabins: the motionless copies of ship interiors that players aboard walk on.</summary>
+    /// <summary>Inside a ship's cabin world: the cabin, its cargo and anyone aboard.</summary>
     public const uint Interior = 1u << 2;
 }
