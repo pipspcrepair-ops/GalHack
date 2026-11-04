@@ -476,9 +476,9 @@ public partial class TestAgent : Node
         await Ask("A", "walk", new Dict { ["radius"] = WalkRadius, ["speed"] = 1.5f });
         await Ask("B", "observe", new Dict { ["peer"] = _ready["A"], ["ship"] = 1 });
         await Seconds(12.0);
+        var meters = await AskAll(clients, "meter-stop"); // before the test's own reports go up
         Dict truth = await Ask("A", "walk-stop");
         Dict seen = await Ask("B", "observe-stop");
-        var meters = await AskAll(clients, "meter-stop");
         CheckPositionError("B watching A aboard ship A (100 m/s barrel rolls)", truth, seen, maxError: 0.12f, maxStep: 0.15f);
         PrintBandwidth("4 players in one zone, ship stunting", meters);
 
@@ -579,9 +579,9 @@ public partial class TestAgent : Node
         await Ask("D", "walk", new Dict { ["radius"] = WalkRadius, ["speed"] = 1.5f });
         await Ask("E", "observe", new Dict { ["peer"] = _ready["D"], ["ship"] = 1 });
         await Seconds(8.0);
+        var meters = await AskAll(clients, "meter-stop");
         Dict truth = await Ask("D", "walk-stop");
         Dict seen = await Ask("E", "observe-stop");
-        var meters = await AskAll(clients, "meter-stop");
         CheckPositionError("dedicated: E watching D aboard the stunting ship", truth, seen, maxError: 0.12f, maxStep: 0.15f);
         PrintBandwidth("2 players on a dedicated server", meters);
 
