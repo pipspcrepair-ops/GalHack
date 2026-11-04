@@ -84,16 +84,25 @@ public sealed class ChunkMesh
     public readonly CellMaterial[] Materials;
     public readonly int[] Indices;
 
+    /// <summary>
+    /// Which of the chunk's eight 8³ blocks owns each triangle. Collision is split the same way,
+    /// so a dig only rebuilds the collision blocks it actually changed.
+    /// </summary>
+    public readonly byte[] TriangleBlocks;
+
     /// <summary>The world cube (min sample cell) each vertex belongs to, when recorded. For seam tests.</summary>
     public readonly Int3[] Cubes;
 
-    public ChunkMesh(Int3 chunk, Vector3[] positions, Vector3[] normals, CellMaterial[] materials, int[] indices, Int3[] cubes)
+    public const int Blocks = 8, BlockSize = ChunkStore.Size / 2;
+
+    public ChunkMesh(Int3 chunk, Vector3[] positions, Vector3[] normals, CellMaterial[] materials, int[] indices, byte[] triangleBlocks, Int3[] cubes)
     {
         Chunk = chunk;
         Positions = positions;
         Normals = normals;
         Materials = materials;
         Indices = indices;
+        TriangleBlocks = triangleBlocks;
         Cubes = cubes;
     }
 
@@ -150,7 +159,8 @@ public sealed class SurfaceNetsMesher
     readonly CellMaterial[] _materials = new CellMaterial[Cubes * Cubes * Cubes];
     readonly Int3[] _cubes = new Int3[Cubes * Cubes * Cubes];
     readonly int[] _indices = new int[S * S * S * 3 * 6];
-    int _vertexCount, _indexCount;
+    readonly byte[] _blocks = new byte[S * S * S * 3 * 2];
+    int _vertexCount, _indexCount, _block;
     Int3 _origin;
 
     public ChunkMesh Build(ChunkNeighborhood hood, bool recordCubes = false)
@@ -174,7 +184,7 @@ public sealed class SurfaceNetsMesher
         }
         if (!(anySolid && anyAir))
             return new ChunkMesh(chunk, Array.Empty<Vector3>(), Array.Empty<Vector3>(), Array.Empty<CellMaterial>(), Array.Empty<int>(),
-                recordCubes ? Array.Empty<Int3>() : null);
+                Array.Empty<byte>(), recordCubes ? Array.Empty<Int3>() : null);
 
         Array.Fill(_cubeVertex, -1);
 
@@ -185,6 +195,7 @@ public sealed class SurfaceNetsMesher
                 {
                     int i = ax + N * (az + N * ay);
                     bool s0 = _density[i] > 0f;
+                    _block = ((ax - 1) >> 3) | (((ay - 1) >> 3) << 1) | (((az - 1) >> 3) << 2);
 
                     if (s0 != _density[i + 1] > 0f)
                         Quad(s0, Cube(ax, ay - 1, az - 1), Cube(ax, ay, az - 1), Cube(ax, ay, az), Cube(ax, ay - 1, az));
@@ -199,6 +210,7 @@ public sealed class SurfaceNetsMesher
             _normals.AsSpan(0, _vertexCount).ToArray(),
             _materials.AsSpan(0, _vertexCount).ToArray(),
             _indices.AsSpan(0, _indexCount).ToArray(),
+            _blocks.AsSpan(0, _indexCount / 3).ToArray(),
             recordCubes ? _cubes.AsSpan(0, _vertexCount).ToArray() : null);
     }
 
@@ -223,6 +235,8 @@ public sealed class SurfaceNetsMesher
 
     void Emit(int a, int b, int c, int d, int e, int f)
     {
+        _blocks[_indexCount / 3] = (byte)_block;
+        _blocks[_indexCount / 3 + 1] = (byte)_block;
         _indices[_indexCount++] = a;
         _indices[_indexCount++] = b;
         _indices[_indexCount++] = c;
