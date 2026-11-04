@@ -1,0 +1,12 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Wildlife</RootNamespace>
+    <!-- Procedural rigs are thousands of small vector operations a frame. Debug builds (what the
+         editor and tools/godot.ps1 -Play run) switch the JIT optimiser off, which made the
+         creature update about 30% slower in tests/WildlifeTest.tscn. Play-tests should feel
+         like the real game. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>
