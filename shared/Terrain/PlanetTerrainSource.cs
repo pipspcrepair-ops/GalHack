@@ -233,6 +233,11 @@ public sealed class PlanetTerrainSource : ITerrainSource
             float soilDepth = _soilBase * (0.7f + 0.6f * _soil.Sample(x, 0, z)) * (1f - Smooth(0.35f, 1.2f, slope2));
             float rockDepth = 12f + 4f * _soil.Sample(x * 0.3, 50, z * 0.3);
             float caves = CaveStrength(x + 0.5, z + 0.5, h);
+            bool padded = false;
+            if (stamps != null)
+                foreach (TerrainStamp t in stamps)
+                    padded |= t.Weight(x + 0.5, z + 0.5) > 0f;
+            if (padded) caves = 0f; // a place's foundations are never undercut by a cave
 
             for (int ly = 0; ly < S; ly++)
             {
@@ -241,6 +246,17 @@ public sealed class PlanetTerrainSource : ITerrainSource
                 float depth = h - (y + 0.5f);
                 float dist = depth * slopeScale;
 
+                // Rooms a place digs below its pad stay open, however deep they go.
+                bool carved = false;
+                if (padded)
+                    foreach (TerrainStamp t in stamps)
+                        carved |= t.IsCarved(x, y, z);
+                if (carved)
+                {
+                    density[i] = -Limit;
+                    material[i] = CellMaterial.Air;
+                    continue;
+                }
                 if (dist > BedrockDepth)
                 {
                     density[i] = Limit;
@@ -250,9 +266,6 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
                 float d = dist;
                 if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
-                if (stamps != null && depth > -1f)
-                    foreach (TerrainStamp t in stamps)
-                        if (t.IsCarved(x, y, z)) d = -Limit;
                 d = Math.Clamp(d, -Limit, Limit);
                 density[i] = d;
 
@@ -395,11 +408,11 @@ public sealed class PlanetTerrainSource : ITerrainSource
         float hz = SurfaceHeight(x + 0.5, z + 1.5) - SurfaceHeight(x + 0.5, z - 0.5);
         float slopeScale = 1f / MathF.Sqrt(1f + (hx * hx + hz * hz) * 0.25f);
         float depth = h - (y + 0.5f), d = depth * slopeScale;
-        if (d > BedrockDepth) return Limit;
-        float caves = CaveStrength(x + 0.5, z + 0.5, h);
-        if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
         foreach (TerrainStamp t in Stamps)
-            if (t.IsCarved(x, y, z)) d = -Limit;
+            if (t.IsCarved(x, y, z)) return -Limit;
+        if (d > BedrockDepth) return Limit;
+        float caves = StampWeight(x + 0.5, z + 0.5) > 0f ? 0f : CaveStrength(x + 0.5, z + 0.5, h);
+        if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
         return Math.Clamp(d, -Limit, Limit);
     }
 
