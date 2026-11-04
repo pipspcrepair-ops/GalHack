@@ -22,6 +22,7 @@ Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or s
 | --- | --- |
 | `prototypes/` | Throwaway prototypes that prove one risky idea each |
 | `prototypes/walkable-ship/` | Walking around inside a ship while it flies, rolls and warps |
+| `prototypes/saves/` | Crash-proof saves (shadow-paged plain files, audits, backups, migrations) and zone transitions; its `src/Persistence` is the core other prototypes adopt |
 
 ## Requirements
 
