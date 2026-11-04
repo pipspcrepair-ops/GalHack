@@ -1,0 +1,99 @@
+{
+  "_note": "Every handling number in one place. Mass is in tonnes and thrust in kN, so thrust / mass is m/s². Speeds are m/s, angles degrees, times seconds.",
+
+  "planet": {
+    "name": "Ochre IV",
+    "gravity": 9.8,
+    "atmosphereCeiling": 600,
+    "_note": "Above the ceiling (metres of altitude) the ship flies on space handling: no weight and the space top speed."
+  },
+
+  "classes": {
+    "hover":   { "label": "hover vessel",   "topSpeedAir": 50, "topSpeedSpace": 50 },
+    "small":   { "label": "small vessel",   "topSpeedAir": 70, "topSpeedSpace": 130 },
+    "capital": { "label": "capital vessel", "topSpeedAir": 60, "topSpeedSpace": 100 }
+  },
+
+  "turning": {
+    "floor": 12,
+    "rollFactor": 1.5,
+    "spinUpTime": 0.25,
+    "_note": "Turn rate in °/s is total gyro torque / mass, never below the floor. Roll is rollFactor times faster. spinUpTime is how long it takes to reach full turn rate."
+  },
+
+  "assist": {
+    "minBrake": 8,
+    "easeRate": 4,
+    "stopBelow": 0.05,
+    "cruiseRate": 20,
+    "horizonLevel": 1.5,
+    "_note": "Flight assist brakes with the thrusters facing the right way, never weaker than minBrake (m/s²). The last part of every change eases out at easeRate (1/s), so stops are smooth. cruiseRate is how fast W/S change the cruise speed (m/s per s). horizonLevel (1/s) eases the wings back to level in air when you aren't rolling, so a first ship is forgiving; 0 turns it off."
+  },
+
+  "boost": {
+    "multiplier": 1.5,
+    "duration": 1.5,
+    "cooldown": 4
+  },
+
+  "hover": {
+    "verticalGain": 8,
+    "maxRise": 40,
+    "maxGrip": 30,
+    "gripBand": 0.8,
+    "maxClimbRate": 14,
+    "lookAheadTime": 0.45,
+    "lookAheadMin": 2,
+    "lookAheadMax": 14,
+    "stepAllowance": 0.5,
+    "levelRate": 6,
+    "maxSlope": 30,
+    "jumpSpeed": 7,
+    "jumpCooldown": 1.2,
+    "probeDepth": 3,
+    "_note": "The ride-height spring: verticalGain (1/s) closes the height error, limited to maxRise up and maxGrip down (m/s²); grip only holds within gripBand metres above ride height, so jumps fly. Look-ahead probes reach speed * lookAheadTime ahead (clamped); terrain ahead that rises more than stepAllowance * ride height lifts the vessel early. levelRate (1/s) settles tilt. Slopes steeper than maxSlope (°) are refused. Probes reach probeDepth * ride height below the engines."
+  },
+
+  "gear": {
+    "deployAltitude": 15,
+    "deploySpeed": 20,
+    "hysteresis": 5,
+    "extendTime": 0.8,
+    "landSpeed": 3,
+    "idleBeforeLanding": 0.3,
+    "settleTime": 0.5,
+    "_note": "Gear drops by itself below deployAltitude (m above ground) when slower than deploySpeed, and comes up again past them plus hysteresis. A ship on its gear, slower than landSpeed, with nobody touching the controls for idleBeforeLanding, settles over settleTime and stops simulating."
+  },
+
+  "contacts": {
+    "safeSpeed": 8,
+    "damageScale": 0.001,
+    "hullPointsPerTonne": 4,
+    "restitution": 0.2,
+    "scrape": 0.3,
+    "craterSpeed": 25,
+    "craterScale": 2,
+    "craterMaxRadius": 14,
+    "_note": "Damage = mass * (impact speed - safeSpeed)² * damageScale, where mass is the vessel's for ground hits and the reduced mass m1*m2/(m1+m2) for ramming (both sides take it). Hull points = hull mass * hullPointsPerTonne. Contacts bounce off with restitution and lose scrape of their sliding speed only when they do damage. Ground hits faster than craterSpeed blast a crater of craterScale * cbrt(energy in MJ) metres, never wider than craterMaxRadius."
+  },
+
+  "parts": {
+    "thrusters": {
+      "small":   { "thrust": 50,   "mass": 0.5 },
+      "large":   { "thrust": 300,  "mass": 2 },
+      "capital": { "thrust": 2400, "mass": 12 }
+    },
+    "gyros": {
+      "small": { "torque": 600,  "mass": 0.5 },
+      "large": { "torque": 5000, "mass": 4 }
+    },
+    "hoverEngines": {
+      "small": { "lift": 40,  "rideHeight": 1.5, "mass": 0.3 },
+      "large": { "lift": 400, "rideHeight": 3.0, "mass": 2 }
+    },
+    "landingGear": {
+      "small": { "length": 1.4, "mass": 0.4 },
+      "large": { "length": 4.0, "mass": 3 }
+    }
+  }
+}
