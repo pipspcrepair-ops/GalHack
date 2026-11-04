@@ -31,10 +31,17 @@ public sealed class BaseChunk
     public float DensityAt(int index) => Density != null ? Density[index] : UniformDensity;
     public CellMaterial MaterialAt(int index) => Material != null ? Material[index] : UniformMaterial;
 
+    // Per-thread scratch: most chunks are uniform (open sky, solid rock) and keep no arrays, so
+    // generating into fresh arrays only to drop them made streamed worlds churn the GC.
+    [ThreadStatic] static float[] _scratchDensity;
+    [ThreadStatic] static CellMaterial[] _scratchMaterial;
+
     public static BaseChunk Generate(ITerrainSource source, Int3 chunk)
     {
-        var density = new float[ChunkStore.Volume];
-        var material = new CellMaterial[ChunkStore.Volume];
+        float[] density = _scratchDensity ??= new float[ChunkStore.Volume];
+        CellMaterial[] material = _scratchMaterial ??= new CellMaterial[ChunkStore.Volume];
+        Array.Clear(density);
+        Array.Clear(material);
         source.GenerateChunk(chunk, density, material);
 
         int solid = 0;
@@ -44,9 +51,14 @@ public sealed class BaseChunk
             if (material[i] != CellMaterial.Air) solid++;
             if (density[i] != density[0] || material[i] != material[0]) uniform = false;
         }
-        return uniform
-            ? new BaseChunk(null, null, density[0], material[0], solid)
-            : new BaseChunk(density, material, 0f, CellMaterial.Air, solid);
+        if (uniform) return new BaseChunk(null, null, density[0], material[0], solid);
+        // Kept cells go on the pinned heap: they live for seconds while a streamed world passes,
+        // and there the collector never copies them from generation to generation.
+        float[] keptDensity = GC.AllocateUninitializedArray<float>(ChunkStore.Volume, pinned: true);
+        CellMaterial[] keptMaterial = GC.AllocateUninitializedArray<CellMaterial>(ChunkStore.Volume, pinned: true);
+        density.CopyTo(keptDensity, 0);
+        material.CopyTo(keptMaterial, 0);
+        return new BaseChunk(keptDensity, keptMaterial, 0f, CellMaterial.Air, solid);
     }
 }
 
