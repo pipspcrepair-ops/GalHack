@@ -175,8 +175,9 @@ public partial class Hud : Control
         // Vitals: health, suit, jetpack.
         var at = new Vector2(40, size.Y - 152);
         float health = Player.Health.Fraction;
-        Color healthColor = Player.Health.InLastStand ? new Color(Danger, pulse) : health < 0.25f ? Danger : Amber;
-        Bar(at, "HEALTH", health, healthColor, Player.Health.InLastStand ? $"LAST STAND {Player.Health.LastStand:F0}s" : $"{Player.Health.Current:F0}");
+        bool low = health < 0.25f; // a warning only: damage is never reduced
+        Color healthColor = low ? new Color(Danger, pulse) : Amber;
+        Bar(at, "HEALTH", health, healthColor, low ? $"{Player.Health.Current:F0}  LOW" : $"{Player.Health.Current:F0}");
         float exposure = Player.Exposure;
         string suitNote = exposure > 0.05f ? $"{Director.Sim.Data.State(Director.Sim.Dominant).ExposureLabel} drain" : "";
         Bar(at + new Vector2(0, 32), "SUIT", Player.SuitPower, Cyan, suitNote);
@@ -205,8 +206,8 @@ public partial class Hud : Control
         DrawLine(mid - new Vector2(6, 0), mid + new Vector2(6, 0), new Color(1, 1, 1, 0.6f), 1.5f);
         DrawLine(mid - new Vector2(0, 6), mid + new Vector2(0, 6), new Color(1, 1, 1, 0.6f), 1.5f);
 
-        // Damage and caught: a red edge to the visor.
-        if (Player.Caught || Player.Health.InLastStand)
+        // Caught, or badly hurt: a red edge to the visor.
+        if (Player.Caught || (Player.Health.Fraction < 0.25f && !Player.Health.Dead))
         {
             var edge = new Color(Danger, 0.35f * pulse);
             DrawRect(new Rect2(0, 0, size.X, 8), edge);

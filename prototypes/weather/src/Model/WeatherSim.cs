@@ -33,8 +33,11 @@ public readonly record struct ForecastEntry(WeatherKind Kind, string Name, doubl
 
 public enum WarningLevel { Advisory, Warning, Danger }
 
-/// <summary>A visor warning. <see cref="Kind"/> and <see cref="ArrivesAt"/> are set for weather warnings.</summary>
-public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0);
+/// <summary>
+/// A visor warning. <see cref="ArrivesAt"/> is when the danger lands; <see cref="Kind"/> is set for
+/// weather warnings and <see cref="HazardId"/> for strikes (lightning, debris).
+/// </summary>
+public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0, int HazardId = 0);
 
 /// <summary>Weather that lingers on the ground after it has passed.</summary>
 public struct GroundCover
@@ -296,12 +299,14 @@ public sealed class WeatherSim
             {
                 string what = h.TargetPoint?.Name ?? "open ground";
                 into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Lightning charge building on {what}, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining));
+                    $"Lightning charge building on {what}, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
+                    ArrivesAt: Time + h.Remaining, HazardId: h.Id));
             }
             else if (h.Kind == HazardKind.Debris && distance < 60f)
             {
                 into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Burning debris incoming, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining));
+                    $"Burning debris incoming, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
+                    ArrivesAt: Time + h.Remaining, HazardId: h.Id));
             }
         }
 

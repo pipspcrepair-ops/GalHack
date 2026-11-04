@@ -45,9 +45,9 @@ public partial class WeatherTest : Node
         Section("Tornado");
         TornadoLiftsOrbitsReleases();
         TornadoIsNeverSilent();
-        Section("Never fatal, last stand");
+        Section("Damage: never reduced, except a tornado fling's floor");
         FlingIsNeverFatal();
-        LastStand();
+        StrikesAreWarnedFirst();
         Section("Lightning");
         LightningBuildsThenHitsHighest();
         Section("Modifiers per weather");
@@ -288,19 +288,65 @@ public partial class WeatherTest : Node
         Check(felt >= 0f && caught - felt >= 4f, $"the wind swings round into it {caught - felt:F0} s before it arrives");
     }
 
-    void LastStand()
+    /// <summary>
+    /// Lightning and burning debris may kill, so neither may ever be a surprise: every strike the
+    /// weather throws is visible (glow, beam) for its whole configured lead, and every one that
+    /// lands near the player is on the visor for that long too.
+    /// </summary>
+    void StrikesAreWarnedFirst()
     {
-        Check(new Health(100f).Hit(DamageRules.FallDamage(10f)) == 0f, "a 10 m/s landing is free");
+        var warnings = new List<WarningEntry>();
+        foreach (var (weather, kind, rules, near) in new[]
+        {
+            (WeatherKind.Thunderstorm, HazardKind.Lightning, _data.Lightning, 350f),
+            (WeatherKind.FireStorm, HazardKind.Debris, _data.Debris, 60f),
+        })
+        {
+            var sim = new WeatherSim(_data, "temperate", 23, weather);
+            sim.Snap(weather);
+            AddStrikePoints(sim);
+            var player = new StrikePoint { Id = 99, Name = "YOU", Position = new Vector3(0, 1.8f, 0) };
+            sim.StrikePoints.Add(player);
+
+            var seen = new Dictionary<int, double>();
+            var warned = new Dictionary<int, double>();
+            int hits = 0, nearHits = 0, late = 0;
+            double shortestSeen = double.MaxValue, shortestWarned = double.MaxValue;
+            for (int i = 0; i < 60 * 600; i++) // ten minutes of storm around a player at the origin
+            {
+                sim.Step(Dt, Vector3.Zero);
+                foreach (Hazard h in sim.Hazards) seen.TryAdd(h.Id, sim.Time);
+                sim.GetWarnings(warnings, Vector3.Zero);
+                foreach (WarningEntry w in warnings) if (w.HazardId > 0) warned.TryAdd(w.HazardId, sim.Time);
+
+                foreach (WeatherEvent e in sim.Events)
+                {
+                    if (e.Kind != WeatherEventKind.LightningStrike && e.Kind != WeatherEventKind.DebrisImpact) continue;
+                    hits++;
+                    double shown = sim.Time - seen[e.Id];
+                    shortestSeen = Math.Min(shortestSeen, shown);
+                    if (shown < rules.WarningSeconds - 1e-3) late++;
+                    if (new Vector2(e.Position.X, e.Position.Z).Length() >= near) continue;
+                    nearHits++;
+                    double onVisor = warned.TryGetValue(e.Id, out double at) ? sim.Time - at : -1;
+                    shortestWarned = Math.Min(shortestWarned, onVisor);
+                    if (onVisor < rules.WarningSeconds - 1e-3) late++;
+                }
+            }
+            string what = kind == HazardKind.Lightning ? "lightning" : "burning debris";
+            Check(late == 0 && hits > 20 && nearHits > 10,
+                $"every {what} hit is shown and on the visor for its full {rules.WarningSeconds:F1} s lead first " +
+                $"({hits} hits, {nearHits} near you; shortest {shortestSeen:F2} s shown, {shortestWarned:F2} s on the visor)");
+        }
+
+        // Damage is never reduced: a hit lands in full, and enough of them kill.
         var hp = new Health(100f);
-        hp.Hit(40f);
-        hp.Hit(40f);   // 20 left: below 25%, the last stand opens
-        Check(hp.InLastStand, $"dropping below 25% opens the last stand ({hp.Current:F0} health, {hp.LastStand:F0} s)");
-        float dealt = hp.Hit(10f);
-        Check(MathF.Abs(dealt - 10f * DamageRules.LastStandFactor) < 1e-3f, $"during the last stand a 10 hit deals {dealt:F1}");
-        for (int i = 0; i < 60 * 7; i++) hp.Tick(Dt);
-        Check(!hp.InLastStand, "the last stand is a short window");
-        dealt = hp.Hit(10f);
-        Check(MathF.Abs(dealt - 10f) < 1e-3f, "after it, damage is back to normal");
+        float dealt = hp.Hit(_data.Lightning.Damage);
+        Check(MathF.Abs(dealt - _data.Lightning.Damage) < 1e-3f, $"a lightning hit lands in full ({dealt:F0} of {_data.Lightning.Damage:F0})");
+        hp.Set(10f);
+        dealt = hp.Hit(_data.Debris.Damage);
+        Check(hp.Dead && MathF.Abs(dealt - 10f) < 1e-3f, "and lightning or debris can kill: no last stand, no cap");
+        Check(new Health(100f).Hit(DamageRules.FallDamage(10f)) == 0f, "a 10 m/s landing is free");
     }
 
     void LightningBuildsThenHitsHighest()
