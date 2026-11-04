@@ -27,3 +27,4 @@ common/physics_interpolation=true
 
 renderer/rendering_method="mobile"
 anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/use_debanding=true

@@ -39,8 +39,105 @@ public partial class PoiTest : Node
         {
             Fail($"exception: {e}");
         }
+        // The walk runs on physics ticks, so it goes last; see _PhysicsProcess.
+        if (only == null || only.Split(',').Contains("Walk")) StartWalk();
+        else Finish();
+    }
+
+    void Finish()
+    {
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    // ---- walking it -------------------------------------------------------------------
+
+    // A body really walks each place's critical path, from outside the way in to the vault:
+    // through the doors, along the corridors, down every ramp. Proves the meshes, collision
+    // and grid path agree.
+    readonly (string family, int variant, PoiState state)[] _walks =
+    {
+        ("vharn_outpost", 0, PoiState.Active),
+        ("abandoned_mine", 0, PoiState.Abandoned),
+        ("research_lab", 3, PoiState.Ruined),
+    };
+    int _walk = -1, _step, _ticks, _stuck;
+    Node3D _walkRoot;
+    Player _walker;
+    List<Vector3> _route;
+    float _lowest;
+
+    void StartWalk() => NextWalk();
+
+    void NextWalk()
+    {
+        _walkRoot?.QueueFree();
+        _walk++;
+        if (_walk >= _walks.Length)
+        {
+            _walkRoot = null;
+            Finish();
+            return;
+        }
+        var (fam, v, state) = _walks[_walk];
+        var poi = PoiFactory.Generate(_lib, _lib.Family(fam), v, Rarity.Common, state, 9);
+        _walkRoot = new Node3D { Name = "Walk" };
+        AddChild(_walkRoot);
+        var view = PoiView.Build(poi, Biome.Rock, new PoiView.Options(Lights: false, Figures: false));
+        _walkRoot.AddChild(view);
+        var hole = new Rect2I(view.PlugMin, view.PlugMax - view.PlugMin + Vector2I.One);
+        _walkRoot.AddChild(Terrain.Build(new Vector2I(-160, -160), new Vector2I(40, 40), (x, z) => Colors.Gray, new List<Rect2I> { hole }, true, 0f));
+        _walker = new Player { Name = "Walker" };
+        _walkRoot.AddChild(_walker);
+        view.Watcher = _walker;
+
+        // The route: outside the door, then every cell of the critical path, cell centres.
+        _route = poi.CriticalPath.Select(c => new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f)).ToList();
+        var (start, yaw) = view.EntranceStand();
+        _walker.Place(start, yaw);
+        _step = 0;
+        _ticks = 0;
+        _stuck = 0;
+        _lowest = poi.CriticalPath.Min(c => c.Y) - 1.5f;
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (_walker == null || _walk < 0 || _walk >= _walks.Length) return;
+        _ticks++;
+        if (_ticks < 10) return; // let it land
+        var (fam, v, state) = _walks[_walk];
+        string name = $"{_lib.Family(fam).Variants[v]} ({state})";
+        Vector3 at = _walker.GlobalPosition;
+
+        if (at.Y < _lowest)
+        {
+            Fail($"walking {name}: fell through the floor at {at}");
+            _walker = null;
+            NextWalk();
+            return;
+        }
+        // Skip ahead along the route as cells are reached; a cell counts when we're over it.
+        while (_step < _route.Count && new Vector2(at.X - _route[_step].X, at.Z - _route[_step].Z).Length() < 0.45f && Mathf.Abs(at.Y - _route[_step].Y) < 1.2f)
+        {
+            _step++;
+            _stuck = 0;
+        }
+        if (_step >= _route.Count)
+        {
+            Check(true, $"a body walked {name} from outside to the vault: {_route.Count} cells, {_ticks / 60f:F1} s, never below the floor");
+            _walker.AutoTarget = null;
+            _walker = null;
+            NextWalk();
+            return;
+        }
+        _walker.AutoTarget = _route[_step];
+        if (++_stuck > 300)
+        {
+            Fail($"walking {name}: stuck at {at} on cell {_step}/{_route.Count} ({_route[_step]})");
+            _walker = null;
+            NextWalk();
+        }
     }
 
     // ---- data -------------------------------------------------------------------------
