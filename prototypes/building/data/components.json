@@ -22,7 +22,7 @@
       "hp": 1500, "armor": 30, "resist": { "kinetic": 0.25, "explosive": 0.25, "energy": 0.25 },
       "mass": 4, "cpu": 0, "color": "2b2d42", "glow": "ffb627",
       "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 30, "electronics": 20, "crystal": 4 }, "smallCost": { "iron": 6, "copper": 4, "silica": 2 },
+      "cost": { "iron": 30, "electronics": 20, "crystal": 4 }, "smallCost": { "iron": 6, "copper": 4, "silicon": 2 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
         { "box": [-0.505, -0.11, -0.505, 0.505, 0.11, 0.505], "style": "glow" },
@@ -34,7 +34,7 @@
       "hp": 400, "armor": 5, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
       "mass": 1.5, "cpu": 1500, "power": -0.05, "color": "c1121f", "glow": "6ff2e0",
       "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
-      "cost": { "iron": 12, "electronics": 10 }, "smallCost": { "iron": 4, "copper": 2, "silica": 2 },
+      "cost": { "iron": 12, "electronics": 10 }, "smallCost": { "iron": 4, "copper": 2, "silicon": 2 },
       "parts": [
         { "box": [-0.16, -0.5, -0.05, 0.16, -0.22, 0.22], "style": "dark" },
         { "box": [-0.3, -0.22, -0.15, 0.3, -0.08, 0.3], "style": "body" },
@@ -117,7 +117,7 @@
       "id": "light", "name": "Light", "function": "light",
       "hp": 80, "armor": 0, "mass": 0.1, "cpu": 50, "power": -0.005, "color": "2b2d42", "glow": "ffe2b0",
       "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
-      "cost": { "iron": 1, "copper": 2 }, "smallCost": { "copper": 1, "silica": 1 },
+      "cost": { "iron": 1, "copper": 2 }, "smallCost": { "copper": 1, "silicon": 1 },
       "parts": [
         { "box": [-0.3, -0.3, 0.44, 0.3, 0.3, 0.5], "style": "dark" },
         { "box": [-0.22, -0.22, 0.4, 0.22, 0.22, 0.44], "style": "glow" }
@@ -143,7 +143,7 @@
       "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
       "mass": 2, "cpu": 0, "power": -0.2, "color": "1b263b", "glow": "6ff2e0",
       "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silica": 3 },
+      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
         { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },

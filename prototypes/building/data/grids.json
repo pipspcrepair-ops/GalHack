@@ -30,5 +30,5 @@
   "cargoMassPerSu": 0.001,
   // Found on any planet. Every small-grid recipe uses only these, so a first small vessel is
   // an hour or two of gathering, not a hunt for rare ore.
-  "commonMaterials": ["iron", "copper", "silica", "carbon"]
+  "commonMaterials": ["iron", "copper", "silicon", "carbon"]
 }
