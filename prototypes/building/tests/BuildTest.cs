@@ -198,7 +198,7 @@ public partial class BuildTest : Node
         double cpu = 0 + 10 * 20 + 2 * 45 + 2500 + 4000 + 800;
         Check(Near(st.CpuUsed, cpu) && st.Tier == 1 && st.CpuLimit == 200_000 && st.Efficiency == 1,
             $"CPU is summed ({st.CpuUsed}) and the core alone gives tier 1 (200,000)");
-        Check(Near(st.Thrust[(int)Dir.NegZ], 4000) && Near(st.ThrustToWeightForward, 4000 / (mass * 9.81)),
+        Check(Near(st.Thrust[(int)Dir.NegZ], _thruster.Thrust) && Near(st.ThrustToWeightForward, _thruster.Thrust / (mass * 9.81)),
             $"thrust-to-mass is right ({st.ThrustToWeightForward:0.00} g forward)");
 
         Check(Near(StructureStats.EfficiencyFor(400_000, 200_000), 0.5), "100% over the limit gives 50% efficiency");
