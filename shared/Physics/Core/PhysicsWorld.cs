@@ -11,14 +11,15 @@ namespace GalHack.Physics;
 ///
 /// One tick, in a fixed order (the engine host calls these in turn):
 /// <list type="number">
-/// <item><see cref="BeginTick"/>: clear the force accumulators.</item>
-/// <item><see cref="ApplyForces"/>: each body's own drive (thrust, walking), then gravity from
-///   its zone or ship core, then outside forces (weather).</item>
+/// <item><see cref="BeginTick"/>; free bodies sync from the engine and report their impacts.</item>
+/// <item><see cref="ApplyForces"/>: each body's own drive (thrust), then gravity from its zone or
+///   ship core, then outside forces (weather), then reactors (legs gripping against the wind).</item>
 /// <item><see cref="Integrate"/>: kinematic bodies get velocity += ΣF/m·dt + ΣJ/m.</item>
-/// <item>The host moves kinematic bodies with collisions, reporting contacts to
-///   <see cref="ResolveContacts"/>, and syncs free bodies' impacts through <see cref="FreeBodyImpact"/>.</item>
+/// <item>The host moves kinematic bodies with collisions (hulls, then creatures, then
+///   characters), reporting contacts to <see cref="ResolveContacts"/>.</item>
 /// <item><see cref="EndTick"/>: controllers react, craters are cut, stuck bodies are rescued.</item>
-/// <item>The host hands free bodies their summed force and impulse; the engine integrates them.</item>
+/// <item>The host hands free bodies their summed force and impulse; the engine integrates them
+///   in its own step. <see cref="FinishTick"/> clears the sums (forces added between ticks land in the next).</item>
 /// </list>
 /// Bodies always go in registration order, so the same inputs give the same trajectories.
 /// </summary>
