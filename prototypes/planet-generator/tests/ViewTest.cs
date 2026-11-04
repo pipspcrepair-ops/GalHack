@@ -8,8 +8,8 @@ namespace Planets;
 /// <summary>
 /// Headless smoke test of the views. Run with:
 ///   godot --headless --path prototypes/planet-generator res://tests/ViewTest.tscn
-/// Lands, flies fast across the east-west seam while terrain streams, returns to orbit, switches
-/// planet and lands again. Exits 0 if everything settles in time and the main thread never
+/// Lands, flies fast north-east across the corner where both seams meet while terrain streams,
+/// returns to orbit, switches planet and lands again. Exits 0 if everything settles in time and the main thread never
 /// stalls, 1 otherwise. (Headless means no GPU: this checks streaming and stability, not frame rate.)
 /// </summary>
 public partial class ViewTest : Node
@@ -54,17 +54,18 @@ public partial class ViewTest : Node
             case 1: // initial terrain streamed in
                 if (!_main.Surface.Streamer.Settled) return;
                 Pass($"terrain around the landing site settled in {_stageTime:F1} s ({_main.Surface.Streamer.ChunkCount} chunks)");
-                // Start just west of the seam and fly east across it.
-                _main.Surface.PlaceCamera(_main.Map.WidthMeters - 300, _main.Map.HeightMeters / 2, 40f, MathF.PI / 2, 0f);
+                // Start just south-west of the corner and fly north-east across both seams at once.
+                _main.Surface.PlaceCamera(_main.Map.WidthMeters - 300, 300, 40f, MathF.PI / 4, 0f);
                 Next(true, null);
                 break;
-            case 2: // fly east at boost speed, crossing x = 0
+            case 2: // fly north-east at boost speed, crossing x = 0 and z = 0
                 _flown += delta;
                 Vector3 p = _main.Surface.Camera.Position;
-                _main.Surface.Camera.Position = p + Vector3.Right * (float)(FlySpeed * delta);
+                _main.Surface.Camera.Position = p + new Vector3(1f, 0f, -1f).Normalized() * (float)(FlySpeed * delta);
                 if (_flown < FlySeconds) return;
-                float x = _main.Surface.Camera.Position.X;
-                Check(x >= 0 && x < _main.Map.WidthMeters * 0.5f, $"crossed the east-west seam and wrapped (camera at x = {x:F0} m)");
+                float x = _main.Surface.Camera.Position.X, z = _main.Surface.Camera.Position.Z;
+                Check(x >= 0 && x < _main.Map.WidthMeters * 0.5f && z > _main.Map.HeightMeters * 0.5f && z < _main.Map.HeightMeters,
+                    $"crossed both seams and wrapped (camera at x = {x:F0} m, z = {z:F0} m)");
                 Next(true, null);
                 break;
             case 3: // streaming catches up after the flight

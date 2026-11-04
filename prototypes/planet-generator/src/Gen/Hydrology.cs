@@ -11,6 +11,7 @@ namespace Planets.Gen;
 /// neighbour and water can always reach the sea. Flow then follows the steepest descent on that
 /// filled surface; catchments accumulate downstream, and cells draining enough area become rivers.
 /// River surfaces never climb downstream: where a river crosses a pit's rim it cuts a gorge.
+/// Neighbours wrap on both axes (the map is a torus), so rivers flow across either seam.
 /// </summary>
 static class Hydrology
 {
@@ -44,10 +45,8 @@ static class Hydrology
             int ci = c % w, cj = c / w;
             for (int d = 0; d < 8; d++)
             {
-                int nj = cj + DJ[d];
-                if (nj < 0 || nj >= h) continue;
-                int nb = map.Index(ci + DI[d], nj);
-                if (queued[nb] || map.Has(nb, CellFlags.Cap)) continue;
+                int nb = map.Index(ci + DI[d], cj + DJ[d]);
+                if (queued[nb]) continue;
                 queued[nb] = true;
                 filled[nb] = Math.Max(elevation[nb], level + FillGradient);
                 queue.Enqueue(nb, filled[nb]);
@@ -64,10 +63,8 @@ static class Hydrology
             float best = 0f;
             for (int d = 0; d < 8; d++)
             {
-                int nj = cj + DJ[d];
-                if (nj < 0 || nj >= h) continue;
-                int nb = map.Index(ci + DI[d], nj);
-                if (!queued[nb] || map.Has(nb, CellFlags.Cap)) continue;
+                int nb = map.Index(ci + DI[d], cj + DJ[d]);
+                if (!queued[nb]) continue;
                 float drop = (filled[c] - filled[nb]) / Step[d];
                 if (drop > best)
                 {
@@ -112,12 +109,7 @@ static class Hydrology
     {
         int i = k % map.Width, j = k / map.Width;
         for (int d = 0; d < 8; d++)
-        {
-            int nj = j + DJ[d];
-            if (nj < 0 || nj >= map.Height) continue;
-            int nb = map.Index(i + DI[d], nj);
-            if (!map.Has(nb, CellFlags.Water) && !map.Has(nb, CellFlags.Cap)) return true;
-        }
+            if (!map.Has(map.Index(i + DI[d], j + DJ[d]), CellFlags.Water)) return true;
         return false;
     }
 
@@ -134,9 +126,7 @@ static class Hydrology
                 for (int dj = -reach; dj <= reach; dj++)
                 for (int di = -reach; di <= reach; di++)
                 {
-                    int nj = j + dj;
-                    if (nj < 0 || nj >= h) continue;
-                    int nb = map.Index(i + di, nj);
+                    int nb = map.Index(i + di, j + dj);
                     if (map.Flags[nb] == 0) map.Flags[nb] = CellFlags.Riparian;
                 }
             }
@@ -144,8 +134,7 @@ static class Hydrology
             {
                 for (int d = 0; d < 4; d++)
                 {
-                    int nj = j + DJ[d];
-                    if (nj >= 0 && nj < h && map.Has(map.Index(i + DI[d], nj), CellFlags.Water))
+                    if (map.Has(map.Index(i + DI[d], j + DJ[d]), CellFlags.Water))
                     {
                         map.Flags[k] |= CellFlags.Coast;
                         break;
@@ -175,26 +164,25 @@ static class Hydrology
             if (!map.Has(source, CellFlags.River) || fed[source]) continue;
             var river = new River();
             int c = source;
-            double x = map.CellX(c % w);
+            double x = map.CellX(c % w), y = map.CellY(c / w);
             visited[c] = true;
-            Add(map, river, c, x);
+            Add(map, river, c, x, y);
             while (true)
             {
                 int down = map.Downstream[c];
                 if (down < 0) break;
-                int di = down % w - c % w;
-                if (di > w / 2) di -= w;
-                else if (di < -w / 2) di += w;
-                x += di * map.CellSize;
+                // Step in unwrapped coordinates, so a river crossing a seam stays one line.
+                x += Wrapped(down % w - c % w, w) * map.CellSize;
+                y += Wrapped(down / w - c / w, map.Height) * map.CellSize;
                 if (map.Has(down, CellFlags.Water))
                 {
                     river.X.Add((float)x);
-                    river.Y.Add((float)map.CellY(down / w));
+                    river.Y.Add((float)y);
                     river.Level.Add(0f);
                     river.Width.Add(RiverWidth(map, map.RiverFlow[c]) * 1.3f);
                     break;
                 }
-                Add(map, river, down, x);
+                Add(map, river, down, x, y);
                 if (visited[down]) break;
                 visited[down] = true;
                 c = down;
@@ -203,10 +191,13 @@ static class Hydrology
         }
     }
 
-    static void Add(WorldMap map, River river, int cell, double x)
+    /// <summary>A step of one cell either way across a seam, as -1, 0 or 1.</summary>
+    static int Wrapped(int d, int span) => d > span / 2 ? d - span : d < -span / 2 ? d + span : d;
+
+    static void Add(WorldMap map, River river, int cell, double x, double y)
     {
         river.X.Add((float)x);
-        river.Y.Add((float)map.CellY(cell / map.Width));
+        river.Y.Add((float)y);
         river.Level.Add(map.RiverLevel[cell]);
         river.Width.Add(RiverWidth(map, map.RiverFlow[cell]));
     }

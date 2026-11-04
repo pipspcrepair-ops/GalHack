@@ -35,7 +35,6 @@ public static class BiomeLook
         void Set(Biome b, string hex) => c[(int)b] = Rgb.Hex(hex);
         // Sea biomes are recoloured per archetype by ArchetypeLook; these are fallbacks.
         Set(Biome.DeepSea, "0d3b66"); Set(Biome.ShallowSea, "1e8fa6"); Set(Biome.FrozenSea, "d6eaf6");
-        Set(Biome.StormCap, "3a3f55"); Set(Biome.IceCap, "eef6ff");
 
         Set(Biome.Beach, "ead7a0"); Set(Biome.Grassland, "6db33f"); Set(Biome.Meadow, "b4d443");
         Set(Biome.Forest, "2e7d32"); Set(Biome.PineForest, "1e5c45"); Set(Biome.Tundra, "8f9a6a");

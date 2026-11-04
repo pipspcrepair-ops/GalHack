@@ -9,7 +9,7 @@ public static class Landing
 {
     /// <summary>
     /// A gentle riverside or coastal spot, preferring rivers and the one nearest the given point
-    /// (the part of the globe facing the camera), away from the polar walls.
+    /// (the part of the globe facing the camera), and away from the coldest polar band.
     /// </summary>
     public static LandingSite Find(WorldMap map, double nearX, double nearY)
     {
@@ -19,12 +19,13 @@ public static class Landing
         {
             bool river = map.Has(k, CellFlags.Riparian), coast = map.Has(k, CellFlags.Coast);
             if (!river && !coast) continue;
+            if (!DepositField.Usable(map, k)) continue; // somewhere you can stand and gather
             float e = map.Elevation[k];
             if (e < 1.5f || e > 150f || map.Slope[k] > 0.18f) continue;
             int i = k % map.Width, j = k / map.Width;
             double y = map.CellY(j);
-            if (y < map.HeightMeters * 0.2 || y > map.HeightMeters * 0.8) continue;
-            double dx = Mathx.WrapDelta(map.CellX(i) - nearX, map.WidthMeters), dy = y - nearY;
+            if (y < map.HeightMeters * 0.15 || y > map.HeightMeters * 0.85) continue;
+            double dx = Mathx.WrapDelta(map.CellX(i) - nearX, map.WidthMeters), dy = Mathx.WrapDelta(y - nearY, map.HeightMeters);
             double score = (dx * dx + dy * dy) * (river ? 0.5 : 1.0);
             if (score < bestScore)
             {
@@ -40,9 +41,8 @@ public static class Landing
         for (int dj = -4; dj <= 4; dj++)
         for (int di = -4; di <= 4; di++)
         {
-            int nj = bj + dj;
-            if (nj < 0 || nj >= map.Height || (di == 0 && dj == 0)) continue;
-            int nb = map.Index(bi + di, nj);
+            if (di == 0 && dj == 0) continue;
+            int nb = map.Index(bi + di, bj + dj);
             if (!map.Has(nb, CellFlags.Water) && !map.Has(nb, CellFlags.River)) continue;
             double w = 1.0 / (di * di + dj * dj);
             fx += di * w;

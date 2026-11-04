@@ -8,7 +8,7 @@ namespace Planets;
 /// <summary>
 /// Renders one view of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/planet-generator res://tests/Screenshot.tscn -- --view=orbit --archetype=2 --variant=1 --seed=7 --out=shot.png
-/// Views: orbit, flat, surface (at the landing site), cap (looking at the north polar wall).
+/// Views: orbit, flat, surface (at the landing site), pole (on the north-south seam, looking north across it).
 /// Optional: --mods=Mesas,Cratered (default: rolled from the seed), --heading=deg --pitch=deg --up=metres
 /// to aim the surface camera, --x=metres --z=metres to put it somewhere else, --hud=0 to hide the
 /// orbit text. Prints the average frame time with vsync off, and primitives and draw calls.
@@ -76,7 +76,7 @@ public partial class Screenshot : Node
         {
             case 0: // planet ready
                 if (_view == "flat") Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Tab, Pressed = true });
-                if (_view is "surface" or "cap") _main.Land();
+                if (_view is "surface" or "pole") _main.Land();
                 _stage = 1;
                 break;
             case 1: // aim the camera
@@ -85,15 +85,15 @@ public partial class Screenshot : Node
                     var site = _main.Surface.Landing;
                     double x = _x ?? site.X, z = _z ?? site.Y;
                     float heading = _heading.HasValue ? Mathf.DegToRad(_heading.Value) : _main.Surface.Camera.Heading;
-                    if (_view == "cap")
+                    if (_view == "pole")
                     {
-                        z = _main.Map.Model.NorthEdge(x) + 900;
+                        z = _z ?? 40; // just south of the north edge, looking north across the seam
                         heading = _heading.HasValue ? heading : 0f;
                     }
-                    bool aimed = _view == "cap" || _heading.HasValue || _x.HasValue || _up.HasValue || _pitch.HasValue;
+                    bool aimed = _view == "pole" || _heading.HasValue || _x.HasValue || _up.HasValue || _pitch.HasValue;
                     if (aimed)
-                        _main.Surface.PlaceCamera(x, z, _up ?? (_view == "cap" ? 60f : 16f), heading,
-                            Mathf.DegToRad(_pitch ?? (_view == "cap" ? 6f : -9f)));
+                        _main.Surface.PlaceCamera(x, z, _up ?? (_view == "pole" ? 60f : 16f), heading,
+                            Mathf.DegToRad(_pitch ?? (_view == "pole" ? -4f : -9f)));
                 }
                 _stage = 2;
                 break;

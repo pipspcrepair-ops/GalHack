@@ -62,15 +62,14 @@ public sealed class ColorMap
             for (int px = 0; px < width; px++)
             {
                 double x = (px + 0.5) * sx, y = (py + 0.5) * sy;
-                double gx = x / map.CellSize - 0.5, gy = Math.Clamp(y / map.CellSize - 0.5, 0, map.Height - 1.001);
+                double gx = x / map.CellSize - 0.5, gy = y / map.CellSize - 0.5;
                 int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
                 float tx = (float)(gx - i0), ty = (float)(gy - j0);
                 int a = map.Index(i0, j0), b = map.Index(i0 + 1, j0);
-                int c = map.Index(i0, Math.Min(j0 + 1, map.Height - 1)), d = map.Index(i0 + 1, Math.Min(j0 + 1, map.Height - 1));
+                int c = map.Index(i0, j0 + 1), d = map.Index(i0 + 1, j0 + 1);
                 float wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wc = (1 - tx) * ty, wd = tx * ty;
                 float e = map.Elevation[a] * wa + map.Elevation[b] * wb + map.Elevation[c] * wc + map.Elevation[d] * wd;
-                bool cap = map.Has(a, CellFlags.Cap) && map.Has(d, CellFlags.Cap);
-                bool liquid = e < 0f && !cap;
+                bool liquid = e < 0f;
 
                 Rgb col, emit = default;
                 if (liquid)
@@ -87,8 +86,8 @@ public sealed class ColorMap
                 else
                 {
                     // Borders wander a little so biome edges never trace the grid.
-                    P3 p = map.Model.Cylinder.At(x, y);
-                    double jx = gx + jitter.Fbm(p, 16) * 0.9, jy = Math.Clamp(gy + jitter.Fbm(new P3(p.Z, p.Y, p.X), 16) * 0.9, 0, map.Height - 1.001);
+                    P4 p = map.Model.Torus.At(x, y);
+                    double jx = gx + jitter.Fbm(p, 16) * 0.9, jy = gy + jitter.Fbm(p.Swap, 16) * 0.9;
                     int ji = (int)Math.Floor(jx), jj = (int)Math.Floor(jy);
                     float ux = (float)(jx - ji), uy = (float)(jy - jj);
                     col = default;
@@ -143,8 +142,8 @@ public sealed class ColorMap
         {
             int i = k % map.Width, j = k / map.Width;
             var biome = (Biome)map.Biome[k];
-            Rgb c = biome is Biome.StormCap or Biome.IceCap ? look.CapColor : BiomeLook.Color(biome);
-            float drift = tone.Fbm(map.Model.Cylinder.At(map.CellX(i), map.CellY(j)), 64);
+            Rgb c = BiomeLook.Color(biome);
+            float drift = tone.Fbm(map.Model.Torus.At(map.CellX(i), map.CellY(j)), 64);
             color[k] = c * (1f + 0.07f * drift);
             lit[k] = BiomeLook.Glow(biome) * (look.GlowingNights ? 3f : 1f);
         }
@@ -164,7 +163,7 @@ public sealed class ColorMap
 
     static void Blend(WorldMap map, Rgb[] color, Rgb[] glow, int i, int j, float w, ref Rgb col, ref Rgb emit, ref float total)
     {
-        int k = map.Index(i, Math.Clamp(j, 0, map.Height - 1));
+        int k = map.Index(i, j);
         if (map.Has(k, CellFlags.Water)) return; // land colours never bleed into the coastline
         col += color[k] * w;
         emit += glow[k] * w;
@@ -185,7 +184,7 @@ public sealed class ColorMap
                 float half = Math.Max(widthPx * 0.5f, 0.45f);
                 float alpha = Math.Clamp(widthPx * 1.5f + 0.25f, 0.3f, 1f);
                 int x0 = (int)Math.Floor(Math.Min(ax, bx) - half - 1), x1 = (int)Math.Ceiling(Math.Max(ax, bx) + half + 1);
-                int y0 = Math.Max(0, (int)Math.Floor(Math.Min(ay, by) - half - 1)), y1 = Math.Min(height - 1, (int)Math.Ceiling(Math.Max(ay, by) + half + 1));
+                int y0 = (int)Math.Floor(Math.Min(ay, by) - half - 1), y1 = (int)Math.Ceiling(Math.Max(ay, by) + half + 1);
                 double vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy;
                 for (int py = y0; py <= y1; py++)
                 for (int px = x0; px <= x1; px++)
@@ -195,8 +194,8 @@ public sealed class ColorMap
                     double dx = cx - (ax + vx * t), dy = cy - (ay + vy * t);
                     float cover = Math.Clamp(half + 0.5f - (float)Math.Sqrt(dx * dx + dy * dy), 0f, 1f) * alpha;
                     if (cover <= 0f) continue;
-                    int wx = (px % width + width) % width;
-                    ref float m = ref mask[py * width + wx];
+                    int wx = (px % width + width) % width, wy = (py % height + height) % height;
+                    ref float m = ref mask[wy * width + wx];
                     m = Math.Max(m, cover);
                 }
             }

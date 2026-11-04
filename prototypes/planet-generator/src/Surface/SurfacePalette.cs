@@ -70,24 +70,24 @@ sealed class SurfacePalette
     public Biome BiomeAt(double x, double y)
     {
         Jitter(x, y, out double gx, out double gy);
-        int k = Map.Index((int)Math.Round(gx), (int)Math.Clamp(Math.Round(gy), 0, Map.Height - 1));
+        int k = Map.Index((int)Math.Round(gx), (int)Math.Round(gy));
         return (Biome)Map.Biome[k];
     }
 
     /// <summary>Scatter density multiplier in about [0.2, 1.8]: trees grow in groves, rocks in fields.</summary>
     public float Clump(double x, double y) =>
-        Math.Clamp(1f + 1.4f * _clump.Fbm(Map.Model.Cylinder.At(x, y), 4), 0.2f, 1.8f);
+        Math.Clamp(1f + 1.4f * _clump.Fbm(Map.Model.Torus.At(x, y), 4), 0.2f, 1.8f);
 
     void Jitter(double x, double y, out double gx, out double gy)
     {
-        P3 p = Map.Model.Cylinder.At(x, y);
+        P4 p = Map.Model.Torus.At(x, y);
         gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * 0.9;
-        gy = Math.Clamp(y / Map.CellSize - 0.5 + _jitter.Fbm(new P3(p.Z, p.Y, p.X), 4) * 0.9, 0, Map.Height - 1.001);
+        gy = y / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * 0.9;
     }
 
     void Add(int i, int j, float w, ref Rgb c, ref float g, ref float total)
     {
-        int k = Map.Index(i, Math.Clamp(j, 0, Map.Height - 1));
+        int k = Map.Index(i, j);
         if (Map.Has(k, CellFlags.Water)) return;
         c += _cells[k] * w;
         g += _glow[k] * w;

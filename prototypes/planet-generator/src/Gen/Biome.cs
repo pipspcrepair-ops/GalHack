@@ -6,8 +6,8 @@ namespace Planets.Gen;
 /// </summary>
 public enum Biome : byte
 {
-    // Liquids and caps, shared by everyone (the liquid itself differs per archetype)
-    DeepSea, ShallowSea, FrozenSea, StormCap, IceCap,
+    // Liquids, shared by everyone (the liquid itself differs per archetype)
+    DeepSea, ShallowSea, FrozenSea,
 
     // Temperate
     Beach, Grassland, Meadow, Forest, PineForest, Tundra, Snow, Cliff, Riverbank,
@@ -32,6 +32,5 @@ public static class CellFlags
     public const byte Water = 1 << 0;      // sea (or lava sea, or alien sea) below sea level
     public const byte River = 1 << 1;      // a river runs through this cell
     public const byte Riparian = 1 << 2;   // land on a river bank
-    public const byte Cap = 1 << 3;        // polar cap: impassable
     public const byte Coast = 1 << 4;      // land next to the sea
 }
