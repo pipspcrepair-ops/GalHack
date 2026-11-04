@@ -1,5 +1,6 @@
 # Builds every prototype and runs all of its headless test scenes. Exits non-zero if any fail.
-# A headless test scene is any prototypes/<name>/tests/*Test.tscn or *Probe.tscn.
+# A headless test scene is any prototypes/<name>/tests/*Test.tscn or *Probe.tscn. A matching
+# *.args file beside a scene adds Godot arguments for that scene only.
 #   .\tools\test-all.ps1
 
 . "$PSScriptRoot\env.ps1"
@@ -20,7 +21,11 @@ foreach ($proto in Get-ChildItem -Path (Join-Path $root "prototypes") -Directory
 
     foreach ($scene in $scenes) {
         $res = "res://tests/" + $scene.Name
-        $out = & $GodotConsole --headless --path $proto.FullName $res 2>&1
+        # Optional extra Godot arguments for one scene, e.g. tests/SoakTest.args holding "--fixed-fps 60".
+        $argsFile = [IO.Path]::ChangeExtension($scene.FullName, ".args")
+        $extra = @()
+        if (Test-Path $argsFile) { $extra = (Get-Content $argsFile -Raw).Trim() -split '\s+' }
+        $out = & $GodotConsole --headless @extra --path $proto.FullName $res 2>&1
         $code = $LASTEXITCODE
         $ran++
         $summary = ($out | Select-String -Pattern 'ALL PASSED|FAIL' | Select-Object -Last 1)
