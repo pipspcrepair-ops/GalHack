@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=464ec15fc1059d101ebf88049334b437e42679b211d0dec94eb85ad5ac1a54d9
+{"id":"player-p1","type":"player","zone":"cabin/ship-1","ship":"ship-1","owner":"p1","touched":false,"version":1,"items":30,"blocks":0,"payload":{"name":"Pilot","position":[0,0.05,4],"yaw":0,"inventory":[{"item":"plate","count":20},{"item":"ore","count":10}]}}

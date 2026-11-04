@@ -1,0 +1,14 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Saves</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The kill test's worker is a plain console app with its own build output; keep it out of the game. -->
+    <Compile Remove="tests/SaveWorker/**" />
+    <!-- Build the worker whenever the game builds, so tests/SaveTest.tscn can launch it. -->
+    <ProjectReference Include="tests/SaveWorker/SaveWorker.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

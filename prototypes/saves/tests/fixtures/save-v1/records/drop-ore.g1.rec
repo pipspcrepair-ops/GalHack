@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=c67b568197df7d40f9770220cdb9b52bce66d0358351ca0a1c26ee540138d72b
+{"id":"drop-ore","type":"drop","zone":"surface/dune","ship":null,"owner":"p1","touched":true,"version":1,"items":5,"blocks":0,"payload":{"position":[-2.5,0,19],"stacks":[{"item":"ore","count":5}]}}

@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=b8712f8d57b6a21ea39b4affb5f041e2ea0befe8803fb109a95897d05b50779b
+{"id":"crate-a","type":"container","zone":"surface/dune","ship":null,"owner":"p1","touched":true,"version":1,"items":7,"blocks":0,"payload":{"x":0,"y":0,"z":26.5,"items":["ore","ore","ice","ore","ice","ore","fuel"]}}

@@ -1,0 +1,2 @@
+# Save files are checksummed byte for byte: git must never touch their line endings.
+tests/fixtures/** -text
