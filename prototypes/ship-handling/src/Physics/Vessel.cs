@@ -163,7 +163,7 @@ public partial class Vessel : CharacterBody3D
     /// <summary>The four numbers depend on the build and on air versus space; refresh when either changes.</summary>
     void RefreshStats()
     {
-        Conditions = World.Planet.At(GlobalPosition.Y);
+        Conditions = World.Planet.At(IsInsideTree() ? GlobalPosition.Y : Position.Y);
         if (Stats != null && _statsRevision == Structure.Revision && _statsInAir == Conditions.InAtmosphere) return;
         Stats = HandlingModel.Compute(Structure, Conditions, T);
         _statsRevision = Structure.Revision;

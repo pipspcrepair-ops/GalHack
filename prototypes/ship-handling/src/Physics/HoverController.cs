@@ -35,6 +35,9 @@ public sealed class HoverController
 
     public bool Grounded { get; private set; }
 
+    /// <summary>Look-ahead probes on. Only switched off to prove what they are for.</summary>
+    public bool LookAhead = true;
+
     internal HoverController(Vessel vessel) => _v = vessel;
 
     internal void Reset()
@@ -114,7 +117,7 @@ public sealed class HoverController
         float aheadRise = 0f;
         Vector3? wall = null;
         float probeTop = engineY + ride + 3f;
-        foreach (float k in Reaches)
+        foreach (float k in LookAhead ? Reaches : System.Array.Empty<float>())
         {
             float distance = halfLength + reach * k;
             foreach (float lateral in Sides)

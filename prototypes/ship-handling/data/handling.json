@@ -23,7 +23,7 @@
 
   "assist": {
     "minBrake": 8,
-    "easeRate": 3,
+    "easeRate": 4,
     "stopBelow": 0.05,
     "cruiseRate": 20,
     "horizonLevel": 1.5,
