@@ -110,10 +110,10 @@ void fragment() {
             min[axis] -= 0.09f;
             max[axis] += 0.09f;
         }
+        System.Span<Vector3> q = stackalloc Vector3[4];
         foreach (Dir d in Dirs.All)
         {
             int da = d.Axis(), u = (da + 1) % 3, v = (da + 2) % 3;
-            System.Span<Vector3> q = stackalloc Vector3[4];
             for (int i = 0; i < 4; i++)
             {
                 var p = new Vector3();
