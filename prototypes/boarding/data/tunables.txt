@@ -1,0 +1,104 @@
+﻿# Boarding prototype tunables. Keys map to fields on Tunables (snake_case -> PascalCase).
+# Times are seconds, distances metres, damage in hit points.
+
+# ---- Hijack ----------------------------------------------------------------------------
+hijack_total_seconds = 30        # all stages of a level-3 core, channelled back to back
+hijack_stages = 3
+hijack_decay_per_second = 0.5    # progress lost per idle second; finished stages stay done
+hijack_damage_pause = 1.5        # taking damage stalls the channel this long
+hijack_responses = wave, bulkhead, surge   # what the core does as each stage completes
+hijack_range = 3.0
+reboot_seconds = 20              # weapons and warp offline after a hijack
+reinforcement_count = 3          # guards per wave, the last one is a heavy enforcer
+
+# ---- Alarm -----------------------------------------------------------------------------
+alarm_alert_cooldown = 45        # an alert with no new sightings calms back to unaware
+alarm_combat_seconds = 30        # combat aboard this long escalates to lockdown
+last_stand_hull_fraction = 0.25  # hull integrity below this escalates to last stand
+last_stand_hijack_stage = 2      # so does finishing this hijack stage
+self_destruct_seconds = 90
+self_destruct_blast_radius = 75
+
+# ---- Doors, charges, interaction --------------------------------------------------------
+hack_seconds = 3
+keycard_seconds = 0.4
+charge_fuse_seconds = 2.5
+charge_damage = 2600             # enough for any hull plate or security door
+charge_splash = 260              # to the blocks around it
+charge_splash_radius = 3.2
+charge_noise = 60
+starting_charges = 3
+interact_range = 3.2
+salvage_seconds = 2
+loot_seconds = 1
+door_open_radius = 2.4
+
+# ---- Player ----------------------------------------------------------------------------
+player_health = 100
+regen_delay = 5
+regen_per_second = 8
+walk_speed = 5.0
+sprint_speed = 8.5
+crouch_speed = 2.4
+stand_height = 1.8
+crouch_height = 1.1
+stand_eye = 1.62
+crouch_eye = 0.98
+noise_walk = 6
+noise_sprint = 16
+crouch_noise_factor = 0.5
+noise_gunfire = 40
+
+# ---- Health ----------------------------------------------------------------------------
+# Damage is never reduced or capped. How hard enemies are to survive is set by their aim:
+# warning shots, the accuracy ramp and the shooter x target table in hostile_fire.txt.
+low_health_fraction = 0.25       # below this the HUD warns with a heartbeat (warning only)
+
+# ---- Guards ----------------------------------------------------------------------------
+guard_health = 100
+guard_damage = 8
+officer_health = 130
+officer_damage = 10
+gunner_health = 90
+enforcer_health = 260
+enforcer_damage = 12             # per round; the enforcer carries a minigun
+guard_walk_speed = 2.0
+guard_run_speed = 4.2
+guard_sight_range = 24
+guard_fov_degrees = 120
+guard_hearing = 1.0
+guard_telegraph = 0.55           # aim laser before every burst
+guard_burst = 3
+guard_burst_interval = 0.11
+guard_burst_cooldown = 1.4
+guard_stagger_damage = 35        # this much damage inside half a second staggers a guard
+
+# Hostile weapon types per role (rows in hostile_fire.txt).
+trooper_weapon = rifle
+officer_weapon = rail
+gunner_weapon = rifle
+enforcer_weapon = minigun
+turret_weapon = capital_cannon
+
+# ---- Exterior turret -------------------------------------------------------------------
+turret_range = 85
+turret_telegraph = 1.3
+turret_damage = 150              # a capital gun: one hit vaporises a player on foot
+turret_burst = 3
+turret_burst_interval = 0.2
+turret_cooldown = 2.6
+turret_turn_speed = 1.6
+
+# ---- Block hit points ------------------------------------------------------------------
+hp_hull = 500
+hp_weak_hull = 180
+hp_wall = 350
+hp_armor = 60000
+hp_door = 220
+hp_security_door = 2500
+hp_core = 1200
+hp_turret = 500
+hp_generator = 400
+hp_station = 300
+hp_cover = 160
+hp_loot = 400
