@@ -1,0 +1,4 @@
+# The repo ignores export_presets.cfg; this prototype keeps its preset because the director's
+# data files (*.json) are not Godot resources and only reach an export through its include
+# filter. Godot 4 keeps export credentials in .godot/export_credentials.cfg, not here.
+!export_presets.cfg

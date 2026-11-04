@@ -1,0 +1,119 @@
+// Zone data. The encounter director, the director map and content gating all read this file.
+//
+// Every zone has tags (kind, region, star class, danger grade, free tags) and a list of circles.
+// Coordinates are metres in the zone's own frame; circles are measured on the X/Z plane, the plane
+// the map shows. Circle kinds:
+//   territory  NPC faction territory: sets the faction mix of events. Unclaimed space has none.
+//   poi        a point of interest (station, asteroid field...) that events can anchor to.
+//   base       a player base. Nothing spawns inside it.
+//   nospawn    nothing spawns inside it.
+{
+  "zones": [
+    {
+      "id": "veyra-orbit",
+      "name": "Veyra high orbit",
+      "kind": "orbit",
+      "region": "Veyra Reach",
+      "star": "K",
+      "danger": 2,
+      "radius": 14000,
+      "tags": ["trade-lane"],
+      "circles": [
+        { "kind": "territory", "faction": "meridian", "name": "Meridian picket", "x": -1500, "z": -1000, "r": 7500 },
+        { "kind": "territory", "faction": "reavers", "name": "Carrion run", "x": 9000, "z": 6500, "r": 6000 },
+        { "kind": "territory", "faction": "freeholders", "name": "Holt settlement", "x": 5200, "z": 3600, "r": 2600 },
+        { "kind": "poi", "poi": "outpost", "id": "holt", "name": "Holt outpost", "x": 5200, "z": 3600, "r": 300 },
+        { "kind": "poi", "poi": "station", "id": "halcyon", "name": "Halcyon Station", "x": 0, "z": -2600, "r": 380 },
+        { "kind": "nospawn", "name": "Halcyon traffic control", "x": 0, "z": -2600, "r": 1100 },
+        { "kind": "base", "name": "Friends' relay beacon", "x": -3200, "z": 2200, "r": 300 }
+      ]
+    },
+    {
+      "id": "drift-deep",
+      "name": "The Ashen Drift",
+      "kind": "deep",
+      "region": "Ashen Drift",
+      "star": "M",
+      "danger": 4,
+      "radius": 14000,
+      "tags": ["asteroids", "uncharted"],
+      "circles": [
+        { "kind": "territory", "faction": "kessari", "name": "Kessari claim", "x": 2500, "z": -2500, "r": 5000 },
+        { "kind": "territory", "faction": "reavers", "name": "Reaver hunting ground", "x": -3500, "z": 1500, "r": 5500 },
+        { "kind": "territory", "faction": "vharn", "name": "Vharn forward march", "x": -8500, "z": -7500, "r": 4500 },
+        { "kind": "poi", "poi": "asteroids", "id": "cinder", "name": "Cinder cluster", "x": 1800, "z": -3400, "r": 900 },
+        { "kind": "nospawn", "name": "Grav shear", "x": -2600, "z": -3600, "r": 1200 }
+      ]
+    },
+    {
+      // Not playable in this prototype: here so the deck's gating has a moon, a surface and
+      // unclaimed space to read.
+      "id": "kessa-moon-orbit",
+      "name": "Kessa moon orbit",
+      "kind": "moon",
+      "region": "Veyra Reach",
+      "star": "K",
+      "danger": 1,
+      "radius": 10000,
+      "tags": [],
+      "circles": [
+        { "kind": "territory", "faction": "kessari", "name": "Kessari foundry claim", "x": 0, "z": 0, "r": 6000 },
+        { "kind": "poi", "poi": "asteroids", "id": "kessa-ring", "name": "Kessa ring debris", "x": 2000, "z": 1000, "r": 1200 }
+      ]
+    },
+    {
+      "id": "veyra-surface",
+      "name": "Veyra dust plains",
+      "kind": "surface",
+      "region": "Veyra Reach",
+      "star": "K",
+      "danger": 2,
+      "radius": 9000,
+      "tags": ["atmosphere"],
+      "circles": [
+        { "kind": "territory", "faction": "meridian", "name": "Meridian landing grounds", "x": 0, "z": 0, "r": 4000 },
+        { "kind": "base", "name": "Friends' crash camp", "x": 600, "z": 300, "r": 400 }
+      ]
+    },
+    {
+      "id": "outer-lanes",
+      "name": "Outer lanes",
+      "kind": "system",
+      "region": "Veyra Reach",
+      "star": "K",
+      "danger": 0,
+      "radius": 16000,
+      "tags": ["trade-lane"],
+      "circles": []
+    },
+    {
+      // Vharn space, data only: a fortress world and its orbit, deep inside Dominion territory.
+      "id": "vharn-march",
+      "name": "The Vharn March",
+      "kind": "orbit",
+      "region": "Vharn March",
+      "star": "F",
+      "danger": 5,
+      "radius": 14000,
+      "tags": ["fortress-world"],
+      "circles": [
+        { "kind": "territory", "faction": "vharn", "name": "Dominion core", "x": 0, "z": 0, "r": 10000 },
+        { "kind": "poi", "poi": "fortress", "id": "karesh", "name": "Karesh fortress", "x": 3000, "z": -2000, "r": 600 },
+        { "kind": "nospawn", "name": "Karesh defence grid", "x": 3000, "z": -2000, "r": 1500 }
+      ]
+    },
+    {
+      "id": "karesh-surface",
+      "name": "Karesh, fortress world",
+      "kind": "surface",
+      "region": "Vharn March",
+      "star": "F",
+      "danger": 5,
+      "radius": 9000,
+      "tags": ["fortress-world", "atmosphere"],
+      "circles": [
+        { "kind": "territory", "faction": "vharn", "name": "Karesh garrison", "x": 0, "z": 0, "r": 8000 }
+      ]
+    }
+  ]
+}

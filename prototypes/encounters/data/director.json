@@ -1,0 +1,50 @@
+// Encounter director tunables. Distances in metres, times in seconds.
+{
+  // The director decides at this rate. Ships still move smoothly: their flight paths are
+  // functions of time that the renderer samples every frame.
+  "tickHz": 10,
+
+  // Nothing spawns inside a player's view cone or nearer than minSpawnDistance to any player
+  // in the zone, so nothing pops into view. The cone is wider than the camera's view so a
+  // quick glance sideways doesn't catch a spawn either.
+  "viewConeHalfAngleDeg": 70,
+  "minSpawnDistance": 1800,
+  "maxSpawnDistance": 4200,
+  "spawnAttempts": 24,
+  // Spawn directions stay within this vertical slope, so events happen around the player
+  // rather than straight above or below.
+  "spawnVerticalSpread": 0.3,
+
+  // Concurrent budget per zone instance, scaled by the players in the zone.
+  "budget": { "events": 4, "eventsPerExtraPlayer": 1.5, "ships": 16, "shipsPerExtraPlayer": 6 },
+  "categoryCaps": { "traffic": 2, "combat": 1, "patrol": 1, "capital": 1, "distress": 1, "trade": 1, "corruption": 1, "industry": 1, "wreck": 1 },
+
+  // After a spawn, the zone waits spawnGap (divided by 1 + spawnGapPlayerFactor per extra
+  // player) before the next. Each category then also waits its own cooldown, and the same
+  // event type never repeats within noRepeatWindow.
+  "spawnGap": [8, 18],
+  "spawnGapPlayerFactor": 0.5,
+  "retryDelay": 1.5,
+  "categoryCooldowns": { "traffic": 10, "combat": 40, "patrol": 40, "capital": 240, "distress": 90, "trade": 30, "corruption": 60, "industry": 30, "wreck": 120 },
+  "noRepeatWindow": 60,
+  // A zone opening up gets its first few events quickly, so it never feels empty.
+  "warmStart": { "events": 2, "delay": 1.0, "gap": 2.0 },
+
+  // Share of the deck that is hostile, by danger grade 0..5.
+  "hostileShareByDanger": [0.05, 0.15, 0.3, 0.45, 0.6, 0.75],
+  // "any" events spawn homeBoost times as often inside their faction's territory. Two
+  // territories within borderMargin of a point "meet" there.
+  "territory": { "homeBoost": 2.5, "borderMargin": 600 },
+
+  // Ships of an event that is winding down are removed once out of every player's sight and
+  // beyond minDistance. Any untouched ship beyond farDistance of every player goes, too.
+  "despawn": { "minDistance": 1800, "farDistance": 9000 },
+  // A wreck stays as salvage only if a player was this close when it happened: the world
+  // remembers what players saw.
+  "wreckWitnessDistance": 8000,
+  "touchDistance": 250,
+
+  // Leads point the right way within angleFuzzDeg and give the distance within
+  // distanceFuzz (a fraction). They resolve when a player gets within resolveDistance.
+  "lead": { "angleFuzzDeg": 10, "distanceFuzz": 0.2, "resolveDistance": 700 }
+}
