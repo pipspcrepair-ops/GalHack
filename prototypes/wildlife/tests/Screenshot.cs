@@ -56,9 +56,7 @@ public partial class Screenshot : Node
     {
         Main m = _main;
         m.FreeCamera = true;
-        m.AutoDiscover = false;
         m.Hud.StatusVisible = _hud;
-        m.Hud.ClearCards();
         m.Player.Muzzle.Visible = false;
         Player p = m.Player;
         switch (_view)
@@ -93,7 +91,6 @@ public partial class Screenshot : Node
                 _each = () => c.SetState(CState.Stalk);
                 _aim = () => (eye, c.Rig.BoundsCenter + Vector3.Up * 0.15f);
                 _captureTick = 90;
-                Card(predator);
                 break;
             }
             case "bloom":
@@ -110,7 +107,6 @@ public partial class Screenshot : Node
                 _each = () => { if (_tick == windupAt) Attacks.Start(m.Sim, c, p.Target); };
                 _aim = () => (eye, c.Rig.BoundsCenter + Vector3.Up * 0.1f);
                 _captureTick = windupAt + (int)(s.TelegraphWindup(m.Data.Combat) * 0.6f * 60f);
-                Card(s);
                 break;
             }
             case "harvester":
@@ -151,8 +147,6 @@ public partial class Screenshot : Node
     Vector3 SunFlat() => WildSim.Flat(_main.Planet.SunDirection).Normalized();
 
     static Vector3 Turn(Vector3 v, float radians) => new Basis(Vector3.Up, radians) * v;
-
-    void Card(Species s) => _main.Codex.Discover(s, Player.FinderName, _main.Sim.Time, _main.Fauna.PlanetName);
 
     Vector3 Ground(Vector3 p) => new(p.X, _main.Planet.Terrain.Height(p.X, p.Z), p.Z);
 

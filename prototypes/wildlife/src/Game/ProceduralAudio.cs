@@ -15,7 +15,6 @@ public partial class ProceduralAudio : Node3D
     const int Rate = 22050;
     readonly Dictionary<string, AudioStreamWav> _clips = new();
     readonly List<AudioStreamPlayer3D> _pool = new();
-    AudioStreamPlayer _ui;
     int _next;
 
     public AudioStreamWav HoverLoop { get; private set; }
@@ -33,7 +32,6 @@ public partial class ProceduralAudio : Node3D
         _clips["shot"] = Make(0.35f, (t, n) => MathF.Exp(-t * 18f) * (n * 0.7f + MathF.Sin(MathF.Tau * (90f - 120f * t) * t) * 0.6f), rng);
         _clips["thud"] = Make(0.3f, (t, n) => MathF.Exp(-t * 14f) * (MathF.Sin(MathF.Tau * 55f * t) * 0.8f + n * 0.2f), rng);
         _clips["chop"] = Make(0.22f, (t, n) => MathF.Exp(-t * 20f) * (n * 0.9f + Square(t * 70f) * 0.3f), rng);
-        _clips["discover"] = Make(0.9f, (t, n) => MathF.Exp(-t * 3f) * (MathF.Sin(MathF.Tau * 523f * t) + MathF.Sin(MathF.Tau * (t < 0.25f ? 659f : 784f) * t)) * 0.25f, rng);
         HoverLoop = Make(1.0f, (t, n) => (MathF.Sin(MathF.Tau * 55f * t) * 0.5f + MathF.Sin(MathF.Tau * 110f * t) * 0.25f + n * 0.08f) * 0.6f, rng, loop: true);
         GrindLoop = Make(0.5f, (t, n) => (Square(t * 36f) * 0.3f + n * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * MathF.Tau * 12f)), rng, loop: true);
 
@@ -43,8 +41,6 @@ public partial class ProceduralAudio : Node3D
             AddChild(p);
             _pool.Add(p);
         }
-        _ui = new AudioStreamPlayer();
-        AddChild(_ui);
     }
 
     /// <summary>The wind-up sound for a creature, pitched by size.</summary>
@@ -71,14 +67,6 @@ public partial class ProceduralAudio : Node3D
         p.VolumeDb = volumeDb;
         p.GlobalPosition = at;
         p.Play();
-    }
-
-    public void PlayUi(string clip, float volumeDb = -6f)
-    {
-        if (!_clips.TryGetValue(clip, out var stream)) return;
-        _ui.Stream = stream;
-        _ui.VolumeDb = volumeDb;
-        _ui.Play();
     }
 
     static AudioStreamWav Make(float seconds, Func<float, float, float> wave, Rng rng, bool highpass = false, bool loop = false)

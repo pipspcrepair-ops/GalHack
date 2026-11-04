@@ -40,7 +40,7 @@ public partial class WildlifeTest : Node
             Harvesting();
             RunDown();
             StorageCap();
-            CodexFirstDiscovery();
+            CodexIsSilent();
             Performance();
             await PlayableScene();
         }
@@ -61,6 +61,7 @@ public partial class WildlifeTest : Node
         await Frames(30);
         int live = main.Sim.Creatures.Count(c => !c.Removed);
         Check(live > 30 && main.View.ViewCount == live, $"the playable planet spawns its fauna ({live} creatures on {main.Fauna.PlanetName}, {main.View.ViewCount} views)");
+        await FirstSightingIsSilent(main);
 
         string alien = main.Fauna.PlanetName;
         Tap(Key.Key1);
@@ -95,6 +96,51 @@ public partial class WildlifeTest : Node
         main.QueueFree();
         await Frames(2);
     }
+
+    /// <summary>
+    /// Meeting a creature for the first time puts nothing on screen and plays nothing: no card,
+    /// banner, toast or chime. Puts a never-seen species right in front of the camera, waits
+    /// until the codex has silently recorded it, and compares everything the HUD shows.
+    /// </summary>
+    async System.Threading.Tasks.Task FirstSightingIsSilent(Main main)
+    {
+        Species s = main.Fauna.Species.First(x => !main.Codex.Knows(x.Id) && x.Rig != RigKind.Swarm);
+        Vector3 eye = main.Camera.GlobalPosition, look = -main.Camera.GlobalBasis.Z;
+        await Frames(2);
+        string Snapshot() => string.Join("|", VisibleControls(main).Select(c => c is Label l ? $"{c.Name}:{StripLive(l.Text)}" : c.Name.ToString()));
+        string before = Snapshot();
+        int playersBefore = Playing(main);
+        int known = main.Codex.Count;
+
+        Creature c = main.Sim.Spawn(s, WildSim.Flat(eye + WildSim.Flat(look).Normalized() * 6f));
+        c.Yaw = main.Player.Yaw;
+        bool recorded = false;
+        string shown = null;
+        for (int i = 0; i < 90; i++)
+        {
+            await Frames(1);
+            recorded |= main.Codex.Knows(s.Id);
+            string now = Snapshot();
+            if (now != before) shown ??= now;
+            if (VisibleControls(main).OfType<Label>().Any(l => l.Text.Contains(s.Name))) shown ??= $"the name {s.Name} on screen";
+        }
+        int playersAfter = Playing(main);
+        Check(recorded && main.Codex.Count == known + 1 && shown == null && playersAfter <= playersBefore,
+            $"a first sighting is recorded silently: codex {known} -> {main.Codex.Count}, nothing new on screen{(shown != null ? $" (but showed: {shown})" : "")}, no UI sound");
+        main.Sim.Remove(c);
+    }
+
+    static IEnumerable<Control> VisibleControls(Node root)
+    {
+        foreach (Node n in root.FindChildren("*", "Control", true, false))
+            if (n is Control { Visible: true } ctl && ctl.IsVisibleInTree() && (ctl is not Label l || l.Text.Trim() != "")) yield return ctl;
+    }
+
+    /// <summary>The status text's live numbers (clock, fps, health, counts) change by themselves; blank them out.</summary>
+    static string StripLive(string text) => System.Text.RegularExpressions.Regex.Replace(text, @"[0-9]+", "#");
+
+    /// <summary>Non-positional sound players that are playing: a UI chime would be one.</summary>
+    static int Playing(Node root) => root.FindChildren("*", "AudioStreamPlayer", true, false).Count(n => n is AudioStreamPlayer { Playing: true });
 
     async System.Threading.Tasks.Task Frames(int n)
     {
@@ -490,18 +536,28 @@ public partial class WildlifeTest : Node
             $"with no room for its {s.Drops.Meat} meat, the blades leave a {s.CommonName} unharmed");
     }
 
-    void CodexFirstDiscovery()
+    /// <summary>
+    /// The codex records who saw a species first, silently. It has no event to hang an
+    /// announcement on, and the HUD has nothing that could show one.
+    /// </summary>
+    void CodexIsSilent()
     {
         var codex = new Codex();
         Species s = _gen.Generate(5, 0.5f, false).Species[0];
-        int events = 0;
-        codex.Discovered += _ => events++;
-        bool first = codex.Discover(s, "Pip", 10f, "Test IV");
-        bool again = codex.Discover(s, "Rex", 20f, "Test IV");
-        bool againPip = codex.Discover(s, "Pip", 30f, "Test IV");
+        bool first = codex.Record(s, "Pip", 10f, "Test IV");
+        bool again = codex.Record(s, "Rex", 20f, "Test IV");
         CodexEntry e = codex.Get(s.Id);
-        Check(first && !again && !againPip && events == 1 && codex.Count == 1 && e.Finder == "Pip" && e.FoundAt == 10f && e.Name == s.Name,
-            $"a codex discovery is recorded once, to the first finder ({e?.Name}, found by {e?.Finder})");
+        Check(first && !again && codex.Count == 1 && e.Finder == "Pip" && e.FoundAt == 10f,
+            $"a sighting is recorded once, to the first finder ({e?.Name}, seen first by {e?.Finder})");
+
+        var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static;
+        string[] announce = { "card", "discover", "newspecies", "announce", "toast", "banner", "popup" };
+        var leftovers = new[] { typeof(Codex), typeof(Hud), typeof(Main), typeof(ProceduralAudio) }
+            .SelectMany(t => t.GetMembers(flags).Select(m => $"{t.Name}.{m.Name}"))
+            .Where(n => announce.Any(a => n.ToLowerInvariant().Contains(a)))
+            .ToList();
+        Check(typeof(Codex).GetEvents(flags).Length == 0 && leftovers.Count == 0,
+            $"no first-encounter announcement code remains (codex has no events; announcement-like members: {(leftovers.Count == 0 ? "none" : string.Join(", ", leftovers))})");
     }
 
     // ---- Performance --------------------------------------------------------------------

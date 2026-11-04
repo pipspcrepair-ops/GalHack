@@ -25,17 +25,16 @@ public partial class Main : Node3D
     public Camera3D Camera { get; private set; }
     public Hud Hud { get; private set; }
     public ProceduralAudio Audio { get; private set; }
+    /// <summary>Sightings, recorded silently: nothing is ever announced when you first meet a creature.</summary>
     public readonly Codex Codex = new();
     public WorldKind World { get; private set; } = WorldKind.Alien;
     /// <summary>Screenshots: drive the camera by hand instead of from the player.</summary>
     public bool FreeCamera;
-    /// <summary>Screenshots turn off automatic codex discoveries and show their own card.</summary>
-    public bool AutoDiscover = true;
 
     static readonly Vector3 Start = new(0f, 0f, 22f), VesselSpot = new(7f, 0f, 12f);
     const float GunCooldown = 0.2f, GunDamage = 16f, GunRange = 140f;
 
-    float _gunTimer, _codexTimer, _downedTimer;
+    float _gunTimer, _sightTimer, _downedTimer;
     float _orbitYaw, _orbitPitch = 0.25f;
     readonly List<(MeshInstance3D mesh, float life)> _tracers = new();
     OmniLight3D _flash;
@@ -80,8 +79,6 @@ public partial class Main : Node3D
 
         Hud = new Hud { Name = "Hud" };
         AddChild(Hud);
-        Hud.Describe = DescribeEntry;
-        Codex.Discovered += e => { Hud.Discovered(e); Audio.PlayUi("discover"); };
 
         SwitchWorld(World);
         Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -225,7 +222,7 @@ public partial class Main : Node3D
 
         _gunTimer -= dt;
         UpdateEffects(dt);
-        Discover(dt);
+        RecordSightings(dt);
         Respawn(dt);
         UpdateHud();
     }
@@ -358,14 +355,17 @@ public partial class Main : Node3D
         return best;
     }
 
-    // ---- Codex and HUD ------------------------------------------------------------------
+    // ---- Codex, scan and HUD -----------------------------------------------------------
 
-    /// <summary>A species is discovered when you get a good look at one: close by, or near the middle of the view.</summary>
-    void Discover(float dt)
+    /// <summary>
+    /// A species goes in the codex when you get a good look at one: close by, or near the middle
+    /// of the view. Silently: first meetings are never announced. Its name is there for the scan.
+    /// </summary>
+    void RecordSightings(float dt)
     {
-        _codexTimer -= dt;
-        if (_codexTimer > 0f || !AutoDiscover) return;
-        _codexTimer = 0.25f;
+        _sightTimer -= dt;
+        if (_sightTimer > 0f) return;
+        _sightTimer = 0.25f;
         Vector3 eye = Camera.GlobalPosition, look = -Camera.GlobalBasis.Z;
         foreach (Creature c in Sim.Creatures)
         {
@@ -375,20 +375,24 @@ public partial class Main : Node3D
             float d = to.Length();
             float reach = 30f + c.Species.Body.Size * 6f;
             if (d < 8f || (d < reach && look.Dot(to / d) > 0.93f))
-                Codex.Discover(c.Species, Player.FinderName, Sim.Time, Fauna.PlanetName);
+                Codex.Record(c.Species, Player.Target.Name, Sim.Time, Fauna.PlanetName);
         }
     }
 
-    string DescribeEntry(CodexEntry e)
+    /// <summary>Hold Q on a creature to scan it: its name and what it is, only when you ask.</summary>
+    string Scan()
     {
-        Species s = Fauna.Species.Find(x => x.Id == e.SpeciesId);
-        if (s == null) return "";
-        string behaviour = s.Behaviour switch
+        if (Player.Driving || !Held(Key.Q)) return "";
+        Vector3 eye = Camera.GlobalPosition, dir = -Camera.GlobalBasis.Z;
+        Creature c = Sim.Raycast(eye, dir, 80f, out float dist, out _);
+        if (c == null) return "scanning...";
+        Species s = c.Species;
+        string what = s.Behaviour switch
         {
-            Behaviour.Herd => "herd grazer", Behaviour.TerritorialGiant => "territorial", Behaviour.HarmlessOddity => "harmless oddity",
+            Behaviour.Herd => "herd grazer", Behaviour.TerritorialGiant => "territorial", Behaviour.HarmlessOddity => "harmless",
             _ => s.Behaviour.ToString().ToLowerInvariant(),
         };
-        return $"{behaviour}, {s.Temperament.ToString().ToLowerInvariant()}  -  {s.Body.Size:F1} m  -  weirdness {s.Weirdness:F2}{(s.Corrupted ? "  -  CORRUPTED" : "")}";
+        return $"{s.Name}, {s.CommonName}\n{what}, {s.Temperament.ToString().ToLowerInvariant()}   {s.Body.Size:F1} m   {dist:F0} m away";
     }
 
     void UpdateHud()
@@ -402,9 +406,9 @@ public partial class Main : Node3D
         Hud.SetStatus(
             $"{Fauna.PlanetName}, a {style.Label}   {Sim.Clock.Label}\n" +
             $"{where}\n" +
-            $"Codex {Codex.Count} species   {alive} creatures about\n\n" +
+            $"{alive} creatures about\n\n" +
             "1 temperate  2 alien  3 Bloom   N skip time\n" +
-            "WASD move  Shift sprint  Space jump  Ctrl crouch  Mouse look  LMB shoot\n" +
+            "WASD move  Shift sprint  Space jump  Ctrl crouch  Mouse look  LMB shoot  Q scan\n" +
             "E butcher a kill  F hovercraft  Esc free the mouse\n" +
             $"{Engine.GetFramesPerSecond()} fps");
         Hud.SetHold(Vessel.Storage, Player.Pack, Player.Driving);
@@ -416,6 +420,7 @@ public partial class Main : Node3D
             else if (NearestCorpse(3.5f) is { } corpse) hint = $"E  butcher ({MathF.Ceiling(corpse.MeatLeft):F0} meat)";
         }
         Hud.SetHint(hint);
+        Hud.SetScan(Scan());
     }
 
     Vector3 Ground(Vector3 p) => new(p.X, Planet.Terrain.Height(p.X, p.Z), p.Z);
