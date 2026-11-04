@@ -21,7 +21,9 @@ public partial class WildlifeTest : Node
     FaunaGenerator _gen;
     int _failures;
 
-    public override void _Ready()
+    public override void _Ready() => Run();
+
+    async void Run()
     {
         try
         {
@@ -40,6 +42,7 @@ public partial class WildlifeTest : Node
             StorageCap();
             CodexFirstDiscovery();
             Performance();
+            await PlayableScene();
         }
         catch (Exception e)
         {
@@ -48,6 +51,63 @@ public partial class WildlifeTest : Node
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
+
+    // ---- The playable scene, driven through its real input path -------------------------
+
+    async System.Threading.Tasks.Task PlayableScene()
+    {
+        var main = new Main { Name = "Main" };
+        AddChild(main);
+        await Frames(30);
+        int live = main.Sim.Creatures.Count(c => !c.Removed);
+        Check(live > 30 && main.View.ViewCount == live, $"the playable planet spawns its fauna ({live} creatures on {main.Fauna.PlanetName}, {main.View.ViewCount} views)");
+
+        string alien = main.Fauna.PlanetName;
+        Tap(Key.Key1);
+        await Frames(10);
+        string temperate = main.Fauna.PlanetName;
+        bool temperateOk = main.World == WorldKind.Temperate && main.Planet.Style.Trees == TreeStyle.Temperate && main.Fauna.Species.All(s => !s.Corrupted);
+        Tap(Key.Key3);
+        await Frames(10);
+        bool bloomOk = main.World == WorldKind.Bloom && main.Fauna.Species.All(s => s.Corrupted) && main.Planet.Style.Trees == TreeStyle.Bloom;
+        Tap(Key.Key2);
+        await Frames(10);
+        Check(temperateOk && bloomOk && main.World == WorldKind.Alien && main.Fauna.PlanetName == alien && temperate != alien,
+            $"keys 1-3 switch the world and regenerate fauna and trees ({temperate}, then the Bloom, then back to {alien})");
+
+        // Walk up to the hovercraft, board it with F, drive with W, get out with F.
+        Player p = main.Player;
+        p.Teleport(main.Vessel.GlobalPosition + new Vector3(-3f, 0f, 0f));
+        await Frames(5);
+        Tap(Key.F);
+        await Frames(2);
+        bool boarded = p.Driving && main.Vessel.Driven;
+        Vector3 from = main.Vessel.GlobalPosition;
+        Hold(Key.W, true);
+        await Frames(120);
+        Hold(Key.W, false);
+        float moved = WildSim.Flat(main.Vessel.GlobalPosition - from).Length();
+        Tap(Key.F);
+        await Frames(2);
+        Check(boarded && moved > 5f && !p.Driving && !main.Vessel.Driven && p.Target.Attackable,
+            $"F boards the hovercraft, W drives it ({moved:F1} m in 2 s), F climbs out again");
+
+        main.QueueFree();
+        await Frames(2);
+    }
+
+    async System.Threading.Tasks.Task Frames(int n)
+    {
+        for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+    }
+
+    static void Tap(Key key)
+    {
+        Hold(key, true);
+        Hold(key, false);
+    }
+
+    static void Hold(Key key, bool pressed) => Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = pressed });
 
     // ---- Generator --------------------------------------------------------------------
 
@@ -406,12 +466,28 @@ public partial class WildlifeTest : Node
         WildSim w = NewSim(8, obstacles: false);
         var field = new HarvestField(_data.Harvest, w.Nav);
         Plant tree = field.Add(PlantKind.Tree, Ground(w, new Vector3(0f, 0f, -4f)), 0.4f, 7f, 2.5f, 0);
+        // Nothing harvested is thrown away: with too little room the blades leave the tree alone.
         var small = new Storage(10);
         var blades = new HarvesterBlades(_data.Harvest);
         var vessel = new Transform3D(Basis.Identity, Ground(w, Vector3.Zero) + Vector3.Up * 0.8f);
-        int spilled = 0;
-        for (int step = 0; step < 600 && tree.Alive; step++) spilled += blades.Tick(vessel, Dt, field, w, small, null).Spilled;
-        Check(small.Total == 10 && spilled > 0, $"a full hold refuses the harvester's overflow ({small.Total}/10 stored, {spilled} spilled and reported)");
+        int refused = 0;
+        for (int step = 0; step < 120; step++) refused += blades.Tick(vessel, Dt, field, w, small, null).Refused;
+        bool untouched = tree.Alive && tree.Health == tree.MaxHealth && small.Total == 0 && refused > 0;
+        int need = field.RemainingYield(tree);
+        var exact = new Storage(need);
+        for (int step = 0; step < 600 && tree.Alive; step++) blades.Tick(vessel, Dt, field, w, exact, null);
+        Check(untouched && !tree.Alive && exact.Full,
+            $"the blades only cut what the hold can take: a 10-unit hold leaves a {need}-unit tree untouched, a {need}-unit hold takes all of it");
+
+        // Same for creatures: no room for the whole carcass, no chewing.
+        Species s = _gen.Generate(99, 0.5f, false).Species.First(x => x.Rig is RigKind.Legged or RigKind.Hopper && x.Plan != BodyPlan.Giant);
+        WildSim w2 = NewSim(99, obstacles: false);
+        Creature c = w2.Spawn(s, new Vector3(0f, 0f, -3.6f));
+        var tiny = new Storage(1);
+        int refusedC = 0;
+        for (int step = 0; step < 60; step++) { refusedC += blades.Tick(vessel, Dt, null, w2, tiny, null).Refused; w2.Step(Dt); }
+        Check(refusedC > 0 && c.Alive && c.Health == c.Stats.MaxHealth && tiny.Total == 0,
+            $"with no room for its {s.Drops.Meat} meat, the blades leave a {s.CommonName} unharmed");
     }
 
     void CodexFirstDiscovery()

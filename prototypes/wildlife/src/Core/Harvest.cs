@@ -70,6 +70,15 @@ public sealed class HarvestField
         return p;
     }
 
+    /// <summary>Everything a standing plant still has to give, in storage units.</summary>
+    public int RemainingYield(Plant p)
+    {
+        if (!p.Alive) return 0;
+        int wood = p.Kind == PlantKind.Tree ? Rules.WoodPerTree : 0;
+        int organics = p.Kind == PlantKind.Tree ? Rules.OrganicsPerTree : Rules.OrganicsPerBush;
+        return wood - p.WoodGiven + organics - p.OrganicsGiven;
+    }
+
     public Yield Chip(Plant p, float damage)
     {
         var y = new Yield();
@@ -138,14 +147,16 @@ public struct BladeTick
     public int PlantsHit, CreaturesHit, Felled, Killed;
     public Vector3 DebrisAt;
     public bool HitWood, HitFlesh;
-    public int Spilled;
+    /// <summary>Plants and creatures the blades left alone because the hold couldn't take all of them.</summary>
+    public int Refused;
 }
 
 /// <summary>
 /// Harvester blades on the front of a hover vessel: a box in the vessel's frame. Anything
 /// standing in it gets chewed, and the yield goes straight into the vessel's storage: wood
 /// and plant matter from plants, meat (and the odd rare part) from creatures run down.
-/// Storage refuses what doesn't fit; the overflow is reported, not hidden.
+/// Nothing harvested is ever thrown away: the blades only bite into something whose whole
+/// yield still fits in the hold, and idle otherwise (the vessel just shoves it aside).
 /// </summary>
 public sealed class HarvesterBlades
 {
@@ -180,15 +191,18 @@ public sealed class HarvesterBlades
             {
                 if (!p.Alive || WildSim.Flat(p.Position - bladeWorld).Length() > HalfExtents.Length() + 3f) continue;
                 if (!Inside(vessel, p.Position + Vector3.Up * 0.5f, p.Kind == PlantKind.Tree ? p.TrunkRadius : p.Canopy * 0.6f)) continue;
+                if (storage.Free < field.RemainingYield(p))
+                {
+                    tick.Refused++;
+                    continue;
+                }
                 Yield y = field.Chip(p, PlantDps * dt);
                 tick.PlantsHit++;
                 tick.HitWood |= p.Kind == PlantKind.Tree;
                 tick.DebrisAt = p.Position + Vector3.Up * 1f;
                 if (y.Felled) tick.Felled++;
-                tick.Wood += y.Wood;
-                tick.Organics += y.Organics;
-                tick.Spilled += y.Wood - storage.Add(Items.Wood, y.Wood);
-                tick.Spilled += y.Organics - storage.Add(Items.Organics, y.Organics);
+                tick.Wood += storage.Add(Items.Wood, y.Wood);
+                tick.Organics += storage.Add(Items.Organics, y.Organics);
             }
         }
 
@@ -200,6 +214,12 @@ public sealed class HarvesterBlades
                 Vector3 at = c.Rig.BoundsCenter;
                 if (WildSim.Flat(at - bladeWorld).Length() > HalfExtents.Length() + c.Radius + 4f) continue;
                 if (!Inside(vessel, c.Position + Vector3.Up * c.Radius, c.Radius)) continue;
+                int room = (int)MathF.Ceiling(c.Dead ? c.MeatLeft : c.Species.Drops.Meat) + (c.Species.Drops.RarePart != "" ? 1 : 0);
+                if (storage.Free < room)
+                {
+                    tick.Refused++;
+                    continue;
+                }
                 tick.CreaturesHit++;
                 tick.HitFlesh = true;
                 tick.DebrisAt = at;
@@ -207,12 +227,10 @@ public sealed class HarvesterBlades
                 if (c.Dead)
                 {
                     // Into the hopper: all the meat that's left, and maybe a rare part.
-                    int meat = (int)MathF.Ceiling(c.MeatLeft);
-                    tick.Meat += meat;
-                    tick.Spilled += meat - storage.Add(Items.Meat, meat);
+                    tick.Meat += storage.Add(Items.Meat, (int)MathF.Ceiling(c.MeatLeft));
                     var rng = Rng.For(c.Species.Seed, "drop", c.Id);
                     if (c.Species.Drops.RarePart != "" && rng.Chance(c.Species.Drops.RareChance))
-                        tick.Spilled += 1 - storage.Add(c.Species.Drops.RarePart, 1);
+                        storage.Add(c.Species.Drops.RarePart, 1);
                     c.MeatLeft = 0f;
                     c.Harvested = true;
                     c.Removed = true;
