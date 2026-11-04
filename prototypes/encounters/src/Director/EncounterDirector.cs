@@ -11,7 +11,7 @@ namespace Encounters.Director;
 /// it. It deals small events from a weighted deck into the zones players are in, keeps them out
 /// of sight until they are underway, scales them by the players present, and cleans them up
 /// when players leave. Only lasting facts outlive a zone: what players own, what they touched
-/// and the wrecks they saw, all kept in the <see cref="Ledger"/>.
+/// and the wrecks they saw, all kept in the <see cref="PermanentRecords"/>.
 ///
 /// Pure C#, no engine: the host feeds it player positions and view directions and a clock,
 /// and reads back ships, records and leads to draw. The same seed and the same inputs give
@@ -22,7 +22,7 @@ public sealed class EncounterDirector
     public DirectorConfig Config { get; }
     public ZoneCatalog Zones { get; }
     public EventDeck Deck { get; }
-    public Ledger Ledger { get; }
+    public PermanentRecords Records { get; }
     public ulong Seed { get; }
 
     /// <summary>Simulated time, advanced only by ticks.</summary>
@@ -50,13 +50,13 @@ public sealed class EncounterDirector
     long _nextLeadId = 1;
     const int RecentLogSize = 120;
 
-    public EncounterDirector(DirectorConfig config, ZoneCatalog zones, EventDeck deck, ulong seed, Ledger ledger = null)
+    public EncounterDirector(DirectorConfig config, ZoneCatalog zones, EventDeck deck, ulong seed, PermanentRecords records = null)
     {
         Config = config;
         Zones = zones;
         Deck = deck;
         Seed = seed;
-        Ledger = ledger ?? new Ledger();
+        Records = records ?? new PermanentRecords();
     }
 
     public PlayerState Player(int id) => _players.TryGetValue(id, out PlayerState p) ? p : null;
@@ -151,26 +151,37 @@ public sealed class EncounterDirector
 
     // ---- What players do ----------------------------------------------------------------
 
-    /// <summary>A player loots, claims or boards something. It becomes a lasting record on the spot.</summary>
-    public TouchOutcome Touch(int playerId, long entityId)
+    /// <summary>
+    /// A player touches a ship within reach. It becomes a permanent record on the spot. A live
+    /// ship stays its crew's; a wreck is claimed as the player's salvage.
+    /// </summary>
+    public TouchOutcome Touch(int playerId, long entityId) => TouchAs(playerId, entityId, debugClaim: false);
+
+    /// <summary>
+    /// DEBUG ONLY: makes a ship the player's outright, from anywhere. Stands in for boarding it and
+    /// hijacking its core, which this prototype doesn't have. Tests use it; no game key does.
+    /// </summary>
+    public TouchOutcome DebugClaim(int playerId, long entityId) => TouchAs(playerId, entityId, debugClaim: true);
+
+    TouchOutcome TouchAs(int playerId, long entityId, bool debugClaim)
     {
         PlayerState player = Player(playerId);
         ZoneInstance zi = player?.ZoneId == null ? null : Instance(player.ZoneId);
         if (zi == null) return new TouchOutcome(TouchStatus.NotFound, TouchKind.None, null);
-        return zi.Touch(player, entityId, RenderTime);
+        return zi.Touch(player, entityId, RenderTime, debugClaim);
     }
 
-    /// <summary>Something a player built, dropped or stored. It goes straight into the ledger.</summary>
+    /// <summary>Something a player built, dropped or stored. It goes straight into the permanent records.</summary>
     public WorldEntity RegisterPlayerOwned(int owner, string zoneId, EntityKind kind, string hull, string label, Vector3 position, Vector3 forward)
     {
         if (owner < 0) throw new ArgumentOutOfRangeException(nameof(owner), "player-owned needs an owner");
         Zones.Get(zoneId);
         var entity = new WorldEntity
         {
-            Id = Ledger.NextId(), ZoneId = zoneId, Kind = kind, Hull = hull, Label = label,
+            Id = Records.NextId(), ZoneId = zoneId, Kind = kind, Hull = hull, Label = label,
             Owner = owner, Position = position, Forward = SafeNormalize(forward, -Vector3.UnitZ), CreatedAt = Time,
         };
-        Ledger.Keep(entity, Time, Inv($"{label}, owned by P{owner}"));
+        Records.Keep(entity, Time, Inv($"{label}, owned by P{owner}"));
         Log(zoneId, "owned", entity.Id, label);
         return entity;
     }

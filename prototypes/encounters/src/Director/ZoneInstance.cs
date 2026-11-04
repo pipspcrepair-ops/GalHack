@@ -13,7 +13,7 @@ public readonly record struct TouchOutcome(TouchStatus Status, TouchKind Kind, W
 /// The director's working copy of one zone that has players in it. Each one gets its own
 /// events, budget, cooldowns and random stream, scaled by the players present. It lives only
 /// while a player is in the zone: when the last one leaves it cleans up its untouched ships and
-/// is dropped, and only the ledger's lasting records remain.
+/// is dropped, and only the permanent records remain.
 /// </summary>
 public sealed class ZoneInstance
 {
@@ -53,7 +53,7 @@ public sealed class ZoneInstance
     int _quickSpawns, _hostileSpawns;
 
     DirectorConfig Config => _director.Config;
-    Ledger Ledger => _director.Ledger;
+    PermanentRecords Records => _director.Records;
 
     internal ZoneInstance(EncounterDirector director, ZoneDef zone, int visit, Rng rng, double time)
     {
@@ -338,7 +338,7 @@ public sealed class ZoneInstance
     {
         var enc = new Encounter
         {
-            Id = Ledger.NextId(), Def = def, ZoneId = Zone.Id, Start = time,
+            Id = Records.NextId(), Def = def, ZoneId = Zone.Id, Start = time,
             End = time + Rng.Range(def.Duration[0], def.Duration[1]),
             Anchor = anchor, FocusPlayer = focusId, SideA = sideA, SideB = sideB, Debug = debug,
         };
@@ -348,7 +348,7 @@ public sealed class ZoneInstance
             PlannedShip p = _plan[i];
             var ship = new WorldEntity
             {
-                Id = Ledger.NextId(), ZoneId = Zone.Id, Kind = EntityKind.NpcShip,
+                Id = Records.NextId(), ZoneId = Zone.Id, Kind = EntityKind.NpcShip,
                 Hull = p.Hull, Faction = p.Faction, Role = p.Role, Side = p.Side, Crew = p.Crew,
                 Hostile = def.Hostile, EncounterId = enc.Id, EventId = def.Id,
                 Script = _scripts[i], CreatedAt = time, Encounter = enc, Live = true,
@@ -418,31 +418,36 @@ public sealed class ZoneInstance
 
     // ---- Touch, wrecks and cleanup ------------------------------------------------------
 
-    internal TouchOutcome Touch(PlayerState player, long entityId, double time)
+    /// <summary>
+    /// A player touches a ship. A live ship is only marked: it becomes a permanent record but
+    /// stays its crew's. A wreck is claimed as salvage and becomes the player's.
+    /// <paramref name="debugClaim"/> claims a live ship anyway, from any distance: a stand-in for
+    /// boarding and hijacking its core, for tests only.
+    /// </summary>
+    internal TouchOutcome Touch(PlayerState player, long entityId, double time, bool debugClaim = false)
     {
         WorldEntity entity = FindShip(entityId);
         bool transient = entity != null;
-        if (entity == null && Ledger.TryGet(entityId, out WorldEntity lasting) && lasting.ZoneId == Zone.Id) entity = lasting;
+        if (entity == null && Records.TryGet(entityId, out WorldEntity lasting) && lasting.ZoneId == Zone.Id) entity = lasting;
         if (entity == null) return new TouchOutcome(TouchStatus.NotFound, TouchKind.None, null);
 
         entity.Sample(time, out Vector3 at, out _);
-        if (Vector3.Distance(at, player.Position) > Config.TouchDistance) return new TouchOutcome(TouchStatus.TooFar, TouchKind.None, entity);
-        if (entity.Touch != TouchKind.None || entity.PlayerOwned) return new TouchOutcome(TouchStatus.AlreadyLasting, entity.Touch, entity);
+        if (!debugClaim && Vector3.Distance(at, player.Position) > Config.TouchDistance) return new TouchOutcome(TouchStatus.TooFar, TouchKind.None, entity);
+        if (entity.PlayerOwned || (entity.Touch != TouchKind.None && !(entity.Touch == TouchKind.Touched && debugClaim)))
+            return new TouchOutcome(TouchStatus.AlreadyLasting, entity.Touch, entity);
 
-        TouchKind kind = entity.Wrecked ? TouchKind.Looted
-            : entity.EventId == "distress-call" || entity.Role == "hulk" ? TouchKind.Boarded
-            : TouchKind.Claimed;
+        TouchKind kind = entity.Wrecked || debugClaim ? TouchKind.Claimed : TouchKind.Touched;
         entity.Touch = kind;
         entity.TouchedBy = player.Id;
-        if (kind == TouchKind.Claimed) entity.Owner = player.Id;
+        if (kind == TouchKind.Claimed) entity.Owner = player.Id; // never for a live ship, outside the debug claim
 
-        string what = Inv($"{kind} by P{player.Id}");
+        string what = Inv($"{(debugClaim ? "debug-claimed (stands in for boarding)" : kind.ToString().ToLowerInvariant())} by P{player.Id}");
         if (transient)
         {
             entity.Encounter.Touched = true;
             Promote(entity, time, what);
         }
-        else Ledger.Note(entity, time, what);
+        else Records.Note(entity, time, what);
         _director.Log(Zone.Id, "touch", entity.Id, Inv($"{entity.Hull} {what}"));
         return new TouchOutcome(TouchStatus.Touched, kind, entity);
     }
@@ -465,7 +470,7 @@ public sealed class ZoneInstance
         _director.Log(Zone.Id, "wreck", ship.Id, Inv($"{ship.Hull} ({ship.Faction}) {why}"));
     }
 
-    /// <summary>Moves a ship out of the instance's reach into the ledger, frozen where it is now.</summary>
+    /// <summary>Moves a ship out of the instance's reach into the permanent records, frozen where it is now.</summary>
     void Promote(WorldEntity ship, double time, string why)
     {
         ship.Sample(time, out ship.Position, out ship.Forward);
@@ -473,7 +478,7 @@ public sealed class ZoneInstance
         ship.Live = false;
         ship.Encounter = null;
         _ships.Remove(ship);
-        Ledger.Keep(ship, time, why);
+        Records.Keep(ship, time, why);
     }
 
     /// <summary>
@@ -485,7 +490,7 @@ public sealed class ZoneInstance
     {
         if (ship.IsLasting)
         {
-            Ledger.GuardTrips++;
+            Records.GuardTrips++;
             Promote(ship, time, "kept by the cleanup guard instead of: " + why);
             _director.Log(Zone.Id, "guard", ship.Id, why);
             return;
@@ -495,7 +500,7 @@ public sealed class ZoneInstance
         _director.Log(Zone.Id, "despawn", ship.Id, why);
     }
 
-    /// <summary>The last player left: every untouched ship goes, everything lasting stays in the ledger.</summary>
+    /// <summary>The last player left: every untouched ship goes, everything lasting stays in the permanent records.</summary>
     internal void Close(double time)
     {
         int transient = _ships.Count;
@@ -503,6 +508,6 @@ public sealed class ZoneInstance
         foreach (Encounter enc in _encounters) enc.State = EncounterState.Done;
         _encounters.Clear();
         _director.Log(Zone.Id, "close", 0,
-            Inv($"{transient} untouched ships cleaned up, {Ledger.InZone(Zone.Id).Count} lasting records kept"));
+            Inv($"{transient} untouched ships cleaned up, {Records.InZone(Zone.Id).Count} permanent records kept"));
     }
 }

@@ -49,6 +49,8 @@ public sealed class FactionDef
 {
     public string Name { get; set; } = "";
     public string Fighter { get; set; } = "";
+    /// <summary>False for factions that never attack (the Ledger Exchange, the Freeholders).</summary>
+    public bool Fights { get; set; } = true;
 }
 
 /// <summary>One card in the deck. Pure data: see the header of data/deck.json.</summary>
@@ -117,6 +119,8 @@ public sealed class EventDef
             string faction = group.Faction != "" ? group.Faction : Faction;
             if (faction != "*" && !deck.Factions.ContainsKey(faction))
                 throw new FormatException($"{where}: unknown faction '{faction}'");
+            if (Hostile && faction != "*" && !deck.Factions[faction].Fights)
+                throw new FormatException($"{where}: the {deck.Factions[faction].Name} never attack, so can't be in a hostile event");
             MinShips += group.Count[0];
         }
         if (MinShips == 0) throw new FormatException($"{where} can spawn with no ships");
@@ -146,6 +150,8 @@ public sealed class EventDeck
     }
 
     public string FactionName(string id) => Factions.TryGetValue(id, out FactionDef f) ? f.Name : id;
+
+    public bool Fights(string id) => !Factions.TryGetValue(id, out FactionDef f) || f.Fights;
 
     /// <summary>Turns "$fighter" into the faction's fighter hull; other hull names pass through.</summary>
     public string ResolveHull(string hull, string faction) =>

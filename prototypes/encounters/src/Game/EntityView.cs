@@ -127,7 +127,7 @@ public partial class EntityView : Node3D
             if (working)
             {
                 Vector3 site = e.Script.Center.ToGodot();
-                Vector3 from = position + basis * new Vector3(0, -2.5f, -24f);
+                Vector3 from = position + basis * new Vector3(0, 0, -Hull.Radius * 0.85f); // from the nose, whatever the hull
                 float length = from.DistanceTo(site);
                 _beam.GlobalTransform = new Transform3D(Look((site - from).Normalized(), Vector3.Up).Scaled(new Vector3(1, 1, length)), (from + site) * 0.5f);
             }

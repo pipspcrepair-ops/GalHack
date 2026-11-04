@@ -76,7 +76,7 @@ public partial class Main : Node3D
         ZoneInstance zi = Director.Instance(ZoneId);
         if (zi != null)
             foreach (WorldEntity e in zi.Ships) Show(e, time, dt);
-        foreach (WorldEntity e in Director.Ledger.InZone(ZoneId)) Show(e, time, dt);
+        foreach (WorldEntity e in Director.Records.InZone(ZoneId)) Show(e, time, dt);
 
         _gone.Clear();
         foreach (var (id, view) in _views)
@@ -127,7 +127,7 @@ public partial class Main : Node3D
         if (outcome.Status == TouchStatus.TooFar) Hud.Toast("Too far away to touch it", Palette.TextDim, 2);
     }
 
-    /// <summary>Something the player drops is theirs: straight into the ledger, never cleaned up.</summary>
+    /// <summary>Something the player drops is theirs: straight into the permanent records, never cleaned up.</summary>
     void DropCargo() =>
         Director.RegisterPlayerOwned(LocalPlayer, ZoneId, EntityKind.PlayerCargo, "cargo-pod", "Cargo pod",
             (Craft.GlobalPosition + Craft.GlobalBasis.Z * 14f).ToNum(), (-Craft.GlobalBasis.Z).ToNum());
@@ -188,12 +188,14 @@ public partial class Main : Node3D
                 }
                 break;
             case "wreck":
-                if (Director.Ledger.TryGet(e.Id, out WorldEntity wreck))
+                if (Director.Records.TryGet(e.Id, out WorldEntity wreck))
                     Hud.Toast($"{Hud.Describe(wreck, Director)} lost. Its wreck stays as salvage", Palette.Distress);
                 break;
             case "touch":
-                if (Director.Ledger.TryGet(e.Id, out WorldEntity touched))
-                    Hud.Toast($"{Hud.Describe(touched, Director)} {touched.Touch.ToString().ToLowerInvariant()}: now a lasting record", Palette.Lasting);
+                if (Director.Records.TryGet(e.Id, out WorldEntity touched))
+                    Hud.Toast(touched.Touch == TouchKind.Claimed
+                        ? $"Wreck of a {Hud.Describe(touched, Director)} claimed as salvage: it's yours"
+                        : $"{Hud.Describe(touched, Director)} touched: now a permanent record, still its crew's", Palette.Lasting);
                 break;
             case "owned":
                 Hud.Toast("Cargo pod dropped: yours, it never goes away", Palette.Lasting, 3);

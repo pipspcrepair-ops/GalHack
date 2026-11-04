@@ -41,7 +41,7 @@ public partial class Hud : Control
         _help = MakeLabel(14, Vector2.Zero);
         Pin(_help, 0f, 1f, 24, -36, 1400, -12);
         _help.Modulate = new Color(1, 1, 1, 0.75f);
-        _help.Text = "W/S throttle  ·  mouse or arrows steer  ·  A/D roll  ·  Shift boost  ·  E touch  ·  C drop cargo  ·  J jump zone  ·  Tab director  ·  M map  ·  V view  ·  Esc mouse";
+        _help.Text = "W/S throttle  ·  mouse or arrows steer  ·  A/D roll  ·  Shift boost  ·  E touch / claim wreck  ·  C drop cargo  ·  J jump zone  ·  Tab director  ·  M map  ·  V view  ·  Esc mouse";
 
         _prompt = MakeLabel(19, Vector2.Zero);
         _prompt.HorizontalAlignment = HorizontalAlignment.Center;
@@ -147,12 +147,17 @@ public partial class Hud : Control
         if (t.Touch != TouchKind.None)
         {
             _prompt.AddThemeColorOverride("font_color", Palette.Lasting);
-            _prompt.Text = $"{what} — {t.Touch.ToString().ToLowerInvariant()} by P{t.TouchedBy}: a lasting record";
+            _prompt.Text = t.Touch == TouchKind.Claimed
+                ? $"{what}: claimed by P{t.TouchedBy}, theirs for good"
+                : $"{what}: touched by P{t.TouchedBy}, a permanent record (still its crew's)";
             return;
         }
-        string verb = t.Wrecked ? "Loot wreck" : t.EventId == "distress-call" || t.Role == "hulk" ? "Board" : "Claim";
+        // Only a wreck can be claimed. A live ship is yours only by boarding it and hijacking its
+        // core, which this prototype doesn't have, so E just marks it.
         _prompt.AddThemeColorOverride("font_color", Palette.Text);
-        _prompt.Text = $"[E]  {verb}: {what}, crew {t.Crew}";
+        _prompt.Text = t.Wrecked
+            ? $"[E]  Claim salvage: wreck of a {what}, {t.Crew} aboard"
+            : $"[E]  Touch: {what}, crew {t.Crew}. It stays theirs and becomes a permanent record";
     }
 
     public static string Describe(WorldEntity e, EncounterDirector d) => e.Kind switch
@@ -167,6 +172,9 @@ public partial class Hud : Control
         "trader" => "merchantman",
         "miner" => "mining rig",
         "bloom-hulk" => "hulk",
+        "vharn-gunship" => "gunship",
+        "vharn-capital" => "capital ship",
+        "homestead-hauler" => "hauler",
         _ => hull.Replace('-', ' '),
     };
 
@@ -204,8 +212,8 @@ public partial class Hud : Control
             _labelled.Add(box);
 
             string head = e.Wrecked ? $"WRECK · {Describe(e, d)}" : Describe(e, d).ToUpperInvariant();
-            string tag = e.Touch != TouchKind.None ? $"{e.Touch.ToString().ToUpperInvariant()} · lasting"
-                : e.PlayerOwned ? "yours · lasting"
+            string tag = e.Touch != TouchKind.None ? $"{e.Touch.ToString().ToUpperInvariant()} · permanent"
+                : e.PlayerOwned ? "yours · permanent"
                 : e.Wrecked ? $"salvage · {e.Crew} aboard"
                 : $"crew {e.Crew}{(e.Hostile ? " · hostile event" : "")}";
             Text(at, head, 14, color);

@@ -17,7 +17,7 @@
 
   // Concurrent budget per zone instance, scaled by the players in the zone.
   "budget": { "events": 4, "eventsPerExtraPlayer": 1.5, "ships": 16, "shipsPerExtraPlayer": 6 },
-  "categoryCaps": { "traffic": 2, "combat": 1, "distress": 1, "trade": 1, "corruption": 1, "industry": 1, "wreck": 1 },
+  "categoryCaps": { "traffic": 2, "combat": 1, "patrol": 1, "capital": 1, "distress": 1, "trade": 1, "corruption": 1, "industry": 1, "wreck": 1 },
 
   // After a spawn, the zone waits spawnGap (divided by 1 + spawnGapPlayerFactor per extra
   // player) before the next. Each category then also waits its own cooldown, and the same
@@ -25,7 +25,7 @@
   "spawnGap": [8, 18],
   "spawnGapPlayerFactor": 0.5,
   "retryDelay": 1.5,
-  "categoryCooldowns": { "traffic": 10, "combat": 40, "distress": 90, "trade": 30, "corruption": 60, "industry": 30, "wreck": 120 },
+  "categoryCooldowns": { "traffic": 10, "combat": 40, "patrol": 40, "capital": 240, "distress": 90, "trade": 30, "corruption": 60, "industry": 30, "wreck": 120 },
   "noRepeatWindow": 60,
   // A zone opening up gets its first few events quickly, so it never feels empty.
   "warmStart": { "events": 2, "delay": 1.0, "gap": 2.0 },

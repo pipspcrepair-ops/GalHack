@@ -102,6 +102,7 @@ public static class ZoneScenery
             {
                 CircleKind.Poi when circle.Poi == "station" => new Station(),
                 CircleKind.Poi when circle.Poi == "asteroids" => Asteroids(circle, seed++),
+                CircleKind.Poi when circle.Poi == "outpost" => Outpost(),
                 CircleKind.Base => RelayBeacon(),
                 _ => null,
             };
@@ -129,6 +130,39 @@ public static class ZoneScenery
         MeshInstance3D light = Visuals.Flare(new Color(1.2f, 3f, 0.8f), 40f);
         light.Position = new Vector3(0, 49, 0);
         node.AddChild(light);
+        return node;
+    }
+
+    /// <summary>A Freeholder outpost: a homespun hab core, modules on spars, solar wings, a mast light.</summary>
+    static Node3D Outpost()
+    {
+        var b = new BlockBuilder("outpost");
+        b.Box(0, 0, 0, 40, 60, 40, Homespun);
+        b.Box(0, 32, 0, 30, 6, 30, Teal);
+        b.Box(0, -32, 0, 30, 6, 30, Rust);
+        for (int row = 0; row < 4; row++)
+            foreach (float s in new[] { -1f, 1f })
+            {
+                b.Box(0, -18 + row * 12, s * 20.3f, 32, 2, 0.4f, Warm, 1f);
+                b.Box(s * 20.3f, -18 + row * 12, 0, 0.4f, 2, 32, Warm, 1f);
+            }
+        Color[] modules = { Orange, Cream, Teal, Yellow };
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * Mathf.Tau / 4f + 0.4f;
+            var dir = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
+            var along = new Basis(Vector3.Up, -a);
+            b.Box(dir * 42f, new Vector3(36, 4, 4), Steel, 0f, along);
+            b.Box(dir * 72f + Vector3.Up * (i % 2 == 0 ? 6f : -6f), new Vector3(26, 18, 22), modules[i], 0f, along);
+            b.Box(dir * 72f + Vector3.Up * (i % 2 == 0 ? 15.2f : -15.2f), new Vector3(20, 0.4f, 16), Black, 0f, along);
+        }
+        b.Box(-62, 46, 0, 70, 1, 22, Navy);
+        b.Box(62, 46, 0, 70, 1, 22, Navy);
+        b.Box(0, 46, 0, 54, 2, 2, Steel);
+        b.Box(0, 62, 0, 2, 36, 2, Steel);
+        b.Box(0, 82, 0, 4, 4, 4, Yellow, 2f);
+        var node = new Node3D { Name = "Outpost" };
+        node.AddChild(new MeshInstance3D { Mesh = b.Commit().Mesh, MaterialOverride = Visuals.Hull });
         return node;
     }
 

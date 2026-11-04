@@ -140,6 +140,10 @@ public static class HullLibrary
             "miner" => Miner(),
             "lancer" => Lancer(),
             "bloom-hulk" => BloomHulk(),
+            "vharn-gunship" => VharnGunship(),
+            "vharn-capital" => VharnCapital(),
+            "homestead-hauler" => HomesteadHauler(),
+            "mining-skiff" => MiningSkiff(),
             "skiff" => Skiff(),
             "cargo-pod" => CargoPod(),
             _ => Hauler(),
@@ -216,7 +220,7 @@ public static class HullLibrary
         return b.Commit();
     }
 
-    /// <summary>Concord patrol corvette: clean cream wedge, navy and red livery, pale blue engines.</summary>
+    /// <summary>Meridian Combine patrol corvette: clean cream wedge, navy and red livery, pale blue engines.</summary>
     static Hull Corvette()
     {
         var b = new BlockBuilder("corvette");
@@ -383,6 +387,111 @@ public static class HullLibrary
         }
         for (int i = 0; i < 8; i++)
             b.Box(rng.RandfRange(-6, 8), rng.RandfRange(-5, 9), rng.RandfRange(-30, 30), 1.4f, 1.4f, 1.4f, new Color("ffb3e6"), 1.5f);
+        return b.Commit();
+    }
+
+    /// <summary>Vharn Dominion gunship: an armoured gunmetal wedge in crimson, twin heavy cannons, a troop bay each side.</summary>
+    static Hull VharnGunship()
+    {
+        var b = new BlockBuilder("vharn-gunship");
+        b.Hull.EngineColor = new Color(1f, 0.3f, 0.35f);
+        b.Box(0, 0, 0, 12, 7, 34, Gunmetal);
+        b.Box(0, -0.5f, -20, 9, 5, 8, Gunmetal);
+        b.Box(0, -1, -25, 6, 3, 3, Crimson);
+        b.Box(0, 3.6f, -1, 12.2f, 0.3f, 30, Crimson);
+        b.Stripes(new Vector3(0, 3.8f, 13), new Vector3(8, 0.2f, 4), 6, 0, Black, Gold);
+        b.Box(0, 5.5f, 4, 6, 4, 10, Gunmetal);
+        b.Box(0, 6, -1.1f, 4.5f, 1, 0.2f, new Color("ff4d4d"), 1f);
+        foreach (float sx in new[] { -1f, 1f })
+        {
+            b.Box(sx * 7.5f, -1, -6, 3, 3, 24, Dark);
+            b.Box(sx * 7.5f, -1, -18.5f, 2, 2, 1.5f, Gold);
+            b.Box(sx * 6.4f, 0.5f, 6, 0.8f, 6, 18, Crimson);
+            b.Box(sx * 6.9f, -0.5f, 6, 0.2f, 3, 7, Gold); // troop bay door
+            b.Box(sx * 4, 0, 18.5f, 4.5f, 4.5f, 4, Dark);
+            b.Engine(sx * 4, 0, 20.7f, 3.4f);
+        }
+        return b.Commit();
+    }
+
+    /// <summary>Vharn Dominion capital ship: a stepped gunmetal ziggurat bristling with turrets, crimson banners, a whole city of windows.</summary>
+    static Hull VharnCapital()
+    {
+        var b = new BlockBuilder("vharn-capital");
+        b.Hull.EngineColor = new Color(1f, 0.35f, 0.4f);
+        b.Box(0, 0, 0, 70, 40, 220, Gunmetal);
+        b.Box(0, 26, 20, 50, 14, 140, Gunmetal);
+        b.Box(0, 38, 50, 28, 12, 60, Gunmetal);
+        b.Box(0, 47, 64, 14, 6, 14, Crimson);
+        b.Box(0, 47, 56.9f, 12, 2, 0.4f, new Color("ff4d4d"), 1f);
+        b.Box(0, -4, -125, 50, 28, 30, Gunmetal);
+        b.Box(0, -8, -146, 30, 16, 14, Crimson);
+        b.Box(0, 20.4f, -40, 70.4f, 0.8f, 5, Gold);
+        b.Box(0, 20.4f, 60, 70.4f, 0.8f, 5, Gold);
+        b.Checker(new Vector3(0, 33.2f, -30), new Vector3(36, 0.4f, 24), 6, 4, Black, Crimson);
+        foreach (float sx in new[] { -1f, 1f })
+        {
+            foreach (float z in new[] { -80f, -30f, 20f, 70f })
+                b.Box(sx * 35.4f, 2, z, 0.6f, 34, 22, Crimson); // banners
+            foreach (float y in new[] { -12f, 12f })
+                b.Box(sx * 35.3f, y, -5, 0.5f, 1.6f, 190, Warm, 1f); // decks of lit windows
+            for (int i = 0; i < 6; i++)
+            {
+                float z = -85 + i * 32;
+                b.Box(sx * 22, 22.5f, z, 10, 5, 10, Dark);
+                b.Box(sx * 22 - sx * 2, 24, z - 9, 1.6f, 1.6f, 12, Steel);
+                b.Box(sx * 22 + sx * 2, 24, z - 9, 1.6f, 1.6f, 12, Steel);
+            }
+        }
+        b.Box(0, 0, 118, 60, 36, 16, Dark);
+        foreach (float sx in new[] { -1f, 1f })
+            foreach (float sy in new[] { -1f, 1f })
+                b.Engine(sx * 18, sy * 9, 126.4f, 11);
+        b.Engine(0, 0, 126.4f, 13);
+        return b.Commit();
+    }
+
+    /// <summary>A Freeholder hauler: homespun hull patched in odd colours, cargo pods strapped on, a solar wing.</summary>
+    static Hull HomesteadHauler()
+    {
+        var b = new BlockBuilder("homestead-hauler");
+        b.Box(0, 0, 0, 10, 7, 26, Homespun);
+        b.Box(2.5f, 3.6f, -6, 4, 0.2f, 5, Teal);
+        b.Box(-5.1f, 1, 4, 0.2f, 3, 6, Rust);
+        b.Box(5.1f, -1, -4, 0.2f, 2.5f, 5, Orange);
+        b.Box(0, 1, -15, 7, 5, 4, Cream);
+        b.Box(0, 1.8f, -17.1f, 5, 1.2f, 0.2f, Warm, 1f);
+        int k = 0;
+        foreach (float sx in new[] { -1f, 1f })
+            foreach (float z in new[] { -4f, 6f })
+            {
+                b.Box(sx * 7, -1, z, 4, 4, 8, k++ % 2 == 0 ? Orange : Yellow);
+                b.Box(sx * 7, -1, z, 4.2f, 0.5f, 1, Dark);
+            }
+        b.Box(0, 5.6f, 6, 20, 0.3f, 5, Navy);
+        b.Box(0, 4.4f, 6, 1, 2.2f, 1, Steel);
+        foreach (float sx in new[] { -1f, 1f })
+        {
+            b.Box(sx * 3, 0, 14, 3, 3, 2, Dark);
+            b.Engine(sx * 3, 0, 15.2f, 2.2f);
+        }
+        return b.Commit();
+    }
+
+    /// <summary>A Freeholder mining skiff: small, yellow, one drill arm.</summary>
+    static Hull MiningSkiff()
+    {
+        var b = new BlockBuilder("mining-skiff");
+        b.Box(0, 0, 0, 5, 3, 12, Yellow);
+        b.Stripes(new Vector3(0, 1.56f, 2), new Vector3(3, 0.12f, 6), 6, 2, Black, Yellow);
+        b.Box(0, 1.5f, -4, 3.5f, 1.4f, 3, new Color("1b4a52"), 0.25f);
+        b.Box(0, -1.2f, -9, 1.2f, 1.2f, 6, Steel);
+        b.Box(0, -1.2f, -12.5f, 1.8f, 1.8f, 1.2f, Orange, 0.4f);
+        foreach (float sx in new[] { -1f, 1f })
+        {
+            b.Box(sx * 3.4f, 0, 2, 2, 2, 6, Teal);
+            b.Engine(sx * 1.5f, 0, 6.2f, 1.4f);
+        }
         return b.Commit();
     }
 

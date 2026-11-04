@@ -26,6 +26,10 @@ public static class Palette
     public static readonly Color PaleBlue = new("a8dadc");
     public static readonly Color Warm = new("ffd9a0");
     public static readonly Color Black = new("16161d");
+    public static readonly Color Gunmetal = new("5d6070");
+    public static readonly Color Crimson = new("a4161a");
+    public static readonly Color Gold = new("c9a227");
+    public static readonly Color Homespun = new("c8b89a");
 
     // HUD
     public static readonly Color Text = new("ffe8c2");
@@ -37,11 +41,13 @@ public static class Palette
     /// <summary>The colour a faction reads as on the HUD and the map.</summary>
     public static Color Faction(string faction) => faction switch
     {
-        "concord" => new Color("8ecae6"),
-        "reavers" => new Color("ff5a36"),
+        "meridian" => new Color("8ecae6"),
+        "exchange" => new Color("f1e3b5"),
+        "reavers" => new Color("ff8c42"),
         "kessari" => new Color("f2c14e"),
         "hollow" => new Color("e055b8"),
-        "guild" => new Color("f4a261"),
+        "vharn" => new Color("ff3355"),
+        "freeholders" => new Color("7ad1a0"),
         _ => new Color("cfcfcf"),
     };
 

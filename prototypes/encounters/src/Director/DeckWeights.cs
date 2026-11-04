@@ -27,6 +27,7 @@ public static class DeckWeights
         var near = new List<string>(4);
         zone.FactionsAt(at, 0f, inside);
         zone.FactionsAt(at, config.Territory.BorderMargin, near);
+        near.RemoveAll(f => !deck.Fights(f)); // settlers and merchants never take a side in a border war
 
         float hostileRaw = 0f, peacefulRaw = 0f;
         foreach (EventDef def in deck.Events)

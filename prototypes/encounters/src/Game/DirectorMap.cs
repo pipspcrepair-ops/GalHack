@@ -117,7 +117,7 @@ public partial class DirectorMap : Control
         if (zi != null)
             foreach (WorldEntity e in zi.Ships)
                 Ship(Map(e.Position), e.Forward, Palette.Faction(e.Faction));
-        foreach (WorldEntity e in d.Ledger.InZone(zone.Id))
+        foreach (WorldEntity e in d.Records.InZone(zone.Id))
         {
             Vector2 p = Map(e.Position);
             if (e.Wrecked && e.Touch == TouchKind.None)
@@ -133,7 +133,7 @@ public partial class DirectorMap : Control
         // Legend.
         float y = size.Y - 58;
         Label(new Vector2(12, 24), $"DIRECTOR MAP · {zone.Name} · {ViewRadius * 2 / 1000:F0} km across", Palette.Text, 15);
-        Label(new Vector2(12, y), "▲ crewed ship (faction colour)   × wreck (salvage record)   □ touched or owned: lasting", new Color(Palette.Text, 0.75f), 12);
+        Label(new Vector2(12, y), "▲ crewed ship (faction colour)   × wreck (salvage)   □ touched, claimed or owned: permanent record", new Color(Palette.Text, 0.75f), 12);
         Label(new Vector2(12, y + 18), "rings: min and max spawn distance   white wedge: your view cone   dashed: signal lead", new Color(Palette.Text, 0.75f), 12);
         DrawRect(new Rect2(Vector2.Zero, size), new Color("f4a100"), false, 2f);
     }

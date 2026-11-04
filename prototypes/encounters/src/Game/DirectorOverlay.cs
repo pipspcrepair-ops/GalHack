@@ -97,7 +97,7 @@ public partial class DirectorOverlay : PanelContainer
         sb.AppendLine(Dim($"territory: {(factions.Count == 0 ? "unclaimed" : string.Join(", ", factions))} · hostile share {hostile:P0} (danger {zone.Danger})"));
         foreach (WeightedEvent w in _weights.OrderByDescending(w => w.Share))
         {
-            string state = w.Gate != Gate.Open ? $"gated: {GateText(w)}" : zi.BlockReason(w.Def, t) ?? "ready";
+            string state = w.Gate != Gate.Open ? $"gated: {GateText(w, d.Deck)}" : zi.BlockReason(w.Def, t) ?? "ready";
             string line = $"{w.Def.Id,-18} {Bar(w.Share, 1f, 12)} {w.Share,4:P0}  {(w.Def.Hostile ? "H" : " ")} {state}";
             sb.AppendLine(w.Gate != Gate.Open ? Dim(line) : state == "ready" ? line : $"[color=#f4a261]{line}[/color]");
         }
@@ -120,8 +120,8 @@ public partial class DirectorOverlay : PanelContainer
                 sb.AppendLine($"{lead.Kind,-12} ~{Hud.Km(lead.Distance),-8} {Dim($"truth {Hud.Km(lead.TrueOffset.Length())}, off by {lead.AngleErrorDeg:F1}° (debug only)")}");
         }
 
-        IReadOnlyList<WorldEntity> records = d.Ledger.InZone(zone.Id);
-        Head(sb, $"LASTING RECORDS ({records.Count} here, {d.Ledger.Count} in the world)");
+        IReadOnlyList<WorldEntity> records = d.Records.InZone(zone.Id);
+        Head(sb, $"PERMANENT RECORDS ({records.Count} here, {d.Records.Count} in the world)");
         foreach (WorldEntity e in records.Reverse().Take(7))
         {
             string kind = e.PlayerOwned && e.Touch == TouchKind.None ? "owned" : e.Touch != TouchKind.None ? e.Touch.ToString().ToLowerInvariant() : "wreck";
@@ -129,7 +129,7 @@ public partial class DirectorOverlay : PanelContainer
             sb.AppendLine($"[color=#9bf26b]#{e.Id,-4} {kind,-8}[/color] {Hud.Describe(e, d),-30}{Dim(from)}");
         }
         if (records.Count > 7) sb.AppendLine(Dim($"… and {records.Count - 7} more"));
-        if (d.Ledger.GuardTrips > 0) sb.AppendLine($"[color=#ff5d3a]cleanup guard tripped {d.Ledger.GuardTrips}x[/color]");
+        if (d.Records.GuardTrips > 0) sb.AppendLine($"[color=#ff5d3a]cleanup guard tripped {d.Records.GuardTrips}x[/color]");
 
         Head(sb, "LOG");
         foreach (LogEntry e in d.RecentLog.Where(e => e.Zone == zone.Id && e.Kind != "despawn").Reverse().Take(6))
@@ -137,12 +137,12 @@ public partial class DirectorOverlay : PanelContainer
         return sb.ToString();
     }
 
-    static string GateText(WeightedEvent w) => w.Gate switch
+    static string GateText(WeightedEvent w, EventDeck deck) => w.Gate switch
     {
         Gate.ZoneTags => "zone tags",
         Gate.Danger => $"danger {w.Def.Danger[0]}-{w.Def.Danger[1]}",
         Gate.NoPoi => $"no {w.Def.Anchor}",
-        Gate.Territory => $"not in {w.Def.Faction} space",
+        Gate.Territory => $"not in {deck.FactionName(w.Def.Faction)} space",
         Gate.Border => "no border here",
         _ => "",
     };

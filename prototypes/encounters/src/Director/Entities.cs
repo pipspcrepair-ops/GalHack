@@ -5,14 +5,25 @@ namespace Encounters.Director;
 
 public enum EntityKind { NpcShip, PlayerCargo, PlayerShip }
 
-/// <summary>How a player touched something. Any touch makes it a lasting record.</summary>
-public enum TouchKind { None, Looted, Claimed, Boarded }
+/// <summary>
+/// How a player touched something. Any touch makes it a permanent record. Only a wreck (its core
+/// destroyed) can be claimed: a live ship becomes yours only by boarding it and hijacking its
+/// core, which belongs to combat and boarding, not to the director.
+/// </summary>
+public enum TouchKind
+{
+    None,
+    /// <summary>A live ship the player flew up to and marked: remembered, still not theirs.</summary>
+    Touched,
+    /// <summary>A wreck claimed as salvage: now the player's.</summary>
+    Claimed,
+}
 
 /// <summary>
 /// Anything in a zone the director knows about: an event's crewed NPC ship, a wreck, or
 /// something a player owns. While an event's ship is untouched it is transient and lives in
 /// its zone instance; the moment it becomes lasting (touched, owned or a witnessed wreck) it
-/// moves to the <see cref="Ledger"/>, where nothing ever removes it.
+/// moves to the <see cref="PermanentRecords"/>, where nothing ever removes it.
 /// </summary>
 public sealed class WorldEntity
 {

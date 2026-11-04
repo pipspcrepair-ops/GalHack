@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace Encounters.Director;
 
 /// <summary>
-/// The world's lasting facts: everything players own, everything they touched (looted, claimed,
-/// boarded) and every wreck they saw. It is all that survives a zone closing, and the only part
+/// The world's lasting facts: everything players own, everything they touched or claimed, and
+/// every wreck they saw. It is all that survives a zone closing, and the only part
 /// of the director a save file would need, along with the zone data.
 ///
 /// There is deliberately no way to remove anything. Event cleanup only ever sees a zone
 /// instance's transient ships, and anything lasting has already moved here, out of its reach.
 /// </summary>
-public sealed class Ledger
+public sealed class PermanentRecords
 {
     readonly Dictionary<long, WorldEntity> _byId = new();
     readonly Dictionary<string, List<WorldEntity>> _byZone = new();

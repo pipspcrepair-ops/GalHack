@@ -32,6 +32,7 @@ public partial class DirectorTest : Node
         {
             ("Spawn rules under churn: view cone, distance, budget, caps, no-repeat", SpawnRulesUnderChurn),
             ("Deck weights follow zone tags", DeckWeightsFollowTags),
+            ("Vharn Dominion and Freeholders", VharnAndFreeholders),
             ("No-spawn circles and player bases", NoSpawnCircles),
             ("Leaving a zone cleans up", LeavingCleansUp),
             ("Cleanup never removes anything player-owned", PlayerOwnedSurvives),
@@ -40,6 +41,7 @@ public partial class DirectorTest : Node
             ("Signal leads", SignalLeads),
             ("Tick cost", TickCost),
             ("Gunnery hook (not wired: nothing shoots at players yet)", GunneryHook),
+            ("Export", ExportFilter),
         };
         foreach (var (name, run) in tests)
         {
@@ -70,7 +72,7 @@ public partial class DirectorTest : Node
             new(6, Moon, new Vector3(-1000, 0, -1000), 7),
         };
 
-        int spawns = 0, ships = 0, tooClose = 0, inView = 0, inNoSpawn = 0, repeats = 0;
+        int spawns = 0, ships = 0, tooClose = 0, inView = 0, inNoSpawn = 0, repeats = 0, peacefulInHostile = 0, freeholderShips = 0;
         float nearest = float.MaxValue, narrowest = 180f, shortestRepeat = float.MaxValue;
         var last = new Dictionary<(string, string), double>();
         int leads = 0, badLeads = 0;
@@ -81,6 +83,8 @@ public partial class DirectorTest : Node
             {
                 ships++;
                 if (zi.Zone.BlocksSpawn(ship.Position)) inNoSpawn++;
+                if (enc.Def.Hostile && !d.Deck.Fights(ship.Faction)) peacefulInHostile++;
+                if (ship.Faction == "freeholders") freeholderShips++;
                 foreach (PlayerState p in zi.Players)
                 {
                     float dist = Vector3.Distance(ship.Position, p.Position);
@@ -131,6 +135,8 @@ public partial class DirectorTest : Node
         Check(overCaps == 0, "no category cap was ever exceeded");
         Check(repeats == 0, Inv($"no event type repeated within {cfg.NoRepeatWindow:F0} s in a zone (shortest repeat {shortestRepeat:F1} s)"));
         Check(leads > 0 && badLeads == 0, Inv($"all {leads} leads from natural spawns were within the fuzz"));
+        Check(freeholderShips > 0 && peacefulInHostile == 0,
+            $"no Ledger Exchange or Freeholder ship ever spawned in a hostile event ({freeholderShips} Freeholder ships seen)");
     }
 
     void DeckWeightsFollowTags()
@@ -166,7 +172,7 @@ public partial class DirectorTest : Node
               && Share(deck, deep, unclaimed, "kessari-miners", cfg) == 0f,
             "Kessari miners only inside Kessari territory");
         Check(Share(deck, orbit, Vector3.Zero, "patrol-vs-reavers", cfg) > 0f && Share(deck, lanes, Vector3.Zero, "patrol-vs-reavers", cfg) == 0f,
-            "Concord patrols inside Concord territory, never in unclaimed space");
+            "Meridian patrols inside Meridian territory, never in unclaimed space");
         float home = Raw(deck, deep, reaverOnly, "reaver-pack", cfg), away = Raw(deck, deep, kessariOnly, "reaver-pack", cfg);
         Check(MathF.Abs(home - away * cfg.Territory.HomeBoost) < 1e-3f, Inv($"Reaver packs spawn {cfg.Territory.HomeBoost}x as often in Reaver territory"));
 
@@ -229,12 +235,13 @@ public partial class DirectorTest : Node
         Encounter freighter = d.DebugSpawn(Orbit, "freighter-pass", new Vector3(-2500, 200, 0), Vector3.Zero);
         Encounter fight = d.DebugSpawn(Orbit, "patrol-vs-reavers", new Vector3(0, 300, 3000), Vector3.Zero);
 
-        // Fly over to the freighter and claim it.
-        WorldEntity claimed = freighter.Ships[0];
-        d.SetPlayer(0, Orbit, claimed.Position + new Vector3(0, 60, 0), -Vector3.UnitZ);
-        TouchOutcome touch = d.Touch(0, claimed.Id);
-        Check(touch.Status == TouchStatus.Touched && claimed.IsLasting && d.Ledger.Contains(claimed.Id) && !claimed.Live,
-            $"touching the freighter ({touch.Kind}) promoted it to a lasting record on the spot");
+        // Fly over to the live freighter and touch it: remembered, but still its crew's.
+        WorldEntity touched = freighter.Ships[0];
+        d.SetPlayer(0, Orbit, touched.Position + new Vector3(0, 60, 0), -Vector3.UnitZ);
+        TouchOutcome touch = d.Touch(0, touched.Id);
+        Check(touch.Status == TouchStatus.Touched && touch.Kind == TouchKind.Touched && touched.Owner < 0
+              && touched.IsLasting && d.Records.Contains(touched.Id) && !touched.Live,
+            "touching a live freighter makes it a permanent record on the spot, but not the player's");
 
         // Back home to watch the fight until someone is shot down.
         for (int i = 0; i < 1200 && !fight.Ships.Any(s => s.Wrecked); i++)
@@ -243,26 +250,34 @@ public partial class DirectorTest : Node
             d.Tick();
         }
         var wrecks = fight.Ships.Where(s => s.Wrecked).Select(s => s.Id).ToList();
-        Check(wrecks.Count > 0 && wrecks.All(d.Ledger.Contains), Inv($"{wrecks.Count} ship(s) wrecked in sight were registered as salvage"));
+        Check(wrecks.Count > 0 && wrecks.All(d.Records.Contains), Inv($"{wrecks.Count} ship(s) wrecked in sight were registered as salvage"));
+
+        // A wreck's core is gone, so it can be claimed.
+        WorldEntity salvage = fight.Ships.First(s => s.Wrecked);
+        d.SetPlayer(0, Orbit, salvage.Position + new Vector3(0, 60, 0), Vector3.UnitZ);
+        TouchOutcome claim = d.Touch(0, salvage.Id);
+        d.SetPlayer(0, Orbit, Vector3.Zero, Vector3.UnitZ);
+        Check(claim.Kind == TouchKind.Claimed && salvage.Owner == 0, "touching a wreck claims it as salvage: now the player's");
 
         ZoneInstance zi = d.Instance(Orbit);
         var untouched = zi.Ships.Select(s => s.Id).ToList();
-        int lasting = d.Ledger.InZone(Orbit).Count;
+        int lasting = d.Records.InZone(Orbit).Count;
         d.SetPlayer(0, Deep, Vector3.Zero, -Vector3.UnitZ); // the last player leaves Veyra
 
         Check(d.Instance(Orbit) == null, "the zone instance is gone once its last player leaves");
-        Check(untouched.Count > 0 && untouched.All(id => !d.Ledger.Contains(id)),
+        Check(untouched.Count > 0 && untouched.All(id => !d.Records.Contains(id)),
             $"all {untouched.Count} untouched ships were cleaned up");
-        Check(d.Ledger.Contains(claimed.Id) && claimed.Touch == TouchKind.Claimed && claimed.Owner == 0 && claimed.ZoneId == Orbit,
-            "the claimed freighter stays, as a lasting record in Veyra");
-        Check(wrecks.All(d.Ledger.Contains) && d.Ledger.InZone(Orbit).Count == lasting,
-            Inv($"the wrecks stay as salvage ({lasting} lasting records in Veyra before and after)"));
+        Check(d.Records.Contains(touched.Id) && touched.Touch == TouchKind.Touched && touched.Owner < 0 && touched.ZoneId == Orbit,
+            "the touched freighter stays, as a permanent record in Veyra, still not the player's");
+        Check(d.Records.Contains(salvage.Id) && salvage.Owner == 0, "the claimed wreck stays, and is still the player's");
+        Check(wrecks.All(d.Records.Contains) && d.Records.InZone(Orbit).Count == lasting,
+            Inv($"the wrecks stay as salvage ({lasting} permanent records in Veyra before and after)"));
 
         d.SetPlayer(0, Orbit, Vector3.Zero, -Vector3.UnitZ);
         ZoneInstance again = d.Instance(Orbit);
-        Check(again.Visit == 2 && again.Encounters.Count == 0 && d.Ledger.InZone(Orbit).Count == lasting,
+        Check(again.Visit == 2 && again.Encounters.Count == 0 && d.Records.InZone(Orbit).Count == lasting,
             "coming back starts fresh events, and the records are still there");
-        Check(d.Ledger.GuardTrips == 0, "the cleanup guard never had to step in");
+        Check(d.Records.GuardTrips == 0, "the cleanup guard never had to step in");
     }
 
     void PlayerOwnedSurvives()
@@ -290,10 +305,14 @@ public partial class DirectorTest : Node
             WorldEntity e = d.RegisterPlayerOwned(0, Orbit, EntityKind.PlayerCargo, "cargo-pod", "crate by a fight", ship.Position, Vector3.UnitZ);
             owned.Add((e, e.Position, Orbit));
         }
-        // ...one event ship claimed mid-event...
+        // ...touching a live event ship doesn't make it theirs...
+        WorldEntity marked = fight.Ships[2];
+        d.SetPlayer(0, Orbit, marked.Position + Vector3.UnitY * 50f, Vector3.UnitZ);
+        d.Touch(0, marked.Id);
+        Check(marked.Touch == TouchKind.Touched && marked.Owner < 0, "touching a live ship mid-event marks it but doesn't make it the player's");
+        // ...one taken mid-event with the debug claim, standing in for boarding and hijacking its core...
         WorldEntity claimed = fight.Ships[0];
-        d.SetPlayer(0, Orbit, claimed.Position + Vector3.UnitY * 50f, Vector3.UnitZ);
-        d.Touch(0, claimed.Id);
+        d.DebugClaim(0, claimed.Id);
         // ...and one marked owned by some future system that forgets to promote it. Only the guard stands in the way.
         WorldEntity sneaky = fight.Ships[1];
         sneaky.Owner = 1;
@@ -305,11 +324,13 @@ public partial class DirectorTest : Node
             players[hop % 2].Zone = players[hop % 2].Zone == Orbit ? Deep : Orbit;
         }
 
-        int moved = owned.Count(o => !d.Ledger.Contains(o.Entity.Id) || o.Entity.Position != o.Position || o.Entity.ZoneId != o.Zone || o.Entity.Owner < 0);
+        int moved = owned.Count(o => !d.Records.Contains(o.Entity.Id) || o.Entity.Position != o.Position || o.Entity.ZoneId != o.Zone || o.Entity.Owner < 0);
         Check(moved == 0 && owned.All(o => !removed.Contains(o.Entity.Id)),
             $"all {owned.Count} player-owned things are still there, untouched, after 120 zone hops");
-        Check(d.Ledger.Contains(claimed.Id) && claimed.Owner == 0 && !removed.Contains(claimed.Id), "the ship claimed mid-event is still there, and still theirs");
-        Check(d.Ledger.Contains(sneaky.Id) && !removed.Contains(sneaky.Id) && d.Ledger.GuardTrips == 1,
+        Check(d.Records.Contains(claimed.Id) && claimed.Owner == 0 && !removed.Contains(claimed.Id),
+            "the ship taken mid-event (debug claim, standing in for boarding) is still there, and still theirs");
+        Check(d.Records.Contains(marked.Id) && marked.Owner < 0 && !removed.Contains(marked.Id), "the touched ship is still there, still not theirs");
+        Check(d.Records.Contains(sneaky.Id) && !removed.Contains(sneaky.Id) && d.Records.GuardTrips == 1,
             "a ship marked owned without being promoted was kept by the cleanup guard, not removed");
     }
 
@@ -396,6 +417,58 @@ public partial class DirectorTest : Node
         GD.Print(Inv($"      director tick: average {d.Stats.AverageMicros:F1} us, max {d.Stats.MaxMicros:F1} us"));
         Check(d.Stats.AverageMicros < 100 && d.Stats.MaxMicros < 2000,
             Inv($"the director's tick stays tiny (average {d.Stats.AverageMicros:F1} us, max {d.Stats.MaxMicros:F1} us at {d.Config.TickHz} Hz)"));
+    }
+
+    void VharnAndFreeholders()
+    {
+        DirectorConfig cfg = Config();
+        EventDeck deck = Deck();
+        ZoneCatalog zones = Zones();
+        ZoneDef deep = zones.Get(Deep), orbit = zones.Get(Orbit), surface = zones.Get(Surface);
+        ZoneDef march = zones.Get("vharn-march"), karesh = zones.Get("karesh-surface");
+        Vector3 vharnSpace = new(-8500, 0, -7500), holt = new(5200, 0, 3600);
+
+        // The Vharn Dominion: the main enemy, hostile, and only in their own territory.
+        var vharn = deck.Events.Where(e => e.Faction == "vharn").ToList();
+        Check(vharn.Count >= 3 && vharn.All(e => e.Hostile && e.Territory == TerritoryRule.Inside),
+            $"all {vharn.Count} Vharn cards are hostile and need Vharn territory");
+        Check(Share(deck, deep, vharnSpace, "vharn-patrol", cfg) > 0f && Share(deck, deep, vharnSpace, "vharn-capital", cfg) > 0f
+              && Share(deck, march, Vector3.Zero, "vharn-capital", cfg) > 0f
+              && Share(deck, deep, Vector3.Zero, "vharn-patrol", cfg) == 0f && Share(deck, orbit, Vector3.Zero, "vharn-patrol", cfg) == 0f,
+            "Vharn patrols and capital ships come only in Vharn space");
+        Check(Share(deck, karesh, Vector3.Zero, "vharn-garrison", cfg) > 0f && Share(deck, surface, Vector3.Zero, "vharn-garrison", cfg) == 0f
+              && Share(deck, march, Vector3.Zero, "vharn-garrison", cfg) == 0f,
+            "Vharn garrison troops patrol only on Vharn worlds' surfaces");
+        int inVharn = CountSpawns(Deep, vharnSpace, "vharn-patrol"), outVharn = CountSpawns(Deep, Vector3.Zero, "vharn-patrol");
+        Check(inVharn > 0 && outVharn == 0, $"a player in Vharn space meets Vharn patrols ({inVharn} spawns), a player outside never does ({outVharn})");
+
+        // The Freeholders: settlers round their outposts, who never attack.
+        var free = deck.Events.Where(e => e.Ships.Any(g => (g.Faction != "" ? g.Faction : e.Faction) == "freeholders")).ToList();
+        Check(free.Count >= 2 && free.All(e => !e.Hostile && e.Anchor == "outpost" && e.Territory == TerritoryRule.Inside),
+            $"all {free.Count} Freeholder cards are peaceful, at their outposts, in their territory");
+        Check(Share(deck, orbit, holt, "freeholder-haulers", cfg) > 0f && Share(deck, orbit, holt, "freeholder-miners", cfg) > 0f
+              && Share(deck, orbit, Vector3.Zero, "freeholder-haulers", cfg) == 0f && Share(deck, deep, Vector3.Zero, "freeholder-miners", cfg) == 0f,
+            "Freeholder haulers and mining skiffs work only round their outposts");
+        int inHolt = CountSpawns(Orbit, holt, "freeholder-haulers") + CountSpawns(Orbit, holt, "freeholder-miners");
+        int outHolt = CountSpawns(Orbit, Vector3.Zero, "freeholder-haulers") + CountSpawns(Orbit, Vector3.Zero, "freeholder-miners");
+        Check(inHolt > 0 && outHolt == 0, $"a player at Holt outpost meets Freeholders ({inHolt} spawns), a player away from it never does ({outHolt})");
+
+        var near = new List<string>();
+        orbit.FactionsAt(holt, cfg.Territory.BorderMargin, near);
+        Check(near.Contains("reavers") && near.Contains("freeholders") && Share(deck, orbit, holt, "border-clash", cfg) == 0f,
+            "Reaver and Freeholder territory overlap at Holt, but Freeholders never take a side in a border clash");
+        string hostileSettlers = _deckJson.Replace("\"faction\": \"freeholders\", \"territory\": \"inside\", \"hostile\": false",
+            "\"faction\": \"freeholders\", \"territory\": \"inside\", \"hostile\": true");
+        bool refused = false;
+        try { EventDeck.Parse(hostileSettlers); }
+        catch (FormatException) { refused = true; }
+        Check(hostileSettlers != _deckJson && refused, "the deck refuses to load a card where Freeholders attack");
+    }
+
+    void ExportFilter()
+    {
+        string presets = FileAccess.GetFileAsString("res://export_presets.cfg");
+        Check(presets.Contains("include_filter=\"*.json\""), "the export preset includes the data files (*.json)");
     }
 
     void GunneryHook()
