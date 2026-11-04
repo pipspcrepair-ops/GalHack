@@ -23,3 +23,6 @@ Desktop.ini
 
 # Licensed raw assets that must never be redistributed (Sonniss, Mixamo, Pixabay, Quaternius...)
 /assets-private/
+
+# Local tools (Godot, portable .NET SDK, NuGet cache) kept off the C: drive
+/.tools/
