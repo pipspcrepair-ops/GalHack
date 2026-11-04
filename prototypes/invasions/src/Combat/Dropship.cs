@@ -1,4 +1,5 @@
 using Godot;
+using Invasions.Model;
 using Invasions.World;
 
 namespace Invasions.Combat;
@@ -18,6 +19,7 @@ public partial class Dropship : CrewedVehicle
     bool _crashed;
 
     public override Vector3 PickupPoint => Route.Drop;
+    protected override TargetClass HullClass => TargetClass.SmallVessel;
     public override bool ReadyForPickup => Phase == Mode.Pickup && GlobalPosition.Y < 0.4f && Flat(GlobalPosition, Route.Drop) < 2f;
 
     public bool Landed => GlobalPosition.Y < 0.3f;

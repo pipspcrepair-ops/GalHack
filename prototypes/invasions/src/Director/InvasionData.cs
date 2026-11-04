@@ -81,7 +81,9 @@ public sealed class VehicleTypeData
 {
     public string Label { get; set; } = "";
     public int Capacity { get; set; } = 6;
-    public int Gunners { get; set; } = 2;
+    /// <summary>One weapon (from fire_control.json) per gunner.</summary>
+    public List<string> Guns { get; set; } = new();
+    public int Gunners => Guns.Count;
     public bool Flies { get; set; }
     public double Speed { get; set; } = 15;
 }
@@ -100,14 +102,6 @@ public sealed class PlannerData
     public double HpPerCellOfDetour { get; set; } = 30;
 }
 
-public sealed class PlayerSafetyData
-{
-    public double MaxHitFraction { get; set; } = 0.35;
-    public double GraceBelowFraction { get; set; } = 0.25;
-    public double GraceSeconds { get; set; } = 2.5;
-    public double GraceDamageScale { get; set; } = 0.3;
-}
-
 public sealed class InvasionData
 {
     public string Attacker { get; set; } = "Vharn Dominion";
@@ -122,7 +116,6 @@ public sealed class InvasionData
     public int MinBreachersPerVehicle { get; set; } = 1;
     public ApproachData Approach { get; set; } = new();
     public PlannerData Planner { get; set; } = new();
-    public PlayerSafetyData PlayerSafety { get; set; } = new();
     public Dictionary<string, string> Messages { get; set; } = new();
 
     /// <summary>Warnings in the order they fire: furthest from arrival first.</summary>

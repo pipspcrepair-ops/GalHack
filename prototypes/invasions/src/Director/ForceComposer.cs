@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Invasions.Director;
@@ -59,7 +60,7 @@ public static class ForceComposer
                 Label = vt.Label,
                 Flies = vt.Flies,
                 Speed = vt.Speed,
-                Gunners = vt.Gunners,
+                Guns = new List<string>(vt.Guns),
             });
             capacity += Math.Max(1, vt.Capacity);
         }

@@ -65,7 +65,9 @@ public sealed class VehiclePlan
     public string Label { get; init; } = "";
     public bool Flies { get; init; }
     public double Speed { get; init; }
-    public int Gunners { get; init; }
+    /// <summary>The weapon on each gun, one gunner per gun.</summary>
+    public List<string> Guns { get; init; } = new();
+    public int Gunners => Guns.Count;
     public List<string> Troops { get; } = new();
     /// <summary>Sideways offset from the approach line, metres, so vehicles come in abreast.</summary>
     public double Offset { get; set; }

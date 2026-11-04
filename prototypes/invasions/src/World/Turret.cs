@@ -27,7 +27,8 @@ public partial class Turret : Node3D
     public Transform3D ViewTransform => _pitch.GlobalTransform.TranslatedLocal(new Vector3(0, 1.05f, 1.1f));
 
     public const float TowerHeight = 3.3f;
-    const float Range = 135f, Interval = 0.2f, Damage = 18f, Spread = 1.4f, YawRate = 2.4f, PitchRate = 1.4f;
+    const float Range = 135f, YawRate = 2.4f, PitchRate = 1.4f;
+    FireControl _fireControl;
 
     Node3D _yaw, _pitch;
     MeshInstance3D _lamp;
@@ -62,6 +63,7 @@ public partial class Turret : Node3D
             Layers.Blocks, Faction.Defenders, () => Block.Alive, (amount, from, by) => Model.Damage(Block, amount));
         _yaw.AddChild(_head);
         World.TurretHeads.Add(_head);
+        _fireControl = new FireControl(World.FireData, World.FireData.Weapon("base_cannon"));
         _ignore = new Godot.Collections.Array<Rid> { _head.GetRid() };
         if (GetParent()?.GetNodeOrNull<HitBox>("Body") is HitBox tower) _ignore.Add(tower.GetRid());
     }
@@ -92,6 +94,7 @@ public partial class Turret : Node3D
         {
             _scan = 0.3f;
             _target = World.NearestInvader(muzzle, Range, Layers.World | Layers.Blocks | Layers.Vehicles, _ignore);
+            if (_target == null) _fireControl.LostSight();
         }
         if (!CombatWorld.Usable(_target)) _target = null;
         if (_target == null) return;
@@ -103,20 +106,29 @@ public partial class Turret : Node3D
         _pitch.Rotation = new Vector3(Mathf.RotateToward(_pitch.Rotation.X, Mathf.Clamp(wantPitch, -0.6f, 1.2f), PitchRate * dt), 0, 0);
 
         Vector3 toTarget = (_target.AimPoint - muzzle).Normalized();
-        if (Forward.AngleTo(toTarget) < Mathf.DegToRad(3f)) Fire(toTarget);
+        if (Forward.AngleTo(toTarget) < Mathf.DegToRad(3f) && _fire <= 0f)
+        {
+            _fire = (float)_fireControl.Weapon.Interval;
+            _barrel = !_barrel;
+            ShotsFired++;
+            World.FireAt(_fireControl, Muzzle(), _target, Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler, _ignore, Range * 1.4f);
+            Fx.Flash(Muzzle(), Palette.TracerSettler, 5f, 3f);
+        }
     }
 
     Vector3 Forward => -_pitch.GlobalBasis.Z;
     Vector3 Muzzle() => _pitch.GlobalTransform * new Vector3(_barrel ? 0.3f : -0.3f, 0.05f, -2.2f);
 
-    void Fire(Vector3 direction)
+    /// <summary>A shot aimed by a player at the controls: the weapon's hand-aimed spread, no fire control.</summary>
+    void FireByHand()
     {
         if (_fire > 0f) return;
-        _fire = Interval;
+        _fire = (float)_fireControl.Weapon.Interval;
         _barrel = !_barrel;
         ShotsFired++;
         Vector3 muzzle = Muzzle();
-        World.Shoot(muzzle, direction, Range * 1.3f, Spread, Layers.DefenderShots, Faction.Defenders, Damage, Palette.TracerSettler, _ignore);
+        World.Fire(muzzle, muzzle + Forward * 100f, _fireControl.Weapon, (float)_fireControl.Weapon.AimedSpreadDegrees,
+            Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler, _ignore, maxDistance: 500f);
         Fx.Flash(muzzle, Palette.TracerSettler, 5f, 3f);
     }
 
@@ -139,6 +151,6 @@ public partial class Turret : Node3D
 
     public void FireManual()
     {
-        if (Powered) Fire(Forward);
+        if (Powered) FireByHand();
     }
 }

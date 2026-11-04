@@ -38,13 +38,17 @@ public partial class Main : Node3D
         Fx.Root = effects;
 
         Model = new BaseModel(baseData, new GroundPos(0, 0));
-        Combat = new CombatWorld { Name = "Combat", Model = Model, Data = Data, Planner = new BreachPlanner(Data.Planner.HpPerCellOfDetour) };
+        Combat = new CombatWorld
+        {
+            Name = "Combat", Model = Model, Data = Data, FireData = GameData.FireControl(),
+            Planner = new BreachPlanner(Data.Planner.HpPerCellOfDetour),
+        };
         AddChild(Combat);
 
         var camera = new Camera3D { Name = "Camera", Fov = 78f, Near = 0.05f, Far = 6000f };
         AddChild(camera);
         camera.MakeCurrent();
-        Player = new Player { Name = "Player", Camera = camera, World = Combat, Health = new PlayerHealth(Data.PlayerSafety) };
+        Player = new Player { Name = "Player", Camera = camera, World = Combat, Health = new PlayerHealth() };
 
         Base = new BaseView { Name = "Base", Model = Model, World = Combat, Player = Player };
         AddChild(Base);

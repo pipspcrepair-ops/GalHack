@@ -21,6 +21,7 @@ public partial class InvasionTest : Node
     InvasionData _data;
     ServerSettings _server;
     BaseData _base;
+    FireControlData _fire;
     int _failures, _passes;
 
     static readonly GroundPos Home = new(0, 0);
@@ -33,6 +34,7 @@ public partial class InvasionTest : Node
             _data = GameData.Invasions();
             _server = GameData.Server();
             _base = GameData.Base();
+            _fire = GameData.FireControl();
 
             Section("Director");
             NoInvasionWithoutPlayers();
@@ -48,7 +50,13 @@ public partial class InvasionTest : Node
             CoreLossTakesBaseOfflineAndBack();
             CrewDeathsSilenceGunsAndStopVehicles();
             PlannerBreachesWallToCoreRoom();
-            PlayerHitsAreCappedWithGrace();
+
+            Section("Fire control");
+            FirstShotsAtPlayerAlwaysMiss();
+            AccuracyReachesBaselineByTwoSeconds();
+            LineOfSightBreakResetsTheRamp();
+            BaselineComesFromShooterTargetAndWeapon();
+            DamageIsNeverScaled();
 
             await SceneTests();
         }
@@ -354,16 +362,93 @@ public partial class InvasionTest : Node
         Check(plan.Found && grid.CoreRoom.Contains(plan.Cells[^1]), "and ends inside the core room, next to the core");
     }
 
-    void PlayerHitsAreCappedWithGrace()
+    // ---- Fire control -----------------------------------------------------------------
+
+    FireControl Gun(string weapon) => new(_fire, _fire.Weapon(weapon));
+
+    /// <summary>Fires a weapon at its own rate from <paramref name="start"/> and returns each shot's solution.</summary>
+    List<ShotSolution> Burst(FireControl fc, object target, TargetClass cls, bool isPlayer, int shots, double start = 0)
     {
-        var hp = new PlayerHealth(_data.PlayerSafety);
-        double taken = hp.ApplyNpcHit(80, 0);
-        Check(Math.Abs(taken - 35) < 1e-9, $"an 80-damage NPC hit takes only 35% of max health ({taken})");
-        hp.ApplyNpcHit(35, 1);
-        hp.ApplyNpcHit(10, 2); // 100 → 65 → 30 → 20: below 25%
-        Check(hp.InGrace(2.1), "dropping below 25% opens a grace window");
-        double reduced = hp.ApplyNpcHit(35, 2.5);
-        Check(hp.Alive && reduced < 35 * 0.5, $"hits in the grace window are reduced ({reduced:F1})");
+        var list = new List<ShotSolution>();
+        for (int i = 0; i < shots; i++) list.Add(fc.NextShot(target, cls, isPlayer, start + i * fc.Weapon.Interval));
+        return list;
+    }
+
+    void FirstShotsAtPlayerAlwaysMiss()
+    {
+        int n = _fire.Warning.Shots;
+        var player = new object();
+        var rifle = Burst(Gun("rifle"), player, TargetClass.OnFoot, true, 10);
+        Check(rifle.Take(n).All(x => x.Warning) && !rifle.Skip(n).Any(x => x.Warning),
+            $"a rifle's first {n} shots at a player are warning shots, then it aims ({string.Join("", rifle.Select(x => x.Warning ? 'W' : 'a'))})");
+        var minigun = Burst(Gun("minigun"), player, TargetClass.OnFoot, true, 12);
+        int warned = minigun.TakeWhile(x => x.Warning).Count();
+        Check(warned >= n && warned * _fire.Weapon("minigun").Interval >= _fire.Warning.Seconds && !minigun.Skip(warned).Any(x => x.Warning),
+            $"a minigun keeps warning for the first {_fire.Warning.Seconds} s ({warned} shots)");
+        var turretVsTroop = Burst(Gun("base_cannon"), new object(), TargetClass.OnFoot, false, 3);
+        Check(turretVsTroop.All(x => !x.Warning), "fire at non-players gets no warning shots");
+    }
+
+    void AccuracyReachesBaselineByTwoSeconds()
+    {
+        var fc = Gun("rifle");
+        var player = new object();
+        double baseline = _fire.BaselineSpread(fc.Weapon, TargetClass.OnFoot);
+        var shots = Burst(fc, player, TargetClass.OnFoot, true, 4); // the 4th is the first aimed shot
+        double warningEnded = 3 * fc.Weapon.Interval;
+        double first = shots[3].SpreadDegrees;
+        double half = fc.NextShot(player, TargetClass.OnFoot, true, warningEnded + _fire.Ramp.Seconds / 2).SpreadDegrees;
+        double settled = fc.NextShot(player, TargetClass.OnFoot, true, warningEnded + _fire.Ramp.Seconds).SpreadDegrees;
+        Check(Math.Abs(first - _fire.Ramp.StartSpreadDegrees) < 1e-9 && half < first && half > baseline && Math.Abs(settled - baseline) < 1e-9,
+            $"spread ramps {first:F2}° → {half:F2}° → baseline {settled:F2}° over {_fire.Ramp.Seconds} s after the warning");
+    }
+
+    void LineOfSightBreakResetsTheRamp()
+    {
+        var fc = Gun("rifle");
+        var player = new object();
+        Burst(fc, player, TargetClass.OnFoot, true, 12);
+        double settled = fc.NextShot(player, TargetClass.OnFoot, true, 20).SpreadDegrees;
+        fc.LostSight();
+        var again = Burst(fc, player, TargetClass.OnFoot, true, 4, start: 25);
+        Check(Math.Abs(settled - _fire.BaselineSpread(fc.Weapon, TargetClass.OnFoot)) < 1e-9 && again.Take(_fire.Warning.Shots).All(x => x.Warning) &&
+              Math.Abs(again[3].SpreadDegrees - _fire.Ramp.StartSpreadDegrees) < 1e-9,
+            "breaking line of sight resets it: warning shots again, then the ramp from wide");
+    }
+
+    void BaselineComesFromShooterTargetAndWeapon()
+    {
+        double G(string grade) => _fire.Grades[grade];
+        double B(string weapon, TargetClass t) => _fire.BaselineSpread(_fire.Weapon(weapon), t);
+        Check(B("rifle", TargetClass.OnFoot) == G("good") && B("rifle", TargetClass.Hover) == G("fair") &&
+              B("rifle", TargetClass.SmallVessel) == G("poor") && B("rifle", TargetClass.Capital) == G("very_poor"),
+            "infantry small arms: good on foot, fair hover, poor small vessel, very poor capital");
+        Check(B("autocannon", TargetClass.OnFoot) == G("fair") && B("autocannon", TargetClass.Hover) == G("good") &&
+              B("autocannon", TargetClass.SmallVessel) == G("good") && B("autocannon", TargetClass.Capital) == G("good"),
+            "hover and small-vessel guns: fair on foot, good against everything else");
+        Check(B("base_cannon", TargetClass.OnFoot) == G("very_poor") && B("base_cannon", TargetClass.Hover) == G("poor") &&
+              B("base_cannon", TargetClass.SmallVessel) == G("fair") && B("base_cannon", TargetClass.Capital) == G("very_good"),
+            "capital and base turrets: very poor on foot, poor hover, fair small vessel, very good capital");
+        Check(B("minigun", TargetClass.OnFoot) > B("rifle", TargetClass.OnFoot) && B("rail", TargetClass.Hover) < B("autocannon", TargetClass.Hover) &&
+              B("laser", TargetClass.Hover) < B("autocannon", TargetClass.Hover) &&
+              B("artillery", TargetClass.Capital) < B("artillery", TargetClass.OnFoot) / 3,
+            "minigun sprays, rail and laser are precise, artillery is only good against big targets");
+        WeaponData rocket = _fire.Weapon("rocket_pod"), capital = _fire.Weapon("capital_gun"), cannon = _fire.Weapon("autocannon");
+        Check(rocket.TurnRateDegrees > 0 && rocket.TurnRateDegrees < 45 && capital.ProjectileSpeed is >= 250 and <= 350 &&
+              Math.Abs(cannon.ProjectileSpeed - 600) < 1 && _fire.Weapon("base_cannon").ProjectileSpeed < cannon.ProjectileSpeed,
+            $"rockets track slowly ({rocket.TurnRateDegrees}°/s); capital rounds fly {capital.ProjectileSpeed} m/s against {cannon.ProjectileSpeed} m/s for small-craft guns");
+    }
+
+    void DamageIsNeverScaled()
+    {
+        var hp = new PlayerHealth();
+        double taken = hp.TakeHit(80);
+        Check(taken == 80 && hp.Current == 20, $"an 80-damage hit takes 80 ({taken}), with no cap");
+        double low = hp.TakeHit(15);
+        Check(low == 15 && hp.Current == 5, "low health gets no grace: 15 more takes 15");
+        var fresh = new PlayerHealth();
+        fresh.TakeHit(_fire.Weapon("capital_gun").Damage);
+        Check(!fresh.Alive, "a capital gun round vaporises a player on foot");
     }
 
     // ---- Scene ------------------------------------------------------------------------

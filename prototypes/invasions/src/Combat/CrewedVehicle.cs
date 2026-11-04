@@ -57,9 +57,13 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
         public IDamageable Target;
         public float FireTimer, ScanTimer;
         public bool Barrel;
+        public FireControl Fire;
     }
 
-    const float GunRange = 170f, GunInterval = 0.14f, GunDamage = 11f, GunSpread = 2.2f, CrewHp = 80f;
+    /// <summary>Accuracy row for anyone shooting at this vehicle's crew.</summary>
+    protected abstract TargetClass HullClass { get; }
+
+    const float GunRange = 170f, CrewHp = 80f;
 
     public override void _Ready()
     {
@@ -164,6 +168,7 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
             gun.Target = Phase == Mode.Approach && Speed > 8f
                 ? null
                 : World.NearestPlayer(muzzle, GunRange, sight) ?? World.NearestTurret(muzzle, GunRange, sight);
+            if (gun.Target == null) gun.Fire.LostSight();
         }
         if (!CombatWorld.Usable(gun.Target)) gun.Target = null;
 
@@ -183,11 +188,17 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
         Vector3 toTarget = (gun.Target.AimPoint - muzzle).Normalized();
         if (forward.AngleTo(toTarget) > Mathf.DegToRad(6f)) return;
 
-        gun.FireTimer = GunInterval;
+        if (!World.LineOfSight(muzzle, gun.Target, Layers.World | Layers.Blocks))
+        {
+            gun.Fire.LostSight(); // broke line of sight: the ramp starts over
+            gun.Target = null;
+            return;
+        }
+        gun.FireTimer = (float)gun.Fire.Weapon.Interval;
         gun.Barrel = !gun.Barrel;
         _shots[gun.Index]++;
         Vector3 from = muzzle + gun.Pitch.GlobalBasis.X * (gun.Barrel ? 0.12f : -0.12f);
-        World.Shoot(from, toTarget, GunRange * 1.2f, GunSpread, Layers.InvaderShots, Faction.Vharn, GunDamage, Palette.TracerVharn);
+        World.FireAt(gun.Fire, from, gun.Target, Layers.InvaderShots, Faction.Vharn, Palette.TracerVharn, maxDistance: GunRange * 1.4f);
         if (_shots[gun.Index] % 3 == 0) Fx.Flash(from, Palette.TracerVharn, 4f, 2f);
     }
 
@@ -222,6 +233,7 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
                 else Fx.Spark(figure.GlobalPosition + Vector3.Up * 0.5f, Palette.SirenRed, 0.12f);
             });
         box.AimOffset = new Vector3(0, 0.15f, 0);
+        box.Class = HullClass;
         figure.AddChild(box);
         _crewBoxes.Add(box);
         return figure;
@@ -250,7 +262,11 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
         Palette.Box(pitch, new Vector3(-0.12f, 0, -0.75f), new Vector3(0.08f, 0.08f, 1.1f), metal);
         Palette.Box(pitch, new Vector3(0, 0.05f, -0.42f), new Vector3(0.9f, 0.55f, 0.06f), Palette.Mat(Palette.Bone, 0.5f)); // shield
         CrewFigure(index + 1, yaw, new Vector3(0, 0.2f, 0.35f));
-        var gun = new Gun { Index = index, Yaw = yaw, Pitch = pitch, MuzzleLocal = new Vector3(0, 0, -1.35f), RestYaw = restYaw };
+        var gun = new Gun
+        {
+            Index = index, Yaw = yaw, Pitch = pitch, MuzzleLocal = new Vector3(0, 0, -1.35f), RestYaw = restYaw,
+            Fire = new FireControl(World.FireData, World.FireData.Weapon(Plan.Guns[index])),
+        };
         gun.ScanTimer = 0.3f * index;
         Guns.Add(gun);
         return gun;

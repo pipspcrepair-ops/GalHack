@@ -10,6 +10,7 @@ public static class GameData
     public static InvasionData Invasions() => InvasionData.FromJson(Read("res://data/invasions.json"));
     public static ServerSettings Server() => ServerSettings.FromJson(Read("res://data/server.json"));
     public static BaseData Base() => BaseData.FromJson(Read("res://data/base.json"));
+    public static FireControlData FireControl() => FireControlData.FromJson(Read("res://data/fire_control.json"));
 
     static string Read(string path)
     {

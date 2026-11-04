@@ -8,15 +8,18 @@ using Invasions.World;
 namespace Invasions.Combat;
 
 /// <summary>
-/// Who is in the fight and how shots resolve. PLACEHOLDER combat: hitscan rays, flat damage, simple
-/// target picking. It knows the base (to turn grid cells into world positions and route damage to
-/// blocks), the defenders invaders may shoot, and the invaders defenders may shoot.
+/// Who is in the fight and how shots resolve. PLACEHOLDER combat: simple target picking and flat
+/// damage, but rounds are real projectiles with visible travel time (speeds from fire_control.json),
+/// and AI fire goes through <see cref="FireControl"/> (warning shots, accuracy ramp, shooter × target
+/// accuracy). Damage is never scaled. It also knows the base, to turn grid cells into world positions
+/// and route damage to blocks.
 /// </summary>
 public partial class CombatWorld : Node3D
 {
     public BaseModel Model;
     public IAssaultPlanner Planner;
     public InvasionData Data;
+    public FireControlData FireData;
 
     /// <summary>Things invaders shoot at: players, and the heads of the base's turrets.</summary>
     public readonly List<IDamageable> Players = new();
@@ -24,8 +27,15 @@ public partial class CombatWorld : Node3D
     public readonly List<IInvaderTroop> Troops = new();
     public readonly List<IInvaderVehicle> Vehicles = new();
 
-    /// <summary>Seconds of game time; the player's grace window runs on this.</summary>
+    /// <summary>Seconds of game time; fire control's ramps run on this.</summary>
     public float Time { get; private set; }
+
+    /// <summary>Counters for tests and tuning.</summary>
+    public int RoundsFired { get; private set; }
+    public int WarningRoundsFired { get; private set; }
+    /// <summary>Warning rounds that hit the player they were fired past. Must stay zero.</summary>
+    public int WarningRoundsThatHitTheirTarget { get; private set; }
+    public int LiveRounds => _rounds.Count;
 
     /// <summary>Test hook: turrets hold fire while false.</summary>
     public bool TurretsEnabled = true;
@@ -37,6 +47,7 @@ public partial class CombatWorld : Node3D
         Time += (float)delta;
         Troops.RemoveAll(t => !IsInstanceValid(t.Body));
         Vehicles.RemoveAll(v => !IsInstanceValid(v.Body));
+        StepRounds((float)delta);
     }
 
     // ---- The base in world space ------------------------------------------------------
@@ -57,29 +68,160 @@ public partial class CombatWorld : Node3D
 
     // ---- Shooting ---------------------------------------------------------------------
 
-    /// <summary>
-    /// Fires one hitscan round. Hurts the first thing it hits if that thing is on the other side.
-    /// Returns what it hit (or null).
-    /// </summary>
-    public GodotObject Shoot(Vector3 from, Vector3 dir, float range, float spreadDegrees, uint mask, Faction shooter,
-        float damage, Color tracer, Godot.Collections.Array<Rid> exclude = null)
+    /// <summary>A round in flight.</summary>
+    sealed class Round
     {
-        dir = Spread(dir.Normalized(), spreadDegrees);
-        Vector3 to = from + dir * range;
-        var query = PhysicsRayQueryParameters3D.Create(from, to, mask, exclude ?? new Godot.Collections.Array<Rid>());
-        Godot.Collections.Dictionary hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        public Vector3 Position, Velocity;
+        public float Speed, Damage, Travelled, MaxDistance, TurnRate;
+        public uint Mask;
+        public Faction Shooter;
+        public Color Color;
+        public Godot.Collections.Array<Rid> Exclude;
+        public IDamageable Homing;
+        public IDamageable WarnedTarget;
+        public MeshInstance3D Streak;
+    }
 
-        GodotObject collider = null;
-        Vector3 end = to;
-        if (hit.Count > 0)
+    readonly List<Round> _rounds = new();
+
+    /// <summary>
+    /// AI fire at a target, through its gun's fire control: a deliberate warning miss when it has
+    /// only just started on a player, otherwise aimed with the ramped spread for this shooter and
+    /// target class. Homing weapons (rockets) track the target.
+    /// </summary>
+    public void FireAt(FireControl fireControl, Vector3 muzzle, IDamageable target, uint mask, Faction shooter, Color color,
+        Godot.Collections.Array<Rid> exclude = null, float maxDistance = 400f)
+    {
+        bool atPlayer = Players.Contains(target);
+        ShotSolution shot = fireControl.NextShot(target, target.Class, atPlayer, Time);
+        var ignore = exclude != null ? new Godot.Collections.Array<Rid>(exclude) : new Godot.Collections.Array<Rid>();
+        Vector3 aim = target.AimPoint;
+        IDamageable homing = fireControl.Weapon.TurnRateDegrees > 0 ? target : null;
+        IDamageable warned = null;
+        if (shot.Warning)
         {
-            collider = hit["collider"].AsGodotObject();
-            end = hit["position"].AsVector3();
-            if (collider is IDamageable target) target.TakeDamage(damage, from, shooter);
-            Fx.Spark(end, tracer, 0.16f);
+            // Close enough to see and hear, and it cannot hit them: their body is excluded from the round.
+            aim = WarningPoint(muzzle, target.AimPoint);
+            if (target is CollisionObject3D body) ignore.Add(body.GetRid());
+            homing = null;
+            warned = target;
+            WarningRoundsFired++;
         }
-        Fx.Tracer(from + dir * 0.5f, end, tracer);
-        return collider;
+        Fire(muzzle, aim, fireControl.Weapon, (float)shot.SpreadDegrees, mask, shooter, color, ignore, homing, maxDistance, warned);
+    }
+
+    /// <summary>Fires one round toward a point, with a spread cone in degrees.</summary>
+    public void Fire(Vector3 from, Vector3 aim, WeaponData weapon, float spreadDegrees, uint mask, Faction shooter, Color color,
+        Godot.Collections.Array<Rid> exclude = null, IDamageable homing = null, float maxDistance = 400f, IDamageable warnedTarget = null)
+    {
+        Vector3 dir = Spread((aim - from).Normalized(), spreadDegrees);
+        float speed = (float)weapon.ProjectileSpeed;
+        bool rocket = weapon.TurnRateDegrees > 0;
+        float length = rocket ? 0.9f : Mathf.Clamp(speed * 0.012f, 0.6f, 7f);
+        float width = rocket ? 0.18f : 0.07f;
+        var streak = new MeshInstance3D
+        {
+            Mesh = new BoxMesh { Size = new Vector3(width, width, length) },
+            MaterialOverride = Palette.Glow(rocket ? Palette.Fire : color, rocket ? 3f : 2.2f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(streak);
+        var round = new Round
+        {
+            Position = from,
+            Velocity = dir * speed,
+            Speed = speed,
+            Damage = (float)weapon.Damage, // never scaled
+            MaxDistance = maxDistance,
+            TurnRate = Mathf.DegToRad((float)weapon.TurnRateDegrees),
+            Mask = mask,
+            Shooter = shooter,
+            Color = color,
+            Exclude = exclude ?? new Godot.Collections.Array<Rid>(),
+            Homing = homing,
+            WarnedTarget = warnedTarget,
+            Streak = streak,
+        };
+        PlaceStreak(round);
+        streak.ResetPhysicsInterpolation();
+        _rounds.Add(round);
+        RoundsFired++;
+    }
+
+    void StepRounds(float dt)
+    {
+        PhysicsDirectSpaceState3D space = GetWorld3D().DirectSpaceState;
+        for (int i = _rounds.Count - 1; i >= 0; i--)
+        {
+            Round r = _rounds[i];
+            if (r.TurnRate > 0 && Usable(r.Homing))
+            {
+                // Rockets track, but slowly: a dodge inside their turning circle beats them.
+                Vector3 want = (r.Homing.AimPoint - r.Position).Normalized();
+                Vector3 now = r.Velocity.Normalized();
+                float angle = now.AngleTo(want);
+                if (angle > 1e-4f)
+                {
+                    Vector3 axis = now.Cross(want);
+                    if (axis.LengthSquared() > 1e-8f)
+                        r.Velocity = now.Rotated(axis.Normalized(), Mathf.Min(angle, r.TurnRate * dt)) * r.Speed;
+                }
+            }
+
+            Vector3 step = r.Velocity * dt;
+            var query = PhysicsRayQueryParameters3D.Create(r.Position, r.Position + step, r.Mask, r.Exclude);
+            Godot.Collections.Dictionary hit = space.IntersectRay(query);
+            if (hit.Count > 0)
+            {
+                GodotObject collider = hit["collider"].AsGodotObject();
+                Vector3 at = hit["position"].AsVector3();
+                if (collider is IDamageable victim)
+                {
+                    if (r.WarnedTarget != null && ReferenceEquals(victim, r.WarnedTarget)) WarningRoundsThatHitTheirTarget++;
+                    victim.TakeDamage(r.Damage, r.Position, r.Shooter);
+                }
+                Fx.Spark(at, r.Color, r.TurnRate > 0 ? 0.5f : 0.16f);
+                if (r.TurnRate > 0) Fx.Explosion(at, 1.2f, withDebris: false);
+                Retire(i);
+                continue;
+            }
+
+            r.Position += step;
+            r.Travelled += step.Length();
+            if (r.Travelled > r.MaxDistance || r.Position.Y < -1f)
+            {
+                Retire(i);
+                continue;
+            }
+            PlaceStreak(r);
+        }
+    }
+
+    void Retire(int index)
+    {
+        if (IsInstanceValid(_rounds[index].Streak)) _rounds[index].Streak.QueueFree();
+        _rounds.RemoveAt(index);
+    }
+
+    static void PlaceStreak(Round r)
+    {
+        Vector3 dir = r.Velocity.Normalized();
+        Vector3 up = Mathf.Abs(dir.Y) > 0.98f ? Vector3.Right : Vector3.Up;
+        float length = ((BoxMesh)r.Streak.Mesh).Size.Z;
+        // The streak trails behind the round's head, so it never pokes through what it is about to hit.
+        r.Streak.GlobalTransform = new Transform3D(Basis.LookingAt(dir, up), r.Position - dir * length * 0.5f);
+    }
+
+    /// <summary>Where a warning round goes: beside the target, a metre or three off, often kicking up dirt at their feet.</summary>
+    Vector3 WarningPoint(Vector3 muzzle, Vector3 targetAim)
+    {
+        WarningData w = FireData.Warning;
+        Vector3 line = (targetAim - muzzle) with { Y = 0 };
+        if (line.LengthSquared() < 0.01f) line = Vector3.Forward;
+        Vector3 side = new Vector3(-line.Z, 0, line.X).Normalized() * (Rng.Randf() < 0.5f ? -1f : 1f);
+        float off = Rng.RandfRange((float)w.MissDistanceMin, (float)w.MissDistanceMax);
+        float drop = Rng.RandfRange(-1.6f, 0.4f);
+        return targetAim + side * off + Vector3.Up * drop;
     }
 
     /// <summary>Damages blocks and anyone standing near a blast. Breach charges use this.</summary>

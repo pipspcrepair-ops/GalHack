@@ -24,6 +24,7 @@ public partial class Player : CharacterBody3D, IDamageable
     public bool Invulnerable;
 
     public Faction Faction => Faction.Defenders;
+    public TargetClass Class => TargetClass.OnFoot;
     public bool IsAlive => Health.Alive;
     public Vector3 AimPoint => GlobalPosition + Vector3.Up * (Crouching ? 0.75f : 1.3f);
 
@@ -43,7 +44,7 @@ public partial class Player : CharacterBody3D, IDamageable
     const float StandEye = 1.62f, CrouchEye = 0.95f, Radius = 0.35f;
     const float WalkSpeed = 5f, SprintSpeed = 8.5f, CrouchSpeed = 2.4f, JumpSpeed = 5.2f;
     const float Gravity = 14f, GroundAccel = 45f, AirAccel = 8f, MouseSensitivity = 0.0025f;
-    const float FireInterval = 0.13f, GunDamage = 34f, GunRange = 650f, GunSpread = 0.3f;
+    const float GunRange = 650f;
     const float WalkFov = 78f, TurretFov = 42f;
 
     CapsuleShape3D _capsule;
@@ -172,14 +173,19 @@ public partial class Player : CharacterBody3D, IDamageable
     void Shoot()
     {
         if (!Input.IsActionPressed(Controls.Fire) || _fireTimer > 0f) return;
-        _fireTimer = FireInterval;
+        WeaponData rifle = World.FireData.Weapon("player_rifle");
+        _fireTimer = (float)rifle.Interval;
         ShotsFired++;
+        // Aim where the crosshair points, then fly the round from the barrel so its travel is visible.
         Vector3 eye = GlobalPosition + Vector3.Up * _eye;
-        Vector3 forward = -LookBasis.Z;
-        // The round flies from the eye (so it goes where the crosshair is); the tracer starts at the barrel.
-        GodotObject hit = World.Shoot(eye, forward, GunRange, GunSpread, Layers.DefenderShots, Faction.Defenders, GunDamage,
-            Palette.TracerSettler);
-        Fx.Flash(_gun.GlobalTransform * new Vector3(0, 0.05f, -0.75f), Palette.TracerSettler, 3f, 1.5f);
+        Vector3 far = eye - LookBasis.Z * GunRange;
+        var query = PhysicsRayQueryParameters3D.Create(eye, far, Layers.DefenderShots);
+        Godot.Collections.Dictionary hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        Vector3 aim = hit.Count > 0 ? hit["position"].AsVector3() : far;
+        Vector3 muzzle = _gun.GlobalTransform * new Vector3(0, 0.05f, -0.75f);
+        World.Fire(muzzle, aim, rifle, (float)rifle.AimedSpreadDegrees, Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler,
+            maxDistance: GunRange);
+        Fx.Flash(muzzle, Palette.TracerSettler, 3f, 1.5f);
         _recoil += 0.012f;
     }
 
@@ -250,7 +256,7 @@ public partial class Player : CharacterBody3D, IDamageable
     public void TakeDamage(float amount, Vector3 from, Faction by)
     {
         if (by == Faction || Invulnerable || !Health.Alive) return;
-        float taken = (float)Health.ApplyNpcHit(amount, World.Time);
+        float taken = (float)Health.TakeHit(amount); // never reduced or capped
         Hurt?.Invoke(taken);
         if (!Health.Alive)
         {

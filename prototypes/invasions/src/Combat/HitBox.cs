@@ -1,5 +1,6 @@
 using System;
 using Godot;
+using Invasions.Model;
 
 namespace Invasions.Combat;
 
@@ -10,6 +11,7 @@ namespace Invasions.Combat;
 public partial class HitBox : AnimatableBody3D, IDamageable
 {
     public Faction Faction { get; set; }
+    public TargetClass Class { get; set; } = TargetClass.Capital;
     public Func<bool> Alive;
     public Action<float, Vector3, Faction> Damaged;
     /// <summary>Where to aim, relative to this body (the centre of the shape by default).</summary>

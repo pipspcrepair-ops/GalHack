@@ -22,6 +22,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     public IInvaderVehicle Ride { get; set; }
 
     public Faction Faction => Faction.Vharn;
+    public TargetClass Class => TargetClass.OnFoot;
     public bool IsAlive => _hp > 0f;
     public bool IsGone => State == TroopState.Gone;
     public Node3D Body => this;
@@ -34,27 +35,22 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     public bool AtBreach => _breachTarget is { Alive: true } && Flat(GlobalPosition, World.BlockAim(_breachTarget)) < 3.6f;
     public bool InCoreRoom => World.Model.InCoreRoom(new GroundPos(GlobalPosition.X, GlobalPosition.Z));
 
-    readonly struct RoleStats
-    {
-        public readonly float FireInterval, PlayerDamage, BlockDamage, Spread, Range, Speed;
-        public RoleStats(float interval, float player, float block, float spread, float range, float speed)
-        {
-            FireInterval = interval; PlayerDamage = player; BlockDamage = block; Spread = spread; Range = range; Speed = speed;
-        }
-    }
+    /// <summary>Per role: the weapon (from fire_control.json), engagement range and jogging speed.</summary>
+    readonly record struct RoleStats(string Weapon, float Range, float Speed);
 
     static readonly Dictionary<string, RoleStats> Roles = new()
     {
-        ["rifleman"] = new(0.45f, 9f, 16f, 3.5f, 75f, 5.2f),
-        ["breacher"] = new(0.6f, 7f, 12f, 4f, 60f, 5.0f),
-        ["heavy"] = new(0.16f, 6f, 10f, 5.5f, 85f, 4.4f),
-        ["crew"] = new(0.6f, 6f, 8f, 5f, 60f, 5.2f),
+        ["rifleman"] = new("rifle", 75f, 5.2f),
+        ["breacher"] = new("rifle", 60f, 5.0f),
+        ["heavy"] = new("minigun", 85f, 4.4f),
+        ["crew"] = new("rifle", 60f, 5.2f),
     };
 
     const float MaxHp = 100f, Gravity = 18f, Accel = 20f, WithdrawSpeed = 5.8f;
     const float ChargeDamage = 340f, ChargeFuse = 2.2f, ChargeCooldown = 7f;
 
     RoleStats _stats;
+    FireControl _fire;
     float _hp = MaxHp;
     AssaultPlan _plan;
     int _step;
@@ -72,6 +68,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     public override void _Ready()
     {
         _stats = Roles.TryGetValue(Role, out RoleStats s) ? s : Roles["rifleman"];
+        _fire = new FireControl(World.FireData, World.FireData.Weapon(_stats.Weapon));
         CollisionLayer = Layers.Invaders;
         CollisionMask = Layers.World | Layers.Blocks | Layers.Player;
         FloorMaxAngle = Mathf.DegToRad(50f);
@@ -299,6 +296,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
             float playerRange = _breachTarget != null ? 25f : _stats.Range;
             _target = World.NearestPlayer(eye, playerRange, sight);
             if (_target == null && _breachTarget == null) _target = World.NearestTurret(eye, _stats.Range + 15f, sight);
+            if (_target == null) _fire.LostSight();
         }
         if (!CombatWorld.Usable(_target)) _target = null;
 
@@ -312,17 +310,24 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
         if (_fireTimer > 0f) return;
         if (_target != null)
         {
-            _fireTimer = _stats.FireInterval;
             Vector3 muzzle = Muzzle();
-            World.Shoot(muzzle, _target.AimPoint - muzzle, _stats.Range * 1.3f, _stats.Spread, Layers.InvaderShots, Faction.Vharn,
-                _stats.PlayerDamage, Palette.TracerVharn);
+            // Lost sight since the last look: the engagement (warning shots, ramp) starts over.
+            if (!World.LineOfSight(eye, _target, Layers.World | Layers.Blocks))
+            {
+                _fire.LostSight();
+                _target = null;
+                return;
+            }
+            _fireTimer = (float)_fire.Weapon.Interval;
+            World.FireAt(_fire, muzzle, _target, Layers.InvaderShots, Faction.Vharn, Palette.TracerVharn, maxDistance: _stats.Range * 1.4f);
         }
         else if (breachInReach)
         {
-            _fireTimer = _stats.FireInterval;
+            _fireTimer = (float)_fire.Weapon.Interval;
             Vector3 muzzle = Muzzle();
-            World.Shoot(muzzle, World.BlockAim(_breachTarget) - muzzle, 8f, 2f, Layers.Blocks | Layers.World, Faction.Vharn,
-                _stats.BlockDamage, Palette.TracerVharn);
+            float spread = (float)World.FireData.BaselineSpread(_fire.Weapon, TargetClass.Capital);
+            World.Fire(muzzle, World.BlockAim(_breachTarget), _fire.Weapon, spread, Layers.Blocks | Layers.World, Faction.Vharn,
+                Palette.TracerVharn, maxDistance: 12f);
         }
     }
 

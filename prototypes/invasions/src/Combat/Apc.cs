@@ -1,4 +1,5 @@
 using Godot;
+using Invasions.Model;
 using Invasions.World;
 
 namespace Invasions.Combat;
@@ -15,6 +16,7 @@ public partial class Apc : CrewedVehicle
     float _wheelSpin, _turnedFor;
 
     public override Vector3 PickupPoint => GlobalTransform * new Vector3(0, 0, 6f);
+    protected override TargetClass HullClass => TargetClass.Hover;
     public override bool ReadyForPickup => Phase == Mode.Pickup && Speed < 0.5f;
 
     protected override Vector3 ExitPoint()

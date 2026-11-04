@@ -71,10 +71,10 @@
     { "name": "army",      "minTroops": 100 }
   ],
 
-  // Crewed carriers. Every vehicle has a driver or pilot plus its gunners.
+  // Crewed carriers. Every vehicle has a driver or pilot plus a gunner per gun; guns name weapons in fire_control.json.
   "vehicles": {
-    "apc":      { "label": "APC",      "capacity": 6, "gunners": 2, "flies": false, "speed": 17 },
-    "dropship": { "label": "dropship", "capacity": 8, "gunners": 2, "flies": true,  "speed": 42 }
+    "apc":      { "label": "APC",      "capacity": 6, "guns": [ "autocannon", "rocket_pod" ],     "flies": false, "speed": 17 },
+    "dropship": { "label": "dropship", "capacity": 8, "guns": [ "door_minigun", "door_minigun" ], "flies": true,  "speed": 42 }
   },
 
   // Share of each troop role. Breachers carry charges that open walls and doors quickly.
@@ -93,14 +93,6 @@
 
   // Placeholder breach planner: a wall with this many hit points is worth one extra cell of walking around.
   "planner": { "hpPerCellOfDetour": 30 },
-
-  // Player protection against NPC fire.
-  "playerSafety": {
-    "maxHitFraction": 0.35,
-    "graceBelowFraction": 0.25,
-    "graceSeconds": 2.5,
-    "graceDamageScale": 0.3
-  },
 
   "messages": {
     "victory": "Assault repelled. All {attacker} invaders are down or gone.",

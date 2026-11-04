@@ -17,6 +17,8 @@ public enum Faction { Defenders, Vharn }
 public interface IDamageable
 {
     Faction Faction { get; }
+    /// <summary>On foot, hover, small vessel or capital/base: picks the accuracy row in fire_control.json.</summary>
+    TargetClass Class { get; }
     bool IsAlive { get; }
     Vector3 AimPoint { get; }
     void TakeDamage(float amount, Vector3 from, Faction by);
