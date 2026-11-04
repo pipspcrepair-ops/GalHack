@@ -662,7 +662,7 @@ public partial class VitalsTest : Node
     // ---- Scene stage: the playable scene with real key presses ---------------------------
 
     Main _main;
-    int _tick, _stage, _count;
+    int _tick, _stage, _count, _flashedAt;
 
     void StartSceneStage()
     {
@@ -783,6 +783,22 @@ public partial class VitalsTest : Node
                     Check(!sim.Player.Dead && !_main.DeathScreen.Visible && _main.Player.GlobalPosition.DistanceTo(_main.GroundAt(tent.Stand)) < 0.5f
                         && sim.Player.Vitals.Health == sim.Data.Vitals.Health.Max && sim.World.Backpacks.Count == 1,
                         "3 respawns at the survival tent at full health; the backpack waits");
+                    Next();
+                }
+                break;
+
+            case 3: // drop the real player from 25 m: the visor flashes before the landing hurts
+                if (_tick == 1)
+                {
+                    _main.Player.Teleport(_main.GroundAt(planet.Start.Position) + Vector3.Up * 25f, 0f);
+                    _flashedAt = -1;
+                }
+                if (_flashedAt < 0 && (sim.Last.Warnings & Alert.Fall) != 0) _flashedAt = _tick;
+                if (sim.Player.Vitals.Health < sim.Data.Vitals.Health.Max || _tick > 300)
+                {
+                    double lost = sim.Data.Vitals.Health.Max - sim.Player.Vitals.Health;
+                    Check(_flashedAt > 0 && lost > 0 && _flashedAt < _tick,
+                        $"a 25 m drop in the scene: IMPACT flashes {(_tick - _flashedAt) / 60f:F1} s before the landing costs {lost:F0} health");
                     Next();
                 }
                 break;

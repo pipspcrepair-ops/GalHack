@@ -51,6 +51,7 @@ public partial class VisorHud : Control
         TickReport report = sim.Last;
         bool dead = sim.Player.Dead;
 
+        if (!dead) DrawHazardVignette(report, size);
         if (sim.Player.Gear.HelmetOn && !dead) DrawVisorFrame(size);
         if (!dead)
         {
@@ -181,6 +182,35 @@ public partial class VisorHud : Control
             : (report.Warnings & Alert.Fall) != 0 ? "IMPACT WARNING: HOLD SPACE FOR JETPACK"
             : null;
         if (text != null && Lit(4f)) Centered(text, new Vector2(size.X / 2, size.Y * 0.32f), 30, Danger);
+    }
+
+    /// <summary>
+    /// Frost, heat shimmer, a radiation tint or darkness creeping in from the visor's edges while
+    /// an exposure vital is flashing: you feel the hazard before you read a number.
+    /// </summary>
+    void DrawHazardVignette(TickReport report, Vector2 size)
+    {
+        (Alert flag, Color color)[] hazards =
+        {
+            (Alert.Breath, new Color(0.02f, 0.02f, 0.06f)),
+            (Alert.Heat, new Color(1f, 0.42f, 0.08f)),
+            (Alert.Cold, new Color(0.62f, 0.86f, 1f)),
+            (Alert.Radiation, new Color(0.55f, 1f, 0.25f)),
+        };
+        foreach (var (flag, color) in hazards)
+        {
+            if ((report.Warnings & flag) == 0) continue;
+            float strength = ((report.Harm & flag) != 0 ? 0.7f : 0.45f) * (Lit(1.1f) ? 1f : 0.75f);
+            Color edge = new(color, strength), clear = new(color, 0);
+            float w = size.X * 0.16f, h = size.Y * 0.2f;
+            void Strip(Vector2 a, Vector2 b, Vector2 c, Vector2 d) =>
+                DrawPolygon(new[] { a, b, c, d }, new[] { edge, edge, clear, clear });
+            Strip(new(0, 0), new(size.X, 0), new(size.X - w, h), new(w, h));
+            Strip(new(size.X, size.Y), new(0, size.Y), new(w, size.Y - h), new(size.X - w, size.Y - h));
+            Strip(new(0, size.Y), new(0, 0), new(w, h), new(w, size.Y - h));
+            Strip(new(size.X, 0), new(size.X, size.Y), new(size.X - w, size.Y - h), new(size.X - w, h));
+            return; // one hazard at a time, the most urgent first
+        }
     }
 
     void DrawVisorFrame(Vector2 size)

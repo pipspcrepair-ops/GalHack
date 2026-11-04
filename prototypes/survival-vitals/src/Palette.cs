@@ -15,7 +15,7 @@ public static class Palette
     public static readonly Color Cream = new("ffe8c2");
     public static readonly Color Sand = new("d08850");
     public static readonly Color Rust = new("a0522d");
-    public static readonly Color Snow = new("cfe0ff");
+    public static readonly Color Snow = new("b8d2f6");
     public static readonly Color Ice = new("74c6e6");
     public static readonly Color Basalt = new("2a2422");
     public static readonly Color Lava = new("ff5a1f");

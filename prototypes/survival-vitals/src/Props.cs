@@ -200,12 +200,13 @@ public static class Props
                 Box(root, new Vector3(0.95f, 0.7f, 0.75f), Palette.Solid(Palette.Orange), new Vector3(0, 0.85f, 0));
                 Box(root, new Vector3(1.0f, 0.1f, 0.8f), Palette.Solid(Palette.Dark), new Vector3(0, 1.24f, 0));
                 Box(root, new Vector3(0.96f, 0.08f, 0.76f), Palette.Solid(Palette.Yellow), new Vector3(0, 0.62f, 0));
-                Box(root, new Vector3(0.42f, 0.3f, 0.04f), Palette.Glow(Palette.Yellow, 2.5f), new Vector3(0, 0.88f, 0.38f));
+                Box(root, new Vector3(0.5f, 0.38f, 0.03f), Palette.Solid(Palette.Dark), new Vector3(0, 0.88f, 0.376f));
+                Box(root, new Vector3(0.42f, 0.3f, 0.04f), Palette.Glow(new Color("ffb347"), 1.4f), new Vector3(0, 0.88f, 0.38f));
                 Cylinder(root, 0.015f, 0.9f, Palette.Solid(Palette.Dark), new Vector3(0.38f, 1.7f, -0.25f), 6);
                 Mesh(root, new SphereMesh { Radius = 0.05f, Height = 0.1f }, Palette.Glow(Palette.Red, 4f), new Vector3(0.38f, 2.15f, -0.25f));
                 Light(root, Palette.Yellow, 0.6f, 3f, new Vector3(0, 0.9f, 0.7f));
                 Collider(root, new BoxShape3D { Size = new Vector3(0.95f, 1.25f, 0.75f) }, new Vector3(0, 0.62f, 0));
-                Label(root, "SURVIVAL REPLICATOR", new Vector3(0, 1.75f, 0), 32);
+                Label(root, "SURVIVAL REPLICATOR", new Vector3(0, 1.75f, 0), 24);
                 break;
             case 2: // galley: a kitchen counter with a glowing hatch
                 Box(root, new Vector3(1.7f, 1.1f, 0.8f), Palette.Solid(Palette.Hull), new Vector3(0, 0.55f, 0));
@@ -479,6 +480,16 @@ public static class Props
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             VertexColorUseAsAlbedo = true,
+            // A soft round dot, so a flake or puff right in front of the visor never shows as a square.
+            AlbedoTexture = new GradientTexture2D
+            {
+                Gradient = new Gradient { Colors = new[] { Colors.White, new Color(1, 1, 1, 0) } },
+                Fill = GradientTexture2D.FillEnum.Radial,
+                FillFrom = new Vector2(0.5f, 0.5f),
+                FillTo = new Vector2(0.5f, 0f),
+                Width = 32,
+                Height = 32,
+            },
         };
         if (glow) material.BlendMode = BaseMaterial3D.BlendModeEnum.Add;
         return new CpuParticles3D
@@ -493,7 +504,7 @@ public static class Props
 
     static CpuParticles3D Snow(Vector3 at, float radius)
     {
-        CpuParticles3D p = Particles(900, 8f, new Color(1, 1, 1, 0.85f), 0.06f, false);
+        CpuParticles3D p = Particles(900, 8f, new Color(1, 1, 1, 0.9f), 0.11f, false);
         p.Position = at;
         p.EmissionShape = CpuParticles3D.EmissionShapeEnum.Box;
         p.EmissionBoxExtents = new Vector3(radius, 1, radius);

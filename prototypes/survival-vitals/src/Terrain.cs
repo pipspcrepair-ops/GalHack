@@ -164,7 +164,7 @@ public sealed class Terrain
             switch (zone.Id)
             {
                 case "frozen-valley":
-                    c = c.Lerp(Palette.Snow.Lerp(new Color("93b4e0"), grain * 0.6f), Mathf.Clamp(w * 1.3f, 0, 1));
+                    c = c.Lerp(Palette.Snow.Lerp(new Color("85a6dc"), grain * 0.6f), Mathf.Clamp(w * 1.3f, 0, 1));
                     break;
                 case "volcanic-vent":
                     c = c.Lerp(Palette.Basalt, Mathf.Clamp(w * 1.4f, 0, 1));
