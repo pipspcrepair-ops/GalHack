@@ -122,6 +122,23 @@ public sealed class VesselLoadout : IVesselStructure
         Revision++;
     }
 
+    /// <summary>Puts every component back the way another loadout has it (the reset key).</summary>
+    public void CopyFrom(VesselLoadout other)
+    {
+        HullMass = other.HullMass;
+        CargoMass = other.CargoMass;
+        Lopsided = other.Lopsided;
+        ThrusterList.Clear();
+        ThrusterList.AddRange(other.ThrusterList);
+        GyroList.Clear();
+        GyroList.AddRange(other.GyroList);
+        HoverList.Clear();
+        HoverList.AddRange(other.HoverList);
+        GearList.Clear();
+        GearList.AddRange(other.GearList);
+        Revision++;
+    }
+
     public VesselLoadout Clone()
     {
         var copy = new VesselLoadout { Name = Name, Class = Class, HullMass = HullMass, Cockpit = Cockpit };

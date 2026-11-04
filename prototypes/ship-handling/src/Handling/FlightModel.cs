@@ -177,6 +177,7 @@ public static class FlightModel
             if (Mathf.Abs(dv) < 1e-7f) continue;
 
             Direction dir = DirectionOf(axis, dv);
+            if (sinking && dir == Direction.Up) continue; // the lift thrusters are already flat out losing
             float a = stats.Accel(dir) * boost;
             if (weighed && dir == Direction.Up)
                 a = Mathf.Max(0f, (stats.Thrust[(int)Direction.Up] * boost - stats.Weight) / stats.Mass); // climbing pays for weight
@@ -184,8 +185,7 @@ public static class FlightModel
             bool driving = Mathf.Abs(move[axis]) > 0.01f && Mathf.Sign(move[axis]) == Mathf.Sign(dv);
             if (!driving)
             {
-                // Flight assist: the floor keeps every ship stoppable. It can't hold up a ship too heavy to fly.
-                if (!(sinking && dir == Direction.Up)) a = Mathf.Max(a, t.Assist.MinBrake * boost);
+                a = Mathf.Max(a, t.Assist.MinBrake * boost); // flight assist: the floor keeps every ship stoppable
                 if (Mathf.Abs(dv) <= t.Assist.StopBelow)
                 {
                     local[axis] = desired[axis];

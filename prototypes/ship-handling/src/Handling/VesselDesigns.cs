@@ -79,7 +79,8 @@ public static class VesselDesigns
 
         b.Thruster("large", new Vector3(-1.6f, 0.2f, 6.1f), Vector3.Forward);  // main engines
         b.Thruster("large", new Vector3(1.6f, 0.2f, 6.1f), Vector3.Forward);
-        b.Thruster("large", new Vector3(0, -0.4f, -5.9f), Vector3.Back);       // retro in the chin
+        b.Thruster("large", new Vector3(-0.75f, -0.45f, -5.9f), Vector3.Back); // two retros in the chin: a
+        b.Thruster("large", new Vector3(0.75f, -0.45f, -5.9f), Vector3.Back);  // first ship stops quickly
         b.Thruster("large", new Vector3(-1.6f, -0.75f, 3.4f), Vector3.Up);     // belly lift jets
         b.Thruster("large", new Vector3(1.6f, -0.75f, 3.4f), Vector3.Up);
         b.Thruster("small", new Vector3(-0.9f, 1.05f, 2.0f), Vector3.Down);
