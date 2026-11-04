@@ -1,0 +1,31 @@
+// Block shapes, in a cell running from -0.5 to 0.5 on each axis. +Y is up and -Z is forward;
+// sloped sides face up and forward. Each shape is the convex hull of its points ("box" and
+// "cylinder" are shorthands). Volume, which faces are full (to attach and to seal air) and the
+// mirror symmetry are all worked out from the geometry. The first shape must be the cube.
+{
+  "schema": "galhack.shapes",
+  "version": 1,
+  "shapes": [
+    { "id": "cube", "name": "Cube", "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5] },
+    {
+      "id": "slope", "name": "Slope",
+      "hull": [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]
+    },
+    {
+      "id": "corner", "name": "Corner",
+      "hull": [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, 0.5]]
+    },
+    {
+      "id": "invcorner", "name": "Inverted corner",
+      "hull": [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [-0.5, -0.5, 0.5],
+               [0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]
+    },
+    {
+      "id": "wedge", "name": "Wedge",
+      "hull": [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [-0.5, 0.0, 0.5], [0.5, 0.0, 0.5]]
+    },
+    { "id": "half", "name": "Half block", "box": [-0.5, -0.5, -0.5, 0.5, 0.0, 0.5] },
+    { "id": "plate", "name": "Thin plate", "box": [-0.5, -0.5, -0.5, 0.5, -0.375, 0.5] },
+    { "id": "cylinder", "name": "Cylinder", "cylinder": { "axis": "y", "radius": 0.5, "segments": 16 } }
+  ]
+}

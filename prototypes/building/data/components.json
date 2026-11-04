@@ -1,0 +1,168 @@
+// Components: functional blocks. They carry the same stats as armour (per large-grid block)
+// plus their function, and have a fixed look made of parts. Every component works on bases and
+// capital ships alike; cost is the large-grid recipe, smallCost the cheap small-grid one
+// (common materials only, see grids.json).
+//   function   core, cockpit, thruster, generator, fuel, container, door, light, turret,
+//              cpu-extender or ladder
+//   power      MW: positive generates, negative is drawn at full load
+//   thrust     kN, pushing the structure forward (-Z) out of the exhaust at +Z
+//   storage    SU added to the one shared storage of the structure
+//   attach     faces other blocks can attach to ("all", "none" or a list such as ["-y"])
+//   airtight   faces that seal air (doors: airtightOpen applies while open)
+//   covers     faces whose parts fully hide the cell face behind them (for culling)
+//   collide    cell, parts (the part boxes) or none
+//   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
+//              glass; closedOnly parts belong to a door leaf
+{
+  "schema": "galhack.components",
+  "version": 1,
+  "components": [
+    {
+      "id": "core", "name": "Core", "function": "core",
+      "hp": 1500, "armor": 30, "resist": { "kinetic": 0.25, "explosive": 0.25, "energy": 0.25 },
+      "mass": 4, "cpu": 0, "color": "2b2d42", "glow": "ffb627",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 30, "electronics": 20, "crystal": 4 }, "smallCost": { "iron": 6, "copper": 4, "silica": 2 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, -0.11, -0.505, 0.505, 0.11, 0.505], "style": "glow" },
+        { "box": [-0.3, 0.5, -0.3, 0.3, 0.505, 0.3], "style": "accent" }
+      ]
+    },
+    {
+      "id": "cockpit", "name": "Cockpit seat", "function": "cockpit",
+      "hp": 400, "armor": 5, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 1.5, "cpu": 1500, "power": -0.05, "color": "c1121f", "glow": "6ff2e0",
+      "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
+      "cost": { "iron": 12, "electronics": 10 }, "smallCost": { "iron": 4, "copper": 2, "silica": 2 },
+      "parts": [
+        { "box": [-0.16, -0.5, -0.05, 0.16, -0.22, 0.22], "style": "dark" },
+        { "box": [-0.3, -0.22, -0.15, 0.3, -0.08, 0.3], "style": "body" },
+        { "box": [-0.3, -0.08, 0.2, 0.3, 0.42, 0.32], "style": "body" },
+        { "box": [-0.42, -0.5, -0.5, 0.42, -0.08, -0.3], "style": "dark" },
+        { "box": [-0.34, -0.08, -0.47, 0.34, 0.14, -0.4], "style": "glow" }
+      ]
+    },
+    {
+      "id": "thruster", "name": "Thruster", "function": "thruster",
+      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.15 },
+      "mass": 3, "cpu": 2500, "power": -1.5, "thrust": 4000, "color": "3a3f47", "glow": "ff8a1c",
+      "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"],
+      "covers": ["+x", "-x", "+y", "-y", "-z"],
+      "cost": { "iron": 20, "tungsten": 6, "electronics": 4 }, "smallCost": { "iron": 4, "copper": 3 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body" },
+        { "cylinder": "z", "segments": 16, "box": [-0.45, -0.45, 0.2, 0.45, 0.45, 0.5], "style": "dark" },
+        { "cylinder": "z", "segments": 16, "box": [-0.32, -0.32, 0.3, 0.32, 0.32, 0.505], "style": "glow" }
+      ]
+    },
+    {
+      "id": "generator", "name": "Generator", "function": "generator",
+      "hp": 800, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.1, "energy": 0.2 },
+      "mass": 6, "cpu": 4000, "power": 12, "color": "0a9396", "glow": "8ef6e4",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 24, "copper": 12, "electronics": 8 }, "smallCost": { "iron": 5, "copper": 4 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark" },
+        { "box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark" },
+        { "box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow" },
+        { "box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow" },
+        { "box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow" }
+      ]
+    },
+    {
+      "id": "fueltank", "name": "Fuel tank", "function": "fuel",
+      "hp": 500, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.0, "energy": 0.1 },
+      "mass": 2, "cpu": 600, "fuel": 4000, "color": "e85d04", "accent": "2b2d42",
+      "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"],
+      "cost": { "iron": 12 }, "smallCost": { "iron": 3 },
+      "parts": [
+        { "cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body" },
+        { "cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent" },
+        { "box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark" },
+        { "box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark" }
+      ]
+    },
+    {
+      "id": "container", "name": "Cargo container", "function": "container",
+      "hp": 600, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 2, "cpu": 800, "storage": 8000, "color": "f4a100", "texture": "ribbed",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 16 }, "smallCost": { "iron": 3 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark" },
+        { "box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark" },
+        { "box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark" },
+        { "box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark" }
+      ]
+    },
+    {
+      "id": "door", "name": "Door", "function": "door",
+      "hp": 700, "armor": 20, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
+      "mass": 1.5, "cpu": 300, "power": -0.01, "color": "f4a100", "accent": "2b2d42",
+      "attach": "all", "airtight": "all", "airtightOpen": "none",
+      "covers": ["+x", "-x", "+y"],
+      "cost": { "iron": 14, "electronics": 2 }, "smallCost": { "iron": 3, "copper": 1 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, -0.44, 0.5, 0.5], "style": "dark" },
+        { "box": [0.44, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark" },
+        { "box": [-0.44, 0.46, -0.5, 0.44, 0.5, 0.5], "style": "dark" },
+        { "box": [-0.44, -0.5, -0.1, 0.44, 0.46, 0.1], "style": "body", "closedOnly": true },
+        { "box": [-0.44, -0.1, -0.105, 0.44, 0.0, 0.105], "style": "accent", "closedOnly": true }
+      ]
+    },
+    {
+      "id": "light", "name": "Light", "function": "light",
+      "hp": 80, "armor": 0, "mass": 0.1, "cpu": 50, "power": -0.005, "color": "2b2d42", "glow": "ffe2b0",
+      "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
+      "cost": { "iron": 1, "copper": 2 }, "smallCost": { "copper": 1, "silica": 1 },
+      "parts": [
+        { "box": [-0.3, -0.3, 0.44, 0.3, 0.3, 0.5], "style": "dark" },
+        { "box": [-0.22, -0.22, 0.4, 0.22, 0.22, 0.44], "style": "glow" }
+      ]
+    },
+    {
+      "id": "turret", "name": "Turret (placeholder)", "function": "turret",
+      "hp": 1200, "armor": 30, "resist": { "kinetic": 0.3, "explosive": 0.3, "energy": 0.3 },
+      "mass": 5, "cpu": 8000, "power": -0.8, "color": "4d5563", "glow": "ff5e3a",
+      "attach": ["-y"], "airtight": ["-y"], "covers": ["-y"], "collide": "parts",
+      "cost": { "iron": 30, "tungsten": 10, "electronics": 12 }, "smallCost": { "iron": 6, "copper": 3, "carbon": 2 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, -0.32, 0.5], "style": "body" },
+        { "cylinder": "y", "segments": 16, "box": [-0.42, -0.32, -0.42, 0.42, -0.2, 0.42], "style": "dark" },
+        { "cylinder": "y", "segments": 16, "box": [-0.34, -0.2, -0.34, 0.34, 0.18, 0.34], "style": "body" },
+        { "box": [-0.17, -0.02, -0.5, -0.07, 0.08, -0.2], "style": "dark" },
+        { "box": [0.07, -0.02, -0.5, 0.17, 0.08, -0.2], "style": "dark" },
+        { "box": [-0.25, 0.18, -0.12, 0.25, 0.22, 0.12], "style": "glow" }
+      ]
+    },
+    {
+      "id": "cpuext", "name": "CPU extender", "function": "cpu-extender",
+      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
+      "mass": 2, "cpu": 0, "power": -0.2, "color": "1b263b", "glow": "6ff2e0",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silica": 3 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
+        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" }
+      ]
+    },
+    {
+      "id": "ladder", "name": "Ladder", "function": "ladder",
+      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 20, "color": "f4a100",
+      "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
+      "cost": { "iron": 3 }, "smallCost": { "iron": 1 },
+      "parts": [
+        { "box": [-0.4, -0.5, 0.36, -0.32, 0.5, 0.46], "style": "dark" },
+        { "box": [0.32, -0.5, 0.36, 0.4, 0.5, 0.46], "style": "dark" },
+        { "box": [-0.32, -0.4, 0.38, 0.32, -0.35, 0.44], "style": "body" },
+        { "box": [-0.32, -0.15, 0.38, 0.32, -0.1, 0.44], "style": "body" },
+        { "box": [-0.32, 0.1, 0.38, 0.32, 0.15, 0.44], "style": "body" },
+        { "box": [-0.32, 0.35, 0.38, 0.32, 0.4, 0.44], "style": "body" }
+      ]
+    }
+  ]
+}
