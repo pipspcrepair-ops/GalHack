@@ -110,7 +110,7 @@ public static class Archetypes
             HillHeight = 95f, HillWavelength = 650f, Billow = 0.45f, Roughness = 2.8f,
             RiverArea = 0.12f, Rain = 1.6f,
             BaseTemperature = 0.84f, LatitudeRange = 0.4f, BaseHumidity = 0.78f,
-            Hazard = "humidity, venomous fauna, flash floods", Resources = "timber, rubber resin, medicinal plants, water", Signature = DepositKind.Resin,
+            Hazard = "humidity, aggressive fauna, flash floods", Resources = "timber, rubber resin, medicinal plants, water", Signature = DepositKind.Resin,
         },
         new()
         {
@@ -200,7 +200,7 @@ public static class Archetypes
             RiverArea = 0.18f, Rain = 1.3f, SeaFreezes = false,
             BaseTemperature = 0.66f, LatitudeRange = 0.35f, BaseHumidity = 0.78f,
             Liquid = Liquid.Exotic, RiverbankBiome = Biome.SporeMarsh,
-            Hazard = "toxic spores, parasites", Resources = "biomass, luminous resin, nitrates", Signature = DepositKind.Resin,
+            Hazard = "toxic spores, hostile fauna", Resources = "biomass, luminous resin, nitrates", Signature = DepositKind.Resin,
         },
     };
 }
