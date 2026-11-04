@@ -4,28 +4,30 @@ using TerrainDigging.Terrain;
 namespace PhysicsSandbox.World;
 
 /// <summary>
-/// The sandbox's colours. The world is grounded and natural, in the spirit of Empyrion: dusty
-/// ochre ground, brown-grey rock, a blue sky that hazes to dust at the horizon. Only ships and
-/// structures wear the 1970s Foss liveries (ship-handling's cream hulls with hot orange, yellow,
-/// teal and pillar-box red).
+/// The sandbox's colours, reused from the prototypes it brings together: terrain-digging's
+/// orange soil and banded rust rock under a teal sky that warms to peach at the horizon, with a
+/// ringed neighbour planet, and ship-handling's cream hulls with hot orange, yellow, teal and
+/// pillar-box red. A 1970s paperback cover after Chris Foss.
 /// </summary>
 public static class Palette
 {
-    // Ground: dry, dusty, weathered.
-    public static readonly Color Soil = new("b8956a");
-    public static readonly Color Rock = new("8b7360");
-    public static readonly Color DeepRock = new("6a5a52");
-    public static readonly Color Ore = new("7f9a8c");
-    public static readonly Color Bedrock = new("3d3a3c");
-    public static readonly Color Dust = new("cdb58e");
+    // Ground (terrain-digging).
+    public static readonly Color Soil = new("e8873e");
+    public static readonly Color Rock = new("c24a2c");
+    public static readonly Color DeepRock = new("7a2f5f");
+    public static readonly Color Ore = new("2ff5d2");
+    public static readonly Color Bedrock = new("2a2550");
+    public static readonly Color Dust = new("f6c487");
 
-    // Sky: blue overhead, grey-ochre haze low down.
-    public static readonly Color SkyTop = new("5f7f9e");
-    public static readonly Color SkyHorizon = new("c2b49a");
-    public static readonly Color GroundHorizon = new("9c8a70");
-    public static readonly Color Sun = new("fff1dc");
-    public static readonly Color Haze = new("b9ad98");
-    public static readonly Color Shadow = new("5e6470");
+    // Sky (terrain-digging).
+    public static readonly Color SkyTop = new("23708f");
+    public static readonly Color SkyHorizon = new("ffd6a3");
+    public static readonly Color GroundHorizon = new("d9804f");
+    public static readonly Color Sun = new("ffe0b0");
+    public static readonly Color Haze = new("f2b88a");
+    public static readonly Color Shadow = new("6b5a8e");
+    public static readonly Color Planet = new("c9a46e");
+    public static readonly Color PlanetBand = new("8a5a3c");
 
     // Hulls and markings (ship-handling).
     public static readonly Color Hull = new("e9dfc4");

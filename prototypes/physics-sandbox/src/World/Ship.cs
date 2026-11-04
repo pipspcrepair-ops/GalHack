@@ -36,6 +36,7 @@ public sealed class Ship
     public StructureView View { get; private set; }
     public CabinWorld Cabin { get; private set; }
     public GearView Gear { get; private set; }
+    public ShipFx Fx { get; private set; }
 
     /// <summary>The seat, structure frame (metres); the pilot's eye sits above it.</summary>
     public N.Vector3 Seat { get; private set; }
@@ -122,12 +123,44 @@ public sealed class Ship
                 owner.AddChild(Gear);
                 Gear.Setup(this);
             }
+            if (Spec != null)
+            {
+                Fx = new ShipFx { Name = "Fx" };
+                owner.AddChild(Fx);
+                Fx.Setup(this);
+            }
+            if (Interior.Count > 0) owner.AddChild(CabinLight());
         }
         Cabin = CabinWorld.Create("CabinWorld");
         owner.AddChild(Cabin);
         Cabin.Shapes.Apply(colliders);
         if (Body.Core != null) Cabin.SetGravity(Body.Core);
         Structure.DirtyChunks.Clear();
+    }
+
+    /// <summary>A warm light in the middle of the interior, so the cabin reads from inside.</summary>
+    OmniLight3D CabinLight()
+    {
+        N.Vector3 middle = N.Vector3.Zero;
+        int n = 0;
+        var (min, max) = Structure.Bounds();
+        for (int x = min.X; x <= max.X; x++)
+            for (int y = min.Y; y <= max.Y; y++)
+                for (int z = min.Z; z <= max.Z; z++)
+                    if (Interior.IsInterior(new Int3(x, y, z)))
+                    {
+                        middle += new N.Vector3(x, y, z);
+                        n++;
+                    }
+        middle = middle / n * Structure.Grid.CellSize;
+        return new OmniLight3D
+        {
+            Name = "CabinLight",
+            Position = (middle + N.Vector3.UnitY * 0.6f).ToGodot(),
+            OmniRange = 7f,
+            LightEnergy = 1.8f,
+            LightColor = new Color("ffe2b0"),
+        };
     }
 
     void Register()
@@ -282,9 +315,10 @@ public sealed class Ship
         World.AddChild(rigid);
         rigid.GlobalTransform = hull.Hull.GlobalTransform;
         HullShapes.MoveTo(rigid);
-        View?.Reparent(rigid, false);
-        Gear?.Reparent(rigid, false);
-        Cabin.Reparent(rigid, false);
+        // Everything else rides along unchanged: the mesh, the legs, the lights, the cabin world
+        // (with anyone in it).
+        foreach (Node child in hull.Hull.GetChildren())
+            if (child is not CollisionShape3D) child.Reparent(rigid, false);
         var free = World.Host.Rebind(Body, new FreeBinding(rigid, Body));
         Binding = free;
         free.Teleport();

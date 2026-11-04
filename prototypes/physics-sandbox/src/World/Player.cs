@@ -57,6 +57,44 @@ public sealed class Player
         binding.Carried += turned => Yaw += turned; // the hull turned under us: so does our view
     }
 
+    /// <summary>What other people (and third-person cameras) see, always drawn in the main world.</summary>
+    public Node3D View { get; private set; }
+
+    /// <summary>The body's pose in the world, from interpolated transforms: the cabin's frame times the cabin pose while aboard.</summary>
+    public Transform3D WorldTransformInterpolated()
+    {
+        var yaw = new Basis(Vector3.Up, Yaw);
+        if (Seated != null)
+            return Seated.Node.GetGlobalTransformInterpolated() * new Transform3D(yaw, Seated.Seat.ToGodot());
+        Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
+        Ship aboard = Aboard;
+        return aboard == null ? new Transform3D(yaw, feet) : aboard.Node.GetGlobalTransformInterpolated() * new Transform3D(yaw, feet);
+    }
+
+    void BuildView()
+    {
+        View = new Node3D { Name = "PlayerView", PhysicsInterpolationMode = Godot.Node.PhysicsInterpolationModeEnum.Off };
+        View.AddChild(new MeshInstance3D
+        {
+            Mesh = new CapsuleMesh { Radius = Radius, Height = Height },
+            Position = Vector3.Up * (Height / 2f),
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = Palette.Yellow, Roughness = 0.6f },
+        });
+        View.AddChild(new MeshInstance3D
+        {
+            Mesh = new BoxMesh { Size = new Vector3(0.46f, 0.2f, 0.14f) },
+            Position = new Vector3(0f, 1.55f, -0.3f),
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Metallic = 0.6f, Roughness = 0.1f },
+        });
+        View.AddChild(new MeshInstance3D // backpack
+        {
+            Mesh = new BoxMesh { Size = new Vector3(0.5f, 0.6f, 0.22f) },
+            Position = new Vector3(0f, 1.15f, 0.33f),
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = Palette.Dark, Roughness = 0.7f },
+        });
+        World.AddChild(View);
+    }
+
     public static Player Spawn(SandboxWorld world, N.Vector3 feet)
     {
         Body body = world.Physics.Register(new BodySpec
@@ -74,6 +112,7 @@ public sealed class Player
         var player = new Player(world, body, world.Host.Bind(body, new CharacterBinding(c)));
         player.Binding.Teleport();
         world.Weather.Track(body);
+        if (world.Visuals) player.BuildView();
         return player;
     }
 
