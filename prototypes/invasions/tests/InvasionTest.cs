@@ -52,6 +52,9 @@ public partial class InvasionTest : Node
             CrewDeathsSilenceGunsAndStopVehicles();
             PlannerBreachesWallToCoreRoom();
 
+            Section("Siren");
+            SirenWailsThenSoundsAllClear();
+
             Section("Fire control");
             FirstShotsAtPlayerAlwaysMiss();
             AccuracyReachesBaselineByTwoSeconds();
@@ -440,6 +443,34 @@ public partial class InvasionTest : Node
             $"rockets track slowly ({rocket.TurnRateDegrees}°/s); capital rounds fly {capital.ProjectileSpeed} m/s against {cannon.ProjectileSpeed} m/s for small-craft guns");
     }
 
+    void SirenWailsThenSoundsAllClear()
+    {
+        var synth = new Audio.SirenSynth(8000);
+        var l = new float[80];
+        var r = new float[80];
+        var speeds = new List<double>();
+        synth.Alert();
+        for (int i = 0; i < 1500; i++) // 15 s in 10 ms steps
+        {
+            synth.Render(l, r);
+            speeds.Add(synth.RotorSpeed);
+        }
+        var wail = speeds.Skip(500).ToList(); // after the first wind-up
+        int turns = wail.Zip(wail.Skip(1), (a, b) => b > a).Zip(wail.Skip(1).Zip(wail.Skip(2), (a, b) => b > a), (x, y) => x != y).Count(c => c);
+        Check(wail.Max() > 0.9 && wail.Min() > 0.3 && wail.Min() < 0.6 && turns >= 3 && turns <= 6,
+            $"the alert winds up and down: rotor {wail.Min():F2}–{wail.Max():F2} of full speed, {turns} turns in 10 s (about 4.6 s a cycle)");
+
+        synth.AllClear(6);
+        var steady = new List<double>();
+        for (int i = 0; i < 1800; i++)
+        {
+            synth.Render(l, r);
+            if (i is > 600 and < 750) steady.Add(synth.RotorSpeed); // well into the held note
+        }
+        Check(steady.Max() - steady.Min() < 0.02 && steady.Min() > 0.95 && synth.Current == Audio.SirenSynth.Mode.Off && synth.RotorSpeed < 0.02,
+            $"the all-clear holds one steady note, then the rotor runs down to silence ({synth.RotorSpeed:F3})");
+    }
+
     void DamageIsNeverScaled()
     {
         var hp = new PlayerHealth();
@@ -464,6 +495,14 @@ public partial class InvasionTest : Node
         Engine.MaxPhysicsStepsPerFrame = 96;
         try
         {
+            Section("Scene");
+            await CrouchingShrinksTheCapsule();
+            await CrewDeathsInALiveApc();
+            await InvadersBreachIntoTheCoreRoom();
+            await WarningRoundsNeverHitAndRoundsTakeTime();
+            await FullInvasionInFastTime();
+            await DestroyingTheGarrisonStopsItsInvasions();
+
             Section("Navigation soak");
             int runs = 50;
             foreach (string arg in OS.GetCmdlineUserArgs())
@@ -496,6 +535,186 @@ public partial class InvasionTest : Node
     async Task PhysicsFrames(int n)
     {
         for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+    }
+
+    async Task Run(double seconds) => await PhysicsFrames((int)Math.Round(seconds * 60));
+
+    async Task<bool> RunUntil(Func<bool> condition, double maxSeconds)
+    {
+        for (double t = 0; t < maxSeconds; t += 0.25)
+        {
+            if (condition()) return true;
+            await PhysicsFrames(15);
+        }
+        return condition();
+    }
+
+    async Task CrouchingShrinksTheCapsule()
+    {
+        Main m = await NewWorld();
+        Player p = m.Player;
+        float stand = p.CapsuleHeight, standEye = p.EyeHeight;
+        Input.ActionPress(Controls.Crouch);
+        await Run(0.5);
+        float crouch = p.CapsuleHeight, crouchEye = p.EyeHeight;
+        Input.ActionRelease(Controls.Crouch);
+        await Run(0.5);
+        Check(crouch < stand - 0.5f && crouchEye < standEye - 0.4f && Math.Abs(p.CapsuleHeight - stand) < 1e-4f,
+            $"holding Ctrl shrinks the capsule {stand:F2} → {crouch:F2} m and lowers the eye; releasing stands back up");
+    }
+
+    async Task CrewDeathsInALiveApc()
+    {
+        Main m = await NewWorld();
+        m.Combat.TurretsEnabled = false;
+        m.Player.Invulnerable = true;
+        m.Player.Teleport(new Vector3(0, 0.1f, -45f), 0f, 0f); // outside the north wall, in the open
+        var plan = new VehiclePlan { Index = 0, Type = "apc", Label = "APC", Speed = 17, Guns = new List<string> { "autocannon", "rocket_pod" } };
+        var at = new Vector3(0, 0, -120f);
+        var route = new VehicleRoute(at, at, m.Combat.BaseCentre, Vector3.Forward, 520f);
+        var apc = (CrewedVehicle)m.Controller.Factory.SpawnVehicle(plan, route);
+        await Run(5);
+        int[] before = apc.ShotsFired.ToArray();
+        Check(before[0] > 0 && before[1] > 0, $"a crewed APC's guns both fire at a player in the open ({before[0]} cannon, {before[1]} rockets)");
+
+        apc.Crew.Damage(1, 1000); // the cannon's gunner
+        await Run(0.5);
+        int[] silenced = apc.ShotsFired.ToArray();
+        await Run(5);
+        int[] after = apc.ShotsFired.ToArray();
+        Check(after[0] == silenced[0] && after[1] > silenced[1],
+            $"killing the cannon's gunner silences the cannon ({silenced[0]} → {after[0]}) while the rockets keep firing ({silenced[1]} → {after[1]})");
+
+        apc.Depart();
+        await Run(3);
+        float moving = apc.Speed;
+        apc.Crew.Damage(0, 1000); // the driver
+        await Run(3);
+        Vector3 stopped = apc.GlobalPosition;
+        await Run(1);
+        Check(moving > 2f && apc.Speed < 0.01f && apc.GlobalPosition.DistanceTo(stopped) < 0.01f && apc.IsStranded,
+            $"killing the driver stops the APC ({moving:F1} m/s → {apc.Speed:F2} m/s)");
+    }
+
+    async Task InvadersBreachIntoTheCoreRoom()
+    {
+        Main m = await NewWorld();
+        m.Combat.TurretsEnabled = false;
+        m.Player.Invulnerable = true;
+        m.Player.Teleport(new Vector3(0, 0.1f, 260f), 0f, 0f);
+        BaseGrid grid = m.Model.Grid;
+        var squad = new List<PlaceholderSoldier>();
+        string[] roles = { "breacher", "rifleman", "rifleman" };
+        for (int i = 0; i < roles.Length; i++)
+        {
+            Vector3 at = m.Combat.CellCentre(grid.FromLayout(10 + i, -10)) + Vector3.Up * 0.1f;
+            var troop = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop(roles[i], at, Vector3.Back);
+            troop.Assault();
+            squad.Add(troop);
+        }
+        int wallsBefore = grid.Alive.Count(b => b.Kind == BlockKind.Wall);
+        bool inside = await RunUntil(() => squad.Any(t => IsInstanceValid(t) && t.InCoreRoom), 120);
+        int wallsBroken = wallsBefore - grid.Alive.Count(b => b.Kind == BlockKind.Wall);
+        Check(inside && wallsBroken > 0,
+            $"a squad outside the north wall blasts through {wallsBroken} wall block(s) and reaches the core room");
+    }
+
+    async Task WarningRoundsNeverHitAndRoundsTakeTime()
+    {
+        Main m = await NewWorld();
+        m.Combat.TurretsEnabled = false;
+        Player p = m.Player;
+        p.Teleport(new Vector3(0, 0.1f, 70f), 0f, 0f); // south of the base, in the open
+        double firstHurt = double.NaN;
+        p.Hurt += _ => { if (double.IsNaN(firstHurt)) firstHurt = m.Combat.Time; };
+        var shooter = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop("rifleman", new Vector3(4f, 0.1f, 100f), Vector3.Forward);
+        shooter.Assault();
+        int warnings = _fire.Warning.Shots;
+        double firstAimed = double.NaN;
+        for (int i = 0; i < 400 && (double.IsNaN(firstAimed) || m.Combat.Time < firstAimed + 1.0); i++)
+        {
+            await PhysicsFrames(1);
+            if (double.IsNaN(firstAimed) && m.Combat.RoundsFired > warnings) firstAimed = m.Combat.Time;
+        }
+        Check(m.Combat.WarningRoundsFired >= warnings && m.Combat.WarningRoundsThatHitTheirTarget == 0 &&
+              (double.IsNaN(firstHurt) || firstHurt >= firstAimed),
+            $"a soldier's first {warnings} rounds at the player all miss: {m.Combat.WarningRoundsFired} warning rounds, " +
+            $"{m.Combat.WarningRoundsThatHitTheirTarget} hits, first wound {(double.IsNaN(firstHurt) ? "none" : $"{firstHurt - firstAimed:+0.00;-0.00} s after the first aimed shot")}");
+
+        // A capital gun round from 150 m: it takes its time, then it is not softened at all.
+        Main w = await NewWorld();
+        Player q = w.Player;
+        q.Teleport(new Vector3(0, 0.1f, 60f), 0f, 0f);
+        WeaponData capital = _fire.Weapon("capital_gun");
+        Vector3 from = q.AimPoint + new Vector3(0, 0, 150f);
+        w.Combat.Fire(from, q.AimPoint, capital, 0f, Layers.InvaderShots, Faction.Vharn, Palette.TracerVharn);
+        double fired = w.Combat.Time, expected = 150.0 / capital.ProjectileSpeed;
+        await PhysicsFrames(2);
+        bool aliveAfterLaunch = q.Health.Alive;
+        for (int i = 0; i < 180 && q.Health.Alive; i++) await PhysicsFrames(1);
+        double flight = w.Combat.Time - fired;
+        Check(aliveAfterLaunch && !q.Health.Alive && Math.Abs(flight - expected) < 0.06 && q.Health.Current == 0,
+            $"a capital round flies {capital.ProjectileSpeed} m/s (150 m in {flight:F2} s, expected {expected:F2}) and vaporises a player on foot");
+    }
+
+    async Task FullInvasionInFastTime()
+    {
+        Main m = await NewWorld();
+        m.Player.Invulnerable = true;
+        m.Director.FastTime = true;
+        var items = m.Model.Loot.AllItems();
+        int total = m.Model.Loot.TotalItems;
+
+        Check(m.Controller.InvadeNow() == "", "I starts an invasion with the player home");
+        bool arrived = await RunUntil(() => m.Controller.Current?.Phase == InvasionPhase.Assault, 30);
+        var warnings = m.Controller.Heard.Where(e => e.Kind == DirectorEventKind.Warning).Select(e => e.Level).ToList();
+        Check(arrived && warnings.SequenceEqual(new[] { 1, 2, 3 }) && m.Base.Sirens.On && m.Base.Sirens.AudioMode == Audio.SirenSynth.Mode.Alert,
+            $"in fast time the three warnings come in order and the siren wails ({string.Join(",", warnings)})");
+        await Run(30);
+        Check(m.Base.Consoles.Count > 0 && m.Base.Consoles.All(c => c.Text.Contains("UNDER ATTACK")),
+            "the console screens show the attack");
+        Check(m.Combat.Vehicles.Count > 0 && m.Combat.Troops.Any(t => t.IsAlive), $"crewed vehicles arrive and set {m.Combat.Troops.Count} troops down");
+
+        // An invasion that wrecks containers: everything they held lands in crates that stay.
+        foreach (Block c in m.Model.Grid.Alive.Where(b => b.Kind == BlockKind.Container).Take(2).ToList()) m.Model.Damage(c, 1e6);
+        await Run(1);
+        int inCrates = m.Base.CrateNodes.Sum(n => n.Crate.Total);
+        Check(m.Base.CrateNodes.Count() == 2 && m.Model.Loot.Storage.Total + inCrates == total && m.Model.Loot.AllItems().SequenceEqual(items),
+            $"two wrecked containers leave two spill crates; storage {m.Model.Loot.Storage.Total} + crates {inCrates} = {total}, item for item");
+
+        var survivors = m.Model.Grid.Alive.Where(b => b.Kind != BlockKind.Core).Select(b => b.Id).ToHashSet();
+        m.Model.Damage(m.Model.Grid.Core, 1e6);
+        await Run(0.25);
+        var onFoot = m.Combat.Troops.Where(t => t.IsAlive && !t.IsGone).ToList();
+        Check(!m.Model.Online && m.Base.Turrets.All(t => !t.Powered) && m.Controller.Current?.Phase == InvasionPhase.Withdrawing &&
+              onFoot.All(t => t.State == TroopState.Withdrawing),
+            $"with the core down the base is offline, the turrets are dead and all {onFoot.Count} troops on foot withdraw");
+        Check(m.Base.Sirens.On, "the siren keeps sounding while they withdraw");
+
+        bool ended = await RunUntil(() => m.Controller.Current == null, 240);
+        Invasion last = m.Director.Base(InvasionController.HomeId).History.Last();
+        Check(ended && last.Outcome == InvasionOutcome.CoreDestroyed && !m.Base.Sirens.On && m.Base.Sirens.AudioMode == Audio.SirenSynth.Mode.AllClear,
+            "once the last invader is gone the invasion ends, the alert stops and the all-clear sounds");
+        Check(m.Model.Loot.TotalItems == total && m.Base.CrateNodes.Count() == 2, "after the invasion every item is still there, crates included");
+
+        Block core = m.Model.PlaceNewCore();
+        await Run(0.25);
+        var alive = m.Model.Grid.Alive.Select(b => b.Id).ToHashSet();
+        Check(core != null && m.Model.Online && m.Director.Base(InvasionController.HomeId).CoreAlive && alive.SetEquals(survivors.Append(core.Id)),
+            $"P places a new core: the base is back online with the {survivors.Count} blocks that survived");
+    }
+
+    async Task DestroyingTheGarrisonStopsItsInvasions()
+    {
+        Main m = await NewWorld();
+        PlayerBase home = m.Director.Base(InvasionController.HomeId);
+        Check(m.Director.NearestSourceBase(home)?.Id == m.Garrison.Id, "the garrison 600 m north-east is the source");
+        m.Garrison.DestroyCore(); // what K does
+        await Run(0.25);
+        Check(m.Garrison.Destroyed && m.Director.Enemy(m.Garrison.Id).State == EnemyBaseState.Destroyed && m.Director.NearestSourceBase(home) == null,
+            "K destroys the garrison's core and it stops being a source");
+        m.Controller.InvadeNow();
+        Check(home.Active?.Source.Kind == SourceKind.Ship, $"the next invasion comes by ship instead: {home.Active?.Source}");
     }
 
     // ---- Navigation soak ---------------------------------------------------------------

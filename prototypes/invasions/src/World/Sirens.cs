@@ -69,9 +69,9 @@ public partial class SirenSystem : Node3D
 
     public override void _Ready()
     {
-        // No audio device headless; the beacons still work.
-        if (DisplayServer.GetName() == "headless") return;
+        // The siren's state always runs (tests read it); sound only goes out where there's a device.
         _synth = new SirenSynth(MixRate);
+        if (DisplayServer.GetName() == "headless") return;
         _audio = new AudioStreamPlayer
         {
             Stream = new AudioStreamGenerator { MixRate = MixRate, BufferLength = 0.3f },
