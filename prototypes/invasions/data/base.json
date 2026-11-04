@@ -5,8 +5,9 @@
   "name": "Homestead",
   "cellSize": 2.0,
   "wallHeight": 3.0,
-  // Empty ground kept around the layout so invaders can plan their way in from outside the walls.
-  "margin": 12,
+  // Ground around the layout that the planner covers (cells), so invaders plan their way through the
+  // clutter of the approach, not just the walls. Beyond it they walk straight with local avoidance.
+  "margin": 40,
   // Players within this many metres of the base centre are "in its zone" for the presence rule.
   "zoneRadius": 300,
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using Invasions.Combat;
 using Invasions.Director;
 using Invasions.Model;
 using Invasions.World;
@@ -453,9 +454,169 @@ public partial class InvasionTest : Node
 
     // ---- Scene ------------------------------------------------------------------------
 
+    Main _world;
+
     async Task SceneTests()
     {
-        await Task.CompletedTask;
+        // Run the scene faster than real time: same 1/60 s physics steps, as many per second as the CPU allows.
+        Engine.PhysicsTicksPerSecond = 60 * 24;
+        Engine.TimeScale = 24;
+        Engine.MaxPhysicsStepsPerFrame = 96;
+        try
+        {
+            Section("Navigation soak");
+            int runs = 50;
+            foreach (string arg in OS.GetCmdlineUserArgs())
+                if (arg.StartsWith("--soak=")) runs = int.Parse(arg["--soak=".Length..]);
+            await Soak(runs);
+        }
+        finally
+        {
+            Engine.TimeScale = 1;
+            Engine.PhysicsTicksPerSecond = 60;
+            if (_world != null) _world.QueueFree();
+            _world = null;
+            await PhysicsFrames(3); // let the last world go before quitting
+        }
+    }
+
+    async Task<Main> NewWorld()
+    {
+        if (_world != null)
+        {
+            _world.QueueFree();
+            await PhysicsFrames(2);
+        }
+        _world = new Main();
+        AddChild(_world);
+        await PhysicsFrames(2);
+        return _world;
+    }
+
+    async Task PhysicsFrames(int n)
+    {
+        for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+    }
+
+    // ---- Navigation soak ---------------------------------------------------------------
+
+    const double StuckLimit = 3.0, EngageLimit = 40.0, SoakSeconds = 70.0;
+
+    sealed class SoakStats
+    {
+        public int Runs, Troops, StuckOverLimit, Late, Clutter;
+        public double WorstStuck, WorstEngage;
+        public string WorstStuckWhere = "";
+    }
+
+    sealed class Tracked
+    {
+        public PlaceholderSoldier Soldier;
+        public Vector3 Anchor;
+        public double AnchorTime, Spawned, StuckMax;
+        public double? Engaged;
+        public bool CountedStuck;
+    }
+
+    async Task Soak(int runs)
+    {
+        var stats = new SoakStats();
+        ulong started = Time.GetTicksMsec();
+        for (int seed = 1; seed <= runs; seed++) await SoakOne(seed, stats);
+        double seconds = (Time.GetTicksMsec() - started) / 1000.0;
+        GD.Print($"SOAK  {stats.Runs} seeded invasions, {stats.Troops} invaders, {stats.Clutter} obstacles, {seconds:F0} s real time");
+        GD.Print($"SOAK  worst stuck {stats.WorstStuck:F2} s ({stats.WorstStuckWhere}); stuck over {StuckLimit} s: {stats.StuckOverLimit}; " +
+                 $"slowest to reach the core room or a breach: {stats.WorstEngage:F1} s; late or never: {stats.Late}");
+        GD.Print($"SOAK  recoveries: {InvaderNavigator.Repaths} re-paths, {InvaderNavigator.Sidesteps} side-steps, {InvaderNavigator.Unsticks} hops to a free cell");
+        Check(stats.StuckOverLimit == 0, $"no invader stays stuck for more than {StuckLimit} s across {stats.Runs} cluttered invasions (worst {stats.WorstStuck:F2} s)");
+        Check(stats.Late == 0, $"every invader reaches the core room or a breach within {EngageLimit} s (slowest {stats.WorstEngage:F1} s)");
+    }
+
+    async Task SoakOne(int seed, SoakStats stats)
+    {
+        Main m = await NewWorld();
+        var rng = new RandomNumberGenerator { Seed = (ulong)(seed * 7919 + 17) };
+        m.Combat.TurretsEnabled = false;
+        m.Player.Invulnerable = true;
+        m.Player.Teleport(new Vector3(0, 0.1f, 260f), 0, 0); // home, but well out of the fight
+
+        float bearing = rng.RandfRange(0f, 360f);
+        GroundPos dir = GroundPos.FromBearing(bearing, 1);
+        var outward = new Vector3((float)dir.X, 0, (float)dir.Z);
+        var right = new Vector3(-outward.Z, 0, outward.X);
+        float distance = rng.RandfRange(55f, 75f);
+        stats.Clutter += Clutter.Scatter(m, rng, outward, distance);
+
+        ForcePlan plan = ForceComposer.Compose(new BaseStats(rng.RandfRange(1500f, 9000f), 90, 2), rng.RandiRange(1, 3),
+            SourceKind.Garrison, _data, new DeterministicRng((ulong)seed));
+        var tracked = new List<Tracked>();
+        double now = 0;
+        foreach (VehiclePlan v in plan.Vehicles)
+        {
+            Vector3 drop = outward * distance + right * (float)v.Offset * 0.6f;
+            foreach (string role in v.Troops)
+            {
+                Vector3 at = drop + new Vector3(rng.RandfRange(-2.5f, 2.5f), 0.1f, rng.RandfRange(-2.5f, 2.5f));
+                IInvaderTroop troop = m.Controller.Factory.SpawnTroop(role, at, -outward);
+                troop.Assault();
+                tracked.Add(new Tracked { Soldier = (PlaceholderSoldier)troop, Anchor = at, AnchorTime = 0, Spawned = 0 });
+            }
+        }
+        stats.Runs++;
+        stats.Troops += tracked.Count;
+
+        const int sampleTicks = 15; // 0.25 s
+        for (int tick = 0; now < SoakSeconds; tick += sampleTicks)
+        {
+            await PhysicsFrames(sampleTicks);
+            now += sampleTicks / 60.0;
+            bool anyActive = false;
+            foreach (Tracked t in tracked)
+            {
+                PlaceholderSoldier s = t.Soldier;
+                if (!IsInstanceValid(s) || !s.IsAlive || s.IsGone || s.State != TroopState.Assaulting) continue;
+                anyActive = true;
+                Vector3 p = s.GlobalPosition;
+                bool engaged = s.AtBreach || s.InCoreRoom;
+                if (engaged) t.Engaged ??= now - t.Spawned;
+                if (engaged || p.DistanceTo(t.Anchor) >= 0.5f)
+                {
+                    t.Anchor = p;
+                    t.AnchorTime = now;
+                }
+                double stuck = now - t.AnchorTime;
+                t.StuckMax = Math.Max(t.StuckMax, stuck);
+                if (stuck > stats.WorstStuck)
+                {
+                    stats.WorstStuck = stuck;
+                    stats.WorstStuckWhere = $"seed {seed}, {s.Role} at {m.Model.Grid.ToLayout(m.Combat.CellAt(p))}";
+                }
+                if (stuck > StuckLimit && !t.CountedStuck)
+                {
+                    t.CountedStuck = true;
+                    stats.StuckOverLimit++;
+                }
+            }
+            bool coreDown = !m.Model.Online;
+            bool allInside = tracked.All(t => !IsInstanceValid(t.Soldier) || !t.Soldier.IsAlive || t.Soldier.InCoreRoom);
+            if (!anyActive || coreDown || allInside) break;
+        }
+
+        foreach (Tracked t in tracked)
+        {
+            // Late: engaged after the limit, or still not engaged when the limit passed. (A run can end
+            // sooner, when the squad takes the core; anyone still on the way then wasn't late.)
+            double reach = t.Engaged ?? (now >= EngageLimit ? double.PositiveInfinity : 0);
+            if (reach > EngageLimit)
+            {
+                stats.Late++;
+                PlaceholderSoldier s = t.Soldier;
+                string where = IsInstanceValid(s) ? $"{s.Role} {s.State} at {m.Model.Grid.ToLayout(m.Combat.CellAt(s.GlobalPosition))}, {s.GlobalPosition.DistanceTo(m.Combat.BaseCentre):F0} m out" : "freed";
+                GD.Print($"  late: seed {seed}, {where}, run ended at {now:F1} s (core {(m.Model.Online ? "up" : "down")})");
+            }
+            if (t.Engaged is double e) stats.WorstEngage = Math.Max(stats.WorstEngage, e);
+        }
+        if (seed % 10 == 0) GD.Print($"  soak seed {seed}: worst stuck so far {stats.WorstStuck:F2} s, stuck {stats.StuckOverLimit}, late {stats.Late}");
     }
 
     // ---- Reporting --------------------------------------------------------------------

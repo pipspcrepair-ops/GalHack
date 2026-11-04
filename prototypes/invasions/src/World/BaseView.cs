@@ -374,6 +374,7 @@ public partial class BaseView : Node3D
         AddChild(node);
         node.GlobalPosition = new Vector3((float)crate.Position.X, 0f, (float)crate.Position.Z);
         _crates[crate.Id] = node;
+        World.RegisterObstacle(node.GlobalPosition, SpillCrateSize, 0f); // invaders path round it
     }
 
     void OnRecovered(SpillCrate crate)
@@ -385,8 +386,11 @@ public partial class BaseView : Node3D
             return;
         }
         _crates.Remove(crate.Id);
+        World.UnregisterObstacle(node.GlobalPosition, SpillCrateSize, 0f);
         node.QueueFree();
     }
+
+    static readonly Vector3 SpillCrateSize = new(1.3f, 1f, 1.3f);
 
     void OnOnlineChanged(bool online) => ApplyPower();
 

@@ -62,6 +62,9 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
 
     /// <summary>Accuracy row for anyone shooting at this vehicle's crew.</summary>
     protected abstract TargetClass HullClass { get; }
+    /// <summary>Width and length on the ground, for marking a hulk as an obstacle.</summary>
+    protected abstract Vector2 Footprint { get; }
+    bool _markedAsObstacle;
 
     const float GunRange = 170f, CrewHp = 80f;
 
@@ -93,6 +96,13 @@ public abstract partial class CrewedVehicle : Node3D, IInvaderVehicle
         }
 
         Move(dt);
+
+        // A stranded vehicle that has come to rest is a hulk: invaders on foot plan round it.
+        if (Phase == Mode.Stranded && !_markedAsObstacle && GlobalPosition.Y < 0.5f && Speed < 0.3f)
+        {
+            _markedAsObstacle = true;
+            World.RegisterObstacle(GlobalPosition with { Y = 0 }, new Vector3(Footprint.X, 3f, Footprint.Y), Rotation.Y);
+        }
 
         if (Phase == Mode.Unload)
         {

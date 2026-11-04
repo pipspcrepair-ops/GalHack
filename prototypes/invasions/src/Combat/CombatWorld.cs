@@ -257,6 +257,26 @@ public partial class CombatWorld : Node3D
         return (dir + (side * Mathf.Cos(turn) + lift * Mathf.Sin(turn)) * Mathf.Tan(angle)).Normalized();
     }
 
+    // ---- Obstacles --------------------------------------------------------------------
+
+    /// <summary>Raised when obstacles are added or removed, so agents re-plan.</summary>
+    public event System.Action ObstaclesChanged;
+
+    /// <summary>
+    /// Marks something solid that can't be breached (a spill crate, a vehicle hulk, rubble) on the
+    /// planning grid, grown by an agent's radius plus a margin, so routes go round it.
+    /// </summary>
+    public void RegisterObstacle(Vector3 centre, Vector3 size, float yaw) => MarkObstacle(centre, size, yaw, +1);
+
+    public void UnregisterObstacle(Vector3 centre, Vector3 size, float yaw) => MarkObstacle(centre, size, yaw, -1);
+
+    void MarkObstacle(Vector3 centre, Vector3 size, float yaw, int delta)
+    {
+        int cells = Model.Grid.MarkObstacle(new GroundPos(centre.X, centre.Z), size.X, size.Z, yaw,
+            InvaderNavigator.Radius + InvaderNavigator.Clearance, delta);
+        if (cells > 0) ObstaclesChanged?.Invoke();
+    }
+
     // ---- Targets ----------------------------------------------------------------------
 
     /// <summary>

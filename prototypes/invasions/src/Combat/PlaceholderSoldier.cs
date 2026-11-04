@@ -9,10 +9,12 @@ namespace Invasions.Combat;
 /// <summary>
 /// PLACEHOLDER Vharn foot soldier, to be replaced by the boarding prototype's soldier AI.
 ///
-/// Follows the breach planner's route to the core, cell by cell. When the next cell holds a block
-/// it stops and breaks it (breachers plant charges, everyone shoots it), then carries on; when any
-/// block falls it re-plans, so a squad converges on fresh breaches. It shoots players and turrets it
-/// can see on the way. Withdrawing, it plans its way back out and walks to its ride (or out of the area).
+/// Movement is an <see cref="InvaderNavigator"/>: the breach planner's route to the core, smoothed
+/// only where its whole body fits, with local avoidance and stuck recovery. When a block is in the way
+/// it holds at a safe spot and breaks it (breachers plant charges, everyone shoots it), then carries
+/// on; when any block falls it re-plans, so a squad converges on fresh breaches. It shoots players and
+/// turrets it can see on the way, through fire control. Withdrawing, it plans its way back out and
+/// walks to its ride (or out of the area).
 /// </summary>
 public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvaderTroop
 {
@@ -29,11 +31,14 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     public Vector3 AimPoint => GlobalPosition + Vector3.Up * 1.3f;
 
     /// <summary>The block it is currently breaking through, if any (for tests and debugging).</summary>
-    public Block BreachTarget => _breachTarget;
+    public Block BreachTarget => _nav?.BreachTarget;
 
-    /// <summary>Close enough to the block in the way to be hitting it.</summary>
-    public bool AtBreach => _breachTarget is { Alive: true } && Flat(GlobalPosition, World.BlockAim(_breachTarget)) < 3.6f;
+    /// <summary>At an engagement position: holding in front of the block in the way, or within rifle reach of it.</summary>
+    public bool AtBreach => BreachTarget is { Alive: true } b &&
+                            (_nav.Holding || Flat(GlobalPosition, World.BlockAim(b)) < InvaderNavigator.ShootReach);
     public bool InCoreRoom => World.Model.InCoreRoom(new GroundPos(GlobalPosition.X, GlobalPosition.Z));
+    /// <summary>How long it has been trying to move without getting anywhere.</summary>
+    public float StuckTime => _nav?.StuckTime ?? 0f;
 
     /// <summary>Per role: the weapon (from fire_control.json), engagement range and jogging speed.</summary>
     readonly record struct RoleStats(string Weapon, float Range, float Speed);
@@ -47,22 +52,15 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     };
 
     const float MaxHp = 100f, Gravity = 18f, Accel = 20f, WithdrawSpeed = 5.8f;
-    const float ChargeDamage = 340f, ChargeFuse = 2.2f, ChargeCooldown = 7f;
+    const float ChargeDamage = 340f, ChargeFuse = 2.2f, ChargeCooldown = 7f, ChargeReach = 3.6f;
 
     RoleStats _stats;
     FireControl _fire;
+    InvaderNavigator _nav;
     float _hp = MaxHp;
-    AssaultPlan _plan;
-    int _step;
-    bool _needsPlan = true;
-    Cell _goal;
-    Vector3? _finalPoint;
-    Block _breachTarget;
     IDamageable _target;
     IInvaderVehicle _pickup;
-    float _fireTimer, _scanTimer, _chargeTimer = 1.5f, _stuckTimer, _deadTimer;
-    Vector3 _progressMark;
-    Vector3 _jitter;
+    float _fireTimer, _scanTimer, _chargeTimer = 1.5f, _deadTimer;
     Node3D _model;
 
     public override void _Ready()
@@ -70,24 +68,31 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
         _stats = Roles.TryGetValue(Role, out RoleStats s) ? s : Roles["rifleman"];
         _fire = new FireControl(World.FireData, World.FireData.Weapon(_stats.Weapon));
         CollisionLayer = Layers.Invaders;
-        CollisionMask = Layers.World | Layers.Blocks | Layers.Player;
+        // Solid against hulks and crates too: they walk round them, never through.
+        CollisionMask = Layers.World | Layers.Blocks | Layers.Player | Layers.Vehicles | Layers.Loot;
         FloorMaxAngle = Mathf.DegToRad(50f);
-        AddChild(new CollisionShape3D { Shape = new CapsuleShape3D { Radius = 0.34f, Height = 1.8f }, Position = new Vector3(0, 0.9f, 0) });
+        AddChild(new CollisionShape3D
+        {
+            Shape = new CapsuleShape3D { Radius = InvaderNavigator.Radius, Height = 1.8f },
+            Position = new Vector3(0, 0.9f, 0),
+        });
         BuildModel();
-        _jitter = new Vector3(World.Rng.RandfRange(-0.45f, 0.45f), 0f, World.Rng.RandfRange(-0.45f, 0.45f));
+        _nav = new InvaderNavigator(World, this, mustTouch: Role == "breacher");
         _scanTimer = World.Rng.RandfRange(0f, 0.5f);
-        _progressMark = GlobalPosition;
-        World.Model.BlockDestroyed += OnBlockDestroyed;
-        World.Model.BlockPlaced += OnBlockDestroyed;
+        World.Model.BlockDestroyed += OnWorldChanged;
+        World.Model.BlockPlaced += OnWorldChanged;
+        World.ObstaclesChanged += Replan;
     }
 
     public override void _ExitTree()
     {
-        World.Model.BlockDestroyed -= OnBlockDestroyed;
-        World.Model.BlockPlaced -= OnBlockDestroyed;
+        World.Model.BlockDestroyed -= OnWorldChanged;
+        World.Model.BlockPlaced -= OnWorldChanged;
+        World.ObstaclesChanged -= Replan;
     }
 
-    void OnBlockDestroyed(Block _) => _needsPlan = true;
+    void OnWorldChanged(Block _) => _nav.Invalidate();
+    void Replan() => _nav.Invalidate();
 
     // ---- Orders -----------------------------------------------------------------------
 
@@ -95,9 +100,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
     {
         if (!IsAlive || IsGone) return;
         State = TroopState.Assaulting;
-        _goal = World.Model.Grid.CoreSlot;
-        _finalPoint = null;
-        _needsPlan = true;
+        _nav.SetGoal(World.Model.Grid.CoreSlot, null);
     }
 
     public void Withdraw(IInvaderVehicle pickup)
@@ -106,12 +109,9 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
         State = TroopState.Withdrawing;
         _pickup = pickup;
         _target = null;
-        _breachTarget = null;
         Vector3 exit = WithdrawPoint();
         // Plan back out through the base to the edge of the grid nearest the exit, then walk straight.
-        _goal = World.Model.Grid.Clamp(World.CellAt(exit));
-        _finalPoint = exit;
-        _needsPlan = true;
+        _nav.SetGoal(World.Model.Grid.Clamp(World.CellAt(exit)), exit, pickup != null ? 6f : 3f);
     }
 
     Vector3 WithdrawPoint()
@@ -133,18 +133,10 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
             return;
         }
         if (State == TroopState.Gone) return;
+        if (State == TroopState.Withdrawing && Withdrawn()) return;
 
-        Vector3? goal = State == TroopState.Withdrawing ? WithdrawStep() : AssaultStep();
         float speed = State == TroopState.Withdrawing ? WithdrawSpeed : _stats.Speed;
-
-        Vector3 desired = Vector3.Zero;
-        if (goal is Vector3 g)
-        {
-            Vector3 to = (g - GlobalPosition) with { Y = 0 };
-            float distance = to.Length();
-            if (distance > 0.15f) desired = to / distance * speed * Mathf.Clamp(distance / 1.2f, 0.25f, 1f);
-        }
-        desired += Separation() * 2.2f;
+        Vector3 desired = _nav.Steer(dt, speed);
 
         Vector3 v = Velocity;
         v.X = Mathf.MoveToward(v.X, desired.X, Accel * dt);
@@ -155,128 +147,24 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
 
         Face(dt);
         if (State == TroopState.Assaulting) Fight(dt);
-        CheckStuck(dt, goal);
     }
 
-    Vector3? AssaultStep()
+    /// <summary>True once it has climbed aboard its ride or walked out of the area.</summary>
+    bool Withdrawn()
     {
-        BaseGrid grid = World.Model.Grid;
-        if (_needsPlan) Replan();
-        if (_plan is not { Found: true }) return null;
-
-        while (_step < _plan.Cells.Count)
-        {
-            Cell c = _plan.Cells[_step];
-            if (grid.At(c) is { Alive: true } blocker)
-            {
-                // Something stands in the way: hold at the last open cell and break it.
-                _breachTarget = blocker;
-                return _step > 0 ? World.CellCentre(_plan.Cells[_step - 1]) + _jitter * 0.5f : GlobalPosition;
-            }
-            _breachTarget = null;
-            Vector3 point = World.CellCentre(c) + _jitter;
-            bool last = _step == _plan.Cells.Count - 1;
-            if (!last && Flat(GlobalPosition, point) < 0.8f)
-            {
-                _step++;
-                continue;
-            }
-            if (last)
-            {
-                // At the core: hit it until it falls.
-                _breachTarget = grid.Core;
-            }
-            return point;
-        }
-        return null;
-    }
-
-    Vector3? WithdrawStep()
-    {
-        BaseGrid grid = World.Model.Grid;
         if (_pickup != null && (_pickup.IsGone || _pickup.IsStranded)) Withdraw(null);
-        Vector3 exit = WithdrawPoint();
-        _finalPoint = exit;
-
-        // Inside the grid, follow a plan out (through the holes we came in by); outside it, walk straight.
-        bool insideGrid = grid.InBounds(World.CellAt(GlobalPosition)) && Flat(GlobalPosition, World.BaseCentre) < (grid.Width * grid.CellSize * 0.5);
-        if (insideGrid && Flat(GlobalPosition, exit) > 8f)
+        if (_pickup != null && _nav.Arrived && _pickup.ReadyForPickup)
         {
-            if (_needsPlan) Replan();
-            if (_plan is { Found: true } && _step < _plan.Cells.Count)
-            {
-                Cell c = _plan.Cells[_step];
-                if (grid.At(c) is { Alive: true }) { _needsPlan = true; return GlobalPosition; }
-                Vector3 point = World.CellCentre(c) + _jitter;
-                if (Flat(GlobalPosition, point) < 0.8f) _step++;
-                return point;
-            }
+            _pickup.Extract(this);
+            Leave();
+            return true;
         }
-
-        if (_pickup != null)
-        {
-            if (Flat(GlobalPosition, exit) < 6f && _pickup.ReadyForPickup)
-            {
-                _pickup.Extract(this);
-                Leave();
-                return null;
-            }
-            return exit;
-        }
-        if (Flat(GlobalPosition, World.BaseCentre) > World.Data.Approach.GoneDistance)
+        if (_pickup == null && Flat(GlobalPosition, World.BaseCentre) > World.Data.Approach.GoneDistance)
         {
             Leave();
-            return null;
+            return true;
         }
-        return exit;
-    }
-
-    void Replan()
-    {
-        _needsPlan = false;
-        BaseGrid grid = World.Model.Grid;
-        _plan = World.Planner.Plan(grid, grid.Clamp(World.CellAt(GlobalPosition)), _goal);
-        _step = 0;
-        // Skip cells already behind us: start from the plan cell nearest to where we stand.
-        if (_plan is { Found: true })
-        {
-            float best = float.MaxValue;
-            for (int i = 0; i < Mathf.Min(4, _plan.Cells.Count); i++)
-            {
-                float d = Flat(GlobalPosition, World.CellCentre(_plan.Cells[i]));
-                if (d < best) { best = d; _step = i; }
-            }
-        }
-    }
-
-    void CheckStuck(float dt, Vector3? goal)
-    {
-        if (goal == null || _breachTarget != null || Flat(GlobalPosition, _progressMark) > 0.6f)
-        {
-            _progressMark = GlobalPosition;
-            _stuckTimer = 0f;
-            return;
-        }
-        _stuckTimer += dt;
-        if (_stuckTimer > 3f)
-        {
-            _stuckTimer = 0f;
-            _jitter = new Vector3(World.Rng.RandfRange(-0.6f, 0.6f), 0f, World.Rng.RandfRange(-0.6f, 0.6f));
-            _needsPlan = true;
-        }
-    }
-
-    Vector3 Separation()
-    {
-        Vector3 push = Vector3.Zero;
-        foreach (IInvaderTroop other in World.Troops)
-        {
-            if (other == this || !other.IsAlive || other.IsGone) continue;
-            Vector3 away = (GlobalPosition - other.Body.GlobalPosition) with { Y = 0 };
-            float d = away.Length();
-            if (d < 1.1f && d > 0.001f) push += away / d * (1.1f - d);
-        }
-        return push;
+        return false;
     }
 
     // ---- Fighting ---------------------------------------------------------------------
@@ -293,17 +181,19 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
             _scanTimer = 0.5f;
             const uint sight = Layers.World | Layers.Blocks;
             // While breaching, only a player close by is worth turning for.
-            float playerRange = _breachTarget != null ? 25f : _stats.Range;
+            float playerRange = BreachTarget != null ? 25f : _stats.Range;
             _target = World.NearestPlayer(eye, playerRange, sight);
-            if (_target == null && _breachTarget == null) _target = World.NearestTurret(eye, _stats.Range + 15f, sight);
+            if (_target == null && BreachTarget == null) _target = World.NearestTurret(eye, _stats.Range + 15f, sight);
             if (_target == null) _fire.LostSight();
         }
         if (!CombatWorld.Usable(_target)) _target = null;
 
-        bool breachInReach = _breachTarget is { Alive: true } && Flat(GlobalPosition, World.BlockAim(_breachTarget)) < 3.6f;
-        if (breachInReach && Role == "breacher" && _chargeTimer <= 0f && _target == null)
+        Block breach = BreachTarget is { Alive: true } b ? b : null;
+        float toBreach = breach != null ? Flat(GlobalPosition, World.BlockAim(breach)) : float.MaxValue;
+        bool breachInReach = toBreach < InvaderNavigator.ShootReach;
+        if (toBreach < ChargeReach && Role == "breacher" && _chargeTimer <= 0f && _target == null)
         {
-            PlantCharge(_breachTarget);
+            PlantCharge(breach);
             _chargeTimer = ChargeCooldown;
         }
 
@@ -326,7 +216,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
             _fireTimer = (float)_fire.Weapon.Interval;
             Vector3 muzzle = Muzzle();
             float spread = (float)World.FireData.BaselineSpread(_fire.Weapon, TargetClass.Capital);
-            World.Fire(muzzle, World.BlockAim(_breachTarget), _fire.Weapon, spread, Layers.Blocks | Layers.World, Faction.Vharn,
+            World.Fire(muzzle, World.BlockAim(breach), _fire.Weapon, spread, Layers.Blocks | Layers.World, Faction.Vharn,
                 Palette.TracerVharn, maxDistance: 12f);
         }
     }
@@ -347,7 +237,7 @@ public partial class PlaceholderSoldier : CharacterBody3D, IDamageable, IInvader
         Vector3 look = Vector3.Zero;
         if (!CombatWorld.Usable(_target)) _target = null;
         if (State == TroopState.Assaulting && _target != null) look = _target.AimPoint - GlobalPosition;
-        else if (State == TroopState.Assaulting && _breachTarget != null) look = World.BlockAim(_breachTarget) - GlobalPosition;
+        else if (State == TroopState.Assaulting && BreachTarget != null) look = World.BlockAim(BreachTarget) - GlobalPosition;
         else if (Velocity.LengthSquared() > 0.3f) look = Velocity;
         look.Y = 0;
         if (look.LengthSquared() < 0.01f) return;

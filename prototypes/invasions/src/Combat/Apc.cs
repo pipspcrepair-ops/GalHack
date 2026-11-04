@@ -17,6 +17,7 @@ public partial class Apc : CrewedVehicle
 
     public override Vector3 PickupPoint => GlobalTransform * new Vector3(0, 0, 6f);
     protected override TargetClass HullClass => TargetClass.Hover;
+    protected override Vector2 Footprint => new(3.6f, 8.4f);
     public override bool ReadyForPickup => Phase == Mode.Pickup && Speed < 0.5f;
 
     protected override Vector3 ExitPoint()
