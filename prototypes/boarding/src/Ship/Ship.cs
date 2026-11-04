@@ -114,16 +114,46 @@ public partial class Ship : Node3D
         CellKind kind = Layout[cell];
         if (Blocks.TryGetValue(cell, out Block block)) return block is Door door && door.Passable;
         if (kind == CellKind.Duct) return canCrouch;
+        // Obstacles are inflated to whole cells: a cell is either free for its full 2 m width
+        // or it's blocked. The gunner's console only fills part of its cell, so the cell is
+        // refused rather than letting a path skim the console's edge.
+        if (kind == CellKind.GunnerStation) return false;
         return ShipLayout.IsWalkable(kind);
     }
 
-    /// <summary>A* from one ship-local point to another. Guards can't crawl through ducts.</summary>
-    public List<Vector2I> FindPath(Vector3 fromLocal, Vector3 toLocal, bool canCrouch = false)
+    /// <summary>
+    /// A* from one ship-local point to another. Guards can't crawl through ducts. extraCost lets a
+    /// guard steer around crowded cells (other guards) without treating them as walls.
+    /// </summary>
+    public List<Vector2I> FindPath(Vector3 fromLocal, Vector3 toLocal, bool canCrouch = false, Func<Vector2I, float> extraCost = null)
     {
         Vector2I start = Layout.CellAt(fromLocal);
         Vector2I goal = NearestPassable(Layout.CellAt(toLocal), canCrouch);
         if (goal.X < 0) return null;
-        return Pathfinder.FindPath(start, goal, c => Passable(c, canCrouch));
+        return Pathfinder.FindPath(start, goal, c => Passable(c, canCrouch), extraCost);
+    }
+
+    /// <summary>
+    /// True if an agent of this radius can walk straight between two ship-local points: every
+    /// sample along the line, and the points a radius to either side and ahead of it, lies in
+    /// an open cell. Path smoothing only takes shortcuts that pass this check.
+    /// </summary>
+    public bool ClearLine(Vector3 from, Vector3 to, float radius)
+    {
+        Vector3 d = to - from;
+        d.Y = 0f;
+        float length = d.Length();
+        if (length < 1e-3f) return true;
+        Vector3 dir = d / length;
+        Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * radius;
+        int steps = Mathf.CeilToInt(length / 0.25f);
+        for (int i = 0; i <= steps; i++)
+        {
+            Vector3 p = from + dir * (length * i / steps);
+            if (!Passable(Layout.CellAt(p)) || !Passable(Layout.CellAt(p + side)) || !Passable(Layout.CellAt(p - side)))
+                return false;
+        }
+        return Passable(Layout.CellAt(to + dir * radius));
     }
 
     /// <summary>The goal cell itself, or the closest passable cell within a few cells of it.</summary>

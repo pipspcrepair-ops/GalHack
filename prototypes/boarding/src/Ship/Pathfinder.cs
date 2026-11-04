@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -27,7 +27,9 @@ public static class Pathfinder
     /// The start cell itself is allowed to be impassable (a guard standing in a doorway
     /// that just sealed can still walk out of it).
     /// </summary>
-    public static List<Vector2I> FindPath(Vector2I start, Vector2I goal, Func<Vector2I, bool> passable, int maxNodes = 4000)
+    /// <param name="extraCost">Optional extra cost for stepping into a cell (crowding), never negative.</param>
+    public static List<Vector2I> FindPath(Vector2I start, Vector2I goal, Func<Vector2I, bool> passable,
+        Func<Vector2I, float> extraCost = null, int maxNodes = 4000)
     {
         if (start == goal) return new List<Vector2I> { start };
         if (!passable(goal)) return null;
@@ -52,7 +54,7 @@ public static class Pathfinder
                 if (diagonal && (!passable(new Vector2I(next.X, current.Y)) || !passable(new Vector2I(current.X, next.Y))))
                     continue;
 
-                float g = cost[current] + (diagonal ? Diagonal : Straight);
+                float g = cost[current] + (diagonal ? Diagonal : Straight) + (extraCost?.Invoke(next) ?? 0f);
                 if (cost.TryGetValue(next, out float known) && known <= g) continue;
                 cost[next] = g;
                 cameFrom[next] = current;

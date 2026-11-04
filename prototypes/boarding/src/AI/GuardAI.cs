@@ -34,9 +34,9 @@ public partial class Guard
     List<Vector3> _path;
     int _pathIndex;
     int _patrol = -1;
-    float _perceive, _suspicion, _lostSight, _lookAround, _stagger, _repathTimer, _stuckTimer;
+    float _perceive, _suspicion, _lostSight, _lookAround, _stagger, _repathTimer, _postRetry;
     float _yaw, _postYaw;
-    Vector3 _lastPosition, _knock;
+    Vector3 _knock;
     FireStep _fire;
     float _fireTimer;
     int _burstLeft;
@@ -92,7 +92,12 @@ public partial class Guard
                 // Sentries look around slowly.
                 _lookAround += dt;
                 _yaw = _postYaw + Mathf.Sin(_lookAround * 0.6f) * 0.9f;
-                if (Position.DistanceTo(PostLocal) > 0.6f && _path == null) PathTo(PostLocal);
+                _postRetry -= dt;
+                if (Position.DistanceTo(PostLocal) > 0.6f && _path == null && _postRetry <= 0f)
+                {
+                    _postRetry = 1f;
+                    PathTo(PostLocal);
+                }
                 move = FollowPath();
                 break;
 
@@ -126,8 +131,9 @@ public partial class Guard
             _stagger -= dt;
             move = Vector3.Zero;
         }
+        if (State != GuardState.Seated) move = Unstick(dt, move);
 
-        Vector3 local = move * speed * Type.SpeedFactor + _knock;
+        Vector3 local = move * speed * Type.SpeedFactor + _knock + (State == GuardState.Seated ? Vector3.Zero : Separation());
         _knock = _knock.MoveToward(Vector3.Zero, dt * 8f);
         if (move.LengthSquared() > 0.01f && !(State == GuardState.Combat && SeesPlayer))
             _yaw = Mathf.Atan2(-move.X, -move.Z);
@@ -139,8 +145,6 @@ public partial class Guard
         UpDirection = up;
         if (State != GuardState.Seated) MoveAndSlide();
 
-
-        CheckStuck(dt, move);
         AnimateFigure(dt, State == GuardState.Seated ? 0f : local.Length(), _yaw);
     }
 
@@ -291,7 +295,12 @@ public partial class Guard
 
     bool PathTo(Vector3 local)
     {
-        List<Vector2I> cells = Ship.FindPath(Position, local);
+        // Cells other guards stand in cost extra: a squad spreads over a room's width and tries
+        // another doorway when one is jammed, but a crowded cell is never treated as a wall.
+        var crowded = new HashSet<Vector2I>();
+        foreach (Guard g in Game.Guards)
+            if (g != this && !g.Dead) crowded.Add(Ship.Layout.CellAt(g.Position));
+        List<Vector2I> cells = Ship.FindPath(Position, local, false, c => crowded.Contains(c) ? 2.5f : 0f);
         if (cells == null)
         {
             _path = null;
@@ -307,37 +316,158 @@ public partial class Guard
         return true;
     }
 
+    float Radius => _capsule.Radius;
+
     /// <summary>A unit direction (ship-local) toward the next waypoint, or zero.</summary>
     Vector3 FollowPath()
     {
         if (_path == null) return Vector3.Zero;
-        while (_pathIndex < _path.Count)
+        while (_pathIndex < _path.Count && Flat(_path[_pathIndex] - Position).Length() < 0.35f) _pathIndex++;
+        if (_pathIndex >= _path.Count)
         {
-            Vector3 to = _path[_pathIndex] - Position;
-            to.Y = 0f;
-            if (to.Length() > 0.35f) return to.Normalized();
-            _pathIndex++;
+            _path = null;
+            return Vector3.Zero;
         }
-        _path = null;
-        return Vector3.Zero;
+        // String-pull: head for the farthest of the next few waypoints that a body of our full
+        // radius (plus a margin) can reach in a straight line. Otherwise follow cell centres.
+        for (int ahead = Mathf.Min(_path.Count - 1, _pathIndex + 4); ahead > _pathIndex; ahead--)
+        {
+            if (!Ship.ClearLine(Position, _path[ahead], Radius + 0.15f)) continue;
+            _pathIndex = ahead;
+            break;
+        }
+        return Flat(_path[_pathIndex] - Position).Normalized();
     }
 
-    void CheckStuck(float dt, Vector3 move)
+    static Vector3 Flat(Vector3 v) => new(v.X, 0f, v.Z);
+
+    /// <summary>Distance left along the current path (to the next waypoint, then waypoint to waypoint).</summary>
+    float RemainingPath()
     {
-        if (move == Vector3.Zero || _path == null)
-        {
-            _stuckTimer = 0f;
-            _lastPosition = Position;
-            return;
-        }
-        _stuckTimer += dt;
-        if (_stuckTimer < 1.2f) return;
-        if (Position.DistanceTo(_lastPosition) < 0.3f && PathEnd is Vector2I end)
-            PathTo(Ship.Layout.CellCenter(end));   // a door was slow or someone was in the way
-        _stuckTimer = 0f;
-        _lastPosition = Position;
+        if (_path == null || _pathIndex >= _path.Count) return float.MaxValue;
+        float d = Flat(_path[_pathIndex] - Position).Length();
+        for (int i = _pathIndex + 1; i < _path.Count; i++) d += Flat(_path[i] - _path[i - 1]).Length();
+        return d;
     }
 
+    /// <summary>Light separation: guards never collide with each other, so they ease apart instead.</summary>
+    Vector3 Separation()
+    {
+        Vector3 push = Vector3.Zero;
+        foreach (Guard g in Game.Guards)
+        {
+            if (g == this || g.Dead) continue;
+            Vector3 d = Flat(Position - g.Position);
+            float distance = d.Length();
+            float personal = Radius + g.Radius + 0.3f;
+            if (distance >= personal) continue;
+            push += distance > 1e-3f ? d / distance * (1f - distance / personal) : new Vector3(Id % 2 == 0 ? 1f : -1f, 0f, 0f);
+        }
+        return push.LimitLength(1f) * 1.5f;
+    }
+
+    // ---- Getting unstuck ------------------------------------------------------------------
+
+    /// <summary>Continuous seconds this guard has wanted to move without getting anywhere.</summary>
+    public float StuckSeconds { get; private set; }
+    /// <summary>The longest it has ever been stuck (for the soak test).</summary>
+    public float WorstStuck { get; private set; }
+    /// <summary>How often each escalation step was needed: re-path, side-step, walk to a free cell, snap.</summary>
+    public readonly int[] Escalations = new int[4];
+
+    float _bestRemaining = float.MaxValue;
+    Vector2I? _progressEnd;
+    int _rescue;
+    float _sidestepLeft;
+    Vector3 _sidestep;
+    Vector3? _rescueTarget;
+
+    /// <summary>
+    /// Watches for a guard that wants to move but isn't getting anywhere and escalates:
+    /// after 1.5 s it re-paths, then side-steps, then walks to the nearest free cell's centre,
+    /// and as a last resort snaps there. A guard is never left frozen for 3 s.
+    /// </summary>
+    Vector3 Unstick(float dt, Vector3 move)
+    {
+        bool wants = move.LengthSquared() > 0.01f || _sidestepLeft > 0f || _rescueTarget != null;
+        // Progress means the remaining path getting shorter, not just moving: a guard that
+        // shuffles sideways and back in front of an obstacle is still stuck.
+        if (PathEnd != _progressEnd)
+        {
+            _progressEnd = PathEnd;
+            _bestRemaining = float.MaxValue;
+        }
+        float remaining = RemainingPath();
+        bool progressed = remaining < _bestRemaining - 0.5f;
+        if (progressed) _bestRemaining = remaining;
+        if (!wants || progressed)
+        {
+            StuckSeconds = 0f;
+            _rescue = 0;
+            if (!wants) return move;
+        }
+        else
+        {
+            StuckSeconds += dt;
+            WorstStuck = Mathf.Max(WorstStuck, StuckSeconds);
+        }
+
+        if (_rescue == 0 && StuckSeconds > 1.5f)
+        {
+            _rescue = 1;
+            Escalations[0]++;
+            if (PathEnd is Vector2I end) PathTo(Ship.Layout.CellCenter(end));
+        }
+        else if (_rescue == 1 && StuckSeconds > 2.0f)
+        {
+            _rescue = 2;
+            Escalations[1]++;
+            Vector3 forward = move.LengthSquared() > 0.01f ? move : new Vector3(Mathf.Sin(_yaw), 0, Mathf.Cos(_yaw));
+            Vector3 left = new Vector3(-forward.Z, 0f, forward.X).Normalized();
+            bool leftOpen = Ship.Passable(Ship.Layout.CellAt(Position + left * 1f));
+            _sidestep = leftOpen ? left : -left;
+            _sidestepLeft = 0.4f;
+        }
+        else if (_rescue == 2 && StuckSeconds > 2.4f)
+        {
+            _rescue = 3;
+            Escalations[2]++;
+            _sidestepLeft = 0f;
+            Vector2I free = Ship.NearestPassable(Ship.Layout.CellAt(Position));
+            _rescueTarget = free.X >= 0 ? Ship.Layout.CellCenter(free) : PostLocal;
+        }
+        else if (_rescue >= 3 && StuckSeconds > 2.75f)
+        {
+            // Last resort, whatever happened before: put it in the middle of the nearest free
+            // cell and plan again from there.
+            Vector2I free = Ship.NearestPassable(Ship.Layout.CellAt(Position));
+            Vector3 snap = _rescueTarget ?? (free.X >= 0 ? Ship.Layout.CellCenter(free) : PostLocal);
+            Escalations[3]++;
+            Position = snap + Vector3.Up * 0.05f;
+            Velocity = Vector3.Zero;
+            ResetPhysicsInterpolation();
+            _rescueTarget = null;
+            _rescue = 0;
+            _bestRemaining = float.MaxValue;
+            StuckSeconds = 0f;
+            if (PathEnd is Vector2I end) PathTo(Ship.Layout.CellCenter(end));
+            return Vector3.Zero;
+        }
+
+        if (_sidestepLeft > 0f)
+        {
+            _sidestepLeft -= dt;
+            return _sidestep;
+        }
+        if (_rescueTarget is Vector3 target)
+        {
+            Vector3 to = Flat(target - Position);
+            if (to.Length() > 0.3f) return to.Normalized();
+            _rescueTarget = null;
+            if (PathEnd is Vector2I end) PathTo(Ship.Layout.CellCenter(end));
+        }
+        return move;
+    }
     // ---- Combat ----------------------------------------------------------------------------
 
     Vector3 Fight(float dt)

@@ -36,6 +36,7 @@ public partial class BoardingTest : Node
             await TurretAndGunner();
             await ComponentSalvage();
             await Crouching();
+            await Unsticking();
         }
         catch (Exception e)
         {
@@ -434,6 +435,32 @@ public partial class BoardingTest : Node
         await Ticks(10);
         Check(!Player.Crouched && Mathf.IsEqualApprox(Player.CapsuleHeight, standing), "and stand again once clear of it");
         _ = speed;
+    }
+
+    async Task Unsticking()
+    {
+        Section("Guards never stay stuck");
+        await Fresh(frozen: false);
+        _main.PlayerHidden = true;
+        // A barrier the grid knows nothing about, right across the spine corridor.
+        var barrier = new StaticBody3D
+        {
+            CollisionLayer = Layers.Ship,
+            CollisionMask = 0,
+            Position = Layout.CellCenter(new Vector2I(12, 12)) + new Vector3(1f, 1.5f, 0.6f),
+        };
+        barrier.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(4f, 3f, 0.4f) } });
+        Ship.AddChild(barrier);
+
+        Guard guard = _main.Guards.First(g => g.Type.Role == GuardRole.Trooper);
+        guard.Position = Layout.CellCenter(new Vector2I(12, 8)) + Vector3.Up * 0.05f;
+        guard.Dispatch(Layout.CellCenter(new Vector2I(12, 19)));
+        await Seconds(8f);
+        int[] e = guard.Escalations;
+        Check(e[0] > 0 && e[1] > 0 && e[2] > 0 && e[3] > 0,
+            $"blocked by an unknown obstacle it escalates: {e[0]} re-paths, {e[1]} side-steps, {e[2]} walks to a free cell, {e[3]} snaps");
+        Check(guard.WorstStuck < 3f, $"and is never frozen for 3 s (worst {guard.WorstStuck:F2} s)");
+        barrier.QueueFree();
     }
 
     // ---- Helpers ---------------------------------------------------------------------------
