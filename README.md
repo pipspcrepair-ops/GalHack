@@ -34,6 +34,7 @@ Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or s
 | `prototypes/weather/` | Forecast weather, wind that pushes by mass, lightning and tornadoes that are warned, never silent |
 | `prototypes/coop/` | Steam co-op: friends walking around the same flying ship, zones, a dedicated server |
 | `prototypes/saves/` | Crash-proof saves (shadow-paged plain files, audits, backups, migrations) and zone transitions; its `src/Persistence` is the core other prototypes adopt |
+| `prototypes/wildlife/` | Procedural fauna for every planet, and a harvester hovercraft |
 
 ## Requirements
 
