@@ -26,3 +26,7 @@ Desktop.ini
 
 # Local tools (Godot, portable .NET SDK, NuGet cache) kept off the C: drive
 /.tools/
+
+# Prototype save folders and test scratch, kept out of git and away from C:
+.saves/
+/.tools-local/

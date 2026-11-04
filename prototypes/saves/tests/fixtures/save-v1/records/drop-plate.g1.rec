@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=788c5275394b63cad092eb38a570e0cb5e8b9480be70ad59ad8c514df5b1d244
+{"id":"drop-plate","type":"drop","zone":"surface/dune","ship":null,"owner":"p1","touched":true,"version":1,"items":4,"blocks":0,"payload":{"position":[2,0,20.5],"stacks":[{"item":"plate","count":4}]}}

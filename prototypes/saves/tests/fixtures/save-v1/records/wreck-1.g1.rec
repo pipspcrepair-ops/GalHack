@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=873bc440ed38548c9b7f6634387791db8d8da8bc2ea7056870b8143f9019e0ad
+{"id":"wreck-1","type":"container","zone":"orbit/dune","ship":null,"owner":null,"touched":false,"version":1,"items":3,"blocks":0,"payload":{"x":26,"y":612,"z":-48,"items":["ice","ice","ice"]}}

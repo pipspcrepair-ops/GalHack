@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=5c43efa8fec2e8de66cd7fa949abee01faae41cea7a6a8d56cc7ba695e1e418d
+{"id":"crate-b","type":"container","zone":"surface/dune","ship":null,"owner":"p1","touched":true,"version":1,"items":4,"blocks":0,"payload":{"x":4.5,"y":0,"z":18,"items":["plate","plate","plate","fuel"]}}

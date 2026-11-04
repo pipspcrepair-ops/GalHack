@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=f5f91d4b84d56ede1ca6f034ab316abfaa95b1bd294697cb534061e66d30cb5f
+{"id":"crate-empty","type":"container","zone":"surface/dune","ship":null,"owner":"p1","touched":true,"version":1,"items":0,"blocks":0,"payload":{"x":3,"y":0,"z":30,"items":[]}}

@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=02bf2be93e29367c3d438b0992fc4f10cf9ee9d4351c1bc5cdb36dc7a2ef1596
+{"id":"shelf-1","type":"structure","zone":"cabin/ship-1","ship":"ship-1","owner":"p1","touched":false,"version":1,"items":0,"blocks":4,"payload":{"name":"Cargo shelf","mode":"base","origin":[-4.5,0,8],"blocks":[[0,0,0,2],[0,0,1,2],[0,1,0,1],[0,1,1,2]]}}

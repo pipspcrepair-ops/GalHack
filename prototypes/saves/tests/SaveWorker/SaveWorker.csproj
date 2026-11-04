@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A console app that saves in a loop, for tests/SaveTest.tscn to kill at random moments.
+    It compiles the very same persistence sources the game does, with no Godot reference at
+    all: if src/Persistence or src/Records ever grow a Godot dependency, this build breaks.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <UseAppHost>false</UseAppHost>
+    <RootNamespace>SaveWorker</RootNamespace>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/Persistence/**/*.cs" LinkBase="Persistence" />
+    <Compile Include="../../src/Records/**/*.cs" LinkBase="Records" />
+    <Compile Include="../Shared/**/*.cs" LinkBase="Shared" />
+  </ItemGroup>
+</Project>

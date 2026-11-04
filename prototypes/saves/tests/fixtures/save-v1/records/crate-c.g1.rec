@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=80ff6a1603df5b2633f22c9972f44a31d6c6e526e190c41a7303a1328fd6316f
+{"id":"crate-c","type":"container","zone":"cabin/ship-1","ship":"ship-1","owner":"p1","touched":true,"version":1,"items":3,"blocks":0,"payload":{"x":-2.2,"y":0,"z":7.5,"items":["fuel","fuel","ice"]}}

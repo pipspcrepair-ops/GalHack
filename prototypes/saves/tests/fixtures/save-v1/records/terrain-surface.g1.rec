@@ -1,0 +1,2 @@
+GALHACK-RECORD 1 sha256=ecbecd01186e17272b8ed043c4898e8985350c805deb31c07457fe2e9937a319
+{"id":"terrain-surface","type":"terrain","zone":"surface/dune","ship":null,"owner":null,"touched":true,"version":1,"items":0,"blocks":0,"payload":{"scorches":[[0,0,9]]}}
