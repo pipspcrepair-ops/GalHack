@@ -231,7 +231,7 @@ public partial class Hud : CanvasLayer
         {
             Invasion last = d.Base(InvasionController.HomeId).History.LastOrDefault();
             double? next = d.NextInvasionIn(InvasionController.HomeId);
-            string quiet = last == null ? "quiet" : $"quiet · last: {last.Outcome}";
+            string quiet = last == null ? "quiet" : $"quiet · last: {Words(last.Outcome)}";
             string nextText = next is double n ? $"next in ~{Clock(n)} of presence" : model.Online ? "none coming" : "none while offline";
             invasion = $"[color={Dim}]{quiet} · {nextText}[/color]";
         }
@@ -242,8 +242,8 @@ public partial class Hud : CanvasLayer
             {
                 InvasionPhase.Incoming => $"[color={(inv.WarningLevel >= 3 ? Red : Amber)}]WARNING {inv.WarningLevel} OF 3 · T-{Clock(inv.SecondsToArrival(d.Now))}[/color] · from {src}",
                 InvasionPhase.Assault => $"[color={Red}]ASSAULT[/color] · {inv.Force?.Tier} from {src}",
-                InvasionPhase.Withdrawing => $"[color={Amber}]WITHDRAWING[/color] · {inv.Outcome}",
-                _ => inv.Outcome.ToString(),
+                InvasionPhase.Withdrawing => $"[color={Amber}]WITHDRAWING[/color] · {Words(inv.Outcome)}",
+                _ => Words(inv.Outcome),
             };
             if (inv.Phase == InvasionPhase.Incoming && inv.OnLongRangeScan && inv.Force != null)
                 invasion += $"\n               [color={Dim}]on scan: {inv.Force.Tier}, {inv.Force.Troops} troops in {inv.Force.VehicleSummary(d.Data)}[/color]";
@@ -270,6 +270,15 @@ public partial class Hud : CanvasLayer
                $"[color={Amber}]STORAGE[/color]   {loot}\n" +
                $"[color={Amber}]SOURCE[/color]    {garrison}";
     }
+
+    static string Words(InvasionOutcome outcome) => outcome switch
+    {
+        InvasionOutcome.Victory => "repelled",
+        InvasionOutcome.CoreDestroyed => "core destroyed",
+        InvasionOutcome.CalledOff => "called off",
+        InvasionOutcome.Abandoned => "nobody home",
+        _ => "under way",
+    };
 
     public static string Clock(double seconds)
     {
