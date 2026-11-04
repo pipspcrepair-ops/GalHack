@@ -1,0 +1,56 @@
+; Engine configuration file.
+; Edit it in the Godot editor or by hand.
+
+config_version=5
+
+[application]
+
+config/name="GalHack: Weather"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Mobile")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[dotnet]
+
+project/assembly_name="Weather"
+
+[physics]
+
+common/physics_interpolation=true
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+renderer/rendering_method="mobile"
+anti_aliasing/quality/msaa_3d=2
+
+[shader_globals]
+
+weather_wind={
+"type": "vec4",
+"value": Vector4(1, 0, 0, 0)
+}
+weather_cloud={
+"type": "vec4",
+"value": Vector4(0, 0, 0.3, 0)
+}
+weather_ground={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 1)
+}
+weather_flash={
+"type": "vec4",
+"value": Vector4(0, 1, 0, 0)
+}
+weather_tornado={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+weather_air={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
