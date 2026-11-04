@@ -1,0 +1,142 @@
+// The encounter deck: every event the director can spawn, as data.
+//
+// weight        base weight before zone tags apply
+// category      for per-category caps and cooldowns (see director.json)
+// faction       the event's faction; "*" takes the two factions whose territories meet here
+// territory     any: spawns anywhere, more often inside the faction's territory
+//               inside: only inside the faction's territory
+//               outside: only outside it
+//               border: only where two factions' territories meet
+// hostile       hostile events get the danger grade's share of the deck (director.json)
+// requires      zone tags that must all be present; "a|b" means either. Every zone has the
+//               tags kind:<kind>, region:<region>, star:<class>, danger:<n> and poi:<poi>
+// excludes      zone tags that must all be absent
+// danger        [min, max] danger grade
+// anchor        a POI kind the event happens at (traders dock at "station")
+// behaviour     pass, convoy, dogfight, dock, mine or drift: the scripted flight
+// speed         [min, max] m/s
+// duration      [min, max] seconds before the event winds down
+// spawnDistance [min, max] metres from the player (never nearer than the director's minimum)
+// cleanup       despawn: untouched ships leave and are removed once out of sight
+//               keepWrecks: as despawn, but ships wrecked in the event stay as salvage records
+//               wreckOnExpire: if nobody touches it in time it is lost and stays as a wreck
+// wrecks        ships wrecked during the event: count [min, max], when [from, to] as a
+//               fraction of the duration
+// signal        a lead for the players in the zone: a fuzzy direction and distance
+// ships         groups of crewed ships. hull "$fighter" is the faction's fighter hull.
+//               perExtraPlayer adds ships for each player beyond the first.
+{
+  "factions": {
+    "concord": { "name": "Concord", "fighter": "corvette" },
+    "reavers": { "name": "Carrion Reavers", "fighter": "raider" },
+    "kessari": { "name": "Kessari clans", "fighter": "lancer" },
+    "hollow":  { "name": "Hollow Bloom", "fighter": "bloom-hulk" },
+    "guild":   { "name": "Free Traders' Guild", "fighter": "trader" }
+  },
+  "events": [
+    {
+      "id": "freighter-pass", "name": "Freighter passing through", "category": "traffic",
+      "weight": 10, "faction": "guild", "territory": "any", "hostile": false,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"],
+      "behaviour": "pass", "speed": [55, 80], "duration": [70, 110],
+      "cleanup": "despawn",
+      "ships": [ { "role": "freighter", "hull": "freighter", "count": [1, 1], "crew": [4, 9] } ]
+    },
+    {
+      "id": "convoy", "name": "Guild convoy under escort", "category": "traffic",
+      "weight": 6, "faction": "guild", "territory": "any", "hostile": false,
+      "requires": ["kind:orbit|kind:moon|kind:system"],
+      "behaviour": "convoy", "speed": [38, 50], "duration": [90, 130],
+      "cleanup": "despawn",
+      "ships": [
+        { "role": "hauler", "hull": "hauler", "count": [3, 4], "crew": [3, 6] },
+        { "role": "escort", "hull": "corvette", "faction": "concord", "count": [1, 2], "crew": [5, 8] }
+      ]
+    },
+    {
+      "id": "patrol-vs-reavers", "name": "Concord patrol clashing with Carrion Reavers", "category": "combat",
+      "weight": 6, "faction": "concord", "territory": "inside", "hostile": true,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"], "danger": [1, 5],
+      "behaviour": "dogfight", "speed": [80, 120], "duration": [70, 100],
+      "cleanup": "keepWrecks",
+      "wrecks": { "count": [1, 2], "when": [0.3, 0.85] },
+      "signal": { "kind": "transmission", "label": "Concord patrol: engaging raiders" },
+      "ships": [
+        { "role": "patrol", "hull": "corvette", "faction": "concord", "side": "a", "count": [2, 3], "perExtraPlayer": 1, "crew": [5, 8] },
+        { "role": "raider", "hull": "raider", "faction": "reavers", "side": "b", "count": [2, 4], "perExtraPlayer": 1, "crew": [3, 6] }
+      ]
+    },
+    {
+      "id": "reaver-pack", "name": "Reaver pack on the prowl", "category": "combat",
+      "weight": 5, "faction": "reavers", "territory": "any", "hostile": true,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"], "danger": [1, 5],
+      "behaviour": "pass", "speed": [90, 120], "duration": [50, 80],
+      "cleanup": "despawn",
+      "ships": [ { "role": "raider", "hull": "raider", "count": [2, 4], "perExtraPlayer": 1, "crew": [3, 6] } ]
+    },
+    {
+      "id": "distress-call", "name": "Disabled ship sending a distress call", "category": "distress",
+      "weight": 4, "faction": "guild", "territory": "any", "hostile": false,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"],
+      "behaviour": "drift", "speed": [1, 4], "duration": [200, 300],
+      "spawnDistance": [2600, 5200],
+      "cleanup": "wreckOnExpire",
+      "signal": { "kind": "distress", "label": "Distress call" },
+      "ships": [ { "role": "stricken", "hull": "courier", "count": [1, 1], "crew": [2, 6] } ]
+    },
+    {
+      "id": "traders-dock", "name": "Traders arriving to dock", "category": "trade",
+      "weight": 6, "faction": "guild", "territory": "any", "hostile": false,
+      "requires": ["poi:station"], "anchor": "station",
+      "behaviour": "dock", "speed": [60, 80], "duration": [120, 170],
+      "cleanup": "despawn",
+      "ships": [ { "role": "trader", "hull": "trader", "count": [1, 2], "crew": [3, 7] } ]
+    },
+    {
+      "id": "bloom-hulk", "name": "Bloom-corrupted hulk adrift", "category": "corruption",
+      "weight": 3, "faction": "hollow", "territory": "any", "hostile": true,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"], "danger": [1, 5],
+      "behaviour": "drift", "speed": [2, 5], "duration": [150, 220],
+      "cleanup": "despawn",
+      "ships": [ { "role": "hulk", "hull": "bloom-hulk", "count": [1, 1], "crew": [4, 12] } ]
+    },
+    {
+      "id": "bloom-outbreak", "name": "Hollow Bloom outbreak at a station", "category": "corruption",
+      "weight": 4, "faction": "hollow", "territory": "any", "hostile": true,
+      "requires": ["poi:station"], "danger": [3, 5], "anchor": "station",
+      "behaviour": "dock", "speed": [20, 30], "duration": [160, 220],
+      "cleanup": "keepWrecks",
+      "ships": [ { "role": "hulk", "hull": "bloom-hulk", "count": [1, 2], "crew": [6, 14] } ]
+    },
+    {
+      "id": "kessari-miners", "name": "Kessari miners at work", "category": "industry",
+      "weight": 7, "faction": "kessari", "territory": "inside", "hostile": false,
+      "requires": ["poi:asteroids"], "anchor": "asteroids",
+      "behaviour": "mine", "speed": [40, 60], "duration": [150, 220],
+      "cleanup": "despawn",
+      "ships": [ { "role": "miner", "hull": "miner", "count": [2, 3], "crew": [3, 5] } ]
+    },
+    {
+      "id": "border-clash", "name": "Factions fighting where their territories meet", "category": "combat",
+      "weight": 8, "faction": "*", "territory": "border", "hostile": true,
+      "requires": ["kind:orbit|kind:moon|kind:system|kind:deep"],
+      "behaviour": "dogfight", "speed": [80, 115], "duration": [70, 100],
+      "cleanup": "keepWrecks",
+      "wrecks": { "count": [1, 3], "when": [0.25, 0.9] },
+      "signal": { "kind": "transmission", "label": "Battle chatter on open channels" },
+      "ships": [
+        { "role": "fighter", "hull": "$fighter", "side": "a", "count": [2, 3], "perExtraPlayer": 1, "crew": [3, 6] },
+        { "role": "fighter", "hull": "$fighter", "side": "b", "count": [2, 3], "perExtraPlayer": 1, "crew": [3, 6] }
+      ]
+    },
+    {
+      "id": "crash-site", "name": "Crash smoking on the horizon", "category": "wreck",
+      "weight": 5, "faction": "guild", "territory": "any", "hostile": false,
+      "requires": ["kind:surface"],
+      "behaviour": "drift", "speed": [0, 0], "duration": [240, 360],
+      "spawnDistance": [2500, 5000],
+      "cleanup": "wreckOnExpire",
+      "ships": [ { "role": "crashed", "hull": "courier", "count": [1, 1], "crew": [1, 4] } ]
+    }
+  ]
+}
