@@ -43,6 +43,9 @@ public sealed class StarMap
     /// <summary>Where the ship is, as an orbit around the star.</summary>
     public Body Ship { get; }
 
+    /// <summary>Map time in seconds: everything orbits by it. Not part of <see cref="Version"/>, so orbiting never redraws a screen.</summary>
+    public double Clock { get; set; }
+
     public StarMap(string systemName, IReadOnlyList<Body> bodies, Body ship)
     {
         SystemName = systemName;
