@@ -153,12 +153,40 @@ public partial class Vessel : CharacterBody3D
         GroundDistance = Ray(GlobalPosition, GlobalPosition + Vector3.Down * 5000f, Layers.Probe, out Vector3 ground, out _)
             ? GlobalPosition.Y - ground.Y : float.PositiveInfinity;
 
-        FlightModel.Step(ref State, Input, Stats, Conditions, T, dt);
-        Hover?.Step(dt);
-        Gear?.Step(dt);
+        if (Wrecked) Tumble(dt);
+        else
+        {
+            FlightModel.Step(ref State, Input, Stats, Conditions, T, dt);
+            Hover?.Step(dt);
+            Gear?.Step(dt);
+        }
         Move(dt);
         CheckLanding(dt);
     }
+
+    /// <summary>Hull points all gone: no power, no assist, no autopilot.</summary>
+    public bool Wrecked => Damage >= HullPoints;
+
+    /// <summary>
+    /// A wreck just falls. On the ground it drags to a stop and topples flat (a simple ease, not
+    /// rigid-body dynamics), then settles like any landed ship.
+    /// </summary>
+    void Tumble(float dt)
+    {
+        State.Velocity += Vector3.Down * Conditions.Gravity * dt;
+        State.AngularVelocity = Vector3.Zero;
+        State.ThrustLocal = Vector3.Zero;
+        State.BoostLeft = 0f;
+        State.Cruise = false;
+        if (!_floorContact) return;
+        float drag = Mathf.Exp(-3f * dt);
+        State.Velocity = new Vector3(State.Velocity.X * drag, State.Velocity.Y, State.Velocity.Z * drag);
+        Basis flat = FlightModel.Frame(State.Orientation, true);
+        State.Orientation = State.Orientation.Slerp(flat, 1f - Mathf.Exp(-2.5f * dt)).Orthonormalized();
+    }
+
+    /// <summary>Contacts slower than this are resting or nudging: no event, no damage.</summary>
+    const float EventSpeed = 2f;
 
     /// <summary>The four numbers depend on the build and on air versus space; refresh when either changes.</summary>
     void RefreshStats()
@@ -249,7 +277,7 @@ public partial class Vessel : CharacterBody3D
 
         Damage += damage;
         other.Damage += damage;
-        if (closing > 1f) World.RaiseImpact(new ImpactInfo(this, other, point, normal, closing, damage, 0f));
+        if (closing > EventSpeed) World.RaiseImpact(new ImpactInfo(this, other, point, normal, closing, damage, 0f));
         return velocity;
     }
 
@@ -258,7 +286,7 @@ public partial class Vessel : CharacterBody3D
     {
         Damage += damage;
         float crater = normal.Y > 0.5f ? ImpactRules.CraterRadius(Stats.Mass, closing, T) : 0f;
-        if (closing > 1f) World.RaiseImpact(new ImpactInfo(this, null, point, normal, closing, damage, crater));
+        if (closing > EventSpeed) World.RaiseImpact(new ImpactInfo(this, null, point, normal, closing, damage, crater));
     }
 
     // ---- Landing ----------------------------------------------------------------------------
@@ -268,10 +296,10 @@ public partial class Vessel : CharacterBody3D
         bool idle = !Input.Seated || !Input.AnyThrust;
         _idle = idle ? _idle + dt : 0f;
 
-        bool tooHeavy = !Stats.CanLiftOff && Conditions.Gravity > 0f;
+        bool tooHeavy = (!Stats.CanLiftOff && Conditions.Gravity > 0f) || Wrecked;
         bool onGear = Gear != null && Gear.Deployed && Gear.Contact;
         bool onGround = onGear || (tooHeavy && _floorContact);
-        bool slow = Speed < T.Gear.LandSpeed;
+        bool slow = Speed < T.Gear.LandSpeed && (!Wrecked || State.Orientation.Y.Y > 0.96f);
         if (onGround && slow && (tooHeavy || _idle >= T.Gear.IdleBeforeLanding))
         {
             _settleLeft = T.Gear.SettleTime;
@@ -284,7 +312,7 @@ public partial class Vessel : CharacterBody3D
     {
         State.Velocity = Vector3.Zero;
         State.AngularVelocity = Vector3.Zero;
-        if (Gear != null && Gear.Deployed)
+        if (Gear != null && Gear.Deployed && !Wrecked)
         {
             float k = 1f - Mathf.Exp(-10f * dt);
             Basis level = FlightModel.Frame(State.Orientation, true);
@@ -308,6 +336,11 @@ public partial class Vessel : CharacterBody3D
     bool TryWake()
     {
         if (!Input.Seated || !Input.AnyThrust) return false;
+        if (Wrecked)
+        {
+            if (ConsoleMessageAge > 2f) Say("HULL BREACHED: no power. Backspace to reset");
+            return false;
+        }
         if (!Stats.CanLiftOff && Conditions.Gravity > 0f)
         {
             if (ConsoleMessageAge > 2f) Say(Stats.LiftWarning);

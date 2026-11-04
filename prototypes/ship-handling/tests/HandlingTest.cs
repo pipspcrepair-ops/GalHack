@@ -136,6 +136,20 @@ public partial class HandlingTest : Node
         Check(airMax <= 70f + 1e-3f && airMax > 69.9f && spaceMax <= 130f + 1e-3f && spaceMax > 129.9f,
             $"full throttle and boost reach but never pass top speed ({airMax:F2} m/s in air, {spaceMax:F2} in space)");
 
+        float turning = 0f;
+        foreach (var where in new[] { air, space })
+        {
+            HandlingStats st = HandlingModel.Compute(fighter, where, _t);
+            var carve = FlightState.At(Basis.Identity);
+            carve.Velocity = new Vector3(0f, 0f, -st.TopSpeed);
+            for (int i = 0; i < 600; i++)
+            {
+                FlightModel.Step(ref carve, PilotInput.Hands(new Vector3(0.4f, 0f, -1f), new Vector3(0.5f, 1f, 0.3f), boost: true), st, where, _t, Dt);
+                turning = Mathf.Max(turning, carve.Velocity.Length() - st.TopSpeed);
+            }
+        }
+        Check(turning <= 1e-3f, $"carving hard turns at full throttle and boost for 10 s never passes top speed either (worst {turning:+0.000;-0.000} m/s over)");
+
         // Flight assist: let go and it stops in the expected time, with no overshoot.
         foreach (var v in new[] { fighter, rover, capital })
             CheckStop(v, air);
@@ -301,7 +315,8 @@ public partial class HandlingTest : Node
     IEnumerable<int> Scenarios()
     {
         GD.Print("-- physics module --");
-        foreach (var x in HoverBumps()) yield return x;
+        foreach (var x in HoverBumps(0.6f, true)) yield return x;
+        foreach (var x in HoverBumps(1f, false)) yield return x;
         foreach (var x in HoverStep(lookAhead: false)) yield return x;
         foreach (var x in HoverStep(lookAhead: true)) yield return x;
         foreach (var x in HoverLake()) yield return x;
@@ -342,17 +357,17 @@ public partial class HandlingTest : Node
         return sum / v.Structure.HoverEngines.Count;
     }
 
-    IEnumerable<int> HoverBumps()
+    IEnumerable<int> HoverBumps(float throttle, bool check)
     {
         ParkAll();
         float ride = _rover.Stats.RideHeight;
         _rover.Place(new Vector3(70f, PlanetSurface.GroundAt(70f, PlanetSurface.BumpLaneZ) + ride, PlanetSurface.BumpLaneZ), -90f);
-        _rover.State.Velocity = new Vector3(30f, 0f, 0f);
+        _rover.State.Velocity = new Vector3(_rover.Stats.TopSpeed * throttle, 0f, 0f);
         float worst = 0f, speed = 0f, lift = 0f;
         int samples = 0;
         while (_rover.GlobalPosition.X < 320f && samples < 2000)
         {
-            _rover.Input = PilotInput.Hands(Vector3.Forward * 0.6f); // 30 m/s
+            _rover.Input = PilotInput.Hands(Vector3.Forward * throttle);
             yield return 0;
             if (_rover.GlobalPosition.X < 100f) continue; // past the strip's edge, at speed
             worst = Mathf.Max(worst, Mathf.Abs(TrueClearance(_rover) - ride));
@@ -360,8 +375,9 @@ public partial class HandlingTest : Node
             speed += _rover.Speed;
             samples++;
         }
-        Check(samples > 100 && worst <= 0.25f && _impacts.Count == 0,
-            $"hover rover at {speed / Mathf.Max(samples, 1):F0} m/s over ±{PlanetSurface.BumpHeight} m bumps holds ride height within ±{worst:F2} m (limit ±0.25; look-ahead lifted it at most {lift:F2} m)");
+        string what = $"hover rover at {speed / Mathf.Max(samples, 1):F0} m/s over ±{PlanetSurface.BumpHeight} m bumps holds ride height within ±{worst:F2} m";
+        if (check) Check(samples > 100 && worst <= 0.25f && _impacts.Count == 0, $"{what} (limit ±0.25; look-ahead lifted it at most {lift:F2} m)");
+        else GD.Print($"INFO  flat out, {what} ({_impacts.Count} contact(s))");
     }
 
     IEnumerable<int> HoverStep(bool lookAhead)

@@ -196,6 +196,19 @@ public static class FlightModel
             a = Mathf.Min(a, Mathf.Abs(dv) * t.Assist.EaseRate); // ease out: no overshoot, no jolt
             local[axis] += Mathf.Clamp(dv, -a * dt, a * dt);
         }
+
+        // Each axis stays within top speed on its own, but mid-turn the old sideways drift and the
+        // new forward push could add up past it. Thrust may never raise total speed above top
+        // speed (above it, as after dropping out of space, it can only fall). Hover vessels
+        // count horizontal speed only; climbing a hill is the hover controller's business.
+        var moving = new Vector3(local.X, hover ? 0f : local.Y, local.Z);
+        var was = new Vector3(before.X, hover ? 0f : before.Y, before.Z);
+        float cap = Mathf.Max(top, was.Length());
+        if (moving.Length() > cap)
+        {
+            moving = moving.Normalized() * cap;
+            local = new Vector3(moving.X, hover ? local.Y : moving.Y, moving.Z);
+        }
         s.ThrustLocal = (local - before) / dt;
 
         s.Velocity = frame * local;
