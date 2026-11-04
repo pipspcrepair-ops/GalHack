@@ -392,11 +392,11 @@ public partial class GenTest : Node
     /// <summary>Minimum relief per variant, in Variants() order.</summary>
     static readonly ReliefFloor[] ReliefFloors =
     {
-        new(0, 0, 0, 0), new(0, 0, 0, 0), // temperate meadow, rainforest
-        new(0, 0, 0, 0), new(0, 0, 0, 0), // arid dunes, canyon
-        new(0, 0, 0, 0), new(0, 0, 0, 0), // ice glacier, hot spring
-        new(0, 0, 0, 0), new(0, 0, 0, 0), // lava volcanic, lava ocean
-        new(0, 0, 0, 0), new(0, 0, 0, 0), // alien crystal, fungal
+        new(750, 0.40f, 0.25f, 50), new(400, 0.40f, 0.25f, 45),   // temperate meadow, rainforest
+        new(200, 0.20f, 0.08f, 25), new(280, 0.22f, 0.17f, 90),   // arid dunes, canyon
+        new(500, 0.42f, 0.28f, 55), new(330, 0.30f, 0.15f, 35),   // ice glacier, hot spring
+        new(400, 0.28f, 0.14f, 33), new(320, 0.33f, 0.18f, 28),   // lava volcanic, lava ocean
+        new(380, 0.36f, 0.23f, 50), new(270, 0.30f, 0.14f, 36),   // alien crystal, fungal
     };
 
     void Performance()
@@ -492,7 +492,7 @@ public partial class GenTest : Node
             rows.Append('\n');
         }
         GD.Print(rows.ToString().TrimEnd());
-        Check(accuracy >= 0.9f, $"distinctness: nearest-centroid classifier names the archetype of {accuracy:P0} of {testSet.Count} unseen planets");
+        Check(accuracy >= 0.95f, $"distinctness: nearest-centroid classifier names the archetype of {accuracy:P0} of {testSet.Count} unseen planets");
     }
 
     static float[] Features(WorldMap map)

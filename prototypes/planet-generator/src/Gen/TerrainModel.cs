@@ -212,7 +212,7 @@ public sealed class TerrainModel
         // stretches are sheer cliffs and others are ramps you can walk up.
         float n = _plateau.Fbm(q, spacing) + _jag.Fbm(q, spacing) * 0.11f;
         float first = 0.45f - Def.PlateauCover * 0.9f;
-        float edge = 0.02f + 0.07f * Mathx.Smooth(-0.1f, 0.6f, _region.Fbm(new P4(p.W, p.Z, p.Y, p.X), spacing));
+        float edge = 0.045f + 0.06f * Mathx.Smooth(-0.1f, 0.6f, _region.Fbm(new P4(p.W, p.Z, p.Y, p.X), spacing));
         float lift = Mathx.Smooth(first - edge, first + edge, n) + 0.55f * Mathx.Smooth(first + 0.32f - edge, first + 0.32f + edge, n);
         return lift * Def.PlateauHeight * Mathx.Smooth(2f, 18f, e);
     }

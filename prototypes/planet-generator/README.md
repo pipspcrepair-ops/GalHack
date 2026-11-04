@@ -28,6 +28,30 @@ Generation is pure C# in `src/Gen`, with no engine types, and deterministic from
 - **Upload budget:** finished chunks reach the scene within 3 ms of main-thread time per frame.
 - **Scatter:** low-poly flora and deposits use one MultiMesh per kind per chunk.
 
+## Relief
+
+`Relief.Measure` puts numbers on how dramatic the land is, on dry ground:
+- **Range in 2 km:** highest minus lowest ground (sea at its surface) in 2 x 2 km windows. Median over the windows.
+- **Slopes:** the share of ground steeper than 30° and 45° across 8 m (a hillside or a cliff face, not a bump underfoot). 45° is about where walking stops and the jetpack starts.
+- **Canyon depth:** how far ground sits below walls on both sides within 150 m, at the 95th percentile.
+
+`GenTest` measures every variant on two fixed seeds and holds each to a floor. Before (the cylinder generator this prototype shipped with) and after the relief work:
+
+| Variant | Range in 2 km | Slopes > 30° | Slopes > 45° | Canyon depth |
+| --- | --- | --- | --- | --- |
+| Temperate meadow | 582 → 947 m | 44 → 49% | 25 → 32% | 46 → 61 m |
+| Temperate rainforest | 397 → 494 m | 38 → 52% | 19 → 33% | 42 → 57 m |
+| Arid dunes | 224 → 245 m | 14 → 26% | 5 → 11% | 23 → 31 m |
+| Arid canyon | 231 → 324 m | 18 → 29% | 12 → 22% | 62 → 108 m |
+| Ice glacier | 477 → 620 m | 30 → 53% | 16 → 36% | 34 → 69 m |
+| Ice hot spring | 435 → 412 m | 34 → 38% | 7 → 19% | 22 → 44 m |
+| Lava volcanic | 290 → 498 m | 19 → 36% | 10 → 18% | 22 → 41 m |
+| Lava ocean | 320 → 404 m | 31 → 42% | 13 → 23% | 21 → 35 m |
+| Alien crystal | 452 → 482 m | 31 → 46% | 18 → 29% | 28 → 64 m |
+| Alien fungal | 309 → 343 m | 28 → 39% | 13 → 18% | 25 → 46 m |
+
+What changed: mountains gather into ranges with lowland between them, with fewer fine octaves so faces read as rock walls rather than noise; plateaus and escarpments rise along a slow noise field with jagged, wandering edges (sheer in places, a walkable ramp in others); canyons and gorges vary in width and depth and only cut some regions (stepped walls on canyon and lava worlds, V-shaped gorges elsewhere); mesa steps fade out up the flanks of real peaks; river channels meander off their coarse polylines with ragged gorge walls where they cut through high ground.
+
 ## Archetypes
 
 Every archetype differs from every other on terrain shape, palette, sky, flora, hazard and resources.
@@ -75,16 +99,16 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 .\tools\test.ps1 -Project prototypes/planet-generator -Scene res://tests/ViewTest.tscn
 ```
 
-`tests/GenTest.tscn` runs headless in about 20 s and checks:
+`tests/GenTest.tscn` runs headless in about 40 s and checks (`-- --only=Relief,Distinctness` runs just the named checks):
 - **Determinism:** identical map hash and identical fine terrain from the same spec.
 - **Seamless wrap, both ways:** the step across each seam falls within the range of every other column (or row) pair. The fine terrain is continuous across both seams and at all four corners at once: height and normal differences shrink tenfold when the gap does.
 - **Poles:** no wall. The steepest polar ground stays within what the rest of the planet has, the polar band is colder than the equator, and its temperature carries across the north-south seam.
 - **Land fraction:** inside each variant's band over 20 seeds.
 - **Rivers:** every river cell drains to the sea, and riverbank cells exist, on every variant. Some rivers cross the north-south seam, never climbing downstream, with their channel carved on both sides.
-- **Relief:** see below.
-- **Starter materials:** all five within 300 m of any walkable spot and of landing sites (worst 228 m and 255 m). Over 98% of deposits are on dry ground, none deeper than 3 m.
-- **Performance:** a 16x8 km map in 60–80 ms (64x32 km in about 1.1 s); a 2 m chunk of fine terrain in about 10 ms on one thread.
-- **Distinctness:** a nearest-centroid classifier on colour and terrain features, trained on some seeds and scored on 100 unseen planets, names the archetype 99% of the time.
+- **Starter materials:** all five within 300 m of any walkable spot and of landing sites (worst about 205 m and 180 m). Over 98% of deposits are on dry ground, none deeper than 3 m.
+- **Performance:** a 16x8 km map in 75–125 ms; a 2 m chunk of fine terrain in about 10 ms on one thread.
+- **Relief:** see above; every variant must clear its floor.
+- **Distinctness:** a nearest-centroid classifier on colour and terrain features, trained on some seeds and scored on 100 unseen planets, names the archetype 100% of the time (it must stay at 95% or above).
 
 `tests/ViewTest.tscn` runs headless and is the views' stability check. It lands, flies at boost speed north-east across the corner where both seams meet, returns to orbit, switches planet and lands again. It checks that streaming settles and that the main thread never stalls (worst frame about 9 ms).
 
