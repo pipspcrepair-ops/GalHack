@@ -1,0 +1,64 @@
+# Who a place spawns, by faction. Every line is:   kind  shooter-class  weapon  name
+#
+# Sections are faction ids (meridian, exchange, vharn, kessari, reavers, freeholders, hollow),
+# plus precursor (ruin wardens) and fauna.
+#
+# kind:          guard, turret, hover, boss (faction defenders), hollow (Hollow Bloom creatures),
+#                fauna (wildlife that moves into empty places)
+# shooter-class: the combat system's class for this shooter. It starts with warning shots,
+#                ramps accuracy toward a class-versus-target baseline, and capital-class rounds
+#                fly slowly enough to dodge.
+#                  none          doesn't shoot (melee, swarms)
+#                  infantry      on foot
+#                  small-vessel  hover drones, skimmers, light turret guns
+#                  capital       base and fortress emplacements, the heaviest bosses
+# weapon:        a weapon id the combat code looks up.
+#
+# Bloom-corrupted defenders keep their faction line (and so their class and weapon) and get a
+# "Bloom-ridden" prefix at spawn time.
+
+[vharn]
+guard   infantry      spine-rifle      Vharn Drone
+guard   infantry      acid-lance       Vharn Warrior
+guard   infantry      spine-rifle      Chitin Sentinel
+hover   small-vessel  pulse-repeater   Vharn Skimmer
+turret  capital       spine-mortar     Spine Battery
+boss    infantry      acid-lance       Brood Matriarch
+
+[meridian]
+guard   infantry      carbine          Combine Security
+guard   infantry      smg              Combine Contractor
+hover   small-vessel  light-autocannon Security Drone
+turret  small-vessel  light-autocannon Sentry Gun
+turret  capital       rail-emplacement Perimeter Railgun
+boss    capital       rail-cannon      Enforcer Mech
+
+[freeholders]
+guard   infantry      hunting-rifle    Freeholder Militia
+guard   infantry      scattergun       Homestead Guard
+turret  small-vessel  scrap-autocannon Scrap Turret
+boss    infantry      hunting-rifle    Militia Captain
+
+[kessari]
+guard   infantry      arc-caster       Lattice Walker
+guard   infantry      needle-gun       Sentry Frame
+hover   small-vessel  arc-caster       Gyre Drone
+turret  capital       arc-lance        Arc Node Battery
+boss    capital       arc-lance        Kessari Overseer
+
+[precursor]
+guard   infantry      glyph-bolt       Precursor Warden
+turret  capital       glyph-lance      Glyph Lance
+boss    capital       glyph-lance      Ancient Custodian
+
+[hollow]
+hollow  none          tendrils         Hollow Thrall
+hollow  none          maw              Tendril Maw
+hollow  infantry      spore-spitter    Bloom Husk
+boss    none          tendrils         Bloom Heart
+
+[fauna]
+fauna   none          mandibles        Ash Crawler
+fauna   none          swarm            Dust Mite Swarm
+fauna   none          talons           Carrion Wing
+fauna   none          claws            Rock Lurker

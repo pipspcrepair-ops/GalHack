@@ -1,0 +1,732 @@
+# Freeholders: human settlers who build with whatever survived the trip. Patchwork panels in
+# five colours, timber, corrugated roofs on stepped gables, tungsten bulbs. Two module sets:
+# "farm" for homesteads and "mine" for their timbered drift mines.
+
+kit freeholder
+name Freeholders
+faction freeholders
+light ffcf7a
+
+palette
+  #  cube     scrap     8c4a2c|4f7f78|b8923a|6e6a5e|9a5a3a  wall    patchwork panels
+  %  cube     timber    7a5a3a|6b4e32                       wall    timber boards
+  n  cube     timber    a3402a|8f3524                       wall    barn red
+  q  cube     concrete  6a625a|5f5850                       wall    poured concrete
+  _  cube     concrete  5a5048|625850                       floor
+  =  cube     scrap     7a3e26|5d6b5f|8a7a4a|6a4a32         roof    corrugated patches
+  *  cube     lumen     ffcf7a                              light   tungsten bulbs
+  w  pane     glass     a8d0d0                              window
+  g  cube     glass     b8e0d8                              window  greenhouse glass
+  o  pillar   timber    6b4e32                              wall
+  f  pillar   timber    8a6a44                              decor   fence posts
+  p  plant    plant     6f9a3a|8ab04a|9ab83a                decor   crops
+  k  cube     steel     c9a227                              decor   mustard trim
+  m  machine  steel     4a4a48|55524a                       decor   machinery
+  r  cube     rock      6e5a48|7a6450|5f4e3e                wall    rock face
+  t  rib      timber    7a5632                              wall    pit props
+  c  crystal  crystal   e0b040                              decor   gold seam
+  /  ramp     timber    6b4e32                              floor
+  u  cube     rock      5f4e3e                              floor
+
+# ---- farm ------------------------------------------------------------------------------
+module fh_gate
+  kind entrance
+  tags farm
+  layer fill _
+  layer
+  |##%#DD#%##|
+  |#........#|
+  |%..?.....%|
+  |#.....!..#|
+  |#........#|
+  |%........%|
+  |f#%#XX#%#f|
+  layer
+  |##%#DD#%##|
+  |#........#|
+  |w........w|
+  |#........#|
+  |w........w|
+  |%........%|
+  |f#w#XX#w#f|
+  layer
+  |##%#DD#%##|
+  |#........#|
+  |%........%|
+  |#........#|
+  |#........#|
+  |%........%|
+  |f#%#XX#%#f|
+  layer
+  |==========|
+  |==========|
+  |===*==*===|
+  |==========|
+  |===*==*===|
+  |==========|
+  |==========|
+  layer
+  |          |
+  |========# |
+  |========# |
+  |========= |
+  |========= |
+  |========= |
+  |          |
+  layer
+  |          |
+  |        # |
+  |========# |
+  |========= |
+  |========= |
+  |          |
+  |          |
+  layer
+  |          |
+  |        # |
+  |          |
+  |kkkkkkkkk |
+  |          |
+  |          |
+  |          |
+
+module fh_walk
+  kind corridor
+  tags farm
+  weight 2
+  layer fill _
+  layer
+  |%DD%|
+  |%..%|
+  |%..%|
+  |%..%|
+  |%..%|
+  |%..%|
+  |%..%|
+  |%DD%|
+  layer x2
+  |#DD#|
+  |o..o|
+  |....|
+  |o..o|
+  |....|
+  |o..o|
+  |....|
+  |#DD#|
+  layer
+  |====|
+  |====|
+  |=*==|
+  |====|
+  |====|
+  |==*=|
+  |====|
+  |====|
+
+module fh_house
+  kind room
+  tags farm
+  weight 2
+  layer fill _
+  layer x2
+  |##%#DD#%##|
+  |#.?....m.#|
+  |%........%|
+  |D...!....#|
+  |D........%|
+  |%..T.....#|
+  |#......$.#|
+  |##%#DD#%##|
+  layer
+  |##%#DD#%##|
+  |#........#|
+  |w........w|
+  |D........#|
+  |D........w|
+  |%........#|
+  |#........#|
+  |##w#DD#w##|
+  layer
+  |==========|
+  |==========|
+  |===*==*===|
+  |==========|
+  |==========|
+  |===*==*===|
+  |==========|
+  |==========|
+  layer
+  |          |
+  |========# |
+  |========# |
+  |========= |
+  |========= |
+  |========= |
+  |========= |
+  |          |
+  layer
+  |          |
+  |        # |
+  |========# |
+  |========= |
+  |========= |
+  |========= |
+  |          |
+  |          |
+  layer
+  |          |
+  |        # |
+  |          |
+  |kkkkkkkkk |
+  |kkkkkkkkk |
+  |          |
+  |          |
+  |          |
+
+module fh_barn
+  kind hall
+  tags farm
+  weight 2
+  layer fill _
+  layer x3
+  |nnnn%DD%nnnn|
+  |n..........n|
+  |n.mm...!...n|
+  |n..........n|
+  |o..........o|
+  |n....C.....n|
+  |n..........D|
+  |n..?.......D|
+  |o..........o|
+  |n......!...n|
+  |n..........n|
+  |n.$.....B..n|
+  |n..........n|
+  |nnnn%DD%nnnn|
+  layer x2
+  |nnnn%%%%nnnn|
+  |n..........n|
+  |n..........n|
+  |w..........w|
+  |o..........o|
+  |n..........n|
+  |n..........n|
+  |n..........n|
+  |o..........o|
+  |w..........w|
+  |n..........n|
+  |n..........n|
+  |n..........n|
+  |nnnnwwwwnnnn|
+  layer
+  |============|
+  |============|
+  |===*====*===|
+  |============|
+  |============|
+  |============|
+  |=====**=====|
+  |============|
+  |============|
+  |============|
+  |===*====*===|
+  |============|
+  |============|
+  |============|
+  layer
+  |            |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  | ========== |
+  |            |
+  layer
+  |            |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |  ========  |
+  |            |
+  layer
+  |            |
+  |    kkkk    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    ====    |
+  |    kkkk    |
+  |            |
+
+module fh_green
+  kind room
+  tags farm
+  layer fill _
+  layer
+  |%%%DD%%%|
+  |%p....p%|
+  |%p....p%|
+  |%p.?..p%|
+  |%p....p%|
+  |%p..!.p%|
+  |%p....p%|
+  |%p..$.p%|
+  |%p....p%|
+  |%%%DD%%%|
+  layer x2
+  |gggDDggg|
+  |g......g|
+  |g......g|
+  |o......o|
+  |g......g|
+  |g......g|
+  |o......o|
+  |g......g|
+  |g......g|
+  |gggDDggg|
+  layer
+  |%%%%%%%%|
+  |gggggggg|
+  |gg*gg*gg|
+  |%%%%%%%%|
+  |gggggggg|
+  |gggggggg|
+  |%%%%%%%%|
+  |gg*gg*gg|
+  |gggggggg|
+  |%%%%%%%%|
+  layer
+  |        |
+  |  gggg  |
+  |  gggg  |
+  |  %%%%  |
+  |  gggg  |
+  |  gggg  |
+  |  %%%%  |
+  |  gggg  |
+  |  gggg  |
+  |        |
+
+module fh_silo
+  kind tower
+  tags farm
+  layer fill _
+  layer x3
+  | #%%# |
+  |#....#|
+  |%..!.%|
+  |%....%|
+  |#....#|
+  | #DD# |
+  layer x3
+  | #%%# |
+  |#....#|
+  |%....%|
+  |%....%|
+  |#....#|
+  | #%%# |
+  layer
+  | kkkk |
+  |k....k|
+  |k....k|
+  |k....k|
+  |k....k|
+  | kkkk |
+  layer x3
+  | #%%# |
+  |#....#|
+  |%....%|
+  |%....%|
+  |#....#|
+  | #%%# |
+  layer
+  | kkkk |
+  |k....k|
+  |k....k|
+  |k....k|
+  |k....k|
+  | kkkk |
+  layer x2
+  | #%%# |
+  |#....#|
+  |%....%|
+  |%....%|
+  |#....#|
+  | #%%# |
+  layer
+  | ==== |
+  |======|
+  |==*===|
+  |======|
+  |======|
+  | ==== |
+  layer
+  |      |
+  |  ==  |
+  | ==== |
+  | ==== |
+  |  ==  |
+  |      |
+  layer
+  |      |
+  |      |
+  |  kk  |
+  |  kk  |
+  |      |
+  |      |
+
+module fh_cellar
+  kind vault
+  tags farm
+  layer fill _
+  layer x3
+  |qqqDDqqq|
+  |q......q|
+  |q.$..$.q|
+  |q..!...q|
+  |q......q|
+  |q.?.B..q|
+  |q..$...q|
+  |qqqqqqqq|
+  layer
+  |qqqqqqqq|
+  |qqqqqqqq|
+  |qq*qq*qq|
+  |qqqqqqqq|
+  |qqqqqqqq|
+  |qq*qq*qq|
+  |qqqqqqqq|
+  |qqqqqqqq|
+  layer
+  |        |
+  | kkkkkk |
+  | k====k |
+  | k====k |
+  | k====k |
+  | k====k |
+  | kkkkkk |
+  |        |
+
+# ---- mine ------------------------------------------------------------------------------
+module mn_head
+  kind entrance
+  tags mine
+  layer fill _
+  layer x3
+  |%%%DD%%%|
+  |%......%|
+  |%.m..?.%|
+  |%....!.%|
+  |%......%|
+  |#......#|
+  |%......%|
+  |%%%XX%%%|
+  layer
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+  # The headframe: four timber legs, a brace halfway, a platform, and the sheave wheel the
+  # cage hung from, standing on edge against the sky.
+  layer x3
+  |        |
+  |        |
+  |  o  o  |
+  |        |
+  |        |
+  |  o  o  |
+  |        |
+  |        |
+  layer
+  |        |
+  |        |
+  |  %%%%  |
+  |  %  %  |
+  |  %  %  |
+  |  %%%%  |
+  |        |
+  |        |
+  layer x3
+  |        |
+  |        |
+  |  o  o  |
+  |        |
+  |        |
+  |  o  o  |
+  |        |
+  |        |
+  layer
+  |        |
+  |        |
+  |  %%%%  |
+  |  %%%%  |
+  |  %%%%  |
+  |  %%%%  |
+  |        |
+  |        |
+  layer
+  |        |
+  |        |
+  |        |
+  |  kkkk  |
+  |        |
+  |        |
+  |        |
+  |        |
+  layer x2
+  |        |
+  |        |
+  |        |
+  |  k  k  |
+  |        |
+  |        |
+  |        |
+  |        |
+  layer
+  |        |
+  |        |
+  |        |
+  |  kkkk  |
+  |        |
+  |        |
+  |        |
+  |        |
+
+module mn_shaft
+  kind descent
+  tags mine
+  layer fill u
+  layer
+  |rrrrrr|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |r^^^^r|
+  |r....r|
+  |t....t|
+  |rrDDrr|
+  layer
+  |rrrrrr|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |r^^^^r|
+  |t....t|
+  |r....r|
+  |t....t|
+  |rrDDrr|
+  layer
+  |rrrrrr|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |r^^^^r|
+  |r....r|
+  |t....t|
+  |r....r|
+  |t....t|
+  |rrDDrr|
+  layer
+  |rrrrrr|
+  |ruuuur|
+  |ruuuur|
+  |ruuuur|
+  |r^^^^r|
+  |t....t|
+  |r....r|
+  |r*...r|
+  |r....r|
+  |%%%%%%|
+  |rrrrrr|
+  layer
+  |rrrrrr|
+  |r____r|
+  |r____r|
+  |r^^^^r|
+  |r....r|
+  |t....t|
+  |r....r|
+  |r....r|
+  |r....r|
+  |r....r|
+  |rrrrrr|
+  layer x3
+  |rrDDrr|
+  |t....t|
+  |r....r|
+  |t....t|
+  |r....r|
+  |r....r|
+  |t....t|
+  |r....r|
+  |r....r|
+  |r....r|
+  |rrrrrr|
+  layer
+  |rrrrrr|
+  |%%%%%%|
+  |rr*rrr|
+  |%%%%%%|
+  |rrrrrr|
+  |rrrrrr|
+  |%%%%%%|
+  |rrr*rr|
+  |rrrrrr|
+  |rrrrrr|
+  |rrrrrr|
+
+module mn_drift
+  kind corridor
+  tags mine
+  weight 2
+  layer fill u
+  layer x3
+  |rrDDr|
+  |rt..t|
+  |r...r|
+  |rr..r|
+  |rt..t|
+  |r...r|
+  |r..rr|
+  |rt..t|
+  |rrDDr|
+  layer
+  |rrrrr|
+  |r%%%%|
+  |rrr*r|
+  |rrrrr|
+  |r%%%%|
+  |rrrrr|
+  |rrrrr|
+  |r%%%%|
+  |rrrrr|
+
+module mn_bend
+  kind corridor
+  tags mine
+  layer fill u
+  layer x3
+  |rDDrrr|
+  |r...tr|
+  |r....D|
+  |rt...D|
+  |rr..rr|
+  |rrrrrr|
+  layer
+  |rrrrrr|
+  |r%%%%r|
+  |rr*rrr|
+  |r%%%%r|
+  |rrrrrr|
+  |rrrrrr|
+
+module mn_gallery
+  kind room
+  tags mine
+  weight 2
+  layer fill u
+  layer x2
+  |rrrrDDrrr|
+  |rrc....rr|
+  |rt.....tr|
+  |r...!...r|
+  |rc..?...r|
+  |r.......c|
+  |rt..$..tr|
+  |rr.....rr|
+  |rrrrDDrrr|
+  layer
+  |rrrrDDrrr|
+  |rr.....rr|
+  |rt.....tr|
+  |r.......r|
+  |rc......r|
+  |r......cr|
+  |rt.....tr|
+  |rr.....rr|
+  |rrrrDDrrr|
+  layer
+  |rrrrrrrrr|
+  |rrrrrrrrr|
+  |r%%%%%%%r|
+  |rrrr*rrrr|
+  |rrrrrrrrr|
+  |rrrr*rrrr|
+  |r%%%%%%%r|
+  |rrrrrrrrr|
+  |rrrrrrrrr|
+
+module mn_cross
+  kind hall
+  tags mine
+  layer fill u
+  layer x3
+  |rrrrrDDrrrrr|
+  |rr........rr|
+  |r..t....t..r|
+  |r...!......r|
+  |r....mm....r|
+  |D....mm..C.D|
+  |D..........D|
+  |r..?.......r|
+  |r..t....t..r|
+  |r.....!....r|
+  |rr........rr|
+  |rrrrrDDrrrrr|
+  layer
+  |rrrrrrrrrrrr|
+  |rrr......rrr|
+  |rr.t....t.rr|
+  |r..........r|
+  |r..........r|
+  |r..........r|
+  |r..........r|
+  |r..........r|
+  |r..........r|
+  |rr.t....t.rr|
+  |rrr......rrr|
+  |rrrrrrrrrrrr|
+  layer
+  |rrrrrrrrrrrr|
+  |rrrrrrrrrrrr|
+  |rr%%%%%%%%rr|
+  |rrrrrrrrrrrr|
+  |rrrr*rr*rrrr|
+  |rrrrrrrrrrrr|
+  |rrrrrrrrrrrr|
+  |rrrr*rr*rrrr|
+  |rrrrrrrrrrrr|
+  |rr%%%%%%%%rr|
+  |rrrrrrrrrrrr|
+  |rrrrrrrrrrrr|

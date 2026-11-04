@@ -1,0 +1,423 @@
+# Kessari Clans: machine people. Graphite plinths carrying pale modular lattices, cyan nodes
+# for things that are working and magenta for things that are not. They build tall.
+
+kit kessari
+name Kessari Clans
+faction kessari
+light 3df2e0
+
+palette
+  #  cube     alloy    2e3a3f|33414a   wall    graphite
+  l  lattice  alloy    cfe3e0|bcd4d0   wall    pale lattice frames
+  %  cube     ceramic  cfe3e0|c4dad6   wall    pale ceramic panels
+  _  cube     alloy    252e33          floor
+  =  cube     alloy    2a353b          roof
+  *  cube     lumen    3df2e0          light   cyan nodes
+  n  cube     lumen    ff3d7f          light   magenta status nodes
+  w  pane     glass    7fe8e0          window
+  o  pillar   alloy    cfe3e0          wall
+  m  machine  alloy    3a4a52|425460   decor
+  /  ramp     alloy    3a4a52          floor
+  u  cube     alloy    252e33          floor
+
+module ks_gate
+  kind entrance
+  layer fill _
+  layer
+  |##l#DD#l##|
+  |#........#|
+  |l..!.....l|
+  |#........#|
+  |l....?...l|
+  |#........#|
+  |##l#XX#l##|
+  layer x2
+  |%%l%DD%l%%|
+  |%........%|
+  |l........l|
+  |w........w|
+  |l........l|
+  |%........%|
+  |%%l%XX%l%%|
+  layer
+  |==========|
+  |==========|
+  |==*====*==|
+  |====nn====|
+  |==*====*==|
+  |==========|
+  |l========l|
+  layer x2
+  |l        l|
+  |          |
+  |          |
+  |          |
+  |          |
+  |          |
+  |l        l|
+  layer
+  |llllllllll|
+  |l        l|
+  |l        l|
+  |l        l|
+  |l        l|
+  |l        l|
+  |llllllllll|
+  layer
+  |*        *|
+  |          |
+  |          |
+  |          |
+  |          |
+  |          |
+  |*        *|
+
+module ks_bridge
+  kind corridor
+  weight 2
+  layer fill _
+  layer
+  |#DD#|
+  |#..#|
+  |#..#|
+  |#..#|
+  |#..#|
+  |#..#|
+  |#..#|
+  |#..#|
+  |#DD#|
+  layer x2
+  |%DD%|
+  |l..l|
+  |w..w|
+  |l..l|
+  |w..w|
+  |l..l|
+  |w..w|
+  |l..l|
+  |%DD%|
+  layer
+  |====|
+  |llll|
+  |=*==|
+  |llll|
+  |==*=|
+  |llll|
+  |=*==|
+  |llll|
+  |====|
+  layer
+  |    |
+  |l  l|
+  |    |
+  |l  l|
+  |    |
+  |l  l|
+  |    |
+  |l  l|
+  |    |
+
+module ks_bend
+  kind corridor
+  layer fill _
+  layer
+  |#DD###|
+  |#....#|
+  |#....D|
+  |#....D|
+  |#....#|
+  |######|
+  layer x2
+  |%DD%%%|
+  |l....l|
+  |w....D|
+  |l....D|
+  |l....l|
+  |%%ll%%|
+  layer
+  |======|
+  |======|
+  |==*n==|
+  |==*===|
+  |======|
+  |======|
+  layer
+  |l    l|
+  |      |
+  |      |
+  |      |
+  |      |
+  |l    l|
+
+module ks_node
+  kind room
+  weight 2
+  layer fill _
+  layer
+  |###%DD%###|
+  |#m.m..m.m#|
+  |#........#|
+  |%..!.....%|
+  |D........D|
+  |D....?...D|
+  |%........%|
+  |#..T..$..#|
+  |#m.m..m.m#|
+  |###%DD%###|
+  layer x2
+  |%%%%DD%%%%|
+  |%n.n..n.n%|
+  |l........l|
+  |w........w|
+  |D........D|
+  |D........D|
+  |w........w|
+  |l........l|
+  |%n.n..n.n%|
+  |%%%%DD%%%%|
+  layer
+  |==========|
+  |==========|
+  |==*====*==|
+  |==========|
+  |====**====|
+  |====**====|
+  |==========|
+  |==*====*==|
+  |==========|
+  |==========|
+  layer
+  |l   ll   l|
+  |          |
+  |          |
+  |          |
+  |l        l|
+  |l        l|
+  |          |
+  |          |
+  |          |
+  |l   ll   l|
+
+module ks_relay
+  kind hall
+  weight 2
+  layer fill _
+  layer x3
+  |####%DD%####|
+  |#..........#|
+  |#.m......m.#|
+  |#...!......#|
+  |#....ll....#|
+  |D....ll.C..D|
+  |D..........D|
+  |#..........#|
+  |#.?.....!..#|
+  |#.m...B..m.#|
+  |#..........#|
+  |####%DD%####|
+  layer x2
+  |%%%%%%%%%%%%|
+  |%..........%|
+  |l..........l|
+  |w..........w|
+  |%....ll....%|
+  |l....ll....l|
+  |l..........l|
+  |%..........%|
+  |w..........w|
+  |l..........l|
+  |%..........%|
+  |%%%%%%%%%%%%|
+  layer
+  |============|
+  |============|
+  |==*======*==|
+  |============|
+  |=====ll=====|
+  |=====ll=====|
+  |============|
+  |============|
+  |============|
+  |==*======*==|
+  |============|
+  |============|
+  layer x2
+  |            |
+  |            |
+  |            |
+  |            |
+  |     ll     |
+  |     ll     |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  layer
+  |            |
+  |            |
+  |            |
+  |     **     |
+  |    *ll*    |
+  |    *ll*    |
+  |     **     |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  layer x3
+  |            |
+  |            |
+  |            |
+  |            |
+  |     ll     |
+  |     ll     |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  layer
+  |            |
+  |            |
+  |            |
+  |            |
+  |     nn     |
+  |     nn     |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+  |            |
+
+module ks_spire
+  kind tower
+  layer fill _
+  layer x3
+  |######|
+  |#....#|
+  |#.!..#|
+  |#....#|
+  |#....#|
+  |##DD##|
+  layer
+  |======|
+  |==**==|
+  |=*==*=|
+  |=*==*=|
+  |==**==|
+  |======|
+  layer x4
+  |      |
+  | llll |
+  | l  l |
+  | l  l |
+  | llll |
+  |      |
+  layer
+  |      |
+  | *ll* |
+  | l  l |
+  | l  l |
+  | *ll* |
+  |      |
+  layer x4
+  |      |
+  | llll |
+  | l  l |
+  | l  l |
+  | llll |
+  |      |
+  layer
+  |      |
+  | %%%% |
+  | %==% |
+  | %==% |
+  | %%%% |
+  |      |
+  layer x4
+  |      |
+  |      |
+  |  ll  |
+  |  ll  |
+  |      |
+  |      |
+  layer
+  |      |
+  |      |
+  |  **  |
+  |  **  |
+  |      |
+  |      |
+  layer x4
+  |      |
+  |      |
+  |  ll  |
+  |  ll  |
+  |      |
+  |      |
+  layer
+  |      |
+  |      |
+  |  nn  |
+  |  nn  |
+  |      |
+  |      |
+  layer x3
+  |      |
+  |      |
+  |  o   |
+  |      |
+  |      |
+  |      |
+  layer
+  |      |
+  |      |
+  |  *   |
+  |      |
+  |      |
+  |      |
+
+module ks_archive
+  kind vault
+  layer fill _
+  layer x3
+  |###DD###|
+  |#m....m#|
+  |#.$..$.#|
+  |%..!...%|
+  |#......#|
+  |%.?.B..%|
+  |#m.$..m#|
+  |########|
+  layer
+  |%%%%%%%%|
+  |%n....n%|
+  |l......l|
+  |%......%|
+  |l......l|
+  |%......%|
+  |%n....n%|
+  |%%%%%%%%|
+  layer
+  |========|
+  |========|
+  |==*==*==|
+  |===nn===|
+  |===nn===|
+  |==*==*==|
+  |========|
+  |========|
+  layer
+  |l      l|
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+  |l      l|

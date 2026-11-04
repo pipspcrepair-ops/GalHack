@@ -1,0 +1,255 @@
+# POI families. Each family is one name with 3 to 6 layouts; each layout has a fixed seed, so
+# it's always the same building, and the dressing pass (state, loot, enemies, logs) varies
+# per spawn.
+#
+#   faction <id>          meridian, exchange, vharn, kessari, reavers, freeholders, hollow,
+#                         or none for ruins nobody living built
+#   roster <section>      rosters.txt section for its defenders (default: the faction id)
+#   kit <kit> [tag]       the faction kit (and module tag) the layout is built from
+#   deep <kit> [tag]      a second kit for steps written "deep:<kind>" (deeper levels)
+#   rarity                common, uncommon or rare (the rarity ladder)
+#   biomes                desert rock ash ice steppe fungal
+#   territory             faction territories it can spawn in, "wild" (no one's), or "any"
+#   near/avoid <f> <r>    within / beyond r map cells of f: "deposits", "territory:<faction>",
+#                         or another family's id
+#   spacing <r>           map cells to the nearest place of the same family
+#   reveal <m>|landmark   how close you must be before it shows on the map; landmarks show
+#                         from orbit
+#   states                weights for active, abandoned, infested and ruined spawns
+#   damage <0..1>         baseline wreckage even when active (crash sites)
+#
+#   variant <name>
+#     seed <n>
+#     path <steps>        entrance ... vault; a step is [deep:]kind[*min-max]
+#     branches <a-b> <chains>   optional side branches, a chain is kind>kind
+#     grow <kinds>        extra steps inserted before the vault as rarity goes up
+
+family vharn_outpost
+  name Vharn Garrison
+  faction vharn
+  kit vharn
+  rarity common
+  biomes rock ash desert fungal
+  territory vharn
+  near deposits 3
+  spacing 6
+  reveal 500
+  states active 6 abandoned 2 infested 2 ruined 1
+  variant Brood Spine
+    seed 1101
+    path entrance corridor room corridor hall vault
+    branches 1-2 room tower corridor>room
+    grow corridor room
+  variant Hive Ring
+    seed 1102
+    path entrance hall corridor room vault
+    branches 1-2 tower room
+    grow room corridor
+  variant Twin Carapace
+    seed 1103
+    path entrance corridor hall corridor hall vault
+    branches 0-1 tower
+    grow corridor room
+  variant Sentinel Nest
+    seed 1104
+    path entrance room corridor hall vault
+    branches 2-3 tower tower room
+    grow room
+  variant Mandible Gate
+    seed 1105
+    path entrance hall room vault
+    branches 1-2 corridor>room tower
+    grow corridor hall
+  variant Deep Cells
+    seed 1106
+    path entrance corridor*2 room corridor room hall vault
+    branches 0-1 room
+    grow room corridor
+
+family freeholder_farm
+  name Freeholder Farm
+  faction freeholders
+  kit freeholder farm
+  rarity common
+  biomes steppe fungal desert
+  territory freeholders wild
+  avoid vharn_outpost 10
+  avoid territory:vharn 4
+  spacing 5
+  reveal 350
+  states active 5 abandoned 4 infested 1 ruined 2
+  variant Homestead
+    seed 2101
+    path entrance corridor room hall vault
+    branches 1-2 tower room
+    grow corridor room
+  variant Silo Row
+    seed 2102
+    path entrance hall corridor vault
+    branches 2-3 tower tower room
+    grow room
+  variant Greenhouse Lot
+    seed 2103
+    path entrance room corridor room hall vault
+    branches 1 tower
+    grow corridor room
+  variant Long Barn
+    seed 2104
+    path entrance corridor hall corridor room vault
+    branches 1-2 room tower
+    grow hall
+  variant Dust Bowl
+    seed 2105
+    path entrance room hall vault
+    branches 0-1 tower
+    grow corridor room
+
+family abandoned_mine
+  name Abandoned Mine
+  faction freeholders
+  kit freeholder mine
+  deep precursor
+  rarity common
+  biomes rock desert ash
+  territory any
+  near deposits 4
+  spacing 6
+  reveal 250
+  states active 1 abandoned 6 infested 3 ruined 2
+  variant Drift Mine
+    seed 3101
+    path entrance descent corridor room corridor deep:descent deep:corridor deep:hall deep:vault
+    branches 1 room corridor>room
+    grow deep:corridor deep:room
+  variant Shaft Nine
+    seed 3102
+    path entrance descent corridor*2 hall deep:descent deep:room deep:vault
+    branches 0-1 room
+    grow deep:corridor deep:hall
+  variant Deep Seam
+    seed 3103
+    path entrance descent room corridor hall corridor deep:descent deep:corridor deep:room deep:vault
+    branches 1-2 corridor>room room
+    grow deep:room deep:corridor
+  variant Glory Hole
+    seed 3104
+    path entrance descent hall deep:descent deep:corridor deep:hall deep:vault
+    branches 0-1 room
+    grow deep:corridor deep:room
+
+family research_lab
+  name Research Station
+  faction meridian
+  kit meridian lab
+  rarity uncommon
+  biomes ice ash rock
+  territory meridian wild
+  spacing 8
+  reveal 120
+  states active 3 abandoned 3 infested 4 ruined 1
+  variant Black Site
+    seed 4101
+    path entrance descent corridor room corridor hall vault
+    branches 1-2 room corridor>room
+    grow corridor room
+  variant Cryo Wing
+    seed 4102
+    path entrance descent hall corridor room vault
+    branches 1 room
+    grow room corridor
+  variant Bio Annex
+    seed 4103
+    path entrance descent corridor*2 room room vault
+    branches 1-2 corridor>room
+    grow hall
+  variant Deep Archive
+    seed 4104
+    path entrance descent corridor room descent corridor hall vault
+    branches 0-1 room
+    grow corridor room
+
+family crashed_freighter
+  name Crashed Freighter
+  faction meridian
+  kit meridian ship
+  rarity common
+  biomes desert ash ice rock steppe fungal
+  territory any
+  spacing 7
+  reveal 700
+  damage 0.12
+  states active 2 abandoned 5 infested 2 ruined 3
+  variant Broken Back
+    seed 5101
+    path entrance corridor hall corridor room vault
+    branches 0-1 room
+    grow corridor room
+  variant Nose Down
+    seed 5102
+    path entrance hall room corridor vault
+    branches 1 room
+    grow corridor
+  variant Scattered Hold
+    seed 5103
+    path entrance corridor room hall vault
+    branches 1-2 room corridor>room
+    grow room corridor
+  variant Long Hauler
+    seed 5104
+    path entrance corridor*2 hall corridor room vault
+    branches 0-1 room
+    grow corridor hall
+
+family kessari_spire
+  name Kessari Relay Spire
+  faction kessari
+  kit kessari
+  rarity uncommon
+  biomes rock ice desert
+  territory kessari wild
+  spacing 10
+  reveal landmark
+  states active 5 abandoned 2 infested 2 ruined 1
+  variant Lattice Spire
+    seed 6101
+    path entrance corridor hall vault
+    branches 1-2 tower room
+    grow room corridor
+  variant Twin Relay
+    seed 6102
+    path entrance hall corridor room vault
+    branches 2 tower tower
+    grow corridor room
+  variant Array Village
+    seed 6103
+    path entrance room corridor hall room vault
+    branches 1-3 tower room corridor>room
+    grow room
+
+family precursor_vault
+  name Precursor Vault
+  faction none
+  roster precursor
+  kit precursor
+  rarity rare
+  biomes ash desert ice rock
+  territory any
+  avoid territory:freeholders 3
+  spacing 12
+  reveal 150
+  states active 2 abandoned 2 infested 2 ruined 5
+  variant Stepped Tomb
+    seed 7101
+    path entrance corridor room hall vault
+    branches 1 tower
+    grow corridor room
+  variant Sunken Gallery
+    seed 7102
+    path entrance descent corridor hall corridor vault
+    branches 0-1 room
+    grow room corridor
+  variant Monolith Gate
+    seed 7103
+    path entrance hall corridor room vault
+    branches 1-2 tower room
+    grow corridor hall

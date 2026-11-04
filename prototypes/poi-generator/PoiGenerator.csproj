@@ -1,0 +1,10 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>PoiGenerator</RootNamespace>
+    <!-- The generator runs while a player waits for a place to appear, so even editor and
+         debug runs use an optimised build (about five times faster). -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>
