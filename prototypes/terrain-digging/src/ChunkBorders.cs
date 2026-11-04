@@ -75,17 +75,15 @@ public partial class ChunkBorders : MeshInstance3D
             }
         _lines.SurfaceEnd();
 
+        foreach (Int3 chunk in new List<Int3>(_flashes.Keys))
+        {
+            _flashes[chunk] -= (float)delta;
+            if (_flashes[chunk] <= 0f) _flashes.Remove(chunk);
+        }
         if (_flashes.Count == 0) return;
         _lines.SurfaceBegin(Mesh.PrimitiveType.Lines, _flashMaterial);
-        var expired = new List<Int3>();
         foreach ((Int3 chunk, float left) in _flashes)
-        {
-            float remaining = left - (float)delta;
-            if (remaining <= 0f) expired.Add(chunk);
-            Box(chunk, new Color(1f, 0.85f, 0.2f, Mathf.Clamp(remaining / FlashTime, 0f, 1f)));
-        }
-        foreach (Int3 chunk in expired) _flashes.Remove(chunk);
-        foreach (Int3 chunk in new List<Int3>(_flashes.Keys)) _flashes[chunk] -= (float)delta;
+            Box(chunk, new Color(1f, 0.85f, 0.2f, left / FlashTime));
         _lines.SurfaceEnd();
     }
 

@@ -786,10 +786,14 @@ public partial class DigTest : Node
             mismatched = m;
             seconds = s;
         };
-        _main.View.WipeAndRebuild();
+        Vector3 before = _main.Player.GlobalPosition;
+        _main.Rebuild();
         while (compared < 0) await NextFrame();
+        for (int i = 0; i < 30; i++) await NextPhysics();
         Check(mismatched == 0 && compared == ChunkStore.WorldChunks.Volume,
-            $"wipe and rebuild from seed + edits: all {compared} chunk meshes identical ({seconds:F2} s)");
+            $"F8 wipe and rebuild from seed + edits: all {compared} chunk meshes identical ({seconds:F2} s)");
+        Check(_main.Player.GlobalPosition.DistanceTo(before) < 0.3f && _main.Player.ProcessMode == ProcessModeEnum.Inherit,
+            "nobody falls through the world while every collider is being rebuilt");
     }
 
     /// <summary>1000 random digs through the real pipeline: per-chunk remesh time and the worst frame.</summary>

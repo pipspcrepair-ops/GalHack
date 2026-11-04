@@ -95,9 +95,13 @@ public partial class Main : Node3D
             Borders.Flash(chunk);
             Guard.WakeBodiesIn(View.ChunkBounds(chunk));
         };
-        View.RebuildVerified += (chunks, mismatched, seconds) => Hud.Toast(mismatched == 0
-            ? $"Rebuilt {chunks} chunks from seed + edits in {seconds:F1} s: every mesh identical"
-            : $"Rebuild MISMATCH: {mismatched} of {chunks} chunks differ", mismatched == 0 ? Palette.Good : Palette.Warning, 4f);
+        View.RebuildVerified += (chunks, mismatched, seconds) =>
+        {
+            SetBodiesFrozen(false);
+            Hud.Toast(mismatched == 0
+                ? $"Rebuilt {chunks} chunks from seed + edits in {seconds:F1} s: every mesh identical"
+                : $"Rebuild MISMATCH: {mismatched} of {chunks} chunks differ", mismatched == 0 ? Palette.Good : Palette.Warning, 4f);
+        };
     }
 
     RigidBody3D BuildCrate(Vector3 at)
@@ -205,7 +209,15 @@ public partial class Main : Node3D
     {
         if (View.IsVerifying) return;
         Hud.Toast("Wiping every chunk mesh and rebuilding from seed + edits…", Palette.Text, 2f);
+        // Every collider is gone until the rebuild lands: hold bodies still so nobody falls through.
+        SetBodiesFrozen(true);
         View.WipeAndRebuild();
+    }
+
+    void SetBodiesFrozen(bool frozen)
+    {
+        Player.ProcessMode = frozen ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
+        Crate.Freeze = frozen;
     }
 
     /// <summary>Places a block without the tool (tests and screenshots).</summary>
