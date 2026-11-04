@@ -46,7 +46,7 @@
     {
       "id": "thruster", "name": "Thruster", "function": "thruster",
       "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.15 },
-      "mass": 3, "cpu": 2500, "power": -1.5, "thrust": 4000, "color": "3a3f47", "glow": "ff8a1c",
+      "mass": 3, "cpu": 2500, "power": -1.5, "thrust": 1200, "color": "3a3f47", "glow": "ff8a1c",
       "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"],
       "covers": ["+x", "-x", "+y", "-y", "-z"],
       "cost": { "iron": 20, "tungsten": 6, "electronics": 4 }, "smallCost": { "iron": 4, "copper": 3 },
@@ -85,7 +85,7 @@
       ]
     },
     {
-      "id": "container", "name": "Cargo container", "function": "container",
+      "id": "container", "name": "Container", "function": "container",
       "hp": 600, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
       "mass": 2, "cpu": 800, "storage": 8000, "color": "f4a100", "texture": "ribbed",
       "attach": "all", "airtight": "all", "covers": "all",

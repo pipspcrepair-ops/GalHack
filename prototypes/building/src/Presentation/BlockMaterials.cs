@@ -20,11 +20,12 @@ public static class BlockMaterials
     public static ShaderMaterial Opaque => _opaque ??= new ShaderMaterial { Shader = new Shader { Code = OpaqueCode() } };
     public static ShaderMaterial Glass => _glass ??= new ShaderMaterial { Shader = new Shader { Code = GlassCode } };
 
-    /// <summary>A translucent hologram for the ghost preview, tinted per use.</summary>
-    public static ShaderMaterial Ghost(Color tint)
+    /// <summary>A translucent hologram for the ghost preview, tinted per use. Fill 0 draws only the edges.</summary>
+    public static ShaderMaterial Ghost(Color tint, float fill = 0.3f)
     {
         var m = new ShaderMaterial { Shader = _ghostShader ??= new Shader { Code = GhostCode } };
         m.SetShaderParameter("tint", tint);
+        m.SetShaderParameter("fill", fill);
         return m;
     }
 
@@ -204,14 +205,15 @@ void fragment() {
 shader_type spatial;
 render_mode unshaded, blend_mix, cull_back, depth_draw_never;
 uniform vec4 tint : source_color = vec4(0.4, 1.0, 0.9, 1.0);
+uniform float fill = 0.16;
 void fragment() {
     vec2 f = fract(UV);
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
-    float wire = 1.0 - smoothstep(0.025, 0.06, edge);
+    float wire = 1.0 - smoothstep(0.02, 0.05, edge);
     float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
     float scan = 0.5 + 0.5 * sin(UV.y * 18.0 - TIME * 5.0);
     ALBEDO = tint.rgb;
-    ALPHA = clamp(0.16 + fres * 0.3 + wire * 0.75 + scan * 0.06, 0.0, 1.0) * tint.a;
+    ALPHA = clamp(fill + fres * fill * 1.8 + wire * 0.8 + scan * fill * 0.4, 0.0, 1.0) * tint.a;
 }
 ";
 }

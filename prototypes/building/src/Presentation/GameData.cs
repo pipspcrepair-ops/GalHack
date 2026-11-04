@@ -10,7 +10,7 @@ namespace GalHack.Structures.Presentation;
 public static class GameData
 {
     public const string DataDir = "res://data";
-    public const string ExampleBlueprint = "res://data/blueprints/foss-lancer.gbp";
+    public const string ExampleBlueprint = "res://data/blueprints/lancer.gbp";
 
     static Catalogue _catalogue;
 
