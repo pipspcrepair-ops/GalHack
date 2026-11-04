@@ -3,8 +3,9 @@
 Proves that the galaxy can feel alive without being simulated. An **encounter director** deals small events from a weighted deck into the zones players are in, keeps them out of sight until they are underway, scales them by the players present, and cleans them up when players leave. Only lasting facts outlive a zone: what players own, what they touched, and the wrecks they saw.
 
 ![A convoy crossing in front of Halcyon Station](screenshots/orbit.png)
-![A Concord patrol tangling with Carrion Reavers](screenshots/skirmish.png)
+![A Meridian Combine patrol tangling with Carrion Reavers](screenshots/skirmish.png)
 ![A distress lead over the Kessari mining field](screenshots/distress.png)
+![A Vharn Dominion capital ship on the march, with its gunship escort](screenshots/frontier.png)
 ![The director overlay and map](screenshots/overlay.png)
 
 ## How it works
@@ -19,6 +20,8 @@ Proves that the galaxy can feel alive without being simulated. An **encounter di
 | `deck.json` | The event deck. Each event has a weight, tag conditions, faction and territory rule, hostility, crewed ship groups, scripted behaviour, speed, duration, cleanup rule, wrecks and signal. |
 | `director.json` | Spawn distances and the view cone, budget and category caps, gaps, cooldowns and the no-repeat window, hostile share by danger grade, despawn distances, touch range, and lead fuzz. |
 | `gunnery.json` | A hook for future combat (see below). |
+
+**Factions** are the design document's: the Meridian Combine (corporate fleet; patrols), the Ledger Exchange (neutral merchants; freighters, convoys, traders), the Carrion Reavers (pirates), the Kessari (robot clans; miners), the Hollow Bloom (corruption), the Vharn Dominion (the main enemy; patrols, capital ships and surface garrisons, only in their own territory) and the Freeholders (settlers; haulers and mining skiffs round their outposts). The Ledger Exchange and the Freeholders are marked `"fights": false`: the deck refuses to load a hostile card that uses them, and they never take a side in a border clash.
 
 **Weighing the deck.** At a spot in a zone, tags gate cards in or out (`kind:orbit|kind:deep`, `poi:station`, a danger range). Faction territory then applies:
 - `inside` cards need their faction's territory.
@@ -36,7 +39,9 @@ Nothing pops into view. Each zone instance has its own concurrent budget, scaled
 
 **Ships are crewed and scripted.** Every ship has a crew count; there are no drones. Flights are closed-form functions of time: pass, convoy, dogfight (tail-chasing pairs on tilted circles), dock, mine and drift. The director samples them on its tick, and the renderer samples the same functions every frame, so ships move smoothly without the director ticking faster. When an event's time is up its ships depart. They are removed once no player can see them go, or once every player is far away. A distress call nobody answers is lost and becomes a wreck.
 
-**Lasting records.** The moment a ship becomes lasting, it moves out of its zone instance into the `Ledger`, which has no remove method at all. A ship becomes lasting when a player touches it (E: loot, claim or board), when a player owns it, or when it is wrecked within sight of a player. Cleanup only ever sees a zone instance's transient ships, so it cannot reach anything lasting. As a safety net, the one removal path refuses anything lasting and keeps it instead, counting a "guard trip". When the last player leaves a zone, the zone instance is dropped. Coming back starts fresh events, and the records are still there.
+**Permanent records.** The moment a ship becomes lasting, it moves out of its zone instance into the `PermanentRecords`, which has no remove method at all. A ship becomes lasting when a player touches it, when a player owns it, or when it is wrecked within sight of a player.
+
+Touching never takes a live ship: E on a live ship only marks it as a permanent record, and it stays its crew's. In the design a live ship becomes yours only by boarding it and hijacking its core, which this prototype doesn't have. A wreck's core is destroyed, so E on a wreck claims it as salvage and it becomes yours. The director's `DebugClaim` stands in for boarding in the tests; no game key uses it. Cleanup only ever sees a zone instance's transient ships, so it cannot reach anything lasting. As a safety net, the one removal path refuses anything lasting and keeps it instead, counting a "guard trip". When the last player leaves a zone, the zone instance is dropped. Coming back starts fresh events, and the records are still there.
 
 **Signal leads.** Distress calls and faction transmissions give every player in the zone a lead: the true direction turned by up to 10°, and the true distance scaled by up to ±20%. The HUD shows a dashed search circle and the map shows the lead's uncertainty. Contacts are only bracketed within 2.5 km, so a lead stays a search, not a waypoint. Leads resolve within 700 m.
 
@@ -56,15 +61,15 @@ From the repo root, in PowerShell:
 | W / S | Throttle up or down (it holds when you let go) |
 | A / D | Roll |
 | Shift | Boost |
-| E | Touch the nearest ship within 250 m: loot a wreck, board a disabled ship or hulk, claim anything else. It becomes a lasting record. |
+| E | Touch the nearest ship within 250 m. A live ship becomes a permanent record but stays its crew's; a wreck is claimed as your salvage. |
 | C | Drop a cargo pod. It's yours, so it never goes away. |
 | J | Jump between Veyra orbit and the Ashen Drift, with a fade |
-| Tab | Director overlay: events, deck weights here, budget, caps, cooldowns, leads, lasting records, log |
+| Tab | Director overlay: events, deck weights here, budget, caps, cooldowns, leads, permanent records, log |
 | M | Director map: territories, POIs, no-spawn circles, your view cone and spawn ring, ships, wrecks, records and leads |
 | V | Cockpit or chase camera |
 | Esc | Free the mouse (click to capture it again) |
 
-Fly towards a distress lead's circle and search it. Drop a pod, jump away and come back: it is still there, and so are the wrecks and anything you claimed. Everything you didn't touch has gone.
+Fly towards a distress lead's circle and search it. Drop a pod, jump away and come back: it is still there, and so are the wrecks and anything you touched or claimed. Everything you didn't touch has gone. Holt outpost, 6 km out from Veyra's station, has Freeholders at work; the Ashen Drift's south-west corner is Vharn space.
 
 ## Test it
 
@@ -74,21 +79,26 @@ Fly towards a distress lead's circle and search it. Drop a pod, jump away and co
 
 The tests run `tests/DirectorTest.tscn` headless, on a simulated clock (about 6 s), and exit 0 or 1. They check:
 
-- **Spawn rules under churn.** Over 8,000 spawns and 18,000 ships (seven players in four zones), nothing spawns inside a view cone, nearer than 1.8 km or inside a no-spawn circle. The budget and category caps are never exceeded, and no event type repeats inside its window.
+- **Spawn rules under churn.** Over 8,000 spawns and 18,000 ships (seven players in four zones), nothing spawns inside a view cone, nearer than 1.8 km or inside a no-spawn circle. The budget and category caps are never exceeded, no event type repeats inside its window, and no Ledger Exchange or Freeholder ship ever appears in a hostile event.
 - **Deck weights follow zone tags:**
   - The hostile share matches the danger grade, in the weights and in what spawns.
-  - Kessari miners appear only in Kessari space, and Concord patrols only in Concord space.
+  - Kessari miners appear only in Kessari space, and Meridian patrols only in Meridian space.
   - Reavers are 2.5x as likely at home, and border clashes happen only where territories meet.
   - Unclaimed space has no faction events.
   - Crash sites appear only on surfaces, traders only where there's a station.
+- **The Vharn Dominion and the Freeholders.**
+  - Every Vharn card is hostile and needs Vharn territory. Patrols and capital ships come only in Vharn space, garrisons only on Vharn surfaces. A player in Vharn space meets patrols; a player outside never does.
+  - Every Freeholder card is peaceful and works round an outpost in Freeholder territory. A player at Holt meets them; a player away from it never does.
+  - Reaver and Freeholder territory overlap at Holt, but there is no border clash there. The deck refuses to load a card where Freeholders attack.
 - **No-spawn circles and player bases** are never spawned in, even when they block much of the spawn ring.
-- **Leaving a zone** removes all its untouched ships, and keeps the claimed freighter and the witnessed wrecks as records.
-- **Player-owned things survive.** 32 player-owned things survive 120 zone hops, including crates dropped inside a fight and a ship claimed mid-event. A ship marked owned behind the director's back is caught by the guard.
+- **Leaving a zone** removes all its untouched ships. Touching a live freighter makes it a permanent record but not the player's, and touching a wreck claims it. Both stay, with the witnessed wrecks.
+- **Player-owned things survive.** 32 player-owned things survive 120 zone hops, including crates dropped inside a fight and a ship taken mid-event with the debug claim. A ship touched mid-event stays not theirs. A ship marked owned behind the director's back is caught by the guard.
 - **Determinism.** The same seed and inputs give a byte-identical log; a different seed gives a different one.
 - **Zones and scaling.** Two players in two zones get their own events, and four players in one zone get more events and ships than one.
 - **Leads** are within 10° and 20% across 1,000 distress calls, never exact, and resolve when you arrive.
 - **Tick cost.** Six players in four zones averages about 11 µs per tick, with a maximum under 100 µs, at 10 Hz.
 - **The gunnery hook** follows its rules.
+- **Export.** The export preset includes the data files.
 
 Screenshots render windowed:
 
@@ -98,7 +108,7 @@ dotnet build prototypes\encounters\Encounters.csproj -nologo -v q
 & $GodotEditor --path prototypes/encounters res://tests/Screenshot.tscn -- --view=orbit --out=shot.png
 ```
 
-The views are `orbit`, `skirmish`, `distress` and `overlay`. A fifth, `jump`, presses J and fails unless the zone changed.
+The views are `orbit`, `skirmish`, `distress`, `frontier` and `overlay`. A sixth, `jump`, presses J and fails unless the zone changed.
 
 ## Known limits
 
@@ -107,11 +117,11 @@ The views are `orbit`, `skirmish`, `distress` and `overlay`. A fifth, `jump`, pr
 - **No collisions.** You can fly through ships, rocks and the station. Traders hold beside the station rather than docking.
 - **Ships don't steer.** Flights are kinematic paths, so a departing ship can turn sharply, and wrecks coast for a second, then stay put.
 - **Circles are cylinders.** They are measured on the X/Z plane and reach up and down without limit. The view cone is a 70° cone, not the camera frustum; very wide screens would want it wider (it's in `director.json`).
-- **Salvage piles up.** Records only grow. Wrecks are kept only if seen (within 8 km), but nothing merges or ages salvage yet. There is no save/load: the ledger, its next id and the zone data are what a save would hold.
+- **Salvage piles up.** Records only grow. Wrecks are kept only if seen (within 8 km), but nothing merges or ages salvage yet. There is no save/load: the permanent records, their next id and the zone data are what a save would hold.
 - **Determinism is per machine.** It holds for the same build on the same machine. Float trig can differ across CPUs, which is fine while only the host runs the director, but this is not a lockstep simulation.
 - **The danger mix is approximate under tight caps.** With only two hostile cards in a zone and heavy churn, danger 4 spawns 51% hostile against a 60% target.
 - **No real multiplayer yet.** The scene has one player; networking is not implemented.
 - **The sky costs per pixel.** It runs a 5-octave noise per pixel every frame. Check it on a low-end GPU; it could be baked to a cubemap once per zone.
-- **Exports.** An exported build needs `*.json` in the export filter.
+- **Exports.** `export_presets.cfg` (a Windows preset) includes `*.json`, so the data files ship in the pack. The repo ignores export presets, so this prototype's `.gitignore` re-includes it. Godot 4 keeps export credentials in `.godot/`, not in this file.
 - **No audio.** The prototype is silent.
 - **Debug-style UI.** The HUD, overlay and map are debug-styled, not the diegetic UI.

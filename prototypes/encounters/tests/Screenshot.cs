@@ -8,7 +8,7 @@ namespace Encounters;
 /// <summary>
 /// Renders one view of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/encounters res://tests/Screenshot.tscn -- --view=orbit --out=shot.png
-/// Views: orbit, skirmish, distress, overlay, and jump (presses J and checks the zone changed).
+/// Views: orbit, skirmish, distress, frontier, overlay, and jump (presses J and checks the zone changed).
 ///
 /// Each view stages its events with the director's debug spawn (which skips the spawn rules,
 /// so the camera can be pointed straight at them), then lets the director run normally.
@@ -54,6 +54,7 @@ public partial class Screenshot : Node
             {
                 // A convoy crossing in front of Halcyon Station, traders coming in to dock, and the giant below.
                 _main.Craft.Place(new Vector3(-760, 170, -700), new Vector3(-650, 120, -2500), 60f);
+                Feed(d);
                 d.DebugSpawn("veyra-orbit", "convoy", N(-796, 270, -1233), N(2268, 270, -1046));
                 d.DebugSpawn("veyra-orbit", "traders-dock", N(500, 260, -1600), N(0, 0, -2600));
                 d.DebugSpawn("veyra-orbit", "freighter-pass", N(-2600, 380, -3600), N(2200, 300, -3300));
@@ -62,10 +63,11 @@ public partial class Screenshot : Node
             }
             case "skirmish":
             {
-                // A Concord patrol tangling with Carrion Reavers, close enough to see the tracers.
+                // A Meridian patrol tangling with Carrion Reavers, close enough to see the tracers.
                 // From the cockpit, so the skiff doesn't hide the fight.
                 _main.Craft.Cockpit = true;
                 _main.Craft.Place(new Vector3(-80, 70, 60), new Vector3(150, 10, -330), 10f);
+                Feed(d);
                 Encounter fight = d.DebugSpawn("veyra-orbit", "patrol-vs-reavers", N(110, 30, -280), N(0, 0, 0));
                 // Run the fight on until someone has been shot down, so a wreck is smoking.
                 for (int i = 0; i < 1200 && !fight.Ships.Any(s => s.Wrecked); i++) d.Tick();
@@ -78,9 +80,22 @@ public partial class Screenshot : Node
                 // Out in the Ashen Drift: a distress call a few kilometres off, Kessari miners at work on the rocks.
                 _main.EnterZone("drift-deep");
                 _main.Craft.Place(new Vector3(1000, 150, -2200), new Vector3(1030, 110, -3200), 30f);
+                Feed(d);
                 d.DebugSpawn("drift-deep", "kessari-miners", N(1700, 60, -2900), N(0, 0, 0));
                 d.DebugSpawn("drift-deep", "distress-call", N(-1000, 390, -5640), N(0, 0, 0));
                 FastForward(d, 30);
+                break;
+            }
+            case "frontier":
+            {
+                // The Ashen Drift's Vharn corner: a Dominion capital ship on the march with its escort, and a gunship patrol.
+                _main.EnterZone("drift-deep");
+                // The red dwarf behind the camera lights the ships' near sides.
+                _main.Craft.Place(new Vector3(-7000, 300, -8600), new Vector3(-8640, -260, -7600), 15f);
+                Feed(d);
+                d.DebugSpawn("drift-deep", "vharn-capital", N(-7360, 160, -8268), N(-8910, 160, -10810));
+                d.DebugSpawn("drift-deep", "vharn-patrol", N(-7362, 300, -8505), N(-6825, 240, -10520));
+                FastForward(d, 6);
                 break;
             }
             case "jump":
@@ -95,6 +110,7 @@ public partial class Screenshot : Node
                 // A lived-in orbit: a few minutes of the director left to its own devices, a ship
                 // claimed and a cargo pod dropped, then the Tab overlay and the M map.
                 _main.Craft.Place(new Vector3(0, 40, 600), new Vector3(0, 0, -2600), 0f);
+                Feed(d);
                 FastForward(d, 150);
                 Encounter freighter = d.DebugSpawn("veyra-orbit", "freighter-pass", N(-600, 60, -300), N(800, 0, -900));
                 WorldEntity ship = freighter.Ships[0];
@@ -108,12 +124,16 @@ public partial class Screenshot : Node
         }
     }
 
+    /// <summary>Tells the director where the player is now, so staged events and leads measure from there.</summary>
+    void Feed(EncounterDirector d) =>
+        d.SetPlayer(Main.LocalPlayer, _main.ZoneId, _main.Camera.GlobalPosition.ToNum(), (-_main.Camera.GlobalBasis.Z).ToNum());
+
     /// <summary>Runs the director on by some seconds before the shot, with the player where the camera is.</summary>
     void FastForward(EncounterDirector d, float seconds)
     {
         for (int i = 0; i < seconds * d.Config.TickHz; i++)
         {
-            d.SetPlayer(Main.LocalPlayer, _main.ZoneId, _main.Camera.GlobalPosition.ToNum(), (-_main.Camera.GlobalBasis.Z).ToNum());
+            Feed(d);
             d.Tick();
         }
     }
