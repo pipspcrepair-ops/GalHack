@@ -1,0 +1,104 @@
+// The prototype's planet patch: climate, hazard zones, breathable rooms, faction land and
+// where everything stands. Positions are [x, z] on the ground or [x, y, z], in metres.
+{
+  "name": "Calder's Reach",
+  "dayLengthSeconds": 720,            // a 12-minute day, so the cycle shows in a short session
+  "startHour": 9.5,
+  "baseTemperature": 15,              // open ground, before day and night and weather
+  "dayNightSwing": 9,                 // plus this at 14:00, minus it at 02:00
+  "oxygenPercent": 19,                // the open air is breathable
+
+  // Weather is drawn from the world seed: the same seed always gives the same skies.
+  "weather": {
+    "intervalSeconds": 150,
+    "kinds": [
+      { "name": "Clear", "weight": 5, "temperature": 0 },
+      { "name": "Cold wind", "weight": 2, "temperature": -6 },
+      { "name": "Heat haze", "weight": 2, "temperature": 4 }
+    ]
+  },
+
+  // Each zone is felt fully within its radius and fades out over the falloff beyond it.
+  // temperature is added to the open-ground temperature; oxygenPercent replaces the air.
+  "zones": [
+    {
+      "id": "frozen-valley", "name": "Frozen valley", "sign": "EXTREME COLD",
+      "center": [-70, -35], "radius": 24, "falloff": 14,
+      "temperature": -42,
+      "terrain": { "shape": "valley", "depth": -7 }
+    },
+    {
+      "id": "volcanic-vent", "name": "Volcanic vent", "sign": "HEAT  -  LAVA",
+      "center": [65, -65], "radius": 8, "falloff": 22,
+      "temperature": 70, "lavaRadius": 4,
+      "terrain": { "shape": "cone", "depth": 9 }
+    },
+    {
+      "id": "radiation-crater", "name": "Radiation crater", "sign": "RADIATION",
+      "center": [-25, -90], "radius": 12, "falloff": 16,
+      "radiation": 16,
+      "terrain": { "shape": "bowl", "depth": -5 }
+    },
+    {
+      "id": "airless-sinkhole", "name": "Airless sinkhole", "sign": "NO AIR",
+      "center": [70, 40], "radius": 9, "falloff": 4,
+      "oxygenPercent": 0,
+      "terrain": { "shape": "funnel", "depth": -9, "width": 16 }
+    }
+  ],
+
+  // Breathable, climate-controlled rooms and cockpits. Suit oxygen refills inside.
+  "volumes": [
+    { "id": "shelter", "name": "Shelter", "kind": "room", "min": [22, 0, -14], "max": [38, 4.5, -2], "temperature": 21 }
+  ],
+
+  // NPC faction land: survival devices can't be set down inside.
+  "territories": [
+    { "id": "vharn", "name": "Vharn Dominion territory", "center": [-62, 55], "radius": 24 }
+  ],
+
+  // Where you can come back after dying. "position" is the device, "stand" is where you appear.
+  "respawnPoints": [
+    { "id": "booth", "name": "Shelter healing booth", "kind": "healingBooth", "position": [23.2, -11], "stand": [25, -11] },
+    { "id": "clone", "name": "Shelter clone chamber", "kind": "cloneChamber", "position": [23.2, -5.5], "stand": [25, -5.5] },
+    { "id": "tent", "name": "Crash-site tent", "kind": "survivalTent", "position": [-9, 44], "stand": [-9, 41.5] }
+  ],
+
+  "replicators": [
+    { "tier": 2, "position": [29, -13.1] },
+    { "tier": 3, "position": [33, -13.1] }
+  ],
+  "storage": { "position": [36.9, -8], "organics": 40 },
+  "basePower": 20000,
+
+  "escapePod": { "position": [7, 46], "rations": 3 },
+  "freshStartRing": { "low": 70, "high": 105 },
+
+  "bushes": [
+    [-14, 28], [-18, 20], [12, 24], [-4, 14], [24, 34],
+    [-40, -18], [-56, 48], [-68, 62]
+  ],
+
+  // Rocks to mine: [x, z, size].
+  "rocks": [
+    [6, 20, 1.6], [16, 32, 1.2], [-22, 36, 1.8], [40, 18, 2.0], [-30, -4, 1.5],
+    [52, -28, 2.2], [-48, -58, 1.7], [18, -38, 2.4], [-6, 54, 1.4]
+  ],
+
+  "start": {
+    "position": [0, 40],
+    "yawDegrees": 0,
+    "food": 0.8,
+    "suit": "light",
+    "inventory": {
+      "organics": 10,
+      "smallBottles": 2,
+      "largeBottles": 1,
+      "medkits": 2,
+      "replicatorKits": 1,
+      // A test bench: every suit and booster, so each can be tried on.
+      "suits": ["medium", "heavy", "epic-heavy"],
+      "boosters": ["armor", "jetpack", "oxygen", "insulation", "radiation", "mobility", "eva", "multi"]
+    }
+  }
+}

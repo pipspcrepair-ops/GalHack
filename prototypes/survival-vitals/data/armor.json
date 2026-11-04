@@ -1,0 +1,43 @@
+// Suits and boosters. Booster choice per planet is how planet variety reaches the player's body.
+//
+// Modifier fields (all optional):
+//   armor               share of hit and fall damage the armor stops (summed, at most 0.8)
+//   coldProtection      degrees of felt cold the suit handles
+//   heatProtection      degrees of felt heat the suit handles
+//   radiationShielding  share of ambient radiation blocked (stacks as 1 - (1-a)(1-b))
+//   oxygenCapacity      extra suit oxygen
+//   jetpackSeconds      how long the jetpack can thrust
+//   oxygenUse, hunger, staminaUse, speed, fallDamage   multipliers (1 = no change)
+{
+  "brokenSuitEffect": 0.5,            // a suit worn down to zero durability gives half its own stats
+
+  "suits": [
+    {
+      "id": "light", "name": "Light suit", "slots": 2,
+      "modifiers": { "armor": 0.10, "coldProtection": 6, "heatProtection": 4, "radiationShielding": 0.10, "jetpackSeconds": 1.5 }
+    },
+    {
+      "id": "medium", "name": "Medium suit", "slots": 3,
+      "modifiers": { "armor": 0.20, "coldProtection": 9, "heatProtection": 7, "radiationShielding": 0.15, "jetpackSeconds": 1.5 }
+    },
+    {
+      "id": "heavy", "name": "Heavy suit", "slots": 4,
+      "modifiers": { "armor": 0.30, "coldProtection": 12, "heatProtection": 10, "radiationShielding": 0.20, "jetpackSeconds": 1.2, "speed": 0.92 }
+    },
+    {
+      "id": "epic-heavy", "name": "Epic heavy suit", "slots": 0,
+      "modifiers": { "armor": 0.50, "coldProtection": 34, "heatProtection": 32, "radiationShielding": 0.70, "oxygenCapacity": 250, "jetpackSeconds": 2.5, "hunger": 0.9 }
+    }
+  ],
+
+  "boosters": [
+    { "id": "armor", "name": "Armor booster", "modifiers": { "armor": 0.12 } },
+    { "id": "jetpack", "name": "Jetpack booster", "modifiers": { "jetpackSeconds": 1.5 } },
+    { "id": "oxygen", "name": "Oxygen tank booster", "modifiers": { "oxygenCapacity": 250 } },
+    { "id": "insulation", "name": "Insulation booster", "modifiers": { "coldProtection": 25, "heatProtection": 22 } },
+    { "id": "radiation", "name": "Radiation shielding booster", "modifiers": { "radiationShielding": 0.6 } },
+    { "id": "mobility", "name": "Mobility booster", "modifiers": { "speed": 1.12, "staminaUse": 0.7 } },
+    { "id": "eva", "name": "EVA booster", "modifiers": { "oxygenUse": 0.7, "jetpackSeconds": 0.8, "fallDamage": 0.6 } },
+    { "id": "multi", "name": "Multi booster", "modifiers": { "armor": 0.04, "coldProtection": 5, "heatProtection": 5, "radiationShielding": 0.15, "hunger": 0.85 } }
+  ]
+}
