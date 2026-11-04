@@ -1,0 +1,22 @@
+Blind-test key for atlas.png. Tiles are numbered left to right, top to bottom.
+
+ 1  (row 1, column 1)  Temperate / meadow   seed 42788   16x8 km   modifiers: Cratered, Mesas
+ 2  (row 1, column 2)  Temperate / rainforest   seed 77100   16x8 km   modifiers: PerpetualStorm
+ 3  (row 1, column 3)  Arid / canyon   seed 101612   16x8 km   modifiers: Highlands, PerpetualStorm
+ 4  (row 1, column 4)  Temperate / rainforest   seed 65524   16x8 km   modifiers: Cratered, Mesas
+ 5  (row 2, column 1)  Lava / lava ocean   seed 33828   16x8 km   modifiers: RingedSky
+ 6  (row 2, column 2)  Alien / crystal   seed 87509   16x8 km   modifiers: Archipelago, Highlands
+ 7  (row 2, column 3)  Ice / glacier   seed 42844   16x8 km   modifiers: Mesas, PerpetualStorm
+ 8  (row 2, column 4)  Arid / dunes   seed 53482   16x8 km   modifiers: GlowingNights
+ 9  (row 3, column 1)  Ice / hot spring   seed 24209   16x8 km   modifiers: Mesas
+10  (row 3, column 2)  Alien / fungal   seed 16098   16x8 km   modifiers: RingedSky
+11  (row 3, column 3)  Arid / dunes   seed 83416   16x8 km   modifiers: Archipelago, Mesas
+12  (row 3, column 4)  Lava / lava ocean   seed 53140   16x8 km   modifiers: Cratered, GlowingNights
+13  (row 4, column 1)  Temperate / meadow   seed 31871   16x8 km   modifiers: Canyons
+14  (row 4, column 2)  Arid / canyon   seed 39228   16x8 km   modifiers: Cratered
+15  (row 4, column 3)  Lava / volcanic   seed 26131   16x8 km   modifiers: Cratered, PerpetualStorm
+16  (row 4, column 4)  Alien / crystal   seed 19352   16x8 km   modifiers: Cratered
+17  (row 5, column 1)  Lava / volcanic   seed 10737   16x8 km   modifiers: Mesas
+18  (row 5, column 2)  Alien / fungal   seed 5001   16x8 km   modifiers: Canyons
+19  (row 5, column 3)  Ice / glacier   seed 55847   16x8 km   modifiers: Mesas, RingedSky
+20  (row 5, column 4)  Ice / hot spring   seed 89145   16x8 km   modifiers: Highlands

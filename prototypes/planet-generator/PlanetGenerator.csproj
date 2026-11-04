@@ -1,0 +1,10 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Planets</RootNamespace>
+    <!-- The generator is all tight numeric loops; unoptimised Debug code runs them 3-5x slower,
+         which would make in-editor play stutter while terrain streams. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>
