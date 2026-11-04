@@ -24,7 +24,10 @@ public static class CreatureMaterials
         float width = sp.Rig == RigKind.Swarm ? sp.Body.Size : MathF.Max(0.2f, sp.Body.Width);
         m.SetShaderParameter("pattern_freq", sp.Colors.PatternScale * 2.2f / width);
         m.SetShaderParameter("veins_glow", sp.Corrupted ? 1f : 0f);
-        m.SetShaderParameter("roughness_value", sp.Form == "boulder" ? 0.95f : 0.68f);
+        m.SetShaderParameter("roughness_value", sp.Form == "boulder" ? 0.95f : 0.7f);
+        // Pebbled hide at a scale that suits the animal: fine on a critter, coarse on a giant.
+        m.SetShaderParameter("detail_freq", 48f / MathF.Sqrt(MathF.Max(0.3f, sp.Body.Size)));
+        m.SetShaderParameter("detail_strength", sp.Rig == RigKind.Swarm ? 0f : 0.1f);
         return m;
     });
 

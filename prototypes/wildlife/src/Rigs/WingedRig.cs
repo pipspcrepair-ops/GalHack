@@ -159,31 +159,35 @@ public sealed class WingedRig : Rig
         (float span1, float span2) = Spans(s);
         bool moth = b.Wings >= 4;
 
+        // A streamlined body: deep keel of flight muscle at the front, tapering to the tail.
         var body = new Piece("body");
-        body.Add(Shape.Sphere, new Vector3(W, H, L * 0.72f), Vector3.Zero, k.Base, 1f);
-        body.Add(Shape.Sphere, new Vector3(W * 0.85f, H * 0.6f, L * 0.62f), new Vector3(0, -H * 0.18f, 0), k.Belly);
-        if (moth) body.Add(Shape.Sphere, new Vector3(W * 1.1f, H * 0.9f, L * 0.3f), new Vector3(0, H * 0.05f, -L * 0.18f), k.Belly.Lerp(k.Base, 0.3f), 0f);
-        Parts.Back(body, s.Part("back"), W, H, L * 0.72f, k, rng);
-        if (s.Corrupted) Parts.Corruption(body, W, H, L * 0.72f, k, rng);
+        var shape = LoftProfile.Smooth(-L * 0.38f, L * 0.36f, new[]
+        {
+            (0f, W * 0.36f, H * 0.4f, 0f), (0.3f, W * 0.5f, H * 0.52f, -H * 0.04f), (0.65f, W * (moth ? 0.46f : 0.36f), H * (moth ? 0.46f : 0.36f), 0f), (1f, W * 0.2f, H * 0.2f, H * 0.04f),
+        }, 14, 0.2f);
+        body.Loft(shape, k.Base, k.Belly, 1f, 0f, moth ? Mat.Carapace : Mat.Skin, null, null, 14);
+        Parts.Back(body, s.Part("back"), W, H, L * 0.72f, k, rng, shape);
+        if (s.Corrupted) Parts.Corruption(body, W, H, L * 0.72f, k, rng, shape);
         layout.Add(body);
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), hs, k, rng);
-        Parts.Horns(head, s.Part("horns"), hs, k, rng);
+        HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng);
+        Parts.Horns(head, s.Part("horns"), hs, k, rng, info);
         if (s.Part("tendrils") != "none")
             for (int i = 0; i < 4; i++)
-                head.Rod(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.2f, -hs * 0.8f), new Vector3((i - 1.5f) * hs * 0.4f, -hs * 0.8f, -hs * 0.6f),
-                    hs * 0.05f, s.Corrupted ? k.Veins : k.Accent, 0f, s.Corrupted ? 0.8f : 0f);
+                head.Taper(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.2f, -hs * 0.8f), new Vector3((i - 1.5f) * hs * 0.4f, -hs * 0.8f, -hs * 0.6f),
+                    hs * 0.03f, hs * 0.008f, s.Corrupted ? k.Veins : k.Accent, 0f, s.Corrupted ? 0.8f : 0f);
         layout.Add(head);
 
         if (b.NeckLength > L * 0.15f)
         {
             var neck = new Piece("neck0");
-            float d = W * 0.4f;
-            neck.Add(Shape.Capsule, new Vector3(d, b.NeckLength + d, d), new Vector3(0, b.NeckLength * 0.5f, 0), k.Base, 0.8f);
+            neck.Taper(Vector3.Zero, new Vector3(0, b.NeckLength, 0), W * 0.24f, hs * 0.22f, k.Base, 0.8f);
             layout.Add(neck);
         }
 
+        // Wings: a bony leading edge with skin stretched behind it, the outer panel braced by
+        // long finger bones. Moths get four broad panels instead.
         int pairs = Math.Max(1, b.Wings / 2);
         Color membrane = moth ? k.Accent : k.Accent.Lerp(k.Base, 0.45f);
         for (int pair = 0; pair < pairs; pair++)
@@ -191,19 +195,22 @@ public sealed class WingedRig : Rig
         {
             float scale = pair == 0 ? 1f : 0.7f;
             float a = span1 * scale, o = span2 * scale, chord = L * (moth ? 0.75f : 0.55f) * scale;
+            float bone = W * 0.07f;
             var inner = new Piece($"wing{pair}{side}a");
-            inner.Add(Shape.Capsule, new Vector3(W * 0.12f, a + W * 0.12f, W * 0.12f), new Vector3(0, a * 0.5f, 0), k.Dark);
-            inner.Add(Shape.Sphere, new Vector3(W * 0.04f, a * 1.05f, chord), new Vector3(0, a * 0.5f, chord * 0.38f), membrane, 1f, k.GlowStrength * 0.2f);
+            inner.Taper(Vector3.Zero, new Vector3(0, a, 0), bone * 1.3f, bone, k.Dark, 0.3f);
+            inner.Add(Shape.Sphere, new Vector3(W * 0.03f, a * 1.05f, chord), new Vector3(0, a * 0.5f, chord * 0.4f), membrane, 1f, k.GlowStrength * 0.2f, null, 12, Mat.Membrane);
             layout.Add(inner);
             var outer = new Piece($"wing{pair}{side}b") { Shadow = true };
-            outer.Add(Shape.Capsule, new Vector3(W * 0.08f, o * 0.8f, W * 0.08f), new Vector3(0, o * 0.4f, 0), k.Dark);
+            outer.Taper(Vector3.Zero, new Vector3(0, o * 0.82f, 0), bone, bone * 0.3f, k.Dark, 0.3f);
             if (moth)
-                outer.Add(Shape.Sphere, new Vector3(W * 0.04f, o, chord * 1.1f), new Vector3(0, o * 0.45f, chord * 0.3f), membrane.Lerp(k.Base, 0.2f), 1f, k.GlowStrength * 0.3f);
+                outer.Add(Shape.Sphere, new Vector3(W * 0.03f, o, chord * 1.1f), new Vector3(0, o * 0.45f, chord * 0.32f), membrane.Lerp(k.Base, 0.2f), 1f, k.GlowStrength * 0.3f, null, 12, Mat.Membrane);
             else
             {
-                outer.Add(Shape.Sphere, new Vector3(W * 0.04f, o, chord * 0.8f), new Vector3(0, o * 0.45f, chord * 0.28f), membrane, 1f, k.GlowStrength * 0.2f);
-                for (int f = 0; f < 2; f++)
-                    outer.Rod(new Vector3(0, o * 0.15f, 0), new Vector3(0, o * (0.55f + 0.35f * f), chord * (0.7f - 0.3f * f)), W * 0.04f, k.Dark);
+                outer.Add(Shape.Sphere, new Vector3(W * 0.03f, o, chord * 0.8f), new Vector3(0, o * 0.45f, chord * 0.3f), membrane, 1f, k.GlowStrength * 0.2f, null, 12, Mat.Membrane);
+                for (int f = 0; f < 3; f++)
+                    outer.Taper(new Vector3(0, o * 0.12f, 0), new Vector3(0, o * (0.5f + 0.22f * f), chord * (0.72f - 0.22f * f)), bone * 0.6f, bone * 0.15f, k.Dark, 0f, 0f, Mat.Horn, 6);
+                // A hooked claw at the wrist.
+                outer.Horn(k.Horn, bone * 0.7f, Mat.Horn, Vector3.Zero, new Vector3(0, bone * 1.5f, -bone * 2f), new Vector3(0, bone * 0.5f, -bone * 3.4f));
             }
             layout.Add(outer);
         }
@@ -214,8 +221,8 @@ public sealed class WingedRig : Rig
             for (int i = 0; i < segs; i++)
             {
                 var t = new Piece($"tail{i}") { Shadow = false };
-                float seg = b.TailLength / segs, d = W * 0.22f * (1f - 0.6f * i / segs);
-                t.Add(Shape.Capsule, new Vector3(d, seg + d, d), new Vector3(0, seg * 0.5f, 0), k.Base, 0.6f);
+                float seg = b.TailLength / segs, r0 = W * 0.13f * (1f - 0.7f * i / segs), r1 = W * 0.13f * (1f - 0.7f * (i + 1) / segs);
+                t.Taper(Vector3.Zero, new Vector3(0, seg, 0), r0, r1, k.Base, 0.6f);
                 if (i == segs - 1) Parts.TailTip(t, s.Part("tail"), seg, W * 0.9f, k);
                 layout.Add(t);
             }
@@ -224,8 +231,10 @@ public sealed class WingedRig : Rig
         for (int side = 0; side < 2; side++)
         {
             var f = new Piece($"foot{side}") { Shadow = false };
-            float len = H * 0.8f, d = W * 0.08f;
-            f.Add(Shape.Capsule, new Vector3(d, len + d, d), new Vector3(0, len * 0.5f, 0), k.Dark);
+            float len = H * 0.8f, r = W * 0.05f;
+            f.Taper(Vector3.Zero, new Vector3(0, len, 0), r * 1.3f, r * 0.8f, k.Dark);
+            for (int c = -1; c <= 1; c++)
+                f.Horn(k.Horn, r * 0.6f, Mat.Horn, new Vector3(c * r * 0.5f, len, 0), new Vector3(c * r * 1.5f, len + r * 2f, -r * 1.5f), new Vector3(c * r * 1.6f, len + r * 2.4f, -r * 3f));
             layout.Add(f);
         }
         return layout;

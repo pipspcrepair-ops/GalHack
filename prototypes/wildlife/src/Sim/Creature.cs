@@ -47,6 +47,7 @@ public sealed class Creature
     public Species Species;
     public Rig Rig;
     public Herd Herd;
+    public Pack Pack;
     public int HerdSlot;
     public Rng Rng;
 
@@ -81,8 +82,9 @@ public sealed class Creature
     public Vector3 AimPoint, LungeFrom, LungeTo;
     readonly Dictionary<ITarget, float> _lastAttack = new();
 
-    // Pose intentions, 0..1, smoothed by the rig.
-    public float WantCrouch, WantHidden, WantGraze, Rear, Lunge, Alert;
+    // Pose intentions, 0..1, smoothed by the rig. Brace is a charge's wind-up: head down,
+    // pawing the ground.
+    public float WantCrouch, WantHidden, WantGraze, Rear, Lunge, Alert, Brace;
     public Vector3? LookAt;
 
     // Fliers and floaters: target height above ground. 0 means land.
@@ -157,5 +159,62 @@ public sealed class Herd
         Alarmed = true;
         AlarmedAt = now;
         ThreatPos = threat;
+    }
+}
+
+public enum PackPhase { Roam, Stalk, Surround, Engage, Retreat }
+
+/// <summary>
+/// A hunting pack: 3 to 6 predators that roam behind a leader and share one prey. They stalk
+/// it together, spread round it, and while one feints from the front the others close from
+/// the flanks. Their lunges are scheduled through the pack, so no two commit closer together
+/// than the telegraph: you are never hit by several at once without warning. They break off
+/// together if the leader falls or too many are hurt, and regroup later.
+/// </summary>
+public sealed class Pack
+{
+    public readonly List<Creature> Members = new();
+    public Creature Leader;
+    public PackPhase Phase = PackPhase.Roam;
+    public float PhaseTime;
+    public ITarget Prey;
+    public Vector3 Home, Center;
+    /// <summary>No new hunt before this time: a beaten pack regroups first.</summary>
+    public float RestUntil = -999f;
+    public Vector3 RetreatGoal;
+
+    /// <summary>The side of the prey the pack came from (a yaw angle round it); the feinter holds it.</summary>
+    public float FrontAngle;
+    public Creature Feinter;
+    /// <summary>Each member's place round the prey, as an angle offset from the front.</summary>
+    public readonly Dictionary<Creature, float> Slots = new();
+
+    /// <summary>The earliest moment the next member may commit to a lunge.</summary>
+    public float NextCommitAt = -999f;
+    public int UpdatedFrame = -1;
+
+    public void SetPhase(PackPhase phase)
+    {
+        if (Phase == phase) return;
+        Phase = phase;
+        PhaseTime = 0f;
+    }
+
+    public int AliveCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (var m in Members) if (m.Alive && !m.Removed) n++;
+            return n;
+        }
+    }
+
+    /// <summary>Is any member winding up or mid-lunge? Only one at a time.</summary>
+    public bool Busy(Creature except)
+    {
+        foreach (Creature m in Members)
+            if (m != except && m.Alive && m.Phase is AttackPhase.Windup or AttackPhase.Lunge) return true;
+        return false;
     }
 }

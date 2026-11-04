@@ -33,9 +33,12 @@ public partial class WildlifeTest : Node
             Variety();
             Weirdness();
             Bloom();
+            Quality();
+            SignatureAttacks();
             Stability();
             TelegraphedFirstAttack();
             Herds();
+            Packs();
             Ambushers();
             Harvesting();
             RunDown();
@@ -236,6 +239,57 @@ public partial class WildlifeTest : Node
         Check(ok, "Bloom fauna are corrupted versions of the local fauna (same body plans, weirder)");
     }
 
+    /// <summary>
+    /// Variety without accidents: thousands of generated species, from temperate to fully
+    /// alien and Bloom-corrupted, and not one breaks the combination rules (parts on the wrong
+    /// rig, form or behaviour, clashing pairs), the proportion bands, or the even-legs rule.
+    /// Then a few of the rules spot-checked directly, so a data edit can't quietly undo them.
+    /// </summary>
+    void Quality()
+    {
+        int species = 0;
+        var problems = new List<string>();
+        int hunterSnouts = 0, grazerScythes = 0, insectHeadsOnBeasts = 0, oddLegs = 0, lampreyHorns = 0;
+        var insectForms = new HashSet<string> { "skitterer", "tripod", "centipede", "burrower", "springer", "cloud", "pack", "crystalback" };
+        for (ulong seed = 1; seed <= 150; seed++)
+        foreach (float alien in new[] { 0f, 0.35f, 0.7f, 1f })
+        foreach (Species sp in _gen.Generate(seed * 6151, alien, seed % 5 == 0).Species)
+        {
+            species++;
+            foreach (string issue in FaunaQuality.Problems(_data.Fauna, sp))
+                if (problems.Count < 5) problems.Add($"{sp.Name} ({sp.Form}, {sp.Behaviour}): {issue}");
+            if (sp.IsHunter && sp.Part("head") == "snout") hunterSnouts++;
+            if (sp.Behaviour is Behaviour.Grazer or Behaviour.Herd && sp.Part("limbs") == "scythes") grazerScythes++;
+            if (sp.Part("head") == "mandibles" && !insectForms.Contains(sp.Form)) insectHeadsOnBeasts++;
+            if (sp.Rig == RigKind.Legged && sp.Body.Legs % 2 == 1 && sp.Form != "tripod") oddLegs++;
+            if (sp.Part("head") == "maw" && sp.Part("horns") is "pair" or "ram" or "brow" or "antlers" or "tusks") lampreyHorns++;
+        }
+        Check(problems.Count == 0, problems.Count == 0
+            ? $"no degenerate creatures: {species} generated species (600 planets, alienness 0 to 1, a fifth Bloom-infested) all pass the part, form, behaviour and proportion rules"
+            : $"degenerate creatures: {string.Join("; ", problems)}");
+        Check(hunterSnouts + grazerScythes + insectHeadsOnBeasts + oddLegs + lampreyHorns == 0,
+            $"rule spot checks: hunters with grazer snouts {hunterSnouts}, grazers with scythes {grazerScythes}, insect heads on beasts {insectHeadsOnBeasts}, odd-legged walkers {oddLegs}, horned lamprey mouths {lampreyHorns}");
+    }
+
+    /// <summary>Every behaviour has a signature attack, and every species that can hurt you carries one.</summary>
+    void SignatureAttacks()
+    {
+        var styles = new SortedSet<string>();
+        var names = new SortedSet<string>();
+        string problem = null;
+        for (ulong seed = 1; seed <= 60; seed++)
+        foreach (Species sp in _gen.Generate(seed * 389, seed % 3 * 0.45f, seed % 7 == 0).Species)
+        {
+            if (sp.Stats.Damage <= 0f) continue;
+            AttackDef a = sp.Attack;
+            if (a == null || a.Name == "" || a.Telegraph < 0.6f) problem ??= $"{sp.Name} ({sp.Behaviour}) has no proper signature attack";
+            else if (sp.TelegraphWindup(_data.Combat) < a.Telegraph) problem ??= $"{sp.Name}: telegraph shorter than its attack's";
+            styles.Add(a.Style.ToString());
+            names.Add(a.Name);
+        }
+        Check(problem == null && styles.Count >= 6, problem ?? $"every attacker has a signature attack with its own telegraph ({styles.Count} styles: {string.Join(", ", styles)}; {names.Count} attacks: {string.Join(", ", names)})");
+    }
+
     // ---- Animation stability ------------------------------------------------------------
 
     void Stability()
@@ -430,6 +484,112 @@ public partial class WildlifeTest : Node
         Check(allFled && after <= members[0].Herd.Spread * 2f + 4f, $"a spooked herd bolts as one and regroups ({after:F1} m spread after)");
     }
 
+    // ---- Packs --------------------------------------------------------------------------
+
+    /// <summary>A walking pack-hunter species, for the pack tests.</summary>
+    Species PackSpecies(ulong salt)
+    {
+        for (ulong seed = 1; seed < 400; seed++)
+            if (_gen.Generate(seed * 7 + salt, 0.4f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.PackHunter && x.Rig == RigKind.Legged) is { } s)
+                return s;
+        return null;
+    }
+
+    /// <summary>
+    /// Pack hunters: common across planets; roaming together; spreading round their prey
+    /// before anyone commits; taking turns so commits are at least a telegraph apart; landing
+    /// full damage; and breaking off together when the leader dies or half the pack is hurt.
+    /// </summary>
+    void Packs()
+    {
+        int planets = 0, withPack = 0;
+        for (ulong seed = 1; seed <= 100; seed++)
+        {
+            planets++;
+            if (_gen.Generate(seed * 104723, (seed % 5) * 0.25f, false).Species.Any(x => x.Behaviour == Behaviour.PackHunter)) withPack++;
+        }
+        Check(withPack >= planets / 2, $"pack hunters appear on most planets ({withPack} of {planets})");
+
+        Species s = PackSpecies(1);
+        if (s == null) { Fail("no walking pack-hunter species found to test"); return; }
+        PackRules rules = _data.Fauna.Pack;
+        float telegraph = s.TelegraphWindup(_data.Combat);
+
+        // Roaming: a pack of five, nobody about, a minute.
+        {
+            WildSim w = NewSim(s.Seed, obstacles: false);
+            List<Creature> pack = w.SpawnGroup(s, Vector3.Zero, 5);
+            float worst = 0f;
+            for (int step = 0; step < 3600; step++)
+            {
+                w.Step(Dt);
+                if (step % 30 != 0) continue;
+                Vector3 mid = pack.Aggregate(Vector3.Zero, (sum, c) => sum + c.Position) / pack.Count;
+                worst = MathF.Max(worst, pack.Max(c => WildSim.Flat(c.Position - mid).Length()));
+            }
+            float allowed = rules.Spacing * 3f + 4f;
+            Check(worst <= allowed && pack[0].Pack.Phase == PackPhase.Roam, $"a roaming pack stays together over 60 s (5 {s.Form}s, widest {worst:F1} m from the middle, allowed {allowed:F1} m)");
+        }
+
+        // The hunt: a target that stands still and can't die, 28 m away.
+        {
+            WildSim w = NewSim(s.Seed + 1, obstacles: false);
+            List<Creature> pack = w.SpawnGroup(s, Vector3.Zero, 5);
+            Pack p = pack[0].Pack;
+            var target = new DummyTarget { Name = "Prey", Health = new Health(1e9f), Position = Ground(w, new Vector3(28f, 0f, 6f)) };
+            w.Targets.Add(target);
+            var commits = new List<(float time, Creature c)>();
+            var firstHits = new Dictionary<Creature, float>();
+            float spread = -1f;
+            int sides = 0;
+            w.Committed += e =>
+            {
+                commits.Add((e.Time, e.Creature));
+                if (spread >= 0f) return;
+                // At the first commit: where is everyone round the prey?
+                var angles = pack.Where(c => c.Alive).Select(c => MathF.Atan2(c.Position.X - target.Position.X, c.Position.Z - target.Position.Z)).OrderBy(a => a).ToList();
+                // The spread is the circle minus the widest empty gap between neighbours.
+                float gap = angles[0] + MathF.Tau - angles[^1];
+                for (int i = 0; i + 1 < angles.Count; i++) gap = MathF.Max(gap, angles[i + 1] - angles[i]);
+                spread = 360f - Mathf.RadToDeg(gap);
+                float front = p.FrontAngle;
+                sides = (angles.Any(a => Geo.WrapAngle(a - front) > 0.5f) ? 1 : 0) + (angles.Any(a => Geo.WrapAngle(a - front) < -0.5f) ? 1 : 0);
+            };
+            w.Attacked += e => { if (e.Hit && !firstHits.ContainsKey(e.Creature)) firstHits[e.Creature] = e.Damage; };
+            for (int step = 0; step < 60 * 45 && commits.Count < 8; step++) w.Step(Dt);
+
+            Check(spread >= 150f && sides == 2, $"the pack surrounds its prey before anyone commits (members spread over {spread:F0} degrees round it, on both sides of the front)");
+            float minGap = float.MaxValue;
+            for (int i = 1; i < commits.Count; i++) minGap = MathF.Min(minGap, commits[i].time - commits[i - 1].time);
+            int attackers = commits.Select(x => x.c).Distinct().Count();
+            Check(commits.Count >= 4 && minGap + 1e-3f >= telegraph,
+                $"pack commits are staggered by at least the telegraph ({commits.Count} commits by {attackers} members, closest {minGap:F2} s apart, telegraph {telegraph:F2} s)");
+            bool full = firstHits.Count > 0 && firstHits.Values.All(d => MathF.Abs(d - s.Stats.Damage) < 1e-3f);
+            Check(full, $"each member's first bite lands full damage ({firstHits.Count} members hit, {string.Join(", ", firstHits.Values.Select(d => d.ToString("F0")))} damage each, species damage {s.Stats.Damage:F0})");
+        }
+
+        // Breaking off: kill the leader mid-hunt; then, separately, hurt half the pack.
+        foreach (bool leader in new[] { true, false })
+        {
+            WildSim w = NewSim(s.Seed + 2, obstacles: false);
+            List<Creature> pack = w.SpawnGroup(s, Vector3.Zero, 4);
+            Pack p = pack[0].Pack;
+            var target = new DummyTarget { Name = "Prey", Health = new Health(1e9f), Position = Ground(w, new Vector3(22f, 0f, 0f)) };
+            w.Targets.Add(target);
+            for (int step = 0; step < 60 * 30 && p.Phase is not (PackPhase.Surround or PackPhase.Engage); step++) w.Step(Dt);
+            PackPhase was = p.Phase;
+            if (leader) w.Kill(p.Leader, target);
+            else foreach (Creature c in pack.Take(2)) w.Damage(c, c.Stats.MaxHealth * 0.5f, null);
+            var before = pack.Where(c => c.Alive).ToDictionary(c => c, c => WildSim.Flat(c.Position - target.Position).Length());
+            for (int step = 0; step < 30; step++) w.Step(Dt);
+            bool retreating = p.Phase == PackPhase.Retreat;
+            for (int step = 0; step < 150; step++) w.Step(Dt);
+            float gained = before.Keys.Where(c => c.Alive).Min(c => WildSim.Flat(c.Position - target.Position).Length() - before[c]);
+            Check(retreating && gained > 4f,
+                $"the pack breaks off together when {(leader ? "its leader dies" : "half of it is hurt")} (was {was}, every survivor {gained:F1}+ m further off 3 s later)");
+        }
+    }
+
     void Ambushers()
     {
         Species s = null;
@@ -603,7 +763,7 @@ public partial class WildlifeTest : Node
         for (int i = 0; i < 60; i++) { w.Step(Dt); view.Sync(Vector3.Zero); }
         (double vAvg, double vMax) = Time(() => { w.Step(Dt); view.Sync(Vector3.Zero); }, Frames);
         GD.Print($"PERF  same, with distance LOD and syncing {view.NodeCount} mesh nodes ({view.ViewCount} views): {vAvg:F2} ms/frame average, {vMax:F2} ms worst (headless, no GPU)");
-        Check(avg < 8.0, $"200 creatures + a swarm update in {avg:F2} ms/frame at full rate (budget 8 ms)");
+        Check(avg < 4.0, $"200 creatures + a swarm update in {avg:F2} ms/frame at full rate, every rig every frame (budget 4 ms)");
         view.QueueFree();
     }
 

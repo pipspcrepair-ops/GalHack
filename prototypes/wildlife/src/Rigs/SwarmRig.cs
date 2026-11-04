@@ -113,18 +113,27 @@ public sealed class SwarmRig : Rig
         var member = new Piece("member") { Shadow = false };
         if (s.Flies)
         {
-            member.Add(Shape.Sphere, new Vector3(sz * 0.45f, sz * 0.4f, sz), Vector3.Zero, k.Base, 1f, k.GlowStrength * 0.5f);
-            member.Add(Shape.Sphere, new Vector3(sz * 1.4f, sz * 0.05f, sz * 0.5f), new Vector3(0, sz * 0.2f, 0), k.Accent.Lerp(Colors.White, 0.3f), 0f, k.GlowStrength * 0.3f);
-            member.Add(Shape.Sphere, Vector3.One * sz * 0.22f, new Vector3(0, 0, -sz * 0.5f), k.Sclera, 0f, k.EyeGlow);
+            // A wasp-like flier: head, thorax, a banded abdomen ending in a sting, two wings.
+            member.Add(Shape.Sphere, new Vector3(sz * 0.32f, sz * 0.3f, sz * 0.36f), new Vector3(0, 0, -sz * 0.08f), k.Base, 0.3f, k.GlowStrength * 0.3f, null, 8, Mat.Carapace);
+            member.Add(Shape.Sphere, new Vector3(sz * 0.36f, sz * 0.34f, sz * 0.62f), new Vector3(0, -sz * 0.04f, sz * 0.36f), k.Accent, 1f, k.GlowStrength * 0.5f, null, 8, Mat.Carapace);
+            member.Taper(new Vector3(0, -sz * 0.06f, sz * 0.62f), new Vector3(0, -sz * 0.12f, sz * 0.82f), sz * 0.05f, sz * 0.005f, k.Dark, 0f, 0f, Mat.Horn, 5);
+            member.Add(Shape.Sphere, Vector3.One * sz * 0.24f, new Vector3(0, sz * 0.02f, -sz * 0.36f), k.EyeColor, 0f, k.EyeGlow, null, 8, Mat.Eye);
+            for (int side = -1; side <= 1; side += 2)
+                member.Add(Shape.Sphere, new Vector3(sz * 0.7f, sz * 0.03f, sz * 0.26f), new Vector3(side * sz * 0.36f, sz * 0.16f, sz * 0.02f),
+                    k.Belly.Lerp(Colors.White, 0.4f), 0f, k.GlowStrength * 0.3f, new Basis(Vector3.Up, side * 0.35f), 8, Mat.Membrane);
         }
         else
         {
-            member.Add(Shape.Sphere, new Vector3(sz * 0.7f, sz * 0.4f, sz), new Vector3(0, sz * 0.2f, 0), k.Base, 1f);
-            member.Add(Shape.Sphere, new Vector3(sz * 0.5f, sz * 0.35f, sz * 0.4f), new Vector3(0, sz * 0.22f, -sz * 0.5f), k.Accent, 0f);
+            // A low, armoured skitterer with six legs and a pair of pincers.
+            member.Add(Shape.Sphere, new Vector3(sz * 0.62f, sz * 0.34f, sz * 0.95f), new Vector3(0, sz * 0.2f, 0), k.Base, 1f, 0f, null, 10, Mat.Carapace);
+            member.Add(Shape.Sphere, new Vector3(sz * 0.42f, sz * 0.3f, sz * 0.34f), new Vector3(0, sz * 0.2f, -sz * 0.52f), k.Accent, 0f, 0f, null, 8, Mat.Carapace);
             for (int i = 0; i < 3; i++)
             for (int side = -1; side <= 1; side += 2)
-                member.Rod(new Vector3(side * sz * 0.2f, sz * 0.2f, (i - 1) * sz * 0.3f), new Vector3(side * sz * 0.6f, 0f, (i - 1) * sz * 0.4f), sz * 0.06f, k.Dark);
-            member.Add(Shape.Sphere, Vector3.One * sz * 0.15f, new Vector3(0, sz * 0.35f, -sz * 0.65f), k.Sclera, 0f, k.EyeGlow);
+                member.Taper(new Vector3(side * sz * 0.2f, sz * 0.18f, (i - 1) * sz * 0.3f), new Vector3(side * sz * 0.62f, 0f, (i - 1) * sz * 0.42f), sz * 0.045f, sz * 0.012f, k.Dark, 0f, 0f, Mat.Carapace, 5);
+            for (int side = -1; side <= 1; side += 2)
+                member.Horn(k.Horn, sz * 0.05f, Mat.Horn, new Vector3(side * sz * 0.12f, sz * 0.16f, -sz * 0.66f), new Vector3(side * sz * 0.18f, sz * 0.14f, -sz * 0.86f), new Vector3(side * sz * 0.04f, sz * 0.14f, -sz * 0.98f));
+            member.Add(Shape.Sphere, Vector3.One * sz * 0.1f, new Vector3(sz * 0.12f, sz * 0.32f, -sz * 0.62f), k.EyeColor, 0f, k.EyeGlow, null, 6, Mat.Eye);
+            member.Add(Shape.Sphere, Vector3.One * sz * 0.1f, new Vector3(-sz * 0.12f, sz * 0.32f, -sz * 0.62f), k.EyeColor, 0f, k.EyeGlow, null, 6, Mat.Eye);
         }
         layout.Add(member);
         return layout;

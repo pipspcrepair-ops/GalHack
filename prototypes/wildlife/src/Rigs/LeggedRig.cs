@@ -53,6 +53,7 @@ public sealed class LeggedRig : Rig
         _neckRest = b.NeckLength > b.Size * 0.5f ? 0.95f : 0.35f;
 
         float legLen = b.LegLength;
+        LoftProfile shape = BodyProfile(s);
         _hipRest = b.LegStyle switch
         {
             LegStyle.Splayed => 0.5f, LegStyle.Roots => 0.42f, LegStyle.Stilt => 0.9f, _ => 0.86f,
@@ -69,13 +70,17 @@ public sealed class LeggedRig : Rig
             int side = odd && i == n - 1 ? 0 : (i % 2 == 0 ? -1 : 1);
             float z = pairs <= 1 ? (n <= 3 ? -0.18f : 0.05f) : Mathf.Lerp(-0.32f, 0.32f, pair / (float)(pairs - 1));
             if (side == 0) z = 0.4f;
-            float x = side * b.Width * (b.LegStyle == LegStyle.Splayed ? 0.48f : 0.4f);
+            float spreadZ = z;
+            // Many-legged skitterers carry every leg on the front body, like a spider; the
+            // abdomen behind hangs free.
+            if (s.Form == "skitterer" && pairs > 1) z = Mathf.Lerp(-0.3f, -0.05f, pair / (float)(pairs - 1));
+            float x = side * (shape != null ? Parts.HalfWidth(shape, z * b.Size) * 0.85f : b.Width * (b.LegStyle == LegStyle.Splayed ? 0.48f : 0.4f));
             leg.Anchor = new Vector3(x, -b.Height * 0.25f, z * b.Size);
             float outward = b.LegStyle switch
             {
                 LegStyle.Splayed => 0.72f, LegStyle.Roots => 0.7f, LegStyle.Stilt => 0.16f, _ => 0.08f,
             } * legLen;
-            float spread = b.LegStyle is LegStyle.Splayed or LegStyle.Roots ? z * 0.6f * legLen : 0f;
+            float spread = b.LegStyle is LegStyle.Splayed or LegStyle.Roots ? spreadZ * 0.6f * legLen : 0f;
             leg.Rest = side == 0 ? new Vector3(0, 0, outward) : new Vector3(side * outward, 0, spread);
             // Knees: forward on front legs and back on hind ones for upright walkers, backwards
             // like a bird's on stilts, and up-and-out like a spider's for splayed legs.
@@ -83,7 +88,8 @@ public sealed class LeggedRig : Rig
             {
                 LegStyle.Splayed or LegStyle.Roots => new Vector3(side == 0 ? 0 : side * 0.6f, 1f, side == 0 ? 0.6f : 0f),
                 LegStyle.Stilt => new Vector3(0, 0.2f, 1f),
-                _ => z < 0f || n == 2 ? new Vector3(0, 0, -1f) : new Vector3(0, 0, 1f),
+                // Two-legged walkers get a bird's backward knee: an upright biped reads as a person.
+                _ => n == 2 ? new Vector3(0, 0.2f, 1f) : z < 0f ? new Vector3(0, 0, -1f) : new Vector3(0, 0, 1f),
             };
             leg.Group = side == 0 ? pairs % 2 : (pair + (side > 0 ? 1 : 0)) % 2;
             leg.UpPiece = pieces.FindIndex(p => p.Name == $"leg{i}u");
@@ -165,15 +171,17 @@ public sealed class LeggedRig : Rig
 
         // Body: lowered by crouching, hiding and death, bobbing twice per stride.
         _gait += speed * dt / MathF.Max(0.15f, legLen * 0.9f);
-        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden);
+        float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing);
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
         float deadY = groundMid + H * 0.5f;
         bodyY = Mathf.Lerp(bodyY, deadY, Dead);
-        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f + Graze * 0.04f;
+        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f + Graze * 0.04f - Bracing * 0.1f;
         float roll = Math.Clamp(-YawRate * speed * 0.03f, -0.15f, 0.15f) + Dead * 1.35f + Twitch(c) * 0.08f;
-        Vector3 lunge = fwd * (Lunging * 0.22f * L - Rearing * 0.08f * L);
+        // A charge's wind-up rocks the body back and forth, like a bull pawing the ground.
+        float paw = Bracing * MathF.Sin(c.Age * 9f) * 0.035f * L;
+        Vector3 lunge = fwd * (Lunging * 0.22f * L - Rearing * 0.08f * L + paw);
         Basis body = yaw * new Basis(Vector3.Right, pitch) * new Basis(Vector3.Back, roll);
         var bodyT = new Transform3D(body, new Vector3(pos.X, bodyY, pos.Z) + lunge);
 
@@ -318,7 +326,7 @@ public sealed class LeggedRig : Rig
                 float reachDown = MathF.Asin(Math.Clamp((groundY - baseW.Y) / _neckLen, -0.97f, 0.97f));
                 target = Mathf.Lerp(target, MathF.Max(reachDown, -1.25f), Graze);
             }
-            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.7f * Lunging - 0.9f * Dead;
+            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.7f * Lunging - 0.9f * Dead - 0.65f * Bracing;
             if (h == 0) _neckPitch = Geo.Smooth(_neckPitch, target, 4f, dt);
 
             Vector3 p = baseW;
@@ -451,37 +459,42 @@ public sealed class LeggedRig : Rig
         float L = b.Size, W = b.Width, H = b.Height, hs = b.HeadSize;
 
         var body = new Piece("body");
-        BodyShape(body, s, k, rng);
-        Parts.Back(body, s.Part("back"), W, H, L, k, rng);
-        if (s.Corrupted) Parts.Corruption(body, W, H, L, k, rng);
+        LoftProfile shape = BodyProfile(s);
+        if (shape != null) body.Loft(shape, k.Base, k.Belly, 1f, 0f, Mat.Skin, null, null, 16);
+        BodyExtras(body, s, k);
+        Parts.Back(body, s.Part("back"), W, H, L, k, rng, shape);
+        if (s.Corrupted) Parts.Corruption(body, W, H, L, k, rng, shape);
         if (s.Part("head") == "none")
         {
-            // Headless forms still look at you: a ring of eyes round the top.
-            for (int i = 0; i < 5; i++)
+            // Headless forms still watch you: a ring of small eyes round the top.
+            for (int i = 0; i < 6; i++)
             {
-                float a = i * MathF.Tau / 5f;
-                Parts.Eye(body, k, new Vector3(MathF.Cos(a) * W * 0.42f, H * 0.18f, MathF.Sin(a) * W * 0.42f), W * 0.09f);
+                float a = i * MathF.Tau / 6f;
+                Parts.Eye(body, k, new Vector3(MathF.Cos(a) * W * 0.4f, H * 0.2f, MathF.Sin(a) * W * 0.4f), W * 0.06f);
             }
         }
         layout.Add(body);
 
         string headKind = s.Part("head");
         int heads = headKind == "twin" ? 2 : headKind == "none" ? 0 : 1;
+        bool hunts = s.Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;
+        string drawnHead = headKind == "twin" ? (hunts ? "jaws" : "snout") : headKind;
         bool hasNeck = b.NeckLength > L * 0.12f;
         int neckSegs = hasNeck ? Math.Clamp((int)MathF.Round(b.NeckLength / (hs * 0.9f)), 2, 4) : 0;
+        // The neck swells into the shoulders and narrows to the skull, so there is no visible joint.
+        float rBase = MathF.Min(W * 0.3f, H * 0.34f) * (heads > 1 ? 0.75f : 1f), rTop = MathF.Min(hs * 0.27f, rBase);
         for (int h = 0; h < heads; h++)
         {
             var head = new Piece("head");
-            Parts.Head(head, headKind == "twin" ? "snout" : headKind, hs, k, rng);
-            Parts.Horns(head, s.Part("horns"), hs, k, rng);
+            HeadShape shapeInfo = Parts.Head(head, drawnHead, hs, k, rng);
+            Parts.Horns(head, s.Part("horns"), hs, k, rng, shapeInfo);
             layout.Add(head);
-            float d0 = MathF.Min(W * 0.32f, hs * 0.7f);
             for (int i = 0; i < neckSegs; i++)
             {
                 float seg = b.NeckLength / neckSegs;
-                float d = d0 * (1f - 0.3f * i / neckSegs);
+                float r0 = Mathf.Lerp(rBase, rTop, i / (float)neckSegs), r1 = Mathf.Lerp(rBase, rTop, (i + 1) / (float)neckSegs);
                 var neck = new Piece($"neck{h}_{i}");
-                neck.Add(Shape.Capsule, new Vector3(d, seg + d, d), new Vector3(0, seg * 0.5f, 0), k.Base, 0.8f);
+                neck.Taper(Vector3.Zero, new Vector3(0, seg, 0), r0, r1, k.Base, 0.8f);
                 layout.Add(neck);
             }
         }
@@ -490,20 +503,24 @@ public sealed class LeggedRig : Rig
         int tails = tailKind == "twin" ? 2 : 1;
         if (b.TailLength > L * 0.08f)
         {
-            int segs = Math.Clamp((int)MathF.Round(b.TailLength / (W * 0.5f)), 2, 5);
+            int segs = Math.Clamp((int)MathF.Round(b.TailLength / (W * 0.45f)), 3, 6);
             float seg = b.TailLength / segs;
+            float r0 = W * (tailKind == "club" ? 0.24f : 0.2f) * (tails > 1 ? 0.75f : 1f);
+            float rTip = W * (tailKind is "whip" or "twin" or "none" ? 0.02f : tailKind == "club" ? 0.1f : 0.06f);
             for (int t = 0; t < tails; t++)
             for (int i = 0; i < segs; i++)
             {
-                float d = W * (tailKind == "whip" || tailKind == "twin" ? 0.28f : 0.36f) * (1f - 0.7f * i / segs);
-                var piece = new Piece($"tail{t}_{i}");
-                piece.Add(Shape.Capsule, new Vector3(d, seg + d, d), new Vector3(0, seg * 0.5f, 0), k.Base, 0.8f);
+                // Each segment ends where the next begins, at the same radius: one smooth tail.
+                float ra = Mathf.Lerp(r0, rTip, MathF.Pow(i / (float)segs, 0.8f)), rb = Mathf.Lerp(r0, rTip, MathF.Pow((i + 1) / (float)segs, 0.8f));
+                var piece = new Piece($"tail{t}_{i}") { Shadow = ra > 0.04f };
+                piece.Taper(Vector3.Zero, new Vector3(0, seg, 0), ra, rb, k.Base, 0.8f);
                 if (i == segs - 1) Parts.TailTip(piece, tailKind, seg, W, k);
                 layout.Add(piece);
             }
         }
 
-        for (int i = 0; i < b.Legs; i++) AddLeg(layout, s, k, i);
+        bool clawed = hunts || s.Behaviour == Behaviour.Scavenger;
+        for (int i = 0; i < b.Legs; i++) AddLeg(layout, s, k, i, clawed);
 
         string limbs = s.Part("limbs");
         if (limbs != "none")
@@ -513,16 +530,17 @@ public sealed class LeggedRig : Rig
             for (int i = 0; i < 2; i++)
             {
                 var piece = new Piece($"limb{l}_{i}") { Shadow = false };
-                float d = limbs == "feelers" ? W * 0.05f : W * (i == 0 ? 0.12f : 0.09f);
-                piece.Add(Shape.Capsule, new Vector3(d, len + d, d), new Vector3(0, len * 0.5f, 0), i == 0 ? k.Base : k.Dark, 0.5f);
+                float r0 = limbs == "feelers" ? W * 0.03f : W * (i == 0 ? 0.075f : 0.055f), r1 = limbs == "feelers" ? W * 0.02f : W * (i == 0 ? 0.055f : 0.04f);
+                piece.Taper(Vector3.Zero, new Vector3(0, len, 0), r0, r1, i == 0 ? k.Base : k.Base.Darkened(0.25f), 0.5f, 0f, limbs == "feelers" ? Mat.Carapace : Mat.Skin);
                 if (i == 1)
                 {
                     if (limbs == "scythes")
-                        piece.Add(Shape.Cone, new Vector3(W * 0.12f, len * 1.3f, 0), new Vector3(0, len * 1.3f, -len * 0.25f), k.Bone, 0f, 0f, new Basis(Vector3.Right, -0.35f));
+                        piece.Horn(k.Bone, W * 0.06f, Mat.Horn, new Vector3(0, len, 0), new Vector3(0, len * 1.5f, -len * 0.15f), new Vector3(0, len * 2f, -len * 0.55f), new Vector3(0, len * 2.1f, -len * 0.95f));
                     else if (limbs == "feelers")
-                        piece.Add(Shape.Sphere, Vector3.One * W * 0.1f, new Vector3(0, len, 0), k.EyeGlow > 0 ? k.Glow : k.Accent, 0f, k.EyeGlow);
+                        piece.Taper(new Vector3(0, len, 0), new Vector3(0, len * 1.4f, -len * 0.1f), r1, r1 * 0.2f, k.Dark, 0f, k.EyeGlow, Mat.Carapace);
                     else
-                        piece.Rod(new Vector3(0, len, 0), new Vector3(0, len * 1.35f, -len * 0.15f), W * 0.07f, k.Dark, 0, 0, cone: true);
+                        for (int c = -1; c <= 1; c++)
+                            piece.Horn(k.Horn, W * 0.025f, Mat.Horn, new Vector3(c * r1 * 0.7f, len, 0), new Vector3(c * r1 * 1.2f, len * 1.25f, -len * 0.08f), new Vector3(c * r1, len * 1.4f, -len * 0.25f));
                 }
                 layout.Add(piece);
             }
@@ -540,9 +558,10 @@ public sealed class LeggedRig : Rig
             for (int i = 0; i < segs; i++)
             {
                 var piece = new Piece($"tendril{t}_{i}") { Shadow = false };
-                float seg = len / segs, d = (chin ? hs * 0.06f : W * 0.06f) * (1f - 0.5f * i / segs);
+                float seg = len / segs, r = chin ? hs * 0.03f : W * 0.022f;
+                float r0 = r * (1f - 0.55f * i / segs), r1 = r * (1f - 0.55f * (i + 1) / segs);
                 bool glow = tendrils == "glowing" || s.Corrupted;
-                piece.Add(Shape.Capsule, new Vector3(d, seg + d, d), new Vector3(0, seg * 0.5f, 0),
+                piece.Taper(Vector3.Zero, new Vector3(0, seg, 0), r0, r1,
                     glow && i == segs - 1 ? k.Veins : k.Base.Lerp(k.Accent, 0.3f), 0f, glow ? (i == segs - 1 ? 1f : 0.3f) : 0f);
                 layout.Add(piece);
             }
@@ -550,82 +569,120 @@ public sealed class LeggedRig : Rig
         return layout;
     }
 
-    static void BodyShape(Piece body, Species s, Paint k, Rng rng)
+    /// <summary>
+    /// The body's loft, from front to back: shoulders, waist and haunches shaped for what the
+    /// creature does. Grazers are deep-bellied barrels, hunters deep-chested with a tucked
+    /// waist, giants carry a hump of shoulder muscle, skitterers are a front body and a
+    /// swollen abdomen joined at a waist. Section sizes are halves of the body's width and
+    /// height. Null for forms drawn without a loft.
+    /// </summary>
+    public static LoftProfile BodyProfile(Species s)
+    {
+        Proportions b = s.Body;
+        float L = b.Size, W = b.Width, H = b.Height;
+        bool hunter = s.Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;
+        (float t, float w, float h, float y)[] keys = s.Form switch
+        {
+            "walkingplant" => null,
+            "skitterer" => new[] { (0f, 0.36f, 0.3f, 0f), (0.15f, 0.46f, 0.36f, 0.02f), (0.45f, 0.4f, 0.34f, 0.04f), (0.56f, 0.2f, 0.2f, 0.06f), (0.66f, 0.44f, 0.42f, 0.12f), (0.84f, 0.56f, 0.52f, 0.16f), (1f, 0.36f, 0.34f, 0.12f) },
+            "titanstilt" => new[] { (0f, 0.5f, 0.26f, 0f), (0.5f, 0.64f, 0.34f, 0.04f), (1f, 0.5f, 0.26f, 0f) },
+            "tripod" => new[] { (0f, 0.42f, 0.42f, 0f), (0.5f, 0.52f, 0.5f, 0.04f), (1f, 0.42f, 0.4f, 0f) },
+            "colossus" => new[] { (0f, 0.4f, 0.42f, 0.04f), (0.28f, 0.54f, 0.58f, 0.12f), (0.6f, 0.52f, 0.5f, 0.02f), (0.85f, 0.46f, 0.46f, 0.04f), (1f, 0.36f, 0.36f, 0.02f) },
+            _ when hunter || s.Form == "stalker" => new[] { (0f, 0.36f, 0.42f, 0.04f), (0.25f, 0.48f, 0.55f, 0.06f), (0.58f, 0.3f, 0.34f, 0.12f), (0.82f, 0.4f, 0.4f, 0.08f), (1f, 0.3f, 0.3f, 0.06f) },
+            _ => new[] { (0f, 0.36f, 0.4f, 0.02f), (0.28f, 0.5f, 0.52f, 0.06f), (0.55f, 0.52f, 0.5f, 0f), (0.8f, 0.47f, 0.47f, 0.04f), (1f, 0.36f, 0.36f, 0.04f) },
+        };
+        if (keys == null) return null;
+        var scaled = new (float t, float w, float h, float y)[keys.Length];
+        for (int i = 0; i < keys.Length; i++) scaled[i] = (keys[i].t, keys[i].w * W, keys[i].h * H, keys[i].y * H);
+        return LoftProfile.Smooth(-L * 0.5f, L * 0.5f, scaled, 16, 0.2f);
+    }
+
+    /// <summary>The odd forms' extra body parts: a tripod's skirt, a titan's hanging feelers, a walking plant's bulb.</summary>
+    static void BodyExtras(Piece body, Species s, Paint k)
     {
         Proportions b = s.Body;
         float L = b.Size, W = b.Width, H = b.Height;
         switch (s.Form)
         {
-            case "skitterer":
-                body.Add(Shape.Sphere, new Vector3(W * 0.7f, H * 0.75f, L * 0.45f), new Vector3(0, 0, -L * 0.22f), k.Base, 0.7f);
-                body.Add(Shape.Sphere, new Vector3(W * 1.05f, H * 1.15f, L * 0.62f), new Vector3(0, H * 0.12f, L * 0.22f), k.Base, 1f);
-                body.Add(Shape.Sphere, new Vector3(W * 0.8f, H * 0.5f, L * 0.5f), new Vector3(0, -H * 0.15f, L * 0.2f), k.Belly);
-                break;
             case "tripod":
-                body.Add(Shape.Sphere, new Vector3(W, H, L * 0.9f), Vector3.Zero, k.Base, 1f);
-                body.Add(Shape.Cylinder, new Vector3(W * 1.08f, H * 0.12f, W * 1.08f), new Vector3(0, -H * 0.08f, 0), k.Accent, 0f, 0f, null, 14);
+                body.Add(Shape.Cylinder, new Vector3(W * 1.06f, H * 0.12f, W * 0.9f), new Vector3(0, -H * 0.12f, 0), k.Accent, 0f, 0f, null, 16, Mat.Carapace);
                 for (int i = 0; i < 6; i++)
                 {
                     float a = i * MathF.Tau / 6f;
-                    body.Add(Shape.Sphere, Vector3.One * W * 0.08f, new Vector3(MathF.Cos(a) * W * 0.4f, -H * 0.42f, MathF.Sin(a) * W * 0.4f), k.Glow, 0f, k.GlowStrength > 0 ? 1f : 0.3f);
+                    body.Add(Shape.Sphere, Vector3.One * W * 0.07f, new Vector3(MathF.Cos(a) * W * 0.4f, -H * 0.36f, MathF.Sin(a) * W * 0.4f), k.EyeColor, 0f, k.EyeGlow, null, 8, Mat.Eye);
                 }
                 break;
             case "titanstilt":
-                body.Add(Shape.Sphere, new Vector3(W * 1.25f, H * 0.6f, L), Vector3.Zero, k.Base, 1f);
-                body.Add(Shape.Sphere, new Vector3(W * 1.1f, H * 0.35f, L * 0.85f), new Vector3(0, -H * 0.2f, 0), k.Belly);
                 for (int i = 0; i < 10; i++)
                 {
                     float a = i * MathF.Tau / 10f;
-                    var at = new Vector3(MathF.Cos(a) * W * 0.6f, -H * 0.15f, MathF.Sin(a) * L * 0.48f);
-                    body.Rod(at, at + Vector3.Down * H * 0.5f, W * 0.04f, k.Accent, 0f, k.GlowStrength * 0.6f);
+                    var at = new Vector3(MathF.Cos(a) * W * 0.5f, -H * 0.12f, MathF.Sin(a) * L * 0.4f);
+                    body.Taper(at, at + Vector3.Down * H * 0.6f, W * 0.025f, W * 0.008f, k.Accent, 0f, k.GlowStrength * 0.6f);
                 }
                 break;
             case "walkingplant":
-                body.Add(Shape.Sphere, new Vector3(W * 0.95f, H * 1.0f, W * 0.95f), Vector3.Zero, k.Base, 1f);
-                body.Add(Shape.Cylinder, new Vector3(W * 0.6f, H * 0.3f, W * 0.9f), new Vector3(0, -H * 0.4f, 0), k.Base.Darkened(0.3f), 0.5f, 0f, null, 10);
-                break;
-            default:
-                body.Add(Shape.Sphere, new Vector3(W, H, L), Vector3.Zero, k.Base, 1f);
-                body.Add(Shape.Sphere, new Vector3(W * 0.88f, H * 0.6f, L * 0.88f), new Vector3(0, -H * 0.18f, 0), k.Belly);
-                if (s.Form is "longneck" or "colossus")
-                    body.Add(Shape.Sphere, new Vector3(W * 0.85f, H * 0.7f, L * 0.45f), new Vector3(0, H * 0.25f, -L * 0.18f), k.Base, 1f);
-                if (s.Form == "stalker")
-                    body.Add(Shape.Sphere, new Vector3(W * 0.95f, H * 0.85f, L * 0.4f), new Vector3(0, H * 0.12f, -L * 0.3f), k.Base, 1f);
+                body.Add(Shape.Sphere, new Vector3(W * 0.95f, H * 1.0f, W * 0.95f), Vector3.Zero, k.Base, 1f, 0f, null, 14);
+                body.Add(Shape.Cylinder, new Vector3(W * 0.6f, H * 0.3f, W * 0.9f), new Vector3(0, -H * 0.4f, 0), k.Base.Darkened(0.3f), 0.5f, 0f, null, 12);
                 break;
         }
     }
 
-    static void AddLeg(RigLayout layout, Species s, Paint k, int i)
+    static void AddLeg(RigLayout layout, Species s, Paint k, int i, bool clawed)
     {
         Proportions b = s.Body;
         float upper = b.LegLength * 0.52f, lower = b.LegLength * 0.56f, t = b.LegThickness;
-        Color legColor = s.Form == "walkingplant" ? k.Base.Darkened(0.35f) : k.Base.Darkened(0.12f);
+        bool plant = s.Form == "walkingplant";
+        Color legColor = plant ? k.Base.Darkened(0.35f) : k.Base.Darkened(0.08f);
+        // Thigh, knee and ankle radii. Shared radii at the knee keep the joint seamless.
+        (float rHip, float rKnee, float rAnkle, float mat) = b.LegStyle switch
+        {
+            LegStyle.Splayed => (t * 0.6f, t * 0.42f, t * 0.06f, Mat.Carapace),
+            LegStyle.Stilt => (t * 0.62f, t * 0.42f, t * 0.24f, Mat.Skin),
+            LegStyle.Roots => (t * 0.7f, t * 0.45f, t * 0.2f, Mat.Skin),
+            _ => (t * 0.62f, t * 0.36f, t * 0.24f, Mat.Skin),
+        };
         var up = new Piece($"leg{i}u");
-        up.Add(Shape.Capsule, new Vector3(t, upper + t, t), new Vector3(0, upper * 0.5f, 0), legColor, 0.6f);
+        up.Taper(Vector3.Zero, new Vector3(0, upper, 0), rHip, rKnee, legColor, 0.7f, 0f, mat);
+        // A haunch of muscle where an upright leg meets the body.
+        if (b.LegStyle == LegStyle.Upright) up.Add(Shape.Sphere, new Vector3(t * 1.5f, t * 1.9f, t * 1.7f), new Vector3(0, upper * 0.12f, 0), k.Base, 1f, 0f, null, 10);
+        if (b.LegStyle == LegStyle.Splayed) up.Add(Shape.Sphere, Vector3.One * rKnee * 2.3f, new Vector3(0, upper, 0), k.Base.Darkened(0.2f), 0.3f, 0f, null, 8, Mat.Carapace);
         layout.Add(up);
         var lo = new Piece($"leg{i}l") { Shadow = b.Size > 1.2f };
-        float tl = t * 0.72f;
-        lo.Add(Shape.Capsule, new Vector3(tl, lower + tl, tl), new Vector3(0, lower * 0.5f, 0), legColor.Darkened(0.1f), 0.4f);
+        lo.Taper(Vector3.Zero, new Vector3(0, lower, 0), rKnee, rAnkle, legColor.Darkened(0.12f), 0.4f, 0f, mat);
         layout.Add(lo);
+
+        // Feet sit on the ground in the creature's heading (-Z forward).
         var foot = new Piece($"leg{i}f") { Shadow = false };
+        float r = rAnkle;
         switch (b.LegStyle)
         {
+            case LegStyle.Upright when clawed:
+                // Three hooked claws gripping the ground.
+                for (int c = -1; c <= 1; c++)
+                    foot.Horn(k.Horn, r * 0.5f, Mat.Horn, new Vector3(c * r * 0.6f, r * 0.7f, -r * 0.3f), new Vector3(c * r * 0.9f, r * 0.5f, -r * 1.4f), new Vector3(c * r, 0.01f, -r * 2.1f));
+                foot.Add(Shape.Sphere, new Vector3(r * 2.2f, r * 1.4f, r * 2.6f), new Vector3(0, r * 0.6f, -r * 0.4f), legColor.Darkened(0.15f));
+                break;
             case LegStyle.Upright:
-                foot.Add(Shape.Sphere, new Vector3(t * 1.3f, t * 0.6f, t * 1.6f), new Vector3(0, t * 0.2f, -t * 0.25f), k.Dark);
+                // A split hoof.
+                for (int c = -1; c <= 1; c += 2)
+                    foot.Add(Shape.Sphere, new Vector3(r * 1.3f, r * 1.5f, r * 2.2f), new Vector3(c * r * 0.5f, r * 0.62f, -r * 0.3f), k.Horn.Darkened(0.3f), 0f, 0f, null, 8, Mat.Horn);
                 break;
             case LegStyle.Stilt:
                 for (int toe = -1; toe <= 1; toe++)
-                    foot.Rod(new Vector3(0, t * 0.2f, 0), new Vector3(toe * t * 1.2f, 0.01f, -t * 2f), t * 0.4f, k.Dark);
+                    foot.Horn(k.Horn, r * 0.45f, Mat.Horn, new Vector3(0, r * 0.4f, 0), new Vector3(toe * r * 1.4f, 0.02f, -r * 2.4f), new Vector3(toe * r * 1.9f, 0.005f, -r * 3.6f));
+                foot.Horn(k.Horn, r * 0.4f, Mat.Horn, new Vector3(0, r * 0.4f, 0), new Vector3(0, 0.02f, r * 1.6f));
                 break;
             case LegStyle.Roots:
-                for (int toe = 0; toe < 3; toe++)
+                for (int toe = 0; toe < 4; toe++)
                 {
-                    float a = toe * MathF.Tau / 3f;
-                    foot.Rod(Vector3.Zero, new Vector3(MathF.Cos(a) * t * 2.5f, -t * 0.5f, MathF.Sin(a) * t * 2.5f), t * 0.5f, k.Base.Darkened(0.45f), 0, 0, cone: true);
+                    float a = toe * MathF.Tau / 4f + 0.4f;
+                    foot.Horn(k.Base.Darkened(0.45f), r * 1.2f, Mat.Skin, Vector3.Zero, new Vector3(MathF.Cos(a) * t * 1.5f, -t * 0.1f, MathF.Sin(a) * t * 1.5f),
+                        new Vector3(MathF.Cos(a) * t * 2.6f, -t * 0.5f, MathF.Sin(a) * t * 2.6f));
                 }
                 break;
             default:
-                foot.Add(Shape.Sphere, Vector3.One * t * 0.9f, new Vector3(0, t * 0.3f, 0), k.Dark);
+                // Splayed legs end in a point: the lower segment is the claw.
+                foot.Add(Shape.Sphere, Vector3.One * MathF.Max(r, t * 0.1f) * 1.4f, new Vector3(0, r * 0.5f, 0), k.Dark, 0f, 0f, null, 6, Mat.Carapace);
                 break;
         }
         layout.Add(foot);

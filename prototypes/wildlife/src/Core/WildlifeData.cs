@@ -14,14 +14,36 @@ public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Od
 /// <summary>The small set of reliable rigs every body plan is drawn and animated with.</summary>
 public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm }
 
-public enum Behaviour { Grazer, Herd, Predator, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity }
+public enum Behaviour { Grazer, Herd, Predator, PackHunter, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity }
 
 /// <summary>How a creature reacts to you, independent of what it does all day. Odd pairs make surprises.</summary>
 public enum Temperament { Skittish, Calm, Bold, Aggressive }
 
 public enum LegStyle { Upright, Splayed, Stilt, Roots }
 
-public enum Pattern { Plain, Countershade, Spots, Stripes, Bands, Rings, Checker, Veins }
+public enum Pattern { Plain, Countershade, Spots, Stripes, Bands, Rings, Mottle, Veins }
+
+/// <summary>
+/// How a signature attack winds up and lands. The wind-up is always the telegraph; the style
+/// only changes what it looks and sounds like and how the lunge travels.
+/// </summary>
+public enum AttackStyle
+{
+    /// <summary>Rears back, then snaps forward.</summary>
+    Lunge,
+    /// <summary>Crouches low and coiled, then springs in an arc.</summary>
+    Pounce,
+    /// <summary>Drops its head and paws the ground, then charges a longer way.</summary>
+    Charge,
+    /// <summary>Rears right up (a giant, or a crawler's cobra coil), then slams down.</summary>
+    Rear,
+    /// <summary>Bursts up out of the ground it was hiding in.</summary>
+    Burst,
+    /// <summary>Climbs, then dives.</summary>
+    Dive,
+    /// <summary>A swarm pulls in tight and buzzes, then streams at you.</summary>
+    Sting,
+}
 
 public sealed class WildlifeData
 {
@@ -62,8 +84,23 @@ public sealed class WildlifeData
         }
         foreach (string slot in FaunaTables.Slots)
             if (!Fauna.Parts.ContainsKey(slot)) problems.Add($"no parts for slot {slot}");
+        foreach (var (slot, list) in Fauna.Parts)
+        foreach (PartDef part in list)
+        {
+            foreach (string role in part.Roles)
+                if (!Enum.TryParse<Behaviour>(role, out _)) problems.Add($"part {slot}/{part.Id}: unknown role {role}");
+            foreach (string other in part.Excludes)
+                if (Fauna.FindPart(other) == null) problems.Add($"part {slot}/{part.Id}: excludes unknown part {other}");
+            foreach (string other in part.Requires)
+                if (Fauna.FindPart(other) == null) problems.Add($"part {slot}/{part.Id}: requires unknown part {other}");
+        }
         foreach (Behaviour b in Enum.GetValues<Behaviour>())
-            if (!Fauna.Behaviours.ContainsKey(b.ToString())) problems.Add($"no behaviour entry for {b}");
+        {
+            if (!Fauna.Behaviours.TryGetValue(b.ToString(), out BehaviourDef def)) problems.Add($"no behaviour entry for {b}");
+            else if (def.Attack == null || def.Attack.Name == "") problems.Add($"behaviour {b}: no signature attack");
+            // A telegraph shorter than this is not a warning anyone can react to.
+            else if (def.Attack.Telegraph < 0.6f) problems.Add($"behaviour {b}: telegraph {def.Attack.Telegraph} s is too short to react to");
+        }
         return problems;
     }
 }
@@ -126,11 +163,18 @@ public sealed class FaunaTables
     public float[] Surprise { get; set; } = { 0.04f, 0.35f };
     /// <summary>How sharply a world's alienness prefers forms and parts of matching weirdness.</summary>
     public float WeirdnessFocus { get; set; } = 0.32f;
+    /// <summary>
+    /// How far past a form's proportion ranges an alien world may push (as a share of the range,
+    /// below and above, at alienness 1). Small on purpose: past this, bodies stop reading as
+    /// animals and start reading as broken.
+    /// </summary>
+    public float[] ProportionPush { get; set; } = { 0.15f, 0.35f };
     public List<FormDef> Forms { get; set; } = new();
     public Dictionary<string, List<PartDef>> Parts { get; set; } = new();
     public List<PatternDef> Patterns { get; set; } = new();
     public Dictionary<string, BehaviourDef> Behaviours { get; set; } = new();
     public Dictionary<string, TemperamentDef> Temperaments { get; set; } = new();
+    public PackRules Pack { get; set; } = new();
     public PaletteRules Palette { get; set; } = new();
     public CorruptionRules Corruption { get; set; } = new();
     public SyllableTables Syllables { get; set; } = new();
@@ -141,6 +185,13 @@ public sealed class FaunaTables
         if (!Parts.TryGetValue(slot, out var list)) return null;
         foreach (var part in list) if (part.Id == id) return part;
         return null;
+    }
+
+    /// <summary>A part by "slot/id", as the combination rules name them.</summary>
+    public PartDef FindPart(string slotAndId)
+    {
+        int cut = slotAndId.IndexOf('/');
+        return cut < 0 ? null : FindPart(slotAndId[..cut], slotAndId[(cut + 1)..]);
     }
 
     public BehaviourDef Behaviour(Behaviour b) => Behaviours[b.ToString()];
@@ -184,12 +235,29 @@ public sealed class FormDef
     public Dictionary<string, string> FixedParts { get; set; } = new();
 }
 
+/// <summary>
+/// One swappable part. Besides which rigs it fits, a part carries combination rules, so the
+/// generator can't assemble something broken or silly: <see cref="Roles"/> limits it to the
+/// behaviours it makes sense on (antlers on grazers, scythes on hunters), and
+/// <see cref="Excludes"/> and <see cref="Requires"/> rule out pairings that clash (horns on a
+/// lamprey's mouth, feelers on top of antennae).
+/// </summary>
 public sealed class PartDef
 {
     public string Id { get; set; } = "none";
     public float Weirdness { get; set; }
     /// <summary>Rigs this part can be rolled on; empty means any.</summary>
     public RigKind[] Rigs { get; set; } = Array.Empty<RigKind>();
+    /// <summary>Behaviours this part can be rolled for; empty means any.</summary>
+    public string[] Roles { get; set; } = Array.Empty<string>();
+    /// <summary>Parts ("slot/id") it never appears with, whichever is rolled first.</summary>
+    public string[] Excludes { get; set; } = Array.Empty<string>();
+    /// <summary>Parts ("slot/id") of which at least one must already be on the creature.</summary>
+    public string[] Requires { get; set; } = Array.Empty<string>();
+    /// <summary>Only on a body with a real neck (two heads on no neck is a mess).</summary>
+    public bool NeedsNeck { get; set; }
+    /// <summary>Forms it belongs on; empty means any. Insect heads go on insect bodies.</summary>
+    public string[] Forms { get; set; } = Array.Empty<string>();
     /// <summary>Only ever set by a form's fixed parts, never rolled.</summary>
     public bool FixedOnly { get; set; }
     public string Adjective { get; set; } = "";
@@ -197,6 +265,10 @@ public sealed class PartDef
     public RareDef Rare { get; set; }
 
     public bool Fits(RigKind rig) => !FixedOnly && (Rigs.Length == 0 || Array.IndexOf(Rigs, rig) >= 0);
+
+    public bool Suits(Behaviour b) => Roles.Length == 0 || Array.IndexOf(Roles, b.ToString()) >= 0;
+
+    public bool SuitsForm(string form) => Forms.Length == 0 || Array.IndexOf(Forms, form) >= 0;
 }
 
 public sealed class RareDef
@@ -212,6 +284,30 @@ public sealed class PatternDef
     public float Weirdness { get; set; }
 }
 
+/// <summary>
+/// A behaviour's signature attack. Every attacking creature opens with it, telegraphed: the
+/// wind-up is at least <see cref="Telegraph"/> seconds long and shows and sounds like the
+/// style (a pounce crouches, a charge lowers its head, a giant rears and roars).
+/// </summary>
+public sealed class AttackDef
+{
+    public string Name { get; set; } = "";
+    public AttackStyle Style { get; set; } = AttackStyle.Lunge;
+    /// <summary>Wind-up of the first, telegraphed attack in seconds.</summary>
+    public float Telegraph { get; set; } = 1.1f;
+    /// <summary>How far past its reach the lunge carries, in metres; 0 uses the combat default.</summary>
+    public float Reach { get; set; }
+    /// <summary>How long the lunge itself takes; 0 uses the combat default.</summary>
+    public float Lunge { get; set; }
+    /// <summary>Which synthesised wind-up sound it makes: growl, snarl, roar, bellow, hiss, chitter, buzz, grunt.</summary>
+    public string Sound { get; set; } = "growl";
+
+    public AttackDef With(AttackStyle style, string name) => new()
+    {
+        Name = name, Style = style, Telegraph = Telegraph, Reach = Reach, Lunge = Lunge, Sound = Sound,
+    };
+}
+
 public sealed class BehaviourDef
 {
     public int[] Group { get; set; } = { 1, 1 };
@@ -222,9 +318,36 @@ public sealed class BehaviourDef
     public float Territory { get; set; } = 30f;
     /// <summary>Ambushers strike at anything that comes this close at night.</summary>
     public float AmbushRadius { get; set; } = 7f;
-    /// <summary>Wind-up of the first, telegraphed attack in seconds; 0 uses the combat default.</summary>
-    public float Telegraph { get; set; }
+    public AttackDef Attack { get; set; } = new();
     public Dictionary<string, float> Temperaments { get; set; } = new();
+}
+
+/// <summary>
+/// How packs hunt: stalk together, spread round the prey, one feints at the front while the
+/// others close from the flanks, and break off together when the leader falls or too many
+/// are hurt.
+/// </summary>
+public sealed class PackRules
+{
+    /// <summary>Chance a planet's second species is a pack rather than a lone predator.</summary>
+    public float RoleChance { get; set; } = 0.6f;
+    /// <summary>The pack starts its approach (spreading out) inside this distance of the prey.</summary>
+    public float SurroundRadius { get; set; } = 20f;
+    /// <summary>How far from the prey the members circle while they take up their places.</summary>
+    public float RingRadius { get; set; } = 7.5f;
+    /// <summary>Flankers take places this far either side of the feinter, in degrees.</summary>
+    public float FlankAngle { get; set; } = 110f;
+    /// <summary>Longest they spend getting into place before closing in anyway.</summary>
+    public float SurroundSeconds { get; set; } = 7f;
+    /// <summary>A member counts as hurt below this share of its health.</summary>
+    public float HurtBelow { get; set; } = 0.7f;
+    /// <summary>The pack breaks off when this share of it is hurt (or dead), or the leader dies.</summary>
+    public float RetreatShare { get; set; } = 0.5f;
+    /// <summary>How long a retreat runs before the pack regroups, and how long before it hunts again.</summary>
+    public float RetreatSeconds { get; set; } = 8f;
+    public float RegroupSeconds { get; set; } = 25f;
+    /// <summary>How far apart members keep while roaming.</summary>
+    public float Spacing { get; set; } = 2.4f;
 }
 
 public sealed class TemperamentDef

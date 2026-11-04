@@ -25,6 +25,14 @@ public static class Locomotion
             Lunge(w, c);
             return;
         }
+        if (w.Frozen && c.Species.Flies && !c.Landed)
+        {
+            // Lineup: fliers and floaters hold station at their height instead of circling off.
+            float y = w.Terrain.Height(c.Position.X, c.Position.Z) + c.Altitude;
+            c.Velocity = Vector3.Zero;
+            c.Position = new Vector3(c.Position.X, Mathf.Lerp(c.Position.Y, y, 1f - MathF.Exp(-3f * dt)), c.Position.Z);
+            return;
+        }
         switch (c.Species.Rig)
         {
             case RigKind.Hopper: Hop(w, c, dt); break;

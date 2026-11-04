@@ -47,6 +47,12 @@ public partial class Planet : Node3D
         BuildRocks();
     }
 
+    /// <summary>Shows or hides the rocks (the bestiary lineup wants clear ground).</summary>
+    public void ShowRocks(bool show)
+    {
+        foreach (var (mesh, _) in _rocks) mesh.GetParent<Node3D>().Visible = show;
+    }
+
     /// <summary>Which way the sunlight travels (for staging shots with the light behind the camera).</summary>
     public Vector3 SunDirection => -_sun.GlobalBasis.Z;
 

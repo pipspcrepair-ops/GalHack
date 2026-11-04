@@ -1,24 +1,98 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
 namespace Wildlife;
 
-public enum Shape { Sphere, Box, Capsule, Cylinder, Cone }
+public enum Shape { Sphere, Box, Capsule, Cylinder, Cone, Taper, Loft }
+
+/// <summary>
+/// What a surface is made of. The shader reads it from the mesh (UV.y) and shades each kind
+/// its own way, so one material per species still gives wet eyes, glossy horn, dull hide and
+/// thin wing membrane.
+/// </summary>
+public static class Mat
+{
+    public const float Skin = 0f, Horn = 1f, Carapace = 2f, Membrane = 3f, Eye = 4f;
+}
 
 /// <summary>
 /// One primitive in a piece's local space. Size is the full extent: a sphere's diameters, a
 /// capsule's (diameter, total length, diameter) along +Y, a cylinder's (bottom diameter,
-/// height, top diameter). Glow is how much it lights up; Pattern is how much of the species'
-/// skin pattern shows on it (bellies and claws stay plain).
+/// height, top diameter), a taper's (bottom diameter, length, top diameter). Glow is how much
+/// it lights up; Pattern is how much of the species' skin pattern shows on it (bellies and
+/// claws stay plain). Color2 is the underside colour of a loft (a belly that blends in rather
+/// than a second shape stuck on).
 /// </summary>
 public struct Prim
 {
     public Shape Shape;
     public Vector3 Size;
     public Transform3D Local;
-    public Color Color;
-    public float Glow, Pattern;
+    public Color Color, Color2;
+    public float Glow, Pattern, Material;
     public int Sides;
+    public LoftProfile Loft;
+}
+
+/// <summary>
+/// A lofted shape: elliptical cross-sections along local Z (front at the lowest Z), each with
+/// its own half-width, half-height and centre height. Bodies, heads and jaws are lofts, so a
+/// creature has shoulders, a waist and haunches instead of being one egg.
+/// </summary>
+public sealed class LoftProfile
+{
+    public readonly float[] Z, W, H, Y;
+
+    LoftProfile(int n)
+    {
+        Z = new float[n];
+        W = new float[n];
+        H = new float[n];
+        Y = new float[n];
+    }
+
+    public int Count => Z.Length;
+
+    /// <summary>
+    /// Builds a profile from key sections at t in [0, 1] from front (z0) to back (z1): each key
+    /// is (t, half-width, half-height, centre height). Sections between keys are eased, and the
+    /// last <paramref name="round"/> of the length at each end closes like a hemisphere, so the
+    /// shape needs no caps and has no seams.
+    /// </summary>
+    public static LoftProfile Smooth(float z0, float z1, (float t, float w, float h, float y)[] keys, int stations = 14, float round = 0.18f)
+    {
+        var p = new LoftProfile(stations);
+        for (int i = 0; i < stations; i++)
+        {
+            // Denser near the ends, where the rounding happens.
+            float t = 0.5f - 0.5f * MathF.Cos(MathF.PI * i / (stations - 1));
+            (float w, float h, float y) = Eval(keys, t);
+            float end = MathF.Min(t, 1f - t) / MathF.Max(1e-3f, round);
+            float r = end >= 1f ? 1f : MathF.Sqrt(MathF.Max(0f, 1f - (1f - end) * (1f - end)));
+            p.Z[i] = z0 + (z1 - z0) * t;
+            p.W[i] = w * r;
+            p.H[i] = h * r;
+            p.Y[i] = y;
+        }
+        return p;
+    }
+
+    static (float, float, float) Eval((float t, float w, float h, float y)[] keys, float t)
+    {
+        if (t <= keys[0].t) return (keys[0].w, keys[0].h, keys[0].y);
+        for (int i = 0; i + 1 < keys.Length; i++)
+        {
+            var a = keys[i];
+            var b = keys[i + 1];
+            if (t > b.t) continue;
+            float u = (t - a.t) / MathF.Max(1e-4f, b.t - a.t);
+            u = u * u * (3f - 2f * u);
+            return (a.w + (b.w - a.w) * u, a.h + (b.h - a.h) * u, a.y + (b.y - a.y) * u);
+        }
+        var last = keys[^1];
+        return (last.w, last.h, last.y);
+    }
 }
 
 /// <summary>A rigid piece of a creature: the body, a head, one leg bone. The rig poses pieces.</summary>
@@ -31,7 +105,7 @@ public sealed class Piece
 
     public Piece(string name) => Name = name;
 
-    public Piece Add(Shape shape, Vector3 size, Vector3 position, Color color, float pattern = 0f, float glow = 0f, Basis? basis = null, int sides = 0)
+    public Piece Add(Shape shape, Vector3 size, Vector3 position, Color color, float pattern = 0f, float glow = 0f, Basis? basis = null, int sides = 0, float material = Mat.Skin)
     {
         Prims.Add(new Prim
         {
@@ -39,22 +113,68 @@ public sealed class Piece
             Size = size,
             Local = new Transform3D(basis ?? Basis.Identity, position),
             Color = color,
+            Color2 = color,
             Glow = glow,
             Pattern = pattern,
             Sides = sides,
+            Material = material,
         });
         return this;
     }
 
     /// <summary>A rod from a to b (a capsule or cone along the line).</summary>
-    public Piece Rod(Vector3 a, Vector3 b, float diameter, Color color, float pattern = 0f, float glow = 0f, bool cone = false)
+    public Piece Rod(Vector3 a, Vector3 b, float diameter, Color color, float pattern = 0f, float glow = 0f, bool cone = false, float material = Mat.Skin)
     {
         Vector3 d = b - a;
         float len = d.Length();
         if (len < 1e-4f) return this;
         Basis basis = Geo.AlongY(d / len);
-        if (cone) return Add(Shape.Cone, new Vector3(diameter, len, 0f), (a + b) * 0.5f, color, pattern, glow, basis);
-        return Add(Shape.Capsule, new Vector3(diameter, len + diameter, diameter), (a + b) * 0.5f, color, pattern, glow, basis);
+        if (cone) return Add(Shape.Cone, new Vector3(diameter, len, 0f), (a + b) * 0.5f, color, pattern, glow, basis, 0, material);
+        return Add(Shape.Capsule, new Vector3(diameter, len + diameter, diameter), (a + b) * 0.5f, color, pattern, glow, basis, 0, material);
+    }
+
+    /// <summary>
+    /// A rounded taper from a (radius ra) to b (radius rb): a sphere at each end joined by the
+    /// cone that touches both. Two tapers that share an end point and radius meet without a
+    /// seam at any angle, which is how knees, necks and tails stay smooth when they bend.
+    /// A tip radius near zero makes a claw, a horn or a tooth.
+    /// </summary>
+    public Piece Taper(Vector3 a, Vector3 b, float ra, float rb, Color color, float pattern = 0f, float glow = 0f, float material = Mat.Skin, int sides = 0)
+    {
+        Vector3 d = b - a;
+        float len = d.Length();
+        if (len < 1e-4f) return this;
+        return Add(Shape.Taper, new Vector3(ra * 2f, len, rb * 2f), a, color, pattern, glow, Geo.AlongY(d / len), sides, material);
+    }
+
+    /// <summary>A curved horn or claw: a chain of tapers through the points, thinning to a tip.</summary>
+    public Piece Horn(Color color, float baseRadius, float material, params Vector3[] points)
+    {
+        int n = points.Length - 1;
+        for (int i = 0; i < n; i++)
+        {
+            float r0 = baseRadius * (1f - i / (float)n), r1 = baseRadius * (1f - (i + 1) / (float)n);
+            Taper(points[i], points[i + 1], MathF.Max(r0, baseRadius * 0.05f), MathF.Max(r1, baseRadius * 0.05f), color, 0f, 0f, material, 7);
+        }
+        return this;
+    }
+
+    /// <summary>A lofted shape in this piece, offset and turned by an optional transform.</summary>
+    public Piece Loft(LoftProfile profile, Color top, Color under, float pattern = 1f, float glow = 0f, float material = Mat.Skin, Vector3? offset = null, Basis? basis = null, int sides = 14)
+    {
+        Prims.Add(new Prim
+        {
+            Shape = Shape.Loft,
+            Loft = profile,
+            Local = new Transform3D(basis ?? Basis.Identity, offset ?? Vector3.Zero),
+            Color = top,
+            Color2 = under,
+            Pattern = pattern,
+            Glow = glow,
+            Material = material,
+            Sides = sides,
+        });
+        return this;
     }
 }
 

@@ -126,7 +126,7 @@ public partial class Main : Node3D
                 if (s.Behaviour == Behaviour.Herd && g == 0) at = new Vector3(rng.Range(-15f, 15f), 0f, rng.Range(-30f, -15f));
                 else if (s.Behaviour == Behaviour.Ambusher) at = Forest.Groves[rng.Int(0, Forest.Groves.Count - 1)] + Ring(rng, 14f, 24f);
                 else if (s.Plan == BodyPlan.Giant) at = g == 0 ? new Vector3(rng.Range(30f, 60f), 0f, rng.Range(-110f, -80f)) : Ring(rng, 90f, 180f);
-                else if (s.Behaviour == Behaviour.Predator) at = Ring(rng, 50f, 120f);
+                else if (s.Behaviour is Behaviour.Predator or Behaviour.PackHunter) at = Ring(rng, 50f, 120f);
                 else at = Ring(rng, g == 0 ? 25f : 40f, 170f);
                 Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, count));
             }
@@ -390,9 +390,10 @@ public partial class Main : Node3D
         string what = s.Behaviour switch
         {
             Behaviour.Herd => "herd grazer", Behaviour.TerritorialGiant => "territorial", Behaviour.HarmlessOddity => "harmless",
-            _ => s.Behaviour.ToString().ToLowerInvariant(),
+            Behaviour.PackHunter => "pack hunter", _ => s.Behaviour.ToString().ToLowerInvariant(),
         };
-        return $"{s.Name}, {s.CommonName}\n{what}, {s.Temperament.ToString().ToLowerInvariant()}   {s.Body.Size:F1} m   {dist:F0} m away";
+        string attack = s.Stats.Damage > 0f ? $"   attack: {s.Attack.Name.ToLowerInvariant()}" : "";
+        return $"{s.Name}, {s.CommonName}\n{what}, {s.Temperament.ToString().ToLowerInvariant()}   {s.Body.Size:F1} m   {dist:F0} m away{attack}";
     }
 
     void UpdateHud()
