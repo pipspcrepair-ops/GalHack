@@ -5,15 +5,18 @@ namespace Boarding;
 
 public enum GuardRole { Trooper, Officer, Gunner, Enforcer }
 
-/// <summary>Per-role numbers and paint. Health and damage come from the tunables.</summary>
-public sealed record GuardType(GuardRole Role, float Health, float Damage, bool Heavy, float Scale, float SpeedFactor, Color Armour, Color Accent)
+/// <summary>
+/// Per-role numbers and paint. Health, damage and the hostile weapon type (a row in
+/// hostile_fire.txt) come from the tunables. Heavy roles are bigger, slower and telegraph longer.
+/// </summary>
+public sealed record GuardType(GuardRole Role, float Health, float Damage, string Weapon, bool Heavy, float Scale, float SpeedFactor, Color Armour, Color Accent)
 {
     public static GuardType For(GuardRole role, Tunables t) => role switch
     {
-        GuardRole.Officer => new(role, t.OfficerHealth, t.OfficerDamage, false, 1.0f, 1.0f, Palette.Dark, Palette.Yellow),
-        GuardRole.Gunner => new(role, t.GunnerHealth, t.GuardDamage, false, 1.0f, 1.0f, Palette.Orange, Palette.Dark),
-        GuardRole.Enforcer => new(role, t.EnforcerHealth, t.EnforcerDamage, true, 1.22f, 0.75f, new Color("3d1410"), Palette.AlarmRed),
-        _ => new(role, t.GuardHealth, t.GuardDamage, false, 1.0f, 1.0f, Palette.Oxblood, Palette.Bone),
+        GuardRole.Officer => new(role, t.OfficerHealth, t.OfficerDamage, t.OfficerWeapon, false, 1.0f, 1.0f, Palette.Dark, Palette.Yellow),
+        GuardRole.Gunner => new(role, t.GunnerHealth, t.GuardDamage, t.GunnerWeapon, false, 1.0f, 1.0f, Palette.Orange, Palette.Dark),
+        GuardRole.Enforcer => new(role, t.EnforcerHealth, t.EnforcerDamage, t.EnforcerWeapon, true, 1.22f, 0.75f, new Color("3d1410"), Palette.AlarmRed),
+        _ => new(role, t.GuardHealth, t.GuardDamage, t.TrooperWeapon, false, 1.0f, 1.0f, Palette.Oxblood, Palette.Bone),
     };
 }
 
@@ -38,6 +41,9 @@ public partial class Guard : CharacterBody3D
     public bool Crouching { get; private set; }
     public bool HasKeycard => Type.Role == GuardRole.Officer;
     public int ShotsFired { get; private set; }
+    /// <summary>This guard's aim at the player: warning shots, then the ramp to baseline.</summary>
+    public AimRamp Aim { get; private set; }
+    public FireProfile Weapon { get; private set; }
 
     Tunables T => Game.Tunables;
     float Height => 1.9f * Type.Scale;
@@ -55,6 +61,8 @@ public partial class Guard : CharacterBody3D
     public override void _Ready()
     {
         Health = Type.Health;
+        Aim = new AimRamp(Game.Fire);
+        Weapon = Game.Fire.Weapon(Type.Weapon);
         _capsule = new CapsuleShape3D { Radius = 0.36f * Type.Scale, Height = Height };
         _shape = new CollisionShape3D { Shape = _capsule, Position = Vector3.Up * Height * 0.5f };
         AddChild(_shape);
@@ -124,49 +132,16 @@ public partial class Guard : CharacterBody3D
     }
 
     /// <summary>
-    /// One rifle shot at the player. Accuracy rolls a miss offset; the shot is a real ray, so
-    /// cover the player hides behind takes the hit instead.
+    /// One shot at the player: the aim ramp picks a warning miss or a point in the current
+    /// cone, and a projectile carries the full, unscaled damage at the weapon's speed.
     /// </summary>
-    protected void FireAt(Player player, float accuracy)
+    protected void FireAt(Player player)
     {
         ShotsFired++;
         Vector3 from = _muzzle.GlobalPosition;
-        Vector3 target = player.GlobalPosition + Vector3.Up * (player.Crouched ? 0.7f : 1.2f);
-        if (GD.Randf() > accuracy)
-        {
-            // A miss that still cracks past close enough to read as dangerous.
-            Vector3 side = (target - from).Cross(Vector3.Up).Normalized();
-            target += side * (GD.Randf() < 0.5f ? -1f : 1f) * (0.6f + GD.Randf() * 0.8f) + Vector3.Up * (GD.Randf() - 0.3f) * 0.8f;
-        }
-        Vector3 dir = (target - from).Normalized();
-        Vector3 end = from + dir * 120f;
-        var query = PhysicsRayQueryParameters3D.Create(from, end, Layers.World | Layers.Ship | Layers.Player, new Godot.Collections.Array<Rid> { GetRid() });
-        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
-
         Game.Effects.Flash(from, Palette.VharnGlow, 0.45f * Type.Scale);
         Game.Noise.Emit(from, T.NoiseGunfire, NoiseKind.Gunfire, fromPlayer: false);
-        if (hit.Count == 0)
-        {
-            Game.Effects.Tracer(from, end, Palette.VharnGlow, 0.05f, 0.09f);
-            return;
-        }
-        var point = (Vector3)hit["position"];
-        Game.Effects.Tracer(from, point, Palette.VharnGlow, 0.05f, 0.09f);
-        Node collider = hit["collider"].As<Node>();
-        if (collider is Player p)
-        {
-            p.TakeNpcHit(Id, Type.Damage, Type.Heavy, from);
-        }
-        else if (collider is Block block)
-        {
-            Game.Effects.Impact(point, (Vector3)hit["normal"], block.Surface, block, 0.8f);
-            block.Damage(Type.Damage * 0.5f, point, (Vector3)hit["normal"]);
-        }
-        else if (collider is Node3D other)
-        {
-            var surface = other.HasMeta("surface") ? (Surface)(int)other.GetMeta("surface") : Surface.Rock;
-            Game.Effects.Impact(point, (Vector3)hit["normal"], surface, other, 0.8f);
-        }
+        HostileShot.Fire(Game, this, from, Aim, ShooterClass.Infantry, Weapon, Type.Damage, Palette.VharnGlow, 0.06f * Type.Scale);
     }
 
     // ---- Body ----------------------------------------------------------------------------

@@ -8,8 +8,10 @@ namespace Boarding;
 /// gunner (or wreck the station) and it falls silent. After a hijack it stops being hostile;
 /// once the core is dead it has no power. It is also a component: salvage it whole.
 ///
-/// It fires on the player outside the hull, always after a long red telegraph, and its hits
-/// are heavy: they open weak and ramp up through the no-instant-death rules.
+/// It fires on the player outside the hull, always after a long red telegraph. It is a
+/// capital gun: one hit vaporises a player on foot, but by the hostile-fire table it is very
+/// poor against infantry, its first rounds are warning shots, and its shells are slow
+/// enough to see coming.
 /// </summary>
 public partial class Turret : Block
 {
@@ -19,6 +21,8 @@ public partial class Turret : Block
     public Guard Gunner;
 
     public int ShotsFired { get; private set; }
+    public AimRamp Aim { get; private set; }
+    public FireProfile Weapon { get; private set; }
     public bool Telegraphing { get; private set; }
 
     public bool IsCrewed => Gunner != null && IsInstanceValid(Gunner) && Gunner.Seated
@@ -39,6 +43,8 @@ public partial class Turret : Block
 
     protected override void BuildVisual()
     {
+        Aim = new AimRamp(Ship.Game.Fire);
+        Weapon = Ship.Game.Fire.Weapon(T.TurretWeapon);
         _baseYaw = Mathf.Atan2(-Outward.X, -Outward.Z);
         var dark = Art.Flat(Palette.Dark, 0.5f, 0.5f);
         var mount = new Node3D { Rotation = new Vector3(0, _baseYaw, 0) };
@@ -92,6 +98,7 @@ public partial class Turret : Block
             // Silent: barrels droop, the eye goes dark (or teal once the ship is the player's).
             _step = Step.Idle;
             _laser.Visible = false;
+            Aim.Reset();
             _pitch = Mathf.MoveToward(_pitch, -0.35f, dt * 0.5f);
             _eye.MaterialOverride = Ship.OwnerFaction == Faction.Player && !Ship.Rebooting ? Art.Glow(Palette.TealGlow, 2f) : Art.Flat(Palette.Dark);
             Pose();
@@ -104,12 +111,13 @@ public partial class Turret : Block
         bool engage = !player.Health.Dead && !player.IsInsideShip && !Ship.Game.PlayerHidden
             && GlobalPosition.DistanceTo(target) < T.TurretRange && InArc(target) && Clear(target);
 
+        Aim.Observe(dt, engage);
         if (!engage)
         {
             _step = Step.Idle;
             _laser.Visible = false;
             _sweep += dt * 0.4f;
-            Aim(_baseYaw + Mathf.Sin(_sweep) * 0.9f, 0f, dt);
+            Slew(_baseYaw + Mathf.Sin(_sweep) * 0.9f, 0f, dt);
             Pose();
             return;
         }
@@ -118,7 +126,7 @@ public partial class Turret : Block
         Vector3 local = ToLocal(target);
         float wantYaw = Mathf.Atan2(-local.X, -local.Z);
         float wantPitch = Mathf.Atan2(local.Y, new Vector2(local.X, local.Z).Length());
-        bool onTarget = Aim(wantYaw, wantPitch, dt);
+        bool onTarget = Slew(wantYaw, wantPitch, dt);
         _timer -= dt;
         switch (_step)
         {
@@ -146,7 +154,7 @@ public partial class Turret : Block
                 {
                     Fire(player, target);
                     _burstLeft--;
-                    _timer = T.TurretBurstInterval;
+                    _timer = T.TurretBurstInterval / Weapon.Rate;
                     if (_burstLeft <= 0)
                     {
                         _step = Step.Cooldown;
@@ -175,7 +183,7 @@ public partial class Turret : Block
         return GetWorld3D().DirectSpaceState.IntersectRay(query).Count == 0;
     }
 
-    bool Aim(float yaw, float pitch, float dt)
+    bool Slew(float yaw, float pitch, float dt)
     {
         float turn = T.TurretTurnSpeed * dt;
         float dy = Mathf.AngleDifference(_yaw, yaw);
@@ -205,17 +213,7 @@ public partial class Turret : Block
         ShotsFired++;
         _left = !_left;
         Vector3 from = (_left ? _muzzleL : _muzzleR).GlobalPosition;
-        if (GD.Randf() > T.TurretAccuracy)
-            target += new Vector3(GD.Randf() - 0.5f, GD.Randf() - 0.3f, GD.Randf() - 0.5f) * 3f;
-        var query = PhysicsRayQueryParameters3D.Create(from, from + (target - from).Normalized() * (T.TurretRange + 10f),
-            Layers.World | Layers.Ship | Layers.Player, new Godot.Collections.Array<Rid> { GetRid() });
-        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
-        var effects = Ship.Game.Effects;
-        effects.Flash(from, new Color("ff7b2a"), 1.1f);
-        Vector3 end = hit.Count > 0 ? (Vector3)hit["position"] : from + (target - from).Normalized() * T.TurretRange;
-        effects.Tracer(from, end, new Color("ff5a2a"), 0.12f, 0.12f);
-        if (hit.Count == 0) return;
-        if (hit["collider"].As<Node>() is Player p) p.TakeNpcHit(AttackerId, T.TurretDamage, heavy: true, from);
-        else effects.Impact(end, (Vector3)hit["normal"], Surface.Rock, null, 2f);
+        Ship.Game.Effects.Flash(from, new Color("ff7b2a"), 1.1f);
+        HostileShot.Fire(Ship.Game, this, from, Aim, ShooterClass.Capital, Weapon, T.TurretDamage, new Color("ff5a2a"), 0.22f);
     }
 }

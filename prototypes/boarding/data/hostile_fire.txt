@@ -1,0 +1,96 @@
+# How accurately anything hostile shoots at the player (guards, turrets, everything).
+#
+# Damage is never reduced or capped. Fairness comes from aim instead:
+#   1. Warning shots: an engagement opens with deliberately wild shots that are guaranteed
+#      to miss, landing close enough to see.
+#   2. Accuracy ramp: after the warnings, the spread cone shrinks to the baseline.
+#   3. Breaking line of sight resets both.
+# Spread is the full cone angle in degrees.
+
+[ramp]
+warning_shots = 3          # the first shots at a target always miss...
+warning_seconds = 0.75     # ...and so does everything fired in the first 0.75 s
+warning_miss_min = 1.0     # metres outside the target's outline that a warning shot lands...
+warning_miss_max = 2.4     # ...up to this far
+ramp_seconds = 2.0         # after the warnings, spread shrinks to the baseline over this long
+ramp_start = 3.0           # starting from this many times the baseline
+los_reset_seconds = 0.4    # out of sight this long and the next engagement starts over
+
+[ratings]
+very_good = 0.4
+good = 1.2
+fair = 2.5
+poor = 4.5
+very_poor = 8.0
+
+# Shooter class: its rating against on_foot, hover, small_vessel, capital (or base).
+[baseline]
+infantry = good, fair, poor, very_poor
+small_craft = fair, good, good, good
+capital = very_poor, poor, fair, very_good
+
+# Situations that widen the cone (multipliers).
+[conditions]
+target_sprinting = 1.4
+target_crouched = 1.15
+lights_out = 1.4
+
+# Weapon types modify the shooter's baseline.
+#   spread    multiplies the cone          rate      multiplies the rate of fire
+#   speed     projectile speed, m/s        tracking  homing turn rate, rad/s (0 = none)
+#   vs        extra spread multiplier against on_foot, hover, small_vessel, capital
+[weapon rifle]
+spread = 1.0
+rate = 1.0
+speed = 380
+tracking = 0
+vs = 1, 1, 1, 1
+
+[weapon minigun]
+spread = 2.0
+rate = 3.0
+speed = 450
+tracking = 0
+vs = 1, 1, 1, 1
+
+[weapon rail]
+spread = 0.35
+rate = 0.6
+speed = 1400
+tracking = 0
+vs = 1, 1, 1, 1
+
+[weapon laser]
+spread = 0.3
+rate = 1.0
+speed = 2400
+tracking = 0
+vs = 1, 1, 1, 1
+
+[weapon rocket]
+spread = 1.3
+rate = 0.3
+speed = 70
+tracking = 0.9
+vs = 1, 1, 1, 1
+
+[weapon artillery]
+spread = 1.0
+rate = 0.25
+speed = 220
+tracking = 0
+vs = 3.0, 2.5, 1.6, 0.5
+
+[weapon capital_cannon]
+spread = 1.0
+rate = 1.0
+speed = 300
+tracking = 0
+vs = 1, 1, 1, 1
+
+[weapon small_craft_gun]
+spread = 1.0
+rate = 1.0
+speed = 600
+tracking = 0
+vs = 1, 1, 1, 1

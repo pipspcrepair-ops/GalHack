@@ -40,7 +40,6 @@ public partial class Guard
     FireStep _fire;
     float _fireTimer;
     int _burstLeft;
-    bool _warned;
     Vector2I? _cover;
 
     void ReadyBrain()
@@ -73,6 +72,10 @@ public partial class Guard
         }
 
         Perceive(dt);
+        // The aim ramp only runs while this guard is actually fighting someone it can see;
+        // anything else counts as lost sight and the next engagement opens with warnings.
+        bool engaging = SeesPlayer && (State == GuardState.Combat || State == GuardState.Seated && Game.Player.IsInsideShip);
+        Aim.Observe(dt, engaging);
         Vector3 move = Vector3.Zero;
         float speed = T.GuardWalkSpeed;
 
@@ -178,7 +181,9 @@ public partial class Guard
     {
         distance = 999f;
         if (Game.PlayerHidden || player.Health.Dead) return false;
-        Vector3 eye = GlobalPosition + Ship.GlobalBasis.Y * (_capsule.Height - 0.15f);
+        // Judge sight from standing eye height even while ducked behind a crate: a guard in
+        // cover keeps track of you between peeks, so ducking alone doesn't reset its aim ramp.
+        Vector3 eye = GlobalPosition + Ship.GlobalBasis.Y * (Height - 0.15f);
         Vector3 chest = player.GlobalPosition + Vector3.Up * (player.Crouched ? 0.6f : 1.1f);
         Vector3 head = player.GlobalPosition + Vector3.Up * (player.Crouched ? 0.95f : 1.6f);
         distance = eye.DistanceTo(chest);
@@ -415,7 +420,7 @@ public partial class Guard
                 else if (_fireTimer <= 0f)
                 {
                     _fire = FireStep.Burst;
-                    _burstLeft = Type.Heavy ? T.GuardBurst + 2 : T.GuardBurst;
+                    _burstLeft = Mathf.Max(1, Mathf.RoundToInt(T.GuardBurst * Weapon.Rate));
                     _fireTimer = 0f;
                 }
                 break;
@@ -424,12 +429,11 @@ public partial class Guard
                 ShowLaser(true, aim, 1f);
                 if (_fireTimer <= 0f)
                 {
-                    FireAt(player, Accuracy(player));
+                    FireAt(player);
                     _burstLeft--;
-                    _fireTimer = T.GuardBurstInterval * (Type.Heavy ? 1.6f : 1f);
+                    _fireTimer = T.GuardBurstInterval / Weapon.Rate;
                     if (_burstLeft <= 0)
                     {
-                        _warned = true;
                         _fire = FireStep.Cooldown;
                         _fireTimer = T.GuardBurstCooldown * (0.8f + GD.Randf() * 0.5f);
                     }
@@ -442,17 +446,6 @@ public partial class Guard
                 if (_fireTimer <= 0f) _fire = FireStep.Idle;
                 break;
         }
-    }
-
-    float Accuracy(Player player)
-    {
-        float distance = GlobalPosition.DistanceTo(player.GlobalPosition);
-        float a = T.GuardAccuracy * Mathf.Clamp(1.25f - distance / 35f, 0.35f, 1.1f);
-        if (!_warned) a *= 0.35f;              // the opening burst is a warning
-        if (player.Sprinting) a *= 0.7f;
-        if (player.Crouched) a *= 0.85f;
-        if (Ship.Lights == LightMode.Blackout) a *= 0.7f;
-        return a;
     }
 
     Vector2I? FindCover(Vector3 playerLocal)

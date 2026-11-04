@@ -36,6 +36,8 @@ public partial class Player : CharacterBody3D
     public bool? TestCrouch;
     public bool? TestInteract;
     public Vector2? TestWalk;
+    /// <summary>For soak tests that only care about navigation.</summary>
+    public bool TestInvulnerable;
 
     const float MouseSensitivity = 0.0022f, Gravity = 12f, JumpSpeed = 4.8f;
     const float GroundAccel = 55f, AirAccel = 9f, CapsuleRadius = 0.35f;
@@ -476,15 +478,25 @@ public partial class Player : CharacterBody3D
 
     // ---- Taking damage ---------------------------------------------------------------------
 
-    /// <summary>An NPC hit. The no-instant-death rules decide how much actually lands.</summary>
-    public float TakeNpcHit(int attackerId, float raw, bool heavy, Vector3 from)
+    /// <summary>A hostile hit. Damage lands in full: it is never scaled or capped.</summary>
+    public float TakeHit(float damage, Vector3 from)
     {
-        float taken = Health.TakeNpcHit(attackerId, raw, heavy);
+        if (TestInvulnerable) return 0f;
+        float taken = Health.TakeDamage(damage);
         if (taken > 0f) Game.Hud?.DamageFrom(from, Camera.GlobalTransform);
         return taken;
     }
 
-    public float TakeEnvironmentDamage(float amount, bool canKill) => Health.TakeEnvironmentDamage(amount, canKill);
+    /// <summary>A hostile round cracked past close by: flinch, so a miss is felt as well as seen.</summary>
+    public void NearMiss(Vector3 point)
+    {
+        _flinch += 0.6f;
+        Shake(0.18f);
+        Game.Hud?.NearMiss(point, Camera.GlobalTransform);
+    }
+
+    /// <summary>Your own charge, or the ship blowing up. Not hostile fire, but also never scaled.</summary>
+    public float TakeEnvironmentDamage(float amount) => TestInvulnerable ? 0f : Health.TakeDamage(amount);
 
     public void Respawn()
     {

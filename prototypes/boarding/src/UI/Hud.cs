@@ -107,7 +107,14 @@ public partial class Hud : CanvasLayer
     public void DamageFrom(Vector3 from, Transform3D view)
     {
         Vector3 local = view.Basis.Inverse() * (from - view.Origin);
-        _crosshair.DamageFrom(Mathf.Atan2(local.X, -local.Z));
+        _crosshair.DamageFrom(Mathf.Atan2(local.X, -local.Z), hit: true);
+    }
+
+    /// <summary>A round cracked past: a yellow chevron toward it, no damage.</summary>
+    public void NearMiss(Vector3 point, Transform3D view)
+    {
+        Vector3 local = view.Basis.Inverse() * (point - view.Origin);
+        _crosshair.DamageFrom(Mathf.Atan2(local.X, -local.Z), hit: false);
     }
 
     // ---- Per frame -----------------------------------------------------------------------
@@ -140,15 +147,14 @@ public partial class Hud : CanvasLayer
         _countdown.Text = sd.Active ? $"SELF-DESTRUCT  {(int)sd.Remaining / 60:00}:{(int)sd.Remaining % 60:00}" : "";
         _countdown.Modulate = new Color(1, 1, 1, sd.Remaining < 20f ? 0.6f + 0.4f * Mathf.Sin(_time * 12f) : 1f);
 
-        bool lastStand = player.Health.InLastStand;
-        _warning.Text = player.Health.Dead ? "DOWN" : lastStand ? "VISOR WARNING: LAST STAND - BREAK AWAY" : player.Health.Low ? "HEALTH CRITICAL" : "";
+        _warning.Text = player.Health.Dead ? "DOWN" : player.Health.Low ? "VISOR WARNING: HEALTH CRITICAL - BREAK AWAY" : "";
 
         // Red vignette: hit flashes, plus a heartbeat while health is low.
         _damage = Mathf.MoveToward(_damage, 0f, dt * 1.8f);
         float heartbeat = 0f;
         if (player.Health.Low && !player.Health.Dead)
         {
-            float beat = (_time * (lastStand ? 2.2f : 1.3f)) % 1f;
+            float beat = (_time * 1.6f) % 1f;
             heartbeat = (beat < 0.12f ? 1f - beat / 0.12f : 0f) + (beat is > 0.22f and < 0.32f ? 0.6f : 0f);
             heartbeat = 0.25f + 0.45f * heartbeat;
         }
@@ -168,7 +174,7 @@ public partial class Hud : CanvasLayer
         var h = player.Health;
         Weapon w = player.Current;
         string ammo = w.Reloading ? "reloading..." : $"{w.Ammo} / {w.Reserve}";
-        string hp = $"HEALTH {Mathf.CeilToInt(h.Current)} / {h.Max:0}" + (h.InLastStand ? "   LAST STAND" : "");
+        string hp = $"HEALTH {Mathf.CeilToInt(h.Current)} / {h.Max:0}";
 
         AlarmLevel level = Game.Alarm.Level;
         string alarm = Game.Ship.Hostile
@@ -205,6 +211,7 @@ public partial class Crosshair : Control
     float _hit, _kill;
     bool _head;
     float _damageAngle, _damageAge = 9f;
+    bool _damageHit;
 
     public void Hit(bool head, bool kill)
     {
@@ -213,10 +220,13 @@ public partial class Crosshair : Control
         if (kill) _kill = 0.55f;
     }
 
-    public void DamageFrom(float angle)
+    public void DamageFrom(float angle, bool hit)
     {
+        // A real hit always wins over a near miss shown at the same moment.
+        if (!hit && _damageHit && _damageAge < 0.4f) return;
         _damageAngle = angle;
         _damageAge = 0f;
+        _damageHit = hit;
     }
 
     public override void _Process(double delta)
@@ -249,12 +259,12 @@ public partial class Crosshair : Control
 
         if (_damageAge < 0.8f)
         {
-            // A red chevron on a ring, pointing toward whoever hit you.
+            // A chevron on a ring pointing at the shot: red for a hit, yellow for a near miss.
             var dir = new Vector2(Mathf.Sin(_damageAngle), -Mathf.Cos(_damageAngle));
             var side = new Vector2(-dir.Y, dir.X);
             Vector2 tip = c + dir * 120f;
-            var red = new Color(1f, 0.15f, 0.1f, 1f - _damageAge / 0.8f);
-            DrawColoredPolygon(new[] { tip, tip - dir * 22f + side * 26f, tip - dir * 22f - side * 26f }, red);
+            Color tint = _damageHit ? new Color(1f, 0.15f, 0.1f) : new Color(1f, 0.85f, 0.3f);
+            DrawColoredPolygon(new[] { tip, tip - dir * 22f + side * 26f, tip - dir * 22f - side * 26f }, new Color(tint, 1f - _damageAge / 0.8f));
         }
     }
 }

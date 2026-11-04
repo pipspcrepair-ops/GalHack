@@ -31,7 +31,8 @@ public partial class BoardingTest : Node
             await LoudBreach();
             await HijackChannel();
             await HijackStages();
-            DamageRules();
+            HostileFireRules();
+            await GuardFire();
             await TurretAndGunner();
             await ComponentSalvage();
             await Crouching();
@@ -156,7 +157,7 @@ public partial class BoardingTest : Node
         Check(Ship.Bulkheads.All(d => d.Locked), "and lockdown seals the bulkheads");
 
         float atHit = hijack.Progress;
-        Player.TakeNpcHit(999, 5f, false, Player.GlobalPosition + Vector3.Forward * 5f);
+        Player.TakeHit(5f, Player.GlobalPosition + Vector3.Forward * 5f);
         await Seconds(1f);
         Check(Mathf.Abs(hijack.Progress - atHit) < 0.02f, $"taking damage stalls it (still {hijack.Progress:F2} s a second later)");
         await Seconds(1f);
@@ -203,45 +204,140 @@ public partial class BoardingTest : Node
         for (int i = 0; i < 2000 && !done(); i++) _main.Hijack.Tick(0.05f, channelling: true);
     }
 
-    void DamageRules()
+    void HostileFireRules()
     {
-        Section("No instant death");
+        Section("Hostile fire: unscaled damage, warning shots, accuracy ramp");
         Tunables t = Tunables.Load();
+        HostileFire fire = HostileFire.Load();
+        var rng = new Random(11);
+
+        // Damage is never reduced, capped or floored.
         var health = new PlayerHealth(t);
-        float cap = t.PlayerHealth * t.NpcMaxHitFraction;
-        float worst = 0f;
+        bool exact = true;
         for (int i = 0; i < 300; i++)
         {
             health.DebugSet(t.PlayerHealth);
-            float raw = (float)GD.RandRange(1.0, 2000.0);
-            worst = Mathf.Max(worst, health.TakeNpcHit((int)(GD.Randi() % 6), raw, GD.Randf() < 0.5f));
+            float raw = 0.5f + (float)rng.NextDouble() * 99f;
+            exact &= Mathf.Abs(health.TakeDamage(raw) - raw) < 1e-3f && Mathf.Abs(health.Current - (t.PlayerHealth - raw)) < 1e-3f;
         }
-        Check(worst <= cap + 0.001f, $"300 NPC hits up to 2000 raw: the biggest took {worst:F1} (cap {cap:F0})");
+        Check(exact, "300 hits of 0.5 to 99.5 damage each land in full");
+        health.DebugSet(t.PlayerHealth);
+        health.TakeDamage(t.TurretDamage);
+        Check(health.Dead, $"one {t.TurretDamage:0}-damage capital shell kills a full-health player on foot");
 
-        var heavy = new PlayerHealth(t);
-        var taken = new List<float>();
-        for (int i = 0; i < 6; i++)
+        // The first N shots of every engagement are guaranteed misses that land close.
+        int n = fire.WarningShots;
+        bool allWarnings = true;
+        float nearest = float.MaxValue, farthest = 0f;
+        for (int e = 0; e < 500; e++)
         {
-            heavy.DebugSet(t.PlayerHealth);
-            taken.Add(heavy.TakeNpcHit(Turret.AttackerId, t.TurretDamage, heavy: true));
+            var ramp = new AimRamp(fire);
+            var target = new Vector3((float)rng.NextDouble() * 40f - 20f, 1f, (float)rng.NextDouble() * 40f - 20f);
+            Vector3 muzzle = target + new Vector3((float)rng.NextDouble() - 0.5f, (float)rng.NextDouble() * 0.6f, (float)rng.NextDouble() - 0.5f).Normalized() * (5f + (float)rng.NextDouble() * 80f);
+            for (int s = 0; s < n; s++)
+            {
+                ramp.Observe(0.3f, true);   // slow fire: the shot count, not the clock, is what holds the warnings
+                Vector3 aim = ramp.AimPoint(muzzle, target, 0.45f, 1.2f, rng, out bool warning);
+                ramp.Shot();
+                allWarnings &= warning;
+                float outside = DistanceToLine(target, muzzle, aim) - 0.45f;
+                nearest = Mathf.Min(nearest, outside);
+                farthest = Mathf.Max(farthest, outside);
+            }
         }
-        Check(taken[0] < taken[4] && taken[1] < taken[4] && taken[0] <= t.TurretDamage * t.HeavyWarningScale + 0.01f,
-            $"a heavy opens with weak warning hits, then ramps: {string.Join(", ", taken.Select(x => x.ToString("F1")))}");
-        Check(taken.Zip(taken.Skip(1)).All(p => p.Second >= p.First - 0.001f), "and never ramps back down mid-fight");
+        Check(allWarnings, $"in 500 engagements the first {n} shots are always warnings");
+        Check(nearest > 0.8f && farthest < fire.WarningMissMax + 0.01f,
+            $"their line of fire passes {nearest:F2} to {farthest:F2} m outside the target: a sure miss, close enough to see");
 
-        var low = new PlayerHealth(t);
-        low.DebugSet(30f);
-        low.TakeNpcHit(7, 20f, false);
-        Check(low.InLastStand && Mathf.IsEqualApprox(low.Current, 10f), $"dropping below 25% starts the last stand ({low.Current:F0} hp)");
-        float reduced = low.TakeNpcHit(7, 20f, false);
-        Check(Mathf.IsEqualApprox(reduced, 20f * t.LastStandDamageScale), $"last stand reduces damage: 20 -> {reduced:F1}");
-        low.TakeNpcHit(7, 35f, false);
-        low.TakeNpcHit(8, 35f, false);
-        Check(!low.Dead && low.Current >= 1f, $"and you can't be killed inside the grace window ({low.Current:F0} hp)");
-        for (int i = 0; i < (t.LastStandSeconds + 0.1f) * 60; i++) low.Tick(1f / 60f);
-        Check(!low.InLastStand, "the window is short");
-        low.TakeNpcHit(7, 35f, false);
-        Check(low.Dead, "after it, the fight is real again");
+        var fast = new AimRamp(fire);
+        int fastWarnings = 0;
+        for (int s = 0; s < 60; s++)
+        {
+            fast.Observe(1f / 60f, true);
+            if (fast.Warning) fastWarnings++;
+            fast.Shot();
+        }
+        int expected = Mathf.RoundToInt(fire.WarningSeconds * 60f);
+        Check(Math.Abs(fastWarnings - expected) <= 1,
+            $"a fast weapon's first {fire.WarningSeconds} s are all warnings too ({fastWarnings} of 60 rounds in 1 s)");
+
+        // After the warnings, spread shrinks to the baseline over ramp_seconds.
+        var r = new AimRamp(fire);
+        float dt = 1f / 60f, clock = 0f, nextShot = 0f, settledAt = -1f, warnEnd = -1f, atOneSecond = 0f;
+        for (int i = 0; i < 60 * 6; i++)
+        {
+            r.Observe(dt, true);
+            clock += dt;
+            if (clock >= nextShot) { r.Shot(); nextShot += 0.25f; }
+            if (warnEnd < 0f && !r.Warning) warnEnd = clock;
+            if (warnEnd >= 0f && atOneSecond == 0f && clock >= warnEnd + 1f) atOneSecond = r.Multiplier;
+            if (settledAt < 0f && Mathf.IsEqualApprox(r.Multiplier, 1f)) settledAt = clock;
+        }
+        float rampTook = settledAt - warnEnd;
+        Check(warnEnd > 0f && Mathf.Abs(rampTook - fire.RampSeconds) < 0.05f,
+            $"accuracy reaches baseline {rampTook:F2} s after the warnings end (data: {fire.RampSeconds} s)");
+        Check(atOneSecond > 1.05f && atOneSecond < fire.RampStart - 0.05f, $"halfway through, the cone is still {atOneSecond:F2}x baseline");
+
+        float baseline = fire.BaselineSpread(ShooterClass.Infantry, TargetClass.OnFoot, fire.Weapon("rifle"));
+        float widest = 0f;
+        var origin = Vector3.Zero;
+        var aimAt = new Vector3(0, 0, -20f);
+        for (int i = 0; i < 2000; i++)
+        {
+            Vector3 p = r.AimPoint(origin, aimAt, 0.45f, baseline, rng, out _);
+            widest = Mathf.Max(widest, Mathf.RadToDeg((p - origin).AngleTo(aimAt - origin)) * 2f);
+        }
+        Check(widest <= baseline + 0.01f && widest > baseline * 0.8f, $"settled rifle shots stay inside the {baseline:F1} deg baseline cone (widest {widest:F2})");
+
+        Check(Mathf.IsEqualApprox(fire.BaselineSpread(ShooterClass.Capital, TargetClass.OnFoot, fire.Weapon("capital_cannon")), fire.Ratings["very_poor"])
+              && Mathf.IsEqualApprox(fire.BaselineSpread(ShooterClass.Capital, TargetClass.Capital, fire.Weapon("capital_cannon")), fire.Ratings["very_good"]),
+            "capital guns are very poor against infantry and very good against capitals (from the table)");
+        Check(fire.Weapon("minigun").Spread > 1f && fire.Weapon("minigun").Rate > 1f && fire.Weapon("rail").Spread < 1f
+              && fire.Weapon("rocket").Tracking > 0f && fire.Weapon("capital_cannon").Speed < fire.Weapon("small_craft_gun").Speed,
+            "weapon types modify it: minigun sprays, rail is precise, rockets track, capital shells are slowest");
+
+        // Breaking line of sight resets the ramp; a flicker shorter than the reset time doesn't.
+        r.Observe(fire.LosResetSeconds * 0.5f, false);
+        r.Observe(dt, true);
+        Check(!r.Warning && Mathf.IsEqualApprox(r.Multiplier, 1f), "a brief flicker out of sight keeps the aim");
+        r.Observe(fire.LosResetSeconds + 0.05f, false);
+        Check(!r.Engaged && r.Shots == 0, "breaking line of sight ends the engagement");
+        r.Observe(dt, true);
+        Check(r.Warning && Mathf.IsEqualApprox(r.Multiplier, fire.RampStart), "and the next one opens with warning shots again");
+    }
+
+    static float DistanceToLine(Vector3 point, Vector3 a, Vector3 b)
+    {
+        Vector3 d = (b - a).Normalized();
+        Vector3 v = point - a;
+        return (v - d * v.Dot(d)).Length();
+    }
+
+    async Task GuardFire()
+    {
+        Section("Guards shooting at the player");
+        await Fresh(frozen: false);
+        var shots = new List<Projectile>();
+        _main.HostileShotFired += p => shots.Add(p);
+        var damage = new List<float>();
+        Player.Health.Damaged += d => damage.Add(d);
+
+        // Walk into the barracks in full view.
+        Player.DebugPlace(Ship.ToGlobal(Layout.CellCenter(new Vector2I(20, 7)) + Vector3.Up * 0.05f));
+        Player.LookAt2(Ship.ToGlobal(Layout.CellCenter(new Vector2I(25, 7)) + Vector3.Up * 1.5f));
+        for (int i = 0; i < 60 * 10 && damage.Count < 3; i++) await Ticks(1);
+        await Seconds(0.3f);
+
+        var byShooter = shots.GroupBy(p => p.Shooter).ToList();
+        bool warningsFirst = byShooter.All(g => g.Take(_main.Fire.WarningShots).All(p => p.Warning && !p.HitPlayer));
+        Check(shots.Count > 0 && warningsFirst,
+            $"every guard's first {_main.Fire.WarningShots} shots are warnings that miss ({shots.Count} shots from {byShooter.Count} guards)");
+        Check(shots.All(p => !p.Warning || !p.HitPlayer), "no warning shot ever hits");
+        Check(shots.Take(3).All(p => p.Velocity.Length() < 500f && p.Velocity.Length() > 300f),
+            $"rifle bolts travel at a visible {shots.FirstOrDefault()?.Velocity.Length():F0} m/s");
+        float[] raws = { _main.Tunables.GuardDamage, _main.Tunables.OfficerDamage, _main.Tunables.EnforcerDamage };
+        Check(damage.Count > 0 && damage.All(d => raws.Any(r => Mathf.Abs(r - d) < 1e-3f) || Player.Health.Dead),
+            $"once the ramp tightens, hits land at full damage: {string.Join(", ", damage.Select(d => d.ToString("0.#")))}");
     }
 
     async Task TurretAndGunner()
@@ -252,28 +348,32 @@ public partial class BoardingTest : Node
         Guard gunner = turret.Gunner;
         Check(gunner != null && gunner.Seated && turret.IsCrewed, "the gunner sits at his station and crews the turret");
 
+        var shells = new List<Projectile>();
+        _main.HostileShotFired += p => shells.Add(p);
         Player.DebugPlace(Ship.ToGlobal(new Vector3(-40f, 0.05f, -7f)));
         Player.LookAt2(turret.GlobalPosition);
-        var hits = new List<float>();
-        Player.Health.Damaged += d => hits.Add(d);
         bool telegraphed = false;
         int shotsAtTelegraph = -1;
-        for (int i = 0; i < 60 * 7 && hits.Count == 0; i++)
+        for (int i = 0; i < 60 * 7 && shells.Count < _main.Fire.WarningShots; i++)
         {
             await Ticks(1);
             if (turret.Telegraphing && shotsAtTelegraph < 0) { telegraphed = true; shotsAtTelegraph = turret.ShotsFired; }
         }
+        await Seconds(0.3f);   // let the shells arrive
         Check(telegraphed && shotsAtTelegraph == 0, "it telegraphs with its laser before the first shot");
-        Check(turret.ShotsFired > 0 && hits.Count > 0, $"it fires on the player outside ({turret.ShotsFired} shots, {hits.Count} hit)");
-        if (hits.Count > 0)
-            Check(hits[0] <= _main.Tunables.TurretDamage * _main.Tunables.HeavyWarningScale + 0.01f,
-                $"its first hit is a reduced warning hit ({hits[0]:F1} of {_main.Tunables.TurretDamage})");
+        Check(shells.Count >= _main.Fire.WarningShots && shells.All(s => s.Warning && !s.HitPlayer) && !Player.Health.Dead,
+            $"its opening {shells.Count} shells are warnings: the player is untouched");
+        Check(shells.All(s => s.ClosestToPlayer > 0.9f && s.ClosestToPlayer < 4f),
+            $"each one cracks past {shells.Min(s => s.ClosestToPlayer):F1} to {shells.Max(s => s.ClosestToPlayer):F1} m away");
+        Check(Mathf.IsEqualApprox(shells[0].Velocity.Length(), _main.Fire.Weapon("capital_cannon").Speed),
+            $"capital shells fly at {shells[0].Velocity.Length():F0} m/s: slow enough to see");
+        Check(Mathf.IsEqualApprox(shells[0].Damage, _main.Tunables.TurretDamage), $"and carry the full {shells[0].Damage:0} damage");
 
         gunner.TakeHit(9999f, gunner.GlobalPosition + Vector3.Up, Vector3.Forward, false);
         Check(gunner.Dead && !turret.IsCrewed && !turret.Hostile, "killing the gunner leaves the turret unmanned");
-        int shots = turret.ShotsFired;
+        int fired = turret.ShotsFired;
         await Seconds(3.5f);
-        Check(turret.ShotsFired == shots, "and it stays silent");
+        Check(turret.ShotsFired == fired, "and it stays silent");
     }
 
     async Task ComponentSalvage()

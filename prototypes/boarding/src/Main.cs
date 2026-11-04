@@ -21,6 +21,12 @@ public partial class Main : Node3D
     public Tunables Tunables { get; private set; }
     public ShipLayout Layout { get; private set; }
     public List<WeaponDef> WeaponDefs { get; private set; }
+    public HostileFire Fire { get; private set; }
+    /// <summary>Seeded from Godot's RNG so a GD.Seed in tests makes enemy aim repeatable.</summary>
+    public System.Random Rng { get; private set; }
+
+    /// <summary>Every hostile projectile, as it is launched (tests listen to this).</summary>
+    public event System.Action<Projectile> HostileShotFired;
 
     public AlarmSystem Alarm { get; private set; }
     public HijackSystem Hijack { get; private set; }
@@ -57,6 +63,8 @@ public partial class Main : Node3D
         Tunables = TunablesOverride ?? Tunables.Load();
         Layout = ShipLayout.Load();
         WeaponDefs = WeaponDef.LoadAll();
+        Fire = HostileFire.Load();
+        Rng = new System.Random((int)GD.Randi());
 
         Alarm = new AlarmSystem(Tunables);
         Hijack = new HijackSystem(Tunables);
@@ -256,6 +264,8 @@ public partial class Main : Node3D
         if (guard.Type.Role == GuardRole.Gunner) Hud.Banner("GUNNER DOWN - the turret falls silent");
     }
 
+    public void OnHostileShot(Projectile projectile) => HostileShotFired?.Invoke(projectile);
+
     /// <summary>Ship-local feet of everyone who can open doors (the player and living guards).</summary>
     public void CollectActorFeet(List<Vector3> into)
     {
@@ -277,7 +287,7 @@ public partial class Main : Node3D
 
         float distance = Ship.ToLocal(Player.GlobalPosition).Length();
         float radius = Tunables.SelfDestructBlastRadius;
-        if (distance < radius) Player.TakeEnvironmentDamage(Player.Health.Max * 1.6f * (1f - distance / radius), canKill: true);
+        if (distance < radius) Player.TakeEnvironmentDamage(Player.Health.Max * 1.6f * (1f - distance / radius));
         Player.Shake(1.5f);
         Hud.Banner("THE FRIGATE SELF-DESTRUCTED");
     }

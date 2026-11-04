@@ -1,4 +1,4 @@
-namespace Boarding;
+﻿namespace Boarding;
 
 /// <summary>
 /// Every number a designer might want to turn, loaded from data/tunables.txt. The defaults
@@ -57,15 +57,8 @@ public sealed class Tunables
     public float CrouchNoiseFactor = 0.5f;
     public float NoiseGunfire = 40f;
 
-    // No instant death
-    public float NpcMaxHitFraction = 0.35f;
-    public int HeavyWarningHits = 2;
-    public float HeavyWarningScale = 0.3f;
-    public int HeavyRampHits = 2;
-    public float AttackerMemorySeconds = 8f;
-    public float LastStandHealthFraction = 0.25f;
-    public float LastStandSeconds = 4f;
-    public float LastStandDamageScale = 0.35f;
+    // Health (damage is never scaled; this only drives the HUD warning)
+    public float LowHealthFraction = 0.25f;
 
     // Guards
     public float GuardHealth = 100f;
@@ -74,7 +67,7 @@ public sealed class Tunables
     public float OfficerDamage = 10f;
     public float GunnerHealth = 90f;
     public float EnforcerHealth = 260f;
-    public float EnforcerDamage = 30f;
+    public float EnforcerDamage = 12f;
     public float GuardWalkSpeed = 2f;
     public float GuardRunSpeed = 4.2f;
     public float GuardSightRange = 24f;
@@ -84,18 +77,21 @@ public sealed class Tunables
     public int GuardBurst = 3;
     public float GuardBurstInterval = 0.11f;
     public float GuardBurstCooldown = 1.4f;
-    public float GuardAccuracy = 0.55f;
     public float GuardStaggerDamage = 35f;
+    public string TrooperWeapon = "rifle";
+    public string OfficerWeapon = "rail";
+    public string GunnerWeapon = "rifle";
+    public string EnforcerWeapon = "minigun";
+    public string TurretWeapon = "capital_cannon";
 
     // Turret
     public float TurretRange = 85f;
     public float TurretTelegraph = 1.3f;
-    public float TurretDamage = 40f;
+    public float TurretDamage = 150f;
     public int TurretBurst = 3;
     public float TurretBurstInterval = 0.2f;
     public float TurretCooldown = 2.6f;
     public float TurretTurnSpeed = 1.6f;
-    public float TurretAccuracy = 0.7f;
 
     // Block hit points
     public float HpHull = 500f;

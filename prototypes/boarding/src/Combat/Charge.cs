@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using Godot;
 
 namespace Boarding;
@@ -67,9 +67,9 @@ public partial class Charge : Node3D
             if (d < 5f) guard.TakeHit(160f * (1f - d / 5f), guard.GlobalPosition + Vector3.Up, (guard.GlobalPosition - at).Normalized(), false);
         }
 
-        // Your own charge can hurt, but it isn't an NPC: capped low so it never kills outright.
+        // Standing next to your own charge hurts; step back and it doesn't.
         float pd = Game.Player.GlobalPosition.DistanceTo(at);
-        if (pd < 4.5f) Game.Player.TakeEnvironmentDamage(25f * (1f - pd / 4.5f), canKill: false);
+        if (pd < 4.5f) Game.Player.TakeEnvironmentDamage(40f * (1f - pd / 4.5f));
         Game.Player.Shake(Mathf.Clamp(1.4f - pd / 20f, 0.2f, 1.4f));
 
         Game.Noise.Emit(at, t.ChargeNoise, NoiseKind.Explosion, fromPlayer: true);
