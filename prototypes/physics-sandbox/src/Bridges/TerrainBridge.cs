@@ -72,10 +72,18 @@ public sealed class TerrainBridge : ITerrainEditor
 /// <summary>
 /// Keeps bodies out of the terrain, using terrain-digging's own stuck resolver and density
 /// field (the same zero surface the mesh is drawn from, never the collision mesh).
+///
+/// The terrain only has collision inside its world box, so anything that leaves it (thrown
+/// over the rim by a tornado, knocked off the edge) would fall forever. Off the edge or under
+/// the floor counts as stuck too, and the rescue brings the body back to open ground inside.
+/// Flown vessels may cross the edge in the air; only falling out of the bottom brings them back.
 /// </summary>
 public sealed class TerrainField : IStuckField
 {
     readonly ChunkStore _store;
+
+    /// <summary>Rescues land at least this far inside the world's edge, m.</summary>
+    const float EdgeMargin = 20f;
 
     public TerrainField(ChunkStore store) => _store = store;
 
@@ -85,25 +93,59 @@ public sealed class TerrainField : IStuckField
 
     static BodyShape Of(StuckShape s) => new(s.Height, s.Radius);
 
-    public bool IsInside(Body body, N.Vector3 feet, StuckShape shape) => StuckResolver.IsInsideTerrain(_store, feet, Of(shape));
+    static bool InColumn(N.Vector3 p) =>
+        p.X >= ChunkStore.WorldCells.Min.X && p.X < ChunkStore.WorldCells.Max.X && p.Z >= ChunkStore.WorldCells.Min.Z && p.Z < ChunkStore.WorldCells.Max.Z;
 
-    public bool Fits(Body body, N.Vector3 feet, StuckShape shape) => StuckResolver.Fits(_store, feet, Of(shape));
+    static bool BelowWorld(N.Vector3 p) => p.Y < ChunkStore.WorldCells.Min.Y;
 
-    public bool IsSolid(Body body, N.Vector3 point) =>
-        !ChunkStore.InWorld(Int3.Floor(point)) ? point.Y < ChunkStore.WorldCells.Min.Y : _store.SampleDensity(point) > StuckResolver.InsideThreshold;
+    static bool IsStructure(Body b) => b.Kind is BodyKind.Vessel or BodyKind.Wreck;
+
+    /// <summary>
+    /// A rigid box is stuck as soon as its centre is below the ground surface: from there the
+    /// engine cannot push it back out (the mesh is a thin shell), it sinks. Resting on the ground
+    /// its centre is half its size above it, so this never fires on a crate that is merely lying there.
+    /// </summary>
+    public const float FreeBodyDepth = 0f;
+
+    public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
+    {
+        // Off the world's edge only matters to something falling: a rider on a hull is carried.
+        if ((!InColumn(feet) && body.Platform == null) || BelowWorld(feet)) return true;
+        if (!InColumn(feet)) return false;
+        if (body.Motion == GalHack.Physics.Motion.Free)
+            return _store.SampleDensity(feet + N.Vector3.UnitY * shape.FeetBelowOrigin) > FreeBodyDepth;
+        return StuckResolver.IsInsideTerrain(_store, feet, Of(shape));
+    }
+
+    public bool Fits(Body body, N.Vector3 feet, StuckShape shape) => InColumn(feet) && StuckResolver.Fits(_store, feet, Of(shape));
+
+    public bool IsSolid(Body body, N.Vector3 point)
+    {
+        if (BelowWorld(point)) return true;
+        if (!InColumn(point)) return !IsStructure(body);
+        return _store.SampleDensity(point) > StuckResolver.InsideThreshold;
+    }
 
     public bool Supports(Body body, N.Vector3 feet) => _store.IsSolid(Int3.Floor(feet - N.Vector3.UnitY * 0.3f));
 
     public float TopAt(Body body, float x, float z)
     {
+        if (!InColumn(new N.Vector3(x, 0f, z))) return float.NegativeInfinity;
         int top = _store.TopSolid((int)MathF.Floor(x), (int)MathF.Floor(z));
         return top < ChunkStore.WorldCells.Min.Y ? float.NegativeInfinity : top + 1f;
     }
 
     public bool TryFindOpen(Body body, N.Vector3 feet, StuckShape shape, out N.Vector3 openFeet)
     {
+        // Off the edge or under the floor: come back inside, onto the ground in that direction.
+        if (!InColumn(feet) || BelowWorld(feet))
+        {
+            float x = Math.Clamp(feet.X, ChunkStore.WorldCells.Min.X + EdgeMargin, ChunkStore.WorldCells.Max.X - EdgeMargin);
+            float z = Math.Clamp(feet.Z, ChunkStore.WorldCells.Min.Z + EdgeMargin, ChunkStore.WorldCells.Max.Z - EdgeMargin);
+            feet = new N.Vector3(x, _store.TopSolid((int)MathF.Floor(x), (int)MathF.Floor(z)) + 1.1f, z);
+        }
         OpenSpace space = StuckResolver.FindOpenSpace(_store, feet, Of(shape));
         openFeet = space.Feet;
-        return !space.Fallback;
+        return true;
     }
 }

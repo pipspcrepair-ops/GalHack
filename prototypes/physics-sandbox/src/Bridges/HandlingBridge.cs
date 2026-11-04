@@ -57,11 +57,12 @@ public sealed class HandlingFlight : IFlightRules
         State.AngularVelocity = motion.LocalSpin.ToGodot();
 
         // The autopilot holds course, which is right for a ship flying on while its pilot walks
-        // about. Nearly stopped, though, holding "course" would let the wind blow a parked hover
-        // rover away at wind speed; so with nobody aboard and almost no speed it holds station
-        // instead, braking like a pilot who has let go of the stick.
+        // about. A parked vessel, though, or one nearly stopped, must not drift off: holding
+        // "course" would let the wind blow a parked rover away at wind speed, or a rammed ship sail
+        // off at the speed it was knocked to. With nobody at the controls it holds station instead,
+        // braking like a pilot who has let go of the stick.
         PilotInput input = Input;
-        if (!input.Seated && motion.Velocity.Length() < ParkingSpeed) input = PilotInput.LetGo;
+        if (!input.Seated && (motion.Parked || motion.Velocity.Length() < ParkingSpeed)) input = PilotInput.LetGo;
         FlightModel.Step(ref State, input, Stats, Conditions(zone), Tunables, dt);
         motion.Velocity = State.Velocity.ToNumerics();
         motion.Rotation = N.Quaternion.Normalize(State.Orientation.ToNumerics());

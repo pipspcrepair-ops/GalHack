@@ -179,11 +179,62 @@ public partial class SandboxWorld : Node3D
         return Terrain.DigCells(cells);
     }
 
+    /// <summary>Takes a ship out of the world entirely. Only tests do this: in play nothing disappears.</summary>
+    public void Remove(Ship ship)
+    {
+        if (Player?.Seated == ship) Player.StandUp();
+        if (Player?.Body.Frame == ship.Body) Player.Leave();
+        Physics.Unregister(ship.Body);
+        Physics.StuckFields.Remove(ship.Field);
+        Weather.Untrack(ship.Body);
+        Ships.Remove(ship);
+        ship.Node.QueueFree();
+    }
+
+    /// <summary>Takes a crate out of the world. Only tests do this.</summary>
+    public void Remove(Crate crate)
+    {
+        Physics.Unregister(crate.Body);
+        Weather.Untrack(crate.Body);
+        Crates.Remove(crate);
+        crate.Node.QueueFree();
+    }
+
+    /// <summary>Takes a creature out of the world. Only tests do this.</summary>
+    public void Remove(Creature creature)
+    {
+        Physics.Unregister(creature.Body);
+        Weather.Untrack(creature.Body);
+        Creatures.Remove(creature);
+        creature.Binding.Node.QueueFree();
+    }
+
+    readonly List<(PhysicsBody3D a, PhysicsBody3D b, long until)> _apart = new();
+
+    /// <summary>Two bodies ignore each other for a moment (a section just severed from its hull).</summary>
+    public void Separate(PhysicsBody3D a, PhysicsBody3D b, float seconds)
+    {
+        a.AddCollisionExceptionWith(b);
+        b.AddCollisionExceptionWith(a);
+        _apart.Add((a, b, Physics.Tick + (long)(seconds * Engine.PhysicsTicksPerSecond)));
+    }
+
     // ---- Every tick ---------------------------------------------------------------------
 
     public override void _PhysicsProcess(double delta)
     {
         Player?.AfterPhysics((float)delta);
         foreach (Ship ship in Ships) ship.Gear?.Refresh();
+        for (int i = _apart.Count - 1; i >= 0; i--)
+        {
+            var (a, b, until) = _apart[i];
+            if (Physics.Tick < until) continue;
+            if (IsInstanceValid(a) && IsInstanceValid(b))
+            {
+                a.RemoveCollisionExceptionWith(b);
+                b.RemoveCollisionExceptionWith(a);
+            }
+            _apart.RemoveAt(i);
+        }
     }
 }

@@ -101,7 +101,23 @@ public sealed class WeatherBridge : IForceProvider
             }
         }
 
-        public GVector3 Velocity => (_body.Frame != null ? _body.WorldVelocity : _body.Velocity).ToGodot();
+        /// <summary>
+        /// The velocity the air acts against. Riders on a hull: relative to the hull. Flown
+        /// vessels: none, unless a tornado has hold of them. Their handling model's top speed
+        /// already is their air resistance, so still air must not slow them (the four numbers stay
+        /// true); they feel the wind's own push, ½ρ·CdA·|w|·w, and a tornado's full grip.
+        /// </summary>
+        public GVector3 Velocity
+        {
+            get
+            {
+                if (_body.Frame != null) return _body.WorldVelocity.ToGodot();
+                if (_body.Kind == BodyKind.Vessel && _body.Motion == GalHack.Physics.Motion.Kinematic
+                    && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught)
+                    return GVector3.Zero;
+                return _body.Velocity.ToGodot();
+            }
+        }
 
         public void ApplyForce(GVector3 force)
         {

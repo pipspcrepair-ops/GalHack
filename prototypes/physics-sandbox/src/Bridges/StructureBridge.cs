@@ -97,6 +97,7 @@ public static class StructureBridge
         if (s.Chunks.TryGetValue(chunk, out Chunk data))
         {
             var solid = new bool[StructureCollision.ChunkSize * StructureCollision.ChunkSize * StructureCollision.ChunkSize];
+            var merged = new HashSet<Int3>();
             Int3 origin = Structure.ChunkOrigin(chunk);
             for (int i = 0; i < Chunk.Volume; i++)
             {
@@ -108,7 +109,26 @@ public static class StructureBridge
                 Mat3 rot = Orientations.Matrix(b.Rot);
                 if (t.IsArmor && !s.ShapeOf(b).IsCube)
                 {
-                    N.Vector3[] points = s.ShapeOf(b).HullPoints.Select(q => (p.ToVector3() + rot.Apply(q)) * cell).ToArray();
+                    // Sloped blocks: one convex hull per straight run of the same shape and turn,
+                    // along the axis the shape is a prism on (a roof edge of slopes is one hull,
+                    // not sixteen). Convex hulls cost far more than boxes to sweep.
+                    if (!merged.Add(p)) continue;
+                    ShapeDef shape = s.ShapeOf(b);
+                    Int3 last = p;
+                    if (ExtrusionAxis(shape) is int axis)
+                    {
+                        Int3 step = rot.Apply(Int3.Zero.With(axis, 1));
+                        if (step.X + step.Y + step.Z < 0) step = -step;
+                        for (Int3 q = p + step; Structure.ChunkOf(q) == chunk && s.TryGet(q, out Block n) && n.Type == b.Type
+                             && n.Shape == b.Shape && n.Rot == b.Rot && !merged.Contains(q); q += step)
+                        {
+                            merged.Add(q);
+                            last = q;
+                        }
+                    }
+                    N.Vector3[] points = shape.HullPoints.Select(q => (p.ToVector3() + rot.Apply(q)) * cell)
+                        .Concat(last == p ? Enumerable.Empty<N.Vector3>() : shape.HullPoints.Select(q => (last.ToVector3() + rot.Apply(q)) * cell))
+                        .ToArray();
                     result.Hulls.Add(new HullCollider(points));
                 }
                 else if (!t.IsArmor && t.Collide == Collide.Parts)
@@ -127,6 +147,34 @@ public static class StructureBridge
         }
         result.Hash = StructureCollision.Hash(result);
         return result;
+    }
+
+    static readonly Dictionary<ShapeDef, int?> Extrusions = new();
+
+    /// <summary>
+    /// The block-local axis a shape is a prism along (every point sits on one of the two cell
+    /// faces of that axis, with its twin on the other), or null. Runs along it stay convex.
+    /// </summary>
+    static int? ExtrusionAxis(ShapeDef shape)
+    {
+        lock (Extrusions)
+        {
+            if (Extrusions.TryGetValue(shape, out int? known)) return known;
+            int? found = null;
+            for (int axis = 0; axis < 3 && found == null; axis++)
+            {
+                bool prism = true;
+                foreach (N.Vector3 q in shape.HullPoints)
+                {
+                    float c = Geometry.Get(q, axis);
+                    N.Vector3 twin = Geometry.Set(q, axis, -c);
+                    prism &= MathF.Abs(MathF.Abs(c) - 0.5f) < 1e-4f && shape.HullPoints.Any(o => N.Vector3.DistanceSquared(o, twin) < 1e-8f);
+                }
+                if (prism) found = axis;
+            }
+            Extrusions[shape] = found;
+            return found;
+        }
     }
 
     /// <summary>

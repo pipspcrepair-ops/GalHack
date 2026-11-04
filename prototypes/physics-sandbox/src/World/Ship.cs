@@ -200,15 +200,52 @@ public sealed class Ship
             wrecks.Add(wreck);
             if (push > 0f)
             {
-                // The blast throws the section away from where it was cut, and sets it tumbling.
+                // The blast throws the section away from where it was cut, and up, so it tumbles.
                 N.Vector3 at = Body.ToParent(cellCentre * Structure.Grid.CellSize);
                 N.Vector3 away = MathX.SafeNormalize(wreck.Body.CenterOfMassPosition - at, N.Vector3.UnitY);
-                World.Physics.AddImpulseAt(wreck.Body, away * push * wreck.Body.Mass, at, ForceKind.Contact);
+                N.Vector3 throwDir = N.Vector3.Normalize(away + N.Vector3.UnitY * 0.8f);
+                World.Physics.AddImpulseAt(wreck.Body, throwDir * push * wreck.Body.Mass, at, ForceKind.Contact);
             }
         }
         ApplyEdits();
         return (report, wrecks);
     }
+
+    /// <summary>
+    /// A shot through particular blocks (a pylon, a pod's mounting): they are destroyed, and
+    /// every section that loses its path to the core breaks away as a wreck. The wrecks are
+    /// returned with the destroyed blocks, so tests can account for every kilogram.
+    /// </summary>
+    public (List<(Int3 pos, Block block)> destroyed, List<Ship> wrecks) ShootThrough(IEnumerable<Int3> cells, float push = 0f)
+    {
+        var report = new DamageReport();
+        foreach (Int3 p in cells) Damage.Hit(Structure, p, DamageType.Kinetic, 1e6f, report);
+        var wrecks = new List<Ship>();
+        foreach (Structure piece in Connectivity.SplitOff(Structure))
+        {
+            Ship wreck = Sever(piece);
+            wrecks.Add(wreck);
+            if (push > 0f)
+            {
+                N.Vector3 cut = N.Vector3.Zero;
+                foreach (var (p, _) in report.Destroyed) cut += StructureBridge.CellCenter(Structure, p);
+                // The blast throws the section away from the cut and up, from the cut itself, so
+                // it flips over as it goes.
+                N.Vector3 at = Body.ToParent(cut / System.Math.Max(1, report.Destroyed.Count));
+                N.Vector3 away = MathX.SafeNormalize(wreck.Body.CenterOfMassPosition - at, N.Vector3.UnitY);
+                N.Vector3 throwDir = N.Vector3.Normalize(away + N.Vector3.UnitY * 0.8f);
+                World.Physics.AddImpulseAt(wreck.Body, throwDir * push * wreck.Body.Mass, at, ForceKind.Contact);
+            }
+        }
+        ApplyEdits();
+        return (report.Destroyed, wrecks);
+    }
+
+    /// <summary>The cells that mount the port engine pod to the hull: shoot these and the pod comes off.</summary>
+    public static readonly Int3[] PortPodMount =
+    {
+        new(-4, 1, 6), new(-4, 2, 6), new(-4, 3, 6), new(-3, 1, 6), new(-3, 2, 6), new(-3, 3, 6),
+    };
 
     /// <summary>
     /// Makes a body for a section that has just been split off this structure (it has the same
@@ -227,7 +264,11 @@ public sealed class Ship
             Shape = StructureBridge.ShapeOf(piece),
         });
         piece.DirtyChunks.Clear();
-        return SpawnWreck(World, piece, wreckBody);
+        Ship wreck = SpawnWreck(World, piece, wreckBody);
+        // A moment ago the two were one rigid body, touching along every cut edge: let them part
+        // without the engine shoving them apart (or the hull "ramming" its own section).
+        if (Binding.Collider is PhysicsBody3D hull && wreck.Binding.Collider is PhysicsBody3D piece3d) World.Separate(hull, piece3d, 0.5f);
+        return wreck;
     }
 
     /// <summary>
