@@ -1,6 +1,9 @@
 # Who a place spawns, by faction. Every line is:   kind  shooter-class  weapon  name
 #
-# kind:          guard, turret, hover, boss (faction defenders), bloom (Hollow Bloom natives),
+# Sections are faction ids (meridian, exchange, vharn, kessari, reavers, freeholders, hollow),
+# plus precursor (ruin wardens) and fauna.
+#
+# kind:          guard, turret, hover, boss (faction defenders), hollow (Hollow Bloom creatures),
 #                fauna (wildlife that moves into empty places)
 # shooter-class: the combat system's class for this shooter. It starts with warning shots,
 #                ramps accuracy toward a class-versus-target baseline, and capital-class rounds
@@ -48,10 +51,10 @@ guard   infantry      glyph-bolt       Precursor Warden
 turret  capital       glyph-lance      Glyph Lance
 boss    capital       glyph-lance      Ancient Custodian
 
-[bloom]
-bloom   none          tendrils         Hollow Thrall
-bloom   none          maw              Tendril Maw
-bloom   infantry      spore-spitter    Bloom Husk
+[hollow]
+hollow  none          tendrils         Hollow Thrall
+hollow  none          maw              Tendril Maw
+hollow  infantry      spore-spitter    Bloom Husk
 boss    none          tendrils         Bloom Heart
 
 [fauna]

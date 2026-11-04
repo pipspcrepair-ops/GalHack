@@ -2,6 +2,9 @@
 # it's always the same building, and the dressing pass (state, loot, enemies, logs) varies
 # per spawn.
 #
+#   faction <id>          meridian, exchange, vharn, kessari, reavers, freeholders, hollow,
+#                         or none for ruins nobody living built
+#   roster <section>      rosters.txt section for its defenders (default: the faction id)
 #   kit <kit> [tag]       the faction kit (and module tag) the layout is built from
 #   deep <kit> [tag]      a second kit for steps written "deep:<kind>" (deeper levels)
 #   rarity                common, uncommon or rare (the rarity ladder)
@@ -225,7 +228,8 @@ family kessari_spire
 
 family precursor_vault
   name Precursor Vault
-  faction precursor
+  faction none
+  roster precursor
   kit precursor
   rarity rare
   biomes ash desert ice rock

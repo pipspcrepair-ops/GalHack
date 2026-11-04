@@ -65,6 +65,14 @@ public sealed class FamilyDef
     public float[] StateWeights = { 1f, 1f, 1f, 1f };
     public float Damage;                       // baseline wreckage, even when active (crash sites)
     public List<VariantDef> Variants = new();
+    string? _roster;
+
+    /// <summary>The rosters.txt section its defenders come from; the faction id unless set.</summary>
+    public string Roster
+    {
+        get => _roster ?? Faction.Id();
+        set => _roster = value;
+    }
 
     public bool Underground => Kits.ContainsKey("deep") || Variants.Any(v => v.Path.Any(s => s.Kind == ModuleKind.Descent));
     public override string ToString() => Name;
@@ -99,6 +107,7 @@ public static class FamilyParser
                     break;
                 case "name": F().Name = rest; break;
                 case "faction": F().Faction = Enum<Faction>(p[1], Error); break;
+                case "roster": F().Roster = p[1]; break;
                 case "kit": F().Kits["main"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;
                 case "deep": F().Kits["deep"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;
                 case "rarity": F().Rarity = Enum<Rarity>(p[1], Error); break;

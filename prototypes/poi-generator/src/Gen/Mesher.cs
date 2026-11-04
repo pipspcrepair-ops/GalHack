@@ -54,6 +54,8 @@ public sealed class MeshOptions
     public Rgb GroundColor = new(0xc0, 0x80, 0x50);
     public Rgb RockColor = new(0x7a, 0x55, 0x3a);
     public bool Collision = true;
+    /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
+    public bool Detail = true;
 }
 
 /// <summary>
@@ -183,6 +185,7 @@ public static class Mesher
         public void Block(Int3 p, Block b)
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
+            if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains) return;
             if (b.Type == BlockType.Cube) { Cube(p, b); return; }
             var chunk = Chunk(p);
             var boxes = Shapes.For(b, p, _g);

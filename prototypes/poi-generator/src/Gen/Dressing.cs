@@ -67,13 +67,12 @@ public static class Dressing
     {
         var layout = inst.Layout;
         var nav = inst.Nav();
-        string faction = inst.Family.Faction.ToString().ToLowerInvariant();
-        var roster = lib.Roster(faction);
+        var roster = lib.Roster(inst.Family.Roster);
         var guards = roster.Where(e => e.Kind == EnemyKind.Guard).ToList();
         var turrets = roster.Where(e => e.Kind == EnemyKind.Turret).ToList();
         var hovers = roster.Where(e => e.Kind == EnemyKind.Hover).ToList();
         var boss = roster.FirstOrDefault(e => e.Kind == EnemyKind.Boss);
-        var bloom = lib.Roster("bloom");
+        var bloom = lib.Roster(Faction.Hollow.Id());
         var fauna = lib.Roster("fauna");
 
         // Spawn spots: the authored slots that are still clear, then any floor on the path.
@@ -141,7 +140,7 @@ public static class Dressing
                 break;
 
             case PoiState.Infested:
-                var natives = bloom.Where(e => e.Kind == EnemyKind.Bloom).ToList();
+                var natives = bloom.Where(e => e.Kind == EnemyKind.Hollow).ToList();
                 for (int i = 0; i < count; i++)
                 {
                     if (i % 2 == 0 && guards.Count > 0)
@@ -153,7 +152,7 @@ public static class Dressing
                     {
                         var d = rng.Pick(natives);
                         var near = inst.Growths.Select(gc => gc + Int3.Up).Where(c => nav.Standable(c) && !used.Contains(c)).ToList();
-                        Spawn(d, EnemyKind.Bloom, d.Name, false, near.Count > 0 ? (rng.Pick(near), -1) : null);
+                        Spawn(d, EnemyKind.Hollow, d.Name, false, near.Count > 0 ? (rng.Pick(near), -1) : null);
                     }
                 }
                 var heart = bloom.FirstOrDefault(e => e.Kind == EnemyKind.Boss);
@@ -162,11 +161,11 @@ public static class Dressing
 
             case PoiState.Ruined:
                 for (int i = rng.Between(1, 4); i > 0; i--) { var d = rng.Pick(fauna); Spawn(d, EnemyKind.Fauna, d.Name, false); }
-                if (rng.Chance(0.3f)) { var d = rng.Pick(bloom.Where(e => e.Kind == EnemyKind.Bloom).ToList()); Spawn(d, EnemyKind.Bloom, d.Name, false); }
+                if (rng.Chance(0.3f)) { var d = rng.Pick(bloom.Where(e => e.Kind == EnemyKind.Hollow).ToList()); Spawn(d, EnemyKind.Hollow, d.Name, false); }
                 // Precursor guardians outlast everything; elsewhere something big lives in the rubble.
                 if (bossSpot != null)
                 {
-                    if (inst.Family.Faction == Faction.Precursor && boss != null) Spawn(boss, EnemyKind.Boss, boss.Name, true, bossSpot);
+                    if (inst.Family.Roster == "precursor" && boss != null) Spawn(boss, EnemyKind.Boss, boss.Name, true, bossSpot);
                     else { var d = rng.Pick(fauna); Spawn(d, EnemyKind.Fauna, "Alpha " + d.Name, false, bossSpot); }
                 }
                 break;
@@ -274,15 +273,14 @@ public static class Logs
 {
     public static (string Text, bool MidSentence) Write(PoiLibrary lib, PoiInstance inst, Rng rng)
     {
-        var faction = inst.Family.Faction;
-        string group = faction switch
+        // Lines come from the roster's section (a faction id, or "precursor" for the ruins);
+        // headers and names from who wrote them: humans, Vharn, Kessari or the Precursors.
+        string section = inst.Family.Roster;
+        string group = section switch
         {
-            Faction.Vharn => "vharn",
-            Faction.Kessari => "kessari",
-            Faction.Precursor => "precursor",
+            "vharn" or "kessari" or "precursor" => section,
             _ => "human",
         };
-        string section = faction.ToString().ToLowerInvariant();
         var names = Names(lib, group);
 
         string Fill(string line)

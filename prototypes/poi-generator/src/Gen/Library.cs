@@ -6,7 +6,11 @@ using System.Linq;
 
 namespace PoiGenerator.Gen;
 
-public enum EnemyKind : byte { Guard, Turret, Hover, Boss, Corrupted, Bloom, Fauna }
+/// <summary>
+/// Guard, Turret, Hover and Boss defend a place for its faction. Corrupted are defenders the
+/// Hollow Bloom has taken, Hollow are its own creatures, Fauna moved in after everyone left.
+/// </summary>
+public enum EnemyKind : byte { Guard, Turret, Hover, Boss, Corrupted, Hollow, Fauna }
 
 /// <summary>
 /// Who is firing, for the combat system: it ramps accuracy toward a class-versus-target
@@ -80,8 +84,7 @@ public sealed class PoiLibrary
                     if (Modules(f, k.Alias, k.Kind).Count == 0)
                         throw new FormatException($"family {f.Id} '{v.Name}': no {k} modules in its kits");
             }
-            string roster = f.Faction.ToString().ToLowerInvariant();
-            if (!Rosters.ContainsKey(roster)) throw new FormatException($"family {f.Id}: no roster [{roster}]");
+            if (!Rosters.ContainsKey(f.Roster)) throw new FormatException($"family {f.Id}: no roster [{f.Roster}]");
         }
     }
 

@@ -6,7 +6,29 @@ using System.Linq;
 
 namespace PoiGenerator.Gen;
 
-public enum Faction : byte { Vharn, Meridian, Freeholders, Reavers, Kessari, Bloom, Precursor }
+/// <summary>
+/// The design's faction ids, the same ones the encounters prototype uses. None is for places
+/// nobody living built, such as Precursor ruins.
+/// </summary>
+public enum Faction : byte { None, Meridian, Exchange, Vharn, Kessari, Reavers, Freeholders, Hollow }
+
+public static class Factions
+{
+    /// <summary>The id in data files and saves: meridian, exchange, vharn, kessari, reavers, freeholders, hollow.</summary>
+    public static string Id(this Faction f) => f.ToString().ToLowerInvariant();
+
+    public static string DisplayName(this Faction f) => f switch
+    {
+        Faction.Meridian => "Meridian Combine",
+        Faction.Exchange => "Ledger Exchange",
+        Faction.Vharn => "Vharn Dominion",
+        Faction.Kessari => "Kessari Clans",
+        Faction.Reavers => "Carrion Reavers",
+        Faction.Freeholders => "Freeholders",
+        Faction.Hollow => "Hollow Bloom",
+        _ => "No one living",
+    };
+}
 
 public enum ModuleKind : byte { Entrance, Corridor, Room, Hall, Vault, Tower, Descent }
 

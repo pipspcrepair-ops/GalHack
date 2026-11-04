@@ -47,9 +47,16 @@ public partial class PoiTest : Node
 
     void Data()
     {
-        var byFaction = _lib.Kits.Values.GroupBy(k => k.Faction).ToDictionary(g => g.Key, g => g.Sum(k => k.Modules.Count));
+        // Factions by their design ids; Precursor ruins (faction none) don't count as one.
+        var byFaction = _lib.Kits.Values.Where(k => k.Faction != Faction.None).GroupBy(k => k.Faction)
+            .ToDictionary(g => g.Key, g => g.Sum(k => k.Modules.Count));
         int rich = byFaction.Count(kv => kv.Value >= 6);
-        Check(rich >= 4, $"{rich} faction kits with 6+ modules ({string.Join(", ", byFaction.Select(kv => $"{kv.Key} {kv.Value}"))})");
+        Check(rich >= 4, $"{rich} faction kits with 6+ modules ({string.Join(", ", byFaction.Select(kv => $"{kv.Key.Id()} {kv.Value}"))}), " +
+                         $"plus Precursor ruins with {_lib.Kits.Values.Where(k => k.Faction == Faction.None).Sum(k => k.Modules.Count)}");
+        var known = new[] { "meridian", "exchange", "vharn", "kessari", "reavers", "freeholders", "hollow" };
+        Check(Enum.GetValues<Faction>().Where(f => f != Faction.None).Select(f => f.Id()).SequenceEqual(known)
+              && _lib.Families.All(f => f.Faction == Faction.None || known.Contains(f.Faction.Id())),
+            "factions use the design ids (meridian, exchange, vharn, kessari, reavers, freeholders, hollow)");
         Check(_lib.Families.Count >= 6 && _lib.Families.All(f => f.Variants.Count is >= 3 and <= 6),
             $"{_lib.Families.Count} families, each with 3 to 6 layouts ({_lib.Families.Sum(f => f.Variants.Count)} layouts)");
     }
@@ -145,7 +152,7 @@ public partial class PoiTest : Node
 
                 var inf = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Infested, 3);
                 int growths = inf.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Growth);
-                infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Bloom or EnemyKind.Corrupted);
+                infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
 
                 var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
                 minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
@@ -154,7 +161,7 @@ public partial class PoiTest : Node
         var active = PoiFactory.Generate(_lib, _lib.Families[0], 0, Rarity.Rare, PoiState.Active, 3);
         Check(active.Enemies.Count(e => e.Defender) > 0, $"active places are guarded ({active.Enemies.Count(e => e.Defender)} defenders in a rare {active.Family.Name})");
         Check(abandonedQuiet, "abandoned places have no active guards (only wildlife)");
-        Check(infestedBloom, "infested places have Bloom growths and Bloom or corrupted enemies");
+        Check(infestedBloom, "infested places have Hollow Bloom growths and Hollow or corrupted enemies");
         Check(ruinedOk, $"ruined places lose at least {RuinShare:P0} of their blocks (least {minRemoved:P0}) and keep the loot path open");
     }
 
