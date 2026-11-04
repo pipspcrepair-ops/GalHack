@@ -258,6 +258,11 @@ public partial class TestAgent : Node
                 World.TransferLocalPlayer(args["zone"].AsInt32());
                 return Ok();
 
+            case "place-outside":
+                player.DebugPlaceOutside(args["pos"].AsVector3());
+                player.DebugSetLook(args["yaw"].AsSingle(), 0f);
+                return Ok();
+
             case "look":
                 player.ThirdPerson = args["third"].AsBool();
                 player.DebugSetLook(args["yaw"].AsSingle(), args["pitch"].AsSingle());
@@ -595,10 +600,10 @@ public partial class TestAgent : Node
         shipA.StuntSpeed = 45f;
         shipA.StuntIntensity = 0.35f;
         World.RequestStunt(shipA, true);
-        World.LocalPlayer.DebugPlaceAboard(shipA, new Vector3(-1.9f, 0.05f, 1.2f), Vector3.Zero);
+        World.LocalPlayer.DebugPlaceAboard(shipA, new Vector3(-1.5f, 0.05f, 4.6f), Vector3.Zero);
         World.LocalPlayer.DebugSetLook(Mathf.Pi - 0.35f, 0f);
-        await Ask("Ana", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(1.6f, 0.05f, 2.4f), ["yaw"] = Mathf.Pi + 0.6f });
-        await Ask("Kit", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(0.4f, 0.05f, 8.2f), ["yaw"] = 0.05f });
+        await Ask("Ana", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(1.7f, 0.05f, 5.6f), ["yaw"] = Mathf.Pi + 0.6f });
+        await Ask("Kit", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(0.3f, 0.05f, 8.3f), ["yaw"] = 0.05f });
         await Ask("Kit", "look", new Dict { ["yaw"] = 0.05f, ["pitch"] = -0.12f, ["third"] = true });
         await Seconds(4.0);
         await Ask("Kit", "capture", new Dict { ["name"] = "aboard" });
@@ -606,8 +611,10 @@ public partial class TestAgent : Node
         // The moon zone: Kit and Ana go; the host and the desert ships stay behind.
         await Ask("Ana", "zone", new Dict { ["zone"] = Zones.Moon });
         await Ask("Kit", "zone", new Dict { ["zone"] = Zones.Moon });
-        await Seconds(2.0);
-        await Ask("Kit", "look", new Dict { ["yaw"] = -0.62f, ["pitch"] = 0.06f, ["third"] = true });
+        await Seconds(1.0);
+        await Ask("Ana", "place-outside", new Dict { ["pos"] = new Vector3(-6.3f, 0.05f, 25.4f), ["yaw"] = 2.25f });
+        await Ask("Kit", "place-outside", new Dict { ["pos"] = new Vector3(-12f, 0.05f, 30f), ["yaw"] = -0.55f });
+        await Ask("Kit", "look", new Dict { ["yaw"] = -0.55f, ["pitch"] = 0.08f, ["third"] = true });
         await Seconds(2.0);
         await Ask("Kit", "capture", new Dict { ["name"] = "moon" });
     }

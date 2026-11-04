@@ -86,11 +86,11 @@ public partial class ZoneWorld : SubViewport
             GroundBottomColor = new Color("0e1016"),
             SunAngleMax = 8f,
         };
-        AddEnvironment(skyMaterial, 0.45f, new Color("3a4a66"), 0.00005f);
+        AddEnvironment(skyMaterial, 0.45f, new Color("3a4a66"), 0.00005f, skyFog: false); // no air: a black sky
         AddSun(new Color("e8f0ff"), 1.6f, new Vector3(-22f, -60f, 0f));
 
         // The desert planet, the other zone, hangs huge in the black sky.
-        AddSkyBody(1400f, new Color("e07a3f"), new Vector3(-3800f, 2100f, -5200f));
+        AddSkyBody(900f, new Color("e07a3f"), new Vector3(1850f, 2400f, -6200f));
         AddGround(new Color("8d939c"));
 
         // Craters (low rims) and boulders, then a landing pad with beacons.
@@ -143,7 +143,7 @@ public partial class ZoneWorld : SubViewport
 
     // ---- Pieces -----------------------------------------------------------------------------
 
-    void AddEnvironment(ProceduralSkyMaterial sky, float ambient, Color fog, float fogDensity)
+    void AddEnvironment(ProceduralSkyMaterial sky, float ambient, Color fog, float fogDensity, bool skyFog = true)
     {
         var environment = new Godot.Environment
         {
@@ -155,6 +155,7 @@ public partial class ZoneWorld : SubViewport
             FogEnabled = true,
             FogLightColor = fog,
             FogDensity = fogDensity,
+            FogSkyAffect = skyFog ? 1f : 0f,
         };
         Root.AddChild(new WorldEnvironment { Environment = environment });
     }
