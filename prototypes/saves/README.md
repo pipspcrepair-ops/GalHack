@@ -128,7 +128,9 @@ Only players, their ships and their cargo cross between zones.
 .\tools\test.ps1 -Project prototypes/saves -Scene res://tests/SaveTest.tscn
 ```
 
-Runs everything headless (about 3 minutes on the dev machine; most of it is the 200 process kills) and exits 0 or 1. `-- --only=crash,soak` runs some groups: `crash`, `restore`, `kills`, `soak`, `corruption`, `cleanup`, `coremode`, `retention`, `migration`, `perf`, `zones`. A watchdog fails the run if anything hangs.
+Runs everything headless (about 3 minutes on the dev machine; most of it is the 200 process kills) and exits 0 or 1. `-- --only=crash,soak` runs some groups: `crash`, `restore`, `kills`, `soak`, `corruption`, `cleanup`, `coremode`, `retention`, `migration`, `perf`, `zones`.
+
+Nothing in this prototype can sit there for ever. A watchdog thread ends any run that goes past its limit with exit code 1, even if Godot's main thread is stuck: 25 minutes for the suite (`--watchdog-seconds=N` to change it), 2 minutes for the fixture writer, and a minute more if quitting itself stalls. An exception anywhere fails the run instead of being logged and ignored.
 
 | Group | What it checks |
 | --- | --- |
@@ -142,9 +144,18 @@ Runs everything headless (about 3 minutes on the dev machine; most of it is the 
 | retention | 40 simulated days of evening play: exactly the right 50 snapshots are kept; after a 90-day break the newest 3 survive |
 | migration | The checked-in v1 save loads, every item in every v1 container is in its v2 stacks, and it saves back as v2 |
 | perf | An incremental save of 100 dirty records out of 20,000, and a full load of 20,000 records |
-| zones | The cap, linger and save-before-unload; the load audit; a crossing (one record written, passengers untouched); a crossing crashed at each step; landing where you crossed; preload against the tunnel on a normal and a slow PC, with the longest frame; a hidden zone still simulating; and the player's hands (pick up, carry, drop, build, remove, switch mode) through the real look ray |
+| zones | The cap, linger and save-before-unload; the load audit; a zone whose load throws being dropped with a reason rather than left loading; a crossing (one record written, passengers untouched); a crossing crashed at each step; landing where you crossed; preload against the tunnel on a normal and a slow PC, with the longest frame; a hidden zone still simulating; and the player's hands (pick up, carry, drop, build, remove, switch mode) through the real look ray |
 
-`tests/Screenshot.tscn -- --view=base|tunnel|orbit|recovery --out=file.png --save-dir=DIR [--new]` renders a view to a PNG (windowed, not headless). For `recovery`, run the game first with `--chaos-after=2` on the same save folder.
+The helpers end on their own too:
+
+| Helper | Ends with |
+| --- | --- |
+| `tests/Screenshot.tscn -- --view=base\|tunnel\|orbit\|reentry\|recovery --out=file.png --save-dir=DIR [--new]` renders a view to a PNG (windowed, not headless) | 0 once the PNG is saved; 1 for an unknown view, a save that won't load, an exception, or a view that never gets there (a one-minute tick limit and a two-minute watchdog) |
+| The game with `--chaos-after=SECONDS`, for the `recovery` shot: it kills itself in the middle of a save (always before or at the commit point, so the kill always happens) | killed mid-save, as intended; 2 if it is still running 20 s later (say, the save didn't load) |
+| `tests/SaveTest.tscn -- --write-v1-fixture=PATH` writes a save in the old v1 format | 0 once written; 1 if PATH isn't empty. Without `=PATH` it targets the checked-in fixture, which it refuses to overwrite |
+| `tests/SaveWorker`, the kill test's child | killed by the test; it also stops by itself (code 3) after 60 s or as soon as the test that started it is gone |
+
+In the game, a zone whose load fails is dropped with the reason on the HUD, and a climb or re-entry tunnel waiting on it turns the ship back after 60 s instead of waiting for ever.
 
 ## Using the persistence core elsewhere
 

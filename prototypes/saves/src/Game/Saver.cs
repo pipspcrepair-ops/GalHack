@@ -155,16 +155,21 @@ public partial class Saver : Node
     /// <summary>
     /// The chaos key: marks every record dirty, starts a save, and kills the whole process from
     /// the save's own thread at a random write step. The next launch has to recover from it.
+    /// Returns what it did, or why it couldn't.
     /// </summary>
     public string ChaosKill(int seed)
     {
+        if (Table == null || !Store.IsOpen) return "CHAOS: there is no open save to interrupt";
         FinishPending(wait: true);
         foreach (SaveRecord r in new List<SaveRecord>(Table.All)) Table.MarkDirty(r.Id);
         int changed = Table.PendingChanges;
-        int points = 3 * changed + 4; // a torn and a written point per record, the flush, the manifest's two, the commit, a delete each
+        // A half-written and a written point per record, the flush, the manifest's two, then the
+        // commit point: steps that every save has, so the kill always happens. (Kills during the
+        // clean-up after the commit point are covered by the tests' 200 process kills.)
+        int points = 2 * changed + 4;
         var rng = new Random(seed);
         long crashAt = rng.Next(1, points);
-        string message = $"CHAOS: killing the game at write step {crashAt} of about {points} of a {changed}-record save";
+        string message = $"CHAOS: killing the game at write step {crashAt} of {points} of a {changed}-record save";
         GD.Print(message);
         var faults = new FaultInjector
         {

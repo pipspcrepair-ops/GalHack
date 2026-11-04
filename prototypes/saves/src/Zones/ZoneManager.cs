@@ -113,12 +113,19 @@ public partial class ZoneManager : Node
         return zone;
     }
 
-    /// <summary>Loads a zone completely before returning: for starting the game, and tests.</summary>
+    /// <summary>
+    /// Loads a zone completely before returning: for starting the game, and tests. Null if it
+    /// could not load; <see cref="Trouble"/> says why.
+    /// </summary>
     public Zone LoadNow(string zoneId)
     {
         Zone zone = Preload(zoneId);
         if (zone == null) return null;
-        while (!zone.IsReady) Advance(zone, double.PositiveInfinity);
+        while (!zone.IsReady)
+        {
+            Advance(zone, double.PositiveInfinity);
+            if (Get(zoneId) != zone) return null; // its load failed and it was dropped
+        }
         return zone;
     }
 
@@ -166,7 +173,19 @@ public partial class ZoneManager : Node
             if (!zone.Generating.IsCompleted)
             {
                 if (!double.IsPositiveInfinity(budgetMs)) return;
-                zone.Generating.Wait();
+                try { zone.Generating.Wait(); }
+                catch (AggregateException) { } // looked at just below
+            }
+            if (!zone.Generating.IsCompletedSuccessfully)
+            {
+                // A load that failed must say so and let go, never sit at "loading" for ever.
+                // It has no nodes or records of its own yet, so dropping it loses nothing.
+                Trouble = $"{zone.ZoneId} failed to load: {zone.Generating.Exception?.GetBaseException().Message ?? "cancelled"}";
+                GD.PrintErr(Trouble);
+                _live.Remove(zone.ZoneId);
+                RemoveChild(zone);
+                zone.QueueFree();
+                return;
             }
             zone.GeneratedAt = _clock;
             zone.BuildSteps = new Queue<Action>(Content.Build(zone, zone.Generating.Result));

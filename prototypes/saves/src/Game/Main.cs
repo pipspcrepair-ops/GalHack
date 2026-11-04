@@ -48,7 +48,7 @@ public partial class Main : Node
     bool _airborne;
     long _countsStamp = -1;
     string _countsText = "";
-    double _chaosTimer;
+    double _chaosTimer, _chaosDeadline;
 
     public override void _Ready()
     {
@@ -91,9 +91,9 @@ public partial class Main : Node
         Player.SeatRefusal = () => Hands.Carrying != null ? "set the crate down before you take the seat" : null;
 
         Zone zone = Zones.LoadNow(PlaceZoneOfPlayer());
-        if (!Player.IsInsideTree())
+        if (zone == null || !Player.IsInsideTree())
         {
-            ShowRefusal(null, $"the player's record did not come back in {zone.ZoneId}");
+            ShowRefusal(null, zone == null ? Zones.Trouble : $"the player's record did not come back in {zone.ZoneId}");
             return;
         }
         Activate(zone);
@@ -165,7 +165,16 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
-        if (_chaosTimer > 0 && (_chaosTimer -= delta) <= 0) Say(Saver.ChaosKill(System.Environment.TickCount), Hud.Bad, 30);
+        if (_chaosTimer > 0 && (_chaosTimer -= delta) <= 0)
+        {
+            Say(Saver.ChaosKill(System.Environment.TickCount), Hud.Bad, 30);
+            _chaosDeadline = 20; // --chaos-after is for scripts: it must end, killed or not
+        }
+        if (_chaosDeadline > 0 && (_chaosDeadline -= delta) <= 0)
+        {
+            GD.PrintErr("CHAOS: the game was supposed to be killed mid-save, but it is still running; quitting with code 2");
+            GetTree().Quit(2);
+        }
         if (Player == null || Zones.Active == null)
         {
             UpdateStatus();
@@ -221,6 +230,7 @@ public partial class Main : Node
                     ? $"{verb}\nwaiting for room to load {_transitTo}"
                     : $"{verb}\n{_transitTo} {(to.IsReady ? "ready" : $"loading {to.Progress * 100:F0}%")}  ·  {_transitTime:F1} s", Hud.Ink);
                 if (_transitTime >= Tunnel.MinimumSeconds && to != null && to.IsReady) Cross(to);
+                else if (_transitTime > TunnelGiveUpSeconds) GiveUpCrossing();
                 break;
 
             case Phase.FadeOut:
@@ -236,6 +246,20 @@ public partial class Main : Node
 
     /// <summary>On the surface, "nearing the edge" starts this far up.</summary>
     static float SurfaceWatch => Places.SurfacePreloadAltitude;
+
+    /// <summary>A tunnel that would last this long means the zone ahead can't load: turn back instead of waiting for ever.</summary>
+    const double TunnelGiveUpSeconds = 60;
+
+    /// <summary>Nothing crossed and nothing was written: the ship just backs away from the edge it came to.</summary>
+    void GiveUpCrossing()
+    {
+        Ship ship = Ship;
+        ship.Frozen = false;
+        ship.Velocity = _climbing ? Vector3.Down * 20f : Places.OrbitUp(ship.Position) * 20f;
+        _phase = Phase.FadeOut;
+        _lastCrossing = $"turned back: {_transitTo} could not load ({Zones.Trouble ?? "it never became ready"})";
+        GD.PrintErr(_lastCrossing);
+    }
 
     void StartPreload(string zoneId)
     {

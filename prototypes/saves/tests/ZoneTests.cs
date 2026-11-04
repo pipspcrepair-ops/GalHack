@@ -242,6 +242,32 @@ public partial class ZoneTests : Node
         _log.Check(drops > 0 && zone.AuditProblems.Count == drops,
             $"a zone whose records don't all come back names them (\"{zone.AuditProblems.FirstOrDefault()}\") and drops none of them");
         Dispose(broken);
+
+        // A zone whose background load throws is let go with a reason, in the background and in
+        // LoadNow alike: nothing may sit at "loading" for ever, and a tunnel waiting on it turns back.
+        var failing = MakeWorld(Dir("failing"), new FailingContent());
+        int records = failing.Table.Count;
+        Zone pending = failing.Zones.Preload(ZoneIds.Orbit);
+        for (int i = 0; i < 200 && failing.Zones.Get(ZoneIds.Orbit) != null; i++)
+        {
+            Thread.Sleep(5);
+            failing.Zones.Tick(0.016);
+        }
+        bool droppedInBackground = pending != null && failing.Zones.Get(ZoneIds.Orbit) == null;
+        Zone now = failing.Zones.LoadNow(ZoneIds.Orbit);
+        _log.Check(droppedInBackground && now == null && failing.Zones.Live.Count == 0 && failing.Table.Count == records
+                   && failing.Zones.Trouble?.Contains("failed to load") == true,
+            $"a zone whose load throws is dropped with a reason (\"{failing.Zones.Trouble}\"), never left loading, and no record is touched");
+        Dispose(failing);
+    }
+
+    /// <summary>Content whose generation always throws, like a corrupt terrain file would.</summary>
+    sealed class FailingContent : IZoneContent
+    {
+        public object Generate(string zoneId) => throw new System.IO.InvalidDataException("terrain data is damaged");
+        public IEnumerable<Action> Build(Zone zone, object generated) => Array.Empty<Action>();
+        public void Spawn(Zone zone, SaveRecord record) { }
+        public void Capture(Zone zone) { }
     }
 
     // ---- Crossing ------------------------------------------------------------------------------
@@ -384,7 +410,25 @@ public partial class ZoneTests : Node
     const double ClimbSeconds = 3.0; // from the preload altitude to the edge, at 60 m/s
     const double SlowPc = 6.0;
 
-    public override void _Process(double delta)
+    // Every frame-driven stage runs inside a try: an exception fails the test and finishes the run,
+    // instead of repeating every frame while the suite waits for a stage that will never end.
+    public override void _Process(double delta) => Guarded(() => FrameStep(delta));
+
+    public override void _PhysicsProcess(double delta) => Guarded(() => PhysicsStep(delta));
+
+    void Guarded(Action step)
+    {
+        if (_stage == Stage.Finished) return;
+        try { step(); }
+        catch (Exception e)
+        {
+            _log.Fail($"zone tests, stage {_stage}: unexpected {e.GetType().Name}: {e.Message}\n{e.StackTrace}");
+            _faller = null;
+            _stage = Stage.Done;
+        }
+    }
+
+    void FrameStep(double delta)
     {
         ulong now = Time.GetTicksUsec();
         if (_lastFrameUsec != 0 && _stage is Stage.Climbing or Stage.Tunnel)
@@ -418,6 +462,12 @@ public partial class ZoneTests : Node
 
             case Stage.Tunnel:
                 Zone orbit = _w.Zones.Get(ZoneIds.Orbit);
+                if (orbit == null || _now - _tunnelAt > 60)
+                {
+                    _log.Fail($"orbit never became ready ({_w.Zones.Trouble ?? "no reason given"})");
+                    _stage = Stage.NextRun;
+                    break;
+                }
                 if (_now - _tunnelAt < Tunnel.MinimumSeconds || !orbit.IsReady) break;
                 double tunnel = _now - _tunnelAt;
                 double readyAfter = orbit.ReadyAt - orbit.RequestedAt;
@@ -476,7 +526,7 @@ public partial class ZoneTests : Node
         _physicsTicks = 0;
     }
 
-    public override void _PhysicsProcess(double delta)
+    void PhysicsStep(double delta)
     {
         if (_stage == Stage.Hands)
         {

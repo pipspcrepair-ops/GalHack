@@ -313,6 +313,7 @@ public sealed class CoreTests
             info.ArgumentList.Add(WorkerDll);
             info.ArgumentList.Add(dir);
             info.ArgumentList.Add(kills.ToString());
+            info.ArgumentList.Add(Environment.ProcessId.ToString()); // the worker quits if this test dies first
             var startup = Stopwatch.StartNew();
             using Process process = Process.Start(info);
             var ready = process.StandardOutput.ReadLineAsync();
@@ -320,6 +321,7 @@ public sealed class CoreTests
             {
                 _log.Fail($"kill {kills}: the worker did not start ({(ready.IsCompleted ? ready.Result : "timed out")})");
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                process.WaitForExit(10_000);
                 failures++;
                 break;
             }
@@ -327,7 +329,12 @@ public sealed class CoreTests
 
             Thread.Sleep(rng.Next(1, 160)); // let it save for a random while, then pull the plug
             process.Kill(entireProcessTree: true);
-            process.WaitForExit();
+            if (!process.WaitForExit(10_000))
+            {
+                _log.Fail($"kill {kills}: the worker was still running 10 s after being killed");
+                failures++;
+                break;
+            }
             kills++;
 
             string backups = Path.Combine(dir, "backups");
@@ -698,12 +705,14 @@ public sealed class CoreTests
     }
 
     /// <summary>
-    /// Writes tests/fixtures/save-v1 as the previous build would have: containers kept one name per
-    /// item. Run once with --write-v1-fixture; the files are then checked in and never regenerated.
+    /// Writes a save as the previous build would have: containers kept one name per item. It made
+    /// tests/fixtures/save-v1 once; those files are checked in and never regenerated, so this
+    /// refuses to write over anything that is already there.
     /// </summary>
     public static void WriteV1Fixture(string dir)
     {
-        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        if (Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any())
+            throw new InvalidOperationException($"{dir} is not empty: a checked-in fixture is never regenerated. Pass --write-v1-fixture=PATH to write one somewhere else.");
         var clock = new SimulatedClock(new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc));
         var store = new SaveStore(dir, new RecordSchemas(), clock); // knows no types: writes exactly what it is given
         store.Create();

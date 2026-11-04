@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace Saves.Tests;
@@ -5,24 +6,37 @@ namespace Saves.Tests;
 /// <summary>
 /// Renders one view of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/saves res://tests/Screenshot.tscn -- --view=base --out=shot.png --save-dir=DIR [--new]
-/// Views: base (the surface base), tunnel (the climb), orbit (the planet below), recovery (the
-/// HUD after a chaos kill: run the game with --chaos-after=2 on the same --save-dir first).
+/// Views: base (the surface base), tunnel (the climb), orbit (the planet below), reentry (orbit
+/// and back down, printing where it landed), recovery (the HUD after a chaos kill: run the game
+/// with --chaos-after=2 on the same --save-dir first).
+/// Exits 0 once the PNG is saved, and 1 on anything else: an unknown view, a save that won't
+/// load, an exception, or a view that never gets where it is going (a tick limit and a watchdog).
 /// </summary>
 public partial class Screenshot : Node
 {
     const int SetupTick = 3;
+    const int MaxTicks = 60 * 60; // a minute of physics ticks: every view is done well inside that
+    static readonly string[] Views = { "base", "tunnel", "orbit", "reentry", "recovery" };
 
     Main _main;
+    Watchdog _watchdog;
     int _tick, _captureTick = 150;
     string _view = "base";
     string _out = "shot.png";
+    bool _done;
 
     public override void _Ready()
     {
+        _watchdog = new Watchdog(TimeSpan.FromSeconds(120), "Screenshot");
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             if (arg.StartsWith("--view=")) _view = arg["--view=".Length..];
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
+        }
+        if (Array.IndexOf(Views, _view) < 0)
+        {
+            Fail($"unknown view '{_view}' (try {string.Join(", ", Views)})");
+            return;
         }
         ProcessPhysicsPriority = 100;
         _main = new Main();
@@ -35,13 +49,27 @@ public partial class Screenshot : Node
 
     public override void _PhysicsProcess(double delta)
     {
-        _tick++;
-        if (_tick == SetupTick) Setup();
-        string zone = _main.Zones.Active?.ZoneId;
-        if (_view == "orbit" && _tick > SetupTick && zone != GalHack.Records.ZoneIds.Orbit) _captureTick = _tick + 150;
-        if (_view == "tunnel" && _tick == SetupTick + 50) _main.Hud.Tunnel.SetTime(1.3f);
-        if (_view == "reentry" && _tick > SetupTick) Reentry(zone);
-        if (_tick == _captureTick) Capture();
+        if (_done) return;
+        try
+        {
+            _tick++;
+            if (_tick > MaxTicks)
+            {
+                Fail($"the {_view} view never got to its picture in {MaxTicks} ticks");
+                return;
+            }
+            if (_tick == SetupTick) Setup();
+            if (_done) return;
+            string zone = _main.Zones.Active?.ZoneId;
+            if (_view == "orbit" && _tick > SetupTick && zone != GalHack.Records.ZoneIds.Orbit) _captureTick = _tick + 150;
+            if (_view == "tunnel" && _tick == SetupTick + 50) _main.Hud.Tunnel.SetTime(1.3f);
+            if (_view == "reentry" && _tick > SetupTick) Reentry(zone);
+            if (_tick == _captureTick) Capture();
+        }
+        catch (Exception e)
+        {
+            Fail($"{e.GetType().Name}: {e.Message}\n{e.StackTrace}");
+        }
     }
 
     void Reentry(string zone)
@@ -68,6 +96,11 @@ public partial class Screenshot : Node
     {
         Player player = _main.Player;
         Ship ship = _main.Ship;
+        if (player == null || ship == null || !player.IsInsideTree())
+        {
+            Fail("the save did not load, so there is nothing to show (see the load summary above)");
+            return;
+        }
         switch (_view)
         {
             case "base":
@@ -101,10 +134,32 @@ public partial class Screenshot : Node
 
     async void Capture()
     {
-        await ToSignal(RenderingServer.Singleton, "frame_post_draw");
-        Image image = GetViewport().GetTexture().GetImage();
-        Error result = image.SavePng(_out);
-        GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        _done = true;
+        try
+        {
+            await ToSignal(RenderingServer.Singleton, "frame_post_draw");
+            Image image = GetViewport().GetTexture().GetImage();
+            Error result = image.SavePng(_out);
+            if (result != Error.Ok) throw new InvalidOperationException($"could not save {_out}: {result}");
+            GD.Print($"saved {_out}");
+            Quit(0);
+        }
+        catch (Exception e)
+        {
+            Fail(e.Message);
+        }
+    }
+
+    void Fail(string why)
+    {
+        GD.PrintErr($"FAIL  screenshot: {why}");
+        Quit(1);
+    }
+
+    void Quit(int code)
+    {
+        _done = true;
+        _watchdog.Rearm(TimeSpan.FromSeconds(30), "quitting"); // if quitting itself stalls, end it the hard way
+        GetTree().Quit(code);
     }
 }
