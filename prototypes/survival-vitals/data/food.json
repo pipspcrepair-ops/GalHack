@@ -1,0 +1,46 @@
+// Food and replicators. There is no farming: replicators turn organics plus energy into food.
+//
+// Every replicator can feed the player straight to full. Feeding costs organics and energy in
+// proportion to how hungry the player is; higher tiers get more nourishment from each kilogram.
+// Tuned so one bush or a few kilograms of storage covers a meal in the condensed early game.
+{
+  // Aged food bottoms out at this share of its nourishment. It never becomes worthless and it
+  // never disappears.
+  "minFreshness": 0.25,
+
+  "foods": [
+    // Sealed emergency food from escape pods. Tier 0: no replicator makes it.
+    { "id": "ration-pack", "name": "Ration pack", "tier": 0, "nourishment": 120, "shelfLifeHours": null },
+    // Foraged, eaten raw.
+    { "id": "fruit", "name": "Fruit", "tier": 0, "nourishment": 35, "shelfLifeHours": 1.5 },
+    { "id": "ration-paste", "name": "Ration paste", "tier": 1, "nourishment": 80, "shelfLifeHours": 2 },
+    { "id": "meal", "name": "Meal", "tier": 2, "nourishment": 160, "shelfLifeHours": 72 },
+    { "id": "long-haul-ration", "name": "Long-haul ration", "tier": 3, "nourishment": 260, "shelfLifeHours": null }
+  ],
+
+  "replicators": [
+    {
+      // Portable, from the start. Runs on its own fuel and draws organics from the player's
+      // inventory. Can be set down anywhere except inside NPC faction territory.
+      "tier": 1, "id": "survival", "name": "Survival replicator", "portable": true,
+      "nourishmentPerOrganic": 50, "energyPerNourishment": 0.2,
+      "fuel": 1500, "buildOre": 6
+    },
+    {
+      // Small vessels, bases and capital vessels. Draws organics from the base's storage first.
+      "tier": 2, "id": "galley", "name": "Galley replicator", "portable": false,
+      "nourishmentPerOrganic": 80, "energyPerNourishment": 0.15
+    },
+    {
+      // Bases and capital vessels.
+      "tier": 3, "id": "advanced", "name": "Advanced replicator", "portable": false,
+      "nourishmentPerOrganic": 120, "energyPerNourishment": 0.1
+    }
+  ],
+
+  "forage": {
+    "fruitPerBush": 3,
+    "organicsPerBush": 3.0,           // kg of plant matter for the replicator
+    "regrowMinutes": 6
+  }
+}

@@ -1,0 +1,101 @@
+// Every survival number in the prototype. Rates are per second of game time unless the name
+// says otherwise. Fractions are shares of a vital's maximum.
+//
+// Tuned for a condensed early game: an experienced player should reach a small vessel in one
+// to two hours, eating perhaps twice on the way. Survival is light pressure, never a chore.
+{
+  "health": {
+    "max": 500,
+    "warnBelow": 0.3
+  },
+
+  "food": {
+    "max": 500,
+    "drainPerMinute": 6,              // walking or standing: full to empty in about 80 minutes
+    "pace": { "idle": 1.0, "walk": 1.0, "run": 1.5, "sprint": 3.0 },
+    "miningMultiplier": 2.0,          // stacks with the pace multiplier
+    "warnBelow": 0.15,
+    "starvingDamagePerSecond": 0.5    // at zero food; healing stops working too
+  },
+
+  "stamina": {
+    "max": 100,
+    "runDrainPerSecond": 1.5,
+    "sprintDrainPerSecond": 10,
+    "heatDrainPerDegree": 0.1,        // per degree of heat the suit can't handle
+    "restIdlePerSecond": 20,          // resting is fastest standing still
+    "restWalkPerSecond": 8,
+    "runAgainAt": 25,                 // after running dry you walk until stamina is back to this
+    "warnBelow": 0.2
+  },
+
+  "oxygen": {
+    "max": 500,                       // suit oxygen; boosters can add capacity
+    "drainPerSecond": 1.0,            // helmet on in no air at all; thin air drains less
+    "breathablePercent": 16,          // ambient oxygen at or above this is breathable
+    "refillPerSecond": 80,            // inside any breathable room or cockpit
+    "smallBottle": 75,
+    "largeBottle": 250,
+    "warnBelow": 0.2,
+    "holdBreathSeconds": 12,          // with nothing to breathe: the visor flashes, then suffocation starts
+    "suffocationDamagePerSecond": 6,
+    "autoHelmet": true,               // the helmet seals itself when the air turns unbreathable
+    "autoBottle": true                // a bottle plugs in by itself when suit oxygen runs low
+  },
+
+  "temperature": {
+    "normal": 37.0,
+    "comfortBand": { "low": 35.0, "high": 39.0 },     // body: outside this, health drains while the cause lasts
+    "warnBand": { "low": 36.0, "high": 38.0 },        // body: outside this, the visor flashes
+    "ambientComfort": { "low": 2.0, "high": 30.0 },   // felt air temperature that leaves the body alone
+    "bodyDegreesPerDegree": 0.25,     // how far the body settles per degree of felt cold or heat beyond that
+    "driftPerSecond": 0.1,            // so there are 10 s between the flash and any harm
+    "recoverPerSecond": 0.5,
+    "damagePerSecond": 1.0,
+    "damagePerDegree": 0.08           // extra per degree of felt cold or heat
+  },
+
+  "radiation": {
+    "warnAbove": 3.0,
+    "damageAbove": 5.0,
+    "risePerSecond": 0.4,             // so there are 5 s between the flash and any harm
+    "clearPerSecond": 1.5,
+    "damagePerSecond": 1.5,
+    "damagePerRad": 0.6               // extra per RAD above the damage line
+  },
+
+  "fall": {
+    "safeSpeed": 11.0,                // m/s: about a 6 m drop; faster than this and the visor flashes
+    "damagePerMetrePerSecond": 25.0
+  },
+
+  "lava": {
+    "damagePerSecond": 40,
+    "warnMetres": 12                  // the visor flashes this far from the edge of a lava pool
+  },
+
+  "healing": {
+    "medkitHealth": 150
+  },
+
+  "death": {
+    "drop": "inventory",              // everything | inventory | nothing (a difficulty setting)
+    "armorDurabilityLoss": 0.1,       // worn armor loses this share of its durability on death
+    "respawnFoodFloor": 0.5           // respawn with at least this much food: no death spiral
+  },
+
+  "movement": {
+    "walkSpeed": 4.5,
+    "runSpeed": 6.5,
+    "sprintSpeed": 9.0,
+    "crouchSpeed": 2.2,
+    "jumpSpeed": 4.8,
+    "gravity": 9.8,
+    "jetpackThrust": 17.0,
+    "miningSecondsPerOre": 1.5,
+    "miningReach": 3.5
+  },
+
+  // Tests check that every timed hazard flashes at least this long before it costs health.
+  "minimumWarningSeconds": 3.0
+}
