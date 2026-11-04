@@ -1,0 +1,213 @@
+{
+  "$schema": "./weather.schema.json",
+  "about": "Weather states, planet archetypes and hazard rules. Times are in game seconds (a monsoon's 'days' are compressed to minutes here). Each state's values are what the weather settles to; the model blends between them.",
+
+  "transitions": {
+    "naturalSeconds": 40,
+    "minSeconds": 6,
+    "maxRates": {
+      "CloudCover": 0.08,
+      "CloudDarkness": 0.08,
+      "Rain": 0.1,
+      "Snow": 0.1,
+      "Dust": 0.1,
+      "Embers": 0.1,
+      "GroundFog": 0.1,
+      "VisibilityLog": 0.18,
+      "WindX": 3.0,
+      "WindZ": 3.0,
+      "Gustiness": 0.1,
+      "Temperature": 3.0,
+      "Solar": 0.08,
+      "CreatureActivity": 0.1,
+      "Lightning": 1.0,
+      "Tornadoes": 0.1,
+      "Debris": 1.0,
+      "MoveSpeed": 0.05,
+      "Exposure": 0.15
+    }
+  },
+
+  "ground": {
+    "wetRate": 0.04,
+    "dryRate": 0.006,
+    "snowRate": 0.015,
+    "meltRate": 0.0008,
+    "dustRate": 0.02,
+    "dustClearRate": 0.004
+  },
+
+  "lightning": {
+    "buildUpSeconds": 4.0,
+    "radius": 70,
+    "strikeOffset": 180,
+    "damage": 45,
+    "damageRadius": 7,
+    "maxConcurrent": 2
+  },
+
+  "debris": {
+    "fallSeconds": 3.2,
+    "radius": 4,
+    "strikeOffset": 70,
+    "damage": 22,
+    "maxConcurrent": 3
+  },
+
+  "tornado": {
+    "formSeconds": 14,
+    "lifetime": 80,
+    "dissipateSeconds": 12,
+    "speed": 8,
+    "turnRate": 0.12,
+    "spawnDistance": 320,
+    "maxActive": 2,
+    "coreRadius": 7,
+    "captureRadius": 14,
+    "influenceRadius": 90,
+    "orbitRadius": 7,
+    "orbitSpeed": 17,
+    "inflowSpeed": 8,
+    "liftSpeed": 11,
+    "releaseHeight": 40,
+    "maxCarrySeconds": 8,
+    "flingSpeed": 11,
+    "releaseImmunity": 5,
+    "flingHealthFloor": 0.15,
+    "liftMassLimit": 1500,
+    "response": 3.5,
+    "visualHeight": 170
+  },
+
+  "states": [
+    {
+      "kind": "Clear", "name": "Clear skies",
+      "cloudCover": 0.12, "visibility": 12000, "windSpeed": 4, "gustiness": 0.3,
+      "temperature": 2, "solar": 1.0,
+      "creatureActivity": 1.0, "creatureHint": "Grazing in the open",
+      "durationMin": 120, "durationMax": 200, "forecastLead": 60
+    },
+    {
+      "kind": "Clouds", "name": "Clouds",
+      "cloudCover": 0.55, "cloudDarkness": 0.1, "visibility": 9000, "windSpeed": 6, "gustiness": 0.35,
+      "temperature": -1, "solar": 0.7,
+      "creatureActivity": 1.0, "creatureHint": "Active",
+      "durationMin": 120, "durationMax": 220, "forecastLead": 60
+    },
+    {
+      "kind": "Rain", "name": "Rain",
+      "cloudCover": 0.85, "cloudDarkness": 0.35, "rain": 0.5, "groundFog": 0.1, "visibility": 1800,
+      "windSpeed": 9, "gustiness": 0.4, "temperature": -4, "solar": 0.35,
+      "creatureActivity": 0.6, "creatureHint": "Sheltering under canopy",
+      "durationMin": 120, "durationMax": 220, "forecastLead": 90
+    },
+    {
+      "kind": "Monsoon", "name": "Monsoon", "severe": true,
+      "warning": "Monsoon: days of downpour, solar output low the whole time",
+      "cloudCover": 1.0, "cloudDarkness": 0.6, "rain": 1.0, "groundFog": 0.3, "visibility": 260,
+      "windSpeed": 12, "gustiness": 0.45, "temperature": -5, "solar": 0.12,
+      "creatureActivity": 0.4, "creatureHint": "Sheltering, waiting it out",
+      "durationMin": 360, "durationMax": 600, "forecastLead": 150, "warningLead": 120
+    },
+    {
+      "kind": "Fog", "name": "Fog",
+      "cloudCover": 0.4, "cloudDarkness": 0.05, "groundFog": 1.0, "visibility": 70,
+      "windSpeed": 1.5, "gustiness": 0.15, "temperature": -3, "solar": 0.45,
+      "creatureActivity": 1.2, "creatureHint": "Stalkers hunt in the murk",
+      "durationMin": 120, "durationMax": 200, "forecastLead": 90
+    },
+    {
+      "kind": "Snow", "name": "Snow",
+      "cloudCover": 0.85, "cloudDarkness": 0.2, "snow": 0.45, "groundFog": 0.15, "visibility": 900,
+      "windSpeed": 6, "gustiness": 0.35, "temperature": -8, "solar": 0.4,
+      "creatureActivity": 0.5, "creatureHint": "Burrowing",
+      "moveSpeed": 0.9, "exposure": 0.5, "exposureLabel": "cold",
+      "durationMin": 120, "durationMax": 220, "forecastLead": 90
+    },
+    {
+      "kind": "Blizzard", "name": "Blizzard", "severe": true,
+      "warning": "Blizzard: whiteout, fast cold drain, movement slowed",
+      "cloudCover": 1.0, "cloudDarkness": 0.35, "snow": 1.0, "groundFog": 0.4, "visibility": 35,
+      "windSpeed": 24, "gustiness": 0.55, "temperature": -22, "solar": 0.1,
+      "creatureActivity": 0.15, "creatureHint": "Dormant",
+      "moveSpeed": 0.65, "exposure": 1.6, "exposureLabel": "cold",
+      "durationMin": 150, "durationMax": 240, "forecastLead": 150, "warningLead": 120
+    },
+    {
+      "kind": "DustStorm", "name": "Dust storm", "severe": true,
+      "warning": "Dust storm: visibility near zero, strong wind, solar output cut",
+      "cloudCover": 0.3, "cloudDarkness": 0.2, "dust": 1.0, "visibility": 30,
+      "windSpeed": 26, "gustiness": 0.6, "temperature": 6, "solar": 0.08,
+      "creatureActivity": 0.3, "creatureHint": "Buried in the sand",
+      "moveSpeed": 0.85, "exposure": 0.4, "exposureLabel": "heat",
+      "durationMin": 120, "durationMax": 200, "forecastLead": 150, "warningLead": 120
+    },
+    {
+      "kind": "Thunderstorm", "name": "Lightning storm", "severe": true,
+      "warning": "Lightning storm: strikes hit high points and exposed ships. Get low",
+      "cloudCover": 1.0, "cloudDarkness": 0.85, "rain": 0.8, "groundFog": 0.1, "visibility": 700,
+      "windSpeed": 14, "gustiness": 0.7, "temperature": -6, "solar": 0.15,
+      "creatureActivity": 0.4, "creatureHint": "Fleeing the high ground",
+      "lightning": 9,
+      "durationMin": 150, "durationMax": 240, "forecastLead": 150, "warningLead": 120
+    },
+    {
+      "kind": "FireStorm", "name": "Fire storm", "severe": true,
+      "warning": "Fire storm: burning debris falling, fast heat drain",
+      "cloudCover": 0.9, "cloudDarkness": 0.7, "embers": 1.0, "dust": 0.25, "visibility": 220,
+      "windSpeed": 16, "gustiness": 0.6, "temperature": 38, "solar": 0.2,
+      "creatureActivity": 0.2, "creatureHint": "Fled underground",
+      "debris": 10, "exposure": 1.8, "exposureLabel": "heat",
+      "durationMin": 120, "durationMax": 200, "forecastLead": 150, "warningLead": 120
+    },
+    {
+      "kind": "Hurricane", "name": "Hurricane", "severe": true,
+      "warning": "Hurricane: sustained winds push players and vehicles. Crouch to brace",
+      "cloudCover": 1.0, "cloudDarkness": 0.6, "rain": 0.9, "groundFog": 0.2, "visibility": 250,
+      "windSpeed": 38, "gustiness": 0.45, "temperature": -5, "solar": 0.1,
+      "creatureActivity": 0.1, "creatureHint": "Hunkered down",
+      "moveSpeed": 0.8,
+      "durationMin": 180, "durationMax": 300, "forecastLead": 180, "warningLead": 150
+    },
+    {
+      "kind": "Tornado", "name": "Tornado storm", "severe": true,
+      "warning": "Tornado storm: funnels can lift you and your vehicles. Watch the cloud base",
+      "cloudCover": 1.0, "cloudDarkness": 0.75, "rain": 0.3, "visibility": 2500,
+      "windSpeed": 16, "gustiness": 0.7, "temperature": -3, "solar": 0.2,
+      "creatureActivity": 0.35, "creatureHint": "Agitated, scattering",
+      "lightning": 3, "tornadoes": 1.2,
+      "durationMin": 150, "durationMax": 240, "forecastLead": 180, "warningLead": 150
+    }
+  ],
+
+  "archetypes": [
+    {
+      "id": "temperate", "name": "Temperate plains", "baseTemperature": 16,
+      "weights": { "Clear": 3, "Clouds": 4, "Rain": 3, "Monsoon": 1, "Fog": 1, "Thunderstorm": 2, "Hurricane": 1, "Tornado": 1.5 }
+    },
+    {
+      "id": "swamp", "name": "Swamp", "baseTemperature": 24,
+      "weights": { "Clouds": 2, "Rain": 3, "Monsoon": 2, "Fog": 4, "Thunderstorm": 1 }
+    },
+    {
+      "id": "ocean", "name": "Ocean world", "baseTemperature": 18,
+      "weights": { "Clear": 1, "Clouds": 3, "Rain": 3, "Monsoon": 2, "Fog": 2, "Hurricane": 2 }
+    },
+    {
+      "id": "ice", "name": "Ice world", "baseTemperature": -14,
+      "weights": { "Clear": 2, "Clouds": 3, "Fog": 2, "Snow": 4, "Blizzard": 2 }
+    },
+    {
+      "id": "arid", "name": "Arid world", "baseTemperature": 32,
+      "weights": { "Clear": 4, "Clouds": 1, "DustStorm": 3, "Tornado": 1 }
+    },
+    {
+      "id": "storm", "name": "Storm world", "baseTemperature": 14,
+      "weights": { "Clouds": 1, "Rain": 2, "Thunderstorm": 4, "Tornado": 2 }
+    },
+    {
+      "id": "lava", "name": "Lava world", "baseTemperature": 44,
+      "weights": { "Clear": 1, "Clouds": 2, "FireStorm": 3 }
+    }
+  ]
+}

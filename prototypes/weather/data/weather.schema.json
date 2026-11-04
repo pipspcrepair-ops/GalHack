@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GalHack weather data",
+  "description": "Weather states, planet archetypes and hazard rules, loaded by Weather.Model.WeatherData. Times are game seconds.",
+  "type": "object",
+  "required": ["transitions", "ground", "lightning", "debris", "tornado", "states", "archetypes"],
+  "$defs": {
+    "kind": {
+      "enum": ["Clear", "Clouds", "Rain", "Monsoon", "Fog", "Snow", "Blizzard", "DustStorm", "Thunderstorm", "FireStorm", "Hurricane", "Tornado"]
+    },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "positive": { "type": "number", "exclusiveMinimum": 0 },
+    "strike": {
+      "type": "object",
+      "properties": {
+        "buildUpSeconds": { "$ref": "#/$defs/positive", "description": "Lightning: how long the charge glows before it strikes." },
+        "fallSeconds": { "$ref": "#/$defs/positive", "description": "Debris: how long the warning ring shows before impact." },
+        "radius": { "type": "number", "minimum": 0, "description": "Lightning hits the highest point within this many metres of its aim." },
+        "strikeOffset": { "$ref": "#/$defs/positive", "description": "Strikes are aimed this far from the player at most." },
+        "damage": { "type": "number", "minimum": 0 },
+        "damageRadius": { "type": "number", "minimum": 0 },
+        "maxConcurrent": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "properties": {
+    "transitions": {
+      "type": "object",
+      "required": ["naturalSeconds", "minSeconds", "maxRates"],
+      "properties": {
+        "naturalSeconds": { "$ref": "#/$defs/positive" },
+        "minSeconds": { "$ref": "#/$defs/positive" },
+        "maxRates": {
+          "description": "Fastest change per second for every parameter; transitions stretch to respect them.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/positive" }
+        }
+      }
+    },
+    "ground": {
+      "type": "object",
+      "properties": {
+        "wetRate": { "type": "number" }, "dryRate": { "type": "number" },
+        "snowRate": { "type": "number" }, "meltRate": { "type": "number" },
+        "dustRate": { "type": "number" }, "dustClearRate": { "type": "number" }
+      }
+    },
+    "lightning": { "$ref": "#/$defs/strike" },
+    "debris": { "$ref": "#/$defs/strike" },
+    "tornado": {
+      "type": "object",
+      "description": "Path and lift profile. Radii in metres, speeds in m/s.",
+      "required": ["formSeconds", "lifetime", "captureRadius", "liftSpeed", "releaseHeight", "flingHealthFloor"],
+      "properties": {
+        "formSeconds": { "$ref": "#/$defs/positive", "description": "The funnel lowers from the cloud base for this long before touchdown." },
+        "flingHealthFloor": { "$ref": "#/$defs/unit", "description": "A fling and its landing never take a player below this share of max health." }
+      },
+      "additionalProperties": { "type": "number" }
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": { "$ref": "#/$defs/kind" },
+          "name": { "type": "string" },
+          "severe": { "type": "boolean" },
+          "warning": { "type": "string" },
+          "cloudCover": { "$ref": "#/$defs/unit" },
+          "cloudDarkness": { "$ref": "#/$defs/unit" },
+          "rain": { "$ref": "#/$defs/unit" },
+          "snow": { "$ref": "#/$defs/unit" },
+          "dust": { "$ref": "#/$defs/unit" },
+          "embers": { "$ref": "#/$defs/unit" },
+          "groundFog": { "$ref": "#/$defs/unit" },
+          "visibility": { "$ref": "#/$defs/positive", "description": "Metres." },
+          "windSpeed": { "type": "number", "minimum": 0 },
+          "gustiness": { "$ref": "#/$defs/unit" },
+          "temperature": { "type": "number", "description": "Offset from the archetype's base temperature, °C." },
+          "solar": { "$ref": "#/$defs/unit" },
+          "creatureActivity": { "type": "number", "minimum": 0 },
+          "creatureHint": { "type": "string" },
+          "lightning": { "type": "number", "minimum": 0, "description": "Strikes per minute." },
+          "tornadoes": { "type": "number", "minimum": 0, "description": "Tornadoes per minute." },
+          "debris": { "type": "number", "minimum": 0, "description": "Burning debris per minute." },
+          "moveSpeed": { "$ref": "#/$defs/unit" },
+          "exposure": { "type": "number", "minimum": 0, "description": "Extra suit drain, % per second." },
+          "exposureLabel": { "type": "string" },
+          "durationMin": { "$ref": "#/$defs/positive" },
+          "durationMax": { "$ref": "#/$defs/positive" },
+          "forecastLead": { "$ref": "#/$defs/positive" },
+          "warningLead": { "type": "number", "minimum": 0, "description": "Required (and at most forecastLead) for severe weather." }
+        }
+      }
+    },
+    "archetypes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "baseTemperature", "weights"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "baseTemperature": { "type": "number" },
+          "weights": { "type": "object", "propertyNames": { "$ref": "#/$defs/kind" }, "additionalProperties": { "$ref": "#/$defs/positive" } }
+        }
+      }
+    }
+  }
+}
