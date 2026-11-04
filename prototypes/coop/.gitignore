@@ -1,0 +1,4 @@
+# Valve's Steam API redistributable: fetched and verified by tools/steam-coop-test.ps1, never committed.
+steam_api64.dll
+steam_api.dll
+libsteam_api.so
