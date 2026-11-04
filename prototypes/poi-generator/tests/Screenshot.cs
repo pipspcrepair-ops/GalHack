@@ -27,6 +27,8 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
         }
         ProcessPhysicsPriority = 100;
+        // Debanding dithers every pixel, which PNG can't compress; screenshots don't need it.
+        GetViewport().UseDebanding = false;
         _main = new Main();
         AddChild(_main);
     }
@@ -66,7 +68,7 @@ public partial class Screenshot : Node
                 break;
             case "vault_ruined":
                 m.Inspect("precursor_vault", 0, Rarity.Rare, PoiState.Ruined, 3);
-                Orbit(35f, -9f, 0.75f, -24f, 14f);
+                Orbit(25f, -4f, 0.45f, 20f, 14f); // low, so the monoliths loom
                 break;
             case "mine_abandoned":
                 m.Inspect("abandoned_mine", 0, Rarity.Common, PoiState.Abandoned, 2);
