@@ -326,7 +326,9 @@ public sealed class LeggedRig : Rig
                 float reachDown = MathF.Asin(Math.Clamp((groundY - baseW.Y) / _neckLen, -0.97f, 0.97f));
                 target = Mathf.Lerp(target, MathF.Max(reachDown, -1.25f), Graze);
             }
-            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.7f * Lunging - 0.9f * Dead - 0.65f * Bracing;
+            // A charge drops the head to lead with the horns; a long neck has further to drop.
+            float brace = _neckRest > 0.5f ? 1.25f : 0.65f;
+            target = Mathf.Lerp(target, -0.15f, Crouch) + 0.55f * Rearing - 0.7f * Lunging - 0.9f * Dead - brace * Bracing;
             if (h == 0) _neckPitch = Geo.Smooth(_neckPitch, target, 4f, dt);
 
             Vector3 p = baseW;
@@ -344,7 +346,7 @@ public sealed class LeggedRig : Rig
                     p += dir * seg;
                 }
             }
-            float headPitch = Math.Clamp(_neckPitch * 0.35f, -0.9f, 0.4f) - Graze * 0.5f - Lunging * 0.2f + MathF.Sin(c.Age * 2.1f + h) * 0.03f;
+            float headPitch = Math.Clamp(_neckPitch * 0.35f, -0.9f, 0.4f) - Graze * 0.5f - Lunging * 0.2f - Bracing * 0.35f + MathF.Sin(c.Age * 2.1f + h) * 0.03f;
             Basis headB = yaw * new Basis(Vector3.Up, LookYaw + splay) * new Basis(Vector3.Right, headPitch) * new Basis(Vector3.Back, Twitch(c) * 0.3f);
             Pose[_heads[h]] = new Transform3D(headB, p);
         }

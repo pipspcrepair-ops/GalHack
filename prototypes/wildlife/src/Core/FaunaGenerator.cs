@@ -244,7 +244,8 @@ public sealed class FaunaGenerator
         Palette c = s.Colors;
         float a = Math.Clamp(alienness + rng.Range(-0.2f, 0.2f), 0f, 1f);
 
-        bool alienHue = rng.Chance(a);
+        // Off-palette hues are common on alien worlds and rare on familiar ones.
+        bool alienHue = rng.Chance(a * a);
         float[] familiar = p.FamiliarHues[rng.Int(0, p.FamiliarHues.Length - 1)];
         float hue = (alienHue ? rng.Range(0f, 360f) : rng.Range(familiar)) / 360f;
         float sat = Mathf.Lerp(rng.Range(p.FamiliarSaturation), rng.Range(p.AlienSaturation), a);
@@ -287,6 +288,8 @@ public sealed class FaunaGenerator
             // Off script: a herd of drifters, a territorial hopper, a scavenging giant.
             var any = new List<Behaviour>(Enum.GetValues<Behaviour>());
             any.Remove(Behaviour.Swarm);
+            // A pack of giants is a wipe, not a surprise, and packs hunt on the ground.
+            if (form.Plan == BodyPlan.Giant || form.Rig is not (RigKind.Legged or RigKind.Chain or RigKind.Hopper)) any.Remove(Behaviour.PackHunter);
             s.Behaviour = rng.Pick(any);
         }
         else

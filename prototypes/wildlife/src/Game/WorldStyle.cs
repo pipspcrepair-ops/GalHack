@@ -28,7 +28,7 @@ public sealed class WorldStyle
     {
         WorldKind.Alien => new WorldStyle
         {
-            Kind = kind, Label = "alien world", FaunaSeed = 20202, Alienness = 0.85f,
+            Kind = kind, Label = "alien world", FaunaSeed = 10032, Alienness = 0.85f,
             SkyTop = new Color("2c1a5c"), SkyHorizon = new Color("ff9e6b"), GroundHorizon = new Color("e05a7a"),
             NightTop = new Color("07051a"), NightHorizon = new Color("3a1a4a"), Fog = new Color("f2a07a"),
             Sun = new Color("ffd1a6"), Moon = new Color("6fe3d0"),
@@ -39,7 +39,7 @@ public sealed class WorldStyle
         },
         WorldKind.Bloom => new WorldStyle
         {
-            Kind = kind, Label = "Bloom-infested world", FaunaSeed = 20202, Alienness = 0.85f, Bloom = true,
+            Kind = kind, Label = "Bloom-infested world", FaunaSeed = 10032, Alienness = 0.85f, Bloom = true,
             SkyTop = new Color("1a0a1c"), SkyHorizon = new Color("b8466e"), GroundHorizon = new Color("5a1838"),
             NightTop = new Color("050208"), NightHorizon = new Color("2a0818"), Fog = new Color("8a3256"),
             Sun = new Color("ffb0c8"), Moon = new Color("ff4fa8"),
@@ -50,7 +50,7 @@ public sealed class WorldStyle
         },
         _ => new WorldStyle
         {
-            Kind = kind, Label = "temperate world", FaunaSeed = 10101, Alienness = 0.1f,
+            Kind = kind, Label = "temperate world", FaunaSeed = 10064, Alienness = 0.1f,
             SkyTop = new Color("3f78b5"), SkyHorizon = new Color("f3dcae"), GroundHorizon = new Color("c9a86a"),
             NightTop = new Color("060b1c"), NightHorizon = new Color("1c2a48"), Fog = new Color("dfd2b0"),
             Sun = new Color("fff0d0"), Moon = new Color("e8e2c8"),

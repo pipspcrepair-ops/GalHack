@@ -8,9 +8,16 @@ namespace Wildlife;
 /// <summary>
 /// Renders one staged view of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=herd --out=shot.png
-/// Views: herd (an alien herd on the plains), predator (a weird predator mid-stalk), bloom (a
-/// corrupted creature winding up to lunge), harvester (the hovercraft chewing through a grove),
-/// temperate (a temperate scene for contrast). --hud keeps the debug HUD.
+/// Views:
+/// - herd: a temperate herd grazing below the hills
+/// - pack: a pack closing in on the player from several sides
+/// - giant: a territorial giant rearing into its trample
+/// - bloom: a Bloom-corrupted creature winding up to lunge
+/// - predator: a predator mid-stalk
+/// - harvester: the hovercraft chewing through a grove
+/// - lineup: the bestiary of two or three planets, for scale
+/// - sheet: a contact sheet of one camera per species, for checking the generator by eye
+/// --hud keeps the debug HUD. No view shows anything about first sightings: there is nothing to show.
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -70,15 +77,63 @@ public partial class Screenshot : Node
             case "herd":
             case "temperate":
             {
-                World(_view == "herd" ? WorldKind.Alien : WorldKind.Temperate, _view == "herd" ? 0.33f : 0.42f);
+                World(_view == "herd" ? WorldKind.Temperate : WorldKind.Alien, _view == "herd" ? 0.36f : 0.42f);
                 p.Teleport(Ground(new Vector3(150f, 0f, 150f))); // out of the way: a calm herd
                 Species herd = m.Fauna.Species.First(s => s.Behaviour == Behaviour.Herd);
                 Creature[] members = m.Sim.Creatures.Where(c => c.Species == herd && c.Herd != null).OrderBy(c => c.Position.Length()).Take(8).ToArray();
                 Herd h = members[0].Herd;
-                Vector3 side = new Vector3(0.75f, 0f, 1f).Normalized();
-                float back = 3.5f + h.Spread * 0.6f + herd.Body.Size * 1.3f;
-                _aim = () => (Ground(h.Center + side * back) + Vector3.Up * (0.8f + herd.Body.Size * 0.25f), h.Center + Vector3.Up * herd.Body.Size * 0.5f);
+                // From the middle of the plain, looking out past the herd to the hills.
+                Vector3 side = Turn(-WildSim.Flat(h.Center).Normalized(), 0.35f);
+                float back = 4f + h.Spread * 0.7f + herd.Body.Size * 1.4f;
+                _aim = () => (Ground(h.Center + side * back) + Vector3.Up * (1.0f + herd.Body.Size * 0.3f), h.Center + Vector3.Up * herd.Body.Size * 0.9f);
                 _captureTick = 300;
+                break;
+            }
+            case "pack":
+            {
+                World(WorldKind.Temperate, 0.41f);
+                Species s = m.Fauna.Species.First(x => x.Behaviour == Behaviour.PackHunter);
+                Vector3 stand = Ground(new Vector3(70f, 0f, -95f));
+                p.Teleport(stand);
+                p.Health.Max = p.Health.Current = 1e9f; // the staging must not end in a respawn
+                Figure(stand);
+                // Clear the area of other wildlife so the pack has the stage.
+                foreach (Creature other in m.Sim.Creatures) if (WildSim.Flat(other.Position - stand).Length() < 60f) m.Sim.Remove(other);
+                Vector3 from = stand + Turn(-SunFlat(), 0.9f) * 26f;
+                List<Creature> pack = m.Sim.SpawnGroup(s, m.Sim.FreeSpot(from, new Rng(3)), 5);
+                Pack pk = pack[0].Pack;
+                // Over the player's shoulder, from behind and above, with the feinter ahead.
+                _each = () =>
+                {
+                    if (pk.Phase == PackPhase.Engage && pk.PhaseTime > 0.5f && _captureTick > _tick + 2) _captureTick = _tick + 1;
+                };
+                _aim = () =>
+                {
+                    Vector3 front = pk.Feinter != null ? WildSim.Flat(pk.Feinter.Position - stand) : WildSim.Flat(pk.Center - stand);
+                    front = front.LengthSquared() > 0.01f ? front.Normalized() : Vector3.Forward;
+                    return (stand - front * 8.5f + Turn(front, 1.57f) * 2.5f + Vector3.Up * 6.5f, stand + front * 1f);
+                };
+                _captureTick = 60 * 40;
+                break;
+            }
+            case "giant":
+            {
+                World(WorldKind.Temperate, 0.6f);
+                Species s = m.Fauna.Species.Where(x => x.Plan == BodyPlan.Giant && x.Stats.Damage > 0f).OrderByDescending(x => x.Body.Size).First();
+                Vector3 toward = Turn(SunFlat(), -0.4f);
+                Vector3 stand = Ground(new Vector3(-110f, 0f, 60f));
+                p.Teleport(stand);
+                p.Health.Max = p.Health.Current = 1e9f;
+                Figure(stand);
+                foreach (Creature other in m.Sim.Creatures) if (WildSim.Flat(other.Position - stand).Length() < 50f) m.Sim.Remove(other);
+                Creature c = m.Sim.Spawn(s, stand + toward * (s.Stats.AttackRange * 0.85f + 2f));
+                c.Yaw = MathF.Atan2(toward.X, toward.Z);
+                int windupAt = _tick + 30;
+                _each = () => { if (_tick == windupAt) Attacks.Start(m.Sim, c, p.Target); };
+                Vector3 side = Turn(toward, 1.57f);
+                // Side-on, so a head lowered for the charge isn't foreshortened into a pole.
+                _aim = () => (stand + side * (s.Body.Size * 1.5f) - toward * (s.Body.Size * 0.3f) + Vector3.Up * 2.4f, c.Rig.BoundsCenter * 0.6f + stand * 0.4f + Vector3.Up * 0.8f);
+                _captureTick = windupAt + (int)(s.TelegraphWindup(m.Data.Combat) * 0.75f * 60f);
                 break;
             }
             case "predator":
@@ -101,16 +156,20 @@ public partial class Screenshot : Node
             }
             case "bloom":
             {
-                World(WorldKind.Bloom, 0.7f);
-                Species s = m.Fauna.Species.Where(x => x.Rig is RigKind.Legged or RigKind.Chain && x.Plan != BodyPlan.Giant)
-                    .OrderByDescending(x => x.Weirdness).First();
-                Vector3 toward = Turn(SunFlat(), -0.6f);
-                Vector3 eye = Ground(new Vector3(70f, 0f, 70f)) + Vector3.Up * (0.7f + s.Body.Size * 0.3f);
-                p.Teleport(Ground(eye));
-                Creature c = m.Sim.Spawn(s, eye + toward * (3.2f + s.Body.Size * 1.3f));
+                World(WorldKind.Bloom, 0.66f);
+                // A corrupted hunter, rearing into its first, telegraphed lunge: seen three-quarters on.
+                Species s = m.Fauna.Species.Where(x => x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant && x.Part("head") != "none")
+                    .OrderByDescending(x => x.IsHunter ? 1 : 0).ThenByDescending(x => x.Weirdness).First();
+                Vector3 toward = Turn(SunFlat(), -0.6f), side = Turn(toward, 1.57f);
+                Vector3 stand = Ground(new Vector3(70f, 0f, 70f));
+                p.Teleport(stand);
+                p.Health.Max = p.Health.Current = 1e9f;
+                foreach (Creature other in m.Sim.Creatures) if (WildSim.Flat(other.Position - stand).Length() < 30f) m.Sim.Remove(other);
+                Creature c = m.Sim.Spawn(s, stand + toward * (s.Stats.AttackRange * 0.9f));
                 c.Yaw = MathF.Atan2(toward.X, toward.Z);
                 int windupAt = _tick + 40;
                 _each = () => { if (_tick == windupAt) Attacks.Start(m.Sim, c, p.Target); };
+                Vector3 eye = stand + side * (1.6f + s.Body.Size * 0.9f) - toward * 0.8f + Vector3.Up * (0.6f + s.Body.Size * 0.35f);
                 _aim = () => (eye, c.Rig.BoundsCenter + Vector3.Up * 0.1f);
                 _captureTick = windupAt + (int)(s.TelegraphWindup(m.Data.Combat) * 0.6f * 60f);
                 break;
@@ -120,6 +179,9 @@ public partial class Screenshot : Node
                 break;
             case "sheet":
                 Sheet();
+                break;
+            case "survey":
+                Survey();
                 break;
             case "harvester":
             {
@@ -149,11 +211,12 @@ public partial class Screenshot : Node
     }
 
     /// <summary>
-    /// The bestiary: every species of two or three planets on clear ground, one column per
-    /// planet, smallest at the front and biggest at the back, with a 1.8 m figure at the front
-    /// of each column for scale. Creatures are frozen in place (idling, not wandering) and
-    /// turned three-quarters to the camera. --worlds=temperate,alien,bloom picks the columns
-    /// (left to right); "seed123:0.6" or "seed123:0.6:bloom" shows any planet.
+    /// The bestiary: creatures of two or three planets side by side on clear ground for scale,
+    /// one row per planet (front to back), smallest on the left, each row starting with a
+    /// 1.8 m figure. Up to six per planet, one of each body form, so every row shows range.
+    /// Creatures are frozen in place (idling, not wandering) and turned three-quarters to the
+    /// camera. --worlds=temperate,alien,bloom picks the rows; "seed123:0.6" or
+    /// "seed123:0.6:bloom" shows any planet.
     /// </summary>
     void Lineup()
     {
@@ -171,61 +234,58 @@ public partial class Screenshot : Node
 
         // Lay out in a frame that looks along the sunlight, so the sun is behind the camera.
         Vector3 fwd = Turn(SunFlat(), 0.35f), right = fwd.Cross(Vector3.Up).Normalized();
-        Vector3 origin = new(0f, 0f, 0f);
-        Vector3 At(float x, float depth) => origin + right * x + fwd * depth;
+        Vector3 At(float x, float depth) => right * x + fwd * depth;
         // Head to the left and turned towards the camera: three-quarter view.
         Vector3 face = (-right * 0.75f - fwd * 0.65f).Normalized();
         float faceYaw = MathF.Atan2(-face.X, -face.Z);
 
-        string[] columns = _worlds.Split(',', StringSplitOptions.RemoveEmptyEntries);
-        var planets = columns.Select(LineupPlanet).ToList();
-        float colWidth = planets.Max(p => p.Item1.Species.OrderBy(Footprint).SkipLast(1).Select(Footprint).DefaultIfEmpty(2f).Max() * 2f + 3f);
-        float maxDepth = 0f;
-        for (int col = 0; col < planets.Count; col++)
+        var planets = _worlds.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(LineupPlanet).ToList();
+        // One row per planet, one of each form, swarms aside (a cloud of specks says nothing
+        // about scale); every planet's giants together in a last row at the back, so they
+        // stand behind the others instead of hiding them.
+        var rows = planets.Select(p => (p.Item2 + "\n" + p.Item1.PlanetName, p.Item1.Species.Where(s => s.Rig != RigKind.Swarm && s.Plan != BodyPlan.Giant)
+            .GroupBy(s => s.Form).Select(g => g.First()).OrderBy(Footprint).Take(6).ToList())).ToList();
+        var giants = planets.SelectMany(p => p.Item1.Species.Where(s => s.Plan == BodyPlan.Giant).GroupBy(s => s.Form).Select(g => g.First())).OrderBy(Footprint).ToList();
+        if (giants.Count > 0) rows.Add(("Giants", giants));
+        float depth = 0f, widest = 0f, frontWidth = 0f;
+        foreach ((string label, List<Species> species) in rows)
         {
-            (PlanetFauna fauna, string label) = planets[col];
-            float cx = (col - (planets.Count - 1) * 0.5f) * colWidth;
-            Figure(At(cx, -1.5f));
+            if (species.Count == 0) continue;
+            float total = species.Sum(s => Footprint(s) + 1.5f) + 2f;
+            widest = MathF.Max(widest, total);
+            if (label != "Giants") frontWidth = MathF.Max(frontWidth, total);
+            float rowDepth = label == "Giants" ? 6f : species.Max(s => MathF.Min(Footprint(s), 6f));
+            float z = depth + rowDepth * 0.5f;
+            float x = -total * 0.5f;
+            Figure(At(x + 0.5f, z));
             var tag = new Label3D
             {
-                Text = $"{label}\n{fauna.PlanetName}", FontSize = 96, PixelSize = 0.005f, Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-                Modulate = new Color(1f, 0.95f, 0.85f), OutlineSize = 24, OutlineModulate = new Color(0f, 0f, 0f, 0.8f),
+                Text = label, FontSize = 64, PixelSize = 0.006f, Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                Modulate = new Color(1f, 0.95f, 0.85f), OutlineSize = 18, OutlineModulate = new Color(0f, 0f, 0f, 0.8f),
             };
             m.AddChild(tag);
-            tag.GlobalPosition = Ground(At(cx, -1.5f)) + Vector3.Up * 2.5f;
-
-            // Pairs side by side, each pair a step further back than the one before.
-            var species = fauna.Species.OrderBy(Footprint).ToList();
-            float depth = 0.5f;
-            for (int i = 0; i < species.Count; i += 2)
+            tag.GlobalPosition = Ground(At(x + 0.5f, z)) + Vector3.Up * 2.6f;
+            x += 2f;
+            foreach (Species s in species)
             {
-                float rowDepth = 0f;
-                for (int k = i; k < Math.Min(i + 2, species.Count); k++)
-                {
-                    Species s = species[k];
-                    float f = Footprint(s);
-                    bool alone = i + 1 >= species.Count;
-                    float x = cx + (alone ? 0f : (k == i ? -1f : 1f) * colWidth * 0.25f);
-                    Creature c = m.Sim.Spawn(s, At(x, depth + f * 0.5f));
-                    c.Yaw = faceYaw;
-                    if (s.Rig == RigKind.Swarm) c.Altitude = s.Flies ? 1.2f : 0f;
-                    else if (s.Flies) c.Altitude = s.Rig == RigKind.GasBag ? s.Body.Height * 0.9f + 1.2f : 1.4f + s.Body.Size * 0.3f;
-                    c.Position = new Vector3(c.Position.X, m.Planet.Terrain.Height(c.Position.X, c.Position.Z) + (s.Flies ? c.Altitude : 0f), c.Position.Z);
-                    c.Rig.Reset(m.Sim, c);
-                    rowDepth = MathF.Max(rowDepth, f);
-                }
-                depth += rowDepth + 1f;
+                float f = Footprint(s);
+                x += f * 0.5f;
+                Creature c = m.Sim.Spawn(s, At(x, z));
+                c.Yaw = faceYaw;
+                if (s.Flies) c.Altitude = s.Rig == RigKind.GasBag ? s.Body.Height * 0.9f + 1.2f : 1.4f + s.Body.Size * 0.3f;
+                c.Position = new Vector3(c.Position.X, m.Planet.Terrain.Height(c.Position.X, c.Position.Z) + (s.Flies ? c.Altitude : 0f), c.Position.Z);
+                c.Rig.Reset(m.Sim, c);
+                x += f * 0.5f + 1.5f;
             }
-            maxDepth = MathF.Max(maxDepth, depth);
+            depth += rowDepth + 4f;
         }
 
-        // Frame the whole layout from in front and above.
+        // From in front and above, far enough that the front row fits across.
         m.Camera.Fov = 45f;
-        float halfWidth = planets.Count * colWidth * 0.5f + 1f;
         float hfov = 2f * MathF.Atan(MathF.Tan(Mathf.DegToRad(45f) * 0.5f) * 16f / 9f);
-        float dist = MathF.Max(halfWidth / MathF.Tan(hfov * 0.5f), maxDepth * 0.9f) + 2f;
-        Vector3 look = At(0f, maxDepth * 0.38f) + Vector3.Up * 0.6f;
-        Vector3 eye = At(0f, maxDepth * 0.38f - dist * 0.9f) + Vector3.Up * (dist * 0.42f);
+        float dist = frontWidth * 0.5f / MathF.Tan(hfov * 0.5f) * 1.3f;
+        Vector3 look = At(0f, depth * 0.42f) + Vector3.Up * 3.6f;
+        Vector3 eye = At(0f, -dist * 0.75f) + Vector3.Up * (dist * 0.62f);
         _aim = () => (eye, look);
         _captureTick = 150;
     }
@@ -308,6 +368,25 @@ public partial class Screenshot : Node
             }
         };
         _captureTick = 120;
+    }
+
+    /// <summary>
+    /// Prints planets whose fauna would make good demo worlds (a walking herd, a walking pack,
+    /// a giant) for --time as alienness, then quits. Runs headless; picks the worlds' seeds.
+    /// </summary>
+    void Survey()
+    {
+        float alien = _time >= 0f ? _time : 0.1f;
+        for (ulong seed = 10000; seed < 10600; seed++)
+        {
+            PlanetFauna f = _main.Generator.Generate(seed, alien, false);
+            bool herd = f.Species.Any(x => x.Behaviour == Behaviour.Herd && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant);
+            bool pack = f.Species.Any(x => x.Behaviour == Behaviour.PackHunter && x.Rig == RigKind.Legged && x.Body.Size > 1.4f);
+            bool giant = f.Species.Any(x => x.Plan == BodyPlan.Giant);
+            if (herd && pack && giant)
+                GD.Print($"SURVEY {seed}: " + string.Join(" | ", f.Species.Select(x => $"{x.CommonName} {x.Behaviour} {x.Body.Size:F1}")));
+        }
+        GetTree().Quit(0);
     }
 
     /// <summary>The planets a lineup row can show: the game's three worlds, or any seed.</summary>

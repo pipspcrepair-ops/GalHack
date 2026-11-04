@@ -594,7 +594,7 @@ public partial class WildlifeTest : Node
     {
         Species s = null;
         for (ulong seed = 1; seed < 200 && s == null; seed++)
-            s = _gen.Generate(seed * 13, 0.7f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Ambusher && x.Stats.Damage > 0f);
+            s = _gen.Generate(seed * 13, 0.7f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Ambusher && x.Stats.Damage > 0f && x.Rig is RigKind.Legged or RigKind.Chain);
         if (s == null) { Fail("no ambusher species found to test"); return; }
 
         WildSim w = NewSim(s.Seed, obstacles: false);

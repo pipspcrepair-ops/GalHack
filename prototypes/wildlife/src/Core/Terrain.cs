@@ -4,23 +4,48 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>
-/// The planet surface as a pure height function: gentle rolling plains from a few octaves of
-/// value noise. Creatures read heights straight from here instead of raycasting, which keeps
+/// The planet surface as a pure height function: a gentle plain in the middle (where the herd
+/// grazes and you start) rising into rolling hills around it, from a few octaves of value
+/// noise. Creatures read heights straight from here instead of raycasting, which keeps
 /// 200 of them cheap, and the ground mesh and its collider are built from the same numbers so
 /// the two can never disagree.
+///
+/// The noise is baked once into a grid at the ground mesh's own 2 m spacing and read back
+/// bilinearly: a creature's legs ask for dozens of heights a frame, and a grid lookup is far
+/// cheaper than five octaves of noise (and matches the drawn ground more closely).
 /// </summary>
 public sealed class Terrain
 {
+    public const float Step = 2f;
     public readonly float HalfSize;
     readonly uint _seed;
+    readonly int _n;
+    readonly float[] _grid;
 
     public Terrain(ulong seed, float halfSize = 240f)
     {
         _seed = (uint)(seed ^ (seed >> 32));
         HalfSize = halfSize;
+        _n = (int)(halfSize * 2f / Step) + 1;
+        _grid = new float[_n * _n];
+        for (int j = 0; j < _n; j++)
+        for (int i = 0; i < _n; i++)
+            _grid[j * _n + i] = Sample(-halfSize + i * Step, -halfSize + j * Step);
     }
 
+    /// <summary>Ground height at a point, from the baked grid (clamped at the edge of the map).</summary>
     public float Height(float x, float z)
+    {
+        float gx = Math.Clamp((x + HalfSize) / Step, 0f, _n - 1.001f), gz = Math.Clamp((z + HalfSize) / Step, 0f, _n - 1.001f);
+        int i = (int)gx, j = (int)gz;
+        float tx = gx - i, tz = gz - j;
+        int k = j * _n + i;
+        float a = _grid[k], b = _grid[k + 1], c = _grid[k + _n], d = _grid[k + _n + 1];
+        return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+    }
+
+    /// <summary>The height function itself, evaluated directly.</summary>
+    public float Sample(float x, float z)
     {
         float h = 3.6f * Noise(x * 0.011f, z * 0.011f)
                 + 1.3f * Noise(x * 0.034f + 17.3f, z * 0.034f - 9.1f)
@@ -28,7 +53,14 @@ public sealed class Terrain
         // A broad, flatter plain in the middle, where the herds graze and the camera starts.
         float d = MathF.Sqrt(x * x + z * z);
         float plain = Math.Clamp((d - 30f) / 90f, 0f, 1f);
-        return h * (0.35f + 0.65f * plain);
+        // Hills rise beyond it, and settle again near the edge of the map so the land meets
+        // the far plain without a cliff.
+        float rise = Math.Clamp((d - 35f) / 110f, 0f, 1f);
+        float edge = Math.Clamp((HalfSize - 8f - MathF.Max(MathF.Abs(x), MathF.Abs(z))) / 45f, 0f, 1f);
+        // Hills only ever rise from the plain: valleys below it would dip under the far ground.
+        float n = 0.5f + 0.5f * Noise(x * 0.0062f + 31.7f, z * 0.0062f - 17.2f);
+        float hills = 15f * n * n + 3.5f * (0.5f + 0.5f * Noise(x * 0.017f - 8.3f, z * 0.017f + 5.1f));
+        return h * (0.35f + 0.65f * plain) + hills * rise * rise * (3f - 2f * rise) * edge;
     }
 
     public float Height(Vector3 p) => Height(p.X, p.Z);
