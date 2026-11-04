@@ -29,9 +29,9 @@
   "factions": {
     "concord": { "name": "Concord", "fighter": "corvette" },
     "reavers": { "name": "Carrion Reavers", "fighter": "raider" },
-    "kessari": { "name": "Kessari clans", "fighter": "lancer" },
+    "kessari": { "name": "Kessari", "fighter": "lancer" },
     "hollow":  { "name": "Hollow Bloom", "fighter": "bloom-hulk" },
-    "guild":   { "name": "Free Traders' Guild", "fighter": "trader" }
+    "guild":   { "name": "Guild", "fighter": "trader" }
   },
   "events": [
     {
