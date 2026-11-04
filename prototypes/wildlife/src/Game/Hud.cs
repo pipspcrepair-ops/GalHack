@@ -86,9 +86,6 @@ public partial class Hud : CanvasLayer
     /// <summary>What the scan says about the creature under the crosshair; empty hides it.</summary>
     public void SetScan(string text) => _scan.Text = text;
 
-    /// <summary>Every label the HUD can show, for the test that checks first sightings stay silent.</summary>
-    public IEnumerable<Label> Labels => new[] { _text, _hold, _hint, _scan };
-
     public void SetHold(Storage hold, Storage pack, bool driving)
     {
         var sb = new StringBuilder();

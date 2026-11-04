@@ -4,14 +4,15 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>
-/// Hoppers and living boulders. Locomotion does the ballistic hop; the rig sells it with
+/// Leapers and living boulders. Locomotion does the ballistic hop; the rig sells it with
 /// squash and stretch: the body sinks and the spring legs fold deeper before take-off, snap
-/// straight in the air, and absorb the landing. Idle hoppers inflate their throat sacs.
-/// Living boulders tumble a quarter turn per hop on stubby legs that only show on the ground.
+/// straight in the air, and absorb the landing. (No throat sacs: they made leapers read as
+/// frogs.) Living boulders tumble a quarter turn per hop on stubby legs that only show on
+/// the ground.
 /// </summary>
 public sealed class HopRig : Rig
 {
-    readonly int _body, _head, _sac;
+    readonly int _body, _head;
     readonly int[,] _hind = new int[2, 3];
     readonly int[] _front = new int[2];
     readonly int[] _tail;
@@ -28,7 +29,6 @@ public sealed class HopRig : Rig
         var pieces = Layout.Pieces;
         _body = pieces.FindIndex(p => p.Name == "body");
         _head = pieces.FindIndex(p => p.Name == "head");
-        _sac = pieces.FindIndex(p => p.Name == "sac");
         for (int side = 0; side < 2; side++)
         {
             for (int j = 0; j < 3; j++) _hind[side, j] = pieces.FindIndex(p => p.Name == $"hind{side}_{j}");
@@ -115,14 +115,6 @@ public sealed class HopRig : Rig
             Vector3 at = frameT * new Vector3(0, H * 0.3f * (1f - 0.22f * _squash), -L * 0.4f);
             Basis hb = yaw * new Basis(Vector3.Up, LookYaw) * new Basis(Vector3.Right, -0.1f - Graze * 0.5f + Rearing * 0.2f);
             Pose[_head] = new Transform3D(hb, at);
-        }
-        if (_sac >= 0)
-        {
-            bool idle = c.Hop == HopPhase.Ground && WildSim.Flat(c.Desired).Length() < 0.2f && !c.Dead;
-            float puff = idle ? MathF.Pow(MathF.Max(0f, MathF.Sin(c.Age * 1.6f + c.Id)), 3f) : 0f;
-            float s = 0.3f + 0.75f * puff + 0.4f * Rearing;
-            Vector3 at = frameT * new Vector3(0, -H * 0.12f, -L * 0.36f);
-            Pose[_sac] = new Transform3D(frame.Scaled(Vector3.One * s), at);
         }
 
         // Spring legs: folded on the ground, deeper before a jump, straight out behind in the air.
