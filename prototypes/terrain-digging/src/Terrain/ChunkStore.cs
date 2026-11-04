@@ -34,8 +34,8 @@ public sealed class ChunkStore
     public const float DensityLimit = 2f;
 
     public const float MaxToolRadius = 2f;
-    public const float MaxCraterRadius = 5f;
-    public const int MaxCraterCells = 520;
+    public const float MaxCraterRadius = 6f;
+    public const int MaxCraterCells = 900;
 
     // Ground this far around (and below) a structure or POI is anchored.
     public const int AnchorSide = 3, AnchorBelow = 6, AnchorAbove = 3;

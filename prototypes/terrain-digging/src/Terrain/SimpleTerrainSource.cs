@@ -149,8 +149,9 @@ public sealed class SimpleTerrainSource : ITerrainSource
                     CellMaterial mat = depth < soilDepth ? CellMaterial.Soil
                         : depth < rockDepth ? CellMaterial.Rock
                         : CellMaterial.DeepRock;
-                    // Ore starts under the soil: the surface stays clean, pits and cliffs reveal it.
-                    if (richness > 0f && depth > soilDepth + 0.4f && depth < OreMaxDepth && IsVein(x, y, z, richness))
+                    // Ore keeps at least 1.2 m from any open surface (d is roughly that distance),
+                    // so slopes and cave walls stay clean and only digging reveals it.
+                    if (richness > 0f && d > 1.2f && depth > soilDepth && depth < OreMaxDepth && IsVein(x, y, z, richness))
                         mat = CellMaterial.Ore;
                     material[i] = mat;
                 }
@@ -181,7 +182,7 @@ public sealed class SimpleTerrainSource : ITerrainSource
 
     float CaveDensity(float x, float y, float z)
     {
-        float best = 1f;
+        float best = ChunkStore.DensityLimit; // no cave nearby: never limits the terrain density
         var p = new Vector3(x, y, z);
         foreach (Cave cave in _caves)
             best = MathF.Min(best, cave.Density(p));
@@ -239,8 +240,8 @@ public sealed class SimpleTerrainSource : ITerrainSource
 
         public float Density(Vector3 p)
         {
-            if (p.X < _min.X || p.Y < _min.Y || p.Z < _min.Z || p.X > _max.X || p.Y > _max.Y || p.Z > _max.Z) return 1f;
-            float best = 1f;
+            if (p.X < _min.X || p.Y < _min.Y || p.Z < _min.Z || p.X > _max.X || p.Y > _max.Y || p.Z > _max.Z) return float.MaxValue;
+            float best = float.MaxValue;
             for (int i = 0; i + 1 < _points.Length; i++)
             {
                 // Scalar maths on purpose: SIMD dot products may sum in a different order on
