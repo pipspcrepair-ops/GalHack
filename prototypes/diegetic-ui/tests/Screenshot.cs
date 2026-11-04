@@ -9,7 +9,8 @@ namespace DiegeticUi.Tests;
 ///   godot --path prototypes/diegetic-ui res://tests/Screenshot.tscn -- --view=console --out=shot.png
 /// Views: console (a role mid-drag), holo (the star map in use), wrist (the inventory),
 /// cold (the temperature vital flashing in the cold store), invasion (the countdown on the
-/// visor and the console, sirens turning), overview (the room).
+/// visor and the console, sirens turning; invasion-late between banners), fire (a warning
+/// shot's visor flash), constructor, trader, overview (the room).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -17,6 +18,7 @@ public partial class Screenshot : Node
     Drive _drive;
     string _view = "console";
     string _out = "shot.png";
+    bool _late;
 
     public override void _Ready()
     {
@@ -41,6 +43,8 @@ public partial class Screenshot : Node
             case "wrist": await WristView(); break;
             case "cold": await Cold(); break;
             case "invasion": await Invasion(); break;
+            case "invasion-late": _late = true; await Invasion(); break;
+            case "fire": await Fire(); break;
             case "constructor": await Constructor(); break;
             case "trader": await Trader(); break;
             default: await Overview(); break;
@@ -134,9 +138,17 @@ public partial class Screenshot : Node
 
     async Task Invasion()
     {
-        _drive.StandAndLook(new Vector3(-1.2f, 0.05f, -2.6f), new Vector3(0.1f, 1.6f, -5.6f));
+        _drive.StandAndLook(new Vector3(-0.75f, 0.05f, -3.55f), new Vector3(0.15f, 1.95f, -5.7f));
         await _drive.Frames(5);
         Drive.Tap(Key.I);
-        await _drive.Seconds(5.6);
+        await _drive.Seconds(_late ? 8.6 : 5.5);
+    }
+
+    async Task Fire()
+    {
+        _drive.StandAndLook(new Vector3(0.6f, 0.05f, 1.6f), new Vector3(-0.4f, 1.7f, -6f));
+        await _drive.Frames(5);
+        _main.WarningShot(25);
+        await _drive.Seconds(0.12);
     }
 }

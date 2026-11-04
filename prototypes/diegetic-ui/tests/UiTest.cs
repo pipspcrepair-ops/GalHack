@@ -50,6 +50,7 @@ public partial class UiTest : Node
             await FocusInTheScene();
             await WristFocus();
             await ColdStoreFlash();
+            await WarningShotCue();
             await ScreenRedrawCost();
         }
         catch (Exception e)
@@ -376,6 +377,25 @@ public partial class UiTest : Node
         Check(_main.InColdStore && flashHealth >= 100 && !hurtBeforeFlash && v.CostingHealth && v.Health.Value < 100,
             $"in the cold store the visor flashes TEMP at full health, and only later starts costing health (now {v.Health.Value:F1} HP)");
         _main.Player.Place(Bridge.Spawn, 0);
+    }
+
+    /// <summary>A warning shot flashes the visor edge on the side it came from, whichever way you face.</summary>
+    async Task WarningShotCue()
+    {
+        _main.Player.Place(Bridge.Spawn, 0); // facing north (the window)
+        await _drive.Frames(3);
+        _main.WarningShot(90);               // from the east: on your right
+        await _drive.Frames(2);
+        Vector2 right = _main.Visor.IncomingFire ?? Vector2.Zero;
+        _main.Player.SetLook(-Mathf.Pi / 2, 0); // now face east: it is dead ahead, so neither side
+        await _drive.Frames(2);
+        Vector2 ahead = _main.Visor.IncomingFire ?? Vector2.Zero;
+        _main.WarningShot(0);                // from the north, while facing east: on your left
+        await _drive.Frames(2);
+        Vector2 left = _main.Visor.IncomingFire ?? Vector2.Zero;
+        Check(right.X > 0.9f && Mathf.Abs(ahead.X) < 0.5f && left.X < -0.9f,
+            $"a warning shot flashes the visor edge toward the shooter (east while facing north: {right.X:F2}; ahead: {ahead.X:F2}; north while facing east: {left.X:F2})");
+        await _drive.Seconds(1.5);
     }
 
     /// <summary>
