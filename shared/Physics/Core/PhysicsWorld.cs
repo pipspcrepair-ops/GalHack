@@ -1,0 +1,422 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+
+namespace GalHack.Physics;
+
+/// <summary>
+/// The shared physics module's heart: every body registers here once, every force goes
+/// through <see cref="AddForce"/>, every contact through the same rules, and the rest of the
+/// game hears about physics only through the events below.
+///
+/// One tick, in a fixed order (the engine host calls these in turn):
+/// <list type="number">
+/// <item><see cref="BeginTick"/>: clear the force accumulators.</item>
+/// <item><see cref="ApplyForces"/>: each body's own drive (thrust, walking), then gravity from
+///   its zone or ship core, then outside forces (weather).</item>
+/// <item><see cref="Integrate"/>: kinematic bodies get velocity += ΣF/m·dt + ΣJ/m.</item>
+/// <item>The host moves kinematic bodies with collisions, reporting contacts to
+///   <see cref="ResolveContacts"/>, and syncs free bodies' impacts through <see cref="FreeBodyImpact"/>.</item>
+/// <item><see cref="EndTick"/>: controllers react, craters are cut, stuck bodies are rescued.</item>
+/// <item>The host hands free bodies their summed force and impulse; the engine integrates them.</item>
+/// </list>
+/// Bodies always go in registration order, so the same inputs give the same trajectories.
+/// </summary>
+public sealed class PhysicsWorld
+{
+    public PhysicsRules Rules { get; }
+    public ZoneGravity Zone { get; } = new();
+    public IWorldQuery Query { get; set; } = NoQuery.Instance;
+
+    /// <summary>The terrain's edit API, for craters. Null: impacts make no holes.</summary>
+    public ITerrainEditor Terrain { get; set; }
+
+    public List<IForceProvider> ForceProviders { get; } = new();
+    public List<IStuckField> StuckFields { get; } = new();
+    public StuckGuard Stuck { get; }
+
+    public IReadOnlyList<Body> Bodies => _bodies;
+    public long Tick { get; private set; }
+
+    /// <summary>Something collided (ground, another body). Damage already applied.</summary>
+    public event Action<ImpactInfo> Impact;
+
+    /// <summary>A vessel settled on the ground and stopped simulating.</summary>
+    public event Action<Body> Landed;
+
+    /// <summary>A landed vessel woke up because its pilot applied thrust.</summary>
+    public event Action<Body> LiftedOff;
+
+    /// <summary>A ground impact cut a real crater into the terrain.</summary>
+    public event Action<CraterInfo> Cratered;
+
+    /// <summary>A stuck body was moved to open space.</summary>
+    public event Action<RescueInfo> Rescued;
+
+    /// <summary>A section broke off a structure and became a wreck body.</summary>
+    public event Action<SeverInfo> Severed;
+
+    /// <summary>A body changed how it is moved (a vessel out of hull points became a free wreck).</summary>
+    public event Action<Body> MotionChanged;
+
+    /// <summary>Terrain or a structure changed here: sleeping bodies nearby must wake (engines don't wake them by themselves).</summary>
+    public event Action<Region> RegionChanged;
+
+    public event Action<Body> Registered, Unregistered;
+
+    readonly List<Body> _bodies = new();
+    readonly List<(Body cause, Vector3 center, float radius)> _craters = new();
+    readonly HashSet<(int, int)> _pairs = new();
+    int _nextId = 1;
+
+    public PhysicsWorld(PhysicsRules rules)
+    {
+        Rules = rules;
+        Stuck = new StuckGuard(this);
+    }
+
+    // ---- Registration -----------------------------------------------------------------
+
+    /// <summary>Registers a body once, with its mass and drag area. From now on it is simulated in id order.</summary>
+    public Body Register(BodySpec spec)
+    {
+        if (!(spec.Mass > 0f)) throw new ArgumentException($"{spec.Label}: a body needs a positive mass");
+        var body = new Body
+        {
+            Id = _nextId++,
+            Kind = spec.Kind,
+            Motion = spec.Motion,
+            Label = spec.Label,
+            Mass = spec.Mass,
+            DragArea = spec.DragArea,
+            CenterOfMass = spec.CenterOfMass,
+            Position = spec.Position,
+            Rotation = spec.Rotation,
+            Velocity = spec.Velocity,
+            AngularVelocity = spec.AngularVelocity,
+            Shape = spec.Shape,
+            Tag = spec.Tag,
+        };
+        body.Integrity = float.IsNaN(spec.Integrity) ? Impacts.Integrity(spec.Kind, spec.Mass, Rules.Integrity) : spec.Integrity;
+        _bodies.Add(body);
+        Registered?.Invoke(body);
+        return body;
+    }
+
+    public void Unregister(Body body)
+    {
+        if (!_bodies.Remove(body)) return;
+        Stuck.Forget(body);
+        foreach (Body b in _bodies)
+        {
+            if (b.Platform == body) Riding.StepOff(b);
+            if (b.Frame == body) Riding.LeaveCabin(b);
+        }
+        Unregistered?.Invoke(body);
+    }
+
+    public Body Find(int id)
+    {
+        foreach (Body b in _bodies) if (b.Id == id) return b;
+        return null;
+    }
+
+    // ---- The one force path ---------------------------------------------------------
+
+    /// <summary>Adds a force for this tick, N. The only way anything pushes a body.</summary>
+    public void AddForce(Body body, Vector3 force, ForceKind kind) => body.Accumulate(force, kind);
+
+    /// <summary>Adds an instant change of momentum for this tick, N·s.</summary>
+    public void AddImpulse(Body body, Vector3 impulse, ForceKind kind)
+    {
+        body.PendingImpulse += impulse;
+        if (body.Asleep && body.Motion == Motion.Free) body.Asleep = false;
+    }
+
+    /// <summary>
+    /// An impulse at a point (an explosion pushing a severed section away). Free bodies also
+    /// spin from it; kinematic bodies take only the push, since hits never spin a flown ship.
+    /// </summary>
+    public void AddImpulseAt(Body body, Vector3 impulse, Vector3 point, ForceKind kind)
+    {
+        AddImpulse(body, impulse, kind);
+        if (body.Motion == Motion.Free)
+            body.PendingAngularImpulse += Vector3.Cross(point - body.CenterOfMassPosition, impulse);
+    }
+
+    /// <summary>The acceleration gravity gives this body: its ship core's inside a cabin, its zone's anywhere else.</summary>
+    public Vector3 GravityAt(Body body) =>
+        body.Frame != null ? body.Frame.Core?.Local ?? Vector3.Zero : Zone.At(body.Position);
+
+    // ---- Stepping ---------------------------------------------------------------------
+
+    public void BeginTick()
+    {
+        Tick++;
+        _pairs.Clear();
+        foreach (Body b in _bodies) b.ClearForces();
+    }
+
+    public void ApplyForces(float dt)
+    {
+        // Bodies' own drives first: a landed vessel decides here whether it wakes.
+        foreach (Body b in _bodies) b.Controller?.Drive(this, b, dt);
+
+        foreach (Body b in _bodies)
+            if (!b.Asleep) AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+
+        foreach (IForceProvider p in ForceProviders) p.ApplyForces(this, dt);
+
+        // A sleeping rigid body that something now pushes (a gust, a tornado) wakes, and from
+        // then on carries its own weight like everything else.
+        foreach (Body b in _bodies)
+        {
+            if (!b.Asleep || b.Motion != Motion.Free) continue;
+            if (b.PendingForce.LengthSquared() < 1e-4f * b.Mass * b.Mass && b.PendingImpulse == Vector3.Zero) continue;
+            b.Asleep = false;
+            AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+        }
+
+        // Controllers that react to what is already pushing (legs gripping against the wind).
+        foreach (Body b in _bodies) (b.Controller as IForceReactor)?.React(this, b, dt);
+    }
+
+
+    /// <summary>Kinematic bodies: velocity += ΣF/m·dt + ΣJ/m. Free bodies are integrated by the engine from the same sums.</summary>
+    public void Integrate(float dt)
+    {
+        foreach (Body b in _bodies)
+        {
+            if (b.Motion != Motion.Kinematic || b.Asleep) continue;
+            b.Velocity += b.PendingForce / b.Mass * dt + b.PendingImpulse / b.Mass;
+        }
+    }
+
+    /// <summary>After every body has moved: controllers react, craters are cut, stuck bodies are rescued.</summary>
+    public void EndTick(float dt)
+    {
+        for (int i = 0; i < _bodies.Count; i++) _bodies[i].Controller?.AfterMove(this, _bodies[i], dt);
+
+        // Craters are cut after everything has moved, in the order they happened, so a hole
+        // never opens under a body halfway through the tick.
+        for (int i = 0; i < _craters.Count; i++)
+        {
+            var (cause, center, radius) = _craters[i];
+            if (Terrain == null) break;
+            CraterResult result = Terrain.Crater(center, radius);
+            Cratered?.Invoke(new CraterInfo(cause, center, radius, result.CellsRemoved, result.CellsRefused));
+            if (result.CellsRemoved > 0) NotifyChanged(result.Changed);
+        }
+        _craters.Clear();
+
+        Stuck.CheckAll();
+        foreach (Body b in _bodies) b.Publish();
+    }
+
+    /// <summary>
+    /// Terrain or a structure changed in this region, or a zone was loaded into it: wake
+    /// everything nearby (a landed ship whose ground was dug out must fall, not hover), and
+    /// check it for being stuck now rather than next tick.
+    /// </summary>
+    public void NotifyChanged(Region region)
+    {
+        Region near = region.Grow(2f);
+        foreach (Body b in _bodies)
+        {
+            if (b.Frame != null || !near.Contains(b.Position) && !near.Contains(b.CenterOfMassPosition)) continue;
+            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b);
+            else b.Asleep = false;
+            Stuck.Check(b);
+        }
+        RegionChanged?.Invoke(near);
+    }
+
+    /// <summary>A whole zone was (re)loaded: check every body at once.</summary>
+    public void NotifyZoneLoaded()
+    {
+        foreach (Body b in _bodies)
+        {
+            b.Asleep = false;
+            Stuck.Check(b);
+        }
+    }
+
+    // ---- Contacts -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A kinematic body's contacts from one move, each resolved once with the velocity from
+    /// before the move, so the impact speed is the real closing speed. Returns the velocity
+    /// after: slid, glanced, rammed.
+    /// </summary>
+    public Vector3 ResolveContacts(Body body, IReadOnlyList<Contact> contacts, Vector3 before, Vector3 velocity)
+    {
+        for (int i = 0; i < contacts.Count; i++)
+        {
+            Contact c = contacts[i];
+            if (c.Other == null && c.Normal.Y > 0.6f) body.OnFloor = true;
+            if (c.Other != null && c.Other != body) velocity = Ram(body, c.Other, c, before, velocity);
+            else velocity = HitFixed(body, c, before, velocity);
+        }
+        return velocity;
+    }
+
+    /// <summary>Something fixed: bounce a little, scrape only if it was a real impact.</summary>
+    Vector3 HitFixed(Body body, in Contact c, Vector3 before, Vector3 velocity)
+    {
+        float closing = -Vector3.Dot(before, c.Normal);
+        if (closing <= 0f) return velocity;
+
+        PhysicsRules.ContactData rules = Rules.Contacts;
+        if (closing > 0.5f) velocity += c.Normal * closing * rules.Restitution; // glance off
+        if (Impacts.Damage(body.Mass, closing, rules) > 0f)
+            velocity -= MathX.Slide(velocity, c.Normal) * rules.Scrape;
+        (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
+        ResolveImpact(body, null, c.Point, c.Normal, closing, c.Surface);
+        return velocity;
+    }
+
+    /// <summary>
+    /// Another body: both take the same damage (from the reduced mass, so ramming always hurts
+    /// the rammer too) and trade momentum along the contact normal.
+    /// </summary>
+    Vector3 Ram(Body body, Body other, in Contact c, Vector3 before, Vector3 velocity)
+    {
+        Vector3 otherVelocity = other.Frame == null ? other.PointVelocity(c.Point) : other.WorldVelocity;
+        float closing = -Vector3.Dot(before - otherVelocity, c.Normal);
+        if (closing <= 0f) return velocity;
+        if (!_pairs.Add(Pair(body, other))) return velocity; // already resolved from the other side this tick
+
+        float m = body.Mass, mo = other.Mass;
+        float mu = Impacts.ReducedMass(m, mo);
+        float impulse = (1f + Rules.Contacts.Restitution) * mu * closing;
+
+        // The slide already took out this body's normal speed; put back the exchange instead.
+        velocity += c.Normal * (Vector3.Dot(before, c.Normal) + impulse / m);
+        if (other.Motion == Motion.Kinematic) other.Velocity -= c.Normal * (impulse / mo);
+        else AddImpulse(other, -c.Normal * impulse, ForceKind.Contact);
+        if (other.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(other);
+        other.Asleep = false;
+
+        float damage = Impacts.Damage(mu, closing, Rules.Contacts);
+        Hurt(body, damage);
+        Hurt(other, damage);
+        (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
+        if (closing > Rules.Contacts.EventSpeed)
+            Impact?.Invoke(new ImpactInfo(body, other, c.Point, c.Normal, closing, damage, Surface.Body, 0f));
+        return velocity;
+    }
+
+    /// <summary>
+    /// A hit on something fixed (the ground, a rock, a landing foot slamming down): damage
+    /// from the body's own mass, and a fast hit on the ground queues a real, capped crater.
+    /// </summary>
+    public void ResolveImpact(Body body, Body other, Vector3 point, Vector3 normal, float closing, Surface surface)
+    {
+        if (other != null)
+        {
+            if (!_pairs.Add(Pair(body, other))) return;
+            float mu = Impacts.ReducedMass(body.Mass, other.Mass);
+            float both = Impacts.Damage(mu, closing, Rules.Contacts);
+            Hurt(body, both);
+            Hurt(other, both);
+            if (closing > Rules.Contacts.EventSpeed)
+                Impact?.Invoke(new ImpactInfo(body, other, point, normal, closing, both, Surface.Body, 0f));
+            return;
+        }
+
+        float damage = Impacts.Damage(body.Mass, closing, Rules.Contacts);
+        Hurt(body, damage);
+        float crater = 0f;
+        if (surface == Surface.Ground && normal.Y > 0.5f && Terrain != null)
+        {
+            crater = Impacts.CraterRadius(body.Mass, closing, Rules.Craters);
+            if (crater > 0f) _craters.Add((body, point + normal * crater * Rules.Craters.Lift, crater));
+        }
+        if (closing > Rules.Contacts.EventSpeed)
+            Impact?.Invoke(new ImpactInfo(body, null, point, normal, closing, damage, surface, crater));
+    }
+
+    /// <summary>
+    /// A free body's velocity changed by more than its forces explain: something stopped it.
+    /// The closing speed is that change along the contact normal (free bodies don't bounce,
+    /// so it is the full closing speed). Hits between two registered bodies count once.
+    /// </summary>
+    public void FreeBodyImpact(Body body, Vector3 unexplained, IReadOnlyList<Contact> contacts)
+    {
+        if (contacts.Count == 0) return;
+        Vector3 n = Vector3.Zero;
+        Contact main = contacts[0];
+        foreach (Contact c in contacts)
+        {
+            n += c.Normal;
+            if (c.Other != null && main.Other == null) main = c;
+        }
+        n = MathX.SafeNormalize(n, main.Normal);
+        float closing = Vector3.Dot(unexplained, n);
+        if (closing <= Rules.Contacts.EventSpeed) return;
+        if (main.Other == null && main.Surface == Surface.Ground && n.Y > 0.6f) body.OnFloor = true;
+        ResolveImpact(body, main.Other, main.Point, n, closing, main.Other != null ? Surface.Body : main.Surface);
+    }
+
+    /// <summary>Applies damage in full: to the body's own count, or through its sink (a player's health).</summary>
+    public float Hurt(Body body, float raw)
+    {
+        if (raw <= 0f) return 0f;
+        float dealt = body.DamageSink?.Take(body, raw) ?? raw;
+        body.Damage += dealt;
+        return dealt;
+    }
+
+    static (int, int) Pair(Body a, Body b) => a.Id < b.Id ? (a.Id, b.Id) : (b.Id, a.Id);
+
+    // ---- Structures -------------------------------------------------------------------
+
+    /// <summary>
+    /// A section has broken off a structure. The wreck is the same rigid motion as the
+    /// structure it came from (same origin, same velocity and spin), so every block keeps the
+    /// velocity it had: total mass and momentum are unchanged at the moment of severing.
+    /// </summary>
+    public Body Sever(Body parent, float parentMass, Vector3 parentCenterOfMass, BodySpec wreck)
+    {
+        wreck.Kind = BodyKind.Wreck;
+        wreck.Motion = Motion.Free;
+        wreck.Position = parent.Position;
+        wreck.Rotation = parent.Rotation;
+        wreck.Velocity = parent.Velocity;
+        wreck.AngularVelocity = parent.AngularVelocity;
+        Body body = Register(wreck);
+        parent.Mass = parentMass;
+        parent.CenterOfMass = parentCenterOfMass;
+        Severed?.Invoke(new SeverInfo(parent, body));
+        return body;
+    }
+
+    /// <summary>A vessel with no hull points left loses power: from now on it is a free wreck the engine tumbles.</summary>
+    public void MakeWreck(Body body)
+    {
+        if (body.Motion == Motion.Free) return;
+        body.Kind = BodyKind.Wreck;
+        body.Motion = Motion.Free;
+        body.Controller = null;
+        body.Asleep = false;
+        MotionChanged?.Invoke(body);
+    }
+
+    // ---- Events the controllers raise -------------------------------------------------
+
+    internal void RaiseLanded(Body b) => Landed?.Invoke(b);
+    internal void RaiseLiftedOff(Body b) => LiftedOff?.Invoke(b);
+    internal void RaiseRescued(RescueInfo r) => Rescued?.Invoke(r);
+}
+
+/// <summary>A query that finds nothing: for pure tests with no ground.</summary>
+public sealed class NoQuery : IWorldQuery
+{
+    public static readonly NoQuery Instance = new();
+
+    public bool Ray(Vector3 from, Vector3 to, uint mask, Body exclude, out RayHit hit)
+    {
+        hit = default;
+        return false;
+    }
+}
