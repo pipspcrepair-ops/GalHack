@@ -25,6 +25,7 @@ public partial class Main : Node3D
     public StructureView Structures { get; private set; }
     public ChunkBorders Borders { get; private set; }
     public Hud Hud { get; private set; }
+    public Sfx Sfx { get; private set; }
     public RigidBody3D Crate { get; private set; }
 
     /// <summary>The first terrain build is finished and the player is live.</summary>
@@ -68,6 +69,8 @@ public partial class Main : Node3D
 
         Crate = BuildCrate(new Vector3(spawn.X + 3f, 0f, spawn.Y - 3f));
 
+        Sfx = new Sfx { Name = "Sfx" };
+        AddChild(Sfx);
         Debris = new Debris { Name = "Debris", Store = Store, Collector = () => Player.GlobalPosition + Vector3.Up * 1.1f };
         AddChild(Debris);
         Detector = new OreDetector { Name = "Detector", Store = Store };
@@ -165,6 +168,7 @@ public partial class Main : Node3D
     public System.Collections.Generic.List<OreDetector.Deposit> PingOre()
     {
         var deposits = Detector.Ping(Player.GlobalPosition + Vector3.Up);
+        Sfx.Play(Sfx.Sound.Ping, Player.EyePosition);
         Hud.Toast(deposits.Count == 0
             ? $"Detector: no ore within {OreDetector.Range:F0} m"
             : $"Detector: {deposits.Count} deposits · nearest {deposits[0].Distance:F0} m ({deposits[0].Cells} cells)", Palette.Ore, 3f);

@@ -748,6 +748,10 @@ public partial class DigTest : Node
         Check(crater != null && crater.Removed.Count > 0 && crater.Removed.Count <= ChunkStore.MaxCraterCells,
             $"C blasts a capped crater at the crosshair ({crater?.Removed.Count ?? 0} cells)");
 
+        var levels = _main.Sfx.Levels().ToList();
+        Check(levels.Count == 6 && levels.All(l => l.peak > 0.2f && l.clipped < 50),
+            "procedural sounds render with sane levels: " + string.Join(", ", levels.Select(l => $"{l.sound} {l.peak:F2}/{l.rms:F2}")));
+
         var deposits = _main.PingOre();
         Info($"Q detector: {deposits.Count} deposits within {OreDetector.Range:F0} m" +
              (deposits.Count > 0 ? $", nearest {deposits[0].Distance:F1} m ({deposits[0].Cells} cells)" : ""));

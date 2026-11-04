@@ -132,9 +132,12 @@ public partial class GatherTool : Node
             }
             Main.Debris.Burst(result.Removed, Player.EyePosition);
             Player.Kick(0.55f + 0.02f * result.Removed.Count, 0.15f);
+            int stone = result.Removed.Count(r => r.Material is CellMaterial.Rock or CellMaterial.DeepRock);
+            Main.Sfx.Play(Sfx.Sound.Dig, TargetPoint, stone * 2 > result.Removed.Count ? 0.8f : 1f);
             if (ore > 0)
             {
                 Main.Hud.PopOre();
+                Main.Sfx.Play(Sfx.Sound.Ore, TargetPoint, 1f, -4f);
                 Main.Hud.Toast($"+{ore} ore", Palette.Ore, 0.9f);
             }
             return result;
@@ -147,12 +150,14 @@ public partial class GatherTool : Node
         {
             Main.Hud.Toast("BEDROCK · 30 m below the surface the tool can't cut", Palette.Warning);
             Main.Debris.Sparks(TargetPoint, normal, new Color("9d8cff"));
+            Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint);
             Player.Kick(0.25f, 0.7f);
         }
         else if (result.Headline == Verdict.Anchored)
         {
             Main.Hud.Toast("ANCHORED · ground under and around structures holds", Palette.Caution);
             Main.Debris.Sparks(TargetPoint, normal, Palette.Caution);
+            Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint, 1.3f, -3f);
             Player.Kick(0.2f, 0.4f);
             foreach (AnchorZone zone in Store.Anchors.Where(z => z.Box.Contains(Target)))
                 Main.Structures.FlashAnchor(zone.Box, Palette.Caution);
@@ -192,6 +197,7 @@ public partial class GatherTool : Node
                 Main.Structures.Add(result.Structure);
                 Main.Structures.FlashAnchor(ChunkStore.AnchorBoxFor(box), Palette.Good);
                 Main.Debris.Burst(result.Cleared.Removed, Player.EyePosition, 0.6f);
+                Main.Sfx.Play(Sfx.Sound.Place, ToGodot(box.CenterPosition));
                 Player.Kick(0.8f, 0.2f);
                 Main.Hud.Toast($"Block placed · cleared {result.Cleared.Removed.Count} cells · ground around it is now anchored", Palette.Good);
                 break;
@@ -234,6 +240,7 @@ public partial class GatherTool : Node
         Main.Debris.Burst(result.Removed, center - dir * 2f + Vector3.Down, 2.4f);
         for (int i = 0; i < 6; i++) Main.Debris.Puff(center + Vector3.Up * i * 0.6f, Palette.Dust, 3.5f);
         Main.Flash(center, new Color("ffb070"));
+        Main.Sfx.Play(Sfx.Sound.Boom, center, 1f, 4f);
         Player.Kick(1.2f, Mathf.Clamp(1.4f - distance / 50f, 0.4f, 1.4f));
         int held = result.Bedrock + result.Anchored;
         Main.Hud.Toast($"Crater · {result.Removed.Count} cells removed (capped at {ChunkStore.MaxCraterCells})" +
@@ -258,4 +265,5 @@ public partial class GatherTool : Node
     }
 
     static System.Numerics.Vector3 ToN(Vector3 v) => new(v.X, v.Y, v.Z);
+    static Vector3 ToGodot(System.Numerics.Vector3 v) => new(v.X, v.Y, v.Z);
 }
