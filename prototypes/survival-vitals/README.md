@@ -52,7 +52,7 @@ From the repo root, in PowerShell:
 | T | Skip two hours, to see the night |
 | Esc | Free the mouse |
 
-You start at a crashed escape pod with a light suit, a survival replicator kit, 10 kg of organics and every suit and booster to try on. From the crash site: the shelter (healing booth, clone chamber, galley and advanced replicators, organics storage) is to the north-east, the frozen valley to the north-west, the radiation crater to the north, the volcanic vent to the north-east beyond the shelter, the airless sinkhole to the east and Kestrel Combine land, ringed in red, to the west. Signs mark every hazard's edge.
+You start at a crashed escape pod with a light suit, a survival replicator kit, 10 kg of organics and every suit and booster to try on. From the crash site: the shelter (healing booth, clone chamber, galley and advanced replicators, organics storage) is to the north-east, the frozen valley to the north-west, the radiation crater to the north, the volcanic vent to the north-east beyond the shelter, the airless sinkhole to the east and Vharn Dominion land, ringed in red, to the west. Signs mark every hazard's edge.
 
 Try the valley in a light suit, then with the insulation booster, by day and by night (T). Try the sinkhole with the helmet open (H) to see the breath warning. Set the replicator down inside the red ring to see it refused.
 

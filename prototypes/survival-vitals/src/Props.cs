@@ -391,7 +391,7 @@ public static class Props
         Box(root, new Vector3(1.45f, 4f, 0.2f), Palette.Glow(Palette.Red, 1.2f), new Vector3(cx, py + 4f, cz - 0.65f));
         Mesh(root, new SphereMesh { Radius = 0.45f, Height = 0.9f }, Palette.Glow(Palette.Red, 4f), new Vector3(cx, py + 7.4f, cz));
         Collider(root, new BoxShape3D { Size = new Vector3(1.4f, 7f, 1.4f) }, new Vector3(cx, py + 3.5f, cz));
-        Label(root, "KESTREL COMBINE TERRITORY\nno survival devices", new Vector3(cx, py + 8.6f, cz), 64, new Color("ff9a8a"));
+        Label(root, "VHARN DOMINION TERRITORY\nno survival devices", new Vector3(cx, py + 8.6f, cz), 64, new Color("ff9a8a"));
         return root;
     }
 

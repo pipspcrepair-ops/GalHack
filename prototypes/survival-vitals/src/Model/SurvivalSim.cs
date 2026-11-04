@@ -11,7 +11,7 @@ public sealed class Progress
 {
     public int Level = 3;
     public readonly List<string> Unlocks = new() { "survival-replicator", "survival-tent", "galley-replicator" };
-    public readonly SortedDictionary<string, double> Standing = new() { ["Kestrel Combine"] = -5 };
+    public readonly SortedDictionary<string, double> Standing = new() { ["Vharn Dominion"] = -5 };
 
     public string Fingerprint() =>
         $"{Level}|{string.Join(",", Unlocks)}|{string.Join(",", Standing.Select(kv => $"{kv.Key}={kv.Value}"))}";

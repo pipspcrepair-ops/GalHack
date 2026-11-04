@@ -54,7 +54,7 @@
 
   // NPC faction land: survival devices can't be set down inside.
   "territories": [
-    { "id": "kestrel", "name": "Kestrel Combine territory", "center": [-62, 55], "radius": 24 }
+    { "id": "vharn", "name": "Vharn Dominion territory", "center": [-62, 55], "radius": 24 }
   ],
 
   // Where you can come back after dying. "position" is the device, "stand" is where you appear.
