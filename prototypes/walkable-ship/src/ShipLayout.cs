@@ -10,8 +10,8 @@ public enum BlockRole
 {
     /// <summary>Drawn as part of the ship.</summary>
     Visual = 1,
-    /// <summary>Collides on the ghost cabin, where players aboard walk.</summary>
-    Ghost = 2,
+    /// <summary>Collides in the cabin world, where players aboard walk.</summary>
+    Interior = 2,
     /// <summary>Collides on the outer hull, for players standing outside.</summary>
     Hull = 4,
     /// <summary>Drawn as a window pane.</summary>
@@ -67,9 +67,9 @@ public static class ShipLayout
     static List<Block> Build()
     {
         var blocks = new List<Block>();
-        const BlockRole all = BlockRole.Visual | BlockRole.Ghost | BlockRole.Hull;
-        const BlockRole solid = BlockRole.Ghost | BlockRole.Hull;   // collision only
-        const BlockRole prop = BlockRole.Visual | BlockRole.Ghost;  // inside the cabin only
+        const BlockRole all = BlockRole.Visual | BlockRole.Interior | BlockRole.Hull;
+        const BlockRole solid = BlockRole.Interior | BlockRole.Hull;   // collision only
+        const BlockRole prop = BlockRole.Visual | BlockRole.Interior;  // inside the cabin only
         const BlockRole outside = BlockRole.Visual | BlockRole.Hull;
 
         void Add(Vector3 center, Vector3 size, Color color, BlockRole roles) =>

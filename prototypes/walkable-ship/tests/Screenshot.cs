@@ -32,7 +32,7 @@ public partial class Screenshot : Node
     public override void _PhysicsProcess(double delta)
     {
         _tick++;
-        if (_tick == SetupTick) Setup(_main.Ship, _main.Player);
+        if (_tick == SetupTick) Setup(_main.Ships[0], _main.Player);
         if (_tick == CaptureTick) Capture();
     }
 

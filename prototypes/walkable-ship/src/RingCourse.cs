@@ -5,11 +5,12 @@ namespace WalkableShip;
 
 /// <summary>
 /// A loop of glowing rings to fly the ship through, in order. The next ring glows amber,
-/// passed rings turn teal. Backspace resets the course.
+/// passed rings turn teal. Backspace resets the course. Rings count for the ship the player
+/// is aboard, or last boarded.
 /// </summary>
 public partial class RingCourse : Node3D
 {
-    public Ship Ship;
+    public Player Player;
 
     public int Passed { get; private set; }
     public int Count => _rings.Count;
@@ -22,6 +23,7 @@ public partial class RingCourse : Node3D
 
     readonly List<(Vector3 center, Vector3 normal, MeshInstance3D mesh)> _rings = new();
     StandardMaterial3D _idle, _next, _done;
+    Ship _ship;
     Vector3 _lastShipPosition;
     bool _running;
 
@@ -46,7 +48,6 @@ public partial class RingCourse : Node3D
             _rings.Add((center, normal, mesh));
         }
 
-        _lastShipPosition = Ship.GlobalPosition;
         Refresh();
     }
 
@@ -59,7 +60,14 @@ public partial class RingCourse : Node3D
     {
         if (_running && !Finished) Elapsed += (float)delta;
 
-        Vector3 now = Ship.GlobalPosition;
+        // Switching ships starts tracking afresh, so the jump between them never crosses a ring.
+        if (_ship != Player.Ship)
+        {
+            _ship = Player.Ship;
+            _lastShipPosition = _ship.GlobalPosition;
+        }
+
+        Vector3 now = _ship.GlobalPosition;
         if (!Finished)
         {
             var (center, normal, _) = _rings[Passed];
