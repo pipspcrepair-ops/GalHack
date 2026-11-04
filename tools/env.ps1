@@ -16,6 +16,9 @@ $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:TEMP = Join-Path $tools "tmp"
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+# Godot keeps each project's user:// data (shader cache, logs) under %APPDATA%\Godot\app_userdata.
+$env:APPDATA = Join-Path $tools "appdata"
+New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
 
 $GodotDir = Join-Path $tools "godot\Godot_v4.7.2-stable_mono_win64"
 $GodotEditor = Join-Path $GodotDir "Godot_v4.7.2-stable_mono_win64.exe"
