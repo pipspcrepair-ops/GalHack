@@ -12,8 +12,8 @@ namespace PoiGenerator.Gen;
 /// </summary>
 public static class StateTransforms
 {
-    public static readonly Rgb BloomFlesh = new(0xb0, 0x30, 0x6a);
-    public static readonly Rgb BloomBruise = new(0x5a, 0x1f, 0x5c);
+    public static readonly Rgb BloomFlesh = new(0xc8, 0x38, 0x7a);
+    public static readonly Rgb BloomBruise = new(0x6a, 0x24, 0x70);
     public static readonly Rgb BloomGlow = new(0xc8, 0xf0, 0x60);
     public static readonly Rgb BloomBone = new(0xe6, 0xdc, 0xcb);
     public static readonly Rgb BloomDark = new(0x2a, 0x0f, 0x2e);
@@ -121,6 +121,38 @@ public static class StateTransforms
         // Nature starts at the door.
         foreach (Int3 c in FloorCells(inst, inst.Layout.Modules[0], nav))
             if (inst.Blocks.Get(c).IsAir && rng.Chance(0.12f)) Put(inst, c, BlockType.Plant, Material.Plant, Moss, Role.Debris);
+
+        // Outside, whatever they dropped on the way out: crates, a pulled-down barricade, weeds.
+        Litter(inst, rng, rng.Between(7, 12));
+    }
+
+    /// <summary>Junk on open ground near the way in, never on the path.</summary>
+    static void Litter(PoiInstance inst, Rng rng, int count)
+    {
+        var g = inst.Blocks;
+        var nav = inst.Nav();
+        Int3 e = inst.Layout.EntranceCell;
+        var spots = new List<Int3>();
+        for (int z = -9; z <= 9; z++)
+            for (int x = -9; x <= 9; x++)
+            {
+                var c = new Int3(e.X + x, 0, e.Z + z);
+                int d = Math.Abs(x) + Math.Abs(z);
+                if (d < 3 || d > 12 || inst.Layout.Occupied[c] || inst.Protected[c] || !g.Get(c).IsAir || !nav.Standable(c)) continue;
+                spots.Add(c);
+            }
+        rng.Shuffle(spots);
+        var wood = new Rgb(0x6a, 0x54, 0x3c);
+        foreach (Int3 c in spots.Take(count))
+        {
+            switch (rng.Range(0, 5))
+            {
+                case 0: case 1: Put(inst, c, BlockType.Crate, Material.Scrap, wood.Lerp(inst.Kit.Palette[0].Colors[0], 0.4f), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)], 1); break;
+                case 2: Put(inst, c, BlockType.Rubble, Material.Rock, inst.Kit.Palette[0].Colors[0].Scale(0.8f), Role.Debris); break;
+                case 3: Put(inst, c, BlockType.Barricade, Material.Timber, wood.Scale(0.7f), Role.Debris, Dirs.Horizontal[rng.Range(0, 4)]); break;
+                default: Put(inst, c, BlockType.Plant, Material.Plant, Moss, Role.Debris); break;
+            }
+        }
     }
 
     // ---- infested ---------------------------------------------------------------------
@@ -181,8 +213,8 @@ public static class StateTransforms
         // Outside: it spills over the roofs and raises a spire that shouldn't stand up.
         var tops = RoofTops(inst).ToList();
         rng.Shuffle(tops);
-        foreach (Int3 t in tops.Take(Math.Clamp(layout.Modules.Count / 2, 2, 6)))
-            Grow(inst, t, rng.Between(6, 14), rng, insideOnly: false);
+        foreach (Int3 t in tops.Take(Math.Clamp(layout.Modules.Count * 2 / 3, 3, 10)))
+            Grow(inst, t, rng.Between(10, 24), rng, insideOnly: false);
         var spireHost = layout.Modules[layout.CoreModule];
         Int3? top = TopOf(inst, spireHost);
         if (top is Int3 st) Spire(inst, st, rng.Between(9, 15), rng);
@@ -212,7 +244,7 @@ public static class StateTransforms
             if (!g.InBounds(c) || !g.Get(c).IsAir || inst.Protected[c] || !TouchesSolid(g, c)) continue;
             if (insideOnly && !inst.Layout.Occupied[c]) continue;
             if (!insideOnly && (inst.Layout.Occupied[c] || c.Y <= Assembler.GroundY)) continue; // not into the rock
-            var color = rng.Float() switch { < 0.45f => BloomFlesh, < 0.8f => BloomBruise, _ => BloomBone };
+            var color = rng.Float() switch { < 0.5f => BloomFlesh, < 0.92f => BloomBruise, _ => BloomBone };
             Put(inst, c, BlockType.Growth, Material.Bloom, color, Role.Growth, Dir.North, (byte)rng.Range(0, 4));
             inst.Growths.Add(c);
             grown++;
@@ -305,6 +337,12 @@ public static class StateTransforms
     static void Ruin(PoiInstance inst, Rng rng, float share)
     {
         var g = inst.Blocks;
+        // Even glyphs fade in a ruin; they never quite go out.
+        foreach (Int3 p in g.Cells())
+        {
+            ref Block b = ref g.At(p);
+            if (b.Material is Material.Glyph or Material.Crystal) b.Color = b.Color.Scale(0.6f);
+        }
         int before = PoiFactory.CountStructure(g);
         Carve(inst, rng, (int)(before * share), 1.6f, 3.8f);
 

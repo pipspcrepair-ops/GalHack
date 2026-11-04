@@ -5,7 +5,8 @@ using System.Collections.Generic;
 namespace PoiGenerator.Gen;
 
 /// <summary>Which material a face is drawn with.</summary>
-public enum Surface { Matte, Metal, Glow, Glass }
+/// <summary>Which material a face is drawn with. Flesh is the Hollow Bloom: lit, wet, faintly glowing.</summary>
+public enum Surface { Matte, Metal, Glow, Glass, Flesh }
 
 /// <summary>Plain vertex arrays for one surface of one chunk: positions, normals, sRGB colours.</summary>
 public sealed class MeshBuffer
@@ -30,6 +31,7 @@ public readonly record struct V3(float X, float Y, float Z)
     public static V3 operator -(V3 a, V3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
     public static V3 operator *(V3 a, float k) => new(a.X * k, a.Y * k, a.Z * k);
     public static V3 Cross(V3 a, V3 b) => new(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
+    public static float Dot(V3 a, V3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
     public V3 Normalized() { float l = MathF.Sqrt(X * X + Y * Y + Z * Z); return l > 0 ? this * (1f / l) : this; }
     public static V3 Of(Int3 p) => new(p.X, p.Y, p.Z);
 }
@@ -37,7 +39,7 @@ public readonly record struct V3(float X, float Y, float Z)
 public sealed class ChunkMesh
 {
     public Int3 Chunk;
-    public readonly MeshBuffer[] Surfaces = { new(), new(), new(), new() };
+    public readonly MeshBuffer[] Surfaces = { new(), new(), new(), new(), new() };
     public readonly List<float> Collision = new(); // triangle soup, xyz per vertex
     public int Quads;
 }
@@ -52,6 +54,8 @@ public sealed class MeshOptions
     public int RockBottom = -8;
     public bool Rock = true;
     public Rgb GroundColor = new(0xc0, 0x80, 0x50);
+    /// <summary>The ground colour at a cell, so a plug's top matches the terrain around it exactly.</summary>
+    public Func<int, int, Rgb>? GroundColorAt;
     public Rgb RockColor = new(0x7a, 0x55, 0x3a);
     public bool Collision = true;
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
@@ -207,14 +211,61 @@ public static class Mesher
             bool glass = BlockInfo.IsTransparent(b.Material);
             Surface surf = Shapes.SurfaceOf(b.Material);
             float jitter = 0.94f + (Hash.Cell(p, 3) % 1000) / 1000f * 0.1f;
+            // Glyph stone is black, with the glyph inlaid as thin glowing lines.
+            bool glyph = b.Material == Material.Glyph;
+            Rgb body = glyph ? b.Color.Lerp(new Rgb(0x1a, 0x1b, 0x22), 0.88f) : b.Color;
+            if (glyph) surf = Surface.Matte;
             for (int f = 0; f < 6; f++)
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
                 if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) : Occludes(n))
                     continue;
-                Face(chunk, surf, p, f, b.Color, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
+                Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
+                if (glyph) Glyph(chunk, p, f, b.Color);
                 if (_o.Collision && !CollidesFull(n)) CollideFace(chunk, p, f);
+            }
+        }
+
+        /// <summary>A glyph on one face: one of a few line figures, picked by the cell.</summary>
+        void Glyph(ChunkMesh chunk, Int3 p, int f, Rgb color)
+        {
+            const float t = 0.07f, lift = 0.012f;
+            uint h = Hash.Cell(p, (uint)(41 + f));
+            var lines = new List<(float u0, float v0, float u1, float v1)>(3);
+            if (f >= 4)
+            {
+                // Floors and roofs: a square frame.
+                lines.Add((0.2f, 0.2f, 0.8f, 0.2f + t)); lines.Add((0.2f, 0.8f - t, 0.8f, 0.8f));
+                lines.Add((0.2f, 0.2f, 0.2f + t, 0.8f)); lines.Add((0.8f - t, 0.2f, 0.8f, 0.8f));
+            }
+            else switch (h % 5)
+            {
+                case 0: lines.Add((0.5f - t / 2, 0.1f, 0.5f + t / 2, 0.9f)); break;                               // a stroke
+                case 1: lines.Add((0.15f, 0.62f, 0.85f, 0.62f + t)); lines.Add((0.15f, 0.32f, 0.6f, 0.32f + t)); break; // two bars
+                case 2: lines.Add((0.3f, 0.15f, 0.3f + t, 0.85f)); lines.Add((0.3f, 0.15f, 0.75f, 0.15f + t)); break;   // an L
+                case 3: lines.Add((0.2f, 0.5f, 0.8f, 0.5f + t)); lines.Add((0.5f - t / 2, 0.5f, 0.5f + t / 2, 0.9f)); break; // a T
+                default: lines.Add((0.25f, 0.25f, 0.75f, 0.25f + t)); lines.Add((0.75f - t, 0.25f, 0.75f, 0.75f)); lines.Add((0.4f, 0.75f - t, 0.75f, 0.75f)); break;
+            }
+            var buf = chunk.Surfaces[(int)Surface.Glow];
+            V3 o = V3.Of(p), n = Normals[f];
+            V3 At(float u, float v) => o + f switch
+            {
+                0 => new V3(u, v, -lift),
+                2 => new V3(u, v, 1 + lift),
+                1 => new V3(1 + lift, v, u),
+                3 => new V3(-lift, v, u),
+                4 => new V3(u, 1 + lift, v),
+                _ => new V3(u, -lift, v),
+            };
+            foreach (var (u0, v0, u1, v1) in lines)
+            {
+                V3 a = At(u0, v0), b = At(u1, v0), c = At(u1, v1), d = At(u0, v1);
+                // Wind it so it faces outward, then emit clockwise for Godot.
+                if (V3.Dot(V3.Cross(b - a, c - a), n) < 0) (b, d) = (d, b);
+                int i0 = buf.VertexCount;
+                foreach (V3 v in new[] { a, b, c, d }) buf.Vertex(v, n, color.R / 255f, color.G / 255f, color.B / 255f, 1f);
+                buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2 });
             }
         }
 
@@ -228,8 +279,9 @@ public static class Mesher
                 if (Occludes(n)) continue;
                 // Don't wall off the plug's outside: beyond it is more ground.
                 if (!InRockRect(n) || n.Y < _o.RockBottom) continue;
-                Rgb c = f == 4 && n.Y == 0 ? _o.GroundColor : _o.RockColor;
-                Face(chunk, Surface.Matte, p, f, c, 1f, jitter, ao: true);
+                bool top = f == 4 && n.Y == 0;
+                Rgb c = top ? _o.GroundColorAt?.Invoke(p.X, p.Z) ?? _o.GroundColor : _o.RockColor;
+                Face(chunk, Surface.Matte, p, f, c, 1f, top ? 1f : jitter, ao: true);
                 if (_o.Collision) CollideFace(chunk, p, f);
             }
         }
@@ -266,11 +318,11 @@ public static class Mesher
             var idx = buf.Indices;
             if (a0 + a2 >= a1 + a3)
             {
-                idx.Add(i0); idx.Add(i0 + 1); idx.Add(i0 + 2); idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 3);
+                idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
             }
             else
             {
-                idx.Add(i0 + 1); idx.Add(i0 + 2); idx.Add(i0 + 3); idx.Add(i0 + 1); idx.Add(i0 + 3); idx.Add(i0);
+                idx.Add(i0 + 1); idx.Add(i0 + 3); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3);
             }
             chunk.Quads++;
         }
@@ -287,7 +339,8 @@ public static class Mesher
             }
         }
 
-        /// <summary>Corners of a unit-cube face, counter-clockwise seen from outside.</summary>
+        /// <summary>Corners of a unit-cube face, counter-clockwise seen from outside. Godot's front faces are
+        /// clockwise, so every quad is emitted as (0, 2, 1) and (0, 3, 2).</summary>
         static void Corners(int f, out V3 a, out V3 b, out V3 c, out V3 d)
         {
             switch (f)
@@ -351,7 +404,7 @@ public static class Mesher
                 buf.Vertex(c, Normals[f], r, g, bl, alpha);
                 buf.Vertex(d, Normals[f], r, g, bl, alpha);
                 var idx = buf.Indices;
-                idx.Add(i0); idx.Add(i0 + 1); idx.Add(i0 + 2); idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 3);
+                idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
                 chunk.Quads++;
             }
         }
@@ -369,7 +422,7 @@ public static class Mesher
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
                 foreach (V3 v in new[] { a, bb, c, d }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
-                buf.Indices.AddRange(new[] { i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3 });
+                buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2 });
                 chunk.Quads++;
             }
             void TriFace(V3 a, V3 bb, V3 c, float shade)
@@ -377,7 +430,7 @@ public static class Mesher
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
                 foreach (V3 v in new[] { a, bb, c }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
-                buf.Indices.AddRange(new[] { i0, i0 + 1, i0 + 2 });
+                buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1 });
             }
             V3 sLL = R(lowL), sLR = R(lowR), sHL = R(highL), sHR = R(highR), sBL = R(backL), sBR = R(backR);
             Quad(sLL, sLR, sHR, sHL, 0.97f);                  // the slope
@@ -401,13 +454,13 @@ public static class Mesher
             for (int i = 0; i < 4; i++)
             {
                 V3 a = bs[i], c = bs[(i + 1) % 4];
-                V3 n = V3.Cross(apex - a, c - a).Normalized() * -1f;
+                V3 n = V3.Cross(apex - a, c - a).Normalized();
                 float k = 0.75f + 0.25f * Math.Max(0f, n.Y + 0.3f) + (i % 2) * 0.08f;
                 int i0 = buf.VertexCount;
                 buf.Vertex(a, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
                 buf.Vertex(c, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
                 buf.Vertex(apex, n, b.Color.R / 255f * k * 1.1f, b.Color.G / 255f * k * 1.1f, b.Color.B / 255f * k * 1.1f, 1f);
-                buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1 });
+                buf.Indices.AddRange(new[] { i0, i0 + 1, i0 + 2 });
             }
         }
     }
@@ -611,25 +664,31 @@ public static class Shapes
                 {
                     float sz = 0.6f + R(i) * 0.5f;
                     float x = R(i + 3) * (1.1f - sz) - 0.05f, y = R(i + 5) * (1.1f - sz) - 0.05f, z = R(i + 1) * (1.1f - sz) - 0.05f;
-                    l.Add(Box(x, y, z, x + sz, y + sz, z + sz, i == 1 ? c.Scale(0.75f) : c, Surface.Matte));
+                    l.Add(Box(x, y, z, x + sz, y + sz, z + sz, i == 1 ? c.Scale(0.75f) : c, Surface.Flesh));
                 }
-                if (R(7) > 0.35f)
+                // Glowing nodules push through the skin, and a vein runs over it.
+                for (int i = 0; i < 1 + (R(7) > 0.45f ? 1 : 0); i++)
                 {
-                    float x = 0.2f + R(2) * 0.5f, y = 0.2f + R(4) * 0.5f;
-                    l.Add(Box(x, y, -0.06f, x + 0.18f, y + 0.18f, 1.06f, StateTransforms.BloomGlow, Surface.Glow));
+                    float x = 0.15f + R(2 + i) * 0.55f, y = 0.2f + R(4 + i) * 0.55f, sz = 0.14f + R(6 + i) * 0.1f;
+                    l.Add(Box(x, y, -0.08f, x + sz, y + sz, 1.08f, StateTransforms.BloomGlow, Surface.Glow));
+                }
+                if (R(1) > 0.4f)
+                {
+                    float z = 0.2f + R(3) * 0.6f;
+                    l.Add(Box(-0.05f, 0.25f + R(5) * 0.5f, z, 1.05f, 0.31f + R(5) * 0.5f, z + 0.06f, new Rgb(0xff, 0x6a, 0xc0), Surface.Glow));
                 }
                 break;
             }
             case BlockType.Tendril:
-                l.Add(Box(0.43f, 0, 0.43f, 0.57f, 1, 0.57f, c, Surface.Matte));
-                l.Add(Box(0.38f + R(0) * 0.1f, 0.3f, 0.38f, 0.52f + R(0) * 0.1f, 0.7f, 0.52f, c.Scale(0.8f), Surface.Matte));
+                l.Add(Box(0.43f, 0, 0.43f, 0.57f, 1, 0.57f, c, Surface.Flesh));
+                l.Add(Box(0.38f + R(0) * 0.1f, 0.3f, 0.38f, 0.52f + R(0) * 0.1f, 0.7f, 0.52f, c.Scale(0.8f), Surface.Flesh));
                 if (b.Variant == 1 || R(1) > 0.6f) l.Add(Box(0.4f, 0, 0.4f, 0.6f, 0.14f, 0.6f, StateTransforms.BloomGlow, Surface.Glow));
                 break;
             case BlockType.Pod:
             {
                 bool glows = b.Material is Material.Lumen or Material.Bloom;
                 Rgb shell = b.Material == Material.Bloom ? StateTransforms.BloomBruise : c.Scale(0.45f);
-                l.Add(Box(0.18f, 0, 0.18f, 0.82f, 0.45f, 0.82f, shell, Surface.Matte));
+                l.Add(Box(0.18f, 0, 0.18f, 0.82f, 0.45f, 0.82f, shell, b.Material == Material.Bloom ? Surface.Flesh : Surface.Matte));
                 l.Add(Box(0.24f, 0.45f, 0.24f, 0.76f, 0.95f, 0.76f, glows ? c : c.Scale(0.5f), glows ? Surface.Glow : Surface.Matte));
                 l.Add(Box(0.3f, 0.95f, 0.3f, 0.7f, 1.05f, 0.7f, shell, Surface.Matte));
                 break;

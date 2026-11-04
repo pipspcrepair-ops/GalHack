@@ -118,6 +118,15 @@ public static class Dressing
                     var d = rng.Pick(guards);
                     Spawn(d, EnemyKind.Guard, d.Name, true, (rng.Pick(vaultFloor), layout.VaultModule));
                 }
+                // Two on the gate, outside, either side of the way in.
+                Int3 side = layout.EntranceFacing.RotateCw(1).Vec();
+                foreach (int s in new[] { -2, 3 })
+                {
+                    Int3 c = layout.EntranceCell + side * s;
+                    if (!nav.Standable(c) || guards.Count == 0) continue;
+                    var d = rng.Pick(guards);
+                    Spawn(d, EnemyKind.Guard, d.Name, true, (c, 0));
+                }
                 // Emplacements on the roofs, drones over the way in.
                 foreach (int k in layout.KeyModules.Take(1 + (int)inst.Rarity))
                     if (turrets.Count > 0 && StateTransforms.TopOf(inst, layout.Modules[k]) is Int3 top)
