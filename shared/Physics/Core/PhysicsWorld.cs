@@ -154,6 +154,14 @@ public sealed class PhysicsWorld
     {
         Tick++;
         _pairs.Clear();
+    }
+
+    /// <summary>
+    /// After the engine has been handed this tick's sums: start the next tick's accumulators. Forces
+    /// added between ticks (a blast's push from game code) land in the next tick, never lost.
+    /// </summary>
+    public void FinishTick()
+    {
         foreach (Body b in _bodies) b.ClearForces();
     }
 
@@ -250,13 +258,27 @@ public sealed class PhysicsWorld
     /// </summary>
     public Vector3 ResolveContacts(Body body, IReadOnlyList<Contact> contacts, Vector3 before, Vector3 velocity)
     {
+        // Fixed things (terrain is many collision blocks) count as one impact per move: the
+        // hardest one. Touching two terrain blocks at once is still one crash, not two.
+        int hardest = -1;
+        float most = 0f;
         for (int i = 0; i < contacts.Count; i++)
         {
             Contact c = contacts[i];
-            if (c.Other == null && c.Normal.Y > 0.6f) body.OnFloor = true;
-            if (c.Other != null && c.Other != body) velocity = Ram(body, c.Other, c, before, velocity);
-            else velocity = HitFixed(body, c, before, velocity);
+            if (c.Other != null && c.Other != body)
+            {
+                velocity = Ram(body, c.Other, c, before, velocity);
+                continue;
+            }
+            if (c.Normal.Y > 0.6f) body.OnFloor = true;
+            float closing = -Vector3.Dot(before, c.Normal);
+            if (closing > most)
+            {
+                most = closing;
+                hardest = i;
+            }
         }
+        if (hardest >= 0) velocity = HitFixed(body, contacts[hardest], before, velocity);
         return velocity;
     }
 

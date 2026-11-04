@@ -110,6 +110,7 @@ public partial class PhysicsHost : Node
             if (_moveOrder[i].Body.Motion == Motion.Kinematic) _moveOrder[i].Move(this, dt);
         World.EndTick(dt);
         for (int i = 0; i < _bindings.Count; i++) _bindings[i].Flush(this, dt);
+        World.FinishTick();
         LastStepMs = _watch.Elapsed.TotalMilliseconds;
     }
 

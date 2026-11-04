@@ -22,6 +22,13 @@ public struct FlightMotion
 
     /// <summary>Ship-local spin, rad/s: x pitch, y yaw, z roll.</summary>
     public Vector3 LocalSpin;
+
+    /// <summary>
+    /// Landed and left there, until a pilot lifts off. A parked vessel that something knocks
+    /// loose brakes back to a stop instead of the autopilot holding course: it must never sail
+    /// away by itself.
+    /// </summary>
+    public bool Parked;
 }
 
 /// <summary>
@@ -74,6 +81,9 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     /// <summary>Landed and settled: not simulated at all until thrust wakes it.</summary>
     public bool Frozen { get; private set; }
+
+    /// <summary>Landed and not flown off since (see <see cref="FlightMotion.Parked"/>).</summary>
+    public bool Parked { get; private set; }
     public bool Settling => _settleLeft > 0f;
 
     /// <summary>Ticks this vessel actually simulated. Frozen ticks don't count.</summary>
@@ -109,6 +119,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         body.Asleep = false;
         _settleLeft = 0f;
         _idle = 0f;
+        Parked = false;
         Hover?.Reset();
         Gear?.Reset(false);
     }
@@ -119,6 +130,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         Place(body, position, headingRadians);
         Gear?.Reset(true);
         Frozen = true;
+        Parked = true;
         body.Asleep = true;
     }
 
@@ -171,7 +183,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
         Vector3 v0 = body.Velocity;
         Quaternion before = body.Rotation;
-        var motion = new FlightMotion { Velocity = v0, Rotation = before, LocalSpin = LocalSpin };
+        var motion = new FlightMotion { Velocity = v0, Rotation = before, LocalSpin = LocalSpin, Parked = Parked };
         Flight.Step(body, ref motion, Zone, dt);
         LocalSpin = motion.LocalSpin;
         Vector3 v = motion.Velocity;
@@ -266,6 +278,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         if (_settleLeft > 0f) return;
         _settleLeft = 0f;
         Frozen = true;
+        Parked = true;
         world.RaiseLanded(body);
     }
 
@@ -283,6 +296,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         }
         bool wasLanded = Frozen;
         Wake(body);
+        Parked = false;
         if (wasLanded) world.RaiseLiftedOff(body);
         return true;
     }

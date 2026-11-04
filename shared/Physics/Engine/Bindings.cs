@@ -128,6 +128,9 @@ public sealed class FreeBinding : BodyBinding
         rigid.ContactMonitor = true;
         rigid.MaxContactsReported = 4;
         rigid.CanSleep = true;
+        // A crate thrown at the ground at 40 m/s moves most of its own size in one tick: sweep it,
+        // so it can never tunnel through the terrain's thin shell.
+        rigid.ContinuousCd = true;
         rigid.Mass = body.Mass;
         rigid.CenterOfMassMode = RigidBody3D.CenterOfMassModeEnum.Custom;
         rigid.CenterOfMass = body.CenterOfMass.ToGodot();
@@ -176,11 +179,12 @@ public sealed class FreeBinding : BodyBinding
         Body b = Body;
         if (b.Asleep && b.PendingTotalForce == N.Vector3.Zero && b.PendingTotalImpulse == N.Vector3.Zero) return;
         if (Rigid.Sleeping) Rigid.Sleeping = false;
+        Vector3 before = Rigid.LinearVelocity; // read first: an impulse may change it at once
         Vector3 force = b.PendingTotalForce.ToGodot(), impulse = b.PendingTotalImpulse.ToGodot();
         if (force != Vector3.Zero) Rigid.ApplyCentralForce(force);
         if (impulse != Vector3.Zero) Rigid.ApplyCentralImpulse(impulse);
         if (b.PendingSpinImpulse != N.Vector3.Zero) Rigid.ApplyTorqueImpulse(b.PendingSpinImpulse.ToGodot());
-        _expected = Rigid.LinearVelocity + force / b.Mass * dt + impulse / b.Mass;
+        _expected = before + force / b.Mass * dt + impulse / b.Mass;
         _hasExpected = true;
     }
 
@@ -262,24 +266,32 @@ public sealed class CharacterBinding : BodyBinding
         b.Velocity = Character.Velocity.ToNumerics();
         b.OnFloor = Character.IsOnFloor();
 
-        // The hardest thing it ran into this move: landing, or being thrown into a wall.
+        // The hardest thing it ran into this move: landing, or being thrown into a wall. A new
+        // contact counts its full closing speed. A surface it was already touching last move
+        // counts only as far as this move really stopped it: the character controller can leave
+        // a velocity pressing into a steep slope tick after tick, and that is leaning, not hitting.
+        N.Vector3 change = Character.Velocity.ToNumerics() - before.ToNumerics();
         float hardest = 0f;
         Contact strongest = default;
         Body floorHull = null;
+        _touching.Clear();
         for (int i = 0; i < Character.GetSlideCollisionCount(); i++)
         {
             KinematicCollision3D hit = Character.GetSlideCollision(i);
             GodotObject collider = hit.GetCollider();
             Body other = host.BodyOf(collider);
             N.Vector3 n = hit.GetNormal().ToNumerics(), point = hit.GetPosition().ToNumerics();
+            _touching.Add(n);
             if (other != null && (other.Kind is BodyKind.Vessel or BodyKind.Wreck) && n.Y > 0.7f) floorHull = other;
             N.Vector3 otherVelocity = other == null || b.Frame != null ? N.Vector3.Zero : other.PointVelocity(point);
             N.Vector3 mine = b.Frame != null ? before.ToNumerics() : worldBefore;
             float closing = -N.Vector3.Dot(mine - otherVelocity, n);
+            if (WasTouching(n)) closing = System.MathF.Min(closing, N.Vector3.Dot(change, n));
             if (closing <= hardest) continue;
             hardest = closing;
             strongest = new Contact(point, n, other, other != null ? Surface.Body : GodotQuery.SurfaceOf(collider));
         }
+        (_touched, _touching) = (_touching, _touched);
         if (hardest > host.World.Rules.Contacts.EventSpeed && (!wasOnFloor || strongest.Normal.Y < 0.7f))
             host.World.ResolveImpact(b, strongest.Other, strongest.Point, strongest.Normal, hardest, strongest.Surface);
 
@@ -292,10 +304,20 @@ public sealed class CharacterBinding : BodyBinding
         }
     }
 
+    List<N.Vector3> _touched = new(), _touching = new();
+
+    bool WasTouching(N.Vector3 n)
+    {
+        foreach (N.Vector3 m in _touched)
+            if (N.Vector3.Dot(m, n) > 0.95f) return true;
+        return false;
+    }
+
     public override void Teleport()
     {
         Character.GlobalPosition = Body.Position.ToGodot();
         Character.Velocity = Body.Velocity.ToGodot();
         Character.ResetPhysicsInterpolation();
+        _touched.Clear();
     }
 }

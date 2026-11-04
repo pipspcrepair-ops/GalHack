@@ -127,7 +127,13 @@ public sealed class StuckGuard
             if (!field.Applies(body)) continue;
             foreach (Vector2 p in probes) top = MathF.Max(top, field.TopAt(body, c.X + p.X, c.Z + p.Y));
         }
-        return float.IsFinite(top) ? new Vector3(feet.X, MathF.Max(feet.Y, top + 0.2f), feet.Z) : feet;
+        if (float.IsFinite(top)) return new Vector3(feet.X, MathF.Max(feet.Y, top + 0.2f), feet.Z);
+
+        // Nothing under it at all (it fell off the world): a field knows where to bring it back.
+        foreach (IStuckField field in _world.StuckFields)
+            if (field.Applies(body) && field.TryFindOpen(body, feet, body.Shape, out Vector3 open))
+                return open + Vector3.UnitY * 0.5f;
+        return feet;
     }
 
     /// <summary>
