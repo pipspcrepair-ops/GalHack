@@ -1,0 +1,664 @@
+# Meridian Combine: human corporate. Massive clean white blocks, slate panels, a safety-orange
+# band at shoulder height and a teal corporate stripe. Cold white light. Two module sets:
+# "lab" for buried research sites and "ship" for the hull sections of a downed freighter.
+
+kit meridian
+name Meridian Combine
+faction meridian
+light e6f2ff
+
+palette
+  #  cube     concrete  e6e1d6|dcd6ca         wall    clean white blocks
+  %  cube     alloy     3a4250|353c49         wall    slate panels
+  a  cube     alloy     c8ccd2|bfc4ca|d2d5da  wall    hull plating
+  _  cube     concrete  4a4f58|50555e         floor
+  =  cube     concrete  d4cfc4|cdc8bc         roof
+  *  cube     lumen     e6f2ff                light   cold white panels
+  w  pane     glass     9fd3e0                window
+  k  cube     alloy     ef6c1a                decor   safety-orange band
+  t  cube     alloy     1f8a8a                decor   teal corporate stripe
+  o  pillar   alloy     3a4250                wall
+  m  machine  alloy     59606e|4e5562         decor   machinery
+  y  cube     steel     e0a800|1e1e1e         decor   hazard blocks
+  c  pod      lumen     8fd8ff                decor   cryo cradles
+  b  bunk     cloth     4f6d7a                decor   crew bunks
+  e  cube     lumen     ff8a3a                light   engine glow
+  /  ramp     steel     5a606a                floor
+  u  cube     concrete  3a3f48                floor
+
+# ---- lab -------------------------------------------------------------------------------
+module mc_hatch
+  kind entrance
+  tags lab
+  layer fill _
+  layer x2
+  |##%DD%##|
+  |#......#|
+  |#..!...#|
+  |%......%|
+  |#..?...#|
+  |#....T.#|
+  |##%XX%##|
+  layer
+  |kkkDDkkk|
+  |k......k|
+  |k......k|
+  |k......k|
+  |k......k|
+  |k......k|
+  |kkkXXkkk|
+  layer
+  |########|
+  |#......#|
+  |#......#|
+  |t......t|
+  |#......#|
+  |#......#|
+  |########|
+  layer
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+  layer
+  |o       |
+  |  %%%%  |
+  |  %##%  |
+  |  %##%  |
+  |  %%%%  |
+  |        |
+  |        |
+  layer x3
+  |o       |
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+  layer
+  |*       |
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+  |        |
+
+module mc_lift
+  kind descent
+  tags lab
+  layer fill u
+  layer
+  |######|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#^^^^#|
+  |#....#|
+  |#....#|
+  |##DD##|
+  layer
+  |######|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#^^^^#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |kkDDkk|
+  layer
+  |######|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#^^^^#|
+  |#....#|
+  |k....k|
+  |#....#|
+  |#....#|
+  |##DD##|
+  layer
+  |######|
+  |#uuuu#|
+  |#uuuu#|
+  |#uuuu#|
+  |#^^^^#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |%%%%%%|
+  layer
+  |######|
+  |#____#|
+  |#____#|
+  |#^^^^#|
+  |#....#|
+  |k....k|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |######|
+  layer x3
+  |##DD##|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |#....#|
+  |k....k|
+  |#....#|
+  |#....#|
+  |######|
+  layer
+  |======|
+  |======|
+  |=*==*=|
+  |======|
+  |======|
+  |=*==*=|
+  |======|
+  |======|
+  |=*==*=|
+  |======|
+  |======|
+
+module mc_corr
+  kind corridor
+  tags lab
+  weight 2
+  layer fill _
+  layer x2
+  |#DD#|
+  |#..#|
+  |%..%|
+  |#..#|
+  |#..#|
+  |%..%|
+  |#..#|
+  |#DD#|
+  layer
+  |#DD#|
+  |k..k|
+  |k..k|
+  |k..k|
+  |k..k|
+  |k..k|
+  |k..k|
+  |#DD#|
+  layer
+  |====|
+  |=*==|
+  |====|
+  |==*=|
+  |====|
+  |=*==|
+  |====|
+  |====|
+
+module mc_tee
+  kind corridor
+  tags lab
+  layer fill _
+  layer x2
+  |########|
+  |#......#|
+  |D......D|
+  |D......D|
+  |#......#|
+  |###DD###|
+  layer
+  |kkkkkkkk|
+  |k......k|
+  |D......D|
+  |D......D|
+  |k......k|
+  |kkkDDkkk|
+  layer
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+  |========|
+
+module mc_lab
+  kind room
+  tags lab
+  weight 2
+  layer fill _
+  layer x2
+  |###%DD%###|
+  |#m......m#|
+  |#..?..?..#|
+  |%........%|
+  |D...!....D|
+  |D........D|
+  |%..T...$.%|
+  |###%DD%###|
+  layer
+  |kkk%DD%kkk|
+  |k........k|
+  |k........k|
+  |w........w|
+  |D........D|
+  |D........D|
+  |w........w|
+  |kkk%DD%kkk|
+  layer
+  |==========|
+  |==========|
+  |==*====*==|
+  |==========|
+  |==========|
+  |==*====*==|
+  |==========|
+  |==========|
+
+module mc_cryo
+  kind hall
+  tags lab
+  weight 2
+  layer fill _
+  layer x2
+  |####%DD%####|
+  |#c..c..c..c#|
+  |#..........#|
+  |%...!......%|
+  |#c........c#|
+  |D....C.....D|
+  |D..........D|
+  |#c........c#|
+  |%......B...%|
+  |#..?.......#|
+  |#c..c..c..c#|
+  |####%DD%####|
+  layer
+  |kkkk%DD%kkkk|
+  |k..........k|
+  |k..........k|
+  |k..........k|
+  |k..........k|
+  |D..........D|
+  |D..........D|
+  |k..........k|
+  |k..........k|
+  |k..........k|
+  |k..........k|
+  |kkkk%DD%kkkk|
+  layer
+  |####%%%%####|
+  |#..........#|
+  |#..........#|
+  |t..........t|
+  |#..........#|
+  |%..........%|
+  |%..........%|
+  |#..........#|
+  |t..........t|
+  |#..........#|
+  |#..........#|
+  |####%%%%####|
+  layer
+  |============|
+  |============|
+  |==*==**==*==|
+  |============|
+  |============|
+  |==*==**==*==|
+  |==*==**==*==|
+  |============|
+  |============|
+  |==*==**==*==|
+  |============|
+  |============|
+
+module mc_secure
+  kind vault
+  tags lab
+  layer fill _
+  layer x3
+  |##yDDy##|
+  |#......#|
+  |#.$..$.#|
+  |%..!...%|
+  |#......#|
+  |#.?.B..#|
+  |#..$...#|
+  |########|
+  layer
+  |##yyyy##|
+  |#......#|
+  |#......#|
+  |%......%|
+  |#......#|
+  |#......#|
+  |#......#|
+  |########|
+  layer
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+  |==*==*==|
+  |========|
+  |========|
+
+# ---- ship (a downed freighter, nose north) -----------------------------------------------
+module fr_bow
+  kind entrance
+  tags ship
+  layer fill _
+  layer
+  |   aaaa   |
+  |  aw..wa  |
+  | a......a |
+  |a...!....a|
+  |a........a|
+  |X........a|
+  |X..?.....a|
+  |a........a|
+  |a........a|
+  |aaaaDDaaaa|
+  layer
+  |   wwww   |
+  |  w....w  |
+  | w......w |
+  |a........a|
+  |a........a|
+  |X........a|
+  |X........a|
+  |a........a|
+  |a........a|
+  |aaaaDDaaaa|
+  layer
+  |   aaaa   |
+  |  aw..wa  |
+  | a......a |
+  |kkkkkkkkkk|
+  |a........a|
+  |X........k|
+  |X........k|
+  |a........a|
+  |a........a|
+  |aaaaDDaaaa|
+  layer
+  |   aaaa   |
+  |  aaaaaa  |
+  | aaaaaaaa |
+  |aaaaaaaaaa|
+  |aa*aaaa*aa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  |aa*aaaa*aa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  layer
+  |          |
+  |          |
+  |   aaaa   |
+  |  aaaaaa  |
+  |  atttta  |
+  |  aaaaaa  |
+  |  aaaaaa  |
+  |  aaaaaa  |
+  |  aaaaaa  |
+  |  aaaaaa  |
+
+module fr_spine
+  kind corridor
+  tags ship
+  weight 2
+  layer fill _
+  layer x2
+  |aaDDaa|
+  |a....a|
+  |w....w|
+  |a....a|
+  |a....a|
+  |w....w|
+  |a....a|
+  |aaDDaa|
+  layer
+  |kkDDkk|
+  |k....k|
+  |k....k|
+  |k....k|
+  |k....k|
+  |k....k|
+  |k....k|
+  |kkDDkk|
+  layer
+  |aaaaaa|
+  |aa*aaa|
+  |aaaaaa|
+  |aaaaaa|
+  |aaa*aa|
+  |aaaaaa|
+  |aaaaaa|
+  |aaaaaa|
+  layer
+  |      |
+  | aaaa |
+  | atta |
+  | aaaa |
+  | aaaa |
+  | atta |
+  | aaaa |
+  |      |
+
+module fr_hold
+  kind hall
+  tags ship
+  weight 2
+  layer fill _
+  layer x3
+  |aaaaaDDaaaaa|
+  |a..........a|
+  |a.?.....!..a|
+  |a..........a|
+  |a..........a|
+  |D....C.....D|
+  |D..........D|
+  |a..........a|
+  |a..!.......a|
+  |a.......B..a|
+  |a..........a|
+  |aaaaaDDaaaaa|
+  layer
+  |aaaaaaaaaaaa|
+  |a..........a|
+  |w..........w|
+  |a..........a|
+  |a..........a|
+  |k..........k|
+  |k..........k|
+  |a..........a|
+  |a..........a|
+  |w..........w|
+  |a..........a|
+  |aaaaaaaaaaaa|
+  layer
+  |aaaaaaaaaaaa|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |a..........a|
+  |aaaaaaaaaaaa|
+  layer
+  |aaaaaaaaaaaa|
+  |aaaaaaaaaaaa|
+  |aa*aaaaaa*aa|
+  |aaaaaaaaaaaa|
+  |aaaaaaaaaaaa|
+  |aaaa*aa*aaaa|
+  |aaaa*aa*aaaa|
+  |aaaaaaaaaaaa|
+  |aaaaaaaaaaaa|
+  |aa*aaaaaa*aa|
+  |aaaaaaaaaaaa|
+  |aaaaaaaaaaaa|
+  layer
+  |            |
+  | aaaaaaaaaa |
+  | aaaaaaaaaa |
+  | atttttttta |
+  | aaaaaaaaaa |
+  | aaaaaaaaaa |
+  | aaaaaaaaaa |
+  | aaaaaaaaaa |
+  | atttttttta |
+  | aaaaaaaaaa |
+  | aaaaaaaaaa |
+  |            |
+  layer
+  |            |
+  |            |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |   aaaaaa   |
+  |            |
+  |            |
+
+module fr_quarters
+  kind room
+  tags ship
+  layer fill _
+  layer x2
+  |aaaDDaaa|
+  |ab....ba|
+  |ab....ba|
+  |a..?...a|
+  |a...!..a|
+  |ab....ba|
+  |ab.T..ba|
+  |a....$.a|
+  |aaaDDaaa|
+  layer
+  |kkkDDkkk|
+  |k......k|
+  |w......w|
+  |k......k|
+  |k......k|
+  |w......w|
+  |k......k|
+  |k......k|
+  |kkkDDkkk|
+  layer
+  |aaaaaaaa|
+  |aaaaaaaa|
+  |aa*aa*aa|
+  |aaaaaaaa|
+  |aaaaaaaa|
+  |aa*aa*aa|
+  |aaaaaaaa|
+  |aaaaaaaa|
+  |aaaaaaaa|
+  layer
+  |        |
+  | aaaaaa |
+  | aaaaaa |
+  | aaaaaa |
+  | aaaaaa |
+  | aaaaaa |
+  | aaaaaa |
+  | aaaaaa |
+  |        |
+
+module fr_engine
+  kind room
+  tags ship
+  layer fill _
+  layer x3
+  |aaaaDDaaaa|
+  |a........a|
+  |a.mm..mm.a|
+  |a.mm..mm.a|
+  |a....!...D|
+  |a.?......D|
+  |a.mm..mm.a|
+  |a.mm..mm.a|
+  |a..$.....a|
+  |aeeaaaaeea|
+  layer
+  |aaaaaaaaaa|
+  |a........a|
+  |a.mm..mm.a|
+  |a.mm..mm.a|
+  |a........a|
+  |a........a|
+  |a.mm..mm.a|
+  |a.mm..mm.a|
+  |a........a|
+  |aeeaaaaeea|
+  layer
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  |aa*aaaa*aa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  |aa*aaaa*aa|
+  |aaaaaaaaaa|
+  |aaaaaaaaaa|
+  layer
+  |          |
+  | aaaaaaaa |
+  | aaaaaaaa |
+  | aaaaaaaa |
+  | akkkkkka |
+  | aaaaaaaa |
+  | aaaaaaaa |
+  | aaaaaaaa |
+  | aaaaaaaa |
+  |          |
+
+module fr_strong
+  kind vault
+  tags ship
+  layer fill _
+  layer x3
+  |aayDDyaa|
+  |a......a|
+  |a.$..$.a|
+  |a..!...a|
+  |a......a|
+  |a.?.B..a|
+  |a..$...a|
+  |aaaaaaaa|
+  layer
+  |aaaaaaaa|
+  |aaaaaaaa|
+  |aa*aa*aa|
+  |aaaaaaaa|
+  |aaaaaaaa|
+  |aa*aa*aa|
+  |aaaaaaaa|
+  |aaaaaaaa|

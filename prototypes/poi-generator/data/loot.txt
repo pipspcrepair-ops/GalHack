@@ -1,0 +1,24 @@
+# Loot pool.   tier  value  [unique]  name
+# Tier 1 is everyday salvage, tier 4 is the stuff you cross a system for. "unique" marks a
+# unique material: only rare places can roll it.
+
+1   4  Scrap Metal
+1   6  Wiring Bundle
+1   5  Ration Pack
+1   7  Med Gel
+1   8  Ammo Box
+1   6  Filter Cartridge
+2  18  Alloy Plate
+2  22  Power Cell
+2  26  Circuit Board
+2  20  Sealant Canister
+2  30  Fuel Rod
+3  55  Combine Data Shard
+3  60  Vharn Resin Core
+3  65  Kessari Logic Lattice
+3  70  Plasma Coupling
+3  58  Weapon Schematic
+4 150  unique  Precursor Glyphstone
+4 140  unique  Hollow Pearl
+4 170  unique  Starmetal Ingot
+4 160  unique  Living Crystal
