@@ -119,6 +119,8 @@ public partial class SkyDome : Node3D
         _sky.SkyHorizonColor = AirHorizon.Lerp(SpaceHorizon, t);
         _sky.GroundHorizonColor = AirGround.Lerp(SpaceGround, t);
         _env.FogDensity = Mathf.Lerp(0.00022f, 0.00002f, t);
+        _env.FogSkyAffect = Mathf.Lerp(0.8f, 0f, t); // the haze is in the air, not in space
+        _env.FogLightColor = AirHorizon.Lerp(SpaceHorizon, t);
         _env.AmbientLightEnergy = Mathf.Lerp(0.75f, 0.45f, t);
         _stars.Visible = t > 0.05f;
         _starMat.AlbedoColor = new Color(1f, 0.95f, 0.85f, t);

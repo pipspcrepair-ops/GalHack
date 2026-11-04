@@ -24,7 +24,7 @@ public static class Palette
     public static readonly Color Ochre = new("c87941");
     public static readonly Color Rust = new("8b3a1e");
     public static readonly Color Rock = new("a0522d");
-    public static readonly Color Water = new(0.05f, 0.45f, 0.5f, 0.8f);
+    public static readonly Color Water = new(0.05f, 0.45f, 0.5f, 0.93f);
 
     static readonly Dictionary<string, Color> Named = new()
     {

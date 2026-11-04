@@ -221,8 +221,7 @@ public partial class PlanetSurface : Node3D
             Mesh = new CylinderMesh { TopRadius = LakeRadius + 22f, BottomRadius = LakeRadius + 22f, Height = 0.02f, RadialSegments = 96 },
             MaterialOverride = new StandardMaterial3D
             {
-                AlbedoColor = Palette.Water,
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                AlbedoColor = Palette.Water, // opaque: cheaper, and no lake-bed shadows showing through
                 Roughness = 0.08f,
                 Metallic = 0.4f,
                 EmissionEnabled = true,

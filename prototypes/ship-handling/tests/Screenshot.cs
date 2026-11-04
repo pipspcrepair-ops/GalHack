@@ -7,7 +7,7 @@ namespace ShipHandling;
 /// <summary>
 /// Renders one scripted moment of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/ship-handling res://tests/Screenshot.tscn -- --view=lake --out=shot.png
-/// Views: lake, hills, capital, crater, overview.
+/// Views: lake, hills, capital, crater, space, overview.
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -57,7 +57,6 @@ public partial class Screenshot : Node
             case "hills":
                 _main.Select(1);
                 Fighter.Place(new Vector3(-210f, 52f, 230f), 35f);
-                Fighter.Gear.Toggle();
                 Fighter.State.Velocity = Fighter.GlobalBasis * new Vector3(0, 0, -55f);
                 camera.Orbit = new Vector2(-0.35f, -0.08f);
                 camera.Zoom = 1.1f;
@@ -66,17 +65,25 @@ public partial class Screenshot : Node
             case "capital":
                 _main.Select(2);
                 Capital.Place(new Vector3(60f, 70f, 120f), 20f);
-                Capital.State.Velocity = Capital.GlobalBasis * new Vector3(0, 0, -25f);
-                camera.Orbit = new Vector2(0.9f, -0.18f);
-                camera.Zoom = 1.15f;
-                _captureTick = 200;
+                Capital.State.Velocity = Capital.GlobalBasis * new Vector3(0, 0, -12f);
+                camera.Orbit = new Vector2(0.55f, -0.04f);
+                camera.Zoom = 0.95f;
+                _captureTick = 240;
+                break;
+            case "space":
+                _main.Select(1);
+                Fighter.Place(new Vector3(0f, _main.Tunables.Planet.AtmosphereCeiling + 120f, 300f), 200f);
+                Fighter.State.Orientation = new Basis(Vector3.Up, Mathf.DegToRad(200f)) * new Basis(Vector3.Right, -0.35f);
+                Fighter.State.Velocity = Fighter.State.Orientation * new Vector3(0, 0, -110f);
+                camera.Orbit = new Vector2(-0.5f, -0.1f);
+                _captureTick = 90;
                 break;
             case "crater":
                 _main.Select(1);
                 Fighter.Place(new Vector3(-20f, 90f, -120f), 0f);
                 Fighter.State.Orientation = new Basis(Vector3.Right, -0.9f);
-                Fighter.State.Velocity = new Vector3(0f, -58f, -24f);
-                _captureTick = 170;
+                Fighter.State.Velocity = new Vector3(0f, -58f, -9f);
+                _captureTick = 480;
                 break;
         }
     }
@@ -91,12 +98,15 @@ public partial class Screenshot : Node
             case "hills":
                 Fighter.Input = PilotInput.Hands(Vector3.Forward * 0.8f, new Vector3(0.05f, 0.55f, _tick < 40 ? 0.9f : 0.15f));
                 break;
+            case "space":
+                Fighter.Input = PilotInput.Hands(Vector3.Forward, new Vector3(0f, 0.3f, -0.3f));
+                break;
             case "capital":
-                Capital.Input = PilotInput.Hands(Vector3.Forward * 0.4f, new Vector3(0f, 1f, 0f));
+                Capital.Input = PilotInput.Hands(Vector3.Forward, new Vector3(0f, 1f, 0f)); // full ahead, hard over
                 break;
             case "crater":
                 Fighter.Input = PilotInput.Autopilot;
-                if (_tick == 120)
+                if (_tick == 450)
                 {
                     // Step back from the wreck and look at the hole it made.
                     var camera = _main.Camera;

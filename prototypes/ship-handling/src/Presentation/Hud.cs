@@ -95,6 +95,7 @@ public partial class Hud : CanvasLayer
             : v.State.BoostReady ? "boost ready" : $"boost in {v.State.BoostCooldown:F1} s";
         string ground = v.Hover != null && float.IsFinite(v.Hover.Clearance)
             ? $"ride {v.Hover.Clearance:F2} m" + (v.Hover.LookAheadLift > 0.05f ? $" (+{v.Hover.LookAheadLift:F1} look-ahead)" : "")
+            : v.Frozen ? "on the ground"
             : float.IsFinite(v.GroundDistance) ? $"{v.GroundDistance:F0} m above ground" : "no ground below";
         string where = v.Conditions.InAtmosphere ? $"ATMOSPHERE  g {v.Conditions.PlanetGravity:F1}" : "SPACE  no weight";
         float hull = Mathf.Max(0f, 1f - v.Damage / v.HullPoints);

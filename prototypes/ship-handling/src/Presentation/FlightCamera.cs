@@ -34,6 +34,18 @@ public partial class FlightCamera : Camera3D
 
     public void Snap() => _snap = true;
 
+    /// <summary>How much of the ship's bank the chase view copies. Less than all keeps the horizon readable.</summary>
+    public float RollFollow = 0.35f;
+
+    /// <summary>The ship's heading and pitch, with only part of its roll. Pointing straight up or down, all of it.</summary>
+    Basis FollowRoll(Basis ship)
+    {
+        Vector3 forward = -ship.Z;
+        if (Mathf.Abs(forward.Y) > 0.95f) return ship;
+        Basis level = Basis.LookingAt(forward, Vector3.Up);
+        return level.Slerp(ship, RollFollow).Orthonormalized();
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         if (Target == null) return;
@@ -48,7 +60,7 @@ public partial class FlightCamera : Camera3D
             return;
         }
 
-        Basis frame = Target.Stats.IsHover ? FlightModel.Frame(ship.Basis, true) : ship.Basis;
+        Basis frame = Target.Stats.IsHover ? FlightModel.Frame(ship.Basis, true) : FollowRoll(ship.Basis);
         frame = frame * new Basis(Vector3.Up, Orbit.X) * new Basis(Vector3.Right, Orbit.Y);
         float length = Target.Length;
         var offset = new Vector3(0f, length * 0.26f + 2.2f, length * 1.05f + 6f) * Zoom;

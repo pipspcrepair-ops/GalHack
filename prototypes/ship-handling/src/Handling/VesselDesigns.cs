@@ -162,6 +162,16 @@ public static class VesselDesigns
         }
         for (int i = 0; i < 5; i++)                                              // prow chevrons
             b.Box(new(-6f + i * 3f, -5.2f, -35.2f), new(1.4f, 3.2f, 0.1f), i % 2 == 0 ? "yellow" : "dark");
+        foreach (float x in new[] { -1f, 1f })
+        {
+            b.Box(new(x * 11.03f, 3.6f, -14f), new(0.05f, 4.2f, 24f), "orange");  // big livery panels
+            b.Box(new(x * 11.03f, 1.2f, -14f), new(0.05f, 0.5f, 24f), "yellow");
+            b.Box(new(x * 6.5f, 8.6f, 27f), new(5f, 3.2f, 9f), x < 0 ? "teal" : "yellow"); // deck cargo pods
+            b.Box(new(x * 5.1f, 13.3f, 18f), new(0.4f, 0.4f, 8f), "dark");       // bridge rails
+        }
+        b.Box(new(0, -7.05f, -2f), new(18f, 0.1f, 62f), "dark");                 // belly plating
+        b.Box(new(0, 2.6f, -46.2f), new(5f, 1.2f, 1.4f), "dark");                // prow visor
+        b.Box(new(0, 14.2f, 15f), new(4f, 0.3f, 3f), "teal");                    // radar plate
         b.Box(new(0, 13.4f, 22f), new(0.4f, 3f, 0.4f), "dark");                  // mast
         b.Glow(new(0, 15f, 22f), new(0.8f, 0.8f, 0.8f), "red");
         return v;

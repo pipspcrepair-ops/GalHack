@@ -18,6 +18,7 @@ public partial class VesselArt : Node3D
     readonly List<(HoverEngineSpec spec, MeshInstance3D wash)> _washes = new();
     readonly List<(GearSpec spec, MeshInstance3D leg, MeshInstance3D foot)> _legs = new();
     readonly List<Decal> _scorches = new();
+    CpuParticles3D _spray;
     Node3D _parts;
     int _revision = -1;
     float _time;
@@ -63,6 +64,7 @@ public partial class VesselArt : Node3D
         foreach (var block in s.Blocks) _parts.AddChild(BlockMesh(block));
         foreach (var thruster in s.Thrusters) AddThruster(thruster);
         foreach (var engine in s.HoverEngines) AddHoverEngine(engine);
+        if (s.HoverEngines.Count > 0) AddSpray();
         foreach (var leg in s.LandingGear) AddLeg(leg);
     }
 
@@ -161,7 +163,7 @@ public partial class VesselArt : Node3D
     void UpdateFlames()
     {
         HandlingStats stats = _vessel.Stats;
-        bool landed = _vessel.Frozen || _vessel.Settling;
+        bool landed = _vessel.Frozen || _vessel.Settling || _vessel.Wrecked;
         bool boosting = _vessel.State.Boosting;
         float boost = boosting ? _vessel.World.Tunables.Boost.Multiplier : 1f;
         Vector3 accel = _vessel.State.ThrustLocal;
@@ -223,10 +225,59 @@ public partial class VesselArt : Node3D
         _washes.Add((e, wash));
     }
 
+    /// <summary>White spray kicked up behind a hover vessel skimming water.</summary>
+    void AddSpray()
+    {
+        float back = 0f;
+        foreach (var e in _vessel.Structure.HoverEngines) back = Mathf.Max(back, e.Position.Z);
+        _spray = new CpuParticles3D
+        {
+            Amount = 160,
+            Lifetime = 0.9f,
+            Emitting = false,
+            LocalCoords = false,
+            Mesh = new QuadMesh { Size = new Vector2(0.7f, 0.7f) },
+            EmissionShape = CpuParticles3D.EmissionShapeEnum.Box,
+            EmissionBoxExtents = new Vector3(1.4f, 0.1f, 0.4f),
+            Direction = new Vector3(0f, 1f, 0.6f),
+            Spread = 25f,
+            InitialVelocityMin = 3f,
+            InitialVelocityMax = 7f,
+            Gravity = new Vector3(0f, -9.8f, 0f),
+            ScaleAmountMin = 0.35f,
+            ScaleAmountMax = 1.1f,
+            ColorRamp = new Gradient
+            {
+                Colors = new[] { new Color(1f, 1f, 1f, 0.8f), new Color(1f, 1f, 1f, 0f) },
+            },
+            MaterialOverride = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
+                VertexColorUseAsAlbedo = true,
+                AlbedoColor = new Color(0.92f, 0.98f, 1f),
+                AlbedoTexture = new GradientTexture2D
+                {
+                    Fill = GradientTexture2D.FillEnum.Radial,
+                    FillFrom = new Vector2(0.5f, 0.5f),
+                    FillTo = new Vector2(1f, 0.5f),
+                    Gradient = new Gradient { Colors = new[] { Colors.White, new Color(1f, 1f, 1f, 0f) } },
+                },
+            },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Position = new Vector3(0f, -_vessel.Stats.RideHeight + 0.2f, back + 0.5f),
+        };
+        _parts.AddChild(_spray);
+    }
+
     void UpdateHover()
     {
         HoverController hover = _vessel.Hover;
         if (hover == null) return;
+        Vector3 at = _vessel.GlobalPosition;
+        _spray.Emitting = !_vessel.Frozen && _vessel.Speed > 8f && hover.Grounded
+                          && PlanetSurface.InLake(at.X, at.Z) && hover.GroundRef <= PlanetSurface.WaterLevel + 0.05f;
         float reach = Mathf.Clamp(float.IsFinite(hover.Clearance) ? hover.Clearance : 0f, 0f, _vessel.Stats.RideHeight * 1.5f);
         foreach (var (spec, wash) in _washes)
         {

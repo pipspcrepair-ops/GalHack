@@ -94,7 +94,7 @@ public partial class Main : Node3D
 
     static string Describe(ImpactInfo hit)
     {
-        string what = hit.Other == null ? "the ground" : hit.Other.Structure.Name;
+        string what = hit.Other != null ? hit.Other.Structure.Name : hit.Normal.Y > 0.5f ? "the ground" : "a rock face";
         string text = $"{hit.Vessel.Structure.Name} hit {what} at {hit.Speed:F0} m/s";
         if (hit.Damage <= 0f) return text + ": slid off, no damage";
         text += $": {hit.Damage:F1} damage" + (hit.Other != null ? " each" : "");
