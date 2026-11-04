@@ -1,0 +1,10 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>BlockBuilding</RootNamespace>
+    <!-- Remeshing a chunk must fit in a frame even in the editor's Debug build, so let the JIT
+         optimise (the hot mesher methods also ask for AggressiveOptimization). -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+</Project>

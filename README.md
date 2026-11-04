@@ -25,6 +25,7 @@ Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or s
 | `prototypes/planet-generator/` | Seeded planets in five archetypes, from orbit down to streamed terrain |
 | `prototypes/terrain-digging/` | Remove-only grid digging: smooth Surface Nets terrain, anchors, bedrock, atomic audited saves |
 | `prototypes/encounters/` | Encounter director: seeded, territory-aware spawns out of sight, fuzzy signal leads, nothing a player touched is ever cleaned up |
+| `prototypes/building/` | Block building: the structure model every ship, base, POI and wreck is made of |
 
 ## Requirements
 

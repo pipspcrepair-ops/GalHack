@@ -1,0 +1,157 @@
+# Lancer 07: a small capital ship in 1970s paperback livery, written by hand.
+#
+# Large grid (2 m cells). x is starboard, y up, -z forward. The core sits in the keel.
+# A sealed cabin (7 x 2 x 7 cells) runs from the raked glass nose back to a bulkhead, with
+# a door and a hazard-striped ramp on each side. Behind it: cargo, power and the engine room.
+# Two engine nacelles hang off short pylons (blast one with K to cut a nacelle loose).
+#
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name>] [+x=<name> ...] [open] [off]
+# a..b is an inclusive range. paint= sets all six faces; +x= -x= +y= -y= +z= -z= override one.
+
+schema galhack.blueprint
+version 1
+name "Lancer 07"
+grid large
+mode capital
+gravity on
+cargo 24000
+
+# Livery: cream hull, charcoal belly, orange racing stripes, teal chevrons, red trim.
+paint hull base=ece3c8 grime=1
+paint belly base=2b2d42 grime=2
+paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
+paint red base=c1121f grime=1
+paint orange base=e85d04 grime=1
+paint chev base=0a9396 accent=f4a100 pattern=chevrons grime=1
+paint check base=ece3c8 accent=2b2d42 pattern=checker grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint dark base=3a3f47 texture=plates grime=2
+paint n0 base=ece3c8 accent=1d3557 stencil=0 grime=1
+paint n7 base=ece3c8 accent=1d3557 stencil=7 grime=1
+
+# --- Keel (y 0), with the core in it -----------------------------------------------------
+block -3..3 0 -9..2 steel paint=belly
+block -3..-1 0 3 steel paint=belly
+block 0 0 3 core
+block 1..3 0 3 steel paint=belly
+block -3..3 0 4..11 steel paint=belly
+# Chamfered keel edges, sloping down and out; a flat step under each door.
+block -4 0 -9..-4 steel slope rot=-y-x paint=belly
+block -4 0 -3 steel paint=hazard
+block -4 0 -2..11 steel slope rot=-y-x paint=belly
+block 4 0 -9..-4 steel slope rot=-y+x paint=belly
+block 4 0 -3 steel paint=hazard
+block 4 0 -2..11 steel slope rot=-y+x paint=belly
+# Boarding ramps from the pad up to the doors.
+block -6 -1 -3 steel slope rot=+y-x paint=hazard
+block -5 -1 -3 steel paint=hazard
+block -5 0 -3 steel slope rot=+y-x paint=hazard
+block 5 0 -3 steel slope rot=+y+x paint=hazard
+block 5 -1 -3 steel paint=hazard
+block 6 -1 -3 steel slope rot=+y+x paint=hazard
+# Four stubby landing legs lift the keel off the pad.
+block -3 -1 -6 steel cylinder paint=dark
+block 3 -1 -6 steel cylinder paint=dark
+block -3 -1 9 steel cylinder paint=dark
+block 3 -1 9 steel cylinder paint=dark
+# Tail chamfer under the engine bank.
+block -3..3 0 12 steel slope rot=-y+z paint=belly
+
+# --- Nose: one 45-degree rake from the chin to the roof, glass at the top ----------------
+block -3..3 0 -10 steel slope paint=red
+block -4..4 1 -9 steel slope paint=hull
+block -4..4 1 -8 steel paint=hull
+block -4..-3 2 -8 steel slope paint=hull
+block -2..2 2 -8 glass slope
+block 3..4 2 -8 steel slope paint=hull
+
+# --- Hull sides (y 1 to 2): racing stripe, side windows and the hull number --------------
+block -4 1 -7..-4 steel paint=hull -x=stripe
+block -4 1 -3 door rot=+y-x
+block -4 1 -2..11 steel paint=hull -x=stripe
+block 4 1 -7..-4 steel paint=hull +x=stripe
+block 4 1 -3 door rot=+y+x
+block 4 1 -2..11 steel paint=hull +x=stripe
+block -4 2 -7..-6 glass
+block -4 2 -5 steel paint=hull -x=n0
+block -4 2 -4 steel paint=hull -x=n7
+block -4 2 -3..11 steel paint=hull
+block 4 2 -7..-6 glass
+block 4 2 -5 steel paint=hull +x=n7
+block 4 2 -4 steel paint=hull +x=n0
+block 4 2 -3..11 steel paint=hull
+
+# --- Cabin (x -3..3, y 1..2, z -7..-1 is air): the seat at the windshield, two lights ----
+block 0 1 -7 cockpit
+block -2 2 -4 light rot=+z-y
+block 2 2 -4 light rot=+z-y
+
+# --- Bulkhead, cargo, power and the engine room ------------------------------------------
+block -3..3 1..2 0 steel paint=hull
+block -3 1..2 1..2 steel
+block -2..2 1..2 1..2 container
+block 3 1..2 1..2 steel
+block -3..-2 1..2 3 steel
+block -1..1 1 3 generator
+block -1..1 2 3 fueltank
+block 2..3 1..2 3 steel
+block -3..3 1..2 4..11 steel
+
+# --- Engine bank ------------------------------------------------------------------------
+block -3 1..2 12 steel paint=dark
+block -2..2 1..2 12 thruster
+block 3 1..2 12 steel paint=dark
+block -3..3 3 12 steel slope rot=+y+z paint=hull
+
+# --- Roof (y 3) with a red racing stripe down the middle, bevelled edges ------------------
+block -3..-1 3 -7..11 steel paint=hull
+block 0 3 -7..11 steel paint=hull +y=red
+block 1..3 3 -7..11 steel paint=hull
+block -4 3 -7..11 steel slope rot=+y-x paint=hull
+block 4 3 -7..11 steel slope rot=+y+x paint=hull
+
+# --- Bridge tower (y 4) with its own window and two turrets beside it ---------------------
+block -1..1 4 -5 glass slope
+block -1..1 4 -4..2 steel paint=hull
+block -2 4 -4..2 steel slope rot=+y-x paint=hull
+block 2 4 -4..2 steel slope rot=+y+x paint=hull
+block -1 4 3 steel slope rot=+y+z paint=hull
+block 1 4 3 steel slope rot=+y+z paint=hull
+block -3 4 -6 turret
+block 3 4 -6 turret
+
+# --- Dorsal fin: checks at the root, the hull number high up, a red leading edge ----------
+block 0 4 3..10 steel paint=hull -x=check +x=check
+block 0 5 5 steel slope paint=red
+block 0 5 6..7 steel paint=hull
+block 0 5 8 steel paint=hull +x=n7 -x=n0
+block 0 5 9 steel paint=hull +x=n0 -x=n7
+block 0 5 10 steel paint=hull
+block 0 6 7 steel slope paint=red
+block 0 6 8..10 steel paint=hull -x=chev +x=chev
+block 0 7 9 steel slope paint=red
+block 0 7 10 steel paint=red
+
+# --- Engine nacelles on short pylons ------------------------------------------------------
+block -5 1 5..7 steel paint=dark
+block 5 1 5..7 steel paint=dark
+
+block -6 0..1 2..11 steel paint=hull
+block -6 2 2..11 steel paint=hull +y=check
+block -7 1 2..11 steel paint=hull -x=chev
+block -7 2 2..11 steel slope rot=+y-x paint=hull
+block -7 0 2..11 steel slope rot=-y-x paint=belly
+block -7..-6 2 1 steel slope paint=red
+block -7..-6 1 1 steel paint=orange
+block -7..-6 0 1 steel slope rot=-y-z paint=red
+block -7..-6 0..2 12 thruster
+
+block 6 0..1 2..11 steel paint=hull
+block 6 2 2..11 steel paint=hull +y=check
+block 7 1 2..11 steel paint=hull +x=chev
+block 7 2 2..11 steel slope rot=+y+x paint=hull
+block 7 0 2..11 steel slope rot=-y+x paint=belly
+block 6..7 2 1 steel slope paint=red
+block 6..7 1 1 steel paint=orange
+block 6..7 0 1 steel slope rot=-y-z paint=red
+block 6..7 0..2 12 thruster
