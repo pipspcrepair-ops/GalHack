@@ -82,16 +82,37 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
 
     static double Now => Time.GetTicksUsec() / 1_000_000.0;
 
-    void OnInnerConnected(long id) => EmitSignal(MultiplayerPeer.SignalName.PeerConnected, id);
+    // Disconnects seen during the inner poll; queued once that poll's packets are in.
+    readonly List<int> _justDisconnected = new();
+    readonly HashSet<int> _gone = new();
+
+    readonly HashSet<int> _innerGone = new();
+
+    void OnInnerConnected(long id)
+    {
+        _gone.Remove((int)id);
+        _innerGone.Remove((int)id);
+        EmitSignal(MultiplayerPeer.SignalName.PeerConnected, id);
+    }
 
     void OnInnerDisconnected(long id)
     {
-        // Anything still "in flight" from that peer arrives first, then the disconnect.
         _outgoing.RemoveAll(i => i.Peer == id);
-        double due = Now + OneWay();
-        foreach (Item i in _incoming)
-            if (i.Peer == id) due = Math.Max(due, i.Due);
-        Add(_incoming, new Item { Due = due, Kind = Kind.Disconnect, Peer = (int)id });
+        _justDisconnected.Add((int)id);
+        _innerGone.Add((int)id); // until Godot hears about it, quietly drop what it sends there
+    }
+
+    /// <summary>Anything still "in flight" from a peer arrives first, then its disconnect.</summary>
+    void QueueDisconnects()
+    {
+        foreach (int id in _justDisconnected)
+        {
+            double due = Now + OneWay();
+            foreach (Item i in _incoming)
+                if (i.Peer == id) due = Math.Max(due, i.Due);
+            Add(_incoming, new Item { Due = due, Kind = Kind.Disconnect, Peer = id });
+        }
+        _justDisconnected.Clear();
     }
 
     double OneWay()
@@ -148,11 +169,13 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
             if (due == null) continue;
             Add(_incoming, new Item { Due = due.Value, Kind = Kind.Packet, Peer = peer, Channel = channel, Mode = mode, Data = data });
         }
+        QueueDisconnects();
 
         while (_outgoing.Count > 0 && _outgoing[0].Due <= now)
         {
             Item item = _outgoing[0];
             _outgoing.RemoveAt(0);
+            if (item.Peer > 0 && _innerGone.Contains(item.Peer)) continue;
             Inner.TransferChannel = item.Channel;
             Inner.TransferMode = item.Mode;
             Inner.SetTargetPeer(item.Peer);
@@ -162,12 +185,19 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
         while (_incoming.Count > 0 && _incoming[0].Due <= now)
         {
             Item item = _incoming[0];
-            _incoming.RemoveAt(0);
             if (item.Kind == Kind.Disconnect)
             {
+                // Let Godot read that peer's last packets before it hears the peer has gone.
+                bool pending = false;
+                foreach (Item r in _ready) pending |= r.Peer == item.Peer;
+                if (pending) break;
+                _incoming.RemoveAt(0);
+                _gone.Add(item.Peer);
                 EmitSignal(MultiplayerPeer.SignalName.PeerDisconnected, (long)item.Peer);
                 continue;
             }
+            _incoming.RemoveAt(0);
+            if (_gone.Contains(item.Peer)) continue;
             BytesIn += item.Data.Length;
             PacketsIn++;
             _ready.Enqueue(item);
@@ -179,6 +209,7 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
     public override Error _PutPacketScript(byte[] buffer)
     {
         if (Inner.GetConnectionStatus() != ConnectionStatus.Connected) return Error.Unconfigured;
+        if (_targetPeer > 0 && _innerGone.Contains(_targetPeer)) return Error.Ok;
         BytesOut += buffer.Length;
         PacketsOut++;
         if (Conditions == null)
@@ -225,6 +256,9 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
         _outgoing.Clear();
         _incoming.Clear();
         _ready.Clear();
+        _justDisconnected.Clear();
+        _gone.Clear();
+        _innerGone.Clear();
         _wasConnected = false;
         Inner.Close();
     }

@@ -72,11 +72,15 @@ public partial class SteamMultiplayerPeer : MultiplayerPeerExtension
         _server = server;
     }
 
-    /// <summary>Hosts a session: listens for P2P connections. Check <c>GetConnectionStatus()</c>.</summary>
-    public static SteamMultiplayerPeer CreateHost(ISteamSockets sockets)
+    /// <summary>
+    /// Hosts a session: listens for P2P connections. Check <c>GetConnectionStatus()</c>.
+    /// Without <paramref name="listen"/> nobody can connect from outside; only in-process
+    /// loopback connections arrive (for tests on one machine).
+    /// </summary>
+    public static SteamMultiplayerPeer CreateHost(ISteamSockets sockets, bool listen = true)
     {
         var peer = new SteamMultiplayerPeer(sockets, server: true);
-        if (!sockets.Listen())
+        if (listen && !sockets.Listen())
         {
             peer.LastError = "Couldn't open a Steam listen socket.";
             return peer;

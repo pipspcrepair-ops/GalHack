@@ -64,6 +64,13 @@ public sealed class FakeSteamNetwork
         }
     }
 
+    /// <summary>Severs every connection of one pretend user, as if their internet dropped.</summary>
+    public void SeverAll(ulong steamId)
+    {
+        foreach (Connection c in new List<Connection>(_connections.Values))
+            if (c.Owner.LocalId == steamId) Sever(c.Handle);
+    }
+
     internal uint Connect(FakeSteamSockets from, ulong remote)
     {
         var local = new Connection { Handle = _nextHandle++, Owner = from, State = SocketState.Connecting };

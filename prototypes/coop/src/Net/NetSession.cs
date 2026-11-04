@@ -51,7 +51,7 @@ public partial class NetSession : Node
     public int ReconnectAttempts = 3;
     public string Address { get; private set; }
     public string Status { get; private set; } = "";
-    public int LocalId => IsServer ? 1 : Connected ? Multiplayer.GetUniqueId() : 0;
+    public int LocalId => IsServer ? 1 : IsOnline && Peer != null ? Multiplayer.GetUniqueId() : 0;
     public IReadOnlyDictionary<int, PeerInfo> Peers => _peers;
 
     /// <summary>The host is up, or this client was accepted (again, after a reconnect).</summary>

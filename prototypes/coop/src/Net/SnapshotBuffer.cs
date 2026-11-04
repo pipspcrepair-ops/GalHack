@@ -78,8 +78,9 @@ public sealed class SnapshotBuffer<T>
 
     /// <summary>
     /// Samples the buffer at local time <paramref name="now"/>. Gives the two snapshots around
-    /// the render time and how far between them it is. Past the newest snapshot, both are the
-    /// newest and <c>Extra</c> says how far beyond it (for extrapolation).
+    /// the render time and how far between them it is. Past the newest snapshot, A and B are
+    /// the last two, <c>Alpha</c> is above 1 (so an unclamped lerp extrapolates, for at most
+    /// <see cref="MaxExtrapolation"/>), and <c>Extra</c> says how far beyond the newest it is.
     /// </summary>
     public bool TrySample(double now, out Sample sample)
     {
@@ -118,12 +119,30 @@ public sealed class SnapshotBuffer<T>
                 return true;
             }
         }
+        // Past the newest snapshot (late packets): carry on along the last two for a moment
+        // (Alpha above 1), so a short gap is a glide rather than a stop and a jump.
         var (tn, newest) = _items[^1];
-        sample.A = sample.B = newest;
-        sample.TimeA = sample.TimeB = tn;
         sample.Extra = renderTime - tn;
+        sample.B = newest;
+        sample.TimeB = tn;
+        if (_items.Count >= 2 && tn > _items[^2].time)
+        {
+            var (tp, previous) = _items[^2];
+            sample.A = previous;
+            sample.TimeA = tp;
+            sample.Alpha = (float)(1.0 + Math.Min(sample.Extra, MaxExtrapolation) / (tn - tp));
+        }
+        else
+        {
+            sample.A = newest;
+            sample.TimeA = tn;
+            sample.Alpha = 1f;
+        }
         return true;
     }
+
+    /// <summary>How far past the newest snapshot <see cref="Sample.Alpha"/> may run, in seconds.</summary>
+    public const double MaxExtrapolation = 0.1;
 
     public struct Sample
     {

@@ -57,8 +57,15 @@ public sealed class SteamworksSockets : ISteamSockets, IDisposable
         _listen = HSteamListenSocket.Invalid;
     }
 
+    /// <summary>
+    /// For tests on one machine: when set, Connect makes a loopback socket pair to this
+    /// endpoint instead of a P2P connection, so nothing leaves the machine.
+    /// </summary>
+    public SteamworksSockets LoopbackTo;
+
     public uint Connect(ulong remote)
     {
+        if (LoopbackTo != null) return ConnectLoopback(LoopbackTo);
         var identity = new SteamNetworkingIdentity();
         identity.SetSteamID64(remote);
         HSteamNetConnection connection = SteamNetworkingSockets.ConnectP2P(ref identity, 0, 0, null);
