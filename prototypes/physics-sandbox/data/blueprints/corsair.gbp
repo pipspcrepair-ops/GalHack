@@ -1,0 +1,109 @@
+# Corsair 9: a small-grid shuttle with a walk-in cabin, written by hand for the physics sandbox.
+#
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the deck.
+# A cabin 3.5 m wide, 2 m tall and 7 m long, with a windscreen at the front, a window band down
+# both sides and an open doorway at the back between the two engine pods. Lift jets and three
+# landing legs under the deck, side jets on the flanks, retros in the nose, two down jets on the
+# roof. A gyro and a generator are set into the deck.
+#
+# Its four numbers come from these blocks: about 9 t, 16 m/s² forward, ~65°/s turn, lift margin
+# about +60 kN on a 9.8 m/s² world.
+
+schema galhack.blueprint
+version 1
+name "Corsair 9"
+grid small
+mode capital
+gravity on
+
+# Livery: cream hull, charcoal belly, an orange racing stripe, teal chevrons on the pods,
+# hazard stripes round the door and a red nose.
+paint hull base=ece3c8 grime=1
+paint belly base=2b2d42 grime=2
+paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
+paint red base=c1121f grime=1
+paint orange base=e85d04 grime=1
+paint chev base=0a9396 accent=f4a100 pattern=chevrons grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint dark base=3a3f47 texture=plates grime=2
+
+# --- Deck (y 0): the core in the middle, generator and gyro set into the cabin floor ------
+block -4..4 0 -9..-1 steel paint=belly
+block -4..-1 0 0 steel paint=belly
+block 0 0 0 core
+block 1..4 0 0 steel paint=belly
+block -4..4 0 1..2 steel paint=belly
+block -4..-3 0 3 steel paint=belly
+block -2 0 3 generator
+block -1..1 0 3 steel paint=belly
+block 2 0 3 gyro
+block 3..4 0 3 steel paint=belly
+block -4..4 0 4..6 steel paint=belly
+
+# --- Hull sides (x ±4, y 1..4): racing stripe low, a window band, cream above -------------
+block -4 1..2 -9..6 steel paint=hull -x=stripe
+block -4 3 -9..-8 steel paint=hull
+block -4 3 -7..2 glass
+block -4 3 3..6 steel paint=hull
+block -4 4 -9..6 steel paint=hull
+block 4 1..2 -9..6 steel paint=hull +x=stripe
+block 4 3 -9..-8 steel paint=hull
+block 4 3 -7..2 glass
+block 4 3 3..6 steel paint=hull
+block 4 4 -9..6 steel paint=hull
+
+# --- Front wall with the windscreen, rear wall with a 1.5 m by 2 m doorway ----------------
+block -3..3 1..2 -9 steel paint=hull
+block -3 3..4 -9 steel paint=hull
+block -2..2 3..4 -9 glass
+block 3 3..4 -9 steel paint=hull
+block -3..-2 1..4 6 steel paint=hazard
+block 2..3 1..4 6 steel paint=hazard
+
+# --- The pilot's seat at the windscreen -----------------------------------------------------
+block 0 1 -8 cockpit
+
+# --- Roof (y 5): a red stripe down the middle, bevelled edges, a small dorsal fin ----------
+block -3..-1 5 -9..6 steel paint=hull
+block 0 5 -9..6 steel paint=hull +y=red
+block 1..3 5 -9..6 steel paint=hull
+block -4 5 -9..6 steel slope rot=+y-x paint=hull
+block 4 5 -9..6 steel slope rot=+y+x paint=hull
+block 0 6 1 steel slope paint=orange
+block 0 6 2..5 steel paint=orange
+block 0 7 3 steel slope paint=orange
+block 0 7 4..5 steel paint=orange
+
+# --- Nose: a stepped red chin under a cream rake ------------------------------------------
+block -3..3 0 -12 steel slope paint=red
+block -3..3 0 -11..-10 steel paint=red
+block -3..3 1 -11 steel slope paint=hull
+block -3..3 1 -10 steel paint=hull
+block -3..3 2 -10 steel slope paint=hull
+
+# --- Engine pods either side of the door: two main engines, chevron housings ---------------
+block -4..-3 1 7..8 steel paint=chev
+block -4..-3 2 7 thruster
+block -4..-3 3 7..8 steel paint=chev
+block 3..4 1 7..8 steel paint=chev
+block 3..4 2 7 thruster
+block 3..4 3 7..8 steel paint=chev
+
+# --- Retros in the nose sides, down jets on the roof, side jets on the flanks --------------
+block -4 1 -10 thruster rot=+y+z
+block 4 1 -10 thruster rot=+y+z
+block -3 6 -7 thruster rot=+z-y
+block 3 6 -7 thruster rot=+z-y
+block 5 2 -5 thruster rot=+y-x
+block 5 2 2 thruster rot=+y-x
+block -5 2 -5 thruster rot=+y+x
+block -5 2 2 thruster rot=+y+x
+
+# --- Under the deck: four lift jets and three landing legs ---------------------------------
+block -3 -1 -6 thruster rot=+z+y
+block 3 -1 -6 thruster rot=+z+y
+block -3 -1 3 thruster rot=+z+y
+block 3 -1 3 thruster rot=+z+y
+block 0 -1 -8 gear
+block -3 -1 5 gear
+block 3 -1 5 gear
