@@ -47,6 +47,7 @@ public partial class Player : CharacterBody3D
     CapsuleShape3D _capsule;
     CollisionShape3D _shape;
     Viewmodel _viewmodel;
+    SpotLight3D _torch;
     float _yaw, _pitch, _eye;
     int _weapon;
     float _switchLeft;
@@ -86,6 +87,20 @@ public partial class Player : CharacterBody3D
         Camera.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
         _viewmodel = new Viewmodel { Name = "Viewmodel" };
         Camera.AddChild(_viewmodel);
+        // A helmet torch for blackouts and derelicts.
+        _torch = new SpotLight3D
+        {
+            Name = "Torch",
+            LightColor = new Color("fff1d6"),
+            LightEnergy = 3f,
+            SpotRange = 24f,
+            SpotAngle = 26f,
+            SpotAttenuation = 0.8f,
+            ShadowEnabled = true,
+            Position = new Vector3(0.15f, -0.1f, 0f),
+            Visible = false,
+        };
+        Camera.AddChild(_torch);
         _viewmodel.Show(Current.Def.Id);
 
         if (!Game.Headless) Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -132,6 +147,7 @@ public partial class Player : CharacterBody3D
                 case Key.Key3: SwitchTo(2); break;
                 case Key.R: Current.StartReload(); break;
                 case Key.G: PlaceCharge(); break;
+                case Key.F: SetTorch(!_torch.Visible); break;
             }
         }
     }
@@ -265,6 +281,9 @@ public partial class Player : CharacterBody3D
     }
 
     public void Shake(float amount) => _shake = Mathf.Max(_shake, amount);
+
+    public bool TorchOn => _torch.Visible;
+    public void SetTorch(bool on) => _torch.Visible = on;
 
     // ---- Physics tick: movement, crouch, interaction ---------------------------------------
 
@@ -408,11 +427,11 @@ public partial class Player : CharacterBody3D
                     {
                         _refused = reason;
                         _refusedFor = 2f;
-                        Game.Hud?.Message($"Can't remove the {name.ToLower()}: {reason}");
+                        Game.Hud?.Message($"Can't remove the {name}: {reason}");
                     }
                     break;
                 }
-                prompt = $"Hold E: remove the {name.ToLower()} whole (multi-tool)";
+                prompt = $"Hold E: remove the {name} whole (multi-tool)";
                 if (held && Hold(dt, T.SalvageSeconds, out progress))
                 {
                     Salvage.Remove(Game, block);

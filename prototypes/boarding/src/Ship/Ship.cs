@@ -529,8 +529,8 @@ public partial class Ship : Node3D
         Turret = new Turret
         {
             Ship = this, Kind = BlockKind.Turret, Surface = Surface.Machine, ChunkColor = Palette.Dark, Hp = T.HpTurret,
-            Cell = mount, Size = new Vector3(1.4f, 1.4f, 1.4f), Name = "Turret", Outward = outward,
-            Position = Layout.CellCenter(mount) + outward * (CellSize * 0.5f + 0.75f) + Vector3.Up * 2.3f,
+            Cell = mount, Size = new Vector3(2.1f, 2.1f, 2.1f), Name = "Turret", Outward = outward,
+            Position = Layout.CellCenter(mount) + outward * (CellSize * 0.5f + 1.1f) + Vector3.Up * 2.2f,
         };
         Turret.MaxHp = Turret.Hp;
         AddChild(Turret);

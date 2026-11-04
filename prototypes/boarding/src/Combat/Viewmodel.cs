@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Godot;
 
 namespace Boarding;
@@ -19,6 +19,7 @@ public partial class Viewmodel : Node3D
     Node3D _flash;
     OmniLight3D _flashLight;
     float _flashLeft;
+    bool _flashDrawn;
 
     Vector3 _kick, _kickVel;        // x: sideways, y: up, z: back
     float _pitchKick, _pitchVel;
@@ -80,6 +81,7 @@ public partial class Viewmodel : Node3D
         _kickVel += new Vector3((GD.Randf() - 0.5f) * 0.4f * kick, 0.6f * kick, 2.4f * kick);
         _pitchVel += 9f * kick;
         _flashLeft = 0.045f;
+        _flashDrawn = false;
         _flash.Visible = true;
         _flash.Rotation = new Vector3(0, 0, GD.Randf() * Mathf.Tau);
         _flash.Scale = Vector3.One * (0.8f + GD.Randf() * 0.5f) * Mathf.Clamp(kick, 0.6f, 1.6f);
@@ -107,6 +109,12 @@ public partial class Viewmodel : Node3D
 
         if (_flashLeft > 0f)
         {
+            // Every shot's flash is drawn at least once, even if a frame takes longer than it lives.
+            if (!_flashDrawn)
+            {
+                _flashDrawn = true;
+                return;
+            }
             _flashLeft -= dt;
             if (_flashLeft <= 0f)
             {

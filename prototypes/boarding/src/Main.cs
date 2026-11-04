@@ -98,6 +98,7 @@ public partial class Main : Node3D
         WireRules();
         Hud.Message("Board the Vharn frigate. Hijack its core (hold E) or shoot it dead.");
         Hud.Message("Ways in: the stern airlock, the weak hull plate (G: charge), or crawl the port duct (Ctrl).");
+        Hud.Message("F: helmet torch.");
     }
 
     void WireRules()

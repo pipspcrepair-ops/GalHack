@@ -641,6 +641,9 @@ public partial class Guard
         Game.OnGuardKilled(this);
     }
 
+    /// <summary>For screenshots and tests: this guard has spotted the player.</summary>
+    public void DebugEngage() => EnterCombat();
+
     /// <summary>Sends a fresh guard (a reinforcement) straight to a point.</summary>
     public void Dispatch(Vector3 local)
     {

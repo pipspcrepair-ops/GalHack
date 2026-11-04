@@ -22,6 +22,7 @@ public partial class Effects : Node3D
     {
         public Node3D Node;
         public float Age, Life;
+        public bool Drawn;             // aged only after it has been on screen for one frame
         public Action<float> Update;   // t = 0..1
     }
 
@@ -35,7 +36,8 @@ public partial class Effects : Node3D
         for (int i = _anims.Count - 1; i >= 0; i--)
         {
             Anim a = _anims[i];
-            a.Age += dt;
+            if (a.Drawn) a.Age += dt;
+            a.Drawn = true;
             if (!IsInstanceValid(a.Node))
             {
                 _anims.RemoveAt(i);

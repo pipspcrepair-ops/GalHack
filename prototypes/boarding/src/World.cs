@@ -12,8 +12,8 @@ public static class World
     {
         var sky = new ProceduralSkyMaterial
         {
-            SkyTopColor = new Color("0b4f5c"),
-            SkyHorizonColor = new Color("f2c879"),
+            SkyTopColor = new Color("0a5f6e"),
+            SkyHorizonColor = new Color("f6cf86"),
             GroundHorizonColor = new Color("c4532b"),
             GroundBottomColor = new Color("5a1e12"),
             SunAngleMax = 25f,
@@ -34,8 +34,8 @@ public static class World
                 GlowBloom = 0.05f,
                 FogEnabled = true,
                 FogLightColor = new Color("e8a76a"),
-                FogDensity = 0.0012f,
-                FogSkyAffect = 0.3f,
+                FogDensity = 0.0004f,
+                FogSkyAffect = 0f,
             },
         });
 
@@ -45,7 +45,8 @@ public static class World
             LightEnergy = 1.35f,
             ShadowEnabled = true,
             DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel2Splits,
-            DirectionalShadowMaxDistance = 140f,
+            DirectionalShadowMaxDistance = 90f,
+            ShadowBlur = 1.5f,
         };
         root.AddChild(sun);
         sun.RotationDegrees = new Vector3(-32f, -128f, 0f);

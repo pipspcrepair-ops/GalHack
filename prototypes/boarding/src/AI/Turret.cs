@@ -47,13 +47,16 @@ public partial class Turret : Block
         Weapon = Ship.Game.Fire.Weapon(T.TurretWeapon);
         _baseYaw = Mathf.Atan2(-Outward.X, -Outward.Z);
         var dark = Art.Flat(Palette.Dark, 0.5f, 0.5f);
+        // A big gun reads as a big gun: the visuals sit on a scaled rig (never scale the body).
+        var rig = new Node3D { Name = "Rig", Scale = Vector3.One * 1.5f };
+        AddChild(rig);
         var mount = new Node3D { Rotation = new Vector3(0, _baseYaw, 0) };
-        AddChild(mount);
+        rig.AddChild(mount);
         mount.AddChild(Art.Mesh(Art.BoxMesh(new Vector3(1.8f, 1.8f, 0.5f)), Art.Stripes(Palette.Yellow, Palette.Dark, 0.3f), new Vector3(0, 0, 0.75f)));
         mount.AddChild(Art.Mesh(Art.BoxMesh(new Vector3(1.0f, 0.5f, 1.0f)), dark, new Vector3(0, -0.6f, 0.2f)));
 
         _yawNode = new Node3D();
-        AddChild(_yawNode);
+        rig.AddChild(_yawNode);
         _yawNode.AddChild(Art.Mesh(new CylinderMesh { TopRadius = 0.6f, BottomRadius = 0.7f, Height = 0.3f }, dark, new Vector3(0, -0.3f, 0)));
         _pitchNode = new Node3D();
         _yawNode.AddChild(_pitchNode);
@@ -77,7 +80,7 @@ public partial class Turret : Block
         };
         _laser = new MeshInstance3D
         {
-            Mesh = new BoxMesh { Size = new Vector3(0.04f, 0.04f, 1f) },
+            Mesh = new BoxMesh { Size = new Vector3(0.09f, 0.09f, 1f) },
             MaterialOverride = _laserMaterial,
             TopLevel = true,
             Visible = false,

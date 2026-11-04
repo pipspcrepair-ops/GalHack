@@ -56,6 +56,17 @@ public partial class Ship
         AddChild(Art.Mesh(new SphereMesh { Radius = 1.4f, Height = 1.6f, IsHemisphere = true }, Art.Flat(Palette.Teal, 0.3f, 0.4f),
             new Vector3(0, roof + 2.9f, spineEnd - 4f)));
 
+        // Upper hull blocks stacked on the roof either side of the spine, and a raised engine deck
+        // aft: the stepped, slab-on-slab silhouette of a Foss capital ship.
+        var upper = Art.Banded("upper", 2.4f, (0f, Palette.Oxblood), (0.22f, Palette.Bone), (0.72f, Palette.Yellow), (0.78f, Palette.Bone));
+        foreach (float side in new[] { -1f, 1f })
+        {
+            Solid(new Vector3(side * 14.5f, roof + 1.2f, b.Position.Z + 16.5f), new Vector3(13f, 2.4f, 20f), upper);
+            AddChild(Art.Mesh(Art.BoxMesh(new Vector3(0.06f, 1.2f, 5f)), Art.Checker(Palette.Dark, Palette.Bone, 0.4f),
+                new Vector3(side * 21.03f, roof + 1.2f, b.Position.Z + 10f), false));
+        }
+        Solid(new Vector3(0, roof + 1.7f, aft - 4.5f), new Vector3(hullRight - hullLeft - 4f, 3.4f, 9f), pod);
+
         // Engine pods at the stern, sitting on the ground: the ship is landed and cold-idling.
         foreach (float side in new[] { -1f, 1f })
         {
