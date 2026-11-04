@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/SirenPreview.cs" id="1_siren"]
+
+[node name="SirenPreview" type="Node"]
+script = ExtResource("1_siren")

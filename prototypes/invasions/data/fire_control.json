@@ -1,0 +1,58 @@
+// How AI shooters aim, and how fast their rounds fly. Damage is never reduced or capped:
+// fairness comes from warning shots, an accuracy ramp and visible travel time instead.
+{
+  // A hostile that starts firing at a player deliberately misses first: these shots land close
+  // enough to see and hear, and can never hit the player they're aimed past. The warning lasts
+  // until it has fired at least `shots` rounds AND `seconds` have passed.
+  "warning": {
+    "shots": 3,
+    "seconds": 0.75,
+    "missDistanceMin": 1.2,
+    "missDistanceMax": 3.0
+  },
+
+  // After the warning, spread shrinks from startSpreadDegrees to the baseline over `seconds`.
+  // Losing sight of the target resets the engagement: warning shots and ramp start over.
+  "ramp": {
+    "seconds": 2.0,
+    "startSpreadDegrees": 7.0,
+    // Fire at non-player targets ramps too (turrets acquiring troops), but without warning shots.
+    "rampAgainstNonPlayers": true
+  },
+
+  // Baseline accuracy as a cone half-angle in degrees.
+  "grades": {
+    "very_good": 0.25,
+    "good": 0.8,
+    "fair": 1.8,
+    "poor": 4.0,
+    "very_poor": 8.0
+  },
+
+  // Baseline grade by shooter class (rows) and target class (columns).
+  // hover = hover and ground vehicles; small_vessel = dropships and fighters; capital = capital ships and bases.
+  "matrix": {
+    "infantry": { "on_foot": "good",      "hover": "fair", "small_vessel": "poor", "capital": "very_poor" },
+    "light":    { "on_foot": "fair",      "hover": "good", "small_vessel": "good", "capital": "good" },
+    "capital":  { "on_foot": "very_poor", "hover": "poor", "small_vessel": "fair", "capital": "very_good" }
+  },
+
+  // Weapons modify the baseline spread (x spreadMultiplier, or a per-target-class override) and set
+  // projectile speed in m/s, damage per hit and time between shots. turnRateDegrees > 0 makes a
+  // round home on its target at that rate (rockets track slowly).
+  "weapons": {
+    "rifle":        { "class": "infantry", "spreadMultiplier": 1.0,  "projectileSpeed": 420,  "damage": 9,   "interval": 0.45 },
+    "minigun":      { "class": "infantry", "spreadMultiplier": 2.2,  "projectileSpeed": 450,  "damage": 6,   "interval": 0.12 },
+    "autocannon":   { "class": "light",    "spreadMultiplier": 1.0,  "projectileSpeed": 600,  "damage": 14,  "interval": 0.22 },
+    "door_minigun": { "class": "light",    "spreadMultiplier": 2.0,  "projectileSpeed": 600,  "damage": 8,   "interval": 0.1 },
+    "rocket_pod":   { "class": "light",    "spreadMultiplier": 1.4,  "projectileSpeed": 110,  "damage": 60,  "interval": 2.5, "turnRateDegrees": 22 },
+    "rail":         { "class": "light",    "spreadMultiplier": 0.3,  "projectileSpeed": 1800, "damage": 45,  "interval": 1.5 },
+    "laser":        { "class": "light",    "spreadMultiplier": 0.25, "projectileSpeed": 3000, "damage": 12,  "interval": 0.3 },
+    "base_cannon":  { "class": "capital",  "spreadMultiplier": 1.0,  "projectileSpeed": 300,  "damage": 24,  "interval": 0.3, "aimedSpreadDegrees": 0.4 },
+    "capital_gun":  { "class": "capital",  "spreadMultiplier": 1.0,  "projectileSpeed": 280,  "damage": 400, "interval": 2.0 },
+    "artillery":    { "class": "capital",  "spreadMultiplier": 1.0,  "projectileSpeed": 250,  "damage": 300, "interval": 4.0,
+                      "targetSpreadMultipliers": { "on_foot": 3.0, "hover": 2.5, "small_vessel": 2.0, "capital": 0.6 } },
+    // The player's own rifle: aimed by hand, so it uses aimedSpreadDegrees rather than the matrix.
+    "player_rifle": { "class": "infantry", "spreadMultiplier": 1.0,  "projectileSpeed": 700,  "damage": 34,  "interval": 0.13, "aimedSpreadDegrees": 0.25 }
+  }
+}

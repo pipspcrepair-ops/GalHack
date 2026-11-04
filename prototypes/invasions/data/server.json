@@ -1,0 +1,18 @@
+// Server settings for invasions. The host edits these; the director reads them at start-up.
+{
+  // Average minutes a base must have a player in its zone between invasions. The frequency setting.
+  "invasionIntervalMinutes": 45,
+
+  // Each interval is stretched or shrunk by up to this fraction, so invasions don't arrive like clockwork.
+  "intervalJitter": 0.25,
+
+  // When no Vharn base is in range, invasions come by ship from further away. Off: they simply stop.
+  "shipRaids": true,
+
+  // Debug "fast time" (T in game): the simulated clock runs this many times faster, so the
+  // ten-minute warning timeline plays out in ten seconds.
+  "fastTimeScale": 60,
+
+  // Seed for everything the director decides. The same seed and the same inputs replay the same invasions.
+  "seed": 1977
+}
