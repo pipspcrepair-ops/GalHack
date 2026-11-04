@@ -1,6 +1,7 @@
 # Builds every prototype and runs all of its headless test scenes. Exits non-zero if any fail.
 # A headless test scene is any prototypes/<name>/tests/*Test.tscn or *Probe.tscn. A matching
-# *.args file beside a scene adds Godot arguments for that scene only.
+# *.args file beside a scene adds Godot arguments for that scene only; a matching *.manual file
+# skips it (its first line says why).
 #   .\tools\test-all.ps1
 
 . "$PSScriptRoot\env.ps1"
@@ -21,6 +22,11 @@ foreach ($proto in Get-ChildItem -Path (Join-Path $root "prototypes") -Directory
 
     foreach ($scene in $scenes) {
         $res = "res://tests/" + $scene.Name
+        # A *.manual file beside a scene keeps it out of this run (e.g. tests that need a real Steam login).
+        if (Test-Path ([IO.Path]::ChangeExtension($scene.FullName, ".manual"))) {
+            Write-Host "SKIP  $($proto.Name) $res  (manual: $((Get-Content ([IO.Path]::ChangeExtension($scene.FullName, '.manual')) -TotalCount 1)))"
+            continue
+        }
         # Optional extra Godot arguments for one scene, e.g. tests/SoakTest.args holding "--fixed-fps 60".
         $argsFile = [IO.Path]::ChangeExtension($scene.FullName, ".args")
         $extra = @()
