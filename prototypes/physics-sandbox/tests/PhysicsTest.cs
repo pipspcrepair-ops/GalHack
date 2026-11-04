@@ -198,6 +198,19 @@ public partial class PhysicsTest : Node
         Ship c = _w.Corsair;
         Check(c.HullShapes.ShapeCount > 0 && c.HullShapes.ShapeCount < c.Structure.Count / 3 && c.Interior.Count > 300,
             $"the Corsair is one body of {c.HullShapes.ShapeCount} collider shapes for {c.Structure.Count} blocks, with {c.Interior.Count} interior cells to walk in");
+
+        // One block edited: only its chunk's colliders are rebuilt (hull and cabin), never the whole body.
+        Ship scratch = _w.SpawnVessel("corsair.gbp", new N.Vector3(90f, 150f, 90f), 0f, landed: false);
+        int chunks = scratch.Structure.Chunks.Count, shapesBefore = scratch.HullShapes.ShapeCount;
+        var cell = new SInt3(5, 3, 4);
+        Building.Place(scratch.Structure, cell, Building.Make(scratch.Structure, scratch.Structure.Catalogue.Type("steel")));
+        var watch = Stopwatch.StartNew();
+        scratch.ApplyEdits();
+        double ms = watch.Elapsed.TotalMilliseconds;
+        Check(scratch.HullShapes.LastRebuilt == 1 && chunks >= 4 && scratch.HullShapes.ShapeCount >= shapesBefore,
+            $"collider strategy: placing one block rebuilds the shapes of {scratch.HullShapes.LastRebuilt} of the structure's {chunks} chunks " +
+            $"(hull and cabin together, mass and centre of mass refreshed) in {ms:F2} ms; the other chunks keep their shapes");
+        _w.Remove(scratch);
     }
 
     // ==== Determinism ===========================================================================
