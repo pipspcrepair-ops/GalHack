@@ -105,7 +105,7 @@ public partial class CoopWorld : Node, IPlayerActions
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.Scale,
         };
-        _screen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        _screen.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         AddChild(_screen);
         _camera = new Camera3D { Name = "Camera", Fov = 80f, Near = 0.05f, Far = 8000f };
 

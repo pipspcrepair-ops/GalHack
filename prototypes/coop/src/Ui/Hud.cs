@@ -19,9 +19,10 @@ public partial class Hud : CanvasLayer
         _left = MakeLabel(new Vector2(16f, 12f));
         _players = MakeLabel(Vector2.Zero);
         _players.HorizontalAlignment = HorizontalAlignment.Right;
-        _players.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+        _players.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
         _players.GrowHorizontal = Control.GrowDirection.Begin;
-        _players.Position = new Vector2(-16f, 12f);
+        _players.OffsetRight = -16f;
+        _players.OffsetTop = 12f;
         var crosshair = new ColorRect
         {
             Color = new Color(1f, 1f, 1f, 0.8f),
@@ -78,7 +79,7 @@ public partial class Hud : CanvasLayer
         text.AppendLine("G core gravity  ·  T stunt autopilot  ·  V third person  ·  R back aboard  ·  F6 other zone (debug)");
         text.Append(Game.Settings.Transport is SteamTransport ? "I invite friends  ·  " : "");
         text.AppendLine($"F10 leave  ·  Esc free the mouse  ·  {Engine.GetFramesPerSecond()} fps");
-        _left.Text = text.ToString();
+        _left.Text = text.ToString().Replace("\r", ""); // AppendLine writes \r\n on Windows
 
         var list = new StringBuilder("Players\n");
         foreach (NetSession.PeerInfo info in session.Peers.Values.OrderBy(p => p.Id))
@@ -89,7 +90,7 @@ public partial class Hud : CanvasLayer
         }
         if (session.CurrentRole == NetSession.Role.Client && session.Peers.TryGetValue(session.LocalId, out var me) && me.PingMs >= 0)
             list.AppendLine($"\nyour ping {me.PingMs} ms");
-        _players.Text = list.ToString();
+        _players.Text = list.ToString().Replace("\r", "");
     }
 
     static string RoleName(NetSession session) => session.CurrentRole switch

@@ -25,7 +25,7 @@ public partial class TitleScreen : Control
 
     public override void _Ready()
     {
-        SetAnchorsPreset(LayoutPreset.FullRect);
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(new ColorRect { Color = new Color("1d3557"), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
         var horizon = new ColorRect { Color = new Color("e76f51"), AnchorTop = 0.62f, AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
         AddChild(horizon);
