@@ -1,0 +1,83 @@
+// Every number the shared physics module uses. SI units throughout: metres, kilograms,
+// seconds, newtons. Code defaults (GalHack.Physics.PhysicsRules) are the same numbers.
+{
+  "contacts": {
+    // Damage = mass (t) × (closing speed − safeSpeed)² × damageScale. Never capped, never scaled
+    // down; ramming uses the reduced mass m1·m2/(m1+m2) and both sides take it.
+    "safeSpeed": 8,
+    "damageScale": 0.001,
+    // Kinematic hulls glance off fixed things with restitution × the closing speed, and lose
+    // scrape × their sliding speed only on contacts that did damage.
+    "restitution": 0.2,
+    "scrape": 0.3,
+    // Contacts slower than this raise no Impact event (resting, nudging), m/s.
+    "eventSpeed": 2
+  },
+
+  "craters": {
+    // Ground hits faster than speed (m/s) cut a real crater through the terrain's edit API:
+    // radius = scale × ∛(kinetic energy in MJ), never more than maxRadius (terrain-digging's own
+    // cap, which also limits a crater to 900 cells), none below minRadius. The blast sphere
+    // sits lift × radius above the contact point, so it cuts a bowl.
+    "speed": 25,
+    "scale": 2,
+    "maxRadius": 6,
+    "minRadius": 1,
+    "lift": 0.25
+  },
+
+  "integrity": {
+    // How much damage a body takes to break, per tonne of it. The formula is the same for
+    // everything; only toughness differs. Hull points are 4 per tonne (ship-handling's).
+    "hullPerTonne": 4,
+    "cratePerTonne": 4,
+    "playerPerTonne": 0.5,
+    "creaturePerTonne": 0.5
+  },
+
+  "hover": {
+    // The ride-height servo (from ship-handling): verticalGain (1/s) closes the height error,
+    // limited to maxRise up and maxGrip down (m/s²); grip holds only within gripBand metres above
+    // ride height, so jumps fly. Look-ahead probes reach speed × lookAheadTime ahead (clamped);
+    // terrain ahead rising more than stepAllowance × ride height lifts the vessel early.
+    // levelRate (1/s) settles tilt. Slopes steeper than maxSlope (°) are refused. Probes reach
+    // probeDepth × ride height below the engines.
+    "verticalGain": 8,
+    "maxRise": 40,
+    "maxGrip": 30,
+    "gripBand": 0.8,
+    "maxClimbRate": 14,
+    "lookAheadTime": 0.45,
+    "lookAheadMin": 2,
+    "lookAheadMax": 14,
+    "stepAllowance": 0.5,
+    "levelRate": 6,
+    "maxSlope": 30,
+    "jumpSpeed": 7,
+    "jumpCooldown": 1.2,
+    "probeDepth": 3
+  },
+
+  "gear": {
+    // Legs drop by themselves below deployAltitude (m above ground) when slower than deploySpeed
+    // (m/s), and come up again past them plus hysteresis. A ship on its gear, slower than
+    // landSpeed, with nobody touching the controls for idleBeforeLanding (s), settles over
+    // settleTime (s) and stops simulating. On uneven or dug ground it tilts to sit on its feet,
+    // never more than maxSettleTilt (°).
+    "deployAltitude": 15,
+    "deploySpeed": 20,
+    "hysteresis": 5,
+    "extendTime": 0.8,
+    "landSpeed": 3,
+    "idleBeforeLanding": 0.3,
+    "settleTime": 0.5,
+    "maxSettleTilt": 12
+  },
+
+  "stuck": {
+    // A body inside terrain or a structure's blocks for this many ticks in a row is moved to the
+    // nearest open space, searching a 1 m grid up to searchRadius metres away.
+    "ticksBeforeRescue": 2,
+    "searchRadius": 14
+  }
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>PhysicsSandbox</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- The terrain mesher and the structure mesher run on the main thread during play; let the JIT optimise. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The shared physics module: rules in Core (plain C#), engine adapters in Engine. -->
+    <Compile Include="..\..\shared\Physics\**\*.cs" />
+    <!-- The existing pure-C# cores, compiled from where they live. Never copied, never changed here. -->
+    <Compile Include="..\ship-handling\src\Handling\**\*.cs" />
+    <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
+    <Compile Include="..\building\src\Structures\**\*.cs" />
+    <Compile Include="..\weather\src\Model\**\*.cs" />
+    <Compile Include="..\weather\src\Forces\**\*.cs" />
+    <Compile Include="..\weather\src\Glue.cs" />
+  </ItemGroup>
+</Project>
