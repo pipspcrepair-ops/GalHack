@@ -12,6 +12,7 @@ public static class GameData
     public const string ConfigPath = "res://data/director.json";
     public const string ZonesPath = "res://data/zones.json";
     public const string DeckPath = "res://data/deck.json";
+    public const string GunneryPath = "res://data/gunnery.json";
 
     public static string Read(string path)
     {
@@ -24,4 +25,5 @@ public static class GameData
     public static DirectorConfig Config() => DirectorConfig.Parse(Read(ConfigPath));
     public static ZoneCatalog Zones() => ZoneCatalog.Parse(Read(ZonesPath));
     public static EventDeck Deck() => EventDeck.Parse(Read(DeckPath));
+    public static GunneryConfig Gunnery() => GunneryConfig.Parse(Read(GunneryPath));
 }

@@ -1,0 +1,35 @@
+// Gunnery: how well NPC guns shoot at players. A hook for when combat lands. In this
+// prototype nothing shoots at a player: dogfight tracers fly only between NPC sides and are
+// presentation. src/Director/Gunnery.cs reads this file; DirectorTest checks the rules.
+//
+// 1. Warning shots: the first shots at a player always miss, visibly and wide.
+// 2. Accuracy then ramps up to its baseline over rampSeconds. Losing line of sight resets it.
+// 3. The baseline comes from the shooter's class against the target's class.
+// 4. The weapon scales it (minigun sprays, rails and lasers are precise, rockets track slowly,
+//    artillery is only good against big, slow targets).
+// 5. Capital-class projectiles are slow, so fast ships can dodge them.
+// Damage is never capped; these rules are what keep deaths from being instant.
+{
+  "warningShots": { "shots": 3, "seconds": 0.75, "missOffsetDeg": [5, 12] },
+  "rampSeconds": 2.0,
+  "grades": { "veryPoor": 0.05, "poor": 0.15, "fair": 0.35, "good": 0.6, "veryGood": 0.85 },
+  // Shooter class against target class: onFoot, hover, smallVessel, capital (capital and bases).
+  "baseline": {
+    "infantry":      { "onFoot": "good",     "hover": "fair", "smallVessel": "poor", "capital": "veryPoor" },
+    "vesselGun":     { "onFoot": "fair",     "hover": "good", "smallVessel": "good", "capital": "good" },
+    "capitalTurret": { "onFoot": "veryPoor", "hover": "poor", "smallVessel": "fair", "capital": "veryGood" }
+  },
+  // accuracy multiplies the baseline. bigSlowOnly weapons fall to bigSlowPenalty against
+  // anything that isn't capital-sized or is moving faster than bigSlowSpeed.
+  "weapons": {
+    "minigun":   { "accuracy": 0.7,  "spreadDeg": 4.0, "projectileSpeed": 600 },
+    "cannon":    { "accuracy": 1.0,  "spreadDeg": 1.0, "projectileSpeed": 600 },
+    "rail":      { "accuracy": 1.3,  "spreadDeg": 0.2, "projectileSpeed": 2000 },
+    "laser":     { "accuracy": 1.3,  "spreadDeg": 0.2, "projectileSpeed": 0 },
+    "rocket":    { "accuracy": 1.0,  "spreadDeg": 2.0, "projectileSpeed": 220, "turnRateDeg": 25 },
+    "artillery": { "accuracy": 1.0,  "spreadDeg": 1.5, "projectileSpeed": 300, "bigSlowOnly": true },
+    "capitalCannon": { "accuracy": 1.0, "spreadDeg": 1.0, "projectileSpeed": 300 }
+  },
+  "bigSlowSpeed": 40,
+  "bigSlowPenalty": 0.2
+}

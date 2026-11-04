@@ -39,6 +39,7 @@ public partial class DirectorTest : Node
             ("Zones per player, scaling by players", ZonesAndScaling),
             ("Signal leads", SignalLeads),
             ("Tick cost", TickCost),
+            ("Gunnery hook (not wired: nothing shoots at players yet)", GunneryHook),
         };
         foreach (var (name, run) in tests)
         {
@@ -395,6 +396,43 @@ public partial class DirectorTest : Node
         GD.Print(Inv($"      director tick: average {d.Stats.AverageMicros:F1} us, max {d.Stats.MaxMicros:F1} us"));
         Check(d.Stats.AverageMicros < 100 && d.Stats.MaxMicros < 2000,
             Inv($"the director's tick stays tiny (average {d.Stats.AverageMicros:F1} us, max {d.Stats.MaxMicros:F1} us at {d.Config.TickHz} Hz)"));
+    }
+
+    void GunneryHook()
+    {
+        GunneryConfig g = GameData.Gunnery();
+        var track = new AimTrack();
+        float Shot(double at) => Gunnery.HitChance(g, ShooterClass.VesselGun, TargetClass.SmallVessel, "cannon", 200f, track, at);
+        bool warnings = Shot(0.0) == 0f && Shot(0.1) == 0f && Shot(0.2) == 0f && Shot(0.5) == 0f;
+        float half = Shot(0.75 + g.RampSeconds * 0.5), full = Shot(0.75 + g.RampSeconds + 0.1);
+        float baseline = g.Grades["good"];
+        Check(warnings && MathF.Abs(half - baseline * 0.5f) < 0.01f && MathF.Abs(full - baseline) < 0.01f,
+            Inv($"first shots are warning misses, then accuracy ramps to the baseline over {g.RampSeconds} s ({half:F2} halfway, {full:F2} after)"));
+        track.LineOfSightBroken();
+        Check(Shot(10.0) == 0f && Shot(10.1) == 0f, "breaking line of sight brings back the warning shots and the ramp");
+
+        string[,] expected =
+        {
+            { "good", "fair", "poor", "veryPoor" },
+            { "fair", "good", "good", "good" },
+            { "veryPoor", "poor", "fair", "veryGood" },
+        };
+        bool table = true;
+        for (int s = 0; s < 3; s++)
+            for (int t = 0; t < 4; t++)
+                table &= g.BaselineFor((ShooterClass)s, (TargetClass)t) == g.Grades[expected[s, t]];
+        Check(table, "the shooter-against-target baseline table matches the design");
+
+        float rail = g.Weapons["rail"].Accuracy, minigun = g.Weapons["minigun"].Accuracy, capital = g.Weapons["capitalCannon"].ProjectileSpeed;
+        float Settled(TargetClass target, float speed)
+        {
+            var aim = new AimTrack();
+            for (int i = 0; i < g.WarningShots.Shots; i++) Gunnery.HitChance(g, ShooterClass.CapitalTurret, target, "artillery", speed, aim, i * 0.1);
+            return Gunnery.HitChance(g, ShooterClass.CapitalTurret, target, "artillery", speed, aim, 10);
+        }
+        float vsFighter = Settled(TargetClass.SmallVessel, 250f), vsCapital = Settled(TargetClass.Capital, 10f);
+        Check(rail > 1f && minigun < 1f && capital is >= 250f and <= 350f && g.Weapons["cannon"].ProjectileSpeed >= 550f && vsCapital > vsFighter * 5f,
+            Inv($"weapons modify it: rails x{rail}, miniguns x{minigun}, capital shells {capital:F0} m/s, artillery {vsCapital:F2} on a slow capital vs {vsFighter:F2} on a fighter"));
     }
 
     // ---- Scenarios ----------------------------------------------------------------------
