@@ -38,6 +38,7 @@ public partial class Bridge : Node3D
     public static readonly Vector3[] Sirens =
     {
         new(-4.6f, 4.2f, -6.2f), new(4.6f, 4.2f, -6.2f), new(-4.6f, 4.2f, 1.6f), new(2.2f, 4.2f, 1.6f),
+        new(0, 4.25f, -7.55f), // over the window, in sight of anyone at the console
     };
 
     public static readonly Vector3 LeverProp = new(1.18f, 1.0f, -5.45f);

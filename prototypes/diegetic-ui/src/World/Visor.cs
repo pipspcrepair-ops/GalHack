@@ -86,6 +86,9 @@ public partial class Visor : CanvasLayer
 
     public float VitalsAlpha => _vitalsAlpha;
 
+    /// <summary>While a warning shot's cue is showing: the screen direction it points (y down). Tests read it.</summary>
+    public Vector2? IncomingFire => _time < _fireUntil ? FireDirection() : null;
+
     /// <summary>True on the "on" beat of a warning blink. Screenshots wait for it.</summary>
     public bool FlashLit => !State.Vitals.AllWell && Mathf.PosMod((float)_time * 2.2f, 1f) is > 0.1f and < 0.5f;
 
@@ -433,6 +436,6 @@ public partial class Visor : CanvasLayer
             _hud.DrawColoredPolygon(new[] { tip + dir * 14 * s, tip + side * 16 * s, tip + side * 9 * s - dir * 2 * s, tip + dir * 5 * s, tip - side * 9 * s - dir * 2 * s, tip - side * 16 * s },
                 A(new Color("ff7a2a"), a));
         }
-        _hud.Text(UiTheme.Label, (int)(16 * s), p - dir * 34 * s - new Vector2(60 * s, 10 * s), "WARNING SHOT", A(new Color("ff7a2a"), a), HorizontalAlignment.Center, 120 * s);
+        _hud.Text(UiTheme.Label, (int)(16 * s), p - dir * 105 * s - new Vector2(100 * s, 10 * s), "WARNING SHOT", A(new Color("ff7a2a"), a), HorizontalAlignment.Center, 200 * s);
     }
 }

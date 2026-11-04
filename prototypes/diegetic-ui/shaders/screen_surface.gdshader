@@ -71,9 +71,10 @@ void fragment() {
 
 	vec3 col = c * line * band * flicker * vignette * brightness;
 
-	// Alert: a red pulse creeping in from the edges.
-	float edge = smoothstep(0.55, 1.0, max(abs(q.x), abs(q.y)));
-	col = mix(col, alert_color.rgb * 1.3, alert * edge * (0.55 + 0.45 * sin(TIME * 9.0)));
+	// Alert: a red frame pulsing round the edge of the glass. Kept to the margin so the
+	// countdown on the page stays readable.
+	float edge = smoothstep(0.9, 0.99, max(abs(q.x), abs(q.y)));
+	col = mix(col, alert_color.rgb, alert * edge * (0.45 + 0.4 * sin(TIME * 9.0)));
 
 	// The cursor: a chunky arrow with a dark outline, in page pixels.
 	if (cursor_on > 0.5) {

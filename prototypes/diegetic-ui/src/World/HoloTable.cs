@@ -104,7 +104,7 @@ public partial class HoloTable : Node3D, IFocusTarget
                     MaterialOverride = Holo(known ? holo : dark, known ? 0.55f : 0.3f, body: 1, rim: 0, scan: 0),
                 });
 
-            float radius = body.Kind == BodyKind.Star ? 0.085f : 0.028f + (float)body.Size * 0.55f;
+            float radius = body.Kind == BodyKind.Star ? 0.09f : 0.034f + (float)body.Size * 0.7f; // worlds exaggerated: they are what you click
             var node = new Node3D { Name = body.Name };
             _holo.AddChild(node);
             Mesh mesh = body.Kind == BodyKind.Station
@@ -135,8 +135,7 @@ public partial class HoloTable : Node3D, IFocusTarget
                 OutlineSize = 6,
                 OutlineModulate = new Color(0.02f, 0.04f, 0.08f, 0.6f),
                 Modulate = known ? colour.Lightened(0.6f) : dark.Lightened(0.3f),
-                NoDepthTest = true, // names stay readable through the glow of the worlds
-                RenderPriority = 2,
+                RenderPriority = 2,         // after the additive glow of the worlds, so names stay crisp
                 OutlineRenderPriority = 1,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 Shaded = false,
