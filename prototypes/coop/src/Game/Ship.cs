@@ -48,6 +48,7 @@ public partial class Ship : Node3D
     public bool Piloted => PilotPeer != 0;
     public bool StuntAutopilot;
     public float StuntIntensity = 1f;
+    public float StuntSpeed = 30f;
 
     // Pilot controls, set each physics tick while someone is in the seat.
     public Vector3 ThrustInput;   // x right, y up, z back (forward is -1)
@@ -219,7 +220,7 @@ public partial class Ship : Node3D
             0.2f * k,
             0.9f * k * Mathf.Sin(_stuntTime * 0.45f));
         float climb = Mathf.Clamp((70f - Position.Y) * 0.5f, 0f, 15f);
-        Velocity = -Basis.Z * 30f + Vector3.Up * climb;
+        Velocity = -Basis.Z * StuntSpeed + Vector3.Up * climb;
     }
 
     void BuildVisuals()

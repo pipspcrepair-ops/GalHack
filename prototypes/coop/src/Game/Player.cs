@@ -93,10 +93,6 @@ public partial class Player : CharacterBody3D
         if (DisplayServer.GetName() != "headless") Input.MouseMode = Input.MouseModeEnum.Captured;
     }
 
-    public override void _ExitTree()
-    {
-        if (IsInstanceValid(_body) && !_body.IsQueuedForDeletion()) _body.QueueFree();
-    }
 
     /// <summary>
     /// Called by the game. While aboard, the body is inside a cabin world's SubViewport, which
