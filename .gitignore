@@ -1,0 +1,25 @@
+# Godot 4
+.godot/
+*.translation
+export_presets.cfg
+/android/
+
+# .NET
+.mono/
+bin/
+obj/
+*.user
+
+# Editors and OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Builds
+/builds/
+
+# Licensed raw assets that must never be redistributed (Sonniss, Mixamo, Pixabay, Quaternius...)
+/assets-private/
