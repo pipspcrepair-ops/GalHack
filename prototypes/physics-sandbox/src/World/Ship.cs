@@ -322,6 +322,7 @@ public sealed class Ship
         var free = World.Host.Rebind(Body, new FreeBinding(rigid, Body));
         Binding = free;
         free.Teleport();
+        hull.Hull.GetParent().RemoveChild(hull.Hull); // out of the physics space now, not at the end of the frame
         hull.Hull.QueueFree();
     }
 

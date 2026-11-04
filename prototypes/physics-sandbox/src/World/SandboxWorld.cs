@@ -179,6 +179,17 @@ public partial class SandboxWorld : Node3D
         return Terrain.DigCells(cells);
     }
 
+    /// <summary>
+    /// Takes a node out of the tree (and its body out of the physics space) at once, then frees
+    /// it. A plain QueueFree waits for the end of the frame, which can be more than one physics
+    /// tick away when frames run slow, and runs must not depend on frame timing.
+    /// </summary>
+    static void Discard(Node node)
+    {
+        node.GetParent()?.RemoveChild(node);
+        node.QueueFree();
+    }
+
     /// <summary>Takes a ship out of the world entirely. Only tests do this: in play nothing disappears.</summary>
     public void Remove(Ship ship)
     {
@@ -188,7 +199,7 @@ public partial class SandboxWorld : Node3D
         Physics.StuckFields.Remove(ship.Field);
         Weather.Untrack(ship.Body);
         Ships.Remove(ship);
-        ship.Node.QueueFree();
+        Discard(ship.Node);
     }
 
     /// <summary>Takes a crate out of the world. Only tests do this.</summary>
@@ -197,7 +208,7 @@ public partial class SandboxWorld : Node3D
         Physics.Unregister(crate.Body);
         Weather.Untrack(crate.Body);
         Crates.Remove(crate);
-        crate.Node.QueueFree();
+        Discard(crate.Node);
     }
 
     /// <summary>Takes a creature out of the world. Only tests do this.</summary>
@@ -206,7 +217,7 @@ public partial class SandboxWorld : Node3D
         Physics.Unregister(creature.Body);
         Weather.Untrack(creature.Body);
         Creatures.Remove(creature);
-        creature.Binding.Node.QueueFree();
+        Discard(creature.Binding.Node);
     }
 
     readonly List<(PhysicsBody3D a, PhysicsBody3D b, long until)> _apart = new();
