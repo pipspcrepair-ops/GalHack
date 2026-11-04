@@ -162,12 +162,13 @@ public partial class Main : Node3D
 
     // ---- Actions ----------------------------------------------------------------------
 
-    public void PingOre()
+    public System.Collections.Generic.List<OreDetector.Deposit> PingOre()
     {
         var deposits = Detector.Ping(Player.GlobalPosition + Vector3.Up);
         Hud.Toast(deposits.Count == 0
             ? $"Detector: no ore within {OreDetector.Range:F0} m"
             : $"Detector: {deposits.Count} deposits · nearest {deposits[0].Distance:F0} m ({deposits[0].Cells} cells)", Palette.Ore, 3f);
+        return deposits;
     }
 
     public SaveReport Save()

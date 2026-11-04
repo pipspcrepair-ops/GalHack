@@ -60,6 +60,7 @@ public partial class DigTest : Node
             Info($"startup: {_main.View.MeshedChunks} chunk meshes, {_main.View.Triangles:N0} triangles in {_main.StartupSeconds:F2} s");
             await TestStuckSafe();
             await TestCrouch();
+            await TestGameActions();
             await TestFloatingIsland();
             await TestRebuildIdentical();
             Section("Performance");
@@ -680,6 +681,77 @@ public partial class DigTest : Node
         bool out_ = !StuckResolver.IsInsideTerrain(store, ToN(player.GlobalPosition), new BodyShape(player.CurrentHeight, Player.Radius));
         Check(_main.Guard.Rescues > rescues && frames <= 5 && out_ && !player.IsCrouching && player.CanStand(),
             $"a crouched player buried below the crawlspace is rescued in {frames} frames to room where they stand up again");
+    }
+
+    /// <summary>
+    /// The keys, end to end: dig and build with the tool, save, dig on, load, and the player
+    /// left standing in a hole the load filled back in is rescued. Then a crater and a ping.
+    /// </summary>
+    async System.Threading.Tasks.Task TestGameActions()
+    {
+        ChunkStore store = _main.Store;
+        Player player = _main.Player;
+        GatherTool tool = _main.Tool;
+
+        Int3 spot = SurfaceCell(store, 14, -16);
+        player.Teleport(new Vector3(spot.X + 0.5f, spot.Y + 1.2f, spot.Z + 0.5f));
+        player.SetLook(0f, -0.75f);
+        for (int i = 0; i < 20; i++) await NextPhysics();
+
+        int gathered = tool.Gathered.Sum(), dug = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            await NextPhysics();
+            dug += tool.DigAtTarget()?.Removed.Count ?? 0;
+        }
+        Check(dug > 0 && tool.Gathered.Sum() == gathered + dug, $"the tool digs under the crosshair and counts what it gathers ({dug} cells)");
+
+        player.SetLook(Mathf.Pi, -0.6f);
+        for (int i = 0; i < 3; i++) await NextPhysics();
+        PlaceResult block = tool.PlaceBlock();
+        Check(block?.Verdict == PlaceVerdict.Placed && _main.Structures.Count == store.Structures.Count,
+            $"the tool places a block ({block?.Verdict.ToString() ?? "no target"}, {block?.Cleared?.Removed.Count ?? 0} cells cleared)");
+
+        SaveReport saved = _main.Save();
+        ulong savedHash = store.EditStateHash();
+        int savedStructures = store.Structures.Count;
+
+        // Walk clear of the block's anchored ground, then dig straight down: the player drops
+        // into a hole the save knows nothing about.
+        Int3 away = SurfaceCell(store, spot.X + 12, spot.Z - 6);
+        player.Teleport(new Vector3(away.X + 0.5f, away.Y + 1.2f, away.Z + 0.5f));
+        spot = away;
+        for (int i = 0; i < 10; i++) await NextPhysics();
+        player.SetLook(0f, -1.5f);
+        for (int i = 0; i < 12; i++)
+        {
+            await NextPhysics();
+            await NextPhysics();
+            tool.DigAtTarget();
+        }
+        for (int i = 0; i < 20; i++) await NextPhysics();
+        float sunk = spot.Y + 1f - player.GlobalPosition.Y;
+
+        int rescues = _main.Guard.Rescues;
+        LoadResult loaded = _main.Load();
+        Check(saved.Ok && loaded.Ok && store.EditStateHash() == savedHash && store.Structures.Count == savedStructures && _main.Structures.Count == savedStructures,
+            $"F5 then F9: the load audit passes and the world is exactly as saved ({saved.Cells} cells, {savedStructures} blocks)");
+        for (int i = 0; i < 30; i++) await NextPhysics();
+        bool inside = StuckResolver.IsInsideTerrain(store, ToN(player.GlobalPosition), new BodyShape(player.CurrentHeight, Player.Radius));
+        Check(sunk > 2f && _main.Guard.Rescues > rescues && !inside,
+            $"the player, {sunk:F1} m down a hole the load filled in, is moved out of the ground");
+
+        player.SetLook(0.4f, -0.35f);
+        await NextPhysics();
+        await NextPhysics();
+        EditResult crater = tool.Crater();
+        Check(crater != null && crater.Removed.Count > 0 && crater.Removed.Count <= ChunkStore.MaxCraterCells,
+            $"C blasts a capped crater at the crosshair ({crater?.Removed.Count ?? 0} cells)");
+
+        var deposits = _main.PingOre();
+        Info($"Q detector: {deposits.Count} deposits within {OreDetector.Range:F0} m" +
+             (deposits.Count > 0 ? $", nearest {deposits[0].Distance:F1} m ({deposits[0].Cells} cells)" : ""));
+        while (!_main.View.IsIdle) await NextFrame();
     }
 
     /// <summary>Rule 5: no terrain physics. A floating island stays exactly where it is.</summary>
