@@ -28,6 +28,7 @@ public partial class Hud : CanvasLayer
         "F             sit in / leave the pilot seat\n" +
         "Q / E         roll        G gear        C cruise\n" +
         "1 / 2 / 3     into the Corsair's cabin / the rover's seat / onto the Corsair's roof\n" +
+        "4             spacewalk: the Corsair in orbit, you on its roof in mag boots\n" +
         "Y             ship core gravity on / off\n" +
         "K             shoot an engine pod off the Corsair\n" +
         "B / N         blast a crater / dig at the crosshair\n" +

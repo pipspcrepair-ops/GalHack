@@ -5,12 +5,20 @@ namespace PhysicsSandbox.World;
 /// <summary>
 /// The sky over the sandbox: a teal zenith warming to a peach horizon, a low warm sun, lavender
 /// shadows, a little height haze over the basin, and a ringed neighbour planet hanging over the
-/// northern ridge. Presentation only.
+/// northern ridge. Above the atmosphere it is space instead: black, a scatter of stars, the
+/// same sun and the same ringed giant, and no haze. Presentation only.
 /// </summary>
-public static class Sky
+public sealed class Sky
 {
-    public static DirectionalLight3D Build(Node3D parent)
+    public DirectionalLight3D Sun { get; private set; }
+    public bool InSpace { get; private set; }
+
+    Godot.Environment _env;
+    Godot.Sky _air, _space;
+
+    public static Sky Build(Node3D parent)
     {
+        var result = new Sky();
         var sky = new ProceduralSkyMaterial
         {
             SkyTopColor = Palette.SkyTop,
@@ -41,6 +49,9 @@ public static class Sky
             GlowBloom = 0.05f,
         };
         parent.AddChild(new WorldEnvironment { Environment = env });
+        result._env = env;
+        result._air = env.Sky;
+        result._space = new Godot.Sky { SkyMaterial = new ShaderMaterial { Shader = new Shader { Code = SpaceShader } } };
 
         var sun = new DirectionalLight3D
         {
@@ -53,8 +64,50 @@ public static class Sky
         };
         parent.AddChild(sun);
         parent.AddChild(RingedPlanet());
-        return sun;
+        result.Sun = sun;
+        return result;
     }
+
+    /// <summary>Space when the camera is above the atmosphere's ceiling, sky below it.</summary>
+    public void Follow(bool inSpace)
+    {
+        if (inSpace == InSpace) return;
+        InSpace = inSpace;
+        _env.Sky = inSpace ? _space : _air;
+        _env.FogEnabled = !inSpace;
+        _env.AmbientLightColor = inSpace ? Palette.Shadow.Darkened(0.35f) : Palette.Shadow.Lightened(0.25f);
+        _env.AmbientLightEnergy = inSpace ? 0.4f : 0.55f;
+        Sun.LightEnergy = inSpace ? 1.5f : 1.25f;
+    }
+
+    /// <summary>Space: near-black with a faint dusty band, hashed stars of a few sizes, and the sun's disc.</summary>
+    const string SpaceShader = @"
+shader_type sky;
+
+float hash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
+
+float stars(vec3 dir, float scale, float density) {
+    vec3 p = dir * scale;
+    vec3 cell = floor(p);
+    float h = hash(cell);
+    float d = length(fract(p) - 0.5 - (vec3(hash(cell + 1.7), hash(cell + 4.1), hash(cell + 9.3)) - 0.5) * 0.4);
+    return step(1.0 - density, h) * smoothstep(0.3, 0.05, d) * (0.4 + 0.6 * hash(cell + 2.3));
+}
+
+void sky() {
+    vec3 d = normalize(EYEDIR);
+    float band = pow(1.0 - abs(dot(d, normalize(vec3(0.3, 0.9, 0.2)))), 6.0);
+    vec3 c = vec3(0.008, 0.009, 0.022) + vec3(0.05, 0.035, 0.07) * band;
+    c += vec3(1.0, 0.95, 0.9) * (stars(d, 240.0, 0.03) + 0.6 * stars(d, 520.0, 0.05));
+    if (LIGHT0_ENABLED) {
+        float s = dot(d, LIGHT0_DIRECTION);
+        c += LIGHT0_COLOR * (smoothstep(0.99985, 0.99995, s) * 6.0 + pow(max(s, 0.0), 600.0) * 0.6);
+    }
+    COLOR = c;
+}
+";
 
     /// <summary>A banded giant with a tilted ring, far off over the northern ridge.</summary>
     static Node3D RingedPlanet()
