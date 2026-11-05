@@ -318,6 +318,9 @@ public abstract partial class SkySeamCheck : Node
     /// <summary>Where its sun is: away from every probe, so its disc is never mistaken for a pinch.</summary>
     protected virtual Vector3 ToSun => new Vector3(0.35f, 0.42f, 0.84f).Normalized();
 
+    /// <summary>Gets ready whatever the skies need before they are drawn (a noise texture still building, say).</summary>
+    protected virtual System.Threading.Tasks.Task Prepare() => System.Threading.Tasks.Task.CompletedTask;
+
     public override async void _Ready()
     {
         if (SkySeams.RelaunchWindowed(this) is int code)
@@ -330,6 +333,7 @@ public abstract partial class SkySeamCheck : Node
         var sun = new DirectionalLight3D();
         AddChild(sun);
         sun.LookAt(sun.GlobalPosition - ToSun, MathF.Abs(ToSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
+        await Prepare();
         int failures = 0;
         foreach (var (name, material) in Skies())
         {

@@ -35,7 +35,7 @@ void sky() {
 	float disc = smoothstep(sun_size - 0.0004, sun_size, sd);
 	float halo = pow(max(sd, 0.0), 10.0) * 0.35 + pow(max(sd, 0.0), 220.0) * 0.8;
 
-	float density = 0.0;
+	float density = 0.0, pockets = 0.0;
 	if (up > 0.0 && !AT_CUBEMAP_PASS) {
 		// Low layer: project the view ray onto the cloud plane above the camera.
 		float t = (CLOUD_HEIGHT - POSITION.y) / max(up, 0.02);
@@ -56,18 +56,20 @@ void sky() {
 		vec2 cirrus_at = POSITION.xz + dir.xz * ((CLOUD_HEIGHT * 3.0) / max(up, 0.02));
 		vec2 streak = vec2(dot(cirrus_at, wind), dot(cirrus_at, vec2(-wind.y, wind.x)) * 4.0) * CLOUD_SCALE * 0.35;
 		float cirrus = smoothstep(0.55, 0.85, texture(cloud_noise, streak - weather_cloud.xy * CLOUD_SCALE * 0.2).r);
-		col = mix(col, cloud_lit, cirrus * 0.35 * (1.0 - weather_cloud.z * 0.6));
+		// It thins out toward the horizon like the low layer, so it never stops at a line there.
+		col = mix(col, cloud_lit, cirrus * 0.35 * (1.0 - weather_cloud.z * 0.6) * smoothstep(0.0, 0.12, up));
 
 		// Fade the layer into the haze toward the horizon, where the projection gets noisy.
 		float fade = smoothstep(0.0, 0.12, up) * exp(-t / 22000.0);
 		col = mix(col, cloud, density * fade);
 		density *= fade;
-
-		// Lightning lights the clouds from inside.
-		float toward_flash = max(dot(dir, normalize(weather_flash.xyz)), 0.0);
-		float pockets = smoothstep(0.42, 0.62, n);
-		col += flash_color * weather_flash.w * (0.08 + 0.9 * density * pockets) * (0.12 + 0.88 * pow(toward_flash, 4.0));
+		pockets = smoothstep(0.42, 0.62, n);
 	}
+
+	// Lightning lights the whole sky a little, down past the horizon (so it never stops at a
+	// line there), and the clouds from inside.
+	float toward_flash = max(dot(dir, normalize(weather_flash.xyz)), 0.0);
+	col += flash_color * weather_flash.w * (0.08 + 0.9 * density * pockets) * (0.12 + 0.88 * pow(toward_flash, 4.0));
 
 	col += sun_color * (disc * 6.0 + halo) * sun_strength * (1.0 - density * 0.95);
 
