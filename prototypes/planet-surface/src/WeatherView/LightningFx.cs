@@ -13,7 +13,7 @@ namespace PlanetSurface.WeatherView;
 /// </summary>
 public partial class LightningFx : Node3D
 {
-    public WeatherRig Fx;
+    public IWeatherScene Fx;
 
     /// <summary>0..~1.5: how bright the last strike is right now, for the sky, fog and ambient light.</summary>
     public float Flash { get; private set; }
