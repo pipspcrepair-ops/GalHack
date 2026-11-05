@@ -73,7 +73,7 @@ Runs headless in about 70 s and exits 0 or 1. Add `-- --only=Heights,Flight` to 
 - neighbouring chunks share their border vertices bit for bit
 - an edit survives unloading and reloading, a save round trip, and leaving the planet and coming back
 - stuck safety frees a buried player and leaves one standing in a fresh pit alone
-- flying 2 km at 100 m/s keeps streaming's main-thread cost under 8 ms a frame (about 4 ms) and catches up after landing
+- flying 2 km at 100 m/s keeps streaming's main-thread cost under 8 ms a frame (about 4 ms) and catches up after landing; GC pauses that land inside streaming are left out of that figure and reported beside it, along with the flight's collections
 - chunks beyond the north edge match their twins at the south edge (heights to 0.24 mm, normals to 0.005°), as does the corner beyond both seams
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
 - walking north across the edge keeps you on the ground, at speed, with no frame over 8 ms
