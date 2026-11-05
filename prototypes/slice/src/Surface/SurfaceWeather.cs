@@ -109,7 +109,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     }
 
     /// <summary>Seconds of the opening with no severe weather: a castaway's first job is the pod, not a tornado.</summary>
-    public const double CalmOpening = 20 * 60;
+    public const double CalmOpening = 12 * 60;
 
     /// <summary>
     /// Starts the planet's weather: a quiet sky, and of the weather seeds that follow from the
@@ -122,7 +122,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
         WeatherSim sim = null;
-        for (ulong k = 0; k < 64; k++)
+        for (ulong k = 0; k < 1024; k++)
         {
             sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds);
             sim.EnsureTimeline(CalmOpening);

@@ -75,7 +75,7 @@ The **Skiff** (`data/blueprints/starter.gbp`), 174 small-grid blocks in a Chris 
 ### Rules the slice adds
 
 - **Warned before any harm.** Survival's alerts flash before health drains. Impacts use the physics module's one formula in full; the visor flashes IMPACT whenever the body is airborne faster than the formula's safe speed (8 m/s), and sprinting tops out just under it (7.9 m/s), so running into a rock never hurts. A creature's wind-up is heard and shown (THREAT) before its lunge.
-- **A calm opening.** Of the weather seeds that follow from the planet's, the slice takes the first whose forecast has no severe weather in the first 20 minutes. After that it is the planet's own weather, every storm warned before it arrives.
+- **A calm opening.** Of the weather seeds that follow from the planet's, the slice takes the first whose forecast has no severe weather in the first 12 minutes. After that it is the planet's own weather, every storm warned before it arrives.
 - **Gamey cockpits.** A seat counts as a sealed, heated cockpit (survival's cockpit volume): oxygen refills and the weather stays outside.
 - **Streaming follows a vessel ahead of it,** and a flying vessel gets terrain collision a column further out, so the ground it flies over is solid when it gets there.
 
