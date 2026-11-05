@@ -33,6 +33,8 @@ public sealed class WildSim
     public readonly List<Herd> Herds = new();
     public readonly List<Pack> Packs = new();
     public readonly List<ITarget> Targets = new();
+    /// <summary>Player structures on the surface. Bases (core in base mode) keep spawns away; see <see cref="SpawnRules"/>.</summary>
+    public readonly List<Structure> Structures = new();
     public Vector3 Wind = new(1.2f, 0f, 0.5f);
     public float Time;
     public int Frame;
@@ -59,6 +61,8 @@ public sealed class WildSim
     public event Action<AttackEvent> Attacked;
     public event Action<Creature, ITarget> Died;
     public event Action<Creature> Warned;
+    /// <summary>A creature was added to the world, by any path.</summary>
+    public event Action<Creature> Spawned;
 
     public CombatRules Combat => Data.Combat;
 
@@ -72,6 +76,17 @@ public sealed class WildSim
 
     // ---- Spawning ---------------------------------------------------------------------
 
+    /// <summary>
+    /// True inside a base's no-spawn zone (widened by <paramref name="margin"/>). Natural spawns
+    /// (<see cref="SpawnGroup"/> and the <see cref="Spawner"/>) never land there.
+    /// </summary>
+    public bool InBaseZone(Vector3 p, float margin = 0f) => BaseZones.Blocks(Structures, p, Data.Spawning.BaseClearance, margin);
+
+    /// <summary>
+    /// Puts one creature down exactly where asked. This is the raw primitive the tests and the
+    /// screenshot staging use; natural spawning goes through <see cref="SpawnGroup"/>, which keeps
+    /// out of base zones.
+    /// </summary>
     public Creature Spawn(Species species, Vector3 position, Herd herd = null, Pack pack = null)
     {
         var c = new Creature
@@ -107,11 +122,16 @@ public sealed class WildSim
         c.Rig = Rig.Create(species, c);
         c.Rig.Reset(this, c);
         Creatures.Add(c);
+        Spawned?.Invoke(c);
         return c;
     }
 
-    /// <summary>A species' natural group around a point: a herd if it herds, else loose neighbours.</summary>
-    public List<Creature> SpawnGroup(Species species, Vector3 center, int count)
+    /// <summary>
+    /// A species' natural group around a point: a herd if it herds, else loose neighbours. A
+    /// member whose spot falls inside a base's zone, or that <paramref name="allow"/> turns down,
+    /// is not spawned at all.
+    /// </summary>
+    public List<Creature> SpawnGroup(Species species, Vector3 center, int count, Func<Vector3, bool> allow = null)
     {
         var list = new List<Creature>();
         Herd herd = null;
@@ -133,12 +153,17 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
+            if (InBaseZone(p) || (allow != null && !allow(p))) continue;
             list.Add(Spawn(species, p, herd, pack));
         }
         return list;
     }
 
     public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count));
+
+    /// <summary>How far from its centre a natural group of this species may spread when it spawns.</summary>
+    public float GroupRadius(Species s, int count) => s.Behaviour == Behaviour.Herd ? HerdSpread(s, count)
+        : s.Behaviour == Behaviour.PackHunter ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : s.Body.Size * 3f;
 
     /// <summary>Nudges a spawn point off rocks and trunks.</summary>
     public Vector3 FreeSpot(Vector3 p, Rng rng)

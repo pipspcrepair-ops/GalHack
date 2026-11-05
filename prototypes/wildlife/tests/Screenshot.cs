@@ -200,6 +200,18 @@ public partial class Screenshot : Node
                 _captureTick = windupAt + (int)(s.TelegraphWindup(m.Data.Combat) * 0.6f * 60f);
                 break;
             }
+            case "outpost":
+            {
+                // The players' outpost, whose zone the wildlife never spawns in, with the herds beyond it.
+                World(WorldKind.Temperate, 0.4f);
+                Structure s = m.Outpost.Structure;
+                Vector3 back = new Basis(Vector3.Up, s.Yaw) * new Vector3(0.55f, 0f, 1f).Normalized();
+                Vector3 eye = Ground(s.Center + back * 26f) + Vector3.Up * 7f;
+                p.Teleport(Ground(s.Center + back * 40f));
+                _aim = () => (eye, s.Center + Vector3.Up * 1.5f);
+                _captureTick = 90;
+                break;
+            }
             case "lineup":
                 Lineup();
                 break;
@@ -251,6 +263,7 @@ public partial class Screenshot : Node
         m.Forest.Visible = false;
         m.Grass.Visible = false;
         m.Vessel.Visible = false;
+        m.Outpost.Visible = false;
         m.Planet.ShowRocks(false);
         m.Player.Teleport(Ground(new Vector3(200f, 0f, 200f)));
         m.Sim.Clear();
@@ -328,6 +341,7 @@ public partial class Screenshot : Node
         m.Forest.Visible = false;
         m.Grass.Visible = false;
         m.Vessel.Visible = false;
+        m.Outpost.Visible = false;
         m.Planet.ShowRocks(false);
         m.Hud.Visible = false;
         m.Player.Teleport(Ground(new Vector3(200f, 0f, 200f)));

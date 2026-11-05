@@ -44,6 +44,8 @@ public partial class WildlifeTest : Node
             RunDown();
             StorageCap();
             CodexFirstFinder();
+            NoSpawnsNearBases();
+            WanderersStillEnter();
             Performance();
             await PlayableScene();
         }
@@ -65,6 +67,10 @@ public partial class WildlifeTest : Node
         await Frames(30);
         int live = main.Sim.Creatures.Count(c => !c.Removed);
         Check(live > 30 && main.View.ViewCount == live, $"the playable planet spawns its fauna ({live} creatures on {main.Fauna.PlanetName}, {main.View.ViewCount} views)");
+        Structure outpost = main.Outpost.Structure;
+        float closest = main.Sim.Creatures.Where(c => !c.Removed).Min(c => outpost.DistanceToFootprint(c.Home));
+        Check(main.Sim.Structures.Contains(outpost) && outpost.IsBase && closest >= _data.Spawning.BaseClearance,
+            $"the playable planet's outpost is a base, and nothing spawned within {_data.Spawning.BaseClearance:F0} m of it (closest {closest:F0} m from its deck)");
         await DiscoveryCards(main);
 
         string alien = main.Fauna.PlanetName;
@@ -131,9 +137,11 @@ public partial class WildlifeTest : Node
             return;
         }
         var spawned = new List<Creature>();
-        // Nobody may meet these three by chance while the test is setting up its own meetings.
+        // Nobody may meet these three by chance while the test is setting up its own meetings,
+        // and no other hunter nearby may pick a fight that holds the cards back.
         foreach (Creature c in main.Sim.Creatures)
-            if (c.Species == attacker || calm.Contains(c.Species)) main.Sim.Remove(c);
+            if (c.Species == attacker || calm.Contains(c.Species)
+                || (c.Stats.Damage > 0f && WildSim.Flat(c.Position - p.GlobalPosition).Length() < 150f)) main.Sim.Remove(c);
 
         // A first meeting: one card, with everything on it, and its chime.
         Species s1 = calm[0];
@@ -832,6 +840,185 @@ public partial class WildlifeTest : Node
         Check(first && !again && !againPip && codex.Count == 1 && raised.Count == 1 && raised[0] == e && e.Finder == "Pip" && e.FoundAt == 10f
               && e.Name == s.Name && e.Form == s.FormLabel && e.Behaviour == s.BehaviourLabel && e.Size == s.Body.Size && e.Planet == "Test IV",
             $"the codex records the first finder, once, with one discovery raised ({e?.Name}: {e?.Form}, {e?.Behaviour}, {e?.Size:F1} m, first found by {e?.Finder} on {e?.Planet})");
+    }
+
+    // ---- Bases: nothing spawns near them -------------------------------------------------
+
+    /// <summary>
+    /// No creature spawns or respawns within the clearance of a base, measured from its
+    /// footprint's edge. An hour of a planet's fauna being killed off and topped back up, with a
+    /// small base right where the herd would start, a big one out in the hills, a capital ship
+    /// parked between and a player strolling through all of it: every spawn is checked.
+    /// </summary>
+    void NoSpawnsNearBases()
+    {
+        SpawnRules rules = _data.Spawning;
+        float clear = rules.BaseClearance;
+        const ulong Seed = 4040;
+        PlanetFauna f = _gen.Generate(Seed, 0.5f, false);
+        var groves = new List<Vector3> { new(-30f, 0f, -40f), new(110f, 0f, 20f), new(-90f, 0f, 120f), new(40f, 0f, -150f) };
+
+        WildSim w = NewSim(Seed);
+        var hut = new Structure { Name = "hut", Center = Ground(w, new Vector3(0f, 0f, -22f)), HalfExtents = new Vector2(3f, 3f) };
+        var fortress = new Structure { Name = "fortress", Center = Ground(w, new Vector3(125f, 0f, 115f)), HalfExtents = new Vector2(40f, 28f), Yaw = 0.6f };
+        var carrier = new Structure { Name = "carrier", Mode = CoreMode.Capital, Center = Ground(w, new Vector3(-100f, 0f, -80f)), HalfExtents = new Vector2(30f, 10f), Yaw = -0.3f };
+        w.Structures.AddRange(new[] { hut, fortress, carrier });
+        var player = new DummyTarget { Name = "Stroller", Health = new Health(1e9f) };
+        w.Targets.Add(player);
+
+        var spawns = new List<Vector3>();
+        float nearestPlayer = float.MaxValue;
+        bool respawning = false;
+        w.Spawned += c =>
+        {
+            spawns.Add(c.Position);
+            if (respawning) nearestPlayer = MathF.Min(nearestPlayer, WildSim.Flat(c.Position - player.Position).Length());
+        };
+        var spawner = new Spawner(w, f, groves, Seed);
+        spawner.Populate();
+        int opening = spawns.Count;
+        respawning = true;
+
+        var rng = new Rng(17);
+        const float Step = 0.5f;
+        int kills = 0;
+        for (int i = 0; i < (int)(3600f / Step); i++)
+        {
+            float t = i * Step;
+            // The player strolls a wide loop through everything, the bases included.
+            Vector3 at = new(MathF.Cos(t * 0.011f) * 160f, 0f, MathF.Sin(t * 0.017f) * 160f);
+            Vector3 ahead = new(MathF.Cos((t + 1f) * 0.011f) * 160f, 0f, MathF.Sin((t + 1f) * 0.017f) * 160f);
+            player.Position = Ground(w, at);
+            player.Forward = (ahead - at).Normalized();
+            // Something dies every few seconds: shot, harvested or eaten.
+            if (i % 8 == 0)
+            {
+                List<Creature> alive = w.Creatures.Where(c => !c.Removed && c.Alive).ToList();
+                if (alive.Count > 0)
+                {
+                    Creature victim = alive[rng.Int(0, alive.Count - 1)];
+                    w.Kill(victim, null);
+                    victim.Removed = true;
+                    kills++;
+                }
+            }
+            spawner.Step(Step);
+        }
+
+        int inside = spawns.Count(p => w.InBaseZone(p));
+        float nearest = spawns.Min(p => BaseZones.NearestBase(w.Structures, p));
+        Check(inside == 0 && spawner.Respawned > 300 && spawner.RejectedForBase > 0,
+            $"no creature spawns or respawns within {clear:F0} m of a base: {spawns.Count} spawns ({opening} at the start, {spawner.Respawned} respawns over an hour with {kills} kills), nearest {nearest:F1} m from a base's edge; {spawner.RejectedForBase} spots turned down for a base");
+        Check(nearestPlayer >= rules.MinPlayerDistance,
+            $"respawns keep away from the player and out of view (nearest {nearestPlayer:F0} m, at least {rules.MinPlayerDistance:F0}; {spawner.RejectedForPlayers} spots turned down)");
+
+        // The zone runs from the footprint's edge, so a big base keeps a bigger one.
+        bool EdgeAt(Structure s)
+        {
+            Vector3 along = new Basis(Vector3.Up, s.Yaw) * Vector3.Right;
+            float reach = s.HalfExtents.X + clear;
+            return BaseZones.Blocks(new[] { s }, s.Center + along * (reach - 0.5f), clear) && !BaseZones.Blocks(new[] { s }, s.Center + along * (reach + 0.5f), clear);
+        }
+        float Area(Structure s)
+        {
+            int n = 0;
+            for (float x = -400f; x <= 400f; x += 4f)
+                for (float z = -400f; z <= 400f; z += 4f)
+                    if (BaseZones.Blocks(new[] { s }, s.Center + new Vector3(x, 0f, z), clear)) n++;
+            return n * 16f;
+        }
+        float hutArea = Area(hut), fortArea = Area(fortress);
+        float hutReach = hut.HalfExtents.X + clear, fortReach = fortress.HalfExtents.X + clear;
+        float nearHut = spawns.Min(p => WildSim.Flat(p - hut.Center).Length()), nearFort = spawns.Min(p => WildSim.Flat(p - fortress.Center).Length());
+        Check(EdgeAt(hut) && EdgeAt(fortress) && fortArea > hutArea * 2f && nearHut >= hut.HalfExtents.X + clear && nearFort >= fortress.HalfExtents.Y + clear,
+            $"a large base gets a larger zone: it runs {clear:F0} m from the footprint's edge, {hutReach:F0} m out from a 6 m hut's centre and {fortReach:F0} m from an 80 x 56 m fortress's ({hutArea / 1e4f:F1} ha against {fortArea / 1e4f:F1} ha); nearest spawns {nearHut:F0} m and {nearFort:F0} m from their centres");
+
+        // Capital mode blocks nothing: a ship parked where the herd starts gets creatures round it;
+        // switch the same core to base mode and none come within the clearance.
+        (int near, float closest) Opening(CoreMode mode)
+        {
+            WildSim ws = NewSim(Seed);
+            var parked = new Structure { Name = "core", Mode = mode, Center = Ground(ws, new Vector3(0f, 0f, -22f)), HalfExtents = new Vector2(12f, 8f) };
+            ws.Structures.Add(parked);
+            var placed = new List<Vector3>();
+            ws.Spawned += c => placed.Add(c.Position);
+            new Spawner(ws, f, groves, Seed).Populate();
+            return (placed.Count(p => parked.DistanceToFootprint(p) < clear), placed.Min(p => parked.DistanceToFootprint(p)));
+        }
+        (int capitalNear, float capitalClosest) = Opening(CoreMode.Capital);
+        (int baseNear, float baseClosest) = Opening(CoreMode.Base);
+        int byCarrier = spawns.Count(p => carrier.DistanceToFootprint(p) < clear);
+        Check(capitalNear > 0 && baseNear == 0 && byCarrier > 0,
+            $"capital-mode structures don't block spawns: {capitalNear} creatures spawn within {clear:F0} m of a capital core parked where the herd starts (closest {capitalClosest:F1} m), none once it is in base mode (closest {baseClosest:F1} m); over the hour {byCarrier} spawned near the parked carrier");
+
+        // The clearance is past the furthest any creature can notice a player, so nothing new
+        // appears close enough to have seen you at home.
+        float longest = 0f;
+        for (ulong seed = 1; seed <= 200; seed++)
+            foreach (Species s in _gen.Generate(seed * 9137, seed % 4 * 0.33f, seed % 6 == 0).Species)
+                longest = MathF.Max(longest, s.Stats.Perception);
+        Check(clear > longest, $"the {clear:F0} m clearance is past the longest perception any creature rolls ({longest:F0} m over 200 planets)");
+    }
+
+    /// <summary>
+    /// Only spawning is blocked. A herd that settles just outside a base's zone still grazes its
+    /// way in, and a hunter shot at from the base charges all the way in and bites.
+    /// </summary>
+    void WanderersStillEnter()
+    {
+        float clear = _data.Spawning.BaseClearance;
+        Species grazers = null;
+        for (ulong seed = 1; seed < 200 && grazers == null; seed++)
+            grazers = _gen.Generate(seed * 211, 0.3f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Herd && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant);
+        Species hunter = null;
+        for (ulong seed = 1; seed < 400 && hunter == null; seed++)
+            hunter = _gen.Generate(seed * 223, 0.4f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Predator && x.Rig == RigKind.Legged && x.Stats.Retaliates && x.Plan != BodyPlan.Giant);
+        if (grazers == null || hunter == null) { Fail("no herd or retaliating predator species found for the base tests"); return; }
+
+        // The herd: spawned legally, its edge a few metres outside the zone.
+        WildSim w = NewSim(grazers.Seed, obstacles: false);
+        var outpost = new Structure { Name = "outpost", Center = Ground(w, Vector3.Zero), HalfExtents = new Vector2(8f, 6f) };
+        w.Structures.Add(outpost);
+        float spread = w.GroupRadius(grazers, 6);
+        Vector3 home = Ground(w, new Vector3(outpost.HalfExtents.X + clear + spread + 4f, 0f, 0f));
+        List<Creature> herd = w.SpawnGroup(grazers, home, 6);
+        bool spawnedOutside = herd.Count == 6 && herd.All(c => !w.InBaseZone(c.Position));
+        var entered = new HashSet<Creature>();
+        float deepest = float.MaxValue;
+        for (int step = 0; step < 60 * 60 * 10; step++)
+        {
+            w.Step(Dt);
+            if (step % 30 != 0) continue;
+            foreach (Creature c in herd)
+            {
+                float d = outpost.DistanceToFootprint(c.Position);
+                deepest = MathF.Min(deepest, d);
+                if (d < clear) entered.Add(c);
+            }
+        }
+        Check(spawnedOutside && entered.Count > 0,
+            $"creatures already outside may wander in: {entered.Count} of a herd of 6 spawned outside the zone grazed into it within 10 minutes (deepest {deepest:F0} m from the base's edge)");
+
+        // The hunter: shot at from inside the base every few seconds, it comes for the shooter.
+        WildSim w2 = NewSim(hunter.Seed, obstacles: false);
+        var keep = new Structure { Name = "keep", Center = Ground(w2, Vector3.Zero), HalfExtents = new Vector2(8f, 6f) };
+        w2.Structures.Add(keep);
+        var defender = new DummyTarget { Name = "Defender", Position = Ground(w2, Vector3.Zero), Health = new Health(1e9f) };
+        w2.Targets.Add(defender);
+        Vector3 start = Ground(w2, new Vector3(keep.HalfExtents.X + clear + 2f, 0f, 0f));
+        Creature c2 = w2.Spawn(hunter, start);
+        bool legal = !w2.InBaseZone(c2.Position);
+        AttackEvent? bite = null;
+        w2.Attacked += e => bite ??= e;
+        float reachedAt = -1f;
+        for (int step = 0; step < 60 * 60 && bite == null; step++)
+        {
+            if (step % 240 == 0) w2.Damage(c2, 1f, defender); // a shot from the base
+            w2.Step(Dt);
+        }
+        if (bite != null) reachedAt = bite.Value.Time;
+        Check(legal && bite != null && keep.DistanceToFootprint(c2.Position) < 3f,
+            $"attackers still reach a base: a {hunter.CommonName} spawned outside the zone, shot at from the base, ran {start.Length():F0} m in and attacked after {reachedAt:F0} s");
     }
 
     // ---- Performance --------------------------------------------------------------------

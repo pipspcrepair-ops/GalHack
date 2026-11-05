@@ -50,6 +50,7 @@ public sealed class WildlifeData
     public CombatRules Combat { get; set; } = new();
     public HarvestRules Harvest { get; set; } = new();
     public WorldRules World { get; set; } = new();
+    public SpawnRules Spawning { get; set; } = new();
     public FaunaTables Fauna { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
@@ -94,6 +95,9 @@ public sealed class WildlifeData
             foreach (string other in part.Requires)
                 if (Fauna.FindPart(other) == null) problems.Add($"part {slot}/{part.Id}: requires unknown part {other}");
         }
+        if (Spawning.BaseClearance < 0f) problems.Add("spawning: baseClearance must not be negative");
+        if (Spawning.RespawnSeconds <= 0f || Spawning.CheckSeconds <= 0f) problems.Add("spawning: respawnSeconds and checkSeconds must be positive");
+        if (Spawning.Attempts < 1) problems.Add("spawning: attempts must be at least 1");
         foreach (Behaviour b in Enum.GetValues<Behaviour>())
         {
             if (!Fauna.Behaviours.TryGetValue(b.ToString(), out BehaviourDef def)) problems.Add($"no behaviour entry for {b}");
@@ -143,6 +147,30 @@ public sealed class HarvestRules
     public float RegrowBlockRadius { get; set; } = 70f;
     public float BladeDps { get; set; } = 110f;
     public float BladeCreatureDps { get; set; } = 160f;
+}
+
+/// <summary>
+/// Where and when wildlife may appear. No creature spawns or respawns within
+/// <see cref="BaseClearance"/> of any base (a structure whose core is in base mode), measured
+/// from the structure's footprint edge, so bigger bases get bigger zones. Creatures already
+/// outside may still wander in, and nothing here stops anything reaching a base. Respawns also
+/// keep away from players and out of their view, so nothing appears where anyone can see it.
+/// </summary>
+public sealed class SpawnRules
+{
+    /// <summary>Metres from a base's footprint edge inside which nothing spawns or respawns.</summary>
+    public float BaseClearance { get; set; } = 80f;
+    /// <summary>How long a species that has fallen short waits before a group comes back.</summary>
+    public float RespawnSeconds { get; set; } = 90f;
+    /// <summary>How often the spawner counts heads.</summary>
+    public float CheckSeconds { get; set; } = 5f;
+    /// <summary>Respawns land at least this far from every player.</summary>
+    public float MinPlayerDistance { get; set; } = 90f;
+    /// <summary>Respawns within this distance of a player must also be outside their view cone.</summary>
+    public float ViewDistance { get; set; } = 220f;
+    public float ViewConeDegrees { get; set; } = 65f;
+    /// <summary>Spots tried for one group before it waits for the next check.</summary>
+    public int Attempts { get; set; } = 24;
 }
 
 public sealed class WorldRules

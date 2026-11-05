@@ -127,6 +127,17 @@ Holding Q on a creature still scans it at any time: name, form, behaviour, tempe
 - Felled plants regrow on a timer, but only while no player is within 70 m.
 - Killing something on foot leaves a corpse: E butchers it into your pack, which empties into the hold when you board. Scavengers eat whatever you leave.
 
+**Spawning, respawning and bases** (`src/Sim/Spawner.cs`, `src/Core/Structures.cs`). The spawner puts each species where its behaviour belongs at the start: herds on the plain, giants far off, ambushers by the groves, hunters out in the hills. Every 5 s it counts heads. A species that has fallen short through kills, harvests or scavenged corpses gets a group back 90 s later.
+- **No spawning near bases.** No creature spawns or respawns within **80 m** of any base, measured from the structure's footprint edge, so a big base keeps a bigger zone. A base is a structure whose core is in base mode; a capital-mode structure (a ship) blocks nothing. A group is only placed where its whole spread stays outside every zone, and any member whose spot still lands inside one is left out.
+- **Why 80 m.** It is past the longest perception any creature rolls (67 m: a giant scavenger, over 200 test planets), so nothing new appears already close enough to notice you at home. The radius is `spawning.baseClearance` in `data/wildlife.json`.
+- **Only spawning is blocked.** Creatures already outside may wander in, and a creature with a reason to come (you shot at it from the base) comes all the way. Nothing in the zone pushes wildlife out, and the zone doesn't touch anything else that attacks bases: invasions are their own system.
+- **Respawns stay out of sight.** They also land at least 90 m from every player and outside the view cone of anyone within 220 m.
+- **The playable outpost.** The planet has a small outpost of placeholder blocks with a cyan core in base mode, about 90 m behind you and to the right at the start. The status line says when you are inside its zone.
+
+![The players' outpost: no wildlife spawns within 80 m of its deck](screenshots/outpost.png)
+
+Empyrion was a reference here. Its forums have players finding creatures spawning inside and under their bases ([Fixed Bugs: spawning inside of bases](https://empyriononline.com/goto/post?id=292759)), which is exactly what this rule rules out. Creature spawns there are capped per type and come back on a respawn delay after a kill ([Mob spawning issue](https://empyriononline.com/posts/153842/)), which the respawn timer follows. Nothing was copied; the radius and its rules are GalHack's own.
+
 **Terrain.** A gentle plain in the middle rises into rolling hills. The height function is baked into a 2 m grid at the ground mesh's own spacing and read back bilinearly, which is cheaper for creature legs and matches the drawn ground.
 
 All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`). The prototype uses no third-party assets.
@@ -197,6 +208,13 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - A harvested tree adds its wood, is removed, frees the nav grid, and regrows only when no player is near.
   - Running a creature down puts its meat in the hold.
   - The storage cap is enforced, and the blades leave alone anything the hold can't take in full.
+- **Bases:**
+  - An hour of a planet's fauna being killed every 4 s and respawned, with a small base where the herd would start, a large one in the hills, a capital ship parked between and a player strolling through: of about 930 spawns, none lands inside a base's zone (nearest 89 m from an edge), and no respawn comes nearer the player than 90 m.
+  - A large base gets a larger zone: the zone runs 80 m from the footprint's edge, 83 m out from a 6 m hut's centre and 120 m from an 80 x 56 m fortress's.
+  - Capital-mode structures don't block spawns: a capital core parked where the herd starts gets creatures right round it; switched to base mode, none come within 80 m.
+  - Creatures already outside may wander in: a herd spawned just outside a zone grazes into it within 10 minutes. A hunter shot at from a base runs 90 m in and attacks.
+  - The clearance is past the longest perception any creature rolls.
+  - The playable planet's outpost is a base, and nothing spawns within 80 m of it.
 - **Discovery card**, in the real scene through its input path:
   - The codex records the first finder once and raises one discovery per species.
   - A never-seen species in front of the camera brings up its card (name, form, behaviour, size, planet, finder) with the chime, for about 4.4 s.
@@ -215,7 +233,7 @@ Screenshots run windowed, from the prototype folder:
 godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --out=file.png
 ```
 
-- **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`, `discovery` (the only one that shows a discovery card).
+- **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`, `outpost`, `discovery` (the only one that shows a discovery card).
 - **For checking the generator by eye:**
   - `sheet` renders a contact sheet with one camera per species. `--pick=0,3` narrows it to chosen species.
   - `--worlds=temperate,alien,bloom` or `seed123:0.6[:bloom]` picks the planets for `lineup` and `sheet`.
@@ -239,6 +257,7 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
   - Nothing fights anything else; predators and packs only hunt players.
   - A pack's feinter never bites while it has flankers left.
 - **Single player.** The codex finder is always "Player 1"; nothing is networked or saved.
+- **Bases are placeholders.** The wildlife only reads a footprint rectangle and a core mode. Real structures, and switching a core between modes, belong to the building prototype; this one has its own small `CoreMode` until both use a shared one.
 - **Placeholder world.**
   - The terrain is a height function with hills, not the planet generator's.
   - Every planet shares the same land shape and forest layout, restyled.

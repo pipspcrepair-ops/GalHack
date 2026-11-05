@@ -38,6 +38,23 @@
     "nightEnd": 0.22
   },
 
+  // Where wildlife may appear. No creature spawns or respawns within baseClearance metres of
+  // any base (a structure whose core is in base mode), measured from the structure's footprint
+  // edge, so bigger bases get bigger zones. 80 m is past the longest perception any creature
+  // rolls (about 67 m, a giant scavenger), so nothing new appears already close enough to
+  // notice you at home. Only spawning is blocked: creatures may still wander in, and
+  // capital-mode structures block nothing. Respawns also keep minPlayerDistance from every
+  // player and out of the view cone of anyone within viewDistance.
+  "spawning": {
+    "baseClearance": 80,
+    "respawnSeconds": 90,
+    "checkSeconds": 5,
+    "minPlayerDistance": 90,
+    "viewDistance": 220,
+    "viewConeDegrees": 65,
+    "attempts": 24
+  },
+
   "fauna": {
     "speciesCount": [6, 10],
     "distinctPlans": 5,
