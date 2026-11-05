@@ -37,6 +37,10 @@
     <Compile Include="..\planet-surface\src\World\PlanetWorld.cs" />
     <!-- Only for PlanetWorld's NearestCopy: this prototype draws a fixed patch, not a stream. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.cs" />
+    <!-- The streamer's other half (solid flora colliders) and the rules it reads: compiled so the
+         streamer compiles; with no flora-solids data loaded here, nothing is solid. -->
+    <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Solids.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />
     <Compile Include="..\planet-surface\src\World\Layers.cs" />
     <Compile Include="..\planet-surface\src\Terrain\VoxelMeshing.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FarBuilder.cs" />

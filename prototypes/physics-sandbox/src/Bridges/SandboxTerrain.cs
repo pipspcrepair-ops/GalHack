@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using GalHack.Physics;
 using TerrainDigging.Terrain;
 
 namespace PhysicsSandbox.Bridges;
@@ -164,5 +165,23 @@ public sealed class SandboxTerrain : ITerrainSource
                         : CellMaterial.DeepRock;
                 }
             }
+    }
+}
+
+/// <summary>
+/// The sandbox's water, as the shared physics module sees it: its lake (<see cref="SandboxTerrain.WaterSurfaceAt"/>).
+/// A quick bounding check first, so bodies nowhere near it cost almost nothing.
+/// </summary>
+public sealed class LakeWater : IWaterField
+{
+    readonly SandboxTerrain _terrain;
+
+    public LakeWater(SandboxTerrain terrain) => _terrain = terrain;
+
+    public bool SurfaceAt(Vector3 point, out float surface)
+    {
+        surface = SandboxTerrain.LakeLevel;
+        if (point.Y > SandboxTerrain.LakeLevel + 50f || SandboxTerrain.LakeReach(point.X, point.Z) >= 1f) return false;
+        return _terrain.WaterSurfaceAt(point.X, point.Z, out surface);
     }
 }
