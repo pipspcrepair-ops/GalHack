@@ -330,6 +330,20 @@ public sealed partial class Building
         foreach (var b in bars)
             for (int z = b.Z0; z <= b.Z1; z++)
                 for (int x = b.X0; x <= b.X1; x++) f[x, z] = true;
+        // The top torn off: the top storeys lose a growing wedge from the corner away from the stair,
+        // more the higher they are, so the skyline breaks in steps (never into the core's rows).
+        if (P.Crown == "broken" && !Hut && Top >= 5 && s >= Top - 3 && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal))
+        {
+            int d = s - (Top - 3);
+            bool eastCorner = Cx < Wm / 2;
+            float k = (Wm + Dm) * (0.22f + 0.13f * d);
+            for (int z = Zs + 3; z < D; z++)
+                for (int x = 0; x < W; x++)
+                {
+                    int u = eastCorner ? W - 1 - x : x, v = Zm + Dm - 1 - z;
+                    if (u + v * 1.2f < k + (Hash.Cell(new Int3(x, s, z), 613) % 3)) f[x, z] = false;
+                }
+        }
         foreach (var n in _notches.Where(n => s >= n.From))
             for (int z = n.Z0; z <= n.Z1; z++)
                 for (int x = n.X0; x <= n.X1; x++) f[x, z] = false;
