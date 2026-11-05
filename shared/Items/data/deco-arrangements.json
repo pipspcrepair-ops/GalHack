@@ -1,0 +1,144 @@
+// How decorations are arranged: templates of pieces placed as they were used (chairs round a table,
+// desks facing screens, beds in rows), each theme set's mix of templates, outdoor sites, the
+// disorder each POI state leaves, and how the POI generator's rooms and generic props map onto it.
+//
+// templates   kind (around, station, bay, row, line, rows, cluster, conveyor, single), where it
+//             goes (wall: backed against a wall; island: out in the room) and the roles it uses:
+//               anchor   the main piece (a table, a desk, a bed, a rack); members, front, top,
+//                        beside, screen, ends, focus, side, other: the roles of the pieces round it
+//               count    how many (members round a table, racks in a row)
+//               gap      clearance between pieces; spacing between repeats along a wall
+//               max      the most uses of an island template in one room (default: as many as fit)
+// sets        per theme set: wall and island templates with weights, and the roles that fill the
+//             walls between them
+// sites       outdoor templates: what a road, airfield or rail line is dressed with
+// rooms       POI room id (rooms.txt) to theme set; kits and tags pick a set when the room doesn't
+// props       the POI room library's generic props to roles, with a fallback piece for each
+// disorder    per POI state: shares of pieces knocked over, scattered, broken, burnt, overgrown,
+//             missing; frozen-moment touches; and how rarely a long-life power cell still runs
+{
+  "schema": "galhack.deco-arrangements",
+  "version": 1,
+
+  "templates": {
+    "table-group":   { "kind": "around",  "where": "island", "anchor": ["table"], "members": ["chair", "bench-seat", "stool"], "count": [2, 6], "top": ["tray"], "topChance": 0.7, "gap": 0.04 },
+    "cafe-pair":     { "kind": "around",  "where": "island", "anchor": ["table-small"], "members": ["chair", "stool"], "count": [2, 3], "gap": 0.04 },
+    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "chair"], "count": [2, 3], "gap": 0.25 },
+    "altar-circle":  { "kind": "around",  "where": "island", "anchor": ["altar"], "members": ["pillar", "pod", "instrument", "candles", "totem", "crystal", "brazier"], "count": [2, 4], "gap": 0.7 },
+    "camp":          { "kind": "around",  "where": "island", "anchor": ["brazier"], "members": ["chair", "crate", "bench-seat"], "count": [2, 4], "gap": 0.55 },
+    "desk-station":  { "kind": "station", "where": "wall", "anchor": ["desk"], "front": ["chair", "stool"], "top": ["monitor", "radio", "scope"], "beside": ["cabinet", "shelf", "plant", "bin"] },
+    "lab-station":   { "kind": "station", "where": "wall", "anchor": ["bench"], "front": ["stool", "chair"], "top": ["scope", "monitor"], "beside": ["fridge", "cart", "bin"] },
+    "console-station": { "kind": "station", "where": "wall", "anchor": ["console", "panel"], "front": ["seat", "chair", "stool"], "beside": ["locker", "cabinet"] },
+    "ward-bay":      { "kind": "bay", "where": "wall", "anchor": ["bed", "gurney", "pod"], "beside": ["nightstand", "cabinet", "iv", "monitor"], "screen": ["curtain"], "spacing": 0.35 },
+    "cot-row":       { "kind": "bay", "where": "wall", "anchor": ["bed", "bunk"], "beside": ["chest", "nightstand"], "spacing": 0.3 },
+    "cell-bay":      { "kind": "bay", "where": "wall", "anchor": ["bunk"], "beside": ["toilet"], "spacing": 0.6 },
+    "rack-row":      { "kind": "row", "where": "wall", "anchor": ["rack", "racking", "toolrack"], "count": [2, 4], "spacing": 0.1 },
+    "locker-row":    { "kind": "row", "where": "wall", "anchor": ["locker"], "count": [3, 6], "spacing": 0.02 },
+    "shelf-row":     { "kind": "row", "where": "wall", "anchor": ["shelf", "cabinet"], "count": [2, 4], "spacing": 0.05 },
+    "pod-row":       { "kind": "row", "where": "wall", "anchor": ["pod"], "count": [2, 5], "spacing": 0.3, "ends": ["console", "tank"] },
+    "tank-row":      { "kind": "row", "where": "wall", "anchor": ["tank", "cylinders", "boiler"], "count": [1, 3], "spacing": 0.3 },
+    "pipe-run":      { "kind": "row", "where": "wall", "anchor": ["pipes", "valve"], "count": [2, 4], "spacing": 0.0 },
+    "pillar-row":    { "kind": "row", "where": "wall", "anchor": ["pillar", "statue"], "count": [2, 3], "spacing": 1.2 },
+    "booth-row":     { "kind": "row", "where": "wall", "anchor": ["booth", "stall", "kiosk"], "count": [1, 2], "spacing": 1.0 },
+    "counter-line":  { "kind": "line", "where": "wall", "anchor": ["counter"], "count": [2, 3], "ends": ["vending", "dispenser", "rack", "fridge", "shelf"], "front": ["stool"], "top": ["tray"], "topChance": 0.5 },
+    "workbench-station": { "kind": "station", "where": "wall", "anchor": ["bench", "station"], "front": ["stool"], "beside": ["cylinders", "barrel", "crate"] },
+    "seat-rows":     { "kind": "rows", "where": "island", "anchor": ["seat-row", "pew", "bench-seat"], "focus": ["board", "lectern", "altar", "screen", "statue"], "count": [2, 5] },
+    "crate-stack":   { "kind": "cluster", "where": "wall", "anchor": ["crate", "chest", "barrel", "pallet", "hay", "sacks", "churns", "produce"], "count": [2, 4] },
+    "hay-stack":     { "kind": "cluster", "where": "wall", "anchor": ["hay"], "count": [2, 4] },
+    "sack-stack":    { "kind": "cluster", "where": "wall", "anchor": ["sacks"], "count": [2, 4] },
+    "assembly-line": { "kind": "conveyor", "where": "island", "anchor": ["conveyor"], "count": [2, 4], "side": ["robot"], "other": ["station", "stool"] },
+    "growbed-rows":  { "kind": "row", "where": "island", "anchor": ["growbed"], "count": [2, 3], "spacing": 0.0 },
+    "racking-aisle": { "kind": "row", "where": "wall", "anchor": ["racking"], "count": [2, 3], "spacing": 0.0 },
+    "big-piece":     { "kind": "single", "where": "island", "max": 2, "anchor": ["ridecar", "mascot", "crane", "cart", "drill", "optable", "tank", "instrument", "forklift", "trough", "well", "coop", "statue", "lounger"] }
+  },
+
+  "sets": {
+    "office":      { "wall": { "desk-station": 5, "shelf-row": 1 }, "island": { "table-group": 1 }, "fill": ["cabinet", "plant", "cooler", "bin", "machine", "partition"] },
+    "canteen":     { "wall": { "counter-line": 2, "shelf-row": 0.5 }, "island": { "table-group": 4, "cafe-pair": 1 }, "fill": ["vending", "dispenser", "bin", "plant", "rack"] },
+    "medical":     { "wall": { "ward-bay": 5, "shelf-row": 1 }, "island": { "big-piece": 0.5 }, "fill": ["cabinet", "iv", "wheelchair", "bin", "monitor", "gurney"] },
+    "military":    { "wall": { "rack-row": 3, "cot-row": 2, "locker-row": 1 }, "island": { "table-group": 1 }, "fill": ["crate", "chest", "barricade", "locker"] },
+    "industrial":  { "wall": { "pipe-run": 2, "tank-row": 2, "workbench-station": 2, "racking-aisle": 1 }, "island": { "assembly-line": 2, "big-piece": 1 }, "fill": ["barrel", "crate", "cylinders", "panel", "pallet", "junction"] },
+    "lab":         { "wall": { "lab-station": 4, "shelf-row": 1 }, "island": { "big-piece": 0.6, "table-group": 0.4 }, "fill": ["fridge", "hood", "machine", "cart", "cabinet"] },
+    "residential": { "wall": { "cot-row": 1.5, "shelf-row": 1 }, "island": { "lounge": 2, "table-group": 1 }, "fill": ["lamp", "plant", "cabinet", "nightstand", "screen"] },
+    "resort":      { "wall": { "counter-line": 2 }, "island": { "cafe-pair": 3, "big-piece": 1 }, "fill": ["plant", "shelf", "sign", "lamp"] },
+    "themepark":   { "wall": { "booth-row": 1 }, "island": { "big-piece": 3, "cafe-pair": 1 }, "fill": ["bin", "sign", "barrier"] },
+    "cryo":        { "wall": { "pod-row": 5, "tank-row": 1 }, "island": {}, "fill": ["console", "cart", "pipes"] },
+    "spaceport":   { "wall": { "counter-line": 2, "booth-row": 0.5 }, "island": { "seat-rows": 3 }, "fill": ["luggage", "plant", "barrier", "kiosk", "vending"] },
+    "prison":      { "wall": { "cell-bay": 4, "locker-row": 1 }, "island": { "table-group": 1 }, "fill": ["bed", "screen", "desk"] },
+    "ship":        { "wall": { "console-station": 3, "locker-row": 2 }, "island": { "table-group": 1 }, "fill": ["crate", "rack", "lamp"] },
+    "mine":        { "wall": { "crate-stack": 2, "rack-row": 1 }, "island": { "big-piece": 2 }, "fill": ["lamp", "crate", "barrel", "winch", "support"] },
+    "reaver":      { "wall": { "shelf-row": 1, "cot-row": 2 }, "island": { "camp": 2, "table-group": 1 }, "fill": ["trophy", "barricade", "crate", "barrel"] },
+    "civic":       { "wall": { "pillar-row": 0.5 }, "island": { "seat-rows": 3 }, "fill": ["candles", "statue", "flag", "plant", "board"] },
+    "alien":       { "wall": { "pillar-row": 1 }, "island": { "altar-circle": 3 }, "fill": ["pod", "instrument", "crystal", "totem", "pillar"] },
+    "precursor":   { "wall": { "pillar-row": 1 }, "island": { "altar-circle": 2, "big-piece": 1 }, "fill": ["pillar", "brazier", "statue", "bench-seat", "chest"] },
+    "farm":        { "wall": { "crate-stack": 2, "hay-stack": 1, "rack-row": 1 }, "island": { "growbed-rows": 1.5, "big-piece": 1 }, "fill": ["churns", "produce", "hive", "trough", "sacks", "hay"] }
+  },
+
+  // Named room recipes the POI families ask for directly (a barn, a feed store, a greenhouse,
+  // an assembly hall, a warehouse): a set plus the templates to lean on.
+  "recipes": {
+    "barn":        { "set": "farm", "wall": { "hay-stack": 4, "sack-stack": 1, "crate-stack": 1, "rack-row": 1 }, "island": { "big-piece": 2 }, "fill": ["hay", "sacks", "trough", "churns"] },
+    "feed-store":  { "set": "farm", "wall": { "sack-stack": 4, "crate-stack": 2, "shelf-row": 2 }, "island": { "crate-stack": 1, "sack-stack": 1 }, "fill": ["sacks", "produce", "churns"] },
+    "greenhouse":  { "set": "farm", "wall": { "rack-row": 0.5 }, "island": { "growbed-rows": 5 }, "fill": ["planter", "growbed"] },
+    "assembly-hall": { "set": "industrial", "wall": { "workbench-station": 2, "racking-aisle": 1 }, "island": { "assembly-line": 4 }, "fill": ["pallet", "crate", "panel", "barrel"] },
+    "warehouse":   { "set": "industrial", "wall": { "racking-aisle": 6 }, "island": { "big-piece": 0.5 }, "fill": ["pallet", "crate"] },
+    "control-room": { "set": "industrial", "wall": { "console-station": 4 }, "island": {}, "fill": ["cabinet", "panel", "plant"] }
+  },
+
+  // Outdoor sites: a road, an apron or a rail line laid along z (north to south). "lane" is the
+  // drivable width that must stay clear end to end; "length" and "width" the site's size.
+  "sites": {
+    "evacuation-jam": { "width": 16, "length": 60, "lane": 3.2, "blurb": "A lane of vehicles nose to tail, doors flung open, a few swerved off; power lines down." },
+    "car-park":       { "width": 26, "length": 30, "lane": 3.2, "blurb": "Bays of parked cars either side of an aisle." },
+    "roadblock":      { "width": 16, "length": 30, "lane": 3.2, "blurb": "Barriers and sandbags across the road, one lane left open, the vehicles that held it." },
+    "pile-up":        { "width": 16, "length": 40, "lane": 3.2, "blurb": "A crash pile-up: crushed, slewed and flipped vehicles." },
+    "depot-yard":     { "width": 28, "length": 36, "lane": 3.2, "blurb": "Trucks, buses and a loader parked in rows; pallets and crates." },
+    "loading-dock":   { "width": 22, "length": 24, "lane": 1.2, "blurb": "A box truck backed in to a dock, pallets on the dock and a forklift." },
+    "airliner-crash": { "width": 44, "length": 70, "lane": 3.0, "blurb": "A broken fuselage in pieces along a scar, wings and engines torn off, debris." },
+    "airliner-gate":  { "width": 40, "length": 50, "lane": 3.0, "blurb": "An airliner left at the gate, intact but derelict, its stairs and airbridge still up." },
+    "derelict-train": { "width": 12, "length": 60, "lane": 1.2, "blurb": "A train standing on the line where it stopped." },
+    "derailed-train": { "width": 30, "length": 60, "lane": 1.2, "blurb": "A derailed train jack-knifed off the track, carriages on their sides." },
+    "station-platform": { "width": 16, "length": 48, "lane": 1.2, "blurb": "A train abandoned at a station platform under its canopy." },
+    "rail-depot":     { "width": 26, "length": 56, "lane": 1.2, "blurb": "A rusting depot yard: wagons on parallel sidings, buffer stops, signals." }
+  },
+
+  "rooms": {
+    "lobby": "office", "security": "military", "airlock": "ship", "decon": "medical", "office": "office", "archive": "office",
+    "lab": "lab", "cold-store": "cryo", "containment": "lab", "control": "ship", "command": "military", "workshop": "industrial",
+    "storage": "industrial", "armoury": "military", "quarters": "residential", "mess": "canteen", "galley": "canteen",
+    "washroom": "residential", "chapel": "civic", "ward": "medical", "nurses": "medical", "theatre": "medical",
+    "pharmacy": "medical", "quarantine": "medical", "mortuary": "medical", "cryo-bay": "cryo", "monitor": "office",
+    "hydroponics": "farm", "plant": "industrial", "reactor": "industrial", "generator": "industrial", "cellblock": "prison",
+    "guardroom": "prison", "solitary": "prison", "evidence": "prison", "stope": "mine", "ore-store": "mine",
+    "magazine": "military", "pump-hall": "industrial", "vault": "precursor"
+  },
+  "kits": { "precursor": "precursor", "vharn": "alien", "kessari": "alien", "mine": "mine" },
+  "tags": { "medical": "medical", "military": "military", "science": "lab", "industry": "industrial", "food": "canteen", "ore": "mine", "mine": "mine", "ice": "cryo", "story": "civic", "hum": "industrial", "reactor": "industrial" },
+
+  "props": {
+    "bench":     { "roles": ["bench", "counter", "station"], "fallback": "workbench" },
+    "machine":   { "roles": ["machine", "console", "panel", "vending"], "fallback": "control-panel" },
+    "shelf":     { "roles": ["shelf", "cabinet", "rack"], "fallback": "bookshelf" },
+    "locker":    { "roles": ["locker", "cabinet"], "fallback": "ship-locker" },
+    "crate":     { "roles": ["crate", "chest", "barrel", "pallet"], "fallback": "cargo-crate" },
+    "table":     { "roles": ["table", "desk", "altar"], "fallback": "canteen-table" },
+    "bunk":      { "roles": ["bunk", "bed"], "fallback": "bunk-bed" },
+    "bed":       { "roles": ["bed", "gurney", "bunk", "lounger"], "fallback": "hospital-bed" },
+    "pod":       { "roles": ["pod"], "fallback": "cryo-pod" },
+    "tank":      { "roles": ["tank", "cylinders", "barrel", "boiler"], "fallback": "coolant-tank" },
+    "statue":    { "roles": ["statue", "totem", "mascot", "scarecrow"], "fallback": "robed-statue" },
+    "crystal":   { "roles": ["crystal"], "fallback": "crystal-cradle" },
+    "cell":      { "roles": ["bars"], "fallback": "cell-bars" },
+    "pillar":    { "roles": ["pillar", "support"], "fallback": "column" },
+    "barricade": { "roles": ["barricade", "barrier"], "fallback": "scrap-barricade" },
+    "planter":   { "roles": ["planter", "plant", "growbed"], "fallback": "potted-plant" },
+    "screen":    { "roles": ["screen", "monitor", "board"], "fallback": "media-screen" }
+  },
+
+  "disorder": {
+    "active":    { "knock": 0.0,  "scatter": 0.08, "push": 0.15, "break": 0.02, "burn": 0.0,  "overgrow": 0.0,  "missing": 0.0,  "touches": [0, 0], "powered": 1.0,  "stillPowered": 0.0 },
+    "abandoned": { "knock": 0.18, "scatter": 0.35, "push": 0.5,  "break": 0.15, "burn": 0.03, "overgrow": 0.12, "missing": 0.04, "touches": [1, 3], "powered": 0.0,  "stillPowered": 0.05 },
+    "infested":  { "knock": 0.25, "scatter": 0.3,  "push": 0.4,  "break": 0.25, "burn": 0.05, "overgrow": 0.45, "missing": 0.06, "touches": [1, 2], "powered": 0.0,  "stillPowered": 0.03, "growth": "bloom" },
+    "ruined":    { "knock": 0.35, "scatter": 0.4,  "push": 0.5,  "break": 0.4,  "burn": 0.3,  "overgrow": 0.35, "missing": 0.12, "touches": [0, 2], "powered": 0.0,  "stillPowered": 0.02 }
+  }
+}

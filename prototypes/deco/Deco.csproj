@@ -1,0 +1,16 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>DecoShowroom</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Meshing and room planning run while a POI streams in; let the JIT optimise, as building does. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The item catalogue (bills, items, the deco catalogue loader), compiled from where it lives. -->
+    <Compile Include="..\..\shared\Items\Core\**\*.cs" />
+    <!-- The decorations library: plain C# models, variants and room dressing, plus its Godot adapter. -->
+    <Compile Include="..\..\shared\Deco\**\*.cs" />
+  </ItemGroup>
+</Project>

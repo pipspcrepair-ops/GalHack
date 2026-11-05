@@ -1,0 +1,389 @@
+// Decorations: themed deco blocks that dress POIs and that players unlock and build with. As in
+// Empyrion, a deco piece is a block in the shared block catalogue, grouped into families (here,
+// theme sets) that each furnish one kind of room. The broken, burnt, overgrown and knocked-over
+// states are POI and Creative blocks; only the intact piece is built in survival.
+//
+// palettes   colour per slot (rrggbb). "base" has every slot; a set's palette overrides some.
+//            Slots: body trim dark metal chrome wood fabric linen paper plastic glass screen lamp
+//            signal plant soil stone bronze chitin resin bone flesh lattice node node2 hazard alert
+//            liquid frost canvas rust rubber gold. screen, lamp, signal, resin, node, node2 and
+//            liquid glow; glass is see-through; metal, chrome, bronze and gold are metallic.
+// sets       name, palette (default: the set's id), level and cost (the tech-tree defaults for its
+//            pieces), tab (default "deco"), selfLit (glows need no power: alien and Precursor).
+// pieces     one per deco block:
+//   id, name, set       the set it belongs to; "also" lists other sets it furnishes
+//   roles               what it is in a room (desk, chair, bed...): templates and POI props ask for roles
+//   size                footprint in small-grid cells (0.5 m): width x, height y, depth z. Its front
+//                       faces -z. On the large grid it takes its size rounded up to whole 2 m cells.
+//   grids               "large" (bases and capital ships, the default) and/or "small" (small vessels)
+//   mount               floor (default), wall (mountY: its bottom's height), ceiling, or top (stands
+//                       on a desk, table, bench or counter; those give their "surface" height)
+//   walk                flat enough to step over: never blocks a walkway
+//   fixed               bolted down: never knocked over. "fall" lists the ways it may fall
+//                       (back, front, side, over); default all four sides
+//   states              the damaged states it has (default: knocked, broken, burnt, overgrown)
+//   bill                what placing it takes from shared storage (items.json ids), the same on both grids
+//   level, cost         its tech-tree node (default: its set's); the first piece of a set is the set's
+//                       root on the deco tab and the rest hang under it
+//   light               range (m) and energy while powered; anim: flicker, blink, pulse, or spark
+//                       (blinks while powered, sparks when broken)
+//   palette             a piece's own palette (the alien looks)
+//   uniqueOnly          needs a unique find (precursor alloy): salvage only
+{
+  "schema": "galhack.deco",
+  "version": 1,
+
+  "palettes": {
+    "base": {
+      "body": "c8c2b4", "trim": "2f6f73", "dark": "2b2e33", "metal": "8a9096", "chrome": "c4cbd2", "wood": "7a5638",
+      "fabric": "4e6a80", "linen": "d8d8cf", "paper": "e3dccb", "plastic": "d6d2c4", "glass": "9fd3e0", "screen": "7fe0f0",
+      "lamp": "ffd9a0", "signal": "4cff7a", "plant": "4f8a3a", "soil": "4a3a2a", "stone": "7c7a76", "bronze": "a8783a",
+      "chitin": "2a1328", "resin": "ffa040", "bone": "d9c8a0", "flesh": "b8486e", "lattice": "cfe3e0", "node": "3df2e0",
+      "node2": "ff3d7f", "hazard": "e8b828", "alert": "c83a3a", "liquid": "5fd0c0", "frost": "cfe6f0", "canvas": "7a7454",
+      "rust": "8a4a2c", "rubber": "26282a", "gold": "d8b040"
+    },
+    "office":      { "body": "d6d0c2", "trim": "3f6f8f", "fabric": "3d4f66", "wood": "8a6a48", "plastic": "e2ddd0", "screen": "9fe8ff" },
+    "canteen":     { "body": "e0d8c8", "trim": "e86a2a", "plastic": "e8e2d4", "fabric": "c85a2a", "metal": "9aa2a8", "screen": "ffe08a", "lamp": "fff0c8" },
+    "medical":     { "body": "e4e8e4", "trim": "5aa08a", "linen": "e8ece6", "fabric": "6aa8a0", "screen": "7fffb0", "metal": "b8c0c4", "lamp": "f4f8ff" },
+    "military":    { "body": "4f5a3a", "trim": "c8a030", "dark": "25281f", "canvas": "6a6a48", "metal": "5a6066", "fabric": "5a5a40", "screen": "8aff8a", "wood": "6a5236" },
+    "industrial":  { "body": "d89a28", "trim": "2a2e33", "metal": "6e757c", "dark": "2a2c30", "screen": "ffb040", "lamp": "ffc860", "signal": "5aff6a" },
+    "lab":         { "body": "eef0ee", "trim": "3a7fc8", "metal": "b0b8c0", "glass": "a8e0f0", "liquid": "4ff0c8", "screen": "8ae8ff", "dark": "3a4048", "plastic": "f0f0e8" },
+    "residential": { "body": "b8a690", "trim": "8a4a3a", "fabric": "a0623a", "wood": "7a5638", "linen": "e0d8c4", "lamp": "ffcf7a", "screen": "8ad0ff", "plastic": "d8c8a8" },
+    "resort":      { "body": "f0e6d0", "trim": "2aa8b8", "fabric": "e85a7a", "wood": "a87a4a", "canvas": "f0e0c0", "lamp": "ff7ad8", "screen": "5af0ff", "signal": "ff7ad8", "glass": "9fe0e8", "plant": "3a9a4a" },
+    "themepark":   { "body": "e8d8b0", "trim": "d8342a", "fabric": "2a6ad8", "hazard": "f0c020", "lamp": "ffe08a", "signal": "ff4fa0", "plastic": "f0e8d8", "canvas": "e8e0c8", "metal": "a0a8b0" },
+    "cryo":        { "body": "c8d4dc", "trim": "3a8ac8", "frost": "d8eef8", "glass": "b8e8ff", "screen": "8fd8ff", "liquid": "8ff0ff", "metal": "9aa8b4", "dark": "2a3440", "lamp": "bff0ff" },
+    "spaceport":   { "body": "d8d4cc", "trim": "2a5aa8", "fabric": "2a5aa8", "chrome": "c8d0d8", "screen": "ffb84a", "dark": "22262c", "plastic": "e8e4dc", "alert": "e86a2a" },
+    "prison":      { "body": "7a7e78", "trim": "c8a030", "metal": "6a7076", "dark": "2a2c2e", "linen": "9a9a88", "screen": "8affb0", "chrome": "a8b0b4" },
+    "ship":        { "body": "8a9098", "trim": "e8892e", "dark": "22262c", "fabric": "3a3a40", "screen": "6ff2e0", "metal": "6a7078", "canvas": "5a5a48", "lamp": "e6f2ff" },
+    "mine":        { "body": "6e5a3e", "trim": "c8a030", "wood": "6b4e32", "metal": "5a5e62", "lamp": "ffcf7a", "stone": "6a625a", "canvas": "7a6a4a", "alert": "c8342a" },
+    "reaver":      { "body": "6a5a4a", "trim": "c8342a", "metal": "5a5652", "dark": "2a2420", "canvas": "6a5a3a", "bone": "c8b890", "fabric": "5a3a2a", "lamp": "ff8a30", "hazard": "d8a830" },
+    "civic":       { "body": "b8b0a0", "trim": "6a3a5a", "wood": "6a4a32", "stone": "9a948a", "fabric": "6a2a3a", "lamp": "ffcf8a", "gold": "c8a050", "linen": "e0d8c0" },
+    "alien-chitin":  { "body": "2a1328", "trim": "5c1c38", "chitin": "301630", "resin": "ffa040", "bone": "d9c8a0", "dark": "1a0a18", "lamp": "ffa040", "glass": "e8892e" },
+    "alien-lattice": { "body": "2e3a3f", "trim": "cfe3e0", "lattice": "cfe3e0", "node": "3df2e0", "node2": "ff3d7f", "dark": "252e33", "metal": "3a4a52", "lamp": "3df2e0", "glass": "7fe8e0" },
+    "alien-bloom":   { "body": "4a2a4a", "flesh": "c8507a", "trim": "7ad04a", "node": "8af04a", "resin": "8af04a", "dark": "2a1a2a", "bone": "d0b8c8", "lamp": "8af04a" },
+    "precursor":   { "body": "1f2029", "trim": "2b2c38", "stone": "24252e", "bronze": "a8783a", "node": "4fe8c0", "lamp": "6ff0d0", "glass": "8ff5dc", "gold": "b5843f", "dark": "18191f" },
+    "farm":        { "body": "8a3a2a", "trim": "d8c8a0", "wood": "7a5a3a", "canvas": "b8a070", "plant": "6a8a3a", "metal": "6e6a62", "soil": "5a4630", "lamp": "ff6ad8", "screen": "8affc0", "glass": "b8e0c8" },
+    // Vehicles: "vehicles" is the base paint; a placement may pick any "paint-*" palette for its body.
+    "vehicles":    { "body": "b8b0a0", "trim": "2a2c30", "dark": "1e2024", "chrome": "c8ccd0", "glass": "8ab8c8", "lamp": "fff2c8", "fabric": "4a4a50", "canvas": "8a7a5a", "screen": "ffb84a", "signal": "ff5a3a" },
+    "paint-red":   { "body": "a83a2e" },
+    "paint-blue":  { "body": "3a5a8a" },
+    "paint-cream": { "body": "d8ccb0" },
+    "paint-green": { "body": "4f6a4a" },
+    "paint-teal":  { "body": "2f7a78" },
+    "paint-grey":  { "body": "6a6e74" },
+    "paint-yellow": { "body": "d8a830" },
+    "paint-white": { "body": "e6e4dc" },
+    "ambulance":   { "body": "e6e4dc", "trim": "c83a3a" },
+    "rail":        { "body": "6a2a24", "trim": "d8c08a", "dark": "1e1e22", "metal": "5e6268", "glass": "8ab8c8", "lamp": "fff2c8", "fabric": "3a4a6a", "screen": "ffb84a", "plastic": "9a958c", "stone": "6a645c", "wood": "5a4232", "hazard": "e8b828" },
+    "rail-high":   { "body": "e8eaec", "trim": "2a8ab8", "dark": "1a1e24", "glass": "5ab8d8", "lamp": "c8f0ff", "screen": "5af0ff", "fabric": "2a3a4a" },
+    "aviation":    { "body": "e6e4de", "trim": "2a4a8a", "dark": "1e2024", "metal": "8a9096", "glass": "4a6a7a", "lamp": "fff2c8", "fabric": "3a4a6a", "canvas": "8a7a5a", "hazard": "e8b828", "signal": "ff3a2a" },
+    "aviation-high": { "body": "dfe6ea", "trim": "1aa0a8", "dark": "15191e", "glass": "3ab8d8", "lamp": "c8f0ff", "screen": "5af0ff", "signal": "5af0ff", "fabric": "2a3440" }
+  },
+
+  // Scrap a salvageable vehicle or wreck yields by class (a rough guide; the salvaging tool's rate applies).
+  "salvage": {
+    "light":  { "iron-bar": 6, "copper-wire": 2, "polymer": 2 },
+    "medium": { "hull-plate": 6, "iron-bar": 8, "copper-wire": 4, "circuit-board": 1, "polymer": 3, "glass": 2 },
+    "heavy":  { "hull-plate": 16, "iron-bar": 20, "copper-wire": 8, "circuit-board": 2, "servo": 2, "polymer": 4, "glass": 3 },
+    "huge":   { "hull-plate": 40, "iron-bar": 50, "copper-wire": 20, "circuit-board": 6, "servo": 6, "polymer": 10, "glass": 8 }
+  },
+
+  "sets": {
+    "office":      { "name": "Office", "level": 1, "tech": "mid", "blurb": "Desks facing screens, filing cabinets, a water cooler nobody refilled." },
+    "canteen":     { "name": "Canteen", "level": 1, "blurb": "Long tables still set, a serving line, vending machines humming or dark." },
+    "medical":     { "name": "Medical", "level": 6, "cost": 1, "blurb": "Ward beds in rows, gurneys, IV stands, curtains and the surgical lamp." },
+    "military":    { "name": "Military", "level": 4, "cost": 1, "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Weapon racks, ammo crates, sandbags, cots and the map table." },
+    "industrial":  { "name": "Industrial", "level": 2, "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Pipes and valves, control panels, barrels, workbenches and tool racks." },
+    "lab":         { "name": "Laboratory", "level": 8, "cost": 1, "tech": "high", "blurb": "Benches, fume hoods, specimen tanks, centrifuges and microscopes." },
+    "residential": { "name": "Residential", "level": 1, "blurb": "Sofas, beds, lamps, screens and the things people kept at home." },
+    "resort":      { "name": "Resort", "level": 5, "cost": 1, "blurb": "The bar, its stools and neon, pool loungers under parasols." },
+    "themepark":   { "name": "Theme park", "level": 4, "cost": 1, "blurb": "Ticket booths, ride cars stopped mid-ride, stalls and a grinning mascot." },
+    "cryo":        { "name": "Cryo", "level": 10, "cost": 2, "tech": "high", "blurb": "Sleeper pods in rows, coolant tanks and the consoles that watched them." },
+    "spaceport":   { "name": "Spaceport", "level": 5, "cost": 1, "tech": "high", "blurb": "Seat rows facing the departure board, kiosks, luggage left where it stood." },
+    "prison":      { "name": "Prison", "level": 3, "blurb": "Bunks, cell toilets, bars and the guard desk." },
+    "ship":        { "name": "Ship interior", "level": 7, "cost": 1, "tech": "high", "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Consoles, crash couches, lockers: fittings for capital ships and small vessels." },
+    "mine":        { "name": "Mine", "level": 2, "tech": "low", "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Ore carts on rails, drills, lamps and timber props." },
+    "reaver":      { "name": "Reaver scrap", "level": 2, "tech": "low", "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Gang furniture welded from scrap: thrones, trophies and barricades." },
+    "civic":       { "name": "Religious and civic", "level": 3, "tech": "low", "blurb": "Pews, lecterns, statues and candles; benches and banners." },
+    "alien":       { "name": "Alien", "level": 12, "cost": 2, "tech": "high", "palette": "alien-chitin", "selfLit": true, "blurb": "Not ours: chitin altars and brood pods, pale lattice instruments, Bloom growths." },
+    "precursor":   { "name": "Precursor", "level": 20, "cost": 3, "tech": "high", "selfLit": true, "blurb": "Black stone, jade glyphs that still glow, bronze that never rusted." },
+    "farm":        { "name": "Farm", "level": 1, "tech": "low", "states": ["knocked", "broken", "burnt", "overgrown", "rusted"], "blurb": "Hay, sacks and troughs, fences and gates, a scarecrow; greenhouses and grow lights on richer worlds." },
+    "vehicles":    { "name": "Vehicles", "level": 3, "cost": 1, "outdoor": true, "crush": true, "tech": "mid", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "blurb": "Abandoned where the evacuation stalled: carts and diesel trucks, cars and buses, skimmers and flyers. Salvageable for scrap." },
+    "rail":        { "name": "Rail", "level": 6, "cost": 1, "outdoor": true, "crush": true, "tech": "mid", "states": ["broken", "burnt", "overgrown", "rusted", "buried"], "blurb": "Diesel and maglev trains, wagons and the track kit: rails, guideways, signals, crossings, platforms." },
+    "aviation":    { "name": "Aviation", "level": 15, "cost": 2, "outdoor": true, "crush": true, "tech": "mid", "states": ["broken", "burnt", "overgrown", "rusted", "buried"], "blurb": "Airliners in sections, a landmark from far away: crashed in a field or left at the gate." }
+  },
+
+  "pieces": [
+    // ---- Office -----------------------------------------------------------------------------------
+    { "id": "office-desk", "name": "Office desk", "set": "office", "roles": ["desk", "table"], "size": [3, 2, 2], "surface": 0.76, "fall": ["back", "front", "side"], "also": ["lab", "military"], "bill": { "iron-bar": 2, "polymer": 2 } },
+    { "id": "office-chair", "name": "Swivel chair", "set": "office", "roles": ["chair"], "size": [1, 2, 1], "also": ["lab", "military", "prison", "ship", "cryo"], "bill": { "iron-bar": 1, "polymer": 1 } },
+    { "id": "desk-monitor", "name": "Desk monitor", "set": "office", "roles": ["monitor", "screen"], "size": [1, 1, 1], "mount": "top", "light": { "range": 2, "energy": 0.5 }, "anim": "flicker", "also": ["lab", "military", "prison", "spaceport", "cryo"], "bill": { "circuit-board": 1, "glass": 1, "polymer": 1 } },
+    { "id": "filing-cabinet", "name": "Filing cabinet", "set": "office", "roles": ["cabinet", "locker", "shelf"], "size": [1, 3, 2], "fall": ["back", "front", "side"], "also": ["military", "prison", "lab"], "bill": { "hull-plate": 1, "iron-bar": 1 } },
+    { "id": "water-cooler", "name": "Water cooler", "set": "office", "roles": ["cooler", "machine"], "size": [1, 3, 1], "also": ["lab", "spaceport", "military"], "bill": { "polymer": 2, "glass": 1 } },
+    { "id": "bookshelf", "name": "Bookshelf", "set": "office", "roles": ["shelf"], "size": [2, 4, 1], "fall": ["front", "side"], "also": ["residential", "civic", "lab"], "bill": { "iron-bar": 1, "biomass": 3 } },
+    { "id": "office-partition", "name": "Cubicle partition", "set": "office", "roles": ["partition"], "size": [3, 3, 1], "fall": ["back", "front"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "potted-plant", "name": "Potted plant", "set": "office", "roles": ["plant", "planter"], "size": [1, 3, 1], "grids": ["large", "small"], "also": ["residential", "resort", "spaceport", "lab", "civic", "canteen", "medical"], "bill": { "biomass": 3, "ceramic": 1 } },
+    { "id": "copier", "name": "Copier", "set": "office", "roles": ["machine"], "size": [2, 2, 2], "light": { "range": 1.5, "energy": 0.3 }, "anim": "blink", "also": ["military"], "bill": { "circuit-board": 2, "polymer": 3, "glass": 1 } },
+    { "id": "waste-bin", "name": "Waste bin", "set": "office", "roles": ["bin"], "size": [1, 1, 1], "also": ["canteen", "medical", "lab", "spaceport", "residential", "military", "prison"], "bill": { "iron-bar": 1 } },
+
+    // ---- Canteen ----------------------------------------------------------------------------------
+    { "id": "canteen-table", "name": "Canteen table", "set": "canteen", "roles": ["table"], "size": [4, 2, 2], "surface": 0.75, "fall": ["over", "side"], "also": ["military", "prison"], "bill": { "iron-bar": 2, "polymer": 2 } },
+    { "id": "canteen-chair", "name": "Canteen chair", "set": "canteen", "roles": ["chair"], "size": [1, 2, 1], "also": ["military", "spaceport", "civic"], "bill": { "iron-bar": 1, "polymer": 1 } },
+    { "id": "canteen-bench", "name": "Canteen bench", "set": "canteen", "roles": ["bench-seat"], "size": [4, 1, 1], "fall": ["side", "back"], "also": ["military", "prison"], "bill": { "iron-bar": 2 } },
+    { "id": "vending-machine", "name": "Vending machine", "set": "canteen", "roles": ["vending", "machine"], "size": [2, 4, 2], "light": { "range": 3, "energy": 0.8 }, "anim": "flicker", "fall": ["front", "back", "side"], "also": ["spaceport", "office", "military", "resort", "themepark"], "bill": { "hull-plate": 2, "glass": 1, "circuit-board": 1 } },
+    { "id": "serving-counter", "name": "Serving counter", "set": "canteen", "roles": ["counter", "bench"], "size": [4, 3, 2], "surface": 0.9, "fixed": true, "bill": { "hull-plate": 2, "glass": 1 } },
+    { "id": "food-tray", "name": "Food tray", "set": "canteen", "roles": ["tray"], "size": [1, 1, 1], "mount": "top", "walk": true, "fall": ["over"], "bill": { "polymer": 1 } },
+    { "id": "tray-rack", "name": "Tray trolley", "set": "canteen", "roles": ["rack", "shelf", "cart"], "size": [2, 3, 1], "also": ["medical"], "bill": { "iron-bar": 2 } },
+    { "id": "drink-dispenser", "name": "Drink dispenser", "set": "canteen", "roles": ["dispenser", "machine"], "size": [1, 3, 1], "light": { "range": 1.5, "energy": 0.4 }, "anim": "blink", "also": ["spaceport", "resort"], "bill": { "polymer": 2, "glass": 1, "copper-wire": 1 } },
+    { "id": "cafe-table", "name": "Cafe table", "set": "canteen", "roles": ["table-small", "table"], "size": [2, 2, 2], "surface": 0.74, "fall": ["side", "over"], "also": ["resort", "spaceport", "residential"], "bill": { "iron-bar": 1, "polymer": 1 } },
+
+    // ---- Medical ----------------------------------------------------------------------------------
+    { "id": "hospital-bed", "name": "Hospital bed", "set": "medical", "roles": ["bed"], "size": [2, 2, 4], "fall": ["side"], "bill": { "iron-bar": 2, "polymer": 2, "servo": 1 } },
+    { "id": "gurney", "name": "Gurney", "set": "medical", "roles": ["gurney", "bed", "cart"], "size": [2, 2, 4], "fall": ["side"], "also": ["lab"], "bill": { "iron-bar": 2, "polymer": 1 } },
+    { "id": "iv-stand", "name": "IV stand", "set": "medical", "roles": ["iv"], "size": [1, 4, 1], "also": ["lab"], "bill": { "iron-bar": 1, "polymer": 1 } },
+    { "id": "med-cabinet", "name": "Medicine cabinet", "set": "medical", "roles": ["cabinet", "shelf", "locker"], "size": [2, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "also": ["lab"], "bill": { "hull-plate": 1, "glass": 1 } },
+    { "id": "surgical-lamp", "name": "Surgical lamp", "set": "medical", "roles": ["lamp"], "size": [2, 2, 2], "mount": "ceiling", "light": { "range": 4, "energy": 1.4 }, "bill": { "glass": 2, "copper-wire": 2, "iron-bar": 1 } },
+    { "id": "privacy-curtain", "name": "Privacy curtain", "set": "medical", "roles": ["curtain", "partition"], "size": [4, 4, 1], "fall": ["back", "front"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "operating-table", "name": "Operating table", "set": "medical", "roles": ["optable", "bed", "bench"], "size": [2, 2, 4], "surface": 0.9, "fixed": true, "also": ["lab"], "bill": { "iron-bar": 2, "servo": 1, "ceramic": 1 } },
+    { "id": "vitals-monitor", "name": "Vitals monitor", "set": "medical", "roles": ["monitor", "machine", "screen"], "size": [1, 3, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "flicker", "also": ["cryo", "lab"], "bill": { "circuit-board": 1, "glass": 1, "iron-bar": 1 } },
+    { "id": "wheelchair", "name": "Wheelchair", "set": "medical", "roles": ["wheelchair", "chair"], "size": [2, 2, 2], "bill": { "iron-bar": 2, "polymer": 1 } },
+
+    // ---- Military ---------------------------------------------------------------------------------
+    { "id": "weapon-rack", "name": "Weapon rack", "set": "military", "roles": ["rack", "shelf", "locker"], "size": [3, 4, 1], "fall": ["front"], "also": ["prison", "ship"], "bill": { "iron-bar": 3 } },
+    { "id": "ammo-crate", "name": "Ammo crate", "set": "military", "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["ship", "reaver", "mine"], "bill": { "hull-plate": 1 } },
+    { "id": "sandbag-wall", "name": "Sandbag wall", "set": "military", "roles": ["barricade"], "size": [3, 2, 2], "fixed": true, "also": ["mine"], "bill": { "stone": 6, "polymer": 1 } },
+    { "id": "army-cot", "name": "Army cot", "set": "military", "roles": ["bed", "bunk"], "size": [2, 1, 4], "fall": ["side", "over"], "also": ["medical", "mine"], "bill": { "iron-bar": 1, "polymer": 2 } },
+    { "id": "map-table", "name": "Map table", "set": "military", "roles": ["table", "console"], "size": [4, 2, 3], "surface": 0.9, "fixed": true, "light": { "range": 2.5, "energy": 0.6 }, "anim": "flicker", "also": ["ship"], "bill": { "circuit-board": 2, "glass": 1, "hull-plate": 2 } },
+    { "id": "footlocker", "name": "Footlocker", "set": "military", "roles": ["chest", "crate"], "size": [2, 1, 1], "also": ["prison", "ship", "residential"], "bill": { "hull-plate": 1 } },
+    { "id": "field-radio", "name": "Field radio", "set": "military", "roles": ["radio", "machine"], "size": [1, 1, 1], "mount": "top", "light": { "range": 1, "energy": 0.3 }, "anim": "blink", "also": ["mine", "reaver"], "bill": { "circuit-board": 1, "copper-wire": 1 } },
+    { "id": "gun-locker", "name": "Gun locker", "set": "military", "roles": ["locker", "cabinet"], "size": [2, 4, 1], "fall": ["front", "side"], "also": ["prison"], "bill": { "hull-plate": 2 } },
+
+    // ---- Industrial -------------------------------------------------------------------------------
+    { "id": "pipe-run", "name": "Pipe run", "set": "industrial", "roles": ["pipes"], "size": [4, 2, 1], "fixed": true, "also": ["cryo", "ship"], "bill": { "iron-bar": 3 } },
+    { "id": "valve-assembly", "name": "Valve assembly", "set": "industrial", "roles": ["valve", "pipes", "machine"], "size": [2, 3, 1], "fixed": true, "also": ["mine"], "bill": { "iron-bar": 2, "copper-bar": 1 } },
+    { "id": "control-panel", "name": "Control panel", "set": "industrial", "roles": ["panel", "machine", "console"], "size": [2, 3, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "spark", "fall": ["front", "back"], "also": ["lab", "ship", "military"], "bill": { "circuit-board": 2, "hull-plate": 1, "copper-wire": 2 } },
+    { "id": "oil-barrel", "name": "Oil barrel", "set": "industrial", "roles": ["barrel", "tank", "crate"], "size": [1, 2, 1], "fall": ["side", "front"], "also": ["mine", "reaver", "military"], "bill": { "iron-bar": 1 } },
+    { "id": "workbench", "name": "Workbench", "set": "industrial", "roles": ["bench", "table"], "size": [4, 2, 2], "surface": 0.9, "fall": ["back", "front"], "also": ["mine", "reaver", "ship"], "bill": { "iron-bar": 3, "hull-plate": 1 } },
+    { "id": "tool-rack", "name": "Tool rack", "set": "industrial", "roles": ["toolrack", "rack", "shelf"], "size": [3, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "also": ["mine", "ship"], "bill": { "iron-bar": 2 } },
+    { "id": "gas-cylinders", "name": "Gas cylinders", "set": "industrial", "roles": ["cylinders", "tank"], "size": [2, 3, 1], "fall": ["front", "side"], "also": ["medical", "lab"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
+    { "id": "cargo-crate", "name": "Cargo crate", "set": "industrial", "roles": ["crate", "chest"], "size": [2, 2, 2], "fall": ["side", "over"], "also": ["spaceport", "ship", "mine", "military"], "bill": { "hull-plate": 2 } },
+    { "id": "junction-box", "name": "Junction box", "set": "industrial", "roles": ["junction", "panel"], "size": [1, 2, 1], "mount": "wall", "mountY": 1.0, "light": { "range": 1.2, "energy": 0.3 }, "anim": "spark", "fall": ["front"], "also": ["ship", "prison", "mine"], "bill": { "copper-wire": 2, "circuit-board": 1 } },
+
+    // ---- Laboratory -------------------------------------------------------------------------------
+    { "id": "lab-bench", "name": "Lab bench", "set": "lab", "roles": ["bench", "table", "counter"], "size": [4, 2, 2], "surface": 0.9, "fixed": true, "also": ["medical", "cryo"], "bill": { "ceramic": 2, "iron-bar": 2 } },
+    { "id": "fume-hood", "name": "Fume hood", "set": "lab", "roles": ["hood", "machine"], "size": [3, 5, 2], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "bill": { "hull-plate": 2, "glass": 2, "winding": 1 } },
+    { "id": "specimen-tank", "name": "Specimen tank", "set": "lab", "roles": ["tank", "pod"], "size": [2, 4, 2], "fixed": true, "light": { "range": 3, "energy": 0.8 }, "anim": "pulse", "also": ["cryo"], "bill": { "glass": 4, "iron-bar": 2, "polymer": 1 } },
+    { "id": "centrifuge", "name": "Centrifuge", "set": "lab", "roles": ["machine"], "size": [2, 2, 2], "light": { "range": 1, "energy": 0.3 }, "anim": "blink", "fall": ["side", "back"], "also": ["medical"], "bill": { "servo": 1, "hull-plate": 1, "circuit-board": 1 } },
+    { "id": "microscope", "name": "Microscope", "set": "lab", "roles": ["scope"], "size": [1, 1, 1], "mount": "top", "also": ["medical"], "bill": { "glass": 1, "iron-bar": 1, "copper-wire": 1 } },
+    { "id": "lab-stool", "name": "Lab stool", "set": "lab", "roles": ["stool", "chair"], "size": [1, 2, 1], "also": ["industrial", "medical"], "bill": { "iron-bar": 1 } },
+    { "id": "sample-fridge", "name": "Sample fridge", "set": "lab", "roles": ["fridge", "cabinet", "machine"], "size": [2, 4, 2], "light": { "range": 2, "energy": 0.5 }, "fall": ["front", "side"], "also": ["medical", "cryo", "canteen"], "bill": { "hull-plate": 2, "glass": 1, "winding": 1 } },
+    { "id": "chem-cart", "name": "Chemical cart", "set": "lab", "roles": ["cart"], "size": [2, 2, 1], "fall": ["side"], "also": ["medical"], "bill": { "iron-bar": 1, "glass": 2 } },
+
+    // ---- Residential ------------------------------------------------------------------------------
+    { "id": "sofa", "name": "Sofa", "set": "residential", "roles": ["sofa", "chair"], "size": [4, 2, 2], "fall": ["back", "front"], "also": ["resort", "spaceport"], "bill": { "polymer": 3, "biomass": 2, "iron-bar": 1 } },
+    { "id": "armchair", "name": "Armchair", "set": "residential", "roles": ["chair", "sofa"], "size": [2, 2, 2], "also": ["resort", "civic"], "bill": { "polymer": 2, "biomass": 1 } },
+    { "id": "home-bed", "name": "Double bed", "set": "residential", "roles": ["bed"], "size": [3, 2, 4], "fixed": true, "also": ["resort"], "bill": { "polymer": 3, "biomass": 2, "iron-bar": 1 } },
+    { "id": "floor-lamp", "name": "Floor lamp", "set": "residential", "roles": ["lamp"], "size": [1, 3, 1], "grids": ["large", "small"], "light": { "range": 3, "energy": 0.7 }, "also": ["resort", "office"], "bill": { "iron-bar": 1, "glass": 1, "copper-wire": 1 } },
+    { "id": "media-screen", "name": "Media screen", "set": "residential", "roles": ["screen", "machine"], "size": [3, 3, 1], "light": { "range": 2.5, "energy": 0.6 }, "anim": "flicker", "fall": ["front", "back"], "also": ["resort", "spaceport", "office"], "bill": { "circuit-board": 2, "glass": 2, "polymer": 1 } },
+    { "id": "coffee-table", "name": "Coffee table", "set": "residential", "roles": ["table-low", "table"], "size": [2, 1, 2], "surface": 0.4, "fall": ["over", "side"], "also": ["resort", "spaceport"], "bill": { "biomass": 2, "glass": 1 } },
+    { "id": "bunk-bed", "name": "Bunk bed", "set": "residential", "roles": ["bunk", "bed"], "size": [2, 4, 4], "fixed": true, "also": ["military", "ship", "mine"], "bill": { "iron-bar": 3, "polymer": 2 } },
+    { "id": "wardrobe", "name": "Wardrobe", "set": "residential", "roles": ["cabinet", "locker", "shelf"], "size": [2, 4, 1], "fall": ["front", "side"], "bill": { "biomass": 3, "iron-bar": 1 } },
+    { "id": "nightstand", "name": "Nightstand", "set": "residential", "roles": ["nightstand", "cabinet"], "size": [1, 1, 1], "also": ["medical", "resort"], "bill": { "biomass": 1 } },
+    { "id": "floor-rug", "name": "Floor rug", "set": "residential", "roles": ["rug"], "size": [4, 1, 3], "walk": true, "fixed": true, "also": ["resort", "civic"], "bill": { "polymer": 2 } },
+
+    // ---- Resort -----------------------------------------------------------------------------------
+    { "id": "bar-counter", "name": "Bar counter", "set": "resort", "roles": ["counter", "bench"], "size": [4, 3, 2], "surface": 1.05, "fixed": true, "light": { "range": 2, "energy": 0.5 }, "bill": { "biomass": 2, "glass": 1, "polymer": 1 } },
+    { "id": "bar-stool", "name": "Bar stool", "set": "resort", "roles": ["stool", "chair"], "size": [1, 2, 1], "also": ["canteen", "reaver"], "bill": { "iron-bar": 1, "polymer": 1 } },
+    { "id": "pool-lounger", "name": "Pool lounger", "set": "resort", "roles": ["lounger", "bed"], "size": [2, 2, 4], "fall": ["side", "over"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "parasol", "name": "Parasol", "set": "resort", "roles": ["parasol"], "size": [4, 5, 4], "fall": ["side", "back", "front"], "also": ["themepark"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "cocktail-table", "name": "Cocktail table", "set": "resort", "roles": ["table-small", "table"], "size": [2, 3, 2], "surface": 1.05, "also": ["spaceport"], "bill": { "iron-bar": 1, "glass": 1 } },
+    { "id": "back-bar", "name": "Back bar", "set": "resort", "roles": ["shelf"], "size": [3, 4, 1], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "also": ["canteen", "reaver"], "bill": { "biomass": 2, "glass": 3 } },
+    { "id": "neon-sign", "name": "Neon sign", "set": "resort", "roles": ["sign", "screen"], "size": [3, 2, 1], "mount": "wall", "mountY": 1.5, "light": { "range": 3, "energy": 0.9 }, "anim": "flicker", "fall": ["front"], "also": ["themepark", "spaceport", "canteen"], "bill": { "glass": 2, "copper-wire": 2 } },
+
+    // ---- Theme park -------------------------------------------------------------------------------
+    { "id": "ticket-booth", "name": "Ticket booth", "set": "themepark", "roles": ["booth", "kiosk"], "size": [3, 5, 3], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "bill": { "hull-plate": 3, "glass": 2, "polymer": 2 } },
+    { "id": "coaster-car", "name": "Coaster car", "set": "themepark", "roles": ["ridecar"], "size": [3, 3, 4], "fall": ["side"], "bill": { "hull-plate": 3, "servo": 1, "polymer": 1 } },
+    { "id": "teacup-ride", "name": "Teacup ride car", "set": "themepark", "roles": ["ridecar"], "size": [3, 2, 3], "fall": ["side"], "bill": { "hull-plate": 2, "polymer": 2 } },
+    { "id": "candy-stall", "name": "Candy stall", "set": "themepark", "roles": ["stall", "counter", "kiosk"], "size": [4, 5, 2], "fixed": true, "light": { "range": 2.5, "energy": 0.6 }, "also": ["resort"], "bill": { "biomass": 2, "polymer": 3, "iron-bar": 2 } },
+    { "id": "mascot-head", "name": "Mascot head", "set": "themepark", "roles": ["mascot", "statue"], "size": [3, 3, 3], "fall": ["side", "back", "front"], "bill": { "polymer": 4 } },
+    { "id": "park-sign", "name": "Park signpost", "set": "themepark", "roles": ["sign"], "size": [2, 5, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "blink", "fall": ["back", "front", "side"], "also": ["resort"], "bill": { "iron-bar": 2, "polymer": 1, "glass": 1 } },
+    { "id": "carousel-horse", "name": "Carousel mount", "set": "themepark", "roles": ["ridecar", "statue"], "size": [1, 5, 2], "fall": ["side"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "park-bin", "name": "Striped bin", "set": "themepark", "roles": ["bin"], "size": [1, 2, 1], "also": ["resort"], "bill": { "polymer": 1, "iron-bar": 1 } },
+    { "id": "queue-rail", "name": "Queue rail", "set": "themepark", "roles": ["barrier"], "size": [4, 2, 1], "fall": ["back", "front"], "bill": { "iron-bar": 2 } },
+
+    // ---- Cryo -------------------------------------------------------------------------------------
+    { "id": "cryo-pod", "name": "Cryo pod", "set": "cryo", "roles": ["pod"], "size": [2, 5, 2], "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "bill": { "glass": 2, "hull-plate": 3, "winding": 1, "circuit-board": 1 } },
+    { "id": "cryo-bed", "name": "Sleeper berth", "set": "cryo", "roles": ["pod", "bed"], "size": [2, 2, 4], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "also": ["ship", "medical"], "bill": { "glass": 2, "hull-plate": 2, "winding": 1 } },
+    { "id": "coolant-tank", "name": "Coolant tank", "set": "cryo", "roles": ["tank"], "size": [2, 4, 2], "fixed": true, "light": { "range": 1, "energy": 0.3 }, "also": ["industrial", "lab"], "bill": { "hull-plate": 3, "copper-bar": 1 } },
+    { "id": "cryo-console", "name": "Cryo console", "set": "cryo", "roles": ["console", "panel", "machine"], "size": [2, 3, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "flicker", "fall": ["back", "front"], "also": ["lab", "medical"], "bill": { "circuit-board": 2, "glass": 1, "hull-plate": 1 } },
+    { "id": "coolant-manifold", "name": "Coolant manifold", "set": "cryo", "roles": ["pipes", "valve"], "size": [3, 2, 1], "fixed": true, "also": ["lab"], "bill": { "iron-bar": 2, "copper-bar": 2 } },
+    { "id": "canister-cart", "name": "Canister cart", "set": "cryo", "roles": ["cart", "crate"], "size": [2, 2, 2], "fall": ["side"], "also": ["lab", "medical"], "bill": { "iron-bar": 1, "hull-plate": 1, "glass": 1 } },
+
+    // ---- Spaceport --------------------------------------------------------------------------------
+    { "id": "seat-row", "name": "Waiting seats", "set": "spaceport", "roles": ["seat-row", "bench-seat", "chair"], "size": [4, 2, 2], "fall": ["back", "front"], "also": ["medical", "civic"], "bill": { "iron-bar": 2, "polymer": 2 } },
+    { "id": "departure-board", "name": "Departure board", "set": "spaceport", "roles": ["board", "screen", "sign"], "size": [4, 5, 1], "fixed": true, "light": { "range": 3, "energy": 0.8 }, "anim": "flicker", "bill": { "circuit-board": 3, "glass": 2, "iron-bar": 2 } },
+    { "id": "luggage-cart", "name": "Luggage cart", "set": "spaceport", "roles": ["cart", "luggage"], "size": [2, 2, 3], "fall": ["side"], "bill": { "iron-bar": 2, "polymer": 1 } },
+    { "id": "info-kiosk", "name": "Info kiosk", "set": "spaceport", "roles": ["kiosk", "screen", "machine"], "size": [1, 3, 1], "light": { "range": 1.5, "energy": 0.5 }, "anim": "flicker", "also": ["themepark", "resort"], "bill": { "circuit-board": 1, "glass": 1, "hull-plate": 1 } },
+    { "id": "checkin-desk", "name": "Check-in desk", "set": "spaceport", "roles": ["counter", "desk"], "size": [4, 2, 2], "surface": 1.0, "fixed": true, "light": { "range": 1.5, "energy": 0.3 }, "also": ["office"], "bill": { "hull-plate": 2, "polymer": 2, "circuit-board": 1 } },
+    { "id": "suitcase", "name": "Suitcase", "set": "spaceport", "roles": ["luggage", "crate"], "size": [1, 2, 1], "fall": ["side", "back", "front"], "also": ["residential", "ship"], "bill": { "polymer": 1 } },
+    { "id": "stanchion", "name": "Queue stanchions", "set": "spaceport", "roles": ["barrier"], "size": [3, 2, 1], "fall": ["back", "front"], "also": ["office", "civic"], "bill": { "iron-bar": 1, "polymer": 1 } },
+
+    // ---- Prison -----------------------------------------------------------------------------------
+    { "id": "prison-bunk", "name": "Cell bunk", "set": "prison", "roles": ["bunk", "bed"], "size": [4, 3, 2], "fixed": true, "bill": { "iron-bar": 2, "hull-plate": 1 } },
+    { "id": "cell-toilet", "name": "Cell toilet", "set": "prison", "roles": ["toilet"], "size": [1, 2, 2], "fixed": true, "also": ["residential"], "bill": { "iron-bar": 2 } },
+    { "id": "cell-bars", "name": "Cell bars", "set": "prison", "roles": ["bars", "partition"], "size": [4, 5, 1], "fixed": true, "bill": { "iron-bar": 4 } },
+    { "id": "guard-desk", "name": "Guard desk", "set": "prison", "roles": ["desk", "counter"], "size": [3, 2, 2], "surface": 0.78, "fixed": true, "also": ["military"], "bill": { "hull-plate": 2, "circuit-board": 1 } },
+    { "id": "steel-table", "name": "Bolted table", "set": "prison", "roles": ["table"], "size": [3, 2, 3], "surface": 0.75, "fixed": true, "bill": { "iron-bar": 3 } },
+    { "id": "cctv-bank", "name": "CCTV bank", "set": "prison", "roles": ["screen", "monitor", "machine"], "size": [3, 3, 1], "light": { "range": 2, "energy": 0.6 }, "anim": "flicker", "fall": ["front", "back"], "also": ["military", "office"], "bill": { "circuit-board": 3, "glass": 2 } },
+    { "id": "floor-mattress", "name": "Floor mattress", "set": "prison", "roles": ["bed"], "size": [2, 1, 4], "fall": ["over"], "also": ["reaver", "mine"], "bill": { "polymer": 2 } },
+
+    // ---- Ship interior ----------------------------------------------------------------------------
+    { "id": "ship-console", "name": "Helm console", "set": "ship", "roles": ["console", "panel", "screen"], "size": [2, 3, 1], "fixed": true, "grids": ["large", "small"], "light": { "range": 2, "energy": 0.6 }, "anim": "flicker", "also": ["military", "cryo"], "bill": { "circuit-board": 2, "glass": 1, "hull-plate": 1 } },
+    { "id": "crash-couch", "name": "Crash couch", "set": "ship", "roles": ["seat", "chair"], "size": [2, 3, 3], "fixed": true, "grids": ["large", "small"], "bill": { "hull-plate": 2, "polymer": 2, "servo": 1 } },
+    { "id": "ship-locker", "name": "Crew locker", "set": "ship", "roles": ["locker", "cabinet"], "size": [1, 4, 1], "fall": ["front", "side"], "grids": ["large", "small"], "also": ["military", "mine", "industrial", "prison", "medical"], "bill": { "hull-plate": 1 } },
+    { "id": "nav-table", "name": "Star chart table", "set": "ship", "roles": ["table", "console"], "size": [3, 2, 3], "surface": 0.95, "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "also": ["military"], "bill": { "circuit-board": 2, "glass": 2, "hull-plate": 2 } },
+    { "id": "netted-cargo", "name": "Netted cargo", "set": "ship", "roles": ["crate"], "size": [3, 2, 2], "fixed": true, "grids": ["large", "small"], "also": ["spaceport", "industrial"], "bill": { "polymer": 1, "hull-plate": 2 } },
+    { "id": "bulkhead-lamp", "name": "Bulkhead lamp", "set": "ship", "roles": ["lamp"], "size": [1, 1, 1], "mount": "wall", "mountY": 1.9, "fall": ["front"], "grids": ["large", "small"], "light": { "range": 3.5, "energy": 0.8 }, "also": ["industrial", "prison", "mine", "military"], "bill": { "glass": 1, "copper-wire": 1 } },
+    { "id": "galley-unit", "name": "Galley unit", "set": "ship", "roles": ["counter", "machine"], "size": [2, 3, 1], "surface": 0.9, "fixed": true, "grids": ["large", "small"], "light": { "range": 1, "energy": 0.3 }, "also": ["canteen"], "bill": { "hull-plate": 2, "polymer": 1, "winding": 1 } },
+    { "id": "suit-rack", "name": "Suit rack", "set": "ship", "roles": ["rack", "suit"], "size": [2, 4, 1], "fall": ["front", "side"], "grids": ["large", "small"], "also": ["military", "mine"], "bill": { "iron-bar": 2, "polymer": 2 } },
+
+    // ---- Mine -------------------------------------------------------------------------------------
+    { "id": "mine-cart", "name": "Ore cart", "set": "mine", "roles": ["cart"], "size": [2, 2, 3], "fall": ["side"], "bill": { "iron-bar": 3 } },
+    { "id": "rail-section", "name": "Rail section", "set": "mine", "roles": ["rail"], "size": [2, 1, 4], "walk": true, "fixed": true, "also": ["themepark"], "bill": { "iron-bar": 2, "biomass": 1 } },
+    { "id": "rock-drill", "name": "Rock drill", "set": "mine", "roles": ["drill", "machine"], "size": [2, 3, 3], "fall": ["side", "back"], "bill": { "iron-bar": 2, "servo": 1, "hull-plate": 1 } },
+    { "id": "mine-lamp", "name": "Cage lamp post", "set": "mine", "roles": ["lamp"], "size": [1, 4, 1], "light": { "range": 4, "energy": 0.9 }, "anim": "flicker", "fall": ["side", "back", "front"], "also": ["reaver", "military"], "bill": { "iron-bar": 1, "glass": 1, "copper-wire": 1 } },
+    { "id": "timber-prop", "name": "Timber prop", "set": "mine", "roles": ["support", "pillar"], "size": [4, 5, 1], "fixed": true, "bill": { "biomass": 4 } },
+    { "id": "blasting-crate", "name": "Blasting crate", "set": "mine", "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["military"], "bill": { "biomass": 1, "iron-bar": 1 } },
+    { "id": "cable-winch", "name": "Cable winch", "set": "mine", "roles": ["winch", "machine"], "size": [2, 2, 2], "fall": ["side"], "also": ["industrial"], "bill": { "iron-bar": 2, "winding": 1 } },
+
+    // ---- Reaver scrap -----------------------------------------------------------------------------
+    { "id": "scrap-throne", "name": "Scrap throne", "set": "reaver", "roles": ["chair"], "size": [2, 3, 2], "fall": ["back", "side"], "bill": { "hull-plate": 2, "iron-bar": 1 } },
+    { "id": "drum-table", "name": "Drum table", "set": "reaver", "roles": ["table"], "size": [2, 2, 2], "surface": 0.85, "fall": ["side", "over"], "bill": { "iron-bar": 1, "hull-plate": 1 } },
+    { "id": "trophy-pole", "name": "Trophy pole", "set": "reaver", "roles": ["trophy", "totem", "statue"], "size": [1, 5, 1], "fall": ["side", "back", "front"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
+    { "id": "scrap-barricade", "name": "Scrap barricade", "set": "reaver", "roles": ["barricade"], "size": [4, 3, 2], "fixed": true, "also": ["military", "mine"], "bill": { "hull-plate": 3, "iron-bar": 2 } },
+    { "id": "burn-barrel", "name": "Burn barrel", "set": "reaver", "roles": ["barrel", "brazier", "lamp"], "size": [1, 2, 1], "light": { "range": 3.5, "energy": 1.0 }, "anim": "flicker", "fall": ["side"], "also": ["mine"], "bill": { "iron-bar": 1 } },
+    { "id": "pallet-bunk", "name": "Pallet bunk", "set": "reaver", "roles": ["bed", "bunk"], "size": [2, 2, 4], "fixed": true, "bill": { "biomass": 2, "polymer": 1 } },
+    { "id": "trophy-board", "name": "Trophy board", "set": "reaver", "roles": ["trophy", "sign"], "size": [3, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "bill": { "hull-plate": 2 } },
+    { "id": "junk-shelf", "name": "Junk shelf", "set": "reaver", "roles": ["shelf", "rack"], "size": [2, 4, 1], "fall": ["front", "side"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
+
+    // ---- Religious and civic ----------------------------------------------------------------------
+    { "id": "pew", "name": "Pew", "set": "civic", "roles": ["pew", "bench-seat"], "size": [4, 2, 2], "fall": ["back", "front"], "bill": { "biomass": 3 } },
+    { "id": "lectern", "name": "Lectern", "set": "civic", "roles": ["lectern"], "size": [1, 3, 1], "fall": ["back", "front", "side"], "bill": { "biomass": 2 } },
+    { "id": "robed-statue", "name": "Robed statue", "set": "civic", "roles": ["statue"], "size": [2, 5, 2], "fall": ["side", "back", "front"], "bill": { "stone": 8, "concrete-mix": 2 } },
+    { "id": "candle-stand", "name": "Candle stand", "set": "civic", "roles": ["candles", "lamp"], "size": [1, 3, 1], "light": { "range": 2.5, "energy": 0.6 }, "anim": "flicker", "bill": { "iron-bar": 1, "biomass": 1 } },
+    { "id": "altar-table", "name": "Altar table", "set": "civic", "roles": ["altar", "table"], "size": [4, 2, 2], "surface": 0.95, "fixed": true, "bill": { "stone": 4, "polymer": 1 } },
+    { "id": "notice-board", "name": "Notice board", "set": "civic", "roles": ["board", "sign"], "size": [3, 4, 1], "fall": ["back", "front"], "also": ["office", "spaceport", "military"], "bill": { "biomass": 2, "iron-bar": 1 } },
+    { "id": "park-bench", "name": "Park bench", "set": "civic", "roles": ["bench-seat", "chair"], "size": [3, 2, 2], "fall": ["back"], "also": ["themepark", "resort", "residential"], "bill": { "biomass": 2, "iron-bar": 1 } },
+    { "id": "banner-stand", "name": "Banner stand", "set": "civic", "roles": ["flag", "sign"], "size": [1, 5, 1], "fall": ["side", "back", "front"], "also": ["military", "reaver"], "bill": { "iron-bar": 1, "polymer": 1 } },
+    { "id": "column", "name": "Hall column", "set": "civic", "roles": ["pillar"], "size": [2, 5, 2], "fixed": true, "also": ["office", "spaceport", "resort"], "bill": { "concrete-mix": 4 } },
+
+    // ---- Alien: chitin, lattice and Bloom looks -------------------------------------------------------
+    { "id": "resin-altar", "name": "Resin altar", "set": "alien", "palette": "alien-chitin", "roles": ["altar", "table"], "size": [3, 2, 2], "surface": 0.8, "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "bill": { "biomass": 4, "polymer": 2, "glass": 1 } },
+    { "id": "rib-pillar", "name": "Rib pillar", "set": "alien", "palette": "alien-chitin", "roles": ["pillar"], "size": [2, 5, 2], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "anim": "pulse", "bill": { "biomass": 4, "polymer": 1 } },
+    { "id": "brood-pod", "name": "Brood pod", "set": "alien", "palette": "alien-chitin", "roles": ["pod"], "size": [2, 3, 2], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "anim": "pulse", "bill": { "biomass": 3, "glass": 1 } },
+    { "id": "shell-totem", "name": "Shell totem", "set": "alien", "palette": "alien-chitin", "roles": ["totem", "statue"], "size": [2, 4, 2], "fall": ["side", "back"], "bill": { "biomass": 3 } },
+    { "id": "lattice-obelisk", "name": "Lattice obelisk", "set": "alien", "palette": "alien-lattice", "roles": ["pillar"], "size": [2, 5, 2], "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "bill": { "ceramic": 3, "fold-crystal": 1 } },
+    { "id": "resonance-harp", "name": "Resonance harp", "set": "alien", "palette": "alien-lattice", "roles": ["instrument"], "size": [3, 4, 1], "light": { "range": 1.5, "energy": 0.5 }, "anim": "pulse", "fall": ["back", "front"], "bill": { "ceramic": 2, "copper-wire": 3, "fold-crystal": 1 } },
+    { "id": "node-plinth", "name": "Node plinth", "set": "alien", "palette": "alien-lattice", "roles": ["altar", "machine"], "size": [2, 3, 2], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "anim": "blink", "bill": { "ceramic": 2, "circuit-board": 1, "fold-crystal": 1 } },
+    { "id": "crystal-cradle", "name": "Crystal cradle", "set": "alien", "palette": "alien-lattice", "roles": ["crystal"], "size": [2, 3, 2], "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "also": ["precursor"], "bill": { "fold-crystal": 2, "ceramic": 1 } },
+    { "id": "bloom-pod", "name": "Bloom pod", "set": "alien", "palette": "alien-bloom", "roles": ["pod"], "size": [2, 3, 2], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "anim": "pulse", "bill": { "biomass": 4 } },
+    { "id": "spore-chime", "name": "Spore chime", "set": "alien", "palette": "alien-bloom", "roles": ["instrument"], "size": [2, 4, 2], "light": { "range": 1.5, "energy": 0.5 }, "anim": "pulse", "fall": ["side"], "bill": { "biomass": 3, "glass": 1 } },
+
+    // ---- Precursor --------------------------------------------------------------------------------
+    { "id": "glyph-plinth", "name": "Glyph plinth", "set": "precursor", "roles": ["altar", "pillar"], "size": [2, 3, 2], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "anim": "pulse", "uniqueOnly": true, "bill": { "precursor-alloy": 2 } },
+    { "id": "glyph-monolith", "name": "Glyph monolith", "set": "precursor", "roles": ["pillar", "statue"], "size": [2, 5, 1], "fixed": true, "light": { "range": 2.5, "energy": 0.6 }, "anim": "pulse", "uniqueOnly": true, "bill": { "precursor-alloy": 4 } },
+    { "id": "bronze-brazier", "name": "Bronze brazier", "set": "precursor", "roles": ["brazier", "lamp"], "size": [2, 3, 2], "light": { "range": 3, "energy": 0.8 }, "anim": "pulse", "fall": ["side"], "uniqueOnly": true, "bill": { "precursor-alloy": 1, "fold-crystal": 1 } },
+    { "id": "warden-statue", "name": "Warden statue", "set": "precursor", "roles": ["statue"], "size": [2, 5, 2], "fall": ["side", "back", "front"], "uniqueOnly": true, "bill": { "precursor-alloy": 4 } },
+    { "id": "reliquary", "name": "Reliquary", "set": "precursor", "roles": ["chest", "crate", "crystal"], "size": [2, 2, 2], "fixed": true, "light": { "range": 1.5, "energy": 0.5 }, "uniqueOnly": true, "bill": { "precursor-alloy": 2, "fold-crystal": 1 } },
+    { "id": "stone-bench", "name": "Stone bench", "set": "precursor", "roles": ["bench-seat"], "size": [4, 1, 2], "fixed": true, "uniqueOnly": true, "bill": { "precursor-alloy": 2 } },
+    { "id": "orrery", "name": "Bronze orrery", "set": "precursor", "roles": ["instrument", "machine"], "size": [3, 4, 3], "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "uniqueOnly": true, "bill": { "precursor-alloy": 3, "fold-crystal": 2 } },
+    { "id": "glyph-lectern", "name": "Glyph lectern", "set": "precursor", "roles": ["console", "lectern"], "size": [2, 3, 1], "fixed": true, "light": { "range": 1.5, "energy": 0.5 }, "anim": "pulse", "uniqueOnly": true, "bill": { "precursor-alloy": 2 } },
+
+    // ---- Factory pieces (industrial) --------------------------------------------------------------
+    { "id": "conveyor-belt", "name": "Conveyor segment", "set": "industrial", "roles": ["conveyor", "machine"], "size": [4, 2, 2], "fixed": true, "light": { "range": 1, "energy": 0.3 }, "anim": "blink", "bill": { "iron-bar": 3, "servo": 1, "polymer": 1 } },
+    { "id": "robot-arm", "name": "Robot arm", "set": "industrial", "roles": ["robot", "machine"], "size": [4, 5, 4], "fixed": true, "light": { "range": 1, "energy": 0.3 }, "anim": "spark", "tech": "high", "also": ["lab", "ship"], "bill": { "servo": 4, "hull-plate": 2, "circuit-board": 2 } },
+    { "id": "gantry-crane", "name": "Gantry crane", "set": "industrial", "roles": ["crane"], "size": [8, 5, 4], "fixed": true, "also": ["spaceport", "mine"], "bill": { "iron-bar": 8, "servo": 2, "winding": 1 } },
+    { "id": "assembly-station", "name": "Assembly station", "set": "industrial", "roles": ["bench", "station"], "size": [4, 3, 2], "surface": 0.9, "fixed": true, "light": { "range": 2, "energy": 0.5 }, "bill": { "iron-bar": 3, "circuit-board": 1, "glass": 1 } },
+    { "id": "pallet-racking", "name": "Pallet racking", "set": "industrial", "roles": ["racking", "shelf", "rack"], "size": [6, 5, 2], "fixed": true, "also": ["spaceport", "military"], "bill": { "iron-bar": 6 } },
+    { "id": "pallet-stack", "name": "Wrapped pallet", "set": "industrial", "roles": ["pallet", "crate"], "size": [3, 3, 3], "fall": ["side"], "also": ["spaceport", "farm", "military"], "bill": { "biomass": 2, "polymer": 2 } },
+    { "id": "control-desk", "name": "Control-room desk", "set": "industrial", "roles": ["console", "desk", "panel"], "size": [4, 4, 2], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "anim": "flicker", "also": ["cryo", "lab"], "bill": { "circuit-board": 3, "glass": 3, "hull-plate": 2 } },
+    { "id": "boiler", "name": "Boiler", "set": "industrial", "roles": ["boiler", "tank", "machine"], "size": [4, 5, 3], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "anim": "flicker", "tech": "low", "also": ["mine", "farm"], "bill": { "hull-plate": 6, "iron-bar": 4, "copper-bar": 2 } },
+
+    // ---- Farm -------------------------------------------------------------------------------------
+    { "id": "hay-bales", "name": "Hay bales", "set": "farm", "roles": ["hay", "crate"], "size": [3, 2, 2], "fall": ["side", "front"], "bill": { "biomass": 4 } },
+    { "id": "feed-sacks", "name": "Feed sacks", "set": "farm", "roles": ["sacks", "crate"], "size": [2, 1, 2], "fixed": true, "also": ["mine"], "bill": { "biomass": 3, "polymer": 1 } },
+    { "id": "trough", "name": "Trough", "set": "farm", "roles": ["trough"], "size": [4, 1, 2], "fall": ["side", "over"], "bill": { "iron-bar": 2 } },
+    { "id": "fence-section", "name": "Fence section", "set": "farm", "roles": ["fence", "barrier"], "size": [4, 3, 1], "fall": ["back", "front"], "bill": { "biomass": 2 } },
+    { "id": "farm-gate", "name": "Farm gate", "set": "farm", "roles": ["gate", "fence", "barrier"], "size": [6, 3, 1], "fixed": true, "states": ["broken", "burnt", "overgrown", "rusted", "open"], "bill": { "biomass": 2, "iron-bar": 1 } },
+    { "id": "scarecrow", "name": "Scarecrow", "set": "farm", "roles": ["scarecrow", "statue", "totem"], "size": [3, 4, 1], "fall": ["back", "front", "side"], "bill": { "biomass": 2, "polymer": 1 } },
+    { "id": "farm-well", "name": "Well", "set": "farm", "roles": ["well"], "size": [4, 4, 4], "fixed": true, "bill": { "stone": 8, "biomass": 2 } },
+    { "id": "farm-tool-rack", "name": "Farm tool rack", "set": "farm", "roles": ["toolrack", "rack"], "size": [3, 4, 1], "fall": ["front", "side"], "also": ["mine"], "bill": { "biomass": 2, "iron-bar": 2 } },
+    { "id": "milk-churns", "name": "Milk churns", "set": "farm", "roles": ["churns", "barrel"], "size": [2, 2, 2], "fall": ["side"], "bill": { "iron-bar": 2 } },
+    { "id": "produce-crates", "name": "Produce crates", "set": "farm", "roles": ["crate", "produce"], "size": [3, 2, 2], "fall": ["side", "front"], "also": ["canteen"], "bill": { "biomass": 2 } },
+    { "id": "chicken-coop", "name": "Chicken coop", "set": "farm", "roles": ["coop"], "size": [4, 3, 3], "fixed": true, "bill": { "biomass": 4, "iron-bar": 1 } },
+    { "id": "beehive", "name": "Beehive box", "set": "farm", "roles": ["hive", "crate"], "size": [1, 2, 1], "bill": { "biomass": 2 } },
+    { "id": "greenhouse-bench", "name": "Greenhouse bench", "set": "farm", "roles": ["bench", "planter", "growbed"], "size": [4, 2, 2], "fixed": true, "tech": "mid", "also": ["lab"], "bill": { "iron-bar": 2, "biomass": 2 } },
+    { "id": "hydro-rack", "name": "Hydroponic rack", "set": "farm", "roles": ["growbed", "planter", "rack"], "size": [4, 5, 2], "fixed": true, "tech": "high", "light": { "range": 2.5, "energy": 0.7 }, "also": ["lab", "ship"], "bill": { "iron-bar": 3, "polymer": 2, "glass": 2, "circuit-board": 1 } },
+
+    // ---- Vehicles ---------------------------------------------------------------------------------
+    { "id": "farm-cart", "name": "Farm cart", "set": "vehicles", "roles": ["vehicle", "cart", "farm"], "size": [4, 3, 6], "tech": "low", "salvage": "light", "fall": ["side"], "also": ["farm"], "bill": { "biomass": 4, "iron-bar": 1 } },
+    { "id": "farm-tractor", "name": "Old tractor", "set": "vehicles", "roles": ["vehicle", "tractor", "farm"], "size": [4, 5, 7], "tech": "low", "salvage": "heavy", "fall": ["side", "over"], "also": ["farm"], "bill": { "hull-plate": 4, "iron-bar": 4, "winding": 1 } },
+    { "id": "plough", "name": "Plough", "set": "vehicles", "roles": ["vehicle", "implement", "farm"], "size": [4, 2, 5], "tech": "low", "salvage": "light", "fall": ["side", "over"], "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "also": ["farm"], "bill": { "iron-bar": 4 } },
+    { "id": "farm-trailer", "name": "Hay trailer", "set": "vehicles", "roles": ["vehicle", "trailer", "farm"], "size": [5, 4, 9], "tech": "low", "salvage": "medium", "fall": ["side", "over"], "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "also": ["farm"], "bill": { "iron-bar": 4, "biomass": 3 } },
+    { "id": "old-truck", "name": "Old flatbed truck", "set": "vehicles", "roles": ["vehicle", "truck"], "size": [4, 5, 11], "tech": "low", "salvage": "heavy", "fall": ["side", "over"], "bill": { "hull-plate": 4, "iron-bar": 3, "glass": 1 } },
+    { "id": "ore-tram", "name": "Ore tram", "set": "vehicles", "roles": ["vehicle", "industrial-vehicle", "cart"], "size": [3, 4, 7], "tech": "low", "salvage": "medium", "fall": ["side"], "also": ["mine", "industrial"], "bill": { "iron-bar": 4, "winding": 1 } },
+    { "id": "hatchback", "name": "Hatchback", "set": "vehicles", "roles": ["vehicle", "car"], "size": [4, 3, 8], "salvage": "medium", "fall": ["side", "over"], "bill": { "hull-plate": 3, "glass": 2, "polymer": 1 } },
+    { "id": "sedan", "name": "Saloon car", "set": "vehicles", "roles": ["vehicle", "car"], "size": [4, 3, 10], "salvage": "medium", "fall": ["side", "over"], "bill": { "hull-plate": 4, "glass": 2, "polymer": 1 } },
+    { "id": "pickup", "name": "Pickup", "set": "vehicles", "roles": ["vehicle", "pickup", "car"], "size": [4, 4, 11], "salvage": "medium", "fall": ["side", "over"], "also": ["farm"], "bill": { "hull-plate": 4, "glass": 2, "polymer": 1 } },
+    { "id": "van", "name": "Van", "set": "vehicles", "roles": ["vehicle", "van"], "size": [4, 5, 10], "salvage": "medium", "fall": ["side", "over"], "bill": { "hull-plate": 5, "glass": 2, "polymer": 1 } },
+    { "id": "box-truck", "name": "Box truck", "set": "vehicles", "roles": ["vehicle", "truck"], "size": [5, 7, 15], "salvage": "heavy", "fall": ["side"], "also": ["industrial"], "bill": { "hull-plate": 8, "glass": 2, "servo": 1 } },
+    { "id": "tanker-truck", "name": "Tanker truck", "set": "vehicles", "roles": ["vehicle", "truck", "tanker"], "size": [5, 7, 18], "salvage": "heavy", "fall": ["side"], "bill": { "hull-plate": 10, "glass": 2, "copper-bar": 1 } },
+    { "id": "city-bus", "name": "City bus", "set": "vehicles", "roles": ["vehicle", "bus"], "size": [5, 7, 23], "salvage": "heavy", "fall": ["side"], "bill": { "hull-plate": 12, "glass": 6, "polymer": 4 } },
+    { "id": "ambulance", "name": "Ambulance", "set": "vehicles", "palette": "ambulance", "roles": ["vehicle", "emergency", "van"], "size": [5, 6, 12], "salvage": "medium", "fall": ["side"], "light": { "range": 4, "energy": 0.8 }, "anim": "blink", "also": ["medical"], "bill": { "hull-plate": 6, "glass": 2, "circuit-board": 1 } },
+    { "id": "forklift", "name": "Forklift", "set": "vehicles", "roles": ["vehicle", "industrial-vehicle", "forklift"], "size": [3, 5, 6], "salvage": "medium", "fall": ["side"], "also": ["industrial", "spaceport"], "bill": { "hull-plate": 3, "servo": 2, "iron-bar": 2 } },
+    { "id": "wheel-loader", "name": "Wheel loader", "set": "vehicles", "roles": ["vehicle", "industrial-vehicle"], "size": [5, 6, 12], "salvage": "heavy", "fall": ["side"], "also": ["mine", "industrial"], "bill": { "hull-plate": 8, "servo": 3, "iron-bar": 4 } },
+    { "id": "jersey-barrier", "name": "Road barrier", "set": "vehicles", "roles": ["roadblock", "barricade", "barrier"], "size": [4, 2, 2], "fixed": true, "states": ["broken", "overgrown", "buried"], "also": ["military"], "bill": { "concrete-mix": 4 } },
+    { "id": "power-pole", "name": "Power pole", "set": "vehicles", "roles": ["pole"], "size": [4, 18, 4], "tech": "low", "fall": ["side", "back", "front"], "states": ["knocked", "broken", "burnt", "overgrown", "buried"], "light": { "range": 6, "energy": 1.0 }, "anim": "flicker", "also": ["farm", "rail"], "bill": { "biomass": 4, "copper-wire": 4, "glass": 1 } },
+    { "id": "hover-skimmer", "name": "Hover skimmer", "set": "vehicles", "roles": ["vehicle", "car", "hover"], "size": [4, 3, 9], "tech": "high", "salvage": "medium", "fall": ["side", "over"], "light": { "range": 2, "energy": 0.6 }, "bill": { "hull-plate": 3, "glass": 2, "field-emitter": 1 } },
+    { "id": "cargo-hover", "name": "Cargo hover", "set": "vehicles", "roles": ["vehicle", "truck", "hover"], "size": [6, 6, 16], "tech": "high", "salvage": "heavy", "fall": ["side"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 8, "glass": 2, "field-emitter": 2 } },
+    { "id": "sky-flyer", "name": "Sky flyer", "set": "vehicles", "roles": ["vehicle", "flyer"], "size": [8, 5, 12], "tech": "high", "salvage": "heavy", "fall": ["side", "over"], "bill": { "hull-plate": 6, "glass": 2, "thrust-assembly": 1 } },
+    { "id": "agri-drone", "name": "Crop drone", "set": "vehicles", "roles": ["vehicle", "drone", "farm"], "size": [4, 2, 4], "tech": "high", "salvage": "light", "fall": ["side", "over"], "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "also": ["farm"], "bill": { "hull-plate": 2, "servo": 4, "circuit-board": 2 } },
+    { "id": "harvester", "name": "Hover harvester", "set": "vehicles", "roles": ["vehicle", "harvester", "farm"], "size": [6, 7, 14], "tech": "high", "salvage": "heavy", "fall": ["side"], "light": { "range": 3, "energy": 0.6 }, "also": ["farm"], "bill": { "hull-plate": 10, "servo": 4, "field-emitter": 1 } },
+
+    // ---- Rail: rolling stock (on rails at y = 0.32, maglevs on a guideway at y = 0.9) and the track kit ----
+    { "id": "diesel-loco", "name": "Diesel locomotive", "set": "rail", "roles": ["vehicle", "loco", "train"], "size": [6, 8, 26], "tech": "low", "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "fall": ["side"], "bill": { "hull-plate": 30, "thrust-assembly": 2, "glass": 4 } },
+    { "id": "passenger-coach", "name": "Passenger coach", "set": "rail", "roles": ["vehicle", "carriage", "train"], "size": [6, 8, 30], "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "fall": ["side"], "bill": { "hull-plate": 24, "glass": 12, "polymer": 8 } },
+    { "id": "box-wagon", "name": "Box wagon", "set": "rail", "roles": ["vehicle", "wagon", "train"], "size": [6, 8, 24], "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "fall": ["side"], "bill": { "hull-plate": 20 } },
+    { "id": "tank-wagon", "name": "Tank wagon", "set": "rail", "roles": ["vehicle", "wagon", "tanker", "train"], "size": [6, 8, 22], "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "fall": ["side"], "bill": { "hull-plate": 20, "copper-bar": 2 } },
+    { "id": "flat-wagon", "name": "Flat wagon", "set": "rail", "roles": ["vehicle", "wagon", "train"], "size": [6, 7, 24], "salvage": "heavy", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "fall": ["side"], "bill": { "hull-plate": 14 } },
+    { "id": "log-wagon", "name": "Log wagon", "set": "rail", "roles": ["vehicle", "wagon", "train"], "size": [6, 6, 18], "tech": "low", "salvage": "heavy", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "fall": ["side"], "bill": { "iron-bar": 10, "biomass": 8 } },
+    { "id": "maglev-head", "name": "Maglev head car", "set": "rail", "palette": "rail-high", "roles": ["vehicle", "loco", "train", "maglev"], "size": [7, 8, 28], "tech": "high", "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "fall": ["side"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 26, "glass": 10, "field-emitter": 4 } },
+    { "id": "maglev-coach", "name": "Maglev coach", "set": "rail", "palette": "rail-high", "roles": ["vehicle", "carriage", "train", "maglev"], "size": [7, 8, 28], "tech": "high", "salvage": "huge", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "open", "buried"], "fall": ["side"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 22, "glass": 12, "field-emitter": 3 } },
+    { "id": "rail-track", "name": "Track segment", "set": "rail", "roles": ["track"], "size": [7, 1, 8], "fixed": true, "walk": true, "tech": "low", "bill": { "iron-bar": 6, "biomass": 4 } },
+    { "id": "maglev-guideway", "name": "Maglev guideway", "set": "rail", "palette": "rail-high", "roles": ["track", "guideway"], "size": [7, 2, 8], "fixed": true, "tech": "high", "light": { "range": 2, "energy": 0.4 }, "bill": { "concrete-mix": 6, "field-emitter": 1, "copper-wire": 4 } },
+    { "id": "buffer-stop", "name": "Buffer stop", "set": "rail", "roles": ["buffer"], "size": [7, 4, 4], "fixed": true, "tech": "low", "bill": { "iron-bar": 6 } },
+    { "id": "rail-signal", "name": "Rail signal", "set": "rail", "roles": ["signal", "pole"], "size": [2, 9, 2], "fall": ["side", "back"], "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "light": { "range": 3, "energy": 0.6 }, "anim": "blink", "bill": { "iron-bar": 3, "glass": 2, "copper-wire": 2 } },
+    { "id": "level-crossing", "name": "Level crossing", "set": "rail", "roles": ["crossing", "barrier"], "size": [10, 6, 2], "fixed": true, "light": { "range": 3, "energy": 0.6 }, "anim": "blink", "bill": { "iron-bar": 4, "glass": 2, "servo": 1 } },
+    { "id": "platform-edge", "name": "Platform section", "set": "rail", "roles": ["platform"], "size": [6, 2, 8], "fixed": true, "states": ["broken", "overgrown", "buried"], "bill": { "concrete-mix": 8 } },
+    { "id": "station-canopy", "name": "Station canopy", "set": "rail", "roles": ["canopy"], "size": [6, 9, 8], "fixed": true, "light": { "range": 4, "energy": 0.7 }, "anim": "flicker", "bill": { "iron-bar": 6, "glass": 3, "polymer": 2 } },
+
+    // ---- Aviation: airliners in sections (turbofan or propeller), a high-tech skyliner, and their ground kit ----
+    { "id": "liner-nose", "name": "Airliner nose", "set": "aviation", "roles": ["airliner", "nose"], "size": [9, 10, 14], "fixed": true, "salvage": "huge", "states": ["broken", "burnt", "overgrown", "rusted", "open", "buried"], "bill": { "hull-plate": 20, "glass": 4, "control-unit": 2 } },
+    { "id": "liner-fuselage", "name": "Airliner fuselage", "set": "aviation", "roles": ["airliner", "fuselage"], "size": [9, 10, 16], "fixed": true, "salvage": "huge", "states": ["broken", "burnt", "overgrown", "rusted", "open", "buried"], "bill": { "hull-plate": 24, "glass": 6, "polymer": 6 } },
+    { "id": "liner-cabin-torn", "name": "Torn fuselage section", "set": "aviation", "roles": ["airliner", "fuselage", "wreck"], "size": [9, 10, 16], "fixed": true, "salvage": "huge", "bill": { "hull-plate": 18, "polymer": 8 } },
+    { "id": "liner-wing", "name": "Airliner wings", "set": "aviation", "roles": ["airliner", "wing"], "size": [64, 4, 14], "fixed": true, "salvage": "huge", "bill": { "hull-plate": 30, "iron-bar": 10 } },
+    { "id": "liner-tail", "name": "Airliner tail", "set": "aviation", "roles": ["airliner", "tail"], "size": [20, 16, 16], "fixed": true, "salvage": "huge", "bill": { "hull-plate": 20 } },
+    { "id": "turbofan", "name": "Turbofan engine", "set": "aviation", "roles": ["airliner", "engine"], "size": [7, 6, 11], "fixed": true, "salvage": "heavy", "bill": { "hull-plate": 8, "thrust-assembly": 2 } },
+    { "id": "prop-engine", "name": "Propeller engine", "set": "aviation", "roles": ["airliner", "engine"], "size": [8, 8, 9], "fixed": true, "tech": "low", "salvage": "heavy", "bill": { "hull-plate": 6, "winding": 2, "iron-bar": 4 } },
+    { "id": "landing-gear", "name": "Landing gear", "set": "aviation", "roles": ["airliner", "gear"], "size": [4, 6, 4], "salvage": "medium", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "fall": ["side"], "bill": { "iron-bar": 6, "servo": 2 } },
+    { "id": "crash-debris", "name": "Crash debris", "set": "aviation", "roles": ["debris", "wreck"], "size": [16, 2, 16], "fixed": true, "salvage": "medium", "states": ["burnt", "overgrown", "rusted", "buried"], "bill": { "hull-plate": 6, "polymer": 4 } },
+    { "id": "crash-scar", "name": "Crash scar", "set": "aviation", "roles": ["scar", "debris"], "size": [16, 1, 40], "fixed": true, "walk": true, "states": ["overgrown", "buried"], "bill": { "stone": 4 } },
+    { "id": "boarding-stairs", "name": "Boarding stairs", "set": "aviation", "roles": ["stairs"], "size": [5, 10, 12], "salvage": "medium", "states": ["knocked", "broken", "burnt", "overgrown", "rusted", "buried"], "fall": ["side"], "bill": { "iron-bar": 8, "hull-plate": 2 } },
+    { "id": "airbridge", "name": "Airbridge", "set": "aviation", "roles": ["airbridge"], "size": [8, 12, 22], "fixed": true, "salvage": "huge", "bill": { "hull-plate": 16, "glass": 6, "servo": 2 } },
+    { "id": "skyliner-nose", "name": "Skyliner nose", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "nose"], "size": [10, 9, 16], "fixed": true, "tech": "high", "salvage": "huge", "states": ["broken", "burnt", "overgrown", "rusted", "open", "buried"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 22, "glass": 6, "control-unit": 3 } },
+    { "id": "skyliner-body", "name": "Skyliner body", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "fuselage"], "size": [10, 9, 16], "fixed": true, "tech": "high", "salvage": "huge", "states": ["broken", "burnt", "overgrown", "rusted", "open", "buried"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 24, "glass": 8 } },
+    { "id": "skyliner-wing", "name": "Skyliner wings", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "wing"], "size": [56, 3, 16], "fixed": true, "tech": "high", "salvage": "huge", "light": { "range": 3, "energy": 0.5 }, "bill": { "hull-plate": 30, "field-emitter": 2 } },
+    { "id": "skyliner-tail", "name": "Skyliner tail", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "tail"], "size": [20, 14, 14], "fixed": true, "tech": "high", "salvage": "huge", "bill": { "hull-plate": 20 } },
+    { "id": "skyliner-engine", "name": "Ring thruster", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "engine"], "size": [8, 8, 9], "fixed": true, "tech": "high", "salvage": "heavy", "light": { "range": 3, "energy": 0.7 }, "anim": "pulse", "bill": { "hull-plate": 6, "thrust-assembly": 2, "field-emitter": 1 } }
+  ]
+}
