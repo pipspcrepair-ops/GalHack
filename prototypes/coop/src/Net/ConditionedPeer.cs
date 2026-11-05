@@ -33,6 +33,10 @@ public sealed class NetConditions
 /// (that would break reliability); it arrives one round trip later, as a resend would, and
 /// holds back everything behind it on its channel. Ordered channels never reorder.
 ///
+/// Delays count <b>simulation</b> time (<see cref="NetClock.Now"/>) by default, not wall-clock
+/// time, so the same conditions give the same network however busy the machine is. Tests can
+/// hand it a <see cref="Clock"/> of their own and step it.
+///
 /// It also counts payload bytes and packets both ways, which is how tests measure bandwidth.
 /// Without conditions it only counts.
 /// </summary>
@@ -80,7 +84,10 @@ public partial class ConditionedPeer : MultiplayerPeerExtension
         inner.PeerDisconnected += OnInnerDisconnected;
     }
 
-    static double Now => Time.GetTicksUsec() / 1_000_000.0;
+    /// <summary>The clock delays are counted on, in seconds. Simulation time unless a test sets its own.</summary>
+    public Func<double> Clock = () => NetClock.Now;
+
+    double Now => Clock();
 
     // Disconnects seen during the inner poll; queued once that poll's packets are in.
     readonly List<int> _justDisconnected = new();

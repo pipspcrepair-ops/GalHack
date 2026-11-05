@@ -60,11 +60,11 @@ public partial class NetPlayer : Node
         Yaw = snap.Yaw;
         Pitch = snap.Pitch;
         Crouch = snap.Crouch;
-        if (buffer) Buffer.Push(stamp / 1000.0, snap, NetClock.Now);
+        if (buffer) Buffer.Push(NetClock.Seconds(stamp), snap, NetClock.Now);
     }
 
     void Push()
     {
-        if (Stamp != 0) Buffer.Push(Stamp / 1000.0, Snap, NetClock.Now);
+        if (Stamp != 0) Buffer.Push(NetClock.Seconds(Stamp), Snap, NetClock.Now);
     }
 }

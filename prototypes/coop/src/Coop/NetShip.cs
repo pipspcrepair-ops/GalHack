@@ -30,7 +30,7 @@ public partial class NetShip : Node
     public const float CargoAsleepInterval = 1f;
 
     public readonly SnapshotBuffer<ShipSnap> Motion = new();
-    public readonly SnapshotBuffer<float[]> CargoBuffer = new();
+    public readonly SnapshotBuffer<float[]> CargoBuffer = new() { HoldWhenStarved = false }; // at rest it comes once a second
     public MultiplayerSynchronizer MotionSync { get; private set; }
     public MultiplayerSynchronizer CargoSync { get; private set; }
 
@@ -62,10 +62,10 @@ public partial class NetShip : Node
 
     public ShipSnap Snap => new() { Pos = Pos, Rot = Rot, Vel = Vel, Spin = Spin };
 
-    void PushMotion() => Motion.Push(Stamp / 1000.0, Snap, NetClock.Now);
+    void PushMotion() => Motion.Push(NetClock.Seconds(Stamp), Snap, NetClock.Now);
 
     void PushCargo()
     {
-        if (Cargo.Length > 0) CargoBuffer.Push(CargoStamp / 1000.0, Cargo, NetClock.Now);
+        if (Cargo.Length > 0) CargoBuffer.Push(NetClock.Seconds(CargoStamp), Cargo, NetClock.Now);
     }
 }
