@@ -1,0 +1,49 @@
+// Ore deposit shapes for the terrain (see ../ORE-NOTES.md for where the ideas came from). The
+// planet generator decides where a deposit is, what ore and how much (its Amount, 0.6 to 1.6);
+// this file decides what the ore body looks like underground.
+//
+//   maxDepth      no ore cell lies deeper than this under the surface above it (the design keeps
+//                 deposits within about 10 m; digging stops at bedrock, 30 m down)
+//   shapes        per shape: volume in cubic metres at Amount 1, and how deep its top sits
+//   grades        richness. A deposit's body starts at a base grade; hot spots inside it build up
+//                 to bountiful. yield multiplies the ore a dug cell gives (machines.json
+//                 oreUnitsPerCell). baseChance picks the base grade.
+//   ores          which shapes each ore grows in, with weights. Commons favour shallow shapes a
+//                 crashed player can dig with the survival tool; rarer ores sit deeper and
+//                 richer, so finding them means digging.
+{
+  "schema": "galhack.deposits",
+  "version": 1,
+  "maxDepth": 12,
+  "shapes": {
+    "pocket": { "volume": 42, "topDepth": [0, 3] },
+    "vein":   { "volume": 38, "topDepth": [0, 2] },
+    "bed":    { "volume": 55, "topDepth": [1, 4] },
+    "deep":   { "volume": 34, "topDepth": [6, 8] }
+  },
+  "grades": [
+    { "grade": "poor",      "baseChance": 0.45, "yield": 0.6 },
+    { "grade": "medium",    "baseChance": 0.55, "yield": 1.0 },
+    { "grade": "rich",      "baseChance": 0.0,  "yield": 1.5 },
+    { "grade": "bountiful", "baseChance": 0.0,  "yield": 2.2 }
+  ],
+  "ores": {
+    "iron-ore":         { "vein": 2, "pocket": 2, "bed": 1 },
+    "copper-ore":       { "vein": 3, "pocket": 1 },
+    "silicon-ore":      { "bed": 3, "pocket": 1 },
+    "carbon-ore":       { "bed": 1 },
+    "ice":              { "bed": 2, "pocket": 2 },
+    "burnstone":        { "bed": 2, "pocket": 1 },
+    "cobalt-ore":       { "vein": 2, "deep": 1 },
+    "magnesium-ore":    { "bed": 2, "pocket": 1 },
+    "neodymium-ore":    { "deep": 2, "vein": 1 },
+    "gold-ore":         { "vein": 3, "deep": 1 },
+    "gravium-ore":      { "deep": 1 },
+    "fold-crystal-raw": { "deep": 2, "pocket": 1 },
+    "emberite-ore":     { "vein": 2, "deep": 2 },
+    "starsilver-ore":   { "deep": 1 },
+    "voidglass-shard":  { "pocket": 2, "deep": 1 },
+    "stormcore-nodule": { "deep": 1 },
+    "rimefire-crystal": { "deep": 2, "vein": 1 }
+  }
+}
