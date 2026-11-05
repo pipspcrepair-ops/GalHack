@@ -184,7 +184,8 @@ public sealed class FaunaGenerator
 
         b.LegThickness = b.LegStyle switch
         {
-            LegStyle.Stilt => b.Width * 0.1f,
+            // Stilts carry real weight: thin poles under a giant read as broken, not menacing.
+            LegStyle.Stilt => b.Width * (form.Plan == BodyPlan.Giant ? 0.2f : 0.13f),
             LegStyle.Splayed => b.Width * 0.11f,
             LegStyle.Roots => b.Width * 0.09f,
             _ => b.Width * 0.25f,
@@ -536,6 +537,12 @@ public static class FaunaQuality
         _ => (0.13f, 0.36f),
     };
 
+    /// <summary>
+    /// Longest legs allowed, as a multiple of body length. Stilts may be long on a small body,
+    /// but a giant on stilts that outreach its own length is a tiny body on poles.
+    /// </summary>
+    public static float MaxLeg(BodyPlan plan, LegStyle style) => style == LegStyle.Stilt ? (plan == BodyPlan.Giant ? 1.2f : 1.7f) : 1.25f;
+
     public static void Clamp(FormDef form, Proportions b)
     {
         float L = b.Size;
@@ -545,8 +552,7 @@ public static class FaunaQuality
         {
             b.Width = Math.Clamp(b.Width, 0.25f * L, 0.8f * L);
             b.Height = Math.Clamp(b.Height, 0.22f * L, 0.75f * L);
-            float maxLeg = b.LegStyle == LegStyle.Stilt ? 2.4f : 1.25f;
-            b.LegLength = Math.Clamp(b.LegLength, 0.25f * L, maxLeg * L);
+            b.LegLength = Math.Clamp(b.LegLength, 0.25f * L, MaxLeg(form.Plan, b.LegStyle) * L);
             b.NeckLength = Math.Min(b.NeckLength, 1.9f * L);
             b.TailLength = Math.Min(b.TailLength, 1.4f * L);
         }
@@ -602,7 +608,7 @@ public static class FaunaQuality
         {
             if (b.Legs % 2 == 1 && form.Legs[0] != form.Legs[1]) problems.Add($"{b.Legs} legs on a form that should have an even number");
             if (b.Legs < 2) problems.Add("a walker with fewer than two legs");
-            if (b.LegLength > (b.LegStyle == LegStyle.Stilt ? 2.4f : 1.25f) * b.Size * 1.001f) problems.Add($"legs {b.LegLength / b.Size:F2} of body length");
+            if (b.LegLength > MaxLeg(s.Plan, b.LegStyle) * b.Size * 1.001f) problems.Add($"legs {b.LegLength / b.Size:F2} of body length");
         }
         if (s.Colors.Pattern == Pattern.Veins && !s.Corrupted && !t.Patterns.Exists(x => x.Id == Pattern.Veins)) problems.Add("veins without the Bloom");
         if (!t.Patterns.Exists(x => x.Id == s.Colors.Pattern) && !s.Corrupted) problems.Add($"pattern {s.Colors.Pattern} is not in the data");

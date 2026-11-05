@@ -587,7 +587,7 @@ public sealed class LeggedRig : Rig
         {
             "walkingplant" => null,
             "skitterer" => new[] { (0f, 0.36f, 0.3f, 0f), (0.15f, 0.46f, 0.36f, 0.02f), (0.45f, 0.4f, 0.34f, 0.04f), (0.56f, 0.2f, 0.2f, 0.06f), (0.66f, 0.44f, 0.42f, 0.12f), (0.84f, 0.56f, 0.52f, 0.16f), (1f, 0.36f, 0.34f, 0.12f) },
-            "titanstilt" => new[] { (0f, 0.5f, 0.26f, 0f), (0.5f, 0.64f, 0.34f, 0.04f), (1f, 0.5f, 0.26f, 0f) },
+            "titanstilt" => new[] { (0f, 0.4f, 0.36f, 0f), (0.3f, 0.56f, 0.5f, 0.06f), (0.65f, 0.6f, 0.52f, 0.04f), (1f, 0.46f, 0.4f, 0f) },
             "tripod" => new[] { (0f, 0.42f, 0.42f, 0f), (0.5f, 0.52f, 0.5f, 0.04f), (1f, 0.42f, 0.4f, 0f) },
             "colossus" => new[] { (0f, 0.4f, 0.42f, 0.04f), (0.28f, 0.54f, 0.58f, 0.12f), (0.6f, 0.52f, 0.5f, 0.02f), (0.85f, 0.46f, 0.46f, 0.04f), (1f, 0.36f, 0.36f, 0.02f) },
             _ when hunter || s.Form == "stalker" => new[] { (0f, 0.36f, 0.42f, 0.04f), (0.25f, 0.48f, 0.55f, 0.06f), (0.58f, 0.3f, 0.34f, 0.12f), (0.82f, 0.4f, 0.4f, 0.08f), (1f, 0.3f, 0.3f, 0.06f) },
@@ -639,7 +639,7 @@ public sealed class LeggedRig : Rig
         (float rHip, float rKnee, float rAnkle, float mat) = b.LegStyle switch
         {
             LegStyle.Splayed => (t * 0.6f, t * 0.42f, t * 0.06f, Mat.Carapace),
-            LegStyle.Stilt => (t * 0.62f, t * 0.42f, t * 0.24f, Mat.Skin),
+            LegStyle.Stilt => (t * 0.66f, t * 0.46f, t * 0.3f, Mat.Skin),
             LegStyle.Roots => (t * 0.7f, t * 0.45f, t * 0.2f, Mat.Skin),
             _ => (t * 0.62f, t * 0.36f, t * 0.24f, Mat.Skin),
         };
@@ -648,6 +648,12 @@ public sealed class LeggedRig : Rig
         // A haunch of muscle where an upright leg meets the body.
         if (b.LegStyle == LegStyle.Upright) up.Add(Shape.Sphere, new Vector3(t * 1.5f, t * 1.9f, t * 1.7f), new Vector3(0, upper * 0.12f, 0), k.Base, 1f, 0f, null, 10);
         if (b.LegStyle == LegStyle.Splayed) up.Add(Shape.Sphere, Vector3.One * rKnee * 2.3f, new Vector3(0, upper, 0), k.Base.Darkened(0.2f), 0.3f, 0f, null, 8, Mat.Carapace);
+        // Stilts get a thick muscled thigh at the hip and an armoured knee cap.
+        if (b.LegStyle == LegStyle.Stilt)
+        {
+            up.Add(Shape.Sphere, new Vector3(t * 1.6f, t * 2.6f, t * 1.6f), new Vector3(0, upper * 0.18f, 0), k.Base, 1f, 0f, null, 10);
+            up.Add(Shape.Sphere, Vector3.One * rKnee * 2.4f, new Vector3(0, upper, 0), k.Accent.Lerp(k.Base, 0.5f), 0.2f, 0f, null, 10, Mat.Carapace);
+        }
         layout.Add(up);
         var lo = new Piece($"leg{i}l") { Shadow = b.Size > 1.2f };
         lo.Taper(Vector3.Zero, new Vector3(0, lower, 0), rKnee, rAnkle, legColor.Darkened(0.12f), 0.4f, 0f, mat);

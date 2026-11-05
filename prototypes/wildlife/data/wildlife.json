@@ -120,8 +120,8 @@
         "behaviours": { "TerritorialGiant": 4, "Grazer": 3 } },
 
       { "id": "titanstilt", "plan": "Giant", "rig": "Legged", "weight": 0.5, "weirdness": 0.7, "noun": "stiltwalker",
-        "size": [5.0, 8.0], "legs": [4, 6], "legStyles": ["Stilt"], "legLength": [1.2, 1.7], "neck": [0.0, 0.5], "tail": [0.0, 0.4],
-        "width": [0.5, 0.7], "height": [0.35, 0.5], "headSize": [0.15, 0.2], "speedScale": 0.55,
+        "size": [5.0, 8.0], "legs": [4, 6], "legStyles": ["Stilt"], "legLength": [0.7, 0.9], "neck": [0.0, 0.5], "tail": [0.0, 0.4],
+        "width": [0.58, 0.75], "height": [0.48, 0.62], "headSize": [0.15, 0.2], "speedScale": 0.55,
         "behaviours": { "TerritorialGiant": 2, "Grazer": 3, "HarmlessOddity": 1 } },
 
       { "id": "walkingplant", "plan": "Oddity", "rig": "Legged", "weight": 0.6, "weirdness": 0.8, "noun": "walking bloom",
