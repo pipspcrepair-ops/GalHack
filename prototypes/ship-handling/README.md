@@ -29,7 +29,7 @@ Mass is in tonnes and thrust in kN, so thrust / mass reads straight as m/s².
 | Turning | Turn rate (°/s) is total gyro torque / mass, never below a floor of 12°/s. Roll is 1.5× faster. Thrusters never add torque, so a lopsided build flies true. |
 | Top speed | Fixed per class: hover 50 m/s; small 70 in air, 130 in space; capital 60 in air, 100 in space. Mass never changes it. Thrust can never push total speed past it, even mid-turn. |
 | Lift margin | Upward thrust (plus hover lift) minus weight on the planet. Negative means it can't take off, and the console says so before anyone tries. In air, climbing acceleration is lift margin / mass. |
-| Flight assist | Always on. Per ship axis the vessel chases stick × top speed. Let go and it brakes with whichever thrusters face the right way (never weaker than 8 m/s²), easing out the last few m/s: smooth, no overshoot. Cruise (C) holds a speed. With the pilot out of the seat (F) the autopilot holds course. In air, wings ease back level when you aren't rolling, so a first ship is forgiving. |
+| Flight assist | Always on. Per ship axis the vessel chases stick × top speed. Let go and it brakes with whichever thrusters face the right way (never weaker than 8 m/s²), easing out the last few m/s: smooth, no overshoot. Cruise (C) holds a speed. With the pilot out of the seat (F) the autopilot holds course. Assist never turns the ship: a flying vessel keeps whatever attitude the pilot leaves it in, in air and in space (no horizon assist, no self-levelling). |
 | Boost | Shift: 1.5× thrust for 1.5 s, then a 4 s cooldown. Never raises top speed. |
 | Bumps | Contacts slide along and glance off (restitution 0.2). Below 8 m/s closing speed: no damage, ever. |
 | Damage | mass × (closing speed − 8)² × 0.001, at the contact point. Ramming uses the reduced mass m₁m₂/(m₁+m₂) and both sides take it. Hull points = 4 per tonne of hull. A ship with none left loses power and falls as a wreck. |
@@ -82,7 +82,7 @@ Things to try: drive the rover over the rock steps east of the pad and up the tw
 
 ## Tunables
 
-Every number lives in [`data/handling.json`](data/handling.json), with a note per section saying what each one means: the planet (gravity, atmosphere ceiling), class top speeds, turning (floor, roll factor, spin-up), assist (brake floor, ease rate, cruise, horizon level), boost, hover (servo gain and limits, look-ahead, step allowance, levelling, slope limit, jump), gear (deploy altitude and speed, landing speed, settle time), contacts (safe speed, damage scale, hull points, restitution, craters) and the parts catalogue (thrust and mass per thruster size, gyro torque, hover lift and ride height, gear length).
+Every number lives in [`data/handling.json`](data/handling.json), with a note per section saying what each one means: the planet (gravity, atmosphere ceiling), class top speeds, turning (floor, roll factor, spin-up), assist (brake floor, ease rate, cruise), boost, hover (servo gain and limits, look-ahead, step allowance, levelling, slope limit, jump), gear (deploy altitude and speed, landing speed, settle time), contacts (safe speed, damage scale, hull points, restitution, craters) and the parts catalogue (thrust and mass per thruster size, gyro torque, hover lift and ride height, gear length).
 
 ## Test it
 
@@ -98,7 +98,7 @@ Runs `tests/HandlingTest.tscn` headless in about 20 s and exits 0 or 1. The pure
 - let go at top speed and each vessel stops within the expected time, with no overshoot
 - boost is ×1.5, lasts its duration, is refused during its cooldown and fires again after
 - lift margin is correct at 0, 3.7, 9.8 and 24 m/s²; an overloaded ship gets the console warning and sinks at its deficit
-- the autopilot holds course, cruise holds speed, horizon assist levels a banked fighter
+- the autopilot holds course, cruise holds speed, and nothing re-orients a flying vessel: a fighter left banked or pitched stays at that attitude for 10 s, in air and in space
 - jink: the fighter strafes more than its own length while a 300 m/s shot crosses 1000 m (and a 350 m/s one crosses 800 m)
 
 Then real vessels on the real planet, through the physics module:

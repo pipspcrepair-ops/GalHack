@@ -22,13 +22,14 @@ public partial class Hud : CanvasLayer
 
     public const string Controls =
         "WASD, mouse   walk and look (fly and steer when seated)\n" +
-        "Space         jump; hold in the air for the jetpack; up when flying\n" +
+        "Space         jump; hold in the air for the jetpack; up when flying or swimming\n" +
         "Shift         sprint; boost when flying\n" +
-        "Ctrl          down when flying\n" +
+        "Ctrl          down when flying or swimming\n" +
         "F             sit in / leave the pilot seat\n" +
         "Q / E         roll        G gear        C cruise\n" +
         "1 / 2 / 3     into the Corsair's cabin / the rover's seat / onto the Corsair's roof\n" +
         "4             spacewalk: the Corsair in orbit, you on its roof in mag boots\n" +
+        "5             a swim: the lake shore in the basin to the east\n" +
         "Y             ship core gravity on / off\n" +
         "K             shoot an engine pod off the Corsair\n" +
         "B / N         blast a crater / dig at the crosshair\n" +
@@ -83,6 +84,9 @@ public partial class Hud : CanvasLayer
             : p.Aboard != null ? $"aboard {p.Aboard.Structure.Name}"
             : "outside";
         s.AppendLine($"{where}   health {p.HealthShare:P0}{(p.Health.Dead ? "  (down: R to start again)" : "")}");
+        // The vitals hook: head under water, the suit breathes its own oxygen.
+        if (p.Underwater) s.AppendLine($"UNDERWATER {p.Body.Water.Surface - p.Body.Position.Y:F1} m: suit on its own oxygen");
+        else if (p.Legs.Swimming) s.AppendLine("swimming   Space up, Ctrl down");
         Ship ship = p.Seated ?? p.Aboard ?? w.Corsair;
         if (ship?.Flight?.Stats is HandlingStats st && !ship.IsWreck)
         {

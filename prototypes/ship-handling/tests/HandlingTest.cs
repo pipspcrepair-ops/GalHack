@@ -196,11 +196,35 @@ public partial class HandlingTest : Node
         Check(hold.Velocity.IsEqualApprox(new Vector3(3f, 0f, -40f)) && Mathf.Abs(cruise.Velocity.Z + 45f) < 1e-3f,
             "with the pilot out of the seat the autopilot holds course; cruise holds 45 m/s hands off");
 
-        // A first ship should be forgiving: bank it and let go, and the wings come back level.
-        var banked = FlightState.At(new Basis(Vector3.Back, Mathf.DegToRad(40f)));
-        for (int i = 0; i < 180; i++) FlightModel.Step(ref banked, PilotInput.LetGo, f, air, _t, Dt);
-        float bank = Mathf.RadToDeg(Mathf.Asin(Mathf.Abs(banked.Orientation.X.Y)));
-        Check(bank < 3f, $"horizon assist: a fighter left at 40° of bank is back to {bank:F1}° within 3 s");
+        // A flying vessel never orients itself: bank it or pitch it, let go of the stick, and it
+        // stays exactly as it was left, in air and in space, seated or on the autopilot.
+        float drift = 0f;
+        string worstCase = "";
+        var attitudes = new (string name, Basis basis)[]
+        {
+            ("40° of bank", new Basis(Vector3.Back, Mathf.DegToRad(40f))),
+            ("30° nose up", new Basis(Vector3.Right, Mathf.DegToRad(30f))),
+            ("25° nose down and 60° of bank", new Basis(Vector3.Right, Mathf.DegToRad(-25f)) * new Basis(Vector3.Back, Mathf.DegToRad(60f))),
+        };
+        foreach (var (name, basis) in attitudes)
+        foreach (FlightConditions where in new[] { air, space })
+        foreach (PilotInput hands in new[] { PilotInput.LetGo, PilotInput.Autopilot })
+        {
+            var left = FlightState.At(basis);
+            left.Velocity = basis * new Vector3(0f, 0f, -30f); // flying on at 30 m/s
+            for (int i = 0; i < 600; i++) FlightModel.Step(ref left, hands, f, where, _t, Dt);
+            // The angle from the sine of the half angle: an arccosine can't resolve hundredths of a degree.
+            Quaternion d = (left.Orientation.GetRotationQuaternion() * basis.GetRotationQuaternion().Inverse()).Normalized();
+            float off = Mathf.RadToDeg(2f * Mathf.Asin(Mathf.Min(1f, new Vector3(d.X, d.Y, d.Z).Length())));
+            if (off >= drift)
+            {
+                drift = off;
+                worstCase = $"{name}, {(where.InAtmosphere ? "air" : "space")}, {(hands.Seated ? "hands off" : "autopilot")}";
+            }
+        }
+        Check(drift < 0.01f,
+            $"no auto-orientation: a fighter left banked or pitched (40° of bank, 30° nose up, 25° down and 60° banked) stays at that attitude for 10 s " +
+            $"in air and in space, hands off or on the autopilot: worst drift {drift:F4}° ({worstCase})");
 
         CheckJink(fighter, f, air);
     }

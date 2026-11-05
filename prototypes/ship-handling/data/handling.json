@@ -26,8 +26,7 @@
     "easeRate": 4,
     "stopBelow": 0.05,
     "cruiseRate": 20,
-    "horizonLevel": 1.5,
-    "_note": "Flight assist brakes with the thrusters facing the right way, never weaker than minBrake (m/s²). The last part of every change eases out at easeRate (1/s), so stops are smooth. cruiseRate is how fast W/S change the cruise speed (m/s per s). horizonLevel (1/s) eases the wings back to level in air when you aren't rolling, so a first ship is forgiving; 0 turns it off."
+    "_note": "Flight assist brakes with the thrusters facing the right way, never weaker than minBrake (m/s²). The last part of every change eases out at easeRate (1/s), so stops are smooth. cruiseRate is how fast W/S change the cruise speed (m/s per s). Assist only ever brakes: it never turns the ship, so a flying vessel keeps whatever attitude the pilot leaves it in."
   },
 
   "boost": {

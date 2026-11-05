@@ -1,0 +1,29 @@
+// Which scattered flora is solid, and the one simple collider each instance gets, in the flora
+// mesh's own units: every instance's scale multiplies them, and its turn turns them. A mesh stands
+// with its foot 0.25 m sunk into the ground.
+//
+//   trunk  an upright cylinder of this radius and height from the mesh's foot, leaning along axis
+//          (trees, cacti, crystals). No canopies: a trunk is what stops you, and stays cheap.
+//   box    a box of these half extents centred cy up the mesh (rocks and boulders).
+//
+// Rocks are solid only if they stand taller than minRockHeight above the ground: anything lower
+// is a pebble you walk over. It is the shared physics module's step height (walking.stepHeight,
+// 0.6 m), the height a walker steps up without a thought; the planet's walker has no step-up yet,
+// so it simply walks through those.
+//
+// wood: what felling one with the survival tool drops. Kinds without wood can't be felled.
+{
+  "minRockHeight": 0.6,
+  "kinds": {
+    "Conifer":       { "trunk": { "radius": 0.3,  "height": 6.0 },  "wood": 4 },
+    "Broadleaf":     { "trunk": { "radius": 0.36, "height": 5.0 },  "wood": 5 },
+    "JungleTree":    { "trunk": { "radius": 0.42, "height": 11.5 }, "wood": 8 },
+    "Palm":          { "trunk": { "radius": 0.27, "height": 7.4, "axis": [0.12, 1, 0] }, "wood": 3 },
+    "GiantMushroom": { "trunk": { "radius": 0.52, "height": 6.5, "axis": [0.08, 1, 0] }, "wood": 4 },
+    "Cactus":        { "trunk": { "radius": 0.36, "height": 3.6 },  "wood": 1 },
+    "Crystal":       { "trunk": { "radius": 0.4,  "height": 3.0, "axis": [0.05, 1, 0.1] } },
+    "IceShard":      { "trunk": { "radius": 0.62, "height": 5.0, "axis": [0.25, 1, -0.1] } },
+    "Rock":          { "box": { "half": [0.95, 0.6, 0.75], "cy": 0.25 } },
+    "LavaRock":      { "box": { "half": [1.1, 0.9, 0.95], "cy": 0.4 } }
+  }
+}

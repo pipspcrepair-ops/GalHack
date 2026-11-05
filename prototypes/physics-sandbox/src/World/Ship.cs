@@ -12,9 +12,10 @@ using Structure = GalHack.Structures.Structure;
 namespace PhysicsSandbox.World;
 
 /// <summary>
-/// A building structure as a body: a vessel flown by the handling model, or a free wreck. One
-/// body, one compound collider built per chunk (see <see cref="StructureCollision"/>), the
-/// structure's own mesh, and its cabin world for anyone aboard. Edits go through
+/// A building structure as a body: a vessel flown by the handling model, a base fixed to the
+/// ground, or a free wreck. One body, one compound collider built per chunk (see
+/// <see cref="StructureCollision"/>), the structure's own mesh, and its cabin world for anyone
+/// aboard. Edits go through
 /// <see cref="ApplyEdits"/>, which rebuilds only dirty chunks and keeps mass, centre of mass and
 /// the four numbers in step with the blocks.
 /// </summary>
@@ -72,6 +73,7 @@ public sealed class Ship
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(s),
+            Class = StructureBridge.ClassOf(new StructureVessel(s, world.Handling)),
             Shape = StructureBridge.ShapeOf(s),
             Position = at,
             Rotation = MathX.Yaw(heading),
@@ -89,6 +91,37 @@ public sealed class Ship
 
         if (landed) controller.PlaceLanded(body, at, heading);
         else controller.Place(body, at, heading);
+        ship.Binding.Teleport();
+        ship.Register();
+        return ship;
+    }
+
+    /// <summary>
+    /// A structure in base mode: one fixed body that nothing ever moves (no wind, no rescue, no
+    /// ram), a static collider on the hull layer for vessels to land and park on.
+    /// </summary>
+    public static Ship SpawnBase(SandboxWorld world, Structure s, N.Vector3 at, float heading)
+    {
+        MassProperties mass = StructureBridge.Mass(s);
+        Body body = world.Physics.Register(new BodySpec
+        {
+            Kind = BodyKind.Base,
+            Motion = GalHack.Physics.Motion.Fixed,
+            Label = s.Name,
+            Mass = mass.Mass,
+            CenterOfMass = mass.CenterOfMass,
+            DragArea = StructureBridge.DragArea(s),
+            Shape = StructureBridge.ShapeOf(s),
+            Position = at,
+            Rotation = MathX.Yaw(heading),
+        });
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = world.Physics.Zone.Strength };
+        var ship = new Ship(world, s, body);
+        var pad = new StaticBody3D { Name = s.Name.Replace(" ", "") };
+        world.AddChild(pad);
+        ship.Binding = world.Host.Bind(body, new FixedBinding(pad));
+        ship.HullShapes = new StructureShapes(pad);
+        ship.Furnish(pad);
         ship.Binding.Teleport();
         ship.Register();
         return ship;

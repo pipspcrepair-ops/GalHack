@@ -20,6 +20,12 @@ public partial class StuckGuard : Node
     public Walker Player;
     public bool Enabled = true;
 
+    /// <summary>
+    /// Solid flora: where a body's feet should go if its core is inside a tree trunk or a boulder
+    /// (from feet, height and radius), or null if it isn't inside one. Trunks aren't in the density field.
+    /// </summary>
+    public Func<Vector3, float, float, Vector3?> OutOfSolids;
+
     /// <summary>Who was moved, from where, to where.</summary>
     public event Action<Vector3, Vector3> Rescued;
     public int Rescues { get; private set; }
@@ -33,14 +39,28 @@ public partial class StuckGuard : Node
     {
         ChunkStore store = Store?.Invoke();
         if (!Enabled || store == null || Player == null || !Player.IsInsideTree() || Player.ProcessMode == ProcessModeEnum.Disabled) return;
-        if (!IsInside(store))
+        bool terrain = IsInside(store);
+        Vector3? beside = terrain ? null : InsideSolid();
+        if (!terrain && beside == null)
         {
             _stuckTicks = 0;
             return;
         }
         if (++_stuckTicks < TicksBeforeRescue) return;
         _stuckTicks = 0;
-        RescueNow(store);
+        if (terrain) RescueNow(store);
+        else MoveOut(beside.Value);
+    }
+
+    /// <summary>Where the player should be if they are inside a trunk or a boulder now, or null.</summary>
+    public Vector3? InsideSolid() => OutOfSolids?.Invoke(Player.GlobalPosition, Player.CurrentHeight, Walker.Radius);
+
+    void MoveOut(Vector3 to)
+    {
+        Vector3 from = Player.GlobalPosition;
+        Player.Teleport(to);
+        Rescues++;
+        Rescued?.Invoke(from, to);
     }
 
     public bool IsInside(ChunkStore store) => StuckResolver.IsInsideTerrain(store, ToN(Player.GlobalPosition), Current);

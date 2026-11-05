@@ -65,7 +65,6 @@ public sealed class Tunables
         public float EaseRate { get; set; }
         public float StopBelow { get; set; }
         public float CruiseRate { get; set; }
-        public float HorizonLevel { get; set; }
     }
 
     public sealed class BoostData

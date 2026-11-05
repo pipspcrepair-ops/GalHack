@@ -18,8 +18,8 @@ namespace PhysicsSandbox.World;
 /// <summary>
 /// Everything the sandbox simulates, wired together through the shared physics module and
 /// nothing else: terrain-digging's chunk store (with the sandbox's landscape), building's
-/// structures flown by ship-handling's handling model, weather's wind and tornadoes, crates and
-/// a player. The playable scene and the tests both build on this; it has no camera, HUD or input.
+/// structures flown by ship-handling's handling model, weather's wind and tornadoes, a lake,
+/// crates and a player. The playable scene and the tests both build on this; it has no camera, HUD or input.
 ///
 /// Data is read from where each prototype keeps it (handling.json, building's data folder,
 /// weather.json) and the shared module's own physics.json, never copied.
@@ -43,6 +43,9 @@ public partial class SandboxWorld : Node3D
     public ChunkStore Store { get; private set; }
     public TerrainBridge Terrain { get; private set; }
     public TerrainView TerrainView { get; private set; }
+
+    /// <summary>The crates there are, by name (data/crates.json).</summary>
+    public IReadOnlyDictionary<string, CrateKind> CrateKinds { get; private set; }
 
     public readonly List<Ship> Ships = new();
     public readonly List<Crate> Crates = new();
@@ -70,6 +73,9 @@ public partial class SandboxWorld : Node3D
         Catalogue = StructureBridge.LoadCatalogue(DataPath("prototypes", "building", "data"),
             ProjectSettings.GlobalizePath("res://data/vessel-parts.json"));
         WeatherData weather = WeatherData.Parse(File.ReadAllText(DataPath("prototypes", "weather", "data", "weather.json")));
+        CrateKinds = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, CrateKind>>(
+            File.ReadAllText(ProjectSettings.GlobalizePath("res://data/crates.json")),
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
         Store = new ChunkStore(new SandboxTerrain(Seed));
         Terrain = new TerrainBridge(Store);
@@ -83,6 +89,8 @@ public partial class SandboxWorld : Node3D
         Physics.Zone.Strength = Handling.Planet.Gravity;
         Physics.Zone.Ceiling = Handling.Planet.AtmosphereCeiling;
         Physics.Terrain = Terrain;
+        Physics.Water = new LakeWater((SandboxTerrain)Store.Source);
+        Lake.Build(this, Visuals);
         Terrain.World = Physics;
         Physics.StuckFields.Add(new TerrainField(Store) { Ceiling = Physics.Zone.Ceiling });
         Host = new PhysicsHost(Physics);
@@ -129,15 +137,29 @@ public partial class SandboxWorld : Node3D
     public Ship SpawnVessel(string file, N.Vector3 at, float heading, bool landed) => Track(Ship.SpawnVessel(this, LoadBlueprint(file), at, heading, landed));
 
     /// <summary>A vessel standing on its gear on the ground at a spot, settled and not simulating.</summary>
-    public Ship SpawnLanded(string file, N.Vector2 spot, float heading)
+    public Ship SpawnLanded(string file, N.Vector2 spot, float heading) => SpawnLandedAt(file, Ground(spot.X, spot.Y), heading);
+
+    /// <summary>
+    /// A vessel standing on its gear with its feet at a point (the ground, or a deck: on a base or
+    /// a capital ship it parks there), settled and not simulating.
+    /// </summary>
+    public Ship SpawnLandedAt(string file, N.Vector3 footing, float heading)
     {
         Structure s = LoadBlueprint(file);
         float feet = StructureBridge.ShapeOf(s).FeetBelowOrigin;
         float legs = 0f;
         var spec = new StructureVessel(s, Handling);
         foreach (GearSpec g in spec.LandingGear) legs = System.MathF.Max(legs, -g.Position.Y + g.Length);
-        N.Vector3 at = Ground(spot.X, spot.Y) + N.Vector3.UnitY * (System.MathF.Max(feet, legs) + 0.02f);
+        N.Vector3 at = footing + N.Vector3.UnitY * (System.MathF.Max(feet, legs) + 0.02f);
         return Track(Ship.SpawnVessel(this, s, at, heading, landed: true));
+    }
+
+    /// <summary>A structure in base mode, fixed where it is put, its keel at <paramref name="at"/>'s height.</summary>
+    public Ship SpawnBase(string file, N.Vector3 at, float heading)
+    {
+        Structure s = LoadBlueprint(file);
+        float keel = StructureBridge.ShapeOf(s).FeetBelowOrigin;
+        return Track(Ship.SpawnBase(this, s, at + N.Vector3.UnitY * keel, heading));
     }
 
     Ship Track(Ship ship)
