@@ -259,6 +259,8 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
+        // The place seen from the bunker's way out, on the compass until you have been there.
+        if (Game.Bunker?.Landmark is Vector3 seen && Game.Bunker.Poi != null && survivor.WorldFeet.DistanceTo(seen) > 60f) Mark(seen, Game.Bunker.Poi.Name.ToUpperInvariant(), C.Accent);
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
         if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
@@ -323,7 +325,10 @@ public partial class Visor : CanvasLayer
         if (_time < _hitUntil)
             foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
                 _hud.DrawLine(c + d * 7 * s, c + d * 15 * s, C.Danger, 3 * s);
-        string label = Game.Pack.Hand switch
+        // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
+        // build tool's verdict: never where you are.
+        string label = Game.UsePrompt();
+        if (string.IsNullOrEmpty(label)) label = Game.Pack.Hand switch
         {
             HandKind.Tool => Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,

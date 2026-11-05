@@ -43,6 +43,7 @@ public sealed partial class Staging
         IEnumerable<int> script = view switch
         {
             "bunker" => BunkerView(),
+            "skysweep" => SkySweep(),
             "climb" => Climb(),
             "dig" => Dig(),
             "build" => Build(half: true),

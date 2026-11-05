@@ -95,6 +95,26 @@ public partial class Game
         Say("Nothing to use here", Tones.Caution);
     }
 
+    /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
+    public string UsePrompt()
+    {
+        if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
+        if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
+        Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
+        bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
+        if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
+        if (!hit) return "";
+        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
+        if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
+        {
+            BlockType type = v.Structure.TypeOf(b);
+            if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
+            if (type.IsCockpit) return "F  Take the seat";
+            if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
+        }
+        return "";
+    }
+
     /// <summary>Opens a container beside your bag in the inventory view.</summary>
     public void Open(OpenContainer c)
     {

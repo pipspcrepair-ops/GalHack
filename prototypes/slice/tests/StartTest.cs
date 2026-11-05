@@ -134,7 +134,10 @@ public partial class StartTest : Node
         foreach (int x in Watched(play.WakeAndLeave(Check, $"{world.Name}, seed {world.Seed}: "))) yield return x;
         Check(rescues == 0 && worstStep < 1.5f, $"{world.Name}, seed {world.Seed}: no teleports (largest move in a tick {worstStep:F2} m), never rescued");
         Bunker b = game.Bunker;
-        GD.Print($"  ({b.Steps} steps; the start site {(b.Landmark is Vector3 l ? $"faces a skyline {l.DistanceTo(b.Outside):F0} m off" : "has no skyline")}; {game.Stats.Seconds:F0} s of play)");
+        Check(b.Poi != null && b.SeesPoi(game.Zone) && b.Landmark is Vector3 seen && new Vector2(seen.X - b.Outside.X, seen.Z - b.Outside.Z).Length() is >= 300f and <= 1200f
+              && b.Poi.Instance?.State != PoiGenerator.Gen.PoiState.Active,
+            $"{world.Name}, seed {world.Seed}: from the way out, {b.Poi?.Name} ({b.Poi?.Instance?.State}) in clear view {(b.Landmark is Vector3 lm ? new Vector2(lm.X - b.Outside.X, lm.Z - b.Outside.Z).Length() : 0):F0} m off");
+        GD.Print($"  ({b.Steps} steps; {game.Stats.Seconds:F0} s of play)");
         game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
     }

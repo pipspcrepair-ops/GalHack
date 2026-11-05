@@ -50,7 +50,7 @@ public sealed class CoreSection : IMenuSection
         Vector3 feet = _game.Survivor.WorldFeet;
         foreach (Vessel v in _game.Zone.Vessels)
         {
-            if (v.IsWreck || v.IsRuin || v.Structure.Core == null) continue;
+            if (v.IsWreck || v.Structure.Core == null) continue;
             float d = _game.Survivor.Aboard == v || _game.Survivor.Seated == v ? -1f : v.DistanceFromHull(v.Body.ToLocal(feet.ToNumerics()), Reach + 1f);
             if (d <= Reach) near.Add((v, d));
         }

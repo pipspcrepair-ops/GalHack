@@ -496,13 +496,19 @@ public partial class SliceTest : Node
         GalHack.Items.Bill pack = _game.Pack.Storage.Contents;
         var spent = new Dictionary<string, int>(_game.Builder.Spent);
         double organics = _game.Suit.Kit.Organics;
-        Vector3 pad = FlatSpot(_game.Start, 30f, 2.5f);
-        Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
-        foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
-        foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        Vessel twin = _game.Builder.Underway;
+        Vessel twin = null;
+        // Another pad if the first won't take it (a slope, a place's pad, something in the way).
+        for (int attempt = 0; attempt < 3 && twin == null; attempt++)
+        {
+            Vector3 pad = FlatSpot(_game.Start, 30f + attempt * 15f, 2.5f + attempt * 1.3f);
+            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
+            foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
+            foreach (int x in _drive.Tap(Key.Key4)) yield return x;
+            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+            foreach (int x in _drive.Click()) yield return x;
+            twin = _game.Builder.Underway;
+            if (twin == null) GD.Print($"  (the blueprint at {pad}: {_game.Builder.Verdict})");
+        }
         foreach (int x in _drive.HoldPrimary(null, 2400, () => _game.Builder.Underway == null)) yield return x;
         Check(twin != null && twin.Structure.Count == _game.StarterPlan.Count,
             $"Creative builds the same blueprint: {twin?.Structure.Count} blocks");
@@ -630,6 +636,11 @@ public partial class SliceTest : Node
         GD.Print("-- determinism: a hop flown twice --");
         Vessel v = _skiff;
         if (v == null || _game.Survivor.Seated != v) yield break;
+        if (v.Controller == null)
+        {
+            Fail($"the Skiff has no flight controller to replay with (its body: {v.Body.Kind}, {v.Body.Motion}, controller {v.Body.Controller?.GetType().Name ?? "none"})");
+            yield break;
+        }
         N.Vector3 at = v.Body.Position;
         N.Quaternion rot = v.Body.Rotation;
         var runs = new List<List<N.Vector3>>();
@@ -638,6 +649,11 @@ public partial class SliceTest : Node
         _game.Zone.Physics.ForceProviders.Clear();
         for (int run = 0; run < 2; run++)
         {
+            if (v.Controller == null)
+            {
+                Fail($"the Skiff lost its flight controller in hop {run} (its body: {v.Body.Kind}, {v.Body.Motion}, {v.Structure.Count} blocks, damage {v.Body.Damage:F2}, at {v.Body.Position})");
+                break;
+            }
             v.Controller.PlaceLanded(v.Body, at, MathX.Heading(rot));
             v.Body.Rotation = rot;
             v.Flight.State = FlightState.At(rot.ToBasis());
@@ -646,9 +662,11 @@ public partial class SliceTest : Node
             var track = new List<N.Vector3>();
             for (int i = 0; i < 240; i++)
             {
-                _game.Controls.Hold(Key.Space, i < 100);
-                _game.Controls.Hold(Key.W, i is > 60 and < 140);
-                _game.Controls.Look = new Vector2(i is > 80 and < 120 ? 3f : 0f, 0f);
+                // Up, a little way forward with a turn, and down again under power onto the same ground.
+                _game.Controls.Hold(Key.Space, i < 70);
+                _game.Controls.Hold(Key.W, i is > 40 and < 90);
+                _game.Controls.Hold(Key.Ctrl, i is > 150 and < 200);
+                _game.Controls.Look = new Vector2(i is > 50 and < 80 ? 3f : 0f, 0f);
                 yield return 0;
                 track.Add(v.Body.Position);
             }

@@ -110,16 +110,14 @@ public sealed class SurvivalTool
         TargetLabel = "";
         if (OnBlock)
         {
-            TargetLabel = block.Vessel != null ? block.Vessel.Name.ToUpperInvariant() : "";
-            return;
+            return; // a structure's block: nothing by the crosshair (where you are is on the CORE tab)
         }
         if (!HasTarget) return;
         Target = cell;
         TargetVerdict = terrain.Check(cell, EditKind.Tool);
         CellMaterial m = terrain.Store.MaterialAt(cell);
-        TargetLabel = TargetVerdict == Verdict.Bedrock ? "BEDROCK"
-            : m == CellMaterial.Ore ? (OreOf(_zone.Planet.Source.OreKindAt(cell))?.Name ?? "Ore").ToUpperInvariant()
-            : m.Label().ToUpperInvariant();
+        // Only ore is named by the crosshair: something you can take (plain ground says nothing).
+        TargetLabel = m == CellMaterial.Ore && TargetVerdict != Verdict.Bedrock ? (OreOf(_zone.Planet.Source.OreKindAt(cell))?.Name ?? "Ore").ToUpperInvariant() : "";
     }
 
     // ---- Gather --------------------------------------------------------------------------------

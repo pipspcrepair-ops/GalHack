@@ -74,7 +74,11 @@ public sealed class Vessel
 
     public bool IsWreck => Body.Kind == BodyKind.Wreck;
 
-    /// <summary>A ruin (the start's bunker): walked in and scavenged, never built on, never a core of yours.</summary>
+    /// <summary>
+    /// The start's bunker: an ordinary structure of ordinary blocks, flagged only so it is named
+    /// and marked as the bunker. Build onto it, make it part of your first base, or take it apart
+    /// for its materials (every block refunds its bill).
+    /// </summary>
     public bool IsRuin { get; set; }
     /// <summary>A structure in base mode, anchored where it was placed: never moves (shared physics' fixed body).</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;

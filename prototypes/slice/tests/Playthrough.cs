@@ -144,6 +144,7 @@ public sealed class Playthrough
         }
         Vector3 f = Game.Survivor.WorldFeet;
         float gone = new Vector2(f.X - b.Outside.X, f.Z - b.Outside.Z).Length();
+        if (gone < 50f) GD.Print($"  (walking away: from {b.Outside} toward {away}, stopped at {f}, on floor {Game.Survivor.Body.OnFloor}, the ground there {Game.Zone.GroundAt(f.X, f.Z).Y:F1}, inside the bunker {b.Inside(f, Game.Zone)})");
         check(gone >= 50f, $"{label}and walks {gone:F0} m away from it (feet {f.Y - Game.Zone.GroundAt(f.X, f.Z).Y:+0.0;-0.0} m from the ground)");
         for (int i = crumbs.Count - 1; i >= 0; i -= 2) foreach (int x in Drive.WalkTo(crumbs[i], 1.2f, 20f, dig: false)) yield return x;
         foreach (int x in Drive.WalkTo(b.Outside, 0.8f, 90f, dig: false)) yield return x;
@@ -170,6 +171,8 @@ public sealed class Playthrough
                 Vector3 p = from + dir * d;
                 float h = Game.Zone.GroundAt(p.X, p.Z).Y;
                 wet |= h < 1.5f;
+                // Not back over the bunker: its stairwell is a trench the natural ground doesn't show.
+                if (Game.Bunker != null && Game.Bunker.Over(p, 3f)) wet = true;
                 worst = MathF.Max(worst, MathF.Abs(h - last) / 2f);
                 last = h;
             }
@@ -328,7 +331,7 @@ public sealed class Playthrough
     readonly HashSet<(int, int)> _triedDeposits = new();
 
     /// <summary>The nearest deposit of a kind not dug at yet, on dry ground (its ore body's centre), or null.</summary>
-    public Vector3? NextDeposit(DepositKind kind, float within = 700f)
+    public Vector3? NextDeposit(DepositKind kind, float within = 700f, bool retry = false)
     {
         SurfaceZone zone = Game.Zone;
         Vector3 from = Game.Survivor.WorldFeet;
@@ -340,7 +343,10 @@ public sealed class Playthrough
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             // Dry, and near enough the surface for the survival tool (it can't cut deep rock).
-            if (_triedDeposits.Contains(((int)at.X, (int)at.Z)) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            if (retry && NearestOre(at, at, kind) == null) continue; // dug out
+            // Not in or beside a place (its rooms are dug into the ground under it).
+            if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f)) continue;
             if (Game.Bunker != null && Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue; // dug through by the bunker
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
             if (dist < bestD) { bestD = dist; best = at; }
@@ -349,13 +355,13 @@ public sealed class Playthrough
     }
 
     /// <summary>Digs ore of a kind out of the nearest deposits until the bag holds enough.</summary>
-    public IEnumerable<int> Gather(DepositKind kind, int enough)
+    public IEnumerable<int> Gather(DepositKind kind, int enough, float within = 700f, bool retry = false)
     {
         ItemDef ore = Game.Tool.OreOf(kind);
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int deposit = 0; deposit < 8 && Pack[ore.Id] < enough; deposit++)
         {
-            if (NextDeposit(kind) is not Vector3 at)
+            if (NextDeposit(kind, within, retry) is not Vector3 at)
             {
                 Log($"no more {kind} deposits within 700 m");
                 yield break;
@@ -410,18 +416,26 @@ public sealed class Playthrough
     public IEnumerable<int> CutPlant()
     {
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
-        Vector3 feet = Game.Survivor.WorldFeet;
-        var plant = Game.Zone.Streamer.FloraNear(feet, 150f).Where(p => p.Root.Y > 0.6f).OrderBy(p => p.Root.DistanceTo(feet)).FirstOrDefault();
-        if (plant.Id == 0) yield break;
-        foreach (int x in Drive.WalkTo(plant.Root, 1.8f, 40f)) yield return x;
+        var tried = new HashSet<long>();
         int cut = Game.Tool.PlantsCut;
-        for (int i = 0; i < 6 && Game.Tool.PlantsCut == cut; i++)
+        // The nearest plant you can walk up to; the next one if a bank or a cliff is in the way.
+        for (int attempt = 0; attempt < 4 && Game.Tool.PlantsCut == cut; attempt++)
         {
-            Drive.Face(plant.Root + Vector3.Up * 0.9f);
-            Controls.Primary = true;
-            yield return 0;
+            Vector3 feet = Game.Survivor.WorldFeet;
+            var plant = Game.Zone.Streamer.FloraNear(feet, 150f)
+                .Where(p => p.Root.Y > 0.6f && !tried.Contains(p.Id) && MathF.Abs(p.Root.Y - feet.Y) < 4f)
+                .OrderBy(p => p.Root.DistanceTo(feet)).FirstOrDefault();
+            if (plant.Id == 0) yield break;
+            tried.Add(plant.Id);
+            foreach (int x in Drive.WalkTo(plant.Root, 1.8f, 40f)) yield return x;
+            for (int i = 0; i < 6 && Game.Tool.PlantsCut == cut; i++)
+            {
+                Drive.Face(plant.Root + Vector3.Up * 0.9f);
+                Controls.Primary = true;
+                yield return 0;
+            }
+            Controls.Primary = false;
         }
-        Controls.Primary = false;
         foreach (int x in Drive.Wait(20)) yield return x;
     }
 
@@ -635,7 +649,7 @@ public sealed class Playthrough
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
-                             && (Game.Bunker == null || Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).All(w => new Vector2(w.X - g.X, w.Z - g.Z).Length() > 9f));
+                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
                 if (h0 > 1f && worst < allow && clear) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);

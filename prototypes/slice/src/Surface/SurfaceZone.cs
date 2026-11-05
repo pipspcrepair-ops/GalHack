@@ -114,8 +114,11 @@ public partial class SurfaceZone : Node3D
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
+        Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
+        AddChild(Pois);
         PlanetSpec spec = Spec;
-        _building = Task.Run(() => PlanetWorld.Build(spec, catalog: null));
+        PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
+        _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
     }
 
     // ---- Arriving --------------------------------------------------------------------------
@@ -140,6 +143,7 @@ public partial class SurfaceZone : Node3D
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
 
+        Pois.Build(Planet);
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
         Sea.MaterialOverride = WaterMaterial(sea: true);
@@ -155,6 +159,13 @@ public partial class SurfaceZone : Node3D
     /// Null, or returning null: the generator's landing site.
     /// </summary>
     public Func<Vector3?> PickStart;
+
+    /// <summary>The places on the planet (ruins, wrecks, abandoned works), drawn by planet-surface's POI layer.</summary>
+    public PlanetSurface.Poi.PoiLayer Pois { get; private set; }
+
+    static PlanetSurface.Poi.PoiCatalog _poiCatalog;
+    /// <summary>The POI generator's families and pieces, read once.</summary>
+    public static PlanetSurface.Poi.PoiCatalog PoiCatalog => _poiCatalog ??= PlanetSurface.Poi.PoiCatalog.Load(GameData.Proto("poi-generator", "data"));
 
     /// <summary>Where the game starts, on the ground.</summary>
     public Vector3 Start { get; private set; }

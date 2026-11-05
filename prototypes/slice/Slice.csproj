@@ -53,6 +53,8 @@
     <Compile Include="..\planet-surface\src\Sky\**\*.cs" />
     <Compile Include="..\planet-surface\src\World\**\*.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiLayer.cs" />
+    <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
     <Compile Include="..\planet-surface\src\Fx\**\*.cs" />
     <Compile Include="..\planet-surface\src\WeatherView\IWeatherScene.cs" />
     <Compile Include="..\planet-surface\src\WeatherView\LightningFx.cs" />

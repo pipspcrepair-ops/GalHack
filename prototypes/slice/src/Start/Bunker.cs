@@ -19,17 +19,20 @@ namespace Slice.Start;
 
 /// <summary>
 /// Where every game starts: a small cryopod chamber buried at the start site, where the castaway
-/// slept through the collapse. Theirs is the only pod that worked; the other sleepers are dead.
+/// slept through the collapse, a century or two ago, sealed in ever since. Theirs is the only pod
+/// that worked; the other sleepers died in theirs.
 /// A stairwell, its top end fallen open to the sky, climbs from the chamber's door to the
 /// surface. The chamber is a ruin: its locker holds the starting kit, but it is too small and
-/// broken to live in, so nothing can be built onto it and it never shows as a core.
+/// broken to live in as it is, but it is built of ordinary blocks: build onto it, make it part of
+/// your first base, or take it apart for materials (each block refunds its bill).
 ///
 /// It is a fixed small-grid structure (the slice's own blocks: steel walls, a locker, lights)
 /// set into rooms dug out of the terrain through the terrain's edit API before any ground
 /// streams in, so the floor, walls and stairs are always solid and the ground around them is
 /// whole. The site is searched near the generator's landing site on any seed: dry, above the
 /// sea, deep enough for earth over the roof, nothing in the way of the stairs, and the
-/// stairwell turned to face the most striking skyline within 300 to 1,200 m (a call to adventure).
+/// stairwell turned to face a place in view from its top (a ruin, a wreck, an abandoned works) 300 to
+/// 1,200 m off: a call to adventure.
 /// </summary>
 public sealed class Bunker
 {
@@ -77,6 +80,15 @@ public sealed class Bunker
     public static Vector3 ExitOf(Site site) =>
         (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0.25f + site.Steps * Cell, StepZ(site.Steps) - 4f))).ToGodot();
 
+    /// <summary>Whether a point (at any height) is over the bunker's chamber or stairwell, or within a margin of them.</summary>
+    public bool Over(Vector3 p, float margin)
+    {
+        N.Vector3 l = MathX.Unrotate(MathX.Yaw(Heading), p.ToNumerics() - Origin);
+        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f + margin && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f + margin;
+        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f + margin && l.Z <= -RoomZ * Cell && l.Z >= StepZ(Steps) - 0.5f - margin;
+        return room || stairs;
+    }
+
     /// <summary>Whether a point is down in the bunker: its chamber or its stairwell, below the ground's surface.</summary>
     public bool Inside(Vector3 p, SurfaceZone zone)
     {
@@ -87,7 +99,8 @@ public sealed class Bunker
         return room || stairs;
     }
 
-    /// <summary>The skyline the stairs face, if one was found (a peak or a ridge 300 to 1,200 m off).</summary>
+    /// <summary>The place the stairs face, in view 300 to 1,200 m off, and the point on it they look at.</summary>
+    public PlanetSurface.Poi.PoiSite Poi { get; private set; }
     public Vector3? Landmark { get; private set; }
     public CryoPod Mine { get; private set; }
     public readonly List<CryoPod> Dead = new();
@@ -106,11 +119,11 @@ public sealed class Bunker
     // ---- Finding a site --------------------------------------------------------------------------
 
     /// <summary>A site found: where the room's floor centre goes, which way the stairs climb, and how many steps.</summary>
-    public readonly record struct Site(N.Vector3 Origin, float Heading, int Steps, Vector3? Landmark, float FromLanding);
+    public readonly record struct Site(N.Vector3 Origin, float Heading, int Steps, Vector3? Landmark, float FromLanding, PlanetSurface.Poi.PoiSite Poi = null);
 
     /// <summary>
     /// Searches outward from a point (the generator's landing site) for a place to dig the
-    /// bunker: the first ring that has one wins, and on it the stairs that face the skyline best.
+    /// bunker: the first ring that has one wins, and on it the stairs that face a place in view best.
     /// </summary>
     public static Site? FindSite(SurfaceZone zone, Vector3 near, int maxRings = 90)
     {
@@ -131,28 +144,70 @@ public sealed class Bunker
             {
                 float a = i * MathF.Tau / around + ring * 0.37f;
                 var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-                Vector3? landmark = Skyline(zone, p);
-                float toward = landmark is Vector3 l ? MathF.Atan2(-(l.X - p.X), -(l.Z - p.Z)) : 0f;
-                // The stairs facing the skyline first, then turned away from it bit by bit.
-                foreach (float turn in new[] { 0f, 0.6f, -0.6f, 1.3f, -1.3f, 2.1f, -2.1f, MathF.PI })
+                // A call to adventure: a place (no faction holds anything on a start world) in
+                // view from the way out, 300 to 1,200 m off. The stairs face it, or turn from it a little.
+                foreach (var (poi, target) in PoisNear(zone, p, 260f, 1260f))
                 {
-                    float heading = toward + turn;
-                    if (Fit(zone, p, heading, strict) is not (N.Vector3 origin, int steps)) continue;
-                    var site = new Site(origin, heading, steps, landmark, r);
-                    if (!Diggable(zone, site)) continue;
-                    float score = steps + MathF.Abs(turn) * 6f;
-                    if (score < bestScore)
+                    float toward = MathF.Atan2(-(target.X - p.X), -(target.Z - p.Z));
+                    Site? found = null;
+                    foreach (float turn in new[] { 0f, 0.6f, -0.6f, 1.3f, -1.3f })
                     {
-                        bestScore = score;
-                        best = site;
+                        float heading = toward + turn;
+                        if (Fit(zone, p, heading, strict) is not (N.Vector3 origin, int steps)) continue;
+                        var site = new Site(origin, heading, steps, target, r, poi);
+                        Vector3 exit = ExitOf(site), eye = exit + Vector3.Up * 1.6f;
+                        float d = new Vector2(target.X - exit.X, target.Z - exit.Z).Length();
+                        if (d < 300f || d > 1200f || !LineOfSight(zone, eye, target) || !Diggable(zone, site)) continue;
+                        float score = steps + MathF.Abs(turn) * 6f;
+                        if (score < bestScore)
+                        {
+                            bestScore = score;
+                            best = site;
+                        }
+                        found = site;
+                        break;
                     }
-                    break;
+                    if (found != null) break;
                 }
             }
             if (best != null) return best;
         }
         return null;
     }
+
+    /// <summary>The ruins, wrecks and abandoned places within a distance band of a point, nearest first, each with the point to look at (most of the way up it).</summary>
+    static IEnumerable<(PlanetSurface.Poi.PoiSite poi, Vector3 target)> PoisNear(SurfaceZone zone, Vector3 p, float from, float to)
+    {
+        var found = new List<(PlanetSurface.Poi.PoiSite, Vector3, float)>();
+        foreach (PlanetSurface.Poi.PoiSite site in zone.Planet.Pois)
+        {
+            if (site.Instance?.State == PoiGenerator.Gen.PoiState.Active) continue; // nobody holds anything on a start world
+            var lo = site.Footprint.Min;
+            var hi = site.Footprint.Max;
+            float tall = MathF.Max(4f, hi.Y - site.Origin.Y);
+            var c = new Vector3((lo.X + hi.X) * 0.5f, site.Origin.Y + tall * 0.6f, (lo.Z + hi.Z) * 0.5f);
+            c = zone.Planet.NearestCopy(c, p);
+            float d = new Vector2(c.X - p.X, c.Z - p.Z).Length();
+            if (d >= from && d <= to) found.Add((site, c, d));
+        }
+        foreach (var (site, c, _) in found.OrderBy(f => f.Item3)) yield return (site, c);
+    }
+
+    /// <summary>Whether the ground leaves a clear line from an eye to a point (the last stretch, round the place itself, aside).</summary>
+    public static bool LineOfSight(SurfaceZone zone, Vector3 eye, Vector3 target)
+    {
+        Vector3 d = target - eye;
+        float len = d.Length();
+        for (float t = 3f; t < len - 20f; t += 5f)
+        {
+            Vector3 q = eye + d * (t / len);
+            if (zone.GroundAt(q.X, q.Z).Y > q.Y - 0.5f) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The place the way out looks at is still in view from it.</summary>
+    public bool SeesPoi(SurfaceZone zone) => Landmark is Vector3 l && LineOfSight(zone, Outside + Vector3.Up * 1.6f, l);
 
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>
     static (N.Vector3 origin, int steps)? Fit(SurfaceZone zone, Vector3 p, float heading, bool strict)
@@ -207,31 +262,6 @@ public sealed class Bunker
         return true;
     }
 
-    /// <summary>
-    /// The most striking thing on the skyline from a spot, 300 to 1,200 m off: the ground that
-    /// rises highest above the eye for its distance. Null on dead-flat ground.
-    /// </summary>
-    static Vector3? Skyline(SurfaceZone zone, Vector3 p)
-    {
-        float eye = zone.GroundAt(p.X, p.Z).Y + 1.6f, best = 0.02f;
-        Vector3? found = null;
-        for (int i = 0; i < 24; i++)
-        {
-            float a = i * MathF.Tau / 24f;
-            for (float d = 300f; d <= 1200f; d += 150f)
-            {
-                var q = new Vector3(p.X + MathF.Cos(a) * d, 0f, p.Z + MathF.Sin(a) * d);
-                float h = zone.GroundAt(q.X, q.Z).Y;
-                float rise = (h - eye) / d;
-                if (rise > best)
-                {
-                    best = rise;
-                    found = new Vector3(q.X, h, q.Z);
-                }
-            }
-        }
-        return found;
-    }
 
     // ---- Building it -----------------------------------------------------------------------------
 
@@ -288,7 +318,7 @@ public sealed class Bunker
     /// </summary>
     public static Bunker Dig(SurfaceZone zone, Site site)
     {
-        var bunker = new Bunker { Origin = site.Origin, Heading = site.Heading, Steps = site.Steps, Landmark = site.Landmark };
+        var bunker = new Bunker { Origin = site.Origin, Heading = site.Heading, Steps = site.Steps, Landmark = site.Landmark, Poi = site.Poi };
         Structure s = GalHack.Structures.Blueprint.Load(Blueprint(site.Steps, k => Buried(zone, site, k)), zone.Data.Catalogue, out List<string> errors);
         if (errors.Count > 0 || s == null) throw new InvalidOperationException("the bunker's blueprint: " + string.Join("; ", errors));
         s.DirtyChunks.Clear();
@@ -380,6 +410,22 @@ public sealed class Bunker
             if (pod.Alive) Mine = pod;
             else Dead.Add(pod);
         }
+        // Long sealed: dust lying on the floor in drifts, and motes hanging in the lamplight.
+        var dustNoise = new NoiseTexture2D { Width = 256, Height = 256, Seamless = true, Noise = new FastNoiseLite { Frequency = 0.02f, Seed = 11 } };
+        var dust = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.52f, 0.47f, 0.40f, 0.55f), AlbedoTexture = dustNoise, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            Roughness = 1f, Uv1Scale = new Vector3(2f, 2f, 1f),
+        };
+        foreach (var (x, z, w, d) in new[] { (-1.6f, -0.6f, 3.2f, 2.2f), (1.9f, 0.6f, 2.2f, 1.6f), (0f, -2.0f, 1.6f, 0.6f), (-2.6f, 1.6f, 1.4f, 1.0f) })
+            at.AddChild(new MeshInstance3D { Name = "Dust", Mesh = new PlaneMesh { Size = new Vector2(w, d) }, Position = new Vector3(x, 0.255f, z), MaterialOverride = dust, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        at.AddChild(new CpuParticles3D
+        {
+            Name = "Motes", Position = new Vector3(0f, 1.6f, 0f), Amount = 60, Lifetime = 12f, Preprocess = 12f,
+            EmissionShape = CpuParticles3D.EmissionShapeEnum.Box, EmissionBoxExtents = new Vector3(3f, 1.3f, 2f),
+            Gravity = new Vector3(0f, -0.01f, 0f), InitialVelocityMin = 0.01f, InitialVelocityMax = 0.04f, Spread = 180f,
+            Mesh = new QuadMesh { Size = new Vector2(0.012f, 0.012f), Material = new StandardMaterial3D { AlbedoColor = new Color(0.9f, 0.85f, 0.75f, 0.5f), Transparency = BaseMaterial3D.TransparencyEnum.Alpha, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled } },
+        });
         // Dim emergency light: red at the door, the working pod's cold glow, a lamp over the locker.
         at.AddChild(new OmniLight3D { Name = "Emergency", Position = new Vector3(0f, 2.6f, -2f), LightColor = new Color(1f, 0.25f, 0.18f), LightEnergy = 1.2f, OmniRange = 7f, ShadowEnabled = true });
         at.AddChild(new OmniLight3D { Name = "Lamp", Position = new Vector3(-2.2f, 2.8f, 0f), LightColor = new Color(1f, 0.9f, 0.75f), LightEnergy = 0.9f, OmniRange = 6f });
@@ -433,6 +479,8 @@ public partial class CryoPod : Node3D
         }
         else
         {
+            // A failed pod: its status lamp dead red, its glass furred with dust and frost.
+            AddChild(Box(new Vector3(0.5f, 0.06f, 0.02f), new Vector3(0f, 2.05f, -0.46f), new StandardMaterial3D { AlbedoColor = new Color("6a040f"), EmissionEnabled = true, Emission = new Color("9d0208"), EmissionEnergyMultiplier = 0.4f }));
             // Its sleeper, slumped against the back (the castaway's own figure, in grey).
             Node3D sleeper = Slice.Player.CharacterModel.Build();
             sleeper.Name = "Sleeper";

@@ -32,7 +32,7 @@ public partial class Game
     {
         _site = Bunker.FindSite(Zone, Zone.LandingSite);
         if (_site is not Bunker.Site site) return null;
-        GD.Print($"start site: {World}; {site.FromLanding:F0} m from the landing site, {site.Steps} steps up{(site.Landmark is Vector3 l ? $", facing a skyline {l.DistanceTo(site.Origin.ToGodot()):F0} m off" : "")}");
+        GD.Print($"start site: {World}; {site.FromLanding:F0} m from the landing site, {site.Steps} steps up{(site.Landmark is Vector3 l ? $", facing {site.Poi?.Name} {l.DistanceTo(Bunker.ExitOf(site)):F0} m off" : "")}");
         return Bunker.ExitOf(site);
     }
 

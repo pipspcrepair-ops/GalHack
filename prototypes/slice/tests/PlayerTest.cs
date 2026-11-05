@@ -61,6 +61,7 @@ public partial class PlayerTest : Node
     readonly Dictionary<string, double> _gameTimeAt = new();
     Vessel _base, _vessel;
     string _said = "";
+    float _topFall;
     Device _fab;
 
     public override void _Ready()
@@ -221,22 +222,27 @@ public partial class PlayerTest : Node
 
         WildlifePatch w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
-        _prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan != BodyPlan.Giant)
+        _prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
             .OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).FirstOrDefault();
         if (_prey == null) { Fail("no creature near to hunt"); yield break; }
         GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
         float health = _prey.Health;
         int xp = _game.Progress.Xp;
+        int shots = 0;
+        float close = 25f;
         for (int tries = 0; tries < 40 && !_prey.Dead; tries++)
         {
             Vector3 at = w.FromPatch(_prey.Position);
-            if (at.DistanceTo(_game.Survivor.WorldFeet) > 25f)
+            if (at.DistanceTo(_game.Survivor.WorldFeet) > close)
             {
-                foreach (int x in _drive.WalkTo(at, 15f, 20f)) yield return x;
+                foreach (int x in _drive.WalkTo(at, close * 0.6f, 20f)) yield return x;
                 continue;
             }
+            float before = _prey.Health;
             foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Rig.BoundsCenter))) yield return x;
-            if (tries == 2) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
+            shots++;
+            if (_prey.Health >= before) close = MathF.Max(6f, close * 0.6f); // something in the way: closer
+            if (shots == 3) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
                 $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
         }
         Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
@@ -450,7 +456,10 @@ public partial class PlayerTest : Node
         // Level 5 by playing: a deposit or two more to dig if it isn't there yet.
         for (int round = 0; round < 6 && _game.Progress.Level < 5; round++)
         {
-            foreach (int x in _play.Gather(DepositKind.Iron, _game.Pack["iron-ore"] + 60)) yield return x;
+            // Close to the base: what is left in the deposits already worked, then new ones near.
+            DepositKind kind = new[] { DepositKind.Iron, DepositKind.Copper, DepositKind.Carbon }[round % 3];
+            string ore = _game.Tool.OreOf(kind).Id;
+            foreach (int x in _play.Gather(kind, _game.Pack[ore] + 60, 250f, retry: round < 3)) yield return x;
             GD.Print($"  (more digging: level {_game.Progress.Level}, {_game.Progress.Xp} XP)");
         }
         Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
@@ -540,13 +549,13 @@ public partial class PlayerTest : Node
             if (flat < 30f) break;
             Steer(v, to, flat);
             float agl = v.AboveGround;
-            _game.Controls.Hold(Key.Space, agl < 25f);
-            _game.Controls.Hold(Key.Ctrl, agl > 50f);
+            _game.Controls.Hold(Key.Space, agl < 45f);
+            _game.Controls.Hold(Key.Ctrl, agl > 80f);
             top = MathF.Max(top, v.Body.Velocity.Length());
             yield return 0;
         }
         _game.Controls.ReleaseAll();
-        for (int t = 0; t < 60 * 90 && !v.Controller.Frozen; t++)
+        for (int t = 0; t < 60 * 90 && v.Controller is { Frozen: false }; t++)
         {
             Vector3 p = v.Body.Position.ToGodot(), to = target - p;
             Steer(v, to, new Vector2(to.X, to.Z).Length());
@@ -615,9 +624,20 @@ public partial class PlayerTest : Node
         GD.Print("-- 10. dying, and the backpack recovered from its marker --");
         Vessel v = _vessel;
         if (v == null || _game.Survivor.Seated != v) yield break;
-        // Up high, out of the seat, and a jump off the side.
-        _game.Controls.Hold(Key.Space);
-        for (int t = 0; t < 60 * 30 && v.AboveGround < 60f && v.Body.Position.Y < _game.Zone.Physics.Zone.Ceiling - 500f; t++) yield return 0;
+        // Up high (falls of a dozen metres are harmless; from 200 m nobody walks away), out of the seat, and a jump off the side.
+        // Back over flat ground near home on the way up (a landing on a slope glances), so the walk
+        // from the bunker to the backpack is a short one.
+        Vector3 over = _play.AwayFrom(_game.Bunker.Outside, _game.Bunker.Outside - _game.Bunker.StairTop, 35f); // over gentle ground a walk from the way out
+        for (int t = 0; t < 60 * 60; t++)
+        {
+            Vector3 to = over - v.Body.Position.ToGodot();
+            float flat = new Vector2(to.X, to.Z).Length();
+            if (v.AboveGround >= 220f && flat < 60f) break;
+            if (v.Body.Position.Y > _game.Zone.Physics.Zone.Ceiling - 500f) break;
+            Steer(v, to, flat);
+            _game.Controls.Hold(Key.Space, v.AboveGround < 220f);
+            yield return 0;
+        }
         _game.Controls.ReleaseAll();
         // Hands off, it brakes to a hover (Ctrl's down jet if it still climbs).
         for (int t = 0; t < 60 * 15 && MathF.Abs(v.Body.Velocity.Y) > 2f; t++)
@@ -647,11 +667,23 @@ public partial class PlayerTest : Node
             _game.Controls.ReleaseAll();
             foreach (int x in _drive.Wait(20)) yield return x;
         }
-        foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 30)) yield return x;
+        _topFall = 0f;
+        foreach (int x in _play.WaitFor(() => { _topFall = MathF.Max(_topFall, -_game.Survivor.Body.Velocity.Y); return _game.Suit.Dead; }, 30)) yield return x;
+        // A suited body falls no faster than about 41 m/s, and boots and armour soften the
+        // landing: a survivor on a sliver of health. A hop on the jetpack and the drop after it finish them.
+        int falls = 1;
+        for (int hop = 0; hop < 3 && !_game.Suit.Dead; hop++)
+        {
+            falls++;
+            _game.Controls.Hold(Key.Space);
+            for (int t = 0; t < 60 * 4; t++) yield return 0;
+            _game.Controls.ReleaseAll();
+            foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 12)) yield return x;
+        }
         if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(carried))
-            GD.Print($"  (after the jump: dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
+            GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(carried) && _game.Pack.Storage.IsEmpty,
-            $"a fall from {high:F0} m kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
+            $"a fall from {high:F0} m{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
@@ -660,8 +692,13 @@ public partial class PlayerTest : Node
         if (pack == null) yield break;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in _drive.WalkTo(pack.Position, 1.6f, 120f)) yield return x;
+        if (_game.Survivor.WorldFeet.DistanceTo(pack.Position) > 2.2f) foreach (int x in _drive.WalkTo(pack.Position, 1.0f, 30f)) yield return x;
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
         foreach (int x in _drive.LookAt(pack.Position + Vector3.Up * 0.25f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        if (_game.Opened?.Loot != pack)
+            GD.Print($"  (E at the backpack: \"{_said}\"; feet {_game.Survivor.WorldFeet}, the backpack at {pack.Position}, {_game.Survivor.WorldFeet.DistanceTo(pack.Position):F1} m; menu {_game.Menu.IsOpen})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(_game.Pack.Storage.Contents.Equals(carried) && _game.Backpack == null, "walked to the backpack's marker: E and take all, everything back");
