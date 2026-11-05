@@ -231,7 +231,10 @@ public sealed record SkySystem
         {
             bool rings = spec.Has(Modifier.RingedSky) || rng.NextFloat() < 0.35f;
             float h = rng.NextFloat();
-            Rgb color = air == AirKind.Exotic ? HueColor(h, 0.45f) : Rgb.Lerp(Rgb.Hex("c8a878"), Rgb.Hex("8aa8c8"), h);
+            // Exotic systems get any hue; elsewhere one of the familiar giant looks (a lerp between two
+            // of them would land on grey), shaded a little either way so no two are quite alike.
+            Rgb color = air == AirKind.Exotic ? HueColor(h, 0.45f)
+                : Rgb.Lerp(GiantLooks[(int)(h * GiantLooks.Length) % GiantLooks.Length], Rgb.Hex("b0a898"), Frac(h * 7f) * 0.25f);
             list.Add(new SkyBody
             {
                 Kind = BodyKind.GasGiant, Name = rings ? "a ringed giant" : "a gas giant",
@@ -267,6 +270,15 @@ public sealed record SkySystem
     static float Frac(float v) => v - MathF.Floor(v);
 
     /// <summary>A soft colour from a hue in [0, 1).</summary>
+    static readonly Rgb[] GiantLooks =
+    {
+        Rgb.Hex("d6ab78"),   // banded ochre
+        Rgb.Hex("e3cd96"),   // pale gold
+        Rgb.Hex("8fb4d8"),   // ice blue
+        Rgb.Hex("86c4b4"),   // methane teal
+        Rgb.Hex("c98f6a"),   // rust
+    };
+
     static Rgb HueColor(float h, float saturation)
     {
         float r = MathF.Abs(h * 6f - 3f) - 1f, g = 2f - MathF.Abs(h * 6f - 2f), b = 2f - MathF.Abs(h * 6f - 4f);

@@ -135,6 +135,9 @@ public partial class SkyRig : Node3D
         Sun.LightColor = C(s.StarColor);
     }
 
+    /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
+    public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
+
     /// <summary>Sets the time and the weather's air for this frame. <paramref name="latitude"/> is -1 (one pole) to 1 (the other).</summary>
     public void Advance(double delta, float latitude, AtmosphereState air, Vector2 wind)
     {
@@ -147,13 +150,20 @@ public partial class SkyRig : Node3D
         Apply();
     }
 
+    /// <summary>The direction to the sun at a time of day (0 midnight, 0.5 noon), at the latitude last given.</summary>
+    public Vector3 SunAt(double timeOfDay)
+    {
+        float hour = (float)(timeOfDay * Math.Tau - Math.PI);   // 0 at noon
+        float lat = _latitude * 1.3f;                            // up to about 75 degrees at the poles
+        return Direction(hour, lat, 0.18f, 0f);
+    }
+
     /// <summary>Recomputes lights and the sky from the current time and air (screenshots call it directly).</summary>
     public void Apply()
     {
         SkySystem s = System;
-        float hour = (float)(TimeOfDay * Math.Tau - Math.PI);   // 0 at noon
-        float lat = _latitude * 1.3f;                            // up to about 75 degrees at the poles
-        Vector3 toSun = Direction(hour, lat, 0.18f, 0f);
+        float lat = _latitude * 1.3f;
+        Vector3 toSun = SunAt(TimeOfDay);
         ToSun = toSun;
         float day = Smooth(-0.12f, 0.12f, toSun.Y);
         Daylight = day;
@@ -216,6 +226,8 @@ public partial class SkyRig : Node3D
         Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter("overcast_color", C(grey));
         _sky.SetShaderParameter("cloud_lit", C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
+        // Ash over lava glows red from underneath, more so as daylight fades.
+        _sky.SetShaderParameter("cloud_underglow", s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
         _sky.SetShaderParameter("cloud_shade", C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.6f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
         // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night.
