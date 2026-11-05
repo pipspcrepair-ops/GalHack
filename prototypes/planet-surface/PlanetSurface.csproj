@@ -28,5 +28,8 @@
     <Compile Include="..\weather\src\Glue.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
+    <!-- The decorations library: alien places are dressed from its alien set, as in the POI viewer. -->
+    <Compile Include="..\..\shared\Items\Core\**\*.cs" />
+    <Compile Include="..\..\shared\Deco\**\*.cs" />
   </ItemGroup>
 </Project>
