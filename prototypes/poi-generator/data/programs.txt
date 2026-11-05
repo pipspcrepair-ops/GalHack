@@ -148,7 +148,7 @@ program tower_block
   style concrete
   width 30 34
   depth 30 32
-  floors 8 12
+  floors 14 20
   levels 1 1
   lift 0.8
   roof access

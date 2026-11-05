@@ -32,10 +32,99 @@ public sealed partial class Building
         Portal();
         switch (style)
         {
-            case "alien_cathedral": Spire(); Fins(); break;
-            case "alien_library": Crystals(5, 6, 16); Monolith(); break;
-            case "alien_hive": Domes(); Vents(); break;
+            case "alien_cathedral": Spire(); Vault(); Fins(); break;
+            case "alien_library": CrystalDome(); Crystals(5, 6, 16); Monolith(); break;
+            case "alien_hive": Mound(); Domes(); Vents(); break;
             default: Crystals(3, 4, 10); break;
+        }
+
+        // ---- shells: curved massing from a height field, stepped with ramps so it reads as curves ----
+
+        // Lays a shell over plan cells: each column rises to its height above the base, filled down to
+        // its lowest neighbour so the surface is closed, with a slope on top wherever the next column
+        // is one higher. Never into a room, a stair or the way in (only free cells take blocks).
+        void HeightShell(Func<int, int, int> height, int baseY, Func<int, int, int, Block> block, bool slopes)
+        {
+            for (int z = -8; z < D + 8; z++)
+                for (int x = -8; x < W + 8; x++)
+                {
+                    int h = height(x, z);
+                    if (h <= 0) continue;
+                    int low = h;
+                    foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }) low = Math.Min(low, Math.Max(0, height(x + dx, z + dz)));
+                    for (int y = Math.Max(0, low - 1); y < h; y++) Put(L(x, baseY + y, z), block(x, y, z));
+                    if (!slopes) continue;
+                    foreach (Dir d in Dirs.Horizontal)
+                    {
+                        Int3 v = d.Vec();
+                        if (height(x + v.X, z + v.Z) == h + 1)
+                        {
+                            Int3 top = L(x, baseY + h, z);
+                            Put(top, new Block(BlockType.Ramp, block(x, h, z).Material, block(x, h, z).Color, Role.Roof, R(d)));
+                            break;
+                        }
+                    }
+                }
+        }
+
+        // A ribbed vault down the nave: a pointed barrel over the roof, a rib standing proud every few metres.
+        void Vault()
+        {
+            if (Hut) return;
+            int y0 = WalkY(Top) + 4;
+            bool alongX = Wm >= Dm;
+            float half = (alongX ? Dm : Wm) / 2f, mid = alongX ? Zm + Dm / 2f : Wm / 2f;
+            int Height(int x, int z)
+            {
+                if (!InFoot(Top, x, z) || C.Get(L(x, y0 - 1, z)).IsAir) return 0;
+                float t = Math.Abs((alongX ? z : x) + 0.5f - mid) / half;
+                if (t >= 0.92f) return 0;   // a walk left round the edge
+                int h = (int)MathF.Round(half * 0.9f * MathF.Pow(1f - t * t, 0.8f));
+                if ((alongX ? x : z) % 4 == 0) h += 1;   // ribs
+                return h;
+            }
+            HeightShell(Height, y0, (x, y, z) => (alongX ? x : z) % 4 == 0 ? Bone(0.82f) : Bone(0.95f + 0.03f * (y % 2)), slopes: true);
+        }
+
+        // A mound swelling over and round the hive's way down, chitin lumped and pitted; the way in left open.
+        void Mound()
+        {
+            var hut = HutRect();
+            float cx = (hut.x0 + hut.x1) / 2f, cz = (hut.z0 + hut.z1) / 2f;
+            float r = Math.Max(hut.x1 - hut.x0, hut.z1 - hut.z0) / 2f + 7f;
+            Int3 outV = Out.EntranceFacing.Vec();
+            int Height(int x, int z)
+            {
+                // Keep the way in clear: a lane straight out from the door.
+                Int3 c = L(x, 0, z);
+                Int3 rel = c - entrance;
+                int along = rel.X * outV.X + rel.Z * outV.Z, across = Math.Abs(rel.X * outV.Z) + Math.Abs(rel.Z * outV.X);
+                if (along > -6 && across <= 3) return 0;
+                float d = MathF.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (z + 0.5f - cz) * (z + 0.5f - cz)) / r;
+                if (d >= 1f) return 0;
+                float lump = (Hash.Cell(new Int3(x / 3, 7, z / 3), 911) % 100) / 100f;
+                return (int)MathF.Round((9f + lump * 3f) * (1f - d * d));
+            }
+            HeightShell(Height, 0, (x, y, z) => new Block(BlockType.Cube, Material.Chitin, shell.Scale(0.65f + 0.08f * ((x * 3 + z * 5 + y) & 3)), Role.Wall), slopes: true);
+        }
+
+        // A crystal dome: a faceted, stepped crown of crystal over the library's way down.
+        void CrystalDome()
+        {
+            var hut = HutRect();
+            float cx = (hut.x0 + hut.x1) / 2f, cz = (hut.z0 + hut.z1) / 2f;
+            float r = Math.Max(hut.x1 - hut.x0, hut.z1 - hut.z0) / 2f + 4f;
+            Int3 outV = Out.EntranceFacing.Vec();
+            int Height(int x, int z)
+            {
+                Int3 rel = L(x, 0, z) - entrance;
+                int along = rel.X * outV.X + rel.Z * outV.Z, across = Math.Abs(rel.X * outV.Z) + Math.Abs(rel.Z * outV.X);
+                if (along > -6 && across <= 3) return 0;
+                float d = MathF.Max(Math.Abs(x + 0.5f - cx), Math.Abs(z + 0.5f - cz)) / r;   // square: facets, not a ball
+                if (d >= 1f) return 0;
+                return (int)(10f * (1f - d));
+            }
+            HeightShell(Height, 0, (x, y, z) => Crystal(), slopes: false);
         }
 
         // A pointed portal round the way in: jambs beside the door, an arch meeting over it, a glowing keystone.
@@ -83,7 +172,7 @@ public sealed partial class Building
             }
             (cx, cz) = best;
             if (!Footed(side)) return;
-            int tall = Math.Max(18, Floors * 4);
+            int tall = Math.Max(30, Floors * 7);   // it has to clear the vault and own the skyline
             int y = y0;
             for (int r = side; r >= 0; r--)
             {

@@ -378,7 +378,10 @@ public static class PoiSiting
             blend = wanted;
         }
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
-            ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve);
+            ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve)
+        {
+            Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
+        };
 
         // Grounding: shapes that sit the place in its land rather than on a flat pad.
         var extra = new List<TerrainStamp>();
@@ -444,6 +447,26 @@ public static class PoiSiting
             Name = $"{family.Name}: {inst.Layout.Name} ({inst.State.ToString().ToLowerInvariant()})",
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
             Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
+        };
+    }
+
+    /// <summary>
+    /// What a place's ground is made of, by purpose: tarmac or concrete aprons where aircraft stood
+    /// or a faction works, packed dirt for farms, settlements and gang camps, gravel for outposts,
+    /// and the land's own ground for ruins and wrecks. A family can name its own (ground).
+    /// </summary>
+    public static StampSurface GroundFor(FamilyDef family, Archetype? world = null)
+    {
+        // On a desert world the land's own ground under a place is sand and trodden dirt, never a green patch.
+        if (world == Archetype.Arid && GroundFor(family) == StampSurface.Natural) return StampSurface.Dirt;
+        if (family.Ground is { Length: > 0 } g && Enum.TryParse(g, true, out StampSurface named)) return named;
+        if (family.Tags.Contains("farm") || family.Tags.Contains("settlement") || family.Tags.Contains("gang")) return StampSurface.Dirt;
+        if (family.Tags.Contains("alien") || family.Tags.Contains("wreck") || family.Tags.Contains("precursor")) return StampSurface.Natural;
+        return family.Tier switch
+        {
+            PoiTier.Spaceport or PoiTier.City or PoiTier.Town or PoiTier.Base => StampSurface.Concrete,
+            PoiTier.Outpost or PoiTier.Camp => StampSurface.Gravel,
+            _ => StampSurface.Natural,
         };
     }
 

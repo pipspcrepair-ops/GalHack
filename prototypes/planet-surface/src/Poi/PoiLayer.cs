@@ -101,6 +101,7 @@ public partial class PoiLayer : Node3D
         }
         AddLights(node, inst);
         AddSmoke(node, inst);
+        DressFromDecoLibrary(node, inst);
         return node;
     }
 
