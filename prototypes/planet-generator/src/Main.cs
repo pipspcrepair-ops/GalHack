@@ -16,7 +16,7 @@ namespace Planets;
 /// </summary>
 public partial class Main : Node3D
 {
-    sealed record Built(PlanetSpec Spec, WorldMap Map, ArchetypeLook Look, ColorMap Colors, byte[] Clouds, double Ms);
+    sealed record Built(PlanetSpec Spec, WorldMap Map, ArchetypeLook Look, ColorMap Colors, byte[] Clouds, byte[] Landforms, double Ms);
 
     const int CloudWidth = 1024;
 
@@ -30,6 +30,9 @@ public partial class Main : Node3D
     public bool Busy => _job != null || Map == null || Map.Spec != Spec;
 
     Task<Built> _job;
+    Built _built;
+    bool _showLandforms;
+    VBoxContainer _legend;
     int _reroll;
     double _buildMs, _uploadMs;
     CanvasLayer _ui;
@@ -67,7 +70,8 @@ public partial class Main : Node3D
             ArchetypeLook look = ArchetypeLook.For(spec);
             var colors = ColorMap.Build(map, look, Math.Clamp(map.Width * 4, 2048, 4096));
             byte[] clouds = CloudMap.Build(spec, look, CloudWidth, out _);
-            return new Built(spec, map, look, colors, clouds, watch.Elapsed.TotalMilliseconds);
+            byte[] landforms = LandformLook.Albedo(map, colors.Width);
+            return new Built(spec, map, look, colors, clouds, landforms, watch.Elapsed.TotalMilliseconds);
         });
     }
 
@@ -90,13 +94,70 @@ public partial class Main : Node3D
         Map = built.Map;
         Look = built.Look;
         _buildMs = built.Ms;
-        ColorMap c = built.Colors;
-        Orbit.Show(built.Spec, built.Look,
-            Texture(c.Width, c.Height, Image.Format.Rgba8, c.Albedo),
-            Texture(c.Width, c.Height, Image.Format.Rgb8, c.Glow),
-            Texture(CloudWidth, CloudWidth / 2, Image.Format.Rgba8, built.Clouds));
-        _flatMap.Texture = ImageTexture.CreateFromImage(Image.CreateFromData(c.Width, c.Height, false, Image.Format.Rgb8, c.Composite()));
+        _built = built;
+        ShowMaps();
         _uploadMs = watch.Elapsed.TotalMilliseconds;
+    }
+
+    /// <summary>The globe and the flat map, in the planet's own colours or tinted by landform (L).</summary>
+    void ShowMaps()
+    {
+        if (_built == null) return;
+        ColorMap c = _built.Colors;
+        byte[] albedo = ShowLandforms ? _built.Landforms : c.Albedo;
+        Orbit.Show(_built.Spec, _built.Look,
+            Texture(c.Width, c.Height, Image.Format.Rgba8, albedo),
+            Texture(c.Width, c.Height, Image.Format.Rgb8, ShowLandforms ? new byte[c.Width * c.Height * 3] : c.Glow),
+            Texture(CloudWidth, CloudWidth / 2, Image.Format.Rgba8, ShowLandforms ? new byte[CloudWidth * CloudWidth / 2 * 4] : _built.Clouds));
+        byte[] flat = c.Composite();
+        if (ShowLandforms)
+        {
+            flat = new byte[c.Width * c.Height * 3];
+            for (int p = 0; p < c.Width * c.Height; p++)
+                for (int k = 0; k < 3; k++) flat[p * 3 + k] = _built.Landforms[p * 4 + k];
+        }
+        _flatMap.Texture = ImageTexture.CreateFromImage(Image.CreateFromData(c.Width, c.Height, false, Image.Format.Rgb8, flat));
+        BuildLegend();
+    }
+
+    /// <summary>True while the globe and flat map show landforms (each its key colour) instead of the planet's colours.</summary>
+    public bool ShowLandforms
+    {
+        get => _showLandforms;
+        set
+        {
+            _showLandforms = value;
+            ShowMaps();
+        }
+    }
+
+    /// <summary>The landform key: one swatch per landform this world really has, largest first.</summary>
+    void BuildLegend()
+    {
+        foreach (Node child in _legend.GetChildren()) child.QueueFree();
+        _legend.Visible = _showLandforms && Map != null;
+        if (!_legend.Visible) return;
+        var title = new Label { Text = Map.Model.Mix.Single ? "One landform throughout" : "Landforms" };
+        Style(title, 18);
+        _legend.AddChild(title);
+        foreach (var (landform, share) in Map.Landforms.Present(0.004f))
+        {
+            var row = new HBoxContainer();
+            Rgb c = LandformLook.Color(landform);
+            row.AddChild(new ColorRect { Color = new Color(c.R, c.G, c.B), CustomMinimumSize = new Vector2(22, 22) });
+            var name = new Label { Text = $" {LandformInfo.Name(landform)}  {share:P0}" };
+            Style(name, 16);
+            row.AddChild(name);
+            _legend.AddChild(row);
+        }
+    }
+
+    static void Style(Label label, int size)
+    {
+        label.AddThemeFontSizeOverride("font_size", size);
+        label.AddThemeColorOverride("font_color", new Color("ffe8c2"));
+        label.AddThemeColorOverride("font_outline_color", new Color(0f, 0f, 0f, 0.85f));
+        label.AddThemeConstantOverride("outline_size", 6);
     }
 
     static ImageTexture Texture(int width, int height, Image.Format format, byte[] data)
@@ -138,6 +199,9 @@ public partial class Main : Node3D
                 break;
             case Key.Tab:
                 _flat.Visible = !_flat.Visible;
+                break;
+            case Key.L:
+                ShowLandforms = !ShowLandforms;
                 break;
             case Key.Enter or Key.KpEnter:
                 Land();
@@ -194,6 +258,12 @@ public partial class Main : Node3D
         _flatMap.OffsetBottom = -40;
         _flat.AddChild(_flatMap);
 
+        _legend = new VBoxContainer { Visible = false };
+        _legend.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+        _legend.Position = new Vector2(-250f, 16f);
+        _legend.CustomMinimumSize = new Vector2(230f, 0f);
+        _ui.AddChild(_legend);
+
         _label = new Label { Position = new Vector2(16f, 12f) };
         _label.AddThemeFontSizeOverride("font_size", 16);
         _label.AddThemeColorOverride("font_color", new Color("ffe8c2"));
@@ -214,8 +284,9 @@ public partial class Main : Node3D
             $"{Map.Spec}{status}\n" +
             $"generated in {Map.GenerationMs:F0} ms (map) + {_buildMs - Map.GenerationMs:F0} ms (colour and cloud maps) on a worker, " +
             $"{_uploadMs:F0} ms texture upload   ·   {Map.Width}x{Map.Height} cells of {Map.CellSize:F0} m\n" +
-            $"land {Map.LandFraction:P0}   rivers {Map.Rivers.Count}   hazard: {Map.Def.Hazard}   resources: {Map.Def.Resources}\n\n" +
-            "1-5 archetype  ·  V variant  ·  N new seed  ·  M reroll modifiers  ·  S size  ·  Tab flat map  ·  Enter land\n" +
+            $"land {Map.LandFraction:P0}   rivers {Map.Rivers.Count}   hazard: {Map.Def.Hazard}   resources: {Map.Def.Resources}\n" +
+            $"landforms: {Map.Model.Mix}\n\n" +
+            "1-5 archetype  ·  V variant  ·  N new seed  ·  M reroll modifiers  ·  S size  ·  Tab flat map  ·  L landforms  ·  Enter land\n" +
             $"{Engine.GetFramesPerSecond()} fps";
     }
 }

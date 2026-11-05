@@ -36,6 +36,8 @@ public sealed class WorldMap
     public readonly int[] Downstream;     // index of the steepest-descent neighbour, -1 for sinks
     public readonly byte[] Biome;
     public readonly byte[] Flags;
+    /// <summary>The dominant landform of each cell (a <see cref="Gen.Landform"/>); the model's landform layer has the blend.</summary>
+    public readonly byte[] Landform;
     public readonly List<River> Rivers = new();
     public DepositField Deposits { get; internal set; }
 
@@ -62,6 +64,7 @@ public sealed class WorldMap
         Downstream = new int[n];
         Biome = new byte[n];
         Flags = new byte[n];
+        Landform = new byte[n];
     }
 
     public int Count => Width * Height;
@@ -74,6 +77,12 @@ public sealed class WorldMap
     /// <summary>The cell at column i, row j, both wrapped onto the torus.</summary>
     public int Index(int i, int j) => WrapJ(j) * Width + WrapI(i);
     public bool Has(int index, byte flag) => (Flags[index] & flag) != 0;
+
+    /// <summary>This world's landform layer: the landforms and their blend at any point.</summary>
+    public LandformLayer Landforms => Model.Landforms;
+
+    /// <summary>The landforms at a point in metres (both axes wrap), strongest first, with their weights.</summary>
+    public LandformBlend LandformsAt(double x, double y) => Model.Landforms.At(Mathx.WrapX(x, WidthMeters), Mathx.Wrap(y, HeightMeters));
 
     /// <summary>Centre of a cell in metres.</summary>
     public double CellX(int i) => (i + 0.5) * CellSize;
@@ -114,6 +123,7 @@ public sealed class WorldMap
             Add((uint)BitConverter.SingleToInt32Bits(RiverFlow[k]));
             Add(Biome[k]);
             Add(Flags[k]);
+            Add(Landform[k]);
         }
         foreach (River r in Rivers)
             for (int k = 0; k < r.Count; k++) Add((uint)BitConverter.SingleToInt32Bits(r.X[k] + r.Y[k]));

@@ -14,6 +14,7 @@ namespace Planets;
 /// </summary>
 public partial class GenTest : Node
 {
+    // The landform checks live in GenTest.Landforms.cs.
     int _failures;
 
     public override void _Ready()
@@ -24,6 +25,11 @@ public partial class GenTest : Node
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) only.UnionWith(arg["--only=".Length..].Split(','));
         void Run(string name, Action check) { if (only.Count == 0 || only.Contains(name)) check(); }
+        // Tuning aids, only when asked for by name.
+        if (only.Contains("Survey")) Survey();
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--world=")) DebugWorld(arg["--world=".Length..]);
+            else if (arg.StartsWith("--list=")) ListWorlds(arg["--list=".Length..]);
         Run("Determinism", Determinism);
         Run("SeamlessWrap", SeamlessWrap);
         Run("Poles", Poles);
@@ -34,6 +40,12 @@ public partial class GenTest : Node
         Run("Relief", ReliefCheck);
         Run("Performance", Performance);
         Run("Distinctness", Distinctness);
+        Run("LandformDeterminism", LandformDeterminism);
+        Run("LandformSeams", LandformSeams);
+        Run("LandformVariety", LandformVariety);
+        Run("LandformPlacement", LandformPlacement);
+        Run("LandformCharacter", LandformCharacter);
+        Run("FlatLand", FlatLand);
         GD.Print($"total test time {total.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
@@ -177,7 +189,9 @@ public partial class GenTest : Node
     /// <summary>
     /// No walls at the poles: they are cold country, not a barrier. The steepest ground in the polar
     /// band stays within what the rest of the planet has, the band is colder than the equator, and
-    /// the cold carries straight across the north-south seam.
+    /// the cold carries straight across the north-south seam. Landform regions make some latitudes
+    /// more rugged than others (a range or a karst country can sit anywhere, the polar band
+    /// included), so the polar band is held to the steepest of the other bands of the same width.
     /// </summary>
     void Poles()
     {
@@ -207,11 +221,29 @@ public partial class GenTest : Node
             all.Sort();
             polar.Sort();
             float p99 = all.Count > 0 ? all[(int)(all.Count * 0.99f)] : 0f, max = all.Count > 0 ? all[^1] : 0f;
+            // The steepest 95th percentile among the other latitude bands. (The 95th, not the 99th: a
+            // band holds only a few hundred land cells on a small planet, and creased or towered
+            // landforms give slopes a long tail. A wall along the seam would fill a whole row of
+            // the band and show at the 95th as plainly.)
+            float polar95 = polar.Count > 0 ? polar[(int)(polar.Count * 0.95f)] : 0f, other95 = 0f;
+            for (int b0 = band; b0 + band <= map.Height - band; b0 += band)
+            {
+                var slopes = new List<float>();
+                for (int j = b0; j < b0 + band; j++)
+                for (int i = 0; i < map.Width; i++)
+                {
+                    int k = map.Index(i, j);
+                    if (!map.Has(k, CellFlags.Water)) slopes.Add(map.Slope[k]);
+                }
+                if (slopes.Count < 50) continue;
+                slopes.Sort();
+                other95 = Math.Max(other95, slopes[(int)(slopes.Count * 0.95f)]);
+            }
             float polar99 = polar.Count > 0 ? polar[(int)(polar.Count * 0.99f)] : 0f, polarMax = polar.Count > 0 ? polar[^1] : 0f;
             polarT /= Math.Max(1, polarN);
             equatorT /= Math.Max(1, equatorN);
-            Check(polar99 <= p99 * 1.25f && polarMax <= max && polarT < equatorT && seamStep < 0.05,
-                $"poles {a}/{v}: no wall (polar slopes 99th pct {Deg(polar99):F0} deg, max {Deg(polarMax):F0} deg; whole planet {Deg(p99):F0} / {Deg(max):F0} deg); " +
+            Check(polar95 <= other95 * 1.25f && polarMax <= max && polarT < equatorT && seamStep < 0.05,
+                $"poles {a}/{v}: no wall (polar slopes 95th pct {Deg(polar95):F0} deg, 99th {Deg(polar99):F0}, max {Deg(polarMax):F0} deg; steepest other band's 95th {Deg(other95):F0} deg, whole planet 99th {Deg(p99):F0}, max {Deg(max):F0} deg); " +
                 $"polar band {polarT:F2} vs equator {equatorT:F2} temperature; step across the north-south seam {seamStep:F3}");
         }
     }
@@ -360,10 +392,12 @@ public partial class GenTest : Node
     }
 
     /// <summary>
-    /// Empyrion-style drama in numbers: mountain ranges hundreds of metres high within a 2 km
-    /// window, real cliffs (ground steeper than 45° over 2 m), and gorges or canyons cut deep
-    /// between walls. Each variant has its own floor, so a dune sea may be gentler than a canyon
-    /// world but never a plain of bumps.
+    /// Empyrion-style drama in numbers, where it belongs. Since landforms, a world is not dramatic
+    /// everywhere: plains, steppe and ice plains are flat on purpose, and the ranges, canyons and
+    /// cliffs stand out because not everything is dramatic (each landform's own character is held
+    /// to its claims in LandformCharacter). So each variant is held to having drama somewhere:
+    /// a 2 km window with a big range from lowest to highest ground, and real cliffs (ground
+    /// steeper than 45° across 8 m) on part of its land. Median relief is reported, not floored.
     /// </summary>
     void ReliefCheck()
     {
@@ -382,21 +416,21 @@ public partial class GenTest : Node
                 (stats[0].Incision95 + stats[1].Incision95) / 2, Math.Max(stats[0].IncisionMax, stats[1].IncisionMax),
                 (stats[0].Fine30 + stats[1].Fine30) / 2, (stats[0].Fine45 + stats[1].Fine45) / 2);
             ReliefFloor floor = ReliefFloors[(int)a * 2 + v];
-            Check(r.RangeMedian >= floor.Range && r.Slope30 >= floor.Slope30 && r.Slope45 >= floor.Slope45 && r.Incision95 >= floor.Canyon,
-                $"relief {a}/{Archetypes.Get(a, v).VariantName}: {r}  (floor: range {floor.Range} m, >30° {floor.Slope30:P0}, >45° {floor.Slope45:P1}, canyon {floor.Canyon} m)");
+            Check(r.RangeMax >= floor.RangeMax && r.Slope45 >= floor.Slope45,
+                $"relief {a}/{Archetypes.Get(a, v).VariantName}: {r}  (floor: biggest range in 2 km {floor.RangeMax} m, >45° {floor.Slope45:P1})");
         }
     }
 
-    readonly record struct ReliefFloor(float Range, float Slope30, float Slope45, float Canyon);
+    readonly record struct ReliefFloor(float RangeMax, float Slope45);
 
-    /// <summary>Minimum relief per variant, in Variants() order.</summary>
+    /// <summary>Minimum drama per variant, in Variants() order: the biggest range in a 2 km window, and the share of cliffs.</summary>
     static readonly ReliefFloor[] ReliefFloors =
     {
-        new(750, 0.40f, 0.25f, 50), new(400, 0.40f, 0.25f, 45),   // temperate meadow, rainforest
-        new(200, 0.20f, 0.08f, 25), new(280, 0.22f, 0.17f, 90),   // arid dunes, canyon
-        new(500, 0.42f, 0.28f, 55), new(330, 0.30f, 0.15f, 35),   // ice glacier, hot spring
-        new(400, 0.28f, 0.14f, 33), new(320, 0.33f, 0.18f, 28),   // lava volcanic, lava ocean
-        new(380, 0.36f, 0.23f, 50), new(270, 0.30f, 0.14f, 36),   // alien crystal, fungal
+        new(900, 0.07f), new(550, 0.05f),    // temperate meadow, rainforest
+        new(280, 0.02f), new(260, 0.05f),    // arid dunes, canyon
+        new(850, 0.08f), new(400, 0.04f),    // ice glacier, hot spring
+        new(350, 0.015f), new(170, 0.04f),   // lava volcanic, lava ocean
+        new(450, 0.015f), new(120, 0.012f),  // alien crystal, fungal
     };
 
     void Performance()
@@ -542,7 +576,7 @@ public partial class GenTest : Node
 
     // ---- Helpers ------------------------------------------------------------------------
 
-    void Check(bool ok, string what)
+    internal void Check(bool ok, string what)
     {
         if (ok) GD.Print($"PASS  {what}");
         else

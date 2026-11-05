@@ -15,7 +15,8 @@ static class Climate
     const float LapseRate = 0.5f;            // temperature lost per km of altitude
     const float MoistureReach = 700f;        // metres over which water keeps the air damp
 
-    public static void Run(WorldMap map)
+    /// <param name="dry">Per cell, how much drier (+) or wetter (-) than usual: dry belts, rain shadows and the landform's own air.</param>
+    public static void Run(WorldMap map, float[] dry = null)
     {
         int w = map.Width, h = map.Height;
         float[] distance = DistanceToWater(map);
@@ -40,7 +41,8 @@ static class Climate
                     def.BaseTemperature - def.LatitudeRange * lat * lat - Math.Max(e, 0f) * 0.001f * LapseRate + tn * 0.08f,
                     0f, 1f);
                 float damp = MathF.Exp(-distance[k] / MoistureReach);
-                map.Humidity[k] = Math.Clamp(def.BaseHumidity * (0.75f + 0.5f * hn) + 0.45f * damp, 0f, 1f);
+                float shift = dry != null ? dry[k] * 0.45f : 0f;
+                map.Humidity[k] = Math.Clamp(def.BaseHumidity * (0.75f + 0.5f * hn) + 0.45f * damp - shift, 0f, 1f);
             }
         });
     }

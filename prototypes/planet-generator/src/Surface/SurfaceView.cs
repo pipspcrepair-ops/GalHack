@@ -83,6 +83,13 @@ public partial class SurfaceView : Node3D
     }
 
     /// <summary>Puts the camera at a map position (x, z) at a height above the ground, facing a heading.</summary>
+    /// <summary>Shows or hides the surface text (for clean screenshots).</summary>
+    public bool HudVisible
+    {
+        get => _hud == null || _hud.Visible;
+        set { if (_hud != null) _hud.Visible = value; }
+    }
+
     public void PlaceCamera(double x, double z, float aboveGround, float heading, float pitch)
     {
         float ground = Math.Max(_palette.Sampler.HeightAt(x, z), 0f);

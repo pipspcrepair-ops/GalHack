@@ -20,7 +20,7 @@ static class Hydrology
     static readonly int[] DJ = { 0, 0, 1, -1, 1, -1, 1, -1 };
     static readonly float[] Step = { 1f, 1f, 1f, 1f, 1.41421356f, 1.41421356f, 1.41421356f, 1.41421356f };
 
-    public static void Run(WorldMap map, float[] rain)
+    public static void Run(WorldMap map, float[] rain, float[] riverArea = null)
     {
         int w = map.Width, h = map.Height, n = map.Count;
         float[] elevation = map.Elevation;
@@ -84,7 +84,7 @@ static class Hydrology
         for (int r = 0; r < reached; r++)
         {
             int c = order[r];
-            if (catchment[c] < map.Def.RiverArea) continue;
+            if (catchment[c] < (riverArea != null ? riverArea[c] : map.Def.RiverArea)) continue;
             map.RiverFlow[c] = catchment[c];
             map.RiverLevel[c] = Math.Max(0.3f, elevation[c]);
             map.Flags[c] |= CellFlags.River;

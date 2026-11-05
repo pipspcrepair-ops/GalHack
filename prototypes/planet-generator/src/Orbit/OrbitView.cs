@@ -96,6 +96,16 @@ public partial class OrbitView : Node3D
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
     }
 
+    /// <summary>Turns the globe so the given map x (metres east) faces the camera.</summary>
+    public void Face(WorldMap map, double x)
+    {
+        var (now, _) = FacingPoint(map);
+        double du = (x - now) / map.WidthMeters;
+        // Spinning the globe by an angle turns what faces the camera back by the same angle.
+        _spin.RotateY((float)(-du * Math.Tau));
+        _cloudSpin.RotateY((float)(-du * Math.Tau));
+    }
+
     /// <summary>The map point (metres) currently facing the camera: where Enter lands you.</summary>
     public (double x, double y) FacingPoint(WorldMap map)
     {

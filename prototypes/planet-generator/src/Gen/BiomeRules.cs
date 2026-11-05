@@ -27,9 +27,100 @@ static class BiomeRules
             {
                 float patch = map.Model.Patches(map.CellX(i), map.CellY(j));
                 var cell = new Cell(e, t, map.Humidity[k], map.Slope[k], map.Special[k], patch, (flags & CellFlags.Coast) != 0);
-                biome = Land(def, cell);
+                biome = Hint(def, (Landform)map.Landform[k], cell) ?? Land(def, cell);
             }
             map.Biome[k] = (byte)biome;
+        }
+    }
+
+    /// <summary>
+    /// The landform's biome hint, where it has one: a dune sea is sand on any world, wetlands are
+    /// swamp (or spore marsh, or glow moss), sea cliffs and fjord walls are bare rock or ice.
+    /// Only existing biomes are used, in the archetype's own palette where it has one, so every
+    /// world keeps its colours. Null leaves the cell to the variant's own rules.
+    /// </summary>
+    static Biome? Hint(ArchetypeDef def, Landform landform, Cell c)
+    {
+        Archetype a = def.Archetype;
+        bool crystal = a == Archetype.Alien && def.Variant == 0;
+        Biome Rock() => a switch
+        {
+            Archetype.Arid => Biome.RedRock,
+            Archetype.Ice => Biome.BlueIce,
+            Archetype.Lava => Biome.Obsidian,
+            Archetype.Alien => crystal ? Biome.CrystalSpires : Biome.Mycelium,
+            _ => Biome.Cliff,
+        };
+        switch (landform)
+        {
+            case Landform.DuneSea:
+                if (c.Slope > 0.9f) return Rock();
+                return a switch
+                {
+                    Archetype.Ice => Biome.Snowfield,
+                    Archetype.Lava => Biome.Ash,
+                    Archetype.Alien => crystal ? Biome.Chalk : Biome.Mycelium,
+                    _ => c.T < 0.2f ? Biome.Snow : c.Special > 0.55f ? Biome.Erg : Biome.Dunes,
+                };
+            case Landform.RockyDesert:
+                if (c.Slope > 0.5f) return Rock();
+                return a switch
+                {
+                    Archetype.Ice => Biome.IceTundra,
+                    Archetype.Lava => c.Patch > 0.35f ? Biome.Sulfur : Biome.Ash,
+                    Archetype.Alien => crystal ? Biome.CrystalPlain : Biome.Mycelium,
+                    Archetype.Arid => c.Patch > 0.42f ? Biome.SaltFlat : Biome.MesaTop,
+                    _ => c.Patch > 0.42f ? Biome.SaltFlat : Biome.Scrub,
+                };
+            case Landform.Badlands:
+                if (c.Slope > 0.6f) return Rock();
+                return a switch
+                {
+                    Archetype.Ice => Biome.IceTundra,
+                    Archetype.Lava => Biome.Ash,
+                    Archetype.Alien => crystal ? Biome.Chalk : Biome.Mycelium,
+                    _ => Biome.Badlands,
+                };
+            case Landform.Steppe:
+                return a switch
+                {
+                    Archetype.Temperate => c.T < 0.25f ? Biome.Tundra : c.H > 0.62f ? Biome.Meadow : Biome.Grassland,
+                    Archetype.Arid => c.Slope > 0.5f ? Rock() : Biome.Scrub,
+                    Archetype.Ice => Biome.IceTundra,
+                    _ => null,
+                };
+            case Landform.Wetlands or Landform.Delta:
+                if (c.T < 0.1f && a != Archetype.Lava) return a == Archetype.Ice ? Biome.IceTundra : Biome.Tundra;
+                return a switch
+                {
+                    Archetype.Temperate => landform == Landform.Delta && c.Patch > 0.1f ? Biome.Riverbank : Biome.Swamp,
+                    Archetype.Arid => Biome.Oasis,
+                    Archetype.Ice => def.Variant == 1 && c.Special > 0.6f ? Biome.HotSpring : Biome.IceTundra,
+                    Archetype.Lava => Biome.Basalt,
+                    _ => crystal ? Biome.GlowMoss : Biome.SporeMarsh,
+                };
+            case Landform.IcePlain:
+                if (a == Archetype.Ice) return c.E > 340f ? Biome.Glacier : Biome.Snowfield;
+                return a == Archetype.Temperate ? Biome.Snow : null;
+            case Landform.Mesas or Landform.Canyonlands:
+                if (c.Slope > (a == Archetype.Arid ? 0.42f : 0.6f)) return Rock();
+                return a switch
+                {
+                    Archetype.Arid => c.H > 0.46f ? Biome.Scrub : c.Special > 0.55f ? Biome.MesaTop : Biome.Badlands,
+                    Archetype.Lava => Biome.Basalt,
+                    Archetype.Alien => crystal ? Biome.Chalk : null,
+                    _ => null,
+                };
+            case Landform.VolcanicField:
+                if (a == Archetype.Lava) return null;
+                if (c.Slope > 0.6f) return Biome.Obsidian;
+                return a == Archetype.Ice && def.Variant == 1 && c.Special > 0.56f ? Biome.Sinter : Biome.Ash;
+            case Landform.BasaltPlains:
+                return a == Archetype.Lava ? null : Biome.Basalt;
+            case Landform.Fjords or Landform.CoastalCliffs or Landform.Karst:
+                return c.Slope > 0.65f ? Rock() : null;
+            default:
+                return null;
         }
     }
 
