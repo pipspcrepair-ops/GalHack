@@ -108,14 +108,30 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         };
     }
 
-    /// <summary>Starts the planet's weather: a quiet sky to begin with, then its own forecast.</summary>
+    /// <summary>Seconds of the opening with no severe weather: a castaway's first job is the pod, not a tornado.</summary>
+    public const double CalmOpening = 20 * 60;
+
+    /// <summary>
+    /// Starts the planet's weather: a quiet sky, and of the weather seeds that follow from the
+    /// planet's, the first whose forecast keeps the opening free of severe weather. After that it
+    /// is the planet's own weather, every storm warned before it arrives.
+    /// </summary>
     public void SetWorld(PlanetWorld planet)
     {
         _planet = planet;
-        var sim = new WeatherSim(Zone.Data.Weather, ArchetypeFor(planet.Spec), planet.Spec.Seed, WeatherKind.Clouds)
+        WeatherData data = Zone.Data.Weather;
+        string archetype = ArchetypeFor(planet.Spec);
+        WeatherSim sim = null;
+        for (ulong k = 0; k < 64; k++)
         {
-            GroundHeight = (x, z) => planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height)),
-        };
+            sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds);
+            sim.EnsureTimeline(CalmOpening);
+            bool calm = true;
+            foreach (Segment s in sim.Timeline)
+                if (s.Start < CalmOpening && data.State(s.Kind).Severe) calm = false;
+            if (calm) break;
+        }
+        sim.GroundHeight = (x, z) => planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
