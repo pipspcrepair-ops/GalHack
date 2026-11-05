@@ -118,6 +118,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Pois);
         PlanetSpec spec = Spec;
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
+        // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
+        PlanetSurface.Poi.PoiSiting.StartWorld = true;
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
     }
 
@@ -143,13 +145,6 @@ public partial class SurfaceZone : Node3D
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
 
-        // A start world has no faction: whatever the siting made of a place, nobody holds it now.
-        foreach (PlanetSurface.Poi.PoiSite site in Planet.Pois)
-            if (site.Instance != null && site.Instance.State == PoiGenerator.Gen.PoiState.Active)
-            {
-                site.Instance.State = PoiGenerator.Gen.PoiState.Abandoned;
-                site.Name = site.Name.Replace("(active)", "(abandoned)");
-            }
         Pois.Build(Planet);
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));

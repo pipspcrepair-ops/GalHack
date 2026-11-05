@@ -35,7 +35,7 @@ public sealed class PlanetEdits : ITerrainEditor
     {
         PlanetEdit edit = Terrain.Crater(center, radius);
         Region changed = Commit(edit, notify: false);
-        return new CraterResult(edit.Removed.Count, edit.Bedrock + edit.Anchored + edit.Outside, changed);
+        return new CraterResult(edit.Removed.Count, edit.Bedrock + edit.Outside, changed);
     }
 
     /// <summary>The survival tool's dig: a small ball of cells around one cell.</summary>
@@ -45,6 +45,37 @@ public sealed class PlanetEdits : ITerrainEditor
         Commit(edit, notify: true);
         return edit;
     }
+
+    /// <summary>
+    /// A block of a base reaching into the ground (terrain-digging's rule 4): the cells whose
+    /// centres lie inside it are dug like any others (every copy across a seam, logged, flora
+    /// cleared, bodies woken), and its volume is registered, with its copies across the seams, so
+    /// the ground is drawn and collides flush against its faces. Harmless to repeat for a standing block.
+    /// </summary>
+    public PlanetEdit ClearForStructure(VolumeKey key, StructureVolume volume)
+    {
+        var dirty = new HashSet<Int3>();
+        int copy = 0;
+        for (int a = -1; a <= 1; a++)
+        for (int b = -1; b <= 1; b++)
+        {
+            bool self = a == 0 && b == 0;
+            StructureVolume v = self ? volume : volume.Offset(new N.Vector3(a * Terrain.Width, 0f, b * Terrain.Height));
+            CellBox box = v.CellBounds;
+            if (!self && !Terrain.InFrame(box.Min) && !Terrain.InFrame(box.Max - Int3.One)) continue;
+            dirty.UnionWith(Terrain.Store.AddVolume(key.AsCopy(self ? 0 : ++copy), v));
+        }
+        PlanetEdit edit = Terrain.DigCells(volume.CellsInside());
+        Commit(edit, notify: true);
+        _streamer.MarkDirty(dirty); // the volume changes how the ground near it is drawn, dug or not
+        return edit;
+    }
+
+    /// <summary>A block taken off: the ground it cleared stays cleared, drawn as the dug hole it is.</summary>
+    public void ReleaseStructure(VolumeKey key) => _streamer.MarkDirty(Terrain.Store.RemoveVolume(key));
+
+    /// <summary>Every block of one structure let go at once (the base taken down).</summary>
+    public void ReleaseStructures(int owner) => _streamer.MarkDirty(Terrain.Store.RemoveVolumes(owner));
 
     /// <summary>Particular cells under the tool's rules (tests, a cut plant's roots).</summary>
     public PlanetEdit DigCells(IEnumerable<Int3> cells)

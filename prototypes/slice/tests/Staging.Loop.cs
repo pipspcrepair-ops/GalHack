@@ -170,9 +170,23 @@ public sealed partial class Staging
         foreach (int x in _drive.WalkTo(b0.ToWorld(new N.Vector3(0f, -1f, -9f)), 1f, 20f)) yield return x;
         foreach (int x in Play.PlaceOnGround(2, _game.Zone.GroundAt(fabAt.X, fabAt.Z))) yield return x;
         foreach (int x in _drive.UntilSettled()) yield return x;
-        float heading = (float)Num("heading", 210) * Mathf.Pi / 180f;
-        Vector3 eye = core + new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading)) * 15f;
-        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 5f;
+        // From the first side with a clear view of it (no tree or hill in the way).
+        Vector3 eye = core;
+        float first = (float)Num("heading", 210);
+        for (int k = 0; k < 12; k++)
+        {
+            float heading = (first + k * 30f) * Mathf.Pi / 180f;
+            eye = core + new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading)) * 15f;
+            eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 5f;
+            var ray = PhysicsRayQueryParameters3D.Create(eye, core, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Props);
+            var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(ray);
+            bool ground = hit.Count > 0 && ((Vector3)hit["position"]).DistanceTo(core) >= 6f;
+            // Canopies have no colliders: no plant near the line of sight either.
+            bool leaves = false;
+            for (float t = 0f; t < 0.75f && !leaves; t += 0.1f)
+                leaves = _game.Zone.Streamer.FloraNear(eye.Lerp(core, t), 3.5f).Any();
+            if (!ground && !leaves) break;
+        }
         _game.FixedCamera = new Transform3D(Basis.LookingAt(core - eye, Vector3.Up), eye);
         foreach (int x in _drive.Wait(20)) yield return x;
     }

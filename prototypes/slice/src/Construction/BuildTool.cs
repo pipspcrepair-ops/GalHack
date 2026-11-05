@@ -579,22 +579,18 @@ public sealed class BuildTool
         return true;
     }
 
-    /// <summary>A base's block reaching into the ground: the ground inside it is cut away through the terrain's edit API.</summary>
+    /// <summary>
+    /// A base's block reaching into the ground: the cells whose centres lie inside it are cleared
+    /// and its volume registered, so the ground meets its faces flush (terrain-digging's rule 4).
+    /// </summary>
     void ClearGround(Vessel v, Int3 cell)
     {
-        float size = v.Structure.Grid.CellSize, half = size * 0.5f + 0.1f;
-        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, cell);
-        var cells = new HashSet<TerrainDigging.Terrain.Int3>();
-        for (float z = -half; z <= half; z += 0.5f)
-        for (float y = -half; y <= half; y += 0.5f)
-        for (float x = -half; x <= half; x += 0.5f)
-        {
-            N.Vector3 w = v.Body.ToParent(centre + new N.Vector3(x, y, z));
-            cells.Add(new TerrainDigging.Terrain.Int3((int)MathF.Floor(w.X), (int)MathF.Floor(w.Y), (int)MathF.Floor(w.Z)));
-        }
-        var solid = cells.Where(c => _zone.Planet.Terrain.Store.MaterialAt(c) != TerrainDigging.Terrain.CellMaterial.Air).ToList();
-        if (solid.Count > 0) _zone.Edits.DigCells(solid);
+        var volume = new TerrainDigging.Terrain.StructureVolume(
+            v.Body.ToParent(StructureBridge.CellCenter(v.Structure, cell)), v.Body.Rotation, new N.Vector3(v.Structure.Grid.CellSize));
+        _zone.Edits.ClearForStructure(BlockKey(v, cell), volume);
     }
+
+    static TerrainDigging.Terrain.VolumeKey BlockKey(Vessel v, Int3 cell) => new(v.Body.Id, cell.X, cell.Y, cell.Z);
 
     /// <summary>
     /// Takes a block down: Survival refunds its whole bill to your bag, then the structure's
@@ -604,6 +600,8 @@ public sealed class BuildTool
     {
         Structure s = v.Structure;
         if (!s.TryGet(cell, out Block b)) return;
+        // A base's blocks hold the ground off their faces: the ones that leave it let go.
+        var before = v.IsBase ? s.Blocks().Select(x => x.pos).ToList() : null;
         Bill refund = Creative || !BuildingBridge.Priced(_zone.Data.Items, s, b) ? new Bill() : BuildingBridge.BillOf(_zone.Data.Items, s, b);
         RemoveResult r = Building.Remove(s, cell, null);
         if (r.Status == RemoveStatus.CoreHoldsStructure)
@@ -612,6 +610,9 @@ public sealed class BuildTool
             return;
         }
         if (r.Status != RemoveStatus.Removed) return;
+        if (before != null)
+            foreach (Int3 p in before)
+                if (!s.Has(p)) _zone.Edits.ReleaseStructure(BlockKey(v, p));
         TakenDown++;
         Vector3 at = v.ToWorld(StructureBridge.CellCenter(s, cell));
         if (s.TypeOf(b).IsCore && s.Count == 0)

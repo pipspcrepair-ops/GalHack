@@ -159,7 +159,6 @@ public sealed class SurvivalTool
         }
         _cooldown = 0.35f;
         if (edit.Headline == Verdict.Bedrock) Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning);
-        else if (edit.Headline == Verdict.Anchored) Said?.Invoke("ANCHORED: the ground here holds", Tones.Caution);
         Sfx?.Play(Sfx.Sound.Clank, at);
         return edit;
     }

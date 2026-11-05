@@ -144,11 +144,11 @@ public sealed class Bunker
     /// </summary>
     static Site? AroundPlaces(SurfaceZone zone, Vector3 near)
     {
-        foreach (var (poi, target) in PoisNear(zone, near, 0f, 4000f))
-            for (float r = 400f; r <= 1100f; r += 140f)
-            for (int i = 0; i < 24; i++)
+        foreach (var (poi, target) in PoisNear(zone, near, 0f, 12000f))
+            for (float r = 350f; r <= 1150f; r += 100f)
+            for (int i = 0; i < 36; i++)
             {
-                float a = i * MathF.Tau / 24f;
+                float a = i * MathF.Tau / 36f;
                 var p = new Vector3(target.X + MathF.Cos(a) * r, 0f, target.Z + MathF.Sin(a) * r);
                 float toward = MathF.Atan2(-(target.X - p.X), -(target.Z - p.Z));
                 foreach (float turn in new[] { 0f, 0.6f, -0.6f })
@@ -354,7 +354,7 @@ public sealed class Bunker
         foreach (TInt3 c in CellsFor(zone, site))
         {
             Verdict v = terrain.Check(c, TerrainDigging.Terrain.EditKind.Tool);
-            if (v is Verdict.Bedrock or Verdict.Anchored or Verdict.OutsideWorld) return false;
+            if (v is Verdict.Bedrock or Verdict.OutsideWorld) return false;
         }
         return true;
     }

@@ -574,6 +574,28 @@ public partial class PlayerTest : Node
         Mark("flown");
     }
 
+    /// <summary>The flattest stretch of ground (16 m across) a walk out from the bunker reaches: along its walkable ways, 20 to 120 m out.</summary>
+    Vector3 FlattestOut(Bunker b)
+    {
+        Vector3 best = b.Outside;
+        float bestSpread = float.MaxValue;
+        foreach (Vector3 way in b.Ways.Count > 0 ? b.Ways : new List<Vector3> { (b.Outside - b.StairTop).Normalized() })
+            for (float d = 20f; d <= 120f; d += 10f)
+            {
+                Vector3 p = b.Outside + way * d;
+                float h = _game.Zone.GroundAt(p.X, p.Z).Y, spread = 0f;
+                if (h < 2f) continue;
+                for (int k = 0; k < 12; k++)
+                {
+                    float a = k * MathF.Tau / 12f;
+                    foreach (float r in new[] { 4f, 8f, 12f })
+                        spread = MathF.Max(spread, MathF.Abs(_game.Zone.GroundAt(p.X + MathF.Cos(a) * r, p.Z + MathF.Sin(a) * r).Y - h) / r);
+                }
+                if (spread < bestSpread) { bestSpread = spread; best = _game.Zone.GroundAt(p.X, p.Z); }
+            }
+        return best;
+    }
+
     void Steer(Vessel v, Vector3 to, float flat)
     {
         N.Vector3 f = MathX.Forward(v.Body.Rotation);
@@ -627,14 +649,21 @@ public partial class PlayerTest : Node
         // Up high (falls of a dozen metres are harmless; from 200 m nobody walks away), out of the seat, and a jump off the side.
         // Back over flat ground near home on the way up (a landing on a slope glances), so the walk
         // from the bunker to the backpack is a short one.
-        Vector3 over = _play.AwayFrom(_game.Bunker.Outside, _game.Bunker.Outside - _game.Bunker.StairTop, 35f); // over gentle ground a walk from the way out
+        // Over the flattest ground along a walkable way out of the bunker (a landing on a slope
+        // glances off), so the walk from the bunker to the backpack is a short, sure one.
+        Vector3 over = FlattestOut(_game.Bunker);
         for (int t = 0; t < 60 * 60; t++)
         {
             Vector3 to = over - v.Body.Position.ToGodot();
             float flat = new Vector2(to.X, to.Z).Length();
-            if (v.AboveGround >= 220f && flat < 60f) break;
+            N.Vector3 vel = v.Body.Velocity;
+            float speed = new Vector2(vel.X, vel.Z).Length();
+            if (v.AboveGround >= 220f && flat < 10f && speed < 3f) break;
             if (v.Body.Position.Y > _game.Zone.Physics.Zone.Ceiling - 500f) break;
             Steer(v, to, flat);
+            // Right over it, not near it: forward while far and slow enough to stop, back thrust to brake.
+            _game.Controls.Hold(Key.W, MathF.Abs(Mathf.Wrap(MathF.Atan2(-to.X, -to.Z) - MathF.Atan2(-MathX.Forward(v.Body.Rotation).X, -MathX.Forward(v.Body.Rotation).Z), -MathF.PI, MathF.PI)) < 0.35f && speed < flat * 0.5f);
+            _game.Controls.Hold(Key.S, speed > flat * 0.6f + 1f);
             _game.Controls.Hold(Key.Space, v.AboveGround < 220f);
             yield return 0;
         }
@@ -651,22 +680,16 @@ public partial class PlayerTest : Node
         float high = v.AboveGround;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
-        // Standing on top of it (the boots hold you to its hull): a running jump off the side, no jetpack.
-        for (int attempt = 0; attempt < 3 && (_game.Survivor.Aboard == v || _game.Survivor.Body.Frame != null); attempt++)
+        // Out of the seat on top of it: a slow step off the edge (a run-up would carry the fall
+        // far off the flat ground below, and a landing on a slope glances).
+        Vector3 off = v.ToWorld(new System.Numerics.Vector3(-8f, 0f, 0f));
+        for (int t = 0; t < 120 && (_game.Survivor.Aboard == v || _game.Survivor.Body.Frame != null || _game.Survivor.Body.OnFloor); t++)
         {
-            Vector3 off = v.ToWorld(new System.Numerics.Vector3(-8f, 0f, 0f));
-            for (int t = 0; t < 70; t++)
-            {
-                _drive.Face(new Vector3(off.X, _game.Survivor.WorldEye().Y, off.Z));
-                _game.Controls.Hold(Key.W);
-                _game.Controls.Hold(Key.Shift);
-                if (t == 6) _game.Controls.Tap(Key.Space);
-                _game.Controls.Hold(Key.Space, t is >= 6 and < 9);
-                yield return 0;
-            }
-            _game.Controls.ReleaseAll();
-            foreach (int x in _drive.Wait(20)) yield return x;
+            _drive.Face(new Vector3(off.X, _game.Survivor.WorldEye().Y, off.Z));
+            _game.Controls.Hold(Key.W);
+            yield return 0;
         }
+        _game.Controls.ReleaseAll();
         _topFall = 0f;
         foreach (int x in _play.WaitFor(() => { _topFall = MathF.Max(_topFall, -_game.Survivor.Body.Velocity.Y); return _game.Suit.Dead; }, 30)) yield return x;
         // A suited body falls no faster than about 41 m/s, and boots and armour soften the
@@ -683,7 +706,7 @@ public partial class PlayerTest : Node
         if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(carried))
             GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(carried) && _game.Pack.Storage.IsEmpty,
-            $"a fall from {high:F0} m{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
+            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;

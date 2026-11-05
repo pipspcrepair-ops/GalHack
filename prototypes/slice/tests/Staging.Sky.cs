@@ -27,6 +27,7 @@ public partial class Staging
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
         _game.Zone.Wildlife.Visible = false; // creatures aloft are not specks
+        if (_args.ContainsKey("hidepois")) _game.Zone.Pois.Visible = false; // to tell a place's geometry from the sky's
         foreach (int x in _drive.UntilSettled()) yield return x;
         string dir = _args.TryGetValue("out", out string o) ? System.IO.Path.GetDirectoryName(o) : ".";
         int specks = 0, holes = 0, frames = 0;
@@ -103,10 +104,12 @@ public partial class Staging
     }
 
     /// <summary>Pixels far darker than all but two of their eight neighbours, where those agree: specks and dashes in smooth sky.</summary>
-    int DarkSpecks(Image image) => DarkSpecks(image, (x, y) => OpenSky(_game.Camera, x, y));
+    // In open sky, and not perched on a far crest (a tree or a rock on the skyline is no speck):
+    // the pixels just below it are open sky too.
+    int DarkSpecks(Image image) => DarkSpecks(image, (x, y) => OpenSky(_game.Camera, x, y) && OpenSky(_game.Camera, x, y + 3));
 
-    /// <summary>Whether a pixel looks at open sky: its ray meets no ground within 4 km.</summary>
-    bool OpenSky(Camera3D camera, int x, int y) => GroundHit(camera, x, y, 4000f) < 0f;
+    /// <summary>Whether a pixel looks at open sky: its ray meets no ground within 12 km.</summary>
+    bool OpenSky(Camera3D camera, int x, int y) => GroundHit(camera, x, y, 12000f) < 0f;
 
     float GroundHit(Camera3D camera, int x, int y, float far)
     {
@@ -133,7 +136,16 @@ public partial class Staging
             for (int dx = -1; dx <= 1; dx++)
                 if (dx != 0 || dy != 0) n[k++] = l[x + dx + (y + dy) * w];
             Array.Sort(n);
-            if (n[2] > c + 0.12f && n[7] - n[2] < 0.06f && inSky(x, y)) count++;
+            if (!(n[2] > c + 0.12f && n[7] - n[2] < 0.06f)) continue;
+            // And smooth sky round it two pixels out, bar the ends of a dash: an edge of foliage
+            // or a ridge against the sky has many dark pixels there.
+            if (x < 2 || y < 2 || x >= w - 2 || y >= h - 2) continue;
+            int darkRing = 0;
+            float bright = n[7];
+            for (int dy = -2; dy <= 2; dy++)
+            for (int dx = -2; dx <= 2; dx++)
+                if ((Math.Abs(dx) == 2 || Math.Abs(dy) == 2) && l[x + dx + (y + dy) * w] < bright - 0.08f) darkRing++;
+            if (darkRing <= 2 && inSky(x, y)) count++;
         }
         return count;
     }
