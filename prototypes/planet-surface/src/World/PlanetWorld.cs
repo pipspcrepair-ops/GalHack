@@ -111,6 +111,13 @@ public sealed class PlanetWorld
         return new PlanetWorld(spec, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
     }
 
+    /// <summary>
+    /// The folder planets' saves go in. Tests give each run a folder of its own: user:// is shared
+    /// by every checkout of the repo on a machine (they share .tools, where it lives), so two test
+    /// runs at once would otherwise load and delete each other's saves.
+    /// </summary>
+    public static string SaveDirectory = "user://planets";
+
     /// <summary>Where saves for this planet's edits live: one file per terrain generator id.</summary>
     public string SavePath
     {
@@ -118,7 +125,7 @@ public sealed class PlanetWorld
         {
             ulong h = 14695981039346656037UL;
             foreach (char c in Source.GeneratorId) h = (h ^ c) * 1099511628211UL;
-            return ProjectSettings.GlobalizePath($"user://planets/{Spec.Archetype}-{Spec.Seed}-{h:x16}.ghs");
+            return ProjectSettings.GlobalizePath($"{SaveDirectory}/{Spec.Archetype}-{Spec.Seed}-{h:x16}.ghs");
         }
     }
 

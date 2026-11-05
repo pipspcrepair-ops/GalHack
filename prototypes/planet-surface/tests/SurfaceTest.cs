@@ -40,8 +40,12 @@ public partial class SurfaceTest : Node
     {
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) _only.UnionWith(arg["--only=".Length..].Split(','));
-        // Planets save their edits when you leave them: start from untouched planets every run.
-        string saves = ProjectSettings.GlobalizePath("user://planets");
+        // Planets save their edits when you leave them: start from untouched planets every run, in a
+        // save folder of this run's own. user:// is shared by every checkout on the machine (they
+        // share .tools), and another checkout's test run at the same moment saving the same test
+        // planet into a shared folder made this run land on its edits ("dug 0 cells": already dug).
+        PlanetWorld.SaveDirectory = $"user://test-planets/{OS.GetProcessId()}";
+        string saves = ProjectSettings.GlobalizePath(PlanetWorld.SaveDirectory);
         if (System.IO.Directory.Exists(saves)) System.IO.Directory.Delete(saves, recursive: true);
         try
         {
@@ -66,6 +70,8 @@ public partial class SurfaceTest : Node
         }
         GD.Print($"total test time {_total.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
+        try { System.IO.Directory.Delete(saves, recursive: true); }
+        catch (Exception) { } // already gone, or a file still held: it is this run's own folder, nothing else reads it
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
