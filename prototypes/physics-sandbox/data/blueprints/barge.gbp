@@ -1,9 +1,11 @@
 # Deck Barge: a flat small-grid work barge for the mag-boot walking tests, written by hand.
 #
-# Small grid (0.5 m cells). x is starboard, y up, -z forward. An 8 m square deck two blocks
-# (1 m) thick with square edges, a superstructure two blocks tall amidships, a lip one block
-# (0.5 m) tall down the starboard side, a seat at the bow and two engines at the stern. Nothing
-# is covered, so all of it is outer hull: in mag boots you can walk on any face of it.
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. A deck 8 m wide and 12 m long, two
+# blocks (1 m) thick with square edges; amidships a superstructure two blocks tall, a lip one
+# block (0.5 m) tall down the starboard side and a stair of three one-block steps to port; aft a
+# deckhouse 3 m tall with a door, and the same lip across its floor; a seat at the bow and two
+# engines at the stern. Outside the deckhouse all of it is outer hull: in mag boots you can walk
+# on any face of it.
 
 schema galhack.blueprint
 version 1
@@ -15,9 +17,10 @@ gravity on
 paint deck base=3a3f47 texture=plates grime=2
 paint house base=ece3c8 grime=1
 paint lip base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint stair base=0a9396 grime=1
 
 # --- Deck (y -1..0) with the core, a generator and a gyro set into its top -------------------
-block -8..7 -1 -8..7 steel paint=deck
+block -8..7 -1 -8..15 steel paint=deck
 block -8..7 0 -8..-1 steel paint=deck
 block -8..-1 0 0 steel paint=deck
 block 0 0 0 core
@@ -28,7 +31,7 @@ block -4 0 3 generator
 block -3..3 0 3 steel paint=deck
 block 4 0 3 gyro
 block 5..7 0 3 steel paint=deck
-block -8..7 0 4..7 steel paint=deck
+block -8..7 0 4..15 steel paint=deck
 
 # --- The superstructure: 2 m by 2 m, two blocks tall ----------------------------------------
 block -2..1 1..2 -2..1 steel paint=house
@@ -36,7 +39,23 @@ block -2..1 1..2 -2..1 steel paint=house
 # --- A lip one block tall down the starboard side -------------------------------------------
 block 5 1 -6..6 steel paint=lip
 
+# --- A stair of three steps to port, each one block high and deep, climbing toward the bow -----
+block -7..-6 1 1..5 steel paint=stair
+block -7..-6 2 1..4 steel paint=stair
+block -7..-6 3 1..3 steel paint=stair
+
+# --- The deckhouse aft: 4 m by 3.5 m and 3 m tall inside, a door 1 m by 2 m facing forward,
+# and a lip one block tall across its floor --------------------------------------------------
+block -4 1..6 9..15 steel paint=house
+block 3 1..6 9..15 steel paint=house
+block -3..2 1..6 15 steel paint=house
+block -3..-2 1..6 9 steel paint=house
+block 1..2 1..6 9 steel paint=house
+block -1..0 5..6 9 steel paint=house
+block -4..3 7 9..15 steel paint=house
+block -3..2 1 12 steel paint=lip
+
 # --- A seat at the bow, two engines at the stern ----------------------------------------------
 block 0 1 -7 cockpit
-block -5 -1 8 thruster
-block 4 -1 8 thruster
+block -5 -1 16 thruster
+block 4 -1 16 thruster

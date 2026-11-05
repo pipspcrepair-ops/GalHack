@@ -94,6 +94,7 @@ public partial class PhysicsTest : Node
         foreach (int x in SpaceWalk()) yield return x;
         foreach (int x in Airlock()) yield return x;
         foreach (int x in InsideCorners()) yield return x;
+        foreach (int x in StepsEverywhere()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in GearOnDugGround()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
@@ -733,32 +734,35 @@ public partial class PhysicsTest : Node
     sealed class HullWalk
     {
         public bool Stayed = true;
-        public float LongestOff, Rolled;
-        public int Edges, Walls, Ticks;
+        public float LongestOff, Rolled, LowestUp = 1f;
+        public int Edges, Walls, Steps, Ticks, OffFloor;
     }
 
     /// <summary>
     /// Walks the player forward on a ship until <paramref name="done"/> says so (or time runs out),
     /// noting whether they ever left its cabin world and the longest they were out of contact.
     /// </summary>
-    IEnumerable<int> WalkOn(Ship ship, HullWalk log, Func<Player, bool> done, int maxTicks, float speed = 1f, bool rolling = false)
+    IEnumerable<int> WalkOn(Ship ship, HullWalk log, Func<Player, bool> done, int maxTicks, float speed = 1f, bool rolling = false, Player who = null)
     {
-        Player p = _w.Player;
-        int edges = p.Binding.EdgesCrossed, walls = p.Binding.WallsClimbed;
+        Player p = who ?? _w.Player;
+        int edges = p.Binding.EdgesCrossed, walls = p.Binding.WallsClimbed, steps = p.Binding.StepsTaken;
         for (int t = 0; t < maxTicks; t++)
         {
             if (rolling) ship.Flight.Input = PilotInput.Hands(Vector3.Zero, new Vector3(0f, 0f, 1f));
             p.Legs.Move = new N.Vector2(0f, -speed);
             yield return 0;
             log.Ticks++;
-            log.Stayed &= p.Aboard == ship;
+            log.Stayed &= ship == null ? p.Body.Frame == null : p.Aboard == ship;
             log.LongestOff = MathF.Max(log.LongestOff, Riding.OutOfContactFor(p.Body));
-            if (ship.Vessel != null) log.Rolled += MathF.Abs(ship.Vessel.LocalSpin.Z) * Dt;
+            log.LowestUp = MathF.Min(log.LowestUp, p.Body.Up.Y);
+            if (!p.Body.OnFloor) log.OffFloor++;
+            if (ship?.Vessel != null) log.Rolled += MathF.Abs(ship.Vessel.LocalSpin.Z) * Dt;
             if (done(p)) break;
         }
         p.Legs.Move = N.Vector2.Zero;
         log.Edges += p.Binding.EdgesCrossed - edges;
         log.Walls += p.Binding.WallsClimbed - walls;
+        log.Steps += p.Binding.StepsTaken - steps;
     }
 
     /// <summary>A ship in orbit (100 m above the atmosphere), still, with its core gravity off.</summary>
@@ -984,17 +988,121 @@ public partial class PhysicsTest : Node
             $"in orbit with core gravity off, walking into a superstructure wall two blocks (1 m) tall, the boots carry the player up its face, " +
             $"over its top edge and onto its roof ({walk.Walls} wall climbed, {walk.Edges} edge, never out of contact for more than {walk.LongestOff:F2} s)");
 
-        // A lip one block tall stays a step: walking into it doesn't climb it.
+        // A lip one block tall is a step: the boots step up onto it and down off the far side,
+        // never leaving the hull, never turning to climb it.
+        float stepHeight = _w.Rules.Walking.StepHeight;
         p.PlaceAboard(barge, new N.Vector3(1.4f, 0.28f, -2.5f));
         p.Yaw = -MathF.PI / 2f; // facing the starboard lip
         for (int i = 0; i < 10; i++) yield return 0;
         var lip = new HullWalk();
-        foreach (int x in WalkOn(barge, lip, _ => false, 90)) yield return x;
-        Check(lip.Stayed && lip.Walls == 0 && p.Body.OnFloor && p.Body.Up.Y > 0.999f && p.Body.Position.X > 1.7f && p.Body.Position.X < 2.25f,
-            $"a lip one block ({barge.Structure.Grid.CellSize:0.0#} m) tall, under the {_w.Rules.Riding.StepHeight:0.0#} m step height, stays a step: walking into it the boots don't climb it");
+        foreach (int x in WalkOn(barge, lip, q => q.Body.Position.X > 3.2f, 120)) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        bool over = p.OnHull == barge && p.Body.OnFloor && p.Body.Up.Y > 0.999f && p.Body.Position.X > 3.1f && MathF.Abs(p.Body.Position.Y - 0.25f) < 0.05f;
+        Check(lip.Stayed && over && lip.Steps >= 1 && lip.Walls == 0 && lip.LongestOff == 0f && lip.OffFloor == 0,
+            $"in orbit with core gravity off, a lip one block ({barge.Structure.Grid.CellSize:0.0#} m) tall, under the {stepHeight:0.0#} m step height, is a step: " +
+            $"the player walks up onto it and down off the far side in {lip.Ticks * Dt:F2} s, never out of contact or off the floor, still on the hull");
+
+        // A stair of three one-block steps, climbed in mag boots without a pause.
+        p.PlaceAboard(barge, new N.Vector3(-3.25f, 0.28f, 3.4f));
+        p.Yaw = 0f; // facing up the stair
+        for (int i = 0; i < 10; i++) yield return 0;
+        var stair = new HullWalk();
+        foreach (int x in WalkOn(barge, stair, q => q.Body.Position.Z < 0.9f, 180)) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        bool top = p.OnHull == barge && p.Body.OnFloor && p.Body.Up.Y > 0.999f && MathF.Abs(p.Body.Position.Y - 1.75f) < 0.05f;
+        Check(stair.Stayed && top && stair.Steps >= 3 && stair.Walls == 0 && stair.LongestOff == 0f && stair.OffFloor == 0,
+            $"a stair of three one-block steps is walked straight up in mag boots ({stair.Steps} steps, 1.5 m up in {stair.Ticks * Dt:F2} s): never out of contact or off the floor, " +
+            $"up never tipping more than {Units.Degrees(MathF.Acos(Math.Clamp(stair.LowestUp, -1f, 1f))):F0}° on the step edges");
         _w.Remove(barge);
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    /// <summary>Steps in the cabin under core gravity, and on terrain under the planet's.</summary>
+    IEnumerable<int> StepsEverywhere()
+    {
+        float stepHeight = _w.Rules.Walking.StepHeight;
+
+        // The same lip across the floor of the barge's deckhouse, under core gravity. (Not in the
+        // Corsair: its cabin is 2 m tall, and over a 0.5 m lip there's no room to stand.)
+        Ship barge = InOrbit("barge.gbp", new N.Vector3(-20f, 0f, 30f));
+        barge.Body.Core.On = true;
+        barge.Cabin.SetGravity(barge.Body.Core);
+        Player p = _w.Player;
+        p.PlaceAboard(barge, new N.Vector3(-0.25f, 0.28f, 5.2f));
+        p.Yaw = MathF.PI; // facing aft, the lip ahead
+        p.Pitch = 0f;
+        for (int i = 0; i < 20; i++) yield return 0;
+        bool indoors = p.Aboard == barge && !p.Body.OnOuterHull;
+        var cabin = new HullWalk();
+        foreach (int x in WalkOn(barge, cabin, r => r.Body.Position.Z > 6.6f, 120)) yield return x;
+        int settle = 0;
+        while (!p.Body.OnFloor && settle++ < 60) yield return 0;
+        for (int i = 0; i < 5; i++) yield return 0;
+        bool inside = indoors && p.Aboard == barge && !p.Body.OnOuterHull && p.Body.OnFloor && MathF.Abs(p.Body.Position.Y - 0.25f) < 0.05f
+                      && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), barge.Body.Core.Local) < 1e-4f;
+        float drop = (cabin.OffFloor + settle) * Dt;
+        Check(cabin.Stayed && inside && cabin.Steps >= 1 && drop < 0.35f,
+            $"inside a cabin under core gravity, the same one-block lip is stepped up onto without a stop, and walked off the far side: " +
+            $"over it in {cabin.Ticks * Dt:F2} s, then a {drop:F2} s drop to the floor beyond, as off any step under gravity");
+        _w.Remove(barge);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 5; i++) yield return 0;
+
+        // On terrain, in a fresh world (the landing field is level and nothing has been there).
+        var view = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
+        AddChild(view);
+        var w = new SandboxWorld { Visuals = false };
+        view.AddChild(w);
+        w.Weather.Calm = true;
+        for (int i = 0; i < 3; i++) yield return 0;
+        Player q = w.Player;
+
+        // A 0.5 m ledge on the world layer: a trimesh like the terrain's own collision, with the
+        // sheer face the terrain's smooth mesh never makes, on the level field.
+        N.Vector3 field = w.Ground(-12f, -10f);
+        var ledge = new StaticBody3D { Name = "Ledge", CollisionLayer = Layers.World, CollisionMask = 0 };
+        var box = new BoxMesh { Size = new Vector3(2f, 0.5f, 3f) };
+        ledge.AddChild(new CollisionShape3D { Shape = box.CreateTrimeshShape() });
+        w.AddChild(ledge);
+        ledge.GlobalPosition = (field + new N.Vector3(-1f, 0.25f, 0f)).ToGodot(); // x -14..-12, z -11.5..-8.5
+        q.PlaceOutside(field + new N.Vector3(1.5f, 0.05f, 0f));
+        q.Yaw = MathF.PI / 2f; // facing west, at the ledge
+        q.Pitch = 0f;
+        for (int i = 0; i < 20; i++) yield return 0;
+        var onLedge = new HullWalk();
+        foreach (int x in WalkOn(null, onLedge, r => r.Body.Position.X < field.X - 1.2f, 120, who: q)) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        float rise = q.Body.Position.Y - field.Y;
+        Check(onLedge.Stayed && onLedge.Steps >= 1 && onLedge.OffFloor == 0 && q.Body.OnFloor && MathF.Abs(rise - 0.5f) < 0.05f,
+            $"on terrain, walking into a sheer 0.5 m ledge steps the player up onto it ({rise:F2} m) without leaving the floor; nothing over {stepHeight:0.0#} m would be");
+
+        // The steepest edge the terrain itself makes: one layer of cells dug out of the level
+        // field leaves a 1 m drop over 2 m of smooth slope, walked up out of without a stop.
+        var cells = new List<TInt3>();
+        for (int x = 6; x < 11; x++)
+            for (int z = -12; z < -8; z++)
+                cells.Add(new TInt3(x, w.Store.TopSolid(x, z), z));
+        w.Terrain.DigCells(cells);
+        for (int i = 0; i < 3; i++) yield return 0;
+        N.Vector3 pit = new(8.5f, w.GroundTop(8.5f, -10f), -10f);
+        q.PlaceOutside(pit + N.Vector3.UnitY * 0.05f);
+        q.Yaw = MathF.PI / 2f; // facing west, up the dug edge
+        for (int i = 0; i < 20; i++) yield return 0;
+        float floorY = q.Body.Position.Y;
+        var dug = new HullWalk();
+        float slowest = float.PositiveInfinity;
+        foreach (int x in WalkOn(null, dug, r =>
+        {
+            if (r.Body.Position.X < 8f && r.Body.Position.X > 4.5f) slowest = MathF.Min(slowest, MathX.Flat(r.Body.Velocity).Length()); // once up to speed
+            return r.Body.Position.X < 3.5f;
+        }, 120, who: q)) yield return x;
+        float climbed = q.Body.Position.Y - floorY;
+        Check(dug.Stayed && dug.OffFloor == 0 && climbed > 0.9f && slowest > 3f,
+            $"and the steepest edge the terrain itself makes (one dug layer: {climbed:F2} m up over 2 m of slope) is walked up out of without leaving the floor, never slower than {slowest:F1} m/s");
+        view.GetParent().RemoveChild(view);
+        view.QueueFree();
+        yield return 0;
     }
 
     // ==== Hover rover over a trench, gear on dug ground ==========================================

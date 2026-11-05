@@ -11,6 +11,10 @@ namespace GalHack.Physics.Engine;
 /// slamming into things are impacts like any other. Engine platform velocity is off: a rider is
 /// never carried by the engine, only by living in its structure's frame.
 ///
+/// Anything up to a step tall (<see cref="PhysicsRules.WalkingData.StepHeight"/>) is stepped up
+/// onto, and a ledge up to a step deep is stepped down without leaving the floor, whichever way
+/// up is: on terrain, a cabin floor or an outer hull.
+///
 /// In mag boots (<see cref="MagBoots"/>) the up follows the face underfoot, and two probes carry
 /// the body round the hull: an outside edge (walked off a face: look a little below it and back
 /// for the next face) and, if switched on, an inside corner (walked into a wall taller than a step:
@@ -37,6 +41,9 @@ public sealed class CharacterBinding : BodyBinding
     /// <summary>How many times the boots have carried the body round an outside edge / onto a wall. For tests and the HUD.</summary>
     public int EdgesCrossed { get; private set; }
     public int WallsClimbed { get; private set; }
+
+    /// <summary>How many times the body has stepped up onto something a step tall. For tests.</summary>
+    public int StepsTaken { get; private set; }
 
     readonly PhysicsRayQueryParameters3D _ray = new();
     readonly PhysicsPointQueryParameters3D _point = new();
@@ -96,13 +103,16 @@ public sealed class CharacterBinding : BodyBinding
         }
         Vector3 before = b.Velocity.ToGodot();
         N.Vector3 worldBefore = b.WorldVelocity;
-        Character.FloorSnapLength = MagBoots ? 0.3f : 0.1f;
+        float step = host.World.Rules.Walking.StepHeight;
+        Character.FloorSnapLength = step + 0.05f; // steps down a ledge up to a step deep without leaving the floor
         Character.Velocity = before;
         Character.MoveAndSlide();
         b.Position = Character.GlobalPosition.ToNumerics();
         b.Velocity = Character.Velocity.ToNumerics();
         b.OnFloor = Character.IsOnFloor();
         N.Vector3 up = b.Up;
+        bool stepped = (wasOnFloor || b.OnFloor) && !Floating && b.Controller is not WalkController { Jumped: true }
+                       && StepUp(step, before.ToNumerics(), dt);
 
         // The hardest thing it ran into this move: landing, or being thrown into a wall. A new
         // contact counts its full closing speed. A surface it was already touching last move
@@ -130,6 +140,7 @@ public sealed class CharacterBinding : BodyBinding
                     TouchedHullNormal = n;
                 }
             }
+            if (stepped && N.Vector3.Dot(n, up) < 0.3f) continue; // the step's riser: stepped up, not hit
             N.Vector3 otherVelocity = other == null || b.Frame != null ? N.Vector3.Zero : other.PointVelocity(point);
             N.Vector3 mine = b.Frame != null ? before.ToNumerics() : worldBefore;
             float closing = -N.Vector3.Dot(mine - otherVelocity, n);
@@ -143,7 +154,51 @@ public sealed class CharacterBinding : BodyBinding
         if (hardest > host.World.Rules.Contacts.EventSpeed && (!wasOnFloor || N.Vector3.Dot(strongest.Normal, up) < 0.7f))
             host.World.ResolveImpact(b, strongest.Other, strongest.Point, strongest.Normal, hardest, strongest.Surface);
 
-        if (MagBoots) Boots(host, before.ToNumerics(), dt);
+        if (MagBoots) Boots(host, before.ToNumerics(), dt, stepped);
+    }
+
+    /// <summary>
+    /// Walked into something no taller than a step: up by the step height (or the headroom there
+    /// is), on by this move's walk, and down onto it, if all three are clear and it lands on a
+    /// floor. Anything taller stays a wall (in mag boots, one the boots may climb). The same on
+    /// terrain, a cabin floor or an outer hull, whichever way up is.
+    /// </summary>
+    bool StepUp(float height, N.Vector3 wanted, float dt)
+    {
+        Body b = Body;
+        N.Vector3 up = b.Up;
+        N.Vector3 along = wanted - up * N.Vector3.Dot(wanted, up);
+        float speed = along.Length();
+        if (speed < 0.3f || height <= 0f) return false;
+        N.Vector3 dir = along / speed;
+        bool blocked = false;
+        for (int i = 0; i < Character.GetSlideCollisionCount() && !blocked; i++)
+        {
+            N.Vector3 n = Character.GetSlideCollision(i).GetNormal().ToNumerics();
+            blocked = N.Vector3.Dot(n, up) < 0.3f && N.Vector3.Dot(dir, -n) > 0.3f;
+        }
+        if (!blocked) return false;
+
+        Transform3D from = Character.GlobalTransform;
+        var hit = new KinematicCollision3D();
+        Vector3 lift = (up * height).ToGodot();
+        if (Character.TestMove(from, lift, hit)) lift = hit.GetTravel();
+        Transform3D raised = from;
+        raised.Origin += lift;
+        Vector3 on = (dir * System.MathF.Max(speed * dt, Radius * 0.4f)).ToGodot();
+        if (Character.TestMove(raised, on)) return false; // taller than a step: a wall
+        raised.Origin += on;
+        if (!Character.TestMove(raised, -lift - (up * 0.05f).ToGodot(), hit)) return false; // nothing to stand on
+        if (N.Vector3.Dot(hit.GetNormal().ToNumerics(), up) < System.MathF.Cos(Character.FloorMaxAngle)) return false;
+        Vector3 landed = raised.Origin + hit.GetTravel();
+        if (N.Vector3.Dot((landed - from.Origin).ToNumerics(), up) < 0.02f) return false; // nothing to climb
+        Character.GlobalPosition = landed;
+        b.Position = landed.ToNumerics();
+        b.Velocity = along; // on at the walking speed, nothing into the step
+        Character.Velocity = b.Velocity.ToGodot();
+        b.OnFloor = true;
+        StepsTaken++;
+        return true;
     }
 
     /// <summary>Turns the capsule (and the controller's idea of up) to the body's up.</summary>
@@ -156,7 +211,7 @@ public sealed class CharacterBinding : BodyBinding
 
     // ---- Mag boots ---------------------------------------------------------------------------
 
-    void Boots(PhysicsHost host, N.Vector3 before, float dt)
+    void Boots(PhysicsHost host, N.Vector3 before, float dt, bool stepped)
     {
         Body b = Body;
         PhysicsRules.RidingData rules = host.World.Rules.Riding;
@@ -167,7 +222,7 @@ public sealed class CharacterBinding : BodyBinding
         {
             // Walked into a wall too tall to be a step: climb onto it. Otherwise follow the face
             // underfoot, eased so a seam between blocks never jolts.
-            if (rules.InsideCorners && InsideCorner(rules, before)) WallsClimbed++;
+            if (!stepped && rules.InsideCorners && InsideCorner(host.World.Rules.Walking.StepHeight, before)) WallsClimbed++;
             else
             {
                 // The velocity turns with the up, so it stays along the face and the feet stay on it.
@@ -207,9 +262,9 @@ public sealed class CharacterBinding : BodyBinding
 
     /// <summary>
     /// Walked into a wall rising from the face: if it is taller than a step, climb onto it (the
-    /// wall becomes the floor). A low lip stays a lip.
+    /// wall becomes the floor). Anything lower has already been stepped onto.
     /// </summary>
-    bool InsideCorner(PhysicsRules.RidingData rules, N.Vector3 before)
+    bool InsideCorner(float stepHeight, N.Vector3 before)
     {
         Body b = Body;
         N.Vector3 up = b.Up;
@@ -219,7 +274,7 @@ public sealed class CharacterBinding : BodyBinding
             if (N.Vector3.Dot(n, up) > 0.3f) continue; // a floor or a slope, not a wall
             N.Vector3 into = before - up * N.Vector3.Dot(before, up);
             if (N.Vector3.Dot(into, -n) < 0.5f) continue; // not walking into it
-            N.Vector3 high = b.Position + up * rules.StepHeight;
+            N.Vector3 high = b.Position + up * stepHeight;
             if (!Ray(high, high - n * (Radius + 0.35f), out _, out N.Vector3 wall) || N.Vector3.Dot(wall, n) < 0.9f) continue;
             // Feet onto the wall, lifted off the old face so the turned capsule clears it.
             Carry(n, b.Position - n * Radius + up * (Radius + 0.03f));

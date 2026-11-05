@@ -21,6 +21,7 @@ public sealed class PhysicsRules
     public GearData Gear { get; set; } = new();
     public StuckData Stuck { get; set; } = new();
     public RidingData Riding { get; set; } = new();
+    public WalkingData Walking { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -148,9 +149,8 @@ public sealed class PhysicsRules
         public bool MagBoots { get; set; } = true;
         public float MagBootGravity { get; set; } = 9.8f;
 
-        /// <summary>Mag boots also carry a rider up onto a wall rising from their face, if it is taller than <see cref="StepHeight"/>.</summary>
+        /// <summary>Mag boots also carry a rider up onto a wall rising from their face, if it is taller than a step (<see cref="WalkingData.StepHeight"/>).</summary>
         public bool InsideCorners { get; set; } = true;
-        public float StepHeight { get; set; } = 0.6f;
 
         /// <summary>How far below the face just walked off to look for the next face round an outside edge, m.</summary>
         public float EdgeProbe { get; set; } = 0.35f;
@@ -160,6 +160,16 @@ public sealed class PhysicsRules
 
         /// <summary>How fast a camera eases its roll to a rider's new up (1/s). Presentation reads it.</summary>
         public float ViewEase { get; set; } = 10f;
+    }
+
+    /// <summary>Walking bodies (players, creatures), wherever they walk: terrain, a cabin floor, an outer hull.</summary>
+    public sealed class WalkingData
+    {
+        /// <summary>
+        /// Anything up to this tall is a step: walking into it steps up onto it, and walking off
+        /// a ledge this deep steps down onto the floor below without leaving it. Taller is a wall. m.
+        /// </summary>
+        public float StepHeight { get; set; } = 0.6f;
     }
 
     public sealed class StuckData

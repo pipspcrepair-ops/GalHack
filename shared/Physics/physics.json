@@ -85,16 +85,22 @@
     // Mag boots: out on the hull, down is the face under the feet (its normal followed at
     // upFollow 1/s), pulling at magBootGravity (m/s²) with or without core gravity, in space or
     // air. Walking off an outside edge, the boots look edgeProbe (m) below the face for the next
-    // one round the edge. With insideCorners, walking into a wall taller than stepHeight (m)
-    // climbs onto it; lower lips stay steps. Off (magBoots false): the outer hull has the
-    // cabin's down. The camera eases its roll at viewEase (1/s).
+    // one round the edge. With insideCorners, walking into a wall taller than a step
+    // (walking.stepHeight) climbs onto it; lower lips are stepped over. Off (magBoots false):
+    // the outer hull has the cabin's down. The camera eases its roll at viewEase (1/s).
     "magBoots": true,
     "magBootGravity": 9.8,
     "insideCorners": true,
-    "stepHeight": 0.6,
     "edgeProbe": 0.35,
     "upFollow": 20,
     "viewEase": 10
+  },
+
+  "walking": {
+    // Anything up to stepHeight (m) tall is a step, for every walking body on terrain, a cabin
+    // floor or an outer hull: walking into it steps up onto it, walking off a ledge that deep
+    // steps down without leaving the floor. Taller is a wall (in mag boots, one to climb).
+    "stepHeight": 0.6
   },
 
   "stuck": {
