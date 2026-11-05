@@ -41,9 +41,10 @@ public partial class SurfaceTest : Node
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) _only.UnionWith(arg["--only=".Length..].Split(','));
         // Planets save their edits when you leave them: start from untouched planets every run, in a
-        // save folder of this run's own. user:// is shared by every checkout on the machine (they
-        // share .tools), and another checkout's test run at the same moment saving the same test
-        // planet into a shared folder made this run land on its edits ("dug 0 cells": already dug).
+        // save folder of this run's own. Another run saving the same test planet into a shared
+        // folder at the same moment made this run land on its edits ("dug 0 cells": already dug).
+        // env.ps1 now gives each checkout its own user://, but two runs in one checkout (the gate
+        // and a run by hand) still share it, so each run keeps its own folder.
         PlanetWorld.SaveDirectory = $"user://test-planets/{OS.GetProcessId()}";
         string saves = ProjectSettings.GlobalizePath(PlanetWorld.SaveDirectory);
         if (System.IO.Directory.Exists(saves)) System.IO.Directory.Delete(saves, recursive: true);
