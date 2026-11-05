@@ -27,6 +27,17 @@ public sealed class GameData
     public WeatherData Weather { get; private init; }
     public WildlifeData Wildlife { get; private init; }
     public SliceRules Rules { get; private init; }
+
+    /// <summary>shared/Items' catalogue with the slice's additions (data/items.json): items, recipes, block bills, machines and tech-tree nodes.</summary>
+    public GalHack.Items.ItemCatalogue Items { get; private init; }
+
+    /// <summary>What using each consumable does.</summary>
+    public Dictionary<string, Slice.Items.ConsumableEffect> Consumables { get; private init; }
+
+    /// <summary>Levels and experience (data/progress.json).</summary>
+    public Slice.Items.ProgressRules Progress { get; private init; }
+
+    public static string SharedPath(params string[] parts) => Path.GetFullPath(Path.Combine(PrototypesRoot, "..", "shared", Path.Combine(parts)));
     readonly string[] _survival;
 
     static GameData _shared;
@@ -47,13 +58,20 @@ public sealed class GameData
             File.ReadAllText(Proto("survival-vitals", "data", "food.json")),
             File.ReadAllText(Own("data/survival.json")),
         };
+        var items = Slice.Items.SliceItems.Load(SharedPath("Items", "data"), Own("data/items.json"), out var consumables);
         return new GameData(survival)
         {
-            Physics = PhysicsRules.FromJson(File.ReadAllText(Path.Combine(PrototypesRoot, "..", "shared", "Physics", "physics.json"))),
+            Physics = PhysicsRules.FromJson(File.ReadAllText(SharedPath("Physics", "physics.json"))),
             Handling = Tunables.FromJson(File.ReadAllText(Proto("ship-handling", "data", "handling.json"))),
             // Building's catalogue with the vessel parts (gyros, hover pads, landing legs) the
-            // physics sandbox appends to it, both read in place.
-            Catalogue = StructureBridge.LoadCatalogue(Proto("building", "data"), Proto("physics-sandbox", "data", "vessel-parts.json")),
+            // physics sandbox appends to it, and shared/Items' production machines, guns and
+            // extra armour, all read in place.
+            Catalogue = GalHack.Items.Bridge.BuildingBridge.LoadCatalogue(Proto("building", "data"),
+                new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
+                new[] { SharedPath("Items", "data", "building-materials.json") }),
+            Items = items,
+            Consumables = consumables,
+            Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
             Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("wildlife", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
@@ -90,6 +108,8 @@ public sealed class SliceRules
     public ToolRules Tool { get; set; } = new();
     public BuildRules Build { get; set; } = new();
     public WildlifeRules Wildlife { get; set; } = new();
+    public TorchRules Torch { get; set; } = new();
+    public ContainerRules Containers { get; set; } = new();
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -117,10 +137,16 @@ public sealed class SliceRules
 
     public sealed class MaterialRules
     {
-        public Dictionary<string, int> OrePerCell { get; set; } = new();
+        /// <summary>Raw ore items per 1 m cell of ore dug (shared/Items' pacing reference).</summary>
+        public int OrePerCell { get; set; } = 12;
+        /// <summary>Stone per cell of rock dug.</summary>
+        public int StonePerRockCell { get; set; } = 1;
         public double OrganicsPerPlant { get; set; } = 1.5;
-        public int CarbonPerPlant { get; set; } = 2;
+        public int BiomassPerPlant { get; set; } = 2;
+        /// <summary>What the escape pod's locker holds, by item id.</summary>
         public Dictionary<string, int> PodLocker { get; set; } = new();
+        /// <summary>What the castaway starts with on the toolbar, by item id, in slot order.</summary>
+        public List<string> Toolbar { get; set; } = new();
     }
 
     public sealed class ClimateRules
@@ -150,6 +176,21 @@ public sealed class SliceRules
         public float Reach { get; set; } = 9f;
         public float BlueprintPlacesPerSecond { get; set; } = 8f;
         public string StarterBlueprint { get; set; } = "starter.gbp";
+        public float SmallVesselMaxTurn { get; set; } = 110f;
+    }
+
+    public sealed class TorchRules
+    {
+        public float Range { get; set; } = 45f;
+        public float Angle { get; set; } = 32f;
+        public float Energy { get; set; } = 5.5f;
+    }
+
+    public sealed class ContainerRules
+    {
+        public int[] Corpse { get; set; } = { 4, 4 };
+        public int[] Backpack { get; set; } = { 8, 8 };
+        public int[] Drop { get; set; } = { 8, 8 };
     }
 
     public sealed class WildlifeRules

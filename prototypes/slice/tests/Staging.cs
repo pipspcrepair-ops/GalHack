@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -18,7 +19,7 @@ namespace Slice.Tests;
 /// own controls (tests/Driver) wherever a player's hands would do it. Views: pod, dig, build,
 /// liftoff, flying, cockpit.
 /// </summary>
-public sealed class Staging
+public sealed partial class Staging
 {
     readonly Game.Game _game;
     readonly Driver _drive;
@@ -49,7 +50,13 @@ public sealed class Staging
             "liftoff" => Liftoff(),
             "flying" => Flying(),
             "cockpit" => Cockpit(),
-            "wrist" => WristUp(),
+            "menu" => Menu(),
+            "loot" => Loot(),
+            "bolt" => Bolt(),
+            "podshot" => PodShot(),
+            "torch" => Torch(),
+            "base" => BaseView(),
+            "vessel" => VesselTakeoff(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
         foreach (int x in script) yield return x;
@@ -117,7 +124,10 @@ public sealed class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.34);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(new Dictionary<string, int> { [item] = n });
+        // Staging shortcut: the Skiff's parts in the bag and the tech open (the screenshots show building, not gathering).
+        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
+        _game.Progress.Creative = true;
+        _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
         Vector3 pod = _game.Pod.Body.Position.ToGodot();
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
@@ -183,28 +193,6 @@ public sealed class Staging
             yield return 0;
         }
         foreach (int x in _drive.UntilSettled(20)) yield return x;
-    }
-
-    /// <summary>The wrist computer raised beside the pod, after emptying its locker.</summary>
-    IEnumerable<int> WristUp()
-    {
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.31);
-        Vessel pod = _game.Pod;
-        foreach (var (p, b) in pod.Structure.Blocks())
-        {
-            if (!pod.Structure.TypeOf(b).IsContainer) continue;
-            Vector3 at = pod.Body.ToParent(PhysicsSandbox.Bridges.StructureBridge.CellCenter(pod.Structure, p)).ToGodot();
-            foreach (int x in _drive.WalkTo(at, 1.4f, 20f)) yield return x;
-            foreach (int x in _drive.LookAt(at, 6)) yield return x;
-            foreach (int x in _drive.Tap(Key.E)) yield return x;
-            break;
-        }
-        // Out into the open, then up with the wrist.
-        Vector3 outside = pod.Body.ToParent(new N.Vector3(0f, 0f, -7f)).ToGodot();
-        foreach (int x in _drive.WalkTo(outside, 1f, 20f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
-        Vector3 ahead = outside + (outside - pod.Body.Position.ToGodot()).Normalized() * 20f;
-        foreach (int x in _drive.LookAt(ahead + Vector3.Down * 2f, 50)) yield return x;
     }
 
     /// <summary>In the Skiff's seat, the console showing its four numbers.</summary>

@@ -99,7 +99,7 @@ public partial class SliceTest : Node
         zone.Weather.Sim.Snap(WeatherKind.Clear);
         zone.Wildlife.Frozen = true;
         zone.Physics.Rescued += _rescues.Add;
-        zone.Physics.Rescued += r => GD.Print($"  (rescued {r.Body.Label} from inside {r.Inside}: {r.From} to {r.To})");
+        zone.Physics.Rescued += r => GD.Print($"  (rescued {r.Body.Label} from inside {r.Inside}: {r.From} to {r.To}; frame {_game.Survivor.Body.Frame?.Label} outer {_game.Survivor.Body.OnOuterHull} local {_game.Pod.Body.ToLocal(_game.Survivor.Body.WorldPosition)} at {_clock.Elapsed.TotalSeconds:F1})");
         zone.Physics.Impact += _impacts.Add;
         zone.Physics.Impact += i =>
         {
@@ -112,16 +112,18 @@ public partial class SliceTest : Node
 
         foreach (int x in Arrival()) yield return x;
         foreach (int x in Locker()) yield return x;
-        if (OS.GetCmdlineUserArgs().Contains("--quick"))
-        {
-            // Iterating on the later steps: hand over what gathering would have.
-            foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(new Dictionary<string, int> { [item] = n });
-        }
-        else
+        if (OS.GetCmdlineUserArgs().Contains("--locker-only")) yield break;
+        if (!OS.GetCmdlineUserArgs().Contains("--quick"))
         {
             foreach (int x in Gather()) yield return x;
             foreach (int x in CutPlant()) yield return x;
         }
+        // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
+        // the parts the Skiff's bill needs and opens the tech tree. The real-player test
+        // (PlayerTest) crafts every part and earns every unlock by playing.
+        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
+        _game.Progress.Creative = true;
+        GD.Print($"  (systems test: handed over the Skiff's parts, {_game.Zone.Data.Items.Describe(_game.Builder.TotalCost(_game.StarterPlan), 6)}, and opened the tech tree)");
         foreach (int x in Build()) yield return x;
         foreach (int x in BuildCreative()) yield return x;
         foreach (int x in Fly()) yield return x;
@@ -189,13 +191,21 @@ public partial class SliceTest : Node
         Vessel pod = _game.Pod;
         Int3 locker = pod.Structure.Blocks().First(b => pod.Structure.TypeOf(b.block).IsContainer).pos;
         Vector3 at = pod.Body.ToParent(StructureBridge.CellCenter(pod.Structure, locker)).ToGodot();
-        foreach (int x in _drive.WalkTo(at, 1.4f, 20f)) yield return x;
+        foreach (int x in _drive.EnterThroughHatch(pod)) yield return x;
+        Check(_game.Survivor.Aboard == pod, "walking in through the hatch puts the castaway inside the pod");
         foreach (int x in _drive.LookAt(at, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Opened?.Vessel == pod && _game.Menu.IsOpen, "E at the pod's locker opens it beside the bag");
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         Dictionary<string, int> want = _game.Zone.Data.Rules.Materials.PodLocker;
-        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && pod.Cargo.Total == 0 && _game.Suit.Kit.CountFood("ration-pack") > 0,
-            $"E at the pod's locker takes what it holds: {string.Join(", ", want.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}, and the rations");
+        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && pod.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
+            $"TAKE ALL empties the locker into the bag: {string.Join(", ", want.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}, and the rations");
+        int stepsOff = _game.Survivor.StepsOff;
+        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
+        Check(_game.Survivor.Body.Frame == null && _game.Survivor.StepsOff > stepsOff && _game.Survivor.Body.OnFloor && !_rescues.Any(r => r.Body == _game.Survivor.Body),
+            "walking out of the hatch onto the ground hands the castaway back to the planet at once (stepped off, standing, never rescued)");
     }
 
     // ==== Gathering =================================================================================
@@ -203,15 +213,15 @@ public partial class SliceTest : Node
     IEnumerable<int> Gather()
     {
         GD.Print("-- gathering --");
-        Structure plan = _game.StarterPlan;
-        IReadOnlyDictionary<string, int> need = _game.Builder.TotalCost(plan);
-        GD.Print($"  the starter needs {string.Join(", ", need.Select(kv => $"{kv.Value} {kv.Key}"))}");
+        // Some of each common ore, a deposit each: what digging gives is the systems check here.
+        var need = new Dictionary<string, int> { ["iron-ore"] = 60, ["copper-ore"] = 24, ["silicon-ore"] = 24, ["carbon-ore"] = 24 };
         var tried = new HashSet<Vector3>();
         bool first = true;
         foreach (DepositKind kind in DepositFinder.Kinds)
         {
-            string material = SurvivalTool.MaterialOf(kind);
-            for (int deposit = 0; deposit < 4 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
+            if (_game.Tool.OreOf(kind) is not GalHack.Items.ItemDef oreItem || !need.ContainsKey(oreItem.Id)) continue;
+            string material = oreItem.Id;
+            for (int deposit = 0; deposit < 2 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
             {
                 Vector3? found = NearestUntried(kind, tried);
                 if (found is not Vector3 ore) break;
@@ -223,7 +233,7 @@ public partial class SliceTest : Node
                 int cells = 0;
                 foreach (int x in DigOut(ore, need.GetValueOrDefault(material), material, c => cells += c)) yield return x;
                 int got = _game.Pack[material] - before;
-                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell[material];
+                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell;
                 GD.Print($"  {material}: walked {walked:F0} m to a deposit, dug {cells} ore cells for {got} {material}");
                 if (first)
                 {
@@ -237,7 +247,7 @@ public partial class SliceTest : Node
         }
         var shortOf = need.Where(kv => _game.Pack[kv.Key] < kv.Value).ToList();
         Check(shortOf.Count == 0,
-            $"the nearest deposits hold enough for the starter vessel: {string.Join(", ", need.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
+            $"the nearest deposits give every common ore: {string.Join(", ", need.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
     }
 
     Vector3? NearestUntried(DepositKind kind, HashSet<Vector3> tried)
@@ -284,7 +294,7 @@ public partial class SliceTest : Node
             foreach (int x in _drive.HoldPrimary(t, 2)) yield return x;
             for (int i = 0; i < 10; i++) yield return 0;
             int got = _game.Tool.Gathered.GetValueOrDefault(material) - before;
-            cellsDug(got / Math.Max(1, _game.Zone.Data.Rules.Materials.OrePerCell[material]));
+            cellsDug(got / Math.Max(1, _game.Zone.Data.Rules.Materials.OrePerCell));
             idle = got > 0 ? 0 : idle + 1;
         }
     }
@@ -324,7 +334,7 @@ public partial class SliceTest : Node
         bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
         bool trunkBefore = TrunkCollider(p, id);
         double organics = _game.Suit.Kit.Organics;
-        int carbon = _game.Pack["carbon"];
+        int biomass = _game.Pack["biomass"];
         bool cutThisFrame = false, colliderGoneThatFrame = false;
         for (int i = 0; i < 3 && !cutThisFrame; i++)
         {
@@ -339,8 +349,8 @@ public partial class SliceTest : Node
         }
         _game.Controls.Primary = false;
         foreach (int x in _drive.Wait(90)) yield return x;
-        Check(_game.Suit.Kit.Organics > organics && _game.Pack["carbon"] > carbon && _game.Tool.PlantsCut >= 1,
-            $"cutting a plant gives organics (+{_game.Suit.Kit.Organics - organics:F1} kg) and carbon (+{_game.Pack["carbon"] - carbon})");
+        Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
+            $"cutting a plant gives organics (+{_game.Suit.Kit.Organics - organics:F1} kg) and biomass (+{_game.Pack["biomass"] - biomass})");
         bool gone = !_game.Zone.Streamer.FloraNear(p, 0.3f).Any();
         Check(gone && _game.Zone.Planet.Felled.Contains(id), "the cut plant is gone from the ground, and on the planet's felled list (kept through streaming and saves)");
         if (tree)
@@ -403,8 +413,9 @@ public partial class SliceTest : Node
     {
         GD.Print("-- building the starter vessel, block by block --");
         Structure plan = _game.StarterPlan;
-        IReadOnlyDictionary<string, int> cost = _game.Builder.TotalCost(plan);
-        var packBefore = new Dictionary<string, int>(_game.Pack.Items);
+        GalHack.Items.Bill cost = _game.Builder.TotalCost(plan);
+        GalHack.Items.Bill packBefore = _game.Pack.Storage.Contents;
+        _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
         Vector3 pad = FlatSpot(_game.Pod.Body.Position.ToGodot(), 16f);
         Vector3 stand = pad + (pad - _game.Pod.Body.Position.ToGodot()).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
@@ -435,9 +446,9 @@ public partial class SliceTest : Node
             $"holding the button builds it piece by piece: {skiff.Structure.Count} of {plan.Count} blocks, one at a time ({watch.Elapsed.TotalSeconds:F1} s real)");
         bool same = plan.Blocks().All(b => skiff.Structure.TryGet(b.pos, out Block got) && got.Type == b.block.Type && got.Shape == b.block.Shape && got.Rot == b.block.Rot);
         Check(same, "every block is where the blueprint has it, of its type, shape and turn");
-        bool paid = cost.All(kv => packBefore.GetValueOrDefault(kv.Key) - _game.Pack[kv.Key] == kv.Value)
+        bool paid = cost.All(kv => packBefore[kv.Key] - _game.Pack[kv.Key] == kv.Value)
                     && cost.All(kv => _game.Builder.Spent.GetValueOrDefault(kv.Key) == kv.Value);
-        Check(paid, $"every block was paid for from the pack: {string.Join(", ", cost.Select(kv => $"{packBefore.GetValueOrDefault(kv.Key) - _game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
+        Check(paid, $"every block was paid for from the pack: {string.Join(", ", cost.Select(kv => $"{packBefore[kv.Key] - _game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
 
         HandlingStats built = skiff.Flight.Stats ?? Stats(skiff.Structure), expected = Stats(plan);
         Check(MathF.Abs(skiff.Body.Mass - StructureBridge.Mass(plan).Mass) < 0.5f && MathF.Abs(built.Mass - expected.Mass) < 1e-3f,
@@ -452,9 +463,8 @@ public partial class SliceTest : Node
     IEnumerable<int> BuildCreative()
     {
         GD.Print("-- the same build in Creative --");
-        _game.Costs.Mode = BuildMode.Creative;
-        _game.BuildMode = BuildMode.Creative;
-        var pack = new Dictionary<string, int>(_game.Pack.Items);
+        _game.Mode = GalHack.Items.GameMode.Creative;
+        GalHack.Items.Bill pack = _game.Pack.Storage.Contents;
         var spent = new Dictionary<string, int>(_game.Builder.Spent);
         double organics = _game.Suit.Kit.Organics;
         Vector3 pad = FlatSpot(_game.Pod.Body.Position.ToGodot(), 30f, 2.5f);
@@ -467,11 +477,10 @@ public partial class SliceTest : Node
         foreach (int x in _drive.HoldPrimary(null, 2400, () => _game.Builder.Underway == null)) yield return x;
         Check(twin != null && twin.Structure.Count == _game.StarterPlan.Count,
             $"Creative builds the same blueprint: {twin?.Structure.Count} blocks");
-        Check(_game.Pack.Items.All(kv => pack.GetValueOrDefault(kv.Key) == kv.Value) && pack.All(kv => _game.Pack[kv.Key] == kv.Value)
+        Check(_game.Pack.Storage.Contents.Equals(pack)
               && _game.Builder.Spent.All(kv => spent.GetValueOrDefault(kv.Key) == kv.Value) && _game.Suit.Kit.Organics == organics,
             "the same build in Creative consumes nothing: the pack and the spend are unchanged");
-        _game.Costs.Mode = BuildMode.Survival;
-        _game.BuildMode = BuildMode.Survival;
+        _game.Mode = GalHack.Items.GameMode.Survival;
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
 

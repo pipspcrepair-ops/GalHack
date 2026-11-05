@@ -49,8 +49,17 @@ public partial class SurfaceZone : Node3D
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
     public PlanetSurface.Fx.Sfx Sfx { get; private set; }
 
-    /// <summary>Every vessel, wreck and pod in the zone.</summary>
+    /// <summary>Every vessel, base, wreck and pod in the zone.</summary>
     public readonly List<Vessel> Vessels = new();
+
+    /// <summary>Standalone devices set down on the ground (the survival constructor).</summary>
+    public readonly List<Device> Devices = new();
+
+    /// <summary>The world's one game-mode setting (shared/Items): placement, every constructor and the tech tree read it.</summary>
+    public readonly GalHack.Items.WorldRules WorldRules = new();
+
+    /// <summary>Containers on the ground: creature bodies, backpacks, things set down.</summary>
+    public Slice.Items.Lootables Loot { get; private set; }
 
     public bool IsBuilt => Planet != null;
     public int FrameShifts { get; private set; }
@@ -101,6 +110,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Weather);
         Wildlife = new WildlifePatch { Name = "Wildlife", Zone = this };
         AddChild(Wildlife);
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
+        AddChild(Loot);
 
         PlanetSpec spec = Spec;
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog: null));
@@ -260,6 +271,8 @@ public partial class SurfaceZone : Node3D
         Streamer.ShiftFrame(dx * Planet.Terrain.ChunksX, dz * Planet.Terrain.ChunksZ);
         Streamer.SetFocus(Focus());
         Wildlife.Shift(shift);
+        Loot.Shift(shift);
+        foreach (Device d in Devices) d.GlobalPosition += shift;
         FrameShifts++;
         FrameShifted?.Invoke(shift);
     }

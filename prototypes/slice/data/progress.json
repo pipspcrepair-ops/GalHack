@@ -1,0 +1,33 @@
+// Character level, experience and unlock points (the design's tech tree). The tree itself is
+// built from the unlock fields on items and blocks (shared/Items data, and data/items.json here).
+//
+//   levels         experience needed to reach each level, from level 2 up to the cap (level 1 is
+//                  where everyone starts, with 0). Tuned so an experienced player playing the
+//                  loop (gather, craft the foothold base, build it) reaches level 5, the small
+//                  vessel's gate, in about 40 to 60 minutes
+//   points         unlock points granted on reaching each level, from level 2 up
+//   pastCap        past the cap, one more point for every this much experience
+//   xp             what each thing done is worth
+{
+  "schema": "galhack.progress",
+  "version": 1,
+  "levels": [ 60, 170, 330, 520, 760, 1050, 1400, 1800, 2250, 2750, 3300, 3900, 4550, 5250, 6000,
+              6800, 7650, 8550, 9500, 10500, 11550, 12650, 13800, 15000 ],
+  "points": [ 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6 ],
+  "pastCap": 1500,
+  "xp": {
+    // Gathering: per 1 m cell of ore dug, per plant cut.
+    "oreCell": 3,
+    "plant": 2,
+    // Crafting: per finished run, a point per this many recipe seconds (at least one).
+    "craftSecondsPerXp": 2,
+    // Building: per block placed (large blocks take more work than small ones).
+    "blockLarge": 3,
+    "blockSmall": 1,
+    // Exploring: the first time you come within 30 m of a deposit; the first of a species you meet.
+    "deposit": 15,
+    "species": 10,
+    "depositRadius": 30
+    // Kills: each species' own worth (wildlife's Stats.Xp: toughness and danger).
+  }
+}

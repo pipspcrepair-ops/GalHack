@@ -3,13 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
+using GalHack.Items;
+using GalHack.Items.Bridge;
+using GalHack.Items.Production;
 using GalHack.Structures;
 using Godot;
 using PhysicsSandbox.Bridges;
+using Slice.Items;
 using Slice.Surface;
 using N = System.Numerics;
 using HandlingStats = ShipHandling.Handling.HandlingStats;
-using Inventory = GalHack.Structures.Inventory;
 using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Vessels;
@@ -41,12 +44,22 @@ public sealed class Vessel
     public VesselFx Fx { get; private set; }
 
     /// <summary>
-    /// PLACEHOLDER shared storage for building materials, held in the structure's containers
-    /// (one storage unit per unit of material, up to the structure's storage capacity).
+    /// The structure's one shared storage (shared/Items): every container on it adds room, every
+    /// machine on it takes its inputs from it and puts its products back, and building on it can
+    /// pay from it. <see cref="StorageGrid"/> is how it shows in the inventory view.
     /// </summary>
-    public readonly Inventory Cargo = new() { Creative = false };
+    public SharedStorage Storage { get; private set; }
+    public ItemGrid StorageGrid { get; private set; }
+
+    /// <summary>Its production machines (constructors), one per machine block, by cell.</summary>
+    public readonly SortedDictionary<Int3, Constructor> Machines = new(Comparer<Int3>.Create((a, b) => (a.X, a.Y, a.Z).CompareTo((b.X, b.Y, b.Z))));
+
+    /// <summary>Settings the Core tab changes: power to its devices, its lights, Home, auto-transmit.</summary>
+    public bool PowerOn = true, LightsOn = true, Home, AutoTransmit;
 
     public bool IsWreck => Body.Kind == BodyKind.Wreck;
+    /// <summary>A structure in base mode, anchored where it was placed: never moves (shared physics' fixed body).</summary>
+    public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
 
@@ -67,7 +80,40 @@ public sealed class Vessel
             Spec = new StructureVessel(structure, zone.Data.Handling);
             Flight = new HandlingFlight(Spec, zone.Data.Handling);
         }
+        Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
+        StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
         RefreshSeat();
+        RefreshMachines();
+    }
+
+    /// <summary>A constructor for every machine block on it (BuildingBridge.MachinesOn), each working from its shared storage. Kept across edits.</summary>
+    void RefreshMachines()
+    {
+        var present = new HashSet<Int3>();
+        foreach (var (cell, def) in BuildingBridge.MachinesOn(Zone.Data.Items, Structure))
+        {
+            if (def.Kind != MachineKind.Constructor) continue;
+            present.Add(cell);
+            if (!Machines.ContainsKey(cell)) Machines[cell] = new Constructor(Zone.Data.Items, def, Storage, Zone.WorldRules);
+        }
+        foreach (Int3 gone in Machines.Keys.Where(c => !present.Contains(c)).ToList())
+        {
+            // A machine taken down: its run in progress and tray go back to storage (nothing lost).
+            Constructor c = Machines[gone];
+            foreach (Job j in c.Orders.ToList()) c.Cancel(j);
+            Storage.AddAll(c.Tray);
+            Machines.Remove(gone);
+        }
+    }
+
+    /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
+    public bool Powered => PowerOn && Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+
+    /// <summary>Runs its machines for a tick (when powered; the time scale is the tests' marked speed-up).</summary>
+    public void TickMachines(double dt)
+    {
+        if (!Powered) return;
+        foreach (Constructor c in Machines.Values) c.Tick(dt);
     }
 
     // ---- Spawning ---------------------------------------------------------------------------
@@ -100,6 +146,37 @@ public sealed class Vessel
         vessel.Furnish(hull);
         if (landed) vessel.Controller.PlaceLanded(body, at, heading);
         else vessel.Controller.Place(body, at, heading);
+        vessel.Binding.Teleport();
+        vessel.Register();
+        return vessel;
+    }
+
+    /// <summary>
+    /// A structure in base mode set down on the ground: one fixed body (shared physics' base:
+    /// nothing ever moves it, no gravity, wind or rescue), walked on in the zone's own world.
+    /// </summary>
+    public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading)
+    {
+        MassProperties mass = MassOf(s);
+        Body body = zone.Physics.Register(new BodySpec
+        {
+            Kind = BodyKind.Base,
+            Motion = GalHack.Physics.Motion.Fixed,
+            Label = s.Name,
+            Mass = mass.Mass,
+            CenterOfMass = mass.CenterOfMass,
+            DragArea = 1f,
+            Shape = StructureBridge.ShapeOf(s),
+            Position = at,
+            Rotation = MathX.Yaw(heading),
+        });
+        body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
+        var vessel = new Vessel(zone, s, body);
+        var node = new StaticBody3D { Name = s.Name.Replace(" ", "") };
+        zone.AddChild(node);
+        vessel.Binding = zone.Host.Bind(body, new FixedBinding(node));
+        vessel.HullShapes = new StructureShapes(node);
+        vessel.Furnish(node);
         vessel.Binding.Teleport();
         vessel.Register();
         return vessel;
@@ -178,8 +255,35 @@ public sealed class Vessel
         }
         RefreshSeat();
         RefreshLegs();
+        RefreshMachines();
         Fx.Setup(this);
         Zone.Physics.NotifyChanged(RegionOf(dirty));
+    }
+
+    /// <summary>
+    /// A landed vessel rests on its lowest point (its legs' feet, or its lowest block) on the
+    /// highest ground under it: so one being built stands on the ground as it grows, instead of
+    /// hanging where its finished legs will one day reach.
+    /// </summary>
+    public void Settle()
+    {
+        if (Controller is not VesselController c || !c.Frozen || IsBase || Structure.Count == 0) return;
+        float feet = StructureBridge.ShapeOf(Structure).FeetBelowOrigin;
+        if (Spec != null)
+            foreach (ShipHandling.Handling.GearSpec g in Spec.LandingGear) feet = MathF.Max(feet, -g.Position.Y + g.Length);
+        var (min, max) = Structure.Bounds();
+        float cell = Structure.Grid.CellSize, top = float.MinValue;
+        Basis basis = new(Body.Rotation.ToGodot());
+        for (int i = 0; i < 9; i++)
+        {
+            var corner = new Vector3(i % 3 == 0 ? min.X : i % 3 == 1 ? (min.X + max.X) * 0.5f : max.X, 0, i / 3 == 0 ? min.Z : i / 3 == 1 ? (min.Z + max.Z) * 0.5f : max.Z) * cell;
+            Vector3 p = Body.Position.ToGodot() + basis * corner;
+            top = MathF.Max(top, Zone.GroundAt(p.X, p.Z).Y);
+        }
+        float y = top + feet + 0.02f;
+        if (MathF.Abs(y - Body.Position.Y) < 0.01f) return;
+        c.PlaceLanded(Body, new N.Vector3(Body.Position.X, y, Body.Position.Z), MathX.Heading(Body.Rotation));
+        Binding.Teleport();
     }
 
     /// <summary>
@@ -305,15 +409,9 @@ public sealed class Vessel
     /// <summary>The structure's frame in the world, interpolated for drawing.</summary>
     public Transform3D DrawTransform => Node.GetGlobalTransformInterpolated();
 
-    /// <summary>Storage capacity for the placeholder materials, in units.</summary>
-    public int CargoCapacity => (int)StructureStats.Compute(Structure).StorageCapacity;
+    /// <summary>The structure's stats now (mass, power, CPU, storage), building's own numbers.</summary>
+    public StructureStats StructureStats => StructureStats.Compute(Structure);
 
-    /// <summary>Stores up to <paramref name="n"/> units of a material; returns how many fitted.</summary>
-    public int Store(string material, int n)
-    {
-        int room = CargoCapacity - Cargo.Total;
-        int put = System.Math.Clamp(n, 0, System.Math.Max(0, room));
-        if (put > 0) Cargo.Add(new Dictionary<string, int> { [material] = put });
-        return put;
-    }
+    /// <summary>A structure-local point in the world.</summary>
+    public Vector3 ToWorld(N.Vector3 local) => Body.ToParent(local).ToGodot();
 }

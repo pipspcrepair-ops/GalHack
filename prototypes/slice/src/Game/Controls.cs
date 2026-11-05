@@ -16,8 +16,11 @@ public sealed class Controls
     /// <summary>Mouse movement this tick, pixels.</summary>
     public Vector2 Look;
 
-    public bool Primary, Secondary, PrimaryPressed, SecondaryPressed;
+    public bool Primary, Secondary, PrimaryPressed, SecondaryPressed, PrimaryReleased, SecondaryReleased;
     public int Wheel;
+
+    /// <summary>The mouse pointer over the Tab menu, in the menu's own 1600 x 900 canvas.</summary>
+    public Vector2 Mouse;
 
     public bool IsHeld(Key k) => Held.Contains(k);
     public bool WasPressed(Key k) => Pressed.Contains(k);
@@ -45,6 +48,6 @@ public sealed class Controls
         Pressed.Clear();
         Look = Vector2.Zero;
         Wheel = 0;
-        PrimaryPressed = SecondaryPressed = false;
+        PrimaryPressed = SecondaryPressed = PrimaryReleased = SecondaryReleased = false;
     }
 }

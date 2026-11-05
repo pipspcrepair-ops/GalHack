@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using DiegeticUi.Theme;
 using GalHack.Physics.Engine;
 using Godot;
-using Slice.Construction;
+using Slice.Items;
 using Slice.Game;
 using Slice.Player;
 using Slice.Vessels;
@@ -36,7 +36,11 @@ public partial class Visor : CanvasLayer
     readonly List<(Vector3 from, Vector3 to, bool hit, double until)> _tracers = new();
     double _threatUntil = -1, _hurtUntil = -1;
     Vector3 _threatFrom;
-    readonly DepositFinder _deposits = new();
+    /// <summary>The ore scanner the compass and the map read.</summary>
+    public readonly DepositFinder Deposits = new();
+    readonly List<(string text, double until)> _xp = new();
+    double _levelUntil = -1, _hitUntil = -1;
+    string _level = "";
 
     /// <summary>Is this alert flashing right now? (tests read it)</summary>
     public bool Flashing(Alert a) => (Game.Suit?.Last.Warnings & a) != 0;
@@ -66,7 +70,25 @@ public partial class Visor : CanvasLayer
         if (_lines.Count > 5) _lines.RemoveAt(0);
     }
 
-    public void Tracer(Vector3 from, Vector3 to, bool hit) => _tracers.Add((from, to, hit, _time + 0.09));
+    /// <summary>Experience earned: a short line at the upper right ("+3 XP ore").</summary>
+    public void Xp(int amount, string why)
+    {
+        _xp.Add(($"+{amount} XP  {why}", _time + 2.2));
+        if (_xp.Count > 4) _xp.RemoveAt(0);
+    }
+
+    /// <summary>A new level: a banner across the top for a few seconds that never blocks play.</summary>
+    public void LevelUp(int level, int points)
+    {
+        _level = $"LEVEL UP  {level}   +{points} POINT{(points == 1 ? "" : "S")}";
+        _levelUntil = _time + 3.5;
+    }
+
+    /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
+    public void Hit() => _hitUntil = _time + 0.25;
+
+    public bool LevelUpShowing => _time < _levelUntil;
+    public int XpLines => _xp.Count;
 
     /// <summary>Something is winding up to attack: the warning, on the side it is coming from.</summary>
     public void Threat(Vector3 from)
@@ -101,6 +123,7 @@ public partial class Visor : CanvasLayer
         _glass.SetShaderParameter("aspect", _hud.Size.X / Mathf.Max(1, _hud.Size.Y));
         _lines.RemoveAll(l => l.until < _time);
         _tracers.RemoveAll(t => t.until < _time);
+        _xp.RemoveAll(x => x.until < _time);
         _hud.QueueRedraw();
     }
 
@@ -118,13 +141,15 @@ public partial class Visor : CanvasLayer
         }
         Survivor survivor = Game.Survivor;
         if (survivor == null) return;
+        if (Game.Menu.IsOpen) return; // the Tab menu covers the view: the visor waits behind it
         DrawTracers();
         DrawCompass(survivor);
         DrawLines();
         DrawWarnings();
+        DrawProgress();
         if (Game.Suit.Dead)
         {
-            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake at the escape pod", C.Danger);
+            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake at the escape pod (your backpack stays where you fell)", C.Danger);
             return;
         }
         DrawVitals();
@@ -236,10 +261,12 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Pod != null && survivor.Aboard != Game.Pod) Mark(Game.Pod.Body.Position.ToGodot(), "POD", C.Accent2);
+        if (Game.Pod != null && survivor.Aboard != Game.Pod) Mark(Game.Pod.Body.Position.ToGodot(), "POD", C.Accent2);
         foreach (Vessel v in Game.Zone.Vessels)
-            if (v != Game.Pod && !v.IsWreck && v.Seat != null && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
+            if (v != Game.Pod && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
+        if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
         if (survivor.Seated == null)
-            foreach (var (kind, at) in _deposits.Near(Game.Zone, feet))
+            foreach (var (kind, at) in Deposits.Near(Game.Zone, feet))
                 Mark(at, kind.ToUpperInvariant(), C.Holo);
     }
 
@@ -271,50 +298,79 @@ public partial class Visor : CanvasLayer
         }
     }
 
+    /// <summary>Experience and levels: short lines at the upper right, a banner on a new level. Nothing blocks play.</summary>
+    void DrawProgress()
+    {
+        float s = S;
+        Vector2 size = _hud.Size;
+        float y = 96 * s;
+        foreach (var (text, until) in _xp)
+        {
+            float a = (float)Math.Clamp(until - _time, 0, 1);
+            _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(size.X - 440 * s, y, 400 * s, 22 * s), text, new Color(C.Accent2, a), HorizontalAlignment.Right);
+            y += 22 * s;
+        }
+        if (LevelUpShowing && Mathf.PosMod((float)_time * 2f, 1f) < 0.8f)
+        {
+            var band = new Rect2(size.X / 2 - 320 * s, 150 * s, 640 * s, 48 * s);
+            _hud.Block(band, new Color(C.Accent, 0.85f));
+            _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
+        }
+    }
+
     void DrawCrosshair()
     {
         float s = S;
         Vector2 c = _hud.Size / 2;
         _hud.DrawCircle(c, 3 * s, new Color(C.Text, 0.85f));
-        string label = Game.Hand switch
+        if (_time < _hitUntil)
+            foreach (var d in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
+                _hud.DrawLine(c + d * 7 * s, c + d * 15 * s, C.Danger, 3 * s);
+        string label = Game.Pack.Hand switch
         {
-            Hand.Gather or Hand.Shoot => Game.Tool.TargetLabel,
-            _ => Game.Builder.Verdict,
+            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
+            HandKind.Consumable => "click to use",
+            _ => "",
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, c.Y + 18 * s, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
     }
 
+    /// <summary>The toolbar (1 to 9) at the lower right, what is in hand and its keys, and the head torch.</summary>
     void DrawHand()
     {
         float s = S;
         Vector2 size = _hud.Size;
-        string[] names = { "1 GATHER", "2 SHOOT", "3 BUILD", "4 BLUEPRINT" };
-        float x = size.X - 560 * s, y = size.Y - 150 * s;
-        for (int i = 0; i < names.Length; i++)
+        float cell = 52 * s, x = size.X - 9 * (cell + 4 * s) - 30 * s, y = size.Y - 150 * s;
+        var items = Game.Zone.Data.Items;
+        for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
         {
-            bool on = (int)Game.Hand == i;
-            var box = new Rect2(x + i * 136 * s, y, 128 * s, 30 * s);
-            _hud.Block(box, new Color(on ? C.Accent : C.Glass, on ? 0.95f : 0.5f));
-            _hud.TextIn(UiTheme.Label, (int)(16 * s), box, names[i], on ? C.Glass : C.Dim, HorizontalAlignment.Center);
+            Slice.Items.Slot slot = Game.Pack.Grid[i];
+            bool on = Game.Pack.Selected == i;
+            var box = new Rect2(x + i * (cell + 4 * s), y, cell, cell);
+            _hud.Block(box, new Color(on ? C.Accent : C.Glass, on ? 0.9f : 0.55f));
+            string label = slot.Block == Slice.Items.PlayerInventory.BlueprintBlock ? "SKIFF" : slot.Block != null ? Slice.Ui.Slots.Short(Game.Zone.Data.Catalogue.Type(slot.Block).Name)
+                : slot.Item != null ? items.Item(slot.Item).ShortName : "";
+            _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, on ? C.Glass : C.Text, HorizontalAlignment.Center);
+            if (slot.Count > 1) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), $"{slot.Count}", on ? C.Glass : C.Accent2, HorizontalAlignment.Right);
+            _hud.Text(UiTheme.Mono, (int)(11 * s), box.Position + new Vector2(3, 1), $"{i + 1}", on ? C.Glass : C.Dim);
         }
-        string detail = Game.Hand switch
+        HandKind hand = Game.Pack.Hand;
+        string detail = hand switch
         {
-            Hand.Build => $"{Game.Builder.Choice.Label}{(Game.Builder.MirrorX ? "  MIRROR" : "")}",
-            Hand.Blueprint => Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "Set the blueprint down",
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Shoot ? "SURVIVAL TOOL · SHOOT   [Q] GATHER" : "SURVIVAL TOOL · GATHER   [Q] SHOOT",
+            HandKind.Block => $"{Game.Zone.Data.Catalogue.Type(Game.Pack.InHand.Block).Name} {(Game.Zone.Data.Catalogue.Type(Game.Pack.InHand.Block).IsArmor ? Game.Builder.Shape.Name : "")}  [WHEEL] SHAPE [R/T] TURN [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")} [RMB] TAKE DOWN",
+            HandKind.Core => "CORE: set it down on open ground",
+            HandKind.Device => "DEVICE: set it down on open ground",
+            HandKind.Blueprint => Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down",
+            HandKind.Consumable => "click to use",
             _ => "",
         };
-        _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y + 36 * s), detail, C.Text);
-        _hud.Text(UiTheme.Mono, (int)(15 * s), new Vector2(x, y - 24 * s), PackLine(), C.Text);
-        if (Game.BuildMode == BuildMode.Creative) _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y - 48 * s), "CREATIVE: building is free", C.Accent2);
-    }
-
-    string PackLine()
-    {
-        var parts = new List<string>();
-        foreach (var (item, n) in Game.Pack.Items) if (n > 0) parts.Add($"{item[..Math.Min(4, item.Length)].ToUpperInvariant()} {n}");
-        parts.Add($"ORG {Game.Suit.Kit.Organics:F1}kg");
-        return string.Join("  ", parts);
+        _hud.Text(UiTheme.Label, (int)(15 * s), new Vector2(x, y + cell + 8 * s), detail, C.Text);
+        string status = $"[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}";
+        _hud.Text(UiTheme.Label, (int)(15 * s), new Vector2(x, y - 22 * s), status, Game.Torch.Visible ? C.Accent2 : C.Dim);
+        if (Game.Mode == GalHack.Items.GameMode.Creative) _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y - 44 * s), "CREATIVE: building is free", C.Accent2);
     }
 
     // ---- Flying --------------------------------------------------------------------------------

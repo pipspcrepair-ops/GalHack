@@ -50,6 +50,9 @@ public partial class WildlifePatch : Node3D
     /// <summary>A creature started winding up an attack on the player: the warning before any harm.</summary>
     public event Action<AttackEvent> Telegraphed;
 
+    /// <summary>A creature died, and what killed it (the player's target, another creature, or nothing).</summary>
+    public event Action<Creature, ITarget> Died;
+
     bool _frozen;
     public bool Frozen
     {
@@ -109,6 +112,7 @@ public partial class WildlifePatch : Node3D
         };
         sim.Warned += c => Audio.Telegraph(c);
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); };
+        sim.Died += (c, killer) => Died?.Invoke(c, killer);
         int carried = 0;
         if (old != null)
         {

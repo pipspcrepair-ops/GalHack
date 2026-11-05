@@ -1,0 +1,647 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using GalHack.Items;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
+using GalHack.Structures;
+using Godot;
+using Planets.Gen;
+using PhysicsSandbox.Bridges;
+using ShipHandling.Handling;
+using Slice.Game;
+using Slice.Items;
+using Slice.Player;
+using Slice.Surface;
+using Slice.Ui;
+using Slice.Vessels;
+using Wildlife;
+using N = System.Numerics;
+using Structure = GalHack.Structures.Structure;
+using WeatherKind = Weather.Model.WeatherKind;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// The loop played the way a person plays it, headless: the pod comes down for real with the
+/// castaway strapped in, and from then on only the game's own inputs are used (look, walk, keys,
+/// the mouse on the Tab menu). No teleports, no grants, no skipped steps: every part is crafted,
+/// every block paid for, every unlock earned. The one help is the marked TEST TIME-SCALE on
+/// crafting, so an hour of fabricating fits in a run.
+///
+///   1  unstrap, take the locker inside the pod, walk out of the door and back in, shoot the wall
+///   2  the tool from the toolbar: gather ore, cut a plant
+///   3  shoot the ground and a creature
+///   4  loot the creature's body (drag, shift-click, split, take all), fill the toolbar by drag
+///   5  craft the survival constructor in the suit fabricator, set it down
+///   6  craft the base core in it
+///   7  found a base, build onto it: a container, a generator, a small constructor, steel
+///   8  earn level 5, unlock the small vessel, make its core and parts in the base's constructor
+///   9  build a vessel, fly 500 m and land
+///   10 every Tab menu tab, the head torch, and dying: your backpack, recovered from its marker
+///
+/// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlayerTest.tscn
+/// </summary>
+public partial class PlayerTest : Node
+{
+    /// <summary>TEST TIME-SCALE: crafting runs this many times faster (printed). Nothing else is sped up.</summary>
+    const double CraftScale = 40;
+    const int WatchdogMinutes = 25;
+
+    Game.Game _game;
+    Playthrough _play;
+    Driver _drive;
+    IEnumerator<int> _run;
+    int _failures, _passes;
+    readonly Stopwatch _clock = Stopwatch.StartNew();
+    readonly List<RescueInfo> _rescues = new();
+    readonly Dictionary<string, double> _gameTimeAt = new();
+    Vessel _base, _vessel;
+    Device _fab;
+
+    public override void _Ready()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        thread.Start();
+        ProcessPhysicsPriority = 100;
+        _run = Scenario().GetEnumerator();
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        bool more;
+        try { more = _run.MoveNext(); }
+        catch (Exception e)
+        {
+            Fail($"scenario threw: {e}");
+            more = false;
+        }
+        if (more) return;
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
+        SetPhysicsProcess(false);
+        Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        _game = new Game.Game { Interactive = false, SkipIntro = false, CraftTimeScale = CraftScale };
+        AddChild(_game);
+        _play = new Playthrough(_game);
+        _drive = _play.Drive;
+        GD.Print($"-- TEST TIME-SCALE: crafting runs {CraftScale}x faster; everything else is real time --");
+        while (_game.Phase != Phase.Playing) yield return 0;
+        _game.Zone.Physics.Rescued += _rescues.Add;
+        // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
+        _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilPlaying()) yield return x;
+
+        foreach (int x in Pod()) yield return x;
+        foreach (int x in Gathering()) yield return x;
+        foreach (int x in Hunting()) yield return x;
+        foreach (int x in Inventory()) yield return x;
+        foreach (int x in SurvivalConstructor()) yield return x;
+        foreach (int x in Base()) yield return x;
+        foreach (int x in VesselCore()) yield return x;
+        foreach (int x in BuildVessel()) yield return x;
+        foreach (int x in Fly()) yield return x;
+        foreach (int x in MenuAndTorch()) yield return x;
+        foreach (int x in Death()) yield return x;
+        Summary();
+    }
+
+    void Mark(string step) => _gameTimeAt[step] = _game.Stats.Seconds;
+
+    // ==== 1. The pod ===============================================================================
+
+    IEnumerable<int> Pod()
+    {
+        GD.Print("-- 1. the pod: unstrap, the locker, out of the door and back in --");
+        Vessel pod = _game.Pod;
+        Check(_game.Survivor.Seated == pod && _game.Phase == Phase.Playing, "the pod came down for real with the castaway strapped in");
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(_game.Survivor.Seated == null && _game.Survivor.Aboard == pod, "F unstraps: standing inside the pod");
+
+        Int3 locker = pod.Structure.Blocks().First(b => pod.Structure.TypeOf(b.block).IsContainer).pos;
+        Vector3 lockerAt = pod.ToWorld(StructureBridge.CellCenter(pod.Structure, locker));
+        foreach (int x in _drive.LookAt(lockerAt, 8)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Opened?.Vessel == pod && _game.Menu.IsOpen && _game.Menu.Tab == MenuTab.You, "E on the locker, from inside, opens it beside the bag");
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        var locker0 = _game.Zone.Data.Rules.Materials.PodLocker;
+        Check(pod.Storage.IsEmpty && locker0.All(kv => _game.Pack[kv.Key] == kv.Value), $"TAKE ALL moves it into the bag: {string.Join(", ", locker0.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}");
+        foreach (int x in _play.CloseMenu()) yield return x;
+
+        // A shot inside hits the pod's own wall, harmlessly: a bolt and an impact on the wall.
+        int blocks = pod.Structure.Count, bolts = _game.Shots.Bolts, impacts = _game.Shots.Impacts;
+        Vector3 wall = pod.ToWorld(new N.Vector3(1.25f, 1.0f, 0.5f));
+        foreach (int x in _play.ShootAt(() => wall)) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Check(_game.Shots.Bolts > bolts && _game.Shots.Impacts > impacts && _game.Shots.LastImpact.Kind == ImpactKind.Block
+              && _game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && pod.Structure.Count == blocks && pod.Body.Damage == 0f,
+            $"a shot inside the pod: a bolt from the muzzle and an impact on its wall {_game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, no harm to the pod");
+        // Gathering inside does nothing: the floor is a block, not ground.
+        int removed = _game.Zone.Planet.Terrain.Store.RemovedCount;
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        foreach (int x in _drive.HoldPrimary(pod.ToWorld(new N.Vector3(0f, 0.25f, -0.5f)), 30)) yield return x;
+        Check(_game.Zone.Planet.Terrain.Store.RemovedCount == removed && _game.Tool.OnBlock, "the tool inside the pod digs nothing through its floor");
+
+        int stepped = _game.Survivor.StepsOff;
+        double start = _game.Stats.Seconds;
+        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
+        Check(_game.Survivor.Body.Frame == null && _game.Survivor.StepsOff > stepped && _game.Survivor.Body.OnFloor && _rescues.All(r => r.Body != _game.Survivor.Body),
+            $"out of the door: handed back to the planet on stepping off ({_game.Stats.Seconds - start:F1} s from the seat to outside), standing, never rescued");
+        foreach (int x in _drive.EnterThroughHatch(pod)) yield return x;
+        Check(_game.Survivor.Aboard == pod, "and back in through the door");
+        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
+        Check(_game.Survivor.Body.Frame == null && _rescues.All(r => r.Body != _game.Survivor.Body), "and out again, with no snag");
+        Mark("pod");
+    }
+
+    // ==== 2 & 3. Gathering and hunting ============================================================
+
+    /// <summary>What the whole loop needs from the ground, worked out from the recipes for what this run builds.</summary>
+    Bill Plan()
+    {
+        ItemCatalogue items = _game.Zone.Data.Items;
+        var need = new Bill();
+        need.Add("survival-constructor", 1);
+        need.Add("base-core", 1);
+        need.Add("vessel-core", 1);
+        foreach (var (block, small, n) in BaseBlocks.Concat(VesselBlocks)) need.Add(items.Blocks.For(block, small), n);
+        return items.Graph.Expand(need).Leaves;
+    }
+
+    static readonly (string block, bool small, int n)[] BaseBlocks =
+    {
+        ("container", false, 1), ("generator", false, 1), ("smallfab", false, 1), ("steel", false, 2),
+    };
+
+    static readonly (string block, bool small, int n)[] VesselBlocks =
+        Playthrough.VesselLayout.GroupBy(b => b.block).Select(g => (g.Key, true, g.Count())).ToArray();
+
+    /// <summary>The toolbar slots the vessel's blocks go on.</summary>
+    static readonly Dictionary<string, int> Slots = new()
+    {
+        ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
+    };
+
+    IEnumerable<int> Gathering()
+    {
+        GD.Print("-- 2. gathering with the tool from the toolbar --");
+        Bill raw = Plan();
+        GD.Print($"  the whole loop needs {_game.Zone.Data.Items.Describe(raw)} from the ground");
+        foreach (int x in _drive.Tap(Key.Key1)) yield return x;
+        Check(_game.Pack.Hand == HandKind.Tool, "1 puts the survival tool in hand");
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(_game.Hands.Visible, "it shows in the first-person hands");
+        var kinds = new (DepositKind kind, string ore)[] { (DepositKind.Iron, "iron-ore"), (DepositKind.Copper, "copper-ore"), (DepositKind.Carbon, "carbon-ore"), (DepositKind.Silicon, "silicon-ore"), (DepositKind.Water, "ice") };
+        int firstCells = -1;
+        foreach (var (kind, ore) in kinds)
+        {
+            int want = raw[ore] + 6;
+            if (want <= 6) continue;
+            int cells = _game.Tool.OreCells, before = _game.Pack[ore];
+            foreach (int x in _play.Gather(kind, want)) yield return x;
+            GD.Print($"  {ore}: {_game.Pack[ore]}/{want} ({_game.Tool.OreCells - cells} cells), level {_game.Progress.Level}, {_game.Progress.Xp} XP");
+            if (firstCells < 0)
+            {
+                firstCells = _game.Tool.OreCells - cells;
+                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell && firstCells > 0,
+                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells, +{_game.Pack[ore] - before}");
+            }
+        }
+        var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();
+        Check(shortOf.Count == 0, $"the deposits near the pod hold the whole loop's ore: {string.Join(", ", raw.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
+        if (_game.Pack["stone"] < raw["stone"]) GD.Print($"  (stone {_game.Pack["stone"]}/{raw["stone"]}: more comes with the next digs)");
+        Check(_game.Visor.Deposits.Near(_game.Zone, _game.Survivor.WorldFeet).All(d => !DepositFinder.Depleted(_game.Zone, KindOf(d.kind), d.at.X, d.at.Y, d.at.Z)),
+            "a deposit dug out drops off the compass: every label shown still holds ore");
+
+        int plants = _game.Tool.PlantsCut, biomass = _game.Pack["biomass"];
+        foreach (int x in _play.CutPlant()) yield return x;
+        Check(_game.Tool.PlantsCut > plants && _game.Pack["biomass"] > biomass, $"cutting a plant: +{_game.Pack["biomass"] - biomass} biomass");
+        Mark("gathered");
+    }
+
+    static DepositKind KindOf(string label) => label == "ice" ? DepositKind.Water : Enum.Parse<DepositKind>(label, true);
+
+    Creature _prey;
+
+    IEnumerable<int> Hunting()
+    {
+        GD.Print("-- 3. shooting: the ground, then a creature --");
+        Vector3 ahead = _game.Survivor.WorldFeet + new Vector3(4f, 0f, 3f);
+        ahead = _game.Zone.GroundAt(ahead.X, ahead.Z);
+        int impacts = _game.Shots.Impacts;
+        foreach (int x in _play.ShootAt(() => ahead)) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Check(_game.Shots.Impacts > impacts && _game.Shots.LastImpact.Kind == ImpactKind.Ground && _game.Shots.LastImpact.At.DistanceTo(ahead) < 1.5f,
+            $"a shot at the ground: a bolt and sparks and a scorch where it lands ({_game.Shots.LastImpact.At.DistanceTo(ahead):F2} m from the aim)");
+
+        WildlifePatch w = _game.Zone.Wildlife;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        _prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan != BodyPlan.Giant)
+            .OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).FirstOrDefault();
+        if (_prey == null) { Fail("no creature near to hunt"); yield break; }
+        GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
+        float health = _prey.Health;
+        int xp = _game.Progress.Xp;
+        for (int tries = 0; tries < 40 && !_prey.Dead; tries++)
+        {
+            Vector3 at = w.FromPatch(_prey.Position);
+            if (at.DistanceTo(_game.Survivor.WorldFeet) > 25f)
+            {
+                foreach (int x in _drive.WalkTo(at, 15f, 20f)) yield return x;
+                continue;
+            }
+            foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Position) + Vector3.Up * MathF.Max(0.3f, _prey.Species.Stats.Radius))) yield return x;
+            if (tries == 2) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
+                $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
+        }
+        Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
+        Mark("hunted");
+    }
+
+    // ==== 4. The inventory and the body ============================================================
+
+    IEnumerable<int> Inventory()
+    {
+        GD.Print("-- 4. the body, and the inventory by hand --");
+        Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Creature == _prey);
+        if (body == null) { Fail("the creature left no body to loot"); yield break; }
+        Check(body.Storage.Count("meat") > 0 && body.Storage.Count("hide") > 0, $"its body is a container: {_game.Zone.Data.Items.Describe(body.Storage.Contents)}");
+        foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;
+        foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Opened?.Loot == body, "E on the body opens its loot beside the bag");
+        // Drag the meat across, shift-click the hide, then take the rest.
+        int meatSlot = body.Grid.IndexOf("meat"), free = Enumerable.Range(PlayerInventory.ToolbarSlots, _game.Pack.Grid.BagSlots).First(i => _game.Pack.Grid[i].IsEmpty);
+        int meat = body.Storage.Count("meat");
+        foreach (int x in _drive.DragWidget($"box:{meatSlot}", $"bag:{free}")) yield return x;
+        Check(_game.Pack.Grid[free].Item == "meat" && _game.Pack["meat"] == meat && body.Storage.Count("meat") == 0, $"dragging the meat onto a bag slot moves the stack there ({meat})");
+        int hide = body.Storage.Count("hide");
+        foreach (int x in _drive.ClickWidget($"box:{body.Grid.IndexOf("hide")}", shift: true)) yield return x;
+        Check(_game.Pack["hide"] == hide && body.Storage.Count("hide") == 0, "shift-click sends the hide across");
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(body.Storage.IsEmpty, "take all empties the body");
+
+        // Split a stack, and fill the toolbar by dragging.
+        int biomassSlot = _play.BagSlotOf("biomass");
+        int stacks = _game.Pack.Grid.Slots.Count(s => s.Item == "biomass"), total = _game.Pack["biomass"];
+        foreach (int x in _drive.RightClickWidget($"bag:{biomassSlot}")) yield return x;
+        Check(_game.Pack.Grid.Slots.Count(s => s.Item == "biomass") == stacks + 1 && _game.Pack["biomass"] == total, $"right-click splits a stack in two ({total} biomass in {stacks + 1} stacks)");
+        foreach (int x in _drive.DragWidget($"bag:{_play.BagSlotOf("patch-kit")}", "bar:7")) yield return x;
+        Check(_game.Pack.Grid[7].Item == "patch-kit", "a patch kit dragged onto toolbar slot 8");
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(!_game.Zone.Loot.All.Contains(body), "the emptied body is taken away once closed (never while it held anything)");
+        Mark("looted");
+    }
+
+    // ==== 5 & 6. The survival constructor and the base core ======================================
+
+    IEnumerable<int> SurvivalConstructor()
+    {
+        GD.Print("-- 5. the suit fabricator makes a survival constructor; set it down --");
+        foreach (int x in _play.OpenMenu(MenuTab.You)) yield return x;
+        Check(_game.Menu.RectOf("tab:you") != null && _game.Menu.Root.You != null, "Tab opens the menu on YOU: bag, toolbar, paperdoll and the suit fabricator");
+        foreach (int x in _play.Order("fab", "survival-constructor", 1)) yield return x;
+        Check(_game.Fabricator.Orders.Any(j => j.Item.Id == "survival-constructor"), "ordered a survival constructor in the suit fabricator");
+        foreach (int x in _play.CloseMenu()) yield return x;
+        // It makes it while you walk to a flat spot near the pod.
+        Vector3 site = _play.FlatSpot(_game.Pod.Body.Position.ToGodot(), 22f);
+        foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
+        foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
+        Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt["looted"]:F0} s of play)");
+        foreach (int x in _play.ToToolbar("survival-constructor", 2)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(_game.Pack.Grid[2].Item == "survival-constructor", "dragged onto toolbar slot 3");
+        Vector3 spot = _play.FlatSpot(_game.Survivor.WorldFeet, 4f);
+        foreach (int x in _play.PlaceOnGround(2, spot)) yield return x;
+        _fab = _game.Zone.Devices.FirstOrDefault();
+        Check(_fab != null && _game.Pack["survival-constructor"] == 0, "3 and a click set it down on open ground");
+        if (_fab == null) yield break;
+
+        GD.Print("-- 6. the base core, made in the survival constructor --");
+        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Opened?.Device == _fab, "E on it opens its hopper beside the bag");
+        foreach (int x in _drive.ClickWidget("box:store-all")) yield return x;
+        Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
+        foreach (int x in _drive.ClickWidget("tab:core")) yield return x;
+        foreach (int x in _play.Order("core", "base-core", 1)) yield return x;
+        Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "base-core") && _fab.Constructor.SubParts.Count > 0,
+            $"CORE tab: a base core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
+        // Everything a base needs, made here too: its parts come out of the same ore.
+        foreach (var (item, n) in new[] { ("hull-plate", 50), ("winding", 12), ("copper-wire", 16), ("glass", 2) })
+            foreach (int x in _play.Order("core", item, n >= 10 ? 10 : n)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        foreach (int x in _play.WaitFor(() => _fab.Storage.Count("base-core") > 0, 120)) yield return x;
+        Check(_fab.Storage.Count("base-core") == 1, $"the base core came out ({_game.Stats.Seconds - _gameTimeAt["looted"]:F0} s of play since looting)");
+        Mark("base core");
+    }
+
+    // ==== 7. The base ===============================================================================
+
+    IEnumerable<int> Base()
+    {
+        GD.Print("-- 7. found a base and build it up --");
+        // The parts for the base's blocks, in the constructor's own lane.
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        Bill blocks = new();
+        foreach (var (b, small, n) in BaseBlocks) blocks.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
+        Bill short0 = blocks.Minus(_fab.Storage.Contents);
+        foreach (var (item, n) in short0)
+            for (int left = n; left > 0; left -= 10)
+                foreach (int x in _play.Order("core", item, left >= 10 ? 10 : left >= 5 ? 5 : 1)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        foreach (int x in _play.WaitFor(() => !_fab.Constructor.Busy, 240)) yield return x;
+        Check(!_fab.Constructor.Busy, $"the survival constructor made the base's parts: {_game.Zone.Data.Items.Describe(blocks, 5)}");
+        // Take what it made.
+        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+
+        foreach (int x in _play.ToToolbar("base-core", 3)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Vector3 site = _play.FlatSpot(_fab.GlobalPosition, 14f, 1.2f, 0.5f);
+        foreach (int x in _play.StandOff(site, _game.Survivor.WorldFeet, 6f)) yield return x;
+        foreach (int x in _play.PlaceOnGround(3, site)) yield return x;
+        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase);
+        Check(_base != null && _base.Structure.Mode == GalHack.Structures.CoreMode.Base && _base.Body.Motion == GalHack.Physics.Motion.Fixed,
+            "the base core set down founds a base: large grid, base mode, a fixed body where it stands");
+        if (_base == null) yield break;
+
+        // Unlock the small constructor (level 2) when the points allow.
+        foreach (int x in _play.WaitFor(() => _game.Progress.Level >= 2, 30)) yield return x;
+        Check(_game.Progress.Level >= 2, $"level {_game.Progress.Level} from playing ({_game.Progress.Xp} XP)");
+        foreach (int x in _play.Unlock("smallfab@large")) yield return x;
+        Check(_game.Progress.IsUnlocked("smallfab@large"), "the small constructor unlocked on the TECH tab");
+        foreach (int x in _play.CloseMenu()) yield return x;
+
+        // The palette onto the toolbar, then onto the core.
+        foreach (int x in _play.BlockToToolbar("container", false, 4)) yield return x;
+        foreach (int x in _play.BlockToToolbar("generator", false, 5)) yield return x;
+        foreach (int x in _play.BlockToToolbar("smallfab", false, 6)) yield return x;
+        foreach (int x in _play.BlockToToolbar("steel", false, 8)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(_game.Pack.Grid[4].Block == "container" && _game.Pack.Grid[6].Block == "smallfab", "blocks dragged from the build palette onto the toolbar");
+        Vector3 core = _base.Body.Position.ToGodot();
+        int placed = _game.Builder.Placed;
+        var steps = new (int slot, Int3 on, Dir face)[]
+        {
+            (4, Int3.Zero, Dir.PosX), (5, Int3.Zero, Dir.NegX), (6, Int3.Zero, Dir.PosZ), (8, Int3.Zero, Dir.NegZ), (8, new Int3(0, 0, -1), Dir.NegZ),
+        };
+        foreach (var (slot, on, face) in steps)
+        {
+            Vector3 faceAt = _base.ToWorld(StructureBridge.CellCenter(_base.Structure, on) + face.Vec().ToVector3() * 1f);
+            foreach (int x in _play.StandOff(faceAt, core, 4.5f)) yield return x;
+            foreach (int x in _play.PlaceBlock(slot, _base, on, face)) yield return x;
+        }
+        int built = _game.Builder.Placed - placed;
+        Check(built == steps.Length, $"{built} large blocks built onto the base by looking and clicking, each paid from the bag");
+        Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0,
+            $"the base has a constructor, power and storage ({_base.Storage.CapacitySu:F0} SU)");
+        // Take one down again: the whole bill comes back.
+        int steel = _game.Pack["hull-plate"];
+        foreach (int x in _play.Select(8)) yield return x;
+        Vector3 far = _base.ToWorld(StructureBridge.CellCenter(_base.Structure, new Int3(0, 0, -2)) + new N.Vector3(0, 0, -1f));
+        foreach (int x in _drive.LookAt(far, 6)) yield return x;
+        _game.Controls.SecondaryPressed = true;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Check(!_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack["hull-plate"] == steel + 8, "right click takes a block down and refunds its whole bill (8 hull plates)");
+        foreach (int x in _play.PlaceBlock(8, _base, new Int3(0, 0, -1), Dir.NegZ)) yield return x;
+        Mark("base");
+    }
+
+    // ==== 8. The small-vessel core ==================================================================
+
+    IEnumerable<int> VesselCore()
+    {
+        GD.Print("-- 8. level 5, the small-vessel tech, and its core from the base's constructor --");
+        // The vessel's parts first (they need no unlock): the base's own constructor makes them.
+        Vector3 core = _base.Body.Position.ToGodot();
+        foreach (int x in _drive.WalkTo(core, 6f, 30f)) yield return x;
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in Pick(_base)) yield return x;
+        foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
+        Check(_base.Storage.Count("iron-ore") > 0, $"STORE MY ORE AND MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
+        Bill parts = new();
+        foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
+        foreach (var (item, n) in parts)
+            for (int left = n; left > 0; left -= 10)
+                foreach (int x in _play.Order("core", item, left >= 10 ? 10 : left >= 5 ? 5 : 1)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        GalHack.Items.Production.Constructor c = _base.Machines.Values.First();
+        foreach (int x in _play.WaitFor(() => !c.Busy, 300)) yield return x;
+        Check(!c.Busy && c.Missing.IsEmpty, $"the base's small constructor made the vessel's parts: {_game.Zone.Data.Items.Describe(parts, 6)}");
+        GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP, {_game.Progress.Points} points after {_game.Stats.Seconds / 60:F1} min of play");
+        // Level 5 by playing: a deposit or two more to dig if it isn't there yet.
+        for (int round = 0; round < 6 && _game.Progress.Level < 5; round++)
+        {
+            foreach (int x in _play.Gather(round % 2 == 0 ? DepositKind.Iron : DepositKind.Copper, _game.Pack[round % 2 == 0 ? "iron-ore" : "copper-ore"] + 60)) yield return x;
+            GD.Print($"  (more digging: level {_game.Progress.Level}, {_game.Progress.Xp} XP)");
+        }
+        Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
+        Mark("level 5");
+        foreach (string node in new[] { "vessel-core", "cockpit@small", "thruster@small", "gyro@small" })
+        {
+            foreach (int x in _play.Unlock(node)) yield return x;
+            Check(_game.Progress.IsUnlocked(node), $"unlocked {_game.Progress.Node(node).Name} ({_game.Progress.Points} points left)");
+        }
+        foreach (int x in _drive.WalkTo(core, 6f, 60f)) yield return x;
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in Pick(_base)) yield return x;
+        foreach (int x in _play.Order("core", "vessel-core", 1)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        foreach (int x in _play.WaitFor(() => _base.Storage.Count("vessel-core") > 0, 120)) yield return x;
+        Check(_base.Storage.Count("vessel-core") == 1, "the base's constructor made the small-vessel core");
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in Pick(_base)) yield return x;
+        foreach (int x in _drive.ClickWidget("storage:open")) yield return x;
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(_game.Pack["vessel-core"] == 1 && parts.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and parts taken from the base's storage into the bag");
+        Mark("vessel core");
+    }
+
+    IEnumerable<int> Pick(Vessel v)
+    {
+        List<object> near = _game.Menu.Root.Core.Near();
+        int i = near.IndexOf(v);
+        if (i >= 0) foreach (int x in _drive.ClickWidget($"core:pick:{i}")) yield return x;
+    }
+
+    // ==== 9. The vessel ===========================================================================
+
+    IEnumerable<int> BuildVessel()
+    {
+        GD.Print("-- 9. build a vessel on its core --");
+        foreach (int x in _play.ToToolbar("vessel-core", 3)) yield return x;
+        foreach (var (block, slot) in Slots)
+            foreach (int x in _play.BlockToToolbar(block, true, slot)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Vector3 pad = _play.FlatSpot(_base.Body.Position.ToGodot(), 26f, 2.4f, 0.3f);
+        foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
+        foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
+        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && v != _game.Pod && v.Structure.Grid.Size == GridSize.Small);
+        Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel, standing on the ground");
+        if (_vessel == null) yield break;
+        Vessel v = _vessel;
+        int ok = 0;
+        foreach (int x in _play.BuildVessel(v, Slots, n => ok = n)) yield return x;
+        HandlingStats st = v.Stats;
+        GD.Print($"  {v.Name}: {v.Structure.Count} blocks, {st.Mass:F2} t, accel f/up {st.Accel(Direction.Forward):F1}/{st.Accel(Direction.Up):F1} m/s², turn {st.TurnRate:F0}°/s, lift margin {st.LiftMargin:F0} kN");
+        int want = Playthrough.VesselLayout.Length;
+        Check(ok == want && v.Seat != null && st.CanLiftOff && v.Controller.Gear?.Count == 3,
+            $"the vessel built block by block from the toolbar: {ok} of {want} blocks, a seat, three legs, lift jets turned with R/T, and it can lift off ({st.LiftMargin:+0} kN)");
+        Check(v.Controller.Frozen && !InGround(v.Body), "it holds on its build stand while it is built, never in the ground");
+        Mark("vessel built");
+    }
+
+    bool InGround(Body b) => _game.Zone.Ground.IsInside(b, b.WorldPosition, b.Shape);
+
+    IEnumerable<int> Fly()
+    {
+        Vessel v = _vessel;
+        if (v == null) yield break;
+        GD.Print("-- 9. fly it 500 m and land --");
+        foreach (int x in _drive.Board(v)) yield return x;
+        Check(_game.Survivor.Seated == v, "F at its seat");
+        if (_game.Survivor.Seated != v) yield break;
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        Check(_game.Menu.RectOf("core:power") != null, "the CORE tab shows the vessel: its four numbers and lift margin");
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Vector3 start = v.Body.Position.ToGodot();
+        Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 120; i++) yield return 0;
+        Check(!v.Controller.Frozen && v.Body.Position.Y > start.Y + 3f, $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 2 s");
+        float top = 0f;
+        for (int t = 0; t < 60 * 120; t++)
+        {
+            Vector3 p = v.Body.Position.ToGodot(), to = target - p;
+            float flat = new Vector2(to.X, to.Z).Length();
+            if (flat < 30f) break;
+            Steer(v, to, flat);
+            float agl = v.AboveGround;
+            _game.Controls.Hold(Key.Space, agl < 25f);
+            _game.Controls.Hold(Key.Ctrl, agl > 50f);
+            top = MathF.Max(top, v.Body.Velocity.Length());
+            yield return 0;
+        }
+        _game.Controls.ReleaseAll();
+        for (int t = 0; t < 60 * 90 && !v.Controller.Frozen; t++)
+        {
+            Vector3 p = v.Body.Position.ToGodot(), to = target - p;
+            Steer(v, to, new Vector2(to.X, to.Z).Length());
+            _game.Controls.Hold(Key.W, false);
+            float agl = v.AboveGround, vy = v.Body.Velocity.Y, wanted = agl > 20f ? -5f : agl > 5f ? -2.5f : -1.0f;
+            _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.4f);
+            _game.Controls.Hold(Key.Space, vy < wanted - 0.4f);
+            yield return 0;
+        }
+        _game.Controls.ReleaseAll();
+        foreach (int x in _drive.Wait(60)) yield return x;
+        float flown = new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length();
+        Check(flown >= 500f, $"it flew {flown:F0} m, top speed {top:F0} m/s");
+        Check(v.Controller.Frozen && v.Body.Damage == 0f, "and landed on its gear, undamaged");
+        Mark("flown");
+    }
+
+    void Steer(Vessel v, Vector3 to, float flat)
+    {
+        N.Vector3 f = MathX.Forward(v.Body.Rotation);
+        float heading = MathF.Atan2(-f.X, -f.Z), wanted = MathF.Atan2(-to.X, -to.Z);
+        float err = Mathf.Wrap(wanted - heading, -MathF.PI, MathF.PI);
+        _game.Controls.Look = new Vector2(Math.Clamp(-err * 12f, -4f, 4f), 0f);
+        _game.Controls.Hold(Key.W, MathF.Abs(err) < 0.35f && flat > 60f);
+    }
+
+    // ==== 10. Menus, the torch, and death ============================================================
+
+    IEnumerable<int> MenuAndTorch()
+    {
+        GD.Print("-- 10. every tab of the menu, and the head torch --");
+        foreach (MenuTab tab in Enum.GetValues<MenuTab>())
+        {
+            foreach (int x in _play.OpenMenu(tab)) yield return x;
+            Check(_game.Menu.Tab == tab && _game.Menu.Root.WidgetIds.Any(), $"the {tab.ToString().ToUpperInvariant()} tab opens by its own button");
+        }
+        foreach (int x in _play.CloseMenu()) yield return x;
+        bool before = _game.Torch.Visible;
+        foreach (int x in _drive.Tap(Key.L)) yield return x;
+        Check(_game.Torch.Visible != before && _game.Torch.SpotRange > 20f, $"L toggles the head torch ({_game.Torch.SpotRange:F0} m, {_game.Torch.SpotAngle:F0}°)");
+        foreach (int x in _drive.Tap(Key.L)) yield return x;
+    }
+
+    IEnumerable<int> Death()
+    {
+        GD.Print("-- 10. dying, and the backpack recovered from its marker --");
+        Vessel v = _vessel;
+        if (v == null || _game.Survivor.Seated != v) yield break;
+        // Up high, out of the seat, and a jump off the side.
+        _game.Controls.Hold(Key.Space);
+        for (int t = 0; t < 60 * 30 && v.AboveGround < 120f; t++) yield return 0;
+        _game.Controls.ReleaseAll();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Bill carried = _game.Pack.Storage.Contents;
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        foreach (int x in _drive.Wait(5)) yield return x;
+        foreach (int x in _drive.Tap(Key.Space)) yield return x;
+        foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 30)) yield return x;
+        Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(carried) && _game.Pack.Storage.IsEmpty,
+            $"a fall from {v.AboveGround:F0} m kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
+        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.Tap(Key.R)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(!_game.Suit.Dead && _game.Survivor.Aboard == _game.Pod, "R: awake in the pod");
+        Lootable pack = _game.Backpack;
+        if (pack == null) yield break;
+        foreach (int x in _drive.WalkOutOfHatch(_game.Pod)) yield return x;
+        foreach (int x in _drive.WalkTo(pack.Position, 1.6f, 120f)) yield return x;
+        foreach (int x in _drive.LookAt(pack.Position + Vector3.Up * 0.25f, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(_game.Pack.Storage.Contents.Equals(carried) && _game.Backpack == null, "walked to the backpack's marker: E and take all, everything back");
+        Mark("recovered");
+    }
+
+    void Summary()
+    {
+        GD.Print("-- throughout --");
+        Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the castaway never needed rescuing from the ground ({_rescues.Count} rescues of anything)");
+        GD.Print($"  game time at each step (min): {string.Join(", ", _gameTimeAt.Select(kv => $"{kv.Key} {kv.Value / 60:F1}"))}");
+        GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP; {_game.Stats.Crafted} items crafted, {_game.Builder.Placed} blocks placed, {_game.Tool.OreCells} ore cells dug, {_game.Stats.Kills} kills");
+    }
+
+    // ---- Reporting --------------------------------------------------------------------------
+
+    void Check(bool ok, string what)
+    {
+        if (ok)
+        {
+            _passes++;
+            GD.Print($"  ok    {what}");
+        }
+        else Fail(what);
+    }
+
+    void Fail(string what)
+    {
+        _failures++;
+        GD.Print($"  FAIL  {what}");
+    }
+}

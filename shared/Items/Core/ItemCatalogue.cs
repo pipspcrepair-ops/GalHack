@@ -94,7 +94,10 @@ public sealed class ItemCatalogue
                 FuelUnits = DataJson.Int(e, "fuel", 0),
                 Rounds = DataJson.Int(e, "rounds", 0),
                 RestockDefault = DataJson.Int(e, "restock", 0),
+                StackSize = DataJson.Int(e, "stack", DefaultStack(category)),
+                Unlock = ReadUnlock(e, $"item '{DataJson.Str(e, "id")}'"),
             };
+            if (item.StackSize <= 0) throw new InvalidDataException($"item '{item.Id}': stack must be positive");
             if (_byId.ContainsKey(item.Id)) throw new InvalidDataException($"duplicate item id '{item.Id}'");
             if (item.VolumeSu <= 0 || item.MassKg <= 0) throw new InvalidDataException($"item '{item.Id}': mass and volume must be positive");
             item.Index = _items.Count;
@@ -144,6 +147,7 @@ public sealed class ItemCatalogue
             string ammo = DataJson.Str(e, "ammo", null);
             if (ammo != null && Known(ammo, $"block '{p.Name}' ammo").Category != ItemCategory.Ammo)
                 throw new InvalidDataException($"block '{p.Name}': '{ammo}' is not ammo");
+            bool unlocks = e.TryGetProperty("unlock", out JsonElement u);
             Blocks.Add(new BlockBill
             {
                 BlockId = p.Name,
@@ -151,6 +155,8 @@ public sealed class ItemCatalogue
                 Large = ReadBill(e.GetProperty("large"), $"block '{p.Name}'"),
                 UniqueOnly = DataJson.Bool(e, "uniqueOnly", false),
                 Ammo = ammo,
+                UnlockSmall = unlocks ? ReadUnlock(u, $"block '{p.Name}'", "small") : null,
+                UnlockLarge = unlocks ? ReadUnlock(u, $"block '{p.Name}'", "large") : null,
             });
         }
     }
@@ -224,6 +230,26 @@ public sealed class ItemCatalogue
             bill.Add(p.Name, n);
         }
         return bill;
+    }
+
+    /// <summary>How many units of a category one slot holds when the data doesn't say: bulk goods stack deep, devices and tools don't.</summary>
+    public static int DefaultStack(ItemCategory c) => c switch
+    {
+        ItemCategory.Raw or ItemCategory.Refined => 500,
+        ItemCategory.Part => 200,
+        ItemCategory.Component => 50,
+        ItemCategory.Consumable or ItemCategory.Ammo => 25,
+        ItemCategory.Unique => 10,
+        _ => 1,
+    };
+
+    /// <summary>A tech-tree node (<c>{ "level", "cost", "parent", "tab" }</c>) under <paramref name="key"/>, or null if there is none.</summary>
+    static Unlock ReadUnlock(JsonElement e, string where, string key = "unlock")
+    {
+        if (!e.TryGetProperty(key, out JsonElement u) || u.ValueKind != JsonValueKind.Object) return null;
+        int level = DataJson.Int(u, "level", 1), cost = DataJson.Int(u, "cost", 0);
+        if (level < 1 || cost < 0) throw new InvalidDataException($"{where}: unlock level must be at least 1 and cost not negative");
+        return new Unlock(level, cost, DataJson.Str(u, "parent", null), DataJson.Str(u, "tab", "misc"));
     }
 
     ItemDef Known(string id, string where) =>

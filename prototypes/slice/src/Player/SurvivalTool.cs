@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using GalHack.Items;
 using GalHack.Physics.Engine;
 using GalHack.Terrain;
 using Godot;
@@ -7,58 +8,69 @@ using Planets.Gen;
 using PlanetSurface.Fx;
 using PlanetSurface.Terrain;
 using Slice.Game;
+using Slice.Items;
 using Slice.Surface;
 using TerrainDigging.Terrain;
 using Wildlife;
-using Inventory = GalHack.Structures.Inventory;
+using Layers = GalHack.Physics.Layers;
 
 namespace Slice.Player;
 
-/// <summary>The survival tool's two modes.</summary>
+/// <summary>The survival tool's two modes, switched with a key the visor shows.</summary>
 public enum ToolMode { Gather, Shoot }
 
 /// <summary>
-/// The survival tool every castaway keeps: in Gather mode it digs a small ball of ground under
+/// The survival tool, an item on the toolbar: in Gather mode it digs a small ball of ground under
 /// the crosshair (terrain-digging's rules: bedrock and anchored ground refuse) and cuts plants;
-/// in Shoot mode it is a short blaster. Dug ore and cut plants go straight into the pack as the
-/// building catalogue's materials (a placeholder until manufacturing exists), plants also as
-/// organics for the replicator.
+/// in Shoot mode it is a short blaster whose bolt you can see fly from the muzzle and land, with
+/// sparks and a scorch where it strikes. Shots only hurt creatures. Every ray asks the world the
+/// survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets the vessel's own
+/// walls: it digs nothing through a floor, and a shot scorches the wall it hits, harmlessly.
+/// Dug ore and cut plants go into the pack as shared/Items' raw items.
 /// </summary>
 public sealed class SurvivalTool
 {
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
     readonly Suit _suit;
-    readonly Inventory _pack;
+    readonly PlayerInventory _pack;
     readonly SliceRules.ToolRules _rules;
     readonly SliceRules.MaterialRules _yields;
 
     public ToolMode Mode = ToolMode.Gather;
     public Debris Debris;
     public Sfx Sfx;
+    public ShotFx Fx;
 
-    /// <summary>What the tool did, for the visor ("+6 iron", "BEDROCK").</summary>
+    /// <summary>What the tool did, for the visor ("+12 Iron ore", "BEDROCK").</summary>
     public event Action<string, Color> Said;
 
-    /// <summary>A shot was fired from, to (for the tracer).</summary>
-    public event Action<Vector3, Vector3, bool> Fired;
+    /// <summary>Ore cells dug (for experience), plants cut, a creature hit.</summary>
+    public event Action<int> OreDug;
+    public event Action PlantCut;
+    public event Action<Creature> CreatureHit;
 
-    /// <summary>Materials gathered since the start, by kind (tests and the wrist).</summary>
+    /// <summary>Items gathered since the start, by id (tests and stats).</summary>
     public readonly SortedDictionary<string, int> Gathered = new(StringComparer.Ordinal);
 
-    /// <summary>Plant columns cut so far (canonical cells), kept so they stay cut.</summary>
+    /// <summary>What was set down because the pack was full.</summary>
+    public event Action<Bill> Overflowed;
+
     public int PlantsCut { get; private set; }
+    public int OreCells { get; private set; }
+    public int Shots { get; private set; }
 
     public bool HasTarget { get; private set; }
     public Int3 Target { get; private set; }
     public Verdict TargetVerdict { get; private set; }
     public string TargetLabel { get; private set; } = "";
 
+    /// <summary>The crosshair is on a structure's block nearer than any ground (the tool can't dig it).</summary>
+    public bool OnBlock { get; private set; }
+
     float _cooldown;
 
-    /// <summary>Cut plants by frame column, so one isn't found again before the ground's flora is rebuilt.</summary>
-
-    public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, Inventory pack)
+    public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, PlayerInventory pack)
     {
         _zone = zone;
         _survivor = survivor;
@@ -75,7 +87,12 @@ public sealed class SurvivalTool
         Aim();
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
-        else if (!CutPlant()) Dig();
+        else if (!OnBlock && !CutPlant()) Dig();
+        else if (OnBlock)
+        {
+            _cooldown = 0.4f;
+            Said?.Invoke("The survival tool doesn't dig blocks", Tones.Caution);
+        }
     }
 
     // ---- Aim -----------------------------------------------------------------------------------
@@ -84,20 +101,33 @@ public sealed class SurvivalTool
     {
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         PlanetTerrain terrain = _zone.Planet.Terrain;
-        HasTarget = terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), _rules.Reach, out Int3 cell, out _, out _);
+        HasTarget = terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), _rules.Reach, out Int3 cell, out _, out float ground);
+        // A structure's block (the one you are in, from inside) nearer than the ground blocks the dig.
+        // (Trunks share the props layer with devices: only a structure's block or a device counts.)
+        OnBlock = WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.Hull | Layers.Props, out LookHit block)
+                  && (block.OnBlock || _zone.Devices.Exists(d => d.Collider == block.Collider))
+                  && (!HasTarget || block.Distance < ground);
         TargetLabel = "";
+        if (OnBlock)
+        {
+            TargetLabel = block.Vessel != null ? block.Vessel.Name.ToUpperInvariant() : "";
+            return;
+        }
         if (!HasTarget) return;
         Target = cell;
         TargetVerdict = terrain.Check(cell, EditKind.Tool);
         CellMaterial m = terrain.Store.MaterialAt(cell);
         TargetLabel = TargetVerdict == Verdict.Bedrock ? "BEDROCK"
-            : m == CellMaterial.Ore ? MaterialOf(_zone.Planet.Source.OreKindAt(cell)).ToUpperInvariant() + " ORE"
+            : m == CellMaterial.Ore ? (OreOf(_zone.Planet.Source.OreKindAt(cell))?.Name ?? "Ore").ToUpperInvariant()
             : m.Label().ToUpperInvariant();
     }
 
     // ---- Gather --------------------------------------------------------------------------------
 
-    /// <summary>One dig pulse at the target. Ore becomes materials in the pack.</summary>
+    /// <summary>The raw item a deposit kind gives (shared/Items' deposit field).</summary>
+    public ItemDef OreOf(DepositKind kind) => SliceItems.OreFor(_zone.Data.Items, kind.ToString());
+
+    /// <summary>One dig pulse at the target. Ore and rock become raw items in the pack.</summary>
     public PlanetEdit Dig()
     {
         if (!HasTarget) return null;
@@ -108,21 +138,25 @@ public sealed class SurvivalTool
         if (edit.Removed.Count > 0)
         {
             var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            int ore = 0;
             foreach (RemovedCell r in edit.Removed)
             {
-                if (r.Material != CellMaterial.Ore) continue;
-                string material = MaterialOf(_zone.Planet.Source.OreKindAt(r.Cell));
-                if (!_yields.OrePerCell.TryGetValue(material, out int n) || n <= 0) continue;
-                got[material] = got.GetValueOrDefault(material) + n;
+                if (r.Material == CellMaterial.Ore && OreOf(_zone.Planet.Source.OreKindAt(r.Cell)) is ItemDef item)
+                {
+                    got[item.Id] = got.GetValueOrDefault(item.Id) + _yields.OrePerCell;
+                    ore++;
+                }
+                else if (r.Material is CellMaterial.Rock or CellMaterial.DeepRock && _yields.StonePerRockCell > 0)
+                    got["stone"] = got.GetValueOrDefault("stone") + _yields.StonePerRockCell;
             }
-            foreach (var (material, n) in got) Give(material, n);
+            foreach (var (id, n) in got) Give(id, n);
+            OreCells += ore;
+            if (ore > 0) OreDug?.Invoke(ore);
             Debris?.Burst(edit.Removed, _survivor.WorldEye());
             Sfx?.Play(Sfx.Sound.Dig, at);
-            if (got.Count > 0)
-            {
-                Sfx?.Play(Sfx.Sound.Ore, at, 1f, -4f);
-                foreach (var (material, n) in got) Said?.Invoke($"+{n} {material}", Tones.Good);
-            }
+            if (ore > 0) Sfx?.Play(Sfx.Sound.Ore, at, 1f, -4f);
+            foreach (var (id, n) in got)
+                if (id != "stone" || ore == 0) Said?.Invoke($"+{n} {_zone.Data.Items.Item(id).Name}", Tones.Good);
             return edit;
         }
         _cooldown = 0.35f;
@@ -132,20 +166,18 @@ public sealed class SurvivalTool
         return edit;
     }
 
-    /// <summary>The deposit kinds as the catalogue's material names.</summary>
-    public static string MaterialOf(DepositKind kind) => kind.ToString().ToLowerInvariant();
-
-    void Give(string material, int n)
+    void Give(string id, int n)
     {
-        _pack.Add(new Dictionary<string, int> { [material] = n });
-        Gathered[material] = Gathered.GetValueOrDefault(material) + n;
+        Gathered[id] = Gathered.GetValueOrDefault(id) + n;
+        Bill left = _pack.Add(id, n);
+        if (!left.IsEmpty) Overflowed?.Invoke(left);
     }
 
     /// <summary>
-    /// Cuts the plant nearest the crosshair within reach: organics for the replicator and carbon
-    /// for building, and the plant is gone from the ground, and stays gone: planet-surface's felling
-    /// rule (<see cref="PlanetWorld.Felled"/> and <see cref="TerrainStreamer.Fell"/>), so a tree's
-    /// collider goes in the same frame and the cut is kept through streaming and saves.
+    /// Cuts the plant nearest the crosshair within reach: biomass, and organics for the replicator,
+    /// and the plant is gone from the ground for good: planet-surface's felling rule
+    /// (<see cref="PlanetSurface.World.PlanetWorld.Felled"/> and <see cref="TerrainStreamer.Fell"/>),
+    /// so a tree's collider goes in the same frame and the cut is kept through streaming and saves.
     /// </summary>
     public bool CutPlant()
     {
@@ -156,30 +188,74 @@ public sealed class SurvivalTool
         PlantsCut++;
         _cooldown = _rules.DigInterval * 2f;
         _suit.Worked();
-        double organics = Math.Round(_yields.OrganicsPerPlant * Math.Clamp(scale, 0.5f, 3f), 1);
-        int carbon = Math.Max(1, (int)MathF.Round(_yields.CarbonPerPlant * Math.Clamp(scale, 0.5f, 3f)));
+        float size = Math.Clamp(scale, 0.5f, 3f);
+        double organics = Math.Round(_yields.OrganicsPerPlant * size, 1);
+        int biomass = Math.Max(1, (int)MathF.Round(_yields.BiomassPerPlant * size));
         _suit.Kit.Organics += organics;
-        Give("carbon", carbon);
+        Give("biomass", biomass);
+        PlantCut?.Invoke();
         Debris?.Puff(plant + Vector3.Up * 0.8f, new Color(0.35f, 0.5f, 0.2f, 0.6f), 1.5f);
         Sfx?.Play(Sfx.Sound.Dig, plant, 1.4f, -6f);
-        Said?.Invoke($"+{organics:F1} kg organics, +{carbon} carbon", Tones.Good);
+        Said?.Invoke($"+{biomass} Biomass, +{organics:F1} kg organics", Tones.Good);
         return true;
     }
 
     // ---- Shoot ---------------------------------------------------------------------------------
 
+    /// <summary>Where the bolt leaves the tool: low and to the right of the eye, out along the look (the first-person tool's muzzle).</summary>
+    public Vector3 Muzzle()
+    {
+        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
+        Vector3 right = dir.Cross(_survivor.WorldUp());
+        right = right.LengthSquared() < 1e-6f ? Vector3.Right : right.Normalized();
+        Vector3 viewUp = right.Cross(dir).Normalized();
+        return eye + dir * 0.55f + right * 0.17f - viewUp * 0.15f;
+    }
+
     void Shoot()
     {
         _cooldown = _rules.ShotInterval;
+        Shots++;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         float reach = _rules.ShotRange;
-        if (_zone.Planet.Terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), reach, out _, out _, out float ground)) reach = ground;
+        ImpactKind kind = ImpactKind.Nothing;
+        Vector3 normal = -dir;
+        Node3D onto = null;
+
+        // The nearest of: the voxel ground, any solid thing in the world you are in (the vessel's
+        // own walls from inside, other hulls, trunks, devices), and a creature.
+        if (_zone.Planet.Terrain.Store.Raycast(eye.ToNumerics(), dir.ToNumerics(), reach, out _, out Int3 entered, out float ground))
+        {
+            reach = ground;
+            kind = ImpactKind.Ground;
+            var entry = new Vector3(entered.X, entered.Y, entered.Z); // the face the ray entered through
+            normal = entry.LengthSquared() > 0.5f ? entry.Normalized() : -dir;
+        }
+        uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
+        if (WorldRay.Cast(_zone, _survivor, reach, mask, out LookHit hit) && hit.Distance <= reach)
+        {
+            reach = hit.Distance;
+            normal = hit.Normal;
+            kind = hit.OnBlock ? ImpactKind.Block : ImpactKind.Ground;
+            onto = hit.Vessel?.Node;
+        }
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
-        bool hit = c != null && !c.Dead;
-        if (hit) _zone.Wildlife.Sim.Damage(c, _rules.ShotDamage, _zone.Wildlife.Player);
-        Vector3 end = hit ? point : eye + dir * reach;
-        Fired?.Invoke(eye + dir * 0.6f, end, hit);
-        Sfx?.Play(Sfx.Sound.Ping, eye, hit ? 0.8f : 1.2f, -8f);
+        bool struck = c != null && !c.Dead;
+        Vector3 end = struck ? point : eye + dir * reach;
+        if (struck)
+        {
+            kind = ImpactKind.Creature;
+            onto = null;
+            _zone.Wildlife.Sim.Damage(c, _rules.ShotDamage, _zone.Wildlife.Player);
+            CreatureHit?.Invoke(c);
+        }
+        Vector3 muzzle = Muzzle();
+        Vector3 at = end, face = normal;
+        Node3D on = onto;
+        ImpactKind landed = kind;
+        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on));
+        Sfx?.Play(Sfx.Sound.Ping, muzzle, struck ? 0.8f : 1.2f, -8f);
+        if (kind != ImpactKind.Nothing) Sfx?.Play(Sfx.Sound.Clank, end, 1.6f, -14f);
     }
 }
 

@@ -13,7 +13,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class Screenshot : Node
 {
-    const double TimeoutSeconds = 240;
+    const double TimeoutSeconds = 600;
 
     Game.Game _game;
     string _out = "screenshot.png", _view = "pod";

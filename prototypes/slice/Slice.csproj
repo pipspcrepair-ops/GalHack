@@ -17,6 +17,9 @@
     <!-- Shared modules. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Core\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Production\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
 
     <!-- Pure cores. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
@@ -62,6 +65,9 @@
     <Compile Include="..\wildlife\src\Game\Shutdown.cs" />
     <Compile Include="..\diegetic-ui\src\Theme\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Screens\**\*.cs" />
+    <!-- Sounds, synthesised in code where they live: building's block clunks and UI clicks, the diegetic UI's chirp. -->
+    <Compile Include="..\building\src\Game\Sfx.cs" />
+    <Compile Include="..\diegetic-ui\src\World\Sfx.cs" />
 
     <!-- Test helpers, used where they live: planet-surface's per-frame timing probe. -->
     <Compile Include="..\planet-surface\tests\FrameProbe.cs" />

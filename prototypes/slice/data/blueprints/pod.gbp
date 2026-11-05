@@ -1,7 +1,7 @@
 # Escape pod: the slice's crash-landing capsule. Small grid (0.5 m cells), x starboard, y up,
 # -z forward. Not a vessel any more (no engines): a shelter, a respawn point and a locker.
 #
-# A 3.5 m square hull, 3 m tall, an open hatchway at the front, a seat facing it, a locker
+# A 3.5 m square hull, 3 m tall, an open hatchway at the front (2 m high: you walk out and in), a seat facing it, a locker
 # (container) at the back, a light, and a scorched orange heat shield underneath.
 
 schema galhack.blueprint
@@ -40,7 +40,6 @@ block -2..2 5 -3 steel slope paint=shell
 block -2..2 5 3 steel slope rot=+y+z paint=shell
 block -3 5 -3..3 steel slope rot=+y-x paint=shell
 block 3 5 -3..3 steel slope rot=+y+x paint=shell
-block -1..1 4 -3 steel paint=hazard
 
 # Inside: the seat facing the hatch, the locker, a light
 block 0 1 1 cockpit

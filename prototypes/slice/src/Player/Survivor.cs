@@ -45,10 +45,15 @@ public sealed class Survivor
     public event Action<string> Moved;
 
     /// <summary>
-    /// How fast the body would hit something now, m/s: its speed while airborne (falling, flung
-    /// or jetting), nothing on its feet or in a seat. The visor flashes IMPACT above the safe speed.
+    /// How fast the body would hit the ground, m/s: its speed while it is airborne and coming down
+    /// (falling, or flung downward); nothing on its feet, in a seat, or while it rises or hangs
+    /// level (lifting off on the jetpack is never a fall). The visor flashes IMPACT once this passes
+    /// the safe landing speed, so the warning always comes before a hard landing can hurt.
     /// </summary>
-    public float ImpactSpeed => Body.OnFloor || Seated != null ? 0f : Body.Velocity.Length();
+    public float ImpactSpeed => Body.OnFloor || Seated != null || -N.Vector3.Dot(Body.Velocity, Body.Up) < 0.5f ? 0f : Body.Velocity.Length();
+
+    /// <summary>Times the survivor walked off a structure straight onto the ground (tests).</summary>
+    public int StepsOff { get; private set; }
 
     Body _letGoOf;
     float _rejoinBlocked;
@@ -100,7 +105,8 @@ public sealed class Survivor
         if (Body.Frame == null)
         {
             if (Node.GetParent() != Zone) MoveNodeTo(Zone, inCabin: false); // a rescue took it out of a cabin
-            if (Binding.TouchedHull is Body hull && (Binding.TouchedHullUnderfoot || !Body.OnFloor)
+            // A base never moves, so there is nothing to ride: it is walked on in the zone's world.
+            if (Binding.TouchedHull is Body hull && hull.Motion != Motion.Fixed && (Binding.TouchedHullUnderfoot || !Body.OnFloor)
                 && !(hull == _letGoOf && _rejoinBlocked > 0f) && Zone.VesselOf(hull) is Vessel vessel)
                 Join(vessel, Binding.TouchedHullNormal);
         }
@@ -109,11 +115,25 @@ public sealed class Survivor
             Vessel vessel = Aboard;
             Body.OnOuterHull = !vessel.Interior.Contains(Body.Position + Body.Up * 0.9f);
             float distance = vessel.DistanceFromHull(Body.Position, rules.LetGoDistance + 0.5f);
-            if (Riding.LetGo(rules, Body, Legs.Jumped, Binding.Touching, distance, dt))
+            // Walked out of the door and off its floor, over the ground: back in the zone's world at
+            // once (shared riding's step-off).
+            // No block right under the middle of its feet (the character controller still calls the
+            // floor's edge "floor" while it slides off it), so it isn't standing on the hull.
+            bool hullUnder = vessel.DistanceFromHull(Body.Position - Body.Up * 0.1f, 0.3f) < 0.02f;
+            N.Vector3 ground = default;
+            bool steppedOff = !hullUnder && Riding.StepsOntoGround(Body, hullUnder, Zone.Physics.Query, Zone.Physics.Rules.Walking.StepHeight * 2f, out ground);
+            if (steppedOff || Riding.LetGo(rules, Body, Legs.Jumped, Binding.Touching, distance, dt))
             {
                 _letGoOf = vessel.Body;
                 _rejoinBlocked = rules.RejoinAfter;
                 Leave();
+                if (steppedOff)
+                {
+                    // Onto the ground it stepped over, never into it.
+                    if (Body.Position.Y < ground.Y) Body.Position = Body.Position with { Y = ground.Y + 0.02f };
+                    Binding.Teleport();
+                    StepsOff++;
+                }
             }
             else if (Body.OnOuterHull != _wasOutside)
                 Moved?.Invoke(Body.OnOuterHull ? $"out on the {vessel.Name}'s hull" : $"inside the {vessel.Name}");
@@ -169,6 +189,9 @@ public sealed class Survivor
     }
 
     N.Quaternion WorldView() => Body.Frame == null ? ViewFrame : N.Quaternion.Normalize(Body.Frame.Rotation * ViewFrame);
+
+    /// <summary>The frame the view's yaw and pitch turn in, in the world (the eased walk frame, and the ship's turn aboard).</summary>
+    public N.Quaternion WorldViewFrame => Seated is Vessel seat ? seat.Body.Rotation : WorldView();
 
     /// <summary>Sits in a cockpit seat: the body stops simulating and the controls fly the vessel.</summary>
     public bool Sit(Vessel vessel)
@@ -270,6 +293,13 @@ public sealed class Survivor
         N.Quaternion look = MathX.ThenLocal(MathX.ThenLocal(WorldView(), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
         if (Seated is Vessel seat) look = MathX.ThenLocal(MathX.ThenLocal(seat.Body.Rotation, MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
         return MathX.Forward(look).ToGodot();
+    }
+
+    /// <summary>The body's up in the world.</summary>
+    public Vector3 WorldUp()
+    {
+        if (Seated is Vessel seat) return MathX.Rotate(seat.Body.Rotation, N.Vector3.UnitY).ToGodot();
+        return (Body.Frame == null ? Body.Up : MathX.Rotate(Body.Frame.Rotation, Body.Up)).ToGodot();
     }
 
     /// <summary>The eye in the world (not interpolated: for aiming).</summary>

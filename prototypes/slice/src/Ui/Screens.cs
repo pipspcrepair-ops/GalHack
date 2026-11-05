@@ -125,99 +125,6 @@ public partial class CockpitConsole : Node3D
     }
 }
 
-/// <summary>
-/// The wrist computer (Tab): a screen on the forearm with the pack (building materials,
-/// organics, food, kit), the starter blueprint's cost against what you have, and the scanner's
-/// nearest deposits. You can keep walking while it is up.
-/// </summary>
-public partial class Wrist : Node3D
-{
-    public Game.Game Game;
-    public WorldScreen Screen { get; private set; }
-    public bool Raised { get; private set; }
-    float _raise;
-    WristPage _page;
-
-    public override void _Ready()
-    {
-        Screen = new WorldScreen { Name = "Screen", Pixels = new Vector2I(1024, 680), SizeMeters = new Vector2(0.30f, 0.20f), Pickable = false, MovesCamera = false, Bezel = 0.012f };
-        AddChild(Screen);
-        _page = new WristPage { Game = Game };
-        Screen.SetContent(_page);
-        Visible = false;
-    }
-
-    public void Toggle()
-    {
-        Raised = !Raised;
-        Screen.MarkDirty();
-    }
-
-    public override void _Process(double delta)
-    {
-        _raise = Mathf.MoveToward(_raise, Raised ? 1f : 0f, (float)delta * 4f);
-        Visible = _raise > 0.01f;
-        float e = _raise * _raise * (3f - 2f * _raise);
-        // Up from below the view to low in the left of it, its face turned to the eye.
-        var at = new Vector3(-0.15f, -0.34f + 0.22f * e, -0.42f);
-        Transform = new Transform3D(Basis.LookingAt(at.Normalized(), Vector3.Up), at);
-    }
-
-    public sealed partial class WristPage : SlicePage
-    {
-        public Game.Game Game;
-        readonly DepositFinder _deposits = new();
-
-        protected override string Signature()
-        {
-            if (Game?.Suit == null) return "";
-            string pack = string.Join(",", Game.Pack.Items.Select(kv => $"{kv.Key}{kv.Value}"));
-            string near = string.Join(",", _deposits.Near(Game.Zone, Game.Survivor.WorldFeet).Select(d => $"{d.kind}{(int)(d.at - Game.Survivor.WorldFeet).Length() / 5}"));
-            return $"{pack}|{Game.Suit.Kit.Organics:F1}|{Game.Suit.Kit.Food.Count}|{Game.Builder.Remaining.Count}|{near}";
-        }
-
-        public override void _Draw()
-        {
-            float w = Size.X;
-            this.Block(new Rect2(Vector2.Zero, Size), C.Glass);
-            if (Game?.Suit == null) return;
-            this.Header(w, "PACK", Game.BuildMode == BuildMode.Creative ? "CREATIVE" : "SURVIVAL", C.Accent, height: 70);
-            float y = 92;
-            this.Caption(new Vector2(28, y), "MATERIALS (placeholder: iron, copper, silicon, carbon)");
-            y += 44;
-            var plan = Game.StarterPlan;
-            IReadOnlyDictionary<string, int> need = Game.Builder.TotalCost(plan);
-            foreach (string item in new[] { "iron", "copper", "silicon", "carbon" })
-            {
-                int have = Game.Pack[item];
-                int needed = need.TryGetValue(item, out int n) ? n : 0;
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(28, y), item.ToUpperInvariant(), C.Text);
-                this.Text(UiTheme.Mono, 26, new Vector2(200, y), $"{have,4}", have >= needed ? C.Good : C.Text);
-                this.Segments(new Rect2(300, y + 8, 300, 18), Math.Min(have, needed), Math.Max(1, needed), have >= needed ? C.Good : C.Accent2, count: 12, gap: 4);
-                this.Text(UiTheme.Mono, 20, new Vector2(620, y + 2), $"of {needed} for the {plan.Name}", C.Dim);
-                y += 40;
-            }
-            y += 10;
-            this.Caption(new Vector2(28, y), "SURVIVAL KIT");
-            y += 44;
-            var kit = Game.Suit.Kit;
-            this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), $"Organics {kit.Organics:F1} kg   Food items {kit.Food.Count}   Bottles {kit.SmallBottles}+{kit.LargeBottles}   Medkits {kit.Medkits}   Replicator kits {kit.Kits.Count}", C.Text);
-            y += 44;
-            this.Caption(new Vector2(28, y), "SCANNER: NEAREST DEPOSITS");
-            y += 44;
-            Vector3 feet = Game.Survivor.WorldFeet;
-            foreach (var (kind, at) in _deposits.Near(Game.Zone, feet))
-            {
-                Vector3 to = at - feet;
-                float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
-                this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), $"{kind.ToUpperInvariant(),-8}", C.Holo);
-                this.Text(UiTheme.Mono, 22, new Vector2(200, y), $"{new Vector2(to.X, to.Z).Length(),4:F0} m  bearing {bearing:000}°  depth {Math.Max(0, -to.Y):F0} m", C.Text);
-                y += 32;
-            }
-        }
-    }
-}
-
 /// <summary>A text overlay of the numbers behind everything (F3), for testing and tuning.</summary>
 public partial class DebugHud : CanvasLayer
 {
@@ -247,7 +154,7 @@ public partial class DebugHud : CanvasLayer
             $"physics step {z.Host.LastStepMs:F2} ms, {z.Physics.Bodies.Count} bodies, creatures {z.Wildlife.Sim?.Creatures.Count}",
         };
         foreach (Vessel v in z.Vessels)
-            lines.Add($"{v.Name}: {v.Structure.Count} blocks, {v.Body.Mass:F0} kg, {(v.Controller?.Frozen == true ? "landed" : "flying")} at {v.Body.Position.Y:F0} m, cargo {v.Cargo.Total}");
+            lines.Add($"{v.Name}: {v.Structure.Count} blocks, {v.Body.Mass:F0} kg, {(v.Controller?.Frozen == true ? "landed" : "flying")} at {v.Body.Position.Y:F0} m, storage {v.Storage.UsedSu:F0} SU");
         _label.Text = string.Join("\n", lines);
     }
 }

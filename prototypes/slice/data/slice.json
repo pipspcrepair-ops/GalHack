@@ -15,16 +15,20 @@
     "podDropSeconds": 7
   },
 
-  // PLACEHOLDER until materials and manufacturing are designed: digging ore and cutting plants
-  // give the building catalogue's recipe materials (iron, copper, silicon, carbon) directly.
+  // What gathering gives, as shared/Items' raw items (an ore cell gives the ore its deposit kind
+  // maps to in items.json).
   "materials": {
-    // Units of material per 1 m cell of ore dug, by the deposit's kind.
-    "orePerCell": { "iron": 6, "copper": 4, "silicon": 4, "carbon": 4, "titanium": 2, "cobalt": 2, "crystal": 2 },
-    // Cutting a plant: kg of organics for the replicator, and carbon.
+    // Raw ore per 1 m cell of ore dug: shared/Items' pacing reference (machines.json).
+    "orePerCell": 12,
+    // Stone per cell of rock dug (soil gives nothing).
+    "stonePerRockCell": 1,
+    // Cutting a plant, at scale 1: biomass, and kg of organics for the replicator.
+    "biomassPerPlant": 2,
     "organicsPerPlant": 1.5,
-    "carbonPerPlant": 2,
-    // What the escape pod's locker holds: enough for a core and a seat, not a ship.
-    "podLocker": { "iron": 30, "copper": 16, "silicon": 10, "carbon": 4 }
+    // What the escape pod's locker holds: a few days' food and air, not a ship.
+    "podLocker": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
+    // What the castaway has on the toolbar from the start, slot 1 first.
+    "toolbar": [ "survival-tool" ]
   },
 
   // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to
@@ -56,8 +60,17 @@
     "reach": 9,
     // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
     "blueprintPlacesPerSecond": 8,
-    "starterBlueprint": "starter.gbp"
+    "starterBlueprint": "starter.gbp",
+    // Small vessels turn no faster than this, °/s, however light they are (the handling model's
+    // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
+    "smallVesselMaxTurn": 110
   },
+
+  // The head torch (L): a cone from the helmet.
+  "torch": { "range": 45, "angle": 32, "energy": 5.5 },
+
+  // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
+  "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
 
   "wildlife": {
     // Creatures live on a square of the planet around the landing site, this far each way, m.

@@ -1,0 +1,283 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using GalHack.Items;
+
+namespace Slice.Items;
+
+/// <summary>The numbers behind levels and experience (data/progress.json).</summary>
+public sealed class ProgressRules
+{
+    public int[] Levels { get; set; } = Array.Empty<int>();
+    public int[] Points { get; set; } = Array.Empty<int>();
+    public int PastCap { get; set; } = 1500;
+    public XpRules Xp { get; set; } = new();
+
+    /// <summary>The level cap: level 1 plus one per entry in <see cref="Levels"/>.</summary>
+    public int Cap => Levels.Length + 1;
+
+    public sealed class XpRules
+    {
+        public int OreCell { get; set; } = 3;
+        public int Plant { get; set; } = 2;
+        public double CraftSecondsPerXp { get; set; } = 2;
+        public int BlockLarge { get; set; } = 3;
+        public int BlockSmall { get; set; } = 1;
+        public int Deposit { get; set; } = 15;
+        public int Species { get; set; } = 10;
+        public float DepositRadius { get; set; } = 30;
+    }
+
+    static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
+    public static ProgressRules Parse(string json)
+    {
+        using JsonDocument doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        if (doc.RootElement.GetProperty("schema").GetString() != "galhack.progress") throw new InvalidDataException("progress.json: wrong schema");
+        var rules = doc.RootElement.Deserialize<ProgressRules>(Json);
+        if (rules.Levels.Length != rules.Points.Length) throw new InvalidDataException("progress.json: one points entry per level");
+        for (int i = 1; i < rules.Levels.Length; i++)
+            if (rules.Levels[i] <= rules.Levels[i - 1]) throw new InvalidDataException("progress.json: levels must rise");
+        return rules;
+    }
+
+    /// <summary>Experience to reach a level (1 is free).</summary>
+    public int XpFor(int level) => level <= 1 ? 0 : Levels[Math.Min(level, Cap) - 2];
+}
+
+/// <summary>
+/// The character's progress, in one serialisable place (phase 3's saves keep it whole): experience,
+/// the level it gives, unlock points earned and spent, and every unlocked tech node.
+/// </summary>
+public sealed class ProgressState
+{
+    public int Xp { get; set; }
+    public int PointsEarned { get; set; }
+    public int PointsSpent { get; set; }
+    public List<string> Unlocked { get; set; } = new();
+    /// <summary>Deposits found and species met (exploring XP is paid once each).</summary>
+    public List<string> Found { get; set; } = new();
+}
+
+/// <summary>One node of the tech tree: an item or a block on a grid that has an unlock.</summary>
+public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId, bool? Small)
+{
+    public string Tab => Unlock.Tab;
+    public int Level => Unlock.Level;
+    public int Cost => Unlock.Cost;
+}
+
+/// <summary>Why a node can't be unlocked (or used) yet, or that it can.</summary>
+public enum UnlockState { Unlocked, Affordable, NeedsLevel, NeedsPoints, NeedsParent }
+
+/// <summary>
+/// Levels, experience and the tech tree (design section on progression; Empyrion's shape: every
+/// item and block carries its own node). Experience comes from playing: digging ore, cutting
+/// plants, crafting, building, kills and finding things. Each level grants unlock points, which
+/// buy nodes whose level and parent are reached. Nothing that has a node can be crafted or placed
+/// until it is unlocked; in Creative everything is.
+/// </summary>
+public sealed class Progress
+{
+    public readonly ProgressRules Rules;
+    public readonly ProgressState State;
+    public readonly IReadOnlyList<TechNode> Nodes;
+    readonly Dictionary<string, TechNode> _byId;
+    readonly HashSet<string> _unlocked;
+    readonly HashSet<string> _found;
+
+    /// <summary>Everything is unlocked (Creative).</summary>
+    public bool Creative;
+
+    /// <summary>Experience earned: amount and why ("+3 XP ore").</summary>
+    public event Action<int, string> Earned;
+
+    /// <summary>A new level was reached, with the points it granted.</summary>
+    public event Action<int, int> LevelledUp;
+
+    /// <summary>A node was unlocked.</summary>
+    public event Action<TechNode> Unlocked;
+
+    public static readonly string[] Tabs = { "base", "capital", "small", "hover", "tools", "weapons", "misc" };
+
+    public static string TabName(string tab) => tab switch
+    {
+        "base" => "BASE",
+        "capital" => "CAPITAL VESSEL",
+        "small" => "SMALL VESSEL",
+        "hover" => "HOVER VESSEL",
+        "tools" => "TOOLS",
+        "weapons" => "WEAPONS",
+        _ => "MISC",
+    };
+
+    public Progress(ProgressRules rules, ItemCatalogue items, GalHack.Structures.Catalogue blocks, ProgressState state = null)
+    {
+        Rules = rules;
+        State = state ?? new ProgressState();
+        Nodes = Build(items, blocks);
+        _byId = Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        _unlocked = new HashSet<string>(State.Unlocked, StringComparer.Ordinal);
+        _found = new HashSet<string>(State.Found, StringComparer.Ordinal);
+        // The starting essentials: every node at level 1 that costs nothing.
+        foreach (TechNode n in Nodes)
+            if (n.Level <= 1 && n.Cost == 0 && ParentOk(n)) Grant(n);
+        // Their children free at level 1 too (a parent chain of free nodes).
+        for (int pass = 0; pass < 4; pass++)
+            foreach (TechNode n in Nodes)
+                if (n.Level <= 1 && n.Cost == 0 && ParentOk(n)) Grant(n);
+    }
+
+    static List<TechNode> Build(ItemCatalogue items, GalHack.Structures.Catalogue blocks)
+    {
+        var nodes = new List<TechNode>();
+        foreach (ItemDef i in items.Items)
+            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, null, null));
+        foreach (BlockBill b in items.Blocks.All)
+            foreach (bool small in new[] { true, false })
+            {
+                Unlock u = b.UnlockFor(small);
+                if (u == null || !blocks.TryGetType(b.BlockId, out var type)) continue;
+                nodes.Add(new TechNode(BlockBill.NodeId(b.BlockId, small), $"{type.Name} ({(small ? "small" : "large")})", u, null, b.BlockId, small));
+            }
+        return nodes.OrderBy(n => Array.IndexOf(Tabs, n.Tab)).ThenBy(n => n.Level).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
+    }
+
+    public TechNode Node(string id) => id != null && _byId.TryGetValue(id, out TechNode n) ? n : null;
+    public TechNode NodeOfBlock(string blockId, bool small) => Node(BlockBill.NodeId(blockId, small));
+
+    // ---- Levels --------------------------------------------------------------------------------
+
+    public int Xp => State.Xp;
+
+    public int Level
+    {
+        get
+        {
+            int level = 1;
+            while (level < Rules.Cap && State.Xp >= Rules.XpFor(level + 1)) level++;
+            return level;
+        }
+    }
+
+    public int Points => State.PointsEarned - State.PointsSpent;
+
+    /// <summary>Experience into this level, and what the next one needs (past the cap: toward the next point).</summary>
+    public (int into, int span) ToNext
+    {
+        get
+        {
+            int level = Level;
+            if (level >= Rules.Cap)
+            {
+                int past = State.Xp - Rules.XpFor(Rules.Cap);
+                return (past % Rules.PastCap, Rules.PastCap);
+            }
+            int from = Rules.XpFor(level), to = Rules.XpFor(level + 1);
+            return (State.Xp - from, to - from);
+        }
+    }
+
+    /// <summary>Earns experience; levels and points follow (and keep accruing past the cap).</summary>
+    public void Earn(int xp, string why)
+    {
+        if (xp <= 0) return;
+        int before = Level, pastBefore = PastCapPoints();
+        State.Xp += xp;
+        Earned?.Invoke(xp, why);
+        int after = Level;
+        for (int l = before + 1; l <= after; l++)
+        {
+            int points = Rules.Points[l - 2];
+            State.PointsEarned += points;
+            LevelledUp?.Invoke(l, points);
+        }
+        int extra = PastCapPoints() - pastBefore;
+        if (extra > 0)
+        {
+            State.PointsEarned += extra;
+            LevelledUp?.Invoke(after, extra);
+        }
+    }
+
+    int PastCapPoints() => State.Xp <= Rules.XpFor(Rules.Cap) || Level < Rules.Cap ? 0 : (State.Xp - Rules.XpFor(Rules.Cap)) / Rules.PastCap;
+
+    /// <summary>Exploring experience, paid once per thing found (a deposit, a species).</summary>
+    public bool Discover(string key, int xp, string why)
+    {
+        if (!_found.Add(key)) return false;
+        State.Found.Add(key);
+        Earn(xp, why);
+        return true;
+    }
+
+    public bool HasFound(string key) => _found.Contains(key);
+
+    // ---- The tree ------------------------------------------------------------------------------
+
+    public bool IsUnlocked(string nodeId) => Creative || nodeId == null || _unlocked.Contains(nodeId) || Node(nodeId) == null;
+
+    /// <summary>Can this item be made? (Items without a node always can.)</summary>
+    public bool ItemAllowed(ItemDef item) => item.Unlock == null || IsUnlocked(item.Id);
+
+    /// <summary>Can this block be placed on this grid? (Blocks without a node always can.)</summary>
+    public bool BlockAllowed(string blockId, bool small)
+    {
+        string id = BlockBill.NodeId(blockId, small);
+        return Node(id) == null || IsUnlocked(id);
+    }
+
+    bool ParentOk(TechNode n) => n.Unlock.Parent == null || Node(n.Unlock.Parent) == null || _unlocked.Contains(n.Unlock.Parent);
+
+    public UnlockState StateOf(TechNode n)
+    {
+        if (IsUnlocked(n.Id)) return UnlockState.Unlocked;
+        if (Level < n.Level) return UnlockState.NeedsLevel;
+        if (!ParentOk(n)) return UnlockState.NeedsParent;
+        if (Points < n.Cost) return UnlockState.NeedsPoints;
+        return UnlockState.Affordable;
+    }
+
+    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL-VESSEL CORE".</summary>
+    public string Needs(TechNode n) => StateOf(n) switch
+    {
+        UnlockState.Unlocked => "UNLOCKED",
+        UnlockState.Affordable => $"UNLOCK: {n.Cost} PT{(n.Cost == 1 ? "" : "S")}",
+        UnlockState.NeedsLevel => $"LEVEL {n.Level}",
+        UnlockState.NeedsParent => $"NEEDS {Node(n.Unlock.Parent)?.Name.ToUpperInvariant()}",
+        _ => $"{n.Cost} POINTS (HAVE {Points})",
+    };
+
+    /// <summary>Why something with a node can't be used yet ("locked: level 5 in the tech tree"), or null.</summary>
+    public string LockReason(string nodeId)
+    {
+        TechNode n = Node(nodeId);
+        if (n == null || IsUnlocked(nodeId)) return null;
+        return StateOf(n) == UnlockState.NeedsLevel ? $"Locked: level {n.Level} in the tech tree" : "Locked: unlock it in the tech tree (Tab)";
+    }
+
+    /// <summary>Spends points on a node. False if it isn't affordable now.</summary>
+    public bool Unlock(string nodeId)
+    {
+        TechNode n = Node(nodeId);
+        if (n == null || StateOf(n) != UnlockState.Affordable) return false;
+        State.PointsSpent += n.Cost;
+        Grant(n);
+        Unlocked?.Invoke(n);
+        return true;
+    }
+
+    void Grant(TechNode n)
+    {
+        if (!_unlocked.Add(n.Id)) return;
+        State.Unlocked.Add(n.Id);
+    }
+}

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -60,7 +61,7 @@ public sealed class Driver
     {
         var s = Game.Survivor;
         Vector3 d = (point - s.WorldEye()).Normalized();
-        float frameHeading = s.Body.Frame == null ? 0f : MathX.Heading(s.Body.Frame.Rotation);
+        float frameHeading = MathX.Heading(s.WorldViewFrame);
         float yaw = MathF.Atan2(-d.X, -d.Z) - frameHeading;
         float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f));
         float dy = Mathf.Wrap(yaw - s.Yaw, -MathF.PI, MathF.PI);
@@ -142,7 +143,85 @@ public sealed class Driver
         yield return 0;
     }
 
+    // ---- The Tab menu, by its own mouse --------------------------------------------------------
+
+    /// <summary>Where a menu widget is (the menu lays itself out on its first input pass after opening).</summary>
+    public IEnumerable<int> UntilWidget(string id, int ticks = 4)
+    {
+        for (int i = 0; i < ticks && Game.Menu.RectOf(id) == null; i++) yield return 0;
+        if (Game.Menu.RectOf(id) == null)
+            throw new InvalidOperationException($"no widget '{id}' on the menu (tab {Game.Menu.Tab}; {string.Join(", ", Game.Menu.Root.WidgetIds.Take(40))})");
+    }
+
+    /// <summary>Moves the mouse onto a menu widget and clicks it (Shift held for a quick move).</summary>
+    public IEnumerable<int> ClickWidget(string id, bool shift = false)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        Controls.Hold(Key.Shift, shift);
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Shift, false);
+        yield return 0;
+    }
+
+    /// <summary>Right-clicks a menu widget (splits a stack).</summary>
+    public IEnumerable<int> RightClickWidget(string id)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        yield return 0;
+        Controls.SecondaryPressed = true;
+        yield return 0;
+    }
+
+    /// <summary>Drags from one menu widget to another with the left button held, a few ticks on the way.</summary>
+    public IEnumerable<int> DragWidget(string from, string to)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(to)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), b = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Mouse = a;
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Primary = true;
+            Controls.Mouse = a.Lerp(b, i / 4f);
+            yield return 0;
+        }
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        yield return 0;
+    }
+
     // ---- Vessels ----------------------------------------------------------------------------
+
+    /// <summary>Walks to the front of a structure's hatch (its -z side) and in through it, the way a player would.</summary>
+    public IEnumerable<int> EnterThroughHatch(Vessel v, float depth = 1.2f)
+    {
+        Vector3 front = v.Body.ToParent(new N.Vector3(0f, 0f, -4.6f)).ToGodot();
+        Vector3 inside = v.Body.ToParent(new N.Vector3(0f, 0.3f, -depth)).ToGodot();
+        if (Game.Survivor.Aboard != v) foreach (int x in WalkTo(front, 0.6f, 30f)) yield return x;
+        foreach (int x in WalkTo(inside, 0.4f, 10f)) yield return x;
+    }
+
+    /// <summary>Walks out of a structure through its hatch onto the ground in front of it.</summary>
+    public IEnumerable<int> WalkOutOfHatch(Vessel v, float distance = 5f)
+    {
+        Vector3 inside = v.Body.ToParent(new N.Vector3(0f, 0.3f, -1.2f)).ToGodot();
+        Vector3 outside = v.Body.ToParent(new N.Vector3(0f, 0f, -1.75f - distance)).ToGodot();
+        foreach (int x in WalkTo(inside, 0.4f, 10f)) yield return x;
+        foreach (int x in WalkTo(outside, 0.6f, 15f)) yield return x;
+    }
 
     /// <summary>Walks up to a vessel's seat and takes it.</summary>
     public IEnumerable<int> Board(Vessel v)

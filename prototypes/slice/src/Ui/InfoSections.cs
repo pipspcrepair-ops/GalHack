@@ -1,0 +1,177 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using DiegeticUi.Theme;
+using GalHack.Physics.Engine;
+using Godot;
+using Slice.Items;
+using Slice.Vessels;
+using Palette = DiegeticUi.Theme.Palette;
+
+namespace Slice.Ui;
+
+/// <summary>
+/// TECH: the tech tree, one tab per kind of thing (base, capital vessel, small vessel, hover
+/// vessel, tools, weapons, misc), built from the unlock on every item and block. Nodes stand in
+/// columns by the level they open at, each joined to its parent. Unlocked nodes are lit; locked
+/// ones say what they need (a level, points, their parent); one you can afford unlocks on a click.
+/// </summary>
+public sealed class TechSection : IMenuSection
+{
+    static Palette C => UiTheme.Colors;
+    readonly Game.Game _game;
+    public string Tab = "base";
+
+    public TechSection(Game.Game game) => _game = game;
+    public Vector2 PreferredSize => new(1560, 790);
+
+    public void Build(Gui g, Rect2 area)
+    {
+        Progress p = _game.Progress;
+        Vector2 o = area.Position;
+        for (int i = 0; i < Progress.Tabs.Length; i++)
+        {
+            string t = Progress.Tabs[i];
+            if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * 216, 0), new Vector2(206, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
+        }
+        g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
+        var nodes = p.Nodes.Where(n => n.Tab == Tab).ToList();
+        if (nodes.Count == 0) return;
+        // Columns by level, rows in order within a column.
+        var levels = nodes.Select(n => n.Level).Distinct().OrderBy(l => l).ToList();
+        float colW = Math.Min(230f, (area.Size.X - 10) / Math.Max(1, levels.Count)), boxW = colW - 22, boxH = 54;
+        var at = new Dictionary<string, Rect2>();
+        foreach (int level in levels)
+        {
+            int col = levels.IndexOf(level);
+            var inCol = nodes.Where(n => n.Level == level).ToList();
+            g.TextIn($"LEVEL {level}", new Rect2(o.X + col * colW, o.Y + 80, boxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
+            for (int i = 0; i < inCol.Count; i++)
+                at[inCol[i].Id] = new Rect2(o.X + col * colW, o.Y + 106 + i * (boxH + 12), boxW, boxH);
+        }
+        // Lines from each node to its parent (same tab only).
+        foreach (TechNode n in nodes)
+            if (n.Unlock.Parent != null && at.TryGetValue(n.Unlock.Parent, out Rect2 parent) && g.Drawing)
+            {
+                Rect2 me = at[n.Id];
+                g.Canvas.DrawLine(new Vector2(parent.End.X, parent.Position.Y + boxH / 2), new Vector2(me.Position.X, me.Position.Y + boxH / 2),
+                    p.IsUnlocked(n.Id) ? C.Good : C.Rule, 2f);
+            }
+        foreach (TechNode n in nodes)
+        {
+            Rect2 r = at[n.Id];
+            UnlockState state = p.StateOf(n);
+            Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, _ => C.Dim };
+            if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false))
+            {
+                if (p.Unlock(n.Id)) g.Sound = "unlock";
+            }
+            if (g.Drawing)
+            {
+                g.Fill(r, new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.95f));
+                g.Fill(new Rect2(r.Position, new Vector2(6, r.Size.Y)), tone);
+                g.Outline(r, tone, state == UnlockState.Affordable ? 3 : 1.5f);
+                g.Text(n.Name, r.Position + new Vector2(12, 5), state == UnlockState.Unlocked ? C.Text : C.Dim, 14);
+                g.Text(state == UnlockState.Unlocked ? $"UNLOCKED · {n.Cost} PT" : p.Needs(n), r.Position + new Vector2(12, 29), state == UnlockState.Affordable ? C.Accent : state == UnlockState.Unlocked ? C.Good : C.Warn, 12);
+            }
+        }
+    }
+}
+
+/// <summary>STATS: what you have done since the crash.</summary>
+public sealed class StatsSection : IMenuSection
+{
+    static Palette C => UiTheme.Colors;
+    readonly Game.Game _game;
+    public StatsSection(Game.Game game) => _game = game;
+    public Vector2 PreferredSize => new(1560, 790);
+
+    public void Build(Gui g, Rect2 area)
+    {
+        Game.GameStats s = _game.Stats;
+        Progress p = _game.Progress;
+        var rows = new (string, string)[]
+        {
+            ("TIME SINCE THE CRASH", TimeSpan.FromSeconds(s.Seconds).ToString(@"h\:mm\:ss")),
+            ("LEVEL", $"{p.Level} ({p.Xp} XP, {p.State.PointsSpent} points spent, {p.Points} to spend)"),
+            ("TECH UNLOCKED", $"{p.Nodes.Count(n => p.IsUnlocked(n.Id))} of {p.Nodes.Count}"),
+            ("WALKED", $"{s.Walked / 1000f:F2} km"),
+            ("FLOWN", $"{s.Flown / 1000f:F2} km (top speed {s.TopSpeed:F0} m/s)"),
+            ("ORE CELLS DUG", $"{_game.Tool.OreCells}"),
+            ("PLANTS CUT", $"{_game.Tool.PlantsCut}"),
+            ("SHOTS FIRED", $"{_game.Tool.Shots}"),
+            ("CREATURES BROUGHT DOWN", $"{s.Kills}"),
+            ("SPECIES MET", $"{s.SpeciesMet} of {_game.Zone.Wildlife.Fauna?.Species.Count ?? 0}"),
+            ("DEPOSITS FOUND", $"{s.DepositsFound}"),
+            ("ITEMS CRAFTED", $"{s.Crafted}"),
+            ("BLOCKS PLACED / TAKEN DOWN", $"{_game.Builder.Placed} / {_game.Builder.TakenDown}"),
+            ("STRUCTURES", string.Join(", ", _game.Zone.Vessels.Where(v => !v.IsWreck).Select(v => v.Name))),
+            ("SUPPLIES USED", $"{s.Used}"),
+            ("DEATHS", $"{s.Deaths}"),
+        };
+        g.Caption("SINCE THE CRASH", area.Position, area.Size.X);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var (label, value) = rows[i];
+            float y = area.Position.Y + 44 + i * 42;
+            g.Fill(new Rect2(area.Position.X, y - 6, area.Size.X, 36), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
+            g.Text(label, new Vector2(area.Position.X + 12, y), C.Dim, 17);
+            g.Text(value, new Vector2(area.Position.X + 420, y - 2), C.Text, 19, UiTheme.Mono);
+        }
+    }
+}
+
+/// <summary>MAP: what is around you, north up, 600 m each way: your structures, devices, the pod, your backpack, bodies and drops, the nearest deposits and the creatures near you.</summary>
+public sealed class MapSection : IMenuSection
+{
+    static Palette C => UiTheme.Colors;
+    readonly Game.Game _game;
+    public float Range = 600f;
+    public MapSection(Game.Game game) => _game = game;
+    public Vector2 PreferredSize => new(1560, 790);
+
+    public void Build(Gui g, Rect2 area)
+    {
+        float size = Math.Min(area.Size.X - 360, area.Size.Y);
+        var map = new Rect2(area.Position, new Vector2(size, size));
+        g.Fill(map, new Color(C.Panel, 0.8f));
+        g.Outline(map, C.Rule, 2f);
+        Vector3 me = _game.Survivor.WorldFeet;
+        Vector2 Proj(Vector3 p) => map.GetCenter() + new Vector2(p.X - me.X, p.Z - me.Z) / Range * (size / 2f);
+        bool In(Vector2 q) => map.HasPoint(q);
+        if (g.Drawing)
+        {
+            for (int k = 1; k <= 3; k++) g.Canvas.DrawArc(map.GetCenter(), size / 2f * k / 3f, 0, Mathf.Tau, 48, new Color(C.Rule, 0.7f), 1f);
+            g.TextIn("N", new Rect2(map.GetCenter() + new Vector2(-10, -size / 2 + 4), new Vector2(20, 20)), C.Text, 16, HorizontalAlignment.Center);
+        }
+        void Mark(Vector3 at, string label, Color colour, float r = 6f)
+        {
+            Vector2 q = Proj(at);
+            if (!In(q) || !g.Drawing) return;
+            g.Canvas.DrawCircle(q, r, colour);
+            if (label != null) g.Text(label, q + new Vector2(r + 3, -9), colour, 13);
+        }
+        if (_game.Zone.Wildlife.Sim is { } sim)
+            foreach (var c in sim.Creatures)
+                if (!c.Removed && !c.Dead) Mark(_game.Zone.Wildlife.FromPatch(c.Position), null, new Color(C.Warn, 0.7f), 3f);
+        foreach (var (kind, at) in _game.Visor.Deposits.Near(_game.Zone, me)) Mark(at, kind.ToUpperInvariant(), C.Holo);
+        foreach (Lootable l in _game.Zone.Loot.All)
+            Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4);
+        foreach (Device d in _game.Zone.Devices) Mark(d.GlobalPosition, d.Label.ToUpperInvariant(), C.Accent2);
+        foreach (Vessel v in _game.Zone.Vessels)
+            if (!v.IsWreck) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), v == _game.Pod ? C.Accent : v.IsBase ? C.Good : C.Text, 7);
+        if (g.Drawing)
+        {
+            Vector3 look = _game.Survivor.WorldLook();
+            Vector2 c0 = map.GetCenter(), dir = new Vector2(look.X, look.Z).Normalized();
+            g.Canvas.DrawLine(c0, c0 + dir * 22f, C.Accent, 3f);
+            g.Canvas.DrawCircle(c0, 7f, C.Accent);
+        }
+        var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
+        g.Caption("MAP · 600 M", legend.Position, legend.Size.X);
+        string[] lines = { "orange: you, the pod", "green: bases", "cream: vessels", "amber: devices, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
+        for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
+        if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 240), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) Range = 300f;
+        if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 240), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) Range = 600f;
+    }
+}

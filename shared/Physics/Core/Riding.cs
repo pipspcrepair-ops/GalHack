@@ -76,6 +76,25 @@ public static class Riding
         return rider.LostContactFor > rules.LetGoAfter || distanceFromHull > rules.LetGoDistance;
     }
 
+    /// <summary>
+    /// Stepping off a structure onto the ground (walkable-ship's StepOff): a rider out of the
+    /// interior whose feet have left the hull's floor, with solid ground of the zone's own world
+    /// within <paramref name="reach"/> under them, hands over to the zone's world at once. That is
+    /// a rider walking out of a landed ship's door: its cabin world has no ground in it, so
+    /// waiting for the let-go timer would drop it through where the ground is. Probed along the
+    /// rider's world down; the structure it rides is never the ground it steps onto.
+    /// </summary>
+    public static bool StepsOntoGround(Body rider, bool onHullFloor, IWorldQuery zone, float reach, out Vector3 ground)
+    {
+        ground = default;
+        if (rider.Frame == null || !rider.OnOuterHull || onHullFloor || zone == null) return false;
+        Vector3 up = MathX.Rotate(rider.Frame.Rotation, rider.Up), feet = rider.WorldPosition;
+        // From a step above the feet, so ground the feet have already sunk to (a tick of falling) still counts.
+        if (!zone.Ray(feet + up * reach, feet - up * reach, Layers.Solid, rider.Frame, out RayHit hit)) return false;
+        ground = hit.Point;
+        return true;
+    }
+
     /// <summary>How long the rider has been out of contact with the hull it rides, s.</summary>
     public static float OutOfContactFor(Body rider) => rider.LostContactFor;
 

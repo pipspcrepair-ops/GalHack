@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
@@ -8,54 +10,46 @@ using GalHack.Structures.Presentation;
 using Godot;
 using PhysicsSandbox.Bridges;
 using Slice.Game;
+using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Vessels;
-using Inventory = GalHack.Structures.Inventory;
 using N = System.Numerics;
 using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Construction;
 
-/// <summary>How the build tool is being used: any block anywhere, or a blueprint piece by piece.</summary>
-public enum BuildStyle { Free, Blueprint }
-
-/// <summary>One block the free-build palette offers.</summary>
-public readonly record struct BlockChoice(string Type, string Shape, string Label);
+/// <summary>What placing something new starts.</summary>
+public enum NewThing { None, Base, Vessel, Hover, Device }
 
 /// <summary>
-/// The multi-tool in survival: building's structure model and rules (attach through a shared
-/// face, one core, nothing lost when something is cut loose), its ghosts and mesher, and a cost
-/// for every block from <see cref="IBuildCosts"/> (the pack first, then the target's storage).
+/// Building with what is on the toolbar, on building's structure model and rules (attach through
+/// a shared face, one core, nothing lost when something is cut loose), its ghosts and mesher,
+/// and shared/Items' placement rules: in Survival a block's bill is paid from your bag, then from
+/// the structure's own storage, and taking it down gives the whole bill back (to your bag, then
+/// the structure, then a container on the ground); in Creative everything is free. Locked blocks
+/// (the tech tree) can't be placed.
 ///
-/// Free building places the palette's block on the face under the crosshair, or starts a new
-/// structure with a core on the ground. Blueprint building sets a blueprint's ghost down on the
-/// ground; holding the button then places its blocks one at a time, nearest the core first,
-/// each one paid for as it goes, until the vessel is whole.
+/// A block shortcut in hand places that block on the face under the crosshair (wheel: shape,
+/// R / T rotate, X mirror, right click takes down). A core item in hand starts a new structure on
+/// open ground: a base core a base (large grid, base mode, fixed where it stands), a small-vessel
+/// or hover core a small vessel. A device item (the survival constructor) is set down as itself.
+/// The blueprint projector sets the starter vessel's ghost down and builds it block by block
+/// while the button is held, each block paid for as it goes.
 /// </summary>
 public sealed class BuildTool
 {
-    public static readonly BlockChoice[] Palette =
-    {
-        new("steel", "cube", "Steel block"), new("steel", "slope", "Steel slope"), new("glass", "cube", "Glass"),
-        new("thruster", null, "Thruster"), new("gyro", null, "Gyro"), new("generator", null, "Generator"),
-        new("cockpit", null, "Cockpit seat"), new("gear", null, "Landing leg"), new("container", null, "Container"),
-        new("light", null, "Light"), new("core", null, "Core (starts a new vessel)"),
-    };
-
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
-    readonly Inventory _pack;
+    readonly PlayerInventory _pack;
     readonly SliceRules.BuildRules _rules;
     readonly GhostPreview _ghosts;
-    readonly MeshInstance3D _planGhost;
-    readonly ShaderMaterial _planMaterial;
+    readonly MeshInstance3D _planGhost, _deviceGhost;
     readonly Catalogue _catalogue;
-    readonly GridDef _small;
+    readonly BlockPlacer _placer;
+    public Progress Progress;
 
-    public IBuildCosts Costs;
-    public BuildStyle Style = BuildStyle.Free;
-    public int Slot;
+    public int ShapeIndex;
     public int Rot = Orientations.Identity;
     public bool MirrorX;
 
@@ -66,15 +60,25 @@ public sealed class BuildTool
     /// <summary>Blocks of the plan still to place, nearest the core first.</summary>
     public IReadOnlyList<(Int3 cell, Block block)> Remaining => _remaining;
 
-    /// <summary>Blocks placed and materials spent since the start (tests).</summary>
+    /// <summary>Blocks placed, taken down and materials spent since the start (tests, stats).</summary>
     public int Placed { get; private set; }
+    public int TakenDown { get; private set; }
     public readonly SortedDictionary<string, int> Spent = new(StringComparer.Ordinal);
 
-    /// <summary>What the tool says: "missing 12 iron", "the Skiff is complete".</summary>
+    /// <summary>What the tool says: "missing 12 hull plates", "the Skiff is complete".</summary>
     public event Action<string, Color> Said;
 
-    /// <summary>A vessel came into being (a core placed) or was finished from its blueprint.</summary>
+    /// <summary>A structure came into being (a core placed), or was finished from its blueprint.</summary>
     public event Action<Vessel> Started, Finished;
+
+    /// <summary>A block was placed (on a large or small grid), for experience.</summary>
+    public event Action<Vessel, bool> BlockPlaced;
+
+    /// <summary>A device was set down.</summary>
+    public event Action<Device> DeviceSet;
+
+    /// <summary>Things that had nowhere to go, set down at a place.</summary>
+    public event Action<Bill, Vector3> Spilled;
 
     // Aim, each tick.
     public bool HasTarget { get; private set; }
@@ -82,154 +86,222 @@ public sealed class BuildTool
     public Int3 TargetCell { get; private set; }
     public Int3 PlaceCell { get; private set; }
     public string Verdict { get; private set; } = "";
+    public Vector3 GroundPoint => _groundPoint;
     Vector3 _groundPoint;
     bool _onGround;
 
     readonly List<(Int3 cell, Block block)> _remaining = new();
     float _placeTimer;
     bool _planDirty = true;
+    int _structures;
 
-    public BuildTool(SurfaceZone zone, Survivor survivor, Inventory pack, IBuildCosts costs)
+    public BuildTool(SurfaceZone zone, Survivor survivor, PlayerInventory pack, Progress progress)
     {
         _zone = zone;
         _survivor = survivor;
         _pack = pack;
-        Costs = costs;
+        Progress = progress;
         _rules = zone.Data.Rules.Build;
         _catalogue = zone.Data.Catalogue;
-        _small = _catalogue.Grid(GridSize.Small);
+        _placer = new BlockPlacer(zone.Data.Items, zone.WorldRules, new CrateYard(zone.Data.Items));
         _ghosts = new GhostPreview { Name = "BuildGhosts" };
         zone.AddChild(_ghosts);
-        _planMaterial = BlockMaterials.Ghost(GhostPreview.Valid, 0.18f);
         _planGhost = new MeshInstance3D
         {
-            Name = "BlueprintGhost", MaterialOverride = _planMaterial, Visible = false,
+            Name = "BlueprintGhost", MaterialOverride = BlockMaterials.Ghost(GhostPreview.Valid, 0.18f), Visible = false,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off,
         };
         zone.AddChild(_planGhost);
+        _deviceGhost = new MeshInstance3D
+        {
+            Name = "DeviceGhost", Mesh = new BoxMesh { Size = new Vector3(1.1f, 1.2f, 0.8f) }, Visible = false,
+            MaterialOverride = BlockMaterials.Ghost(GhostPreview.Valid, 0.3f), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        zone.AddChild(_deviceGhost);
     }
 
-    public BlockChoice Choice => Palette[Slot];
+    bool Creative => _zone.WorldRules.Creative;
 
-    /// <summary>The stores a build near this vessel draws on: the pack, then its storage.</summary>
-    IReadOnlyList<Inventory> Stores(Vessel near) => near == null ? new[] { _pack } : new[] { _pack, near.Cargo };
+    /// <summary>How high a new vessel's core is set up above the ground it is placed on, m.</summary>
+    public const float BuildHeight = 2.25f;
 
-    // ---- Each tick ------------------------------------------------------------------------------
+    /// <summary>The armour shapes the wheel steps through.</summary>
+    public IReadOnlyList<ShapeDef> Shapes => _catalogue.Shapes;
+    public ShapeDef Shape => _catalogue.Shapes[Math.Clamp(ShapeIndex, 0, _catalogue.Shapes.Count - 1)];
 
-    /// <summary>One tick of the tool in hand: aim, show the ghost, and act on the buttons.</summary>
-    public void Tick(float dt, bool primaryHeld, bool primaryPressed, bool secondaryPressed)
-    {
-        if (Style == BuildStyle.Blueprint) TickBlueprint(dt, primaryHeld, primaryPressed, secondaryPressed);
-        else TickFree(primaryPressed, secondaryPressed);
-    }
+    public void NextShape(int step) => ShapeIndex = (ShapeIndex + step + _catalogue.Shapes.Count) % _catalogue.Shapes.Count;
+    public void Rotate(int axis) => Rot = Orientations.Rotate(Rot, axis, 1);
 
     public void Hide()
     {
         _ghosts.HideGhosts();
         _ghosts.HideOutline();
         _planGhost.Visible = false;
+        _deviceGhost.Visible = false;
     }
 
-    public void NextSlot(int step) => Slot = (Slot + step + Palette.Length) % Palette.Length;
+    /// <summary>The ghost and the label for what is in hand, and acting on the buttons. Returns what a click started, if anything.</summary>
+    public void Tick(float dt, HandKind hand, Slot slot, int slotIndex, bool held, bool pressed, bool removePressed)
+    {
+        switch (hand)
+        {
+            case HandKind.Block: TickBlock(slot.Block, pressed, removePressed); break;
+            case HandKind.Core: TickNew(slot.Item == "base-core" ? NewThing.Base : slot.Item == "hover-core" ? NewThing.Hover : NewThing.Vessel, slot, slotIndex, pressed); break;
+            case HandKind.Device: TickNew(NewThing.Device, slot, slotIndex, pressed); break;
+            case HandKind.Blueprint:
+                if (Plan == null && Underway == null) Follow(_zone.Data.Blueprint(_rules.StarterBlueprint));
+                TickBlueprint(dt, held, pressed, removePressed);
+                break;
+            default: Hide(); break;
+        }
+    }
 
-    public void Rotate(int axis) => Rot = Orientations.Rotate(Rot, axis, 1);
+    // ---- Blocks ----------------------------------------------------------------------------------
 
-    // ---- Free building ---------------------------------------------------------------------------
-
-    void TickFree(bool place, bool remove)
+    void TickBlock(string blockId, bool place, bool remove)
     {
         _planGhost.Visible = false;
+        _deviceGhost.Visible = false;
         Aim();
-        if (!HasTarget)
+        if (!HasTarget || TargetVessel == null || !_catalogue.TryGetType(blockId, out BlockType type))
         {
-            _ghosts.HideGhosts();
-            _ghosts.HideOutline();
+            Hide();
+            Verdict = HasTarget && TargetVessel == null ? "Blocks go onto a structure: set a core down first" : "";
             return;
         }
-        Structure s = TargetVessel?.Structure;
-        BlockType type = _catalogue.Type(Choice.Type);
-        if (TargetVessel != null && !type.IsCore)
+        Structure s = TargetVessel.Structure;
+        Block b = Make(s, type, AutoOrient(type, Rot));
+        var copies = Copies(s, PlaceCell, b);
+        string why = Problem(TargetVessel, PlaceCell, b);
+        var tinted = copies.Select(c => (c.cell, c.block, Problem(TargetVessel, c.cell, c.block) == null ? GhostPreview.Valid : GhostPreview.Invalid)).ToList();
+        Verdict = why ?? $"{type.Name}{(type.IsArmor ? $" {Shape.Name}" : "")}: {CostText(s, b)}";
+        _ghosts.ShowGhosts(TargetVessel.DrawTransform, s, tinted);
+        _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1, 1, 1, 0.8f));
+        if (place)
         {
-            Block b = Make(s, Choice, AutoOrient(type, Rot));
-            var copies = Copies(s, PlaceCell, b);
-            bool ok = true;
-            var tinted = new List<(Int3, Block, Color)>();
-            foreach (var (cell, block) in copies)
-            {
-                string why = Problem(TargetVessel, cell, block);
-                if (why != null && cell == PlaceCell) { ok = false; Verdict = why; }
-                tinted.Add((cell, block, why == null ? GhostPreview.Valid : GhostPreview.Invalid));
-            }
-            if (ok) Verdict = $"{Choice.Label}: {CostText(s, b)}";
-            _ghosts.ShowGhosts(TargetVessel.DrawTransform, s, tinted);
-            _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1, 1, 1, 0.8f));
-            if (place && ok) foreach (var (cell, block) in copies) TryPlace(TargetVessel, cell, block, quiet: cell != PlaceCell);
-            if (remove) Remove(TargetVessel, TargetCell);
-            return;
+            if (why != null) Said?.Invoke(why, Tones.Caution);
+            else foreach (var (cell, block) in copies) TryPlace(TargetVessel, cell, block, quiet: cell != PlaceCell);
         }
-        _ghosts.HideOutline();
-        if (type.IsCore && _onGround)
-        {
-            // A new structure: its core sits on the ground where you look, turned to face away from you.
-            var scratch = new Structure(_catalogue, _small);
-            Block core = GalHack.Structures.Building.Make(scratch, type);
-            Transform3D frame = GroundFrame(_groundPoint, 0.25f);
-            _ghosts.ShowGhosts(frame, scratch, new List<(Int3, Block, Color)> { (Int3.Zero, core, GhostPreview.Valid) });
-            Verdict = $"Core: starts a new vessel. {CostText(scratch, core)}";
-            if (place) StartVessel(frame, null);
-            return;
-        }
-        _ghosts.HideGhosts();
-        Verdict = TargetVessel != null ? "A structure has one core" : "Aim at a vessel's block, or pick the core (wheel) to start one";
-        if (remove && TargetVessel != null) Remove(TargetVessel, TargetCell);
+        if (remove) Remove(TargetVessel, TargetCell);
     }
 
-    /// <summary>What the crosshair is on: a structure's block face, or open ground.</summary>
+    /// <summary>What the crosshair is on, in the world you are in: a structure's block face, or open ground.</summary>
     void Aim()
     {
         HasTarget = false;
         TargetVessel = null;
         _onGround = false;
-        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
-        var query = PhysicsRayQueryParameters3D.Create(eye, eye + dir * _rules.Reach, Layers.World | Layers.Hull);
-        Godot.Collections.Dictionary hit = _zone.GetWorld3D().DirectSpaceState.IntersectRay(query);
-        if (hit.Count == 0) return;
-        Vector3 point = (Vector3)hit["position"], normal = (Vector3)hit["normal"];
-        Body body = _zone.Host.BodyOf((GodotObject)hit["collider"]);
-        if (_zone.VesselOf(body) is Vessel v && !v.IsWreck)
+        if (!WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Hull, out LookHit hit)) return;
+        if (hit.Vessel is Vessel v && !v.IsWreck)
         {
-            Structure s = v.Structure;
-            N.Vector3 local = v.Body.ToLocal((point - normal * 0.02f).ToNumerics());
-            TargetCell = StructureBridge.CellAt(s, local);
-            if (!s.Has(TargetCell)) return;
-            N.Vector3 n = MathX.Unrotate(v.Body.Rotation, normal.ToNumerics());
+            if (!v.Structure.Has(hit.Cell)) return;
+            TargetCell = hit.Cell;
+            N.Vector3 n = MathX.Unrotate(v.Body.Rotation, hit.Normal.ToNumerics());
             PlaceCell = TargetCell + Dirs.Closest(n).Vec();
             TargetVessel = v;
             HasTarget = true;
             return;
         }
-        if (body == null)
+        if (hit.Vessel == null && _zone.Host.BodyOf(hit.Collider) == null)
         {
-            _groundPoint = point;
+            _groundPoint = hit.Point;
             _onGround = true;
             HasTarget = true;
         }
     }
 
-    /// <summary>The frame of a new structure standing on the ground at a point, nose away from the survivor.</summary>
+    // ---- New structures and devices -------------------------------------------------------------
+
+    void TickNew(NewThing what, Slot slot, int slotIndex, bool place)
+    {
+        _planGhost.Visible = false;
+        _ghosts.HideOutline();
+        Aim();
+        if (!_onGround)
+        {
+            Hide();
+            Verdict = "Look at open ground to set it down";
+            return;
+        }
+        string locked = Progress?.LockReason(slot.Item);
+        if (what == NewThing.Device)
+        {
+            _ghosts.HideGhosts();
+            Transform3D at = GroundFrame(_groundPoint, 0f);
+            _deviceGhost.GlobalTransform = at.TranslatedLocal(Vector3.Up * 0.6f);
+            _deviceGhost.Visible = true;
+            Verdict = locked ?? $"{_zone.Data.Items.Item(slot.Item).Name}: click to set it down";
+            string deviceItem = slot.Item;
+            if (place && locked == null && _pack.Grid.TakeOne(slotIndex))
+            {
+                MachineDef machine = _zone.Data.Items.Machines.All.First(m => m.ItemId == deviceItem);
+                Device d = Device.Place(_zone, machine, machine.ItemId, at.Origin, _survivor.Yaw + YawOfFrame());
+                _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, at.Origin, 0.8f, -2f);
+                Said?.Invoke($"{machine.Name} set down: its panel is in the Tab menu (Core) when you stand by it", Tones.Good);
+                DeviceSet?.Invoke(d);
+            }
+            return;
+        }
+        _deviceGhost.Visible = false;
+        bool large = what == NewThing.Base;
+        var scratch = new Structure(_catalogue, _catalogue.Grid(large ? GridSize.Large : GridSize.Small));
+        Block core = Building.Make(scratch, _catalogue.CoreType);
+        // A base sits on the ground; a vessel's core is set up on a build stand, 2 m up, so you can
+        // build under it as well as round it (Empyrion's way: a vessel holds where it is built
+        // until it is first flown, then lands on its own legs).
+        Transform3D frame = GroundFrame(_groundPoint, scratch.Grid.CellSize * 0.5f + (large ? 0f : BuildHeight));
+        _ghosts.ShowGhosts(frame, scratch, new List<(Int3, Block, Color)> { (Int3.Zero, core, locked == null ? GhostPreview.Valid : GhostPreview.Invalid) });
+        Verdict = locked ?? (what == NewThing.Base ? "Base core: click to found a base here" : "Core: click to start a new vessel here");
+        if (!place) return;
+        if (locked != null)
+        {
+            Said?.Invoke(locked, Tones.Caution);
+            return;
+        }
+        string itemId = slot.Item;
+        if (!_pack.Grid.TakeOne(slotIndex)) return;
+        Vessel v = StartStructure(frame, what, itemId);
+        if (v == null) _pack.Add(itemId, 1);
+    }
+
+    /// <summary>A new structure with a core where a core item was set down. The item is its price.</summary>
+    Vessel StartStructure(Transform3D frame, NewThing what, string coreItem)
+    {
+        _structures++;
+        bool large = what == NewThing.Base;
+        var s = new Structure(_catalogue, _catalogue.Grid(large ? GridSize.Large : GridSize.Small))
+        {
+            Name = large ? $"Base {_structures}" : what == NewThing.Hover ? $"Hover {_structures}" : $"Vessel {_structures}",
+            Mode = large ? CoreMode.Base : CoreMode.Capital,
+            GravityOn = true,
+        };
+        Building.Place(s, Int3.Zero, Building.Make(s, _catalogue.CoreType));
+        s.DirtyChunks.Clear();
+        N.Vector3 origin = frame.Origin.ToNumerics();
+        float heading = MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics());
+        Vessel v = large ? Vessel.SpawnBase(_zone, s, origin, heading) : Vessel.Spawn(_zone, s, origin, heading, landed: true);
+        if (large) ClearGround(v, Int3.Zero);
+        Placed++;
+        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, frame.Origin, 0.7f, -2f);
+        Said?.Invoke(large ? $"{s.Name} founded: build onto its core (blocks from the palette, Tab)" : $"{s.Name} begun: build it up from its core", Tones.Good);
+        Started?.Invoke(v);
+        BlockPlaced?.Invoke(v, !large);
+        return v;
+    }
+
+    /// <summary>The frame of a new structure standing on the ground at a point, facing away from the survivor.</summary>
     Transform3D GroundFrame(Vector3 ground, float lift) =>
         new(new Basis(Vector3.Up, _survivor.Yaw + YawOfFrame()), ground + Vector3.Up * lift);
 
     float YawOfFrame() => _survivor.Body.Frame == null ? 0f : MathX.Heading(_survivor.Body.Frame.Rotation);
 
-    // ---- Blueprints -----------------------------------------------------------------------------
+    // ---- Blueprints (the projector) ---------------------------------------------------------------
 
     /// <summary>Starts following a blueprint: its ghost goes down where you look; the first click sets it there.</summary>
     public void Follow(Structure blueprint)
     {
         Plan = blueprint;
         Underway = null;
-        Style = BuildStyle.Blueprint;
         _remaining.Clear();
         _planDirty = true;
     }
@@ -238,6 +310,7 @@ public sealed class BuildTool
     {
         _ghosts.HideGhosts();
         _ghosts.HideOutline();
+        _deviceGhost.Visible = false;
         if (Plan == null)
         {
             _planGhost.Visible = false;
@@ -249,14 +322,11 @@ public sealed class BuildTool
             Said?.Invoke(Underway == null ? "Blueprint put away" : $"Stopped following the blueprint: the {Underway.Name} stays as it is", Tones.Text);
             Plan = null;
             Underway = null;
-            Style = BuildStyle.Free;
             _planGhost.Visible = false;
             return;
         }
-
         if (Underway == null)
         {
-            // Placing: the whole blueprint's ghost stands on the ground under the crosshair.
             Aim();
             if (!_onGround)
             {
@@ -266,12 +336,12 @@ public sealed class BuildTool
             }
             Transform3D frame = AnchorFrame(_groundPoint);
             ShowPlan(frame, all: true);
-            var plan = Plan;
-            Verdict = $"{plan.Name}: {plan.Count} blocks, {TotalText(plan)}. Click to set it down";
-            if (pressed) StartVessel(frame, plan);
+            string locked = PlanLock(Plan);
+            Verdict = locked ?? $"{Plan.Name}: {Plan.Count} blocks, {_zone.Data.Items.Describe(TotalCost(Plan), 4)}. Click to set it down";
+            if (pressed && locked == null) StartFromPlan(frame);
+            else if (pressed) Said?.Invoke(locked, Tones.Caution);
             return;
         }
-
         if (Underway.IsWreck || Underway.Structure.Core == null)
         {
             Said?.Invoke("The blueprint's vessel has no core any more", Tones.Warning);
@@ -296,6 +366,24 @@ public sealed class BuildTool
         }
     }
 
+    /// <summary>Why a blueprint can't be set down yet: any of its blocks locked in the tech tree.</summary>
+    string PlanLock(Structure plan)
+    {
+        if (Progress == null || Creative) return null;
+        bool small = BuildingBridge.IsSmall(plan);
+        foreach (var (_, b) in plan.Blocks())
+        {
+            string id = plan.TypeOf(b).Id;
+            if (plan.TypeOf(b).IsCore)
+            {
+                if (small && !Progress.IsUnlocked("vessel-core")) return Progress.LockReason("vessel-core");
+                continue;
+            }
+            if (!Progress.BlockAllowed(id, small)) return $"Blueprint needs {Progress.NodeOfBlock(id, small)?.Name}: {Progress.LockReason(BlockBill.NodeId(id, small))}";
+        }
+        return null;
+    }
+
     /// <summary>
     /// Places the next block of the plan that can go on now: attached to what is built, clear of
     /// the survivor, and paid for. False if none can (and says why).
@@ -309,7 +397,7 @@ public sealed class BuildTool
         for (int i = 0; i < _remaining.Count; i++)
         {
             var (cell, block) = _remaining[i];
-            if (GalHack.Structures.Building.Check(s, cell, block) != PlaceError.None) continue;
+            if (Building.Check(s, cell, block) != PlaceError.None) continue;
             string why = Problem(Underway, cell, block);
             if (why != null)
             {
@@ -325,7 +413,6 @@ public sealed class BuildTool
                 Vessel done = Underway;
                 Plan = null;
                 Underway = null;
-                Style = BuildStyle.Free;
                 _planGhost.Visible = false;
                 Finished?.Invoke(done);
             }
@@ -405,7 +492,6 @@ public sealed class BuildTool
                 queue.Enqueue(q);
             }
         }
-        // Anything the walk didn't reach (attached through a partial face only) goes last.
         foreach (var (p, b) in Plan.Blocks())
             if (!seen.Contains(p) && !s.Has(p)) order.Add((p, b));
         _remaining.Clear();
@@ -413,34 +499,27 @@ public sealed class BuildTool
         ShowPlanMesh();
     }
 
-    // ---- Placing and removing ------------------------------------------------------------------
-
-    /// <summary>Starts a new vessel with a core at a frame (paid for). With a plan, follows it from there.</summary>
-    Vessel StartVessel(Transform3D frame, Structure plan)
+    /// <summary>The blueprint's core goes down where its ghost stands, paid for by its bill; the rest is built from there.</summary>
+    void StartFromPlan(Transform3D frame)
     {
-        Structure s = plan != null ? Like(plan) : new Structure(_catalogue, _small) { Name = "New Vessel" };
-        Int3 coreCell = plan?.Core ?? Int3.Zero;
-        Block core = plan != null ? plan.Get(coreCell) : GalHack.Structures.Building.Make(s, _catalogue.CoreType);
-        if (!Costs.TryPay(s, core, Stores(null)))
+        Structure s = Like(Plan);
+        Int3 coreCell = Plan.Core.Value;
+        Block core = Plan.Get(coreCell);
+        Bill bill = _placer.CostOf(s, core);
+        if (!TryPay(bill, null, out Bill missing))
         {
-            Said?.Invoke($"A core needs {MissingText(s, core, null)}", Tones.Caution);
-            return null;
+            Said?.Invoke($"A core needs {_zone.Data.Items.Describe(missing)}", Tones.Caution);
+            return;
         }
-        Pay(s, core);
-        GalHack.Structures.Building.Place(s, coreCell, core);
+        Count(bill);
+        Building.Place(s, coreCell, core);
         s.DirtyChunks.Clear();
-        N.Vector3 origin = frame.Origin.ToNumerics();
-        float heading = MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics());
-        Vessel v = Vessel.Spawn(_zone, s, origin, heading, landed: true);
+        Vessel v = Vessel.Spawn(_zone, s, frame.Origin.ToNumerics(), MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics()), landed: true);
         Placed++;
-        Said?.Invoke(plan != null ? $"{plan.Name} begun: hold the button to build it" : "Core placed: a new vessel", Tones.Good);
+        Said?.Invoke($"{Plan.Name} begun: hold the button to build it", Tones.Good);
         Started?.Invoke(v);
-        if (plan != null)
-        {
-            Underway = v;
-            _planDirty = true;
-        }
-        return v;
+        Underway = v;
+        _planDirty = true;
     }
 
     /// <summary>An empty structure with a plan's grid, mode, gravity and paints (so its blocks' paint slots mean the same).</summary>
@@ -451,11 +530,13 @@ public sealed class BuildTool
         return s;
     }
 
-    /// <summary>Why a block can't go here, or null: the rules, the survivor in the way, the cost.</summary>
+    // ---- Placing and removing ------------------------------------------------------------------
+
+    /// <summary>Why a block can't go here, or null: the rules, the tech tree, the survivor in the way, the cost.</summary>
     string Problem(Vessel v, Int3 cell, in Block block)
     {
         Structure s = v.Structure;
-        PlaceError e = GalHack.Structures.Building.Check(s, cell, block);
+        PlaceError e = Building.Check(s, cell, block);
         if (e != PlaceError.None) return e switch
         {
             PlaceError.Occupied => "Something is already there",
@@ -463,9 +544,15 @@ public sealed class BuildTool
             PlaceError.OneCoreOnly => "A structure has one core",
             _ => e.ToString(),
         };
+        BlockType type = s.TypeOf(block);
+        bool small = BuildingBridge.IsSmall(s);
+        if (Progress != null && !Creative && !type.IsCore && !Progress.BlockAllowed(type.Id, small))
+            return $"{type.Name} ({(small ? "small" : "large")}): {Progress.LockReason(BlockBill.NodeId(type.Id, small))}";
+        if (!Creative && !BuildingBridge.Priced(_zone.Data.Items, s, block)) return $"{type.Name} has no bill: it can't be built in Survival";
         if (InSurvivor(v, cell)) return "Step out of the way to build there";
-        IReadOnlyDictionary<string, int> missing = Costs.Missing(s, block, Stores(v));
-        return missing.Count > 0 ? $"Missing {string.Join(", ", missing.Select(kv => $"{kv.Value} {kv.Key}"))}" : null;
+        if (!v.IsBase && InGround(v, cell)) return "Ground in the way: only a base reaches into the ground";
+        Bill bill = _placer.CostOf(s, block);
+        return Affordable(bill, v, out Bill missing) ? null : $"Missing {_zone.Data.Items.Describe(missing, 3)}";
     }
 
     bool TryPlace(Vessel v, Int3 cell, Block block, bool quiet)
@@ -476,45 +563,123 @@ public sealed class BuildTool
             if (!quiet) Said?.Invoke(why, Tones.Caution);
             return false;
         }
-        if (!Costs.TryPay(s, block, Stores(v))) return false;
-        Pay(s, block);
-        GalHack.Structures.Building.Place(s, cell, block);
+        Bill bill = _placer.CostOf(s, block);
+        if (!TryPay(bill, v, out _)) return false;
+        Count(bill);
+        Building.Place(s, cell, block);
+        _placer.Sync(s, v.Storage, 0, 0, 0, spill: false); // placing only ever adds room
+        if (v.IsBase) ClearGround(v, cell);
         v.ApplyEdits();
+        if (v == Underway) v.Settle(); // a blueprint's vessel stands on the ground as it grows
         Placed++;
         _planDirty |= Underway == v;
-        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.Body.ToParent(StructureBridge.CellCenter(s, cell)).ToGodot(), 1.3f, -6f);
+        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.ToWorld(StructureBridge.CellCenter(s, cell)), 1.3f, -6f);
+        BlockPlaced?.Invoke(v, BuildingBridge.IsSmall(s));
         return true;
     }
 
-    void Pay(Structure s, in Block block)
+    /// <summary>A base's block reaching into the ground: the ground inside it is cut away through the terrain's edit API.</summary>
+    void ClearGround(Vessel v, Int3 cell)
     {
-        foreach (var (item, n) in Costs.CostOf(s, block)) Spent[item] = Spent.GetValueOrDefault(item) + n;
+        float size = v.Structure.Grid.CellSize, half = size * 0.5f + 0.1f;
+        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, cell);
+        var cells = new HashSet<TerrainDigging.Terrain.Int3>();
+        for (float z = -half; z <= half; z += 0.5f)
+        for (float y = -half; y <= half; y += 0.5f)
+        for (float x = -half; x <= half; x += 0.5f)
+        {
+            N.Vector3 w = v.Body.ToParent(centre + new N.Vector3(x, y, z));
+            cells.Add(new TerrainDigging.Terrain.Int3((int)MathF.Floor(w.X), (int)MathF.Floor(w.Y), (int)MathF.Floor(w.Z)));
+        }
+        var solid = cells.Where(c => _zone.Planet.Terrain.Store.MaterialAt(c) != TerrainDigging.Terrain.CellMaterial.Air).ToList();
+        if (solid.Count > 0) _zone.Edits.DigCells(solid);
     }
 
+    /// <summary>
+    /// Takes a block down: Survival refunds its whole bill to your bag, then the structure's
+    /// storage, and sets down whatever neither can take; sections it cuts loose become wrecks.
+    /// </summary>
     void Remove(Vessel v, Int3 cell)
     {
         Structure s = v.Structure;
         if (!s.TryGet(cell, out Block b)) return;
-        RemoveResult r = GalHack.Structures.Building.Remove(s, cell, null);
+        Bill refund = Creative || !BuildingBridge.Priced(_zone.Data.Items, s, b) ? new Bill() : BuildingBridge.BillOf(_zone.Data.Items, s, b);
+        RemoveResult r = Building.Remove(s, cell, null);
         if (r.Status == RemoveStatus.CoreHoldsStructure)
         {
-            Said?.Invoke("The core holds the vessel together: take the rest down first", Tones.Caution);
+            Said?.Invoke("The core holds the structure together: take the rest down first", Tones.Caution);
             return;
         }
         if (r.Status != RemoveStatus.Removed) return;
-        Costs.Refund(s, b, _pack);
-        foreach (Structure piece in r.Wrecks) v.Sever(piece);
-        if (s.Count == 0)
+        TakenDown++;
+        Vector3 at = v.ToWorld(StructureBridge.CellCenter(s, cell));
+        if (s.TypeOf(b).IsCore && s.Count == 0)
         {
-            // The last block (its core) came off: the vessel is gone, its materials are in the pack.
+            // The last block, its core: it goes back as the core item it was made from.
+            refund = new Bill();
+            refund.Add(v.IsBase ? "base-core" : "vessel-core", 1);
+            if (!Creative) Refund(refund, null, at);
+            Bill held = v.Storage.Contents;
+            v.Storage.TryTake(held);
+            Refund(held, null, at);
             _zone.Physics.Unregister(v.Body);
             _zone.Physics.StuckFields.Remove(v.Field);
             _zone.Untrack(v);
             v.Node.QueueFree();
+            Said?.Invoke($"{v.Name} taken down", Tones.Text);
             return;
         }
+        Refund(refund, v, at);
+        foreach (Structure piece in r.Wrecks) v.Sever(piece);
+        // A container gone shrinks storage: what no longer fits is set down, never lost.
+        Bill overflow = _placer.Sync(s, v.Storage, 0, 0, 0, spill: false);
+        if (!overflow.IsEmpty) Spilled?.Invoke(overflow, at);
         v.ApplyEdits();
+        if (v == Underway) v.Settle();
         _planDirty |= Underway == v;
+        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.9f, -6f);
+        if (!refund.IsEmpty) Said?.Invoke($"Taken down: +{_zone.Data.Items.Describe(refund, 3)}", Tones.Text);
+    }
+
+    /// <summary>Refunds go to the bag, then the structure's storage, then the ground.</summary>
+    void Refund(Bill bill, Vessel v, Vector3 at)
+    {
+        Bill left = _pack.Storage.AddAll(bill);
+        _pack.Grid.Reconcile();
+        if (v != null) left = v.Storage.AddAll(left);
+        if (!left.IsEmpty) Spilled?.Invoke(left, at);
+    }
+
+    /// <summary>Could the bag and the structure's storage together pay this bill?</summary>
+    bool Affordable(Bill bill, Vessel v, out Bill missing)
+    {
+        missing = new Bill();
+        if (Creative) return true;
+        foreach (var (id, n) in bill)
+        {
+            int have = _pack.Storage.Count(id) + (v?.Storage.Count(id) ?? 0);
+            if (have < n) missing.Add(id, n - have);
+        }
+        return missing.IsEmpty;
+    }
+
+    /// <summary>Pays a bill from the bag first, then the structure's storage. All or nothing.</summary>
+    bool TryPay(Bill bill, Vessel v, out Bill missing)
+    {
+        if (!Affordable(bill, v, out missing)) return false;
+        if (Creative) return true;
+        foreach (var (id, n) in bill)
+        {
+            int fromPack = _pack.Storage.Remove(id, n);
+            if (fromPack < n) v.Storage.Remove(id, n - fromPack);
+        }
+        _pack.Grid.Reconcile();
+        return true;
+    }
+
+    void Count(Bill bill)
+    {
+        foreach (var (item, n) in bill) Spent[item] = Spent.GetValueOrDefault(item) + n;
     }
 
     /// <summary>Would a block at this cell overlap the survivor's body?</summary>
@@ -533,20 +698,26 @@ public sealed class BuildTool
         return false;
     }
 
+    /// <summary>Would a block at this cell sit mostly in the ground (natural or not)?</summary>
+    bool InGround(Vessel v, Int3 cell)
+    {
+        N.Vector3 c = v.Body.ToParent(StructureBridge.CellCenter(v.Structure, cell));
+        return _zone.Planet.Terrain.Store.SampleDensity(c) > 0.25f;
+    }
+
     // ---- Helpers --------------------------------------------------------------------------------
 
-    Block Make(Structure s, BlockChoice choice, int rot)
+    Block Make(Structure s, BlockType type, int rot)
     {
-        BlockType type = _catalogue.Type(choice.Type);
-        ShapeDef shape = choice.Shape != null && type.IsArmor ? _catalogue.Shape(choice.Shape) : null;
-        return GalHack.Structures.Building.Make(s, type, shape, rot);
+        ShapeDef shape = type.IsArmor ? Shape : null;
+        return Building.Make(s, type, shape, rot);
     }
 
     List<(Int3 cell, Block block)> Copies(Structure s, Int3 cell, Block block)
     {
         var sym = Symmetry.Through(s.Core ?? Int3.Zero);
         sym.Set(0, MirrorX, (s.Core ?? Int3.Zero).X * 2);
-        return GalHack.Structures.Building.MirrorCopies(s, cell, block, sym).Select(c => (c.Pos, c.Block)).ToList();
+        return Building.MirrorCopies(s, cell, block, sym).Select(c => (c.Pos, c.Block)).ToList();
     }
 
     /// <summary>Components that mount by one face turn it toward the face clicked (as building's tool does).</summary>
@@ -572,25 +743,19 @@ public sealed class BuildTool
 
     string CostText(Structure s, in Block b)
     {
-        IReadOnlyDictionary<string, int> cost = Costs.CostOf(s, b);
-        return cost.Count == 0 ? "free" : string.Join(", ", cost.Select(kv => $"{kv.Value} {kv.Key}"));
+        Bill cost = _placer.CostOf(s, b);
+        return cost.IsEmpty ? "free" : _zone.Data.Items.Describe(cost, 4);
     }
 
-    string MissingText(Structure s, in Block b, Vessel near) =>
-        string.Join(", ", Costs.Missing(s, b, Stores(near)).Select(kv => $"{kv.Value} {kv.Key}"));
+    /// <summary>What a block costs on a grid (nothing in Creative), for the palette.</summary>
+    public Bill CostOf(string blockId, bool small) =>
+        Creative || !_zone.Data.Items.Blocks.TryGet(blockId, out BlockBill b) ? new Bill() : b.For(small).Clone();
 
-    /// <summary>A whole blueprint's cost, from the same costs the tool charges.</summary>
-    public IReadOnlyDictionary<string, int> TotalCost(Structure plan)
+    /// <summary>A whole blueprint's bill, from the same prices placement charges.</summary>
+    public Bill TotalCost(Structure plan)
     {
-        var total = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (_, b) in plan.Blocks())
-            foreach (var (item, n) in Costs.CostOf(plan, b)) total[item] = total.GetValueOrDefault(item) + n;
+        var total = new Bill();
+        foreach (var (_, b) in plan.Blocks()) total.Add(_placer.CostOf(plan, b));
         return total;
-    }
-
-    string TotalText(Structure plan)
-    {
-        IReadOnlyDictionary<string, int> total = TotalCost(plan);
-        return total.Count == 0 ? "free" : string.Join(", ", total.Select(kv => $"{kv.Value} {kv.Key}"));
     }
 }

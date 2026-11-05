@@ -1,0 +1,63 @@
+// The slice's additions to shared/Items, appended to its catalogue as it loads (nothing in
+// shared/Items is copied or changed on disk). Same formats as shared/Items/data.
+//
+//   items          things the slice's loop needs that the catalogue doesn't have yet: the survival
+//                  tool, the suit fabricator's bare minimum, core items (a placed core starts a new
+//                  structure, as in Empyrion; the catalogue prices blocks only) and what creatures
+//                  leave behind
+//   recipes        how they are made. Tier -1 is the suit fabricator, below the survival
+//                  constructor: it works from raw finds only, since it can't refine
+//   replaceRecipes recipes the slice makes differently: the placeable survival constructor comes
+//                  out of the suit fabricator, from ore
+//   constructors   the suit fabricator itself, below the catalogue's survival tier
+//   consumables    what using one does (food and oxygen as a share of full, health in points)
+{
+  "schema": "galhack.slice-items",
+  "version": 1,
+  "items": [
+    { "id": "survival-tool", "name": "Survival tool", "short": "TOOL", "category": "tool", "rarity": "common", "mass": 2.5, "volume": 3,
+      "uses": "Digs ore and rock, cuts plants, shoots", "unlock": { "level": 1, "cost": 0, "tab": "tools" } },
+    { "id": "trail-ration", "name": "Trail ration", "short": "RATION", "category": "consumable", "rarity": "common", "mass": 0.4, "volume": 0.5,
+      "uses": "Food", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+    { "id": "patch-kit", "name": "Patch kit", "short": "PATCH", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.5,
+      "uses": "Heals a little", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+    { "id": "air-cell", "name": "Air cell", "short": "AIR", "category": "consumable", "rarity": "common", "mass": 1.2, "volume": 1,
+      "uses": "Refills half the suit's oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+    { "id": "base-core", "name": "Base core", "short": "B-CORE", "category": "component", "rarity": "common", "mass": 40, "volume": 12, "stack": 4,
+      "uses": "Set down on open ground: a new base", "unlock": { "level": 1, "cost": 0, "tab": "base" } },
+    { "id": "vessel-core", "name": "Small-vessel core", "short": "SV-CORE", "category": "component", "rarity": "common", "mass": 6, "volume": 2, "stack": 4,
+      "uses": "Set down on open ground: a new small vessel", "unlock": { "level": 5, "cost": 2, "tab": "small" } },
+    { "id": "hover-core", "name": "Hover core", "short": "HV-CORE", "category": "component", "rarity": "common", "mass": 6, "volume": 2, "stack": 4,
+      "uses": "Set down on open ground: a new hover vessel", "unlock": { "level": 1, "cost": 1, "tab": "hover" } },
+    { "id": "meat", "name": "Raw meat", "short": "MEAT", "category": "raw", "rarity": "common", "source": "harvest", "mass": 0.5, "volume": 0.5, "stack": 50,
+      "where": "Creatures", "uses": "Food" },
+    { "id": "hide", "name": "Hide", "short": "HIDE", "category": "raw", "rarity": "common", "source": "harvest", "mass": 1.0, "volume": 1, "stack": 50,
+      "where": "Creatures", "uses": "Polymer substitute (later)" },
+    { "id": "rare-tissue", "name": "Rare tissue", "short": "TISSUE", "category": "raw", "rarity": "uncommon", "source": "harvest", "mass": 0.2, "volume": 0.2, "stack": 50,
+      "where": "Some creatures", "uses": "Research (later)" }
+  ],
+  "recipes": [
+    { "make": "survival-tool", "count": 1, "from": { "iron-ore": 6, "copper-ore": 2 },                   "seconds": 6,  "tier": -1 },
+    { "make": "trail-ration",  "count": 1, "from": { "biomass": 2 },                                     "seconds": 3,  "tier": -1 },
+    { "make": "patch-kit",     "count": 1, "from": { "biomass": 2, "silicon-ore": 1 },                   "seconds": 4,  "tier": -1 },
+    { "make": "air-cell",      "count": 1, "from": { "biomass": 3 },                                     "seconds": 4,  "tier": -1 },
+    // Cores cost what the core block's bill does (shared/Items blocks.json), as one item.
+    { "make": "base-core",     "count": 1, "from": { "hull-plate": 16, "winding": 4, "copper-wire": 12 }, "seconds": 12, "tier": 0 },
+    { "make": "vessel-core",   "count": 1, "from": { "hull-plate": 4, "circuit-board": 2, "winding": 1 }, "seconds": 10, "tier": 1 },
+    { "make": "hover-core",    "count": 1, "from": { "hull-plate": 4, "circuit-board": 1, "winding": 2 }, "seconds": 10, "tier": 1 }
+  ],
+  "replaceRecipes": [
+    { "make": "survival-constructor", "count": 1, "from": { "iron-ore": 16, "copper-ore": 8, "silicon-ore": 4 }, "seconds": 20, "tier": -1 }
+  ],
+  "constructors": [
+    { "id": "suit", "name": "Suit fabricator", "tag": "FAB-S", "tier": -1, "speed": 1.0 }
+  ],
+  "consumables": {
+    "trail-ration": { "food": 0.3 },
+    "meat":         { "food": 0.12 },
+    "patch-kit":    { "health": 25 },
+    "medkit":       { "health": 60 },
+    "air-cell":     { "oxygen": 0.5 },
+    "o2-bottle":    { "oxygen": 1.0 }
+  }
+}
