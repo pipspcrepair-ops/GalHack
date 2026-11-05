@@ -61,22 +61,30 @@ public sealed class PoiSite
 /// <summary>
 /// Places POIs on a planet with the POI generator's own placement rules, then fits each one to
 /// the real terrain and seats it:
-/// 1. A placement map of the country around the landing site: biomes from the planet's own,
-///    faction territories, and rich ground where the deposit map has a signature resource.
-/// 2. <see cref="Placement.PlacePlanet"/> picks families, layouts, states and map cells by its
-///    biome, territory, near/avoid and spacing rules.
-/// 3. Each place is then fitted within a short walk of its cell to ground that suits it: a Vharn
-///    garrison or a Kessari spire on high ground with a view, an abandoned mine at the foot of a
-///    slope it can dig into, a farm on the flattest ground, a crashed freighter wherever it came
-///    down (bounded cut and fill everywhere). Water, rivers and the seams are off limits.
+/// 1. A placement map of the whole planet: biomes from the planet's own, faction territories,
+///    and rich ground where the deposit map has a signature resource.
+/// 2. <see cref="WorldPlacement"/> scatters places evenly over all of it (the planet is a torus)
+///    and picks each one from the planet's themed set by biome and territory, with a few outliers
+///    that don't belong. The nearest half are seated first, then an even spread to the far side.
+/// 3. Each place is then fitted within a short walk of its cell to ground that suits it, by its
+///    family's siting: a garrison or an observatory on high ground with a view (ridge, peak), a
+///    mine at the foot of a slope it can dig into (valley, hillside), an airfield on wide level
+///    ground (open), a farm on the flattest (flat), a wreck wherever it came down (any). Cut and
+///    fill are bounded everywhere; water, rivers and the seams are off limits.
 /// 4. The pad: a <see cref="TerrainStamp"/> levels the footprint and an apron at the floor's
 ///    height (cutting high ground, filling low) and keeps rooms below ground open.
 /// Deterministic from the planet seed.
 /// </summary>
 public static class PoiSiting
 {
-    public const double RegionSize = 3200;   // metres around the landing site
+    public const double RegionSize = 3200;   // metres around the landing site (kept for callers; placement now covers the planet)
     const float CellSize = 40f;
+    /// <summary>Placement cells over the whole planet, in metres.</summary>
+    const float WorldCell = 160f;
+    /// <summary>How many places a planet gets at most: spread over all of it, nearest the landing site first.</summary>
+    public static int MaxSites = 14;
+    /// <summary>Tests and screenshots: also place one of this family near the landing site.</summary>
+    public static string ForceFamily;
     const float Apron = 4f;
     const float MaxCutFill = 16f;
     const double SearchRadius = 140;
@@ -86,54 +94,66 @@ public static class PoiSiting
     {
         PoiLibrary lib = catalog.Library;
         PlanetSpec spec = map.Spec;
-        int side = (int)(RegionSize / CellSize);
-        double x0 = landing.X - RegionSize / 2, z0 = landing.Y - RegionSize / 2;
-        PlanetMap pmap = BuildPlacementMap(map, x0, z0, side, GHash.Of(spec.Seed, 0x504F49));
-        var rng = new PRng(GHash.Of(spec.Seed, 0x504C4143));
-        bool rare = rng.Chance(0.35f);
-        List<PlacedPoi> placed = Placement.PlacePlanet(lib, pmap, new SystemContext(), new PlayerKnowledge(), rng.Fork("planet"), rare);
+        // The whole planet as the placement engine sees it, and the theme its kind of world has.
+        int cellsX = Math.Max(8, (int)(map.WidthMeters / WorldCell)), cellsZ = Math.Max(4, (int)(map.HeightMeters / WorldCell));
+        PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
+        ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'));
+        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143));
+        var placed = world.Pois.Where(p => !p.Family.Space).ToList();
+        // Spread over the whole planet, but the landing site's country gets its share first.
+        double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
+        var byDistance = placed.OrderBy(Away).ToList();
+        int near = MaxSites / 2;
+        var far = byDistance.Skip(near).ToList();
+        int stride = Math.Max(1, far.Count / Math.Max(1, MaxSites - near));
+        var spread = far.Where((_, i) => i % stride == 0).ToList();
+        // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
+        var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
+        if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
+            order.Insert(0, new PlacedPoi { Family = forced, Variant = forced.Variants[0], State = PoiState.Abandoned, SpawnSeed = 7, X = (float)landing.X + 700f, Z = (float)landing.Y + 300f });
 
         var sites = new List<PoiSite>();
-        foreach (PlacedPoi p in placed)
+        foreach (PlacedPoi p in order)
         {
+            if (sites.Count >= MaxSites + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
             PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, p.SpawnSeed);
-            double wantX = x0 + p.X, wantZ = z0 + p.Z;
-            PoiSite site = Seat(inst, p.Family, bare, map, wantX, wantZ, landing, sites);
+            PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             if (site != null) sites.Add(site);
         }
         return sites;
     }
 
     /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>
-    static PlanetMap BuildPlacementMap(WorldMap map, double x0, double z0, int side, ulong seed)
+    static PlanetMap BuildPlacementMap(WorldMap map, double x0, double z0, int width, int height, float cell, ulong seed)
     {
+        int side = Math.Min(width, height);
         var pmap = new PlanetMap
         {
-            Name = map.Spec.ToString(), Size = PlanetSize.Large, Width = side, Height = side, CellSize = CellSize,
-            Biomes = new PBiome[side * side], Territory = new string[side * side], Deposit = new bool[side * side],
+            Name = map.Spec.ToString(), Size = PlanetSize.Large, Width = width, Height = height, CellSize = cell,
+            Biomes = new PBiome[width * height], Territory = new string[width * height], Deposit = new bool[width * height],
         };
         var rng = new PRng(seed);
         string[] factions = { "vharn", "meridian", "freeholders", "kessari" };
         var capitals = new List<(float x, float y, string f)>();
         foreach (string f in factions)
             for (int i = rng.Between(1, 2); i > 0; i--)
-                capitals.Add((rng.Float(0.1f, 0.9f) * side, rng.Float(0.1f, 0.9f) * side, f));
+                capitals.Add((rng.Float(0.1f, 0.9f) * width, rng.Float(0.1f, 0.9f) * height, f));
         float reach = side * 0.32f;
 
-        for (int y = 0; y < side; y++)
-        for (int x = 0; x < side; x++)
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
         {
-            double wx = Mathx.WrapX(x0 + (x + 0.5) * CellSize, map.WidthMeters), wz = Mathx.Wrap(z0 + (y + 0.5) * CellSize, map.HeightMeters);
+            double wx = Mathx.WrapX(x0 + (x + 0.5) * cell, map.WidthMeters), wz = Mathx.Wrap(z0 + (y + 0.5) * cell, map.HeightMeters);
             int k = pmap.Index(x, y);
             pmap.Biomes[k] = ToPoiBiome((GBiome)map.Biome[map.CellAt(wx, wz)], map.Def.Archetype);
             var nearest = capitals.OrderBy(c => (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y)).First();
             float d = MathF.Sqrt((nearest.x - x) * (nearest.x - x) + (nearest.y - y) * (nearest.y - y));
             pmap.Territory[k] = d < reach ? nearest.f : "wild";
             int signature = 0, all = 0;
-            foreach (Deposit dep in map.Deposits.InRect(wx - CellSize / 2, wz - CellSize / 2, wx + CellSize / 2, wz + CellSize / 2))
+            foreach (Deposit dep in map.Deposits.InRect(wx - cell / 2, wz - cell / 2, wx + cell / 2, wz + cell / 2))
             {
-                if (Math.Abs(Mathx.WrapDelta(dep.X - wx, map.WidthMeters)) > CellSize / 2 || Math.Abs(Mathx.WrapDelta(dep.Y - wz, map.HeightMeters)) > CellSize / 2) continue;
+                if (Math.Abs(Mathx.WrapDelta(dep.X - wx, map.WidthMeters)) > cell / 2 || Math.Abs(Mathx.WrapDelta(dep.Y - wz, map.HeightMeters)) > cell / 2) continue;
                 all++;
                 if (dep.Kind >= DepositKind.Titanium) signature++;
             }
@@ -155,14 +175,8 @@ public static class PoiSiting
         _ => a == Archetype.Ice ? PBiome.Ice : PBiome.Desert,
     };
 
-    /// <summary>What ground a family looks for.</summary>
-    static string Preference(FamilyDef family) => family.Id switch
-    {
-        "vharn_outpost" or "kessari_spire" => "ridge",
-        "abandoned_mine" => "valley",
-        "freeholder_farm" => "flat",
-        _ => "any",
-    };
+    /// <summary>What ground a family looks for, from its data (siting): shape follows purpose.</summary>
+    static string Preference(FamilyDef family) => family.Siting is { Length: > 0 } s ? s : "any";
 
     static PoiSite Seat(PoiInstance inst, FamilyDef family, PlanetTerrainSource bare, WorldMap map, double wantX, double wantZ,
         LandingSite landing, List<PoiSite> others)
@@ -217,7 +231,9 @@ public static class PoiSiting
             double distance = Dist(cx, cz, wantX, wantZ, width, height);
             double score = want switch
             {
-                "ridge" => -prominence * 2.0 + cut * 1.5,
+                "ridge" or "peak" => -prominence * 2.0 + cut * 1.5,                    // high ground with a view
+                "hillside" => Math.Abs(cut - 8f) * 1.5 + Math.Abs(prominence) * 0.3,  // dug into a slope
+                "open" => cut * 5.0 + Math.Abs(prominence) * 0.6,                     // runways and pads: wide, level, open
                 "valley" => prominence * 2.0 + cut * 0.8 - Math.Min(cut, 8) * 0.6, // at the foot of a slope: some cut is the point
                 "flat" => cut * 4.0,
                 _ => cut * 2.0,
