@@ -20,6 +20,8 @@ public partial class Hud : CanvasLayer
     public string Tool { get; set; } = "";
     public Color ToolColour { get; set; } = Kit.Cream;
     public bool ShowHelp { get; set; } = true;
+    /// <summary>Off while the cursor is on a screen: the cursor on the glass is the aim mark then.</summary>
+    public bool Crosshair { get; set; } = true;
 
     public override void _Ready()
     {
@@ -45,8 +47,11 @@ public partial class Hud : CanvasLayer
     void Paint()
     {
         Vector2 size = _canvas.GetViewportRect().Size, c = size / 2;
-        _canvas.DrawRect(new Rect2(c.X - 1, c.Y - 9, 2, 18), new Color(1, 1, 1, 0.8f));
-        _canvas.DrawRect(new Rect2(c.X - 9, c.Y - 1, 18, 2), new Color(1, 1, 1, 0.8f));
+        if (Crosshair)
+        {
+            _canvas.DrawRect(new Rect2(c.X - 1, c.Y - 9, 2, 18), new Color(1, 1, 1, 0.8f));
+            _canvas.DrawRect(new Rect2(c.X - 9, c.Y - 1, 18, 2), new Color(1, 1, 1, 0.8f));
+        }
 
         var glass = new Color(Kit.Glass, 0.78f);
         if (Prompt.Length > 0)
@@ -83,7 +88,7 @@ public partial class Hud : CanvasLayer
             {
                 "WASD MOVE   SHIFT SPRINT   SPACE JUMP   N FLY   ESC MOUSE",
                 "1-9 BLOCK   WHEEL / Q SHAPE   LMB PLACE   RMB REMOVE   U UPGRADE",
-                "LOOK AT A SCREEN: WHEEL / CLICK / TAB / R / [ ]",
+                "LOOK AT A SCREEN: A CURSOR APPEARS - CLICK, SHIFT-CLICK, WHEEL",
                 "G GATHER ORE   F FIRE GUNS   E OPEN CRATE   F2 MODE   F1 HIDE",
             };
             float hy = size.Y - 20 - help.Length * 26;

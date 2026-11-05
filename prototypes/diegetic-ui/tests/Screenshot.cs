@@ -10,7 +10,8 @@ namespace DiegeticUi.Tests;
 /// Views: console (a role mid-drag), holo (the star map in use), wrist (the inventory),
 /// cold (the temperature vital flashing in the cold store), invasion (the countdown on the
 /// visor and the console, sirens turning; invasion-late between banners), fire (a warning
-/// shot's visor flash), constructor, trader, overview (the room).
+/// shot's visor flash), constructor, trader, look (the look cursor on the constructor, from where
+/// you'd walk past it), overview (the room).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -47,6 +48,7 @@ public partial class Screenshot : Node
             case "fire": await Fire(); break;
             case "constructor": await Constructor(); break;
             case "trader": await Trader(); break;
+            case "look": await Look(); break;
             default: await Overview(); break;
         }
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -126,6 +128,18 @@ public partial class Screenshot : Node
         await _drive.Click(_drive.WindowPoint(screen, Drive.Centre(_main.ConstructorPage.OrderButtons[0])));
         await _drive.Click(_drive.WindowPoint(screen, Drive.Centre(_main.ConstructorPage.OrderButtons[4])));
         await _drive.Seconds(2.2);
+    }
+
+    /// <summary>Walking past the constructor and just looking at it: the look cursor on an order button, lit.</summary>
+    async Task Look()
+    {
+        var screen = _main.ConstructorScreen;
+        Input.MouseMode = Input.MouseModeEnum.Visible; // stray mouse moves can't turn the view
+        _drive.StandAndLook(new Vector3(-3.2f, 0.05f, -2.3f), screen.GlobalPosition);
+        await _drive.Seconds(0.3);
+        _main.Player.SetPhysicsProcess(false); // settled on the deck; stray keys can't walk it off the aim
+        _drive.Aim(screen.PixelToWorld(Drive.Centre(_main.ConstructorPage.OrderButtons[1]) + new Vector2(40, 8)));
+        await _drive.Seconds(0.4);
     }
 
     async Task Trader()

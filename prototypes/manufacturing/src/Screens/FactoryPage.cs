@@ -8,12 +8,16 @@ using Manufacturing.Game;
 namespace Manufacturing.Screens;
 
 /// <summary>
-/// The blueprint factory's screen: pick a saved blueprint and see its whole bill of materials
+/// The blueprint factory's screen: click a saved blueprint to see its whole bill of materials
 /// (refined materials, never ore) against what storage holds, what's missing, and how long it
-/// takes. It refuses with the missing list; while it builds, the bar runs and the time counts down.
+/// takes; click BUILD to start it. It refuses with the missing list; while it builds, the bar
+/// runs and the time counts down.
 /// </summary>
 public partial class FactoryPage : MachinePage
 {
+    /// <summary>The hot spot key of the build button.</summary>
+    public const string BuildKey = "build";
+
     readonly Workshop _w;
     int _pick;
     FactoryQuote _quote;
@@ -24,7 +28,8 @@ public partial class FactoryPage : MachinePage
     BlueprintFactory F => _w.Factory;
     BlueprintEntry Selected => _w.Blueprints[Wrap(_pick, _w.Blueprints.Count)];
 
-    public override string Prompt => F.Current != null ? $"BUILDING {F.Current.Name.ToUpperInvariant()}" : $"CLICK: BUILD {Selected.Name.ToUpperInvariant()}   WHEEL: BLUEPRINT";
+    public override string Prompt => F.Current != null ? $"BUILDING {F.Current.Name.ToUpperInvariant()}"
+        : "CLICK A BLUEPRINT: SEE ITS BILL   CLICK BUILD: START   WHEEL: NEXT BLUEPRINT";
 
     protected override int Signature() => HashCode.Combine(F.Version, _w.Storage.Version, _pick, _w.Rules.Mode);
 
@@ -45,14 +50,19 @@ public partial class FactoryPage : MachinePage
         {
             case ScreenKey.Up: _pick--; return null;
             case ScreenKey.Down: _pick++; return null;
-            case ScreenKey.Act or ScreenKey.ActMany:
-                FactoryStart r = F.Start(Selected.Name, Selected.Blocks);
-                return r.Ok ? $"BUILDING {Selected.Name.ToUpperInvariant()}: {Kit.Clock(r.Quote.Seconds)}" : $"REFUSED: {r.Message.ToUpperInvariant()}";
+            case ScreenKey.Act or ScreenKey.ActMany: return Build();
         }
         return null;
     }
 
-    public override void _Draw()
+    string Build()
+    {
+        if (F.Current != null) return $"ALREADY BUILDING {F.Current.Name.ToUpperInvariant()}";
+        FactoryStart r = F.Start(Selected.Name, Selected.Blocks);
+        return r.Ok ? $"BUILDING {Selected.Name.ToUpperInvariant()}: {Kit.Clock(r.Quote.Seconds)}" : $"REFUSED: {r.Message.ToUpperInvariant()}";
+    }
+
+    protected override void Paint()
     {
         FactoryQuote q = F.Current ?? Quote();
         this.Block(new Rect2(0, 0, W, H), Kit.Glass);
@@ -68,8 +78,14 @@ public partial class FactoryPage : MachinePage
         for (int i = 0; i < _w.Blueprints.Count; i++)
         {
             BlueprintEntry e = _w.Blueprints[i];
+            int index = i;
             var r = new Rect2(24, y, 380, 76);
-            this.Row(r, Kit.Accent, i == Wrap(_pick, _w.Blueprints.Count));
+            bool hot = Spot(r, "blueprint:" + e.Name, _ =>
+            {
+                _pick = index;
+                return null;
+            });
+            this.Row(r, Kit.Accent, i == Wrap(_pick, _w.Blueprints.Count), hot: hot);
             this.Text(Kit.Label, Kit.SizeSmall, r.Position + new Vector2(20, 8), e.Name.ToUpperInvariant(), Kit.Cream);
             this.Text(Kit.Label, Kit.SizeTiny, r.Position + new Vector2(20, 42), Kit.Fit(Kit.Label, Kit.SizeTiny, $"{e.Structure.Count} BLOCKS  -  {e.Note.ToUpperInvariant()}", 350), Kit.Dim);
             y += 84;
@@ -97,7 +113,7 @@ public partial class FactoryPage : MachinePage
         if (q.Materials.Kinds > 9) this.Text(Kit.Label, Kit.SizeTiny, new Vector2(440, y + 4), $"+{q.Materials.Kinds - 9} MORE", Kit.Dim);
         this.Text(Kit.Label, Kit.SizeTiny, new Vector2(440, 640), "PAID IN REFINED MATERIALS, NEVER ORE", Kit.Dim);
 
-        // Right: time, blocks, missing, progress.
+        // Right: time, blocks, missing, progress, and the build button.
         var panel = new Rect2(900, 152, 356, 516);
         this.Block(panel, Kit.Panel.Darkened(0.25f));
         this.Text(Kit.Label, Kit.SizeTiny, panel.Position + new Vector2(18, 14), "TIME AT THIS FACTORY", Kit.Dim);
@@ -106,6 +122,7 @@ public partial class FactoryPage : MachinePage
         if (!q.Byproducts.IsEmpty)
             this.Text(Kit.Label, Kit.SizeTiny, panel.Position + new Vector2(18, 138), Kit.Fit(Kit.Label, Kit.SizeTiny, "SPARE BACK TO STORAGE: " + _w.Items.Describe(q.Byproducts, 2).ToUpperInvariant(), 320), Kit.Dim);
 
+        var band = new Rect2(panel.Position.X, panel.Position.Y + 186, panel.Size.X, 46);
         if (F.Current != null)
         {
             this.Caption(panel.Position + new Vector2(18, 190), "BUILDING", Kit.Accent2);
@@ -113,23 +130,32 @@ public partial class FactoryPage : MachinePage
         }
         else if (!q.Missing.IsEmpty)
         {
-            this.Block(new Rect2(panel.Position.X, panel.Position.Y + 186, panel.Size.X, 46), Kit.Danger);
-            this.TextIn(Kit.Display, Kit.SizeSmall, new Rect2(panel.Position.X, panel.Position.Y + 186, panel.Size.X, 46), "MISSING", Kit.Glass, padX: 18);
+            this.Block(band, Kit.Danger);
+            this.TextIn(Kit.Display, Kit.SizeSmall, band, "MISSING", Kit.Glass, padX: 18);
             float my = panel.Position.Y + 244;
-            foreach (var (id, n) in q.Missing.OrderByDescending(kv => kv.Value).Take(8))
+            const int shown = 4;
+            foreach (var (id, n) in q.Missing.OrderByDescending(kv => kv.Value).Take(shown))
             {
                 this.Text(Kit.Mono, Kit.SizeSmall, new Vector2(panel.Position.X + 18, my), $"{n}", Kit.Danger);
                 this.Text(Kit.Label, Kit.SizeSmall, new Vector2(panel.Position.X + 100, my), Kit.Fit(Kit.Label, Kit.SizeSmall, _w.Items.Item(id).Name.ToUpperInvariant(), 240), Kit.Cream);
                 my += 36;
             }
+            if (q.Missing.Kinds > shown) this.Text(Kit.Label, Kit.SizeTiny, new Vector2(panel.Position.X + 18, my + 2), $"+{q.Missing.Kinds - shown} MORE", Kit.Dim);
         }
         else
         {
-            this.Block(new Rect2(panel.Position.X, panel.Position.Y + 186, panel.Size.X, 46), Kit.Good);
-            this.TextIn(Kit.Display, Kit.SizeSmall, new Rect2(panel.Position.X, panel.Position.Y + 186, panel.Size.X, 46), _w.Rules.Creative ? "FREE IN CREATIVE" : "ALL IN STORAGE", Kit.Glass, padX: 18);
+            this.Block(band, Kit.Good);
+            this.TextIn(Kit.Display, Kit.SizeSmall, band, _w.Rules.Creative ? "FREE IN CREATIVE" : "ALL IN STORAGE", Kit.Glass, padX: 18);
+            if (F.LastFinished != null)
+                this.Text(Kit.Label, Kit.SizeTiny, panel.Position + new Vector2(18, 250), $"LAST BUILT: {F.LastFinished.Name.ToUpperInvariant()}", Kit.Good);
         }
-        if (F.LastFinished != null && F.Current == null)
-            this.Text(Kit.Label, Kit.SizeTiny, panel.Position + new Vector2(18, 480), $"LAST BUILT: {F.LastFinished.Name.ToUpperInvariant()}", Kit.Good);
-        if (Focused) this.Hints(W, H, Prompt);
+
+        var build = new Rect2(panel.Position.X + 18, panel.End.Y - 72, panel.Size.X - 36, 56);
+        if (F.Current != null) this.Button(build, "BUILDING...", Kit.Rule, false, Kit.SizeLabel);
+        else
+        {
+            bool hot = Spot(build, BuildKey, _ => Build());
+            this.Button(build, $"BUILD {Selected.Name.ToUpperInvariant()}", q.CanBuild ? Kit.Good : Kit.Danger, hot, Kit.SizeLabel);
+        }
     }
 }

@@ -5,7 +5,7 @@ namespace DiegeticUi.World;
 public static class Layers
 {
     public const uint World = 1;
-    public const uint Pick = global::DiegeticUi.Screens.WorldScreen.PickLayer; // screens and the holo-table
+    public const uint Pick = global::DiegeticUi.Screens.WorldScreen.DefaultPickLayer; // screens and the holo-table
     public const uint Player = 4;
     public const uint Crates = 8;
 }
@@ -22,7 +22,9 @@ public partial class Player : CharacterBody3D
 {
     const float WalkSpeed = 4.5f, SprintSpeed = 7.5f, CrouchSpeed = 2.2f, Accel = 40f, AirAccel = 8f;
     const float JumpSpeed = 4.6f, Gravity = 9.8f;
-    const float StandHeight = 1.8f, CrouchHeight = 1.1f, EyeStand = 1.62f, EyeCrouch = 0.95f;
+    /// <summary>Standing eye height above the feet. Screens you walk up to are hung around it.</summary>
+    public const float EyeHeight = 1.62f;
+    const float StandHeight = 1.8f, CrouchHeight = 1.1f, EyeStand = EyeHeight, EyeCrouch = 0.95f;
     const float MouseSensitivity = 0.0025f;
 
     public float Yaw { get; private set; }
