@@ -172,6 +172,19 @@ public sealed class GroundPalette
         return new Color(c.R, c.G, c.B, rock);
     }
 
+    /// <summary>
+    /// The colour of undug ground: soil over rock by <paramref name="cover"/> (0 bare rock, 1 all
+    /// soil), continuous so the near voxels and the far rings blend the same way.
+    /// </summary>
+    public Color Natural(double x, double z, float height, float cover, out Vector2 flags)
+    {
+        Rgb soil = SoilAt(x, z, out float glow);
+        Rgb c = Rgb.Lerp(Rock, soil, cover);
+        if (height < 0.6f) c = Rgb.Lerp(c, Seabed, Math.Clamp(0.6f - height, 0f, 1f));
+        flags = new Vector2(glow * cover, 0f);
+        return new Color(c.R, c.G, c.B, 1f - cover);
+    }
+
     void Jitter(double x, double z, out double gx, out double gz)
     {
         P4 p = Map.Model.Torus.At(x, z);

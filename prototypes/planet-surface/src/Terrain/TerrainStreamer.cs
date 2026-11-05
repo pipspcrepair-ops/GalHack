@@ -358,7 +358,7 @@ public partial class TerrainStreamer : Node3D
             double w = World.Terrain.Width, h = World.Terrain.Height;
             Task.Run(() =>
             {
-                VoxelMeshing.Build(job, palette, w, h);
+                VoxelMeshing.Build(job, source, palette, w, h);
                 _voxelDone.Enqueue((job, sx, sz));
             });
         }
@@ -709,6 +709,7 @@ public partial class TerrainStreamer : Node3D
             var water = new Godot.Collections.Array();
             water.Resize((int)Mesh.ArrayType.Max);
             water[(int)Mesh.ArrayType.Vertex] = job.WaterVertices;
+            water[(int)Mesh.ArrayType.Color] = job.WaterColors;
             water[(int)Mesh.ArrayType.Index] = job.WaterIndices;
             var waterMesh = new ArrayMesh();
             waterMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, water);
@@ -887,6 +888,13 @@ public partial class TerrainStreamer : Node3D
     }
 
     public bool IsLoaded(Int3 key) => _chunks.ContainsKey(key);
+
+    /// <summary>
+    /// Whether a chunk has been meshed in the current frame, so its cells (and its neighbours') are
+    /// already generated and reading them costs nothing. Main-thread queries that only want a
+    /// glance (is there rock overhead?) check this first, so they never generate terrain here.
+    /// </summary>
+    public bool IsReady(Int3 key) => _chunks.TryGetValue(key, out VChunk c) && c.BuiltVersion >= 0 && c.BuiltKey == key;
 
     /// <summary>The loaded chunk's mesh in frame coordinates, for tests (seams, normals).</summary>
     public ArrayMesh MeshOf(Int3 key, out Vector3 offset)

@@ -33,19 +33,25 @@ void fragment() {
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;
-	float bare = max(COLOR.a, 1.0 - smoothstep(0.5, 0.72, up));
+	// The vertex alpha already says how bare the ground is from its slope (soil thins out from
+	// about 30 degrees). The pixel's own normal only adds rock on real cliffs, over a wide band:
+	// voxel normals wobble at the metre scale, and a narrow band turned slopes into blotches.
+	float bare = max(COLOR.a, 1.0 - smoothstep(0.3, 0.62, up));
 
 	float fine = pfbm(wpos, 0.5, planet_size);
 	float broad = pfbm(wpos, 0.0625, planet_size);
+	// Close up, grit and grain: a finer layer that fades out with distance (it would only shimmer).
+	float near = 1.0 - smoothstep(20.0, 60.0, length(wpos - CAMERA_POSITION_WORLD));
+	float grain = near > 0.0 ? pnoise(wpos * 4.0, planet_size * 4.0) - 0.5 : 0.0;
 
 	// Soil: patchy at two scales, so a meadow or a dune field never reads as flat paint.
-	vec3 soil = base * (0.8 + 0.32 * broad) * (0.9 + 0.2 * fine);
+	vec3 soil = base * (0.8 + 0.32 * broad) * (0.9 + 0.2 * fine) * (1.0 + grain * 0.28 * near);
 
 	// Rock: strata that wander a little, plus chips and streaks.
 	float band = sin(wpos.y * 1.7 + broad * 9.0) * 0.5 + 0.5;
 	float band2 = sin(wpos.y * 0.43 + fine * 3.0 + broad * 4.0) * 0.5 + 0.5;
 	vec3 rock = (COLOR.a > 0.5 ? base : base * 0.95);
-	rock *= mix(1.0, 0.72 + 0.4 * band * band2, strata) * (0.82 + 0.3 * fine);
+	rock *= mix(1.0, 0.72 + 0.4 * band * band2, strata) * (0.82 + 0.3 * fine) * (1.0 + grain * 0.35 * near);
 	vec3 albedo = mix(soil, rock, bare);
 
 	// Bedrock: a faint grid, so players learn what can't be cut.

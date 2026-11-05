@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
 using TerrainDigging.Terrain;
@@ -38,7 +39,7 @@ public static class VoxelMeshing
 {
     static readonly ThreadLocal<SurfaceNetsMesher> Meshers = new(() => new SurfaceNetsMesher());
 
-    public static void Build(VoxelJob job, GroundPalette palette, double width, double height)
+    public static void Build(VoxelJob job, PlanetTerrainSource source, GroundPalette palette, double width, double height)
     {
         try
         {
@@ -55,11 +56,27 @@ public static class VoxelMeshing
                 job.Colors = new Color[job.Positions.Length];
                 job.Flags = new Vector2[job.Positions.Length];
                 List<Deposit> deposits = null;
+                PlanetTerrainSource.Column column = source.ColumnAt(job.Key.X, job.Key.Z);
+                float cornerX = job.Key.X * ChunkStore.Size, cornerZ = job.Key.Z * ChunkStore.Size;
                 for (int i = 0; i < job.Positions.Length; i++)
                 {
                     Vector3 p = job.Positions[i];
                     double x = Wrap(p.X, width), z = Wrap(p.Z, height);
                     CellMaterial m = mesh.Materials[i];
+                    if (m is CellMaterial.Soil or CellMaterial.Rock)
+                    {
+                        // On the undug surface the soil/rock split is a per-cell switch, which would
+                        // show as stair-stepped patches along the grid: colour it from the same rule,
+                        // continuous. Below the surface (a dug wall or floor) the cell's own material shows.
+                        float fx = p.X - cornerX, fz = p.Z - cornerZ;
+                        float natural = source.ColumnHeight(column, fx, fz, out _);
+                        if (p.Y > natural - 1.2f)
+                        {
+                            float slope2 = PlanetTerrainSource.BroadSlope2(column, fx, fz);
+                            job.Colors[i] = palette.Natural(x, z, p.Y, source.SoilCover(x, z, slope2), out job.Flags[i]);
+                            continue;
+                        }
+                    }
                     DepositKind ore = DepositKind.Iron;
                     if (m == CellMaterial.Ore) ore = NearestDeposit(palette.Map, x, z, ref deposits);
                     job.Colors[i] = palette.Vertex(m, x, z, p.Y, out job.Flags[i], ore);

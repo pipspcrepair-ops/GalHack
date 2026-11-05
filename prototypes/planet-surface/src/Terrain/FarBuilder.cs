@@ -19,6 +19,7 @@ public sealed class FarJob
     public Vector2[] Flags;
     public int[] Indices;
     public Vector3[] WaterVertices;
+    public Color[] WaterColors;     // alpha 1 on the channel, 0 on the ring past it: the shader frays the edge there
     public int[] WaterIndices;
     public readonly List<(Flora Kind, float[] Buffer, int Count)> Flora = new();
     public double Milliseconds;
@@ -78,7 +79,7 @@ public static class FarBuilder
                 double x = x0 + i * step, z = z0 + j * step;
                 job.Vertices[k] = new Vector3(i * step, h, j * step);
                 job.Normals[k] = normal;
-                job.Colors[k] = GroundColor(palette, x, z, h, gx * gx + gz * gz, river[s], out job.Flags[k]);
+                job.Colors[k] = GroundColor(source, palette, x, z, h, gx * gx + gz * gz, river[s], out job.Flags[k]);
                 up[k] = normal.Y;
             }
 
@@ -104,15 +105,15 @@ public static class FarBuilder
     }
 
     /// <summary>The same soil-to-rock rule as the voxel source: soil thins out and slides off as slopes steepen.</summary>
-    static Color GroundColor(GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
+    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
     {
-        Rgb soil = pal.SoilAt(x, z, out float glow);
-        float bare = Smooth(0.35f, 1.2f, slope2);
-        Rgb c = Rgb.Lerp(soil, pal.Rock, bare);
-        if (h < 0.6f) c = Rgb.Lerp(c, pal.Seabed, Math.Clamp(0.6f - h, 0f, 1f));
-        if (inRiver) c = Rgb.Lerp(c, pal.RiverBed, 0.7f);
-        flags = new Vector2(glow * (1f - bare), 0f);
-        return new Color(c.R, c.G, c.B, bare);
+        Color c = pal.Natural(x, z, h, source.SoilCover(x, z, slope2), out flags);
+        if (inRiver)
+        {
+            Rgb bed = pal.RiverBed;
+            c = new Color(c.R + (bed.R - c.R) * 0.7f, c.G + (bed.G - c.G) * 0.7f, c.B + (bed.B - c.B) * 0.7f, c.A);
+        }
+        return c;
     }
 
     /// <summary>A short wall under each edge, so a coarser neighbour never shows a crack.</summary>
@@ -145,6 +146,7 @@ public static class FarBuilder
     static void BuildRiverWater(FarJob job, int n, int g, float step, float[] level, bool[] river)
     {
         var verts = new List<Vector3>();
+        var colors = new List<Color>();
         var indices = new List<int>();
         var map = new Dictionary<int, int>();
         int Vertex(int i, int j)
@@ -163,11 +165,13 @@ public static class FarBuilder
                 }
             }
             verts.Add(new Vector3(i * step, l - 0.15f, j * step));
+            colors.Add(new Color(1, 1, 1, river[s] ? 1f : 0f));
             map[s] = v;
             return v;
         }
         // Water reaches one grid square past the channel, under the banks, so the ground hides its
         // edge instead of a staircase of quads. Its level comes from the nearest channel sample.
+        // Where the banks are too low to hide it, the shader frays the edge across that square.
         bool Wet(int i, int j) => i >= 0 && j >= 0 && i < n && j < n && river[(j + 1) * g + i + 1];
         for (int j = 0; j < n - 1; j++)
         for (int i = 0; i < n - 1; i++)
@@ -183,6 +187,7 @@ public static class FarBuilder
         }
         if (indices.Count == 0) return;
         job.WaterVertices = verts.ToArray();
+        job.WaterColors = colors.ToArray();
         job.WaterIndices = indices.ToArray();
     }
 

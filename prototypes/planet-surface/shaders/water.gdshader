@@ -28,6 +28,12 @@ void fragment() {
 	if (sea) {
 		depth = texture(sea_map, wpos.xz / planet_size).r;
 		if (depth < 0.004) discard;
+	} else {
+		// River quads run one grid square past the channel (vertex alpha 0 there). Where the banks
+		// are too low to hide that edge it would show as a staircase of squares: fray it with noise
+		// partway across instead, so the shore wanders like a real one. Still opaque: no sorting.
+		float shore = COLOR.a + (pnoise(wpos * 0.35, planet_size * 0.35) - 0.5) * 0.7;
+		if (shore < 0.45) discard;
 	}
 	vec2 p = wpos.xz;
 	float t = TIME;
