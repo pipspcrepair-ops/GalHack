@@ -322,12 +322,16 @@ public sealed class WildSim
     }
 
     /// <summary>The creature a ray hits first, against each rig's hit spheres.</summary>
-    public Creature Raycast(Vector3 origin, Vector3 dir, float maxDistance, out float distance, out Vector3 point)
+    public Creature Raycast(Vector3 origin, Vector3 dir, float maxDistance, out float distance, out Vector3 point) =>
+        Raycast(Creatures, origin, dir, maxDistance, out distance, out point);
+
+    /// <summary>The creature of a list a ray hits first (the space simulation shares it).</summary>
+    public static Creature Raycast(List<Creature> creatures, Vector3 origin, Vector3 dir, float maxDistance, out float distance, out Vector3 point)
     {
         Creature best = null;
         distance = maxDistance;
         point = origin + dir * maxDistance;
-        foreach (Creature c in Creatures)
+        foreach (Creature c in creatures)
         {
             if (c.Removed) continue;
             // Cheap reject on a bounding sphere around the creature first.
@@ -352,7 +356,7 @@ public sealed class WildSim
         return best;
     }
 
-    static bool RaySphere(Vector3 o, Vector3 d, Vector3 c, float r, out float t)
+    internal static bool RaySphere(Vector3 o, Vector3 d, Vector3 c, float r, out float t)
     {
         Vector3 m = o - c;
         float b = m.Dot(d), cc = m.Dot(m) - r * r;

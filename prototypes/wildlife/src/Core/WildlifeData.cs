@@ -9,10 +9,23 @@ namespace Wildlife;
 // These classes only give the file a shape (its schema); the defaults here are a fallback
 // so a missing field never crashes the game, and Validate() reports what looks wrong.
 
-public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Oddity }
+public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Oddity, Voidborne }
 
-/// <summary>The small set of reliable rigs every body plan is drawn and animated with.</summary>
-public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm }
+/// <summary>
+/// The small set of reliable rigs every body plan is drawn and animated with. Finned and
+/// Clinger are the zero-g rigs of space fauna: swimmers that pulse, flap or undulate through
+/// open space, and leeches that crawl on a hull.
+/// </summary>
+public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger }
+
+/// <summary>Where a species lives. Planet wildlife lives on the surface; space fauna in the rest.</summary>
+public enum Habitat { Surface, Nebula, AsteroidField, GasGiant, Derelict, Void }
+
+/// <summary>How a zero-g swimmer moves: a pulsing bell, flapping wings, or a body that undulates.</summary>
+public enum SwimStyle { None, Pulse, Flap, Undulate }
+
+/// <summary>The design's five-step resource ladder; space creatures drop only rare and up.</summary>
+public enum Rarity { Common, Uncommon, Rare, Exotic, Unique }
 
 public enum Behaviour { Grazer, Herd, Predator, PackHunter, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity }
 

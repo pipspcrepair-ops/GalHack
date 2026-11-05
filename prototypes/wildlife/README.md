@@ -4,6 +4,8 @@ Proves that every planet can roll its own fauna on a handful of reliable procedu
 - herds and hunting packs
 - telegraphed, dodgeable attacks
 - a brief discovery card the first time a species is met
+- no wildlife spawning near bases, and fauna that respawns
+- rare space fauna: drifting grazers in nebulae, rays in asteroid fields, mantas in gas giants' skies, leeches on derelicts and, very rarely, a void leviathan
 - the harvester hovercraft: mow through a forest or run down wildlife and watch the hold fill
 
 All of it runs cheaply enough for a world full of creatures on a low-end PC.
@@ -14,6 +16,9 @@ All of it runs cheaply enough for a world full of creatures on a low-end PC.
 ![A colossus dropping its head for a charge](screenshots/giant.png)
 ![A Bloom-corrupted hunter rearing into its first lunge](screenshots/bloom.png)
 ![The harvester chewing into a grove](screenshots/harvester.png)
+![A shoal of veil drifters in a nebula, a void leviathan passing behind](screenshots/space-nebula.png)
+![Rock rays grazing between the rocks of an asteroid field](screenshots/space-asteroids.png)
+![Hull leeches on a derelict freighter, the nearest rearing at an intruder](screenshots/space-derelict.png)
 
 ## How it works
 
@@ -139,9 +144,32 @@ Holding Q on a creature still scans it at any time: name, form, behaviour, tempe
 
 Empyrion was a reference here. Its forums have players finding creatures spawning inside and under their bases ([Fixed Bugs: spawning inside of bases](https://empyriononline.com/goto/post?id=292759)), which is exactly what this rule rules out. Creature spawns there are capped per type and come back on a respawn delay after a kill ([Mob spawning issue](https://empyriononline.com/posts/153842/)), which the respawn timer follows. Nothing was copied; the radius and its rules are GalHack's own.
 
+**Space fauna** (`src/Space`, `data/space_fauna.json`, rigs in `src/Rigs/SwimRig.cs` and `ClingRig.cs`). Space has its own rare creatures, built the way planet wildlife is. The generator (`SpaceFaunaGenerator`) rolls, for each habitat of a region, one species of every kind that lives there:
+- a form gives the body plan, rig, job and size ranges
+- swappable parts go on by the same combination rules as on planets (roles, forms, excludes): heads, fins, backs, tails and tendrils
+- then come proportions, a palette of dark hides lit by their own glow, stats, a signature attack and a drop table
+
+The same region always rolls the same creatures. The five kinds:
+
+| Kind | Lives in | Body and movement | Behaviour | Signature attack | Drops |
+| --- | --- | --- | --- | --- | --- |
+| Veil drifter, 3.5 to 7 m | nebulae | a bell that pulses like a jellyfish, veil lobes sweeping back on each beat, streamers and filaments trailing | shoals of 5 to 9 grazers; skittish, scatter together | Stinging veil, 1.3 s telegraph | fold crystal (rare, always), voidglass (exotic, 12%) |
+| Rock ray, 2.5 to 5 m | asteroid fields | flat armoured body, broad swept wings flapping slowly, a whip or fluke tail | shoals of 3 to 6 grazing beside the rocks; bold ones ram whatever crowds them | Ram, 1.2 s | starsilver (rare), rimefire (exotic, 10%) |
+| Sky manta, 14 to 28 m | gas giants' upper atmospheres | wings over 30 m across, long glides between beats | calm shoals of 2 to 4 | Wing slam, 1.6 s | emberite (rare), stormcore (exotic, 45%) |
+| Hull leech, 1.6 to 3.2 m | derelict wrecks | a ringed body that crawls flat on the hull, humping as it goes; it swims back after a strike | an ambusher: it freezes and watches anything near, rears off the hull and strikes within reach, then latches on again | Latching strike, 1.1 s | starsilver (rare), lattice cores (unique, 4%) |
+| Void leviathan, 70 to 120 m, very rare | the void and nebulae | a segmented serpent swimming by a wave down its body, pectoral paddles beating | territorial: it warns an intruder off with a rearing display, then charges anyone who stays | Engulfing lunge, 2.6 s, 140 damage | fold crystal and voidglass (always), echo shards (unique, 20%) |
+
+How they work:
+- **Drops.** Space creatures drop only rare and better materials from the design's rarity ladder: always something rare or exotic, unique only sometimes (the data refuses a unique chance over 25%, or anything common).
+- **Zero-g rigs.** The two rigs pose from the creature's full orientation, not a yaw over ground. Swimmers (`SwimRig`) pulse, flap or undulate; clingers (`ClingRig`) lie on the hull face they hold.
+- **The space simulation.** `SpaceSim` runs shoals, leeches on a wreck's hull and the leviathan's loop round its home. Creatures slide off rocks and hulls.
+- **Fair attacks.** Attacks follow the planet rules exactly: the first is the full telegraph, the creature commits part way and lunges at where you were, sidestepping dodges it, and damage is never capped. A leviathan's 140 can kill outright.
+- **How players meet them.** In the game the encounter director brings them: its deck (`prototypes/encounters/data/deck.json`) has a card for each kind, gated by where it lives, with life-sign leads.
+- **Space screenshots.** The `space-*` views build a patch of space (`src/Game/SpaceScene.cs`): a procedural nebula sky (`shaders/space_sky.gdshader`), lumpy noise-displaced asteroids and a block-built derelict.
+
 **Terrain.** A gentle plain in the middle rises into rolling hills. The height function is baked into a 2 m grid at the ground mesh's own spacing and read back bilinearly, which is cheaper for creature legs and matches the drawn ground.
 
-All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`). The prototype uses no third-party assets.
+All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`), the discovery chime included. Everything is made in code: the prototype uses no third-party assets at all (no Kenney or other packs, no sound, model, texture or font files).
 
 **Quitting** goes through `src/Game/Shutdown.cs` in a fixed order, from the test, the screenshot harness and the game window alike:
 1. Stop every sound.
@@ -224,6 +252,15 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - While a card is up, every HUD control ignores the mouse and focus, nothing is under the cursor at the card, a key still reaches the game and the player walks under it.
   - A never-seen hunter lunges at the player: no card shows on any frame of its wind-up or lunge, sidestepping still dodges it, and its card comes once the attack is over.
   - No card shows while the player is down; it comes once they are back up.
+- **Space fauna:**
+  - Seeded: the same region rolls the same creatures, another region others.
+  - Every habitat has its fauna. Across 300 regions, all 1,800 space creatures pass the part, form and behaviour rules: no eyeless grazer heads on hunters, no stingers on grazers, and every leech has a mouth to bite with. Each kind comes in 145 to 577 distinct builds.
+  - Drops, over 4,000 kills of each kind: every kill drops rare or better, from the ladder; exotic sometimes; unique as often as the data says and never more than 25%. The data refuses a creature that drops a common material, and a real kill leaves its loot.
+  - Zero-g animation: every habitat's fauna, with a ship flying through, animates 60 s with no NaNs, orthonormal bodies and nothing drifting off. Clinging leeches stay on their hull (0.000 m off) and shoals hold together.
+  - Fair attacks: every kind's first attack, in three regions each, has at least its telegraph of wind-up. Sidestepping at a suited player's 6 m/s after the commit dodges it (15/15). Holding still takes the full damage, never capped (a leviathan's 140). The next attack comes at the normal rate. A leech lets go of the hull to strike and latches back on.
+  - A skittish shoal scatters together from a ship that comes too close; a leviathan warns an intruder before it charges.
+  - The encounter deck's creature cards name exactly the space forms.
+  - Cost: 61 space creatures (shoals, leeches on a wreck, a leviathan), every rig posed every frame, must stay under 2.5 ms, judged on the best of three windows (about 1.1 ms).
 - **Performance:** 200 creatures plus a swarm must cost under 4 ms per frame as the game runs them: sim, rigs on their distance schedule, and syncing every mesh. The worst case, every rig posed every frame, must stay under 6 ms. Each is judged on the best of three 300-frame windows, all printed, so another program busy on the machine can't fail it.
 - **Playable scene:** the real scene, through its input path. Keys 1 to 3 switch worlds, and F, W, F board, drive and leave the hovercraft.
 
@@ -236,6 +273,7 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
 ```
 
 - **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`, `outpost`, `discovery` (the only one that shows a discovery card).
+- **Space views:** `space-nebula`, `space-asteroids`, `space-derelict`.
 - **For checking the generator by eye:**
   - `sheet` renders a contact sheet with one camera per species. `--pick=0,3` narrows it to chosen species.
   - `--worlds=temperate,alien,bloom` or `seed123:0.6[:bloom]` picks the planets for `lineup` and `sheet`.
@@ -259,6 +297,7 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
   - Nothing fights anything else; predators and packs only hunt players.
   - A pack's feinter never bites while it has flankers left.
 - **Single player.** The codex finder is always "Player 1"; nothing is networked or saved.
+- **Space fauna are not playable here.** They run in the tests and the screenshot views. In the encounters prototype the director spawns and moves them as cards, drawn as simple stand-ins. Nothing yet lets a player fight one in space, harvest its drops or meet one in a gas giant's skies, which has no scene. Space creatures don't fight each other, and only rocks and hulls block them.
 - **Bases are placeholders.** The wildlife only reads a footprint rectangle and a core mode. Real structures, and switching a core between modes, belong to the building prototype; this one has its own small `CoreMode` until both use a shared one.
 - **Placeholder world.**
   - The terrain is a height function with hills, not the planet generator's.

@@ -19,6 +19,8 @@ public partial class WildlifeTest : Node
 
     WildlifeData _data;
     FaunaGenerator _gen;
+    SpaceFaunaData _space;
+    SpaceFaunaGenerator _spaceGen;
     int _failures, _checks;
 
     public override void _Ready() => Run();
@@ -47,6 +49,15 @@ public partial class WildlifeTest : Node
             CodexFirstFinder();
             NoSpawnsNearBases();
             WanderersStillEnter();
+            _space = DataFiles.LoadSpace();
+            _spaceGen = new SpaceFaunaGenerator(_space, _data.Combat);
+            SpaceGenerator();
+            SpaceDropTables();
+            SpaceAnimation();
+            SpaceAttacksAreFair();
+            SpaceBehaviours();
+            DeckCreatureKinds();
+            SpacePerformance();
             Performance();
             await PlayableScene();
         }

@@ -39,6 +39,12 @@ public sealed class Species
     public bool Corrupted;
     public bool Burrows, Flies, Tumbles, Rooted;
 
+    /// <summary>Planet wildlife lives on the surface; space fauna in a nebula, a belt, a giant's skies, a wreck or the void.</summary>
+    public Habitat Habitat = Habitat.Surface;
+    /// <summary>Zero-g swimmers: how they move.</summary>
+    public SwimStyle Swim;
+    public bool InSpace => Habitat != Habitat.Surface;
+
     public string Part(string slot) => Parts.TryGetValue(slot, out var id) ? id : "none";
     public bool Has(string slot) => Part(slot) != "none";
 
@@ -71,13 +77,15 @@ public sealed class Species
         BodyPlan.Floater => "floater",
         BodyPlan.Swarm => "swarm",
         BodyPlan.Giant => "giant",
+        BodyPlan.Voidborne => Swim switch { SwimStyle.Pulse => "drifter", SwimStyle.Flap => "flier", SwimStyle.Undulate => "void serpent", _ => "hull clinger" },
         _ => "oddity",
     };
 
     /// <summary>What it does, in words: "herd grazer", "pack hunter", "territorial giant".</summary>
     public string BehaviourLabel => Behaviour switch
     {
-        Behaviour.Herd => "herd grazer",
+        Behaviour.Herd => InSpace ? "shoal grazer" : "herd grazer",
+        Behaviour.Ambusher when Rig == RigKind.Clinger => "hull-clinging ambusher",
         Behaviour.PackHunter => "pack hunter",
         Behaviour.TerritorialGiant => "territorial",
         Behaviour.HarmlessOddity => "harmless",
@@ -129,4 +137,15 @@ public sealed class Drops
     public string RarePart = "";
     public float RareChance;
     public int RareValue;
+    /// <summary>Space fauna: materials on the rarity ladder, each with its own chance.</summary>
+    public List<MaterialDrop> Materials = new();
+}
+
+/// <summary>One line of a drop table: a ladder material, how many, and how likely.</summary>
+public sealed class MaterialDrop
+{
+    public string Material { get; set; } = "";
+    public Rarity Rarity { get; set; } = Rarity.Rare;
+    public int[] Amount { get; set; } = { 1, 1 };
+    public float Chance { get; set; } = 1f;
 }
