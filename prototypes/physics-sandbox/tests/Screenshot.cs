@@ -14,9 +14,10 @@ namespace PhysicsSandbox;
 ///   godot --path prototypes/physics-sandbox res://tests/Screenshot.tscn -- --view=flight --out=shot.png
 /// Views: flight (the Corsair low over the dug lane, the rover crossing its trench), crash (a
 /// wreck in the crater it cut), sever (an engine pod shot off and tumbling away), hull (a player
-/// riding the roof of the flying Corsair), spacewalk (a player in mag boots standing on the side of
-/// the Corsair in orbit), cabin (inside the cabin mid-roll), tornado (a crate and the player lifted
-/// by a funnel), underwater (diving in the lake: a Corsair held under, crates sunk and floating).
+/// riding the roof of the flying Corsair), spacewalk (a player held to the roof of the rolled-over
+/// Corsair in orbit by its core gravity), cabin (inside the cabin mid-roll), tornado (a crate and the player lifted
+/// by a funnel), underwater (diving in the lake: a Corsair held under, crates sunk and floating),
+/// crater_climb (the hover rover nosing up out of the biggest crater a crash cuts).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -106,13 +107,13 @@ public partial class Screenshot : Node
                 _captureTick = 170;
                 break;
             case "spacewalk":
-                // In orbit with the core gravity off: mag boots hold the player to the starboard side.
+                // In orbit, the ship rolled over: its core gravity holds the player to the roof.
                 Corsair.Vessel.Place(Corsair.Body, new N.Vector3(-20f, W.Physics.Zone.Ceiling + 120f, 10f), 0.3f);
                 Corsair.Body.Rotation = MathX.ThenLocal(Corsair.Body.Rotation, MathX.AxisAngle(N.Vector3.UnitZ, 0.35f));
                 Corsair.Binding.Teleport();
-                Corsair.Body.Core.On = false;
+                Corsair.Body.Core.On = true;
                 Corsair.Cabin.SetGravity(Corsair.Body.Core);
-                Player.PlaceAboard(Corsair, new N.Vector3(2.27f, 1.15f, -1.6f), N.Vector3.UnitX);
+                Player.PlaceAboard(Corsair, new N.Vector3(1.0f, 2.78f, -1.4f));
                 Player.Yaw = Mathf.Pi - 0.4f; // looking aft, toward the camera
                 _captureTick = 60;
                 break;
@@ -134,6 +135,20 @@ public partial class Screenshot : Node
                 Tornado t = W.Weather.Sim.SpawnTornado((spot + new N.Vector3(-4f, 0f, 1f)).ToGodot(), (spot + new N.Vector3(40f, 0f, 0f)).ToGodot());
                 t.SkipFormation();
                 _captureTick = 150;
+                break;
+            }
+            case "crater_climb":
+            {
+                // The biggest crater a crash cuts, on the rover lane; the rover set down at its
+                // bottom and driven out east at a crawl, nose up the far side.
+                N.Vector3 rim = W.Ground(24f, SandboxTerrain.LaneZ);
+                float radius = W.Rules.Craters.MaxRadius;
+                CraterResult cut = W.Terrain.Crater(rim + N.Vector3.UnitY * radius * W.Rules.Craters.Lift, radius);
+                W.Physics.NotifyChanged(cut.Changed);
+                Rover.Vessel.Place(Rover.Body, new N.Vector3(rim.X - 2f, W.GroundTop(rim.X - 2f, rim.Z) + 2f, rim.Z), -Mathf.Pi / 2f);
+                Rover.Binding.Teleport();
+                Player.PlaceOutside(W.Ground(rim.X - 12f, rim.Z + 22f) + N.Vector3.UnitY * 0.05f);
+                _captureTick = 104;
                 break;
             }
             case "underwater":
@@ -176,6 +191,9 @@ public partial class Screenshot : Node
                 break;
             case "cabin":
                 Corsair.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -0.5f), new Vector3(0f, 0.12f, _tick > 110 && _tick < 140 ? 0.5f : 0f));
+                break;
+            case "crater_climb":
+                Rover.Flight.Input = _tick < 50 ? PilotInput.LetGo : PilotInput.Hands(new Vector3(0f, 0f, -0.15f));
                 break;
             case "underwater":
                 Corsair.Flight.Input = PilotInput.LetGo; // its pilot holds it at depth
@@ -226,9 +244,18 @@ public partial class Screenshot : Node
             {
                 // Off the starboard quarter, rolled with the ship, looking forward past the player.
                 Transform3D t = Corsair.Node.GetGlobalTransformInterpolated();
-                Vector3 eye = t * new Vector3(5.6f, 2.3f, 1.2f);
-                Vector3 at = t * new Vector3(2.0f, 0.9f, -2.6f);
+                Vector3 eye = t * new Vector3(5.2f, 4.4f, 3.2f);
+                Vector3 at = t * new Vector3(0.6f, 2.4f, -2.2f);
                 _main.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, t.Basis.Y), eye);
+                break;
+            }
+            case "crater_climb":
+            {
+                // From the south, level with the rim, across the crater at the rover climbing its east side.
+                N.Vector3 rim = W.Ground(24f, SandboxTerrain.LaneZ);
+                var at = new Vector3(rim.X + 2.5f, rim.Y - 1f, rim.Z);
+                var eye = new Vector3(rim.X - 1f, rim.Y + 2.2f, rim.Z + 10.5f);
+                _main.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, Vector3.Up), eye);
                 break;
             }
             case "cabin":

@@ -166,36 +166,9 @@ public sealed class CharacterBinding : BodyBinding
     bool StepUp(float height, N.Vector3 wanted, float dt)
     {
         Body b = Body;
-        N.Vector3 up = b.Up;
-        N.Vector3 along = wanted - up * N.Vector3.Dot(wanted, up);
-        float speed = along.Length();
-        if (speed < 0.3f || height <= 0f) return false;
-        N.Vector3 dir = along / speed;
-        bool blocked = false;
-        for (int i = 0; i < Character.GetSlideCollisionCount() && !blocked; i++)
-        {
-            N.Vector3 n = Character.GetSlideCollision(i).GetNormal().ToNumerics();
-            blocked = N.Vector3.Dot(n, up) < 0.3f && N.Vector3.Dot(dir, -n) > 0.3f;
-        }
-        if (!blocked) return false;
-
-        Transform3D from = Character.GlobalTransform;
-        var hit = new KinematicCollision3D();
-        Vector3 lift = (up * height).ToGodot();
-        if (Character.TestMove(from, lift, hit)) lift = hit.GetTravel();
-        Transform3D raised = from;
-        raised.Origin += lift;
-        Vector3 on = (dir * System.MathF.Max(speed * dt, Radius * 0.4f)).ToGodot();
-        if (Character.TestMove(raised, on)) return false; // taller than a step: a wall
-        raised.Origin += on;
-        if (!Character.TestMove(raised, -lift - (up * 0.05f).ToGodot(), hit)) return false; // nothing to stand on
-        if (N.Vector3.Dot(hit.GetNormal().ToNumerics(), up) < System.MathF.Cos(Character.FloorMaxAngle)) return false;
-        Vector3 landed = raised.Origin + hit.GetTravel();
-        if (N.Vector3.Dot((landed - from.Origin).ToNumerics(), up) < 0.02f) return false; // nothing to climb
-        Character.GlobalPosition = landed;
-        b.Position = landed.ToNumerics();
-        b.Velocity = along; // on at the walking speed, nothing into the step
-        Character.Velocity = b.Velocity.ToGodot();
+        if (!Steps.Up(Character, b.Up.ToGodot(), wanted.ToGodot(), height, Radius, dt)) return false;
+        b.Position = Character.GlobalPosition.ToNumerics();
+        b.Velocity = Character.Velocity.ToNumerics();
         b.OnFloor = true;
         StepsTaken++;
         return true;

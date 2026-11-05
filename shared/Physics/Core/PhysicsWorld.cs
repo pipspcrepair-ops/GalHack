@@ -440,7 +440,7 @@ public sealed class PhysicsWorld
 
         PhysicsRules.ContactData rules = Rules.Contacts;
         if (closing > 0.5f) velocity += c.Normal * closing * rules.Restitution; // glance off
-        if (Impacts.Damage(body.Mass, closing, rules) > 0f)
+        if (Impacts.Damage(body.Mass, closing, rules, body.Kind) > 0f)
             velocity -= MathX.Slide(velocity, c.Normal) * rules.Scrape;
         (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
         ResolveImpact(body, null, c.Point, c.Normal, closing, c.Surface);
@@ -469,9 +469,9 @@ public sealed class PhysicsWorld
         if (other.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(other);
         other.Asleep = false;
 
-        float damage = Impacts.Damage(mu, closing, Rules.Contacts);
+        float damage = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
         Hurt(body, damage);
-        Hurt(other, damage);
+        Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
         (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
         if (closing > Rules.Contacts.EventSpeed)
             Impact?.Invoke(new ImpactInfo(body, other, c.Point, c.Normal, closing, damage, Surface.Body, 0f));
@@ -488,15 +488,15 @@ public sealed class PhysicsWorld
         {
             if (!_pairs.Add(Pair(body, other))) return;
             float mu = Impacts.ReducedMass(body.Mass, MassOf(other));
-            float both = Impacts.Damage(mu, closing, Rules.Contacts);
+            float both = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
             Hurt(body, both);
-            Hurt(other, both);
+            Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
             if (closing > Rules.Contacts.EventSpeed)
                 Impact?.Invoke(new ImpactInfo(body, other, point, normal, closing, both, Surface.Body, 0f));
             return;
         }
 
-        float damage = Impacts.Damage(body.Mass, closing, Rules.Contacts);
+        float damage = Impacts.Damage(body.Mass, closing, Rules.Contacts, body.Kind);
         Hurt(body, damage);
         float crater = 0f;
         if (surface == Surface.Ground && normal.Y > 0.5f && Terrain != null)
