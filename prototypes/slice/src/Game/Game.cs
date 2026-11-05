@@ -24,11 +24,11 @@ using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Game;
 
-/// <summary>Where the run is: the planet generating, the pod coming down, or play.</summary>
-public enum Phase { Generating, Landing, Playing }
+/// <summary>Where the run is: the planet generating (and the castaway asleep in the cryopod), or play.</summary>
+public enum Phase { Generating, Playing }
 
 /// <summary>
-/// The playable slice: crash-land in an escape pod, survive, gather, craft, build a base and
+/// The playable slice: wake in a buried cryopod bunker, survive, gather, craft, build a base and
 /// machines, build a vessel and fly it. It owns the surface zone and the castaway (body, suit,
 /// inventory, tools and progress), turns one tick's <see cref="Controls"/> into what they do, and
 /// places the camera. Tests and screenshots run this same node and drive it through
@@ -39,8 +39,15 @@ public partial class Game : Node3D
     /// <summary>False for tests and screenshots: no mouse capture, no keyboard; a script fills <see cref="Controls"/>.</summary>
     public bool Interactive = true;
 
-    /// <summary>Start standing beside a landed pod instead of coming down in it (the systems test only; the real-player test plays the descent).</summary>
+    /// <summary>Start with the cryopod already open (the systems test only; the real-player test wakes in it shut).</summary>
     public bool SkipIntro;
+
+    /// <summary>
+    /// The world: its seed and planet type. Set before the game enters the tree to pin it (tests,
+    /// screenshots, <c>--seed N --planet type</c>); left null, a played game asks on the start
+    /// screen and anything else rolls a fresh one. A saved game keeps its own.
+    /// </summary>
+    public WorldChoice World;
 
     /// <summary>
     /// TEST TIME-SCALE: crafting runs this many times faster. 1 in play; the real-player test sets
@@ -60,7 +67,6 @@ public partial class Game : Node3D
     public SurvivalTool Tool { get; private set; }
     public BuildTool Builder { get; private set; }
     public ShotFx Shots { get; private set; }
-    public Vessel Pod { get; private set; }
     public PlayerTarget Target { get; private set; }
     public Visor Visor { get; private set; }
     public TabMenu Menu { get; private set; }
@@ -102,24 +108,44 @@ public partial class Game : Node3D
     /// <summary>A line for the visor, and its colour.</summary>
     public event Action<string, Color> Said;
 
-    /// <summary>The pod has come down and the survivor can move (fires once).</summary>
-    public event Action Landed;
 
     Vector2 _stick;
     readonly Dictionary<int, Node3D> _replicators = new();
-    float _landingTime, _landingLength, _dropHeight;
-    N.Vector3 _podRest;
-    float _podHeading;
-    bool _waitingForGround;
     readonly List<WarningEntry> _warnings = new();
 
     public override void _Ready()
     {
         ResourceMount.Mount();
-        // Creative is chosen for the session at launch: godot --path prototypes/slice -- --creative
-        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--creative") >= 0) _mode = GameMode.Creative;
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
-        Zone = new SurfaceZone { Name = "Surface" };
+        // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
+        string[] args = OS.GetCmdlineUserArgs();
+        if (Array.IndexOf(args, "--creative") >= 0) _mode = GameMode.Creative;
+        World ??= WorldChoice.FromArgs(args);
+        if (World == null && Interactive)
+        {
+            // A new game: the start screen asks for the mode, the planet type and (if any) a seed.
+            var start = new StartScreen { Name = "Start" };
+            start.Chosen += (world, mode) =>
+            {
+                World = world;
+                _mode = mode;
+                Begin();
+            };
+            AddChild(start);
+            return;
+        }
+        World ??= WorldChoice.Fresh();
+        Begin();
+    }
+
+    /// <summary>A new game from the start screen (STATS: NEW GAME).</summary>
+    public void NewGame() => GetTree().ReloadCurrentScene();
+
+    /// <summary>The world chosen: generate it, and everything that lives in it.</summary>
+    void Begin()
+    {
+        GD.Print($"world: {World}");
+        Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), PickStart = PickStart };
         AddChild(Zone);
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
@@ -152,7 +178,7 @@ public partial class Game : Node3D
 
     Vector3 Focus()
     {
-        if (Survivor == null) return Pod?.Body.Position.ToGodot() ?? (Zone.IsBuilt ? Zone.LandingSite : Vector3.Zero);
+        if (Survivor == null) return Zone.IsBuilt ? Start : Vector3.Zero;
         if (Survivor.Seated is Vessel v)
         {
             // Streaming leads a flying vessel a little, so the ground ahead has collision when it gets there.
@@ -171,35 +197,7 @@ public partial class Game : Node3D
     {
         SliceRules.PlanetRules rules = Zone.Data.Rules.Planet;
         GameData data = Zone.Data;
-
-        // The pod comes down at the generator's landing site, standing level on its highest ground.
-        Vector3 landing = Zone.LandingSite;
-        _podHeading = -(float)Zone.Planet.Landing.Heading;
-        Structure pod = data.Blueprint("pod.gbp");
-        // It comes to rest with its hatch sill a short step above the ground in front of it, so
-        // you can walk out and back in; where the ground under it is higher, its landing carves
-        // its bed (see Descend).
-        N.Quaternion turn = MathX.Yaw(_podHeading);
-        Vector3 hatch = landing + MathX.Rotate(turn, new N.Vector3(0f, 0f, -2.4f)).ToGodot();
-        float sill = MathF.Max(Zone.GroundAt(hatch.X, hatch.Z).Y, Zone.GroundAt(landing.X, landing.Z).Y - 0.6f);
-        _podRest = new N.Vector3(landing.X, sill + PhysicsSandbox.Bridges.StructureBridge.ShapeOf(pod).FeetBelowOrigin + 0.15f, landing.Z);
-        _dropHeight = SkipIntro ? 0f : rules.PodDropHeight;
-        _landingLength = SkipIntro ? 0f : rules.PodDropSeconds;
-        Pod = Vessel.Spawn(Zone, pod, _podRest + N.Vector3.UnitY * _dropHeight, _podHeading, landed: true);
-        // Before any ground streams in, so its chunks and colliders are built with the bed already cut.
-        CarveBed(pod, _podRest, MathX.Yaw(_podHeading));
-        foreach (var (id, n) in data.Rules.Materials.PodLocker) Pod.Storage.Add(id, n);
-
-        Survivor = Survivor.Spawn(Zone, _podRest + N.Vector3.UnitY * (_dropHeight + 0.3f));
-        Survivor.Body.DamageSink = Suit = new Suit(Zone, data.Survival(), (int)Zone.Spec.Seed);
-        Suit.Said += line => Say(line, Tones.Caution);
-        Suit.Sim.RespawnPoints.Add(new RespawnPoint
-        {
-            Id = "pod", Name = "Escape pod", Kind = RespawnKind.SurvivalTent,
-            Position = new Pos(_podRest.X, _podRest.Y, _podRest.Z), Stand = new Pos(_podRest.X, _podRest.Y, _podRest.Z),
-        });
-        Suit.Sim.Pods[0].Position = new Pos(_podRest.X, _podRest.Y, _podRest.Z);
-        Survivor.Sit(Pod);
+        WakeInBunker();
 
         Pack = new PlayerInventory(data.Items);
         for (int i = 0; i < data.Rules.Materials.Toolbar.Count && i < PlayerInventory.ToolbarSlots; i++)
@@ -256,81 +254,20 @@ public partial class Game : Node3D
         _creatureBlockers = new CreatureBlockers { Name = "CreatureBlockers", Game = this };
         Zone.AddChild(_creatureBlockers);
 
-        Phase = Phase.Landing;
-        _waitingForGround = true;
-        Say(SkipIntro ? "Escape pod down." : "Escape pod: re-entry. Brace.", Tones.Caution);
     }
 
     CreatureBlockers _creatureBlockers;
 
-    // ---- The pod coming down -------------------------------------------------------------------
-
-    void Descend(float dt)
-    {
-        _landingTime += dt;
-        float t = _landingLength > 0f ? Mathf.Clamp(_landingTime / _landingLength, 0f, 1f) : 1f;
-        // Falling fast, then braking hard on its retros for the last stretch.
-        float left = 1f - t;
-        float height = _dropHeight * left * left * (1f + 0.6f * t);
-        Pod.Body.Position = _podRest + N.Vector3.UnitY * height;
-        Pod.Body.Rotation = MathX.Yaw(_podHeading);
-        Pod.Fx.Burn = t > 0.55f && t < 1f ? 1f : 0f;
-        Survivor.AfterPhysics(dt);
-        if (t < 1f) return;
-
-        // Down, once the ground under it is in.
-        if (_waitingForGround && !Zone.Streamer.ReadyAround(_podRest.ToGodot(), 1, needCollision: true)) return;
-        _waitingForGround = false;
-        Pod.Controller.PlaceLanded(Pod.Body, _podRest, _podHeading);
-        Pod.Binding.Teleport();
-        Pod.Fx.Burn = 0f;
-        if (_landingLength > 0f)
-        {
-            Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Boom, _podRest.ToGodot(), 0.7f, 2f);
-            Tool.Debris.Puff(_podRest.ToGodot(), new Color(0.6f, 0.55f, 0.45f, 0.7f), 6f);
-        }
-        Phase = Phase.Playing;
-        if (SkipIntro)
-        {
-            Survivor.StandUp();
-            Survivor.PlaceOutside(Pod.Body.ToParent(new N.Vector3(0f, -0.2f, -3.2f)));
-            Survivor.Yaw = Mathf.Pi;
-        }
-        Say("Down. F to unstrap. Tab: your inventory, crafting and the tech tree. The locker (E) has supplies.", Tones.Good);
-        Landed?.Invoke();
-    }
-
-    /// <summary>The ground the landed pod's hull sits in is cut away through the terrain's edit API (its landing carved its bed), so it never stands in the ground.</summary>
-    void CarveBed(Structure s, N.Vector3 at, N.Quaternion rotation)
-    {
-        var (min, max) = s.Bounds();
-        float cell = s.Grid.CellSize, half = cell * 0.5f;
-        N.Vector3 lo = min.ToVector3() * cell - new N.Vector3(half + 0.1f), hi = max.ToVector3() * cell + new N.Vector3(half + 0.1f);
-        Vector3 c = at.ToGodot();
-        float r = (hi - lo).Length() * 0.5f + 1f;
-        var cells = new List<TerrainDigging.Terrain.Int3>();
-        var store = Zone.Planet.Terrain.Store;
-        for (int z = (int)MathF.Floor(c.Z - r); z <= c.Z + r; z++)
-        for (int y = (int)MathF.Floor(c.Y - r); y <= c.Y + r; y++)
-        for (int x = (int)MathF.Floor(c.X - r); x <= c.X + r; x++)
-        {
-            N.Vector3 local = MathX.Unrotate(rotation, new N.Vector3(x + 0.5f, y + 0.5f, z + 0.5f) - at);
-            if (local.X < lo.X || local.Y < lo.Y || local.Z < lo.Z || local.X > hi.X || local.Y > hi.Y || local.Z > hi.Z) continue;
-            var cellAt = new TerrainDigging.Terrain.Int3(x, y, z);
-            if (store.MaterialAt(cellAt) != TerrainDigging.Terrain.CellMaterial.Air) cells.Add(cellAt);
-        }
-        if (cells.Count > 0) Zone.Edits.DigCells(cells);
-    }
 
     // ---- Each tick: input in, before the physics steps ------------------------------------------
 
     public override void _PhysicsProcess(double delta)
     {
+        if (Zone == null) return; // the start screen is up
         if (Interactive) PollKeyboard();
-        if (Phase == Phase.Generating) return;
-        if (Phase == Phase.Landing)
+        if (Phase == Phase.Generating)
         {
-            Descend((float)delta);
+            if (Zone.IsBuilt) Waking();
             return;
         }
         Controls c = Controls;
@@ -369,7 +306,7 @@ public partial class Game : Node3D
 
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
             if (c.WasPressed(Key.Key1 + i)) Select(i);
-        if (c.WasPressed(Key.F)) TrySit();
+        if (c.WasPressed(Key.F) && !OpenCryopod()) TrySit();
         if (c.WasPressed(Key.E)) Use();
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
         if (c.WasPressed(Key.H)) Report(Suit.Sim.ToggleHelmet());
@@ -446,7 +383,7 @@ public partial class Game : Node3D
             if (d < bestDistance) { best = v; bestDistance = d; }
         }
         if (best == null) Say("No seat within reach", Tones.Caution);
-        else if (Survivor.Sit(best)) Say(best == Pod ? "Strapped into the pod's seat" : $"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
+        else if (Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
     }
 
     void Report(Outcome o) => Say(o.Message, o.Ok ? Tones.Good : Tones.Caution);
@@ -577,6 +514,7 @@ public partial class Game : Node3D
 
     public override void _Process(double delta)
     {
+        if (Zone == null) return; // the start screen is up
         if (Suit != null) SyncReplicators();
         if (Interactive)
         {
@@ -585,14 +523,10 @@ public partial class Game : Node3D
         }
         // A vessel in flight gets collision a column further out than someone on foot.
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false ? 3 : 2;
-        if (Survivor == null)
-        {
-            if (Zone.IsBuilt && Pod != null) Camera.GlobalTransform = Chase(Pod, 2.4f, 0.6f);
-            return;
-        }
+        if (Survivor == null) return;
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
-        Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && (ThirdPerson || Phase == Phase.Landing)
-            ? Chase(v, v == Pod ? 3.2f : 1.6f, 0.5f)
+        Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
+            ? Chase(v, 1.6f, 0.5f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : Survivor.Eye());
     }
 

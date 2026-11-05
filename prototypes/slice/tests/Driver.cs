@@ -84,7 +84,7 @@ public sealed class Driver
     /// Walks (sprinting when there is stamina) to within a distance of a point, jumping and using
     /// the jetpack over anything that stops it. Returns when there, or after the time limit.
     /// </summary>
-    public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f)
+    public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f, bool sprint = true, bool dig = true)
     {
         // The menu takes the mouse: close it to look where you walk.
         if (Game.Menu.IsOpen)
@@ -104,7 +104,7 @@ public sealed class Driver
             if (flat <= within) break;
             Face(new Vector3(target.X, Game.Survivor.WorldEye().Y, target.Z));
             Controls.Hold(Key.W);
-            Controls.Hold(Key.Shift, Game.Suit.Vitals.Stamina > 30);
+            Controls.Hold(Key.Shift, sprint && Game.Suit.Vitals.Stamina > 30);
             float moved = (feet - last).Length();
             last = feet;
             stuck = moved < 0.02f ? stuck + 1f / 60f : 0f;
@@ -113,7 +113,7 @@ public sealed class Driver
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
-            digging = noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            digging = dig && noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
             if (digging)
             {
                 var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
@@ -242,6 +242,32 @@ public sealed class Driver
         foreach (int x in WalkTo(inside, 0.4f, 10f)) yield return x;
         foreach (int x in WalkTo(outside, 0.6f, 15f)) yield return x;
     }
+
+    /// <summary>Walks the bunker's way out, from its chamber up the stairwell to the ground beyond.</summary>
+    public IEnumerable<int> ClimbOut(Slice.Start.Bunker b) => Follow(b.WayOut, "out");
+
+    /// <summary>Walks back down into the bunker, to just outside the cryopod.</summary>
+    public IEnumerable<int> ClimbIn(Slice.Start.Bunker b) => Follow(b.WayOut.Reverse().ToList(), "in");
+
+    IEnumerable<int> Follow(IReadOnlyList<Vector3> way, string what)
+    {
+        for (int i = 0; i < way.Count; i++)
+        {
+            // At a walk, as a player takes stairs; again if it slid past.
+            for (int tries = 0; tries < 3; tries++)
+            {
+                foreach (int x in WalkTo(way[i], 0.45f, 30f, sprint: false, dig: false)) yield return x;
+                Vector3 at = Game.Survivor.WorldFeet;
+                if (new Vector2(at.X - way[i].X, at.Z - way[i].Z).Length() <= 0.8f) break;
+            }
+            Vector3 f = Game.Survivor.WorldFeet;
+            if (new Vector2(f.X - way[i].X, f.Z - way[i].Z).Length() > 0.8f || MathF.Abs(f.Y - way[i].Y) > 1.3f)
+                GD.Print($"  (the way {what}: short of waypoint {i} of {way.Count} at {way[i]}: feet {f}, on floor {Game.Survivor.Body.OnFloor})");
+        }
+    }
+
+    /// <summary>On the open ground (not down in the bunker).</summary>
+    public bool OnSurface => Game.Survivor.WorldFeet.Y > Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y - 1.0f;
 
     /// <summary>Walks up to a vessel's seat and takes it.</summary>
     public IEnumerable<int> Board(Vessel v)

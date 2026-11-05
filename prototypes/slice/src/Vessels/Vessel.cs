@@ -73,6 +73,9 @@ public sealed class Vessel
     public bool PowerOn = true, LightsOn = true, Home, AutoTransmit;
 
     public bool IsWreck => Body.Kind == BodyKind.Wreck;
+
+    /// <summary>A ruin (the start's bunker): walked in and scavenged, never built on, never a core of yours.</summary>
+    public bool IsRuin { get; set; }
     /// <summary>A structure in base mode, anchored where it was placed: never moves (shared physics' fixed body).</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;

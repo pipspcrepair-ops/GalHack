@@ -136,7 +136,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         if (Game.Phase == Phase.Generating)
         {
-            Banner("GENERATING PLANET", "the escape pod is on its way down", C.Accent);
+            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed} · the cryopod is thawing", C.Accent);
             return;
         }
         Survivor survivor = Game.Survivor;
@@ -149,7 +149,7 @@ public partial class Visor : CanvasLayer
         DrawProgress();
         if (Game.Suit.Dead)
         {
-            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake at the escape pod (your backpack stays where you fell)", C.Danger);
+            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake in the bunker (your backpack stays where you fell)", C.Danger);
             return;
         }
         DrawVitals();
@@ -159,8 +159,6 @@ public partial class Visor : CanvasLayer
             DrawCrosshair();
             DrawHand();
         }
-        if (Game.Phase == Phase.Landing && Game.SkipIntro == false)
-            _hud.TextIn(UiTheme.Display, (int)(26 * s), new Rect2(0, size.Y * 0.18f, size.X, 40 * s), "RE-ENTRY", C.Warn, HorizontalAlignment.Center);
     }
 
     void Banner(string title, string detail, Color colour)
@@ -260,10 +258,9 @@ public partial class Visor : CanvasLayer
             labels.Add((x, row));
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
         }
-        if (Game.Pod != null && survivor.Aboard != Game.Pod) Mark(Game.Pod.Body.Position.ToGodot(), "POD", C.Accent2);
-        if (Game.Pod != null && survivor.Aboard != Game.Pod) Mark(Game.Pod.Body.Position.ToGodot(), "POD", C.Accent2);
+        if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
         foreach (Vessel v in Game.Zone.Vessels)
-            if (v != Game.Pod && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
+            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
         if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
         if (survivor.Seated == null)
             foreach (var (kind, at) in Deposits.Near(Game.Zone, feet))

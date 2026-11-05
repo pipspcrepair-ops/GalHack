@@ -97,6 +97,7 @@ public sealed class StatsSection : IMenuSection
             ("TECH UNLOCKED", $"{p.Nodes.Count(n => p.IsUnlocked(n.Id))} of {p.Nodes.Count}"),
             ("WALKED", $"{s.Walked / 1000f:F2} km"),
             ("FLOWN", $"{s.Flown / 1000f:F2} km (top speed {s.TopSpeed:F0} m/s)"),
+            ("WORLD", $"{_game.World?.Name}   SEED {_game.World?.Seed}"),
             ("ORE CELLS DUG", $"{_game.Tool.OreCells}"),
             ("PLANTS CUT", $"{_game.Tool.PlantsCut}"),
             ("SHOTS FIRED", $"{_game.Tool.Shots}"),
@@ -109,7 +110,9 @@ public sealed class StatsSection : IMenuSection
             ("SUPPLIES USED", $"{s.Used}"),
             ("DEATHS", $"{s.Deaths}"),
         };
-        g.Caption("SINCE THE CRASH", area.Position, area.Size.X);
+        g.Caption("SINCE YOU WOKE", area.Position, area.Size.X);
+        // A new game (the start screen: type this world's seed there to replay it).
+        if (g.Button("options:new-game", new Rect2(area.End.X - 640, area.Position.Y, 200, 34), "NEW GAME", C.Accent) && _game.Interactive) _game.NewGame();
         // Options: the master volume.
         var vol = new Rect2(area.End.X - 420, area.Position.Y + 2, 420, 34);
         float master = _game.Audio?.Master ?? 1f;
@@ -165,7 +168,8 @@ public sealed class MapSection : IMenuSection
             Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4);
         foreach (Device d in _game.Zone.Devices) Mark(d.GlobalPosition, d.Label.ToUpperInvariant(), C.Accent2);
         foreach (Vessel v in _game.Zone.Vessels)
-            if (!v.IsWreck) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), v == _game.Pod ? C.Accent : v.IsBase ? C.Good : C.Text, 7);
+            if (v.IsRuin) Mark(_game.Start, "BUNKER", C.Accent, 7);
+            else if (!v.IsWreck) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), v.IsBase ? C.Good : C.Text, 7);
         if (g.Drawing)
         {
             Vector3 look = _game.Survivor.WorldLook();
@@ -175,7 +179,7 @@ public sealed class MapSection : IMenuSection
         }
         var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
         g.Caption("MAP · 600 M", legend.Position, legend.Size.X);
-        string[] lines = { "orange: you, the pod", "green: bases", "cream: vessels", "amber: devices, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
+        string[] lines = { "orange: you, the bunker", "green: bases", "cream: vessels", "amber: devices, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 240), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) Range = 300f;
         if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 240), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) Range = 600f;

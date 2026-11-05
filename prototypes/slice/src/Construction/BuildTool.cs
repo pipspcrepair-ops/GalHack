@@ -192,6 +192,7 @@ public sealed class BuildTool
         TargetVessel = null;
         _onGround = false;
         if (!WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Hull, out LookHit hit)) return;
+        if (hit.Vessel is { IsRuin: true }) return; // the bunker: scavenged, not built on
         if (hit.Vessel is Vessel v && !v.IsWreck)
         {
             if (!v.Structure.Has(hit.Cell)) return;

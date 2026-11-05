@@ -76,9 +76,9 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer)
             {
-                if (v == Pod && Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
+                if (v == Bunker?.Ruin && Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
                 Vector3 at = v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell));
-                Open(new OpenContainer { Title = v == Pod ? "Pod locker" : $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
+                Open(new OpenContainer { Title = v == Bunker?.Ruin ? "Bunker locker" : $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
                 return;
             }
             if (type.IsCockpit)
@@ -92,7 +92,6 @@ public partial class Game
                 return;
             }
         }
-        GD.Print($"DEBUG use: hit {hit} vessel {look.Vessel?.Name} cell {look.Cell} dist {look.Distance} aboard {Survivor.Aboard?.Name} collider {look.Collider}");
         Say("Nothing to use here", Tones.Caution);
     }
 
@@ -191,7 +190,7 @@ public partial class Game
     {
         Outcome o = Suit.Sim.Respawn(RespawnChoice.NearestTent);
         if (!o.Ok) return;
-        Survivor.PlaceAboard(Pod, new N.Vector3(0f, 0.3f, 0.3f));
+        WakeAgain();
         Survivor.Body.Velocity = N.Vector3.Zero;
         _wasDead = false;
         Report(o);

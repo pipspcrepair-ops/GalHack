@@ -50,7 +50,7 @@ public sealed class CoreSection : IMenuSection
         Vector3 feet = _game.Survivor.WorldFeet;
         foreach (Vessel v in _game.Zone.Vessels)
         {
-            if (v.IsWreck || v.Structure.Core == null) continue;
+            if (v.IsWreck || v.IsRuin || v.Structure.Core == null) continue;
             float d = _game.Survivor.Aboard == v || _game.Survivor.Seated == v ? -1f : v.DistanceFromHull(v.Body.ToLocal(feet.ToNumerics()), Reach + 1f);
             if (d <= Reach) near.Add((v, d));
         }
@@ -200,7 +200,7 @@ public sealed class StructureSection : IMenuSection
         if (v == null) return;
         Structure s = v.Structure;
         bool large = s.Grid.Size == GridSize.Large;
-        string kind = v == _game.Pod ? "ESCAPE POD" : v.IsBase ? "BASE" : large ? "CAPITAL VESSEL" : "SMALL VESSEL";
+        string kind = v.IsBase ? "BASE" : large ? "CAPITAL VESSEL" : "SMALL VESSEL";
         g.Caption($"{v.Name.ToUpperInvariant()} · {kind}", o, area.Size.X);
         float y = o.Y + 36;
 
@@ -240,7 +240,7 @@ public sealed class StructureSection : IMenuSection
             v.Home = now;
             if (now) _game.Say($"{v.Name} is Home: vessels with auto-transmit send their haul here", Tones.Good);
         }
-        if (!large && v != _game.Pod && Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
+        if (!large && Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
 
         // ---- Numbers ----------------------------------------------------------------------------
         StructureStats st = v.StructureStats;
@@ -257,7 +257,7 @@ public sealed class StructureSection : IMenuSection
         Row("POWER", st.Generators == 0 ? "no generator" : $"{st.PowerOut:F2} MW out, {st.PowerUse:F2} MW use", st.PowerOut >= st.PowerUse ? C.Good : C.Warn);
         Row("CPU", $"{st.CpuUsed:N0} / {st.CpuLimit:N0} (tier {st.Tier})", st.Efficiency >= 1 ? C.Text : C.Warn);
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
-        if (v.Stats is HandlingStats h && !v.IsBase && v != _game.Pod)
+        if (v.Stats is HandlingStats h && !v.IsBase)
         {
             float cap = _game.Zone.Data.Rules.Build.SmallVesselMaxTurn;
             Row("ACCEL F / B", $"{h.Accel(Direction.Forward):F1} / {h.Accel(Direction.Back):F1} m/s²", C.Text);

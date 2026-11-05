@@ -125,14 +125,9 @@ public sealed class SliceRules
 
     public sealed class PlanetRules
     {
-        public ulong Seed { get; set; } = 7;
-        public string Archetype { get; set; } = "Temperate";
-        public int Variant { get; set; }
         public float Gravity { get; set; } = 9.8f;
         public float Ceiling { get; set; } = 4000f;
         public double StartTimeOfDay { get; set; } = 0.27;
-        public float PodDropHeight { get; set; } = 260f;
-        public float PodDropSeconds { get; set; } = 7f;
         public float ValleyFogScale { get; set; } = 0.45f;
     }
 
@@ -145,7 +140,8 @@ public sealed class SliceRules
         public double OrganicsPerPlant { get; set; } = 1.5;
         public int BiomassPerPlant { get; set; } = 2;
         /// <summary>What the escape pod's locker holds, by item id.</summary>
-        public Dictionary<string, int> PodLocker { get; set; } = new();
+        /// <summary>The starting kit, in the bunker's locker.</summary>
+        public Dictionary<string, int> StartKit { get; set; } = new();
         /// <summary>What the castaway starts with on the toolbar, by item id, in slot order.</summary>
         public List<string> Toolbar { get; set; } = new();
     }

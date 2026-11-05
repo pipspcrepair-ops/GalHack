@@ -47,9 +47,9 @@ public sealed partial class Staging
         foreach (int x in Play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
         // Out from the hatch, then set it down a few metres on.
-        Vector3 away = _game.Pod.ToWorld(new N.Vector3(0f, 0f, -9f));
+        Vector3 away = _game.Bunker.Ahead(5f);
         foreach (int x in _drive.WalkTo(away, 1f, 20f)) yield return x;
-        Vector3 spot = _game.Zone.GroundAt(_game.Pod.ToWorld(new N.Vector3(2f, 0f, -13f)).X, _game.Pod.ToWorld(new N.Vector3(2f, 0f, -13f)).Z);
+        Vector3 spot = _game.Zone.GroundAt(_game.Bunker.Ahead(9f, 2f).X, _game.Bunker.Ahead(9f, 2f).Z);
         foreach (int x in Play.PlaceOnGround(2, spot)) yield return x;
         if (_game.Zone.Devices.FirstOrDefault() is Device fab)
         {
@@ -102,12 +102,12 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait((int)Num("frames", 2))) yield return x;
     }
 
-    /// <summary>Inside the pod, a shot at its wall: the bolt, and the scorch on the wall.</summary>
-    IEnumerable<int> PodShot()
+    /// <summary>Inside the bunker, a shot at its wall: the bolt, and the scorch on the wall.</summary>
+    IEnumerable<int> BunkerShot()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.3);
-        foreach (int x in _drive.EnterThroughHatch(_game.Pod)) yield return x;
-        Vector3 wall = _game.Pod.ToWorld(new N.Vector3(1.25f, 1.1f, 0.6f));
+        foreach (int x in _drive.WalkTo(_game.Bunker.At(new Vector3(-1.5f, 0.25f, -0.5f)), 0.4f, 15f)) yield return x;
+        Vector3 wall = _game.Bunker.At(new Vector3(3.25f, 1.3f, -0.6f));
         foreach (int x in Play.ShootAt(() => wall)) yield return x;
         foreach (int x in Play.ShootAt(() => wall + new Vector3(0f, 0.25f, 0f))) yield return x;
         foreach (int x in _drive.LookAt(wall + new Vector3(0, 0.1f, 0), 4)) yield return x;
@@ -117,16 +117,16 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(1)) yield return x;
     }
 
-    /// <summary>Night, the head torch on, out by the pod.</summary>
+    /// <summary>Night, the head torch on, out by the bunker's stairs.</summary>
     IEnumerable<int> Torch()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.02);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        Vector3 out1 = _game.Pod.ToWorld(new N.Vector3(3f, 0f, -9f));
+        Vector3 out1 = _game.Bunker.Ahead(6f, 3f);
         foreach (int x in _drive.WalkTo(out1, 1f, 30f)) yield return x;
         foreach (int x in _drive.Tap(Key.L)) yield return x;
         foreach (int x in _drive.UntilSettled()) yield return x;
-        foreach (int x in _drive.LookAt(_game.Pod.Body.Position.ToGodot() + Vector3.Up * 0.8f, 30)) yield return x;
+        foreach (int x in _drive.LookAt(_game.Bunker.StairTop + Vector3.Up * 0.8f, 30)) yield return x;
     }
 
     /// <summary>Walks to the side of a block's face and places against it.</summary>
@@ -153,8 +153,8 @@ public sealed partial class Staging
         foreach (var (b, s) in new[] { ("container", 4), ("generator", 5), ("smallfab", 6), ("steel", 7), ("glass", 8) })
             foreach (int x in Play.BlockToToolbar(b, false, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
-        Vector3 site = Play.FlatSpot(_game.Pod.Body.Position.ToGodot(), 24f, 1.0f, 0.6f);
-        foreach (int x in Play.StandOff(site, _game.Pod.Body.Position.ToGodot(), 7f)) yield return x;
+        Vector3 site = Play.FlatSpot(_game.Start, 24f, 1.0f, 0.6f);
+        foreach (int x in Play.StandOff(site, _game.Start, 7f)) yield return x;
         foreach (int x in Play.PlaceOnGround(3, site)) yield return x;
         Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase);
         if (b0 == null) yield break;
@@ -188,10 +188,10 @@ public sealed partial class Staging
         var slots = new Dictionary<string, int> { ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
         foreach (var (b, s) in slots) foreach (int x in Play.BlockToToolbar(b, true, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
-        Vector3 pad = Play.FlatSpot(_game.Pod.Body.Position.ToGodot(), 20f, 2.0f, 0.3f);
-        foreach (int x in Play.StandOff(pad, _game.Pod.Body.Position.ToGodot(), 5f)) yield return x;
+        Vector3 pad = Play.FlatSpot(_game.Start, 20f, 2.0f, 0.3f);
+        foreach (int x in Play.StandOff(pad, _game.Start, 5f)) yield return x;
         foreach (int x in Play.PlaceOnGround(3, pad)) yield return x;
-        Vessel v = _game.Zone.Vessels.FirstOrDefault(x => !x.IsBase && x != _game.Pod);
+        Vessel v = _game.Zone.Vessels.FirstOrDefault(x => !x.IsBase && !x.IsRuin);
         if (v == null) yield break;
         foreach (int x in Play.BuildVessel(v, slots, _ => { })) yield return x;
         Vector3 ground = v.Body.Position.ToGodot();

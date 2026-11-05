@@ -86,7 +86,7 @@ public partial class SliceTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
@@ -99,7 +99,7 @@ public partial class SliceTest : Node
         zone.Weather.Sim.Snap(WeatherKind.Clear);
         zone.Wildlife.Frozen = true;
         zone.Physics.Rescued += _rescues.Add;
-        zone.Physics.Rescued += r => GD.Print($"  (rescued {r.Body.Label} from inside {r.Inside}: {r.From} to {r.To}; frame {_game.Survivor.Body.Frame?.Label} outer {_game.Survivor.Body.OnOuterHull} local {_game.Pod.Body.ToLocal(_game.Survivor.Body.WorldPosition)} at {_clock.Elapsed.TotalSeconds:F1})");
+        zone.Physics.Rescued += r => GD.Print($"  (rescued {r.Body.Label} from inside {r.Inside}: {r.From} to {r.To}; frame {_game.Survivor.Body.Frame?.Label} outer {_game.Survivor.Body.OnOuterHull} at {_clock.Elapsed.TotalSeconds:F1})");
         zone.Physics.Impact += _impacts.Add;
         zone.Physics.Impact += i =>
         {
@@ -137,8 +137,12 @@ public partial class SliceTest : Node
     void PureChecks()
     {
         GameData data = GameData.Shared;
-        SliceRules.PlanetRules p = data.Rules.Planet;
-        var spec = PlanetSpec.Roll(p.Seed, Enum.Parse<Planets.Gen.Archetype>(p.Archetype), p.Variant);
+        WorldChoice world = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested);
+        var spec = world.Spec();
+        WorldChoice f1 = WorldChoice.Fresh(), f2 = WorldChoice.Fresh();
+        Check(f1.Seed != f2.Seed && WorldChoice.FromArgs(new[] { "--seed", "42", "--planet", "ice" }) == new WorldChoice(42, Planets.Gen.Archetype.Ice, 0)
+              && WorldChoice.FromArgs(new[] { "--seed=42" }).Seed == 42 && WorldChoice.FromArgs(System.Array.Empty<string>()) == null,
+            $"seeds: a new game rolls a fresh one ({f1.Seed}, then {f2.Seed}); --seed and --planet pin both; this run: {world}");
         PlanetWorld a = PlanetWorld.Build(spec, null), b = PlanetWorld.Build(spec, null);
         Check(a.Landing == b.Landing && a.Map.ComputeHash() == b.Map.ComputeHash(),
             $"determinism: the starter planet generates identically twice (landing at {a.Landing.X:F0}, {a.Landing.Y:F0})");
@@ -168,44 +172,41 @@ public partial class SliceTest : Node
 
     IEnumerable<int> Arrival()
     {
-        GD.Print("-- the pod --");
+        GD.Print("-- the bunker --");
         SurfaceZone zone = _game.Zone;
+        Slice.Start.Bunker b = _game.Bunker;
         Vector3 landing = zone.LandingSite;
-        Vector3 pod = _game.Pod.Body.Position.ToGodot();
-        Check(new Vector2(pod.X - landing.X, pod.Z - landing.Z).Length() < 0.01f && _game.Pod.Controller.Frozen,
-            $"the escape pod stands landed at the generator's landing site ({pod.X:F0}, {pod.Y:F1}, {pod.Z:F0})");
+        float under = zone.GroundAt(b.RoomCentre.X, b.RoomCentre.Z).Y - b.RoomCentre.Y;
+        Check(b.Ruin.IsRuin && b.Blocked(zone) == 0 && under > 4f && b.RoomCentre.Y > 1.5f,
+            $"the cryo bunker is dug in at the start site: {under:F1} m under the ground, above the sea, {new Vector2(b.Outside.X - landing.X, b.Outside.Z - landing.Z).Length():F0} m from the generator's landing site, {b.Steps} steps up");
         foreach (int x in _drive.Wait(30)) yield return x;
         Survivor s = _game.Survivor;
-        Check(s.Body.OnFloor && s.Body.Frame == null && s.WorldFeet.DistanceTo(pod) < 6f && !Inside(s.Body),
-            $"the castaway spawns at the pod, standing on the ground {s.WorldFeet.DistanceTo(pod):F1} m from it");
+        Check(s.Body.OnFloor && s.WorldFeet.DistanceTo(b.CryoStand) < 0.8f && !Inside(s.Body) && b.Mine.Open,
+            $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
-            $"the landing site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
+            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
         Check(zone.Wildlife.Sim.Creatures.Count > 20 && zone.Wildlife.Fauna.Species.Count >= 6,
-            $"the planet's own wildlife lives around the landing site: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
+            $"the planet's own wildlife lives around the start: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
     }
 
     IEnumerable<int> Locker()
     {
-        GD.Print("-- the pod's locker --");
-        Vessel pod = _game.Pod;
-        Int3 locker = pod.Structure.Blocks().First(b => pod.Structure.TypeOf(b.block).IsContainer).pos;
-        Vector3 at = pod.Body.ToParent(StructureBridge.CellCenter(pod.Structure, locker)).ToGodot();
-        foreach (int x in _drive.EnterThroughHatch(pod)) yield return x;
-        Check(_game.Survivor.Aboard == pod, "walking in through the hatch puts the castaway inside the pod");
-        foreach (int x in _drive.LookAt(at, 6)) yield return x;
+        GD.Print("-- the bunker's locker, and the way out --");
+        Slice.Start.Bunker b = _game.Bunker;
+        foreach (int x in _drive.WalkTo(b.LockerFront, 0.4f, 15f)) yield return x;
+        foreach (int x in _drive.LookAt(b.Locker, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(_game.Opened?.Vessel == pod && _game.Menu.IsOpen, "E at the pod's locker opens it beside the bag");
+        Check(_game.Opened?.Vessel == b.Ruin && _game.Menu.IsOpen, "E at the bunker's locker opens it beside the bag");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
-        Dictionary<string, int> want = _game.Zone.Data.Rules.Materials.PodLocker;
-        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && pod.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
+        Dictionary<string, int> want = _game.Zone.Data.Rules.Materials.StartKit;
+        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && b.Ruin.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
             $"TAKE ALL empties the locker into the bag: {string.Join(", ", want.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}, and the rations");
-        int stepsOff = _game.Survivor.StepsOff;
-        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
-        Check(_game.Survivor.Body.Frame == null && _game.Survivor.StepsOff > stepsOff && _game.Survivor.Body.OnFloor && !_rescues.Any(r => r.Body == _game.Survivor.Body),
-            "walking out of the hatch onto the ground hands the castaway back to the planet at once (stepped off, standing, never rescued)");
+        foreach (int x in _drive.ClimbOut(b)) yield return x;
+        Check(_drive.OnSurface && _game.Survivor.Body.OnFloor && !_rescues.Any(r => r.Body == _game.Survivor.Body),
+            $"up the stairwell's {b.Steps} steps to the surface on foot, never rescued");
     }
 
     // ==== Gathering =================================================================================
@@ -435,8 +436,8 @@ public partial class SliceTest : Node
         GalHack.Items.Bill cost = _game.Builder.TotalCost(plan);
         GalHack.Items.Bill packBefore = _game.Pack.Storage.Contents;
         _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
-        Vector3 pad = FlatSpot(_game.Pod.Body.Position.ToGodot(), 16f);
-        Vector3 stand = pad + (pad - _game.Pod.Body.Position.ToGodot()).Normalized() * 7f;
+        Vector3 pad = FlatSpot(_game.Start, 16f);
+        Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
@@ -486,8 +487,8 @@ public partial class SliceTest : Node
         GalHack.Items.Bill pack = _game.Pack.Storage.Contents;
         var spent = new Dictionary<string, int>(_game.Builder.Spent);
         double organics = _game.Suit.Kit.Organics;
-        Vector3 pad = FlatSpot(_game.Pod.Body.Position.ToGodot(), 30f, 2.5f);
-        Vector3 stand = pad + (pad - _game.Pod.Body.Position.ToGodot()).Normalized() * 7f;
+        Vector3 pad = FlatSpot(_game.Start, 30f, 2.5f);
+        Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;

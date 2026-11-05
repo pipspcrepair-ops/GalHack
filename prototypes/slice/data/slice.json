@@ -1,18 +1,14 @@
 // The slice's own numbers. Everything else is read from the prototype that owns it.
 {
   "planet": {
-    // The starter world: a temperate planet from the planet generator.
-    "seed": 7,
-    "archetype": "Temperate",
-    "variant": 0,
+    // The world: every new game rolls a fresh seed and the player picks the planet type on the
+    // start screen (Game.World, WorldChoice); tests and screenshots pin both (-- --seed N --planet type).
     "gravity": 9.8,
     // Top of the atmosphere, m: no weight above it (the handling model's switch). Above the
     // highest mountains any planet makes.
     "ceiling": 4000,
-    // The pod comes down at dawn (0 midnight, 0.5 noon).
+    // You wake at dawn (0 midnight, 0.5 noon).
     "startTimeOfDay": 0.255,
-    "podDropHeight": 260,
-    "podDropSeconds": 7,
     // The valley fog's density against planet-surface's own: thinner, so the first view reads.
     "valleyFogScale": 0.4
   },
@@ -27,8 +23,8 @@
     // Cutting a plant, at scale 1: biomass, and kg of organics for the replicator.
     "biomassPerPlant": 2,
     "organicsPerPlant": 1.5,
-    // What the escape pod's locker holds: a few days' food and air, not a ship.
-    "podLocker": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
+    // The starting kit in the bunker's locker: a few days' food and air, not a ship.
+    "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
     // What the castaway has on the toolbar from the start, slot 1 first.
     "toolbar": [ "survival-tool" ]
   },

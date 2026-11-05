@@ -32,8 +32,7 @@ public partial class Screenshot : Node
         }
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
-        bool intro = _view == "descent";
-        _game = new Game.Game { Interactive = false, SkipIntro = !intro };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         var staging = new Staging(_game, _args);
         _script = staging.Run(_view).GetEnumerator();

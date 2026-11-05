@@ -34,17 +34,16 @@ public sealed partial class Staging
 
     public IEnumerable<int> Run(string view)
     {
-        if (view == "descent")
-        {
-            foreach (int x in Descent()) yield return x;
-            yield break;
-        }
         foreach (int x in _drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = view != "dig";
+        // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
+        if (view is not ("bunker" or "climb" or "bunkershot"))
+            foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         IEnumerable<int> script = view switch
         {
-            "pod" => Pod(),
+            "bunker" => BunkerView(),
+            "climb" => Climb(),
             "dig" => Dig(),
             "build" => Build(half: true),
             "liftoff" => Liftoff(),
@@ -53,7 +52,7 @@ public sealed partial class Staging
             "menu" => Menu(),
             "loot" => Loot(),
             "bolt" => Bolt(),
-            "podshot" => PodShot(),
+            "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
             "vessel" => VesselTakeoff(),
@@ -63,43 +62,29 @@ public sealed partial class Staging
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
     }
 
-    /// <summary>The pod coming down at dawn on its retros, seen from the ground.</summary>
-    IEnumerable<int> Descent()
+    /// <summary>Inside the bunker: the castaway out of the one working cryopod, the dead sleepers in theirs.</summary>
+    IEnumerable<int> BunkerView()
     {
-        while (_game.Phase == Phase.Generating) yield return 0;
-        _game.Visor.Visible = false;
-        _game.Zone.Weather.Sim?.Snap(WeatherKind.Clouds);
-        Vector3 landing = _game.Zone.LandingSite;
-        float heading = (float)Num("heading", 160) * Mathf.Pi / 180f;
-        Vector3 eye = landing + new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading)) * 34f;
-        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 2f;
-        double until = Num("at", 5.6);
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-        int ticks = 0;
-        while (ticks++ < until * 60)
-        {
-            Vector3 pod = _game.Pod.Body.Position.ToGodot();
-            _game.FixedCamera = new Transform3D(Basis.LookingAt(pod + Vector3.Up * 1.5f - eye, Vector3.Up), eye);
-            yield return 0;
-        }
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.3);
+        Slice.Start.Bunker b = _game.Bunker;
+        foreach (int x in _drive.WalkTo(b.CryoFront + (b.RoomCentre - b.CryoFront) * 0.4f, 0.3f, 10f)) yield return x;
+        Vector3 eye = b.At(new Vector3(-2.7f, 2.3f, -1.9f));
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(b.At(new Vector3(0.6f, 1.0f, 1.6f)) - eye, Vector3.Up), eye);
+        foreach (int x in _drive.LookAt(b.Locker, 10)) yield return x;
+        foreach (int x in _drive.Wait(30)) yield return x;
     }
 
-    /// <summary>The escape pod just down at dawn, seen from a little way off.</summary>
-    IEnumerable<int> Pod()
+    /// <summary>Climbing the bunker's stairwell, the fallen-in top open to the morning sky.</summary>
+    IEnumerable<int> Climb()
     {
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.285);
-        _game.Zone.Weather.Sim.Snap(WeatherKind.Clouds);
-        _game.Visor.Visible = false;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.31);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        Slice.Start.Bunker b = _game.Bunker;
+        var way = b.WayOut;
+        int upTo = Math.Max(3, way.Count - 3);
+        for (int i = 0; i < upTo; i++) foreach (int x in _drive.WalkTo(way[i], 0.45f, 30f)) yield return x;
         foreach (int x in _drive.UntilSettled()) yield return x;
-        Vector3 pod = _game.Pod.Body.Position.ToGodot();
-        float heading = (float)Num("heading", 160) * Mathf.Pi / 180f;
-        var dir = new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading));
-        Vector3 eye = pod + dir * (float)Num("distance", 10) + Vector3.Up * 1.6f;
-        eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f);
-        // The castaway stands at the hatch, looking out.
-        _game.Survivor.PlaceOutside(_game.Pod.Body.ToParent(new N.Vector3(0.6f, -0.2f, -3.0f)));
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(pod + Vector3.Up * 1.4f - eye, Vector3.Up), eye);
-        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (int x in _drive.LookAt(b.Outside + Vector3.Up * 3.5f, 20)) yield return x;
     }
 
     /// <summary>First person, digging into an iron deposit: the visor counting the ore in.</summary>
@@ -128,7 +113,7 @@ public sealed partial class Staging
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
         _game.Progress.Creative = true;
         _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
-        Vector3 pod = _game.Pod.Body.Position.ToGodot();
+        Vector3 pod = _game.Start;
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
         foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
@@ -148,7 +133,7 @@ public sealed partial class Staging
     Vessel BuiltSkiff()
     {
         foreach (Vessel v in _game.Zone.Vessels)
-            if (v != _game.Pod && v.Structure.Count == _game.StarterPlan.Count) return v;
+            if (!v.IsRuin && v.Structure.Count == _game.StarterPlan.Count) return v;
         return null;
     }
 

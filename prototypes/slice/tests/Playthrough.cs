@@ -86,6 +86,93 @@ public sealed class Playthrough
     }
 
     /// <summary>
+    /// The start, as a player plays it: wake in the cryopod, F opens it, step out, E on the
+    /// locker and TAKE ALL, (a shot at the wall and the tool on the floor, harmless,) up the
+    /// stairwell to the surface, 50 m away, back down into the bunker, and out again.
+    /// </summary>
+    public IEnumerable<int> WakeAndLeave(Action<bool, string> check, string label = "", bool shoot = false)
+    {
+        Slice.Start.Bunker b = Game.Bunker;
+        Vector3 feet = Game.Survivor.WorldFeet;
+        float under = Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y;
+        check(Game.Phase == Phase.Playing && !b.Mine.Open && feet.DistanceTo(b.CryoStand) < 0.6f,
+            $"{label}wakes in the cryopod, its lid shut, {under:F1} m under the ground");
+        foreach (int x in Drive.Tap(Key.F)) yield return x;
+        foreach (int x in Drive.Wait(40)) yield return x;
+        check(b.Mine.Open, $"{label}F opens the cryopod");
+        foreach (int x in Drive.WalkTo(b.CryoFront, 0.3f, 10f)) yield return x;
+        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoStand) > 0.7f && Game.Survivor.Body.OnFloor, $"{label}and the castaway steps out into the chamber");
+
+        foreach (int x in Drive.WalkTo(b.LockerFront, 0.4f, 15f)) yield return x;
+        foreach (int x in Drive.LookAt(b.Locker, 8)) yield return x;
+        foreach (int x in Drive.Tap(Key.E)) yield return x;
+        foreach (int x in Drive.Wait(2)) yield return x;
+        check(Game.Opened?.Vessel == b.Ruin && Game.Menu.IsOpen && Game.Menu.Tab == MenuTab.You, $"{label}E on the locker opens it beside the bag");
+        foreach (int x in Drive.ClickWidget("box:take-all")) yield return x;
+        var kit = Game.Zone.Data.Rules.Materials.StartKit;
+        check(b.Ruin.Storage.IsEmpty && kit.All(kv => Pack[kv.Key] >= kv.Value),
+            $"{label}TAKE ALL moves the kit into the bag: {string.Join(", ", kit.Select(kv => $"{Pack[kv.Key]} {kv.Key}"))}");
+        foreach (int x in CloseMenu()) yield return x;
+
+        if (shoot)
+        {
+            int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
+            Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.0f));
+            foreach (int x in ShootAt(() => wall)) yield return x;
+            foreach (int x in Drive.Wait(20)) yield return x;
+            check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
+                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Body.Damage == 0f,
+                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, no harm done");
+            int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
+            foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
+            foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;
+            check(Game.Zone.Planet.Terrain.Store.RemovedCount == removed && Game.Tool.OnBlock, $"{label}the tool inside digs nothing through its floor");
+        }
+
+        double start = Game.Stats.Seconds;
+        foreach (int x in Drive.ClimbOut(b)) yield return x;
+        GD.Print($"  (out: feet {Game.Survivor.WorldFeet}, the way out ends at {b.Outside}, ground there {Game.Zone.GroundAt(b.Outside.X, b.Outside.Z).Y:F2}, top step {b.StairTop})");
+        check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f && Game.Survivor.Body.OnFloor,
+            $"{label}up the stairwell's {b.Steps} steps to the surface on foot ({Game.Stats.Seconds - start:F0} s)");
+        Vector3 away = AwayFrom(b.Outside, b.Outside - b.StairTop, 53f);
+        foreach (int x in Drive.WalkTo(away, 2f, 90f)) yield return x;
+        Vector3 f = Game.Survivor.WorldFeet;
+        float gone = new Vector2(f.X - b.Outside.X, f.Z - b.Outside.Z).Length();
+        check(gone >= 50f, $"{label}and walks {gone:F0} m away from it (feet {f.Y - Game.Zone.GroundAt(f.X, f.Z).Y:+0.0;-0.0} m from the ground)");
+        foreach (int x in Drive.WalkTo(b.Outside, 0.8f, 90f, dig: false)) yield return x;
+        foreach (int x in Drive.ClimbIn(b)) yield return x;
+        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoFront) < 1.0f, $"{label}back down the stairs into the chamber");
+        foreach (int x in Drive.ClimbOut(b)) yield return x;
+        check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f, $"{label}and out again, with no snag");
+    }
+
+    /// <summary>A point a walk away over dry, gentle ground: the way you face first, then round from it.</summary>
+    public Vector3 AwayFrom(Vector3 from, Vector3 facing, float distance)
+    {
+        facing.Y = 0f;
+        float a0 = MathF.Atan2(facing.Z, facing.X), bestScore = float.MaxValue;
+        Vector3 best = from + facing.Normalized() * distance;
+        for (int i = 0; i < 16; i++)
+        {
+            float a = a0 + (i % 2 == 0 ? 1 : -1) * ((i + 1) / 2) * MathF.Tau / 16f;
+            var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
+            float worst = 0f, last = Game.Zone.GroundAt(from.X, from.Z).Y;
+            bool wet = false;
+            for (float d = 4f; d <= distance + 4f; d += 4f)
+            {
+                Vector3 p = from + dir * d;
+                float h = Game.Zone.GroundAt(p.X, p.Z).Y;
+                wet |= h < 1.5f;
+                worst = MathF.Max(worst, MathF.Abs(h - last) / 4f);
+                last = h;
+            }
+            float score = (wet ? 100f : 0f) + worst + i * 0.02f;
+            if (score < bestScore) { bestScore = score; best = from + dir * distance; }
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Clicks a widget on an in-world screen as a player does: look at the screen (a cursor
     /// appears where you aim), page with its arrow until the widget shows, aim at it and click.
     /// </summary>

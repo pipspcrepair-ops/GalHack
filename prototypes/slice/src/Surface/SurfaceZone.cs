@@ -80,7 +80,8 @@ public partial class SurfaceZone : Node3D
         ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
         Data ??= GameData.Shared;
         SliceRules.PlanetRules p = Data.Rules.Planet;
-        Spec ??= PlanetSpec.Roll(p.Seed, Enum.Parse<Archetype>(p.Archetype), p.Variant);
+        // A zone made without a world (a tool, a probe): the world the slice's tests are tuned on.
+        Spec ??= Slice.Game.WorldChoice.Tested.Spec();
         PlanetTerrain.ConfigureWorldBounds();
         // Trunks and boulders are solid (planet-surface's rules): colliders in the near rings.
         PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(GameData.Proto("planet-surface", "data", "flora-solids.json"));
@@ -139,7 +140,7 @@ public partial class SurfaceZone : Node3D
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
 
-        Vector3 landing = LandingSite;
+        Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
         Sea.MaterialOverride = WaterMaterial(sea: true);
         Sky.SetWorld(Planet);
@@ -147,6 +148,16 @@ public partial class SurfaceZone : Node3D
         Wildlife.SetWorld(Planet, landing);
         Built?.Invoke();
     }
+
+    /// <summary>
+    /// Picks where the game starts, once the planet is generated and before any ground streams
+    /// in (the game's bunker site); the streaming and the creatures' calm opening centre there.
+    /// Null, or returning null: the generator's landing site.
+    /// </summary>
+    public Func<Vector3?> PickStart;
+
+    /// <summary>Where the game starts, on the ground.</summary>
+    public Vector3 Start { get; private set; }
 
     /// <summary>The generator's landing site, on the ground.</summary>
     public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);

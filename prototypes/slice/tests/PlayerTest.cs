@@ -14,6 +14,7 @@ using Slice.Game;
 using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
+using Slice.Start;
 using Slice.Ui;
 using DiegeticUi.Screens;
 using Slice.Vessels;
@@ -31,7 +32,7 @@ namespace Slice.Tests;
 /// every block paid for, every unlock earned. The one help is the marked TEST TIME-SCALE on
 /// crafting, so an hour of fabricating fits in a run.
 ///
-///   1  unstrap, take the locker inside the pod, walk out of the door and back in, shoot the wall
+///   1  wake in the cryopod, take the bunker's locker, shoot its wall, climb out, 50 m away and back
 ///   2  the tool from the toolbar: gather ore, cut a plant
 ///   3  shoot the ground and a creature
 ///   4  loot the creature's body (drag, shift-click, split, take all), fill the toolbar by drag
@@ -91,7 +92,7 @@ public partial class PlayerTest : Node
 
     IEnumerable<int> Scenario()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = false, CraftTimeScale = CraftScale };
+        _game = new Game.Game { Interactive = false, SkipIntro = false, CraftTimeScale = CraftScale, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _play = new Playthrough(_game);
         _drive = _play.Drive;
@@ -109,7 +110,7 @@ public partial class PlayerTest : Node
         _game.Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
 
-        foreach (int x in Pod()) yield return x;
+        foreach (int x in WakeUp()) yield return x;
         foreach (int x in Gathering()) yield return x;
         foreach (int x in Hunting()) yield return x;
         foreach (int x in Inventory()) yield return x;
@@ -128,50 +129,12 @@ public partial class PlayerTest : Node
 
     // ==== 1. The pod ===============================================================================
 
-    IEnumerable<int> Pod()
+    IEnumerable<int> WakeUp()
     {
-        GD.Print("-- 1. the pod: unstrap, the locker, out of the door and back in --");
-        Vessel pod = _game.Pod;
-        Check(_game.Survivor.Seated == pod && _game.Phase == Phase.Playing, "the pod came down for real with the castaway strapped in");
-        foreach (int x in _drive.Tap(Key.F)) yield return x;
-        foreach (int x in _drive.Wait(10)) yield return x;
-        Check(_game.Survivor.Seated == null && _game.Survivor.Aboard == pod, "F unstraps: standing inside the pod");
-
-        Int3 locker = pod.Structure.Blocks().First(b => pod.Structure.TypeOf(b.block).IsContainer).pos;
-        Vector3 lockerAt = pod.ToWorld(StructureBridge.CellCenter(pod.Structure, locker));
-        foreach (int x in _drive.LookAt(lockerAt, 8)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
-        foreach (int x in _drive.Wait(2)) yield return x;
-        Check(_game.Opened?.Vessel == pod && _game.Menu.IsOpen && _game.Menu.Tab == MenuTab.You, "E on the locker, from inside, opens it beside the bag");
-        foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
-        var locker0 = _game.Zone.Data.Rules.Materials.PodLocker;
-        Check(pod.Storage.IsEmpty && locker0.All(kv => _game.Pack[kv.Key] == kv.Value), $"TAKE ALL moves it into the bag: {string.Join(", ", locker0.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}");
-        foreach (int x in _play.CloseMenu()) yield return x;
-
-        // A shot inside hits the pod's own wall, harmlessly: a bolt and an impact on the wall.
-        int blocks = pod.Structure.Count, bolts = _game.Shots.Bolts, impacts = _game.Shots.Impacts;
-        Vector3 wall = pod.ToWorld(new N.Vector3(1.25f, 1.0f, 0.5f));
-        foreach (int x in _play.ShootAt(() => wall)) yield return x;
-        foreach (int x in _drive.Wait(20)) yield return x;
-        Check(_game.Shots.Bolts > bolts && _game.Shots.Impacts > impacts && _game.Shots.LastImpact.Kind == ImpactKind.Block
-              && _game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && pod.Structure.Count == blocks && pod.Body.Damage == 0f,
-            $"a shot inside the pod: a bolt from the muzzle and an impact on its wall {_game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, no harm to the pod");
-        // Gathering inside does nothing: the floor is a block, not ground.
-        int removed = _game.Zone.Planet.Terrain.Store.RemovedCount;
-        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
-        foreach (int x in _drive.HoldPrimary(pod.ToWorld(new N.Vector3(0f, 0.25f, -0.5f)), 30)) yield return x;
-        Check(_game.Zone.Planet.Terrain.Store.RemovedCount == removed && _game.Tool.OnBlock, "the tool inside the pod digs nothing through its floor");
-
-        int stepped = _game.Survivor.StepsOff;
-        double start = _game.Stats.Seconds;
-        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
-        Check(_game.Survivor.Body.Frame == null && _game.Survivor.StepsOff > stepped && _game.Survivor.Body.OnFloor && _rescues.All(r => r.Body != _game.Survivor.Body),
-            $"out of the door: handed back to the planet on stepping off ({_game.Stats.Seconds - start:F1} s from the seat to outside), standing, never rescued");
-        foreach (int x in _drive.EnterThroughHatch(pod)) yield return x;
-        Check(_game.Survivor.Aboard == pod, "and back in through the door");
-        foreach (int x in _drive.WalkOutOfHatch(pod)) yield return x;
-        Check(_game.Survivor.Body.Frame == null && _rescues.All(r => r.Body != _game.Survivor.Body), "and out again, with no snag");
-        Mark("pod");
+        GD.Print($"-- 1. the bunker: wake, the locker, up the stairs and back ({_game.World}) --");
+        foreach (int x in _play.WakeAndLeave(Check, shoot: true)) yield return x;
+        Check(_rescues.All(r => r.Body != _game.Survivor.Body), "never rescued on the way");
+        Mark("out");
     }
 
     // ==== 2 & 3. Gathering and hunting ============================================================
@@ -326,7 +289,7 @@ public partial class PlayerTest : Node
         Check(_game.Fabricator.Orders.Any(j => j.Item.Id == "survival-constructor"), "ordered a survival constructor in the suit fabricator");
         foreach (int x in _play.CloseMenu()) yield return x;
         // It makes it while you walk to a flat spot near the pod.
-        Vector3 site = _play.FlatSpot(_game.Pod.Body.Position.ToGodot(), 22f);
+        Vector3 site = _play.FlatSpot(_game.Start, 22f);
         foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
         foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
         Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
@@ -514,7 +477,7 @@ public partial class PlayerTest : Node
         Vector3 pad = _play.FlatSpot(_base.Body.Position.ToGodot(), 26f, 2.4f, 0.3f);
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
-        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && v != _game.Pod && v.Structure.Grid.Size == GridSize.Small);
+        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && v.Structure.Grid.Size == GridSize.Small);
         if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", vessel cores in the bag {_game.Pack["vessel-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
         Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel on its build stand");
         if (_vessel == null) yield break;
@@ -672,10 +635,10 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
-        Check(!_game.Suit.Dead && _game.Survivor.Aboard == _game.Pod, "R: awake in the pod");
+        Check(!_game.Suit.Dead && _game.Survivor.WorldFeet.DistanceTo(_game.Bunker.CryoFront) < 1.5f, "R: awake in the bunker, by the cryopod");
         Lootable pack = _game.Backpack;
         if (pack == null) yield break;
-        foreach (int x in _drive.WalkOutOfHatch(_game.Pod)) yield return x;
+        foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in _drive.WalkTo(pack.Position, 1.6f, 120f)) yield return x;
         foreach (int x in _drive.LookAt(pack.Position + Vector3.Up * 0.25f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
