@@ -17,7 +17,15 @@ public sealed class BlockBill
     /// <summary>Weapons: the ammo item it fires from shared storage.</summary>
     public string Ammo { get; init; }
 
+    /// <summary>Its tech-tree nodes on each grid (data: <c>unlock.small</c>, <c>unlock.large</c>), or null where it is always available.</summary>
+    public Unlock UnlockSmall { get; init; }
+    public Unlock UnlockLarge { get; init; }
+
     public Bill For(bool smallGrid) => smallGrid ? Small : Large;
+    public Unlock UnlockFor(bool smallGrid) => smallGrid ? UnlockSmall : UnlockLarge;
+
+    /// <summary>A block's tech-tree node id on a grid: <c>thruster@small</c>.</summary>
+    public static string NodeId(string blockId, bool smallGrid) => $"{blockId}@{(smallGrid ? "small" : "large")}";
 }
 
 /// <summary>Every block's bill, keyed by building's block id.</summary>

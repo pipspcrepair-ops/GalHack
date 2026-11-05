@@ -13,7 +13,7 @@ namespace PlanetSurface.WeatherView;
 /// </summary>
 public partial class TornadoFx : Node3D
 {
-    public WeatherRig Fx;
+    public IWeatherScene Fx;
     public TornadoRules Rules;
 
     const int DebrisCount = 160, DustCount = 220;

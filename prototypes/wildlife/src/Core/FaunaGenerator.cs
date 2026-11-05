@@ -589,6 +589,9 @@ public sealed class FaunaGenerator
             _ => Math.Max(b.Width, b.Size * 0.5f) * 0.7f,
         };
         st.AttackRange = st.Radius + 0.9f + (s.Rig == RigKind.Legged ? b.NeckLength * 0.4f : 0f);
+        // A kill's worth: toughness and danger, so a giant or a hunter is worth far more than a critter.
+        float threat = 1f + st.Damage / 10f + (st.Hunts ? 0.5f : 0f);
+        st.Xp = Math.Clamp((int)MathF.Round(4f + MathF.Sqrt(st.MaxHealth) * 1.6f * threat), 5, 400);
     }
 
     void RollDrops(Species s)

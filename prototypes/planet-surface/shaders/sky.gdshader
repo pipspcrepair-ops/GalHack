@@ -84,7 +84,9 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	// Sunset and sunrise: warm light piling up toward a low sun, strongest in thick air.
 	vec2 flat_dir = normalize(dir.xz + vec2(1e-5));
 	vec2 flat_sun = normalize(sun.xz + vec2(1e-5));
-	float toward = dot(flat_dir, flat_sun) * 0.5 + 0.5;
+	// Clamped: straight away from the sun the dot can round past -1, and pow of a negative is NaN,
+	// which drew a dotted dark line down the sky on the anti-solar azimuth at dawn and dusk.
+	float toward = clamp(dot(flat_dir, flat_sun) * 0.5 + 0.5, 0.0, 1.0);
 	float low = smoothstep(0.45, 0.0, sun_h) * smoothstep(-0.28, -0.02, sun_h);
 	col += sunset * low * pow(toward, 2.5) * exp(-max(up, 0.0) * 5.0 / density) * (0.45 + 0.35 * density);
 	col = mix(col, col * vec3(0.9, 0.85, 0.82) + sunset * 0.08, low * 0.5);
@@ -149,8 +151,9 @@ vec3 night_sky(vec3 dir, vec3 sun) {
 	if (nebula) {
 		float n = sky_noise(nebula_noise, d);
 		float m = sky_noise(nebula_detail, d);
-		float band = exp(-pow((d.y - 0.15 + 0.3 * (n - 0.5)) * 2.2, 2.0));
-		col += mix(nebula_a, nebula_b, m) * pow(n * m, 1.5) * band * 0.9;
+		float off_band = (d.y - 0.15 + 0.3 * (n - 0.5)) * 2.2;
+		float band = exp(-off_band * off_band);   // squared, not pow(): its base goes negative
+		col += mix(nebula_a, nebula_b, m) * pow(max(n * m, 0.0), 1.5) * band * 0.9;
 	}
 	return col + stars(d);
 }

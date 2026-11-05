@@ -1,0 +1,155 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using GalHack.Items;
+using Godot;
+using Wildlife;
+
+namespace Slice.Items;
+
+/// <summary>What a ground container is.</summary>
+public enum LootKind
+{
+    /// <summary>A creature's body: its meat, hide and parts.</summary>
+    Corpse,
+    /// <summary>A dead player's backpack: everything they carried. Marked on the compass and map.</summary>
+    Backpack,
+    /// <summary>Things set down (dropped out of the inventory, or what a full storage couldn't take).</summary>
+    Drop,
+}
+
+/// <summary>A container on the ground: a grid of slots over its own storage, at a place in the zone.</summary>
+public sealed class Lootable
+{
+    public int Id { get; init; }
+    public LootKind Kind { get; init; }
+    public string Name { get; init; }
+    public Vector3 Position;
+    public float Radius = 0.6f;
+    public ItemGrid Grid { get; init; }
+    public SharedStorage Storage => Grid.Storage;
+    /// <summary>The creature this is the body of, while the wildlife still draws it.</summary>
+    public Creature Creature;
+    public Node3D Node;
+    public bool IsEmpty => Storage.IsEmpty;
+}
+
+/// <summary>
+/// Every container lying in the world: creature bodies, dead players' backpacks, and things set
+/// down. Each is a grid like any storage (Empyrion's loot window), opened with E. Nothing here is
+/// ever deleted while it holds anything: a container goes only once it is empty (and closed).
+/// </summary>
+public partial class Lootables : Node3D
+{
+    public ItemCatalogue Items;
+    public readonly List<Lootable> All = new();
+    int _nextId = 1;
+
+    /// <summary>The container open in the inventory view right now (not removed while open).</summary>
+    public Lootable Open;
+
+    /// <summary>A container was emptied and taken away.</summary>
+    public event Action<Lootable> Removed;
+
+    public Lootable Create(LootKind kind, string name, Vector3 at, int columns, int rows, Bill contents = null)
+    {
+        var storage = SharedStorage.Unbounded(Items, name);
+        var loot = new Lootable
+        {
+            Id = _nextId++, Kind = kind, Name = name, Position = at,
+            Grid = new ItemGrid(storage, columns, rows, growable: true),
+        };
+        if (contents != null) storage.AddAll(contents);
+        loot.Grid.Reconcile();
+        loot.Node = Look(kind);
+        AddChild(loot.Node);
+        loot.Node.GlobalPosition = at;
+        All.Add(loot);
+        return loot;
+    }
+
+    /// <summary>Puts items into the drop container at a spot (one within 2.5 m takes them), or a new one.</summary>
+    public Lootable Spill(Bill items, Vector3 at, string name = "Dropped items")
+    {
+        if (items == null || items.IsEmpty) return null;
+        Lootable near = All.Where(l => l.Kind == LootKind.Drop && l.Position.DistanceTo(at) < 2.5f).OrderBy(l => l.Position.DistanceTo(at)).FirstOrDefault();
+        if (near == null) return Create(LootKind.Drop, name, at, 8, 8, items);
+        near.Storage.AddAll(items);
+        near.Grid.Reconcile();
+        return near;
+    }
+
+    /// <summary>The container nearest along a ray within reach, or null.</summary>
+    public Lootable Pick(Vector3 eye, Vector3 dir, float reach, out float distance)
+    {
+        Lootable best = null;
+        distance = reach;
+        foreach (Lootable l in All)
+        {
+            Vector3 c = l.Position + Vector3.Up * (l.Kind == LootKind.Corpse ? l.Radius * 0.6f : 0.25f);
+            float along = (c - eye).Dot(dir);
+            if (along < 0f || along > distance + l.Radius) continue;
+            if ((eye + dir * along - c).Length() > l.Radius + 0.25f) continue;
+            if (along < distance) { distance = along; best = l; }
+        }
+        return best;
+    }
+
+    /// <summary>Empty ones that aren't open go; bodies whose creature has been cleared away show as a bundle.</summary>
+    public void Tick()
+    {
+        for (int i = All.Count - 1; i >= 0; i--)
+        {
+            Lootable l = All[i];
+            if (l.IsEmpty && l != Open)
+            {
+                l.Node.QueueFree();
+                All.RemoveAt(i);
+                if (l.Creature != null) l.Creature.MeatLeft = 0f; // the wildlife clears the body away
+                Removed?.Invoke(l);
+                continue;
+            }
+            if (l.Creature != null && l.Creature.Removed)
+            {
+                l.Creature = null;
+                l.Node.GetNode<Node3D>("Bundle").Visible = true;
+            }
+        }
+    }
+
+    public void Shift(Vector3 by)
+    {
+        foreach (Lootable l in All)
+        {
+            l.Position += by;
+            l.Node.GlobalPosition = l.Position;
+        }
+    }
+
+    /// <summary>Procedural looks: a hide-wrapped bundle under a ring for a body, a pack with a beacon for a backpack, a crate for a drop.</summary>
+    static Node3D Look(LootKind kind)
+    {
+        var root = new Node3D { Name = $"Loot{kind}" };
+        Color body = kind switch { LootKind.Backpack => new Color("e85d04"), LootKind.Drop => new Color("6c757d"), _ => new Color("7f5539") };
+        var bundle = new MeshInstance3D
+        {
+            Name = "Bundle",
+            Mesh = kind == LootKind.Drop ? new BoxMesh { Size = new Vector3(0.6f, 0.45f, 0.45f) } : new CapsuleMesh { Radius = 0.22f, Height = 0.75f },
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = body, Roughness = 0.8f },
+            Position = Vector3.Up * 0.22f, RotationDegrees = kind == LootKind.Drop ? Vector3.Zero : new Vector3(0, 0, 90),
+            Visible = kind != LootKind.Corpse,
+        };
+        root.AddChild(bundle);
+        // A beacon so it can be found again: amber for things set down, orange for a backpack, a dim ring for a body.
+        Color beacon = kind switch { LootKind.Backpack => new Color("ff8c1a"), LootKind.Drop => new Color("ffd166"), _ => new Color("9ef01a") };
+        root.AddChild(new MeshInstance3D
+        {
+            Name = "Ring", Mesh = new TorusMesh { InnerRadius = 0.55f, OuterRadius = 0.62f, Rings = 24, RingSegments = 6 },
+            MaterialOverride = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(beacon, 0.8f), Transparency = BaseMaterial3D.TransparencyEnum.Alpha },
+            Position = Vector3.Up * 0.04f, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+        if (kind == LootKind.Backpack)
+            root.AddChild(new OmniLight3D { LightColor = beacon, LightEnergy = 1.2f, OmniRange = 4f, Position = Vector3.Up * 0.8f });
+        return root;
+    }
+}

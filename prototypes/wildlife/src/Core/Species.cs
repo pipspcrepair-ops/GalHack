@@ -176,6 +176,8 @@ public sealed class Stats
     public bool Retaliates, Hunts;
     /// <summary>Rough radius for hits, collisions and the harvester.</summary>
     public float Radius;
+    /// <summary>Experience a kill is worth to a game with character levels: it grows with how hard the animal is to bring down (health) and how dangerous it is (damage, hunting).</summary>
+    public int Xp;
 }
 
 public sealed class Drops

@@ -1,0 +1,81 @@
+# Skiff: the slice's starter vessel. A small-grid open-cockpit hopper, the first thing a
+# castaway can build: an hour's gathering for an experienced player, a few minutes in the slice.
+#
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the deck.
+# A seat behind a glass windscreen, low side rails, an engine hump behind with the generator,
+# the gyro and a cargo container in it; two main engines in the tail, retros at the bow, a
+# side jet each side, two lift jets under the deck and one down jet on the hump; three legs.
+#
+# Its four numbers come from these blocks: about 3.4 t, about 22 m/s² forward and back, a
+# lift margin of about +40 kN (4 t spare) on a 9.8 m/s² world.
+
+schema galhack.blueprint
+version 1
+name "Skiff"
+grid small
+mode capital
+gravity on
+
+# Livery: cream hull, charcoal belly, an orange racing stripe down the rails, teal chevrons on
+# the engine hump, a red chin and hazard stripes on the tail.
+paint hull base=ece3c8 grime=1
+paint belly base=2b2d42 grime=2
+paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
+paint chev base=0a9396 accent=f4a100 pattern=chevrons grime=1
+paint red base=c1121f grime=1
+paint orange base=e85d04 grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+
+# --- Deck (y 0), the core in the middle ----------------------------------------------------
+block -3..3 0 -5..-1 steel paint=belly
+block -3..-1 0 0 steel paint=belly
+block 0 0 0 core
+block 1..3 0 0 steel paint=belly
+block -3..3 0 1..6 steel paint=belly
+
+# --- Bow: a red chin in hardened steel, a cream rake above it -------------------------------
+block -3..3 0 -6 hardened slope paint=red
+block -3..3 1 -5 steel slope paint=hull
+
+# --- Side rails (y 1), the stripe outside ---------------------------------------------------
+block -3 1 -4..3 steel paint=hull -x=stripe
+block 3 1 -4..3 steel paint=hull +x=stripe
+
+# --- Windscreen on two pillars ---------------------------------------------------------------
+block -3 2 -4 steel slope paint=hull
+block 3 2 -4 steel slope paint=hull
+block -2..2 2 -4 glass slope
+
+# --- The pilot's seat ------------------------------------------------------------------------
+block 0 1 -3 cockpit
+
+# --- Engine hump (y 1..2, z 4..6): generator, gyro and container inside, mains in the tail ---
+block -3..3 1 4 steel paint=chev
+block -3 1 5 steel paint=hull -x=stripe
+block -2 1 5 generator
+block -1 1 5 steel paint=hull
+block 0 1 5 gyro
+block 1 1 5 container
+block 2..3 1 5 steel paint=hull +x=stripe
+block -3 1 6 steel paint=hazard
+block -2 1 6 thruster
+block -1..1 1 6 steel paint=hazard
+block 2 1 6 thruster
+block 3 1 6 steel paint=hazard
+block -3..3 2 4 steel slope paint=chev
+block -3..3 2 5 steel paint=orange
+block -3..3 2 6 steel slope rot=+y+z paint=hull
+
+# --- Manoeuvring: a down jet on the hump, retros at the bow, a side jet each side ------------
+block 0 3 5 thruster rot=+z-y
+block -4 0 -4 thruster rot=+y+z
+block 4 0 -4 thruster rot=+y+z
+block 4 1 1 thruster rot=+y-x
+block -4 1 1 thruster rot=+y+x
+
+# --- Under the deck: two lift jets and three landing legs -----------------------------------
+block 0 -1 -3 thruster rot=+z+y
+block 0 -1 3 thruster rot=+z+y
+block 0 -1 -5 gear
+block -3 -1 5 gear
+block 3 -1 5 gear

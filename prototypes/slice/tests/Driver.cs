@@ -1,0 +1,305 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
+using Godot;
+using Slice.Game;
+using Slice.Vessels;
+using N = System.Numerics;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// Plays the slice through its <see cref="Controls"/>, one physics tick per step, the way a
+/// player's hands would: look, walk, press and hold. Shared by the playthrough test and the
+/// screenshots. Each routine is an iterator that yields once per tick.
+/// </summary>
+public sealed class Driver
+{
+    public readonly Game.Game Game;
+    public Controls Controls => Game.Controls;
+
+    public Driver(Game.Game game) => Game = game;
+
+    const float Sensitivity = 0.0025f;
+
+    /// <summary>Waits for the planet, the pod's landing and the ground under the survivor.</summary>
+    public IEnumerable<int> UntilPlaying(double timeout = 120)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (Game.Phase != Phase.Playing)
+        {
+            if (watch.Elapsed.TotalSeconds > timeout) throw new TimeoutException($"still {Game.Phase} after {timeout} s");
+            yield return 0;
+        }
+        while (!Game.Zone.Streamer.ReadyAround(Game.Survivor.WorldFeet, 1, needCollision: true))
+        {
+            if (watch.Elapsed.TotalSeconds > timeout) throw new TimeoutException("the ground never streamed in");
+            yield return 0;
+        }
+        for (int i = 0; i < 10; i++) yield return 0;
+    }
+
+    /// <summary>Waits a number of ticks with the hands off.</summary>
+    public IEnumerable<int> Wait(int ticks)
+    {
+        for (int i = 0; i < ticks; i++) yield return 0;
+    }
+
+    /// <summary>Waits until the streamer has everything around the focus (screenshots: no half-loaded ground).</summary>
+    public IEnumerable<int> UntilSettled(double timeout = 60)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (!Game.Zone.Streamer.Settled && watch.Elapsed.TotalSeconds < timeout) yield return 0;
+    }
+
+    // ---- Looking ----------------------------------------------------------------------------
+
+    /// <summary>The mouse movement that turns the view to look at a point this tick.</summary>
+    public void Face(Vector3 point)
+    {
+        var s = Game.Survivor;
+        Vector3 d = (point - s.WorldEye()).Normalized();
+        float frameHeading = MathX.Heading(s.WorldViewFrame);
+        float yaw = MathF.Atan2(-d.X, -d.Z) - frameHeading;
+        float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f));
+        float dy = Mathf.Wrap(yaw - s.Yaw, -MathF.PI, MathF.PI);
+        Controls.Look = new Vector2(-dy / Sensitivity, -(pitch - s.Pitch) / Sensitivity);
+    }
+
+    /// <summary>Turns to look at a point and holds the look for a few ticks.</summary>
+    public IEnumerable<int> LookAt(Vector3 point, int ticks = 3)
+    {
+        for (int i = 0; i < ticks; i++)
+        {
+            Face(point);
+            yield return 0;
+        }
+    }
+
+    // ---- Walking ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Walks (sprinting when there is stamina) to within a distance of a point, jumping and using
+    /// the jetpack over anything that stops it. Returns when there, or after the time limit.
+    /// </summary>
+    public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f, bool sprint = true, bool dig = true, bool hop = true)
+    {
+        // The menu takes the mouse: close it to look where you walk.
+        if (Game.Menu.IsOpen)
+        {
+            Controls.Tap(Key.Tab);
+            yield return 0;
+        }
+        int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
+        float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f;
+        bool digging = false;
+        Vector3 last = Game.Survivor.WorldFeet;
+        for (int i = 0; i < ticks; i++)
+        {
+            Vector3 feet = Game.Survivor.WorldFeet;
+            // Down in the bunker (fallen into its stairwell from the side, say) and going
+            // somewhere above: up its stairs first, as a person would.
+            if (!_following && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
+            {
+                Controls.Hold(Key.W, false);
+                Controls.Hold(Key.Space, false);
+                foreach (int x in ClimbOut(b)) yield return x;
+                continue;
+            }
+            Vector3 to = target - feet;
+            float flat = new Vector2(to.X, to.Z).Length();
+            if (flat <= within) break;
+            Face(new Vector3(target.X, Game.Survivor.WorldEye().Y, target.Z));
+            Controls.Hold(Key.W);
+            Controls.Hold(Key.Shift, sprint && Game.Suit.Vitals.Stamina > 30);
+            float moved = (feet - last).Length();
+            last = feet;
+            stuck = moved < 0.02f ? stuck + 1f / 60f : 0f;
+            // Stuck against something: a hop on the jetpack, or on the stairs only a little jump.
+            if (stuck > 0.4f) jet = hop ? 0.7f : 0.12f;
+            // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
+            // survival tool, as a player in a hole would.
+            if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
+            else noProgress += 1f / 60f;
+            digging = dig && noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            if (digging)
+            {
+                var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
+                Face(feet + ahead * 1.6f + Vector3.Up * 0.7f);
+            }
+            Controls.Primary = digging;
+            // Over an edge: the jetpack brakes the fall, as a careful player would.
+            bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
+            // Down in a hole, the way on well above: up on the jetpack, as a player would.
+            bool climb = hop && target.Y - feet.Y > 2.5f && flat < 20f;
+            Controls.Hold(Key.Space, jet > 0f || falling || climb);
+            jet -= 1f / 60f;
+            yield return 0;
+        }
+        if (digging) Controls.Primary = false;
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Shift, false);
+        Controls.Hold(Key.Space, false);
+        for (int i = 0; i < 20; i++) yield return 0;
+    }
+
+    /// <summary>Presses a key for one tick.</summary>
+    public IEnumerable<int> Tap(Key key)
+    {
+        Controls.Tap(key);
+        yield return 0;
+    }
+
+    /// <summary>One click of the primary button on what is under the crosshair.</summary>
+    public IEnumerable<int> Click()
+    {
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        yield return 0;
+    }
+
+    /// <summary>Holds the primary button, looking at a point, for a while or until a condition holds.</summary>
+    public IEnumerable<int> HoldPrimary(Vector3? at, int maxTicks, Func<bool> until = null)
+    {
+        for (int i = 0; i < maxTicks && !(until?.Invoke() ?? false); i++)
+        {
+            if (at is Vector3 p) Face(p);
+            Controls.Primary = true;
+            yield return 0;
+        }
+        Controls.Primary = false;
+        yield return 0;
+    }
+
+    // ---- The Tab menu, by its own mouse --------------------------------------------------------
+
+    /// <summary>Where a menu widget is (the menu lays itself out on its first input pass after opening).</summary>
+    public IEnumerable<int> UntilWidget(string id, int ticks = 4)
+    {
+        for (int i = 0; i < ticks && Game.Menu.RectOf(id) == null; i++) yield return 0;
+        if (Game.Menu.RectOf(id) == null)
+            throw new InvalidOperationException($"no widget '{id}' on the menu (tab {Game.Menu.Tab}; {string.Join(", ", Game.Menu.Root.WidgetIds.Where(w => !w.StartsWith("bag:") && !w.StartsWith("bar:")).Take(40))})");
+    }
+
+    /// <summary>Moves the mouse onto a menu widget and clicks it (Shift held for a quick move).</summary>
+    public IEnumerable<int> ClickWidget(string id, bool shift = false)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        Controls.Hold(Key.Shift, shift);
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Shift, false);
+        yield return 0;
+    }
+
+    /// <summary>Right-clicks a menu widget (splits a stack).</summary>
+    public IEnumerable<int> RightClickWidget(string id)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        yield return 0;
+        Controls.SecondaryPressed = true;
+        yield return 0;
+    }
+
+    /// <summary>Drags from one menu widget to another with the left button held, a few ticks on the way.</summary>
+    public IEnumerable<int> DragWidget(string from, string to)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(to)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), b = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Mouse = a;
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Primary = true;
+            Controls.Mouse = a.Lerp(b, i / 4f);
+            yield return 0;
+        }
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        yield return 0;
+    }
+
+    // ---- Vessels ----------------------------------------------------------------------------
+
+    /// <summary>Walks to the front of a structure's hatch (its -z side) and in through it, the way a player would.</summary>
+    public IEnumerable<int> EnterThroughHatch(Vessel v, float depth = 1.2f)
+    {
+        Vector3 front = v.Body.ToParent(new N.Vector3(0f, 0f, -4.6f)).ToGodot();
+        Vector3 inside = v.Body.ToParent(new N.Vector3(0f, 0.3f, -depth)).ToGodot();
+        if (Game.Survivor.Aboard != v) foreach (int x in WalkTo(front, 0.6f, 30f)) yield return x;
+        foreach (int x in WalkTo(inside, 0.4f, 10f)) yield return x;
+    }
+
+    /// <summary>Walks out of a structure through its hatch onto the ground in front of it.</summary>
+    public IEnumerable<int> WalkOutOfHatch(Vessel v, float distance = 5f)
+    {
+        Vector3 inside = v.Body.ToParent(new N.Vector3(0f, 0.3f, -1.2f)).ToGodot();
+        Vector3 outside = v.Body.ToParent(new N.Vector3(0f, 0f, -1.75f - distance)).ToGodot();
+        foreach (int x in WalkTo(inside, 0.4f, 10f)) yield return x;
+        foreach (int x in WalkTo(outside, 0.6f, 15f)) yield return x;
+    }
+
+    /// <summary>Walks the bunker's way out, from its chamber up the stairwell to the ground beyond.</summary>
+    public IEnumerable<int> ClimbOut(Slice.Start.Bunker b) => Follow(b.WayOut, "out");
+
+    /// <summary>Walks back down into the bunker, to just outside the cryopod.</summary>
+    public IEnumerable<int> ClimbIn(Slice.Start.Bunker b) => Follow(b.WayOut.Reverse().ToList(), "in");
+
+    bool _following;
+
+    IEnumerable<int> Follow(IReadOnlyList<Vector3> way, string what)
+    {
+        _following = true;
+        // From the waypoint nearest where you are (part way up the stairs, say).
+        int first = 0;
+        Vector3 here = Game.Survivor.WorldFeet;
+        for (int i = 1; i < way.Count; i++)
+            if (way[i].DistanceTo(here) < way[first].DistanceTo(here)) first = i;
+        for (int i = first; i < way.Count; i++)
+        {
+            // At a walk, as a player takes stairs; again if it slid past.
+            for (int tries = 0; tries < 3; tries++)
+            {
+                // No hops on the stairs: a jump there lands on the kerb or the roof beside them.
+                foreach (int x in WalkTo(way[i], 0.45f, 30f, sprint: false, dig: false, hop: false)) yield return x;
+                Vector3 at = Game.Survivor.WorldFeet;
+                if (new Vector2(at.X - way[i].X, at.Z - way[i].Z).Length() <= 0.8f) break;
+            }
+            Vector3 f = Game.Survivor.WorldFeet;
+            if (new Vector2(f.X - way[i].X, f.Z - way[i].Z).Length() > 0.8f || MathF.Abs(f.Y - way[i].Y) > 1.3f)
+                GD.Print($"  (the way {what}: short of waypoint {i} of {way.Count} at {way[i]}: feet {f}, on floor {Game.Survivor.Body.OnFloor})");
+        }
+        _following = false;
+    }
+
+    /// <summary>On the open ground (not down in the bunker).</summary>
+    public bool OnSurface => Game.Survivor.WorldFeet.Y > Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y - 1.0f;
+
+    /// <summary>Walks up to a vessel's seat and takes it.</summary>
+    public IEnumerable<int> Board(Vessel v)
+    {
+        Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
+        foreach (int x in WalkTo(seat, 1.6f, 30f)) yield return x;
+        foreach (int x in LookAt(seat, 4)) yield return x;
+        foreach (int x in Tap(Key.F)) yield return x;
+        for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    public void ReleaseAll() => Controls.ReleaseAll();
+}

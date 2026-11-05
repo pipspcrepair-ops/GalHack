@@ -1,0 +1,80 @@
+// The slice's own numbers. Everything else is read from the prototype that owns it.
+{
+  "planet": {
+    // The world: every new game rolls a fresh seed and the player picks the planet type on the
+    // start screen (Game.World, WorldChoice); tests and screenshots pin both (-- --seed N --planet type).
+    "gravity": 9.8,
+    // Top of the atmosphere, m: no weight above it (the handling model's switch). Above the
+    // highest mountains any planet makes.
+    "ceiling": 4000,
+    // You wake at dawn (0 midnight, 0.5 noon).
+    "startTimeOfDay": 0.255,
+    // The valley fog's density against planet-surface's own: thinner, so the first view reads.
+    "valleyFogScale": 0.4
+  },
+
+  // What gathering gives, as shared/Items' raw items (an ore cell gives the ore its deposit kind
+  // maps to in items.json).
+  "materials": {
+    // Raw ore per 1 m cell of ore dug: shared/Items' pacing reference (machines.json).
+    "orePerCell": 12,
+    // Stone per cell of rock dug (soil gives nothing).
+    "stonePerRockCell": 1,
+    // Cutting a plant, at scale 1: biomass, and kg of organics for the replicator.
+    "biomassPerPlant": 2,
+    "organicsPerPlant": 1.5,
+    // The starting kit in the bunker's locker: a few days' food and air, not a ship.
+    "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
+    // What the castaway has on the toolbar from the start, slot 1 first.
+    "toolbar": [ "survival-tool" ]
+  },
+
+  // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to
+  // 1 scorching) spread over this range, warmer by day, colder with height.
+  "climate": {
+    "coldestC": -45,
+    "hottestC": 65,
+    "dayNightSwing": 7,
+    "lapsePerKm": 6.5,
+    // Ambient oxygen, %, by the sky's air.
+    "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
+    // Background radiation, RAD (the visor warns above 3).
+    "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
+    // A cockpit seat with its canopy shut is a sealed, heated volume.
+    "cockpitC": 20
+  },
+
+  "tool": {
+    "reach": 7.5,
+    "digRadius": 1.42,
+    "digInterval": 0.18,
+    "cutReach": 4,
+    "shotDamage": 18,
+    "shotInterval": 0.22,
+    "shotRange": 120
+  },
+
+  "build": {
+    "reach": 9,
+    // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
+    "blueprintPlacesPerSecond": 8,
+    "starterBlueprint": "starter.gbp",
+    // Small vessels turn no faster than this, °/s, however light they are (the handling model's
+    // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
+    "smallVesselMaxTurn": 110
+  },
+
+  // The head torch (L): a cone from the helmet.
+  "torch": { "range": 45, "angle": 32, "energy": 5.5 },
+
+  // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
+  "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
+
+  "wildlife": {
+    // Creatures live on a square of the planet around the landing site, this far each way, m.
+    "patchHalfSize": 300,
+    // Nothing spawns this close to the pod.
+    "safeRadius": 60,
+    "alienness": 0.25
+  }
+}

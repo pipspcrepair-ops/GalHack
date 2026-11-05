@@ -21,7 +21,7 @@ namespace PlanetSurface.WeatherView;
 /// dust and embers around the camera, lightning, tornado funnels, ground that gets wet, snowy or
 /// dusty, wind in the trees, and the wind and rain loops.
 /// </summary>
-public partial class WeatherRig : Node3D
+public partial class WeatherRig : Node3D, IWeatherScene
 {
     public const int ParticleBudget = 5000;
 

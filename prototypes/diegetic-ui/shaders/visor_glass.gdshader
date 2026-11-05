@@ -7,6 +7,9 @@
 shader_type canvas_item;
 
 uniform float frost : hint_range(0.0, 1.0) = 0.0;
+// The two straight reflection streaks across the glass: 1 shows them, 0 hides them (a game whose
+// sky must never carry a straight line, the slice, turns them off).
+uniform float streaks = 1.0;
 uniform float harm : hint_range(0.0, 1.0) = 0.0;
 uniform float fire : hint_range(0.0, 1.0) = 0.0;
 uniform vec2 fire_dir = vec2(1.0, 0.0);   // screen-space direction toward the shooter, y down
@@ -39,8 +42,8 @@ void fragment() {
 
 	// Glass: the slightest darkening toward the edge, and two soft reflection streaks.
 	vec4 col = vec4(0.01, 0.015, 0.03, smoothstep(0.55, 1.05, r) * 0.32);
-	float streak = smoothstep(0.09, 0.0, abs(a.x * 0.55 + a.y + 1.35)) * 0.06
-	             + smoothstep(0.03, 0.0, abs(a.x * 0.55 + a.y + 1.1)) * 0.05;
+	float streak = (smoothstep(0.09, 0.0, abs(a.x * 0.55 + a.y + 1.35)) * 0.06
+	             + smoothstep(0.03, 0.0, abs(a.x * 0.55 + a.y + 1.1)) * 0.05) * streaks;
 	col = over(col, vec3(0.75, 0.85, 1.0), streak);
 
 	// Frost: ice grows inward from the rim with a ragged front.

@@ -14,6 +14,10 @@
 //   rounds    ammo only: rounds in one box, belt or rack. Storage, the constructor and the restock
 //             threshold all count boxes, so the three always agree.
 //   restock   ammo only: the default auto-restock threshold, in boxes
+//   stack     units one inventory slot holds (default by category: raw and refined 500, parts 200,
+//             components 50, consumables and ammo 25, unique 10, tools 1)
+//   unlock    its tech-tree node: the level it unlocks from, its point cost, its parent node (an item
+//             id or block@grid) and its tab. Materials and parts have none: they are always made.
 //
 // Names: plain words and real metals for common goods, crystal and star-metal names for rare
 // ones, lost-technology names for unique finds. Every name is GalHack's own.
@@ -127,24 +131,24 @@
     { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
 
     // ---- Consumables ------------------------------------------------------------------------
-    { "id": "o2-bottle", "name": "Oxygen bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2 },
-    { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1 },
-    { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10 },
-    { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15 },
-    { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30 },
-    { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150 },
-    { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300 },
-    { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3 },
+    { "id": "o2-bottle", "name": "Oxygen bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "unlock": { "level": 2, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "unlock": { "level": 2, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
+    { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
+    { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },
+    { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300, "unlock": { "level": 14, "cost": 4, "parent": "large-fuel-pack", "tab": "misc" } },
+    { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3, "unlock": { "level": 4, "cost": 1, "tab": "tools" } },
 
     // ---- Ammo: counted in boxes, belts and racks ------------------------------------------
-    { "id": "pistol-rounds", "name": "Pistol rounds", "short": "PISTOL", "category": "ammo", "rarity": "common", "mass": 0.6, "volume": 0.4, "rounds": 30, "restock": 4 },
-    { "id": "belt-12mm", "name": "12 mm belt", "short": "12MM", "category": "ammo", "rarity": "common", "mass": 8.0, "volume": 4, "rounds": 200, "restock": 6 },
-    { "id": "shells-40mm", "name": "40 mm shells", "short": "40MM", "category": "ammo", "rarity": "common", "mass": 20.0, "volume": 8, "rounds": 25, "restock": 10 },
-    { "id": "rocket", "name": "Rocket", "short": "ROCKET", "category": "ammo", "rarity": "uncommon", "mass": 12.0, "volume": 6, "rounds": 1, "restock": 8 },
-    { "id": "artillery-shell", "name": "Artillery shell", "short": "ARTY", "category": "ammo", "rarity": "uncommon", "mass": 30.0, "volume": 10, "rounds": 1, "restock": 6 },
-    { "id": "plasma-charge", "name": "Plasma charge", "short": "PLASMA", "category": "ammo", "rarity": "rare", "mass": 2.0, "volume": 1, "rounds": 10, "restock": 12 },
+    { "id": "pistol-rounds", "name": "Pistol rounds", "short": "PISTOL", "category": "ammo", "rarity": "common", "mass": 0.6, "volume": 0.4, "rounds": 30, "restock": 4, "unlock": { "level": 2, "cost": 1, "tab": "weapons" } },
+    { "id": "belt-12mm", "name": "12 mm belt", "short": "12MM", "category": "ammo", "rarity": "common", "mass": 8.0, "volume": 4, "rounds": 200, "restock": 6, "unlock": { "level": 6, "cost": 1, "parent": "gatling@small", "tab": "weapons" } },
+    { "id": "shells-40mm", "name": "40 mm shells", "short": "40MM", "category": "ammo", "rarity": "common", "mass": 20.0, "volume": 8, "rounds": 25, "restock": 10, "unlock": { "level": 8, "cost": 1, "parent": "turret@large", "tab": "weapons" } },
+    { "id": "rocket", "name": "Rocket", "short": "ROCKET", "category": "ammo", "rarity": "uncommon", "mass": 12.0, "volume": 6, "rounds": 1, "restock": 8, "unlock": { "level": 9, "cost": 2, "parent": "rocketpod@small", "tab": "weapons" } },
+    { "id": "artillery-shell", "name": "Artillery shell", "short": "ARTY", "category": "ammo", "rarity": "uncommon", "mass": 30.0, "volume": 10, "rounds": 1, "restock": 6, "unlock": { "level": 15, "cost": 3, "parent": "shells-40mm", "tab": "weapons" } },
+    { "id": "plasma-charge", "name": "Plasma charge", "short": "PLASMA", "category": "ammo", "rarity": "rare", "mass": 2.0, "volume": 1, "rounds": 10, "restock": 12, "unlock": { "level": 20, "cost": 4, "parent": "artillery-shell", "tab": "weapons" } },
 
     // ---- Tools ------------------------------------------------------------------------------
-    { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20 }
+    { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } }
   ]
 }

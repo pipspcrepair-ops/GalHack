@@ -68,6 +68,10 @@ public sealed class ItemDef
     public int Rounds { get; init; }
     /// <summary>Ammo: the default auto-restock threshold, in boxes.</summary>
     public int RestockDefault { get; init; }
+    /// <summary>The most units one inventory slot holds (data: <c>stack</c>, else a default per category).</summary>
+    public int StackSize { get; init; } = 1;
+    /// <summary>Its tech-tree node (data: <c>unlock</c>), or null if it is always available (materials and parts).</summary>
+    public Unlock Unlock { get; init; }
     public int Index { get; internal set; }
 
     /// <summary>How it is made, or null for raw and unique items.</summary>
@@ -82,6 +86,14 @@ public sealed class ItemDef
 
     public override string ToString() => Id;
 }
+
+/// <summary>
+/// A tech-tree node, carried by the item or block it unlocks (there is no separate tree file):
+/// unlockable from character level <see cref="Level"/> for <see cref="Cost"/> points, once its
+/// <see cref="Parent"/> node is unlocked, shown on tab <see cref="Tab"/>. A parent is another
+/// node's id: an item id, or a block's <see cref="BlockBill.NodeId"/>.
+/// </summary>
+public sealed record Unlock(int Level, int Cost, string Parent, string Tab);
 
 /// <summary>One recipe: a run turns <see cref="Inputs"/> into <see cref="Count"/> of the output.</summary>
 public sealed class Recipe

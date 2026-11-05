@@ -121,7 +121,13 @@ public sealed class SurvivalSim
     public Modifiers Mods => Player.Gear.Total(Data.Armor);
     public double OxygenCapacity => Player.Gear.OxygenCapacity(Data.Armor, Rules.Oxygen);
     public GearState Gear => new(Player.Gear.HasSuit, Player.Gear.HelmetOn, OxygenCapacity, Mods);
-    public Exposure Here => Planet.Sample(Player.Position, Time);
+    public Exposure Here => Environment?.Invoke(Player.Position, Time) ?? Planet.Sample(Player.Position, Time);
+
+    /// <summary>
+    /// Optional: where the exposure comes from instead of the data file's planet (a game with its
+    /// own generated world, climate and weather). Same contract: a pure function of place and time.
+    /// </summary>
+    public Func<Pos, double, Exposure> Environment;
     public ReplicatorTier SurvivalTier => Data.Food.Replicators.First(r => r.Portable);
 
     // ---- The tick ------------------------------------------------------------------------

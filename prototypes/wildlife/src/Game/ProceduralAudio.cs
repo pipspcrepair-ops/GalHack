@@ -18,6 +18,9 @@ public partial class ProceduralAudio : Node3D
     readonly List<AudioStreamPlayer3D> _pool = new();
     int _next;
 
+    /// <summary>Where the sim's origin is in the world, for a sim that lives on a patch of a bigger one (zero here).</summary>
+    public Vector3 Origin;
+
     public AudioStreamWav HoverLoop { get; private set; }
     public AudioStreamWav GrindLoop { get; private set; }
 
@@ -99,7 +102,7 @@ public partial class ProceduralAudio : Node3D
         p.Stream = stream;
         p.PitchScale = pitch;
         p.VolumeDb = volumeDb;
-        p.GlobalPosition = at;
+        p.GlobalPosition = at + Origin;
         p.Play();
     }
 

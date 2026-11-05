@@ -21,7 +21,8 @@ namespace PlanetSurface.Terrain;
 ///   the player, where something can touch it.
 /// - <b>Far:</b> heightfield chunks from the same source at 2, 4 and 8 m out to about a kilometre,
 ///   then a horizon mesh straight from the planet generator's world map.
-/// Each level cuts a hole where the finer one is complete, so they never overlap.
+/// Each level cuts a hole where the finer one is complete, so they never overlap; the horizon first
+/// dives under the far rings' edge, so no gap between them can show the sky.
 ///
 /// The main thread only takes snapshots and swaps finished meshes in, under a per-frame time
 /// budget. Voxel chunks live in the terrain's frame (see <see cref="PlanetTerrain"/>); when the
@@ -37,7 +38,7 @@ public partial class TerrainStreamer : Node3D
     public bool CollisionEnabled = true;
     public double UploadBudgetMs = 3.0;
     public const int FarRadius = 7, FarLod0Radius = 1, FarLod1Radius = 3;
-    const float HorizonSpacing = 64f, HorizonReach = 7000f, HorizonRebuild = 1200f;
+    const float HorizonSpacing = 64f, HorizonReach = 7000f, HorizonRebuild = 1200f, HorizonSink = 1000f;
 
     public PlanetWorld World { get; private set; }
     public Vector3 Focus { get; private set; }
@@ -104,6 +105,7 @@ public partial class TerrainStreamer : Node3D
         public bool InFlight;
         public int Version;
         public Node3D Node;
+        public List<(Flora Kind, float[] Buffer, int Count)> Flora;
 
         /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
         public List<FloraSolid> Solids;
@@ -171,6 +173,15 @@ public partial class TerrainStreamer : Node3D
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
         _horizonMaterial = TerrainMaterial(far: true);
+        // Inside the square the far rings cover, the horizon's vertices a whole grid step or more in
+        // drop far below any ground, so its triangles across the square's edge become walls diving
+        // under the far rings: where the horizon is higher than the rings' edge, the wall fills the
+        // step (no sky through it); where it is lower, the wall is hidden under them. It is cut only
+        // where every triangle is sunk. Its triangles never reach outside the square, so it is
+        // untouched there.
+        _horizonMaterial.SetShaderParameter("hole_sink", HorizonSink);
+        _horizonMaterial.SetShaderParameter("hole_sink_from", HorizonSpacing - 0.5f);
+        _horizonMaterial.SetShaderParameter("hole_cut", 2f * HorizonSpacing);
         _horizon.MaterialOverride = _horizonMaterial;
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
     }
@@ -652,6 +663,7 @@ public partial class TerrainStreamer : Node3D
             f.Node?.QueueFree();
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
+            f.Flora = job.Flora;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
             if (nodeMs > WorstFarNodeMs)
             {
@@ -698,10 +710,13 @@ public partial class TerrainStreamer : Node3D
         if (full >= 0)
         {
             // From the near edge of the first chunk of the square to the far edge of its last, in
-            // the frame: a chunk cut short at a seam makes the square that much smaller.
+            // the frame: a chunk cut short at a seam makes the square that much smaller. The horizon
+            // sinks inside it and is cut well inside it (see SetWorld): it comes from the
+            // coarse world map and often sits tens of metres above the far rings' outer edge, and a
+            // cut right at that edge left a gap there that the sky showed through.
             var (x0, x1) = FarEdges(ffx - full, ffx + full, nx, World.Terrain.Width, Focus.X);
             var (z0, z1) = FarEdges(ffz - full, ffz + full, nz, World.Terrain.Height, Focus.Z);
-            hole = new Vector4(x0 + 1f, z0 + 1f, x1 - 1f, z1 - 1f);
+            hole = new Vector4(x0, z0, x1, z1);
         }
         _horizonMaterial.SetShaderParameter("hole", hole);
         FarComplete = full >= FarRadius;
@@ -729,6 +744,35 @@ public partial class TerrainStreamer : Node3D
     }
 
     public bool FarComplete { get; private set; }
+
+    /// <summary>
+    /// The flora drawn within a radius of a point (frame coordinates): each plant's kind, where its
+    /// trunk meets the ground, its scale and its scatter id (the one <see cref="PlanetWorld.Felled"/>
+    /// and <see cref="Fell"/> take). Read from the far chunks' own scatter, so it works with or
+    /// without a renderer; felled plants are left out at once.
+    /// </summary>
+    public IEnumerable<(Flora Kind, Vector3 Root, float Scale, long Id)> FloraNear(Vector3 at, float radius)
+    {
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        foreach (FarChunk f in _far.Values)
+        {
+            if (f.Flora == null) continue;
+            float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, at.X, w);
+            float z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, at.Z, h);
+            if (at.X < x0 - radius || at.X > x0 + FarBuilder.Size + radius || at.Z < z0 - radius || at.Z > z0 + FarBuilder.Size + radius) continue;
+            foreach (var (kind, buffer, count) in f.Flora)
+                for (int i = 0; i < count; i++)
+                {
+                    int o = i * 16;
+                    var root = new Vector3(x0 + buffer[o + 3], buffer[o + 7], z0 + buffer[o + 11]);
+                    if (new Vector2(root.X - at.X, root.Z - at.Z).Length() > radius) continue;
+                    // The scatter cell it was rolled in: its offset in the chunk, a cell to a ScatterCell.
+                    long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(buffer[o + 3] / FarBuilder.ScatterCell), (int)(buffer[o + 11] / FarBuilder.ScatterCell));
+                    if (!World.Felled.Contains(id)) yield return (kind, root, buffer[o + 5], id);
+                }
+        }
+    }
+
     public double WorstFarNodeMs { get; private set; }
     public string WorstFarNode { get; private set; } = "";
 
