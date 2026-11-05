@@ -85,4 +85,4 @@ Run one with `.\tools\test.ps1 -Project prototypes/<name> -Scene res://tests/<Sc
 
 The gate also fails if any Kenney asset is added: GalHack uses no Kenney assets of any kind.
 
-A few checks must see rendered pictures (the sky seam checks, planet-surface's `SkyTest`). Headless runs draw nothing, so those scenes start themselves again in a window placed off-screen (`--position 20000,20000`) and pass on what it prints; they need a GPU, as playing does. Render screenshots off-screen the same way.
+A few checks must see rendered pictures (the sky seam checks, planet-surface's `SkyTest`). Headless runs draw nothing, so those scenes start themselves again in a normal window and pass on what it prints; they need a GPU, as playing does. Screenshots render in a normal window too.

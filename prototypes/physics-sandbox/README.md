@@ -102,7 +102,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1260 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
 - **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.75 ms on average against a 2 ms budget, timed in three separate 100-tick windows and judged on the best, so a machine busy with other work doesn't fail it but a real slowdown (which slows every window) does; the module's own step about 1.2 ms, and the main thread's CPU time per tick is printed too.
 
-`tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado|underwater|crater_climb --out=file.png` renders a scripted moment to a PNG (windowed, not headless; add `--position 20000,20000` before `--path` to keep the window off-screen).
+`tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado|underwater|crater_climb --out=file.png` renders a scripted moment to a PNG (windowed, not headless).
 
 ## Decisions to review
 

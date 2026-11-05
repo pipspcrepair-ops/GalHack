@@ -6,7 +6,7 @@ namespace DecoShowroom.Tests;
 
 /// <summary>
 /// Renders one view of the showroom to a PNG and quits. Run windowed (not headless), off-screen:
-///   godot --position 20000,20000 --path prototypes/deco res://tests/Screenshot.tscn -- --view=set:office --out=shot.png
+///   godot --path prototypes/deco res://tests/Screenshot.tscn -- --view=set:office --out=shot.png
 /// Views: set:&lt;id&gt;[:&lt;part&gt;/&lt;parts&gt;] (a set's strip: every piece in every state),
 /// front:&lt;id&gt;:&lt;part&gt;/&lt;parts&gt; (intact pieces at eye level), piece:&lt;id&gt; (one piece in all its
 /// states), room:&lt;demo&gt; (a demo room or site as used and as found), close:&lt;demo&gt;:before|after,

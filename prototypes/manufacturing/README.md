@@ -75,7 +75,7 @@ TOTAL first vessel from the crash: 1149 ore; gather 26 min at 45/min, craft 41 m
   => 46 to 72 minutes for an experienced player (the design asks for 1 to 2 hours)
 ```
 
-`tests/Screenshot.tscn -- --view=constructor|walkup|deconstructor|factory|storage|console|overview --out=file.png` renders a view (windowed; add `--position 20000,20000` before `--path` to keep the window off-screen). The machine views stand the player at the screen with the cursor on something.
+`tests/Screenshot.tscn -- --view=constructor|walkup|deconstructor|factory|storage|console|overview --out=file.png` renders a view (windowed). The machine views stand the player at the screen with the cursor on something.
 
 ## How it's put together
 

@@ -86,7 +86,7 @@ Runs headless in about 100 s and exits 0 or 1. Add `-- --only=Heights,Flight` to
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
 - walking north across the edge keeps you on the ground and at speed in every one of three walks (simulation ticks, so load can't shorten one), with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames in the best of the three
 
-`tests/SkyTest.tscn` renders, so a headless run starts itself again in a window placed off-screen (`--position 20000,20000`) and passes on what it prints (`shared/Sky/SkySeams.cs`). In about 2 minutes it checks that:
+`tests/SkyTest.tscn` renders, so a headless run starts itself again in a normal window and passes on what it prints (`shared/Sky/SkySeams.cs`). In about 2 minutes it checks that:
 
 - the sky alone, from the slice's world (`SkyRig` with no ground), looked at straight along a cube's corners and edges, the zenith, the axes and the azimuth's wrap, by day under broken cloud with the sun well up and in the afternoon west, at dusk and under heavy cloud, and a nebula world's sky at midnight (and its backdrop alone, brightened six times): shows no line where the colour jumps, no crowd of jumps, no swirl round a pole, and stars as dense along the axes as anywhere else
 - a low sun never drenches the picture: on a temperate coast and in arid hills, at dawn and at dusk with the sun 5–7° up, looking toward it, across it and away from it, in clear air and in fog: under 2% near-white pixels, never brighter than noon in the same place and weather, and the ground never a bright, flat wall of lit haze (it keeps contrast of its own)
@@ -103,7 +103,7 @@ dotnet build prototypes/planet-surface/PlanetSurface.csproj
 & $GodotEditor --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=mountains --out="$PWD/shot.png"
 ```
 
-Add `--position 20000,20000` before `--path` to keep the window off-screen. Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `poi_hillside`, `cave` and `volcanic_dusk`. Each finds its own spot from the terrain (a peak, the deepest canyon, a ridge over low ground, a POI on a slope, a rock face to tunnel into), so none depend on hand-picked coordinates. `--debug=1` shows cloud cover, `--debug=2` cloud colour, `--debug=3` the night backdrop alone, six times as bright.
+Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `poi_hillside`, `cave` and `volcanic_dusk`. Each finds its own spot from the terrain (a peak, the deepest canyon, a ridge over low ground, a POI on a slope, a rock face to tunnel into), so none depend on hand-picked coordinates. `--debug=1` shows cloud cover, `--debug=2` cloud colour, `--debug=3` the night backdrop alone, six times as bright.
 
 ### Sky settings the slice inherits
 
