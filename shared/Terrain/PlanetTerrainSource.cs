@@ -17,7 +17,9 @@ namespace GalHack.Terrain;
 /// - the natural surface: <see cref="SurfaceSampler"/> at 1 m spacing (mountains, plateaus,
 ///   canyons, river channels...), then any <see cref="TerrainStamp"/> pads on top;
 /// - soil (sand, loam, ash or snow by archetype; thinner on slopes, none on cliffs), rock, deep rock;
-/// - bedrock from <see cref="BedrockDepth"/> metres in: nothing cuts it;
+/// - bedrock <see cref="BedrockDepth"/> metres under the low ground nearby (not under the
+///   surface right overhead, or a tunnel into a cliff's foot would meet it in a few steps):
+///   nothing cuts it;
 /// - caves: winding tubes 3 to 36 m down where two periodic noise fields both cross zero, now and
 ///   then breaking the surface as a cave mouth;
 /// - ore: a lumpy body under every deposit on the planet generator's deposit map, surface
@@ -49,13 +51,20 @@ public sealed class PlanetTerrainSource : ITerrainSource
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
+    readonly ConcurrentDictionary<long, float> _floors = new();
 
     /// <summary>Surface heights for one chunk column: its 16 x 16 cells plus a one-cell ring, at cell centres.</summary>
     public sealed class Column
     {
         public readonly float[] Heights = new float[P * P];
         public float Min = float.MaxValue, Max = float.MinValue;
+        /// <summary>The low ground around each corner (x0z0, x1z0, x0z1, x1z1): bedrock lies under it.</summary>
+        public float Floor00, Floor10, Floor01, Floor11;
+        /// <summary>Squared slope over 8 m on a 4 m lattice (5 x 5 points, edges shared with the neighbours): for colours.</summary>
+        public readonly float[] BroadSlope2 = new float[Lattice * Lattice];
     }
+
+    const int Lattice = S / 4 + 1;
 
     public PlanetTerrainSource(WorldMap map, IReadOnlyList<TerrainStamp> stamps = null, IReadOnlyList<PoiSite> pois = null)
     {
@@ -162,7 +171,56 @@ public sealed class PlanetTerrainSource : ITerrainSource
             column.Min = Math.Min(column.Min, h);
             column.Max = Math.Max(column.Max, h);
         }
+        // The slope that colours the ground, measured over 8 m: the 1 m slope that decides the cells'
+        // materials wobbles with every bump, and soil and rock would mottle along the voxel grid.
+        // The lattice's edge points are the same points the neighbouring column samples, so colours
+        // run on across chunk borders without a seam.
+        const int C = Lattice + 2;
+        Span<float> coarse = stackalloc float[C * C];
+        for (int j = 0; j < C; j++)
+        for (int i = 0; i < C; i++)
+            coarse[i + C * j] = SurfaceHeight(ox + (i - 1) * 4.0, oz + (j - 1) * 4.0, 4);
+        for (int j = 0; j < Lattice; j++)
+        for (int i = 0; i < Lattice; i++)
+        {
+            float gx = (coarse[i + 2 + C * (j + 1)] - coarse[i + C * (j + 1)]) / 8f;
+            float gz = (coarse[i + 1 + C * (j + 2)] - coarse[i + 1 + C * j]) / 8f;
+            column.BroadSlope2[i + Lattice * j] = gx * gx + gz * gz;
+        }
+        column.Floor00 = FloorAt(cx, cz);
+        column.Floor10 = FloorAt(cx + 1, cz);
+        column.Floor01 = FloorAt(cx, cz + 1);
+        column.Floor11 = FloorAt(cx + 1, cz + 1);
         return column;
+    }
+
+    // Bedrock follows the low ground rather than the surface overhead: under a mountain it lies
+    // as deep as under the valley beside it, so the mountain itself can be dug through.
+    const int FloorReach = 3; // samples each way, a chunk apart: the lowest ground within 48 m
+
+    /// <summary>The lowest ground within about 48 m of a chunk corner (any copy: it wraps), cached.</summary>
+    float FloorAt(int cx, int cz)
+    {
+        int wx = Mod(cx, ChunksX), wz = Mod(cz, ChunksZ);
+        long key = (long)wx << 32 | (uint)wz;
+        if (_floors.TryGetValue(key, out float floor)) return floor;
+        floor = float.MaxValue;
+        for (int j = -FloorReach; j <= FloorReach; j++)
+        for (int i = -FloorReach; i <= FloorReach; i++)
+            floor = Math.Min(floor, SurfaceHeight((double)(wx + i) * S, (double)(wz + j) * S, S));
+        _floors[key] = floor;
+        return floor;
+    }
+
+    /// <summary>
+    /// The level bedrock lies <see cref="BedrockDepth"/> under, at a cell of a column: the corners'
+    /// low ground blended across the column (so it has no steps), and never above the surface here.
+    /// </summary>
+    static float BaseLevel(Column column, float lx, float lz, float surface)
+    {
+        float tx = lx / S, tz = lz / S;
+        float f = (column.Floor00 * (1 - tx) + column.Floor10 * tx) * (1 - tz) + (column.Floor01 * (1 - tx) + column.Floor11 * tx) * tz;
+        return MathF.Min(f, surface);
     }
 
     /// <summary>Forgets cached columns the predicate picks (canonical chunk x, z). Safe at any time.</summary>
@@ -171,10 +229,53 @@ public sealed class PlanetTerrainSource : ITerrainSource
         int n = 0;
         foreach (long key in _columns.Keys)
             if (drop((int)(key >> 32), (int)(key & 0xFFFFFFFF)) && _columns.TryRemove(key, out _)) n++;
+        foreach (long key in _floors.Keys)
+            if (drop((int)(key >> 32), (int)(key & 0xFFFFFFFF))) _floors.TryRemove(key, out _);
         return n;
     }
 
     public int CachedColumns => _columns.Count;
+
+    /// <summary>How deep the soil lies on undug ground with this squared slope: thinner on slopes, none on cliffs.</summary>
+    public float SoilDepth(double x, double z, float slope2) =>
+        _soilBase * (0.7f + 0.6f * _soil.Sample(x, 0, z)) * (1f - Smooth(0.35f, 1.2f, slope2));
+
+    /// <summary>
+    /// How much of the undug ground's top is soil rather than bare rock, 0 to 1. The cells switch
+    /// from soil to rock where the soil gets thinner than the top cell; this is that same rule
+    /// made continuous, so ground colours blend smoothly instead of stepping along the voxel grid.
+    /// </summary>
+    public float SoilCover(double x, double z, float slope2) => Smooth(0.25f, 0.75f, SoilDepth(x, z, slope2));
+
+    /// <summary>The broad squared slope (over 8 m) at a point inside a chunk column, metres from its corner: for colours.</summary>
+    public static float BroadSlope2(Column column, float fx, float fz)
+    {
+        float gx = Math.Clamp(fx / 4f, 0f, Lattice - 1.001f), gz = Math.Clamp(fz / 4f, 0f, Lattice - 1.001f);
+        int i = (int)gx, j = (int)gz;
+        float tx = gx - i, tz = gz - j;
+        float[] s = column.BroadSlope2;
+        return (s[i + Lattice * j] * (1 - tx) + s[i + 1 + Lattice * j] * tx) * (1 - tz)
+             + (s[i + Lattice * (j + 1)] * (1 - tx) + s[i + 1 + Lattice * (j + 1)] * tx) * tz;
+    }
+
+    /// <summary>
+    /// The undug surface height and squared slope at a point inside the given chunk column (any
+    /// copy: <paramref name="fx"/> and <paramref name="fz"/> are metres from the column's corner),
+    /// from its cached heights: cheap enough to call for every vertex of a chunk.
+    /// </summary>
+    public float ColumnHeight(Column column, float fx, float fz, out float slope2)
+    {
+        // Heights are at cell centres, with a one-cell ring: index 0 is half a metre before the corner.
+        float gx = Math.Clamp(fx + 0.5f, 0f, P - 1.001f), gz = Math.Clamp(fz + 0.5f, 0f, P - 1.001f);
+        int i = (int)gx, j = (int)gz;
+        float tx = gx - i, tz = gz - j;
+        float[] h = column.Heights;
+        float h00 = h[i + P * j], h10 = h[i + 1 + P * j], h01 = h[i + P * (j + 1)], h11 = h[i + 1 + P * (j + 1)];
+        float sx = (h10 - h00) * (1 - tz) + (h11 - h01) * tz;
+        float sz = (h01 - h00) * (1 - tx) + (h11 - h10) * tx;
+        slope2 = sx * sx + sz * sz;
+        return (h00 * (1 - tx) + h10 * tx) * (1 - tz) + (h01 * (1 - tx) + h11 * tx) * tz;
+    }
 
     /// <summary>
     /// Chunk ys worth meshing in a column, lowest and highest: from below its lowest ground (deep
@@ -230,7 +331,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
             float slopeScale = 1f / MathF.Sqrt(1f + slope2);
 
             // Soil slides off steep ground, so slopes and cliffs show bare rock.
-            float soilDepth = _soilBase * (0.7f + 0.6f * _soil.Sample(x, 0, z)) * (1f - Smooth(0.35f, 1.2f, slope2));
+            float soilDepth = SoilDepth(x, z, slope2);
+            float bedrockTop = BaseLevel(column, lx + 0.5f, lz + 0.5f, h) - BedrockDepth;
             float rockDepth = 12f + 4f * _soil.Sample(x * 0.3, 50, z * 0.3);
             float caves = CaveStrength(x + 0.5, z + 0.5, h);
             bool padded = false;
@@ -257,7 +359,7 @@ public sealed class PlanetTerrainSource : ITerrainSource
                     material[i] = CellMaterial.Air;
                     continue;
                 }
-                if (dist > BedrockDepth)
+                if (y + 0.5f < bedrockTop)
                 {
                     density[i] = Limit;
                     material[i] = CellMaterial.Bedrock;
@@ -410,7 +512,13 @@ public sealed class PlanetTerrainSource : ITerrainSource
         float depth = h - (y + 0.5f), d = depth * slopeScale;
         foreach (TerrainStamp t in Stamps)
             if (t.IsCarved(x, y, z)) return -Limit;
-        if (d > BedrockDepth) return Limit;
+        if (depth > BedrockDepth)
+        {
+            // Bedrock lies under the low ground nearby, which is never above the surface here: only
+            // a cell this deep can be in it, so shallow queries (flora, cave mouths) never build a column.
+            int cx = FloorDiv(x, S), cz = FloorDiv(z, S);
+            if (y + 0.5f < BaseLevel(ColumnAt(cx, cz), x - cx * S + 0.5f, z - cz * S + 0.5f, h) - BedrockDepth) return Limit;
+        }
         float caves = StampWeight(x + 0.5, z + 0.5) > 0f ? 0f : CaveStrength(x + 0.5, z + 0.5, h);
         if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
         return Math.Clamp(d, -Limit, Limit);
