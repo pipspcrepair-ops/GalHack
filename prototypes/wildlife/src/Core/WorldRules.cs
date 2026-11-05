@@ -100,39 +100,50 @@ public sealed class Storage
     }
 }
 
+/// <summary>What the codex knows about a species: enough for the discovery card and the codex page.</summary>
 public sealed class CodexEntry
 {
-    public string SpeciesId = "", Name = "", CommonName = "", Finder = "", Planet = "";
+    public string SpeciesId = "", Name = "", CommonName = "", Form = "", Behaviour = "", Finder = "", Planet = "";
+    /// <summary>Body length in metres.</summary>
+    public float Size;
     public float FoundAt;
 }
 
 /// <summary>
 /// Remembers each species the first time anyone gets a good look at one, and who that was.
-/// Deliberately silent: it raises no event, so nothing can announce a first meeting. Names
-/// show up only when a player looks one up (the scan).
+/// The first sighting raises <see cref="Discovered"/> exactly once per species, whoever sees it
+/// and however often after: the game shows a brief discovery card for it.
 /// </summary>
 public sealed class Codex
 {
     readonly Dictionary<string, CodexEntry> _entries = new();
+
+    /// <summary>A species was seen for the first time by anyone. Raised once per species, ever.</summary>
+    public event Action<CodexEntry> Discovered;
 
     public int Count => _entries.Count;
     public IEnumerable<CodexEntry> Entries => _entries.Values;
     public CodexEntry Get(string speciesId) => _entries.GetValueOrDefault(speciesId);
     public bool Knows(string speciesId) => _entries.ContainsKey(speciesId);
 
-    /// <summary>Records a sighting; returns true only the first time this species is seen by anyone.</summary>
+    /// <summary>Records a sighting; returns true (and raises <see cref="Discovered"/>) only the first time this species is seen by anyone.</summary>
     public bool Record(Species species, string finder, float time, string planet)
     {
         if (_entries.ContainsKey(species.Id)) return false;
-        _entries[species.Id] = new CodexEntry
+        var entry = new CodexEntry
         {
             SpeciesId = species.Id,
             Name = species.Name,
             CommonName = species.CommonName,
+            Form = species.FormLabel,
+            Behaviour = species.BehaviourLabel,
+            Size = species.Body.Size,
             Finder = finder,
             Planet = planet,
             FoundAt = time,
         };
+        _entries[species.Id] = entry;
+        Discovered?.Invoke(entry);
         return true;
     }
 }

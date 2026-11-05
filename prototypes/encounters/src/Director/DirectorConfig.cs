@@ -26,6 +26,8 @@ public sealed class DirectorConfig
     public float WreckWitnessDistance { get; set; } = 8000f;
     public float TouchDistance { get; set; } = 250f;
     public LeadConfig Lead { get; set; } = new();
+    /// <summary>Creatures also keep this far outside every player base's circle, measured from its edge.</summary>
+    public float CreatureBaseClearance { get; set; } = 1000f;
 
     public double TickSeconds => 1.0 / TickHz;
 
@@ -35,6 +37,8 @@ public sealed class DirectorConfig
     public int MaxEvents(int players) => Budget.Events + (int)(Budget.EventsPerExtraPlayer * Math.Max(0, players - 1));
 
     public int MaxShips(int players) => Budget.Ships + (int)(Budget.ShipsPerExtraPlayer * Math.Max(0, players - 1));
+
+    public int MaxCreatures(int players) => Budget.Creatures + (int)(Budget.CreaturesPerExtraPlayer * Math.Max(0, players - 1));
 
     /// <summary>Categories without a cap get one at a time, so a typo in the deck can't flood a zone.</summary>
     public int CategoryCap(string category) => CategoryCaps.TryGetValue(category, out int cap) ? cap : 1;
@@ -60,6 +64,9 @@ public sealed class BudgetConfig
     public float EventsPerExtraPlayer { get; set; } = 1.5f;
     public int Ships { get; set; } = 16;
     public float ShipsPerExtraPlayer { get; set; } = 6f;
+    /// <summary>Space fauna have their own budget: a shoal shouldn't crowd out the traffic.</summary>
+    public int Creatures { get; set; } = 14;
+    public float CreaturesPerExtraPlayer { get; set; } = 4f;
 }
 
 public sealed class WarmStartConfig
