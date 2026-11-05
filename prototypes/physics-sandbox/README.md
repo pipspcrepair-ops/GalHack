@@ -92,7 +92,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Rover and gear:** the rover crosses the 2 m dug trench at 23 m/s without touching it (engines dip to 1.16 m); the Corsair's legs drop by themselves and it settles tilted 10.5° on ground 0.5 m uneven, every foot within 1 cm.
 - **Tornado** (in a fresh world, twice): caught at 40% health, carried 36 m up and flung, the 27 m/s landing would cost 69% and leaves exactly 15.00%; the crate beside them is flung too and is still there; the same fall without a fling leaves 0%; the two runs agree bit for bit.
 - **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1260 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
-- **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.7 ms on average; the module's own step about 1.1 ms.
+- **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.75 ms on average against a 2 ms budget, timed in three separate 100-tick windows and judged on the best, so a machine busy with other work doesn't fail it but a real slowdown (which slows every window) does; the module's own step about 1.2 ms, and the main thread's CPU time per tick is printed too.
 
 `tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado --out=file.png` renders a scripted moment to a PNG (windowed, not headless).
 
