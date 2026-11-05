@@ -8,7 +8,14 @@ namespace PlanetSurface.Skies;
 public readonly record struct AtmosphereState(
     float CloudCover, float CloudDarkness, float CloudBase, float CloudThickness, float Overcast,
     float FogDensity, float FogSkyAffect, float ValleyFog, float ValleyFogDepth,
-    float SunScale, float AmbientScale, float Saturation, float Visibility);
+    float SunScale, float AmbientScale, float Saturation, float Visibility)
+{
+    /// <summary>
+    /// The weather's own ground fog (0..1), on its own. <see cref="ValleyFog"/> is the larger of
+    /// it and the morning fog damp air holds around sunrise; by evening that has burnt off.
+    /// </summary>
+    public float GroundFog { get; init; }
+}
 
 /// <summary>
 /// Turns the weather model's conditions, the world's air and the time of day into fog, cloud and
@@ -52,12 +59,18 @@ public static class Atmosphere
             FogDensity: fog,
             FogSkyAffect: skyAffect,
             ValleyFog: valley,
-            ValleyFogDepth: 18f + 46f * valley,
+            ValleyFogDepth: ValleyFogDepthOf(valley),
             SunScale: 0.12f + 0.88f * solar,
             AmbientScale: 1f + overcast * 0.6f,
             Saturation: 1.05f - 0.25f * overcast - 0.2f * c.Dust,
-            Visibility: visibility);
+            Visibility: visibility)
+        {
+            GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),
+        };
     }
+
+    /// <summary>How deep valley fog of this strength (0..1) lies over the low ground, m.</summary>
+    public static float ValleyFogDepthOf(float valley) => 18f + 46f * valley;
 
     /// <summary>The look of a clear day, for worlds before their weather starts and for tests.</summary>
     public static Conditions Clear()

@@ -15,6 +15,8 @@
          numbers. And the one engine helper the walker uses as it is: the step-up. -->
     <Compile Include="..\..\shared\Physics\Core\**\*.cs" />
     <Compile Include="..\..\shared\Physics\Engine\Steps.cs" />
+    <!-- The sky seam check every prototype with a sky of its own runs (tests/SkyTest). -->
+    <Compile Include="..\..\shared\Sky\**\*.cs" />
     <!-- The pure cores this prototype builds on, used in place. Only engine-free code (and plain
          static helpers) is included; their scenes and nodes stay in their own projects. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />

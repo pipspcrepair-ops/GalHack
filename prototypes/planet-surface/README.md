@@ -23,6 +23,8 @@ The first whole planet you can stand on. The planet generator's worlds, as digga
   - The air and archetype tint it further: dusty, humid, thin, ash-laden or exotic, with exotic air allowed to be pastel or neon.
   - Neighbouring bodies appear where the system has them: moons with phases, a gas giant (ringed if the planet has the RingedSky modifier), stars and a nebula at night.
   - Clouds are a slab, raymarched against the sun at half resolution, with lit tops and dark bases.
+  - **No seams anywhere on it.** The night backdrop is looked up along the 3D direction itself: the nebula from 3D noise inside one texture tile (a longitude-latitude map pinched it into a starburst at its pole and tore it along a meridian), the stars as points through a thin shell of a 3D lattice, each kept or dropped by itself (cutting the lattice with the sky's sphere left a star-free hole ringed by bands at each axis). Stars fade out below the horizon instead of stopping at a line. The cloud march starts each pixel at a well-spread depth (interleaved gradient noise) and takes more steps where its path through the slab is long, so cloud edges no longer slice into combs and streaks, and the reflection map's cloud cover eases in over the horizon instead of switching on there.
+  - **A low sun never drenches the picture.** Near the horizon its light comes through more air: under half from about 17° down (`SkyRig.AirMass`, the same curve in the shader's `sun_air`), for the sunlight, the sun's disc (warmer too) and its wide halo. Haze and fog are lit as the ground is, by a sun clear of the horizon's air, so under a low sun they are dim and warm, not a white wall; the glow toward the sun through fog (sun scatter) is modest. Glow only comes from what is really bright (HDR threshold 2). Morning valley fog forms overnight and burns off: after noon only the weather's own ground fog lies in the valleys, so a setting sun brings none. And once the camera is down in a bank of valley fog it becomes distance fog instead of height fog, so the ground at your feet stays readable.
 - **Weather from the weather prototype.** Its model and forces are compiled in unchanged. Clouds, fog, valley fog at dawn, rain, snow, dust, embers, thunderstorms with visible lightning, and tornadoes are driven by its deterministic conditions; wind pushes the walker by mass. Rain and snow stop under rock.
 - **Places seated into the land.** POIs are placed by the POI generator's own rules on a 3.2 km map around the landing site. Each one is then fitted to the ground its kind prefers (ridge, valley, flat or any) and stamped with a pad: cut and fill blended into the slope, its rooms carved out below, and caves kept out from under it.
 - **Nothing is lost.** Edits persist through unloading, reloading, leaving the planet and coming back, and save/load.
@@ -84,6 +86,11 @@ Runs headless in about 100 s and exits 0 or 1. Add `-- --only=Heights,Flight` to
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
 - walking north across the edge keeps you on the ground and at speed in every one of three walks (simulation ticks, so load can't shorten one), with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames in the best of the three
 
+`tests/SkyTest.tscn` renders, so a headless run starts itself again in a window placed off-screen (`--position 20000,20000`) and passes on what it prints (`shared/Sky/SkySeams.cs`). In about 2 minutes it checks that:
+
+- the sky alone, from the slice's world (`SkyRig` with no ground), looked at straight along a cube's corners and edges, the zenith, the axes and the azimuth's wrap, by day under broken cloud with the sun well up and in the afternoon west, at dusk and under heavy cloud, and a nebula world's sky at midnight (and its backdrop alone, brightened six times): shows no line where the colour jumps, no crowd of jumps, no swirl round a pole, and stars as dense along the axes as anywhere else
+- a low sun never drenches the picture: on a temperate coast and in arid hills, at dawn and at dusk with the sun 5–7° up, looking toward it, across it and away from it, in clear air and in fog: under 2% near-white pixels, never brighter than noon in the same place and weather, and the ground never a bright, flat wall of lit haze (it keeps contrast of its own)
+
 The frame checks judge the best of three windows (or walks), and print all three: a machine busy with other work stalls some frames, but a real slowdown shows in every one. Everything else waits for a state (streamed in, colliders built, standing, at rest), or counts simulation ticks where the limit is simulation time, never wall-clock seconds.
 
 Frame costs are measured per frame by `tests/FrameProbe.cs`. Godot's own monitors give only the slowest process and physics passes of a whole second, possibly from different frames, and up to a second stale.
@@ -96,7 +103,23 @@ dotnet build prototypes/planet-surface/PlanetSurface.csproj
 & $GodotEditor --path prototypes/planet-surface res://tests/Screenshot.tscn -- --view=mountains --out="$PWD/shot.png"
 ```
 
-Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `poi_hillside`, `cave` and `volcanic_dusk`. Each finds its own spot from the terrain (a peak, the deepest canyon, a ridge over low ground, a POI on a slope, a rock face to tunnel into), so none depend on hand-picked coordinates. `--debug=1` shows cloud cover, `--debug=2` cloud colour.
+Add `--position 20000,20000` before `--path` to keep the window off-screen. Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `poi_hillside`, `cave` and `volcanic_dusk`. Each finds its own spot from the terrain (a peak, the deepest canyon, a ridge over low ground, a POI on a slope, a rock face to tunnel into), so none depend on hand-picked coordinates. `--debug=1` shows cloud cover, `--debug=2` cloud colour, `--debug=3` the night backdrop alone, six times as bright.
+
+### Sky settings the slice inherits
+
+The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are, so these changes reach it:
+
+| Where | Setting | Was | Now |
+| --- | --- | --- | --- |
+| `SkyRig` environment | glow intensity, bloom, HDR threshold | 0.6, 0.03, 1.2 | 0.5, 0.02, 2.0 |
+| `SkyRig.Apply` | sun light energy | star's energy × weather | also × `AirMass(sun height)`: 0.45 at the horizon, 1 from about 17° up |
+| `SkyRig.Apply` | fog light | haze × daylight (full from 7° up) | haze × light that rises from 9° below the horizon until about 14° up (about 0.8 at 7°), so a low sun lights haze and fog a little dimmer and warmer |
+| `SkyRig.Apply` | fog sun scatter | 0.15 + 0.25 × air density | (0.08 + 0.12 × air density) × (1 − overcast) |
+| `SkyRig.SetValleyFog` | valley fog | morning fog whenever the sun was low | morning fog only before noon; down in the bank, distance fog instead of height fog |
+| `Atmosphere` | new: `GroundFog`, `ValleyFogDepthOf` | | the weather's own ground fog, for the evening |
+| `sky.gdshader` | the sun's disc and wide halo, the sunset glow | full strength at any height | dimmed and warmed by `sun_air` near the horizon; sunset glow 0.45 + 0.35 × density |
+| `sky.gdshader` | cloud march | 40 steps, a third of a step of jitter by direction | 24–64 steps by path length, a whole step of jitter by pixel |
+| `sky.gdshader` | stars, nebula, horizon | lattice cut by the sphere; longitude-latitude nebula; stars cut off below the horizon | shell stars; 3D nebula (`nebula_noise`, `nebula_detail`, set by `SkyRig`); stars fade out below it |
 
 ## How it fits together
 

@@ -52,6 +52,21 @@ public partial class SkyRig : Node3D
             Width = 64, Height = 64, Depth = 64, Seamless = true,
             Noise = new FastNoiseLite { Seed = 5, Frequency = 0.06f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
         });
+        // The nebula is looked up along the sky's 3D directions, inside one tile of each texture, so
+        // it has no seam, no pole and no tiling edge: the textures needn't be seamless (blending a
+        // seamless one's edges leaves faint planes in it).
+        // Fine enough that even the finest octave spans a few texels: coarser, its texel grid
+        // showed as square blotches.
+        _sky.SetShaderParameter("nebula_noise", new NoiseTexture3D
+        {
+            Width = 128, Height = 128, Depth = 128,
+            Noise = new FastNoiseLite { Seed = 23, Frequency = 0.035f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
+        });
+        _sky.SetShaderParameter("nebula_detail", new NoiseTexture3D
+        {
+            Width = 128, Height = 128, Depth = 128,
+            Noise = new FastNoiseLite { Seed = 29, Frequency = 0.08f, FractalOctaves = 2, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
+        });
         Environment = new Godot.Environment
         {
             BackgroundMode = Godot.Environment.BGMode.Sky,
@@ -64,10 +79,12 @@ public partial class SkyRig : Node3D
             FogEnabled = true,
             FogMode = Godot.Environment.FogModeEnum.Exponential,
             FogAerialPerspective = 0.35f,
+            // Glow only from what is really bright (the sun's disc, lightning, lava), so a low sun's
+            // bright sky and lit haze never bloom over the whole picture.
             GlowEnabled = true,
-            GlowIntensity = 0.6f,
-            GlowBloom = 0.03f,
-            GlowHdrThreshold = 1.2f,
+            GlowIntensity = 0.5f,
+            GlowBloom = 0.02f,
+            GlowHdrThreshold = 2.0f,
             AdjustmentEnabled = true,
             AdjustmentContrast = 1.06f,
         };
@@ -169,11 +186,12 @@ public partial class SkyRig : Node3D
         Daylight = day;
         AtmosphereState air = Air;
 
-        // The sun: star-coloured, warming toward the horizon, dimmed by weather.
+        // The sun: star-coloured, warming toward the horizon, dimmed by weather and, low down, by
+        // the long path its light takes through the air (to under half near the horizon).
         float low = Smooth(0.35f, 0f, toSun.Y);
         Rgb light = Rgb.Lerp(s.StarColor, s.Sunset, low * 0.7f);
         Sun.LightColor = C(light);
-        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * air.SunScale;
+        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale;
         Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f);
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
         // twilight); it just gives no light and casts no shadows then.
@@ -230,13 +248,17 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("cloud_underglow", s.Air == AirKind.Ash ? new Color(0.55f, 0.16f, 0.05f) * (0.35f + 0.65f * (1f - day)) : new Color(0, 0, 0));
         _sky.SetShaderParameter("cloud_shade", C(Rgb.Lerp(Rgb.Lerp(s.Zenith, new Rgb(0.55f, 0.58f, 0.62f), 0.6f) * s.CloudTint, new Rgb(0.16f, 0.17f, 0.2f), air.CloudDarkness)));
 
-        // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night.
-        Rgb fog = Rgb.Lerp(s.Haze, grey, air.Overcast * 0.8f) * (0.08f + 0.92f * day);
-        fog = Rgb.Lerp(fog, s.Sunset * 0.8f, low * day * 0.35f);
+        // Fog: the air's haze colour, lit by the sun, greyed by overcast, dark at night. It is lit
+        // as the ground is: by a sun that has climbed clear of the horizon's air, so haze and
+        // valley fog under a low sun are dim and warm, never a white wall. The glow toward the sun
+        // (sun scatter) is kept modest: a low sun shines through the haze, it doesn't blind.
+        float fogLight = Smooth(-0.16f, 0.25f, toSun.Y);
+        Rgb fog = Rgb.Lerp(s.Haze, grey, air.Overcast * 0.8f) * (0.08f + 0.92f * fogLight);
+        fog = Rgb.Lerp(fog, s.Sunset * (0.8f * fogLight), low * day * 0.35f);
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;
         Environment.FogSkyAffect = air.FogSkyAffect;
-        Environment.FogSunScatter = 0.15f + 0.25f * s.Density * (1f - air.Overcast);
+        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast);
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
@@ -246,12 +268,31 @@ public partial class SkyRig : Node3D
     /// <summary>
     /// Pools valley fog below a height: the low ground around the player plus the fog's depth. Godot's
     /// height fog thickens below that plane, so valleys fill and ridges stand clear.
+    ///
+    /// Morning fog forms overnight and burns off as the sun climbs: after noon only the weather's own
+    /// ground fog lies in the valleys, so a setting sun brings none. And height fog thickens with how
+    /// deep a point lies, not how far it is: seen from inside the bank, the ground at your feet would
+    /// be as white as the far side of the valley. So once the camera is down in it, the layer gives
+    /// way to plain distance fog: you see through it near you, and it closes in with distance.
     /// </summary>
     public void SetValleyFog(float floor, AtmosphereState air)
     {
-        Environment.FogHeight = floor + air.ValleyFogDepth;
-        Environment.FogHeightDensity = air.ValleyFog * 0.09f;
+        float valley = TimeOfDay < 0.5 ? air.ValleyFog : MathF.Min(air.ValleyFog, air.GroundFog);
+        float depth = Atmosphere.ValleyFogDepthOf(valley);
+        float top = floor + depth;
+        Camera3D camera = IsInsideTree() ? GetViewport()?.GetCamera3D() : null;
+        float inside = camera == null ? 0f : Math.Clamp((top - camera.GlobalPosition.Y) / depth, 0f, 1f);
+        float layer = 1f - Smooth(0f, 0.3f, inside);
+        Environment.FogHeight = top;
+        Environment.FogHeightDensity = valley * 0.09f * layer;
+        Environment.FogDensity = air.FogDensity + valley * 0.004f * (1f - layer);
     }
+
+    /// <summary>
+    /// How much of the sun's light gets through the air to the ground, by its height (the y of the
+    /// direction to it): all of it from about 17° up, under half at the horizon.
+    /// </summary>
+    public static float AirMass(float sunY) => 0.45f + 0.55f * Smooth(0.02f, 0.3f, sunY);
 
     /// <summary>A direction in the sky from an hour angle (0 = highest), latitude, declination and a turn of the whole path.</summary>
     static Vector3 Direction(float hour, float latitude, float declination, float turn)
