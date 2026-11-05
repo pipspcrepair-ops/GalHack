@@ -56,13 +56,49 @@ public sealed class Ground : ITerrainEditor
         return Remove(cells, why, by);
     }
 
-    /// <summary>Removes particular cells under the tool's rules (lift-off and building clear their own cells this way).</summary>
+    /// <summary>Removes particular cells under the tool's rules (lift-off clears its own cells this way).</summary>
     public PlanetEdit Remove(IEnumerable<TInt3> cells, Cut why, string by)
     {
         PlanetEdit edit = Terrain.DigCells(cells);
         Commit(edit, why, by, notify: true);
         return edit;
     }
+
+    // ---- Blocks in the ground ----------------------------------------------------------------
+
+    /// <summary>
+    /// Blocks reaching into the ground (terrain-digging's rule 4): each one's volume is registered,
+    /// so the ground meets its faces flush, and the cells whose centres lie inside it are cleared,
+    /// logged as building. The ground round it is left exactly as it was.
+    /// </summary>
+    public PlanetEdit SetInto(IEnumerable<(VolumeKey key, StructureVolume volume)> blocks, string by)
+    {
+        var cells = new List<TInt3>();
+        var dirty = new HashSet<TInt3>();
+        foreach ((VolumeKey key, StructureVolume volume) in blocks)
+        {
+            dirty.UnionWith(Store.AddVolume(key, volume));
+            cells.AddRange(volume.CellsInside());
+        }
+        PlanetEdit edit = Terrain.DigCells(cells);
+        Patch?.MarkDirty(dirty);
+        if (edit.Removed.Count > 0) Commit(edit, Cut.Build, by, notify: true); // the log holds what was cut
+        return edit;
+    }
+
+    /// <summary>Whether a block's box meets the ground at all: solid cells it overlaps, or cells it cleared.</summary>
+    public bool Touches(StructureVolume volume)
+    {
+        foreach (TInt3 cell in ChunkStore.BoxCells(volume.CellBounds))
+            if (Store.IsSolid(cell) || (Store.IsRemoved(cell) && volume.ContainsCell(cell))) return true;
+        return false;
+    }
+
+    /// <summary>A block taken off: the ground it cleared stays cleared (remove-only), drawn as dug.</summary>
+    public void Release(VolumeKey key) => Patch?.MarkDirty(Store.RemoveVolume(key));
+
+    /// <summary>A whole structure leaving the ground (lift-off, a load replacing it).</summary>
+    public void ReleaseAll(int owner) => Patch?.MarkDirty(Store.RemoveVolumes(owner));
 
     /// <summary>A crash: a capped bowl of cells, through the same log (the physics world notifies for its own craters).</summary>
     public CraterResult Crater(N.Vector3 center, float radius)

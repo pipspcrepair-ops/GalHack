@@ -276,7 +276,7 @@ public partial class DigTest
     /// 0.5 m, each sample floored to a cell, every solid cell dug. Returns how many cells it cut
     /// whose centres lie outside the block.
     /// </summary>
-    static int LegacyClear(ChunkStore store, IEnumerable<StructureVolume> volumes)
+    internal static int LegacyClear(ChunkStore store, IEnumerable<StructureVolume> volumes)
     {
         int outside = 0;
         var all = volumes.ToList();

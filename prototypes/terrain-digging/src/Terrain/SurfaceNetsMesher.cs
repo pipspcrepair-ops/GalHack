@@ -210,6 +210,9 @@ public sealed class ChunkMesh
 /// that start at its own cells, so every quad is built exactly once, and the shared border
 /// vertices are computed from the same samples in the same order on both sides of a seam.
 ///
+/// Where structures stand in the ground, the chunk is then cut at their faces
+/// (<see cref="StructureClipper"/>), so the ground meets them flush.
+///
 /// One instance per thread: it reuses its scratch buffers.
 /// </summary>
 public sealed class SurfaceNetsMesher

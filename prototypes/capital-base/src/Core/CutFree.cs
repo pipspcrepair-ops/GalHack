@@ -34,7 +34,7 @@ public sealed class CutPlan
 }
 
 /// <summary>
-/// Cutting a hull free of the ground, and clearing the ground a new block is built into.
+/// Cutting a hull free of the ground. (Building into it is terrain-digging's ClearForStructure, through Ground.SetInto.)
 ///
 /// <b>Lift-off.</b> A hull leaves the ground straight up. Every terrain cell that lies within
 /// <c>margin</c> of a block anywhere along that climb is cut, before the hull moves:
@@ -201,28 +201,5 @@ public static class CutFree
             if (t0 > t1) return false;
         }
         return true;
-    }
-
-    /// <summary>
-    /// Building into the ground: every cell whose centre lies inside a new block's box, grown by
-    /// <paramref name="margin"/>, sorted. The caller removes them through the terrain's edit API.
-    /// </summary>
-    public static List<TInt3> CellsInside(BlockBox b, float margin)
-    {
-        var cells = new List<TInt3>();
-        (Vector3 lo, Vector3 hi) = Bounds(b, margin);
-        TInt3 a = TInt3.Floor(lo), z = TInt3.Floor(hi);
-        Quaternion inverse = Quaternion.Inverse(b.Rotation);
-        Vector3 half = b.Half + new Vector3(margin);
-        for (int y = a.Y; y <= z.Y; y++)
-        for (int zz = a.Z; zz <= z.Z; zz++)
-        for (int x = a.X; x <= z.X; x++)
-        {
-            var cell = new TInt3(x, y, zz);
-            Vector3 local = Vector3.Transform(cell.Center - b.Center, inverse);
-            if (MathF.Abs(local.X) <= half.X && MathF.Abs(local.Y) <= half.Y && MathF.Abs(local.Z) <= half.Z) cells.Add(cell);
-        }
-        cells.Sort();
-        return cells;
     }
 }

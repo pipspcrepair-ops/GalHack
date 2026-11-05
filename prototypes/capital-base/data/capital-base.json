@@ -30,9 +30,9 @@
   // A base stands where it landed: switching to base mode locks the structure's pose. The ground
   // under and around it digs like any other (dig anywhere); undermining a base never moves it.
 
-  // Building into the ground: a block placed where terrain is clears every cell whose centre lies
-  // within the block grown by `margin` metres, through the same edit API.
-  "build": { "margin": 0.1 },
+  // Building into the ground has no numbers of its own: a block placed where terrain is clears the
+  // cells whose centres lie inside it, and the ground round it meets it flush (terrain-digging's
+  // ClearForStructure).
 
   // Auto-transmit to Home. A vessel with it on sends what it farms straight into Home's storage
   // while it is within `radius` metres of Home's core and Home has room; anything that doesn't fit
