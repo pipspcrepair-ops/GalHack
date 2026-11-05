@@ -86,6 +86,7 @@ public partial class PhysicsTest : Node
 
         StructureChecks();
         foreach (int x in ForcePath()) yield return x;
+        foreach (int x in NoAutoOrientation()) yield return x;
         foreach (int x in DamageAndCraters()) yield return x;
         foreach (int x in Severing()) yield return x;
         foreach (int x in HullRider()) yield return x;
@@ -377,6 +378,65 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         _w.Player.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         yield return 0;
+    }
+
+    /// <summary>
+    /// A flying vessel never orients itself: left banked or pitched, hands off or on the autopilot,
+    /// in air or in space, it keeps that attitude. Flown through the whole shared flight path (the
+    /// handling model, the vessel controller, thrust against gravity), all six at once.
+    /// </summary>
+    IEnumerable<int> NoAutoOrientation()
+    {
+        var attitudes = new (string name, N.Quaternion turn)[]
+        {
+            ("40° of bank", MathX.AxisAngle(N.Vector3.UnitZ, Units.Radians(40f))),
+            ("30° nose up", MathX.AxisAngle(N.Vector3.UnitX, Units.Radians(30f))),
+            ("25° nose down and 60° of bank", N.Quaternion.Normalize(MathX.AxisAngle(N.Vector3.UnitX, Units.Radians(-25f)) * MathX.AxisAngle(N.Vector3.UnitZ, Units.Radians(60f)))),
+        };
+        var flown = new List<(string what, Ship ship, N.Quaternion start)>();
+        for (int i = 0; i < attitudes.Length * 2; i++)
+        {
+            bool space = i % 2 == 1;
+            var (name, turn) = attitudes[i / 2];
+            float altitude = space ? _w.Physics.Zone.Ceiling + 150f : 160f;
+            Ship ship = _w.SpawnVessel("corsair.gbp", new N.Vector3(-60f + i * 24f, altitude, -70f), 0f, landed: false);
+            ship.Body.Rotation = MathX.ThenLocal(ship.Body.Rotation, turn);
+            ship.Body.Velocity = MathX.Forward(ship.Body.Rotation) * 20f; // flying on at 20 m/s
+            ship.Binding.Teleport();
+            // Half of them with hands off the stick, half with nobody in the seat (the autopilot holds course).
+            ship.Flight.Input = i / 2 % 2 == 0 ? PilotInput.LetGo : PilotInput.Autopilot;
+            flown.Add(($"{name} in {(space ? "space" : "air")}, {(ship.Flight.Input.Seated ? "hands off" : "autopilot")}", ship, ship.Body.Rotation));
+        }
+        float worst = 0f;
+        string worstWhat = "";
+        for (int t = 0; t < 600; t++)
+        {
+            yield return 0;
+            foreach (var (what, ship, start) in flown)
+            {
+                float off = AngleBetween(ship.Body.Rotation, start);
+                if (off < worst) continue;
+                worst = off;
+                worstWhat = what;
+            }
+        }
+        bool flying = flown.All(f => !f.ship.Vessel.Frozen && !f.ship.IsWreck);
+        Check(flying && worst < 0.01f,
+            $"no auto-orientation through the shared flight path: six Corsairs left banked or pitched (40° of bank, 30° nose up, 25° down and 60° banked), " +
+            $"in air and in space, hands off or on the autopilot, keep that attitude for 10 s: worst drift {worst:F4}° ({worstWhat})");
+        foreach (var (_, ship, _) in flown) _w.Remove(ship);
+        yield return 0;
+    }
+
+    /// <summary>
+    /// The angle between two orientations, degrees, from the sine of the half angle (an arccosine of
+    /// their dot product can't resolve hundredths of a degree in single precision).
+    /// </summary>
+    static float AngleBetween(N.Quaternion a, N.Quaternion b)
+    {
+        N.Quaternion d = N.Quaternion.Normalize(a * N.Quaternion.Conjugate(b));
+        float sinHalf = MathF.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
+        return Units.Degrees(2f * MathF.Asin(MathF.Min(1f, sinHalf)));
     }
 
     /// <summary>The velocity each integrator integrates: a kinematic body's origin, a free body's centre of mass.</summary>
