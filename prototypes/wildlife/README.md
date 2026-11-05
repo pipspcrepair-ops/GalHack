@@ -30,7 +30,7 @@ Alienness pulls every roll towards options of matching weirdness, so temperate w
 - **Roles:** parts carry the behaviours they suit. Hunters get jaws, beaks, maws and claws, never a grazer's snout. Antlers, ram horns and hooves go on grazers. Scythes and stingers go on hunters.
 - **Forms:** some parts only go on some bodies. Insect heads, antennae and feelers only go on arthropod forms (skitterers, crawlers, leapers, swarms), never on a mammal-like strider.
 - **Excludes and requires:** pairs that clash can't be assembled, whichever is rolled first. Examples: horns on a lamprey mouth, tusks under a beak, antennae without an insect head, feelers on top of antennae, back tendrils through a shell.
-- **Proportions:** alien worlds may push a form's ranges only slightly. Heads stay inside a band so nothing reads as a baby animal, and legs, necks and tails have upper limits.
+- **Proportions:** alien worlds may push a form's ranges only slightly. Heads stay inside a band so nothing reads as a baby animal, and legs, necks and tails have upper limits. Stilts may be long on a small body, but a giant's stilts never outreach 1.2 times its body length. Giants also get thick, knee-capped stilts under a heavy hull, not poles under a pebble.
 - **Gone for good:**
   - odd leg counts, except the tripod form, which is built round three legs
   - checkerboard skins, which read as a missing texture
@@ -123,6 +123,15 @@ The rules that keep it fair:
 
 All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`). The prototype uses no third-party assets.
 
+**Quitting** goes through `src/Game/Shutdown.cs` in a fixed order, from the test, the screenshot harness and the game window alike:
+1. Stop every sound.
+2. Wait a quarter of a second of real time for the engine's audio mixing thread to retire the playbacks. The hovercraft's hum is a looping stream; quitting straight after freeing the scene used to leave it live on the mixer thread during engine teardown, an intermittent crash on exit.
+3. Dispose the shared meshes and materials on the main thread.
+4. Flush pending finalizers while the engine is still whole.
+5. Quit.
+
+The prototype starts no threads of its own.
+
 ## Play it
 
 From the repo root, in PowerShell:
@@ -153,7 +162,7 @@ You start on the alien world with a herd on the plain ahead and a grove to the l
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/WildlifeTest.tscn
 ```
 
-Runs headless and exits 0 or 1. It checks:
+Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way out: it drives the hovercraft with its sounds playing, closes the window, and must exit 0 with nothing leaked. `WildlifeTest` checks:
 - **Generator:**
   - The same seed gives the same species, and a different one doesn't.
   - Every planet rolls 6 to 10 species, with at least 4 body plans in 8 and no two identical part sets (120 planets).
@@ -205,7 +214,7 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
 ## Known limits
 
 - **Rigid pieces, no skinning.** Lofts and tapers hide most joints, but a piece is still rigid: bellies don't bulge and skin doesn't slide. Each piece is a draw call (about 30 per creature on average); a skinned single mesh per creature would be cheaper on the GPU.
-- **Some combinations are still plain or odd.** Leapers still read a little like round frogs on stilts. The stilt giants are spindly. Variety means the odd creature is merely dull rather than broken.
+- **Some combinations are still plain or odd.** Leapers still read a little like round frogs on stilts. Variety means the odd creature is merely dull rather than broken.
 - **Animation quality is uneven:**
   - Legged walkers are the best: feet plant and step properly. Very fast turns and lunges can still make a foot slide for a step.
   - A pounce on legs is a deep crouch and a long forward lunge, not a leap: planted feet can't leave the ground.
