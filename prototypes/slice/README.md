@@ -50,7 +50,7 @@ The loop, the way the test plays it: empty the pod's locker, walk to the iron de
 | Terrain | `shared/Terrain`, `terrain-digging` | The planet as diggable voxels (`PlanetTerrain`). `PlanetEdits` is the physics module's `ITerrainEditor` (craters and digs on every copy across a seam); `PlanetGround` is its stuck field, reading only ground the streamer has built |
 | Planet | `planet-generator`, `planet-surface` | The generator's temperate starter world, streamed by planet-surface's `TerrainStreamer` with its sky, sea, valley fog and flora, all used unchanged |
 | Weather | `weather`, `planet-surface` | The weather model pushes bodies through `WeatherBridge`; planet-surface's lightning and tornado effects draw it (through a small `IWeatherScene` interface); the slice adds rain, snow and dust around the camera |
-| Wildlife | `wildlife` | The planet's own fauna from its seed, on a 600 m patch of the planet's real heights that follows the survivor. Creatures telegraph every attack (sound and the visor's THREAT); nothing appears on screen when you meet one |
+| Wildlife | `wildlife` | The planet's own fauna from its seed, on a 600 m patch of the planet's real heights that follows the survivor. Creatures telegraph every attack (sound and the visor's THREAT). Meeting a species shows nothing on screen in the slice |
 | Survival | `survival-vitals` | The suit is `SurvivalSim`, its exposure supplied by the planet: the generator's temperature field, the weather's swing, day and night, height, the sky's air for oxygen. Food, oxygen, body temperature, radiation and stamina warn before they cost health. The pod's rations, the survival replicator and respawn at the pod are survival-vitals' own |
 | Building | `building` | Its structure model, rules, blueprint format, mesher and ghosts. The Skiff and the pod are blueprints in `data/blueprints` |
 | Handling | `ship-handling` | The four readable numbers and the flight rules, unchanged. No levelling is added |
@@ -60,7 +60,7 @@ The other prototypes' shaders and fonts load from their own `res://` paths. `src
 
 ### Building costs (placeholder)
 
-Materials and manufacturing aren't designed yet. Until they are, digging gives the building catalogue's recipe materials directly (`data/slice.json`: 6 iron, or 4 copper, silicon or carbon, per 1 m cell of ore), cutting a plant gives organics and carbon, and every block costs its catalogue recipe (`smallCost` for small-grid blocks). This lives behind `IBuildCosts` (`src/Construction/BuildCosts.cs`), the one place the build mode is checked, so `shared/Items` can replace it.
+The slice was built before materials and manufacturing were designed. Until it adopts `shared/Items`, digging gives the building catalogue's recipe materials directly (`data/slice.json`: 6 iron, or 4 copper, silicon or carbon, per 1 m cell of ore), cutting a plant gives organics and carbon, and every block costs its catalogue recipe (`smallCost` for small-grid blocks). This lives behind `IBuildCosts` (`src/Construction/BuildCosts.cs`), the one place the build mode is checked, so `shared/Items` can replace it.
 
 **Survival** pays for every block from the pack, then from the target's storage. **Creative** builds anything for free and takes nothing. It is a setting for the session (`Game.BuildMode`), chosen at launch:
 
@@ -133,6 +133,8 @@ All additive; each prototype's own tests still pass.
 - **Placeholder materials:** ore turns straight into the catalogue's recipe materials; no manufacturing, no constructor.
 - **Wildlife lives on a 600 m patch** around the survivor on foot; a new patch is baked when they walk far from its middle. Creatures don't collide with the player or vessels (wildlife's own limit), and they read the natural ground, not dug holes.
 - **The pod is a box.** It doesn't tumble on the way down; the descent is scripted.
+- **No discovery card yet:** wildlife has brought back its brief card for a species' first sighting; the slice doesn't show it (its brief said no first-meeting popup), so meeting a species shows nothing.
+- **Placeholder costs:** `shared/Items` (the item catalogue, recipes and `WorldRules` Creative/Survival) has landed on main; the slice's `CatalogueCosts` is still the placeholder behind `IBuildCosts`.
 - **Plants are cut whole** with one click; they don't regrow yet.
 - **Terrain collision streams around the focus only:** anything left far away (a parked vessel) sleeps until you come back.
 - **The open Skiff** has no cabin: in the seat it counts as a sealed cockpit, out of it you are on its deck.

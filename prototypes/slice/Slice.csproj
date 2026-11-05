@@ -33,6 +33,7 @@
     <Compile Include="..\wildlife\src\Core\**\*.cs" />
     <Compile Include="..\wildlife\src\Rigs\**\*.cs" />
     <Compile Include="..\wildlife\src\Sim\**\*.cs" />
+    <Compile Include="..\wildlife\src\Space\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\FocusMachine.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\Items.cs" />
 

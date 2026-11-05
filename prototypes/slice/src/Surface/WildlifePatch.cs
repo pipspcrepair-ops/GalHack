@@ -20,7 +20,7 @@ namespace Slice.Surface;
 /// The patch follows the survivor on foot: once they are well away from its middle, a new patch
 /// is baked on a worker around them (on a 100 m grid, so a place always gets the same animals),
 /// and swapped in with every creature that stands inside it carried across. Meeting one puts
-/// nothing on screen (wildlife's rule: no first-sighting popups).
+/// nothing on screen in the slice (wildlife's discovery card is not wired in).
 /// </summary>
 public partial class WildlifePatch : Node3D
 {

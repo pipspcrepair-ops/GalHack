@@ -10,6 +10,7 @@ using ShipHandling.Handling;
 using SurvivalVitals.Model;
 using Wildlife;
 using Weather.Model;
+using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Game;
 
