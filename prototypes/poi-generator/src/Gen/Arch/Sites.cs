@@ -323,6 +323,8 @@ public static class Sites
         bool wall = p.Arg("type", "mesh") == "wall";
         for (int i = 0; i < len; i++)
         {
+            if (i == gapAt)   // the way through, for roads that will come to it
+                x.C.X.Markers.Add(new Marker("gate", alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i), alongX ? "z" : "x"));
             if (Math.Abs(i - gapAt) <= 2) continue;
             Int3 b = alongX ? new Int3(p.X + i, 0, p.Z) : new Int3(p.X, 0, p.Z + i);
             if ((Hash.Cell(b, 61) % 1000) / 1000f < breaches) continue;

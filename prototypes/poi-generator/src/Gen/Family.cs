@@ -7,6 +7,9 @@ using System.Linq;
 namespace PoiGenerator.Gen;
 
 /// <summary>The design's five-step rarity ladder, the same one shared/Items uses.</summary>
+/// <summary>A place's weight in the world's infrastructure (roads, rail, power): the higher, the more lines reach it.</summary>
+public enum PoiTier { Wreck, Site, Camp, Outpost, Base, Town, Spaceport, City }
+
 public enum Rarity : byte { Common, Uncommon, Rare, Exotic, Unique }
 
 public enum PoiState : byte { Active, Abandoned, Infested, Ruined }
@@ -111,6 +114,11 @@ public sealed class FamilyDef
     public string Siting = "";
     /// <summary>How far its landmark should stand above the ground it sits on, in metres (tests).</summary>
     public int Rise = 6;
+    /// <summary>
+    /// How much the place matters to a road network that will join places up (most first): city,
+    /// spaceport, town, base, outpost, camp, site, wreck. Data: tier.
+    /// </summary>
+    public PoiTier Tier = PoiTier.Site;
 
     public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -171,6 +179,7 @@ public static class FamilyParser
                 case "pitch": F().Pitch = rest; break;
                 case "siting": F().Siting = p[1]; break;
                 case "rise": F().Rise = int.Parse(p[1], CultureInfo.InvariantCulture); break;
+                case "tier": F().Tier = Enum<PoiTier>(p[1], Error); break;
                 case "faction": F().Faction = Enum<Faction>(p[1], Error); break;
                 case "roster": F().Roster = p[1]; break;
                 case "kit": F().Kits["main"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;

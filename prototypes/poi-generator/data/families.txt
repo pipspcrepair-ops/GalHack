@@ -25,6 +25,7 @@
 #     grow <kinds>        extra steps inserted before the vault as rarity goes up
 
 family vharn_outpost
+  tier outpost
   siting ridge
   rise 6
   name Vharn Garrison
@@ -71,6 +72,7 @@ family vharn_outpost
     grow room corridor
 
 family freeholder_farm
+  tier outpost
   siting flat
   rise 5
   name Freeholder Farm
@@ -113,6 +115,7 @@ family freeholder_farm
     grow corridor room
 
 family abandoned_mine
+  tier site
   siting valley
   rise 6
   name Abandoned Mine
@@ -151,6 +154,7 @@ family abandoned_mine
     grow deep:corridor deep:room
 
 family research_lab
+  tier outpost
   siting any
   rise 2
   name Research Station
@@ -187,6 +191,7 @@ family research_lab
     grow corridor room
 
 family crashed_freighter
+  tier wreck
   siting any
   rise 5
   name Crashed Freighter
@@ -225,6 +230,7 @@ family crashed_freighter
     grow corridor hall
 
 family kessari_spire
+  tier outpost
   siting ridge
   rise 12
   name Kessari Relay Spire
@@ -255,6 +261,7 @@ family kessari_spire
     grow room
 
 family precursor_vault
+  tier site
   siting any
   rise 6
   name Precursor Vault

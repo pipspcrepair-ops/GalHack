@@ -1,0 +1,184 @@
+# Places in space: data and siting only for now (orbit play and space layouts come later).
+#
+#   space <id>        a kind of place in space
+#     kind            wreck, field (a wreck field), hulk (a drifting hulk), broken (a broken station),
+#                     station or outpost. The first four are wrecks: salvage, nobody home.
+#     rarity          common .. unique
+#     danger          0 calm .. 4 deadly
+#     salvage         scrap, salvage, military or rare
+#     faction / held  who holds it while it's live (its core and defenders)
+#     zones           near (close to the start world), orbit, moon, belt, deep
+#
+#   orbit <id>        how a system's space is filled
+#     match           default, or start (a start system)
+#     sites min max   how many places
+#     wrecks share min N   the share that are wrecks, and at least N of them
+#     danger          the most dangerous kind allowed
+#     nofactions      no live faction anywhere: held places only as dead wrecks
+
+space derelict_freighter
+  name Derelict Freighter
+  kind wreck
+  rarity common
+  danger 1
+  salvage salvage
+  zones near orbit belt
+  tags wreck ship salvage
+  pitch A bulk hauler dead in its orbit, cargo doors open, lights out since the collapse.
+
+space wreck_field
+  name Wreck Field
+  kind field
+  rarity common
+  danger 1
+  salvage scrap
+  zones near orbit belt
+  tags wreck field salvage
+  pitch Hull plates, containers and a broken drive section, tumbling slowly apart.
+
+space escape_pods
+  name Escape Pod Cluster
+  kind field
+  rarity common
+  danger 0
+  salvage scrap
+  zones near orbit
+  tags wreck pods salvage
+  pitch A ring of pods that launched and never got picked up.
+
+space drifting_hulk
+  name Drifting Hulk
+  kind hulk
+  rarity uncommon
+  danger 2
+  salvage salvage
+  zones near orbit moon belt
+  tags wreck ship hulk
+  pitch A gutted liner on a slow spin, its spine broken, something still running inside.
+
+space broken_station
+  name Broken Station
+  kind broken
+  rarity uncommon
+  danger 2
+  salvage salvage
+  zones orbit moon
+  tags wreck station salvage
+  pitch Half a habitat ring, the other half a debris trail around the planet.
+
+space military_wreck
+  name Warship Wreck
+  kind wreck
+  rarity rare
+  danger 3
+  salvage military
+  zones orbit belt deep
+  tags wreck military ship
+  pitch A frigate cut in two, its point-defence still tracking anything that moves.
+
+space generation_hulk
+  name Generation Ship Hulk
+  kind hulk
+  rarity exotic
+  danger 3
+  salvage rare
+  zones belt deep
+  tags wreck ship colony cryo
+  pitch Kilometres of decks, gardens gone to dust, and cryo vaults still drawing power.
+
+space old_shipyard
+  name Old Orbital Shipyard
+  kind broken
+  rarity rare
+  danger 2
+  salvage rare
+  zones orbit moon
+  tags wreck station shipyard
+  pitch Unfinished hulls still clamped in their cradles.
+
+space mining_outpost
+  name Asteroid Mining Outpost
+  kind outpost
+  rarity common
+  danger 1
+  salvage salvage
+  zones belt
+  tags mining asteroid
+  pitch Drills sunk into a rock, a habitat clinging to it.
+
+space pirate_hideout
+  name Reaver Hideout
+  kind outpost
+  rarity uncommon
+  danger 3
+  salvage military
+  faction reavers
+  held
+  zones belt moon
+  tags pirate asteroid reavers
+  pitch A hollowed asteroid with stolen ships docked inside.
+
+space vharn_picket
+  name Vharn Picket
+  kind station
+  rarity uncommon
+  danger 3
+  salvage military
+  faction vharn
+  held
+  zones orbit moon
+  tags military vharn
+  pitch A gun platform watching the approach.
+
+space meridian_relay
+  name Meridian Relay
+  kind station
+  rarity common
+  danger 1
+  salvage salvage
+  faction meridian
+  held
+  zones orbit
+  tags relay meridian recovery
+  pitch A patched-up relay station, Meridian's lights back on.
+
+space ledger_waystation
+  name Ledger Waystation
+  kind station
+  rarity uncommon
+  danger 1
+  salvage salvage
+  faction exchange
+  held
+  zones orbit belt
+  tags trade exchange
+  pitch Docking arms and cargo pods, open for business.
+
+space kessari_foundry
+  name Kessari Foundry
+  kind station
+  rarity rare
+  danger 3
+  salvage rare
+  faction kessari
+  held
+  zones moon belt
+  tags machine kessari industry
+  pitch An old smelter the machines took over and never stopped running.
+
+orbit default
+  match default
+  sites 6 12
+  wrecks 0.35 min 2
+  danger 4
+  set derelict_freighter 3 wreck_field 2 escape_pods 1 drifting_hulk 2 broken_station 1 military_wreck 1 generation_hulk 0.5 old_shipyard 0.6 mining_outpost 2 pirate_hideout 2 vharn_picket 2 meridian_relay 2 ledger_waystation 2 kessari_foundry 1
+
+# A start system: plenty of salvage in orbit and nearby, mostly salvage-grade and lower danger,
+# and no live faction.
+orbit start
+  match start
+  sites 10 16
+  wrecks 0.75 min 8
+  danger 2
+  nofactions
+  set derelict_freighter 5 wreck_field 4 escape_pods 3 drifting_hulk 3 broken_station 2 old_shipyard 1 mining_outpost 2 meridian_relay 1 ledger_waystation 1

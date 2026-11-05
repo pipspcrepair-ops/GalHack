@@ -19,6 +19,18 @@ public sealed class ThemeDef
     public List<(string Family, float Weight)> Set = new();
     /// <summary>POIs per square kilometre.</summary>
     public float Density = 1.4f;
+    /// <summary>
+    /// A start world: no faction holds ground here. Faction places turn up only as ruins of the old
+    /// days (no core, no defenders); wrecks, abandoned and infested places, the Bloom and the
+    /// factionless gangs all stay.
+    /// </summary>
+    public bool Start;
+
+    /// <summary>The same theme for a start world.</summary>
+    public ThemeDef AsStart() => new() { Id = Id + "+start", Match = Match, OutlierMin = OutlierMin, OutlierMax = OutlierMax, Set = Set, Density = Density, Start = true };
+
+    /// <summary>Whether a family belongs to a faction (its people, its core): on a start world it may only lie in ruins.</summary>
+    public static bool FactionOwned(FamilyDef f) => f.Core == CoreRule.Owned || f.Faction != Faction.None;
 }
 
 public static class ThemeParser
@@ -54,8 +66,14 @@ public static class ThemeParser
         return themes;
     }
 
-    /// <summary>The theme for a world: its archetype.variant, then its archetype, then default.</summary>
-    public static ThemeDef For(PoiLibrary lib, string archetype, string variant)
+    /// <summary>The theme for a world: its archetype.variant, then its archetype, then default. A start world (<paramref name="start"/>) keeps the theme with no faction holding ground.</summary>
+    public static ThemeDef For(PoiLibrary lib, string archetype, string variant, bool start = false)
+    {
+        var theme = Find(lib, archetype, variant);
+        return start ? theme.AsStart() : theme;
+    }
+
+    static ThemeDef Find(PoiLibrary lib, string archetype, string variant)
     {
         string full = $"{archetype}.{variant}".ToLowerInvariant(), arch = archetype.ToLowerInvariant();
         return lib.Themes.FirstOrDefault(t => t.Match.Contains(full))
@@ -101,7 +119,10 @@ public static class WorldPlacement
 
         var themed = theme.Set.Where(s => lib.Families.Any(f => f.Id == s.Family)).ToList();
         var inSet = new HashSet<string>(themed.Select(s => s.Family));
-        var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).ToList();
+        var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
+        // A start world: faction places only as ruins (no core, no one home), and less often.
+        static bool CanRuin(FamilyDef f) => !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f;
+        float StartWeight(FamilyDef f) => theme.Start && ThemeDef.FactionOwned(f) ? 0.3f : 1f;
         var uniqueUsed = new HashSet<string>();
         for (int i = 0; i < sites.Count; i++)
         {
@@ -119,12 +140,12 @@ public static class WorldPlacement
             {
                 var biome = map.BiomeAt(x, y);
                 var territory = map.TerritoryAt(x, y);
-                var fits = themed.Select(s => (Fam: lib.Family(s.Family), s.Weight))
+                var fits = themed.Where(s => !theme.Start || CanRuin(lib.Family(s.Family))).Select(s => (Fam: lib.Family(s.Family), Weight: s.Weight * StartWeight(lib.Family(s.Family))))
                     .Where(s => s.Fam.Biomes.Count == 0 || s.Fam.Biomes.Contains(biome) || s.Fam.Generator != Generator.Kit)
                     .Where(s => s.Fam.Territories.Count == 0 || s.Fam.Territories.Contains("any") || s.Fam.Territories.Contains(territory) || s.Fam.Generator != Generator.Kit)
                     .Where(s => !(s.Fam.Rarity >= Rarity.Exotic && uniqueUsed.Contains(s.Fam.Id)))
                     .ToList();
-                if (fits.Count == 0) fits = themed.Select(s => (Fam: lib.Family(s.Family), s.Weight)).ToList();
+                if (fits.Count == 0) fits = themed.Where(s => !theme.Start || CanRuin(lib.Family(s.Family))).Select(s => (Fam: lib.Family(s.Family), s.Weight)).ToList();
                 // Rarer places turn up less often: the weight falls with the rarity ladder.
                 var w = fits.Select(s => s.Weight / (1f + (int)s.Fam.Rarity * (int)s.Fam.Rarity * 0.6f)).ToList();
                 int k = rng.PickWeighted(w);
@@ -134,6 +155,7 @@ public static class WorldPlacement
             if (fam.Rarity >= Rarity.Exotic) uniqueUsed.Add(fam.Id);
             var variant = fam.Variants[rng.Range(0, fam.Variants.Count)];
             int state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
+            if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
             result.Pois.Add(new PlacedPoi
             {
                 Family = fam, Variant = variant, State = (PoiState)state, SpawnSeed = rng.NextU64(),

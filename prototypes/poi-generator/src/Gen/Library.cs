@@ -46,6 +46,9 @@ public sealed class PoiLibrary
     public Dictionary<string, ProgramDef> Programs = new();
     public Dictionary<string, SiteDef> Sites = new();
     public List<ThemeDef> Themes = new();
+    /// <summary>Places in space and how a system's space is filled (data and siting only for now).</summary>
+    public List<SpaceSiteDef> SpaceSites = new();
+    public List<OrbitTheme> OrbitThemes = new();
 
     public FamilyDef Family(string id) => Families.First(f => f.Id == id);
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
@@ -68,6 +71,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("programs.txt", StringComparison.Ordinal)) lib.Programs = ArchParser.Programs(text, name);
             else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
+            else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
         }
         lib.Check();
         return lib;

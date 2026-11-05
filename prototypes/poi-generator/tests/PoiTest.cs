@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -724,6 +724,64 @@ public partial class PoiTest : Node
         Check(badShare == 0 && noOutlier == 0, $"themed sets and outliers: {planets} planets over {_lib.Themes.Count} themes, {total} places, {outliers} outliers " +
                                                $"({outliers * 100f / total:F1}%); every planet's outlier share inside its theme's range and never zero{firstBad}");
         Check(poorCover == 0, $"placement covers the whole planet, not just the landing site: the worst planet has places in {worstCover:P0} of its 18 regions (6 by 3)");
+    }
+
+    /// <summary>Start worlds: no faction holds ground (faction places only as ruins), no cores, no defenders; the rest stays.</summary>
+    void StartWorlds()
+    {
+        int planets = 0, places = 0, held = 0, cores = 0, guards = 0, ruins = 0, gangs = 0, spawned = 0;
+        foreach (var theme in _lib.Themes)
+            for (int s = 0; s < 6; s++)
+            {
+                var start = theme.AsStart();
+                var map = PlanetMap.GenerateWorld(Hash.Combine(Hash.Of(theme.Id), (ulong)s + 50), 200, 100, 80f, theme.Id);
+                var r = WorldPlacement.Place(_lib, map, start, Hash.Combine(0x57A27UL, (ulong)s));
+                planets++;
+                foreach (var p in r.Pois)
+                {
+                    places++;
+                    if (ThemeDef.FactionOwned(p.Family) && p.State != PoiState.Ruined) held++;
+                    if (p.Family.HasCore(p.State)) cores++;
+                    if (ThemeDef.FactionOwned(p.Family)) ruins++;
+                    if (p.Family.Tags.Contains("gang")) gangs++;
+                }
+                // Spawn a few and look: no core block, no faction defender.
+                foreach (var p in r.Pois.Take(3))
+                {
+                    var inst = PoiFactory.Generate(_lib, p.Family, p.Family.Variants.IndexOf(p.Variant), p.Rarity, p.State, p.SpawnSeed);
+                    spawned++;
+                    if (inst.HasCore || inst.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Core)) cores++;
+                    if (ThemeDef.FactionOwned(p.Family) && inst.Enemies.Any(e => e.Kind is EnemyKind.Guard or EnemyKind.Turret)) guards++;
+                }
+            }
+        Check(held == 0 && cores == 0 && guards == 0,
+            $"start worlds: {planets} planets, {places} places, none held by a faction ({ruins} faction places only as ruins), no cores, " +
+            $"no faction defenders in {spawned} spawned; gang forts stay ({gangs}){(held + cores + guards > 0 ? $"; {held} held, {cores} cores, {guards} with guards" : "")}");
+    }
+
+    /// <summary>Start systems: plenty of wrecks in orbit and nearby, mostly salvage and lower danger, no live faction.</summary>
+    void StartSystems()
+    {
+        int systems = 0, fewest = int.MaxValue, held = 0, dangerous = 0, near = 0, wrecks = 0, places = 0;
+        int normalWrecks = 0, normalHeld = 0;
+        for (int s = 0; s < 60; s++)
+        {
+            var start = OrbitPlacement.Place(_lib, (ulong)s * 7919 + 1, start: true);
+            var normal = OrbitPlacement.Place(_lib, (ulong)s * 7919 + 1, start: false);
+            systems++;
+            int w = start.Count(p => p.Site.IsWreck);
+            fewest = Math.Min(fewest, w);
+            wrecks += w;
+            places += start.Count;
+            held += start.Count(p => p.FactionHeld);
+            dangerous += start.Count(p => p.Site.Danger > 2);
+            near += start.Count(p => p.Zone == "near");
+            normalWrecks += normal.Count(p => p.Site.IsWreck);
+            normalHeld += normal.Count(p => p.FactionHeld);
+        }
+        Check(fewest >= 8 && held == 0 && dangerous == 0 && wrecks > normalWrecks * 1.5f && normalHeld > 0,
+            $"start systems: {systems} systems, every one with at least {fewest} wrecks in orbit and nearby ({wrecks} of {places} places, {near} close to home), " +
+            $"none above danger 2, no live faction (other systems: {normalWrecks} wrecks, {normalHeld} faction-held)");
     }
 
     /// <summary>From afar: each family's landmark stands as high as its purpose wants, and something lights it.</summary>

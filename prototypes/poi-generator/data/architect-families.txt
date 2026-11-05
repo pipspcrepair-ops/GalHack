@@ -12,6 +12,7 @@
 #   pitch                      one line: why you'd want to go there
 
 family deep_bunker
+  tier site
   siting open
   rise 12
   name Deep Bunker
@@ -40,6 +41,7 @@ family deep_bunker
     seed 8104
 
 family research_base
+  tier outpost
   siting flat
   rise 7
   name Abandoned Research Base
@@ -68,6 +70,7 @@ family research_base
     seed 8204
 
 family ice_outpost
+  tier outpost
   siting open
   rise 12
   name Ice Research Outpost
@@ -93,6 +96,7 @@ family ice_outpost
     seed 8303
 
 family ominous_tower
+  tier town
   siting any
   rise 30
   name Ominous Tower
@@ -121,6 +125,7 @@ family ominous_tower
     seed 8404
 
 family hospital
+  tier town
   siting flat
   rise 18
   name Abandoned Hospital
@@ -146,6 +151,7 @@ family hospital
     seed 8503
 
 family cryo_vault
+  tier site
   siting hillside
   rise 12
   name Cryo Vault
@@ -172,6 +178,7 @@ family cryo_vault
     seed 8603
 
 family biolab
+  tier outpost
   siting flat
   rise 7
   name Biolab
@@ -198,6 +205,7 @@ family biolab
     seed 8703
 
 family command_bunker
+  tier base
   siting hillside
   rise 12
   name Military Command Bunker
@@ -223,6 +231,7 @@ family command_bunker
     seed 8803
 
 family prison_block
+  tier base
   siting flat
   rise 8
   name Prison Block
@@ -248,6 +257,7 @@ family prison_block
     seed 8903
 
 family meridian_garrison
+  tier base
   siting ridge
   rise 10
   name Meridian Garrison
@@ -273,6 +283,7 @@ family meridian_garrison
 # ---- landmarks: hand-authored site plans --------------------------------------------------------
 
 family old_airfield
+  tier base
   siting flat
   rise 18
   name Old Airfield
@@ -299,6 +310,7 @@ family old_airfield
     seed 9103
 
 family abandoned_spaceport
+  tier spaceport
   siting flat
   rise 30
   name Abandoned Spaceport
@@ -325,6 +337,7 @@ family abandoned_spaceport
     seed 9203
 
 family military_base
+  tier base
   siting flat
   rise 18
   name Abandoned Military Base
@@ -351,6 +364,7 @@ family military_base
     seed 9303
 
 family blast_crater
+  tier site
   siting open
   rise 12
   name Blast Crater
@@ -376,6 +390,7 @@ family blast_crater
     seed 9403
 
 family scrap_fort
+  tier camp
   siting flat
   rise 9
   name Scrap Fort
@@ -400,6 +415,7 @@ family scrap_fort
     seed 9503
 
 family old_mine
+  tier site
   siting valley
   rise 16
   name Old Mine Works
