@@ -156,6 +156,20 @@ public sealed class BlockPlace
         return p;
     }
 
+    /// <summary>A plain lit hall for showing creatures side by side: the mutation row.</summary>
+    public static BlockPlace Gallery(string name = "A mutagenic world")
+    {
+        var p = new BlockPlace(new Vector3I(30, 12, 16)) { Name = name };
+        p.Plan.Seed = 1;
+        p.Room(RoomKind.Hall, new Vector3I(1, 1, 1), new Vector3I(29, 10, 15), 0, false);
+        p.Lamps.Add((new Vector3(8f, 9.4f, 6f), new Color("ffe6c4"), 16f));
+        p.Lamps.Add((new Vector3(21f, 9.4f, 6f), new Color("ffe6c4"), 16f));
+        p.Lamps.Add((new Vector3(15f, 9.4f, 12f), new Color("c8d8ff"), 14f));
+        p.Start = new Vector3(15f, 1f, 13.5f);
+        p.StartLook = new Vector3(15f, 2f, 6f);
+        return p;
+    }
+
     /// <summary>Steps along X from x0 down to x1 (each 1 m lower) between z0 and z1.</summary>
     void StairsX(int x0, int x1, int z0, int z1, int fromFloor, int headroom)
     {
@@ -205,6 +219,7 @@ public sealed class BlockPlace
         p.Vent(hold, new Vector3I(12, 9, 8), Vector3.Down);
         p.Vent(engine, new Vector3I(30, 8, 8), Vector3.Down);
         p.Lamps.Add((new Vector3(3f, 5.5f, 9f), new Color("ffcf8a"), 6f));
+        p.Lamps.Add((new Vector3(14f, 8.5f, 3.5f), new Color("9fc4c8"), 9f)); // a cold strip light still working
         p.Lamps.Add((new Vector3(30f, 7.5f, 9f), new Color("ff7a2a"), 4f)); // a reactor's dying glow
         p.Start = new Vector3(2.5f, 2f, 9f);
         p.StartLook = new Vector3(14f, 4f, 9f);
@@ -213,79 +228,59 @@ public sealed class BlockPlace
 }
 
 /// <summary>
-/// Creatures for a voxel cave or a dug tunnel (the planet's caves): it finds the cave's floors,
-/// walls and ceilings round a point, puts cracks low in its walls and moss on its floors, cave
-/// crawlers on its ceilings and subsisters at the moss, so a cave has the same small food chain
-/// as a place. This is what the planet surface calls for a cave mouth near the player.
+/// The voxel caves the showroom and the tests share: terrain-digging's seeded landscape, a
+/// tunnel dug into its hillside with the survival tool (balls of rock 2 m round, side by side
+/// and one above the other, as a player digs), and the roomiest chamber of its first generator cave.
 /// </summary>
-public static class CaveFauna
+public static class CaveSite
 {
-    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4)
-    {
-        var rng = Rng.For(seed, "cave-fauna");
-        var made = new List<Creature>();
-        HashSet<Vector3I> cells = SpaceNav.Reach(space, center, true, 1, 6000);
-        var floors = new List<Vector3I>();
-        var ceilings = new List<Vector3I>();
-        var walls = new List<Vector3I>();
-        foreach (Vector3I c in cells)
-        {
-            if ((SpaceMath.Center(c) - center).Length() > radius) continue;
-            bool below = space.SolidCell(c.X, c.Y - 1, c.Z), above = space.SolidCell(c.X, c.Y + 1, c.Z);
-            if (below && !space.SolidCell(c.X, c.Y + 1, c.Z) && !space.SolidCell(c.X, c.Y + 2, c.Z)) floors.Add(c);
-            else if (above && !below && !space.SolidCell(c.X, c.Y - 1, c.Z) && !space.SolidCell(c.X, c.Y - 2, c.Z)) ceilings.Add(c);
-            else if (!below && !above) walls.Add(c);
-        }
-        Sort(floors);
-        Sort(ceilings);
-        Sort(walls);
-        if (floors.Count == 0) return made;
+    public const int Seed = 1977;
 
-        // Cracks low in the walls (one network: they join up through the rock), moss on the floor.
-        int crackCount = Math.Min(walls.Count, 4);
-        for (int i = 0; i < crackCount; i++)
-        {
-            Vector3I w = walls[rng.Int(0, walls.Count - 1)];
-            Vector3 at = SpaceMath.Center(w);
-            Vector3 n = SpaceMath.Normal(space, at);
-            if (n == Vector3.Zero) continue;
-            SpaceMath.Project(space, ref at, 0.02f, out n);
-            sim.Cracks.Add(new Crack { Id = sim.Cracks.Count, Kind = CrackKind.Crack, Position = at, Normal = n, Network = 10 + (int)(seed % 1000), Size = rng.Range(0.18f, 0.3f) });
-        }
-        Species grazer = fauna.For(DeepRole.Subsister, PoiTheme.Natural, depth);
-        int patches = Math.Min(floors.Count, 3);
-        var food = new List<FoodPatch>();
-        for (int i = 0; i < patches; i++)
-        {
-            Vector3I f = floors[rng.Int(0, floors.Count - 1)];
-            float? y = SpaceMath.FloorBelow(space, f.X + 0.5f, f.Y + 0.5f, f.Z + 0.5f, 2f);
-            var patch = new FoodPatch { Position = new Vector3(f.X + 0.5f, y ?? f.Y, f.Z + 0.5f), Kind = grazer.Diet, Amount = rng.Range(0.6f, 1f) };
-            sim.Food.Add(patch);
-            food.Add(patch);
-        }
-        var colony = new Colony { Species = grazer, Space = space, Home = food[0].Position };
-        foreach (Crack k in sim.Cracks) if (k.Network == 10 + (int)(seed % 1000)) colony.Sources.Add(k);
-        for (int i = 0; i < subsisters; i++)
-        {
-            FoodPatch at = food[i % food.Count];
-            Creature c = sim.SpawnIn(grazer, space, at.Position + new Vector3(rng.Range(-1f, 1f), 0.3f, rng.Range(-1f, 1f)));
-            c.Home = at.Position;
-            made.Add(c);
-            colony.Target++;
-        }
-        sim.Colonies.Add(colony);
-        Species crawler = fauna.For(DeepRole.Crawler, PoiTheme.Natural, depth);
-        for (int i = 0; i < crawlers && ceilings.Count > 0; i++)
-        {
-            Vector3I k = ceilings[rng.Int(0, ceilings.Count - 1)];
-            Creature c = sim.SpawnIn(crawler, space, SpaceMath.Center(k), Vector3.Down);
-            c.Hunger = rng.Range(0.3f, 0.8f);
-            c.Ambush = new AmbushPoint { Kind = HideKind.Ceiling, Position = Crawl.Center(c), Normal = c.Facing.Y };
-            made.Add(c);
-        }
-        return made;
+    public static TerrainDigging.Terrain.ChunkStore Store() => new(new TerrainDigging.Terrain.SimpleTerrainSource(Seed));
+
+    /// <summary>Digs the tunnel (30 m along z from 40, 9 m under the lowest ground over it); returns its axis at z 46 and how many cells came out.</summary>
+    public static (Vector3 axis, int removed, int ty) DigTunnel(TerrainDigging.Terrain.ChunkStore store)
+    {
+        var src = (TerrainDigging.Terrain.SimpleTerrainSource)store.Source;
+        float y = float.MaxValue;
+        for (int z = 40; z <= 72; z++) y = MathF.Min(y, src.SurfaceHeight(0f, z));
+        int ty = (int)MathF.Floor(y - 9f);
+        int removed = 0;
+        for (int z = 40; z <= 70; z++)
+        foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, 2), (-1, 2), (1, 2) })
+            removed += store.Dig(new TerrainDigging.Terrain.Int3(dx, ty + dy, z), 2f).Removed.Count;
+        return (new Vector3(0.5f, ty + 1.5f, 46f), removed, ty);
     }
 
-    /// <summary>A stable order, so the same cave always gets the same creatures where they are.</summary>
-    static void Sort(List<Vector3I> cells) => cells.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X));
+    /// <summary>The roomiest spot in the generator's first cave: open floor, a ceiling 4 to 6 m up.</summary>
+    public static (Vector3 floor, float height) Chamber(TerrainDigging.Terrain.ChunkStore store)
+    {
+        var src = (TerrainDigging.Terrain.SimpleTerrainSource)store.Source;
+        Vector3 best = Vector3.Zero;
+        float bestScore = -1f, bestH = 0f;
+        for (int x = -90; x <= -30; x++)
+        for (int z = -5; z <= 55; z++)
+        {
+            int top = (int)MathF.Floor(src.SurfaceHeight(x + 0.5f, z + 0.5f));
+            for (int y = top - 18; y < top - 3; y++)
+            {
+                if (store.IsSolid(new TerrainDigging.Terrain.Int3(x, y, z)) || !store.IsSolid(new TerrainDigging.Terrain.Int3(x, y - 1, z))) continue;
+                int h = 0;
+                while (h < 7 && !store.IsSolid(new TerrainDigging.Terrain.Int3(x, y + h, z))) h++;
+                if (h < 4 || h >= 7) continue;
+                int wide = 0;
+                for (int dz = -2; dz <= 2; dz++)
+                for (int dx = -2; dx <= 2; dx++)
+                    if (!store.IsSolid(new TerrainDigging.Terrain.Int3(x + dx, y, z + dz)) && store.IsSolid(new TerrainDigging.Terrain.Int3(x + dx, y - 1, z + dz))) wide++;
+                float score = wide + h * 0.5f;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = new Vector3(x + 0.5f, y, z + 0.5f);
+                    bestH = h;
+                }
+            }
+        }
+        return (best, bestH);
+    }
 }

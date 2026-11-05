@@ -456,9 +456,9 @@
     },
     "themes": {
       "Natural": { "alienness": 0.45, "hue": [18, 48], "saturation": [0.18, 0.38], "value": [0.32, 0.52], "glow": 0.25 },
-      "Industrial": { "alienness": 0.35, "hue": [14, 36], "saturation": [0.18, 0.36], "value": [0.2, 0.34], "glow": 0.1, "backs": ["plates", "shell"], "warning": "#d0661f" },
+      "Industrial": { "alienness": 0.35, "hue": [14, 36], "saturation": [0.18, 0.36], "value": [0.2, 0.34], "glow": 0.1, "backs": ["plates", "shell"], "warning": "#a35a2c" },
       "Alien": { "alienness": 0.85, "hue": [165, 300], "saturation": [0.45, 0.8], "value": [0.32, 0.58], "glow": 0.75, "backs": ["bubbles", "crystals", "vents", "spines"] },
-      "Derelict": { "alienness": 0.5, "hue": [10, 32], "saturation": [0.22, 0.42], "value": [0.16, 0.3], "glow": 0.3, "backs": ["plates", "shell"], "warning": "#e07a26" }
+      "Derelict": { "alienness": 0.5, "hue": [10, 32], "saturation": [0.22, 0.42], "value": [0.16, 0.3], "glow": 0.3, "backs": ["plates", "shell"], "warning": "#9c5a2e" }
     },
     "depth": { "paleFrom": 2, "blindFrom": 3, "paleness": 0.35, "nestScale": 0.1, "nesters": [2, 0.75], "toughness": 0.1, "maxLevel": 6 },
     "population": {

@@ -42,6 +42,7 @@ public partial class ProceduralAudio : Node3D
         _clips["discover"] = Make(0.75f, (t, n) => 0.3f * (Bell(t, 659.3f) + 0.85f * Bell(t - 0.11f, 987.8f)) * Math.Clamp((0.75f - t) * 16f, 0f, 1f), rng);
         HoverLoop = Make(1.0f, (t, n) => (MathF.Sin(MathF.Tau * 55f * t) * 0.5f + MathF.Sin(MathF.Tau * 110f * t) * 0.25f + n * 0.08f) * 0.6f, rng, loop: true);
         GrindLoop = Make(0.5f, (t, n) => (Square(t * 36f) * 0.3f + n * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * MathF.Tau * 12f)), rng, loop: true);
+        MakeTells(rng);
 
         for (int i = 0; i < 12; i++)
         {
@@ -149,4 +150,83 @@ public partial class ProceduralAudio : Node3D
 
     static float Saw(float phase) => 2f * (phase - MathF.Floor(phase + 0.5f));
     static float Square(float phase) => phase - MathF.Floor(phase) < 0.5f ? 1f : -1f;
+
+    // ---- Tells: what gives an ambush away, before it strikes ------------------------------
+
+    /// <summary>
+    /// The sounds of caves and places, all synthesised: claws scrabbling inside a wall, a vent
+    /// grille rattling, grit trickling from a ceiling, slow breathing in the dark, the dry
+    /// clicks of something blind, knocking behind a door.
+    /// </summary>
+    void MakeTells(Rng rng)
+    {
+        // Scrabbling claws: short bursts of hard clicks, uneven, muffled by the rock.
+        _clips["scratch"] = Make(0.9f, (t, n) =>
+        {
+            float burst = MathF.Max(0f, MathF.Sin(t * 23f + MathF.Sin(t * 7f) * 2f));
+            float click = MathF.Pow(MathF.Max(0f, MathF.Sin(t * 410f + MathF.Sin(t * 37f) * 6f)), 24f);
+            return (n * 0.35f + click * 0.9f) * burst * Math.Clamp(t * 12f, 0f, 1f) * Math.Clamp((0.9f - t) * 6f, 0f, 1f) * 0.8f;
+        }, rng, highpass: true);
+        // A grille rattling in its frame: metal on metal, a few uneven shakes.
+        _clips["rattle"] = Make(1.2f, (t, n) =>
+        {
+            float shake = MathF.Pow(MathF.Max(0f, MathF.Sin(t * 31f + MathF.Sin(t * 5f) * 3f)), 6f);
+            float metal = Square(t * 612f) * 0.25f + MathF.Sin(MathF.Tau * 1830f * t) * 0.2f + n * 0.25f;
+            return metal * shake * Envelope(t, 1.2f, 0.8f);
+        }, rng, highpass: true);
+        // Grit trickling down: sparse little impacts in a soft hiss.
+        _clips["dust"] = Make(1.4f, (t, n) =>
+        {
+            float grain = MathF.Pow(MathF.Max(0f, MathF.Sin(t * 290f + MathF.Sin(t * 53f) * 9f)), 40f);
+            return (n * 0.12f + grain * 0.6f) * Math.Clamp(t * 4f, 0f, 1f) * Math.Clamp((1.4f - t) * 3f, 0f, 1f);
+        }, rng, highpass: true);
+        // Breathing in the dark: a slow, wet draw in, a long rasping breath out.
+        _clips["breath"] = Make(1.6f, (t, n) =>
+        {
+            float draw = t < 0.6f ? MathF.Sin(t / 0.6f * MathF.PI) * 0.5f : MathF.Sin((t - 0.6f) / 1.0f * MathF.PI) * 0.9f;
+            float rasp = 0.6f + 0.4f * MathF.Sin(t * 70f) * MathF.Sin(t * 13f);
+            return n * MathF.Max(0f, draw) * rasp * 0.8f;
+        }, rng);
+        // Dry clicks, like a fingernail on bone: something finding you by sound.
+        _clips["click"] = Make(0.8f, (t, n) =>
+        {
+            float k = t * 7.5f;
+            float local = (k - MathF.Floor(k)) / 7.5f;
+            return MathF.Exp(-local * 260f) * (MathF.Sin(MathF.Tau * 2900f * local) * 0.7f + n * 0.4f) * (MathF.Floor(k) % 3 == 2 ? 0.4f : 1f);
+        }, rng, highpass: true);
+        // Knocking behind a door: three heavy, uneven blows and a scrape.
+        _clips["knock"] = Make(1.3f, (t, n) =>
+        {
+            float s = 0f;
+            foreach (float at in new[] { 0.05f, 0.38f, 0.55f })
+            {
+                float u = t - at;
+                if (u > 0f) s += MathF.Exp(-u * 18f) * (MathF.Sin(MathF.Tau * 62f * u) * 0.9f + n * 0.3f);
+            }
+            if (t > 0.8f) s += n * 0.25f * MathF.Sin((t - 0.8f) / 0.5f * MathF.PI);
+            return s;
+        }, rng);
+    }
+
+    /// <summary>A tell, heard where it happens: scratching moves with the thing in the wall.</summary>
+    public void Tell(TellEvent e)
+    {
+        string clip = e.Kind switch
+        {
+            TellKind.Scratch => "scratch",
+            TellKind.Rattle => "rattle",
+            TellKind.Dust => "dust",
+            TellKind.Shadow => "",
+            TellKind.Thump => "knock",
+            TellKind.Breath => "breath",
+            TellKind.Click => "click",
+            TellKind.Hiss => "hiss",
+            _ => e.Creature?.Species.Attack.Sound ?? "growl",
+        };
+        if (clip == "") return;
+        float size = e.Creature?.Species.Body.Size ?? 1f;
+        float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, size)), 0.6f, 1.6f);
+        float volume = e.Kind == TellKind.Scratch && e.Creature is { InWalls: true } ? -5f : e.Kind == TellKind.Dust ? -2f : 1f;
+        Play(clip, e.Position, e.Kind is TellKind.Rattle or TellKind.Thump or TellKind.Dust ? 1f : pitch, volume);
+    }
 }

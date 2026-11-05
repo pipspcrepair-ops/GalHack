@@ -126,7 +126,7 @@ public sealed class DeepFauna
     {
         DepthRules dr = _data.Deep.Depth;
         int over = depth - b.Depth;
-        Species s = Clone(b);
+        Species s = b.Copy();
         s.Depth = depth;
         float grow = 1f + dr.NestScale * over;
         ScaleBody(s.Body, grow);
@@ -137,40 +137,6 @@ public sealed class DeepFauna
         s.WarnRadius = b.WarnRadius + over * 0.5f;
         s.DefendRadius = b.DefendRadius + over * 0.25f;
         s.Seed = Rng.Mix(b.Seed, (ulong)depth);
-        return s;
-    }
-
-    static Species Clone(Species b)
-    {
-        var s = new Species
-        {
-            Id = b.Id, Index = b.Index, Seed = b.Seed, Name = b.Name, CommonName = b.CommonName, Plan = b.Plan, Form = b.Form, Rig = b.Rig,
-            Parts = new Dictionary<string, string>(b.Parts), Behaviour = b.Behaviour, Temperament = b.Temperament, Attack = b.Attack,
-            GroupMin = b.GroupMin, GroupMax = b.GroupMax, Weirdness = b.Weirdness, Corrupted = b.Corrupted, Burrows = b.Burrows, Flies = b.Flies,
-            Tumbles = b.Tumbles, Rooted = b.Rooted, Habitat = b.Habitat, Activity = b.Activity, RestKind = b.RestKind, Climbs = b.Climbs, Role = b.Role,
-            Theme = b.Theme, Depth = b.Depth, Blind = b.Blind, Tells = b.Tells, TellSeconds = b.TellSeconds, NoticeRadius = b.NoticeRadius,
-            StrikeRadius = b.StrikeRadius, WarnRadius = b.WarnRadius, DefendRadius = b.DefendRadius, HuntsPrey = b.HuntsPrey,
-            FleesIntoCracks = b.FleesIntoCracks, Diet = b.Diet, Drops = b.Drops,
-        };
-        Proportions p = b.Body;
-        s.Body = new Proportions
-        {
-            Size = p.Size, Width = p.Width, Height = p.Height, LegLength = p.LegLength, LegThickness = p.LegThickness, NeckLength = p.NeckLength,
-            HeadSize = p.HeadSize, TailLength = p.TailLength, Legs = p.Legs, LegStyle = p.LegStyle, Segments = p.Segments, Wings = p.Wings,
-            Bags = p.Bags, Members = p.Members, Extremity = p.Extremity,
-        };
-        s.Colors = new Palette
-        {
-            Base = b.Colors.Base, Accent = b.Colors.Accent, Belly = b.Colors.Belly, Glow = b.Colors.Glow, Pattern = b.Colors.Pattern,
-            PatternScale = b.Colors.PatternScale, GlowStrength = b.Colors.GlowStrength,
-        };
-        Stats st = b.Stats;
-        s.Stats = new Stats
-        {
-            MaxHealth = st.MaxHealth, WalkSpeed = st.WalkSpeed, RunSpeed = st.RunSpeed, Damage = st.Damage, AttackRange = st.AttackRange,
-            Perception = st.Perception, FleeRadius = st.FleeRadius, Territory = st.Territory, AmbushRadius = st.AmbushRadius, Telegraph = st.Telegraph,
-            Retaliates = st.Retaliates, Hunts = st.Hunts, Radius = st.Radius,
-        };
         return s;
     }
 
@@ -204,7 +170,7 @@ public sealed class DeepFauna
         if (band > 0)
         {
             // Deep down colour goes: bone, grey-pink, the white of things that never see light.
-            float pale = Math.Clamp(dr.Paleness * band * 1.3f, 0f, 0.9f);
+            float pale = Math.Clamp(dr.Paleness * band * 1.3f + 0.1f, 0f, 0.92f);
             sat *= 1f - pale;
             val = Mathf.Lerp(val, 0.82f, pale);
             hue = Mathf.Lerp(hue, 0.04f, pale * 0.5f);
@@ -214,8 +180,8 @@ public sealed class DeepFauna
         bool dangerous = s.Role != DeepRole.Subsister;
         if (dangerous && td.Warning != "")
         {
-            // A warning colour, but only on what can hurt you: bands on the armour, the stinger.
-            c.Accent = Color.FromHtml(td.Warning).Lerp(c.Base, band * 0.25f);
+            // A warning colour, but only on what can hurt you, and only as bands on dark armour.
+            c.Accent = Color.FromHtml(td.Warning).Lerp(c.Base, 0.55f + 0.2f * band);
             c.Pattern = Pattern.Bands;
         }
         else

@@ -35,8 +35,11 @@ public sealed class BlockSpace : ISolidSpace
     readonly Vector3I _min, _max;
     /// <summary>How round inside corners are, metres.</summary>
     public float Fillet = 0.3f;
-    /// <summary>Where the block grid sits in the sim's frame (cell (0,0,0) has its corner here).</summary>
-    public Vector3 Origin;
+    /// <summary>
+    /// Where the block grid sits in the sim's frame: the grid's cell (0,0,0) has its corner at this
+    /// point (whole metres, so the cells stay the sim's cells). Zero when the sim works in the grid's frame.
+    /// </summary>
+    public Vector3I Offset;
 
     /// <summary>
     /// A space over any block lookup. Cells outside [min, max) count as solid when
@@ -54,11 +57,11 @@ public sealed class BlockSpace : ISolidSpace
     public Vector3I Min => _min;
     public Vector3I Max => _max;
 
-    public bool SolidCell(int x, int y, int z) => _solid(x, y, z);
+    public bool SolidCell(int x, int y, int z) => _solid(x - Offset.X, y - Offset.Y, z - Offset.Z);
 
     public float Density(Vector3 p)
     {
-        Vector3 q = p - Origin;
+        Vector3 q = p - new Vector3(Offset.X, Offset.Y, Offset.Z);
         int cx = (int)MathF.Floor(q.X), cy = (int)MathF.Floor(q.Y), cz = (int)MathF.Floor(q.Z);
         if (_solid(cx, cy, cz))
         {

@@ -25,6 +25,8 @@ uniform float detail_freq = 14.0;
 uniform float detail_strength = 0.0;
 // Flashes when hit. Per instance, so one shared material serves the whole species.
 instance uniform float hurt = 0.0;
+// 0..1: a lurker waking in the dark: its glow brightens and its eyes catch the light.
+instance uniform float wake = 0.0;
 
 varying vec3 lp;
 
@@ -152,5 +154,7 @@ void fragment() {
 	if (eye) em += base * 0.6;
 	em += accent * m * veins_glow * (0.55 + 0.45 * sin(TIME * 2.7 + lp.x * 3.0 + lp.z * 2.0)) * 1.8;
 	em += vec3(1.0, 0.35, 0.2) * hurt * 0.9;
+	em *= 1.0 + wake * 2.5;
+	if (eye) em += mix(vec3(0.9, 0.85, 0.6), glow_color, glow_tint * step(0.01, glow_strength)) * wake * 2.2;
 	EMISSION = em;
 }

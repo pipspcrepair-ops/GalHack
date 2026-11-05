@@ -43,6 +43,10 @@ public sealed class WildSim
     /// Off by default, so a sim that predates it behaves exactly as before.
     /// </summary>
     public bool ActivityCycles;
+    /// <summary>Settlements: wild creatures don't spawn in or near them, steer round them, and hunt nobody inside them.</summary>
+    public readonly List<Settlement> Settlements = new();
+    /// <summary>A wild creature has ended up inside a settlement: the town sends its guards (<see cref="CullStray"/>).</summary>
+    public event Action<Creature, Settlement> StrayEntered;
     /// <summary>Groves: cover that bedding grounds and burrows like to be near.</summary>
     public readonly List<Vector3> Groves = new();
     public readonly List<RestSite> RestSites = new();
@@ -115,7 +119,65 @@ public sealed class WildSim
     /// True inside a base's no-spawn zone (widened by <paramref name="margin"/>). Natural spawns
     /// (<see cref="SpawnGroup"/> and the <see cref="Spawner"/>) never land there.
     /// </summary>
-    public bool InBaseZone(Vector3 p, float margin = 0f) => BaseZones.Blocks(Structures, p, Data.Spawning.BaseClearance, margin);
+    public bool InBaseZone(Vector3 p, float margin = 0f) => BaseZones.Blocks(Structures, p, Data.Spawning.BaseClearance, margin) || TownZone(p, margin);
+
+    /// <summary>A settlement registers its area here: from then on wildlife treats it like a base, and keeps out.</summary>
+    public Settlement AddSettlement(string name, Vector3 center, float radius)
+    {
+        var s = new Settlement { Name = name, Center = center, Radius = radius };
+        Settlements.Add(s);
+        return s;
+    }
+
+    /// <summary>The settlement a point is inside (widened by a margin), if any.</summary>
+    public Settlement TownAt(Vector3 p, float margin = 0f)
+    {
+        foreach (Settlement s in Settlements)
+            if (s.Contains(p, margin)) return s;
+        return null;
+    }
+
+    public bool InTown(Vector3 p, float margin = 0f) => TownAt(p, margin) != null;
+
+    /// <summary>Inside a settlement or its spawning margin (the base clearance unless the town sets its own).</summary>
+    bool TownZone(Vector3 p, float margin)
+    {
+        foreach (Settlement s in Settlements)
+            if (s.Contains(p, (s.SpawnMargin >= 0f ? s.SpawnMargin : Data.Spawning.BaseClearance) + margin)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The town's guards deal with a wild creature that got in: it is killed outright (its
+    /// corpse stays, for whoever butchers it). The guard AI that calls this comes later.
+    /// </summary>
+    public void CullStray(Creature c, ITarget guards = null)
+    {
+        if (c.Dead || c.Species.Domestic != DomesticKind.None) return;
+        Damage(c, c.Health + 1f, guards);
+    }
+
+    /// <summary>Wild creatures inside a settlement now.</summary>
+    public List<Creature> Strays(Settlement town)
+    {
+        var list = new List<Creature>();
+        foreach (Creature c in Creatures)
+            if (!c.Removed && c.Alive && c.Species.Domestic == DomesticKind.None && !c.Species.InSpace && town.Contains(c.Position)) list.Add(c);
+        return list;
+    }
+
+    /// <summary>
+    /// A settlement's own animal, kept to an area: stock in a pen or field, a working beast by
+    /// its cart, a pet with its owner (it follows them about, or lies around near home).
+    /// </summary>
+    public Creature SpawnDomestic(Species species, Vector3 at, Vector3 penCenter, float penRadius, ITarget owner = null)
+    {
+        Creature c = Spawn(species, at);
+        c.PenCenter = penCenter;
+        c.PenRadius = penRadius;
+        c.Owner = owner;
+        return c;
+    }
 
     /// <summary>
     /// Puts one creature down exactly where asked. This is the raw primitive the tests and the
@@ -286,12 +348,25 @@ public sealed class WildSim
         }
 
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
+        if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
         // Moss, fungus and scraps grow back slowly.
         if (Food.Count > 0 && Frame % 30 == 0)
             foreach (FoodPatch f in Food) f.Amount = MathF.Min(1f, f.Amount + dt * 30f / 90f);
 
         // Drop removed creatures now and then, never mid-loop.
         if (Frame % 120 == 0) Creatures.RemoveAll(c => c.Removed);
+    }
+
+    /// <summary>Tells a town when something wild gets in.</summary>
+    void WatchTowns()
+    {
+        foreach (Creature c in Creatures)
+        {
+            if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None || c.Species.InSpace) continue;
+            Settlement town = TownAt(c.Position);
+            if (town != null && !c.InTown) StrayEntered?.Invoke(c, town);
+            c.InTown = town != null;
+        }
     }
 
     void UpdateCorpse(Creature c, float dt)
@@ -366,6 +441,8 @@ public sealed class WildSim
         foreach (ITarget t in Targets)
         {
             if (t.Health != null && t.Health.Downed) continue;
+            // Nobody is hunted inside a settlement: wildlife keeps out.
+            if (Settlements.Count > 0 && InTown(t.Position)) continue;
             float d = Flat(t.Position - from).Length();
             if (d < distance)
             {

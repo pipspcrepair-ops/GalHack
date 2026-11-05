@@ -150,6 +150,135 @@ public sealed class FaunaGenerator
     /// <summary>A common name for a species built or changed by hand.</summary>
     public string NameFor(Species s) => CommonName(s);
 
+    // ---- Settlements' own animals ---------------------------------------------------------
+
+    /// <summary>
+    /// A domestic species of this planet: stock (grazers kept in pens or fields), a working
+    /// beast (pack or draught, kept by carts) or a pet (a small companion). Built by the same
+    /// rules as the wild fauna from a familiar body, then made docile: plain, natural colours,
+    /// no glow, a grazer's head, nothing sharp on its back or tail, a calm temperament, and no
+    /// signature attack at all (it runs rather than fights). Working beasts are big and heavy-
+    /// legged, pets small. The same planet always breeds the same animals.
+    /// </summary>
+    public Species RollDomestic(ulong planetSeed, DomesticKind kind, float alienness)
+    {
+        if (kind == DomesticKind.None) throw new ArgumentException("a domestic kind, please");
+        var rng = Rng.For(planetSeed, "domestic", (long)kind);
+        string[] forms = kind switch
+        {
+            DomesticKind.Stock => new[] { "strider", "longneck" },
+            DomesticKind.Working => new[] { "strider" },
+            _ => new[] { "strider" },
+        };
+        var options = new List<string>();
+        foreach (string f in forms) if (_t.Forms.Exists(x => x.Id == f)) options.Add(f);
+        string form = options[rng.Int(0, options.Count - 1)];
+        ulong seed = Rng.Mix(planetSeed, Rng.Hash($"domestic/{kind}"));
+        Species s = RollOne(seed, form, kind == DomesticKind.Stock ? Behaviour.Herd : Behaviour.Grazer, alienness * 0.4f);
+        s.Domestic = kind;
+
+        // Docile parts: a grazer's head, no spines or stingers, nothing sprouting.
+        s.Parts["head"] = _t.FindPart("head", "snout")?.Fits(s.Rig) == true ? "snout" : s.Part("head");
+        foreach (string slot in new[] { "limbs", "tendrils" }) s.Parts[slot] = "none";
+        if (s.Part("tail") is "stinger" or "spiked" or "club" or "quills") s.Parts["tail"] = "whip";
+        // Bare, smooth backs; a working beast may keep a plated one.
+        if (!(kind == DomesticKind.Working && s.Part("back") is "plates" or "shell")) s.Parts["back"] = "none";
+        if (kind == DomesticKind.Pet || s.Part("horns") is "crown" or "frill" or "spike" or "antennae") s.Parts["horns"] = kind == DomesticKind.Stock ? "pair" : "none";
+        foreach (string slot in FaunaTables.Slots)
+            if (_t.FindPart(slot, s.Part(slot)) is { } p && (!p.Fits(s.Rig) && !p.FixedOnly || !FaunaQuality.Compatible(_t, p, slot, s))) s.Parts[slot] = "none";
+
+        // Size for the job: stock as they come, working beasts big and sturdy, pets small.
+        (float lo, float hi) size = kind switch { DomesticKind.Working => (2.0f, 2.6f), DomesticKind.Pet => (0.5f, 0.75f), _ => (1.3f, 1.9f) };
+        float target = rng.Range(size.lo, size.hi), k = target / MathF.Max(0.1f, s.Body.Size);
+        Proportions b = s.Body;
+        b.Size *= k; b.Width *= k; b.Height *= k; b.LegLength *= k; b.LegThickness *= k; b.NeckLength *= k; b.HeadSize *= k; b.TailLength *= k;
+        if (kind == DomesticKind.Working) b.LegThickness *= 1.35f;
+        if (b.LegStyle == LegStyle.Stilt)
+        {
+            // Kept animals stand on ordinary legs: stilts come back to an upright length.
+            b.LegStyle = LegStyle.Upright;
+            b.LegLength /= 1.35f;
+            b.LegThickness = b.Width * 0.25f * (kind == DomesticKind.Working ? 1.35f : 1f);
+        }
+        FormDef fdef = _t.Forms.Find(f => f.Id == form);
+        if (fdef != null) FaunaQuality.Clamp(fdef, b);
+
+        // Natural, quiet colours: browns, ochres, greys and creams; a plain coat or soft spots.
+        PaletteRules pr = _t.Palette;
+        // Earthy hues only (the first three of the familiar ranges: ochres, browns, olives), never slate or a bright colour.
+        float[] hues = pr.FamiliarHues[rng.Int(0, Math.Min(2, pr.FamiliarHues.Length - 1))];
+        float hue = rng.Range(hues) / 360f, sat = rng.Range(0.18f, 0.42f), val = rng.Range(0.35f, 0.7f);
+        s.Colors.Base = Color.FromHsv(hue, sat, val);
+        s.Colors.Accent = Color.FromHsv(hue, MathF.Min(1f, sat + 0.1f), val * 0.6f);
+        s.Colors.Belly = Color.FromHsv(hue, sat * 0.4f, MathF.Min(1f, val * 1.3f + 0.1f));
+        s.Colors.Pattern = new[] { Pattern.Plain, Pattern.Countershade, Pattern.Spots, Pattern.Mottle }[rng.Int(0, 3)];
+        s.Colors.GlowStrength = 0f;
+
+        // Calm, and harmless: no signature attack; it runs.
+        s.Temperament = Temperament.Calm;
+        Stats st = s.Stats;
+        st.MaxHealth = MathF.Round(22f * MathF.Pow(b.Size, 1.5f));
+        st.Damage = 0f;
+        st.Retaliates = false;
+        st.Hunts = false;
+        st.FleeRadius = 3f;
+        st.Radius = Math.Max(b.Width, b.Size * 0.5f) * 0.7f;
+        st.AttackRange = st.Radius + 0.5f;
+        st.WalkSpeed = Math.Clamp(b.LegLength * 1.3f, 0.5f, 2.2f);
+        st.RunSpeed = st.WalkSpeed * 2.3f;
+        if (kind == DomesticKind.Pet)
+        {
+            // Small companions are quick on their feet: they keep up with whoever they follow.
+            st.WalkSpeed = 1.2f;
+            st.RunSpeed = 3.4f;
+        }
+        s.Attack = new AttackDef { Name = "", Style = AttackStyle.Lunge, Telegraph = 1f, Sound = "grunt" };
+        st.Telegraph = 0f;
+        s.Activity = Activity.Diurnal;
+        s.RestKind = RestKind.Nest;
+        s.Drops.Meat = Math.Clamp((int)MathF.Round(2f + 3f * MathF.Pow(b.Size, 1.5f)), 1, 60);
+
+        var names = new NameGen(planetSeed, _t.Syllables);
+        s.Name = names.Make(Rng.For(seed, "name"));
+        s.CommonName = (kind switch { DomesticKind.Stock => "stock ", DomesticKind.Working => "draught ", _ => "pet " }) + (_t.Forms.Find(f => f.Id == form)?.Noun ?? "beast");
+        s.Id = $"{planetSeed:x}-domestic-{kind.ToString().ToLowerInvariant()}";
+        s.Index = 200 + (int)kind;
+        s.Weirdness = Math.Clamp(s.Weirdness * 0.6f, 0f, 1f);
+        return s;
+    }
+
+    // ---- Mutagenic worlds ---------------------------------------------------------------
+
+    /// <summary>
+    /// A planet's fauna on a mutagenic world (or region): every species twisted at this strength
+    /// (see <see cref="Mutate"/>). Strength 0 gives exactly the fauna <see cref="Generate(ulong, float, bool)"/> does.
+    /// </summary>
+    public PlanetFauna Generate(ulong planetSeed, float alienness, bool bloom, float mutation)
+    {
+        PlanetFauna f = Generate(planetSeed, alienness, bloom);
+        for (int i = 0; i < f.Species.Count; i++) f.Species[i] = Mutate(f.Species[i], mutation);
+        return f;
+    }
+
+    /// <summary>
+    /// The species as a mutagenic world twists it, at a strength from 0 to 1: tumorous growths,
+    /// one side heavier than the other, now and then an extra part (an eye cluster, a spare limb,
+    /// split tendrils) and a patch of off-palette skin, all put on its body by the rig
+    /// (<see cref="Mutation"/>). The same species and strength always give the same mutation.
+    /// Strength 0 returns the species itself, unchanged. Its parts, proportions and job are kept,
+    /// so it still passes every rule a body has to.
+    /// </summary>
+    public Species Mutate(Species s, float strength)
+    {
+        strength = Math.Clamp(strength, 0f, 1f);
+        if (strength <= 0f) return s;
+        Species m = s.Copy();
+        m.Mutation = strength;
+        m.CommonName = (strength >= 0.6f ? "twisted " : "scarred ") + s.CommonName;
+        m.Weirdness = Math.Clamp(s.Weirdness + 0.12f * strength, 0f, 1f);
+        return m;
+    }
+
     // ---- Forms ------------------------------------------------------------------------
 
     /// <summary>

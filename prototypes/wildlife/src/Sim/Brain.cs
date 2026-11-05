@@ -30,6 +30,13 @@ public static partial class Brain
             return;
         }
 
+        // A settlement's own animals keep to their pens and their people.
+        if (c.Species.Domestic != DomesticKind.None)
+        {
+            Domestic(w, c, dt);
+            return;
+        }
+
         // Caves and places have their own roles: lurkers, prowlers, ambushers, nesters, subsisters.
         if (c.Species.IsDeep)
         {
@@ -68,6 +75,9 @@ public static partial class Brain
             c.Altitude = c.State == CState.Eat || c.State == CState.Graze ? 0f : c.State == CState.Chase ? 1.4f : low ? 1.4f : CruiseAltitude(c);
         }
         else if (c.Species.Rig == RigKind.GasBag) c.Altitude = c.State == CState.Chase ? 1.8f : CruiseAltitude(c);
+
+        // Wild things keep out of settlements: they steer round them, whatever they are doing.
+        if (w.Settlements.Count > 0) AvoidTowns(w, c);
     }
 
     static float CruiseAltitude(Creature c) => c.Species.Rig switch

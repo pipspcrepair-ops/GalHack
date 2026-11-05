@@ -160,6 +160,12 @@ public sealed class Creature
     public float NoticedAt = -999f;
     /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
     public float Wake;
+    // Domestic animals: the pen or town area they keep to, and (pets) who they follow.
+    public Vector3 PenCenter;
+    public float PenRadius;
+    public ITarget Owner;
+    /// <summary>A wild creature inside a settlement (the town has been told).</summary>
+    public bool InTown;
     CreatureTarget _asTarget;
     /// <summary>This creature as prey for another.</summary>
     public CreatureTarget AsTarget => _asTarget ??= new CreatureTarget(this);

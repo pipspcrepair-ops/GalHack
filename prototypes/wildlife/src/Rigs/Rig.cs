@@ -37,7 +37,8 @@ public abstract class Rig
     protected Rig(Species species, Func<Species, RigLayout> build)
     {
         Species = species;
-        Layout = Layouts.GetValue(species, s => build(s));
+        // A mutagenic world's growths, asymmetry and extra parts go on after the body is built (none at strength 0).
+        Layout = Layouts.GetValue(species, s => Mutation.Decorate(Tack.Decorate(build(s), s), s));
         Pose = new Transform3D[Layout.Pieces.Count];
         for (int i = 0; i < Pose.Length; i++) Pose[i] = Transform3D.Identity;
     }

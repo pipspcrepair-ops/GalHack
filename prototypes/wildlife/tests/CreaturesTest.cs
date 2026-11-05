@@ -44,7 +44,14 @@ public partial class CreaturesTest : Node
             if (_probe != "")
             {
                 _trace = true;
-                GetType().GetMethod(_probe, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(this, null);
+                try
+                {
+                    GetType().GetMethod(_probe, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(this, null);
+                }
+                catch (System.Reflection.TargetInvocationException e)
+                {
+                    Fail($"crashed: {e.InnerException}");
+                }
                 GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
@@ -57,12 +64,16 @@ public partial class CreaturesTest : Node
             CrawlerInDugTunnel();
             CrawlerInGeneratorCave();
             CaveRun();
+            Spaces();
             PlacePopulations();
             DepthMakesItWorse();
             AmbushesAreTold();
             WalkThroughThePlace();
             FoodChain();
             WreckNesters();
+            Mutations();
+            Settlements();
+            DomesticAnimals();
             DeepPerformance();
         }
         catch (Exception e)
@@ -622,6 +633,33 @@ public partial class CreaturesTest : Node
         Check(hits == 0 || worstLead >= 1f, $"in the cave every hit on the caver came after a tell from that creature at least a second before ({hits} hits, {told} tells, tightest {(hits == 0 ? 0f : worstLead):F2} s)");
     }
 
+    /// <summary>The integration hooks for spaces: finding a planet cave's chamber, and a place's blocks set anywhere in a sim's frame.</summary>
+    void Spaces()
+    {
+        TD.ChunkStore store = NewStore();
+        var space = new VoxelSpace(store);
+        var src = (TD.SimpleTerrainSource)store.Source;
+        var (known, _) = CaveChamber(store, space);
+        bool found = CaveFauna.FindChamber(space, known + new Vector3(6f, 3f, -4f), 14f, out Vector3 floor, (x, z) => src.SurfaceHeight(x, z));
+        bool open = !space.SolidCell((int)MathF.Floor(floor.X), (int)MathF.Floor(floor.Y), (int)MathF.Floor(floor.Z)) && space.SolidCell((int)MathF.Floor(floor.X), (int)MathF.Floor(floor.Y) - 1, (int)MathF.Floor(floor.Z));
+        // The same voxel space seen from a sim whose origin is elsewhere.
+        var shifted = new VoxelSpace(store, new Vector3I(-60, 0, 30));
+        bool voxelAgree = MathF.Abs(shifted.Density(known + new Vector3(60f, 1f, -30f)) - space.Density(known + Vector3.Up)) < 1e-4f;
+        BlockPlace place = BlockPlace.Outpost();
+        var moved = new BlockSpace(place.Solid, Vector3I.Zero, place.Size) { Offset = new Vector3I(100, -5, 20) };
+        int disagree = 0;
+        var rng = new Rng(4);
+        for (int i = 0; i < 2000; i++)
+        {
+            int x = rng.Int(0, place.Size.X - 1), y = rng.Int(0, place.Size.Y - 1), z = rng.Int(0, place.Size.Z - 1);
+            if (moved.SolidCell(x + 100, y - 5, z + 20) != place.Space.SolidCell(x, y, z)) disagree++;
+            var p = new Vector3(x + rng.Float(), y + rng.Float(), z + rng.Float());
+            if (MathF.Abs(moved.Density(p + new Vector3(100f, -5f, 20f)) - place.Space.Density(p)) > 1e-4f) disagree++;
+        }
+        Check(found && open && voxelAgree && disagree == 0,
+            $"spaces fit any sim frame: a planet cave's chamber is found from nearby ({floor.DistanceTo(known):F1} m from the roomiest spot), and voxel and block spaces offset into a sim's frame agree cell for cell and density for density");
+    }
+
     // ---- Places -----------------------------------------------------------------------------
 
     /// <summary>Random places of every kind and state, as the POI generator would describe them.</summary>
@@ -1091,6 +1129,228 @@ public partial class CreaturesTest : Node
         }
         Check(warnedAt >= 0f && f.Hits > 0 && f.WorstLead >= 1f,
             $"its guards warn an intruder off (a hiss at {warnDistance:F1} m from the nest) and bite only after (tightest {f.WorstLead:F2} s after the first tell, {f.Hits} hits)");
+    }
+
+    // ---- Mutagenic worlds -------------------------------------------------------------------
+
+    static (int pieces, int prims, float sum) LayoutPrint(Species s, WildSim sim)
+    {
+        Creature c = sim.Spawn(s, new Vector3(0f, 0f, 0f));
+        int prims = 0;
+        float sum = 0f;
+        foreach (Piece p in c.Rig.Layout.Pieces)
+            foreach (Prim m in p.Prims)
+            {
+                prims++;
+                sum += m.Size.X * 1.3f + m.Size.Y * 1.7f + m.Size.Z * 1.9f + m.Local.Origin.X * 2.3f + m.Local.Origin.Y * 2.9f + m.Local.Origin.Z * 3.1f + m.Color.R + m.Color.G * 2f;
+            }
+        c.Removed = true;
+        return (c.Rig.Layout.Pieces.Count, prims, sum);
+    }
+
+    void Mutations()
+    {
+        var sim = new WildSim(_data, new Terrain(5, 40f), new NavGrid(40f, 3f));
+        int species = 0, same0 = 0, determ = 0, extras = 0, patches = 0, quality = 0, bounded = 0, animated = 0;
+        float maxAsym = 0f, maxAdded = 0f;
+        var growthsAt = new Dictionary<float, int>();
+        foreach (ulong seed in new ulong[] { 7041, 7042, 7043, 7044, 7045, 7046 })
+        {
+            PlanetFauna wild = _gen.Generate(seed, 0.4f, false);
+            PlanetFauna again = _gen.Generate(seed, 0.4f, false);
+            for (int i = 0; i < wild.Species.Count; i++)
+            {
+                Species s = wild.Species[i];
+                if (s.Rig == RigKind.Swarm) continue;
+                species++;
+                // Strength 0 changes nothing: the very same species, the same body.
+                if (ReferenceEquals(_gen.Mutate(s, 0f), s) && LayoutPrint(s, sim) == LayoutPrint(again.Species[i], sim)) same0++;
+                // Same seed, same mutation.
+                if (LayoutPrint(_gen.Mutate(s, 0.5f), sim) == LayoutPrint(_gen.Mutate(again.Species[i], 0.5f), sim)) determ++;
+                foreach (float k in new[] { 0.25f, 0.5f, 1f })
+                {
+                    Species m = _gen.Mutate(s, k);
+                    LayoutPrint(m, sim);
+                    Mutation.Report r = Mutation.Of(m);
+                    growthsAt[k] = growthsAt.GetValueOrDefault(k) + r.Growths;
+                    if (k < 1f) continue;
+                    if (r.Extra != "") extras++;
+                    if (r.Patch) patches++;
+                    if (FaunaQuality.Problems(_data.Fauna, m).Count == 0) quality++;
+                    maxAsym = MathF.Max(maxAsym, r.Asymmetry);
+                    float added = r.BodyVolume > 0f ? r.AddedVolume / r.BodyVolume : 0f;
+                    maxAdded = MathF.Max(maxAdded, added);
+                    if (r.Asymmetry <= Mutation.MaxAsymmetry + 1e-3f && added < 0.25f && r.Growths <= Mutation.MaxGrowths) bounded++;
+                    // And it still moves like an animal: 20 s of animation, nothing broken.
+                    Creature c = sim.Spawn(m, new Vector3(i * 6f - 20f, 0f, 10f));
+                    bool ok = true;
+                    for (int f = 0; f < 1200; f++)
+                    {
+                        sim.Step(Dt);
+                        foreach (Transform3D t in c.Rig.Pose) if (!Geo.Finite(t)) ok = false;
+                    }
+                    if (ok && Geo.Finite(c.Position)) animated++;
+                    c.Removed = true;
+                }
+            }
+        }
+        Check(same0 == species && determ == species, $"mutation is the same from the same seed ({determ} of {species} species), and strength 0 changes nothing ({same0} of {species})");
+        Check(growthsAt[0.25f] < growthsAt[0.5f] && growthsAt[0.5f] < growthsAt[1f] && extras >= species / 2 && patches >= species / 2,
+            $"it grows with strength: {growthsAt[0.25f]}, {growthsAt[0.5f]} and {growthsAt[1f]} growths at 0.25, 0.5 and 1; at full strength {extras} of {species} have an extra part and {patches} a patch of off-palette skin");
+        Check(quality == species && bounded == species && animated == species,
+            $"silhouettes stay believable: every fully mutated species passes every body rule ({quality} of {species}), stays within bounds (heavier side at most {maxAsym:F2}x, growths at most {maxAdded:P0} of the body) and animates cleanly ({animated} of {species})");
+    }
+
+    // ---- Settlements -------------------------------------------------------------------------
+
+    void Settlements()
+    {
+        // Spawning is suppressed in a town and its margin, and nothing roams in.
+        var terrain = new Terrain(1977);
+        var nav = new NavGrid(terrain.HalfSize, 3f);
+        var sim = new WildSim(_data, terrain, nav);
+        Settlement town = sim.AddSettlement("Hollowmere", new Vector3(0f, 0f, -20f), 45f);
+        PlanetFauna fauna = _gen.Generate(4242, 0.4f, false);
+        var spawner = new Spawner(sim, fauna, new List<Vector3>(), 4242);
+        spawner.Populate();
+        float margin = _data.Spawning.BaseClearance;
+        float closest = float.MaxValue;
+        sim.Spawned += c => closest = MathF.Min(closest, WildSim.Flat(c.Position - town.Center).Length() - town.Radius);
+        foreach (Creature c in sim.Creatures) closest = MathF.Min(closest, WildSim.Flat(c.Position - town.Center).Length() - town.Radius);
+        var player = new DummyTarget { Name = "Walker", Position = new Vector3(150f, 0f, 150f), Health = new Health(1e9f) };
+        sim.Targets.Add(player);
+        int entered = 0;
+        sim.StrayEntered += (_, _) => entered++;
+        var rng = new Rng(2);
+        for (int i = 0; i < 60 * 60 * 15; i++)
+        {
+            sim.Step(Dt);
+            spawner.Step(Dt);
+            if (i % 240 == 0)
+            {
+                foreach (Creature c in sim.Creatures)
+                    if (!c.Removed && c.Alive && rng.Chance(0.02f)) sim.Kill(c, null); // something keeps thinning them
+            }
+        }
+        Check(closest >= margin - 1f && spawner.Respawned > 0,
+            $"no wild creature spawns in a settlement or within {margin:F0} m of it ({spawner.Respawned} respawns over 15 minutes; closest {closest:F0} m from its edge)");
+
+        // Herds driven at a town go round it.
+        var sim2 = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
+        Settlement town2 = sim2.AddSettlement("Hollowmere", Vector3.Zero, 30f);
+        Species grazer = fauna.Species[0];
+        // (Put down by hand: a town's spawning margin would rightly keep a natural herd from appearing this close.)
+        var flock = new Herd { Home = new Vector3(-60f, 0f, 0f), Goal = new Vector3(-60f, 0f, 0f), Center = new Vector3(-60f, 0f, 0f), Spread = WildSim.HerdSpread(grazer, 6) };
+        sim2.Herds.Add(flock);
+        var herd = new List<Creature>();
+        for (int i = 0; i < 6; i++) herd.Add(sim2.Spawn(grazer, new Vector3(-60f + (i % 3) * 3f, 0f, (i / 3) * 3f), flock));
+        sim2.Targets.Add(new DummyTarget { Name = "Drover", Position = new Vector3(-75f, 0f, 0f), Health = new Health(1e9f) });
+        float deepest = float.MaxValue;
+        foreach (Creature c in herd) { c.Herd.Alarm(new Vector3(-80f, 0f, 0f), 0f); }
+        for (int i = 0; i < 60 * 90; i++)
+        {
+            if (i % 120 == 0) foreach (Creature c in herd) c.Herd.Alarm(c.Herd.Center + new Vector3(-20f, 0f, (i / 120 % 2) * 6f - 3f), sim2.Time);
+            sim2.Step(Dt);
+            foreach (Creature c in herd) deepest = MathF.Min(deepest, WildSim.Flat(c.Position).Length() - town2.Radius);
+        }
+        Check(deepest > -2f, $"a herd stampeded straight at a town veers round it (closest {deepest:F1} m from its edge)");
+
+        // Predators take townsfolk outside town, never inside it.
+        Species hunter = fauna.Species.Find(s => s.Behaviour == Behaviour.Predator) ?? _gen.Generate(4243, 0.4f, false).Species.Find(s => s.Behaviour == Behaviour.Predator);
+        var sim3 = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
+        sim3.AddSettlement("Hollowmere", Vector3.Zero, 30f);
+        var farmer = new DummyTarget { Name = "Townsperson", Position = new Vector3(60f, 0f, 0f), Health = new Health(1e6f) };
+        sim3.Targets.Add(farmer);
+        Creature p3 = sim3.Spawn(hunter, new Vector3(75f, 0f, 6f));
+        int outsideHits = 0;
+        float firstWindup = -1f;
+        sim3.Telegraph += e => { if (e.Target == farmer && firstWindup < 0f) firstWindup = e.Windup; };
+        sim3.Attacked += e => { if (e.Target == farmer && e.Hit) outsideHits++; };
+        for (int i = 0; i < 60 * 30 && outsideHits == 0; i++) sim3.Step(Dt);
+        // Now they walk home, into town, with it close behind.
+        int insideHits = 0;
+        float predatorDeepest = float.MaxValue;
+        sim3.Attacked += e => { if (e.Target == farmer && e.Hit && WildSim.Flat(farmer.Position).Length() < 30f) insideHits++; };
+        for (int i = 0; i < 60 * 40; i++)
+        {
+            Vector3 to = new Vector3(5f, 0f, 0f) - farmer.Position;
+            if (to.Length() > 0.2f) farmer.Position += to.Normalized() * 4.5f * Dt;
+            sim3.Step(Dt);
+            if (WildSim.Flat(farmer.Position).Length() < 30f) predatorDeepest = MathF.Min(predatorDeepest, WildSim.Flat(p3.Position).Length() - 30f);
+        }
+        Check(outsideHits > 0 && firstWindup >= hunter.TelegraphWindup(_data.Combat) - 1e-3f && insideHits == 0 && predatorDeepest > -1f,
+            $"a {hunter.CommonName} takes a townsperson out on the road (telegraphed, {firstWindup:F2} s wind-up), and once they are home inside the town it stops at the edge ({predatorDeepest:F1} m from it) and gets no bite in");
+
+        // A stray inside town is reported, and the guards' hook kills it.
+        var sim4 = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
+        Settlement town4 = sim4.AddSettlement("Hollowmere", Vector3.Zero, 30f);
+        Creature stray = null;
+        sim4.StrayEntered += (c, t) => { if (t == town4) sim4.CullStray(c); stray = c; };
+        Creature wanderer = sim4.Spawn(hunter, new Vector3(5f, 0f, 5f));
+        for (int i = 0; i < 30; i++) sim4.Step(Dt);
+        Check(stray == wanderer && wanderer.Dead && sim4.Strays(town4).Count == 0, $"a wild creature that gets into a town is reported to it and its guards' hook kills it at once (dead within {30 * Dt:F1} s)");
+    }
+
+    void DomesticAnimals()
+    {
+        var kinds = new[] { DomesticKind.Stock, DomesticKind.Working, DomesticKind.Pet };
+        int ok = 0, total = 0;
+        var lines = new List<string>();
+        float maxSat = 0f;
+        for (ulong seed = 300; seed < 340; seed++)
+            foreach (DomesticKind k in kinds)
+            {
+                Species s = _gen.RollDomestic(seed, k, seed % 2 == 0 ? 0.2f : 0.8f);
+                total++;
+                s.Colors.Base.ToHsv(out _, out float sat, out _);
+                maxSat = MathF.Max(maxSat, sat);
+                bool docile = s.Domestic == k && s.Stats.Damage <= 0f && !s.Stats.Retaliates && s.Temperament == Temperament.Calm && s.Colors.GlowStrength <= 0f && sat <= 0.45f
+                              && s.Part("limbs") == "none" && s.Part("tail") is not ("stinger" or "spiked" or "club") && FaunaQuality.Problems(_data.Fauna, s).Count == 0;
+                if (docile) ok++;
+                else if (_trace) Trace($"not docile: {s} damage {s.Stats.Damage} retaliates {s.Stats.Retaliates} {s.Temperament} glow {s.Colors.GlowStrength} sat {sat:F2} limbs {s.Part("limbs")} tail {s.Part("tail")} problems {string.Join("; ", FaunaQuality.Problems(_data.Fauna, s))}");
+                if (seed == 300) lines.Add($"{s.CommonName} ({s.Name}, {s.Body.Size:F1} m)");
+            }
+        Species a = _gen.RollDomestic(301, DomesticKind.Pet, 0.5f), b = _gen.RollDomestic(301, DomesticKind.Pet, 0.5f);
+        float stock = _gen.RollDomestic(300, DomesticKind.Stock, 0.4f).Body.Size, work = _gen.RollDomestic(300, DomesticKind.Working, 0.4f).Body.Size, pet = _gen.RollDomestic(300, DomesticKind.Pet, 0.4f).Body.Size;
+        Check(ok == total && a.PartSignature == b.PartSignature && pet < stock && stock < work,
+            $"domestic animals of each kind are calm, plainly coloured (saturation at most {maxSat:F2}), unarmed and have no signature attack ({ok} of {total}); working beasts are the biggest and pets the smallest: {string.Join(", ", lines)}");
+
+        // In a settlement: they keep to their pens, and run from a wild hunter without fighting it.
+        var sim = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
+        sim.AddSettlement("Hollowmere", Vector3.Zero, 40f);
+        Species stockS = _gen.RollDomestic(300, DomesticKind.Stock, 0.4f), petS = _gen.RollDomestic(300, DomesticKind.Pet, 0.4f), workS = _gen.RollDomestic(300, DomesticKind.Working, 0.4f);
+        var pen = new Vector3(10f, 0f, 0f);
+        var animals = new List<Creature>();
+        for (int i = 0; i < 4; i++) animals.Add(sim.SpawnDomestic(stockS, pen + new Vector3(i - 1.5f, 0f, 0f), pen, 5f));
+        var owner = new DummyTarget { Name = "Townsperson", Position = new Vector3(-10f, 0f, 0f), Health = new Health(1e6f) };
+        Creature pupA = sim.SpawnDomestic(petS, owner.Position + new Vector3(2f, 0f, 0f), Vector3.Zero, 35f, owner);
+        Creature beast = sim.SpawnDomestic(workS, new Vector3(0f, 0f, 15f), new Vector3(0f, 0f, 15f), 2.5f);
+        float worstOut = 0f, pupFar = 0f;
+        int domesticAttacks = 0;
+        sim.Telegraph += e => { if (e.Creature.Species.Domestic != DomesticKind.None) domesticAttacks++; };
+        for (int i = 0; i < 60 * 120; i++)
+        {
+            float t = i * Dt;
+            owner.Position = new Vector3(-10f + MathF.Sin(t * 0.15f) * 12f, 0f, MathF.Cos(t * 0.11f) * 10f);
+            owner.Forward = new Vector3(MathF.Cos(t * 0.15f), 0f, -MathF.Sin(t * 0.11f)).Normalized();
+            sim.Clock.Time01 = 0.45f;
+            sim.Step(Dt);
+            foreach (Creature c in animals) worstOut = MathF.Max(worstOut, WildSim.Flat(c.Position - pen).Length() - 5f);
+            worstOut = MathF.Max(worstOut, WildSim.Flat(beast.Position - beast.PenCenter).Length() - 2.5f);
+            if (i > 600) pupFar = MathF.Max(pupFar, WildSim.Flat(pupA.Position - owner.Position).Length());
+        }
+        // A wild hunter in their midst (it got in; the guards haven't come yet): they scatter inside the pen.
+        Species hunter = _gen.Generate(4242, 0.4f, false).Species.Find(s => s.IsHunter && !s.Flies);
+        Creature wolf = sim.Spawn(hunter, pen + new Vector3(0f, 0f, 1f));
+        int fled = 0;
+        for (int i = 0; i < 60 * 4; i++)
+        {
+            sim.Step(Dt);
+            if (i == 60 * 2) fled = animals.Count(c => c.State == CState.Flee);
+        }
+        foreach (Creature c in animals) worstOut = MathF.Max(worstOut, WildSim.Flat(c.Position - pen).Length() - 5f);
+        Check(worstOut < 1f && pupFar < 9f && fled >= 3 && domesticAttacks == 0,
+            $"they keep to their pens and stations over 2 minutes (at most {MathF.Max(0f, worstOut):F1} m over), a pet keeps up with its owner (never more than {pupFar:F1} m behind), and a wild hunter among the stock scatters them inside the pen ({fled} of 4 running), none fighting back");
     }
 
     // ---- Cost ----------------------------------------------------------------------------

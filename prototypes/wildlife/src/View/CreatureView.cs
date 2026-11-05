@@ -64,7 +64,7 @@ public partial class CreatureView : Node3D
     public Creature Creature { get; private set; }
     readonly List<MeshInstance3D> _parts = new();
     MultiMeshInstance3D _swarm;
-    float _hurtShown;
+    float _hurtShown, _wakeShown;
 
     public int NodeCount => _swarm != null ? 1 : _parts.Count;
 
@@ -135,6 +135,13 @@ public partial class CreatureView : Node3D
         {
             _hurtShown = hurt;
             foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("hurt", hurt);
+        }
+        // A lurker's eyes opening in the dark.
+        float wake = MathF.Round(c.Wake * 10f) / 10f;
+        if (MathF.Abs(wake - _wakeShown) > 0.01f)
+        {
+            _wakeShown = wake;
+            foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("wake", wake);
         }
     }
 }

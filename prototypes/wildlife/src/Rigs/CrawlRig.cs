@@ -282,7 +282,7 @@ public sealed class CrawlRig : Rig
             piece.Loft(profile, c0, k.Belly, soft ? 0.6f : 1f, 0f, soft ? Mat.Membrane : armoured ? Mat.Carapace : Mat.Skin, null, null, 12);
             if (armoured)
                 piece.Add(Shape.Sphere, new Vector3(r * 2.1f, r * flatness * 0.7f, segLen * 1.3f), new Vector3(0, r * flatness * 0.55f, segLen * 0.1f),
-                    back == "shell" ? k.Accent.Lerp(k.Base, 0.4f) : k.Accent, 0.2f, 0f, Parts.Pitch(-8f), 12, Mat.Carapace);
+                    k.Base.Lerp(k.Accent, back == "shell" ? 0.3f : 0.45f).Darkened(0.05f), 0.2f, 0f, Parts.Pitch(-8f), 12, Mat.Carapace);
             if (soft && k.GlowStrength > 0.2f && i % 2 == 1)
                 for (int side = -1; side <= 1; side += 2)
                     piece.Add(Shape.Sphere, Vector3.One * r * 0.28f, new Vector3(side * r * 0.62f, r * flatness * 0.5f, 0f), k.Glow, 0f, k.GlowStrength * 0.8f);
@@ -314,7 +314,7 @@ public sealed class CrawlRig : Rig
         // Legs: two jointed pieces each, thin and dark, hooked at the tip.
         int pairs = b.Legs / 2;
         float legLen = MathF.Max(0.05f, b.LegLength);
-        float rr = MathF.Max(0.012f, b.Width * (s.Form == "creeper" ? 0.05f : soft ? 0.09f : 0.07f));
+        float rr = MathF.Max(0.014f, b.Width * (s.Form == "creeper" ? 0.065f : soft ? 0.09f : 0.075f));
         for (int pk = 0; pk < pairs; pk++)
         for (int side = -1; side <= 1; side += 2)
         {
