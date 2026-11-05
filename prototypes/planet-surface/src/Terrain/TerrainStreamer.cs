@@ -104,6 +104,7 @@ public partial class TerrainStreamer : Node3D
         public bool InFlight;
         public int Version;
         public Node3D Node;
+        public List<(Flora Kind, float[] Buffer, int Count)> Flora;
     }
 
     readonly Dictionary<(int, int), FarChunk> _far = new();
@@ -637,6 +638,7 @@ public partial class TerrainStreamer : Node3D
             f.Node?.QueueFree();
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
+            f.Flora = job.Flora;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
             if (nodeMs > WorstFarNodeMs)
             {
@@ -691,6 +693,30 @@ public partial class TerrainStreamer : Node3D
     }
 
     public bool FarComplete { get; private set; }
+
+    /// <summary>
+    /// The flora drawn within a radius of a point (frame coordinates): each plant's kind, where its
+    /// trunk meets the ground and its scale. Read from the far chunks' own scatter, so it works
+    /// with or without a renderer.
+    /// </summary>
+    public IEnumerable<(Flora Kind, Vector3 Root, float Scale)> FloraNear(Vector3 at, float radius)
+    {
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        foreach (FarChunk f in _far.Values)
+        {
+            if (f.Flora == null) continue;
+            float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, at.X, w);
+            float z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, at.Z, h);
+            if (at.X < x0 - radius || at.X > x0 + FarBuilder.Size + radius || at.Z < z0 - radius || at.Z > z0 + FarBuilder.Size + radius) continue;
+            foreach (var (kind, buffer, count) in f.Flora)
+                for (int i = 0; i < count; i++)
+                {
+                    int o = i * 16;
+                    var root = new Vector3(x0 + buffer[o + 3], buffer[o + 7], z0 + buffer[o + 11]);
+                    if (new Vector2(root.X - at.X, root.Z - at.Z).Length() <= radius) yield return (kind, root, buffer[o + 5]);
+                }
+        }
+    }
     public double WorstFarNodeMs { get; private set; }
     public string WorstFarNode { get; private set; } = "";
 
