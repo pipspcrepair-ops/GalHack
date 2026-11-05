@@ -41,6 +41,7 @@ public partial class WildlifeTest : Node
             Packs();
             Ambushers();
             Harvesting();
+            CreaturesKeepOffTrunks();
             RunDown();
             StorageCap();
             CodexFirstFinder();
@@ -72,6 +73,7 @@ public partial class WildlifeTest : Node
         Check(main.Sim.Structures.Contains(outpost) && outpost.IsBase && closest >= _data.Spawning.BaseClearance,
             $"the playable planet's outpost is a base, and nothing spawned within {_data.Spawning.BaseClearance:F0} m of it (closest {closest:F0} m from its deck)");
         await DiscoveryCards(main);
+        await TrunksBlock(main);
 
         string alien = main.Fauna.PlanetName;
         Tap(Key.Key1);
@@ -771,6 +773,137 @@ public partial class WildlifeTest : Node
         Check(stayedDown && tree.Alive && w.Nav.Blocked(tree.Position),
             $"a felled tree regrows only when no player is within {_data.Harvest.RegrowBlockRadius:F0} m (waited {_data.Harvest.RegrowSeconds + 30f:F0} s nearby)");
     }
+
+    /// <summary>
+    /// Tree trunks are solid to creatures: one driven straight at a trunk slides round it, and a
+    /// hunter chasing prey on the far side of one goes round it, never through.
+    /// </summary>
+    void CreaturesKeepOffTrunks()
+    {
+        Species walker = null, hunter = null;
+        for (ulong seed = 1; seed < 300 && (walker == null || hunter == null); seed++)
+            foreach (Species x in _gen.Generate(seed * 433, 0.4f, false).Species)
+            {
+                if (walker == null && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant) walker = x;
+                if (hunter == null && x.Behaviour == Behaviour.Predator && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant) hunter = x;
+            }
+        if (walker == null || hunter == null) { Fail("no walking species found for the trunk test"); return; }
+
+        // Pushed straight at a trunk, a hair off its middle, for 8 s.
+        WildSim w = NewSim(31, obstacles: false);
+        var field = new HarvestField(_data.Harvest, w.Nav);
+        Plant tree = field.Add(PlantKind.Tree, Ground(w, new Vector3(0f, 0f, -8f)), 0.45f, 8f, 3f, 0);
+        Creature c = w.Spawn(walker, new Vector3(0.05f, 0f, 0f));
+        float allowed = tree.TrunkRadius + c.Radius * 0.5f, closest = float.MaxValue;
+        bool past = false;
+        for (int step = 0; step < 480; step++)
+        {
+            c.Desired = new Vector3(0f, 0f, -c.Stats.WalkSpeed);
+            Locomotion.Move(w, c, Dt);
+            closest = MathF.Min(closest, WildSim.Flat(c.Position - tree.Position).Length());
+            past |= c.Position.Z < tree.Position.Z - allowed;
+        }
+
+        // A hunter chasing prey that stands behind a trunk.
+        WildSim w2 = NewSim(32, obstacles: false);
+        var field2 = new HarvestField(_data.Harvest, w2.Nav);
+        Plant tree2 = field2.Add(PlantKind.Tree, Ground(w2, new Vector3(0f, 0f, -7f)), 0.45f, 8f, 3f, 0);
+        Creature h = w2.Spawn(hunter, Vector3.Zero);
+        var prey = new DummyTarget { Name = "Prey", Position = Ground(w2, new Vector3(0f, 0f, -12f)), Health = new Health(1e9f) };
+        w2.Targets.Add(prey);
+        float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
+        bool reached = false;
+        w2.Attacked += e => reached = true;
+        for (int step = 0; step < 900 && !reached; step++)
+        {
+            w2.Step(Dt);
+            closest2 = MathF.Min(closest2, WildSim.Flat(h.Position - tree2.Position).Length());
+        }
+        Check(closest >= allowed - 1e-3f && past && closest2 >= allowed2 - 1e-3f && reached,
+            $"creatures can't pass through a tree trunk: one pushed straight at it slides round (closest {closest:F2} m from its middle, trunk + half body {allowed:F2} m), a hunter goes round one to reach its prey (closest {closest2:F2} m)");
+    }
+
+    /// <summary>
+    /// In the real scene: the player walks into a trunk and stops against it; the hovercraft
+    /// with a full hold drives into one and is held off it; chopping a tree drops its collider
+    /// the moment it falls, and the player walks through where it stood.
+    /// </summary>
+    async System.Threading.Tasks.Task TrunksBlock(Main main)
+    {
+        Player p = main.Player;
+        float maxHealth = p.Health.Max;
+        p.Health.Max = p.Health.Current = 1e6f; // a passing hunter must not end the staging in a respawn
+        HarvestField field = main.Forest.Field;
+        Vector3 start = p.GlobalPosition;
+        List<Plant> trees = field.Plants.Where(x => x.Kind == PlantKind.Tree && x.Alive).OrderBy(x => WildSim.Flat(x.Position - start).Length()).ToList();
+        int collidersOk = trees.Count(x => main.Forest.TrunkOf(x) is { Disabled: false, Shape: CylinderShape3D cyl } && MathF.Abs(cyl.Radius - x.TrunkRadius) < 1e-4f);
+        Check(collidersOk == trees.Count && trees.Count > 50, $"every standing tree has a trunk collider ({collidersOk} of {trees.Count})");
+
+        // Walk straight into the nearest trunk for two seconds.
+        Plant tree = trees[0];
+        Vector3 away = WildSim.Flat(start - tree.Position).Normalized();
+        p.Teleport(Ground(main, tree.Position + away * 3f) + Vector3.Up * 0.1f);
+        p.SetLook(MathF.Atan2(away.X, away.Z), 0f);
+        await Frames(2);
+        float closest = float.MaxValue;
+        Hold(Key.W, true);
+        for (int i = 0; i < 120; i++)
+        {
+            await Frames(1);
+            closest = MathF.Min(closest, WildSim.Flat(p.GlobalPosition - tree.Position).Length());
+        }
+        Hold(Key.W, false);
+        bool stopped = closest >= tree.TrunkRadius + 0.3f;
+
+        // Fell it: the collider goes the moment the tree does, and the player walks on through.
+        bool droppedAtOnce = false;
+        void OnFelled(Plant felled) { if (felled == tree) droppedAtOnce = main.Forest.TrunkOf(tree).Disabled; }
+        field.Felled += OnFelled;
+        field.Chip(tree, 1e6f);
+        field.Felled -= OnFelled;
+        float through = float.MaxValue;
+        Hold(Key.W, true);
+        for (int i = 0; i < 90; i++)
+        {
+            await Frames(1);
+            through = MathF.Min(through, WildSim.Flat(p.GlobalPosition - tree.Position).Length());
+        }
+        Hold(Key.W, false);
+        Check(stopped && droppedAtOnce && through < tree.TrunkRadius,
+            $"the player can't walk through a trunk (stopped {closest:F2} m from its middle, radius {tree.TrunkRadius:F2} m); felling it drops its collider at once, and then they walk over the stump ({through:F2} m)");
+
+        // The hovercraft with a full hold drives at a tree: the blades won't take it, and the hull is held off it.
+        Vessel v = main.Vessel;
+        Plant target = trees.Skip(1).First(x => trees.All(o => o == x || o == tree || WildSim.Flat(o.Position - x.Position).Length() > 4f));
+        Vector3 back = WildSim.Flat(start - target.Position).Normalized();
+        v.Yaw = MathF.Atan2(back.X, back.Z); // forward is -back: at the tree
+        v.GlobalPosition = Ground(main, target.Position + back * 7f) + Vector3.Up * 0.85f;
+        v.Velocity = Vector3.Zero;
+        v.Storage.Clear();
+        v.Storage.Add(Items.Wood, v.Storage.Capacity);
+        v.AutoThrottle = 0.5f;
+        float held = float.MaxValue;
+        for (int i = 0; i < 180; i++)
+        {
+            await Frames(1);
+            held = MathF.Min(held, WildSim.Flat(v.GlobalPosition - target.Position).Length());
+        }
+        bool standing = target.Alive;
+        // Room in the hold again: now it cuts, and the trunk stops blocking the moment it falls.
+        v.Storage.Clear();
+        bool cutAtOnce = false, felledIt = false;
+        void OnCut(Plant felled) { if (felled == target) { felledIt = true; cutAtOnce = main.Forest.TrunkOf(target).Disabled; } }
+        field.Felled += OnCut;
+        for (int i = 0; i < 600 && !felledIt; i++) await Frames(1);
+        field.Felled -= OnCut;
+        v.AutoThrottle = 0f;
+        v.Storage.Clear();
+        p.Health.Max = p.Health.Current = maxHealth;
+        Check(standing && held >= target.TrunkRadius + 0.45f && felledIt && cutAtOnce,
+            $"the hovercraft is held off a tree it isn't cutting (closest {held:F2} m from the trunk with a full hold, tree still standing); once there is room it cuts it down and the trunk's collider goes as it falls");
+    }
+
+    static Vector3 Ground(Main main, Vector3 p) => new(p.X, main.Planet.Terrain.Height(p.X, p.Z), p.Z);
 
     void RunDown()
     {

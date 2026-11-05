@@ -125,6 +125,7 @@ Holding Q on a creature still scans it at any time: name, form, behaviour, tempe
 - The blades are a box on the front of the vessel. Plants in it pay out wood and plant matter as they are chipped, and creatures in it are chewed and their meat (and the odd rare part) goes straight into storage.
 - Storage is one shared inventory with a capacity, and nothing harvested is ever thrown away. The blades only bite into a plant or creature whose whole remaining yield fits in the hold; otherwise they idle and the vessel shoves it aside.
 - Felled plants regrow on a timer, but only while no player is within 70 m.
+- Every tree has a trunk: a cylinder collider from the ground to where its crown starts, which the player and the gun's rays hit, and a nav-grid obstacle the same size, which creatures and the hovercraft keep off. The hovercraft is held off any tree it isn't cutting. Felling a tree drops both at once; a regrown tree gets them back.
 - Killing something on foot leaves a corpse: E butchers it into your pack, which empties into the hold when you board. Scavengers eat whatever you leave.
 
 **Spawning, respawning and bases** (`src/Sim/Spawner.cs`, `src/Core/Structures.cs`). The spawner puts each species where its behaviour belongs at the start: herds on the plain, giants far off, ambushers by the groves, hunters out in the hills. Every 5 s it counts heads. A species that has fallen short through kills, harvests or scavenged corpses gets a group back 90 s later.
@@ -208,6 +209,7 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - A harvested tree adds its wood, is removed, frees the nav grid, and regrows only when no player is near.
   - Running a creature down puts its meat in the hold.
   - The storage cap is enforced, and the blades leave alone anything the hold can't take in full.
+  - Trunks are solid: a creature pushed straight at one slides round it, and a hunter goes round one to reach its prey. In the real scene every tree has its collider, the player walking into a trunk stops against it, and the hovercraft with a full hold is held off a tree. Felling a tree drops its collider at once, and the player then walks over the stump.
 - **Bases:**
   - An hour of a planet's fauna being killed every 4 s and respawned, with a small base where the herd would start, a large one in the hills, a capital ship parked between and a player strolling through: of about 930 spawns, none lands inside a base's zone (nearest 89 m from an edge), and no respawn comes nearer the player than 90 m.
   - A large base gets a larger zone: the zone runs 80 m from the footprint's edge, 83 m out from a 6 m hut's centre and 120 m from an 80 x 56 m fortress's.
