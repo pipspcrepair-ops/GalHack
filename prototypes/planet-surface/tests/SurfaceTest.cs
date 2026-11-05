@@ -233,6 +233,8 @@ public partial class SurfaceTest : Node
     async Task PoiChecks()
     {
         int sites = 0, floating = 0, doors = 0, corners = 0, overlaps = 0, gates = 0, steep = 0;
+        int roomsFilled = 0;
+        var shapes = new Dictionary<StampShape, int>();
         double widest = 1;
         bool same = false;
         var kinds = new Dictionary<string, int>();
@@ -272,7 +274,7 @@ public partial class SurfaceTest : Node
                 foreach (var (cx, cz) in new[] { (t.MinX - 1, t.MinZ - 1), (t.MaxX, t.MinZ - 1), (t.MinX - 1, t.MaxZ), (t.MaxX, t.MaxZ) })
                 {
                     float ground = FieldSurface(store, cx, cz, pad + 40, pad - 40);
-                    if (float.IsNaN(ground) || Math.Abs(ground - pad) > 0.35f) corners++;
+                    if (float.IsNaN(ground) || (!site.HalfBuried && Math.Abs(ground - pad) > 0.35f)) corners++;   // a half-buried ruin sits in rising ground by design
                 }
                 // Nothing floats: everywhere the POI generator builds on rock (below floor level and
                 // outside the place's own rooms), there is solid ground, all the way down its deepest level.
@@ -284,13 +286,23 @@ public partial class SurfaceTest : Node
                     if (occ[local]) continue;
                     if (!store.IsSolid(site.World(local))) floating++;
                 }
+                // A half-buried ruin keeps every room open however deep the ground rises round it.
+                if (site.HalfBuried)
+                    for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
+                    for (int z = 0; z < occ.Size.Z; z++)
+                    for (int x = 0; x < occ.Size.X; x++)
+                    {
+                        var local = new PInt3(occ.Min.X + x, y, occ.Min.Z + z);
+                        if (occ[local] && inst.Blocks.Get(local).IsAir && store.IsSolid(site.World(local))) roomsFilled++;
+                    }
+                foreach (TerrainStamp extraStamp in site.Extra) shapes[extraStamp.Shape] = shapes.TryGetValue(extraStamp.Shape, out int sc) ? sc + 1 : 1;
                 // Nothing buried: no block above the pad shares a cell with ground.
                 for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
                 for (int z = 0; z < occ.Size.Z; z++)
                 for (int x = 0; x < occ.Size.X; x++)
                 {
                     var local = new PInt3(occ.Min.X + x, y, occ.Min.Z + z);
-                    if (!inst.Blocks.Get(local).IsAir && store.IsSolid(site.World(local))) overlaps++;
+                    if (!site.HalfBuried && !inst.Blocks.Get(local).IsAir && store.IsSolid(site.World(local))) overlaps++;
                 }
                 // The way in: open from the floor to head height, with ground under it.
                 TInt3 e = site.Entrance;
@@ -304,33 +316,36 @@ public partial class SurfaceTest : Node
                 {
                     if (g.Kind == "breach") continue; // a breach is a climb down a rubble slope by design
                     gates++;
-                    double ox = g.OutX, oz = g.OutZ;
-                    if (ox == 0 && oz == 0) { ox = Math.Sign(g.Cell.X + 0.5 - site.Center.X); oz = ox == 0 ? 1 : 0; }
-                    double len = Math.Sqrt(ox * ox + oz * oz), baseAngle = Math.Atan2(oz / len, ox / len);
                     double reach = Math.Max(t.ReachX, t.ReachZ) + 10;
-                    // The ground as it would be without this place's stamp (the landing pad or a neighbour may shape it too).
-                    var others = w.Source.Stamps.Where(s => s != t).ToList();
-                    float Without(double x, double z) => TerrainStamp.Compose(others, w.Source.NaturalHeight(x, z), x, z);
-                    // A way up to it: any of seven straight lines fanned out from the way in (out to 60 degrees
-                    // either side), on which the stamp never makes a step steeper than a body walks.
-                    string worst = null;
+                    // A way up to it: a walk on a 2 m grid from the gate out past everything this place
+                    // stamped, never stepping more than a body walks (45 degrees). Natural cliffs are
+                    // obstacles to walk round, as they would be for a player.
+                    const int Cell = 2;
+                    int half = (int)Math.Ceiling(reach / Cell) + 2, size = 2 * half + 1;
+                    var seen = new bool[size * size];
+                    var heightAt = new float[size * size];
+                    for (int j = 0; j < size; j++)
+                        for (int i = 0; i < size; i++)
+                            heightAt[j * size + i] = w.Source.SurfaceHeight(g.Cell.X + 0.5 + (i - half) * Cell, g.Cell.Z + 0.5 + (j - half) * Cell, Cell);
+                    var queue = new Queue<int>();
+                    queue.Enqueue(half * size + half);
+                    seen[half * size + half] = true;
                     bool walkable = false;
-                    for (int fan = 0; fan < 7 && !walkable; fan++)
+                    string worst = "boxed in";
+                    while (queue.Count > 0 && !walkable)
                     {
-                        double ang = baseAngle + (fan - 3) * Math.PI / 9, ux = Math.Cos(ang), uz = Math.Sin(ang);
-                        float last = w.Source.SurfaceHeight(g.Cell.X + 0.5, g.Cell.Z + 0.5), lastNatural = Without(g.Cell.X + 0.5, g.Cell.Z + 0.5);
-                        bool ok = true;
-                        for (double d = 1; d <= reach && ok; d += 1)
+                        int cur = queue.Dequeue(), ci = cur % size, cj = cur / size;
+                        double away = Math.Sqrt((ci - half) * (ci - half) + (cj - half) * (cj - half)) * Cell;
+                        if (away >= reach) { walkable = true; break; }
+                        foreach (var (di, dj) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
                         {
-                            double x = g.Cell.X + 0.5 + ux * d, z = g.Cell.Z + 0.5 + uz * d;
-                            float h = w.Source.SurfaceHeight(x, z), natural = Without(x, z);
-                            // A step only counts against the stamp if the stamp made it: steeper than the natural ground there.
-                            bool made = Math.Abs(h - last) > Math.Abs(natural - lastNatural) + 0.25f;
-                            if (t.Weight(x, z) > 0f && made && Math.Abs(h - last) > 1.05f) { ok = false; worst ??= $"{d:F0} m ({h - last:F1} m)"; }
-                            last = h;
-                            lastNatural = natural;
+                            int ni = ci + di, nj = cj + dj;
+                            if (ni < 0 || nj < 0 || ni >= size || nj >= size) continue;
+                            int next = nj * size + ni;
+                            if (seen[next] || Math.Abs(heightAt[next] - heightAt[cur]) > 1.05f * Cell) continue;
+                            seen[next] = true;
+                            queue.Enqueue(next);
                         }
-                        walkable = ok;
                     }
                     if (!walkable) { steep++; if (notes.Count < 16) notes.Add($"no walkable approach to {site.Family.Id} {g.Kind}: {worst}"); }
                 }
@@ -340,11 +355,12 @@ public partial class SurfaceTest : Node
             await Frames(1);
         }
         GD.Print("      " + string.Join("; ", notes));
+        Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +
             $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in");
         Check(gates >= sites && steep == 0,
-            $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a line out past the stamp (within 60 degrees of straight out) where the stamp makes no step over 1 m");
+            $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a walk on foot out past everything the place stamped, no step steeper than 45 degrees");
         Check(same, "the same planet seats the same places at the same cells with the same ways in");
         Check(widest >= 0.45, $"places spread over the whole planet, not just the landing site: on every world the farthest is {widest:P0} or more of the way to the far side; {families.Count} families seated");
     }
