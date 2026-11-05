@@ -64,7 +64,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
    A pattern already used on another storey is less likely again. A storey whose plan signature matches another storey's is planned again. Shape follows purpose: hospitals and prisons spread their wings, towers climb, bunkers and mines go down.
 3. **Rooms.** The space left over is cut into rooms by recursive wall splits. Each room gets a purpose from the program's demands (`rooms ground lobby! nurses ...`) and from the room library (`rooms.txt`). The library gives each room its size, props, adjacency, and a deco set for the decorations library. Slivers become hidden rooms behind breakable walls, each with its tells.
-4. **Doors and locks.** Every room reaches a corridor, either directly or through a room it belongs with. Some doors need a keycard, and the keycard always lies on the reachable side of its lock. The vault sits on the deepest level.
+4. **Doors and locks.** Every room reaches a corridor, either directly or through a room it belongs with. Some doors need a keycard, and the keycard always lies on the reachable side of its lock. The vault sits on the deepest level. A program's must-have rooms (`lobby!`) are guaranteed: a plan that leaves one out is planned again.
 5. **Verticality.**
    - Stairs, with 3 cells of headroom over every step.
    - Ladders, and lifts with cars.
@@ -101,6 +101,13 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - *Ruined*: holes and rubble.
 
   Cables and Bloom tendrils always hang from something. A ruin that lost its ceiling also loses what hung from it.
+- **A century or two after the fall.** Each place has an age, and each room an exposure, for loot, dressing and the decorations library's disorder pass:
+  - `PoiInstance.Age`: new (worked today), old-world (long abandoned) or preserved (frozen or airless).
+  - `AgeOf(module)`: a sealed vault, cryo bay or hidden room keeps its own age.
+  - `ExposureOf(module)`: indoors, outdoors, or breached (open to the sky).
+
+  Old-world places hold no food outside sealed rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. Trees, many of them mature, grow through courtyards and breaches.
+- **Repair after decay.** Anything left floating comes down. Every spawn is then flood-filled from the way in, and rolled again from a new sub-seed if decay cut the way to the vault or the core.
 - **Loot** comes from real `shared/Items` ids (`loot.txt`). The cache tier rises with rarity, depth and wrongness, and is higher for vaults, hidden stashes and infested places.
 - **Frozen moments** replace text logs: an abandoned meal, welded doors scratched from the inside, drag marks leading deeper, a last stand by the core. Terminals are props.
 - **Gangs** belong to no faction. Their camps and forts get spawn and patrol markers, and never a core.
@@ -111,6 +118,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 - **Start worlds** (`ThemeParser.For(..., start: true)` or `ThemeDef.AsStart()`): no faction holds ground. Faction places appear only as ruins, with no core and no defenders.
 - **Space** (`orbit.txt`, `OrbitPlacement`): places in space, as data, sited per system. A start system gets plenty of wrecks close to home, with danger 2 at most and no live faction.
 - **Siting by purpose**: each family names the ground it wants (`siting`: peak, ridge, hillside, valley, flat, open or any), how high its landmark stands (`rise`), and its importance tier (`tier`).
+- **Tech level**: a theme names its world's tech level (`tech low|mid|high`). Families with layouts per tech level (factories, farms) pick that level's layout.
 
 ## Authoring a kit module as data
 
@@ -203,6 +211,9 @@ The tests run headless and exit 0 or 1. Add `-- --only=Name,Name` to run only th
   - Collapse breaches lead in.
   - Keycards lie before their locks.
   - Cables and tendrils always hang from an anchor.
+  - Programs keep their must-have rooms.
+  - Old-world places hold no food outside sealed rooms, and trees grow through them.
+  - Factories and farms match their world's tech level.
 - **Placement**: biome, territory, near and avoid rules; regrowth and reveal; themed sets with outliers in range; whole-planet cover; start worlds with no faction ground; and start systems full of wrecks.
 - **Distance**: each family's landmark rises as high as its purpose wants, and something on it is lit.
 - **Performance**: generate, validate and mesh 100 POIs (printed, with a ceiling).

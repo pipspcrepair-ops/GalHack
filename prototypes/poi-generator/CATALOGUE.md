@@ -9,7 +9,7 @@ Every kind of place asked for so far, and how far along it is.
 
 Programs are recipes (`programs.txt`): room demands, footprint shapes, circulation patterns, storeys and basements. Sites (`sites.txt`) compose parts: buildings, runways, hangars, towers, craters, rockets, fences, camps. Style kits (`kits/*.kit`) re-skin either one. A family can name its own `style`, and that is how a flavour works. **Alien** is a flavour: the same plans built in an alien kit (`alien_hive`, `alien_cathedral`, `alien_library`, `alien_temple`). Families opt in. Alien places are common on alien worlds (the alien theme's set) and rare outliers elsewhere. Alien is not Precursor: Precursor ruins are their own kit-built family.
 
-## Built (26 families)
+## Built (28 families)
 
 | Family | Tier | How it's made | Notes |
 | --- | --- | --- | --- |
@@ -39,6 +39,8 @@ Programs are recipes (`programs.txt`): room demands, footprint shapes, circulati
 | Alien Hive Ruin | site | mine_works in alien_hive | chewed warrens; Bloom-thick infested state |
 | Alien Library | site | research_base in alien_library | crystal stacks underground |
 | Alien Cathedral | site | tower_block in alien_cathedral | a pale spire on a peak |
+| Abandoned Factory | site | sites factory_low, factory_mid, factory_high | a production hall frozen mid-run (conveyor, robot arms, a load on the crane), warehouse and loading bays, works offices over a boiler house, smokestacks and a water tower; tech level by layout; gangs hold some |
+| Old Farm | site | sites farm_low, farm_mid, agri_complex | farmhouse with a cellar, barn, silos, windmill or water tower, fields gone wild, greenhouses and hydroponic sheds, a vertical farm tower at high tech |
 
 ## Procgen-able (a family entry away)
 
@@ -83,4 +85,6 @@ Derelict freighter, wreck field, escape pod cluster, drifting hulk, broken stati
 
 - **Themes** (`themes.txt`): a themed set per kind of world plus 4 to 14% outliers, rarer and more ominous. A **start world** keeps its theme with no faction holding ground. Faction places turn up only as ruins (no core, no defenders).
 - **Fallen** theme: craters with radiation, dead cities, bunkers, scrap forts.
+- **Tech level** (`tech` on a theme and on a layout): factories and farms have low, mid and high tech layouts, and a world picks its own.
+- **A century or two after the fall**: places carry an age (new, old-world, preserved) and each room an exposure (indoors, outdoors, breached). Old-world places hold no food outside sealed, frozen or airless rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. Trees grow through courtyards and breaches.
 - **Two layers**: old grandeur built in the program's own kit, with the recovery patch-up on top (lights, barricades, gang camps). Faction framing comes from roster and state: Vharn seize ruins, Meridian runs recovery, the Freeholders farm the ruins, the Carrion Reavers and the factionless gangs scavenge.
