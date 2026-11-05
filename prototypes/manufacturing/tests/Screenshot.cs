@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Threading.Tasks;
+using DiegeticUi.Screens;
 using GalHack.Items;
 using Godot;
 using Manufacturing.Game;
@@ -74,6 +75,13 @@ public partial class Screenshot : Node
                 await Frames(3);
                 await Point(_main.StorageScreen, Nth(_main.StorageScreen, "stack:", 7), 1.3f);
                 break;
+            case "console":
+                // The structure's settings panel, the Tab menu's kind, on the base console; the cursor on a slider.
+                w.Fab.Restock.SetThreshold("rocket", 12);
+                await Frames(3);
+                Rect2 slider = _main.StructurePanel.Thresholds["shells-40mm"].GetGlobalRect();
+                await Point(_main.ConsoleScreen, slider.Position + new Vector2(slider.Size.X * 0.25f, slider.Size.Y / 2), 1.3f);
+                break;
             default:
                 w.Rules.Mode = GameMode.Creative;
                 w.Factory.Start("Gadfly", w.Blueprints[0].Blocks);
@@ -101,7 +109,13 @@ public partial class Screenshot : Node
     {
         Rect2? rect = screen.Page.Spots.RectOf(spot);
         if (rect == null) GD.PrintErr($"no hot spot {spot} on {screen.Name}; aiming at the middle");
-        Vector3 target = screen.PixelToWorld(rect?.GetCenter() ?? new Vector2(MachinePage.W, MachinePage.H) / 2);
+        await Point(screen, rect?.GetCenter() ?? new Vector2(MachinePage.W, MachinePage.H) / 2, distance);
+    }
+
+    /// <summary>The same, at a page pixel of any screen.</summary>
+    async Task Point(WorldScreen screen, Vector2 pixel, float distance)
+    {
+        Vector3 target = screen.PixelToWorld(pixel);
         Vector3 feet = target + screen.GlobalBasis.Z * distance;
         feet.Y = screen.GlobalPosition.Y - Player.EyeHeight; // on the floor: the screen hangs at eye height
         _main.Player.StandAndLook(feet, target);

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DiegeticUi.Theme;
 using GalHack.Items;
 using Godot;
 using Manufacturing.Game;
@@ -9,49 +10,35 @@ namespace Manufacturing.Screens;
 /// <summary>
 /// The diegetic screen look, as prototypes/diegetic-ui defines it: dark glass, bold colour blocks
 /// in the Helios palette, a header like a 70s paperback spine, segmented bars. The fonts (OFL,
-/// credited in CREDITS.md) and the glass shader are read from diegetic-ui's folder where they
-/// live, so nothing is copied; if they can't be found the screens fall back to a system font.
+/// credited in CREDITS.md) and the glass shader are diegetic-ui's, read from its folder where
+/// they live, so nothing is copied: this points diegetic-ui's <see cref="UiTheme"/> at that folder.
 /// </summary>
 public static class Kit
 {
+    static Kit() => UiTheme.FontRoot = Path.Combine(DataPaths.DiegeticUi, "fonts");
+
     // diegetic-ui's Palette.Helios.
     public static readonly Color Glass = new("0b111c"), Panel = new("172238"), Rule = new("2a3a58"), Cream = new("f6ead0"),
         Dim = new("8d97ab"), Accent = new("ff6a13"), Accent2 = new("ffb400"), Good = new("1fd6c4"), Warn = new("ffb400"), Danger = new("ff3344");
 
     public const int SizeTitle = 40, SizeHeading = 30, SizeLabel = 26, SizeSmall = 20, SizeTiny = 16;
 
-    static Font _display, _label, _mono;
-    public static Font Display => _display ??= Load("Michroma/Michroma-Regular.ttf", embolden: 1.3f);
-    public static Font Label => _label ??= Load("Oxanium/Oxanium-Variable.ttf", weight: 700);
-    public static Font Mono => _mono ??= Load("SpaceMono/SpaceMono-Bold.ttf");
+    public static Font Display => UiTheme.Display;
+    public static Font Label => UiTheme.Label;
+    public static Font Mono => UiTheme.Mono;
+
+    /// <summary>Makes sure diegetic-ui's theme reads its fonts from where they live. Call before anything draws.</summary>
+    public static void UseDiegeticFonts() { } // the static constructor does the work
 
     public static Color Of(Rarity r) => new((Rarities.Color(r) << 8) | 0xFF);
 
-    static Font Load(string file, float embolden = 0, int weight = 0)
-    {
-        string path = Path.Combine(DataPaths.DiegeticUi, "fonts", file);
-        if (!File.Exists(path)) return new SystemFont { FontNames = new[] { "Bahnschrift", "Segoe UI", "Arial" } };
-        var font = new FontFile { Data = File.ReadAllBytes(path), Antialiasing = TextServer.FontAntialiasing.Gray, Hinting = TextServer.Hinting.Light };
-        if (embolden > 0) return new FontVariation { BaseFont = font, VariationEmbolden = embolden };
-        if (weight > 0)
-        {
-            long wght = TextServerManager.GetPrimaryInterface().NameToTag("wght");
-            return new FontVariation { BaseFont = font, VariationOpentype = new Godot.Collections.Dictionary { { wght, weight } } };
-        }
-        return font;
-    }
-
     static Shader _surface;
-    static Godot.Theme _theme;
 
     /// <summary>diegetic-ui's glass shader (scanlines, glow, vignette, the cursor), read in place, compiled once.</summary>
     public static Shader SurfaceShader => _surface ??= new Shader
     {
         Code = File.ReadAllText(Path.Combine(DataPaths.DiegeticUi, "shaders", "screen_surface.gdshader")),
     };
-
-    /// <summary>The pages' theme: this kit's label face, so a page never falls back to diegetic-ui's res:// fonts.</summary>
-    public static Godot.Theme Theme => _theme ??= new Godot.Theme { DefaultFont = Label, DefaultFontSize = SizeLabel };
 
     // ---- Drawing --------------------------------------------------------------------------
 

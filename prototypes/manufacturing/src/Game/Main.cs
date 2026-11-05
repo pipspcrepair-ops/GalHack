@@ -7,6 +7,7 @@ using GalHack.Structures;
 using GalHack.Structures.Presentation;
 using DiegeticUi.Screens;
 using Godot;
+using Manufacturing.Panels;
 using Manufacturing.Screens;
 
 namespace Manufacturing.Game;
@@ -41,8 +42,11 @@ public partial class Main : Node3D
     public ScreenPointer Pointer { get; private set; }
     /// <summary>Redraws the screens, only when their pages change and they can be seen.</summary>
     public ScreenManager ScreenManager { get; private set; }
-    /// <summary>The screen the cursor is on, or null.</summary>
+    /// <summary>The machine screen the cursor is on, or null (its page takes the keyboard extras).</summary>
     public MachineScreen Focus => Pointer.Target as MachineScreen;
+    /// <summary>The base console on the back wall: a plain WorldScreen showing the structure's settings panel.</summary>
+    public WorldScreen ConsoleScreen { get; private set; }
+    public StructurePanel StructurePanel { get; private set; }
     public List<StructureView> Spawned { get; } = new();
 
     GhostPreview _ghost;
@@ -52,6 +56,7 @@ public partial class Main : Node3D
 
     public override void _Ready()
     {
+        Kit.UseDiegeticFonts();
         BuildEnvironment();
 
         Catalogue blocks = DataPaths.BlockCatalogue;
@@ -86,6 +91,7 @@ public partial class Main : Node3D
         }
         Int3 container = baseStructure.Blocks().Where(b => baseStructure.TypeOf(b.block).IsContainer).Select(b => b.pos).OrderBy(p => p.X).First();
         StorageScreen = Mount(container, new StoragePage(Workshop));
+        MountConsole(container + new Int3(1, 0, 0));
 
         Player = new Player();
         AddChild(Player);
@@ -126,18 +132,34 @@ public partial class Main : Node3D
     /// </summary>
     MachineScreen Mount(Int3 cell, MachinePage page)
     {
-        float size = Workshop.Base.Grid.CellSize;
-        float floor = (cell.Y - 0.5f) * size;
-        var screen = new MachineScreen
-        {
-            Name = page.GetType().Name.Replace("Page", "Screen"),
-            Page = page,
-            Position = new Vector3(cell.X * size, floor + Player.EyeHeight, cell.Z * size + size * 0.5f + 0.035f),
-        };
+        var screen = new MachineScreen { Name = page.GetType().Name.Replace("Page", "Screen"), Page = page, Transform = OnFrontFace(cell) };
         AddChild(screen);
         Screens.Add(screen);
         page.Said += line => Hud.Toast(line, IsBad(line));
         return screen;
+    }
+
+    /// <summary>
+    /// The base console: a wall block's screen showing the structure's settings. The panel is the
+    /// kind the Tab menu shows; the screen hosts it as it is.
+    /// </summary>
+    void MountConsole(Int3 cell)
+    {
+        ConsoleScreen = new WorldScreen
+        {
+            Name = "ConsoleScreen", Prompt = "BASE CONSOLE", Pixels = new Vector2I(MachinePage.W, MachinePage.H), SizeMeters = new Vector2(1.6f, 0.9f),
+            PickLayer = MachineScreen.Layer, SurfaceShader = Kit.SurfaceShader, BezelLit = Kit.Accent2, Transform = OnFrontFace(cell),
+        };
+        AddChild(ConsoleScreen);
+        ConsoleScreen.SetContent(StructurePanel = new StructurePanel(Workshop));
+    }
+
+    /// <summary>A screen on a back-wall block's front face, at eye height above the floor the block stands on.</summary>
+    Transform3D OnFrontFace(Int3 cell)
+    {
+        float size = Workshop.Base.Grid.CellSize;
+        var face = new Vector3(cell.X, 0, cell.Z + 0.5f) * size;
+        return ScreenMount.OnFace(face, Vector3.Back, floorY: (cell.Y - 0.5f) * size);
     }
 
     static bool IsBad(string line) => line.StartsWith("REFUSED") || line.Contains("NEEDS") || line.Contains("ONLY") || line.Contains("CAN'T");
@@ -216,7 +238,7 @@ public partial class Main : Node3D
 
     public override void _Process(double delta)
     {
-        Hud.Crosshair = Focus == null;
+        Hud.Crosshair = Pointer.Target == null;
         UpdateAim();
         SyncCrates();
         if (Workshop.Wreck.Count == 0 && WreckView.Visible)
@@ -254,7 +276,7 @@ public partial class Main : Node3D
     {
         _aim = null;
         Structure s = Workshop.Base;
-        if (Focus != null)
+        if (Pointer.Target != null)
         {
             _ghost.HideGhosts();
             _ghost.HideOutline();
@@ -353,7 +375,7 @@ public partial class Main : Node3D
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (e is InputEventMouseButton { Pressed: true } click && Focus == null)
+        if (e is InputEventMouseButton { Pressed: true } click && Pointer.Target == null)
         {
             if (click.ButtonIndex == MouseButton.Left) PlaceAimed();
             else if (click.ButtonIndex == MouseButton.Right) RemoveAimed();

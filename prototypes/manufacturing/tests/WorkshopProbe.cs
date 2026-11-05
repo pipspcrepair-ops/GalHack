@@ -60,7 +60,10 @@ public partial class WorkshopProbe : Node
         return pixel;
     }
 
-    async Task LookAt(Vector3 target, MachineScreen screen, float distance)
+    /// <summary>Stands the player in front of a screen and aims at a page pixel on it.</summary>
+    async Task AimAt(WorldScreen screen, Vector2 pixel, float distance = 2f) => await LookAt(screen.PixelToWorld(pixel), screen, distance);
+
+    async Task LookAt(Vector3 target, WorldScreen screen, float distance)
     {
         Vector3 feet = screen.GlobalPosition + screen.GlobalBasis.Z * distance;
         feet.Y = Floor;
@@ -74,10 +77,14 @@ public partial class WorkshopProbe : Node
     /// <summary>A mouse click through the real input path: the game, the pointer, the screen, the page.</summary>
     async Task Click(MouseButton button = MouseButton.Left, bool shift = false)
     {
-        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = true, ShiftPressed = shift });
-        await Frames(1);
-        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = false, ShiftPressed = shift });
-        await Frames(2);
+        await Mouse(true, button, shift);
+        await Mouse(false, button, shift);
+    }
+
+    async Task Mouse(bool pressed, MouseButton button = MouseButton.Left, bool shift = false)
+    {
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = button, Pressed = pressed, ShiftPressed = shift });
+        await Frames(pressed ? 1 : 2);
     }
 
     async void Run()
@@ -94,7 +101,7 @@ public partial class WorkshopProbe : Node
         await Frames(20);
         Workshop w = _main.Workshop;
         Check(_main.Screens.Count == 4, $"four machine screens are mounted ({_main.Screens.Count})");
-        Check(_main.Screens.All(s => s.Redraws > 0), "every screen has drawn its page");
+        Check(_main.Screens.All(s => s.Redraws > 0) && _main.ConsoleScreen.Redraws > 0, "every screen, and the base console, has drawn its page");
         ScreensAtEyeHeight();
         Check(w.Fab.Restock.InUse.SequenceEqual(new[] { "belt-12mm", "rocket", "shells-40mm" }), $"the constructor restocks the ammo of the base's guns ({string.Join(", ", w.Fab.Restock.InUse)})");
 
@@ -116,6 +123,7 @@ public partial class WorkshopProbe : Node
         Check(removed?.Ok == true && w.Storage.Count("hull-plate") == plates, "taking it down puts the plates back");
 
         await CursorOnTheConstructor();
+        await ConsoleShowsTheStructurePanel();
 
         // Keys still work as extras: order the selected item from the constructor's menu.
         var fabPage = (ConstructorPage)_main.ConstructorScreen.Page;
@@ -210,18 +218,93 @@ public partial class WorkshopProbe : Node
     /// <summary>The machines' screens hang with their centres near the player's eyes and face straight out at them.</summary>
     void ScreensAtEyeHeight()
     {
-        const float band = 0.1f, maxTilt = 15;
         float eye = _main.Player.Camera.GlobalPosition.Y; // the player is standing on the floor
-        bool ok = Math.Abs(eye - (Floor + Player.EyeHeight)) < 0.05f;
+        bool ok = Math.Abs(eye - (Floor + Player.EyeHeight)) < 0.05f && Mathf.IsEqualApprox(Player.EyeHeight, ScreenMount.EyeHeight);
         var report = new System.Collections.Generic.List<string>();
-        foreach (MachineScreen s in _main.Screens)
+        foreach (WorldScreen s in _main.Screens.Cast<WorldScreen>().Append(_main.ConsoleScreen))
         {
-            Vector3 toEye = s.GlobalBasis.Z * 1.5f + new Vector3(0, eye - s.GlobalPosition.Y, 0);
-            float off = Mathf.RadToDeg(s.GlobalBasis.Z.AngleTo(toEye));
-            ok &= Math.Abs(s.GlobalPosition.Y - eye) <= band && off <= maxTilt;
-            report.Add($"{s.Name} {s.GlobalPosition.Y - Floor:F2} m, {off:F0}°");
+            ok &= ScreenMount.AtEyeHeight(s, Floor, band: 0.1f, maxDegrees: 15);
+            report.Add($"{s.Name} {s.GlobalPosition.Y - Floor:F2} m, {ScreenMount.FacingError(s, Floor):F0}Â°");
         }
-        Check(ok, $"every screen's centre is within {band * 100:0} cm of the eyes ({eye - Floor:F2} m above the floor) and faces them within {maxTilt}° ({string.Join("; ", report)})");
+        Check(ok, $"every screen's centre is within 10 cm of the eyes ({eye - Floor:F2} m above the floor) and faces them within 15Â° ({string.Join("; ", report)})");
+    }
+
+    /// <summary>
+    /// The base console hosts the structure's settings panel: a panel written for the Tab menu
+    /// (stock controls, the host's theme, nothing about screens). The look cursor lights its
+    /// buttons, clicks them, drags its sliders; it redraws only when something changes; and a
+    /// second copy of the same class, hosted full-screen as the Tab menu would, works and agrees.
+    /// </summary>
+    async Task ConsoleShowsTheStructurePanel()
+    {
+        Workshop w = _main.Workshop;
+        WorldScreen console = _main.ConsoleScreen;
+        Manufacturing.Panels.StructurePanel panel = _main.StructurePanel;
+        Check(panel.Theme == DiegeticUi.Theme.UiTheme.GodotTheme && panel.Size == (Vector2)console.Pixels,
+            $"the panel fills the console's {console.Pixels.X} x {console.Pixels.Y} pixels and takes the screen's theme");
+
+        // A still cursor on the panel's background costs nothing; a change in the model redraws it.
+        await AimAt(console, new Vector2(640, 60));
+        await Frames(10);
+        long before = console.Redraws;
+        await Frames(30);
+        bool idle = console.Redraws == before;
+        w.Fab.Restock.Enabled = !w.Fab.Restock.Enabled;
+        await Frames(3);
+        bool redrew = console.Redraws > before;
+        w.Fab.Restock.Enabled = !w.Fab.Restock.Enabled;
+        Check(_main.Pointer.Target == console && idle && redrew,
+            $"with the cursor still on it the console stays idle (0 redraws in 30 frames), and a change in the model redraws it ({console.Redraws - before})");
+
+        // Hover and click a stock toggle button.
+        Button toggle = panel.RestockToggle;
+        bool restock = w.Fab.Restock.Enabled;
+        before = console.Redraws;
+        await AimAt(console, toggle.GetGlobalRect().GetCenter());
+        bool lit = toggle.IsHovered() && console.Redraws > before;
+        await Click();
+        Check(lit && w.Fab.Restock.Enabled != restock && toggle.ButtonPressed == w.Fab.Restock.Enabled,
+            $"the cursor lights the stock RESTOCK button (the console redraws for it) and a click switches restock {(w.Fab.Restock.Enabled ? "on" : "off")}");
+        await Click();
+
+        // Drag a slider: press on its track, turn to aim further along, let go.
+        HSlider shells = panel.Thresholds["shells-40mm"];
+        int keep = w.Fab.Restock.Threshold("shells-40mm", w.Items);
+        Rect2 track = shells.GetGlobalRect();
+        await AimAt(console, track.Position + new Vector2(track.Size.X * 0.2f, track.Size.Y / 2));
+        await Mouse(true);
+        await AimAt(console, track.Position + new Vector2(track.Size.X * 0.8f, track.Size.Y / 2));
+        await Mouse(false);
+        int dragged = w.Fab.Restock.Threshold("shells-40mm", w.Items);
+        Check(dragged >= 28 && dragged <= 36 && (int)shells.Value == dragged,
+            $"dragging the shells slider from 20% to 80% along through the look cursor sets the threshold to {dragged} of 40 (was {keep})");
+        w.Fab.Restock.SetThreshold("shells-40mm", keep);
+
+        // The same panel class, hosted full-screen as the Tab menu would host it: no screen, the theme given by the host.
+        await LookAt(console.GlobalPosition + new Vector3(8, 0, 0), console, 2); // off every screen: clicks are the menu's
+        Vector2I window = GetTree().Root.Size;
+        GetTree().Root.Size = new Vector2I(1600, 900); // headless runs in a 64 px window
+        var layer = new CanvasLayer { Layer = 10 };
+        var host = new Control { Theme = DiegeticUi.Theme.UiTheme.GodotTheme, Size = new Vector2(1280, 720) };
+        var menuCopy = new Manufacturing.Panels.StructurePanel(w);
+        host.AddChild(menuCopy);
+        menuCopy.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        layer.AddChild(host);
+        AddChild(layer);
+        await Frames(3);
+        Vector2 at = menuCopy.CreativeToggle.GetGlobalRect().GetCenter();
+        bool creative = w.Rules.Creative;
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = at, GlobalPosition = at });
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = at, GlobalPosition = at });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false, Position = at, GlobalPosition = at });
+        await Frames(3);
+        Check(w.Rules.Creative != creative && panel.CreativeToggle.ButtonPressed == w.Rules.Creative,
+            "the same panel class works full-screen, as the Tab menu shows it: a click there switches creative mode, and the console's copy shows it");
+        if (w.Rules.Creative != creative) w.ToggleMode();
+        layer.QueueFree();
+        GetTree().Root.Size = window;
+        await Frames(2);
     }
 
     /// <summary>

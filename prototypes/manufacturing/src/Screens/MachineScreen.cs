@@ -8,10 +8,11 @@ namespace Manufacturing.Screens;
 public enum ScreenKey { Up, Down, Left, Right, Tab, Act, ActMany, Cancel, Toggle, Less, More }
 
 /// <summary>
-/// A machine's page: a 1280 x 720 drawing that knows when it changed, and what on it can be
-/// clicked. Pages read the machine's own state every poll and redraw only when its signature
-/// changes. While they paint, they register every clickable thing as a hot spot, so the cursor
-/// always clicks exactly what the screen shows; whatever is under the cursor is painted lit.
+/// A machine's page: a panel that paints itself (1280 x 720), knows when it changed, and what on
+/// it can be clicked. Pages read the machine's own state every poll and redraw only when its
+/// signature changes. While they paint, they register every clickable thing as a hot spot, so the
+/// cursor always clicks exactly what the screen shows; whatever is under the cursor is painted lit.
+/// Like any panel it brings no theme: the screen gives it diegetic-ui's.
 /// </summary>
 public abstract partial class MachinePage : Control, IScreenPage
 {
@@ -25,11 +26,7 @@ public abstract partial class MachinePage : Control, IScreenPage
 
     int _seen = int.MinValue;
 
-    protected MachinePage()
-    {
-        Theme = Kit.Theme;
-        MouseFilter = MouseFilterEnum.Stop;
-    }
+    protected MachinePage() => MouseFilter = MouseFilterEnum.Stop;
 
     /// <summary>The hint line along the bottom of the glass while the cursor is on it.</summary>
     public abstract string Prompt { get; }

@@ -51,6 +51,7 @@ public partial class UiTest : Node
             await FocusInTheScene();
             await WristFocus();
             await LookAndClick();
+            await StockPanelOnAScreen();
             await ColdStoreFlash();
             await WarningShotCue();
             await ScreenRedrawCost();
@@ -410,22 +411,54 @@ public partial class UiTest : Node
     /// <summary>Every screen you walk up to hangs near standing eye height and faces a standing player.</summary>
     void ScreensAtEyeHeight()
     {
-        const float band = 0.1f, maxTilt = 15;
-        var report = new List<string>();
-        bool ok = true;
-        foreach (WorldScreen s in WorldScreen.All.Where(s => s.Pickable))
+        const float deck = 0;
+        var walkUp = WorldScreen.All.Where(s => s.Pickable).ToList();
+        string report = string.Join("; ", walkUp.Select(s => $"{s.Name} {s.GlobalPosition.Y:F2} m, {ScreenMount.FacingError(s, deck):F0}° off"));
+        Check(walkUp.Count == 3 && walkUp.All(s => ScreenMount.AtEyeHeight(s, deck, band: 0.1f, maxDegrees: 15)) && Mathf.IsEqualApprox(Player.EyeHeight, ScreenMount.EyeHeight),
+            $"walk-up screens are within 10 cm of eye height ({ScreenMount.EyeHeight} m) and within 15° of facing you ({report})");
+    }
+
+    /// <summary>
+    /// The component hosts any panel: a plain container of stock controls, as a Tab-menu panel is
+    /// built, hung with the mounting helper. It gets the screen's pixels and theme, the look cursor
+    /// lights and presses its button (the screen redrawing for it with no help from the panel), and
+    /// looking away lets go of the hover.
+    /// </summary>
+    async Task StockPanelOnAScreen()
+    {
+        var screen = new WorldScreen
         {
-            float height = s.GlobalPosition.Y; // the deck is at y = 0
-            // A player standing square in front of it, 1.4 m back, eyes at standing height.
-            Vector3 front = s.GlobalBasis.Z with { Y = 0 };
-            Vector3 eye = s.GlobalPosition + front.Normalized() * 1.4f;
-            eye.Y = Player.EyeHeight;
-            float off = Mathf.RadToDeg(s.GlobalBasis.Z.AngleTo(eye - s.GlobalPosition));
-            ok &= Mathf.Abs(height - Player.EyeHeight) <= band && off <= maxTilt;
-            report.Add($"{s.Name} {height:F2} m, {off:F0}° off");
-        }
-        Check(ok && report.Count == 3,
-            $"walk-up screens are within {band * 100:0} cm of eye height ({Player.EyeHeight} m) and within {maxTilt}° of facing you ({string.Join("; ", report)})");
+            Name = "TestPanelScreen", Pixels = new Vector2I(960, 540), SizeMeters = new Vector2(0.96f, 0.54f),
+            Transform = ScreenMount.OnFace(new Vector3(2.4f, 0, 6f), Vector3.Forward, floorY: 0), // the back wall
+        };
+        _main.AddChild(screen);
+        var panel = new VBoxContainer();
+        panel.AddChild(new Label { Text = "A PANEL FROM THE TAB MENU", ThemeTypeVariation = "Heading" });
+        var button = new Button { Text = "PRESS", ToggleMode = true, CustomMinimumSize = new Vector2(300, 80) };
+        panel.AddChild(button);
+        screen.SetContent(panel);
+        await _drive.Frames(3);
+        Check(ScreenMount.AtEyeHeight(screen, 0) && panel.Size == (Vector2)screen.Pixels && panel.Theme == Theme.UiTheme.GodotTheme,
+            $"a stock panel fills the screen's {screen.Pixels.X} x {screen.Pixels.Y} pixels and takes its theme; the helper hung it at {screen.GlobalPosition.Y:F2} m");
+
+        _drive.StandAndLook(new Vector3(2.4f, 0.05f, 4.3f), screen.GlobalPosition);
+        await _drive.PhysicsFrames(10);
+        int before = screen.Redraws;
+        _drive.Aim(screen.PixelToWorld(Drive.Centre(button)));
+        await _drive.Frames(3);
+        bool lit = button.IsHovered() && screen.Redraws > before;
+        Drive.Mouse(true);
+        await _drive.Frames();
+        Drive.Mouse(false);
+        await _drive.Frames(2);
+        bool pressed = button.ButtonPressed;
+        _drive.Aim(new Vector3(-2f, 1.6f, 4.3f)); // along the room, off the screen
+        await _drive.Frames(2);
+        Check(lit && pressed && !button.IsHovered() && !screen.InUse,
+            "the look cursor lights a stock button (the screen redraws by itself), a click toggles it, looking away lets it go");
+        screen.QueueFree();
+        _main.Player.Place(Bridge.Spawn, 0);
+        await _drive.Frames(3);
     }
 
     async Task WristFocus()

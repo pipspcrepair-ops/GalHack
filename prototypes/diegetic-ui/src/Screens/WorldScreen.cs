@@ -155,20 +155,88 @@ public partial class WorldScreen : Node3D, IFocusTarget
     }
 
     /// <summary>
-    /// Puts a page on the screen. Its size is set to the screen's pixels. A page with no theme of
-    /// its own gets diegetic-ui's (its fonts); one that brings its own keeps it.
+    /// Puts a panel on the screen: any Control, built for this screen or for the full-screen Tab
+    /// menu (see the panel contract in the README). It is given the screen's whole pixel rect,
+    /// and a panel with no theme of its own gets diegetic-ui's (<see cref="UiTheme.GodotTheme"/>);
+    /// one that brings its own keeps it.
+    ///
+    /// The screen watches the panel: any of its Controls redrawing, showing or hiding, moving or
+    /// resizing marks the screen for a redraw, so a panel that knows nothing about screens still
+    /// shows every change, and one that changes nothing costs nothing.
     /// </summary>
     public void SetContent(Control content)
     {
-        if (Content != null) Viewport.RemoveChild(Content);
+        if (Content != null)
+        {
+            Unwatch();
+            Viewport.RemoveChild(Content);
+        }
         Content = content;
         content.Theme ??= UiTheme.GodotTheme;
-        content.Size = Pixels;
         Viewport.AddChild(content);
+        // Anchored to the whole SubViewport, so it is exactly the screen's pixels (set once in the
+        // tree: offsets set before would count twice).
+        content.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        Watch(content);
         MarkDirty();
     }
 
     public void MarkDirty() => Dirty = true;
+
+    // ---- Watching the panel ------------------------------------------------------------------
+
+    readonly HashSet<Node> _watched = new();
+
+    void Watch(Node node)
+    {
+        if (!_watched.Add(node)) return;
+        if (node is CanvasItem item)
+        {
+            item.Draw += PanelDrew;
+            item.VisibilityChanged += MarkDirty;
+        }
+        if (node is Control control) control.ItemRectChanged += MarkDirty;
+        node.ChildEnteredTree += Watch;
+        node.ChildExitingTree += Forget;
+        foreach (Node child in node.GetChildren()) Watch(child);
+    }
+
+    /// <summary>A control left the panel: it stops marking this screen (and the panel redraws without it).</summary>
+    void Forget(Node node)
+    {
+        if (!_watched.Remove(node)) return;
+        StopWatching(node);
+        foreach (Node child in node.GetChildren()) Forget(child);
+        MarkDirty();
+    }
+
+    void Unwatch()
+    {
+        foreach (Node node in _watched)
+            if (IsInstanceValid(node)) StopWatching(node);
+        _watched.Clear();
+    }
+
+    void StopWatching(Node node)
+    {
+        if (node is CanvasItem item)
+        {
+            item.Draw -= PanelDrew;
+            item.VisibilityChanged -= MarkDirty;
+        }
+        if (node is Control control) control.ItemRectChanged -= MarkDirty;
+        node.ChildEnteredTree -= Watch;
+        node.ChildExitingTree -= Forget;
+    }
+
+    /// <summary>
+    /// Part of the panel redrew. If this frame's render is already queued, the new drawing goes
+    /// into it (deferred draws run before the frame is rendered); otherwise the next frame renders.
+    /// </summary>
+    void PanelDrew()
+    {
+        if (!_renderQueued) Dirty = true;
+    }
 
     /// <summary>Marks the screen showing this node (if any) for a redraw. Widgets call it on any visual change.</summary>
     public static void MarkDirtyFor(Node node)
