@@ -1,0 +1,150 @@
+// GalHack's item catalogue: everything that sits in a storage or a pocket. Blocks are not items:
+// placing a block costs its bill (blocks.json) straight from the structure's shared storage.
+//
+//   category  raw (mined, dug or harvested), unique (found only), refined (made from raw only),
+//             part, component, consumable, ammo, tool
+//   rarity    the design's five-step ladder: common, uncommon, rare, exotic, unique. A crafted
+//             item is never rarer-looking than it is: its rarity is at least that of every input.
+//   source    raw and unique items only: mine (a deposit), dig (any rock), harvest (plants and
+//             creatures), explore (POIs, wrecks, derelicts: unique finds, never mined)
+//   mass      kg per unit
+//   volume    storage units (SU, a litre) per unit: a small cargo block holds 125 SU, a large 8,000
+//   deposit   raw only: the deposit kind the planet generator places today, if any
+//   fuel      fuel units per item (section 13 of the design)
+//   rounds    ammo only: rounds in one box, belt or rack. Storage, the constructor and the restock
+//             threshold all count boxes, so the three always agree.
+//   restock   ammo only: the default auto-restock threshold, in boxes
+//
+// Names: plain words and real metals for common goods, crystal and star-metal names for rare
+// ones, lost-technology names for unique finds. Every name is GalHack's own.
+{
+  "schema": "galhack.items",
+  "version": 1,
+  "items": [
+    // ---- Raw: common (every planet) -----------------------------------------------------
+    { "id": "iron-ore", "name": "Iron ore", "short": "IRON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Iron",
+      "mass": 3.0, "volume": 1, "where": "Every planet", "uses": "Iron bars: hulls, frames, most devices" },
+    { "id": "copper-ore", "name": "Copper ore", "short": "COPPER", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Copper",
+      "mass": 3.2, "volume": 1, "where": "Every planet; richest on starter worlds and asteroids", "uses": "Wiring, windings, energy cells" },
+    { "id": "silicon-ore", "name": "Silicon ore", "short": "SILICON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Silicon",
+      "mass": 2.2, "volume": 1, "where": "Every planet; richest in deserts", "uses": "Wafers for circuits, glass, ceramic" },
+    { "id": "carbon-ore", "name": "Carbon ore", "short": "CARBON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Carbon",
+      "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite for steel and propellant, polymer" },
+    { "id": "ice", "name": "Ice", "short": "ICE", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Water",
+      "mass": 0.9, "volume": 1, "where": "Every planet; ice worlds, moons, poles", "uses": "Polymer, concrete, oxygen" },
+    { "id": "stone", "name": "Stone", "short": "STONE", "category": "raw", "rarity": "common", "source": "dig",
+      "mass": 2.4, "volume": 1, "where": "Any rock, anywhere", "uses": "Ceramic, concrete" },
+    { "id": "biomass", "name": "Biomass", "short": "BIOMASS", "category": "raw", "rarity": "common", "source": "harvest", "deposit": "Resin",
+      "mass": 0.5, "volume": 1, "where": "Vegetated worlds", "uses": "Biofuel, medkits" },
+    { "id": "burnstone", "name": "Burnstone", "short": "BURNSTN", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Sulfur",
+      "mass": 1.8, "volume": 1, "where": "Every planet; rich in asteroid fields", "uses": "Fuel packs" },
+
+    // ---- Raw: uncommon (small deposits everywhere, rich on moons, asteroids, harsh worlds) ---
+    { "id": "cobalt-ore", "name": "Cobalt ore", "short": "COBALT", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Cobalt",
+      "mass": 3.4, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Machine frames, constructors" },
+    { "id": "magnesium-ore", "name": "Magnesium ore", "short": "MAGNES", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Titanium",
+      "mass": 2.0, "volume": 1, "where": "Small deposits everywhere; rich on arid worlds and asteroids", "uses": "Explosive charges: rockets, shells" },
+    { "id": "neodymium-ore", "name": "Neodymium ore", "short": "NEODYM", "category": "raw", "rarity": "uncommon", "source": "mine",
+      "mass": 3.6, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Magnets for large thrusters and gyros" },
+    { "id": "gold-ore", "name": "Gold ore", "short": "GOLD", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Thorium",
+      "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
+    { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine",
+      "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
+
+    // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
+    { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
+      "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: warp fuel, shields" },
+    { "id": "emberite-ore", "name": "Emberite ore", "short": "EMBER", "category": "raw", "rarity": "rare", "source": "mine",
+      "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells, plasma charges, fusion cores" },
+    { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine",
+      "mass": 4.0, "volume": 1, "where": "Barren metal worlds and dense asteroids near giant stars", "uses": "Warp coils, the advanced constructor" },
+
+    // ---- Raw: exotic (themed worlds; optional upgrades only) ---------------------------------
+    { "id": "voidglass-shard", "name": "Voidglass shard", "short": "VOIDGLS", "category": "raw", "rarity": "exotic", "source": "mine",
+      "mass": 1.5, "volume": 1, "where": "Glass-desert worlds", "uses": "Lenses for long-range scanners and holo displays" },
+    { "id": "stormcore-nodule", "name": "Stormcore nodule", "short": "STORM", "category": "raw", "rarity": "exotic", "source": "mine",
+      "mass": 2.0, "volume": 1, "where": "Storm worlds", "uses": "Storm capacitors, high-output shields" },
+    { "id": "rimefire-crystal", "name": "Rimefire crystal", "short": "RIMEFIR", "category": "raw", "rarity": "exotic", "source": "mine",
+      "mass": 1.0, "volume": 1, "where": "Cryo-fire worlds", "uses": "Warp range injectors" },
+
+    // ---- Unique: found only, never mined, never crafted ----------------------------------
+    { "id": "precursor-alloy", "name": "Precursor alloy", "short": "PRECURS", "category": "unique", "rarity": "unique", "source": "explore",
+      "mass": 5.0, "volume": 2, "where": "Alien ruins and ancient derelicts (salvage only)", "uses": "Precursor armour blocks" },
+    { "id": "echo-shard", "name": "Echo shard", "short": "ECHO", "category": "unique", "rarity": "unique", "source": "explore",
+      "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating for charged armour" },
+    { "id": "lattice-core", "name": "Lattice core", "short": "LATTICE", "category": "unique", "rarity": "unique", "source": "explore",
+      "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "Lattice processors for CPU tier 3" },
+    { "id": "lattice-array", "name": "Lattice array", "short": "ARRAY", "category": "unique", "rarity": "unique", "source": "explore",
+      "mass": 4.0, "volume": 4, "where": "Derelicts, faction strongholds, rare traders", "uses": "Lattice matrices for CPU tier 4" },
+
+    // ---- Refined: made from raw only. The blueprint factory pays in these. -----------------
+    { "id": "iron-bar", "name": "Iron bar", "category": "refined", "rarity": "common", "mass": 2.4, "volume": 0.5 },
+    { "id": "copper-bar", "name": "Copper bar", "category": "refined", "rarity": "common", "mass": 2.6, "volume": 0.5 },
+    { "id": "silicon-wafer", "name": "Silicon wafer", "short": "WAFER", "category": "refined", "rarity": "common", "mass": 0.8, "volume": 0.3 },
+    { "id": "graphite", "name": "Graphite", "category": "refined", "rarity": "common", "mass": 1.2, "volume": 0.5 },
+    { "id": "glass", "name": "Glass pane", "short": "GLASS", "category": "refined", "rarity": "common", "mass": 2.0, "volume": 1 },
+    { "id": "polymer", "name": "Polymer", "category": "refined", "rarity": "common", "mass": 0.8, "volume": 0.5 },
+    { "id": "ceramic", "name": "Ceramic tile", "short": "CERAMIC", "category": "refined", "rarity": "common", "mass": 1.6, "volume": 0.5 },
+    { "id": "concrete-mix", "name": "Concrete mix", "short": "CONCRET", "category": "refined", "rarity": "common", "mass": 3.0, "volume": 1 },
+    { "id": "cobalt-bar", "name": "Cobalt bar", "category": "refined", "rarity": "uncommon", "mass": 2.8, "volume": 0.5 },
+    { "id": "magnesium-powder", "name": "Magnesium powder", "short": "MG PWDR", "category": "refined", "rarity": "uncommon", "mass": 0.8, "volume": 0.4 },
+    { "id": "neodymium-bar", "name": "Neodymium bar", "short": "ND BAR", "category": "refined", "rarity": "uncommon", "mass": 3.0, "volume": 0.5 },
+    { "id": "gold-bar", "name": "Gold bar", "category": "refined", "rarity": "uncommon", "mass": 4.0, "volume": 0.3 },
+    { "id": "gravium-ingot", "name": "Gravium ingot", "short": "GRAV IN", "category": "refined", "rarity": "uncommon", "mass": 7.0, "volume": 0.5 },
+    { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5, "fuel": 1 },
+    { "id": "emberite", "name": "Refined emberite", "short": "EMBERIT", "category": "refined", "rarity": "rare", "mass": 2.0, "volume": 0.5 },
+    { "id": "starsilver-bar", "name": "Starsilver bar", "short": "STARBAR", "category": "refined", "rarity": "rare", "mass": 3.2, "volume": 0.4 },
+    { "id": "voidglass", "name": "Voidglass pane", "short": "VOIDPAN", "category": "refined", "rarity": "exotic", "mass": 1.0, "volume": 0.5 },
+    { "id": "stormcore", "name": "Charged stormcore", "short": "STORMCR", "category": "refined", "rarity": "exotic", "mass": 1.5, "volume": 0.5 },
+    { "id": "rimefire", "name": "Stilled rimefire", "short": "RIME", "category": "refined", "rarity": "exotic", "mass": 0.8, "volume": 0.5 },
+
+    // ---- Parts ----------------------------------------------------------------------------
+    { "id": "hull-plate", "name": "Hull plate", "short": "PLATE", "category": "part", "rarity": "common", "mass": 2.0, "volume": 0.5 },
+    { "id": "copper-wire", "name": "Copper wire", "short": "WIRE", "category": "part", "rarity": "common", "mass": 0.6, "volume": 0.1 },
+    { "id": "winding", "name": "Winding", "category": "part", "rarity": "common", "mass": 1.6, "volume": 0.3 },
+    { "id": "circuit-board", "name": "Circuit board", "short": "CIRCUIT", "category": "part", "rarity": "common", "mass": 0.4, "volume": 0.2 },
+    { "id": "servo", "name": "Servo", "category": "part", "rarity": "common", "mass": 6.0, "volume": 1 },
+    { "id": "nozzle", "name": "Thrust nozzle", "short": "NOZZLE", "category": "part", "rarity": "common", "mass": 6.0, "volume": 1 },
+    { "id": "gun-barrel", "name": "Gun barrel", "short": "BARREL", "category": "part", "rarity": "common", "mass": 8.0, "volume": 1.5 },
+    { "id": "propellant", "name": "Propellant", "short": "PROPEL", "category": "part", "rarity": "common", "mass": 0.6, "volume": 0.3 },
+    { "id": "magnet", "name": "Neodymium magnet", "short": "MAGNET", "category": "part", "rarity": "uncommon", "mass": 1.5, "volume": 0.2 },
+    { "id": "machine-frame", "name": "Machine frame", "short": "FRAME", "category": "part", "rarity": "uncommon", "mass": 10.0, "volume": 3 },
+    { "id": "logic-module", "name": "Logic module", "short": "LOGIC", "category": "part", "rarity": "uncommon", "mass": 0.8, "volume": 0.2 },
+    { "id": "explosive-charge", "name": "Explosive charge", "short": "CHARGE", "category": "part", "rarity": "uncommon", "mass": 1.4, "volume": 0.4 },
+
+    // ---- Components: the assemblies large devices are built around ------------------------
+    { "id": "control-unit", "name": "Control unit", "short": "CONTROL", "category": "component", "rarity": "common", "mass": 5.0, "volume": 1.5 },
+    { "id": "power-unit", "name": "Power unit", "short": "POWER", "category": "component", "rarity": "common", "mass": 14.0, "volume": 4 },
+    { "id": "thrust-assembly", "name": "Thrust assembly", "short": "THRUST", "category": "component", "rarity": "uncommon", "mass": 18.0, "volume": 5 },
+    { "id": "field-emitter", "name": "Field emitter", "short": "EMITTER", "category": "component", "rarity": "rare", "mass": 6.0, "volume": 2 },
+    { "id": "warp-coil", "name": "Warp coil", "short": "WARPCOL", "category": "component", "rarity": "rare", "mass": 22.0, "volume": 6 },
+    { "id": "fusion-core", "name": "Fusion core", "short": "FUSION", "category": "component", "rarity": "rare", "mass": 26.0, "volume": 6 },
+    { "id": "voidglass-lens", "name": "Voidglass lens", "short": "LENS", "category": "component", "rarity": "exotic", "mass": 2.0, "volume": 1 },
+    { "id": "storm-capacitor", "name": "Storm capacitor", "short": "STORMCP", "category": "component", "rarity": "exotic", "mass": 4.0, "volume": 1.5 },
+    { "id": "rimefire-injector", "name": "Rimefire injector", "short": "INJECTR", "category": "component", "rarity": "exotic", "mass": 3.0, "volume": 1 },
+    { "id": "lattice-processor", "name": "Lattice processor", "short": "LAT-PRC", "category": "component", "rarity": "unique", "mass": 3.0, "volume": 2 },
+    { "id": "lattice-matrix", "name": "Lattice matrix", "short": "LAT-MTX", "category": "component", "rarity": "unique", "mass": 6.0, "volume": 4 },
+    { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
+
+    // ---- Consumables ------------------------------------------------------------------------
+    { "id": "o2-bottle", "name": "Oxygen bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2 },
+    { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1 },
+    { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10 },
+    { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15 },
+    { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30 },
+    { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150 },
+    { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300 },
+    { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3 },
+
+    // ---- Ammo: counted in boxes, belts and racks ------------------------------------------
+    { "id": "pistol-rounds", "name": "Pistol rounds", "short": "PISTOL", "category": "ammo", "rarity": "common", "mass": 0.6, "volume": 0.4, "rounds": 30, "restock": 4 },
+    { "id": "belt-12mm", "name": "12 mm belt", "short": "12MM", "category": "ammo", "rarity": "common", "mass": 8.0, "volume": 4, "rounds": 200, "restock": 6 },
+    { "id": "shells-40mm", "name": "40 mm shells", "short": "40MM", "category": "ammo", "rarity": "common", "mass": 20.0, "volume": 8, "rounds": 25, "restock": 10 },
+    { "id": "rocket", "name": "Rocket", "short": "ROCKET", "category": "ammo", "rarity": "uncommon", "mass": 12.0, "volume": 6, "rounds": 1, "restock": 8 },
+    { "id": "artillery-shell", "name": "Artillery shell", "short": "ARTY", "category": "ammo", "rarity": "uncommon", "mass": 30.0, "volume": 10, "rounds": 1, "restock": 6 },
+    { "id": "plasma-charge", "name": "Plasma charge", "short": "PLASMA", "category": "ammo", "rarity": "rare", "mass": 2.0, "volume": 1, "rounds": 10, "restock": 12 },
+
+    // ---- Tools ------------------------------------------------------------------------------
+    { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20 }
+  ]
+}

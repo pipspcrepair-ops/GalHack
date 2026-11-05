@@ -1,0 +1,107 @@
+// Blocks manufacturing needs that building's catalogue doesn't have yet: the production machines
+// and two fixed weapons with their own ammo. Same format as prototypes/building/data/
+// components.json (stats for a large-grid block; each grid scales them). Whoever loads the
+// building catalogue appends these to its components, as the physics sandbox does with its vessel
+// parts; nothing in prototypes/building changes. Their bills are in blocks.json.
+{
+  "schema": "galhack.components",
+  "version": 1,
+  "components": [
+    {
+      "id": "portfab", "name": "Portable constructor", "function": "constructor",
+      "hp": 500, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 3, "cpu": 1200, "power": -0.3, "color": "3a3f47", "glow": "ffb400",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.32, -0.12, -0.505, 0.32, 0.3, -0.5], "style": "dark" },
+        { "box": [-0.28, -0.3, -0.505, 0.28, -0.22, -0.5], "style": "glow" }
+      ]
+    },
+    {
+      "id": "smallfab", "name": "Small constructor", "function": "constructor",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.1, "energy": 0.1 },
+      "mass": 5, "cpu": 3000, "power": -0.6, "color": "f4a100", "glow": "ffb400", "texture": "ribbed",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.36, -0.1, -0.505, 0.36, 0.34, -0.5], "style": "dark" },
+        { "box": [-0.3, -0.34, -0.505, 0.3, -0.24, -0.5], "style": "glow" },
+        { "box": [-0.5, 0.5, -0.5, 0.5, 0.505, -0.3], "style": "accent" }
+      ]
+    },
+    {
+      "id": "largefab", "name": "Large constructor", "function": "constructor",
+      "hp": 1200, "armor": 25, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
+      "mass": 9, "cpu": 6000, "power": -1.5, "color": "e85d04", "glow": "ffb400", "texture": "plates",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.4, -0.16, -0.505, 0.4, 0.4, -0.5], "style": "dark" },
+        { "box": [-0.36, -0.38, -0.505, 0.36, -0.26, -0.5], "style": "glow" },
+        { "box": [0.5, -0.3, -0.3, 0.505, 0.3, 0.3], "style": "dark" }
+      ]
+    },
+    {
+      "id": "advfab", "name": "Advanced constructor", "function": "constructor",
+      "hp": 1600, "armor": 30, "resist": { "kinetic": 0.25, "explosive": 0.2, "energy": 0.2 },
+      "mass": 12, "cpu": 10000, "power": -3, "color": "1b263b", "glow": "6ff2e0", "texture": "plates",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.4, -0.16, -0.505, 0.4, 0.4, -0.5], "style": "dark" },
+        { "box": [-0.36, -0.38, -0.505, 0.36, -0.26, -0.5], "style": "glow" },
+        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" }
+      ]
+    },
+    {
+      "id": "decon", "name": "Deconstructor", "function": "deconstructor",
+      "hp": 900, "armor": 20, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
+      "mass": 7, "cpu": 3000, "power": -1, "color": "0a9396", "glow": "ff5e3a", "texture": "ribbed",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.38, -0.3, -0.505, 0.38, 0.3, -0.5], "style": "dark" },
+        { "box": [-0.3, -0.04, -0.51, 0.3, 0.04, -0.505], "style": "glow" },
+        { "box": [-0.5, -0.5, -0.505, 0.5, -0.4, -0.5], "style": "accent" }
+      ]
+    },
+    {
+      "id": "factory", "name": "Blueprint factory", "function": "factory",
+      "hp": 2000, "armor": 30, "resist": { "kinetic": 0.25, "explosive": 0.2, "energy": 0.2 },
+      "mass": 16, "cpu": 12000, "power": -4, "color": "2b2d42", "glow": "5fe8ff", "texture": "plates",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, 0.36, -0.505, 0.505, 0.42, 0.505], "style": "glow" },
+        { "box": [-0.42, -0.42, -0.505, 0.42, 0.28, -0.5], "style": "dark" },
+        { "box": [-0.5, 0.5, -0.5, 0.5, 0.505, 0.5], "style": "accent" }
+      ]
+    },
+    {
+      "id": "gatling", "name": "Gatling gun", "function": "weapon",
+      "hp": 500, "armor": 15, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
+      "mass": 2, "cpu": 1800, "power": -0.2, "color": "3a3f47", "glow": "ff8a1c",
+      "attach": ["+z"], "airtight": ["+z"], "covers": ["+z"], "collide": "parts",
+      "parts": [
+        { "box": [-0.3, -0.3, -0.1, 0.3, 0.3, 0.5], "style": "body" },
+        { "cylinder": "z", "segments": 12, "box": [-0.2, -0.2, -0.5, 0.2, 0.2, -0.1], "style": "dark" },
+        { "cylinder": "z", "segments": 8, "box": [-0.08, -0.08, -0.505, 0.08, 0.08, -0.45], "style": "glow" }
+      ]
+    },
+    {
+      "id": "rocketpod", "name": "Rocket pod", "function": "weapon",
+      "hp": 600, "armor": 15, "resist": { "kinetic": 0.2, "explosive": 0.1, "energy": 0.15 },
+      "mass": 2.5, "cpu": 2200, "power": -0.1, "color": "4d5563", "accent": "e85d04",
+      "attach": ["+z"], "airtight": ["+z"], "covers": ["+z"], "collide": "parts",
+      "parts": [
+        { "box": [-0.42, -0.36, -0.45, 0.42, 0.36, 0.5], "style": "body" },
+        { "box": [-0.32, 0.06, -0.455, -0.06, 0.28, -0.45], "style": "dark" },
+        { "box": [0.06, 0.06, -0.455, 0.32, 0.28, -0.45], "style": "dark" },
+        { "box": [-0.32, -0.28, -0.455, -0.06, -0.06, -0.45], "style": "dark" },
+        { "box": [0.06, -0.28, -0.455, 0.32, -0.06, -0.45], "style": "dark" },
+        { "box": [-0.425, -0.05, -0.2, 0.425, 0.05, 0.2], "style": "accent" }
+      ]
+    }
+  ]
+}
