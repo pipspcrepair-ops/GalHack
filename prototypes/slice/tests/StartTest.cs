@@ -103,7 +103,7 @@ public partial class StartTest : Node
         // The worlds: one pinned on the command line, N random ones (the soak), or the gate's verified list.
         var worlds = new List<WorldChoice>();
         if (WorldChoice.FromArgs(args) is WorldChoice only) worlds.Add(only);
-        else if (random > 0) for (int i = 0; i < random; i++) worlds.Add(null);
+        else if (random > 0) for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
         else worlds.AddRange(Verified);
         foreach (WorldChoice pinned in worlds)
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
