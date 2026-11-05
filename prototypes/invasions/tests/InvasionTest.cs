@@ -14,11 +14,17 @@ namespace Invasions.Tests;
 /// Headless tests for the invasion systems. Run with:
 ///   godot --headless --path prototypes/invasions res://tests/InvasionTest.tscn
 /// The director and base model are checked directly (instant, on the simulated clock); then the
-/// playable scene is built and driven frame by frame for the parts that need it.
+/// playable scene is built and driven frame by frame for the parts that need it, ending with a
+/// reduced navigation soak (10 seeded invasions per faction). The full soak is InvasionSoakTest.
 /// Exits 0 if every check passes, 1 if any fails.
 /// </summary>
 public partial class InvasionTest : Node
 {
+    /// <summary>Seeded soak runs per faction: a reduced soak for the merge gate; InvasionSoakTest runs the full one.</summary>
+    protected virtual int SoakRunsPerFaction => 10;
+    /// <summary>Skip straight to the soak (InvasionSoakTest does; so does --only-soak).</summary>
+    protected virtual bool SoakOnly => false;
+
     InvasionData _data;
     ServerSettings _server;
     BaseData _base;
@@ -37,7 +43,7 @@ public partial class InvasionTest : Node
             _base = GameData.Base();
             _fire = GameData.FireControl();
             // --only-soak skips straight to the navigation soak (for tuning it).
-            bool onlySoak = OS.GetCmdlineUserArgs().Contains("--only-soak");
+            bool onlySoak = SoakOnly || OS.GetCmdlineUserArgs().Contains("--only-soak");
             if (!onlySoak) DirectorAndModelTests();
             await SceneTests(onlySoak);
         }
@@ -516,7 +522,7 @@ public partial class InvasionTest : Node
             if (!onlySoak) await SceneAndFactionTests();
 
             Section("Navigation soak");
-            int runs = 50;
+            int runs = SoakRunsPerFaction;
             string only = null;
             foreach (string arg in OS.GetCmdlineUserArgs())
             {

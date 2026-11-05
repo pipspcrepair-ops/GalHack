@@ -106,7 +106,15 @@ Every tunable lives in `data/`:
 .\tools\test.ps1 -Project prototypes/invasions -Scene res://tests/InvasionTest.tscn
 ```
 
-Exits 0 if all 154 checks pass, 1 if any fail. It takes about 13 minutes, mostly the five soaks (about 2.5 minutes each). Every timing in it is simulated time (physics frames or the director's clock), never wall-clock, so it holds under load.
+This is the merge gate that `test-all.ps1` runs. It exits 0 if all 154 checks pass, 1 if any fail, and takes about 3 minutes. Its soak is reduced to 10 seeded invasions per faction. Every timing in it is simulated time (physics frames or the director's clock), never wall-clock, so it holds under load.
+
+The full soak runs 50 per faction (250 invasions) with the same limits, in about 13 minutes:
+
+```powershell
+.\tools\test.ps1 -Project prototypes/invasions -Scene res://tests/InvasionSoakTest.tscn
+```
+
+`test-all.ps1` skips it (`tests/InvasionSoakTest.manual`). Run it before a release or after any change to navigation, the planner or a faction's troops and tactics.
 
 - **Director:** the original checks still pass.
   - No invasion is scheduled without a player home.
@@ -137,7 +145,7 @@ Exits 0 if all 154 checks pass, 1 if any fail. It takes about 13 minutes, mostly
   - A Bloom growth spreads and pours, bursters burst, and killing a growth's heart kills its pods and its unborn.
   - No item is lost in any of them.
 - **Navigation soak, once per faction:**
-  - 50 seeded forces among vehicle hulks, crates and rubble.
+  - Seeded forces among vehicle hulks, crates and rubble: 10 per faction in the gate, 50 in `InvasionSoakTest`.
   - No invader is stuck for more than 3 s.
   - Every invader reaches its target (the core room, a breach or a container) within 40 s.
   - `-- --soak=N` changes the count, `--soak-faction=ID` runs one faction, `--soak-first=N` starts at a seed, and `--only-soak` skips the rest.
@@ -163,7 +171,7 @@ Other tools:
 - Destroyed blocks leave no rubble. Debris is cosmetic, and only crates and hulks become obstacles.
 - The HUD and console text are debug-grade, and the long-range scan is drawn in 2D.
 - The siren audio is synthesised; a licensed recording could replace it later.
-- The soak runs 250 invasions, so the suite takes about 13 minutes.
+- The full soak (250 invasions, about 13 minutes) is too long for every merge, so the gate runs 50 and the full one is run by hand.
 
 ## References
 
