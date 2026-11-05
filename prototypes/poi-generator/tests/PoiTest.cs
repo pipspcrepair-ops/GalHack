@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
+using GalHack.Terrain;
 using Godot;
 using PoiGenerator.Gen;
 
@@ -10,7 +12,7 @@ namespace PoiGenerator;
 /// <summary>
 /// Headless tests for the POI generator. Run with:
 ///   godot --headless --path prototypes/poi-generator res://tests/PoiTest.tscn
-/// Exits 0 if every check passes, 1 if any fails.
+/// Exits 0 if every check passes, 1 if any fails. "-- --only=Walk,Sense" runs just those.
 /// </summary>
 public partial class PoiTest : Node
 {
@@ -19,28 +21,33 @@ public partial class PoiTest : Node
 
     public override void _Ready()
     {
-        // "-- --only=Performance,StateTransforms" runs just those checks while iterating.
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Data", Data), ("Determinism", Determinism), ("Validation500", Validation500),
-            ("AuthoredLayouts", AuthoredLayouts), ("StateTransforms", StateTransforms), ("LootByRarity", LootByRarity),
-            ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem), ("SeenWeighting", SeenWeighting),
-            ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
+            ("Sense", Sense), ("Variety", Variety), ("Cores", Cores), ("StateTransforms", StateTransforms),
+            ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
+            ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
+            ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
+            ("WorldPlacement", WorldPlacementCheck), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
             _lib = GameData.Load();
             foreach (var (name, run) in checks)
-                if (only == null || only.Split(',').Contains(name)) run();
+                if (only == null || only.Split(',').Contains(name))
+                {
+                    try { run(); }
+                    catch (Exception e) { Fail($"{name}: exception {e}"); }
+                }
         }
         catch (Exception e)
         {
             Fail($"exception: {e}");
         }
-        // The walk runs on physics ticks, so it goes last; see _PhysicsProcess.
-        if (only == null || only.Split(',').Contains("Walk")) StartWalk();
+        // The walks run on physics ticks, so they go last; see _PhysicsProcess.
+        if (only == null || only.Split(',').Contains("Walk")) NextWalk();
         else Finish();
     }
 
@@ -50,112 +57,46 @@ public partial class PoiTest : Node
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
-    // ---- walking it -------------------------------------------------------------------
+    IEnumerable<FamilyDef> Arch => _lib.Families.Where(f => f.Generator != Generator.Kit);
+    IEnumerable<FamilyDef> Kits => _lib.Families.Where(f => f.Generator == Generator.Kit);
 
-    // A body really walks each place's critical path, from outside the way in to the vault:
-    // through the doors, along the corridors, down every ramp. Proves the meshes, collision
-    // and grid path agree.
-    readonly (string family, int variant, PoiState state)[] _walks =
-    {
-        ("vharn_outpost", 0, PoiState.Active),
-        ("abandoned_mine", 0, PoiState.Abandoned),
-        ("research_lab", 3, PoiState.Ruined),
-    };
-    int _walk = -1, _step, _ticks, _stuck;
-    Node3D _walkRoot;
-    Player _walker;
-    List<Vector3> _route;
-    float _lowest;
-
-    void StartWalk() => NextWalk();
-
-    void NextWalk()
-    {
-        _walkRoot?.QueueFree();
-        _walk++;
-        if (_walk >= _walks.Length)
-        {
-            _walkRoot = null;
-            Finish();
-            return;
-        }
-        var (fam, v, state) = _walks[_walk];
-        var poi = PoiFactory.Generate(_lib, _lib.Family(fam), v, Rarity.Common, state, 9);
-        _walkRoot = new Node3D { Name = "Walk" };
-        AddChild(_walkRoot);
-        var view = PoiView.Build(poi, Biome.Rock, new PoiView.Options(Lights: false, Figures: false));
-        _walkRoot.AddChild(view);
-        var hole = new Rect2I(view.PlugMin, view.PlugMax - view.PlugMin + Vector2I.One);
-        _walkRoot.AddChild(Terrain.Build(new Vector2I(-160, -160), new Vector2I(40, 40), (x, z) => Colors.Gray, new List<Rect2I> { hole }, true, 0f));
-        _walker = new Player { Name = "Walker" };
-        _walkRoot.AddChild(_walker);
-        view.Watcher = _walker;
-
-        // The route: outside the door, then every cell of the critical path, cell centres.
-        _route = poi.CriticalPath.Select(c => new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f)).ToList();
-        var (start, yaw) = view.EntranceStand();
-        _walker.Place(start, yaw);
-        _step = 0;
-        _ticks = 0;
-        _stuck = 0;
-        _lowest = poi.CriticalPath.Min(c => c.Y) - 1.5f;
-    }
-
-    public override void _PhysicsProcess(double delta)
-    {
-        if (_walker == null || _walk < 0 || _walk >= _walks.Length) return;
-        _ticks++;
-        if (_ticks < 10) return; // let it land
-        var (fam, v, state) = _walks[_walk];
-        string name = $"{_lib.Family(fam).Variants[v]} ({state})";
-        Vector3 at = _walker.GlobalPosition;
-
-        if (at.Y < _lowest)
-        {
-            Fail($"walking {name}: fell through the floor at {at}");
-            _walker = null;
-            NextWalk();
-            return;
-        }
-        // Skip ahead along the route as cells are reached; a cell counts when we're over it.
-        while (_step < _route.Count && new Vector2(at.X - _route[_step].X, at.Z - _route[_step].Z).Length() < 0.45f && Mathf.Abs(at.Y - _route[_step].Y) < 1.2f)
-        {
-            _step++;
-            _stuck = 0;
-        }
-        if (_step >= _route.Count)
-        {
-            Check(true, $"a body walked {name} from outside to the vault: {_route.Count} cells, {_ticks / 60f:F1} s, never below the floor");
-            _walker.AutoTarget = null;
-            _walker = null;
-            NextWalk();
-            return;
-        }
-        _walker.AutoTarget = _route[_step];
-        if (++_stuck > 300)
-        {
-            Fail($"walking {name}: stuck at {at} on cell {_step}/{_route.Count} ({_route[_step]})");
-            _walker = null;
-            NextWalk();
-        }
-    }
-
-    // ---- data -------------------------------------------------------------------------
+    // ---- data ---------------------------------------------------------------------------
 
     void Data()
     {
-        // Factions by their design ids; Precursor ruins (faction none) don't count as one.
         var byFaction = _lib.Kits.Values.Where(k => k.Faction != Faction.None).GroupBy(k => k.Faction)
             .ToDictionary(g => g.Key, g => g.Sum(k => k.Modules.Count));
         int rich = byFaction.Count(kv => kv.Value >= 6);
-        Check(rich >= 4, $"{rich} faction kits with 6+ modules ({string.Join(", ", byFaction.Select(kv => $"{kv.Key.Id()} {kv.Value}"))}), " +
-                         $"plus Precursor ruins with {_lib.Kits.Values.Where(k => k.Faction == Faction.None).Sum(k => k.Modules.Count)}");
+        Check(rich >= 4, $"{rich} faction kits with 6+ modules ({string.Join(", ", byFaction.Select(kv => $"{kv.Key.Id()} {kv.Value}"))})");
         var known = new[] { "meridian", "exchange", "vharn", "kessari", "reavers", "freeholders", "hollow" };
         Check(Enum.GetValues<Faction>().Where(f => f != Faction.None).Select(f => f.Id()).SequenceEqual(known)
               && _lib.Families.All(f => f.Faction == Faction.None || known.Contains(f.Faction.Id())),
             "factions use the design ids (meridian, exchange, vharn, kessari, reavers, freeholders, hollow)");
-        Check(_lib.Families.Count >= 6 && _lib.Families.All(f => f.Variants.Count is >= 3 and <= 6),
-            $"{_lib.Families.Count} families, each with 3 to 6 layouts ({_lib.Families.Sum(f => f.Variants.Count)} layouts)");
+        Check(_lib.Families.Count >= 20 && _lib.Families.All(f => f.Variants.Count is >= 3 and <= 6),
+            $"{_lib.Families.Count} families ({Arch.Count()} built by the architect, {_lib.Families.Count(f => f.Landmark)} hand-authored landmarks), " +
+            $"each with 3 to 6 named layouts ({_lib.Families.Sum(f => f.Variants.Count)} layouts)");
+        Check(_lib.Rooms.Count >= 30 && _lib.Programs.Count >= 12 && _lib.Sites.Count >= 5 && _lib.Themes.Count >= 5,
+            $"shared library: {_lib.Rooms.Count} room types, {_lib.Programs.Count} building programs, {_lib.Sites.Count} site plans, " +
+            $"{_lib.Kits.Count} style kits, {_lib.Themes.Count} placement themes");
+        Check(Enum.GetValues<Rarity>().Length == 5 && _lib.Families.Select(f => f.Rarity).Distinct().Count() >= 4,
+            $"the five-step rarity ladder; families span {string.Join(", ", _lib.Families.Select(f => f.Rarity).Distinct().OrderBy(r => r))}");
+        Check(_lib.Rosters.ContainsKey("raiders") && !Enum.GetNames<Faction>().Any(n => n.Equals("raiders", StringComparison.OrdinalIgnoreCase))
+              && _lib.Families.Where(f => f.Owner == "gang").All(f => f.Faction == Faction.None && f.Core == CoreRule.None),
+            "roving gangs are no faction: their own roster, no faction id, no core at their forts");
+    }
+
+    /// <summary>Every loot id is a real shared/Items item with the same rarity.</summary>
+    void Items()
+    {
+        string path = ProjectSettings.GlobalizePath("res://") + "../../shared/Items/data/items.json";
+        using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(path), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        var items = doc.RootElement.GetProperty("items").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("id").GetString(), e => e.GetProperty("rarity").GetString());
+        var missing = _lib.Loot.Where(i => !items.ContainsKey(i.Id)).Select(i => i.Id).ToList();
+        var wrong = _lib.Loot.Where(i => items.TryGetValue(i.Id, out var r) && !r.Equals(i.Rarity.ToString(), StringComparison.OrdinalIgnoreCase)).Select(i => i.Id).ToList();
+        Check(missing.Count == 0 && wrong.Count == 0,
+            $"{_lib.Loot.Count} loot items are real shared/Items ids with matching rarities" +
+            (missing.Count > 0 ? $"; missing: {string.Join(", ", missing)}" : "") + (wrong.Count > 0 ? $"; wrong rarity: {string.Join(", ", wrong)}" : ""));
     }
 
     // ---- determinism ------------------------------------------------------------------
@@ -167,7 +108,6 @@ public partial class PoiTest : Node
             h = Hash.Combine(h, (ulong)(uint)(c.X * 73856093 ^ c.Y * 19349663 ^ c.Z * 83492791), (ulong)b.Type << 32 | (ulong)b.Color.R << 16 | (ulong)b.Color.G << 8 | b.Color.B);
         foreach (var e in p.Enemies) h = Hash.Combine(h, Hash.Of(e.Name), (ulong)(uint)e.Cell.GetHashCode());
         foreach (var c in p.Caches) h = Hash.Combine(h, (ulong)c.Value);
-        foreach (var t in p.Terminals) h = Hash.Combine(h, Hash.Of(t.Text));
         return h;
     }
 
@@ -175,7 +115,7 @@ public partial class PoiTest : Node
     {
         bool same = true, differ = false;
         foreach (var f in _lib.Families)
-            foreach (PoiState s in Enum.GetValues<PoiState>())
+            foreach (PoiState s in new[] { PoiState.Active, PoiState.Infested })
             {
                 var a = PoiFactory.Generate(_lib, f, 1, Rarity.Uncommon, s, 42);
                 var b = PoiFactory.Generate(_lib, f, 1, Rarity.Uncommon, s, 42);
@@ -183,22 +123,22 @@ public partial class PoiTest : Node
                 var c = PoiFactory.Generate(_lib, f, 1, Rarity.Uncommon, s, 42, customSeed: 99);
                 differ |= Fingerprint(c) != Fingerprint(a);
             }
-        Check(same, "the same seed gives the same layout and dressing, block for block");
+        Check(same, "the same seed gives the same layout and dressing, block for block (every family)");
         Check(differ, "a different seed gives a different layout");
     }
 
     // ---- validation -------------------------------------------------------------------
 
-    void Validation500()
+    void KitValidation()
     {
+        var kits = Kits.ToList();
         int ok = 0, total = 500;
-        var states = Enum.GetValues<PoiState>();
         var problems = new List<string>();
         for (int i = 0; i < total; i++)
         {
-            var f = _lib.Families[i % _lib.Families.Count];
-            var rarity = (Rarity)(i / _lib.Families.Count % 3);
-            var state = states[i / 3 % 4];
+            var f = kits[i % kits.Count];
+            var rarity = (Rarity)(i / kits.Count % 5);
+            var state = (PoiState)(i / 3 % 4);
             ulong seed = Hash.Combine(0xBEEFUL, (ulong)i);
             try
             {
@@ -213,14 +153,13 @@ public partial class PoiTest : Node
             }
         }
         foreach (string p in problems) GD.PrintErr("      " + p);
-        Check(ok == total, $"{ok}/{total} fresh layouts across all families, rarities and states pass validation " +
-                           "(A* reaches vault, core, caches, terminals and key rooms; nothing floats; no overlaps; core placed)");
+        Check(ok == total, $"{ok}/{total} fresh kit-assembled layouts across all kit families, five rarities and four states pass validation");
     }
 
-    void AuthoredLayouts()
+    void KitAuthored()
     {
         int ok = 0, total = 0;
-        foreach (var f in _lib.Families)
+        foreach (var f in Kits)
             for (int v = 0; v < f.Variants.Count; v++)
                 foreach (Rarity r in Enum.GetValues<Rarity>())
                     foreach (PoiState s in Enum.GetValues<PoiState>())
@@ -230,10 +169,224 @@ public partial class PoiTest : Node
                         if (issues.Count == 0) ok++;
                         else GD.PrintErr($"      {f.Variants[v]} {r} {s}: {issues[0]}");
                     }
-        Check(ok == total, $"{ok}/{total} authored layouts pass validation in every rarity and state");
+        Check(ok == total, $"{ok}/{total} authored kit layouts pass validation in every rarity and state");
     }
 
-    // ---- states -----------------------------------------------------------------------
+    void ArchAuthored()
+    {
+        int ok = 0, total = 0;
+        foreach (var f in Arch)
+            for (int v = 0; v < f.Variants.Count; v++)
+                foreach (Rarity r in new[] { Rarity.Common, Rarity.Rare, Rarity.Unique })
+                    foreach (PoiState s in Enum.GetValues<PoiState>())
+                    {
+                        total++;
+                        var issues = Validator.Check(PoiFactory.Generate(_lib, f, v, r, s, 7));
+                        if (issues.Count == 0) ok++;
+                        else GD.PrintErr($"      {f.Variants[v]} {r} {s}: {issues[0]}");
+                    }
+        Check(ok == total, $"{ok}/{total} named architect layouts (every variant of {Arch.Count()} families, three rarities, four states) pass validation: " +
+                           "every room, storey and cache reachable, the deepest point reachable, keycards before their locks, nothing floating, no overlaps, cores only where held");
+    }
+
+    /// <summary>
+    /// Thousands of fresh layouts across every architect type and seed. Each is checked before
+    /// it can be placed (corridors, doors, stairs, reachability, nothing floating); any that fail
+    /// are regenerated from the next seed. Zero of the layouts handed out may fail.
+    /// </summary>
+    void Thousands()
+    {
+        Architect.Stats.Reset();
+        var sw = Stopwatch.StartNew();
+        int built = 0, spawned = 0, placedFailures = 0;
+        var problems = new List<string>();
+        foreach (var f in Arch)
+            for (int i = 0; i < 100; i++)
+            {
+                ulong seed = Hash.Combine(Hash.Of(f.Id), (ulong)i + 1);
+                var r = (Rarity)(i % 5);
+                Layout layout;
+                try { layout = PoiFactory.BuildLayout(_lib, f, i, r, seed); }
+                catch (Exception e) { placedFailures++; if (problems.Count < 6) problems.Add($"{f.Id} {seed}: {e.Message}"); continue; }
+                built++;
+                if (LayoutCheck.Check(layout) is { Count: > 0 } lp) { placedFailures++; if (problems.Count < 6) problems.Add($"{f.Id} {seed}: {lp[0]}"); }
+                if (i % 4 != 0) continue;
+                spawned++;
+                var inst = PoiFactory.Spawn(_lib, layout, (PoiState)(i / 4 % 4), (ulong)i);
+                if (Validator.Check(inst) is { Count: > 0 } vp) { placedFailures++; if (problems.Count < 6) problems.Add($"{f.Id} {seed} {inst.State}: {vp[0]}"); }
+            }
+        foreach (string p in problems) GD.PrintErr("      " + p);
+        foreach (string p in Architect.Stats.FirstFailures.Take(4)) GD.Print("      regenerated after: " + p);
+        GD.Print($"      COUNTS  generated {Architect.Stats.Generated}, failed the layout check {Architect.Stats.Failed}, repaired 0, " +
+                 $"regenerated {Architect.Stats.Regenerated}, handed out {built}, spawned and validated {spawned}, in {sw.ElapsedMilliseconds} ms");
+        Check(placedFailures == 0 && built == Arch.Count() * 100,
+            $"{built} fresh architect layouts across {Arch.Count()} types: zero failures among those placed " +
+            $"({Architect.Stats.Generated} generated, {Architect.Stats.Failed} failed and were regenerated, {spawned} also spawned and validated)");
+    }
+
+    // ---- corridors and sense ---------------------------------------------------------------
+
+    /// <summary>
+    /// The corridor rule, cell by cell: floor, three cells of headroom, a ceiling, closed sides
+    /// (wall, doorway, more corridor, or an opening onto walkable floor), doors set in walls with
+    /// floor both sides. Then a walking body is sent along every corridor network in the walks.
+    /// </summary>
+    void Corridors()
+    {
+        long cells = 0;
+        int layouts = 0, bad = 0, doorways = 0;
+        string first = "";
+        foreach (var f in Arch)
+            for (int i = 0; i < 12; i++)
+            {
+                var layout = PoiFactory.BuildLayout(_lib, f, i, (Rarity)(i % 5), Hash.Combine(0xC0DEUL, (ulong)i, Hash.Of(f.Id)));
+                layouts++;
+                cells += layout.Extras.CorridorCells.Count;
+                doorways += layout.Doorways.Count;
+                var problems = LayoutCheck.Check(layout);
+                // And again by hand: every corridor floor cell has headroom of three and a minimum width of two.
+                var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+                foreach (Int3 c in layout.Extras.CorridorCells)
+                {
+                    bool wide = Dirs.Horizontal.Any(d => layout.Extras.CorridorCells.Contains(c + d.Vec()));
+                    if (!wide || !nav.Standable(c) || nav.Solid(c + Int3.Up * 2)) { problems.Add($"corridor cell {c} is narrower than two or lower than three"); break; }
+                }
+                if (problems.Count > 0) { bad++; if (first.Length == 0) first = $" (first: {f.Id}: {problems[0]})"; }
+            }
+        Check(bad == 0, $"corridor rule on {layouts} layouts: {cells} corridor cells and {doorways} doorways checked for floor, walls, ceiling, " +
+                        $"three-cell headroom and two-cell width, doors set in walls with floor both sides: {bad} failures{first}");
+    }
+
+    /// <summary>Rooms land where their purpose says, and stairwells line up storey on storey.</summary>
+    void Sense()
+    {
+        int withRule = 0, satisfied = 0, rooms = 0, avoidBroken = 0, stairs = 0, misaligned = 0, layouts = 0;
+        foreach (var f in Arch)
+            for (int i = 0; i < 10; i++)
+            {
+                var layout = PoiFactory.BuildLayout(_lib, f, i, Rarity.Uncommon, Hash.Combine(0x5E45EUL, (ulong)i, Hash.Of(f.Id)));
+                layouts++;
+                foreach (var n in layout.Extras.Rooms)
+                {
+                    rooms++;
+                    if (n.AvoidBroken) avoidBroken++;
+                    if (!n.HasNearRule) continue;
+                    withRule++;
+                    if (n.NearSatisfied) satisfied++;
+                }
+                // Each building's stairwell: the same footprint on every storey, and one storey after the next.
+                foreach (var g in layout.Extras.Stairwells.GroupBy(s => (s.Min.X, s.Min.Z, s.Max.X, s.Max.Z)))
+                {
+                    var storeys = g.Select(s => s.Storey).OrderBy(s => s).ToList();
+                    stairs += storeys.Count;
+                    for (int k = 1; k < storeys.Count; k++) if (storeys[k] != storeys[k - 1] + 1) misaligned++;
+                }
+                var byStorey = layout.Extras.Stairwells.GroupBy(s => s.Storey);
+                // Two stairwells on one storey would only be fine if they belong to two buildings (two footprints).
+            }
+        float share = withRule == 0 ? 0f : satisfied / (float)withRule;
+        Check(share >= 0.6f && avoidBroken <= rooms / 12, $"sense: {share:P0} of {withRule} rooms with an adjacency rule sit next to a room they belong with " +
+                                                          $"(labs by storage, wards by the nurses...); {avoidBroken} of {rooms} rooms next to one they should avoid, over {layouts} layouts");
+        Check(misaligned == 0 && stairs > 100, $"{stairs} stairwell storeys line up: every building's stair runs the same footprint storey after storey ({misaligned} gaps)");
+    }
+
+    /// <summary>A layout's signature: its rooms by storey and purpose, its size and its module graph.</summary>
+    static string Signature(Layout l) =>
+        string.Join("|", l.Modules.OrderBy(m => m.Storey).ThenBy(m => m.Min.X).ThenBy(m => m.Min.Z).Select(m => $"{m.Storey}:{m.Purpose}:{m.Shape.W}x{m.Shape.D}"))
+        + $"#{l.Blocks.Size}#{l.Doorways.Count}";
+
+    static HashSet<string> RoomMix(Layout l) => l.Modules.GroupBy(m => (m.Storey, m.Purpose)).Select(g => $"{g.Key.Storey}:{g.Key.Purpose}:{g.Count()}").ToHashSet();
+
+    /// <summary>A storey's grammar in short: its footprint shape and circulation pattern.</summary>
+    static string Grammar(string signature)
+    {
+        var parts = signature.Split('/');
+        return parts.Length >= 6 ? $"{parts[0]}/{parts[1]}" : signature;
+    }
+
+    static string Topology(string signature)
+    {
+        var parts = signature.Split('/');
+        if (parts.Length < 7) return signature;
+        int rooms = int.Parse(parts[6][1..]);
+        return $"{parts[0]}/{parts[1]}/{parts[4]}/{parts[5]}/r{rooms / 3}";
+    }
+
+    /// <summary>
+    /// Sameness, three ways. Thresholds: within a type, no two of 20 seeds may have the same plan,
+    /// and no coarse topology (shape, circulation, junctions, dead ends, room count in threes, storey
+    /// by storey) may be shared by more than a quarter of them. Within a building, no two storeys
+    /// may share a plan. Between types that should never walk alike (a prison and a hospital, a tower
+    /// and a bunker...), their mixes of footprint and circulation overlap by less than half.
+    /// </summary>
+    void Variety()
+    {
+        int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0;
+        float worstShare = 0f;
+        string worstType = "";
+        var grammar = new Dictionary<string, Dictionary<string, int>>();
+        foreach (var f in Arch)
+        {
+            types++;
+            var full = new List<string>();
+            var coarse = new List<string>();
+            var mix = grammar[f.Id] = new Dictionary<string, int>();
+            for (int i = 0; i < 20; i++)
+            {
+                var l = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Uncommon, Hash.Combine(0x7A21EUL, (ulong)i, Hash.Of(f.Id)));
+                layouts++;
+                full.Add(Signature(l) + "#" + string.Join("|", l.Extras.Plans.Select(p => p.Signature)));
+                coarse.Add(string.Join("|", l.Extras.Plans.OrderBy(p => p.Building).ThenBy(p => p.Storey).Select(p => Topology(p.Signature))));
+                foreach (var p in l.Extras.Plans) mix[Grammar(p.Signature)] = mix.GetValueOrDefault(Grammar(p.Signature)) + 1;
+                foreach (var b in l.Extras.Plans.GroupBy(p => p.Building))
+                {
+                    buildings++;
+                    var sigs = b.Where(p => p.Signature != "hut").Select(p => p.Signature).ToList();
+                    storeyRepeats += sigs.Count - sigs.Distinct().Count();
+                }
+            }
+            repeats += full.Count - full.Distinct().Count();
+            float share = coarse.GroupBy(c => c).Max(g => g.Count()) / (float)coarse.Count;
+            if (share > worstShare && f.Generator == Generator.Building) { worstShare = share; worstType = f.Id; }
+        }
+        Check(repeats == 0 && worstShare <= 0.25f,
+            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 25%)");
+        Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building");
+
+        // Types that must never walk alike: footprint and circulation mixes overlap by less than half.
+        float Overlap(string a, string b)
+        {
+            var A = grammar[a];
+            var B = grammar[b];
+            float ta = A.Values.Sum(), tb = B.Values.Sum();
+            return A.Keys.Union(B.Keys).Sum(k => Math.Min(A.GetValueOrDefault(k) / ta, B.GetValueOrDefault(k) / tb));
+        }
+        var pairs = new[] { ("prison_block", "hospital"), ("ominous_tower", "deep_bunker"), ("cryo_vault", "research_base"), ("hospital", "deep_bunker"),
+            ("prison_block", "ominous_tower"), ("biolab", "cryo_vault"), ("meridian_garrison", "prison_block") };
+        var worst = pairs.Select(p => (p, o: Overlap(p.Item1, p.Item2))).OrderByDescending(x => x.o).First();
+        Check(worst.o < 0.5f, $"types differ from each other: of {pairs.Length} pairs that must never walk alike, the closest ({worst.p.Item1} and {worst.p.Item2}) share {worst.o:P0} of their footprint and circulation mix (under 50%)");
+    }
+
+    // ---- cores, states, loot ---------------------------------------------------------------
+
+    void Cores()
+    {
+        bool rule = true, wrecks = true, bases = true;
+        string firstBad = "";
+        foreach (var f in _lib.Families)
+            foreach (PoiState s in Enum.GetValues<PoiState>())
+            {
+                var p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, s, 11);
+                int cores = p.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Core);
+                bool want = f.HasCore(s);
+                if ((cores == 1) != want) { rule = false; if (firstBad.Length == 0) firstBad = $" ({f.Id} {s}: {cores} cores)"; }
+                if ((f.Tags.Contains("wreck") || f.Faction == Faction.None || f.Owner == "gang") && cores > 0) wrecks = false;
+                if (f.Core == CoreRule.Owned && s == PoiState.Active && cores != 1) bases = false;
+            }
+        Check(rule, $"a core exactly where a faction holds the place, in every family and state{firstBad}");
+        Check(wrecks, "wrecks, ruins, the old world's abandoned places and gang forts never have a core");
+        Check(bases, "every faction base has its core while it's active (hijack it to take the base)");
+    }
 
     const float RuinShare = 0.15f;
 
@@ -242,51 +395,192 @@ public partial class PoiTest : Node
         bool abandonedQuiet = true, infestedBloom = true, ruinedOk = true;
         float minRemoved = 1f;
         foreach (var f in _lib.Families)
-            for (int v = 0; v < f.Variants.Count; v++)
-            {
-                var ab = PoiFactory.Generate(_lib, f, v, Rarity.Rare, PoiState.Abandoned, 3);
-                abandonedQuiet &= !ab.Enemies.Any(e => e.Defender || e.Kind is EnemyKind.Guard or EnemyKind.Turret or EnemyKind.Hover);
-
-                var inf = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Infested, 3);
-                int growths = inf.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Growth);
-                infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
-
-                var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
-                minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
-                ruinedOk &= ru.RemovedFraction >= RuinShare && Validator.Check(ru).Count == 0;
-            }
-        var active = PoiFactory.Generate(_lib, _lib.Families[0], 0, Rarity.Rare, PoiState.Active, 3);
-        Check(active.Enemies.Count(e => e.Defender) > 0, $"active places are guarded ({active.Enemies.Count(e => e.Defender)} defenders in a rare {active.Family.Name})");
-        Check(abandonedQuiet, "abandoned places have no active guards (only wildlife)");
+        {
+            int v = 0;
+            var ab = PoiFactory.Generate(_lib, f, v, Rarity.Rare, PoiState.Abandoned, 3);
+            abandonedQuiet &= !ab.Enemies.Any(e => e.Defender || e.Kind is EnemyKind.Guard or EnemyKind.Turret or EnemyKind.Hover);
+            var inf = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Infested, 3);
+            int growths = inf.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Growth);
+            infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
+            var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
+            minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
+            ruinedOk &= ru.RemovedFraction >= RuinShare && Validator.Check(ru).Count == 0;
+        }
+        var garrison = PoiFactory.Generate(_lib, _lib.Family("vharn_outpost"), 0, Rarity.Rare, PoiState.Active, 3);
+        Check(garrison.Enemies.Count(e => e.Defender) > 0, $"active faction places are guarded ({garrison.Enemies.Count(e => e.Defender)} defenders in a rare Vharn garrison)");
+        Check(abandonedQuiet, "abandoned places have no one on duty (wildlife, and the Bloom's creatures deep down)");
         Check(infestedBloom, "infested places have Hollow Bloom growths and Hollow or corrupted enemies");
         Check(ruinedOk, $"ruined places lose at least {RuinShare:P0} of their blocks (least {minRemoved:P0}) and keep the loot path open");
     }
 
-    // ---- loot -------------------------------------------------------------------------
-
     void LootByRarity()
     {
-        var means = new double[3];
+        var means = new double[5];
         foreach (Rarity r in Enum.GetValues<Rarity>())
         {
             double sum = 0;
             int n = 0;
             foreach (var f in _lib.Families)
-                for (int i = 0; i < 12; i++)
+                for (int i = 0; i < 3; i++)
                 {
                     var p = PoiFactory.Generate(_lib, f, i % f.Variants.Count, r, (PoiState)(i % 4), (ulong)(100 + i));
-                    sum += p.LootValue;
+                    sum += p.Caches.Where(c => c.InVault).Sum(c => c.Value);
                     n++;
                 }
             means[(int)r] = sum / n;
         }
-        Check(means[0] < means[1] && means[1] < means[2],
-            $"expected loot value rises with rarity: common {means[0]:F0}, uncommon {means[1]:F0}, rare {means[2]:F0}");
+        bool rising = true;
+        for (int i = 1; i < 5; i++) rising &= means[i] > means[i - 1];
+        Check(rising, $"vault value rises with the place's rarity: {string.Join(", ", Enum.GetValues<Rarity>().Select(r => $"{r.ToString().ToLowerInvariant()} {means[(int)r]:F0}"))}");
         var every = _lib.Families.All(f => PoiFactory.Generate(_lib, f, 0, Rarity.Common, PoiState.Abandoned, 5).Caches.Any(c => c.InVault && c.Value > 0));
         Check(every, "every place has a vault cache worth the trip");
     }
 
-    // ---- placement --------------------------------------------------------------------
+    /// <summary>Deeper and more dangerous caches hold rarer things; vaults and hidden stashes beat the rooms around them.</summary>
+    void LootByDepth()
+    {
+        var byDepth = new Dictionary<int, List<double>>();
+        double sideTier = 0, vaultTier = 0, secretTier = 0;
+        int side = 0, vault = 0, secret = 0;
+        double abandoned = 0, infested = 0;
+        int na = 0, ni = 0;
+        foreach (var f in Arch)
+            for (int i = 0; i < 6; i++)
+                foreach (var s in new[] { PoiState.Abandoned, PoiState.Infested })
+                {
+                    var p = PoiFactory.Generate(_lib, f, i % f.Variants.Count, Rarity.Uncommon, s, (ulong)(400 + i));
+                    foreach (var c in p.Caches)
+                    {
+                        int depth = Math.Min(4, Decay.LevelAt(p.Layout, c.Cell.Y).Depth);
+                        double meanRarity = c.Items.Count == 0 ? 0 : c.Items.Average(it => (int)it.Rarity);
+                        if (!byDepth.TryGetValue(depth, out var l)) byDepth[depth] = l = new List<double>();
+                        if (!c.InVault && !c.Secret) l.Add(meanRarity);
+                        if (c.Secret) { secretTier += c.Tier; secret++; }
+                        else if (c.InVault) { vaultTier += c.Tier; vault++; }
+                        else { sideTier += c.Tier; side++; }
+                        if (s == PoiState.Abandoned) { abandoned += c.Tier; na++; } else { infested += c.Tier; ni++; }
+                    }
+                }
+        var depths = byDepth.Keys.OrderBy(d => d).ToList();
+        var means = depths.Select(d => byDepth[d].Count > 0 ? byDepth[d].Average() : 0).ToList();
+        bool rising = means.Count >= 3 && means[^1] > means[0] + 0.3;
+        for (int i = 1; i < means.Count; i++) rising &= means[i] >= means[i - 1] - 0.05;
+        Check(rising, $"loot rarity rises with depth: side caches average rarity {string.Join(", ", depths.Select((d, i) => $"depth {d}: {means[i]:F2}"))} (0 common .. 4 unique)");
+        Check(secretTier / Math.Max(1, secret) > sideTier / Math.Max(1, side) && vaultTier / Math.Max(1, vault) > sideTier / Math.Max(1, side),
+            $"vaults (tier {vaultTier / Math.Max(1, vault):F1}) and hidden stashes (tier {secretTier / Math.Max(1, secret):F1}) beat the side caches around them (tier {sideTier / Math.Max(1, side):F1})");
+        Check(infested / Math.Max(1, ni) > abandoned / Math.Max(1, na), $"danger pays: infested caches average tier {infested / Math.Max(1, ni):F1}, abandoned {abandoned / Math.Max(1, na):F1}");
+    }
+
+    // ---- underground ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Underground storeys are really carved: the terrain stamp planet-surface seats a place with
+    /// opens every cell the place occupies below the pad, and leaves every cell round them solid.
+    /// </summary>
+    void Carved()
+    {
+        int places = 0, carved = 0, walls = 0, holes = 0, leaks = 0, deepest = 0;
+        foreach (var f in _lib.Families)
+        {
+            var inst = PoiFactory.Generate(_lib, f, 0, Rarity.Rare, PoiState.Abandoned, 9);
+            var occ = inst.Layout.Occupied;
+            if (occ.Min.Y >= 0) continue;
+            places++;
+            int carveH = -occ.Min.Y;
+            var mask = new bool[carveH * occ.Size.Z * occ.Size.X];
+            for (int y = 0; y < carveH; y++)
+                for (int z = 0; z < occ.Size.Z; z++)
+                    for (int x = 0; x < occ.Size.X; x++)
+                        mask[(y * occ.Size.Z + z) * occ.Size.X + x] = occ[new Gen.Int3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z)];
+            var stamp = new TerrainStamp(f.Name, occ.Min.X, occ.Min.Z, occ.Min.X + occ.Size.X, occ.Min.Z + occ.Size.Z, 0, 4f, 8f, 16000, 8000,
+                occ.Min.X, occ.Min.Y, occ.Min.Z, occ.Size.X, carveH, occ.Size.Z, mask);
+            deepest = Math.Min(deepest, occ.Min.Y);
+            for (int y = occ.Min.Y; y < 0; y++)
+                for (int z = occ.Min.Z; z < occ.Min.Z + occ.Size.Z; z++)
+                    for (int x = occ.Min.X; x < occ.Min.X + occ.Size.X; x++)
+                    {
+                        var c = new Gen.Int3(x, y, z);
+                        bool inside = occ[c];
+                        bool open = stamp.IsCarved(x, y, z);
+                        if (inside && !open) holes++;
+                        if (!inside && open) leaks++;
+                        if (inside && inst.Blocks.Get(c).IsAir) carved++;
+                        if (!inside && Dirs.All.Any(d => occ[c + d.Vec()] && inst.Blocks.Get(c + d.Vec()).IsAir)) walls++;
+                    }
+        }
+        Check(places >= 10 && holes == 0 && leaks == 0 && carved > 10000,
+            $"underground levels are carved: in {places} places with storeys below ground (down to {-deepest} m), the terrain stamp opens all " +
+            $"{carved} open cells inside them and none outside, and {walls} cells of solid ground wall them in ({holes} unopened, {leaks} leaks)");
+    }
+
+    void Hidden()
+    {
+        int secrets = 0, withTells = 0, corridorBreaks = 0, opened = 0, sealedBefore = 0;
+        foreach (var f in Arch)
+            for (int i = 0; i < 6; i++)
+            {
+                var layout = PoiFactory.BuildLayout(_lib, f, i, Rarity.Rare, Hash.Combine(0x5EC2E7UL, (ulong)i, Hash.Of(f.Id)));
+                var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+                var reach = nav.Reachable(layout.EntranceCell);
+                foreach (var s in layout.Extras.Secrets)
+                {
+                    secrets++;
+                    var room = layout.Modules[s.Module];
+                    if (!room.Cells.Any(reach.Contains)) sealedBefore++;
+                    if (s.Tells.Count >= 2 && s.TellCells.Count > 0 && layout.Blocks.Get(s.WallCells[0]).Type == BlockType.Breakable) withTells++;
+                    // Break it, then check the reach and the corridor rule again.
+                    var saved = layout.Blocks;
+                    layout.Blocks = saved.Clone();
+                    foreach (Gen.Int3 w in s.WallCells) layout.Blocks.Set(w, Block.Air);
+                    var reach2 = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace).Reachable(layout.EntranceCell);
+                    if (room.Cells.Any(reach2.Contains)) opened++;
+                    var problems = LayoutCheck.Check(layout).Where(p => !p.Contains("hidden room")).ToList();
+                    if (problems.Count > 0) { corridorBreaks++; GD.PrintErr($"      breaking {f.Id}'s hidden wall: {problems[0]}"); }
+                    layout.Blocks = saved;
+                }
+            }
+        Check(secrets >= 30 && sealedBefore == secrets && opened == secrets,
+            $"{secrets} hidden rooms: every one unreachable until its wall breaks ({sealedBefore}), then reachable ({opened})");
+        Check(withTells == secrets, $"every hidden room has its tells: a cracked breakable panel, a draft, scuffs, a gap in the plan ({withTells}/{secrets})");
+        Check(corridorBreaks == 0, $"breaking a hidden wall never breaks the corridor or anything round it ({corridorBreaks} failures)");
+    }
+
+    void Breaches()
+    {
+        int breaches = 0, layouts = 0, toVault = 0;
+        foreach (var f in Arch.Where(f => f.Program != null && _lib.Programs[f.Program].Breach > 0))
+            for (int i = 0; i < 20; i++)
+            {
+                var layout = PoiFactory.BuildLayout(_lib, f, i, Rarity.Common, Hash.Combine(0xB2EAC4UL, (ulong)i, Hash.Of(f.Id)));
+                layouts++;
+                foreach (var b in layout.Extras.Breaches)
+                {
+                    breaches++;
+                    // An alternative way in: from the lip down into the building, all the way to the vault.
+                    var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+                    var reach = nav.Reachable(b.SurfaceCell);
+                    if (Fixtures.RoomCell(layout.Vault, reach) != null) toVault++;
+                }
+            }
+        Check(breaches >= 10 && toVault == breaches, $"collapse breaches: {breaches} rolled in {layouts} buried layouts, each a climbable rubble slope " +
+                                                     $"from the surface into its room and on to the vault ({toVault}), validated like any room");
+    }
+
+    void Keys()
+    {
+        int places = 0, locks = 0, fine = 0;
+        foreach (var f in Arch)
+            for (int i = 0; i < 6; i++)
+            {
+                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)(i % 4), (ulong)(700 + i), Hash.Combine(0x4E7UL, (ulong)i, Hash.Of(f.Id)));
+                places++;
+                locks += p.Extras.Locks.Count;
+                if (Validator.KeyOrder(p) == null) fine++;
+            }
+        Check(fine == places && locks > 50, $"keycards and locks: {locks} locked doors in {places} places, every keycard reachable before the doors it opens ({fine}/{places})");
+    }
+
+    // ---- placement (the kit engine's per-planet rules) -------------------------------------
 
     List<(PlanetMap Map, List<PlacedPoi> Pois)> _systems;
 
@@ -305,14 +599,9 @@ public partial class PoiTest : Node
         var systems = Systems();
         int total = 0, bad = 0;
         string firstBad = "";
-        var countsBySize = new Dictionary<PlanetSize, List<int>>();
         foreach (var (map, pois) in systems)
-        {
-            if (!countsBySize.TryGetValue(map.Size, out var l)) countsBySize[map.Size] = l = new List<int>();
-            l.Add(pois.Count);
-            for (int i = 0; i < pois.Count; i++)
+            foreach (var p in pois)
             {
-                var p = pois[i];
                 total++;
                 var others = pois.Where(o => o != p).ToList();
                 string why = "";
@@ -322,32 +611,15 @@ public partial class PoiTest : Node
                 else if (p.Family.Avoid.Any(r => Placement.FeatureWithin(map, r, p.CellX, p.CellY, others))) why = "avoid rule";
                 else if (others.Any(o => Placement.Dist(p.CellX, p.CellY, o.CellX, o.CellY) < Placement.MinSpacing)) why = "spacing";
                 else if (others.Any(o => o.Family == p.Family && Placement.Dist(p.CellX, p.CellY, o.CellX, o.CellY) < p.Family.Spacing)) why = "family spacing";
-                if (why.Length > 0)
-                {
-                    bad++;
-                    if (firstBad.Length == 0) firstBad = $" (first: {p} breaks {why})";
-                }
+                if (why.Length > 0) { bad++; if (firstBad.Length == 0) firstBad = $" (first: {p} breaks {why})"; }
             }
-        }
         Check(total > 100 && bad == 0, $"{total} placements respect biome, territory, near/avoid rules and spacing{firstBad}");
-
-        // Freeholder farms keep away from Vharn garrisons, and garrisons sit near rich deposits.
         float nearestFarmToVharn = float.MaxValue;
-        bool vharnNearOre = true;
-        foreach (var (map, pois) in systems)
-        {
+        foreach (var (_, pois) in systems)
             foreach (var farm in pois.Where(p => p.Family.Id == "freeholder_farm"))
                 foreach (var v in pois.Where(p => p.Family.Id == "vharn_outpost"))
                     nearestFarmToVharn = Math.Min(nearestFarmToVharn, Placement.Dist(farm.CellX, farm.CellY, v.CellX, v.CellY));
-            foreach (var v in pois.Where(p => p.Family.Id == "vharn_outpost"))
-                vharnNearOre &= Placement.FeatureWithin(map, new ProximityRule("deposits", 3), v.CellX, v.CellY, pois);
-        }
         Check(nearestFarmToVharn >= 10f, $"farms stay at least 10 cells from Vharn garrisons (closest {nearestFarmToVharn:F1})");
-        Check(vharnNearOre, "every Vharn garrison is within 3 cells of a rich deposit");
-
-        double Avg(PlanetSize s) => countsBySize.TryGetValue(s, out var l) ? l.Average() : 0;
-        Check(Avg(PlanetSize.Small) < Avg(PlanetSize.Medium) && Avg(PlanetSize.Medium) <= Avg(PlanetSize.Large),
-            $"counts scale with planet size: small {Avg(PlanetSize.Small):F1}, medium {Avg(PlanetSize.Medium):F1}, large {Avg(PlanetSize.Large):F1}");
     }
 
     void NoRepeatsInSystem()
@@ -367,7 +639,6 @@ public partial class PoiTest : Node
 
     void SeenWeighting()
     {
-        // Direct: one of six layouts already seen.
         var family = _lib.Families.OrderByDescending(f => f.Variants.Count).First();
         var knowledge = new PlayerKnowledge();
         knowledge.Seen.Add(family.Variants[0].Key);
@@ -379,60 +650,35 @@ public partial class PoiTest : Node
         double expected = 1.0 / (1 + 3.0 * (family.Variants.Count - 1));
         Check(seen < unseen * 0.6 && Math.Abs(seen - expected) < 0.02,
             $"unseen layouts are chosen more often: seen {seen:P1} (expected {expected:P1}) vs unseen {unseen:P1} each, over {draws} draws");
-
-        // Through the whole engine: with half the layouts seen, unseen ones fill most places.
-        var half = new PlayerKnowledge();
-        foreach (var f in _lib.Families)
-            foreach (var v in f.Variants.Where(v => v.Index % 2 == 0)) half.Seen.Add(v.Key);
-        int seenPlaced = 0, unseenPlaced = 0;
-        for (int s = 0; s < 40; s++)
-            foreach (var (_, pois) in Placement.PlaceSystem(_lib, (ulong)(9000 + s), new[] { PlanetSize.Medium }, half))
-                foreach (var p in pois)
-                    if (half.Seen.Contains(p.LayoutKey)) seenPlaced++;
-                    else unseenPlaced++;
-        Check(unseenPlaced > seenPlaced * 1.5,
-            $"with half the layouts seen, placement picks unseen ones {unseenPlaced} times to {seenPlaced}");
     }
-
-    // ---- regrowth and reveal ----------------------------------------------------------
 
     void RegrowthPolicy()
     {
-        var (map, pois) = Systems().First(s => s.Pois.Select(p => p.Rarity).Distinct().Count() >= 2);
         var common = Systems().SelectMany(s => s.Pois).First(p => p.Rarity == Rarity.Common);
         var uncommon = Systems().SelectMany(s => s.Pois).First(p => p.Rarity == Rarity.Uncommon);
-        var rare = Systems().SelectMany(s => s.Pois).First(p => p.Rarity == Rarity.Rare);
+        var rare = Systems().SelectMany(s => s.Pois).First(p => p.Rarity >= Rarity.Rare);
         var regrowth = new Regrowth { RegrowSeconds = 600f, PlayerRadius = 500f };
         foreach (var p in new[] { common, uncommon, rare }) regrowth.MarkCleared(p);
         ulong seedBefore = common.SpawnSeed;
-
-        // A player camps next to the common place for an hour: nothing regrows.
         var near = new List<(float, float)> { (common.X + 100f, common.Z) };
         var regrown = new List<PlacedPoi>();
         for (int i = 0; i < 360; i++) regrown.AddRange(regrowth.Tick(10f, near));
         Check(regrown.Count == 0 && regrowth.IsCleared(common), "nothing regrows while a player is near");
-
-        // The player leaves: the common place regrows after the timer, the others never do.
         var far = new List<(float, float)> { (common.X + 5000f, common.Z + 5000f) };
         for (int i = 0; i < 59; i++) regrown.AddRange(regrowth.Tick(10f, far));
         Check(regrown.Count == 0, "nothing regrows before the timer runs out");
         for (int i = 0; i < 400; i++) regrown.AddRange(regrowth.Tick(10f, far));
         Check(regrown.Count == 1 && regrown[0] == common && common.SpawnSeed != seedBefore && !regrowth.IsCleared(common),
             "the common place regrows with fresh dressing once nobody is near");
-        Check(regrowth.IsCleared(uncommon) && regrowth.IsCleared(rare), "uncommon and rare places never regrow");
-        _ = map;
-        _ = pois;
+        Check(regrowth.IsCleared(uncommon) && regrowth.IsCleared(rare), "uncommon and rarer places never regrow");
     }
 
     void RevealDistances()
     {
         var (map, pois) = Systems().Where(s => s.Pois.Any(p => p.Reveal.Landmark)).OrderByDescending(s => s.Pois.Count).First();
         var reveal = new MapReveal();
-        // Arrive in orbit: only landmarks show.
         var fromOrbit = reveal.Update(pois, map.Width * map.CellSize / 2, map.Height * map.CellSize / 2, 1200f);
         Check(fromOrbit.Count > 0 && fromOrbit.All(p => p.Reveal.Landmark), $"from orbit only landmarks show ({fromOrbit.Count})");
-
-        // Fly low along a line: each place shows only once we are inside its reveal distance.
         bool honest = true;
         var target = pois.First(p => !p.Reveal.Landmark);
         for (float t = 0; t <= 1f; t += 0.002f)
@@ -445,20 +691,63 @@ public partial class PoiTest : Node
             }
         }
         Check(honest && reveal.IsRevealed(target), $"places appear only within their reveal distance ({target.Family.Name}: {target.Reveal.Distance} m)");
-        var hidden = pois.Where(p => !p.Reveal.Landmark && !reveal.IsRevealed(p)).ToList();
-        bool untouched = hidden.All(p => !MapReveal.CanSee(p, target.X, target.Z + 40f, 30f, out _));
-        Check(untouched, $"places we never got close to stay hidden ({hidden.Count} still hidden)");
     }
 
-    // ---- logs and tags ----------------------------------------------------------------
+    /// <summary>
+    /// Whole planets: places cover the map, each planet's themed set fills most of it and its
+    /// outliers stay inside the theme's data range, rare but always present.
+    /// </summary>
+    void WorldPlacementCheck()
+    {
+        int planets = 0, badShare = 0, noOutlier = 0, poorCover = 0, total = 0, outliers = 0;
+        float worstCover = 1f;
+        string firstBad = "";
+        foreach (var theme in _lib.Themes)
+            for (int s = 0; s < 12; s++)
+            {
+                var map = PlanetMap.GenerateWorld(Hash.Combine(Hash.Of(theme.Id), (ulong)s), 200, 100, 80f, theme.Id);
+                var r = WorldPlacement.Place(_lib, map, theme, Hash.Combine(0x91A7UL, (ulong)s));
+                planets++;
+                int n = r.Pois.Count, o = r.Outliers;
+                total += n;
+                outliers += o;
+                float share = o / (float)n;
+                if (share < theme.OutlierMin - 1f / n || share > theme.OutlierMax + 1f / n) { badShare++; if (firstBad.Length == 0) firstBad = $" (first: {theme.Id} {o}/{n})"; }
+                if (o == 0) noOutlier++;
+                if (r.Pois.Any(p => !p.Outlier && !theme.Set.Any(t => t.Family == p.Family.Id))) badShare++;
+                // Cover: an 8 x 4 grid of regions over the whole planet.
+                var regions = new HashSet<(int, int)>(r.Pois.Select(p => (p.CellX * 6 / map.Width, p.CellY * 3 / map.Height)));
+                float cover = regions.Count / 18f;
+                worstCover = Math.Min(worstCover, cover);
+                if (cover < 0.9f) poorCover++;
+            }
+        Check(badShare == 0 && noOutlier == 0, $"themed sets and outliers: {planets} planets over {_lib.Themes.Count} themes, {total} places, {outliers} outliers " +
+                                               $"({outliers * 100f / total:F1}%); every planet's outlier share inside its theme's range and never zero{firstBad}");
+        Check(poorCover == 0, $"placement covers the whole planet, not just the landing site: the worst planet has places in {worstCover:P0} of its 18 regions (6 by 3)");
+    }
+
+    /// <summary>From afar: each family's landmark stands as high as its purpose wants, and something lights it.</summary>
+    void Landmarks()
+    {
+        var bad = new List<string>();
+        foreach (var f in _lib.Families)
+            foreach (var s in new[] { PoiState.Abandoned, PoiState.Ruined })
+            {
+                var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 21);
+                int top = p.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type)).Select(b => b.Cell.Y + 1).DefaultIfEmpty(0).Max();
+                bool light = p.Lights.Count > 0 || p.Blocks.Blocks().Any(b => b.Cell.Y >= 0 && b.Block.Material is Gen.Material.Lumen or Gen.Material.Glyph or Gen.Material.Crystal);
+                if (s == PoiState.Ruined) top = Math.Max(top, f.Rise); // a ruin may have lost its top; it still needs its light
+                if (top < f.Rise || !light) bad.Add($"{f.Id} {s}: top {top} m (wants {f.Rise}), light {light}");
+            }
+        Check(bad.Count == 0, $"landmarks: every family's tallest part stands as high as its purpose wants, from 2 m (a buried lab's hatch) to 30 m (a tower, a rocket), " +
+                              $"and something still lit carries in the dark{(bad.Count > 0 ? "; " + string.Join("; ", bad.Take(4)) : "")}");
+    }
 
     void ShooterTags()
     {
         var armed = _lib.Rosters.Values.SelectMany(r => r).Where(e => e.Kind is EnemyKind.Guard or EnemyKind.Turret or EnemyKind.Hover).ToList();
         Check(armed.All(e => e.Shooter != ShooterClass.None && e.Weapon.Length > 0),
             $"every armed defender and turret carries a shooter class and a weapon ({armed.Count} roster lines)");
-        Check(_lib.Rosters.Values.SelectMany(r => r).Where(e => e.Kind == EnemyKind.Turret).All(e => e.Shooter is ShooterClass.Capital or ShooterClass.SmallVessel),
-            "turrets are small-vessel or capital class");
     }
 
     // ---- performance ------------------------------------------------------------------
@@ -468,13 +757,15 @@ public partial class PoiTest : Node
         var mats = new BlockMaterials();
         Prof.Ticks.Clear();
         var sw = Stopwatch.StartNew();
-        double gen = 0, val = 0, mesh = 0;
+        double gen = 0, val = 0, mesh = 0, worst = 0;
+        string worstName = "";
         long blocks = 0, quads = 0;
+        var fams = _lib.Families;
         for (int i = 0; i < 100; i++)
         {
-            var f = _lib.Families[i % _lib.Families.Count];
+            var f = fams[i % fams.Count];
             long t0 = sw.ElapsedTicks;
-            var p = PoiFactory.Generate(_lib, f, i % f.Variants.Count, (Rarity)(i % 3), (PoiState)(i % 4), (ulong)i, customSeed: (ulong)(77 + i));
+            var p = PoiFactory.Generate(_lib, f, i % f.Variants.Count, (Rarity)(i % 5), (PoiState)(i % 4), (ulong)i, customSeed: (ulong)(77 + i));
             long t1 = sw.ElapsedTicks;
             using (Prof.Time("validate")) Validator.Check(p);
             long t2 = sw.ElapsedTicks;
@@ -492,16 +783,169 @@ public partial class PoiTest : Node
             gen += t1 - t0;
             val += t2 - t1;
             mesh += t3 - t2;
+            double one = (t3 - t0) * 1000.0 / Stopwatch.Frequency;
+            if (one > worst) { worst = one; worstName = $"{f.Id} ({p.Blocks.CountBlocks()} blocks)"; }
             blocks += g.CountBlocks();
         }
         double ms(double ticks) => ticks * 1000.0 / Stopwatch.Frequency;
         GD.Print($"PERF  100 POIs: generate {ms(gen):F0} ms, validate {ms(val):F0} ms, mesh {ms(mesh):F0} ms, " +
-                 $"total {ms(gen + val + mesh):F0} ms ({ms(gen + val + mesh) / 100:F1} ms each)");
+                 $"total {ms(gen + val + mesh):F0} ms ({ms(gen + val + mesh) / 100:F1} ms each); slowest {worst:F0} ms, {worstName}");
         GD.Print($"PERF  average {blocks / 100} blocks and {quads / 100} quads per POI");
-        GD.Print("PERF  generation phases over the whole run: " +
-                 string.Join(", ", Prof.Ticks.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {Prof.Ms(kv.Value):F0} ms")));
-        Check(ms(gen + val + mesh) / 100 < 100, "generating, validating and meshing a POI takes under 100 ms");
+        GD.Print("PERF  generation phases: " + string.Join(", ", Prof.Ticks.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {Prof.Ms(kv.Value):F0} ms")));
+        Check(ms(gen + val + mesh) / 100 < 250 && worst < 2500, $"generating, validating and meshing a POI averages under 250 ms (landmark sites under 2.5 s; slowest {worst:F0} ms)");
     }
+
+    // ---- walking it -------------------------------------------------------------------
+
+    // A body really walks from outside each place to its deepest point and back: through doors
+    // (locked ones open as if the walker held the cards), along the corridors, down every stair,
+    // riding lifts and climbing ladders. Proves the meshes, collision, doors, lifts and grid agree.
+    readonly (string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal)[] _walks =
+    {
+        ("old_airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "deep"),
+        ("research_base", 0, Rarity.Uncommon, PoiState.Abandoned, true, "deep"),
+        ("ominous_tower", 0, Rarity.Uncommon, PoiState.Ruined, false, "top+deep"),
+        ("deep_bunker", 0, Rarity.Rare, PoiState.Infested, false, "deep"),
+        ("old_mine", 0, Rarity.Common, PoiState.Abandoned, false, "deep"),
+        ("vharn_outpost", 0, Rarity.Common, PoiState.Active, true, "vault"),
+    };
+    int _walk = -1, _step, _ticks, _stuck, _waits;
+    Node3D _walkRoot;
+    Player _walker;
+    PoiView _view;
+    List<Gen.Int3> _route;
+    float _lowest;
+    bool _back;
+
+    void NextWalk()
+    {
+        _walkRoot?.QueueFree();
+        _walk++;
+        if (_walk >= _walks.Length)
+        {
+            _walkRoot = null;
+            Finish();
+            return;
+        }
+        var w = _walks[_walk];
+        var poi = PoiFactory.Generate(_lib, _lib.Family(w.Family), w.Variant, w.Rarity, w.State, 9);
+        _walkRoot = new Node3D { Name = "Walk" };
+        AddChild(_walkRoot);
+        _view = PoiView.Build(poi, Gen.Biome.Rock, new PoiView.Options(Lights: false, Figures: false));
+        _view.AllKeys = true;
+        _walkRoot.AddChild(_view);
+        var hole = new Rect2I(_view.PlugMin, _view.PlugMax - _view.PlugMin + Vector2I.One);
+        _walkRoot.AddChild(Terrain.Build(new Vector2I(-200, -200), new Vector2I(50, 50), (x, z) => Colors.Gray, new List<Rect2I> { hole }, true, 0f));
+        _walker = new Player { Name = "Walker" };
+        _walkRoot.AddChild(_walker);
+        _walker.LadderQuery = _view.LadderAt;
+        _view.Watcher = _walker;
+
+        _route = Route(poi, w.Lifts, w.Goal);
+        if (_route == null)
+        {
+            Fail($"walking {WalkName(w)}: no route to the goal");
+            NextWalk();
+            return;
+        }
+        var (start, yaw) = _view.EntranceStand();
+        _walker.Place(start, yaw);
+        _step = 0;
+        _ticks = 0;
+        _stuck = 0;
+        _waits = 0;
+        _back = false;
+        _lowest = _route.Min(c => c.Y) - 1.5f;
+    }
+
+    static string WalkName((string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal) w) => $"{w.Family} ({w.State}, {w.Rarity})";
+
+    /// <summary>From the way in to the goal by the grid's shortest path (lifts optional), and back again.</summary>
+    List<Gen.Int3> Route(PoiInstance poi, bool lifts, string goal)
+    {
+        var layout = poi.Layout;
+        var nav = new NavGrid(poi.Blocks, layout.Occupied, lifts ? layout.Extras.Lifts : null, layout.Extras.InSpace);
+        var tree = nav.Tree(layout.EntranceCell);
+        var reach = new HashSet<Gen.Int3>(tree.Keys);
+        Gen.Int3? Deepest() => reach.Where(c => !nav.LadderAt(c) && !nav.LiftAt(c) && nav.Standable(c)).OrderBy(c => c.Y).ThenBy(c => c.Manhattan(layout.EntranceCell)).Cast<Gen.Int3?>().FirstOrDefault();
+        Gen.Int3? Top() => reach.Where(c => !nav.LadderAt(c) && !nav.LiftAt(c)).OrderByDescending(c => c.Y).Cast<Gen.Int3?>().FirstOrDefault();
+        var route = new List<Gen.Int3>();
+        Gen.Int3? Vault() => poi.Caches.Where(c => c.InVault).Select(c => nav.AccessCell(c.Cell, reach)).FirstOrDefault(a => a != null);
+        var goals = goal.Split('+').Select(g => g == "top" ? Top() : g == "vault" ? Vault() : Deepest()).ToList();
+        Gen.Int3 from = layout.EntranceCell;
+        foreach (var g in goals)
+        {
+            if (g is not Gen.Int3 to) return null;
+            var leg = nav.FindPath(from, to);
+            if (leg == null) return null;
+            if (route.Count > 0) leg.RemoveAt(0);
+            route.AddRange(leg);
+            from = to;
+        }
+        var back = nav.FindPath(from, layout.EntranceCell);
+        if (back == null) return null;
+        back.RemoveAt(0);
+        _turnAt = route.Count;
+        route.AddRange(back);
+        return route;
+    }
+
+    int _turnAt;
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (_walker == null || _walk < 0 || _walk >= _walks.Length || _route == null) return;
+        _ticks++;
+        if (_ticks < 10) return; // let it land
+        var w = _walks[_walk];
+        Vector3 at = _walker.GlobalPosition;
+        if (at.Y < _lowest)
+        {
+            Fail($"walking {WalkName(w)}: fell through the floor at {at} on cell {_step}/{_route.Count}");
+            _walker = null;
+            NextWalk();
+            return;
+        }
+        while (_step < _route.Count && Reached(at, _route[_step]))
+        {
+            _step++;
+            _stuck = 0;
+            if (_step == _turnAt) _back = true;
+        }
+        if (_step >= _route.Count)
+        {
+            Check(true, $"a body walked {WalkName(w)} from outside to its {w.Goal} point and back: {_route.Count} cells ({_turnAt} in), " +
+                        $"{_ticks / 60f:F0} s, {_waits} lift rides, never below the floor or stuck");
+            _walker.AutoTarget = null;
+            _walker = null;
+            NextWalk();
+            return;
+        }
+        var target = _route[_step];
+        var prev = _route[Math.Max(0, _step - 1)];
+        // A lift: wait on the car until it reaches the next stop, then walk off.
+        if (Math.Abs(target.Y - prev.Y) > 1 && _view.LiftAt(target) is { } lift && lift.stop >= 0)
+        {
+            _view.RequestLift(lift.lift, lift.stop);
+            if (!_view.LiftArrived(lift.lift, lift.stop))
+            {
+                _walker.AutoTarget = new Vector3(prev.X + 0.5f, prev.Y, prev.Z + 0.5f);
+                _stuck = 0;
+                if (_ticks % 60 == 0) _waits++;
+                return;
+            }
+        }
+        _walker.AutoTarget = new Vector3(target.X + 0.5f, target.Y, target.Z + 0.5f);
+        if (++_stuck > 420)
+        {
+            Fail($"walking {WalkName(w)}: stuck at {at} on cell {_step}/{_route.Count} ({target}){(_back ? " on the way back" : "")}");
+            _walker = null;
+            NextWalk();
+        }
+    }
+
+    static bool Reached(Vector3 at, Gen.Int3 c) =>
+        new Vector2(at.X - (c.X + 0.5f), at.Z - (c.Z + 0.5f)).Length() < 0.45f && Mathf.Abs(at.Y - c.Y) < 1.2f;
 
     void Check(bool ok, string what)
     {

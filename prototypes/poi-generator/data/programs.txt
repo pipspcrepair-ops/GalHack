@@ -24,6 +24,9 @@
 
 program bunker
   name Deep Bunker
+  shapes rect 3 L 2
+  plans spine 2 jog 2 enfilade 1 hall 1
+  basement same 2 box 1
   style concrete
   width 24 32
   depth 16 20
@@ -43,6 +46,9 @@ program bunker
 
 program cryo_vault
   name Cryo Vault
+  shapes rect 3 L 1
+  plans hall 3 spine 1 jog 1
+  basement same 2 box 1
   style clinic
   width 26 32
   depth 18 20
@@ -63,6 +69,9 @@ program cryo_vault
 
 program biolab
   name Biolab
+  shapes L 2 T 2 rect 1
+  plans spine 2 jog 2 enfilade 1 plaza 1
+  basement box 1 same 1 bar 1
   style meridian
   width 24 30
   depth 18 20
@@ -84,6 +93,9 @@ program biolab
 
 program research_base
   name Abandoned Research Base
+  shapes L 2 T 2 U 1 rect 1
+  plans spine 2 jog 2 plaza 1 enfilade 1
+  basement box 1 same 1 bar 1
   style meridian
   width 24 30
   depth 16 20
@@ -104,6 +116,9 @@ program research_base
 
 program ice_outpost
   name Ice Research Outpost
+  shapes rect 2 L 1
+  plans spine 2 jog 2 drifts 1
+  basement same 1 box 1
   style ice
   width 22 28
   depth 16 18
@@ -125,9 +140,13 @@ program ice_outpost
 
 program tower_block
   name Ominous Tower
+  shapes rect 2 court 1
+  plans loop 3 atrium 2 court 2 spine 1 jog 1 hall 1
+  setback 0.3
+  stairs2 0.5
   style concrete
-  width 20 24
-  depth 16 18
+  width 30 34
+  depth 30 32
   floors 8 12
   levels 1 1
   lift 0.8
@@ -143,8 +162,13 @@ program tower_block
 
 program hospital
   name Abandoned Hospital
+  shapes T 2 H 2 U 1 L 1
+  plans spine 3 jog 2 plaza 2 hall 1 enfilade 1
+  basement bar 2 same 1
+  setback 0.3
+  stairs2 0.4
   style clinic
-  width 26 32
+  width 30 36
   depth 18 20
   floors 4 6
   levels 2 2
@@ -161,7 +185,11 @@ program hospital
 
 program control_tower
   name Control Tower
+  shapes rect
+  plans spine 2 enfilade 2 hall 1 jog 1
+  basement same 1 box 1
   style concrete
+  cab
   width 18 20
   depth 16 16
   floors 4 5
@@ -179,9 +207,13 @@ program control_tower
 
 program terminal
   name Spaceport Terminal
+  shapes rect 2 U 1 T 1
+  plans hall 2 loop 2 atrium 2 plaza 2 spine 1
+  basement bar 1 same 1
+  stairs2 0.6
   style meridian
-  width 30 36
-  depth 18 20
+  width 32 40
+  depth 30 32
   floors 2 3
   levels 1 2
   lift 0.8
@@ -198,6 +230,8 @@ program terminal
 
 program hangar
   name Hangar
+  shapes rect
+  plans hall
   style concrete
   width 28 34
   depth 18 20
@@ -213,6 +247,9 @@ program hangar
 
 program command_bunker
   name Command Bunker
+  shapes rect 2 L 2 T 1
+  plans spine 2 enfilade 2 jog 2 hall 1
+  basement same 2 box 1
   style concrete
   width 26 32
   depth 18 20
@@ -232,6 +269,9 @@ program command_bunker
 
 program barracks
   name Barracks
+  shapes rect 2 L 2 U 1
+  plans spine 2 jog 2 enfilade 1
+  basement bar 1 same 1
   style concrete
   width 22 28
   depth 16 18
@@ -239,14 +279,17 @@ program barracks
   levels 0 1
   lift 0
   windows 0.4
-  rooms ground security! mess quarters*1-2
-  rooms upper quarters*2-3 washroom
-  rooms basement armoury storage
+  rooms ground security! mess? quarters*1-2 galley? armoury?
+  rooms upper quarters*2-3 washroom? office?
+  rooms basement armoury? storage*1-2 magazine?
   rooms deepest vault!
-  fill quarters storage
+  fill quarters storage washroom
 
 program garrison_hq
   name Meridian Garrison
+  shapes L 2 T 2 rect 1
+  plans spine 2 plaza 1 jog 1 enfilade 1
+  basement bar 1 same 1
   style meridian
   width 24 30
   depth 16 20
@@ -256,18 +299,21 @@ program garrison_hq
   roof pad
   windows 0.45
   secrets 0 1
-  rooms ground lobby! security armoury
-  rooms upper quarters*1-2 office mess
-  rooms top control! office
-  rooms basement storage armoury generator
-  rooms deepest vault!
-  fill storage quarters
+  rooms ground lobby! security armoury? workshop? galley?
+  rooms upper quarters*1-3 office? mess? washroom? archive? armoury?
+  rooms top control! office? command?
+  rooms basement storage*1-2 armoury? generator? workshop? magazine?
+  rooms deepest vault! plant?
+  fill storage quarters office workshop
 
 program prison
   name Prison Block
+  shapes cross 3 H 2 rect 1
+  plans plaza 2 atrium 2 loop 1 spine 1 jog 1
+  basement bar 1 same 1
   style concrete
-  width 28 34
-  depth 18 20
+  width 30 36
+  depth 30 32
   floors 2 3
   levels 2 3
   lift 0.5
@@ -284,6 +330,9 @@ program prison
 
 program mine_works
   name Old Mine
+  shapes rect 2 L 1
+  plans drifts 4 spine 1 jog 1
+  basement same 2 box 1
   style mine
   width 24 30
   depth 16 18
@@ -304,6 +353,9 @@ program mine_works
 
 program pump_station
   name Pump Station
+  shapes rect 2 L 1
+  plans hall 2 spine 1 jog 1
+  basement same 1 box 1
   style concrete
   width 26 30
   depth 18 20

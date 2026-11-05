@@ -121,6 +121,17 @@ public sealed class Canvas
         return Doorways.Count - 1;
     }
 
+    /// <summary>Gives a module its purpose once the planner has decided it.</summary>
+    public void Retag(int module, ModuleKind kind, string purpose)
+    {
+        if (module < 0) return;
+        var m = Modules[module];
+        string key = $"{Kit.Id}:{purpose}:{kind}";
+        if (!_templates.TryGetValue(key, out var t)) _templates[key] = t = new ModuleTemplate { Id = purpose, Kind = kind, Kit = Kit };
+        m.Template = t;
+        m.Purpose = purpose;
+    }
+
     public void Link(int a, int b)
     {
         if (a >= 0 && b >= 0 && a != b) Edges.Add((a, b));

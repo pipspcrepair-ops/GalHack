@@ -138,6 +138,8 @@ public sealed class LayoutExtras
     public List<(int Storey, Int3 Min, Int3 Max)> Stairwells = new();
     /// <summary>Corridor runs for the geometric check: every cell that is a corridor floor cell.</summary>
     public HashSet<Int3> CorridorCells = new();
+    /// <summary>Each building's storey plans in short (footprint, circulation, corridor topology, rooms), for the sameness tests.</summary>
+    public List<(int Building, int Storey, string Signature)> Plans = new();
     /// <summary>A layout the planner made wrong on purpose (a strange spawn).</summary>
     public bool Wrong;
     public bool InSpace;

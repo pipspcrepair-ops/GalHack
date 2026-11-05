@@ -12,6 +12,8 @@
 #   pitch                      one line: why you'd want to go there
 
 family deep_bunker
+  siting open
+  rise 12
   name Deep Bunker
   pitch A concrete hatch in the wild, and stairs going down further than they should.
   faction none
@@ -38,6 +40,8 @@ family deep_bunker
     seed 8104
 
 family research_base
+  siting flat
+  rise 7
   name Abandoned Research Base
   pitch Labs above ground, and sublevels below that nobody came back up from.
   faction none
@@ -64,6 +68,8 @@ family research_base
     seed 8204
 
 family ice_outpost
+  siting open
+  rise 12
   name Ice Research Outpost
   pitch A hut half-buried in the drifts, and labs cut into the glacier where the drill broke through.
   faction none
@@ -87,6 +93,8 @@ family ice_outpost
     seed 8303
 
 family ominous_tower
+  siting any
+  rise 30
   name Ominous Tower
   pitch A tall dark block with one light on near the top.
   faction none
@@ -113,6 +121,8 @@ family ominous_tower
     seed 8404
 
 family hospital
+  siting flat
+  rise 18
   name Abandoned Hospital
   pitch Wards, a helipad on the roof, and a quarantine level sealed under the mortuary.
   faction none
@@ -136,6 +146,8 @@ family hospital
     seed 8503
 
 family cryo_vault
+  siting hillside
+  rise 12
   name Cryo Vault
   pitch People slept through the fall here, row on row, level on level. They never woke.
   faction none
@@ -160,6 +172,8 @@ family cryo_vault
     seed 8603
 
 family biolab
+  siting flat
+  rise 7
   name Biolab
   pitch They bred things here. The pens are open.
   faction none
@@ -184,6 +198,8 @@ family biolab
     seed 8703
 
 family command_bunker
+  siting hillside
+  rise 12
   name Military Command Bunker
   pitch A hardened command post behind blast doors, going down past the war room.
   faction none
@@ -207,6 +223,8 @@ family command_bunker
     seed 8803
 
 family prison_block
+  siting flat
+  rise 8
   name Prison Block
   pitch Cell tiers, a guard post at every landing, and a confiscation locker at the bottom.
   faction none
@@ -230,6 +248,8 @@ family prison_block
     seed 8903
 
 family meridian_garrison
+  siting ridge
+  rise 10
   name Meridian Garrison
   pitch A Meridian outpost recovering the old world, guarded, with a core you can hijack.
   faction meridian
@@ -253,6 +273,8 @@ family meridian_garrison
 # ---- landmarks: hand-authored site plans --------------------------------------------------------
 
 family old_airfield
+  siting flat
+  rise 18
   name Old Airfield
   pitch A cracked runway, hangars, a control tower, and a bunker under the tower.
   faction none
@@ -277,6 +299,8 @@ family old_airfield
     seed 9103
 
 family abandoned_spaceport
+  siting flat
+  rise 30
   name Abandoned Spaceport
   pitch A rocket still standing on its pad, fuelled and crewed and never cleared to go.
   faction none
@@ -301,6 +325,8 @@ family abandoned_spaceport
     seed 9203
 
 family military_base
+  siting flat
+  rise 18
   name Abandoned Military Base
   pitch Fences, towers, trenches, a motor pool of wrecks, and bunkers below.
   faction none
@@ -325,6 +351,8 @@ family military_base
     seed 9303
 
 family blast_crater
+  siting open
+  rise 12
   name Blast Crater
   pitch Glass where the ground was, and a bunker hatch on the crater's edge.
   faction none
@@ -348,6 +376,8 @@ family blast_crater
     seed 9403
 
 family scrap_fort
+  siting flat
+  rise 9
   name Scrap Fort
   pitch A roving gang's fort of stacked wrecks and containers, with buggies parked inside.
   faction none
@@ -370,6 +400,8 @@ family scrap_fort
     seed 9503
 
 family old_mine
+  siting valley
+  rise 16
   name Old Mine Works
   pitch A winding wheel over a shaft that goes down five levels, into something older.
   faction none

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -87,7 +87,7 @@ public static class WorldPlacement
         float km2 = map.Width * map.CellSize * map.Height * map.CellSize / 1e6f;
         int n = count ?? Math.Clamp((int)MathF.Round(km2 * theme.Density), 8, 400);
         // Even cover: a Poisson-disc scatter on the torus.
-        float spacing = MathF.Sqrt(map.Width * map.Height / (float)n) * 0.72f;
+        float spacing = MathF.Sqrt(map.Width * map.Height / (float)n) * 0.86f;
         var sites = Scatter(map, n, spacing, rng.Fork("scatter"));
 
         var result = new Result { Theme = theme };

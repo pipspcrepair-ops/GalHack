@@ -63,6 +63,7 @@ public static class Sites
                 case "camp": Camp(x, part); break;
                 case "stacks": Stacks(x, part); break;
                 case "obelisks": Obelisks(x, part); break;
+                case "hangar": Hangar(x, part); break;
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
@@ -734,6 +735,107 @@ public static class Sites
             x.C.X.Markers.Add(new Marker("gang-spawn", fire + new Int3(2, 0, -2), "raiders", 1));
             x.C.X.Markers.Add(new Marker("vehicle", fire + new Int3(-5, 0, 0), "buggy", 1));
         }
+    }
+
+    /// <summary>
+    /// A hangar: a tall shed with a stepped gable roof and its great door rolled half open on the
+    /// apron side, a mezzanine along the back wall up a ladder with the foreman's office on it, and
+    /// whatever was being worked on when everyone left still on the floor.
+    /// </summary>
+    static void Hangar(Ctx x, SitePart p)
+    {
+        int w = p.Int("w", 26), d = p.Int("d", 18), h = p.Int("h", 8);
+        var wall = new Rgb(0x8a, 0x8c, 0x86);
+        var roof = new Rgb(0x6a, 0x5a, 0x4a);
+        var concrete = new Rgb(0x5a, 0x58, 0x54);
+        Int3 W(int i, int y, int j) => new(p.X + i, y, p.Z + j);   // i across the front (x), j back (z)
+        int doorLo = w / 2 - 6, doorHi = w / 2 + 5, doorH = 6;
+        var hall = new List<Int3>();
+        for (int j = 0; j < d; j++)
+            for (int i = 0; i < w; i++)
+            {
+                x.C.Set(W(i, -1, j), new Block(BlockType.Cube, Material.Concrete, concrete.Scale(0.9f + 0.1f * ((i + j) % 2)), Role.Floor));
+                bool edge = i == 0 || i == w - 1 || j == 0 || j == d - 1;
+                for (int y = 0; y < h; y++)
+                {
+                    Int3 c = W(i, y, j);
+                    bool door = j == 0 && i >= doorLo && i <= doorHi && y < doorH;
+                    if (edge && !door)
+                    {
+                        bool band = y == h - 2;
+                        bool rib = i % 4 == 0 && j > 0;
+                        x.C.Set(c, new Block(BlockType.Cube, Material.Steel, band ? new Rgb(0x6a, 0x7a, 0x5a) : rib ? wall.Scale(0.85f) : wall, Role.Wall));
+                    }
+                    else
+                    {
+                        x.C.Clear(c);
+                        if (y < 3 && !edge) hall.Add(c);
+                    }
+                }
+            }
+        // The stepped gable along the hangar's length: each course steps in from both long sides.
+        for (int k = 0; k <= d / 2; k++)
+            for (int i = 0; i < w; i++)
+            {
+                int y = h + k;
+                foreach (int j in new[] { k, d - 1 - k })
+                    x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Rust, roof.Scale(0.85f + 0.15f * (k % 2)), Role.Roof));
+                for (int j = k + 1; j < d - 1 - k; j++)
+                {
+                    if (i == 0 || i == w - 1) x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Steel, wall, Role.Wall));
+                    else x.C.Clear(W(i, y, j));
+                }
+            }
+        // The great door: one leaf rolled half open, hanging above the gap.
+        for (int i = doorLo; i <= doorHi; i++)
+            for (int y = doorH; y < h; y++) x.C.Set(W(i, y, 0), new Block(BlockType.Cube, Material.Steel, new Rgb(0x7a, 0x6a, 0x3a), Role.Wall));
+        int floorModule = x.C.AddModule(ModuleKind.Hall, "hangar floor", 0, hall);
+        x.C.Link(x.Yard, floorModule);
+        // The mezzanine along the back wall, up a ladder, with the office on it.
+        int mz = d - 4, my = 3;
+        var mezz = new List<Int3>();
+        for (int i = 1; i < w - 1; i++)
+            for (int j = mz; j < d - 1; j++)
+            {
+                x.C.Set(W(i, my, j), new Block(BlockType.Cube, Material.Steel, new Rgb(0x50, 0x54, 0x58), Role.Floor));
+                if (j == mz && i != 2) x.C.Blocks[W(i, my + 1, j)] = new Block(BlockType.Rail, Material.Steel, new Rgb(0xd0, 0xa0, 0x20), Role.Decor);
+                else if (i >= 2 && i < w - 10) { mezz.Add(W(i, my + 1, j)); mezz.Add(W(i, my + 2, j)); }
+            }
+        // The ladder up the front of the mezzanine: its top rung at the walkway's floor, you step on at the gap in the rail.
+        for (int y = 0; y <= my; y++) x.C.Blocks[W(2, y, mz - 1)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.North);
+        // The office: a box on the mezzanine's far end with a window over the floor.
+        var office = new List<Int3>();
+        int o0 = w - 9;
+        for (int i = o0; i < w - 1; i++)
+            for (int j = mz; j < d - 1; j++)
+                for (int y = my + 1; y <= my + 3; y++)
+                {
+                    bool shell = i == o0 || j == mz || y == my + 3;
+                    bool door = i == o0 && (j == mz + 1 || j == mz + 2) && y <= my + 2;
+                    bool glass = j == mz && y == my + 2 && i > o0 && i < w - 2;
+                    Int3 c = W(i, y, j);
+                    if (door) { x.C.Clear(c); continue; }
+                    if (glass) { x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x8a, 0xa4, 0xa8), Role.Window)); continue; }
+                    if (shell) { x.C.Set(c, new Block(BlockType.Cube, Material.Steel, wall.Scale(0.9f), Role.Wall)); continue; }
+                    x.C.Clear(c);
+                    if (y <= my + 2) office.Add(c);
+                }
+        int mezzModule = x.C.AddModule(ModuleKind.Outdoor, "mezzanine", 0, mezz.Where(c => !x.C.Blocks.ContainsKey(c)).ToList());
+        int officeModule = x.C.AddModule(ModuleKind.Room, "foreman's office", 0, office);
+        x.C.Link(floorModule, mezzModule);
+        x.C.Link(mezzModule, officeModule);
+        var officeFloor = office.Where(c => c.Y == my + 1).OrderByDescending(c => c.X + c.Z).ToList();
+        x.C.AddSlot(SlotKind.Loot, officeFloor[0], officeModule);
+        // On the floor: what was being worked on, stopped mid-job.
+        var floor = hall.Where(c => c.Y == 0 && c.Z - p.Z > 2 && c.Z - p.Z < mz - 2 && c.X - p.X > 3 && c.X - p.X < w - 3).OrderBy(c => Hash.Cell(c, 31)).ToList();
+        foreach (var c in floor.Take(6)) x.C.Set(c, new Block(BlockType.Crate, Material.Scrap, new Rgb(0x6e, 0x5a, 0x40), Role.Prop));
+        foreach (var c in floor.Skip(6).Take(2)) x.C.Set(c, new Block(BlockType.Machine, Material.Alloy, new Rgb(0x5a, 0x60, 0x66), Role.Prop));
+        x.C.AddSlot(SlotKind.Loot, floor[8], floorModule);
+        x.C.AddSlot(SlotKind.Spawn, floor[9], floorModule);
+        x.C.AddSlot(SlotKind.Spawn, floor[10], floorModule);
+        for (int i = 4; i < w - 4; i += 8)
+            x.C.X.Lights.Add(new LightSpot { Cell = W(i, h - 2, d / 2), Color = new Rgb(0xff, 0xd0, 0x90), Mode = LightMode.Steady, Energy = 1.6f, Range = 14f, Module = floorModule });
+        x.C.X.Story.Add(new StoryProp("hangar", W(w / 2, 0, d / 2), "The door rolled half open and stopped there. The tools are still out."));
     }
 
     /// <summary>Tall stacks: atmosphere processors, smelter chimneys, cooling towers.</summary>

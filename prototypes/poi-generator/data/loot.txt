@@ -33,10 +33,10 @@ biomass             common    food,science               Biomass
 ice                 common    ice                        Ice
 
 # ---- uncommon ------------------------------------------------------------------------------
-control-unit        uncommon  tech,science,ship          Control unit
-power-unit          uncommon  tech,industry,ship         Power unit
-large-fuel-pack     uncommon  fuel                       Large burnstone pack
-shells-40mm         uncommon  military,ammo              40 mm shells
+control-unit        common    tech,science,ship          Control unit
+power-unit          common    tech,industry,ship         Power unit
+large-fuel-pack     common    fuel                       Large burnstone pack
+shells-40mm         common    military,ammo              40 mm shells
 cobalt-bar          uncommon  metal,industry             Cobalt bar
 neodymium-bar       uncommon  metal,tech                 Neodymium bar
 gold-bar            uncommon  metal,vault                Gold bar

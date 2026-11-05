@@ -110,6 +110,54 @@ public static class Decay
                 inst.Lights.Add(l);
             }
         }
+        // One wrong detail from afar: in a dead place, a single window high up is still lit.
+        if (!powered && (rng.Chance(0.75f) || !inst.Lights.Any(l => l.Cell.Y >= 0)))
+        {
+            var windows = new List<Int3>();
+            foreach (var (p, b) in inst.Blocks.Blocks())
+                if (b.Role == Role.Window && p.Y >= 1) windows.Add(p);
+            if (windows.Count > 0)
+            {
+                int top = windows.Max(w => w.Y);
+                var high = windows.Where(w => w.Y >= top - 4).ToList();
+                Int3 lit = high[rng.Range(0, high.Count)];
+                var wb = inst.Blocks.Get(lit);
+                wb.Material = Material.Lumen;
+                wb.Color = new Rgb(0xff, 0xc8, 0x78);
+                inst.Blocks.Set(lit, wb);
+                inst.Lights.Add(new LightSpot { Cell = lit, Color = wb.Color, Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Storey = (lit.Y + 1) / Building.Pitch });
+            }
+        }
+        // No window to leave lit (a mine mouth, a hatch): a work lamp still burns over the way in.
+        if (!inst.Lights.Any(l => l.Cell.Y >= 0))
+        {
+            Int3 out1 = layout.EntranceFacing.Vec();
+            Int3 door = layout.EntranceCell - out1 * 2;
+            bool done = false;
+            for (int back = 0; back <= 2 && !done; back++)
+                for (int up = 1; up <= 5 && !done; up++)
+                {
+                    Int3 c = door + out1 * back + Int3.Up * up;
+                    var lb = inst.Blocks.Get(c);
+                    if (lb.IsAir || !BlockInfo.Collides(lb.Type)) continue;
+                    lb.Material = Material.Lumen;
+                    lb.Color = new Rgb(0xff, 0xa0, 0x50);
+                    inst.Blocks.Set(c, lb);
+                    inst.Lights.Add(new LightSpot { Cell = c + out1, Color = lb.Color, Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
+                    done = true;
+                }
+            if (!done)   // nothing over the door at all: a lamp left by it
+                inst.Lights.Add(new LightSpot { Cell = layout.EntranceCell + Int3.Up * 2, Color = new Rgb(0xff, 0xa0, 0x50), Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
+        }
+        // A thin column of smoke where something still burns or vents.
+        if (inst.State is PoiState.Ruined or PoiState.Infested || rng.Chance(0.3f))
+        {
+            var roofs = layout.Modules.Where(m => !m.Underground && m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor)
+                .Select(m => StateTransforms.TopOf(inst, m)).Where(t => t != null).Select(t => t!.Value).ToList();
+            if (roofs.Count > 0) inst.Markers.Add(new Marker("smoke", roofs[rng.Range(0, roofs.Count)], inst.State == PoiState.Infested ? "spores" : "smoke"));
+        }
+        inst.Markers.AddRange(x.Markers);
+
         // The Bloom creeps into the deep levels whatever the state (it's thickest deepest).
         var nav = inst.Nav();
         foreach (var m in layout.Modules)

@@ -91,7 +91,7 @@ public sealed class Layout
     public PlacedModule Vault => Modules[VaultModule];
     public bool Underground => Modules.Any(m => m.Underground);
     /// <summary>The module deepest below ground (or the vault when nothing is below ground).</summary>
-    public int DeepestModule => Modules.Count == 0 ? -1 : Modules.OrderBy(m => m.Min.Y).ThenByDescending(m => m.Index == VaultModule).First().Index;
+    public int DeepestModule => Modules.Count == 0 ? -1 : Modules.Where(m => m.Shape.Occupied.Count > 0).OrderBy(m => m.Min.Y).ThenByDescending(m => m.Index == VaultModule).First().Index;
 }
 
 /// <summary>

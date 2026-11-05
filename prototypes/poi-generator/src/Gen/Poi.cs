@@ -57,6 +57,8 @@ public sealed class PoiInstance
     public List<Int3> Growths = new();
     public List<LightSpot> Lights = new();
     public List<SoundHook> Sounds = new();
+    /// <summary>Tags for the view and a later pass: smoke, vents, spawn and patrol points.</summary>
+    public List<Marker> Markers = new();
     public int StructureBefore, StructureAfter;
 
     public FamilyDef Family => Layout.Family;
@@ -273,6 +275,11 @@ public static class Fixtures
             if (t == vaultAccess) inst.CriticalPath = path;
         }
         foreach (Int3 c in layout.ExitCells) mask[c] = true;
+        // Stairwells and lift shafts are never damaged, walls and all: flights hang from them.
+        foreach (var m in layout.Modules.Where(m => m.Kind is ModuleKind.Stair or ModuleKind.Lift))
+            for (int y = m.Min.Y - 1; y <= m.Max.Y + 1; y++)
+                for (int z = m.Min.Z - 1; z <= m.Max.Z + 1; z++)
+                    for (int x = m.Min.X - 1; x <= m.Max.X + 1; x++) mask[new Int3(x, y, z)] = true;
         // Stairs, ladders and lift shafts are never damaged, nor are hidden rooms' walls.
         foreach (var (p, b) in inst.Blocks.Blocks())
             if (b.Type is BlockType.Stair or BlockType.Ladder or BlockType.Breakable) { mask[p] = true; mask[p + Int3.Down] = true; }

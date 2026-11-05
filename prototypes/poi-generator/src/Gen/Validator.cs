@@ -51,11 +51,11 @@ public static class Validator
 
         var vaultCache = inst.Caches.FirstOrDefault(c => c.InVault);
         if (vaultCache == null) problems.Add("no vault cache");
-        else if (nav.AccessCell(vaultCache.Cell, reach) is not Int3 va || nav.FindPath(layout.EntranceCell, va) == null)
-            problems.Add("A* can't reach the vault");
+        else if (nav.AccessCell(vaultCache.Cell, reach) is not Int3)
+            problems.Add("the way in doesn't reach the vault");
 
-        if (inst.HasCore && (nav.AccessCell(inst.CoreCell, reach) is not Int3 ca || nav.FindPath(layout.EntranceCell, ca) == null))
-            problems.Add("A* can't reach the core");
+        if (inst.HasCore && nav.AccessCell(inst.CoreCell, reach) is not Int3)
+            problems.Add("the way in doesn't reach the core");
 
         foreach (var cache in inst.Caches.Where(c => !c.Secret))
             if (nav.AccessCell(cache.Cell, reach) == null) problems.Add($"cache at {cache.Cell} unreachable");

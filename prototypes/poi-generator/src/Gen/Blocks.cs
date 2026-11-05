@@ -64,6 +64,8 @@ public enum Material : byte
     Rock, Soil, Concrete, Steel, Alloy, Scrap, Timber, Chitin, Resin, Bone, Basalt, Bronze,
     Glass, Lumen, DeadLumen, Glyph, Crystal, Bloom, Flesh, Plant, Ash, Cloth, Ceramic,
     Fused, Rust, Water,
+    /// <summary>Armoured plate: the foundations and floors of places a faction holds, so tunnelling in is slow.</summary>
+    Armour,
 }
 
 /// <summary>The part a block plays in the place. State transforms read it.</summary>
@@ -154,6 +156,7 @@ public static class BlockInfo
             Material.Timber or Material.Cloth or Material.Plant => 120,
             Material.Rock or Material.Basalt or Material.Concrete => 900,
             Material.Glyph => 5000,
+            Material.Armour => 3000,
             _ => 600,
         },
     };

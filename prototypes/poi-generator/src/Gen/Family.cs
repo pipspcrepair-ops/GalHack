@@ -104,6 +104,13 @@ public sealed class FamilyDef
     public bool Space;
     /// <summary>One line for the catalogue and the discovery card.</summary>
     public string Pitch = "";
+    /// <summary>
+    /// The ground it wants on a planet: peak, ridge, hillside, valley, flat, open or any (planet
+    /// surface siting reads it; empty means it falls back to its own guess).
+    /// </summary>
+    public string Siting = "";
+    /// <summary>How far its landmark should stand above the ground it sits on, in metres (tests).</summary>
+    public int Rise = 6;
 
     public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -162,6 +169,8 @@ public static class FamilyParser
                     break;
                 case "name": F().Name = rest; break;
                 case "pitch": F().Pitch = rest; break;
+                case "siting": F().Siting = p[1]; break;
+                case "rise": F().Rise = int.Parse(p[1], CultureInfo.InvariantCulture); break;
                 case "faction": F().Faction = Enum<Faction>(p[1], Error); break;
                 case "roster": F().Roster = p[1]; break;
                 case "kit": F().Kits["main"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;

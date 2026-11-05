@@ -122,6 +122,7 @@ public static class LayoutCheck
                 if (nav.Solid(n) && nav.Solid(n + Int3.Up) && nav.Solid(n + Int3.Up * 2)) continue; // a wall
                 if (nav.Standable(n) && layout.Occupied[n]) continue;                              // an opening onto the building's floor
                 if (nav.LadderAt(n) || nav.LiftAt(n)) continue;
+                if (g.Get(n).Type == BlockType.Rail) continue;                                       // a gallery's rail over a void
                 if (BlockInfo.IsSlope(g.Get(n).Type)) continue;
                 problems.Add($"corridor cell {c} opens into the void to its {h}");
                 goto corridorsDone;
@@ -143,13 +144,20 @@ public static class LayoutCheck
             if (!nav.Standable(outSide) && !nav.LiftAt(outSide)) { problems.Add($"doorway at {lo} opens onto no floor (outside {outSide})"); break; }
         }
 
+        // Stairs and ramps never clip: three clear cells over every slope a body walks.
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (!BlockInfo.IsSlope(b.Type) || !layout.Occupied[p + Int3.Up] && p.Y >= 0) continue;
+            if (nav.Solid(p + Int3.Up) || nav.Solid(p + Int3.Up * 2) || nav.Solid(p + Int3.Up * 3)) { problems.Add($"stair at {p} has less than three cells of headroom"); break; }
+        }
+
         // Reachability: every module (hidden rooms aside) has a cell you can stand in and reach.
         if (!nav.Standable(layout.EntranceCell)) { problems.Add($"can't stand at the way in {layout.EntranceCell}"); return problems; }
         var reach = nav.Reachable(layout.EntranceCell);
         var hidden = new HashSet<int>(x.Secrets.Select(s => s.Module));
         foreach (var m in layout.Modules)
         {
-            if (hidden.Contains(m.Index)) continue;
+            if (hidden.Contains(m.Index) || m.Shape.Occupied.Count == 0) continue;
             if (!m.Cells.Any(reach.Contains)) { problems.Add($"{m.Purpose} (storey {m.Storey}) at {m.Min} is unreachable from the way in"); break; }
         }
         // Stairwells join their storeys: the next storey up is reached through the stair.

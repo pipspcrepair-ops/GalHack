@@ -23,8 +23,8 @@ site old_airfield
   part road 44 14 len 22 width 6 axis z cracks 0.2
   part road 44 36 len 50 width 6 axis x cracks 0.2
   part building 70 44 program control_tower vault yes
-  part building 108 44 program hangar w 30
-  part building 108 70 program hangar w 30
+  part hangar 108 40 w 28 d 20 h 9
+  part hangar 108 70 w 26 d 18 h 8
   part tanks 152 50 count 2 r 4 h 9 gap 5 axis z
   part aircraft 14 26 len 18
   part aircraft 120 18 len 14
@@ -43,7 +43,7 @@ site spaceport
   part road -90 2 len 74 width 6 axis x cracks 0.1
   part building 34 -46 program terminal vault yes
   part building -56 -46 program control_tower floors 5
-  part building 40 30 program hangar w 32
+  part hangar 40 30 w 30 d 20 h 10
   part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
   part containers 84 -6 rows 3 cols 3
   part poles -60 -6 count 6 gap 12 h 8 axis x

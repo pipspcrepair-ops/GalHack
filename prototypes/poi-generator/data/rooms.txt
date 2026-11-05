@@ -16,11 +16,13 @@
 #     light       warm, cold, dim, red, green, cryo, glyph, none
 #     lock        the keycard clearance its door needs: staff, science, security, command
 #     blast       its door is a blast door
+#     deco        the decorations library's set for it (proto/deco), beside the generic props
 #     tags        keyspot (a keycard may be left here), core (a faction's core goes here),
 #                 hum, cluster (likes its own kind next door), and loot tags (medical, military...)
 
 # ---- circulation and arrival ---------------------------------------------------------------------
 room lobby
+  deco reception
   name Lobby
   width 6 11
   props table 2 screen 1 planter 2 pillar 1
@@ -32,6 +34,7 @@ room lobby
   tags keyspot
 
 room security
+  deco guardpost
   name Security post
   width 4 7
   props locker 3 table 1 screen 1
@@ -45,6 +48,7 @@ room security
   tags keyspot military
 
 room airlock
+  deco airlock
   name Airlock
   width 4 5
   props locker 3 shelf 1
@@ -55,6 +59,7 @@ room airlock
   tags space
 
 room decon
+  deco decon
   name Decontamination
   width 4 6
   props locker 2 tank 1 screen 1
@@ -65,6 +70,7 @@ room decon
 
 # ---- work ------------------------------------------------------------------------------------------
 room office
+  deco office
   name Offices
   width 5 9
   props table 3 shelf 2 locker 1
@@ -78,6 +84,7 @@ room office
   tags keyspot
 
 room archive
+  deco archive
   name Archive
   width 5 9
   props shelf 5 crate 1
@@ -88,6 +95,7 @@ room archive
   tags science
 
 room lab
+  deco lab
   name Laboratory
   width 6 10
   props bench 4 machine 2 shelf 1 tank 1
@@ -103,6 +111,7 @@ room lab
   tags science
 
 room cold-store
+  deco coldstore
   name Cold store
   width 4 7
   props shelf 3 tank 2
@@ -113,6 +122,7 @@ room cold-store
   tags science ice
 
 room containment
+  deco containment
   name Containment
   width 6 10
   props cell 4 machine 1
@@ -126,6 +136,7 @@ room containment
   tags science
 
 room control
+  deco control
   name Control room
   width 5 9
   props screen 2 bench 3 machine 1
@@ -140,6 +151,7 @@ room control
   tags core keyspot tech
 
 room command
+  deco warroom
   name Command centre
   width 7 11
   kind hall
@@ -155,6 +167,7 @@ room command
   tags core keyspot military
 
 room workshop
+  deco workshop
   name Workshop
   width 6 10
   props bench 3 machine 3 shelf 2 crate 1
@@ -166,6 +179,7 @@ room workshop
   tags industry
 
 room storage
+  deco storage
   name Storage
   width 4 10
   props crate 4 shelf 3
@@ -176,6 +190,7 @@ room storage
   tags salvage cluster
 
 room armoury
+  deco armoury
   name Armoury
   width 4 8
   props locker 4 shelf 2
@@ -188,6 +203,7 @@ room armoury
 
 # ---- living ----------------------------------------------------------------------------------------
 room quarters
+  deco quarters
   name Quarters
   width 5 10
   props bunk 5 locker 2
@@ -200,6 +216,7 @@ room quarters
   tags keyspot cluster
 
 room mess
+  deco canteen
   name Mess
   width 7 11
   kind hall
@@ -212,6 +229,7 @@ room mess
   light warm
 
 room galley
+  deco galley
   name Galley
   width 4 7
   props bench 3 machine 2 shelf 2
@@ -222,6 +240,7 @@ room galley
   tags food
 
 room washroom
+  deco washroom
   name Washroom
   width 4 6
   props tank 2 locker 2
@@ -230,6 +249,7 @@ room washroom
   light dim
 
 room chapel
+  deco chapel
   name Chapel
   width 6 10
   props statue 1 table 2 planter 1
@@ -241,6 +261,7 @@ room chapel
 
 # ---- medicine ----------------------------------------------------------------------------------------
 room ward
+  deco ward
   name Ward
   width 7 11
   props bed 5 locker 1 screen 1
@@ -253,6 +274,7 @@ room ward
   tags medical cluster
 
 room nurses
+  deco nursestation
   name Nurses' station
   width 4 7
   props table 2 shelf 2 screen 1
@@ -264,6 +286,7 @@ room nurses
   tags medical keyspot
 
 room theatre
+  deco theatre
   name Operating theatre
   width 6 9
   props machine 2 bench 2 tank 1 screen 1
@@ -275,6 +298,7 @@ room theatre
   tags medical
 
 room pharmacy
+  deco pharmacy
   name Pharmacy
   width 4 7
   props shelf 5 locker 1
@@ -286,6 +310,7 @@ room pharmacy
   tags medical
 
 room quarantine
+  deco quarantine
   name Quarantine ward
   width 7 11
   props bed 4 screen 3 tank 1
@@ -299,6 +324,7 @@ room quarantine
   tags medical
 
 room mortuary
+  deco morgue
   name Mortuary
   width 5 9
   props locker 5 bench 1
@@ -311,6 +337,7 @@ room mortuary
 
 # ---- sleep and life support ----------------------------------------------------------------------------
 room cryo-bay
+  deco cryo
   name Cryo bay
   kind hall
   width 8 11
@@ -323,6 +350,7 @@ room cryo-bay
   tags science ice cluster
 
 room monitor
+  deco control
   name Sleeper monitoring
   width 4 7
   props screen 2 bench 3
@@ -334,6 +362,7 @@ room monitor
   tags keyspot tech
 
 room hydroponics
+  deco hydroponics
   name Hydroponics
   width 7 11
   kind hall
@@ -347,6 +376,7 @@ room hydroponics
   tags food
 
 room plant
+  deco plant
   name Life support
   width 5 9
   props machine 4 tank 3
@@ -358,6 +388,7 @@ room plant
   tags hum industry
 
 room reactor
+  deco reactor
   name Reactor
   kind hall
   width 7 11
@@ -374,6 +405,7 @@ room reactor
   tags hum reactor
 
 room generator
+  deco plant
   name Generator hall
   width 6 10
   props machine 4 tank 2
@@ -386,6 +418,7 @@ room generator
 
 # ---- holding ---------------------------------------------------------------------------------------
 room cellblock
+  deco cellblock
   name Cell block
   width 7 11
   props cell 5 bunk 2
@@ -396,6 +429,7 @@ room cellblock
   tags cluster
 
 room guardroom
+  deco guardpost
   name Guard room
   width 4 7
   props locker 3 table 1 screen 1
@@ -408,6 +442,7 @@ room guardroom
   tags keyspot military
 
 room solitary
+  deco cellblock
   name Solitary
   width 4 7
   props cell 3
@@ -419,6 +454,7 @@ room solitary
   lock security
 
 room evidence
+  deco evidence
   name Confiscation lockers
   width 4 7
   props locker 5 shelf 2
@@ -431,6 +467,7 @@ room evidence
 
 # ---- mines and works ------------------------------------------------------------------------------
 room stope
+  deco mine
   name Stope
   width 6 11
   props crate 2 machine 1 pillar 2
@@ -442,6 +479,7 @@ room stope
   tags ore mine cluster
 
 room ore-store
+  deco mine
   name Ore store
   width 4 8
   props crate 5
@@ -452,6 +490,7 @@ room ore-store
   tags ore
 
 room magazine
+  deco armoury
   name Powder magazine
   width 4 6
   props crate 3 locker 2
@@ -463,6 +502,7 @@ room magazine
   tags mine military
 
 room pump-hall
+  deco plant
   name Pump hall
   kind hall
   width 7 11
@@ -475,6 +515,7 @@ room pump-hall
 
 # ---- the prize ---------------------------------------------------------------------------------------
 room vault
+  deco vault
   name Vault
   kind vault
   width 4 9

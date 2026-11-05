@@ -30,6 +30,8 @@ public sealed class RoomDef
     public bool Blast;                 // its door is a blast door
     public List<string> Tags = new();  // keyspot, core, secure, quarantine, story...
     public List<string> Story = new(); // environmental scenes it can host
+    /// <summary>The decorations library's set or theme for this room (wired in after proto/deco merges).</summary>
+    public string Deco = "";
     public bool Has(string tag) => Tags.Contains(tag);
     public override string ToString() => Id;
 }
@@ -59,6 +61,11 @@ public sealed class ProgramDef
     public float Collapse;                     // share of upper rooms whose floor has fallen through (ruined towers)
     public string Ground = "plain";            // what's around it: plain, snow, overgrown, scrap
     public string Stair = "switch";            // switch (a switchback stairwell) or ladder (a ladderway)
+    public bool Cab;                           // the top storey is a glass cab (control towers)
+    /// <summary>The type's layout grammar: footprint shapes, circulation patterns, basement outlines (weighted).</summary>
+    public List<(string Key, float Weight)> Shapes = new(), Plans = new(), Basements = new();
+    public float Setback;                      // chance an upper storey drops its wings
+    public float SecondStair;                  // chance of a second stair core in a long building
     public List<(string Band, string Room)> Halls = new();
     public Dictionary<string, List<Demand>> Bands = new();
     public List<string> Fill = new();          // rooms used when a band asks for nothing more
@@ -145,6 +152,7 @@ public static class ArchParser
                 case "blast": R().Blast = true; break;
                 case "tags": R().Tags = p.Skip(1).ToList(); break;
                 case "story": R().Story = p.Skip(1).ToList(); break;
+                case "deco": R().Deco = p[1]; break;
                 default: throw Err($"unknown keyword '{p[0]}'");
             }
         }
@@ -178,6 +186,12 @@ public static class ArchParser
                 case "collapse": P().Collapse = F(p[1]); break;
                 case "ground": P().Ground = p[1]; break;
                 case "stair": P().Stair = p[1]; break;
+                case "cab": P().Cab = true; break;
+                case "shapes": P().Shapes = Weighted(p); break;
+                case "plans": P().Plans = Weighted(p); break;
+                case "basement": P().Basements = Weighted(p); break;
+                case "setback": P().Setback = F(p[1]); break;
+                case "stairs2": P().SecondStair = F(p[1]); break;
                 case "hall": P().Halls.Add((p[1], p[2])); break;
                 case "hazards": P().Hazards = p.Skip(1).ToList(); break;
                 case "tags": P().Tags = p.Skip(1).ToList(); break;
@@ -192,6 +206,18 @@ public static class ArchParser
             }
         }
         return programs;
+    }
+
+    static List<(string, float)> Weighted(string[] p)
+    {
+        var list = new List<(string, float)>();
+        for (int i = 1; i < p.Length; i++)
+        {
+            float w = i + 1 < p.Length && float.TryParse(p[i + 1], System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : 1f;
+            list.Add((p[i], w));
+            if (i + 1 < p.Length && float.TryParse(p[i + 1], System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out _)) i++;
+        }
+        return list;
     }
 
     static Demand ParseDemand(string t)

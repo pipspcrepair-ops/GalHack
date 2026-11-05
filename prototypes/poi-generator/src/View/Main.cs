@@ -28,6 +28,8 @@ public partial class Main : Node3D
     public Camera3D Camera { get; private set; }
     public SkyRig Sky { get; private set; }
     public Overlay Map { get; private set; }
+    /// <summary>Screenshots: hold the inspector camera where it was put.</summary>
+    public bool FreezeCamera;
 
     // What the inspector shows.
     int _family, _variant;
@@ -133,6 +135,8 @@ public partial class Main : Node3D
         var ground = Look.ToColor(Look.Ground(_biome));
         Stage = PoiView.Build(poi, _biome, new PoiView.Options(), (x, z) => ground);
         _stageRoot.AddChild(Stage);
+        Player.LadderQuery = Stage.LadderAt;
+        _atmosphere = Look.For(_state);
 
         // Ground all round, with the place's own plug of rock in the middle.
         var hole = new Rect2I(Stage.PlugMin, Stage.PlugMax - Stage.PlugMin + Vector2I.One);
@@ -285,7 +289,7 @@ public partial class Main : Node3D
                 case Key.V: _variant = (_variant + 1) % families[_family].Variants.Count; _useCustom = false; Rebuild(); break;
                 case Key.N: _useCustom = true; _customSeed = (ulong)GD.Randi() | ((ulong)GD.Randi() << 32); _spawnSeed++; Rebuild(); break;
                 case Key.S: _state = (PoiState)(((int)_state + 1) % 4); Rebuild(); break;
-                case Key.R: _rarity = (Rarity)(((int)_rarity + 1) % 3); Rebuild(); break;
+                case Key.R: _rarity = (Rarity)(((int)_rarity + 1) % 5); Rebuild(); break;
             }
         }
         else if (CurrentMode == Mode.Walk)
@@ -293,7 +297,12 @@ public partial class Main : Node3D
             if (key.PhysicalKeycode == Key.E)
             {
                 if (_reader.Visible) CloseReader();
-                else if (Stage.Nearest(Player.EyePosition, Player.LookDirection) is { } it) OpenReader(it);
+                else if (Stage.RideLift(Player.GlobalPosition)) { }
+                else if (Stage.Nearest(Player.EyePosition, Player.LookDirection) is { } it)
+                {
+                    it.Use?.Invoke();
+                    OpenReader(it);
+                }
             }
             else if (key.PhysicalKeycode == Key.L) Player.Lamp.Visible = !Player.Lamp.Visible;
         }
@@ -310,9 +319,10 @@ public partial class Main : Node3D
         switch (CurrentMode)
         {
             case Mode.Aerial: Fly(dt, mouse); UpdateReveal(); break;
-            case Mode.Inspect: Orbit(dt, mouse); break;
+            case Mode.Inspect: if (!FreezeCamera) Orbit(dt, mouse); break;
             case Mode.Walk:
                 if (_reader.Visible && _reading != null && Stage.ToLocal(Player.EyePosition).DistanceTo(_reading.Position) > 3.5f) CloseReader();
+                Interior(dt);
                 break;
         }
         UpdateHud();
@@ -323,6 +333,38 @@ public partial class Main : Node3D
             Map.PlayerYaw = Camera.GlobalRotation.Y;
         }
         else Map.PlayerCell = null;
+    }
+
+    Look.Atmosphere _atmosphere;
+    float _fog, _ambient = -1f;
+    string _hazard;
+
+    /// <summary>
+    /// Inside a place, the sky's light falls away and the air thickens with the storey's fog: the
+    /// deeper and wronger the level, the darker and murkier, so the head torch matters.
+    /// </summary>
+    void Interior(float dt)
+    {
+        if (Stage == null || _atmosphere == null) return;
+        var env = Sky.Environment;
+        var lvl = Stage.LevelAt(Player.GlobalPosition);
+        bool inside = Stage.Inside(Player.GlobalPosition);
+        float fog = inside ? Mathf.Max(_atmosphere.FogDensity, lvl.Fog) : _atmosphere.FogDensity;
+        float ambient = inside ? (lvl.Depth > 0 ? 0.015f : 0.06f) : _atmosphere.Ambient;
+        if (_ambient < 0f) { _fog = fog; _ambient = ambient; }
+        _fog = Mathf.MoveToward(_fog, fog, dt * 0.03f);
+        _ambient = Mathf.MoveToward(_ambient, ambient, dt * 0.4f);
+        env.FogDensity = _fog;
+        env.AmbientLightEnergy = _ambient;
+        env.FogLightColor = inside ? _atmosphere.Fog.Darkened(0.85f) : _atmosphere.Fog;
+        _hazard = Stage.HazardAt(Player.GlobalPosition);
+    }
+
+    /// <summary>Snaps the interior fog and light to where the player stands now (screenshots).</summary>
+    public void SettleInterior()
+    {
+        _ambient = -1f;
+        Interior(0f);
     }
 
     void Fly(float dt, Vector2 mouse)
@@ -537,15 +579,24 @@ public partial class Main : Node3D
                 var poi = Stage.Poi;
                 var l = poi.Layout;
                 int defenders = poi.Enemies.Count(e => e.Defender);
+                string where = "";
+                if (CurrentMode == Mode.Walk)
+                {
+                    var lvl = Stage.LevelAt(Player.GlobalPosition);
+                    where = lvl.Name + (Player.Climbing ? "  ·  climbing" : "") +
+                            (Stage.Held.Count > 0 ? $"  ·  keycards: {string.Join(", ", Stage.Held)}" : "") +
+                            (_hazard != null ? $"\n!! {_hazard}" : "") + "\n";
+                }
                 _hud.Text = $"{(CurrentMode == Mode.Inspect ? "INSPECT" : "WALK")}  ·  {l.Family.Name}  //  {l.Name}\n" +
-                            $"{poi.State}  ·  {poi.Rarity}  ·  {l.Kit.Name}  ·  {l.Modules.Count} modules, {poi.Blocks.CountBlocks()} blocks\n" +
+                            $"{poi.State}  ·  {poi.Rarity}  ·  {l.Kit.Name}  ·  {l.Extras.Levels.Count} storeys, {l.Modules.Count} spaces, {poi.Blocks.CountBlocks()} blocks" +
+                            (poi.HasCore ? "  ·  core" : "") + "\n" +
                             $"Loot {poi.LootValue} cr in {poi.Caches.Count} caches  ·  {poi.Enemies.Count} enemies ({defenders} on duty)  ·  " +
-                            $"{poi.Terminals.Count} terminals  ·  {poi.Story.Count} story props\n" + fps;
+                            $"{l.Extras.Secrets.Count} hidden rooms  ·  {l.Extras.Breaches.Count} breaches  ·  {l.Extras.Locks.Count} locked doors\n" + where + fps;
                 _keys.Text = CurrentMode == Mode.Inspect
                     ? "F family  ·  V layout  ·  N new layout seed  ·  S state  ·  R rarity  ·  mouse / arrows orbit  ·  wheel zoom\n1 aerial  ·  3 walk in  ·  Tab layout map  ·  Esc free the mouse"
-                    : "WASD walk  ·  Shift sprint  ·  Space jump  ·  hold Ctrl crouch  ·  E read  ·  L lamp\n1 aerial  ·  2 inspect  ·  Tab layout map  ·  Esc free the mouse";
+                    : "WASD walk (W/S climb on ladders)  ·  Shift sprint  ·  Space jump  ·  hold Ctrl crouch  ·  E use (and ride lifts)  ·  L lamp\n1 aerial  ·  2 inspect  ·  Tab layout map  ·  Esc free the mouse";
                 _prompt.Text = CurrentMode == Mode.Walk && !_reader.Visible && Stage.Nearest(Player.EyePosition, Player.LookDirection) is { } it
-                    ? $"E  read {it.Title.ToLowerInvariant()}" : "";
+                    ? $"E  {(it.Use != null ? "use" : "read")} {it.Title.ToLowerInvariant()}" : "";
                 break;
             }
         }

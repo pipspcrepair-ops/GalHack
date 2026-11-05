@@ -28,14 +28,21 @@ public sealed class PlanetMap
 
     public static int SideFor(PlanetSize s) => s switch { PlanetSize.Small => 40, PlanetSize.Medium => 56, _ => 72 };
 
-    public static PlanetMap Generate(ulong seed, PlanetSize size, string name = "")
+    public static PlanetMap Generate(ulong seed, PlanetSize size, string name = "") => GenerateRect(seed, size, SideFor(size), SideFor(size), 24f, name);
+
+    /// <summary>A whole planet: a wide rectangle of coarse cells (16 by 8 km at 80 m a cell, say).</summary>
+    public static PlanetMap GenerateWorld(ulong seed, int width, int height, float cellSize, string name = "") =>
+        GenerateRect(seed, PlanetSize.Large, width, height, cellSize, name);
+
+    static PlanetMap GenerateRect(ulong seed, PlanetSize size, int width, int height, float cellSize, string name)
     {
-        int side = SideFor(size);
+        int side = Math.Min(width, height);
         var map = new PlanetMap
         {
-            Name = name, Size = size, Width = side, Height = side,
-            Biomes = new Biome[side * side], Territory = new string[side * side], Deposit = new bool[side * side],
+            Name = name, Size = size, Width = width, Height = height, CellSize = cellSize,
+            Biomes = new Biome[width * height], Territory = new string[width * height], Deposit = new bool[width * height],
         };
+        float freqScale = 40f / side;
         var rng = new Rng(Hash.Combine(seed, 0x91A4E7UL));
         ulong sTemp = rng.NextU64(), sWet = rng.NextU64(), sAsh = rng.NextU64(), sRock = rng.NextU64(), sOre = rng.NextU64();
 
@@ -44,14 +51,14 @@ public sealed class PlanetMap
         var capitals = new List<(float x, float y, string f)>();
         foreach (string f in factions)
             for (int i = rng.Between(1, 2); i > 0; i--)
-                capitals.Add((rng.Float(0.1f, 0.9f) * side, rng.Float(0.1f, 0.9f) * side, f));
+                capitals.Add((rng.Float(0.1f, 0.9f) * width, rng.Float(0.1f, 0.9f) * height, f));
         float reach = side * 0.3f;
 
-        for (int y = 0; y < side; y++)
-            for (int x = 0; x < side; x++)
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
             {
-                float temp = Noise.Fbm(sTemp, x, y, 0.045f), wet = Noise.Fbm(sWet, x, y, 0.06f);
-                float ash = Noise.Fbm(sAsh, x, y, 0.05f), rock = Noise.Fbm(sRock, x, y, 0.07f);
+                float temp = Noise.Fbm(sTemp, x, y, 0.045f * freqScale), wet = Noise.Fbm(sWet, x, y, 0.06f * freqScale);
+                float ash = Noise.Fbm(sAsh, x, y, 0.05f * freqScale), rock = Noise.Fbm(sRock, x, y, 0.07f * freqScale);
                 Biome b = temp < 0.33f ? Biome.Ice
                     : wet > 0.62f ? Biome.Fungal
                     : wet > 0.5f ? Biome.Steppe
