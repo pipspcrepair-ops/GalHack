@@ -110,6 +110,12 @@ public sealed class StatsSection : IMenuSection
             ("DEATHS", $"{s.Deaths}"),
         };
         g.Caption("SINCE THE CRASH", area.Position, area.Size.X);
+        // Options: the master volume.
+        var vol = new Rect2(area.End.X - 420, area.Position.Y + 2, 420, 34);
+        float master = _game.Audio?.Master ?? 1f;
+        g.Text($"MASTER VOLUME {master * 100:F0}%", vol.Position + new Vector2(0, 6), C.Text, 16);
+        if (g.Button("options:volume-down", new Rect2(vol.Position + new Vector2(230, 0), new Vector2(80, 32)), "-", C.Accent2) && _game.Audio != null) _game.Audio.Master = Mathf.Max(0f, master - 0.1f);
+        if (g.Button("options:volume-up", new Rect2(vol.Position + new Vector2(320, 0), new Vector2(80, 32)), "+", C.Accent2) && _game.Audio != null) _game.Audio.Master = Mathf.Min(1f, master + 0.1f);
         for (int i = 0; i < rows.Length; i++)
         {
             var (label, value) = rows[i];

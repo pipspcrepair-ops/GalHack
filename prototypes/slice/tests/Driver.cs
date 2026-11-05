@@ -86,14 +86,22 @@ public sealed class Driver
     /// </summary>
     public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f)
     {
+        // The menu takes the mouse: close it to look where you walk.
+        if (Game.Menu.IsOpen)
+        {
+            Controls.Tap(Key.Tab);
+            yield return 0;
+        }
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
-        float stuck = 0f, jet = 0f;
+        float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f;
+        bool digging = false;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
         {
             Vector3 feet = Game.Survivor.WorldFeet;
             Vector3 to = target - feet;
-            if (new Vector2(to.X, to.Z).Length() <= within) break;
+            float flat = new Vector2(to.X, to.Z).Length();
+            if (flat <= within) break;
             Face(new Vector3(target.X, Game.Survivor.WorldEye().Y, target.Z));
             Controls.Hold(Key.W);
             Controls.Hold(Key.Shift, Game.Suit.Vitals.Stamina > 30);
@@ -101,12 +109,24 @@ public sealed class Driver
             last = feet;
             stuck = moved < 0.02f ? stuck + 1f / 60f : 0f;
             if (stuck > 0.4f) jet = 0.7f;
+            // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
+            // survival tool, as a player in a hole would.
+            if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
+            else noProgress += 1f / 60f;
+            digging = noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            if (digging)
+            {
+                var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
+                Face(feet + ahead * 1.6f + Vector3.Up * 0.7f);
+            }
+            Controls.Primary = digging;
             // Over an edge: the jetpack brakes the fall, as a careful player would.
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
             Controls.Hold(Key.Space, jet > 0f || falling);
             jet -= 1f / 60f;
             yield return 0;
         }
+        if (digging) Controls.Primary = false;
         Controls.Hold(Key.W, false);
         Controls.Hold(Key.Shift, false);
         Controls.Hold(Key.Space, false);
@@ -150,7 +170,7 @@ public sealed class Driver
     {
         for (int i = 0; i < ticks && Game.Menu.RectOf(id) == null; i++) yield return 0;
         if (Game.Menu.RectOf(id) == null)
-            throw new InvalidOperationException($"no widget '{id}' on the menu (tab {Game.Menu.Tab}; {string.Join(", ", Game.Menu.Root.WidgetIds.Take(40))})");
+            throw new InvalidOperationException($"no widget '{id}' on the menu (tab {Game.Menu.Tab}; {string.Join(", ", Game.Menu.Root.WidgetIds.Where(w => !w.StartsWith("bag:") && !w.StartsWith("bar:")).Take(40))})");
     }
 
     /// <summary>Moves the mouse onto a menu widget and clicks it (Shift held for a quick move).</summary>

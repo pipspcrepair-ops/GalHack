@@ -263,8 +263,34 @@ public partial class Game
             SetDown(over, Survivor.WorldFeet);
         }
         foreach (Device d in Zone.Devices) d.Grid.Reconcile();
+        AutoTransmit(dt);
         Zone.Loot.Tick();
         if (Opened != null && Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f) CloseContainer();
+    }
+
+    float _transmitTimer;
+
+    /// <summary>
+    /// Auto-transmit (capital-base's rule, at its numbers): a vessel with it on sends what its
+    /// storage holds to Home's storage every half second while Home is within 1 km, whatever
+    /// fits, never deleting anything.
+    /// </summary>
+    void AutoTransmit(float dt)
+    {
+        if ((_transmitTimer -= dt) > 0f) return;
+        _transmitTimer = 0.5f;
+        Vessel home = Zone.Vessels.FirstOrDefault(v => v.Home && !v.IsWreck);
+        if (home == null) return;
+        foreach (Vessel v in Zone.Vessels)
+        {
+            if (!v.AutoTransmit || v == home || v.Storage.IsEmpty) continue;
+            if (v.Body.WorldPosition.ToGodot().DistanceTo(home.Body.WorldPosition.ToGodot()) > 1000f) continue;
+            foreach (var (item, n) in v.Storage.Stacks.ToList())
+            {
+                int moved = home.Storage.Add(item.Id, n);
+                if (moved > 0) v.Storage.Remove(item.Id, moved);
+            }
+        }
     }
 
     void Craft(Constructor c, double dt)

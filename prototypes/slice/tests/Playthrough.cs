@@ -123,6 +123,36 @@ public sealed class Playthrough
         foreach (int x in ClickPaged(id, $"{key}:down")) yield return x;
     }
 
+    /// <summary>Orders any number by clicking +10, +5 and +1 as a player would.</summary>
+    public IEnumerable<int> OrderMany(string key, string itemId, int count)
+    {
+        foreach (int step in new[] { 10, 5, 1 })
+            for (; count >= step; count -= step)
+                foreach (int x in Order(key, itemId, step)) yield return x;
+    }
+
+    /// <summary>
+    /// Makes sure a bill's worth is on hand (in a storage and the bag together): orders what is
+    /// short at a constructor's panel and waits for it, again if something was used up on the way,
+    /// as a player re-orders what is still missing.
+    /// </summary>
+    public IEnumerable<int> MakeAll(string key, GalHack.Items.Production.Constructor c, SharedStorage at, Bill bill, float seconds)
+    {
+        for (int round = 0; round < 4; round++)
+        {
+            var shortfall = new Bill();
+            foreach (var (id, n) in bill)
+            {
+                int have = at.Count(id) + Pack[id];
+                if (have < n) shortfall.Add(id, n - have);
+            }
+            if (shortfall.IsEmpty) yield break;
+            foreach (var (id, n) in shortfall)
+                foreach (int x in OrderMany(key, id, n)) yield return x;
+            foreach (int x in WaitFor(() => !c.Busy, seconds)) yield return x;
+        }
+    }
+
     /// <summary>Unlocks a tech-tree node on the TECH tab by clicking it.</summary>
     public IEnumerable<int> Unlock(string nodeId)
     {
@@ -167,39 +197,64 @@ public sealed class Playthrough
 
     // ---- Gathering ---------------------------------------------------------------------------
 
+    readonly HashSet<(int, int)> _triedDeposits = new();
+
+    /// <summary>The nearest deposit of a kind not dug at yet, on dry ground (its ore body's centre), or null.</summary>
+    public Vector3? NextDeposit(DepositKind kind, float within = 700f)
+    {
+        SurfaceZone zone = Game.Zone;
+        Vector3 from = Game.Survivor.WorldFeet;
+        Vector3? best = null;
+        float bestD = within;
+        foreach (Deposit d in zone.Planet.Map.Deposits.InRect(from.X - within, from.Z - within, from.X + within, from.Z + within))
+        {
+            if (d.Kind != kind) continue;
+            zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
+            Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
+            // Dry, and near enough the surface for the survival tool (it can't cut deep rock).
+            if (_triedDeposits.Contains(((int)at.X, (int)at.Z)) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
+            if (dist < bestD) { bestD = dist; best = at; }
+        }
+        return best;
+    }
+
     /// <summary>Digs ore of a kind out of the nearest deposits until the bag holds enough.</summary>
     public IEnumerable<int> Gather(DepositKind kind, int enough)
     {
         ItemDef ore = Game.Tool.OreOf(kind);
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
-        for (int deposit = 0; deposit < 6 && Pack[ore.Id] < enough; deposit++)
+        for (int deposit = 0; deposit < 8 && Pack[ore.Id] < enough; deposit++)
         {
-            Vector3? found = DepositFinder.Nearest(Game.Zone, kind, Game.Survivor.WorldFeet, 700f);
-            if (found is not Vector3 at)
+            if (NextDeposit(kind) is not Vector3 at)
             {
-                Log($"no {kind} deposit within 700 m");
+                Log($"no more {kind} deposits within 700 m");
                 yield break;
             }
-            foreach (int x in Drive.WalkTo(at, 3.5f, 120f)) yield return x;
-            int idle = 0;
-            for (int pulse = 0; pulse < 220 && idle < 14 && Pack[ore.Id] < enough; pulse++)
+            _triedDeposits.Add(((int)at.X, (int)at.Z));
+            foreach (int x in Drive.WalkTo(at, 3.5f, 90f)) yield return x;
+            int idle = 0, got0 = Pack[ore.Id];
+            var store = Game.Zone.Planet.Terrain.Store;
+            for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough; pulse++)
             {
                 Vector3 eye = Game.Survivor.WorldEye();
                 Vector3? target = NearestOre(at, eye, kind);
                 if (target is not Vector3 t) break;
-                if (eye.DistanceTo(t) > 6.5f)
+                // Digging down through soil and rock to a buried bed is progress too.
+                int before = Pack[ore.Id] + store.RemovedCount;
+                // Walk over a deposit; one buried under the feet is dug down to, a ball at a time.
+                if (new Vector2(t.X - eye.X, t.Z - eye.Z).Length() > 4f && eye.DistanceTo(t) > 6.5f)
+                    foreach (int x in Drive.WalkTo(t, 1.2f, 5f)) yield return x;
+                else
                 {
-                    foreach (int x in Drive.WalkTo(t, 1.2f, 6f)) yield return x;
-                    continue;
+                    foreach (int x in Drive.HoldPrimary(t, 2)) yield return x;
+                    for (int i = 0; i < 10; i++) yield return 0;
                 }
-                int before = Pack[ore.Id];
-                foreach (int x in Drive.HoldPrimary(t, 2)) yield return x;
-                for (int i = 0; i < 10; i++) yield return 0;
-                idle = Pack[ore.Id] > before ? 0 : idle + 1;
+                idle = Pack[ore.Id] + store.RemovedCount > before ? 0 : idle + 1;
             }
+            Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
     }
-
     /// <summary>The nearest cell of a kind of ore still in the ground round a deposit's centre.</summary>
     public Vector3? NearestOre(Vector3 centre, Vector3 eye, DepositKind kind)
     {
@@ -327,7 +382,7 @@ public sealed class Playthrough
             outward.Y = 0f;
             outward = outward.LengthSquared() < 1e-4f ? Vector3.Back : outward.Normalized();
             Vector3 stand = at + outward * (face == Dir.NegY ? 1.4f : 2.4f);
-            foreach (int x in Drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 0.5f, 25f)) yield return x;
+            foreach (int x in WalkAround(centre, new Vector3(stand.X, 0, stand.Z), 4.5f)) yield return x;
             foreach (int x in Select(slots[block])) yield return x;
             foreach (int x in TurnTo(lift ? ThrustingAlong(Dir.PosY) : Orientations.Identity)) yield return x;
             bool done = false;
@@ -337,13 +392,29 @@ public sealed class Playthrough
         placed(ok);
     }
 
+    /// <summary>Walks round something (a structure) at a radius to reach a point on its far side, the way a person walks round a building rather than into it.</summary>
+    public IEnumerable<int> WalkAround(Vector3 centre, Vector3 to, float radius)
+    {
+        Vector3 from = Game.Survivor.WorldFeet;
+        float a0 = MathF.Atan2(from.Z - centre.Z, from.X - centre.X), a1 = MathF.Atan2(to.Z - centre.Z, to.X - centre.X);
+        float turn = Mathf.Wrap(a1 - a0, -MathF.PI, MathF.PI);
+        int steps = (int)MathF.Ceiling(MathF.Abs(turn) / (MathF.PI / 4f));
+        for (int i = 1; i <= steps; i++)
+        {
+            float a = a0 + turn * i / steps;
+            var p = new Vector3(centre.X + MathF.Cos(a) * radius, 0f, centre.Z + MathF.Sin(a) * radius);
+            foreach (int x in Drive.WalkTo(p, 1.2f, 15f)) yield return x;
+        }
+        foreach (int x in Drive.WalkTo(to, 0.6f, 15f)) yield return x;
+    }
+
     /// <summary>Walks to stand a few metres from a point on the side facing away from another point.</summary>
     public IEnumerable<int> StandOff(Vector3 at, Vector3 from, float distance)
     {
         Vector3 dir = at - from;
         dir.Y = 0f;
         dir = dir.LengthSquared() < 1e-3f ? Vector3.Forward : dir.Normalized();
-        Vector3 stand = at - dir * distance;
+        Vector3 stand = at + dir * distance;
         foreach (int x in Drive.WalkTo(stand, 0.8f, 40f)) yield return x;
     }
 

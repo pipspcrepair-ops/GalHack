@@ -8,13 +8,17 @@ namespace Slice.Surface;
 
 /// <summary>
 /// The suit's ore scanner: the nearest deposit of each common material (the planet generator
-/// promises one of each within about 280 m of any walkable spot), at its ore body's centre. A
+/// promises one of each within about 280 m of any walkable spot), at its ore body's centre, of
+/// those the survival tool can reach (dry, and near the surface). A
 /// deposit dug out is no longer shown: its label leaves the compass and the next nearest takes its
 /// place. Asked often, recomputed a few times a second.
 /// </summary>
 public sealed class DepositFinder
 {
     public static readonly DepositKind[] Kinds = { DepositKind.Iron, DepositKind.Copper, DepositKind.Silicon, DepositKind.Carbon, DepositKind.Water };
+
+    /// <summary>The deepest an ore body's centre may lie under the ground and still be shown, m.</summary>
+    public const float MaxDepth = 5f;
 
     /// <summary>How far round an ore body's centre its cells are counted, m.</summary>
     const int BodyReach = 6;
@@ -46,7 +50,9 @@ public sealed class DepositFinder
             planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
-            if (dist < within) candidates.Add((dist, at, ox, oy, oz));
+            // Only what the survival tool can reach: dry, and its ore body near the surface (it can't cut deep rock).
+            float ground = zone.GroundAt(at.X, at.Z).Y;
+            if (dist < within && ground > 0.5f && ground - at.Y <= MaxDepth) candidates.Add((dist, at, ox, oy, oz));
         }
         candidates.Sort((a, b) => a.dist.CompareTo(b.dist));
         // The nearest one that still holds ore (only the near ones are ever counted).

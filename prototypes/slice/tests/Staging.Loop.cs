@@ -76,7 +76,7 @@ public sealed partial class Staging
         var prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Species.Flies && c.Species.Plan != Wildlife.BodyPlan.Giant).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).First();
         foreach (int x in _drive.WalkTo(w.FromPatch(prey.Position), 12f, 60f)) yield return x;
         for (int i = 0; i < 40 && !prey.Dead; i++)
-            foreach (int x in Play.ShootAt(() => w.FromPatch(prey.Position) + Vector3.Up * 0.4f)) yield return x;
+            foreach (int x in Play.ShootAt(() => w.FromPatch(prey.Rig.BoundsCenter))) yield return x;
         Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Creature == prey);
         if (body == null) yield break;
         foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;

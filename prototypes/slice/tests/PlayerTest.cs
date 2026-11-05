@@ -100,12 +100,14 @@ public partial class PlayerTest : Node
         // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
 
         foreach (int x in Pod()) yield return x;
         foreach (int x in Gathering()) yield return x;
         foreach (int x in Hunting()) yield return x;
         foreach (int x in Inventory()) yield return x;
+        foreach (int x in JetpackLiftOff()) yield return x;
         foreach (int x in SurvivalConstructor()) yield return x;
         foreach (int x in Base()) yield return x;
         foreach (int x in VesselCore()) yield return x;
@@ -262,7 +264,7 @@ public partial class PlayerTest : Node
                 foreach (int x in _drive.WalkTo(at, 15f, 20f)) yield return x;
                 continue;
             }
-            foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Position) + Vector3.Up * MathF.Max(0.3f, _prey.Species.Stats.Radius))) yield return x;
+            foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Rig.BoundsCenter))) yield return x;
             if (tries == 2) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
                 $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
         }
@@ -321,7 +323,7 @@ public partial class PlayerTest : Node
         Vector3 site = _play.FlatSpot(_game.Pod.Body.Position.ToGodot(), 22f);
         foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
         foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
-        Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt["looted"]:F0} s of play)");
+        Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
         foreach (int x in _play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(_game.Pack.Grid[2].Item == "survival-constructor", "dragged onto toolbar slot 3");
@@ -342,12 +344,9 @@ public partial class PlayerTest : Node
         foreach (int x in _play.Order("core", "base-core", 1)) yield return x;
         Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "base-core") && _fab.Constructor.SubParts.Count > 0,
             $"CORE tab: a base core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
-        // Everything a base needs, made here too: its parts come out of the same ore.
-        foreach (var (item, n) in new[] { ("hull-plate", 50), ("winding", 12), ("copper-wire", 16), ("glass", 2) })
-            foreach (int x in _play.Order("core", item, n >= 10 ? 10 : n)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _play.WaitFor(() => _fab.Storage.Count("base-core") > 0, 120)) yield return x;
-        Check(_fab.Storage.Count("base-core") == 1, $"the base core came out ({_game.Stats.Seconds - _gameTimeAt["looted"]:F0} s of play since looting)");
+        Check(_fab.Storage.Count("base-core") == 1, $"the base core came out ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play since looting)");
         Mark("base core");
     }
 
@@ -360,13 +359,10 @@ public partial class PlayerTest : Node
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         Bill blocks = new();
         foreach (var (b, small, n) in BaseBlocks) blocks.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
-        Bill short0 = blocks.Minus(_fab.Storage.Contents);
-        foreach (var (item, n) in short0)
-            for (int left = n; left > 0; left -= 10)
-                foreach (int x in _play.Order("core", item, left >= 10 ? 10 : left >= 5 ? 5 : 1)) yield return x;
+        foreach (int x in _play.MakeAll("core", _fab.Constructor, _fab.Storage, blocks, 240)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        foreach (int x in _play.WaitFor(() => !_fab.Constructor.Busy, 240)) yield return x;
-        Check(!_fab.Constructor.Busy, $"the survival constructor made the base's parts: {_game.Zone.Data.Items.Describe(blocks, 5)}");
+        Check(!_fab.Constructor.Busy && blocks.All(kv => _fab.Storage.Count(kv.Key) + _game.Pack[kv.Key] >= kv.Value),
+            $"the survival constructor made the base's parts: {_game.Zone.Data.Items.Describe(blocks, 5)}");
         // Take what it made.
         foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
@@ -406,7 +402,8 @@ public partial class PlayerTest : Node
         foreach (var (slot, on, face) in steps)
         {
             Vector3 faceAt = _base.ToWorld(StructureBridge.CellCenter(_base.Structure, on) + face.Vec().ToVector3() * 1f);
-            foreach (int x in _play.StandOff(faceAt, core, 4.5f)) yield return x;
+            Vector3 outward = (faceAt - core) with { Y = 0f };
+            foreach (int x in _play.WalkAround(core, faceAt + outward.Normalized() * 4f, 9f)) yield return x;
             foreach (int x in _play.PlaceBlock(slot, _base, on, face)) yield return x;
         }
         int built = _game.Builder.Placed - placed;
@@ -439,18 +436,19 @@ public partial class PlayerTest : Node
         Check(_base.Storage.Count("iron-ore") > 0, $"STORE MY ORE AND MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
         Bill parts = new();
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
-        foreach (var (item, n) in parts)
-            for (int left = n; left > 0; left -= 10)
-                foreach (int x in _play.Order("core", item, left >= 10 ? 10 : left >= 5 ? 5 : 1)) yield return x;
+        Bill blockParts = parts.Clone();
+        // And what its core is made of, so making the core later leaves the blocks' parts whole.
+        parts.Add(_game.Zone.Data.Items.Item("vessel-core").Recipe.InputsFor(1));
+        GalHack.Items.Production.Constructor c = _base.Machines.Values.FirstOrDefault();
+        if (c == null) { Fail("the base has no constructor"); yield break; }
+        foreach (int x in _play.MakeAll("core", c, _base.Storage, parts, 300)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        GalHack.Items.Production.Constructor c = _base.Machines.Values.First();
-        foreach (int x in _play.WaitFor(() => !c.Busy, 300)) yield return x;
         Check(!c.Busy && c.Missing.IsEmpty, $"the base's small constructor made the vessel's parts: {_game.Zone.Data.Items.Describe(parts, 6)}");
         GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP, {_game.Progress.Points} points after {_game.Stats.Seconds / 60:F1} min of play");
         // Level 5 by playing: a deposit or two more to dig if it isn't there yet.
         for (int round = 0; round < 6 && _game.Progress.Level < 5; round++)
         {
-            foreach (int x in _play.Gather(round % 2 == 0 ? DepositKind.Iron : DepositKind.Copper, _game.Pack[round % 2 == 0 ? "iron-ore" : "copper-ore"] + 60)) yield return x;
+            foreach (int x in _play.Gather(DepositKind.Iron, _game.Pack["iron-ore"] + 60)) yield return x;
             GD.Print($"  (more digging: level {_game.Progress.Level}, {_game.Progress.Xp} XP)");
         }
         Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
@@ -460,7 +458,9 @@ public partial class PlayerTest : Node
             foreach (int x in _play.Unlock(node)) yield return x;
             Check(_game.Progress.IsUnlocked(node), $"unlocked {_game.Progress.Node(node).Name} ({_game.Progress.Points} points left)");
         }
-        foreach (int x in _drive.WalkTo(core, 6f, 60f)) yield return x;
+        for (int tries = 0; tries < 3 && _game.Survivor.WorldFeet.DistanceTo(core) > 12f; tries++)
+            foreach (int x in _drive.WalkTo(core, 6f, 60f)) yield return x;
+        Check(_game.Survivor.WorldFeet.DistanceTo(core) <= 12f, $"walked back to the base ({_game.Survivor.WorldFeet.DistanceTo(core):F0} m from its core)");
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _play.Order("core", "vessel-core", 1)) yield return x;
@@ -472,7 +472,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.ClickWidget("storage:open")) yield return x;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack["vessel-core"] == 1 && parts.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and parts taken from the base's storage into the bag");
+        Check(_game.Pack["vessel-core"] == 1 && blockParts.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and parts taken from the base's storage into the bag");
         Mark("vessel core");
     }
 
@@ -496,6 +496,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
         _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && v != _game.Pod && v.Structure.Grid.Size == GridSize.Small);
+        if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", vessel cores in the bag {_game.Pack["vessel-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
         Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel, standing on the ground");
         if (_vessel == null) yield break;
         Vessel v = _vessel;
@@ -584,6 +585,25 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Tap(Key.L)) yield return x;
         Check(_game.Torch.Visible != before && _game.Torch.SpotRange > 20f, $"L toggles the head torch ({_game.Torch.SpotRange:F0} m, {_game.Torch.SpotAngle:F0}°)");
         foreach (int x in _drive.Tap(Key.L)) yield return x;
+    }
+
+    /// <summary>The jetpack up off the ground: rising fast is never a fall, so IMPACT stays off until the castaway comes down.</summary>
+    IEnumerable<int> JetpackLiftOff()
+    {
+        GD.Print("-- the jetpack: IMPACT only when falling --");
+        bool warnedRising = false;
+        float top = 0f;
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 && !_game.Suit.Dead; i++)
+        {
+            yield return 0;
+            float up = _game.Survivor.Body.Velocity.Y;
+            top = MathF.Max(top, up);
+            if (up > 0.5f && (_game.Suit.Last.Warnings & SurvivalVitals.Model.Alert.Fall) != 0) warnedRising = true;
+        }
+        _game.Controls.Hold(Key.Space, false);
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
+        Check(!warnedRising && top > 2f, $"lifting off on the jetpack (up to {top:F1} m/s) never flashes IMPACT");
     }
 
     IEnumerable<int> Death()

@@ -1,15 +1,18 @@
 # Prototype: the slice (phase 1, the ground loop)
 
-The first playable slice of GalHack's core loop, built from the proven prototypes and nothing else: crash-land in an escape pod on a generated planet, survive, gather, build a small vessel from blocks and fly it across the planet. Every system is compiled in from where it lives; the slice itself is glue, a game layer and its tests.
+The first playable slice of GalHack's core loop, built from the proven prototypes and nothing else: crash-land in an escape pod on a generated planet, walk out of it, survive, gather, craft, found a base, run its machines, build a small vessel block by block and fly it. Every system is compiled in from where it lives; the slice itself is glue, a game layer and its tests.
 
-![The escape pod at dawn, valley fog lifting](screenshots/pod.png)
-![Digging into an iron deposit, the visor counting the ore in](screenshots/dig.png)
-![The Skiff half-built from its blueprint, the rest a ghost](screenshots/build.png)
-![The finished Skiff lifting off over the hills](screenshots/liftoff.png)
-![Flying the Skiff down a river gorge](screenshots/flying.png)
-![In the Skiff's seat: the cockpit console with its four numbers](screenshots/cockpit.png)
+![The Tab menu, YOU: the bag and toolbar, the paperdoll with its equipment and vitals, the suit fabricator](screenshots/menu-you.png)
+![The Tab menu, CORE: a placed survival constructor making a base core](screenshots/menu-core.png)
+![The Tab menu, TECH: the base tree](screenshots/menu-tech.png)
+![A creature's body opened beside the bag](screenshots/loot.png)
+![A bolt in flight from the tool's muzzle, the sparks and scorches of the shots before it](screenshots/bolt.png)
+![Inside the pod: a shot scorches its wall, harmlessly](screenshots/podshot.png)
+![Night, the head torch on](screenshots/torch.png)
+![A base built by hand: core, container, generator, small constructor, steel; the survival constructor beside it](screenshots/base.png)
+![A small vessel built by hand on its core, lifting off](screenshots/vessel.png)
 
-Phase 1 is the ground loop. Orbit and boarding (phase 2) and saves across everything (phase 3) come next.
+Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go; saves across everything are phase 3.
 
 ## Play it
 
@@ -17,101 +20,166 @@ Phase 1 is the ground loop. Orbit and boarding (phase 2) and saves across everyt
 .\tools\godot.ps1 -Project prototypes/slice -Play
 ```
 
-The pod comes down at dawn at the starter planet's landing site. **F** unstraps you; the locker (**E** on the yellow container inside) holds what the pod could carry. The compass shows the nearest deposit of each building material.
+The pod comes down at dawn. **F** unstraps you. **E** on the yellow locker inside opens it beside your bag: **TAKE ALL**. Walk out of the hatch. The compass shows the nearest deposit of each common ore and drops one once it is dug out.
+
+### The loop (Survival)
+
+1. **The crash.** Walk out of the pod's door and back in; the locker has food, patch kits and air cells.
+2. **Gather.** The survival tool is on toolbar slot 1 (and in your hands). Hold the left button on ore to dig it (12 raw ore a cell), on a plant to cut it (biomass). **Q** switches it to shooting: a bolt you can see, sparks and a scorch where it lands. Shots only hurt creatures.
+3. **The suit fabricator** (Tab, YOU) makes the bare minimum from raw finds: the survival tool, rations, patch kits, air cells and a **placeable survival constructor**. It works while you play.
+4. **The survival constructor.** Drag it onto the toolbar, select it and click open ground. **E** on it opens its hopper beside your bag (STORE ALL); its panel is on Tab, **CORE**, when you stand by it. It refines ore into parts and makes the **base core**, the first blocks' parts and the next constructor up.
+5. **Found a base.** The base core on the toolbar, a click on open ground: a base (large grid, base mode, anchored). Drag blocks from the **build palette** (Tab, YOU) onto the toolbar and build onto it: each block's bill is paid from your bag, then the base's storage; right click takes a block down and refunds the whole bill.
+6. **Machines.** A container (storage), a generator (power) and a **small constructor** on the base, run from Tab, **CORE**, pulling from the base's storage. Level 2 unlocks the small constructor in the tech tree.
+7. **Level 5** unlocks the small vessel (Tab, **TECH**). The small constructor makes the **small-vessel core**.
+8. **Build your vessel.** Set the core down: it stands on a build stand 2 m up, so you can build under it as well as round it. A seat, a generator, a fuel tank, a gyro, thrusters (R / T turn them: a lift jet pushes up), three legs. Tab, CORE shows its four numbers and lift margin. **F** at the seat, **Space** to lift off.
+
+The Skiff blueprint is still there as a shortcut: drag **BLUEPRINT PROJECTOR** from the build palette onto the toolbar, click open ground and hold the button. Every block is paid for as it goes.
+
+**Creative** (`-- --creative` at launch) places everything free, unlocks the whole tech tree and runs every machine without material checks.
+
+### Controls
 
 | Key | On foot | In a seat |
 | --- | --- | --- |
-| WASD, mouse | Walk and look | Thrust; the mouse moves a stick that recentres by itself |
+| WASD, mouse | Walk and look | Thrust; the mouse moves a stick that recentres |
 | Shift | Sprint | Boost |
 | Space / Ctrl | Jump, hold in the air for the jetpack | Up / down |
-| 1 | Survival tool, gather: hold LMB to dig ore, or click a plant to cut it | |
-| 2 | Survival tool, shoot | |
-| 3 | Build: LMB place, RMB take down (refunds), wheel or [ ] block, R / T rotate, X mirror | |
-| 4 | Blueprint: click open ground to set the Skiff down, then hold LMB to build it block by block | |
-| E | Use: take everything stored in the vessel or pod you look at (Shift+E: store your materials in it); feed at your replicator | |
+| 1 to 9, wheel | The toolbar slot in your hands | |
+| Left button | Use what is in hand: dig, cut, shoot, place, eat | |
+| Right button | Take a block down (refunded) | |
+| Q | Survival tool: gather / shoot | Roll |
+| R / T, X, wheel | A block in hand: turn it, mirror, its shape | |
+| E | Open a container, a body, a backpack, a locker, a device's hopper | Roll |
 | F | Sit in the seat within reach | Get up |
-| Q / E | | Roll |
 | G / C | | Landing gear / cruise |
-| B | Set the survival replicator down, or pack it up | |
-| H | Helmet | |
-| Tab | Wrist computer: pack, the Skiff's cost against what you have, nearest deposits | |
+| L | Head torch | |
+| Tab | The menu (the game doesn't pause; you can still walk) | |
+| H, B | Helmet, the survival replicator | |
 | V | Third person | Chase camera |
-| R (dead) | Wake at the escape pod | |
-| F3 | Debug numbers | |
-| Esc | Free the mouse | |
+| R (dead) | Wake at the pod (your backpack stays where you fell, on the compass) | |
+| F3, Esc | Debug numbers, free the mouse | |
 
-The loop, the way the test plays it: empty the pod's locker, walk to the iron deposit by the pod and dig it out (about 25 cells), find two more for the rest of the iron, one of copper, one of carbon, set the Skiff's blueprint down beside the pod and hold the button until it is whole (a few seconds), take its seat, lift off with Space and fly. Landing: let go of W, come down with Ctrl, and the legs drop by themselves below 15 m.
+### The Tab menu
+
+One full-screen menu, styled as the suit's own terminal (the diegetic UI's screen glass, scanlines and 1970s-paperback colours) but laid over the view, not built into the world. The world keeps running. Every section is a self-contained panel (`IMenuSection`, `MenuPanel`) that lays itself out in any rectangle, so the same panel can go on an in-world screen.
+
+| Tab | What |
+| --- | --- |
+| **YOU** | Your **bag** (8 x 6 slots) and **toolbar** (1 to 9), stacks to each item's stack size, mass and volume. Drag to move, **Shift-click** to send a stack across, **right-click** to split, drag out of the panels (or onto SET DOWN) to drop it on the ground in a container that never despawns. Equipment slots round a **paperdoll** of your own character model, your vitals, armour, resistances and level beside it. On the right, the **suit fabricator** and the **build palette** (drag blocks onto the toolbar; locked ones greyed with what they need). **E** on a container opens it here beside the bag, with **TAKE ALL** and **STORE ALL** |
+| **TECH** | The tech tree: Base, Capital Vessel, Small Vessel, Hover Vessel, Tools, Weapons, Misc. Nodes in columns by level, joined to their parents; locked nodes say what they need (level, points, parent); click one you can afford |
+| **STATS** | What you have done since the crash, and the master volume |
+| **CORE** | The structure you are in or next to (or a device you stand by), the nearest picked, a button to switch: its manufacturing (each constructor's orders above, its own sub-parts below, missing materials, ammo restock), its storage, its settings (core mode, gravity, power, lights, Home, auto-transmit) and its numbers (mass, power, CPU, storage; a vessel's four numbers, turn cap and lift margin) |
+| **MAP** | 300 or 600 m round you: structures, devices, the pod, your backpack, bodies and drops, the nearest deposits, creatures |
+
+The visor stays minimal: vitals, warnings, the compass with contacts, the toolbar, what is in hand and its keys, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play.
 
 ## How it fits together
 
 | Piece | From | What the slice does with it |
 | --- | --- | --- |
-| Physics | `shared/Physics` | One physics world for the zone: the survivor walks on the shared walk controller, rides hulls in cabin worlds, and every vessel is one body flown by the handling model through the physics sandbox's bridges (`HandlingBridge`, `StructureBridge`, `WeatherBridge`, compiled in from there) |
-| Terrain | `shared/Terrain`, `terrain-digging` | The planet as diggable voxels (`PlanetTerrain`). `PlanetEdits` is the physics module's `ITerrainEditor` (craters and digs on every copy across a seam); `PlanetGround` is its stuck field, reading only ground the streamer has built |
-| Planet | `planet-generator`, `planet-surface` | The generator's temperate starter world, streamed by planet-surface's `TerrainStreamer` with its sky, sea, valley fog and flora, all used unchanged |
-| Weather | `weather`, `planet-surface` | The weather model pushes bodies through `WeatherBridge`; planet-surface's lightning and tornado effects draw it (through a small `IWeatherScene` interface); the slice adds rain, snow and dust around the camera |
-| Wildlife | `wildlife` | The planet's own fauna from its seed, on a 600 m patch of the planet's real heights that follows the survivor. Creatures telegraph every attack (sound and the visor's THREAT). Meeting a species shows nothing on screen in the slice |
-| Survival | `survival-vitals` | The suit is `SurvivalSim`, its exposure supplied by the planet: the generator's temperature field, the weather's swing, day and night, height, the sky's air for oxygen. Food, oxygen, body temperature, radiation and stamina warn before they cost health. The pod's rations, the survival replicator and respawn at the pod are survival-vitals' own |
-| Building | `building` | Its structure model, rules, blueprint format, mesher and ghosts. The Skiff and the pod are blueprints in `data/blueprints` |
-| Handling | `ship-handling` | The four readable numbers and the flight rules, unchanged. No levelling is added |
-| UI | `diegetic-ui` | Its theme, fonts, visor glass and in-world screens: the visor, the wrist computer and the cockpit console are the slice's own pages on them |
+| Physics | `shared/Physics` | One physics world for the zone: the survivor on the shared walk controller, riding hulls in cabin worlds and stepping off them onto the ground (`Riding.StepsOntoGround`), bases as fixed bodies walked on in the zone's world, every vessel one body flown by the handling model through the physics sandbox's bridges |
+| Items | `shared/Items` | The catalogue with the slice's additions (`data/items.json`, appended as it loads), `SharedStorage` under every bag, container and structure, `Constructor` for the suit fabricator, the survival constructor and every constructor block, `BlockPlacer` prices and refunds, `WorldRules` for Survival and Creative, the unlock and stack fields |
+| Terrain | `shared/Terrain`, `terrain-digging` | The planet as diggable voxels. `PlanetEdits` is the physics module's terrain editor; a base's blocks cut the ground they reach into |
+| Planet | `planet-generator`, `planet-surface` | The temperate starter world, streamed by planet-surface's `TerrainStreamer` with its sky, sea, fog and flora; trees are solid and felled for good |
+| Weather | `weather`, `planet-surface` | The weather model pushes bodies; planet-surface's effects and its wind and rain sounds |
+| Wildlife | `wildlife` | The planet's fauna on a patch that follows you, solid to you (blockers on the props layer), each species worth XP by toughness and danger; a dead creature's body is a container holding its drops |
+| Survival | `survival-vitals` | The suit (food, oxygen, temperature, radiation, stamina, health), warned before harm |
+| Building | `building` | Its structure model, rules, blueprint format, mesher and ghosts |
+| Handling | `ship-handling` | The four numbers and the flight rules |
+| UI | `diegetic-ui` | Its theme, fonts, glass shader and widgets; the slice's menu, visor and cockpit console |
+| Sound | `planet-surface`, `building`, `diegetic-ui`, `wildlife` | All synthesised in code where it lives: digging, ore, clanks, thunder, wind and rain; block place and remove, UI clicks and the upgrade chime; the chirp; creature calls. The slice adds three small loops of its own (the jetpack, a vessel's engines, footsteps) and a master volume |
 
-The other prototypes' shaders and fonts load from their own `res://` paths. `src/Boot/ResourceMount` packs them at startup from where they live and mounts the pack at `res://`, so their code runs here unchanged and nothing is copied.
+### The slice's additions to shared/Items (`data/items.json`)
 
-### Building costs (placeholder)
+| Item | Made in | From | Why |
+| --- | --- | --- | --- |
+| Survival tool | suit fabricator | 6 iron ore, 2 copper ore | The tool is an item on the toolbar |
+| Trail ration, patch kit, air cell | suit fabricator | biomass (and silicon ore) | The suit's bare minimum: food, a simple heal (GalHack has no ailments), air |
+| Survival constructor (recipe replaced) | suit fabricator | 16 iron ore, 8 copper ore, 4 silicon ore | It is placeable here, so the suit makes it from ore |
+| Base core | survival constructor (tier 0) | the large core block's bill | A placed core founds a structure (Empyrion's way); the catalogue prices blocks only |
+| Small-vessel core, hover core | small constructor (tier 1) | the small core block's bill | |
+| Raw meat, hide, rare tissue | creatures' bodies | | wildlife's drop table: meat by size, a hide per three meat, a rare part by chance |
 
-The slice was built before materials and manufacturing were designed. Until it adopts `shared/Items`, digging gives the building catalogue's recipe materials directly (`data/slice.json`: 6 iron, or 4 copper, silicon or carbon, per 1 m cell of ore), cutting a plant gives organics and carbon, and every block costs its catalogue recipe (`smallCost` for small-grid blocks). This lives behind `IBuildCosts` (`src/Construction/BuildCosts.cs`), the one place the build mode is checked, so `shared/Items` can replace it.
+The suit fabricator is a constructor at tier −1, below shared/Items' survival tier: it knows only the recipes above and works from raw finds.
 
-**Survival** pays for every block from the pack, then from the target's storage. **Creative** builds anything for free and takes nothing. It is a setting for the session (`Game.BuildMode`), chosen at launch:
+### Levels and the tech tree
 
-```powershell
-. .\tools\env.ps1
-dotnet build prototypes/slice/Slice.csproj
-& $GodotEditor --path prototypes/slice -- --creative
-```
+Experience comes from playing: 3 XP per ore cell dug, 2 per plant, a point per 2 recipe seconds of every finished craft (sub-parts too), 3 per large block and 1 per small block placed, 15 the first time you come within 30 m of a deposit, 10 the first time you meet a species, and each species' own kill value. Levels run to 25; each grants unlock points (2 to 6), and past the cap a point every 1,500 XP. All of it is in `data/progress.json`.
 
-### The starter vessel
+The tree is built from the unlock fields on every item and block (shared/Items' `items.json` and `blocks.json`, and the slice's `items.json`): level, point cost, parent node, tab. There is no tree file. The starting essentials cost nothing at level 1: the suit fabricator's minimum, the survival constructor, the base core, steel, glass, concrete, ladders, containers, generators, fuel tanks and lights on the large grid. The design's gates: **hover vessel at level 1, portable constructor at 3, small vessel at 5, capital vessel at 7** (the large thruster, which also opens a base's capital mode). A locked recipe can't be ordered in any constructor and a locked block can't be placed; both show greyed with the reason. Creative unlocks everything. Level, XP, points and unlocks live in one serialisable `ProgressState` for phase 3's saves.
 
-The **Skiff** (`data/blueprints/starter.gbp`), 174 small-grid blocks in a Chris Foss livery: an open cockpit behind a glass windscreen, low striped rails, an engine hump with the generator, gyro and a container, two main engines, retros, side jets, two lift jets and three landing legs.
-
-| Mass | Accel fwd / back / up / side | Turn | Top speed | Lift margin | Cost |
-| --- | --- | --- | --- | --- | --- |
-| 3.16 t | 23.7 / 23.7 / 23.7 / 11.9 m/s² | 190°/s | 70 m/s | +44 kN (4.5 t spare) | 344 iron, 39 copper, 9 silicon, 7 carbon |
+Expected time to each gate for an experienced player (from the real-player test's XP and the pacing reference in shared/Items: 45 ore a minute, 1.2 s a block): see **Pacing** below.
 
 ### Rules the slice adds
 
-- **Warned before any harm.** Survival's alerts flash before health drains. Impacts use the physics module's one formula in full; the visor flashes IMPACT whenever the body is airborne faster than the formula's safe speed (8 m/s), and sprinting tops out just under it (7.9 m/s), so running into a rock never hurts. A creature's wind-up is heard and shown (THREAT) before its lunge.
-- **A calm opening.** Of the weather seeds that follow from the planet's, the slice takes the first whose forecast has no severe weather in the first 12 minutes. After that it is the planet's own weather, every storm warned before it arrives.
-- **Gamey cockpits.** A seat counts as a sealed, heated cockpit (survival's cockpit volume): oxygen refills and the weather stays outside.
-- **Streaming follows a vessel ahead of it,** and a flying vessel gets terrain collision a column further out, so the ground it flies over is solid when it gets there.
+- **Warned before any harm.** Impacts use the physics module's one formula in full; the visor flashes IMPACT only while the body is airborne **and coming down** faster than the safe speed, never while lifting off on the jetpack. A creature's wind-up is heard and shown (THREAT) before its lunge.
+- **Nothing a player owns disappears.** A full bag sets things down in a container on the ground; a refund with nowhere to go likewise; a dead player's whole inventory is a backpack where they fell, marked on the compass and the map; bodies and drops stay until emptied.
+- **Every interaction asks the world you are in.** Aboard a structure, E, the tool and the build tool ray through its cabin world (a still copy of its blocks) as well as the zone's world beyond, so the locker answers from inside, a shot inside the pod scorches its wall (harmlessly) and the tool never digs through a floor.
+- **Walking out of a door hands you back to the planet at once.** A rider out of the interior with no block under its feet and the zone's ground within a step or two below leaves the cabin world there, onto the ground (`Riding.StepsOntoGround`).
+- **The pod's hatch is walkable.** It is 2 m high, and the pod comes to rest with its sill a short step above the ground in front of it; where the ground under it is higher, its landing carves its bed (through the terrain's edit API, before the ground streams in).
+- **A new vessel is built on a stand.** Its core holds 2 m above the ground where you set it, so its underside can be built; it holds there until first flown, then lands on its own legs. A blueprint's vessel instead stands on the ground as it grows (its lowest block on the highest ground under it), so no part of it hangs in the air.
+- **Small vessels turn no faster than 110 °/s** (`build.smallVesselMaxTurn`): the stick asks for a share of the handling model's turn rate.
+- **E answers only containers, bodies, backpacks, lockers and devices.** A cockpit says F; a machine block opens its CORE panel.
+- **Gamey cockpits, a calm opening, streaming ahead of a vessel**: unchanged from before.
 
 ## Test it
 
 ```powershell
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlayerTest.tscn
 .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/SliceTest.tscn
 ```
 
-`tests/SliceTest.tscn` plays the loop headless, through the game's own controls (`tests/Driver.cs`: look, walk, press and hold), in about 40 s with `--fixed-fps 60` (from `SliceTest.args`). `-- --quick` hands over the gathered materials instead of digging, to iterate on the later steps. It checks:
+### The real-player test (`tests/PlayerTest.tscn`)
 
-- **Determinism:** the starter planet generates identically twice; its fauna rolls the same species; the starter blueprint's four numbers come out the same; the same inputs fly the same 4 s hop twice, tick for tick (difference 0)
-- **The pod:** it stands landed at the generator's landing site; the castaway spawns standing beside it; the site is survivable (16.8 °C, 21% oxygen); 44 creatures of 9 species live around it
-- **The locker:** E takes its materials and the rations
-- **Gathering:** walking to the nearest deposits and digging them fills the pack with exactly the yield per ore cell dug; the dug ground is real terrain; the nearest deposits hold enough for the Skiff; cutting a plant gives organics and carbon, and the plant is gone
-- **Building:** a click sets the blueprint down and pays for its core; holding the button builds all 174 blocks one at a time, each where the blueprint has it; every block was paid for exactly; the body's mass, the four numbers and the lift margin are the blueprint's; its three legs are its controller's
-- **Creative:** the same blueprint builds in Creative and the pack and the spend don't change
-- **Flight:** F boards it; Space lifts it off; it flies over 2 km at up to 70 m/s and lands on its gear with no damage, standing within the gear's 12° settle limit; the pilot is unhurt; the game's main-thread cost per frame while flying, judged on the best of several 300-frame windows (about 1 ms against an 8 ms budget)
-- **Creatures:** the wildlife follows the castaway 2 km; a hunter's attack shows THREAT about 1.4 s before its bite lands
-- **Throughout:** every loss of health came after its warning; no body ends inside the ground; no vessel ever needed rescuing
+The loop played the way a person plays it, headless with `--fixed-fps 60`: the pod comes down for real with the castaway strapped in, and from then on only the game's own inputs are used (look, walk, keys, and the mouse on the Tab menu: every click and drag lands on a widget the menu laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
 
-Screenshots render windowed:
+PLAYERTEST-RESULTS
+
+### The systems test (`tests/SliceTest.tscn`)
+
+Determinism, the pod, gathering, cutting a tree (its collider gone the frame it falls), the Skiff blueprint built block by block and paid for, the same in Creative for nothing, a 2 km flight and landing, a hop flown twice to the tick, creatures warned before they bite, and nothing stuck in the ground. It starts beside the landed pod (the real-player test covers the descent) and, as a systems test, hands over the Skiff's parts and opens the tech tree: printed when it does.
+
+SLICETEST-RESULTS
+
+### Screenshots
+
+Rendered windowed and off-screen (`--position 20000,20000`), staged through the game's own controls (`tests/Staging.cs`, `tests/Staging.Loop.cs`; staging hands over materials and uses Creative where it only saves time, and says so):
 
 ```powershell
 . .\tools\env.ps1
 dotnet build prototypes/slice/Slice.csproj
-& $GodotEditor --path prototypes/slice res://tests/Screenshot.tscn -- --view=pod --out="$PWD/pod.png"
+& $GodotEditor --position 20000,20000 --path prototypes/slice res://tests/Screenshot.tscn -- --view=menu --tab=you --out="$PWD/menu-you.png"
 ```
 
-Views: `pod`, `dig`, `build`, `liftoff`, `flying`, `cockpit` and `descent` (the pod on its retros), each staged through the game's controls. `--hud=0` hides the visor.
+Views: `menu` (with `--tab=you|tech|stats|core|map`), `loot`, `bolt`, `podshot`, `torch`, `base`, `vessel`, and the earlier `pod`, `dig`, `build`, `liftoff`, `flying`, `cockpit`, `descent`.
+
+## Pacing
+
+The design target is a small vessel within one to two hours for an experienced player. shared/Items' pacing reference (45 ore a minute with the survival tool, 12 ore a cell, 1.2 s to place a block) and the real-player test's own route give:
+
+| Step | What it takes | An experienced player |
+| --- | --- | --- |
+| Out of the pod, locker emptied | | 1 min |
+| Ore for the whole loop (about 800 raw: iron, copper, carbon, silicon, a little ice and stone) | 45 ore/min | 18 min of digging, spread over the run |
+| Survival constructor (suit fabricator, 20 s) | 28 ore | at about 4 min |
+| Base core and the foothold's parts (survival constructor, half speed) | about 280 runs | 12 to 15 min, while gathering |
+| Base placed and built (core, container, generator, small constructor, two steel) | 6 large blocks | 2 min |
+| The vessel's parts (small constructor) and core | about 120 runs | 6 to 8 min |
+| The vessel built (13 blocks) and flown | | 4 min |
+
+So **about 45 to 55 minutes** from the crash to flying, inside the target with room for food, air, weather and creatures.
+
+**Levels on that route** (`data/progress.json`): experience comes about 11 a minute from digging, 10 to 20 a minute from whatever a constructor is making, plus finding deposits and species, building and kills. Expected time to each gate:
+
+| Gate | Level | Experience | Expected |
+| --- | --- | --- | --- |
+| Hover vessel | 1 | 0 | from the start |
+| Small constructor (the base's) | 2 | 80 | about 5 min |
+| Portable constructor | 3 | 220 | about 12 min |
+| **Small vessel** | **5** | **680** | **about 35 to 40 min**, as the base's constructor finishes the vessel's parts |
+| Capital vessel | 7 | 1,340 | about 75 to 90 min, by playing on |
+
+The real-player test follows the same route at its own speed (a bot digs and walks faster than a person, and its crafting runs at the test time-scale): it reached level 5 with PLAYER-L5.
 
 ## Changes to shared code and other prototypes
 
@@ -119,23 +187,36 @@ All additive; each prototype's own tests still pass.
 
 | Where | Change | Why |
 | --- | --- | --- |
-| `planet-surface/src/WeatherView` | `IWeatherScene` interface; `LightningFx` and `TornadoFx` take it instead of `WeatherRig` (which implements it) | Run the weather effects without planet-surface's `Main` |
-| `planet-surface/src/Terrain/TerrainStreamer.cs` | `FloraNear(point, radius)`: the plants the far chunks scattered | Find and cut plants from data, with or without a renderer |
-| `wildlife/src/Core/Terrain.cs` | A constructor that bakes someone else's heights | Creatures on a patch of the real planet |
-| `wildlife/src/Game/ProceduralAudio.cs` | `Origin`, added to every sound's position (zero in wildlife) | Calls from a sim living on a patch |
-| `survival-vitals/src/Model/SurvivalSim.cs` | Optional `Environment` in place of the data file's planet | The generated planet's climate, sky and weather |
+| `shared/Physics/Core/Riding.cs` | `StepsOntoGround(rider, standingOnHull, zone, reach, out ground)` | Walking out of a landed vessel's door hands the rider to the zone's world at once, onto the ground |
+| `shared/Items/Core` | `ItemDef.StackSize` (data `stack`, a default per category), `ItemDef.Unlock` and `BlockBill.UnlockSmall/UnlockLarge` (data `unlock`), the `Unlock` record, `BlockBill.NodeId` | Empyrion-shaped inventories and a tech tree carried by the items and blocks themselves |
+| `shared/Items/data` | `unlock` on every block (per grid) and on tools, consumables and ammo | The tree's nodes; materials and parts have none (always made) |
+| `wildlife/src/Core` | `Stats.Xp`, set by the fauna generator from health, damage and hunting | Kill experience by species |
+| `planet-surface/src/WeatherView` | `IWeatherScene` (earlier) | |
+| `planet-surface/src/Terrain/TerrainStreamer.cs` | `FloraNear(point, radius)` with each plant's scatter id (earlier, now merged with main's solid flora) | Find and cut plants from data |
+| `wildlife/src/Core/Terrain.cs`, `ProceduralAudio.cs` | (earlier) | Creatures on a patch of the real planet |
+| `survival-vitals/src/Model/SurvivalSim.cs` | (earlier) | The generated planet's climate |
 
-`shared/Physics` is untouched.
+## References: Empyrion (ideas only; nothing copied)
+
+The owner asked "how did Empyrion do it?" for the inventory, the tech tree and the crafting chain; the design doc wins where they differ. Read, never copied:
+
+- [Tech Tree](https://empyrion.fandom.com/wiki/Tech_Tree) and [Leveling and XP](https://empyrion.fandom.com/wiki/Leveling_and_XP) (Official Empyrion wiki): XP from mining, building, kills and exploring; a level cap of 25; points per level spent on nodes that each have a level, a cost and a parent. GalHack's nodes, names, numbers and gates are its own (the design's gates win).
+- [Experience Points, Player Level Progression and Tech Trees](https://empyriononline.com/threads/experience-points-player-level-progression-and-tech-trees.3082/) (Empyrion forums): how players paced the early levels.
+- [Guide/Survival Best Practice](https://empyrion.fandom.com/wiki/Guide/Survival_Best_Practice) (Official wiki): out of the escape capsule, open its inventory, collect all; tools, constructors and food on toolbar slots 1 to 9.
+- [Console commands gameoptions](https://empyrion.fandom.com/wiki/Console_commands_gameoptions) (Official wiki): a dead player's backpack drop.
+- The coordinator relayed Empyrion's local configuration (read-only) for the suit constructor's bare minimum, the placed survival constructor making the first core, per-item stack size, mass and volume, and per-item unlock fields. Shape only; no names, recipes or numbers taken.
 
 ## Known limits
 
-- **Phase 1 only:** no orbit, boarding or saves yet (F5/F9 do nothing). The planet is the starter world every time.
-- **Placeholder materials:** ore turns straight into the catalogue's recipe materials; no manufacturing, no constructor.
-- **Wildlife lives on a 600 m patch** around the survivor on foot; a new patch is baked when they walk far from its middle. Creatures don't collide with the player or vessels (wildlife's own limit), and they read the natural ground, not dug holes.
-- **The pod is a box.** It doesn't tumble on the way down; the descent is scripted.
-- **No discovery card yet:** wildlife has brought back its brief card for a species' first sighting; the slice doesn't show it (its brief said no first-meeting popup), so meeting a species shows nothing.
-- **Placeholder costs:** `shared/Items` (the item catalogue, recipes and `WorldRules` Creative/Survival) has landed on main; the slice's `CatalogueCosts` is still the placeholder behind `IBuildCosts`.
-- **Plants are cut whole** with one click; they don't regrow yet.
-- **Terrain collision streams around the focus only:** anything left far away (a parked vessel) sleeps until you come back.
-- **The open Skiff** has no cabin: in the seat it counts as a sealed cockpit, out of it you are on its deck.
-- **Turn rate:** the Skiff is light, so its one gyro turns it at 190°/s; the mouse stick is gentle to compensate.
+- **Phase 1 only:** no orbit, boarding or saves yet; the planet is the starter world every time. Progress lives in one `ProgressState` ready for phase 3's saves.
+- **The escape pod is going**: the design now starts every game in a buried cryopod bunker (a follow-up). The start sequence (`Game.OnPlanetBuilt`, `Descend`) and the starting kit (`materials.podLocker`, `materials.toolbar` in `data/slice.json`) are kept separate so the bunker can replace the pod with little rework. The pod got only what the loop needs: a walkable hatch and its locker.
+- **Blocks are not items** (shared/Items' rule): the toolbar holds block shortcuts paid from storage at placement, not stacks of blocks as in Empyrion. Cores are the exception, made as items in the slice's own data.
+- **Equipment is read-only**: the paperdoll's armour and booster slots show the survival suit's; there are no armour items to drag in yet.
+- **Power is a switch**: a generator on a structure powers its machines; fuel isn't burned yet, and the lights toggle doesn't switch light blocks yet.
+- **Capital mode** can be set on a base once the capital vessel tech is unlocked, but the base stays anchored: lift-off belongs to capital-base and isn't wired here.
+- **A new vessel holds on its build stand** until first flown: it doesn't drop onto its legs by itself.
+- **Hover vessels** have their tab, core and pads, but the slice's handling of hover pads isn't tuned or tested.
+- **Deposits under deep rock** don't show on the compass: the survival tool can't cut deep rock.
+- **Creatures** are solid to the castaway through blockers on the props layer; they don't collide with vessels or each other's blockers, and they read the natural ground, not dug holes (wildlife's limit).
+- **In-world screens** for machines (the panels on diegetic-ui's screens) come once main's screen component is merged; everything is already doable from the Tab menu.
+- **Plants are cut whole** and don't regrow; **the open Skiff** has no cabin.

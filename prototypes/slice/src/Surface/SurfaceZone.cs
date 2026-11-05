@@ -241,6 +241,8 @@ public partial class SurfaceZone : Node3D
             _valleyFloor = heights[heights.Count / 6];
         }
         Sky.SetValleyFog(_valleyFloor, Sky.Air);
+        // Thinner than planet-surface's own: the opening view from the pod should read clearly.
+        Sky.Environment.FogHeightDensity *= Data.Rules.Planet.ValleyFogScale;
     }
 
     /// <summary>

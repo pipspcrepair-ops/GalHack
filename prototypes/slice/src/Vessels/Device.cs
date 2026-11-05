@@ -26,13 +26,13 @@ public partial class Device : Node3D
     StandardMaterial3D _panelMaterial;
 
     /// <summary>The hopper's room, storage units.</summary>
-    public const double Capacity = 600;
+    public const double Capacity = 1500;
 
     public static Device Place(SurfaceZone zone, MachineDef machine, string itemId, Vector3 at, float yaw)
     {
         var storage = new SharedStorage(zone.Data.Items, machine.Name, Capacity);
         var d = new Device { Name = machine.Name.Replace(" ", ""), Label = machine.Name, ItemId = itemId };
-        d.Grid = new ItemGrid(storage, 8, 5);
+        d.Grid = new ItemGrid(storage, 8, 5, growable: true);
         d.Constructor = new Constructor(zone.Data.Items, machine, storage, zone.WorldRules);
         zone.AddChild(d);
         d.GlobalTransform = new Transform3D(new Basis(Vector3.Up, yaw), at);

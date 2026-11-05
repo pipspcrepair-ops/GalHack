@@ -255,7 +255,7 @@ public sealed class YouSection : IMenuSection
         Catalogue cat = _game.Zone.Data.Catalogue;
         foreach (BlockType t in cat.Types)
         {
-            if (t.IsCore || !_game.Zone.Data.Items.Blocks.TryGet(t.Id, out BlockBill bill)) continue;
+            if (t == null || t.IsCore || !_game.Zone.Data.Items.Blocks.TryGet(t.Id, out BlockBill bill)) continue;
             foreach (bool small in new[] { false, true })
             {
                 bool allowed = p.BlockAllowed(t.Id, small);

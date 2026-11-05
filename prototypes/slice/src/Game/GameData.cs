@@ -133,6 +133,7 @@ public sealed class SliceRules
         public double StartTimeOfDay { get; set; } = 0.27;
         public float PodDropHeight { get; set; } = 260f;
         public float PodDropSeconds { get; set; } = 7f;
+        public float ValleyFogScale { get; set; } = 0.45f;
     }
 
     public sealed class MaterialRules

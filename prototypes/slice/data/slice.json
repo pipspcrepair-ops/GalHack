@@ -12,7 +12,9 @@
     // The pod comes down at dawn (0 midnight, 0.5 noon).
     "startTimeOfDay": 0.255,
     "podDropHeight": 260,
-    "podDropSeconds": 7
+    "podDropSeconds": 7,
+    // The valley fog's density against planet-surface's own: thinner, so the first view reads.
+    "valleyFogScale": 0.4
   },
 
   // What gathering gives, as shared/Items' raw items (an ore cell gives the ore its deposit kind

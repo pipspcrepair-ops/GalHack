@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -128,12 +128,28 @@ public sealed class Progress
         _unlocked = new HashSet<string>(State.Unlocked, StringComparer.Ordinal);
         _found = new HashSet<string>(State.Found, StringComparer.Ordinal);
         // The starting essentials: every node at level 1 that costs nothing.
-        foreach (TechNode n in Nodes)
-            if (n.Level <= 1 && n.Cost == 0 && ParentOk(n)) Grant(n);
-        // Their children free at level 1 too (a parent chain of free nodes).
-        for (int pass = 0; pass < 4; pass++)
+        GrantFree();
+    }
+
+    /// <summary>
+    /// Nodes that cost nothing unlock themselves as soon as their level and parent are reached:
+    /// the starting essentials at level 1, and later the free blocks under a node you bought
+    /// (the small vessel's hull and legs once its core is unlocked).
+    /// </summary>
+    void GrantFree()
+    {
+        int level = Level;
+        bool more = true;
+        while (more)
+        {
+            more = false;
             foreach (TechNode n in Nodes)
-                if (n.Level <= 1 && n.Cost == 0 && ParentOk(n)) Grant(n);
+                if (n.Cost == 0 && n.Level <= level && !_unlocked.Contains(n.Id) && ParentOk(n))
+                {
+                    Grant(n);
+                    more = true;
+                }
+        }
     }
 
     static List<TechNode> Build(ItemCatalogue items, GalHack.Structures.Catalogue blocks)
@@ -200,6 +216,7 @@ public sealed class Progress
             State.PointsEarned += points;
             LevelledUp?.Invoke(l, points);
         }
+        if (after > before) GrantFree();
         int extra = PastCapPoints() - pastBefore;
         if (extra > 0)
         {
@@ -271,6 +288,7 @@ public sealed class Progress
         if (n == null || StateOf(n) != UnlockState.Affordable) return false;
         State.PointsSpent += n.Cost;
         Grant(n);
+        GrantFree();
         Unlocked?.Invoke(n);
         return true;
     }
