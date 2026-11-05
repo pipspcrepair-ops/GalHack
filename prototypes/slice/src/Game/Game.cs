@@ -91,6 +91,8 @@ public partial class Game : Node3D
     public override void _Ready()
     {
         ResourceMount.Mount();
+        // Creative is chosen for the session at launch: godot --path prototypes/slice -- --creative
+        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--creative") >= 0) BuildMode = BuildMode.Creative;
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
         Zone = new SurfaceZone { Name = "Surface" };
         AddChild(Zone);

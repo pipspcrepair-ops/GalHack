@@ -28,7 +28,7 @@ The pod comes down at dawn at the starter planet's landing site. **F** unstraps 
 | 2 | Survival tool, shoot | |
 | 3 | Build: LMB place, RMB take down (refunds), wheel or [ ] block, R / T rotate, X mirror | |
 | 4 | Blueprint: click open ground to set the Skiff down, then hold LMB to build it block by block | |
-| E | Use: take everything from a container (Shift+E: store your materials in it); feed at your replicator | |
+| E | Use: take everything stored in the vessel or pod you look at (Shift+E: store your materials in it); feed at your replicator | |
 | F | Sit in the seat within reach | Get up |
 | Q / E | | Roll |
 | G / C | | Landing gear / cruise |
@@ -62,7 +62,13 @@ The other prototypes' shaders and fonts load from their own `res://` paths. `src
 
 Materials and manufacturing aren't designed yet. Until they are, digging gives the building catalogue's recipe materials directly (`data/slice.json`: 6 iron, or 4 copper, silicon or carbon, per 1 m cell of ore), cutting a plant gives organics and carbon, and every block costs its catalogue recipe (`smallCost` for small-grid blocks). This lives behind `IBuildCosts` (`src/Construction/BuildCosts.cs`), the one place the build mode is checked, so `shared/Items` can replace it.
 
-**Survival** pays for every block from the pack, then from the target's storage. **Creative** (a per-world setting, `Game.BuildMode`) builds anything for free and takes nothing.
+**Survival** pays for every block from the pack, then from the target's storage. **Creative** builds anything for free and takes nothing. It is a setting for the session (`Game.BuildMode`), chosen at launch:
+
+```powershell
+. .\tools\env.ps1
+dotnet build prototypes/slice/Slice.csproj
+& $GodotEditor --path prototypes/slice -- --creative
+```
 
 ### The starter vessel
 

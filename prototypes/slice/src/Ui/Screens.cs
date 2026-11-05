@@ -158,9 +158,9 @@ public partial class Wrist : Node3D
         _raise = Mathf.MoveToward(_raise, Raised ? 1f : 0f, (float)delta * 4f);
         Visible = _raise > 0.01f;
         float e = _raise * _raise * (3f - 2f * _raise);
-        // Up from below the view to low in the left of it, turned toward the eye.
-        Transform = new Transform3D(new Basis(Vector3.Up, 0.35f) * new Basis(Vector3.Right, 0.25f),
-            new Vector3(-0.13f, -0.30f + 0.20f * e, -0.40f));
+        // Up from below the view to low in the left of it, its face turned to the eye.
+        var at = new Vector3(-0.15f, -0.34f + 0.22f * e, -0.42f);
+        Transform = new Transform3D(Basis.LookingAt(at.Normalized(), Vector3.Up), at);
     }
 
     public sealed partial class WristPage : SlicePage

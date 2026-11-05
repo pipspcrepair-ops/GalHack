@@ -199,8 +199,12 @@ public sealed class Staging
             foreach (int x in _drive.Tap(Key.E)) yield return x;
             break;
         }
+        // Out into the open, then up with the wrist.
+        Vector3 outside = pod.Body.ToParent(new N.Vector3(0f, 0f, -7f)).ToGodot();
+        foreach (int x in _drive.WalkTo(outside, 1f, 20f)) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
-        foreach (int x in _drive.LookAt(_game.Survivor.WorldEye() + new Vector3(0.3f, -0.15f, 1f), 50)) yield return x;
+        Vector3 ahead = outside + (outside - pod.Body.Position.ToGodot()).Normalized() * 20f;
+        foreach (int x in _drive.LookAt(ahead + Vector3.Down * 2f, 50)) yield return x;
     }
 
     /// <summary>In the Skiff's seat, the console showing its four numbers.</summary>
