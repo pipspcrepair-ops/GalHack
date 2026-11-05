@@ -6,8 +6,9 @@ namespace TerrainDigging.Terrain;
 
 /// <summary>
 /// Everything a mesh worker needs to build one chunk: the immutable base chunks and removal
-/// masks of the chunk and its 26 neighbours, captured on the main thread in microseconds.
-/// Base chunks that don't exist yet are generated on the worker when it first reads them.
+/// masks of the chunk and its 26 neighbours, and the structure volumes near it, captured on the
+/// main thread in microseconds. Base chunks that don't exist yet are generated on the worker
+/// when it first reads them.
 /// </summary>
 public sealed class ChunkNeighborhood
 {
@@ -15,14 +16,90 @@ public sealed class ChunkNeighborhood
     readonly BaseCache _base;
     readonly ulong[][] _masks;
 
-    public ChunkNeighborhood(Int3 chunk, BaseCache baseCache, ulong[][] masks)
+    /// <summary>Structure volumes within <see cref="ChunkStore.VolumeReach"/> cells of the chunk, in key order. Usually none.</summary>
+    public readonly StructureVolume[] Volumes;
+
+    public ChunkNeighborhood(Int3 chunk, BaseCache baseCache, ulong[][] masks) : this(chunk, baseCache, masks, null) { }
+
+    public ChunkNeighborhood(Int3 chunk, BaseCache baseCache, ulong[][] masks, StructureVolume[] volumes)
     {
         Chunk = chunk;
         _base = baseCache;
         _masks = masks;
+        Volumes = volumes ?? Array.Empty<StructureVolume>();
     }
 
     public static int NeighborIndex(int dx, int dy, int dz) => (dx + 1) + 3 * ((dz + 1) + 3 * (dy + 1));
+
+    /// <summary>Whether a cell within two cells of the chunk has been removed.</summary>
+    bool RemovedAt(int x, int y, int z)
+    {
+        int dx = (x >> ChunkStore.Shift) - Chunk.X, dy = (y >> ChunkStore.Shift) - Chunk.Y, dz = (z >> ChunkStore.Shift) - Chunk.Z;
+        ulong[] mask = _masks[NeighborIndex(dx, dy, dz)];
+        if (mask == null) return false;
+        int i = ChunkStore.LocalIndex(new Int3(x, y, z));
+        return (mask[i >> 6] & (1ul << (i & 63))) != 0;
+    }
+
+    // Cover flags for the padded grid plus a one-cell ring round it (each padding cell's neighbours).
+    const int Ring = SurfaceNetsMesher.Samples + 2;
+    [ThreadStatic] static bool[] _covered;
+
+    /// <summary>
+    /// Rule 4, the drawing half: a cell a standing structure cleared (removed, centre inside one
+    /// of its volumes) is drawn as the ground it was, and the mesher then cuts the surface off at
+    /// the structure's faces. So the ground outside meets each face exactly where it always was,
+    /// with no sag or moat from the cleared cells. The exception is a cleared cell beside dug
+    /// ground outside the structure: there the hole is open to the face and drawn as the air it is.
+    /// The cells themselves stay removed; only what is drawn changes.
+    /// </summary>
+    void ShowCleared(float[] density, CellMaterial[] material)
+    {
+        const int N = SurfaceNetsMesher.Samples;
+        bool[] covered = _covered ??= new bool[Ring * Ring * Ring];
+        Array.Clear(covered);
+        int ox = Chunk.X * ChunkStore.Size - 2, oy = Chunk.Y * ChunkStore.Size - 2, oz = Chunk.Z * ChunkStore.Size - 2;
+        bool any = false;
+        foreach (StructureVolume v in Volumes)
+        {
+            CellBox b = v.CellBounds;
+            int x0 = Math.Max(b.Min.X, ox), x1 = Math.Min(b.Max.X, ox + Ring);
+            int y0 = Math.Max(b.Min.Y, oy), y1 = Math.Min(b.Max.Y, oy + Ring);
+            int z0 = Math.Max(b.Min.Z, oz), z1 = Math.Min(b.Max.Z, oz + Ring);
+            for (int y = y0; y < y1; y++)
+                for (int z = z0; z < z1; z++)
+                    for (int x = x0; x < x1; x++)
+                    {
+                        int r = (x - ox) + Ring * ((z - oz) + Ring * (y - oy));
+                        if (!covered[r] && v.ContainsCell(new Int3(x, y, z)))
+                        {
+                            covered[r] = true;
+                            any = true;
+                        }
+                    }
+        }
+        if (!any) return;
+
+        for (int ay = 0; ay < N; ay++)
+            for (int az = 0; az < N; az++)
+                for (int ax = 0; ax < N; ax++)
+                {
+                    int r = (ax + 1) + Ring * ((az + 1) + Ring * (ay + 1));
+                    if (!covered[r]) continue;
+                    int x = ox + ax + 1, y = oy + ay + 1, z = oz + az + 1;
+                    if (!RemovedAt(x, y, z)) continue;
+                    if ((!covered[r - 1] && RemovedAt(x - 1, y, z)) || (!covered[r + 1] && RemovedAt(x + 1, y, z)) ||
+                        (!covered[r - Ring] && RemovedAt(x, y, z - 1)) || (!covered[r + Ring] && RemovedAt(x, y, z + 1)) ||
+                        (!covered[r - Ring * Ring] && RemovedAt(x, y - 1, z)) || (!covered[r + Ring * Ring] && RemovedAt(x, y + 1, z)))
+                        continue;
+                    var cell = new Int3(x, y, z);
+                    BaseChunk b = _base.Get(ChunkStore.ChunkOf(cell));
+                    int li = ChunkStore.LocalIndex(cell);
+                    int ai = ax + N * (az + N * ay);
+                    density[ai] = b.DensityAt(li);
+                    material[ai] = b.MaterialAt(li);
+                }
+    }
 
     /// <summary>
     /// Fills the padded sample grid: the chunk's 16³ cells plus a one-cell border taken from
@@ -72,6 +149,7 @@ public sealed class ChunkNeighborhood
                 }
             }
         }
+        if (Volumes.Length > 0) ShowCleared(density, material);
     }
 }
 
@@ -132,6 +210,9 @@ public sealed class ChunkMesh
 /// that start at its own cells, so every quad is built exactly once, and the shared border
 /// vertices are computed from the same samples in the same order on both sides of a seam.
 ///
+/// Where structures stand in the ground, the chunk is then cut at their faces
+/// (<see cref="StructureClipper"/>), so the ground meets them flush.
+///
 /// One instance per thread: it reuses its scratch buffers.
 /// </summary>
 public sealed class SurfaceNetsMesher
@@ -163,10 +244,18 @@ public sealed class SurfaceNetsMesher
     int _vertexCount, _indexCount, _block;
     Int3 _origin;
 
+    readonly StructureClipper _clipper = new();
+
+    /// <summary>
+    /// Meshes one chunk. Where structures stand (rule 4), the ground they cleared is drawn as it
+    /// was and the surface is cut off exactly at their faces, so it meets them flush.
+    /// </summary>
     public ChunkMesh Build(ChunkNeighborhood hood, bool recordCubes = false)
     {
         hood.Fill(_density, _material);
-        return Mesh(hood.Chunk, recordCubes);
+        ChunkMesh mesh = Mesh(hood.Chunk, recordCubes);
+        if (hood.Volumes.Length > 0 && !mesh.IsEmpty) mesh = _clipper.Clip(mesh, hood.Volumes);
+        return mesh;
     }
 
     ChunkMesh Mesh(Int3 chunk, bool recordCubes)

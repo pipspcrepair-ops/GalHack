@@ -14,6 +14,10 @@ namespace TerrainDigging.Terrain;
 /// afterwards. A mesh worker can hold on to the masks it was given while the main thread
 /// keeps digging, without locks and without seeing half an edit.
 ///
+/// Ground can be dug anywhere but bedrock (rule 3), under and around structures and POIs too.
+/// Structures standing in the ground register their volumes here (rule 4): the cells inside
+/// are cleared, and the ground around is drawn flush against their faces.
+///
 /// Main thread only, apart from the immutable data it hands out.
 /// </summary>
 public sealed class ChunkStore
@@ -21,6 +25,12 @@ public sealed class ChunkStore
     public const int Size = 16, Shift = 4, LocalMask = Size - 1;
     public const int Volume = Size * Size * Size;
     public const int MaskWords = Volume / 64;
+
+    /// <summary>
+    /// How far outside a chunk (in cells) a structure volume can still change its mesh: its
+    /// one-cell padding, and the padding's own neighbours, which decide how a cleared cell is drawn.
+    /// </summary>
+    public const int VolumeReach = 2;
 
     /// <summary>The playable world, in chunks. Edits outside it are refused.</summary>
     public static CellBox WorldChunks { get; private set; } = new(new Int3(-8, -3, -8), new Int3(8, 5, 8));
@@ -47,23 +57,28 @@ public sealed class ChunkStore
     public const float MaxCraterRadius = 6f;
     public const int MaxCraterCells = 900;
 
-    // Ground this far around (and below) a structure or POI is anchored.
-    public const int AnchorSide = 3, AnchorBelow = 6, AnchorAbove = 3;
+    /// <summary>The largest block <see cref="PlaceStructure"/> takes, in cells on a side.</summary>
     public const int MaxStructureSize = 8;
 
     public BaseCache Base { get; }
     public ITerrainSource Source => Base.Source;
 
     readonly Dictionary<Int3, ulong[]> _removed = new();
-    readonly List<AnchorZone> _anchors = new();
-    readonly Dictionary<Int3, List<AnchorZone>> _anchorIndex = new();
     readonly List<Structure> _structures = new();
     int _nextStructureId = 1;
 
+    // Structure volumes (rule 4), and per chunk the ones near enough to change its mesh: a sorted
+    // key set, and an immutable array snapshot that mesh workers are handed.
+    readonly Dictionary<VolumeKey, StructureVolume> _volumes = new();
+    readonly Dictionary<Int3, SortedSet<VolumeKey>> _volumeKeys = new();
+    readonly Dictionary<Int3, StructureVolume[]> _volumeSnapshots = new();
+
     public int RemovedCount { get; private set; }
     public IReadOnlyList<Structure> Structures => _structures;
-    public IReadOnlyList<AnchorZone> Anchors => _anchors;
     public IEnumerable<Int3> EditedChunks => _removed.Keys;
+
+    /// <summary>Every registered structure volume, by key.</summary>
+    public IReadOnlyDictionary<VolumeKey, StructureVolume> Volumes => _volumes;
 
     public ChunkStore(ITerrainSource source) : this(new BaseCache(source)) { }
 
@@ -71,7 +86,6 @@ public sealed class ChunkStore
     public ChunkStore(BaseCache baseCache)
     {
         Base = baseCache;
-        AddPoiAnchors();
     }
 
     // ---- Addressing -------------------------------------------------------------------
@@ -160,52 +174,150 @@ public sealed class ChunkStore
     public bool IsWater(Int3 cell) =>
         cell.Y + 0.5f < Source.WaterLevel && IsWaterColumn(cell.X, cell.Z) && !IsSolid(cell);
 
-    // ---- Anchors (rule 3) -------------------------------------------------------------
-
-    public bool IsAnchored(Int3 cell) => AnchoredAt(cell, poiOnly: false);
-
-    bool AnchoredAt(Int3 cell, bool poiOnly)
-    {
-        if (!_anchorIndex.TryGetValue(ChunkOf(cell), out List<AnchorZone> zones)) return false;
-        foreach (AnchorZone zone in zones)
-            if ((!poiOnly || zone.IsPoi) && zone.Box.Contains(cell))
-                return true;
-        return false;
-    }
-
-    void AddAnchor(AnchorZone zone)
-    {
-        _anchors.Add(zone);
-        Int3 lo = ChunkOf(zone.Box.Min), hi = ChunkOf(zone.Box.Max - Int3.One);
-        for (int y = lo.Y; y <= hi.Y; y++)
-            for (int z = lo.Z; z <= hi.Z; z++)
-                for (int x = lo.X; x <= hi.X; x++)
-                {
-                    var c = new Int3(x, y, z);
-                    if (!_anchorIndex.TryGetValue(c, out List<AnchorZone> list)) _anchorIndex[c] = list = new List<AnchorZone>();
-                    list.Add(zone);
-                }
-    }
-
-    void AddPoiAnchors()
-    {
-        foreach (PoiSite poi in Source.PointsOfInterest)
-            AddAnchor(new AnchorZone(poi.Footprint.Grow(AnchorSide, AnchorBelow, AnchorAbove), true, 0));
-    }
-
-    public static CellBox AnchorBoxFor(CellBox structure) => structure.Grow(AnchorSide, AnchorBelow, AnchorAbove);
-
     // ---- Rules ------------------------------------------------------------------------
 
-    /// <summary>Whether a cell may be removed by this kind of edit (rules 2, 3 and 4).</summary>
+    /// <summary>
+    /// Whether a cell may be removed (rules 2 and 3). Every kind of edit has the same rule: any
+    /// ground in the world but bedrock, under and around structures and POIs included.
+    /// </summary>
     public Verdict Check(Int3 cell, EditKind kind)
     {
         if (!InWorld(cell)) return Verdict.OutsideWorld;
         CellMaterial m = MaterialAt(cell);
         if (m == CellMaterial.Air) return Verdict.AlreadyAir;
         if (m == CellMaterial.Bedrock) return Verdict.Bedrock;
-        if (AnchoredAt(cell, poiOnly: kind == EditKind.Build)) return Verdict.Anchored;
         return Verdict.Removable;
+    }
+
+    // ---- Structures in the ground (rule 4) ---------------------------------------------
+
+    /// <summary>
+    /// Whether a cell's centre lies inside a registered structure volume. A removed cell that is
+    /// covered is drawn as the ground it was, cut off flush at the structure's faces, for as long
+    /// as the structure stands (unless dug ground beside it is open to it).
+    /// </summary>
+    public bool IsCovered(Int3 cell)
+    {
+        if (!_volumeSnapshots.TryGetValue(ChunkOf(cell), out StructureVolume[] near)) return false;
+        foreach (StructureVolume v in near)
+            if (v.ContainsCell(cell)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Registers a structure's volume, or moves it if the key is already known. Nothing is
+    /// removed (see <see cref="ClearForStructure(VolumeKey, StructureVolume)"/> for building);
+    /// this is for re-registering a standing structure after a load, or a copy across a seam.
+    /// Returns every chunk whose mesh it changes.
+    /// </summary>
+    public HashSet<Int3> AddVolume(VolumeKey key, StructureVolume volume)
+    {
+        var dirty = new HashSet<Int3>();
+        if (_volumes.TryGetValue(key, out StructureVolume old))
+        {
+            if (old.Equals(volume)) return dirty;
+            Unindex(key, old, dirty);
+        }
+        _volumes[key] = volume;
+        Index(key, volume, dirty);
+        return dirty;
+    }
+
+    /// <summary>
+    /// Forgets a volume: a block taken down, or a structure gone. Terrain is remove-only, so the
+    /// cells it cleared stay cleared, and from now on are drawn as the dug hole they are.
+    /// Returns every chunk whose mesh changes.
+    /// </summary>
+    public HashSet<Int3> RemoveVolume(VolumeKey key)
+    {
+        var dirty = new HashSet<Int3>();
+        for (int n = 0; n < VolumeKey.MaxCopies; n++)
+            if (_volumes.Remove(key.AsCopy(n), out StructureVolume old)) Unindex(key.AsCopy(n), old, dirty);
+        return dirty;
+    }
+
+    /// <summary>Forgets every volume one owner registered (a whole structure taken down or flown off).</summary>
+    public HashSet<Int3> RemoveVolumes(int owner)
+    {
+        var dirty = new HashSet<Int3>();
+        foreach (VolumeKey key in _volumes.Keys.Where(k => k.Owner == owner).ToList())
+            dirty.UnionWith(RemoveVolume(key));
+        return dirty;
+    }
+
+    /// <summary>
+    /// The one call for a structure reaching into the ground, any shape of block at any angle:
+    /// removes every cell whose centre lies inside the volume (only bedrock refuses), and
+    /// registers the volume so the ground around it meets its faces flush, with no sag and no gap.
+    /// The result's dirty chunks cover both. Calling it again for a standing block is harmless.
+    /// </summary>
+    public EditResult ClearForStructure(VolumeKey key, StructureVolume volume)
+    {
+        HashSet<Int3> dirty = AddVolume(key, volume);
+        EditResult result = Remove(volume.CellsInside(), EditKind.Build);
+        result.DirtyChunks.UnionWith(dirty);
+        return result;
+    }
+
+    /// <summary>Several parts of a structure at once (a whole base, or a blueprint), as one edit.</summary>
+    public EditResult ClearForStructure(IEnumerable<(VolumeKey key, StructureVolume volume)> parts)
+    {
+        var dirty = new HashSet<Int3>();
+        var cells = new List<Int3>();
+        foreach ((VolumeKey key, StructureVolume volume) in parts)
+        {
+            dirty.UnionWith(AddVolume(key, volume));
+            cells.AddRange(volume.CellsInside());
+        }
+        EditResult result = Remove(cells, EditKind.Build);
+        result.DirtyChunks.UnionWith(dirty);
+        return result;
+    }
+
+    /// <summary>The chunks a volume can change the mesh of: those within <see cref="VolumeReach"/> cells of it.</summary>
+    public static IEnumerable<Int3> ChunksNear(StructureVolume volume)
+    {
+        CellBox b = volume.CellBounds;
+        Int3 lo = ChunkOf(b.Min - Int3.One * VolumeReach), hi = ChunkOf(b.Max - Int3.One + Int3.One * VolumeReach);
+        for (int y = lo.Y; y <= hi.Y; y++)
+            for (int z = lo.Z; z <= hi.Z; z++)
+                for (int x = lo.X; x <= hi.X; x++)
+                    yield return new Int3(x, y, z);
+    }
+
+    void Index(VolumeKey key, StructureVolume volume, HashSet<Int3> dirty)
+    {
+        foreach (Int3 c in ChunksNear(volume))
+        {
+            if (!_volumeKeys.TryGetValue(c, out SortedSet<VolumeKey> keys)) _volumeKeys[c] = keys = new SortedSet<VolumeKey>();
+            keys.Add(key);
+            Snapshot(c, keys);
+            dirty.Add(c);
+        }
+    }
+
+    void Unindex(VolumeKey key, StructureVolume volume, HashSet<Int3> dirty)
+    {
+        foreach (Int3 c in ChunksNear(volume))
+        {
+            if (!_volumeKeys.TryGetValue(c, out SortedSet<VolumeKey> keys) || !keys.Remove(key)) continue;
+            if (keys.Count == 0)
+            {
+                _volumeKeys.Remove(c);
+                _volumeSnapshots.Remove(c);
+            }
+            else Snapshot(c, keys);
+            dirty.Add(c);
+        }
+    }
+
+    /// <summary>A fresh array, never changed afterwards: workers may still hold the old one.</summary>
+    void Snapshot(Int3 chunk, SortedSet<VolumeKey> keys)
+    {
+        var array = new StructureVolume[keys.Count];
+        int i = 0;
+        foreach (VolumeKey k in keys) array[i++] = _volumes[k];
+        _volumeSnapshots[chunk] = array;
     }
 
     // ---- Edits ------------------------------------------------------------------------
@@ -219,7 +331,8 @@ public sealed class ChunkStore
 
     /// <summary>
     /// A crash or liftoff (rule 10): removes cells within the radius, nearest first. The radius
-    /// and the number of cells are both capped, and bedrock and anchored ground still hold.
+    /// and the number of cells are both capped, and bedrock still holds. It cuts right up to and
+    /// under structures and POIs; they stay where they are.
     /// </summary>
     public EditResult Crater(Vector3 center, float radius)
     {
@@ -240,8 +353,9 @@ public sealed class ChunkStore
     }
 
     /// <summary>
-    /// Places a building block (rules 3 and 4): clears all terrain inside it, then anchors the
-    /// ground around it. Refused if it would overlap another block, bedrock or a POI's ground.
+    /// Places an axis-aligned building block (rule 4) through <see cref="ClearForStructure(VolumeKey, StructureVolume)"/>:
+    /// the cells inside it are cleared and the ground around meets it flush. Refused if it would
+    /// overlap another block or cut bedrock. POI ground takes blocks like any other.
     /// </summary>
     public PlaceResult PlaceStructure(CellBox box)
     {
@@ -254,16 +368,12 @@ public sealed class ChunkStore
             if (other.Box.Intersects(box))
                 return new PlaceResult { Verdict = PlaceVerdict.Overlaps };
         foreach (Int3 cell in BoxCells(box))
-        {
-            Verdict v = Check(cell, EditKind.Build);
-            if (v == Verdict.Bedrock) return new PlaceResult { Verdict = PlaceVerdict.Bedrock };
-            if (v == Verdict.Anchored) return new PlaceResult { Verdict = PlaceVerdict.AnchoredByPoi };
-        }
+            if (Check(cell, EditKind.Build) == Verdict.Bedrock)
+                return new PlaceResult { Verdict = PlaceVerdict.Bedrock };
 
-        EditResult cleared = Remove(BoxCells(box), EditKind.Build);
         var structure = new Structure(_nextStructureId++, box);
         _structures.Add(structure);
-        AddAnchor(new AnchorZone(AnchorBoxFor(box), false, structure.Id));
+        EditResult cleared = ClearForStructure(VolumeKey.ForBlock(structure.Id), StructureVolume.Box(box));
         return new PlaceResult { Verdict = PlaceVerdict.Placed, Structure = structure, Cleared = cleared };
     }
 
@@ -278,7 +388,6 @@ public sealed class ChunkStore
             {
                 case Verdict.AlreadyAir: result.AlreadyAir++; continue;
                 case Verdict.Bedrock: result.Bedrock++; continue;
-                case Verdict.Anchored: result.Anchored++; continue;
                 case Verdict.OutsideWorld: result.Outside++; continue;
             }
             result.Removed.Add(new RemovedCell(cell, MaterialAt(cell)));
@@ -350,9 +459,8 @@ public sealed class ChunkStore
     /// <summary>
     /// Applies removals made elsewhere (another player, or a save). Removal sets only grow,
     /// so diffs can arrive in any order, twice, or late, and every player still ends up with
-    /// the same holes. Anchors aren't re-checked: the authority already did, and a diff must
-    /// never be dropped because a block appeared here a moment earlier. Cells that could never
-    /// be removed (bedrock, base air, outside the world) are refused and reported.
+    /// the same holes. Cells that could never be removed (bedrock, base air, outside the world)
+    /// are refused and reported.
     /// </summary>
     public ApplyReport ApplyDiff(EditLog diff)
     {
@@ -378,12 +486,15 @@ public sealed class ChunkStore
         return report;
     }
 
-    /// <summary>Re-creates a saved or replicated structure. Its terrain clearing travels in the edit log.</summary>
-    public void RestoreStructure(Structure structure)
+    /// <summary>
+    /// Re-creates a saved or replicated structure, and registers its volume. Its terrain clearing
+    /// travels in the edit log. Returns the chunks whose meshes its volume changes.
+    /// </summary>
+    public HashSet<Int3> RestoreStructure(Structure structure)
     {
         _structures.Add(structure);
-        AddAnchor(new AnchorZone(AnchorBoxFor(structure.Box), false, structure.Id));
         _nextStructureId = Math.Max(_nextStructureId, structure.Id + 1);
+        return AddVolume(VolumeKey.ForBlock(structure.Id), StructureVolume.Box(structure.Box));
     }
 
     /// <summary>Every edit, as a canonical log (sorted chunks, sorted cells).</summary>
@@ -429,7 +540,9 @@ public sealed class ChunkStore
 
     /// <summary>
     /// Replaces all edits and structures with another store's (a loaded save), and returns the
-    /// chunks whose meshes changed. The other store must share this one's base terrain.
+    /// chunks whose meshes changed. The other store must share this one's base terrain. Volumes
+    /// registered by callers (vessels and bases the terrain doesn't save) are kept: they belong
+    /// to whatever still stands, and the caller re-registers or removes them as it reloads its own.
     /// </summary>
     public HashSet<Int3> ReplaceStateWith(ChunkStore other)
     {
@@ -455,11 +568,15 @@ public sealed class ChunkStore
         foreach ((Int3 chunk, ulong[] mask) in other._removed) _removed[chunk] = (ulong[])mask.Clone();
         RemovedCount = other.RemovedCount;
 
+        // Blocks: forget the ones the save doesn't have (or has elsewhere), then restore its own.
+        // A block in both, unchanged, keeps its volume, so its chunks aren't remeshed for nothing.
+        var kept = new HashSet<int>();
+        foreach (Structure s in other._structures)
+            if (_structures.Contains(s)) kept.Add(s.Id);
+        foreach (Structure s in _structures)
+            if (!kept.Contains(s.Id)) dirty.UnionWith(RemoveVolume(VolumeKey.ForBlock(s.Id)));
         _structures.Clear();
-        _anchors.Clear();
-        _anchorIndex.Clear();
-        AddPoiAnchors();
-        foreach (Structure s in other._structures) RestoreStructure(s);
+        foreach (Structure s in other._structures) dirty.UnionWith(RestoreStructure(s));
         _nextStructureId = other._nextStructureId;
         return dirty;
     }
@@ -468,7 +585,8 @@ public sealed class ChunkStore
 
     /// <summary>
     /// Snapshots what a mesh worker needs for one chunk. Only references are copied: masks
-    /// are never modified once published, so the worker sees exactly this moment's terrain.
+    /// and volume arrays are never modified once published, so the worker sees exactly this
+    /// moment's terrain.
     /// </summary>
     public ChunkNeighborhood CaptureNeighborhood(Int3 chunk)
     {
@@ -480,7 +598,8 @@ public sealed class ChunkStore
                     _removed.TryGetValue(new Int3(chunk.X + dx, chunk.Y + dy, chunk.Z + dz), out ulong[] mask);
                     masks[ChunkNeighborhood.NeighborIndex(dx, dy, dz)] = mask;
                 }
-        return new ChunkNeighborhood(chunk, Base, masks);
+        _volumeSnapshots.TryGetValue(chunk, out StructureVolume[] volumes);
+        return new ChunkNeighborhood(chunk, Base, masks, volumes);
     }
 
     // ---- Lookups for gameplay ---------------------------------------------------------

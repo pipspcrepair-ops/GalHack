@@ -232,6 +232,25 @@ public partial class Main : Node3D
         return result;
     }
 
+    /// <summary>
+    /// Sets an oriented block into the ground the way a base's block is (tests and screenshots):
+    /// through <see cref="ChunkStore.ClearForStructure(VolumeKey, StructureVolume)"/>, and drawn.
+    /// </summary>
+    public EditResult PlaceOriented(VolumeKey key, StructureVolume volume, Color color)
+    {
+        EditResult result = Store.ClearForStructure(key, volume);
+        View.MarkDirty(result.DirtyChunks);
+        Structures.Add(key, volume, color);
+        return result;
+    }
+
+    /// <summary>Takes an oriented block down: the ground it cleared stays cleared (remove-only).</summary>
+    public void RemoveOriented(VolumeKey key)
+    {
+        View.MarkDirty(Store.RemoveVolume(key));
+        Structures.Remove(key);
+    }
+
     /// <summary>A short burst of light (craters).</summary>
     public void Flash(Vector3 at, Color color)
     {
@@ -253,12 +272,9 @@ public partial class Main : Node3D
         {
             Int3 t = Tool.Target;
             float depth = Store.Source.SurfaceHeight(t.X + 0.5f, t.Z + 0.5f) - (t.Y + 0.5f);
-            target = Tool.TargetVerdict switch
-            {
-                Verdict.Bedrock => "Target: BEDROCK (undiggable)",
-                Verdict.Anchored => $"Target: {Store.MaterialAt(t).Label()} · ANCHORED",
-                _ => $"Target: {Store.MaterialAt(t).Label()} · {Mathf.Max(0f, depth):F0} m below the original surface",
-            };
+            target = Tool.TargetVerdict == Verdict.Bedrock
+                ? "Target: BEDROCK (undiggable)"
+                : $"Target: {Store.MaterialAt(t).Label()} · {Mathf.Max(0f, depth):F0} m below the original surface";
         }
         string stance = Player.IsCrouching ? (Player.CanStand() ? "Crouching" : "Crouching · no room to stand") : "";
         Hud.SetStatus(

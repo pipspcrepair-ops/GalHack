@@ -8,7 +8,7 @@ namespace PhysicsSandbox.Bridges;
 
 /// <summary>
 /// The bridge between terrain-digging's core and the shared physics module. Craters go through
-/// the terrain's own edit API (remove-only, capped, bedrock and anchors respected) and every
+/// the terrain's own edit API (remove-only, capped, only bedrock refuses) and every
 /// edit's diff is merged into this session's edit log, exactly as it would be sent to other
 /// players. The terrain view listens to <see cref="Edited"/> and rebuilds what changed.
 /// </summary>

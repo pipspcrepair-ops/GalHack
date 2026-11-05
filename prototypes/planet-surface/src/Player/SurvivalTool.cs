@@ -112,7 +112,7 @@ public partial class SurvivalTool : Node
         }
         Color color = AimingAtTree ? Hud.Good : AimingAtStructure ? Hud.Caution
             : !HasTarget ? new Color(1f, 1f, 1f, 0.5f)
-            : TargetVerdict switch { Verdict.Bedrock => Hud.Warning, Verdict.Anchored => Hud.Caution, _ => new Color(1f, 1f, 1f, 0.9f) };
+            : TargetVerdict == Verdict.Bedrock ? Hud.Warning : new Color(1f, 1f, 1f, 0.9f);
         Main.Hud.SetCrosshair(color);
         _cursor.Visible = HasTarget && ShowCursor;
         if (HasTarget)
@@ -170,13 +170,6 @@ public partial class SurvivalTool : Node
             Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint);
             Player.Kick(0.25f, 0.7f);
         }
-        else if (result.Headline == Verdict.Anchored)
-        {
-            Main.Hud.Toast("ANCHORED · the ground under and around structures holds", Hud.Caution);
-            Main.Debris.Sparks(TargetPoint, normal, Hud.Caution);
-            Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint, 1.3f, -3f);
-            Player.Kick(0.2f, 0.4f);
-        }
         return result;
     }
 
@@ -204,11 +197,10 @@ public partial class SurvivalTool : Node
                 Main.Debris.Burst(result.Cleared.Removed, Player.EyePosition, 0.6f);
                 Main.Sfx.Play(Sfx.Sound.Place, new Vector3(box.CenterPosition.X, box.CenterPosition.Y, box.CenterPosition.Z));
                 Player.Kick(0.8f, 0.2f);
-                Main.Hud.Toast($"Block placed · cleared {result.Cleared.Removed.Count} cells · the ground around it is anchored", Hud.Good);
+                Main.Hud.Toast($"Block placed · cleared {result.Cleared.Removed.Count} cells · the ground around it meets it flush", Hud.Good);
                 break;
             case PlaceVerdict.Overlaps: Main.Hud.Toast("Another block is in the way", Hud.Caution); break;
             case PlaceVerdict.Bedrock: Main.Hud.Toast("Can't build into bedrock", Hud.Warning); break;
-            case PlaceVerdict.AnchoredByPoi: Main.Hud.Toast("This place's ground is protected: build elsewhere", Hud.Caution); break;
             default: Main.Hud.Toast("Can't place a block there", Hud.Caution); break;
         }
         return result;

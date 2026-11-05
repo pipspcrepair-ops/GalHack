@@ -18,7 +18,7 @@ public sealed class CutPlan
     /// <summary>Every terrain cell to remove, sorted, each once.</summary>
     public readonly List<TInt3> Cells = new();
 
-    /// <summary>Cells in the way that the terrain refuses to give up (bedrock, a POI's anchored ground).</summary>
+    /// <summary>Cells in the way that the terrain refuses to give up (bedrock: everything else digs).</summary>
     public readonly List<TInt3> Refused = new();
 
     /// <summary>How far the hull climbs straight up before the pilot has it, m.</summary>
@@ -34,7 +34,7 @@ public sealed class CutPlan
 }
 
 /// <summary>
-/// Cutting a hull free of the ground, and clearing the ground a new block is built into.
+/// Cutting a hull free of the ground. (Building into it is terrain-digging's ClearForStructure, through Ground.SetInto.)
 ///
 /// <b>Lift-off.</b> A hull leaves the ground straight up. Every terrain cell that lies within
 /// <c>margin</c> of a block anywhere along that climb is cut, before the hull moves:
@@ -120,7 +120,7 @@ public static class CutFree
             Verdict why = check(first);
             plan.Refusal = why == Verdict.Bedrock
                 ? $"LIFT-OFF REFUSED: the hull is keyed into bedrock at {first} ({plan.Refused.Count} cells). Build it free or dig round it."
-                : $"LIFT-OFF REFUSED: {plan.Refused.Count} cells of protected ground ({why}) hold the hull at {first}.";
+                : $"LIFT-OFF REFUSED: {plan.Refused.Count} cells the terrain won't give up ({why}) hold the hull at {first}.";
         }
         else if (plan.Cells.Count > rules.MaxCells)
             plan.Refusal = $"LIFT-OFF REFUSED: {plan.Cells.Count} m³ of ground hold the hull (most a lift-off cuts is {rules.MaxCells}). Dig some of it out first.";
@@ -201,28 +201,5 @@ public static class CutFree
             if (t0 > t1) return false;
         }
         return true;
-    }
-
-    /// <summary>
-    /// Building into the ground: every cell whose centre lies inside a new block's box, grown by
-    /// <paramref name="margin"/>, sorted. The caller removes them through the terrain's edit API.
-    /// </summary>
-    public static List<TInt3> CellsInside(BlockBox b, float margin)
-    {
-        var cells = new List<TInt3>();
-        (Vector3 lo, Vector3 hi) = Bounds(b, margin);
-        TInt3 a = TInt3.Floor(lo), z = TInt3.Floor(hi);
-        Quaternion inverse = Quaternion.Inverse(b.Rotation);
-        Vector3 half = b.Half + new Vector3(margin);
-        for (int y = a.Y; y <= z.Y; y++)
-        for (int zz = a.Z; zz <= z.Z; zz++)
-        for (int x = a.X; x <= z.X; x++)
-        {
-            var cell = new TInt3(x, y, zz);
-            Vector3 local = Vector3.Transform(cell.Center - b.Center, inverse);
-            if (MathF.Abs(local.X) <= half.X && MathF.Abs(local.Y) <= half.Y && MathF.Abs(local.Z) <= half.Z) cells.Add(cell);
-        }
-        cells.Sort();
-        return cells;
     }
 }

@@ -9,8 +9,11 @@ namespace TerrainDigging;
 /// <summary>
 /// Renders one view of the prototype to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/terrain-digging res://tests/Screenshot.tscn -- --view=pit --out=shot.png
-/// Views: landscape, pit, crater, block. "map" writes a top-down layout map (works headless).
-/// Extras: --debug=1 shows normals, --debug=2 unlit albedo; --noshadow turns the sun's shadows off.
+/// Views: landscape, pit, crater, block, row (blocks of every size and angle set into a slope),
+/// corner (a base's corner set into a slope). "map" writes a top-down layout map (works headless).
+/// Extras: --debug=1 shows normals, --debug=2 unlit albedo; --noshadow turns the sun's shadows off;
+/// --legacy clears the ground for row and corner the way the slice's BuildTool used to (the
+/// block plus 0.1 m, sampled every 0.5 m and floored to cells), for before-and-after pictures.
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -19,6 +22,7 @@ public partial class Screenshot : Node
     Main _main;
     string _view = "landscape";
     string _out = "shot.png";
+    bool _legacy;
     int _stage, _frames;
     Action _beforeCapture;
 
@@ -28,6 +32,7 @@ public partial class Screenshot : Node
         {
             if (arg.StartsWith("--view=")) _view = arg["--view=".Length..];
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
+            else if (arg == "--legacy") _legacy = true;
         }
         _main = new Main { Interactive = false };
         AddChild(_main);
@@ -122,9 +127,82 @@ public partial class Screenshot : Node
                 break;
             }
 
+            case "row":
+            {
+                // A row of blocks stepping down a slope, each sunk half into the ground under it:
+                // 2 m blocks square, turned and tilted, and 0.5 m ones in front.
+                (Vector3 at, Vector3 downhill) = SlopeSpot(store, new System.Numerics.Vector2(-30f, 10f), 40, 22f);
+                Vector3 across = downhill.Cross(Vector3.Up).Normalized();
+                GD.Print($"row: slope at {at}, downhill {downhill}");
+                var blocks = new List<(Vector3 at, float yaw, float pitch, float size)>
+                {
+                    (at - downhill * 4.5f, 0f, 0f, 2f),
+                    (at - downhill * 1.5f, 20f, 0f, 2f),
+                    (at + downhill * 1.5f, 45f, 6f, 2f),
+                    (at + downhill * 4.5f, 70f, 0f, 2f),
+                    (at - downhill * 3f + across * 2.4f, 0f, 0f, 0.5f),
+                    (at - downhill * 1f + across * 2.4f, 33f, 0f, 0.5f),
+                    (at + downhill * 1f + across * 2.4f, 33f, 8f, 0.5f),
+                    (at + downhill * 3f + across * 2.4f, 61f, 0f, 0.5f),
+                };
+                var volumes = new List<StructureVolume>();
+                foreach ((Vector3 p, float yaw, float pitch, float size) in blocks)
+                {
+                    float ground = GroundMesh(store, p.X, p.Z);
+                    var q = System.Numerics.Quaternion.CreateFromYawPitchRoll(Mathf.DegToRad(yaw), Mathf.DegToRad(pitch), 0f);
+                    volumes.Add(new StructureVolume(new System.Numerics.Vector3(p.X, ground, p.Z), q, new System.Numerics.Vector3(size)));
+                }
+                // From the side the small blocks are on, level with the row, looking across the slope
+                // (framed on the untouched ground, so before and after match).
+                Vector3 eye = at + across * 9.5f - downhill * 1.0f;
+                eye.Y = GroundMesh(store, eye.X, eye.Z) + 2.4f;
+                Vector3 target = at + across * 1.0f;
+                target.Y = GroundMesh(store, target.X, target.Z) + 0.3f;
+                SetInto(store, volumes, Palette.Block);
+                Look(eye, target);
+                break;
+            }
+
+            case "corner":
+            {
+                // A base's corner on a slope: a 3 x 3 floor of 2 m blocks turned 30°, its top level
+                // with the highest ground under it (as a builder sets a floor, so the room is clear),
+                // and two walls two blocks high meeting at the corner.
+                (Vector3 at, Vector3 downhill) = SlopeSpot(store, new System.Numerics.Vector2(-40f, 2f), 30, 12f);
+                var q = System.Numerics.Quaternion.CreateFromYawPitchRoll(Mathf.DegToRad(30f), 0f, 0f);
+                var ax = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitX, q) * 2f;
+                var az = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitZ, q) * 2f;
+                float ground = float.MinValue;
+                for (float i = -1.5f; i <= 1.5f; i += 0.25f)
+                    for (float k = -1.5f; k <= 1.5f; k += 0.25f)
+                    {
+                        var p = new System.Numerics.Vector3(at.X, 0f, at.Z) + ax * i + az * k;
+                        ground = MathF.Max(ground, GroundMesh(store, p.X, p.Z));
+                    }
+                var origin = new System.Numerics.Vector3(at.X, ground - 1f, at.Z);
+                var volumes = new List<StructureVolume>();
+                for (int i = -1; i <= 1; i++)
+                    for (int k = -1; k <= 1; k++)
+                        volumes.Add(new StructureVolume(origin + ax * i + az * k, q, new System.Numerics.Vector3(2f)));
+                for (int up = 1; up <= 2; up++)
+                {
+                    var lift = System.Numerics.Vector3.UnitY * 2f * up;
+                    for (int i = -1; i <= 1; i++) volumes.Add(new StructureVolume(origin + ax * i - az + lift, q, new System.Numerics.Vector3(2f)));
+                    for (int k = 0; k <= 1; k++) volumes.Add(new StructureVolume(origin - ax + az * k + lift, q, new System.Numerics.Vector3(2f)));
+                }
+                SetInto(store, volumes, new Color("c9b48a"));
+                // From outside the open corner, low, so the line where floor and ground meet shows.
+                var c = new Vector3(origin.X, origin.Y, origin.Z);
+                var outward = new Vector3(ax.X + az.X, 0f, ax.Z + az.Z).Normalized();
+                Vector3 eye = c + outward * 8f + new Vector3(-outward.Z, 0f, outward.X) * 2.5f;
+                eye.Y = GroundMesh(store, eye.X, eye.Z) + 2.3f;
+                Look(eye, c + Vector3.Up * 0.6f);
+                break;
+            }
+
             case "block":
             {
-                // Blocks pushed into a slope: each one sits in the notch it cleared.
+                // Blocks pushed into a slope: each meets the ground flush, with nothing cut round it.
                 Int3 slope = SteepSpot(store, SimpleTerrainSource.Spawn + new System.Numerics.Vector2(-4f, 14f), 16);
                 var placed = new List<CellBox>();
                 foreach (int dx in new[] { -3, 0 })
@@ -145,6 +223,67 @@ public partial class Screenshot : Node
     }
 
     Vector3 Ground(float x, float z) => new(x, _main.Store.Source.SurfaceHeight(x, z), z);
+
+    /// <summary>The height of the drawn ground at a point (the mesh, not the generator's smooth height).</summary>
+    static float GroundMesh(ChunkStore store, float x, float z)
+    {
+        float top = store.TopSolid((int)MathF.Floor(x), (int)MathF.Floor(z)) + 2f;
+        for (float y = top; y > top - 6f; y -= 0.01f)
+            if (store.SampleDensity(new System.Numerics.Vector3(x, y, z)) > 0f) return y;
+        return store.Source.SurfaceHeight(x, z);
+    }
+
+    /// <summary>Blocks set into the ground: through ClearForStructure, or with --legacy the old way.</summary>
+    void SetInto(ChunkStore store, List<StructureVolume> volumes, Color color)
+    {
+        for (int i = 0; i < volumes.Count; i++)
+        {
+            var key = new VolumeKey(1, i, 0, 0);
+            if (_legacy) _main.Structures.Add(key, volumes[i], color);
+            else _main.PlaceOriented(key, volumes[i], color);
+        }
+        if (_legacy)
+        {
+            int outside = DigTest.LegacyClear(store, volumes);
+            _main.View.MarkDirty(store.EditedChunks.SelectMany(c => new[] { c }).ToList());
+            GD.Print($"legacy clearing: {store.RemovedCount} cells, {outside} of them outside the blocks");
+        }
+        else GD.Print($"flush: {store.RemovedCount} cells cleared, {store.Volumes.Count} volumes");
+    }
+
+    /// <summary>A point near here whose ground slopes at about the given angle, and its downhill direction.</summary>
+    static (Vector3 at, Vector3 downhill) SlopeSpot(ChunkStore store, System.Numerics.Vector2 near, int radius, float degrees)
+    {
+        Vector3 best = default, bestDown = Vector3.Forward;
+        float bestOff = float.MaxValue;
+        for (int z = -radius; z <= radius; z += 2)
+            for (int x = -radius; x <= radius; x += 2)
+            {
+                float px = near.X + x, pz = near.Y + z;
+                if (store.IsWaterColumn((int)px, (int)pz)) continue;
+                float gx = (store.Source.SurfaceHeight(px + 1f, pz) - store.Source.SurfaceHeight(px - 1f, pz)) * 0.5f;
+                float gz = (store.Source.SurfaceHeight(px, pz + 1f) - store.Source.SurfaceHeight(px, pz - 1f)) * 0.5f;
+                float grade = MathF.Sqrt(gx * gx + gz * gz);
+                // Even ground: the grade a few metres off should match, no mesa lips.
+                float g2x = (store.Source.SurfaceHeight(px + 5f, pz) - store.Source.SurfaceHeight(px + 3f, pz)) * 0.5f;
+                float g2z = (store.Source.SurfaceHeight(px, pz + 5f) - store.Source.SurfaceHeight(px, pz + 3f)) * 0.5f;
+                float spread = MathF.Abs(MathF.Sqrt(g2x * g2x + g2z * g2z) - grade);
+                foreach ((float dx, float dz) in new[] { (-4f, 0f), (0f, -4f), (4f, 4f), (-4f, 4f), (4f, -4f), (-4f, -4f) })
+                {
+                    float hx = (store.Source.SurfaceHeight(px + dx + 1f, pz + dz) - store.Source.SurfaceHeight(px + dx - 1f, pz + dz)) * 0.5f;
+                    float hz = (store.Source.SurfaceHeight(px + dx, pz + dz + 1f) - store.Source.SurfaceHeight(px + dx, pz + dz - 1f)) * 0.5f;
+                    spread = MathF.Max(spread, MathF.Abs(hx - gx) + MathF.Abs(hz - gz));
+                }
+                float off = MathF.Abs(Mathf.RadToDeg(MathF.Atan(grade)) - degrees) + 40f * spread;
+                if (off < bestOff && grade > 1e-3f)
+                {
+                    bestOff = off;
+                    best = new Vector3(px, store.Source.SurfaceHeight(px, pz), pz);
+                    bestDown = new Vector3(-gx, 0f, -gz).Normalized();
+                }
+            }
+        return (best, bestDown);
+    }
 
     void Look(Vector3 from, Vector3 at)
     {
@@ -224,7 +363,7 @@ public partial class Screenshot : Node
         GetTree().Quit(result == Error.Ok ? 0 : 1);
     }
 
-    /// <summary>Top-down layout map: height shading, water, ore near the surface, caves, anchors.</summary>
+    /// <summary>Top-down layout map: height shading, water, ore near the surface, caves, the POI.</summary>
     void SaveMap()
     {
         ChunkStore store = _main.Store;
@@ -252,9 +391,9 @@ public partial class Screenshot : Node
                 if (x % 16 == 0 || z % 16 == 0) c = c.Darkened(0.15f);
                 image.SetPixel(x, z, c);
             }
-        foreach (AnchorZone zone in store.Anchors)
-            for (int z = zone.Box.Min.Z; z < zone.Box.Max.Z; z++)
-                for (int x = zone.Box.Min.X; x < zone.Box.Max.X; x++)
+        foreach (PoiSite poi in store.Source.PointsOfInterest)
+            for (int z = poi.Footprint.Min.Z; z < poi.Footprint.Max.Z; z++)
+                for (int x = poi.Footprint.Min.X; x < poi.Footprint.Max.X; x++)
                     image.SetPixel(x - w.Min.X, z - w.Min.Z, Palette.BeaconRed);
         var spawn = SimpleTerrainSource.Spawn;
         image.SetPixel((int)spawn.X - w.Min.X, (int)spawn.Y - w.Min.Z, Colors.White);

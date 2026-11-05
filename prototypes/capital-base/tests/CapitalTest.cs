@@ -439,14 +439,25 @@ public partial class CapitalTest : Node
         }
         Check(removed > 0 && _w.Inventory.Total - items == removed && b.State == CraftState.Anchored,
             $"dug around the base: {removed} cells, all {_w.Inventory.Total - items} units into the player's inventory; the base didn't move");
-        TInt3[] footings = _w.Ground.FootingsOf("bastion").Where(c => _w.Ground.Store.IsSolid(c)).OrderBy(c => c).ToArray();
-        if (footings.Length > 0)
+
+        // Dig anywhere: tunnel right under the base (under its keel and any landing foot on the
+        // ground). The ground goes; the base stays exactly where it was built.
+        N.Vector3 pose = b.Body.Position;
+        N.Quaternion turn = b.Body.Rotation;
+        string before = Fingerprint(b);
+        int under = 0, refused = 0;
+        foreach (N.Vector3 local in new[] { new N.Vector3(0f, 0f, 0f), new N.Vector3(-4f, 0f, 6f), new N.Vector3(4f, 0f, -6f) })
         {
-            PlanetEdit edit = _w.Dig(footings[0].Center, 1f);
-            Check(_w.Ground.Store.IsSolid(footings[0]) && edit.Anchored > 0,
-                $"the ground under a landing foot is the base's footing: the dig tool leaves {edit.Anchored} footing cells alone");
+            N.Vector3 at = b.Body.ToParent(local);
+            at.Y = _w.GroundTop(at.X, at.Z) - 1.5f;
+            PlanetEdit edit = _w.Dig(at, 2f);
+            under += edit.Removed.Count;
+            refused += edit.Bedrock + edit.Outside;
+            yield return 0;
         }
-        else GD.Print("  (no foot stands on the ground here: the base rests on its foundation, so there are no footings to test)");
+        for (int i = 0; i < 30; i++) yield return 0;
+        Check(under > 0 && refused == 0 && b.State == CraftState.Anchored && b.Body.Position == pose && b.Body.Rotation == turn && Fingerprint(b) == before,
+            $"dug right under the base: {under} cells, none refused; it stands exactly where it was built (pose and every block unchanged to the bit)");
         Conserved("dug around");
     }
 

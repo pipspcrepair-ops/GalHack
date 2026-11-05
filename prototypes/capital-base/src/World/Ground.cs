@@ -18,13 +18,13 @@ public sealed record GroundEdit(Cut Why, string By, int Removed, int Refused, Di
 
 /// <summary>
 /// Every change to the planet's ground goes through here, and so through planet-surface's
-/// <see cref="PlanetTerrain"/> and terrain-digging's rules (remove-only, bedrock and POI anchors
-/// refuse, every copy across a seam). Each removal is logged, the patch is told which chunks to
+/// <see cref="PlanetTerrain"/> and terrain-digging's rules (remove-only, only bedrock refuses,
+/// every copy across a seam). Each removal is logged, the patch is told which chunks to
 /// rebuild, and the physics world wakes whatever stood nearby. It is also the physics module's
 /// crater editor.
 ///
-/// It keeps the footings of bases too: the ground under each landing foot of an anchored base
-/// refuses the dig tool, so a base never looks undermined.
+/// The ground under and around a base digs like any other (dig anywhere): a base is pinned
+/// where it was built (<see cref="Pinned"/>), so undermining it never moves it.
 /// </summary>
 public sealed class Ground : ITerrainEditor
 {
@@ -39,8 +39,6 @@ public sealed class Ground : ITerrainEditor
 
     public event Action<PlanetEdit, Cut> Edited;
 
-    readonly Dictionary<string, HashSet<TInt3>> _footings = new(StringComparer.Ordinal);
-
     public Ground(PlanetTerrain terrain, TerrainPatch patch)
     {
         Terrain = terrain;
@@ -49,62 +47,75 @@ public sealed class Ground : ITerrainEditor
 
     public ChunkStore Store => Terrain.Store;
 
-    // ---- Footings --------------------------------------------------------------------------
-
-    public void SetFootings(string owner, IEnumerable<TInt3> cells) => _footings[owner] = new HashSet<TInt3>(cells);
-
-    public void ClearFootings(string owner) => _footings.Remove(owner);
-
-    public IReadOnlyCollection<TInt3> FootingsOf(string owner) => _footings.TryGetValue(owner, out var set) ? set : Array.Empty<TInt3>();
-
-    public bool IsFooting(TInt3 cell)
-    {
-        foreach (HashSet<TInt3> set in _footings.Values)
-            if (set.Contains(cell)) return true;
-        return false;
-    }
-
     // ---- Edits -----------------------------------------------------------------------------
 
-    /// <summary>The dig tool: a ball of cells, footings left alone.</summary>
+    /// <summary>The dig tool: a ball of cells, anywhere but bedrock (under a base too).</summary>
     public PlanetEdit Dig(TInt3 center, float radius, string by, Cut why = Cut.Dig)
     {
         IEnumerable<TInt3> cells = ChunkStore.SphereCells(center, Math.Clamp(radius, 0f, ChunkStore.MaxToolRadius));
-        return Remove(cells, why, by, keepFootings: true);
+        return Remove(cells, why, by);
     }
 
-    /// <summary>Removes particular cells under the tool's rules (lift-off and building clear their own cells this way).</summary>
-    public PlanetEdit Remove(IEnumerable<TInt3> cells, Cut why, string by, bool keepFootings)
+    /// <summary>Removes particular cells under the tool's rules (lift-off clears its own cells this way).</summary>
+    public PlanetEdit Remove(IEnumerable<TInt3> cells, Cut why, string by)
     {
-        int footing = 0;
-        var list = new List<TInt3>();
-        foreach (TInt3 c in cells)
-        {
-            if (keepFootings && IsFooting(c) && Store.IsSolid(c)) footing++;
-            else list.Add(c);
-        }
-        PlanetEdit edit = Terrain.DigCells(list);
-        edit.Anchored += footing;
+        PlanetEdit edit = Terrain.DigCells(cells);
         Commit(edit, why, by, notify: true);
         return edit;
     }
+
+    // ---- Blocks in the ground ----------------------------------------------------------------
+
+    /// <summary>
+    /// Blocks reaching into the ground (terrain-digging's rule 4): each one's volume is registered,
+    /// so the ground meets its faces flush, and the cells whose centres lie inside it are cleared,
+    /// logged as building. The ground round it is left exactly as it was.
+    /// </summary>
+    public PlanetEdit SetInto(IEnumerable<(VolumeKey key, StructureVolume volume)> blocks, string by)
+    {
+        var cells = new List<TInt3>();
+        var dirty = new HashSet<TInt3>();
+        foreach ((VolumeKey key, StructureVolume volume) in blocks)
+        {
+            dirty.UnionWith(Store.AddVolume(key, volume));
+            cells.AddRange(volume.CellsInside());
+        }
+        PlanetEdit edit = Terrain.DigCells(cells);
+        Patch?.MarkDirty(dirty);
+        if (edit.Removed.Count > 0) Commit(edit, Cut.Build, by, notify: true); // the log holds what was cut
+        return edit;
+    }
+
+    /// <summary>Whether a block's box meets the ground at all: solid cells it overlaps, or cells it cleared.</summary>
+    public bool Touches(StructureVolume volume)
+    {
+        foreach (TInt3 cell in ChunkStore.BoxCells(volume.CellBounds))
+            if (Store.IsSolid(cell) || (Store.IsRemoved(cell) && volume.ContainsCell(cell))) return true;
+        return false;
+    }
+
+    /// <summary>A block taken off: the ground it cleared stays cleared (remove-only), drawn as dug.</summary>
+    public void Release(VolumeKey key) => Patch?.MarkDirty(Store.RemoveVolume(key));
+
+    /// <summary>A whole structure leaving the ground (lift-off, a load replacing it).</summary>
+    public void ReleaseAll(int owner) => Patch?.MarkDirty(Store.RemoveVolumes(owner));
 
     /// <summary>A crash: a capped bowl of cells, through the same log (the physics world notifies for its own craters).</summary>
     public CraterResult Crater(N.Vector3 center, float radius)
     {
         PlanetEdit edit = Terrain.Crater(center, radius);
         Region changed = Commit(edit, Cut.Crater, "impact", notify: false);
-        return new CraterResult(edit.Removed.Count, edit.Bedrock + edit.Anchored + edit.Outside, changed);
+        return new CraterResult(edit.Removed.Count, edit.Bedrock + edit.Outside, changed);
     }
 
-    /// <summary>What the terrain says about removing one cell (bedrock, POI anchors); footings are checked separately.</summary>
+    /// <summary>What the terrain says about removing one cell: removable, already air, bedrock or outside the world.</summary>
     public Verdict Check(TInt3 cell) => Terrain.Check(cell, EditKind.Tool);
 
     Region Commit(PlanetEdit edit, Cut why, string by, bool notify)
     {
         var materials = new Dictionary<CellMaterial, int>();
         foreach (RemovedCell r in edit.Removed) materials[r.Material] = materials.GetValueOrDefault(r.Material) + 1;
-        History.Add(new GroundEdit(why, by, edit.Removed.Count, edit.Bedrock + edit.Anchored + edit.Outside, materials));
+        History.Add(new GroundEdit(why, by, edit.Removed.Count, edit.Bedrock + edit.Outside, materials));
         if (edit.Removed.Count == 0) return default;
         Patch?.MarkDirty(edit.DirtyChunks);
         N.Vector3 min = new(float.MaxValue), max = new(float.MinValue);
@@ -130,7 +141,6 @@ public sealed class Ground : ITerrainEditor
         fresh.ApplyDiff(log);
         HashSet<TInt3> dirty = Store.ReplaceStateWith(fresh);
         Patch?.MarkDirty(dirty);
-        _footings.Clear();
     }
 
     public static string Describe(Dictionary<CellMaterial, int> materials) =>
