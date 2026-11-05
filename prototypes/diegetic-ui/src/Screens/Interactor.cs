@@ -25,6 +25,9 @@ public partial class Interactor : Node
     /// <summary>How far away you can use something from.</summary>
     public float Reach { get; set; } = 2.8f;
 
+    /// <summary>Layers the things you can use are picked on.</summary>
+    public uint PickMask { get; set; } = WorldScreen.DefaultPickLayer;
+
     /// <summary>Layers that block the look ray (walls), besides the pick layer.</summary>
     public uint BlockMask { get; set; } = 1;
 
@@ -123,7 +126,7 @@ public partial class Interactor : Node
             return;
         }
         Vector3 from = Camera.GlobalPosition;
-        var query = PhysicsRayQueryParameters3D.Create(from, from - Camera.GlobalBasis.Z * Reach, WorldScreen.PickLayer | BlockMask);
+        var query = PhysicsRayQueryParameters3D.Create(from, from - Camera.GlobalBasis.Z * Reach, PickMask | BlockMask);
         var hit = Camera.GetWorld3D().DirectSpaceState.IntersectRay(query);
         LookTarget = hit.Count > 0 && hit["collider"].AsGodotObject() is Node collider && collider.HasMeta("focus_target")
             ? collider.GetMeta("focus_target").AsGodotObject() as IFocusTarget

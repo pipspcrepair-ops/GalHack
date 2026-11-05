@@ -25,6 +25,8 @@ public partial class Visor : CanvasLayer
     public GameState State { get; init; }
     public Player Player { get; init; }
     public Interactor Interactor { get; init; }
+    /// <summary>The look-and-click cursor: while it is on a screen, the visor's own aim dot steps aside.</summary>
+    public ScreenPointer Pointer { get; init; }
     public Camera3D Camera { get; init; }
 
     /// <summary>0..1, set by the game from where you stand: ice on the glass.</summary>
@@ -385,11 +387,17 @@ public partial class Visor : CanvasLayer
         var centre = size / 2;
         if (focus.State == FocusState.Free)
         {
-            _hud.DrawCircle(centre, 2.6f * s, new Color(C.Text, 0.85f));
+            // On a screen the cursor on its glass is the aim mark; anywhere else, the dot.
+            bool onScreen = Pointer is { CursorVisible: true };
+            if (!onScreen) _hud.DrawCircle(centre, 2.6f * s, new Color(C.Text, 0.85f));
             if (Interactor.LookTarget is { } target)
             {
-                _hud.DrawArc(centre, 11 * s, 0, Mathf.Tau, 24, new Color(C.Accent2, 0.9f), 2 * s, true);
-                Chip(new Vector2(size.X / 2, size.Y / 2 + 52 * s), "E", target.Prompt, s);
+                if (onScreen) Chip(new Vector2(size.X / 2, size.Y - 26 * s), "E", "STEP IN", s, 0.7f); // low, off the glass you're clicking
+                else
+                {
+                    _hud.DrawArc(centre, 11 * s, 0, Mathf.Tau, 24, new Color(C.Accent2, 0.9f), 2 * s, true);
+                    Chip(new Vector2(size.X / 2, size.Y / 2 + 52 * s), "E", target.Prompt, s);
+                }
             }
             return;
         }

@@ -59,19 +59,30 @@ float fbm(vec3 p) {
 	return v;
 }
 
-// One candidate star per cell of a grid wrapped round the sky.
+// Stars: points scattered through a thin shell of a 3D lattice, STAR_SHELL cells out, each drawn
+// where the view ray passes within its radius. Every star is placed, and kept or dropped, by itself
+// (where it lies in its cell, and whether that is inside the shell), never by where the ray cuts a
+// cell, so the field is equally dense in every direction. (Cutting the lattice with the sky's
+// sphere left a star-free hole ringed by bands at each of the six axis directions.) A star that
+// close to the ray lies within half a cell of the ray's own point each way, so the two cells
+// round that point on each axis hold it.
+const float STAR_SHELL = 320.0;
+
 vec3 starfield(vec3 d) {
-	vec3 p = d * 320.0;
-	vec3 cell = floor(p);
-	float h = hash13(cell);
-	if (h < 1.0 - 0.06 * star_density) {
-		return vec3(0.0);
+	vec3 p = d * STAR_SHELL;
+	vec3 base = floor(p + 0.28) - 1.0;
+	vec3 col = vec3(0.0);
+	for (int i = 0; i < 8; i++) {
+		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
+		if (hash13(cell) < 1.0 - 0.06 * star_density) continue;
+		vec3 star = cell + vec3(hash13(cell + 11.1), hash13(cell + 23.7), hash13(cell + 37.3)) * 0.6 + 0.2;
+		if (abs(length(star) - STAR_SHELL) > 0.35) continue;
+		float off = length(star - d * dot(star, d));   // from the ray, in cells
+		float brightness = pow(hash13(cell + 5.5), 4.0) * 7.0 + 0.5;
+		vec3 tint = mix(vec3(1.0, 0.8, 0.6), vec3(0.75, 0.88, 1.0), hash13(cell + 7.7));
+		col += tint * brightness * smoothstep(0.28, 0.0, off);
 	}
-	vec3 centre = vec3(hash13(cell + 11.1), hash13(cell + 23.7), hash13(cell + 37.3)) * 0.6 + 0.2;
-	float dist = length(fract(p) - centre);
-	float brightness = pow(hash13(cell + 5.5), 4.0) * 7.0 + 0.5;
-	vec3 tint = mix(vec3(1.0, 0.8, 0.6), vec3(0.75, 0.88, 1.0), hash13(cell + 7.7));
-	return tint * brightness * smoothstep(0.28, 0.0, dist);
+	return col;
 }
 
 void sky() {

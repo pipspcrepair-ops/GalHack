@@ -56,12 +56,18 @@ uniform vec2 cloud_drift = vec2(0.0);
 uniform vec3 cloud_lit : source_color = vec3(1.0);
 uniform vec3 cloud_shade : source_color = vec3(0.5, 0.55, 0.62);
 uniform vec3 cloud_underglow : source_color = vec3(0.0);   // light from the ground: lava under ash
-uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour
+uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
 
 float hash31(vec3 p) {
 	p = fract(p * vec3(443.897, 441.423, 437.195));
 	p += dot(p, p.yzx + 19.19);
 	return fract((p.x + p.y) * p.z);
+}
+
+// How much of the sun's light gets through the air, by its height: all of it from about 17° up,
+// under half at the horizon (SkyRig.AirMass, the same curve for the sunlight on the ground).
+float sun_air(float sun_h) {
+	return 0.45 + 0.55 * smoothstep(0.02, 0.3, sun_h);
 }
 
 vec3 sky_color(vec3 dir, vec3 sun) {
@@ -80,15 +86,60 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	vec2 flat_sun = normalize(sun.xz + vec2(1e-5));
 	float toward = dot(flat_dir, flat_sun) * 0.5 + 0.5;
 	float low = smoothstep(0.45, 0.0, sun_h) * smoothstep(-0.28, -0.02, sun_h);
-	col += sunset * low * pow(toward, 2.5) * exp(-max(up, 0.0) * 5.0 / density) * (0.55 + 0.45 * density);
+	col += sunset * low * pow(toward, 2.5) * exp(-max(up, 0.0) * 5.0 / density) * (0.45 + 0.35 * density);
 	col = mix(col, col * vec3(0.9, 0.85, 0.82) + sunset * 0.08, low * 0.5);
 
-	// Aerosol glow round the sun.
+	// Aerosol glow round the sun. Near the horizon its light has come a long way through the air
+	// (sun_through): the wide halo dims with it, so a low sun is a contained glow, not a white sky.
 	float sd = dot(dir, sun);
-	col += star_color * (pow(max(sd, 0.0), 8.0) * 0.18 + pow(max(sd, 0.0), 90.0) * 0.5) * day * density;
+	float sun_through = sun_air(sun_h);
+	col += star_color * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5) * day * density;
 
 	// Below the horizon: the haze, darker downward.
 	if (up < 0.0) col = mix(col, haze * bright * day * 0.55 + zenith_night, clamp(-up * 6.0, 0.0, 1.0));
+	return col;
+}
+
+// The night backdrop has no seams, poles or corners anywhere on the sky: everything is looked up
+// along the 3D direction itself. (A longitude-latitude map pinched the nebula into a starburst at
+// its pole and tore it along a meridian; stars cut from a 3D lattice by a sphere left a star-free
+// hole and rings at each of the six axis directions, and thinned toward them.)
+uniform sampler3D nebula_noise : filter_linear, repeat_disable;    // broad clouds of it
+uniform sampler3D nebula_detail : filter_linear, repeat_disable;   // its finer structure
+
+// A 3D noise texture looked up along a sky direction, inside one tile (no wrap, so no tiling seam),
+// with the trilinear weights eased so its texel grid never shows as creases in a smooth glow.
+float sky_noise(sampler3D tex, vec3 d) {
+	vec3 size = vec3(textureSize(tex, 0));
+	vec3 t = (d * 0.45 + 0.5) * size - 0.5;
+	vec3 i = floor(t), f = t - i;
+	f = f * f * (3.0 - 2.0 * f);
+	return textureLod(tex, (i + f + 0.5) / size, 0.0).r;
+}
+
+// Stars: points scattered through a thin shell of a 3D lattice, STAR_SHELL cells out, each drawn
+// where the view ray passes within its radius. Every star is placed and kept or dropped by itself
+// (its own place, inside its cell, and whether it lies in the shell), never by where the ray cuts
+// a cell, so the field is equally dense in every direction. A star that close to the ray lies
+// within half a cell of the ray's own point on each axis: the two cells round it, each way, hold it.
+const float STAR_SHELL = 260.0;
+const float STAR_DEPTH = 0.35;   // half the shell's thickness, cells
+const float STAR_RADIUS = 0.32;  // cells
+
+vec3 stars(vec3 d) {
+	vec3 p = d * STAR_SHELL;
+	vec3 base = floor(p + 0.28) - 1.0;
+	vec3 col = vec3(0.0);
+	for (int i = 0; i < 8; i++) {
+		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
+		float h = hash31(cell);
+		if (h <= 0.985) continue;
+		vec3 star = cell + 0.2 + 0.6 * vec3(hash31(cell + 7.7), hash31(cell + 13.1), hash31(cell + 19.3));
+		if (abs(length(star) - STAR_SHELL) > STAR_DEPTH) continue;
+		float off = length(star - d * dot(star, d));   // from the ray, in cells
+		float b = smoothstep(STAR_RADIUS, 0.0, off) * pow((h - 0.985) / 0.015, 6.0);   // a few bright, most faint
+		col += vec3(0.85 + 0.15 * hash31(cell + 3.1), 0.9, 1.0) * b * 4.0;
+	}
 	return col;
 }
 
@@ -96,22 +147,12 @@ vec3 night_sky(vec3 dir, vec3 sun) {
 	vec3 d = star_turn * dir;
 	vec3 col = vec3(0.0);
 	if (nebula) {
-		vec2 uv = vec2(atan(d.x, d.z) * 0.15915 + 0.5, d.y * 0.5 + 0.5);
-		float n = texture(cloud_noise, uv * vec2(2.0, 1.0)).r;
-		float m = texture(cloud_noise, uv * vec2(5.0, 2.5) + 0.37).r;
+		float n = sky_noise(nebula_noise, d);
+		float m = sky_noise(nebula_detail, d);
 		float band = exp(-pow((d.y - 0.15 + 0.3 * (n - 0.5)) * 2.2, 2.0));
 		col += mix(nebula_a, nebula_b, m) * pow(n * m, 1.5) * band * 0.9;
 	}
-	// Stars: points on a fine grid of directions, a few bright, most faint.
-	vec3 p = d * 260.0;
-	vec3 cell = floor(p);
-	float h = hash31(cell);
-	if (h > 0.985) {
-		vec3 f = fract(p) - 0.5;
-		float b = smoothstep(0.32, 0.0, length(f)) * pow((h - 0.985) / 0.015, 6.0);
-		col += vec3(0.85 + 0.15 * hash31(cell + 3.1), 0.9, 1.0) * b * 4.0;
-	}
-	return col;
+	return col + stars(d);
 }
 
 // Moons and the giant: discs lit from the sun's side, so they show phases; the giant has bands
@@ -199,9 +240,17 @@ float cloud_density(vec3 p, bool cheap) {
 	return clamp(d * 1.8, 0.0, 1.0);
 }
 
+// Where along its first step each pixel's march starts, 0..1: interleaved gradient noise on the
+// pixel grid, so neighbouring pixels sample the slab at well-spread depths. (A hash of the view
+// direction, over only a third of a step, left the steps showing as combs and streaks along
+// cloud edges.)
+float march_jitter(vec2 pixel) {
+	return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
 // The clouds along a view ray: their light over the given sky colour, and their opacity. With
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
-vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit) {
+vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
 	float base = cloud_base, top = cloud_base + cloud_thick;
 	float t0, t1;
@@ -216,9 +265,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit) {
 	}
 	if (t1 <= 0.0 || t0 > 40000.0) return vec4(sky, 0.0);
 	t1 = min(t1, t0 + 5000.0);
-	const int STEPS = 40;
-	float dt = (t1 - t0) / float(STEPS);
-	float t = t0 + dt * (0.35 + 0.3 * hash31(rd * 731.0));
+	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
+	// horizon, where the path is long and too few would slice the clouds into layers.
+	int steps = int(clamp((t1 - t0) / 70.0, 24.0, 64.0));
+	float dt = (t1 - t0) / float(steps);
+	float t = t0 + dt * jitter;
 	float trans = 1.0;
 	vec3 light = vec3(0.0);
 	float day = smoothstep(-0.15, 0.1, sun.y);
@@ -226,7 +277,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit) {
 	vec3 sun_light = mix(sunset, sun_tint, smoothstep(0.0, 0.3, sun.y)) * day * sun_energy * 1.1;
 	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day);
 	float flash = weather_flash.w;
-	for (int i = 0; i < STEPS; i++) {
+	for (int i = 0; i < steps; i++) {
 		vec3 p = ro + rd * t;
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
@@ -265,31 +316,35 @@ void sky() {
 
 	if (AT_QUARTER_RES_PASS) {
 		// How much the clouds hide, marched without light: cheap, and in a channel with ten bits.
-		COLOR = vec3(march_clouds(POSITION, dir, sun, col, false).a);
+		COLOR = vec3(march_clouds(POSITION, dir, sun, col, false, march_jitter(FRAGCOORD.xy)).a);
 	} else if (AT_HALF_RES_PASS) {
 		// The clouds laid over the plain sky, at half resolution: the costly part. Stored on a
 		// square-root curve, scaled down for headroom: the buffer clamps at one and dark storm or
 		// ash clouds would band without the extra precision near black.
-		vec4 c = march_clouds(POSITION, dir, sun, col, true);
+		vec4 c = march_clouds(POSITION, dir, sun, col, true, march_jitter(FRAGCOORD.xy));
 		COLOR = sqrt(max(c.rgb, vec3(0.0)) * 0.25);
 	} else {
 		float day = smoothstep(-0.2, 0.15, sun.y);
 		vec3 plain = col;
-		float starlight = max(1.0 - day, stars_by_day) * (1.0 - overcast);
-		if (dir.y > -0.02) col += night_sky(dir, sun) * starlight;
+		// Faded out just below the horizon, not cut: seen from high up there is no hard line.
+		float starlight = max(1.0 - day, stars_by_day) * (1.0 - overcast) * smoothstep(-0.08, 0.0, dir.y);
+		if (starlight > 0.0) col += night_sky(dir, sun) * starlight;
 		// Bodies show through a clear sky by day as well as by night, faded by the daylight's glare.
 		vec4 b = bodies(dir, sun) * (1.0 - overcast * 0.9);
 		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
 
-		// The sun itself, in front of everything but cloud.
+		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
 		float sd = dot(dir, sun);
 		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd);
-		col += star_color * disc * sun_energy * 18.0 * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
+		float through = sun_air(sun.y);
+		vec3 disc_color = mix(sunset, star_color, smoothstep(0.0, 0.3, sun.y)) * through * through;
+		col += disc_color * disc * sun_energy * 18.0 * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
 
 		float cover;
 		if (AT_CUBEMAP_PASS) {
-			// Reflections and ambient light: just the overall cover, no march.
-			cover = dir.y > 0.0 ? cloud_cover * 0.6 : 0.0;
+			// Reflections, ambient light and the fog's aerial perspective: just the overall cover, no
+			// march, eased in over the horizon (a hard step there showed in fogged distance and water).
+			cover = cloud_cover * 0.6 * smoothstep(-0.02, 0.12, dir.y);
 			col = mix(col, mix(cloud_shade, cloud_lit, 0.5) * (0.2 + 0.8 * day), cover);
 		} else {
 			// The clouds over the plain sky, plus whatever else is up there where they let it through.
@@ -299,6 +354,7 @@ void sky() {
 			col = clouded + (col - plain) * (1.0 - cover);
 		}
 		if (debug_view == 1) col = vec3(cover);
+		if (debug_view == 3) col = night_sky(dir, sun) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
 		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
 		COLOR = col;

@@ -115,7 +115,7 @@ public partial class Main : Node3D
 
     /// <summary>
     /// A spacewalk: the Corsair parked in orbit, 100 m above the atmosphere, with its core gravity
-    /// off, and the player on its roof in mag boots.
+    /// on, and the player on its roof, held there by it.
     /// </summary>
     public void Orbit()
     {
@@ -126,10 +126,10 @@ public partial class Main : Node3D
         ship.Vessel.Place(ship.Body, new N.Vector3(0f, World.Physics.Zone.Ceiling + 100f, 0f), 0f);
         ship.Binding.Teleport();
         ship.Flight.Input = PilotInput.Autopilot;
-        ship.Body.Core.On = false;
+        ship.Body.Core.On = true;
         ship.Cabin.SetGravity(ship.Body.Core);
         p.PlaceAboard(ship, new N.Vector3(-1f, 2.78f, -1.5f));
-        Hud.Log("in orbit: core gravity off, mag boots on. Walk off an edge and round the hull; jump to let go");
+        Hud.Log("in orbit: the core's gravity holds you to the roof. Walk off an edge or jump to let go; Y turns it off and you float");
     }
 
     /// <summary>A swim: the player on the lake's southern beach, looking out across it.</summary>

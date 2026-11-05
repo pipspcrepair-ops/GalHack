@@ -51,10 +51,17 @@ public static class UiTheme
     public static Palette Colors { get; set; } = Palette.Helios;
 
     /// <summary>
+    /// Where the fonts folder is. diegetic-ui's own res://fonts by default; a project that
+    /// compiles this theme in from here and reads the fonts in place points it at that folder
+    /// (an absolute path works) before anything draws.
+    /// </summary>
+    public static string FontRoot { get; set; } = "res://fonts";
+
+    /// <summary>
     /// Wide display face for titles: Michroma, in the spirit of the extended grotesques on
     /// 1970s science-fiction paperbacks.
     /// </summary>
-    public static Font Display => _display ??= Emboldened(LoadFont("res://fonts/Michroma/Michroma-Regular.ttf"));
+    public static Font Display => _display ??= Emboldened(LoadFont(FontPath("Michroma/Michroma-Regular.ttf")));
 
     /// <summary>Labels and body text: Oxanium at bold weight.</summary>
     public static Font Label => _label ??= Weighted(OxaniumFile, 700);
@@ -66,18 +73,20 @@ public static class UiTheme
     public static Font Body => _body ??= Weighted(OxaniumFile, 500);
 
     /// <summary>Numbers: Space Mono Bold, so digits don't jitter as values change.</summary>
-    public static Font Mono => _mono ??= LoadFont("res://fonts/SpaceMono/SpaceMono-Bold.ttf");
+    public static Font Mono => _mono ??= LoadFont(FontPath("SpaceMono/SpaceMono-Bold.ttf"));
 
     /// <summary>A signed-distance-field copy of the display face for 3D labels, sharp at any distance.</summary>
-    public static Font Display3D => _display3D ??= Emboldened(LoadFont("res://fonts/Michroma/Michroma-Regular.ttf", msdf: true));
-    public static Font Label3D => _label3D ??= Weighted(LoadFont("res://fonts/Oxanium/Oxanium-Variable.ttf", msdf: true), 700);
+    public static Font Display3D => _display3D ??= Emboldened(LoadFont(FontPath("Michroma/Michroma-Regular.ttf"), msdf: true));
+    public static Font Label3D => _label3D ??= Weighted(LoadFont(FontPath("Oxanium/Oxanium-Variable.ttf"), msdf: true), 700);
 
     // Type sizes for a screen roughly 1280 px wide seen from arm's length. Large on purpose.
     public const int SizeTitle = 40, SizeHeading = 30, SizeLabel = 26, SizeSmall = 20, SizeBig = 56;
 
     static Font _display, _label, _heavy, _body, _mono, _display3D, _label3D;
     static FontFile _oxanium;
-    static FontFile OxaniumFile => _oxanium ??= LoadFont("res://fonts/Oxanium/Oxanium-Variable.ttf");
+    static FontFile OxaniumFile => _oxanium ??= LoadFont(FontPath("Oxanium/Oxanium-Variable.ttf"));
+
+    static string FontPath(string file) => FontRoot.TrimEnd('/', '\\') + "/" + file;
 
     public static FontFile LoadFont(string path, bool msdf = false)
     {
@@ -108,15 +117,87 @@ public static class UiTheme
         return variation;
     }
 
-    /// <summary>A Godot Theme carrying the fonts, for any stock Control placed on a screen.</summary>
+    /// <summary>
+    /// The Godot Theme every screen gives a panel that brings none, and the one a full-screen
+    /// menu should use too, so a panel looks the same in both. It carries the fonts and dresses
+    /// the stock controls in the palette: buttons are dark blocks with a colour tab that light
+    /// under the cursor and go solid when pressed or toggled on; sliders are segmented-looking
+    /// tracks with a cream grab handle. Type variations for labels: Title, Heading, Caption, Readout.
+    /// </summary>
     public static Godot.Theme GodotTheme => _theme ??= BuildTheme();
     static Godot.Theme _theme;
 
     static Godot.Theme BuildTheme()
     {
-        var theme = new Godot.Theme { DefaultFont = Label, DefaultFontSize = SizeLabel };
-        theme.SetColor("font_color", "Label", Colors.Text);
-        return theme;
+        Palette c = Colors;
+        var t = new Godot.Theme { DefaultFont = Label, DefaultFontSize = SizeLabel };
+
+        t.SetColor("font_color", "Label", c.Text);
+        Variation(t, "Title", "Label", Display, SizeTitle, c.Accent);
+        Variation(t, "Heading", "Label", Label, SizeHeading, c.Text);
+        Variation(t, "Caption", "Label", Label, SizeSmall, c.Dim);
+        Variation(t, "Readout", "Label", Mono, SizeLabel, c.Text);
+
+        t.SetStylebox("normal", "Button", Box(c.Panel, tab: c.Accent));
+        t.SetStylebox("hover", "Button", Box(c.Panel.Lightened(0.15f), tab: c.Accent2, frame: 3));
+        t.SetStylebox("pressed", "Button", Box(c.Good, tab: c.Good.Darkened(0.35f)));
+        t.SetStylebox("hover_pressed", "Button", Box(c.Good.Lightened(0.12f), tab: c.Accent2, frame: 3));
+        t.SetStylebox("disabled", "Button", Box(c.Glass, tab: c.Rule));
+        t.SetStylebox("focus", "Button", new StyleBoxEmpty());
+        t.SetColor("font_color", "Button", c.Text);
+        t.SetColor("font_hover_color", "Button", c.Text);
+        t.SetColor("font_focus_color", "Button", c.Text);
+        t.SetColor("font_pressed_color", "Button", c.Glass);
+        t.SetColor("font_hover_pressed_color", "Button", c.Glass);
+        t.SetColor("font_disabled_color", "Button", c.Dim);
+
+        t.SetStylebox("slider", "HSlider", Box(c.Rule, margin: 8));
+        t.SetStylebox("grabber_area", "HSlider", Box(c.Accent2, margin: 8));
+        t.SetStylebox("grabber_area_highlight", "HSlider", Box(c.Accent2.Lightened(0.2f), margin: 8));
+        t.SetIcon("grabber", "HSlider", Handle(c.Text));
+        t.SetIcon("grabber_highlight", "HSlider", Handle(c.Accent2.Lightened(0.4f)));
+        t.SetIcon("grabber_disabled", "HSlider", Handle(c.Dim));
+
+        t.SetStylebox("background", "ProgressBar", Box(c.Rule));
+        t.SetStylebox("fill", "ProgressBar", Box(c.Good));
+        t.SetStylebox("panel", "PanelContainer", Box(c.Glass, margin: 0));
+        t.SetConstant("separation", "VBoxContainer", 12);
+        t.SetConstant("separation", "HBoxContainer", 16);
+        return t;
+    }
+
+    static void Variation(Godot.Theme t, string name, string baseType, Font font, int size, Color colour)
+    {
+        t.SetTypeVariation(name, baseType);
+        t.SetFont("font", name, font);
+        t.SetFontSize("font_size", name, size);
+        t.SetColor("font_color", name, colour);
+    }
+
+    /// <summary>A flat block with a thick colour tab down its left edge, and optionally a frame in that colour.</summary>
+    static StyleBoxFlat Box(Color fill, Color? tab = null, int frame = 0, int margin = 12)
+    {
+        var box = new StyleBoxFlat
+        {
+            BgColor = fill,
+            ContentMarginLeft = margin + (tab != null ? 14 : 0), ContentMarginRight = margin,
+            ContentMarginTop = margin * 0.6f, ContentMarginBottom = margin * 0.6f,
+        };
+        if (tab is { } edge)
+        {
+            box.BorderColor = edge;
+            box.BorderWidthLeft = 10;
+            box.BorderWidthTop = box.BorderWidthRight = box.BorderWidthBottom = frame;
+        }
+        return box;
+    }
+
+    /// <summary>A slider's grab handle: a fat upright block.</summary>
+    static ImageTexture Handle(Color colour)
+    {
+        Image image = Image.CreateEmpty(26, 48, false, Image.Format.Rgba8);
+        image.Fill(colour);
+        return ImageTexture.CreateFromImage(image);
     }
 
     /// <summary>Formats a number with thin grouping, like 1 240.</summary>

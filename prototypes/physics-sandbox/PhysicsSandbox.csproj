@@ -18,4 +18,8 @@
     <Compile Include="..\weather\src\Forces\**\*.cs" />
     <Compile Include="..\weather\src\Glue.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The sky seam check every prototype with a sky of its own runs (tests/SkySeamTest). -->
+    <Compile Include="..\..\shared\Sky\**\*.cs" />
+  </ItemGroup>
 </Project>

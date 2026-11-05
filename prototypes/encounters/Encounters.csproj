@@ -4,4 +4,8 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>Encounters</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The sky seam check every prototype with a sky of its own runs. -->
+    <Compile Include="..\..\shared\Sky\**\*.cs" />
+  </ItemGroup>
 </Project>

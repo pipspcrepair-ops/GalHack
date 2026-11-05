@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DiegeticUi.Theme;
 using GalHack.Items;
 using Godot;
 using Manufacturing.Game;
@@ -9,44 +10,35 @@ namespace Manufacturing.Screens;
 /// <summary>
 /// The diegetic screen look, as prototypes/diegetic-ui defines it: dark glass, bold colour blocks
 /// in the Helios palette, a header like a 70s paperback spine, segmented bars. The fonts (OFL,
-/// credited in CREDITS.md) and the glass shader are read from diegetic-ui's folder where they
-/// live, so nothing is copied; if they can't be found the screens fall back to a system font.
+/// credited in CREDITS.md) and the glass shader are diegetic-ui's, read from its folder where
+/// they live, so nothing is copied: this points diegetic-ui's <see cref="UiTheme"/> at that folder.
 /// </summary>
 public static class Kit
 {
+    static Kit() => UiTheme.FontRoot = Path.Combine(DataPaths.DiegeticUi, "fonts");
+
     // diegetic-ui's Palette.Helios.
     public static readonly Color Glass = new("0b111c"), Panel = new("172238"), Rule = new("2a3a58"), Cream = new("f6ead0"),
         Dim = new("8d97ab"), Accent = new("ff6a13"), Accent2 = new("ffb400"), Good = new("1fd6c4"), Warn = new("ffb400"), Danger = new("ff3344");
 
     public const int SizeTitle = 40, SizeHeading = 30, SizeLabel = 26, SizeSmall = 20, SizeTiny = 16;
 
-    static Font _display, _label, _mono;
-    public static Font Display => _display ??= Load("Michroma/Michroma-Regular.ttf", embolden: 1.3f);
-    public static Font Label => _label ??= Load("Oxanium/Oxanium-Variable.ttf", weight: 700);
-    public static Font Mono => _mono ??= Load("SpaceMono/SpaceMono-Bold.ttf");
+    public static Font Display => UiTheme.Display;
+    public static Font Label => UiTheme.Label;
+    public static Font Mono => UiTheme.Mono;
+
+    /// <summary>Makes sure diegetic-ui's theme reads its fonts from where they live. Call before anything draws.</summary>
+    public static void UseDiegeticFonts() { } // the static constructor does the work
 
     public static Color Of(Rarity r) => new((Rarities.Color(r) << 8) | 0xFF);
 
-    static Font Load(string file, float embolden = 0, int weight = 0)
-    {
-        string path = Path.Combine(DataPaths.DiegeticUi, "fonts", file);
-        if (!File.Exists(path)) return new SystemFont { FontNames = new[] { "Bahnschrift", "Segoe UI", "Arial" } };
-        var font = new FontFile { Data = File.ReadAllBytes(path), Antialiasing = TextServer.FontAntialiasing.Gray, Hinting = TextServer.Hinting.Light };
-        if (embolden > 0) return new FontVariation { BaseFont = font, VariationEmbolden = embolden };
-        if (weight > 0)
-        {
-            long wght = TextServerManager.GetPrimaryInterface().NameToTag("wght");
-            return new FontVariation { BaseFont = font, VariationOpentype = new Godot.Collections.Dictionary { { wght, weight } } };
-        }
-        return font;
-    }
+    static Shader _surface;
 
-    /// <summary>diegetic-ui's glass shader (scanlines, glow, vignette), read in place; null if it isn't there.</summary>
-    public static Shader SurfaceShader()
+    /// <summary>diegetic-ui's glass shader (scanlines, glow, vignette, the cursor), read in place, compiled once.</summary>
+    public static Shader SurfaceShader => _surface ??= new Shader
     {
-        string path = Path.Combine(DataPaths.DiegeticUi, "shaders", "screen_surface.gdshader");
-        return File.Exists(path) ? new Shader { Code = File.ReadAllText(path) } : null;
-    }
+        Code = File.ReadAllText(Path.Combine(DataPaths.DiegeticUi, "shaders", "screen_surface.gdshader")),
+    };
 
     // ---- Drawing --------------------------------------------------------------------------
 
@@ -129,12 +121,50 @@ public static class Kit
         if (lit) ci.DrawCircle(centre + new Vector2(-radius * 0.3f, -radius * 0.3f), radius * 0.28f, colour.Lightened(0.6f));
     }
 
-    /// <summary>A row in a list: panel block, coloured edge, highlight frame when selected.</summary>
-    public static void Row(this CanvasItem ci, Rect2 r, Color edge, bool selected, bool dim = false)
+    /// <summary>
+    /// A row in a list: panel block, coloured edge. Under the cursor it lifts and gets a cream
+    /// frame; selected (by keys) it gets the amber one.
+    /// </summary>
+    public static void Row(this CanvasItem ci, Rect2 r, Color edge, bool selected, bool dim = false, bool hot = false)
     {
-        ci.Block(r, selected ? Panel.Lightened(0.12f) : Panel);
-        ci.Block(new Rect2(r.Position, new Vector2(8, r.Size.Y)), dim ? edge.Darkened(0.5f) : edge);
+        ci.Block(r, hot ? Panel.Lightened(0.2f) : selected ? Panel.Lightened(0.12f) : Panel);
+        ci.Block(new Rect2(r.Position, new Vector2(hot ? 14 : 8, r.Size.Y)), dim ? edge.Darkened(0.5f) : edge);
         if (selected) ci.Frame(r, Accent2, 3);
+        else if (hot) ci.Frame(r, Cream, 3);
+    }
+
+    /// <summary>A block button: its colour as a tab when idle, the whole block lit under the cursor.</summary>
+    public static void Button(this CanvasItem ci, Rect2 r, string label, Color colour, bool hot, int size = SizeSmall)
+    {
+        if (hot)
+        {
+            ci.Block(r, colour.Lightened(0.15f));
+            ci.Frame(r, Cream, 3);
+        }
+        else
+        {
+            ci.Block(r, Panel.Lightened(0.06f));
+            ci.Block(new Rect2(r.Position, new Vector2(8, r.Size.Y)), colour);
+        }
+        ci.TextIn(Label, size, r, label, hot ? Glass : Cream, HorizontalAlignment.Center);
+    }
+
+    /// <summary>A small square key with a sign on it (+, -, x), lit under the cursor.</summary>
+    public static void Key(this CanvasItem ci, Rect2 r, string sign, Color colour, bool hot)
+    {
+        ci.Block(r, hot ? colour : Panel.Lightened(0.1f));
+        if (hot) ci.Frame(r, Cream, 2);
+        ci.TextIn(Mono, SizeSmall, r, sign, hot ? Glass : colour, HorizontalAlignment.Center);
+    }
+
+    /// <summary>A scroll arrow: a solid triangle pointing up or down in a key, lit under the cursor.</summary>
+    public static void Arrow(this CanvasItem ci, Rect2 r, bool up, bool hot, bool enabled = true)
+    {
+        ci.Block(r, hot && enabled ? Accent2 : Panel.Lightened(0.1f));
+        Color ink = !enabled ? Dim.Darkened(0.45f) : hot ? Glass : Cream;
+        Vector2 c = r.GetCenter();
+        float w = r.Size.X * 0.28f, h = r.Size.Y * 0.22f * (up ? -1 : 1);
+        ci.DrawColoredPolygon(new[] { c + new Vector2(-w, -h), c + new Vector2(w, -h), c + new Vector2(0, h) }, ink);
     }
 
     /// <summary>Key hints along the bottom edge, in small dim type.</summary>

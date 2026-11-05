@@ -96,15 +96,7 @@ public partial class TerrainStreamer
         list = null;
         int ccx = Mod(cx, World.Terrain.ChunksX), ccz = Mod(cz, World.Terrain.ChunksZ);
         int per = FarBuilder.Size / S;
-        int fx = ccx / per, fz = ccz / per;
-        // The far grid holds whole 128 m chunks only: on a planet whose size isn't a multiple of
-        // 128 m (8 km is 62.5 chunks) the last strip before the seam has no far chunk, so no flora
-        // is scattered there, and nothing solid stands in it. Done, with nothing to build.
-        if (fx >= World.Terrain.Width / FarBuilder.Size || fz >= World.Terrain.Height / FarBuilder.Size)
-        {
-            list = new List<FloraSolid>();
-            return true;
-        }
+        int fx = ccx / per, fz = ccz / per; // the far grid tiles the planet, a chunk cut short before a seam included
         if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Lod != 0 || f.Solids == null) return false;
         list = new List<FloraSolid>();
         float x0 = ccx * S, z0 = ccz * S;
