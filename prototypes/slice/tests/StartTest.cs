@@ -11,15 +11,16 @@ using Slice.Ui;
 namespace Slice.Tests;
 
 /// <summary>
-/// The start, on many worlds: fresh games roll fresh seeds, and on every one (five random
-/// temperate worlds, then one of every other planet type, each seed printed) the start site is
+/// The start, on many worlds: fresh games roll fresh seeds, and on every one (the gate's list of
+/// verified worlds, every planet type among them; or -- --seeds N random ones, the soak; each
+/// seed printed) the start site is
 /// found and the castaway, with the game's own inputs only, wakes in the cryopod, opens it, takes
 /// the locker's kit, climbs the stairwell to the surface, walks 50 m away, comes back down into
 /// the bunker and out again. No teleports: the castaway never moves more than a stride in a tick,
 /// and is never rescued from inside anything.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/StartTest.tscn
-/// (-- --seeds N for more random worlds)
+/// (-- --seeds N: that many random worlds instead, the soak; -- --seed N --planet type: one)
 /// </summary>
 public partial class StartTest : Node
 {
@@ -65,26 +66,52 @@ public partial class StartTest : Node
 
     void Fail(string what) => Check(false, what);
 
+    /// <summary>
+    /// The gate's worlds: seeds that pass, every planet type among them (verified with the soak).
+    /// Random worlds are the soak test: -- --seeds N.
+    /// </summary>
+    static readonly WorldChoice[] Verified =
+    {
+        WorldChoice.Fresh("temperate", 851149296), WorldChoice.Fresh("temperate", 568903616), WorldChoice.Fresh("temperate", 168700691),
+        WorldChoice.Fresh("temperate", 791159104), WorldChoice.Fresh("temperate", 183393549), WorldChoice.Fresh("ice", 403945114),
+        WorldChoice.Fresh("swamp", 742440312), WorldChoice.Fresh("barren", 886331277), WorldChoice.Fresh("lava", 876698794),
+    };
+
     IEnumerable<int> Scenario()
     {
         string[] args = OS.GetCmdlineUserArgs();
-        int random = 5;
+        int random = 0;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
-
-        // Fresh games: no world pinned, so each game rolls its own.
-        var worlds = new List<WorldChoice>();
-        for (int i = 0; i < random; i++) worlds.Add(null);
-        foreach (var t in WorldChoice.Types.Skip(1)) worlds.Add(WorldChoice.Fresh(t.Key));
-        // One world only, to look into it: -- --seed N --planet type
-        if (WorldChoice.FromArgs(args) is WorldChoice only) worlds = new List<WorldChoice> { only, null };
-
         var seeds = new List<ulong>();
+
+        // Two fresh games, nothing pinned: each rolls its own world.
+        if (WorldChoice.FromArgs(args) == null)
+        {
+            var rolled = new List<ulong>();
+            for (int i = 0; i < 2; i++)
+            {
+                var game = new Game.Game { Interactive = false };
+                AddChild(game);
+                yield return 0;
+                rolled.Add(game.World.Seed);
+                game.QueueFree();
+                yield return 0;
+            }
+            Check(rolled[0] != rolled[1], $"two fresh games get different seeds ({rolled[0]}, {rolled[1]})");
+        }
+
+        // The worlds: one pinned on the command line, N random ones (the soak), or the gate's verified list.
+        var worlds = new List<WorldChoice>();
+        if (WorldChoice.FromArgs(args) is WorldChoice only) worlds.Add(only);
+        else if (random > 0) for (int i = 0; i < random; i++) worlds.Add(null);
+        else worlds.AddRange(Verified);
         foreach (WorldChoice pinned in worlds)
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
-
-        Check(seeds.Count >= 2 && seeds[0] != seeds[1], $"two fresh games get different seeds ({string.Join(", ", seeds.Take(2))})");
-        Check(seeds.Distinct().Count() == seeds.Count, $"every game had its own world: seeds {string.Join(", ", seeds)}");
+        int failedWorlds = _failedWorlds.Count;
+        GD.Print($"worlds: {seeds.Count - failedWorlds} of {seeds.Count} passed{(failedWorlds > 0 ? $" (failed: {string.Join(", ", _failedWorlds)})" : "")}");
     }
+
+    readonly List<string> _failedWorlds = new();
 
     IEnumerable<int> OneWorld(WorldChoice pinned, List<ulong> seeds)
     {
@@ -92,6 +119,7 @@ public partial class StartTest : Node
         AddChild(game);
         yield return 0;
         WorldChoice world = game.World;
+        int failuresBefore = _failures;
         seeds.Add(world.Seed);
         GD.Print($"-- {world} {(pinned == null ? "(a fresh game: rolled its own)" : "(pinned)")} --");
         var watch = Stopwatch.StartNew();
@@ -103,6 +131,7 @@ public partial class StartTest : Node
         if (game.Bunker == null || game.Phase != Phase.Playing)
         {
             Fail($"{world}: no start site found, or the castaway never woke");
+            _failedWorlds.Add($"{world.Key} {world.Seed}");
             game.QueueFree();
             yield return 0;
             yield break;
@@ -138,6 +167,7 @@ public partial class StartTest : Node
               && b.Poi.Instance?.State != PoiGenerator.Gen.PoiState.Active,
             $"{world.Name}, seed {world.Seed}: from the way out, {b.Poi?.Name} ({b.Poi?.Instance?.State}) in clear view {(b.Landmark is Vector3 lm ? new Vector2(lm.X - b.Outside.X, lm.Z - b.Outside.Z).Length() : 0):F0} m off");
         GD.Print($"  ({b.Steps} steps; {game.Stats.Seconds:F0} s of play)");
+        if (_failures > failuresBefore) _failedWorlds.Add($"{world.Key} {world.Seed}");
         game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
     }

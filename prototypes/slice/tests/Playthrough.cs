@@ -139,6 +139,18 @@ public sealed class Playthrough
         // as each step allows; breadcrumbs on the way, to come back the way you went.
         var crumbs = new List<Vector3>();
         Vector3 away = b.Outside;
+        // First along a way the site was chosen for (walkable 60 m), toward the place in view if one goes that way.
+        if (b.Ways.Count > 0)
+        {
+            Vector3 toward = b.Landmark is Vector3 lm ? lm - b.Outside : b.Outside - b.StairTop;
+            toward.Y = 0f;
+            Vector3 way = b.Ways.OrderByDescending(w => w.Dot(toward.Normalized())).First();
+            foreach (int x in Drive.WalkTo(b.Outside + way * 56f, 2f, 60f, sprint: false, dig: false))
+            {
+                if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
+                yield return x;
+            }
+        }
         for (int step = 0; step < 40; step++)
         {
             Vector3 here = Game.Survivor.WorldFeet;
@@ -154,6 +166,10 @@ public sealed class Playthrough
                 if (hit.Count == 0) continue;
                 float h = ((Vector3)hit["position"]).Y;
                 if (h < 1.5f || MathF.Abs(h - b.Outside.Y) > 14f || MathF.Abs(h - here.Y) > 2.4f || b.Over(p, 3f)) continue;
+                // Not at the lip of a drop: the ground a few metres on is there and not far below.
+                Vector3 on = p + new Vector3(MathF.Cos(ang), 0f, MathF.Sin(ang)) * 3f;
+                var lip = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(on.X, h + 20f, on.Z), new Vector3(on.X, h - 20f, on.Z), GalHack.Physics.Layers.World));
+                if (lip.Count == 0 || ((Vector3)lip["position"]).Y < h - 2.5f) continue;
                 float score = new Vector2(p.X - b.Outside.X, p.Z - b.Outside.Z).Length();
                 if (score > bestScore) { bestScore = score; next = new Vector3(p.X, h, p.Z); }
             }

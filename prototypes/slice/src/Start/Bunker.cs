@@ -81,13 +81,7 @@ public sealed class Bunker
         (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0.25f + site.Steps * Cell, StepZ(site.Steps) - 4f))).ToGodot();
 
     /// <summary>Whether a point (at any height) is over the bunker's chamber or stairwell, or within a margin of them.</summary>
-    public bool Over(Vector3 p, float margin)
-    {
-        N.Vector3 l = MathX.Unrotate(MathX.Yaw(Heading), p.ToNumerics() - Origin);
-        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f + margin && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f + margin;
-        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f + margin && l.Z <= -RoomZ * Cell && l.Z >= StepZ(Steps) - 0.5f - margin;
-        return room || stairs;
-    }
+    public bool Over(Vector3 p, float margin) => OverSite(new Site(Origin, Heading, Steps, Landmark, 0f, Poi), p, margin);
 
     /// <summary>Whether a point is down in the bunker: its chamber or its stairwell, below the ground's surface.</summary>
     public bool Inside(Vector3 p, SurfaceZone zone)
@@ -129,8 +123,19 @@ public sealed class Bunker
     {
         // Strict first (deep under even ground, well above the sea); then, on low wet worlds
         // (a swamp), shallower under rougher ground.
-        return Search(zone, near, maxRings, strict: true) ?? Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+        _climb = 1.2f;
+        Site? site = Search(zone, near, maxRings, strict: true) ?? Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+        if (site != null) return site;
+        // Rough country all round: walkable ways that climb up to 38 degrees (still well inside
+        // what a person walks up).
+        _climb = 1.6f;
+        site = Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+        _climb = 1.2f;
+        return site;
     }
+
+    /// <summary>The steepest rise or fall a walkable way may have over 2 m, m (31 degrees; 38 on rough worlds).</summary>
+    [ThreadStatic] static float _climb;
 
     /// <summary>
     /// The last resort, for a world whose places are all out of sight from round the landing
@@ -152,7 +157,8 @@ public sealed class Bunker
                     var site = new Site(origin, toward + turn, steps, target, new Vector2(p.X - near.X, p.Z - near.Z).Length(), poi);
                     Vector3 exit = ExitOf(site);
                     float d = new Vector2(target.X - exit.X, target.Z - exit.Z).Length();
-                    if (d >= 300f && d <= 1200f && LineOfSight(zone, exit + Vector3.Up * 1.6f, target) && Diggable(zone, site)) return site;
+                    if (d >= 300f && d <= 1200f && LineOfSight(zone, exit + Vector3.Up * 1.6f, target) && Diggable(zone, site)
+                        && WalkableWays(zone, site, out _) >= 3) return site;
                 }
             }
         return null;
@@ -184,7 +190,9 @@ public sealed class Bunker
                         Vector3 exit = ExitOf(site), eye = exit + Vector3.Up * 1.6f;
                         float d = new Vector2(target.X - exit.X, target.Z - exit.Z).Length();
                         if (d < 300f || d > 1200f || !LineOfSight(zone, eye, target) || !Diggable(zone, site)) continue;
-                        float score = steps + MathF.Abs(turn) * 6f;
+                        // Somewhere to go from the way out: walkable 60 m in at least three directions.
+                        if (WalkableWays(zone, site, out bool towardPlace) < 3) continue;
+                        float score = steps + MathF.Abs(turn) * 6f + (towardPlace ? 0f : 8f);
                         if (score < bestScore)
                         {
                             bestScore = score;
@@ -217,6 +225,69 @@ public sealed class Bunker
             if (d >= from && d <= to) found.Add((site, c, d));
         }
         foreach (var (site, c, _) in found.OrderBy(f => f.Item3)) yield return (site, c);
+    }
+
+    /// <summary>How far a walk out from a way out must reach in a direction to count, m.</summary>
+    public const float WalkOut = 60f;
+
+    /// <summary>
+    /// In how many of eight directions a person can walk 60 m out from a site's way out: over
+    /// ground that is really there (no cave mouth), no slope or step too steep to walk up and no
+    /// drop to fall down (31 degrees over 2 m), no sea or lava, no water deeper than wading, and
+    /// not back over the bunker. Also whether one of them heads within 50 degrees of the place in view.
+    /// </summary>
+    public static int WalkableWays(SurfaceZone zone, Site site, out bool towardPlace) => WalkableWays(zone, site, out towardPlace, null);
+
+    /// <summary>The directions from the way out a person can walk 60 m (see <see cref="WalkableWays(SurfaceZone, Site, out bool)"/>).</summary>
+    public readonly List<Vector3> Ways = new();
+
+    static int WalkableWays(SurfaceZone zone, Site site, out bool towardPlace, List<Vector3> ways)
+    {
+        towardPlace = false;
+        Vector3 exit = ExitOf(site);
+        int count = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * MathF.Tau / 8f;
+            var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
+            if (!Walkable(zone, site, exit, dir)) continue;
+            count++;
+            ways?.Add(dir);
+            if (site.Landmark is Vector3 l)
+            {
+                Vector3 to = l - exit;
+                to.Y = 0f;
+                if (to.LengthSquared() > 1f && dir.Dot(to.Normalized()) > MathF.Cos(50f * MathF.PI / 180f)) towardPlace = true;
+            }
+        }
+        return count;
+    }
+
+    static bool Walkable(SurfaceZone zone, Site site, Vector3 exit, Vector3 dir)
+    {
+        var store = zone.Planet.Terrain.Store;
+        float last = exit.Y;
+        for (float d = 2f; d <= WalkOut; d += 2f)
+        {
+            Vector3 p = exit + dir * d;
+            float h = zone.GroundAt(p.X, p.Z).Y;
+            if (h < 1.5f || MathF.Abs(h - last) > (_climb > 0f ? _climb : 1.2f)) return false;
+            if (zone.Planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, zone.Planet.Width), Planets.Gen.Mathx.Wrap(p.Z, zone.Planet.Height), out float surface) && surface - h > 0.5f) return false;
+            var under = new TInt3((int)MathF.Floor(p.X), (int)MathF.Floor(h - 0.6f), (int)MathF.Floor(p.Z));
+            if (store.MaterialAt(under) == CellMaterial.Air) return false; // the ground isn't really there
+            if (OverSite(site, p, 2f)) return false;
+            last = h;
+        }
+        return true;
+    }
+
+    /// <summary>Whether a point (at any height) is over a site's chamber or stairwell, or within a margin of them.</summary>
+    static bool OverSite(Site site, Vector3 p, float margin)
+    {
+        N.Vector3 l = MathX.Unrotate(MathX.Yaw(site.Heading), p.ToNumerics() - site.Origin);
+        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f + margin && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f + margin;
+        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f + margin && l.Z <= -RoomZ * Cell && l.Z >= StepZ(site.Steps) - 0.5f - margin;
+        return room || stairs;
     }
 
     /// <summary>Whether the ground leaves a clear line from an eye to a point (the last stretch, round the place itself, aside).</summary>
@@ -353,6 +424,7 @@ public sealed class Bunker
         if (solid.Count > 0) zone.Edits.DigCells(solid);
         bunker.Ruin = Vessel.SpawnBase(zone, s, site.Origin, site.Heading);
         bunker.Ruin.IsRuin = true;
+        WalkableWays(zone, site, out _, bunker.Ways);
         bunker.Furnish(zone);
         return bunker;
     }
