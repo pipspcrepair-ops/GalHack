@@ -77,6 +77,7 @@ public partial class Ship : Node3D
     readonly List<RigidBody3D> _crates = new();
     readonly List<MeshInstance3D> _crateViews = new();
     float _stuntTime;
+    int _gravityFlips;
 
     public override void _Ready()
     {
@@ -117,7 +118,7 @@ public partial class Ship : Node3D
         if (on == GravityOn) return;
         GravityOn = on;
         if (Remote) return; // a remote ship's crates are placed by the network
-        var rng = new RandomNumberGenerator();
+        var rng = new RandomNumberGenerator { Seed = (ulong)(NetId * 1000 + ++_gravityFlips) }; // the same nudges every time
         foreach (RigidBody3D body in _crates)
         {
             body.GravityScale = on ? 1f : 0f;
@@ -288,6 +289,11 @@ public partial class Ship : Node3D
         var cabin = new StaticBody3D { Name = "Cabin", CollisionLayer = Layers.Interior, CollisionMask = 0 };
         CabinWorld.AddChild(cabin);
         AddShapes(cabin, BlockRole.Interior);
+
+        // A cargo net across the rear door: crates stay aboard, people walk through.
+        var net = new StaticBody3D { Name = "CargoNet", CollisionLayer = Layers.CargoNet, CollisionMask = 0 };
+        net.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = ShipLayout.DoorSize }, Position = ShipLayout.DoorCenter });
+        CabinWorld.AddChild(net);
     }
 
     /// <summary>
@@ -302,7 +308,10 @@ public partial class Ship : Node3D
         for (int i = 0; i < CrateCount; i++)
         {
             var size = Vector3.One * rng.RandfRange(0.5f, 0.9f);
-            var local = new Vector3(rng.RandfRange(-3f, 3f), 0.6f + i * 0.15f, rng.RandfRange(-5f, 9f));
+            // Somewhere clear of the furniture: a crate born inside a bunk gets flung out through the wall.
+            Vector3 local;
+            do local = new Vector3(rng.RandfRange(-3f, 3f), 0.6f + i * 0.15f, rng.RandfRange(-5f, 9f));
+            while (InsideFurniture(local, size));
 
             var body = new RigidBody3D
             {
@@ -311,7 +320,8 @@ public partial class Ship : Node3D
                 LinearDamp = 0.3f,
                 AngularDamp = 0.3f,
                 CollisionLayer = Layers.Interior,
-                CollisionMask = Layers.Interior,
+                CollisionMask = Layers.Interior | Layers.CargoNet,
+                ContinuousCd = true, // never tunnels through a thin wall or the cargo net
                 Freeze = Remote,
                 FreezeMode = RigidBody3D.FreezeModeEnum.Kinematic,
             };
@@ -335,6 +345,16 @@ public partial class Ship : Node3D
     {
         for (int i = 0; i < _crates.Count; i++)
             _crateViews[i].Transform = _crates[i].Transform; // the cabin world is in ship-local coordinates
+    }
+
+    static bool InsideFurniture(Vector3 center, Vector3 size)
+    {
+        var crate = new Aabb(center - size / 2f, size).Grow(0.05f);
+        foreach (var block in ShipLayout.Blocks)
+            if (block.Roles.HasFlag(BlockRole.Interior) && block.Center.Y > 0f
+                && crate.Intersects(new Aabb(block.Center - block.Size / 2f, block.Size)))
+                return true;
+        return false;
     }
 
     static void AddShapes(Node3D body, BlockRole role)

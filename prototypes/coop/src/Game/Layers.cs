@@ -11,4 +11,11 @@ public static class Layers
 
     /// <summary>Inside a ship's cabin world: the cabin, its cargo and anyone aboard.</summary>
     public const uint Interior = 1u << 2;
+
+    /// <summary>
+    /// Inside a cabin world: invisible nets across the doorways. Cargo collides with them, people
+    /// don't, so loose crates can never drift out of the door (and fall forever in a world that
+    /// has no ground) while players still walk through.
+    /// </summary>
+    public const uint CargoNet = 1u << 3;
 }
