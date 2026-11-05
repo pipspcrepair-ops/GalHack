@@ -34,6 +34,50 @@ public sealed class PlanetWorld
     public double Width => Map.WidthMeters;
     public double Height => Map.HeightMeters;
 
+    /// <summary>
+    /// Trees felled on this planet, by scatter id (<see cref="Terrain.FarBuilder.ScatterId"/>): gone
+    /// at every level of detail, through streaming, saves and loads, as terrain edits are.
+    /// </summary>
+    public readonly HashSet<long> Felled = new();
+
+    /// <summary>Where the felled trees are saved: beside the terrain's save, written the same moment.</summary>
+    public string FelledPath => SavePath + ".felled";
+
+    /// <summary>Writes the felled trees atomically (a temporary file renamed over the old one).</summary>
+    public void SaveFelled()
+    {
+        var ids = new List<long>(Felled);
+        ids.Sort();
+        var text = new System.Text.StringBuilder("galhack.felled 1\n");
+        foreach (long id in ids) text.Append(id).Append('\n');
+        string tmp = FelledPath + ".tmp";
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FelledPath));
+        System.IO.File.WriteAllText(tmp, text.ToString());
+        System.IO.File.Move(tmp, FelledPath, overwrite: true);
+    }
+
+    /// <summary>Reads the felled trees back (none if there is no file). False if the file is unreadable: nothing changes.</summary>
+    public bool LoadFelled()
+    {
+        if (!System.IO.File.Exists(FelledPath))
+        {
+            Felled.Clear();
+            return true;
+        }
+        string[] lines = System.IO.File.ReadAllLines(FelledPath);
+        if (lines.Length == 0 || lines[0] != "galhack.felled 1") return false;
+        var ids = new HashSet<long>();
+        for (int i = 1; i < lines.Length; i++)
+        {
+            if (lines[i].Length == 0) continue;
+            if (!long.TryParse(lines[i], out long id)) return false;
+            ids.Add(id);
+        }
+        Felled.Clear();
+        Felled.UnionWith(ids);
+        return true;
+    }
+
     PlanetWorld(PlanetSpec spec, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
     {
         Spec = spec;
@@ -88,6 +132,14 @@ public sealed class PlanetWorld
     public Vector3 Canonical(Vector3 p) => new((float)Mathx.WrapX(p.X, Width), p.Y, (float)Mathx.Wrap(p.Z, Height));
 
     public float GroundHeight(double x, double z) => Source.SurfaceHeight(x, z);
+
+    /// <summary>
+    /// The water surface over a point's column (the sea, a river), or null on dry ground. Water is
+    /// a volume: anything under that surface is in it. A lava world's seas are lava, not water, and
+    /// aren't entered.
+    /// </summary>
+    public float? WaterSurfaceAt(Vector3 p) =>
+        !Look.Lava && Source.WaterSurfaceAt(Mathx.WrapX(p.X, Width), Mathx.Wrap(p.Z, Height), out float surface) ? surface : null;
 
     /// <summary>A sea mask for the water shader: depth below sea level per world-map cell.</summary>
     public ImageTexture SeaTexture()

@@ -67,6 +67,11 @@ public partial class Main : Node3D
     Stopwatch _arriving;
     ulong _saveSequence;
     ShaderMaterial _water, _seaMaterial;
+    Godot.Environment _underwater;
+    ColorRect _underwaterTint;
+
+    /// <summary>The camera is under water (a sea or a river): the view is tinted and fogged.</summary>
+    public bool CameraUnderwater { get; private set; }
     double _valleyTimer;
     bool _settledHeap;
     float _valleyFloor;
@@ -79,6 +84,7 @@ public partial class Main : Node3D
         // main thread for several milliseconds. Low-latency mode keeps full collections in the background.
         System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         PlanetTerrain.ConfigureWorldBounds();
+        FarBuilder.Solids ??= FloraSolidRules.Load(ProjectSettings.GlobalizePath("res://data/flora-solids.json"));
         Sky = new SkyRig { Name = "Sky" };
         AddChild(Sky);
         Streamer = new TerrainStreamer { Name = "Terrain" };
@@ -95,8 +101,12 @@ public partial class Main : Node3D
         AddChild(Fly);
 
         Player = new Walker { Name = "Player", Camera = Camera, ControlsEnabled = false, ProcessMode = ProcessModeEnum.Disabled };
+        // Water is a volume: the walker swims in seas and rivers by the shared physics module's water rules.
+        Player.Water = GalHack.Physics.PhysicsRules.FromJson(System.IO.File.ReadAllText(
+            ProjectSettings.GlobalizePath("res://") + "../../shared/Physics/physics.json")).Water;
+        Player.WaterAt = p => World?.WaterSurfaceAt(p);
         AddChild(Player);
-        Guard = new StuckGuard { Name = "StuckGuard", Store = () => World?.Terrain.Store, Player = Player };
+        Guard = new StuckGuard { Name = "StuckGuard", Store = () => World?.Terrain.Store, Player = Player, OutOfSolids = (feet, height, radius) => Streamer.OutOfSolids(feet, height, radius) };
         AddChild(Guard);
 
         Sfx = new Sfx { Name = "Sfx" };
@@ -112,6 +122,13 @@ public partial class Main : Node3D
 
         Sea = new MeshInstance3D { Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 0, SubdivideDepth = 0 }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(Sea);
+
+        // Under water the view closes in: the liquid's own murk instead of the sky, and a tint.
+        var tintLayer = new CanvasLayer { Name = "UnderwaterTint", Layer = 5 };
+        _underwaterTint = new ColorRect { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _underwaterTint.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        tintLayer.AddChild(_underwaterTint);
+        AddChild(tintLayer);
 
         Guard.Rescued += (from, to) => Hud.Toast($"You were inside terrain: moved {from.DistanceTo(to):F1} m to open space", Hud.Caution, 3f);
         ProcessPhysicsPriority = 100; // after the player moves: frame shifts see where it ended up
@@ -148,6 +165,7 @@ public partial class Main : Node3D
         // Load this planet's edits, if it has been dug before.
         LoadResult loaded = World.Terrain.Load(World.SavePath, out _);
         if (loaded.Ok) Hud.Toast($"Restored {loaded.Data.RemovedCells} dug cells and {World.Terrain.Store.Structures.Count} blocks on this planet", Hud.Good, 3f);
+        if (loaded.Ok && !World.LoadFelled()) GD.PushError($"{World.FelledPath} is unreadable: its felled trees stand again");
         Structures.Sync(World.Terrain.Store.Structures);
 
         WorldLook look = world.Look;
@@ -160,6 +178,21 @@ public partial class Main : Node3D
         _seaMaterial.SetShaderParameter("sea", true);
         _seaMaterial.SetShaderParameter("sea_map", world.SeaTexture());
         Sea.MaterialOverride = _seaMaterial;
+        _underwater = new Godot.Environment
+        {
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = look.Deep,
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = look.Shallow,
+            AmbientLightEnergy = 0.9f,
+            TonemapMode = Godot.Environment.ToneMapper.Filmic,
+            FogEnabled = true,
+            FogMode = Godot.Environment.FogModeEnum.Exponential,
+            FogLightColor = look.Deep.Lerp(look.Shallow, 0.35f),
+            FogDensity = 0.06f,
+            FogSkyAffect = 1f,
+        };
+        _underwaterTint.Color = new Color(look.Shallow, 0.25f);
 
         Vector3 spawn = SpawnOverride ?? new Vector3((float)world.Landing.X, 0, (float)world.Landing.Y);
         spawn.Y = world.GroundHeight(spawn.X, spawn.Z) + 0.3f;
@@ -229,6 +262,7 @@ public partial class Main : Node3D
         long t2 = Stopwatch.GetTimestamp();
         UpdateValleyFog(delta, focus);
         Sea.GlobalPosition = new Vector3(Camera.GlobalPosition.X, 0f, Camera.GlobalPosition.Z);
+        UpdateUnderwater();
         long t3 = Stopwatch.GetTimestamp();
         UpdateHud();
         long t4 = Stopwatch.GetTimestamp();
@@ -267,6 +301,19 @@ public partial class Main : Node3D
         Streamer.ShiftFrame(dx * World.Terrain.ChunksX, dz * World.Terrain.ChunksZ);
         Streamer.SetFocus(Flying ? Camera.GlobalPosition : Player.GlobalPosition);
         FrameShifts++;
+    }
+
+    /// <summary>Under water, the camera sees the liquid's murk (thicker the deeper it is) through a tint; above it, the sky again.</summary>
+    void UpdateUnderwater()
+    {
+        Vector3 eye = Camera.GlobalPosition;
+        float? surface = _underwater == null ? null : World.WaterSurfaceAt(eye);
+        bool under = surface is float s && eye.Y < s;
+        if (under) _underwater.FogDensity = 0.06f + 0.003f * (surface.Value - eye.Y);
+        if (under == CameraUnderwater) return;
+        CameraUnderwater = under;
+        Camera.Environment = under ? _underwater : null;
+        _underwaterTint.Visible = under;
     }
 
     void UpdateValleyFog(double delta, Vector3 focus)
@@ -322,17 +369,19 @@ public partial class Main : Node3D
     public SaveReport Save()
     {
         SaveReport report = World.Terrain.Save(World.SavePath, ++_saveSequence);
+        if (report.Ok) World.SaveFelled();
         Hud.Toast(report.Ok
-            ? $"Saved {report.Cells} dug cells and {World.Terrain.Store.Structures.Count} blocks · {report.Bytes / 1024f:F1} KB"
+            ? $"Saved {report.Cells} dug cells, {World.Terrain.Store.Structures.Count} blocks and {World.Felled.Count} felled trees · {report.Bytes / 1024f:F1} KB"
             : $"Save failed: {report.Error}", report.Ok ? Hud.Good : Hud.Warning, 3f);
         return report;
     }
 
     void SaveQuietly()
     {
-        if (World.Terrain.Store.RemovedCount == 0 && World.Terrain.Store.Structures.Count == 0) return;
+        if (World.Terrain.Store.RemovedCount == 0 && World.Terrain.Store.Structures.Count == 0 && World.Felled.Count == 0) return;
         SaveReport report = World.Terrain.Save(World.SavePath, ++_saveSequence);
-        if (!report.Ok) GD.PushError($"saving {World.Spec} failed: {report.Error}");
+        if (report.Ok) World.SaveFelled();
+        else GD.PushError($"saving {World.Spec} failed: {report.Error}");
     }
 
     public LoadResult Load()
@@ -345,8 +394,23 @@ public partial class Main : Node3D
         }
         Streamer.MarkDirty(dirty);
         Structures.Sync(World.Terrain.Store.Structures);
-        Hud.Toast($"Loaded and audited {result.Data.RemovedCells} cells and {World.Terrain.Store.Structures.Count} blocks", Hud.Good, 3f);
+        if (World.LoadFelled()) Streamer.RefreshFelled();
+        Hud.Toast($"Loaded and audited {result.Data.RemovedCells} cells, {World.Terrain.Store.Structures.Count} blocks and {World.Felled.Count} felled trees", Hud.Good, 3f);
         return result;
+    }
+
+    /// <summary>
+    /// Fells a tree (the survival tool's cut): its collider goes this frame, it is gone from the
+    /// scatter at every level of detail, it stays felled through streaming and saves, and it drops wood.
+    /// </summary>
+    public bool FellTree(FloraSolid tree)
+    {
+        if (!tree.Fellable || !World.Felled.Add(tree.Id)) return false;
+        Streamer.Fell(tree.Id);
+        Tool.Gathered["wood"] = Tool.Gathered.TryGetValue("wood", out int n) ? n + tree.Wood : tree.Wood;
+        Hud.Toast($"+{tree.Wood} wood", Hud.Good, 0.9f);
+        Sfx.Play(Sfx.Sound.Dig, Player.EyePosition);
+        return true;
     }
 
     // ---- Input ----------------------------------------------------------------------------
@@ -411,7 +475,7 @@ public partial class Main : Node3D
         Hud.SetStatus(
             $"{World.Spec}\n{World.Sky.Summary}\n" +
             $"{p.X / 1000f:F2} km E, {p.Z / 1000f:F2} km S · altitude {p.Y:F0} m · over {World.Palette.BiomeAt(Mathx.WrapX(p.X, World.Width), Mathx.Wrap(p.Z, World.Height))}\n" +
-            $"{(Flying ? "FREE-FLY" : Player.IsCrouching ? "Crouching" : "")}  Jetpack {Player.JetpackFuel * 100f:F0}%\n" +
+            $"{(Flying ? "FREE-FLY" : Player.Underwater ? "UNDERWATER · suit on its own oxygen" : Player.Swimming ? "Swimming · Space up, Ctrl down" : Player.IsCrouching ? "Crouching" : "")}  Jetpack {Player.JetpackFuel * 100f:F0}%\n" +
             $"{gathered}\n{target}");
         Hud.SetPerf(
             $"{Engine.GetFramesPerSecond()} fps · {Streamer.MeshedChunks} voxel chunks ({Streamer.Triangles / 1000}k tris, {Streamer.CollisionBodies} with collision) · {Streamer.FarChunks} far · queue {Streamer.Pending}\n" +

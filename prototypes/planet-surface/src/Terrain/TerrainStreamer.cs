@@ -104,6 +104,9 @@ public partial class TerrainStreamer : Node3D
         public bool InFlight;
         public int Version;
         public Node3D Node;
+
+        /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
+        public List<FloraSolid> Solids;
     }
 
     readonly Dictionary<(int, int), FarChunk> _far = new();
@@ -160,6 +163,7 @@ public partial class TerrainStreamer : Node3D
         Clear();
         World = world;
         Focus = focus;
+        _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
@@ -210,6 +214,7 @@ public partial class TerrainStreamer : Node3D
         var queued = new List<(Int3, int)>();
         while (_queue.TryDequeue(out Int3 key, out int priority)) queued.Add((new Int3(key.X + dcx, key.Y, key.Z + dcz), priority));
         foreach (var (key, priority) in queued) _queue.Enqueue(key, priority);
+        ShiftSolids(dcx, dcz);
     }
 
     void PlaceChunkNodes(VChunk c)
@@ -397,6 +402,7 @@ public partial class TerrainStreamer : Node3D
 
         long collisionStart = Stopwatch.GetTimestamp();
         UpdateCollision(fcx, fcz, start);
+        UpdateSolids(fcx, fcz, start);
         _sections[4] = Stopwatch.GetElapsedTime(collisionStart).TotalMilliseconds;
         Unload(fcx, fcz);
         UpdateVisibility(fcx, fcz);
@@ -581,6 +587,7 @@ public partial class TerrainStreamer : Node3D
         {
             // Dug ground changes flora: rebuild those chunks with a fresh snapshot of the dug set.
             _dugSnapshot = new HashSet<long>(_dug);
+            _felledSnapshot = new HashSet<long>(World.Felled);
             foreach (var (fx, fz) in _floraDirty)
                 if (_far.TryGetValue((fx, fz), out FarChunk f)) { f.Lod = -1; f.Version++; }
             _floraDirty.Clear();
@@ -609,10 +616,10 @@ public partial class TerrainStreamer : Node3D
             var job = new FarJob { Fx = fx, Fz = fz, Lod = lod, Version = f.Version };
             PlanetTerrainSource source = World.Source;
             GroundPalette palette = World.Palette;
-            HashSet<long> dug = _dugSnapshot;
+            HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
             Task.Run(() =>
             {
-                FarBuilder.Build(job, source, palette, dug);
+                FarBuilder.Build(job, source, palette, dug, felled);
                 _farDone.Enqueue(job);
             });
         }
@@ -646,6 +653,8 @@ public partial class TerrainStreamer : Node3D
                 WorstFarNode = $"lod {job.Lod}, {job.Vertices.Length} vertices, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
             }
             f.Lod = job.Lod;
+            f.Solids = job.Solids;
+            if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
             AddChild(f.Node);
         }
 
@@ -848,6 +857,7 @@ public partial class TerrainStreamer : Node3D
             c.Body?.QueueFree();
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
+        if (World != null) ClearSolids();
         _chunks.Clear();
         _columns.Clear();
         _far.Clear();
