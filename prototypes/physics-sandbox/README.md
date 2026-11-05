@@ -32,7 +32,7 @@ Data is read where each prototype keeps it: `shared/Physics/physics.json`, `ship
 | Lift margin | +62 kN (6 t spare) | +124 kN, rides 1.5 m |
 | Inside | a 3.5 × 2 × 7 m cabin, a windscreen, side windows, a doorway at the back onto a porch | an open cockpit |
 
-A third blueprint, the Deck Barge (`barge.gbp`), is a flat test hull for the mag-boot tests: an 8 m deck 1 m thick with square edges, a superstructure two blocks tall and a lip one block tall.
+A third blueprint, the Deck Barge (`barge.gbp`), is a flat test hull for the walking tests: a deck 8 by 12 m and 1 m thick with square edges, a superstructure two blocks tall, a lip one block tall, a stair of three one-block steps, and a deckhouse 3 m tall with the same lip across its floor.
 
 The landscape (`SandboxTerrain`) has real relief: rolling hills, a rocky ridge to the north, a 13 m bank dropping into a basin to the east, a level landing field in the middle and a gentle lane to the south where the trench is dug.
 
@@ -72,13 +72,13 @@ Things to try: walk up the doorway step into the Corsair (jetpack up if it's lan
 .\tools\test-all.ps1
 ```
 
-runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.args`), so it takes about 7 s. To run it alone, as fast:
+runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.args`), so it takes about 9 s. To run it alone, as fast:
 
 ```powershell
 . .\tools\env.ps1; & $GodotConsole --headless --fixed-fps 60 --path prototypes/physics-sandbox res://tests/PhysicsTest.tscn
 ```
 
-`.\tools\test.ps1 -Project prototypes/physics-sandbox -Scene res://tests/PhysicsTest.tscn` works too, in real time (under 2 minutes); its performance check then times only the module's own step. Both give the same results, check for check. The 53 checks, with typical numbers on a Ryzen 7 5800X3D:
+`.\tools\test.ps1 -Project prototypes/physics-sandbox -Scene res://tests/PhysicsTest.tscn` works too, in real time (under 2 minutes); its performance check then times only the module's own step. Both give the same results, check for check. The 58 checks, with typical numbers on a Ryzen 7 5800X3D:
 
 - **Pure rules:** rotation conventions; the damage formula for every mass and speed (uncapped: 2000 m/s does 992× the hull); reduced mass; crater sizes and the 6 m cap; toughness per tonne; the greedy box merge covers every solid cell once (20 random chunks); joining a ship and letting go keep world position, velocity and orientation; the let-go rule (a jump at once, 0.4 s out of contact or 1.5 m off, never from inside); turning onto a new up keeps forward forward.
 - **Determinism:** two whole sandbox worlds in their own physics spaces, 7 s of a dust storm with the Corsair flown and crashed (a crater), the rover driven and crates flung by a tornado: 3780 body-ticks, max difference exactly 0, identical terrain edits.
@@ -87,10 +87,11 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Damage and craters:** a 23 m/s belly landing does exactly 9.0 t × (23 − 8)² × 0.001; a 96 m/s dive does 2× the hull, uncapped, cuts a 279-cell crater capped at 6 m (the formula said 6.9) with every cell in the edit log, and leaves a free wreck in its hole; a ram hurts both sides equally from the reduced mass and knocks the parked ship loose; a 30 m fall costs a player 37% with no floor.
 - **Severing:** shooting through a pod's mounting while the ship turns at 1 rad/s keeps total mass (8953.1 kg) and momentum (267 108.7 kg·m/s, off by 0.03) with the shot-out blocks counted; the engine's wreck changes by exactly gravity and drag one step later; the other pod tumbles away at up to 9 rad/s and the ship's forward acceleration drops to 0.
 - **Riding, on the hull and in the cabin:** a player who lands on the flying Corsair joins its cabin world and stays put on the roof through a 10 s manoeuvre (68 m/s, a 121° turn, a climb, a stop: 0.0 cm), their view turning with the ship; a dust-storm wind pushes them on the hull (148 N) but flying at 51 m/s through still air doesn't; a jump lets go at once with the ship's 25 m/s plus the jump; landing on a hull flying at 34 m/s joins it without a jolt (0.09 m/s, 4.4 cm); in the cabin through a full barrel roll they move 0.00 cm; walking 0.5 s covers 2.5 m of deck while the ship carries them 24 m; core gravity off lets the planet's gravity in, on is ship-down again.
-- **Spacewalking in mag boots** (in orbit, core gravity off): on the roof through a barrel roll (0.00 cm); off the roof, over the bevel, down the side and round under the belly, still and while the ship rolls, never out of contact; a bump that throws them off for 0.30 s doesn't let go; knocked off hard they let go after 0.37 s and drift away at a constant 2.4 m/s; a jump from the underside lets go at once and drifts off with the ship's 24 m/s plus the jump; from the porch in through the door never leaves the cabin world (boot down outside, core down inside), and with the core off they float inside and the boots catch them on the porch; on the Deck Barge, over two square 90° edges onto the underside (still and rolling), up a wall two blocks tall and onto its roof, and a lip one block tall stays a step.
+- **Spacewalking in mag boots** (in orbit, core gravity off): on the roof through a barrel roll (0.00 cm); off the roof, over the bevel, down the side and round under the belly, still and while the ship rolls, never out of contact; a bump that throws them off for 0.30 s doesn't let go; knocked off hard they let go after 0.37 s and drift away at a constant 2.4 m/s; a jump from the underside lets go at once and drifts off with the ship's 24 m/s plus the jump; from the porch in through the door never leaves the cabin world (boot down outside, core down inside), and with the core off they float inside and the boots catch them on the porch; on the Deck Barge, over two square 90° edges onto the underside (still and rolling), and up a wall two blocks tall and onto its roof.
+- **Steps** (`walking.stepHeight`, 0.6 m): in orbit in mag boots the barge's one-block lip is walked up and over in 0.4 s and a stair of three one-block steps climbed in 0.5 s, both never out of contact or off the floor; inside the deckhouse under core gravity the same lip is stepped up onto without a stop (off the far side, a 0.28 s drop); on terrain a sheer 0.5 m ledge is stepped up onto, and the steepest edge the terrain makes (one dug layer, 1.07 m over 2 m of slope) is walked out of at full speed.
 - **Rover and gear:** the rover crosses the 2 m dug trench at 23 m/s without touching it (engines dip to 1.16 m); the Corsair's legs drop by themselves and it settles tilted 10.5° on ground 0.5 m uneven, every foot within 1 cm.
-- **Tornado:** caught at 40% health, carried 36 m up and flung, the 26 m/s landing would cost about 65% and leaves exactly 15.00%; the crate beside them is flung too and is still there; the same fall without a fling leaves 0%.
-- **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1250 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
+- **Tornado** (in a fresh world, twice): caught at 40% health, carried 36 m up and flung, the 27 m/s landing would cost 69% and leaves exactly 15.00%; the crate beside them is flung too and is still there; the same fall without a fling leaves 0%; the two runs agree bit for bit.
+- **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1260 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
 - **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.7 ms on average; the module's own step about 1.1 ms.
 
 `tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado --out=file.png` renders a scripted moment to a PNG (windowed, not headless).
@@ -99,6 +100,8 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 
 - **Riding (reworked after review):** one mechanism, the cabin world, for inside and out on the hull alike; you join a ship by landing on it and let go by jumping or losing contact (0.4 s grace, 1.5 m). The earlier explicit carry on the outer hull is gone. See `shared/Physics/README.md`.
 - **Mag boots (on, `riding.magBoots`):** out on the hull, down is the face underfoot; sharp outside edges up to 90° are carried round by a probe, and walls a step or more tall are climbed (`riding.insideCorners`, on). Both proved simple and stable in the tests; either can be switched off in `physics.json`.
+- **Steps for every walker:** anything up to 0.6 m (`walking.stepHeight`) is stepped up onto, on terrain, in a cabin and on an outer hull, so a low lip never needs a jump (which, on a hull, would let go of the ship).
+- **The tornado test runs in fresh worlds of its own,** so its numbers don't depend on which tests ran before it in the shared world.
 - **Colliders:** one body per structure, compound shape built per 16³ chunk, only changed chunks rebuilt; runs of sloped blocks share one convex hull.
 - **Free bodies are Jolt rigid bodies** fed by the shared force sums (gravity and damping off in the engine); vessels and characters are integrated by the module.
 - **Vessels feel the wind's push, not still-air drag:** their top speed already is their air resistance, so the four numbers stay true. Crates, wrecks and players feel full relative drag.
@@ -118,7 +121,6 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - Hulls don't spin from hits; a ship flown into a player pushes them aside without hurting either.
 - The doorway is a step up from the ground on landing gear: use the jetpack (or 1).
 - A rider out on a hull collides only with that ship (its cabin world), not with terrain, other ships or crates; the stuck guard keeps them out of the terrain.
-- Characters have no automatic step-up: a lip lower than a step has to be jumped, and on the outer hull a jump lets go of the ship.
 - Above the atmosphere the sky turns to space, but there is no planet below: the terrain is a 256 m square far underneath.
 - The tornado funnel and flames are simple shaders; there's no audio and no particles.
 - Debug HUD, keyboard and mouse only, single player.
