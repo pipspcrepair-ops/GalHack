@@ -6,9 +6,10 @@ namespace PoiGenerator.Gen;
 /// <summary>
 /// Walking on the block grid, for validation and for enemies: plain A* over cells a 1.8 m body
 /// can stand in. A node is the cell your feet are in. You stand in a clear cell with a clear
-/// cell above and something solid below, or on a ramp. Moves are one cell sideways at the same
-/// height, or up and down ramps along their slope; no jumping or dropping, so every path can
-/// be walked back.
+/// cell above and something solid below, on a ramp or stair, on a ladder, or on a lift car's stop.
+/// Moves are one cell sideways at the same height, up and down ramps and stairs along their slope,
+/// up and down ladders (stepping off sideways at the top), and between a lift's stops; no jumping
+/// or dropping, so every path can be walked back.
 ///
 /// Below ground level, any cell no module occupies is rock.
 /// </summary>
@@ -16,14 +17,35 @@ public sealed class NavGrid
 {
     readonly IBlockStructure _grid;
     readonly CellMask _occupied;
+    readonly HashSet<Int3>? _liftNodes;
+    readonly Dictionary<Int3, List<Int3>>? _liftLinks;
+    readonly bool _space;
 
-    public NavGrid(IBlockStructure grid, CellMask occupied)
+    public NavGrid(IBlockStructure grid, CellMask occupied, IReadOnlyList<LiftShaft>? lifts = null, bool space = false)
     {
         _grid = grid;
         _occupied = occupied;
+        _space = space;
+        if (lifts == null || lifts.Count == 0) return;
+        _liftNodes = new HashSet<Int3>();
+        _liftLinks = new Dictionary<Int3, List<Int3>>();
+        foreach (var lift in lifts)
+            foreach (Int3 f in lift.Footprint)
+            {
+                var stops = new List<Int3>();
+                foreach (int y in lift.StopWalkY) stops.Add(f with { Y = y });
+                foreach (Int3 s in stops)
+                {
+                    _liftNodes.Add(s);
+                    var others = new List<Int3>();
+                    foreach (Int3 o in stops) if (o != s) others.Add(o);
+                    _liftLinks[s] = others;
+                }
+            }
     }
 
-    public bool IsRock(Int3 p) => p.Y <= Assembler.GroundY && !_occupied[p];
+    /// <summary>Below ground level, anything no module occupies is rock (on planets, not in space).</summary>
+    public bool IsRock(Int3 p) => !_space && p.Y <= Assembler.GroundY && !_occupied[p];
 
     public bool Solid(Int3 p)
     {
@@ -43,14 +65,19 @@ public sealed class NavGrid
     {
         var b = _grid.Get(p);
         rises = b.Facing;
-        return b.Type == BlockType.Ramp;
+        return BlockInfo.IsSlope(b.Type);
     }
+
+    public bool LadderAt(Int3 p) => _grid.Get(p).Type == BlockType.Ladder;
+    public bool LiftAt(Int3 p) => _liftNodes != null && _liftNodes.Contains(p);
 
     public bool Standable(Int3 f)
     {
         // Outside the grid the plain goes on for ever; walking is limited to the place itself.
         if (!_grid.InBounds(f)) return false;
         if (RampAt(f, out _)) return Clear(f + Int3.Up) && Clear(f + Int3.Up * 2);
+        if (LadderAt(f)) return Clear(f + Int3.Up);
+        if (LiftAt(f)) return Clear(f) && Clear(f + Int3.Up);
         return Clear(f) && Clear(f + Int3.Up) && SupportsStanding(f + Int3.Down);
     }
 
@@ -66,6 +93,7 @@ public sealed class NavGrid
     {
         into.Clear();
         bool onRamp = RampAt(f, out Dir rampDir);
+        bool onLadder = LadderAt(f);
         foreach (Dir h in Dirs.Horizontal)
         {
             Int3 g = f + h.Vec();
@@ -91,17 +119,42 @@ public sealed class NavGrid
             Int3 down = g + Int3.Down;
             if (RampAt(down, out Dir dDir) && dDir == h.Opposite() && Standable(down) && (!onRamp || rampDir == dDir))
                 into.Add(down);
+
+            // Off the top of a ladder: climb into the clear cell above it and step sideways.
+            if (onLadder && !LadderAt(f + Int3.Up) && Clear(f + Int3.Up) && Clear(f + Int3.Up * 2))
+            {
+                Int3 off = f + Int3.Up + h.Vec();
+                if (Standable(off) && !LadderAt(off) && !RampAt(off, out _)) into.Add(off);
+            }
+            // Onto the top of a ladder from the floor beside its shaft.
+            if (!onLadder && !onRamp)
+            {
+                Int3 shaft = f + h.Vec();
+                Int3 top = shaft + Int3.Down;
+                if (LadderAt(top) && !LadderAt(shaft) && Clear(shaft) && Clear(shaft + Int3.Up) && Standable(top)) into.Add(top);
+            }
         }
+        if (onLadder)
+        {
+            Int3 up = f + Int3.Up, dn = f + Int3.Down;
+            if (LadderAt(up) && Standable(up)) into.Add(up);
+            if (LadderAt(dn) && Standable(dn)) into.Add(dn);
+        }
+        if (_liftLinks != null && _liftLinks.TryGetValue(f, out var stops))
+            foreach (Int3 s in stops)
+                if (Standable(s)) into.Add(s);
     }
 
     /// <summary>Plain A* with a Manhattan heuristic. Returns null if there is no path.</summary>
-    public List<Int3>? FindPath(Int3 start, Int3 goal, int maxNodes = 200_000)
+    public List<Int3>? FindPath(Int3 start, Int3 goal, int maxNodes = 400_000)
     {
         if (!Standable(start) || !Standable(goal)) return null;
         var open = new PriorityQueue<Int3, int>();
         var cost = new Dictionary<Int3, int> { [start] = 0 };
         var from = new Dictionary<Int3, Int3>();
-        open.Enqueue(start, start.Manhattan(goal));
+        // Lifts jump many cells at once, so the heuristic must not overestimate across them.
+        bool lifts = _liftLinks != null;
+        open.Enqueue(start, lifts ? 0 : start.Manhattan(goal));
         int expanded = 0;
         var next = new List<Int3>(8);
         while (open.TryDequeue(out Int3 cur, out _))
@@ -116,7 +169,7 @@ public sealed class NavGrid
                 if (cost.TryGetValue(n, out int old) && old <= nc) continue;
                 cost[n] = nc;
                 from[n] = cur;
-                open.Enqueue(n, nc + n.Manhattan(goal));
+                open.Enqueue(n, nc + (lifts ? 0 : n.Manhattan(goal)));
             }
         }
         return null;
@@ -179,7 +232,7 @@ public sealed class NavGrid
         foreach (Dir h in Dirs.Horizontal)
         {
             Int3 c = block + h.Vec();
-            if (Standable(c) && (reachable == null || reachable.Contains(c))) return c;
+            if (Standable(c) && !LadderAt(c) && (reachable == null || reachable.Contains(c))) return c;
         }
         return null;
     }

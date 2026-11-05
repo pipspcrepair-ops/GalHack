@@ -144,7 +144,7 @@ public static class Mesher
                         byte f = 0;
                         if (!b.IsAir)
                         {
-                            if (b.Type == BlockType.Cube)
+                            if (BlockInfo.IsFullCube(b.Type))
                             {
                                 f |= FCollides;
                                 if (!BlockInfo.IsTransparent(b.Material)) f |= FOccludes;
@@ -190,14 +190,15 @@ public static class Mesher
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
             if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains) return;
-            if (b.Type == BlockType.Cube) { Cube(p, b); return; }
+            if (BlockInfo.IsFullCube(b.Type)) { Cube(p, b); return; }
             var chunk = Chunk(p);
             var boxes = Shapes.For(b, p, _g);
             foreach (var box in boxes) AddBox(chunk, p, box, b);
-            if (b.Type == BlockType.Ramp) Ramp(chunk, p, b);
+            if (b.Type == BlockType.Ramp) Ramp(chunk, p, b, draw: true);
+            else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
             else if (b.Type == BlockType.Spike) Spike(chunk, p, b);
 
-            if (_o.Collision && BlockInfo.Collides(b.Type) && b.Type != BlockType.Ramp)
+            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type))
             {
                 // Props collide as their bounding box.
                 var (lo, hi) = Shapes.CollisionBox(b);
@@ -223,17 +224,31 @@ public static class Mesher
                     continue;
                 Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
                 if (glyph) Glyph(chunk, p, f, b.Color);
+                if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
                 if (_o.Collision && !CollidesFull(n)) CollideFace(chunk, p, f);
             }
         }
 
         /// <summary>A glyph on one face: one of a few line figures, picked by the cell.</summary>
-        void Glyph(ChunkMesh chunk, Int3 p, int f, Rgb color)
+        void Glyph(ChunkMesh chunk, Int3 p, int f, Rgb color, Surface surface = Surface.Glow, bool crack = false)
         {
             const float t = 0.07f, lift = 0.012f;
             uint h = Hash.Cell(p, (uint)(41 + f));
             var lines = new List<(float u0, float v0, float u1, float v1)>(3);
-            if (f >= 4)
+            if (crack)
+            {
+                // Cracks: thin jagged strokes, a tell that the wall is weak here.
+                float u = 0.2f + (h % 7) / 12f, v = 0.1f;
+                for (int k = 0; k < 4; k++)
+                {
+                    float du = ((int)((h >> (k * 3)) % 5) - 2) * 0.06f, dv = 0.18f + (int)((h >> (k * 2 + 1)) % 3) * 0.04f; // signed: an unsigned wrap here once threw strokes 250,000 km out
+                    lines.Add((Math.Min(u, u + du), v, Math.Max(u, u + du) + 0.035f, v + dv));
+                    u += du;
+                    v += dv;
+                }
+                lines.Add((0.55f, 0.6f, 0.82f, 0.635f));
+            }
+            else if (f >= 4)
             {
                 // Floors and roofs: a square frame.
                 lines.Add((0.2f, 0.2f, 0.8f, 0.2f + t)); lines.Add((0.2f, 0.8f - t, 0.8f, 0.8f));
@@ -247,7 +262,7 @@ public static class Mesher
                 case 3: lines.Add((0.2f, 0.5f, 0.8f, 0.5f + t)); lines.Add((0.5f - t / 2, 0.5f, 0.5f + t / 2, 0.9f)); break; // a T
                 default: lines.Add((0.25f, 0.25f, 0.75f, 0.25f + t)); lines.Add((0.75f - t, 0.25f, 0.75f, 0.75f)); lines.Add((0.4f, 0.75f - t, 0.75f, 0.75f)); break;
             }
-            var buf = chunk.Surfaces[(int)Surface.Glow];
+            var buf = chunk.Surfaces[(int)surface];
             V3 o = V3.Of(p), n = Normals[f];
             V3 At(float u, float v) => o + f switch
             {
@@ -409,7 +424,7 @@ public static class Mesher
             }
         }
 
-        void Ramp(ChunkMesh chunk, Int3 p, Block b)
+        void Ramp(ChunkMesh chunk, Int3 p, Block b, bool draw)
         {
             // Built rising toward north, then turned to face the block's direction.
             V3 o = V3.Of(p);
@@ -433,10 +448,13 @@ public static class Mesher
                 buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1 });
             }
             V3 sLL = R(lowL), sLR = R(lowR), sHL = R(highL), sHR = R(highR), sBL = R(backL), sBR = R(backR);
-            Quad(sLL, sLR, sHR, sHL, 0.97f);                  // the slope
-            Quad(sBR, sBL, sHL, sHR, 0.82f);                  // the tall back
-            TriFace(sBL, sLL, sHL, 0.78f);                    // sides
-            TriFace(sLR, sBR, sHR, 0.78f);
+            if (draw)
+            {
+                Quad(sLL, sLR, sHR, sHL, 0.97f);                  // the slope
+                Quad(sBR, sBL, sHL, sHR, 0.82f);                  // the tall back
+                TriFace(sBL, sLL, sHL, 0.78f);                    // sides
+                TriFace(sLR, sBR, sHR, 0.78f);
+            }
             if (_o.Collision)
             {
                 Tri(chunk, sLL, sLR, sHR); Tri(chunk, sLL, sHR, sHL);
@@ -505,6 +523,10 @@ public static class Shapes
         BlockType.Spike => (new V3(0.25f, 0, 0.25f), new V3(0.75f, 1, 0.75f)),
         BlockType.Rubble => (new V3(0.05f, 0, 0.05f), new V3(0.95f, 0.45f, 0.95f)),
         BlockType.Core => (new V3(0.2f, 0, 0.2f), new V3(0.8f, 1.8f, 0.8f)),
+        BlockType.Rail => (new V3(0, 0, 0), new V3(1, 1.05f, 1)),
+        BlockType.Shelf or BlockType.Locker => (new V3(0.06f, 0, 0.1f), new V3(0.94f, 1f, 0.9f)),
+        BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
+        BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
 
@@ -711,6 +733,94 @@ public static class Shapes
                     float x = 0.15f + R(i) * 0.5f, z = 0.15f + R(i + 3) * 0.5f, hgt = 0.5f + R(i + 6) * 0.9f;
                     l.Add(Box(x, 0, z, x + 0.18f, hgt, z + 0.18f, c, Surface.Glow));
                 }
+                break;
+            case BlockType.Stair:
+                // Four steps rising toward Facing (built rising north, then turned).
+                for (int i = 0; i < 4; i++)
+                {
+                    float z0 = 1f - (i + 1) * 0.25f;
+                    l.Add(Box(0, 0, z0, 1, (i + 1) * 0.25f, z0 + 0.25f, i % 2 == 0 ? c : c.Scale(0.9f), s, b.Facing));
+                }
+                break;
+            case BlockType.Ladder:
+            {
+                // Rails and rungs against the wall behind the climber (the north side, turned by Facing).
+                Rgb rail = c.Scale(0.85f);
+                l.Add(Box(0.18f, 0, 0.04f, 0.26f, 1, 0.14f, rail, Surface.Metal, b.Facing));
+                l.Add(Box(0.74f, 0, 0.04f, 0.82f, 1, 0.14f, rail, Surface.Metal, b.Facing));
+                for (int i = 0; i < 4; i++)
+                    l.Add(Box(0.26f, 0.12f + i * 0.25f, 0.06f, 0.74f, 0.16f + i * 0.25f, 0.12f, c, Surface.Metal, b.Facing));
+                break;
+            }
+            case BlockType.Rail:
+                l.Add(Box(0.45f, 0, 0.45f, 0.55f, 1.0f, 0.55f, c, Surface.Metal));
+                l.Add(Box(0, 0.95f, 0.44f, 1, 1.05f, 0.56f, c, Surface.Metal));
+                l.Add(Box(0.44f, 0.95f, 0, 0.56f, 1.05f, 1, c, Surface.Metal));
+                l.Add(Box(0, 0.5f, 0.46f, 1, 0.56f, 0.54f, c.Scale(0.8f), Surface.Metal));
+                break;
+            case BlockType.Sign:
+            {
+                // A warning plate: hazard yellow with a dark band, or a radiation mark.
+                l.Add(Box(0.1f, 0.15f, 0.3f, 0.9f, 0.85f, 0.38f, c, Surface.Matte, b.Facing));
+                l.Add(Box(0.1f, 0.15f, 0.62f, 0.9f, 0.85f, 0.7f, c, Surface.Matte, b.Facing));
+                Rgb mark = new(0x1a, 0x1a, 0x18);
+                if (b.Variant == 1)
+                {
+                    l.Add(Box(0.42f, 0.42f, 0.27f, 0.58f, 0.58f, 0.73f, mark, Surface.Matte, b.Facing));
+                    l.Add(Box(0.25f, 0.55f, 0.27f, 0.4f, 0.75f, 0.73f, mark, Surface.Matte, b.Facing));
+                    l.Add(Box(0.6f, 0.55f, 0.27f, 0.75f, 0.75f, 0.73f, mark, Surface.Matte, b.Facing));
+                    l.Add(Box(0.42f, 0.2f, 0.27f, 0.58f, 0.38f, 0.73f, mark, Surface.Matte, b.Facing));
+                }
+                else l.Add(Box(0.1f, 0.42f, 0.27f, 0.9f, 0.58f, 0.73f, mark, Surface.Matte, b.Facing));
+                break;
+            }
+            case BlockType.Shelf:
+                foreach (float x in new[] { 0.06f, 0.88f })
+                    l.Add(Box(x, 0, 0.1f, x + 0.06f, 1, 0.9f, dark, Surface.Metal));
+                for (int i = 0; i < 3; i++)
+                {
+                    float y = 0.05f + i * 0.32f;
+                    l.Add(Box(0.06f, y, 0.1f, 0.94f, y + 0.04f, 0.9f, c, Surface.Metal));
+                    if (R(i) > 0.3f) l.Add(Box(0.15f + R(i + 3) * 0.3f, y + 0.04f, 0.2f, 0.45f + R(i + 3) * 0.3f, y + 0.22f + R(i + 6) * 0.06f, 0.75f, c.Lerp(new Rgb(0x8a, 0x7a, 0x5a), 0.5f), Surface.Matte));
+                }
+                break;
+            case BlockType.Locker:
+                l.Add(Box(0.12f, 0, 0.25f, 0.88f, 1.0f, 0.9f, c, Surface.Metal, b.Facing));
+                l.Add(Box(0.49f, 0.05f, 0.22f, 0.51f, 0.95f, 0.25f, dark, Surface.Metal, b.Facing));
+                l.Add(Box(0.2f, 0.75f, 0.22f, 0.4f, 0.8f, 0.25f, dark, Surface.Metal, b.Facing));
+                l.Add(Box(0.6f, 0.75f, 0.22f, 0.8f, 0.8f, 0.25f, dark, Surface.Metal, b.Facing));
+                break;
+            case BlockType.Puddle:
+                l.Add(new ShapeBox(new V3(0.05f + R(0) * 0.2f, 0, 0.05f + R(1) * 0.2f), new V3(0.75f + R(2) * 0.2f, 0.015f, 0.7f + R(3) * 0.25f), c, Surface.Glass, true));
+                break;
+            case BlockType.Cable:
+                for (int i = 0; i < 2; i++)
+                {
+                    float x = 0.25f + R(i) * 0.5f, z = 0.25f + R(i + 2) * 0.5f;
+                    l.Add(Box(x, 0.2f + R(i + 4) * 0.4f, z, x + 0.04f, 1, z + 0.04f, c, Surface.Matte));
+                }
+                break;
+            case BlockType.Bed:
+                l.Add(Box(0.1f, 0, 0.05f, 0.9f, 0.4f, 0.95f, dark, Surface.Metal, b.Facing));
+                l.Add(Box(0.12f, 0.4f, 0.07f, 0.88f, 0.55f, 0.93f, c, Surface.Matte, b.Facing));
+                l.Add(Box(0.2f, 0.55f, 0.1f, 0.8f, 0.65f, 0.3f, c.Scale(1.05f), Surface.Matte, b.Facing));
+                break;
+            case BlockType.Bench:
+                l.Add(Box(0.04f, 0.78f, 0.1f, 0.96f, 0.88f, 0.9f, c, Surface.Metal));
+                l.Add(Box(0.08f, 0, 0.14f, 0.92f, 0.78f, 0.86f, c.Scale(0.65f), Surface.Metal));
+                if (R(0) > 0.4f) l.Add(Box(0.2f, 0.88f, 0.3f, 0.45f, 1.05f, 0.6f, new Rgb(0x8a, 0xb8, 0xc0), Surface.Glass));
+                if (R(1) > 0.5f) l.Add(Box(0.6f, 0.88f, 0.25f, 0.85f, 0.95f, 0.55f, c.Scale(1.2f), Surface.Metal));
+                break;
+            case BlockType.Tank:
+                l.Add(Box(0.15f, 0, 0.05f, 0.85f, 0.95f, 0.95f, c, Surface.Metal));
+                l.Add(Box(0.05f, 0, 0.15f, 0.95f, 0.95f, 0.85f, c, Surface.Metal));
+                l.Add(Box(0.1f, 0.6f, 0.1f, 0.9f, 0.68f, 0.9f, c.Scale(0.7f), Surface.Metal));
+                break;
+            case BlockType.Statue:
+                l.Add(Box(0.1f, 0, 0.1f, 0.9f, 0.3f, 0.9f, c.Scale(0.85f), Surface.Matte));
+                l.Add(Box(0.3f, 0.3f, 0.35f, 0.7f, 1.3f, 0.65f, c, Surface.Matte));
+                l.Add(Box(0.36f, 1.3f, 0.38f, 0.64f, 1.65f, 0.62f, c, Surface.Matte));
+                l.Add(Box(0.15f, 0.9f, 0.42f, 0.85f, 1.05f, 0.58f, c.Scale(0.9f), Surface.Matte));
                 break;
             case BlockType.Ramp:
             case BlockType.Spike:

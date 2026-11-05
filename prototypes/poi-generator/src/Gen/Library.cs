@@ -25,7 +25,15 @@ public sealed record EnemyDef(string Name, EnemyKind Kind, ShooterClass Shooter,
     public bool Armed => Shooter != ShooterClass.None;
 }
 
-public sealed record LootItem(string Name, int Tier, int Value, bool Unique);
+/// <summary>
+/// An item a cache can hold: a real shared/Items id, its name and rarity on the five-step ladder,
+/// a trade value for comparing hauls, and tags that match places (medical, military, ore...).
+/// </summary>
+public sealed record LootItem(string Id, string Name, Rarity Rarity, int Value, string[] Tags)
+{
+    public int Tier => (int)Rarity + 1;
+    public bool Unique => Rarity == Rarity.Unique;
+}
 
 /// <summary>Every piece of authored data the generator reads, parsed and cross-checked.</summary>
 public sealed class PoiLibrary
@@ -34,9 +42,16 @@ public sealed class PoiLibrary
     public List<FamilyDef> Families = new();
     public Dictionary<string, List<EnemyDef>> Rosters = new();
     public List<LootItem> Loot = new();
-    public Dictionary<string, List<string>> LogSections = new();
+    public Dictionary<string, RoomDef> Rooms = new();
+    public Dictionary<string, ProgramDef> Programs = new();
+    public Dictionary<string, SiteDef> Sites = new();
+    public List<ThemeDef> Themes = new();
+    /// <summary>Places in space and how a system's space is filled (data and siting only for now).</summary>
+    public List<SpaceSiteDef> SpaceSites = new();
+    public List<OrbitTheme> OrbitThemes = new();
 
     public FamilyDef Family(string id) => Families.First(f => f.Id == id);
+    public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
 
     /// <summary>Loads from (file name, text) pairs, so the caller decides where files come from.</summary>
     public static PoiLibrary Load(IEnumerable<(string Name, string Text)> files)
@@ -49,10 +64,14 @@ public sealed class PoiLibrary
                 var kit = KitParser.Parse(text, name);
                 lib.Kits.Add(kit.Id, kit);
             }
-            else if (name.EndsWith("families.txt", StringComparison.Ordinal)) lib.Families = FamilyParser.Parse(text, name);
+            else if (name.EndsWith("families.txt", StringComparison.Ordinal)) lib.Families.AddRange(FamilyParser.Parse(text, name));
             else if (name.EndsWith("rosters.txt", StringComparison.Ordinal)) lib.Rosters = ParseRosters(text, name);
             else if (name.EndsWith("loot.txt", StringComparison.Ordinal)) lib.Loot = ParseLoot(text, name);
-            else if (name.EndsWith("logs.txt", StringComparison.Ordinal)) lib.LogSections = ParseSections(text);
+            else if (name.EndsWith("rooms.txt", StringComparison.Ordinal)) lib.Rooms = ArchParser.Rooms(text, name);
+            else if (name.EndsWith("programs.txt", StringComparison.Ordinal)) lib.Programs = ArchParser.Programs(text, name);
+            else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
+            else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
+            else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
         }
         lib.Check();
         return lib;
@@ -65,27 +84,63 @@ public sealed class PoiLibrary
         return Kits[r.KitId].Modules.Where(m => m.Kind == kind && m.HasTag(r.Tag)).ToList();
     }
 
-    public Kit KitFor(FamilyDef family, string alias = "main") =>
-        Kits[(family.Kits.TryGetValue(alias, out KitRef r) ? r : family.Kits["main"]).KitId];
+    public Kit KitFor(FamilyDef family, string alias = "main")
+    {
+        if (family.Generator == Generator.Kit)
+            return Kits[(family.Kits.TryGetValue(alias, out KitRef r) ? r : family.Kits["main"]).KitId];
+        string style = family.Site != null ? Sites[family.Site].Style : Programs[family.Program!].Style;
+        return Kits[style];
+    }
 
     public List<EnemyDef> Roster(string section) => Rosters.TryGetValue(section, out var r) ? r : new List<EnemyDef>();
 
-    /// <summary>Fails loudly at load time if a family asks for something no kit provides.</summary>
+    /// <summary>Fails loudly at load time if a family asks for something no kit, program or site provides.</summary>
     void Check()
     {
         foreach (var f in Families)
         {
-            foreach (var (alias, r) in f.Kits)
-                if (!Kits.ContainsKey(r.KitId)) throw new FormatException($"family {f.Id}: no kit '{r.KitId}'");
+            if (!Rosters.ContainsKey(f.Roster)) throw new FormatException($"family {f.Id}: no roster [{f.Roster}]");
+            if (f.Generator == Generator.Kit)
+            {
+                foreach (var (_, r) in f.Kits)
+                    if (!Kits.ContainsKey(r.KitId)) throw new FormatException($"family {f.Id}: no kit '{r.KitId}'");
+                foreach (var v in f.Variants)
+                {
+                    var kinds = v.Path.Select(s => new KindRef(s.Alias, s.Kind)).Concat(v.Grow).Concat(v.BranchChains.SelectMany(c => c));
+                    foreach (var k in kinds)
+                        if (Modules(f, k.Alias, k.Kind).Count == 0)
+                            throw new FormatException($"family {f.Id} '{v.Name}': no {k} modules in its kits");
+                }
+                continue;
+            }
             foreach (var v in f.Variants)
             {
-                var kinds = v.Path.Select(s => new KindRef(s.Alias, s.Kind)).Concat(v.Grow).Concat(v.BranchChains.SelectMany(c => c));
-                foreach (var k in kinds)
-                    if (Modules(f, k.Alias, k.Kind).Count == 0)
-                        throw new FormatException($"family {f.Id} '{v.Name}': no {k} modules in its kits");
+                string? site = v.Site ?? f.Site, program = v.Program ?? f.Program;
+                if (site != null && !Sites.ContainsKey(site)) throw new FormatException($"family {f.Id}: no site '{site}'");
+                if (site == null && program != null && !Programs.ContainsKey(program)) throw new FormatException($"family {f.Id}: no program '{program}'");
             }
-            if (!Rosters.ContainsKey(f.Roster)) throw new FormatException($"family {f.Id}: no roster [{f.Roster}]");
         }
+        foreach (var p in Programs.Values)
+        {
+            if (!Kits.ContainsKey(p.Style)) throw new FormatException($"program {p.Id}: no style kit '{p.Style}'");
+            foreach (var d in p.Bands.Values.SelectMany(b => b))
+                if (!Rooms.ContainsKey(d.Room)) throw new FormatException($"program {p.Id}: no room '{d.Room}'");
+            foreach (string r in p.Fill)
+                if (!Rooms.ContainsKey(r)) throw new FormatException($"program {p.Id}: no fill room '{r}'");
+        }
+        foreach (var s in Sites.Values)
+        {
+            if (!Kits.ContainsKey(s.Style)) throw new FormatException($"site {s.Id}: no style kit '{s.Style}'");
+            foreach (var part in s.Parts.Where(p => p.Kind == "building"))
+                if (!Programs.ContainsKey(part.Arg("program"))) throw new FormatException($"site {s.Id}: no program '{part.Arg("program")}'");
+        }
+        foreach (var r in Rooms.Values)
+            foreach (string n in r.Near.Concat(r.Avoid))
+                if (!Rooms.ContainsKey(n)) throw new FormatException($"room {r.Id}: near/avoid names unknown room '{n}'");
+        if (Rooms.Count > 0 && !Rooms.ContainsKey("vault")) throw new FormatException("rooms.txt needs a 'vault' room");
+        foreach (var t in Themes)
+            foreach (var (fam, _) in t.Set)
+                if (!Families.Any(f => f.Id == fam)) throw new FormatException($"theme {t.Id}: no family '{fam}'");
     }
 
     static Dictionary<string, List<string>> ParseSections(string text)
@@ -134,20 +189,31 @@ public sealed class PoiLibrary
         return result;
     }
 
-    // tier  value  [unique]  name...
+    /// <summary>Trade value by rarity, so hauls can be compared (shared/Items has no prices).</summary>
+    public static int ValueOf(Rarity r) => r switch
+    {
+        Rarity.Common => 6, Rarity.Uncommon => 22, Rarity.Rare => 65, Rarity.Exotic => 160, _ => 420,
+    };
+
+    // id  rarity  tags  name...
     static List<LootItem> ParseLoot(string text, string source)
     {
         var items = new List<LootItem>();
+        int n = 0;
         foreach (string raw in text.Replace("\r", "").Split('\n'))
         {
+            n++;
             string line = raw.Trim();
             if (line.Length == 0 || line.StartsWith('#')) continue;
             string[] p = line.Split((char[])null!, StringSplitOptions.RemoveEmptyEntries);
-            bool unique = p[2] == "unique";
-            items.Add(new LootItem(string.Join(' ', p.Skip(unique ? 3 : 2)),
-                int.Parse(p[0], CultureInfo.InvariantCulture), int.Parse(p[1], CultureInfo.InvariantCulture), unique));
+            if (p.Length < 4) throw new FormatException($"{source}:{n}: loot lines are 'id rarity tags name'");
+            if (!Enum.TryParse(p[1], true, out Rarity rarity)) throw new FormatException($"{source}:{n}: '{p[1]}' is not a rarity");
+            string[] tags = p[2] == "-" ? Array.Empty<string>() : p[2].Split(',');
+            items.Add(new LootItem(p[0], string.Join(' ', p.Skip(3)), rarity, ValueOf(rarity), tags));
         }
         if (items.Count == 0) throw new FormatException($"{source}: no loot");
+        foreach (Rarity r in Enum.GetValues<Rarity>())
+            if (!items.Any(i => i.Rarity == r)) throw new FormatException($"{source}: no {r} items");
         return items;
     }
 }

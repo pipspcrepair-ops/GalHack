@@ -11,7 +11,7 @@ namespace Wildlife;
 /// The brain only writes intentions into the creature; Attacks, Locomotion and the rig act
 /// on them.
 /// </summary>
-public static class Brain
+public static partial class Brain
 {
     public static void Update(WildSim w, Creature c, float dt)
     {
@@ -30,6 +30,20 @@ public static class Brain
             return;
         }
 
+        // A settlement's own animals keep to their pens and their people.
+        if (c.Species.Domestic != DomesticKind.None)
+        {
+            Domestic(w, c, dt);
+            return;
+        }
+
+        // Caves and places have their own roles: lurkers, prowlers, ambushers, nesters, subsisters.
+        if (c.Species.IsDeep)
+        {
+            Deep(w, c, dt);
+            return;
+        }
+
         ITarget near = w.NearestTarget(c.Position, out float dist);
         if (near != null && dist < c.Stats.Perception)
         {
@@ -37,6 +51,9 @@ public static class Brain
             c.Alert = 1f;
         }
         else c.Alert = 0f;
+
+        // Outside its hours it goes to its rest site and stays there, unless something wakes it.
+        if (w.ActivityCycles && c.Rest != null && Resting(w, c, near, dist, dt)) return;
 
         switch (c.Species.Behaviour)
         {
@@ -58,6 +75,9 @@ public static class Brain
             c.Altitude = c.State == CState.Eat || c.State == CState.Graze ? 0f : c.State == CState.Chase ? 1.4f : low ? 1.4f : CruiseAltitude(c);
         }
         else if (c.Species.Rig == RigKind.GasBag) c.Altitude = c.State == CState.Chase ? 1.8f : CruiseAltitude(c);
+
+        // Wild things keep out of settlements: they steer round them, whatever they are doing.
+        if (w.Settlements.Count > 0) AvoidTowns(w, c);
     }
 
     static float CruiseAltitude(Creature c) => c.Species.Rig switch

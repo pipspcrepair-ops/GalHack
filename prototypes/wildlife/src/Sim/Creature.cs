@@ -3,7 +3,7 @@ using Godot;
 
 namespace Wildlife;
 
-public enum CState { Idle, Wander, Graze, Flee, Stalk, Chase, Hidden, Lurk, Warn, ReturnHome, Scavenge, Eat, Follow, Freeze, Root }
+public enum CState { Idle, Wander, Graze, Flee, Stalk, Chase, Hidden, Lurk, Warn, ReturnHome, Scavenge, Eat, Follow, Freeze, Root, Rest, Patrol, Tell, Guard, InWalls }
 
 /// <summary>Every attack runs wind-up, lunge, recover. The wind-up is the telegraph.</summary>
 public enum AttackPhase { None, Windup, Lunge, Recover }
@@ -116,6 +116,59 @@ public sealed class Creature
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
     public float RigPending;
+
+    // Day and night: where it rests outside its hours, and when it was last woken.
+    public RestSite Rest;
+    public float AwakeUntil = -999f;
+
+    // Caves and places. A creature with a Space moves on that space's surfaces (floors, and
+    // walls and ceilings if its species climbs) instead of the terrain's heights; Position is
+    // the point on the surface under its body and Facing.Y the surface normal.
+    public ISolidSpace Space;
+    /// <summary>How far its body is held off the surface it holds.</summary>
+    public float Clearance = 0.25f;
+    public float CrawlSpeed;
+    /// <summary>Let go (or knocked off): falling until it lands on something.</summary>
+    public bool Falling;
+    /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
+    public Vector3 LastFirm;
+    public Vector3 LastFirmNormal = Vector3.Up;
+    public readonly List<Vector3> SpacePath = new();
+    public int SpacePathIndex;
+    public Vector3 SpacePathGoal;
+    public float SpacePathAge;
+
+    /// <summary>Hidden in the walls: in at <see cref="InCrack"/>, out at <see cref="CrackExit"/> after <see cref="WallLength"/> seconds.</summary>
+    public Crack InCrack, CrackExit;
+    public float WallTime, WallLength, ScratchTimer;
+    public bool InWalls => InCrack != null;
+
+    public AmbushPoint Ambush;
+    public Nest Nest;
+    /// <summary>A prowler's beat: the points it walks, back and forth.</summary>
+    public List<Vector3> Route;
+    public int RouteIndex, RouteStep = 1;
+    /// <summary>What it is hunting among the place's creatures, and how hungry it is (0..1).</summary>
+    public Creature Prey;
+    public float Hunger;
+    /// <summary>An ambush or a hunt giving itself away: which tell, and since when.</summary>
+    public TellKind TellKind;
+    public float TellStart = -999f;
+    public ITarget TellTarget;
+    /// <summary>The player it has noticed, and when.</summary>
+    public ITarget Noticed;
+    public float NoticedAt = -999f;
+    /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
+    public float Wake;
+    // Domestic animals: the pen or town area they keep to, and (pets) who they follow.
+    public Vector3 PenCenter;
+    public float PenRadius;
+    public ITarget Owner;
+    /// <summary>A wild creature inside a settlement (the town has been told).</summary>
+    public bool InTown;
+    CreatureTarget _asTarget;
+    /// <summary>This creature as prey for another.</summary>
+    public CreatureTarget AsTarget => _asTarget ??= new CreatureTarget(this);
 
     public Stats Stats => Species.Stats;
     public float Radius => Species.Stats.Radius;

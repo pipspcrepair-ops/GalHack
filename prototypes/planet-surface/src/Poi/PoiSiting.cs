@@ -56,84 +56,176 @@ public sealed class PoiSite
     public TInt3 Entrance;
 
     public TInt3 World(PInt3 local) => new(Origin.X + local.X, Origin.Y + local.Y, Origin.Z + local.Z);
+
+    // ---- what a road, rail or power network needs to join the place up (read-only) ----------
+
+    /// <summary>Quarter turns about y the place was turned by when seated. Places sit as generated today (0); the field is here so a network never assumes it.</summary>
+    public int Rotation;
+
+    /// <summary>The middle of the footprint, in world metres (x, z canonical).</summary>
+    public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
+
+    /// <summary>How much it matters to a network: city, spaceport, town, base, outpost, camp, site, wreck.</summary>
+    public PoiTier Tier => Family.Tier;
+
+    /// <summary>Held by a faction (its core is live, or its people are home): its own infrastructure works.</summary>
+    public bool FactionHeld => Instance.HasCore || (Family.Faction != PoiGenerator.Gen.Faction.None && Instance.State == PoiState.Active);
+
+    /// <summary>A blast site's ground zero in world metres (its radii are in <c>Instance.Layout.Extras.Blast</c>): for the dead-zone ground tint and the world work.</summary>
+    public (double X, double Z)? GroundZero => Instance.Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
+
+    /// <summary>A settlement's or civilian place's townsfolk data (spots, links, routes, people, animals, area), in local cells; null elsewhere.</summary>
+    public Townsfolk Townsfolk => Instance.Townsfolk;
+
+    /// <summary>The ways in a road can end at: the main entrance, fence gates, collapse breaches. World cells and the way out.</summary>
+    public IReadOnlyList<PoiGate> Gates = Array.Empty<PoiGate>();
 }
+
+/// <summary>A way into a place, for a network to connect to: where you stand outside it, and which way is out (a fence gate gives the axis through it; 0, 0 when any way is).</summary>
+public readonly record struct PoiGate(string Kind, TInt3 Cell, int OutX, int OutZ);
 
 /// <summary>
 /// Places POIs on a planet with the POI generator's own placement rules, then fits each one to
 /// the real terrain and seats it:
-/// 1. A placement map of the country around the landing site: biomes from the planet's own,
-///    faction territories, and rich ground where the deposit map has a signature resource.
-/// 2. <see cref="Placement.PlacePlanet"/> picks families, layouts, states and map cells by its
-///    biome, territory, near/avoid and spacing rules.
-/// 3. Each place is then fitted within a short walk of its cell to ground that suits it: a Vharn
-///    garrison or a Kessari spire on high ground with a view, an abandoned mine at the foot of a
-///    slope it can dig into, a farm on the flattest ground, a crashed freighter wherever it came
-///    down (bounded cut and fill everywhere). Water, rivers and the seams are off limits.
+/// 1. A placement map of the whole planet: biomes from the planet's own, faction territories,
+///    and rich ground where the deposit map has a signature resource.
+/// 2. <see cref="WorldPlacement"/> scatters places evenly over all of it (the planet is a torus)
+///    and picks each one from the planet's themed set by biome and territory, with a few outliers
+///    that don't belong. The nearest half are seated first, then an even spread to the far side.
+/// 3. Each place is then fitted within a short walk of its cell to ground that suits it, by its
+///    family's siting: a garrison or an observatory on high ground with a view (ridge, peak), a
+///    mine at the foot of a slope it can dig into (valley, hillside), an airfield on wide level
+///    ground (open), a farm on the flattest (flat), a wreck wherever it came down (any). Cut and
+///    fill are bounded everywhere; water, rivers and the seams are off limits.
 /// 4. The pad: a <see cref="TerrainStamp"/> levels the footprint and an apron at the floor's
 ///    height (cutting high ground, filling low) and keeps rooms below ground open.
 /// Deterministic from the planet seed.
 /// </summary>
 public static class PoiSiting
 {
-    public const double RegionSize = 3200;   // metres around the landing site
+    public const double RegionSize = 3200;   // metres around the landing site (kept for callers; placement now covers the planet)
     const float CellSize = 40f;
+    /// <summary>Placement cells over the whole planet, in metres.</summary>
+    const float WorldCell = 160f;
+    /// <summary>How many places a planet gets at most: spread over all of it, nearest the landing site first.</summary>
+    public static int MaxSites = 14;
+    /// <summary>Tests and screenshots: also place one of this family near the landing site.</summary>
+    public static string ForceFamily;
+    /// <summary>
+    /// Start worlds: no faction holds ground (faction places only as ruins, no cores, no defenders;
+    /// wrecks, abandoned and infested places, the Bloom, wildlife and gang camps stay). The slice sets
+    /// this when it rolls a start world, before the world is built; <see cref="Place"/> can also be told directly.
+    /// </summary>
+    public static bool StartWorld;
     const float Apron = 4f;
     const float MaxCutFill = 16f;
     const double SearchRadius = 140;
     const double SeamMargin = 320;           // keeps POIs clear of the ghost band either side of a seam
 
-    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing)
+    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null)
     {
+        bool start = startWorld ?? StartWorld;
         PoiLibrary lib = catalog.Library;
         PlanetSpec spec = map.Spec;
-        int side = (int)(RegionSize / CellSize);
-        double x0 = landing.X - RegionSize / 2, z0 = landing.Y - RegionSize / 2;
-        PlanetMap pmap = BuildPlacementMap(map, x0, z0, side, GHash.Of(spec.Seed, 0x504F49));
-        var rng = new PRng(GHash.Of(spec.Seed, 0x504C4143));
-        bool rare = rng.Chance(0.35f);
-        List<PlacedPoi> placed = Placement.PlacePlanet(lib, pmap, new SystemContext(), new PlayerKnowledge(), rng.Fork("planet"), rare);
-
+        // The whole planet as the placement engine sees it, and the theme its kind of world has.
+        int cellsX = Math.Max(8, (int)(map.WidthMeters / WorldCell)), cellsZ = Math.Max(4, (int)(map.HeightMeters / WorldCell));
+        PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
+        ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
+        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143));
+        var placed = world.Pois.Where(p => !p.Family.Space).ToList();
+        // Spread over the whole planet, but the landing site's country gets its share first.
+        double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
+        var byDistance = placed.OrderBy(Away).ToList();
+        int near = MaxSites / 2;
+        var far = byDistance.Skip(near).ToList();
+        int stride = Math.Max(1, far.Count / Math.Max(1, MaxSites - near));
+        var spread = far.Where((_, i) => i % stride == 0).ToList();
+        // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
+        var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
         var sites = new List<PoiSite>();
-        foreach (PlacedPoi p in placed)
+        if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
+            // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
+            PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned ? PoiState.Active : PoiState.Abandoned;
+            PoiInstance inst = PoiFactory.Generate(lib, forced, 0, forced.Rarity, state, 7);
+            for (int k = 0; k < 12 && sites.Count == 0; k++)
+            {
+                double a = k * Math.PI / 6;
+                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 700, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 700, map.HeightMeters), landing, sites);
+                if (site != null) sites.Add(site);
+            }
+        }
+        foreach (PlacedPoi p in order)
+        {
+            if (sites.Count >= MaxSites + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, p.SpawnSeed);
-            double wantX = x0 + p.X, wantZ = z0 + p.Z;
-            PoiSite site = Seat(inst, p.Family, bare, map, wantX, wantZ, landing, sites);
+            ulong spawnSeed = p.SpawnSeed;
+            if (start)
+            {
+                // A start world: any blast site lies far from the bunker, and the settlements near it are never hostile.
+                if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 1500)
+                    for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
+            }
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed);
+            PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             if (site != null) sites.Add(site);
         }
+        Blasts(sites, map);
         return sites;
     }
 
-    /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>
-    static PlanetMap BuildPlacementMap(WorldMap map, double x0, double z0, int side, ulong seed)
+    /// <summary>
+    /// Places inside a blast's radius take the blasted decay: roofs gone, the walls that faced
+    /// ground zero stripped, interiors burnt, by how close they stand.
+    /// </summary>
+    static void Blasts(List<PoiSite> sites, WorldMap map)
     {
+        foreach (PoiSite b in sites.Where(s => s.GroundZero != null).ToList())
+        {
+            var (gx, gz) = b.GroundZero!.Value;
+            BlastZone zone = b.Instance.Layout.Extras.Blast!;
+            foreach (PoiSite o in sites)
+            {
+                if (o == b) continue;
+                double dx = Mathx.WrapDelta(o.Center.X - gx, map.WidthMeters), dz = Mathx.WrapDelta(o.Center.Z - gz, map.HeightMeters);
+                float d = (float)Math.Sqrt(dx * dx + dz * dz), strength = zone.Strength(d);
+                if (strength < 0.05f || d < 1f) continue;
+                StateTransforms.Blast(o.Instance, (float)(-dx / d), (float)(-dz / d), strength, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
+            }
+        }
+    }
+
+    /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>
+    static PlanetMap BuildPlacementMap(WorldMap map, double x0, double z0, int width, int height, float cell, ulong seed)
+    {
+        int side = Math.Min(width, height);
         var pmap = new PlanetMap
         {
-            Name = map.Spec.ToString(), Size = PlanetSize.Large, Width = side, Height = side, CellSize = CellSize,
-            Biomes = new PBiome[side * side], Territory = new string[side * side], Deposit = new bool[side * side],
+            Name = map.Spec.ToString(), Size = PlanetSize.Large, Width = width, Height = height, CellSize = cell,
+            Biomes = new PBiome[width * height], Territory = new string[width * height], Deposit = new bool[width * height],
         };
         var rng = new PRng(seed);
         string[] factions = { "vharn", "meridian", "freeholders", "kessari" };
         var capitals = new List<(float x, float y, string f)>();
         foreach (string f in factions)
             for (int i = rng.Between(1, 2); i > 0; i--)
-                capitals.Add((rng.Float(0.1f, 0.9f) * side, rng.Float(0.1f, 0.9f) * side, f));
+                capitals.Add((rng.Float(0.1f, 0.9f) * width, rng.Float(0.1f, 0.9f) * height, f));
         float reach = side * 0.32f;
 
-        for (int y = 0; y < side; y++)
-        for (int x = 0; x < side; x++)
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
         {
-            double wx = Mathx.WrapX(x0 + (x + 0.5) * CellSize, map.WidthMeters), wz = Mathx.Wrap(z0 + (y + 0.5) * CellSize, map.HeightMeters);
+            double wx = Mathx.WrapX(x0 + (x + 0.5) * cell, map.WidthMeters), wz = Mathx.Wrap(z0 + (y + 0.5) * cell, map.HeightMeters);
             int k = pmap.Index(x, y);
             pmap.Biomes[k] = ToPoiBiome((GBiome)map.Biome[map.CellAt(wx, wz)], map.Def.Archetype);
             var nearest = capitals.OrderBy(c => (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y)).First();
             float d = MathF.Sqrt((nearest.x - x) * (nearest.x - x) + (nearest.y - y) * (nearest.y - y));
             pmap.Territory[k] = d < reach ? nearest.f : "wild";
             int signature = 0, all = 0;
-            foreach (Deposit dep in map.Deposits.InRect(wx - CellSize / 2, wz - CellSize / 2, wx + CellSize / 2, wz + CellSize / 2))
+            foreach (Deposit dep in map.Deposits.InRect(wx - cell / 2, wz - cell / 2, wx + cell / 2, wz + cell / 2))
             {
-                if (Math.Abs(Mathx.WrapDelta(dep.X - wx, map.WidthMeters)) > CellSize / 2 || Math.Abs(Mathx.WrapDelta(dep.Y - wz, map.HeightMeters)) > CellSize / 2) continue;
+                if (Math.Abs(Mathx.WrapDelta(dep.X - wx, map.WidthMeters)) > cell / 2 || Math.Abs(Mathx.WrapDelta(dep.Y - wz, map.HeightMeters)) > cell / 2) continue;
                 all++;
                 if (dep.Kind >= DepositKind.Titanium) signature++;
             }
@@ -155,14 +247,8 @@ public static class PoiSiting
         _ => a == Archetype.Ice ? PBiome.Ice : PBiome.Desert,
     };
 
-    /// <summary>What ground a family looks for.</summary>
-    static string Preference(FamilyDef family) => family.Id switch
-    {
-        "vharn_outpost" or "kessari_spire" => "ridge",
-        "abandoned_mine" => "valley",
-        "freeholder_farm" => "flat",
-        _ => "any",
-    };
+    /// <summary>What ground a family looks for, from its data (siting): shape follows purpose.</summary>
+    static string Preference(FamilyDef family) => family.Siting is { Length: > 0 } s ? s : "any";
 
     static PoiSite Seat(PoiInstance inst, FamilyDef family, PlanetTerrainSource bare, WorldMap map, double wantX, double wantZ,
         LandingSite landing, List<PoiSite> others)
@@ -188,7 +274,8 @@ public static class PoiSiting
             if (Dist(cx, cz, landing.X, landing.Y, width, height) < 160) continue;
             bool crowded = false;
             foreach (PoiSite o in others)
-                crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height) < 140;
+                crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
+                           < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) continue;
 
             // Ground across the footprint and apron.
@@ -217,7 +304,9 @@ public static class PoiSiting
             double distance = Dist(cx, cz, wantX, wantZ, width, height);
             double score = want switch
             {
-                "ridge" => -prominence * 2.0 + cut * 1.5,
+                "ridge" or "peak" => -prominence * 2.0 + cut * 1.5,                    // high ground with a view
+                "hillside" => Math.Abs(cut - 8f) * 1.5 + Math.Abs(prominence) * 0.3,  // dug into a slope
+                "open" => cut * 5.0 + Math.Abs(prominence) * 0.6,                     // runways and pads: wide, level, open
                 "valley" => prominence * 2.0 + cut * 0.8 - Math.Min(cut, 8) * 0.6, // at the foot of a slope: some cut is the point
                 "flat" => cut * 4.0,
                 _ => cut * 2.0,
@@ -253,16 +342,41 @@ public static class PoiSiting
             for (int x = 0; x < occupied.Size.X; x++)
                 carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = occupied[new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z)];
         }
-        float blend = Math.Clamp(bestCut * 1.7f + 6f, 8f, 34f);
+        // Wide enough that cut and fill slopes stay walkable: the further the ground round the pad is
+        // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.
+        // The blend has to take the whole difference between the pad and the ground at its outer
+        // edge, so it grows until that difference fits at a walkable slope.
+        float blend = Math.Clamp(bestCut * 2f + 8f, 10f, 90f);
+        for (int pass = 0; pass < 4; pass++)
+        {
+            float edge = 0f;
+            for (int k = 0; k < 24; k++)
+            {
+                double ang = k * Math.PI / 12;
+                double rx = Math.Cos(ang) * (halfX + Apron + blend), rz = Math.Sin(ang) * (halfZ + Apron + blend);
+                edge = MathF.Max(edge, MathF.Abs(bare.NaturalHeight(bestX + rx, bestZ + rz) - bestPad));
+            }
+            float wanted = Math.Clamp(edge * 1.7f, 10f, 90f);
+            if (wanted <= blend) break;
+            blend = wanted;
+        }
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve);
 
+        var gates = new List<PoiGate>();
+        TInt3 W(PInt3 c) => new(ox + c.X, bestPad + c.Y, oz + c.Z);
+        PInt3 outward = inst.Layout.EntranceFacing.Vec();
+        gates.Add(new PoiGate("entrance", W(inst.Layout.EntranceCell), outward.X, outward.Z));
+        foreach (Marker m in inst.Markers.Where(m => m.Kind == "gate"))
+            gates.Add(new PoiGate("gate", W(m.Cell), m.Note == "x" ? 1 : 0, m.Note == "z" ? 1 : 0));
+        foreach (Breach b in inst.Layout.Extras.Breaches)
+            gates.Add(new PoiGate("breach", W(b.SurfaceCell), 0, 0));
         PInt3 e = inst.Layout.EntranceCell;
         return new PoiSite
         {
             Name = $"{family.Name}: {inst.Layout.Name} ({inst.State.ToString().ToLowerInvariant()})",
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
-            Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z),
+            Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates,
         };
     }
 

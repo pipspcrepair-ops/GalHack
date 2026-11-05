@@ -1,0 +1,875 @@
+# Families built by the architect. Same format as families.txt; these name a building program
+# (data/programs.txt) or a site plan (data/sites.txt) instead of a kit. Their variants are named
+# seeds: a fixed seed always gives the same place, and any other seed gives a new one.
+#
+#   program <id> | site <id>   what builds it (a variant may name its own)
+#   core owned|none            a core only where a faction holds the place
+#   owner faction|gang|none    gangs belong to no faction: always hostile, no standing
+#   ominous <0..1>             how much worse it gets deeper down
+#   wrong <0..1>               the share of spawns that are deliberately wrong
+#   tags                       theme tags (placement themes and loot weighting)
+#   landmark                   a hand-authored site plan with a strong identity
+#   pitch                      one line: why you'd want to go there
+
+family deep_bunker
+  tier site
+  siting open
+  rise 12
+  name Deep Bunker
+  pitch A concrete hatch in the wild, and stairs going down further than they should.
+  faction none
+  roster oldworld
+  program bunker
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 10
+  reveal 200
+  ominous 0.95
+  wrong 0.12
+  tags fallen military underground
+  states active 1 abandoned 5 infested 3 ruined 1
+  variant Site Nine
+    seed 8101
+  variant The Long Stair
+    seed 8102
+  variant Shelter Kappa
+    seed 8103
+  variant Low Archive
+    seed 8104
+
+family research_base
+  tier outpost
+  siting flat
+  rise 7
+  name Abandoned Research Base
+  pitch Labs above ground, and sublevels below that nobody came back up from.
+  faction none
+  roster oldworld
+  program research_base
+  core none
+  owner none
+  rarity uncommon
+  biomes ice ash rock desert steppe
+  territory any
+  spacing 10
+  reveal 260
+  ominous 0.8
+  wrong 0.08
+  tags science underground
+  states active 1 abandoned 5 infested 4 ruined 1
+  variant Kestrel Labs
+    seed 8201
+  variant Halden Institute
+    seed 8202
+  variant Station Vesper
+    seed 8203
+  variant Deepfield Annex
+    seed 8204
+
+family ice_outpost
+  tier outpost
+  siting open
+  rise 12
+  name Ice Research Outpost
+  pitch A hut half-buried in the drifts, and labs cut into the glacier where the drill broke through.
+  faction none
+  roster oldworld
+  program ice_outpost
+  core none
+  owner none
+  rarity uncommon
+  biomes ice
+  territory any
+  spacing 10
+  reveal 180
+  ominous 0.85
+  tags ice science underground
+  states active 0 abandoned 6 infested 3 ruined 1
+  variant Core Sample Seven
+    seed 8301
+  variant Rime Station
+    seed 8302
+  variant Borehole Camp
+    seed 8303
+
+family ominous_tower
+  tier town
+  siting any
+  rise 30
+  name Ominous Tower
+  pitch A tall dark block with one light on near the top.
+  faction none
+  roster oldworld
+  program tower_block
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 12
+  reveal landmark
+  ominous 0.6
+  wrong 0.15
+  tags fallen city
+  states active 0 abandoned 4 infested 3 ruined 3
+  variant Meridian Tower
+    seed 8401
+  variant Block Seventeen
+    seed 8402
+  variant The Needle
+    seed 8403
+  variant Halcyon Heights
+    seed 8404
+
+family hospital
+  tier town
+  siting flat
+  rise 18
+  name Abandoned Hospital
+  pitch Wards, a helipad on the roof, and a quarantine level sealed under the mortuary.
+  faction none
+  roster oldworld
+  program hospital
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe fungal ice
+  territory any
+  spacing 12
+  reveal 400
+  ominous 0.85
+  tags medical fallen city
+  states active 0 abandoned 4 infested 4 ruined 2
+  variant Saint Orla General
+    seed 8501
+  variant Merrow Infirmary
+    seed 8502
+  variant Ward Nine
+    seed 8503
+
+family cryo_vault
+  tier site
+  siting hillside
+  rise 12
+  name Cryo Vault
+  pitch People slept through the fall here, row on row, level on level. They never woke.
+  faction none
+  roster oldworld
+  program cryo_vault
+  core none
+  owner none
+  rarity rare
+  biomes ice rock ash desert
+  territory any
+  spacing 16
+  reveal 160
+  ominous 0.9
+  wrong 0.1
+  tags science ice underground
+  states active 1 abandoned 5 infested 3 ruined 1
+  variant Long Sleep
+    seed 8601
+  variant Haven Deep
+    seed 8602
+  variant The Dormitory
+    seed 8603
+
+family biolab
+  tier outpost
+  siting flat
+  rise 7
+  name Biolab
+  pitch They bred things here. The pens are open.
+  faction none
+  roster oldworld
+  program biolab
+  core none
+  owner none
+  rarity rare
+  biomes fungal steppe rock ash
+  territory any
+  spacing 16
+  reveal 220
+  ominous 1.0
+  wrong 0.15
+  tags science medical underground
+  states active 0 abandoned 3 infested 6 ruined 1
+  variant Genesis Annex
+    seed 8701
+  variant Pen Twelve
+    seed 8702
+  variant The Prime Vats
+    seed 8703
+
+family command_bunker
+  tier base
+  siting hillside
+  rise 12
+  name Military Command Bunker
+  pitch A hardened command post behind blast doors, going down past the war room.
+  faction none
+  roster oldworld
+  program command_bunker
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash ice steppe
+  territory any
+  spacing 12
+  reveal 200
+  ominous 0.75
+  tags military fallen underground
+  states active 1 abandoned 5 infested 2 ruined 2
+  variant Ironhold
+    seed 8801
+  variant Bastion Six
+    seed 8802
+  variant Last Watch
+    seed 8803
+
+family prison_block
+  tier base
+  siting flat
+  rise 8
+  name Prison Block
+  pitch Cell tiers, a guard post at every landing, and a confiscation locker at the bottom.
+  faction none
+  roster oldworld
+  program prison
+  core none
+  owner none
+  rarity uncommon
+  biomes ash rock desert fungal
+  territory any
+  spacing 12
+  reveal 300
+  ominous 0.7
+  tags prison fallen
+  states active 0 abandoned 4 infested 3 ruined 2
+  variant Blackgate
+    seed 8901
+  variant Cell Tier C
+    seed 8902
+  variant The Hold
+    seed 8903
+
+family meridian_garrison
+  tier base
+  siting ridge
+  rise 10
+  name Meridian Garrison
+  pitch A Meridian outpost recovering the old world, guarded, with a core you can hijack.
+  faction meridian
+  program garrison_hq
+  core owned
+  rarity uncommon
+  biomes desert rock ash ice steppe fungal
+  territory meridian wild
+  spacing 10
+  reveal 500
+  ominous 0.2
+  tags military recovery fort
+  states active 6 abandoned 2 infested 1 ruined 1
+  variant Outpost Talon
+    seed 9001
+  variant Recovery Station Iris
+    seed 9002
+  variant Fort Calder
+    seed 9003
+
+# ---- landmarks: hand-authored site plans --------------------------------------------------------
+
+family old_airfield
+  tier base
+  siting flat
+  rise 18
+  name Old Airfield
+  pitch A cracked runway, hangars, a control tower, and a bunker under the tower.
+  faction none
+  roster oldworld
+  site old_airfield
+  core none
+  owner none
+  landmark
+  rarity rare
+  biomes desert steppe rock ice ash
+  territory any
+  spacing 30
+  reveal landmark
+  ominous 0.7
+  tags fallen military
+  states active 0 abandoned 6 infested 2 ruined 3
+  variant Kestrel Field
+    seed 9101
+  variant Runway Two
+    seed 9102
+  variant Dust Strip
+    seed 9103
+
+family abandoned_spaceport
+  tier spaceport
+  siting flat
+  rise 30
+  name Abandoned Spaceport
+  pitch A rocket still standing on its pad, fuelled and crewed and never cleared to go.
+  faction none
+  roster oldworld
+  site spaceport
+  core none
+  owner none
+  landmark
+  rarity exotic
+  biomes desert steppe rock ash ice
+  territory any
+  spacing 40
+  reveal landmark
+  ominous 0.6
+  tags fallen space
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Port Meridian
+    seed 9201
+  variant Launch Complex Four
+    seed 9202
+  variant Ascension Yard
+    seed 9203
+
+family military_base
+  tier base
+  siting flat
+  rise 18
+  name Abandoned Military Base
+  pitch Fences, towers, trenches, a motor pool of wrecks, and bunkers below.
+  faction none
+  roster oldworld
+  site military_base
+  core none
+  owner none
+  landmark
+  rarity rare
+  biomes desert rock ash steppe ice
+  territory any
+  spacing 30
+  reveal landmark
+  ominous 0.75
+  tags military fallen underground
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant Fort Hollis
+    seed 9301
+  variant Camp Severn
+    seed 9302
+  variant Base Ostrava
+    seed 9303
+
+family blast_crater
+  tier site
+  siting open
+  rise 12
+  name Blast Crater
+  pitch Glass where the ground was, and a bunker hatch on the crater's edge.
+  faction none
+  roster oldworld
+  site blast_crater
+  core none
+  owner none
+  rarity uncommon
+  biomes desert ash rock steppe
+  territory any
+  spacing 20
+  reveal 600
+  ominous 0.8
+  tags fallen radiation
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Ground Zero
+    seed 9401
+  variant The Glass Bowl
+    seed 9402
+  variant Impact Nine
+    seed 9403
+
+family scrap_fort
+  tier camp
+  siting flat
+  rise 9
+  name Scrap Fort
+  pitch A roving gang's fort of stacked wrecks and containers, with buggies parked inside.
+  faction none
+  roster raiders
+  site scrap_fort
+  core none
+  owner gang
+  rarity common
+  biomes desert ash rock steppe
+  territory wild any
+  spacing 14
+  reveal 500
+  tags fallen gang
+  states active 6 abandoned 2 infested 1 ruined 1
+  variant Rust Hold
+    seed 9501
+  variant Chop Shop
+    seed 9502
+  variant Wreck Wall
+    seed 9503
+
+family old_mine
+  tier site
+  siting valley
+  rise 16
+  name Old Mine Works
+  pitch A winding wheel over a shaft that goes down five levels, into something older.
+  faction none
+  roster oldworld
+  site old_mine
+  core none
+  owner none
+  rarity common
+  biomes rock desert ash ice
+  territory any
+  near deposits 4
+  spacing 14
+  reveal 400
+  ominous 0.8
+  tags mine ore underground
+  states active 0 abandoned 6 infested 3 ruined 1
+  variant Number Four Shaft
+    seed 9601
+  variant Deepvein
+    seed 9602
+  variant Gallows Head
+    seed 9603
+
+# ---- Alien flavour: the same programs and plans, built in alien style kits. Common on alien
+# worlds, rare outliers elsewhere. Alien is not Precursor: these were built by someone else.
+
+family alien_hive_ruin
+  tier site
+  siting valley
+  rise 4
+  name Alien Hive Ruin
+  pitch Warrens chewed into the rock by something that left, or is sleeping deeper down.
+  faction none
+  roster hollow
+  program mine_works
+  style alien_hive
+  core none
+  owner none
+  rarity rare
+  biomes fungal rock ash desert steppe ice
+  territory any
+  spacing 16
+  reveal 140
+  ominous 0.95
+  wrong 0.25
+  tags alien hive underground
+  states active 0 abandoned 3 infested 5 ruined 2
+  variant The Chewed Halls
+    seed 9101
+  variant Brood Warren
+    seed 9102
+  variant Hollow Comb
+    seed 9103
+
+family alien_library
+  tier site
+  siting hillside
+  rise 6
+  name Alien Library
+  pitch Shelves of crystal that still hum when you walk past, and a script nobody can read.
+  faction none
+  roster precursor
+  program research_base
+  style alien_library
+  core none
+  owner none
+  rarity exotic
+  biomes fungal rock ice desert steppe ash
+  territory any
+  spacing 20
+  reveal 200
+  ominous 0.9
+  wrong 0.2
+  tags alien library science underground
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant The Humming Stacks
+    seed 9201
+  variant Archive of Glass
+    seed 9202
+  variant The Reading Deep
+    seed 9203
+
+family alien_cathedral
+  tier site
+  siting peak
+  rise 30
+  name Alien Cathedral
+  pitch A spire of pale stone on the highest ground, built for a congregation that never came back.
+  faction none
+  roster precursor
+  program tower_block
+  style alien_cathedral
+  core none
+  owner none
+  rarity exotic
+  biomes fungal rock ice desert steppe ash
+  territory any
+  spacing 24
+  reveal 900
+  ominous 1
+  wrong 0.3
+  tags alien cathedral landmark
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant The Pale Choir
+    seed 9301
+  variant Spire of Waiting
+    seed 9302
+  variant The Long Nave
+    seed 9303
+
+# ---- Industry and agriculture of the old world: tech level by variant (low, mid, high). Gangs
+# overrun some (active means a gang holds it: raiders, no core).
+
+family abandoned_factory
+  tier site
+  siting flat
+  rise 26
+  name Abandoned Factory
+  pitch A production line stopped mid-run, smokestacks over it, and a gang camped in the yard.
+  faction none
+  roster raiders
+  site factory_mid
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.6
+  wrong 0.1
+  tags industry fallen
+  states active 2 abandoned 5 infested 3 ruined 1
+  variant Old Mill Works
+    seed 9401
+    site factory_low
+    tech low
+  variant Kessler Fabrication
+    seed 9402
+    tech mid
+  variant Line Seven
+    seed 9403
+    site factory_high
+    tech high
+
+family old_farm
+  tier site
+  siting flat
+  rise 10
+  name Old Farm
+  pitch Fields gone wild, empty pens, silos against the sky, and a cellar nobody opened.
+  faction none
+  roster raiders
+  site farm_mid
+  core none
+  owner none
+  rarity common
+  biomes steppe desert fungal rock
+  territory any
+  spacing 14
+  reveal 400
+  ominous 0.4
+  wrong 0.05
+  tags farm fuel
+  states active 1 abandoned 6 infested 2 ruined 2
+  variant Old Homestead
+    seed 9501
+    site farm_low
+    tech low
+  variant Harlow Farmstead
+    seed 9502
+    tech mid
+  variant Greenline Agri-Complex
+    seed 9503
+    site agri_complex
+    tech high
+
+# ---- Faction working sites: most of what a faction holds is working ground, with defenders and
+# a core. Old-world versions turn up abandoned or ruined anywhere.
+
+family vharn_sam_site
+  tier base
+  siting ridge
+  rise 14
+  name Air-Defence Battery
+  pitch Launchers on a ridge, a radar turning, and a bunker that tracks everything overhead.
+  faction vharn
+  roster vharn
+  site sam_site
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 900
+  ominous 0.3
+  wrong 0
+  tags military working
+  states active 6 abandoned 2 ruined 1
+  variant Battery
+    seed 9601
+  variant Battery East
+    seed 9602
+  variant Battery West
+    seed 9603
+
+family meridian_railgun
+  tier base
+  siting open
+  rise 40
+  name Sky Railgun
+  pitch A barrel the length of a street aimed at the sky, and the power to fire it.
+  faction meridian
+  roster meridian
+  site sky_railgun
+  core owned
+  owner faction
+  rarity rare
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 3000
+  ominous 0.3
+  wrong 0
+  tags military working landmark
+  states active 6 abandoned 2 ruined 2
+  variant Long Gun
+    seed 9611
+  variant Long Gun East
+    seed 9612
+  variant Long Gun West
+    seed 9613
+
+family meridian_relay
+  tier outpost
+  siting peak
+  rise 24
+  name Comms Relay
+  pitch Masts and dishes on high ground, listening to the whole sky.
+  faction meridian
+  roster meridian
+  site comms_relay
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 900
+  ominous 0.3
+  wrong 0
+  tags comms working
+  states active 6 abandoned 2 ruined 1
+  variant Relay
+    seed 9621
+  variant Relay East
+    seed 9622
+  variant Relay West
+    seed 9623
+
+family exchange_depot
+  tier outpost
+  siting flat
+  rise 12
+  name Supply Depot
+  pitch Warehouses, a landing pad and fuel tanks: the Ledger's stock for the region.
+  faction exchange
+  roster meridian
+  site supply_depot
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 500
+  ominous 0.3
+  wrong 0
+  tags trade working industry
+  states active 7 abandoned 2 ruined 1
+  variant Depot
+    seed 9631
+  variant Depot East
+    seed 9632
+  variant Depot West
+    seed 9633
+
+family kessari_works
+  tier base
+  siting flat
+  rise 26
+  name Kessari Works
+  pitch An old factory the machines restarted and never let stop.
+  faction kessari
+  roster kessari
+  site factory_mid
+  style industrial
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.3
+  wrong 0
+  tags industry working machine
+  states active 6 abandoned 2 ruined 1
+  variant Works
+    seed 9641
+  variant Works East
+    seed 9642
+  variant Works West
+    seed 9643
+
+family meridian_research
+  tier outpost
+  siting flat
+  rise 6
+  name Meridian Research Station
+  pitch Labs back in use, a lift down to the sublevels, guards at the hatch.
+  faction meridian
+  roster meridian
+  program research_base
+  style lab
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 300
+  ominous 0.3
+  wrong 0
+  tags science working
+  states active 6 abandoned 2 ruined 1
+  variant Station
+    seed 9651
+  variant Station East
+    seed 9652
+  variant Station West
+    seed 9653
+
+family exchange_market
+  tier town
+  siting flat
+  rise 10
+  name Ledger Market
+  pitch Stalls, shops and a canteen, lit and busy. The guards keep the peace.
+  faction exchange
+  roster meridian
+  program market
+  style spaceport
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 500
+  ominous 0.3
+  wrong 0
+  tags civilian working trade
+  states active 8 abandoned 1 ruined 1
+  variant Market
+    seed 9661
+  variant Market East
+    seed 9662
+  variant Market West
+    seed 9663
+
+family meridian_apartments
+  tier town
+  siting flat
+  rise 30
+  name Meridian Flats
+  pitch Apartment blocks patched up and lived in again.
+  faction meridian
+  roster meridian
+  program tower_block
+  style urban
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 700
+  ominous 0.3
+  wrong 0
+  tags civilian working city
+  states active 7 abandoned 2 ruined 1
+  variant Block
+    seed 9671
+  variant Block East
+    seed 9672
+  variant Block West
+    seed 9673
+
+# ---- Survivor settlements: no faction and no core. Each rolls its own mood.
+
+family survivor_hamlet
+  tier camp
+  siting flat
+  rise 7
+  name Survivor Hamlet
+  pitch Shacks along a street of salvage, a market corner, gardens and a well.
+  faction none
+  roster raiders
+  site survivor_hamlet
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 400
+  ominous 0.3
+  wrong 0
+  tags settlement
+  states active 8 abandoned 2 ruined 1
+  variant Hamlet
+    seed 9681
+  variant Hamlet East
+    seed 9682
+  variant Hamlet West
+    seed 9683
+
+family survivor_town
+  tier town
+  siting flat
+  rise 9
+  name Survivor Town
+  pitch A town built in and from the ruins: walls of salvage, watch posts, a market.
+  faction none
+  roster raiders
+  site survivor_town
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.3
+  wrong 0
+  tags settlement
+  states active 8 abandoned 1 ruined 1
+  variant Town
+    seed 9691
+  variant Town East
+    seed 9692
+  variant Town West
+    seed 9693

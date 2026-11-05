@@ -116,7 +116,9 @@ public partial class Main : Node3D
         float time = Sim?.Clock.Time01 ?? 0.36f;
 
         Fauna = Generator.Generate(style.FaunaSeed, style.Alienness, style.Bloom);
-        Sim = new WildSim(Data, Planet.Terrain, Planet.Nav);
+        // Day and night: each species keeps its hours and beds down at its rest site the rest of the day.
+        Sim = new WildSim(Data, Planet.Terrain, Planet.Nav) { ActivityCycles = true };
+        Sim.Groves.AddRange(Forest.Groves);
         Sim.Clock.Time01 = time;
         Sim.Targets.Add(Player.Target);
         Sim.Structures.Add(Outpost.Structure);
@@ -164,11 +166,23 @@ public partial class Main : Node3D
                 case Key.Key2: SwitchWorld(WorldKind.Alien); break;
                 case Key.Key3: SwitchWorld(WorldKind.Bloom); break;
                 case Key.N: Sim.Clock.Time01 = (Sim.Clock.Time01 + 0.25f) % 1f; break;
+                case Key.T: ToggleDayNight(); break;
+                case Key.Key4: GoUnderground(); break;
                 case Key.F: ToggleVessel(); break;
                 case Key.E: Butcher(); break;
                 case Key.Escape: Input.MouseMode = Input.MouseModeEnum.Visible; break;
             }
         }
+    }
+
+    /// <summary>Straight to noon or to midnight: the same valley with different animals out.</summary>
+    public void ToggleDayNight() => Sim.Clock.Time01 = Sim.Clock.IsNight ? 0.5f : 0.0f;
+
+    /// <summary>The underground showroom: caves, a dug tunnel, an abandoned outpost, a derelict hold.</summary>
+    async void GoUnderground()
+    {
+        await Shutdown.Quiet(this);
+        GetTree().ChangeSceneToFile("res://Showroom.tscn");
     }
 
     void ToggleVessel()
@@ -414,15 +428,20 @@ public partial class Main : Node3D
         string where = Player.Driving
             ? $"Driving the harvester   {Vessel.Velocity.Length():F0} m/s{(Vessel.CuttingFor > 0f ? "   blades cutting" : "")}"
             : Player.Health.Downed ? "You were brought down. Back at the hovercraft in a moment." : $"On foot   health {Player.Health.Current:F0}/{Player.Health.Max:F0}";
-        int alive = 0;
-        foreach (Creature c in Sim.Creatures) if (!c.Removed && c.Alive) alive++;
+        int alive = 0, resting = 0;
+        foreach (Creature c in Sim.Creatures)
+        {
+            if (c.Removed || !c.Alive) continue;
+            alive++;
+            if (Brain.IsResting(c)) resting++;
+        }
         float toBase = BaseZones.NearestBase(Sim.Structures, Player.Target.Position);
         string zone = toBase < Data.Spawning.BaseClearance ? $"   inside the outpost's {Data.Spawning.BaseClearance:F0} m no-spawn zone" : "";
         Hud.SetStatus(
             $"{Fauna.PlanetName}, a {style.Label}   {Sim.Clock.Label}\n" +
             $"{where}{zone}\n" +
-            $"Codex {Codex.Count} species   {alive} creatures about\n\n" +
-            "1 temperate  2 alien  3 Bloom   N skip time\n" +
+            $"Codex {Codex.Count} species   {alive} creatures about, {resting} resting in dens, burrows, roosts and nests\n\n" +
+            "1 temperate  2 alien  3 Bloom   N skip time  T noon or midnight   4 underground showroom\n" +
             "WASD move  Shift sprint  Space jump  Ctrl crouch  Mouse look  LMB shoot  Q scan\n" +
             "E butcher a kill  F hovercraft  Esc free the mouse\n" +
             $"{Engine.GetFramesPerSecond()} fps");

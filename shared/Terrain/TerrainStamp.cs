@@ -103,6 +103,26 @@ public sealed class TerrainStamp
     /// <summary>Lowest world y any carved cell reaches, or <see cref="PadY"/> when nothing is carved.</summary>
     public int CarveBottom => _carve == null ? PadY : _carveY;
 
+    /// <summary>The ground height at a point with this stamp laid over <paramref name="height"/>: eased toward the pad by its weight.</summary>
+    public float Apply(float height, double x, double z)
+    {
+        float w = Weight(x, z);
+        return w > 0f ? height + (PadY - height) * w : height;
+    }
+
+    /// <summary>
+    /// How stamps combine, the one rule every height query uses: in list order, each eases the
+    /// height so far toward its own target by its own weight. Off its footprint and apron a stamp
+    /// only blends, so pads that overlap meet smoothly, and a later stamp (a road, a rail bed laid
+    /// after the places it serves) wins wherever its weight is 1. Order the list by what should win.
+    /// </summary>
+    public static float Compose(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, float natural, double x, double z)
+    {
+        float h = natural;
+        for (int i = 0; i < stamps.Count; i++) h = stamps[i].Apply(h, x, z);
+        return h;
+    }
+
     static double Wrap(double d, double span)
     {
         d %= span;

@@ -51,6 +51,12 @@ public partial class Screenshot : Node
             AddChild(_space);
             return;
         }
+        if (IsDeep(_view))
+        {
+            _room = new Showroom { Name = "Showroom", FreeCamera = true };
+            AddChild(_room);
+            return;
+        }
         _main = new Main();
         AddChild(_main);
     }
@@ -67,7 +73,7 @@ public partial class Screenshot : Node
             if (_aim != null)
             {
                 var (eye, at) = _aim();
-                Camera3D camera = _main?.Camera ?? _space.Camera;
+                Camera3D camera = _main?.Camera ?? _room?.Camera ?? _space.Camera;
                 camera.GlobalPosition = eye;
                 camera.LookAt(at, Vector3.Up);
             }
@@ -152,6 +158,11 @@ public partial class Screenshot : Node
         if (_space != null)
         {
             SpaceSetup();
+            return;
+        }
+        if (_room != null)
+        {
+            DeepSetup();
             return;
         }
         Main m = _main;

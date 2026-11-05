@@ -32,7 +32,7 @@ public partial class Screenshot : Node
     /// <summary>One named view: the planet, where to stand, when, and in what weather.</summary>
     public sealed record ViewSpec(PlanetSpec Planet, Func<Main, (Vector3 pos, float heading, float pitch)> Place, double Time,
         WeatherKind? Weather = null, GroundCover? Ground = null, Action<Main> Prepare = null, Action<Main> BeforeCapture = null,
-        Func<Main, double> TimeFor = null);
+        Func<Main, double> TimeFor = null, string Force = null);
 
     public override void _Ready()
     {
@@ -50,6 +50,7 @@ public partial class Screenshot : Node
             GetTree().Quit(1);
             return;
         }
+        PlanetSurface.Poi.PoiSiting.ForceFamily = _spec.Force;
         _main = new Main { Interactive = false };
         AddChild(_main);
         _main.Arrive(_spec.Planet);
@@ -101,6 +102,10 @@ public partial class Screenshot : Node
                 bool settled = _main.Streamer.Settled && _main.Pois.Built;
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
+                if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
+                    foreach (Node n in _main.Pois.GetChildren())
+                        foreach (Node c in n.GetChildren())
+                            if ((c is CpuParticles3D && hide.Contains("smoke")) || (c is MeshInstance3D && hide.Contains("mesh"))) ((Node3D)c).Visible = false;
                 if (_settled < SettleFrames) return;
                 _stage = 2;
                 Capture();
@@ -149,6 +154,7 @@ public static class Views
         "poi_hillside" => new(PlanetSpec.Roll(41, Archetype.Alien, 0), PoiView, 0.4, WeatherKind.Clouds),
         "cave" => new(PlanetSpec.Roll(9, Archetype.Temperate, 0), CaveView, CaveTime, WeatherKind.Clouds, Prepare: DigCave),
         "volcanic_dusk" => new(PlanetSpec.Roll(3, Archetype.Lava, 0), m => LookAtPeak(m, 1400, 120, 6), 0.735, WeatherKind.Clouds),
+        _ when name.StartsWith("far:") => FarView(name),
         _ => null,
     };
 
@@ -272,6 +278,67 @@ public static class Views
         }
         float ground = w.GroundHeight(bx, bz);
         return (new Vector3((float)bx, ground + 14f, (float)bz), Mathf.RadToDeg(bestHeading), -9);
+    }
+
+
+    /// <summary>
+    /// far:FAMILY:ARCHETYPE[:VARIANT]:WHEN (day, dusk or night): one family seated near the landing
+    /// site of a world of that kind, seen from about 400 m off at eye height, the way a traveller
+    /// first sees it. The side is picked for a clear line of sight with the place against the sky.
+    /// </summary>
+    static Screenshot.ViewSpec FarView(string name)
+    {
+        string[] a = name.Split(':');
+        if (a.Length < 4) return null;
+        var arch = Enum.Parse<Archetype>(a[2], true);
+        int variant = a.Length >= 5 ? int.Parse(a[3]) : 0;
+        string when = a[^1];
+        double time = when switch { "dusk" => 0.738, "night" => 0.9, _ => 0.4 };
+        string family = a[1];
+        return new(PlanetSpec.Roll(61, arch, variant), m => FarPlace(m, family), time, WeatherKind.Clear, Force: family);
+    }
+
+    static (Vector3, float, float) FarPlace(Main m, string family)
+    {
+        var w = m.World;
+        var site = w.Pois.FirstOrDefault(p => p.Family.Id == family) ?? w.Pois.FirstOrDefault();
+        if (site == null) return LookAtPeak(m, 600, 20, 0);
+        var (cx, cz) = site.Center;
+        float baseY = site.Origin.Y, top = baseY + Math.Max(4f, site.Family.Rise * 0.7f);
+        bool Wooded(double x, double z)
+        {
+            var b = (Biome)w.Map.Biome[w.Map.CellAt(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height))];
+            return b is Biome.Forest or Biome.PineForest or Biome.Jungle or Biome.Rainforest or Biome.CloudForest or Biome.Swamp or Biome.FungalForest;
+        }
+        double bestScore = double.MinValue, bestDist = 400;
+        Vector3 bestPos = default;
+        foreach (double dist in new[] { 300.0, 360.0, 420.0 })
+        for (int k = 0; k < 24; k++)
+        {
+            double ang = k * Math.PI / 12;
+            double x = cx + Math.Cos(ang) * dist, z = cz + Math.Sin(ang) * dist;
+            float ground = w.GroundHeight(x, z);
+            if (ground < 1f) continue; // not from the water
+            float eye = ground + 2.5f;
+            // The line of sight to the place's landmark, short of its own apron: nothing in the way.
+            double blocked = 0;
+            for (int s = 1; s < 60; s++)
+            {
+                double f = s / 60.0 * 0.88, sx = x + (cx - x) * f, sz = z + (cz - z) * f;
+                blocked = Math.Max(blocked, w.GroundHeight(sx, sz) - (eye + (top - eye) * f));
+            }
+            // Trees close to the eye hide everything: keep the near half of the line out of woods.
+            int woods = 0;
+            for (int s = 0; s < 20; s++) if (Wooded(x + (cx - x) * s / 40.0, z + (cz - z) * s / 40.0)) woods++;
+            // Eye level a little under the landmark's middle, so it stands against the sky.
+            double score = -Math.Max(0, blocked) * 10 - woods * 3 - Math.Abs(dist - 400) * 0.01 - Math.Abs(eye - (baseY + site.Family.Rise * 0.3)) * 0.08;
+            if (score > bestScore) { bestScore = score; bestPos = new Vector3((float)x, eye, (float)z); bestDist = dist; }
+        }
+        if (bestScore == double.MinValue) return LookAtPeak(m, 600, 20, 0);
+        float heading = Mathf.RadToDeg(MathF.Atan2((float)(cx - bestPos.X), -(float)(cz - bestPos.Z)));
+        float pitch = Mathf.RadToDeg(MathF.Atan2(baseY + site.Family.Rise * 0.4f - bestPos.Y, (float)bestDist));
+        GD.Print($"far view of {site.Name} ({site.Siting}) from {bestPos.X:F0}, {bestPos.Y:F0}, {bestPos.Z:F0} ({bestDist:F0} m); place at {cx:F0}, {site.Origin.Y}, {cz:F0}");
+        return (bestPos, heading, Mathf.Clamp(pitch, -6f, 8f));
     }
 
     /// <summary>The first POI fitted to a slope (or any POI), from a little way off and above.</summary>

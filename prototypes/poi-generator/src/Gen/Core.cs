@@ -143,7 +143,7 @@ public static class Prof
         public void Dispose()
         {
             long t = System.Diagnostics.Stopwatch.GetTimestamp() - _start;
-            Ticks[_name] = Ticks.TryGetValue(_name, out long old) ? old + t : t;
+            lock (Ticks) Ticks[_name] = Ticks.TryGetValue(_name, out long old) ? old + t : t; // places are built on workers too
         }
     }
 

@@ -1,0 +1,276 @@
+# Site plans: hand-authored landmarks, the Empyrion way. Each plan places its parts (buildings
+# from data/programs.txt, and yard features) in site cells, metres from the site origin; the
+# buildings' rooms are planned with the family variant's seed, so a landmark is always the same
+# place. Buildings face west (their way in is on their west side) unless turned with rot.
+#
+#   site <id>
+#     style      the kit the yard and buildings use unless a part names its own
+#     entrance   x z facing      where you arrive
+#     part <kind> <x> <z> [rot n] [key value]...
+#       building  program <id> [w d floors levels style vault yes]   vault yes: it holds the prize
+#       runway    len width axis cracks;  road  len width axis;  pad  r
+#       tanks     count r h gap axis;  stacks  count r h gap type;  containers  rows cols
+#       fence     len h axis gate breaches type(mesh|wall);  poles  count gap h axis
+#       tower     h size every crown(lamp|wheel|hut) loot;  crater  r depth radiation
+#       aircraft  len;  rocket  decks r;  trench  len axis;  vehicles  count gap axis
+#       camp      gang(yes|no);  obelisks  count h spread
+
+site old_airfield
+  name Old Airfield
+  style concrete
+  entrance -12 7 west
+  part runway 0 0 len 160 width 14 axis x cracks 0.14
+  part road 44 14 len 22 width 6 axis z cracks 0.2
+  part road 44 36 len 50 width 6 axis x cracks 0.2
+  part building 70 44 program control_tower vault yes
+  part hangar 108 40 w 28 d 20 h 9
+  part hangar 108 70 w 26 d 18 h 8
+  part tanks 152 50 count 2 r 4 h 9 gap 5 axis z
+  part aircraft 14 26 len 18
+  part aircraft 120 18 len 14
+  part containers 50 70 rows 2 cols 3
+  part poles 46 34 count 5 gap 12 h 7 axis x
+  part vehicles 60 22 count 3 gap 7 axis x
+  part fence -6 96 len 175 h 2 axis x gate 40 breaches 0.1
+  part camp 30 52
+
+site spaceport
+  name Abandoned Spaceport
+  style meridian
+  entrance -96 4 west
+  part rocket 0 0 decks 7 r 4
+  part pad 0 0 r 15
+  part road -90 2 len 74 width 6 axis x cracks 0.1
+  part building 34 -46 program terminal vault yes
+  part building -56 -46 program control_tower floors 5
+  part hangar 40 30 w 30 d 20 h 10
+  part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part containers 84 -6 rows 3 cols 3
+  part poles -60 -6 count 6 gap 12 h 8 axis x
+  part vehicles -30 20 count 3 gap 8 axis x
+  part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
+
+site military_base
+  name Abandoned Military Base
+  style concrete
+  entrance -18 46 west
+  part fence -6 0 len 92 h 3 axis z gate 46 breaches 0.06 type wall
+  part fence -6 0 len 130 h 3 axis x gate 70 breaches 0.08 type wall
+  part fence -6 92 len 130 h 3 axis x gate 40 breaches 0.08 type wall
+  part tower -2 4 h 9 size 5 every 4 crown hut loot yes
+  part tower -2 84 h 9 size 5 every 4 crown hut
+  part building 12 8 program barracks
+  part building 56 46 program command_bunker vault yes
+  part vehicles 14 66 count 5 gap 7 axis x
+  part pad 104 18 r 8
+  part tower 102 72 h 26 size 4 every 5 crown lamp
+  part trench 60 30 len 34 axis x
+  part containers 16 78 rows 1 cols 3
+
+site blast_crater
+  name Blast Crater
+  style concrete
+  entrance -64 0 west
+  part crater 0 0 r 22 depth 8 radiation 14
+  part building 32 -40 program bunker vault yes
+  part vehicles -44 18 count 4 gap 6 axis z
+  part poles -40 -30 count 4 gap 14 h 6 axis z
+  part camp -36 -16
+  part blastring 0 0 r 22 out 46
+
+site scrap_fort
+  name Scrap Fort
+  style concrete
+  entrance -24 22 west
+  part containers 0 -6 rows 1 cols 6
+  part vehicles 0 54 count 7 gap 8 axis x
+  part fence -8 -2 len 56 h 3 axis z gate 24 breaches 0 type wall
+  part fence 60 -2 len 56 h 3 axis z gate 30 breaches 0.04 type wall
+  part tower -6 -12 h 9 size 5 every 4 crown hut loot yes
+  part tower 62 60 h 9 size 5 every 4 crown hut
+  part building 18 8 program hangar w 30 d 18
+  part camp 8 44 gang yes
+  part camp 30 46 gang yes
+
+site old_mine
+  name Old Mine Works
+  style mine
+  entrance -46 10 west
+  part building 0 0 program mine_works vault yes
+  part tower -16 2 h 16 size 5 every 5 crown wheel
+  part tanks -26 -16 count 1 r 3 h 7
+  part vehicles -34 22 count 3 gap 6 axis x
+  part road -44 8 len 30 width 5 axis x cracks 0.25
+  part camp -24 30
+
+# ---- Factories: a production hall frozen mid-run (assembly line, robot arms, a load on the
+# crane's hook), a warehouse and loading bays, a works block of offices over a boiler house and
+# utilities basement, smokestacks and a water tower to see it by. Tech level by variant.
+
+site factory_low
+  name Old Mill Works
+  style urban
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part hangar 0 0 w 26 d 18 h 8 line yes
+  part building 34 0 program factory_works vault yes
+  part stacks 74 4 count 1 r 2 h 28
+  part tower 74 26 h 14 size 4 every 5 crown tank
+  part vehicles 4 30 count 2 gap 8 axis x
+  part containers 30 44 rows 1 cols 3
+  part camp -6 34 gang yes
+
+site factory_mid
+  name Abandoned Factory
+  style industrial
+  entrance -14 10 west
+  part road -12 8 len 12 width 6 axis x cracks 0.2
+  part hangar 0 0 w 34 d 22 h 10 line yes
+  part hangar 0 32 w 26 d 18 h 8
+  part building 44 0 program factory_works vault yes
+  part stacks 84 4 count 2 r 2 h 30 gap 4 axis z
+  part tower 84 30 h 18 size 4 every 5 crown tank
+  part tanks 34 56 count 2 r 3 h 8 gap 5 axis x
+  part vehicles 4 58 count 3 gap 7 axis x
+  part containers 54 52 rows 2 cols 2
+  part camp -6 46 gang yes
+
+site factory_high
+  name Automated Plant
+  style spaceport
+  entrance -14 12 west
+  part road -12 10 len 12 width 6 axis x cracks 0.1
+  part hangar 0 0 w 40 d 24 h 12 line yes
+  part hangar 0 34 w 30 d 20 h 10 line yes
+  part building 50 0 program factory_works vault yes
+  part stacks 92 4 count 2 r 3 h 32 gap 6 axis z type cooling
+  part tower 92 40 h 20 size 4 every 5 crown tank
+  part pad 40 64 r 6
+  part containers 4 62 rows 2 cols 3
+  part camp -6 50 gang yes
+
+# ---- Old-world farms: a farmhouse with a cellar, barns and sheds, silos and a windmill or water
+# tower to see it by, fields gone wild, empty pens, a machinery yard. Mid and high tech add
+# greenhouses, hydroponic sheds and a vertical farm tower. Nothing edible survives outside a
+# sealed store; tools, fuel and parts do.
+
+site farm_low
+  name Old Homestead
+  style miningtown
+  entrance -12 6 west
+  part road -10 4 len 10 width 4 axis x cracks 0.4
+  part building 0 0 program farmhouse vault yes
+  part hangar 34 0 w 16 d 12 h 7
+  part tanks 56 2 count 2 r 3 h 12 gap 5 axis z
+  part tower 56 24 h 12 size 4 every 4 crown wheel
+  part fields 0 44 w 34 d 18
+  part fence 36 22 len 12 h 2 axis x gate 6 breaches 0.2
+  part vehicles 38 32 count 2 gap 6 axis x
+
+site farm_mid
+  name Abandoned Farmstead
+  style miningtown
+  entrance -12 6 west
+  part road -10 4 len 10 width 4 axis x cracks 0.3
+  part building 0 0 program farmhouse vault yes
+  part hangar 34 0 w 20 d 14 h 8
+  part tanks 62 2 count 3 r 3 h 14 gap 5 axis z
+  part tower 62 34 h 16 size 4 every 4 crown tank
+  part greenhouse 34 22 w 16 d 8
+  part greenhouse 34 34 w 16 d 8
+  part fields 0 50 w 40 d 20
+  part vehicles 4 40 count 3 gap 6 axis x
+
+site agri_complex
+  name Agri-Complex
+  style colonydome
+  entrance -12 10 west
+  part road -10 8 len 10 width 6 axis x cracks 0.15
+  part building 0 0 program vertical_farm vault yes
+  part greenhouse 40 0 w 18 d 8 type hydro
+  part greenhouse 40 12 w 18 d 8 type hydro
+  part greenhouse 40 24 w 18 d 8
+  part tanks 64 2 count 3 r 3 h 16 gap 5 axis z
+  part tower 64 36 h 20 size 4 every 5 crown tank
+  part fields 0 44 w 56 d 20
+  part vehicles 20 70 count 3 gap 7 axis x
+
+# ---- Faction working sites (defensible and functional, not fort-shaped) ----------------------
+
+site sam_site
+  name Air-Defence Battery
+  style military
+  entrance -16 8 west
+  part road -14 6 len 14 width 5 axis x cracks 0.05
+  part building 0 0 program command_bunker vault yes
+  part launchers 40 4 count 3 gap 9
+  part launchers 40 26 count 3 gap 9
+  part tower 70 12 h 14 size 4 every 5 crown wheel
+  part trench 36 16 len 30 axis x
+  part vehicles 4 40 count 2 gap 8 axis x
+
+site sky_railgun
+  name Sky Railgun
+  style military
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.05
+  part building 0 0 program command_bunker vault yes
+  part railgun 40 30 len 44
+  part hangar 40 0 w 30 d 18 h 9
+  part stacks 0 46 count 2 r 3 h 24 gap 6 axis x type cooling
+  part tanks 30 48 count 2 r 3 h 10 gap 5 axis x
+  part pad 4 70 r 6
+
+site comms_relay
+  name Comms Relay
+  style spaceport
+  entrance -14 6 west
+  part road -12 4 len 12 width 5 axis x cracks 0.05
+  part building 0 0 program control_tower floors 3 vault yes
+  part tower 30 2 h 24 size 4 every 5
+  part tower 30 22 h 12 size 4 every 4 crown wheel
+  part tower 46 12 h 12 size 4 every 4 crown wheel
+  part poles 0 30 count 4 gap 10 h 9 axis x
+
+site supply_depot
+  name Supply Depot
+  style industrial
+  entrance -14 10 west
+  part road -12 8 len 12 width 6 axis x cracks 0.05
+  part building 0 0 program factory_works vault yes
+  part hangar 36 0 w 28 d 18 h 9
+  part hangar 36 26 w 28 d 18 h 9
+  part pad 76 10 r 8
+  part tanks 72 30 count 3 r 3 h 9 gap 5 axis z
+  part containers 4 40 rows 2 cols 4
+
+# ---- Survivor settlements: old-world shells patched with scrap, new shacks along a street,
+# a market corner, gardens and a water tank, watch posts at the edge. No faction, no core.
+
+site survivor_hamlet
+  name Survivor Hamlet
+  style scrap
+  entrance -12 4 west
+  part road -10 2 len 52 width 4 axis x cracks 0.5
+  part building 0 -40 program farmhouse vault yes
+  part shacks 4 8 count 3 gap 2
+  part stalls 26 -2 count 2 gap 4
+  part fields 26 10 w 14 d 10 implement no
+  part tanks 44 -12 count 1 r 2 h 6
+  part tower 44 14 h 7 size 4 every 4 crown hut
+
+site survivor_town
+  name Survivor Town
+  style scrap
+  entrance -12 4 west
+  part road -10 2 len 86 width 5 axis x cracks 0.5
+  part building 0 -48 program factory_works vault yes
+  part building 40 -46 program farmhouse
+  part shacks 4 9 count 4 gap 2
+  part shacks 34 9 count 4 gap 2
+  part stalls 64 -3 count 3 gap 4
+  part fields 4 26 w 30 d 12 implement no
+  part tanks 70 -16 count 2 r 2 h 6 gap 5 axis z
+  part tower -8 -14 h 8 size 4 every 4 crown hut
+  part tower 78 14 h 8 size 4 every 4 crown hut
+  part fence -8 20 len 92 h 2 axis x gate 44 breaches 0.1 type wall

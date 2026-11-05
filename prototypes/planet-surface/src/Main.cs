@@ -469,12 +469,9 @@ public partial class Main : Node3D
         float ground = World.GroundHeight(p.X, p.Z);
         var gathered = new System.Text.StringBuilder();
         foreach (var (what, n) in Tool.Gathered) gathered.Append($"{what} {n}  ");
-        string target = !Tool.HasTarget ? "" : Tool.TargetVerdict switch
-        {
-            Verdict.Bedrock => "Target: BEDROCK",
-            Verdict.Anchored => $"Target: {World.Terrain.Store.MaterialAt(Tool.Target).Label()} · ANCHORED",
-            _ => $"Target: {World.Terrain.Store.MaterialAt(Tool.Target).Label()}",
-        };
+        string target = !Tool.HasTarget ? ""
+            : Tool.TargetVerdict == Verdict.Bedrock ? "Target: BEDROCK"
+            : $"Target: {World.Terrain.Store.MaterialAt(Tool.Target).Label()}";
         Hud.SetStatus(
             $"{World.Spec}\n{World.Sky.Summary}\n" +
             $"{p.X / 1000f:F2} km E, {p.Z / 1000f:F2} km S · altitude {p.Y:F0} m · over {World.Palette.BiomeAt(Mathx.WrapX(p.X, World.Width), Mathx.Wrap(p.Z, World.Height))}\n" +
