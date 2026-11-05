@@ -270,6 +270,15 @@ The views are:
 
 The planet surface adds `far:<family>:<archetype>[:<variant>]:<day|dusk|night>`, which shows one family from 300 to 420 m away at eye height.
 
+Two more views render many tiles in one run and save a labelled sheet:
+
+- `gallery:<k>:<n>`: sheet k of n of every family's exterior, in the state it is most often found in, in the same daylight and from the same three-quarter view (35 degrees off the way in, 18 degrees up, far enough back to fit the whole place). Run at `--resolution 1920x1080`. The sheets are `screenshots/families-1.png` to `families-4.png`.
+- `interiors`: one interior each of a dozen families (`screenshots/families-interiors.png`).
+
+**Every shot is checked before it is saved.** The places it shows get PoiTest's Geometry check on the meshes actually drawn: every vertex inside the place's block grid and no triangle edge longer than a chunk's diagonal. A stray stroke (a "wire" across the frame) makes the shot refuse to save and exit with code 3, naming the place and the mesh.
+
+**Re-render the screenshots after any change to the mesher** (`src/Gen/Mesher.cs`), the block geometry or the glyphs. An old image keeps an old bug: `spaceport-exterior.png` showed the crack-stroke slivers for a day after they were fixed. Check a file's age with `git log -1 -- <file>` against the fix.
+
 ## Known limits
 
 - Space places are data and siting only. They have no layouts and no orbit play.

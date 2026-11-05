@@ -42,6 +42,7 @@ family deep_bunker
 
 family research_base
   tier outpost
+  tech mid high
   siting flat
   rise 7
   name Abandoned Research Base
@@ -71,6 +72,7 @@ family research_base
 
 family ice_outpost
   tier outpost
+  tech mid high
   siting open
   rise 12
   name Ice Research Outpost
@@ -97,6 +99,7 @@ family ice_outpost
 
 family ominous_tower
   tier town
+  tech mid high
   siting any
   rise 30
   name Ominous Tower
@@ -126,6 +129,7 @@ family ominous_tower
 
 family hospital
   tier town
+  tech mid high
   siting flat
   rise 18
   name Abandoned Hospital
@@ -152,6 +156,7 @@ family hospital
 
 family cryo_vault
   tier site
+  tech high
   siting hillside
   rise 12
   name Cryo Vault
@@ -179,6 +184,7 @@ family cryo_vault
 
 family biolab
   tier outpost
+  tech mid high
   siting flat
   rise 7
   name Biolab
@@ -206,6 +212,7 @@ family biolab
 
 family command_bunker
   tier base
+  tech mid high
   siting hillside
   rise 12
   name Military Command Bunker
@@ -258,6 +265,7 @@ family prison_block
 
 family meridian_garrison
   tier base
+  tech mid high
   siting ridge
   rise 10
   name Meridian Garrison
@@ -285,6 +293,7 @@ family meridian_garrison
 family old_airfield
   ground tarmac
   tier base
+  tech mid high
   siting flat
   rise 18
   name Old Airfield
@@ -312,6 +321,7 @@ family old_airfield
 
 family abandoned_spaceport
   tier spaceport
+  tech high
   siting flat
   rise 30
   name Abandoned Spaceport
@@ -339,6 +349,7 @@ family abandoned_spaceport
 
 family military_base
   tier base
+  tech mid high
   siting flat
   rise 18
   name Abandoned Military Base
@@ -366,6 +377,7 @@ family military_base
 
 family blast_crater
   tier site
+  tech mid high
   siting open
   rise 12
   name Blast Crater
@@ -601,6 +613,7 @@ family old_farm
 
 family vharn_sam_site
   tier base
+  tech mid high
   siting ridge
   rise 14
   name Air-Defence Battery
@@ -628,6 +641,7 @@ family vharn_sam_site
 
 family meridian_railgun
   tier base
+  tech high
   siting open
   rise 40
   name Sky Railgun
@@ -655,6 +669,7 @@ family meridian_railgun
 
 family meridian_relay
   tier outpost
+  tech mid high
   siting peak
   rise 24
   name Comms Relay
@@ -709,6 +724,7 @@ family exchange_depot
 
 family kessari_works
   tier base
+  tech high
   siting flat
   rise 26
   name Kessari Works
@@ -737,6 +753,7 @@ family kessari_works
 
 family meridian_research
   tier outpost
+  tech mid high
   siting flat
   rise 6
   name Meridian Research Station
@@ -793,6 +810,7 @@ family exchange_market
 
 family meridian_apartments
   tier town
+  tech mid high
   siting flat
   rise 30
   name Meridian Flats

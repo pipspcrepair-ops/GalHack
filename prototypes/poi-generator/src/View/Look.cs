@@ -57,4 +57,9 @@ public static class Look
             new Color("f2dab0"), 1.15f, new Vector3(-28f, -60f, 0f), 0.36f,
             new Color("9a806a"), 0.003f, new Color("e8c89a"), 0.8f, new Vector3(1800f, 1200f, -4200f), true),
     };
+
+    /// <summary>Plain daylight, the same for every place: a high sun and a clear sky, for the family gallery.</summary>
+    public static Atmosphere Day => new(new Color("2f5f9a"), new Color("b9d0e2"), new Color("8a8474"), new Color("2a2722"),
+        new Color("fff2dc"), 1.5f, new Vector3(-50f, 35f, 0f), 0.6f,
+        new Color("b4c6d6"), 0.0007f, new Color("e8eef0"), 0.5f, new Vector3(-2300f, 1700f, -3800f), false);
 }

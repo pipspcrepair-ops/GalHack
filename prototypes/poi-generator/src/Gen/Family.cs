@@ -128,6 +128,8 @@ public sealed class FamilyDef
     public string? Style;
     /// <summary>The made ground of its pad on a planet (concrete, tarmac, gravel, dirt or natural); empty picks by purpose.</summary>
     public string? Ground;
+    /// <summary>The tech levels it belongs to (low, mid, high; data: tech before any variant). Empty: any level.</summary>
+    public List<string> Techs = new();
 
     public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -229,7 +231,10 @@ public static class FamilyParser
                     F().Variants.Add(v);
                     break;
                 case "seed": V().Seed = ulong.Parse(p[1], CultureInfo.InvariantCulture); break;
-                case "tech": V().Tech = p[1]; break;
+                case "tech":
+                    if (v != null) V().Tech = p[1];
+                    else F().Techs = p.Skip(1).ToList();
+                    break;
                 case "path":
                     V().Path = p.Skip(1).Select(t => ParseStep(t, Error)).ToList();
                     break;
