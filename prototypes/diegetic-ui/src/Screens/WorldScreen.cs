@@ -15,22 +15,29 @@ public partial class ScreenViewport : SubViewport
 /// A screen that belongs to an object in the world: a 2D page drawn into a SubViewport and
 /// shown on a flat panel through the scanline-and-glow surface shader.
 ///
-/// Use it by looking at it and pressing E (see <see cref="Interactor"/>). While it is in use,
-/// mouse events arrive as world-space rays; they are intersected with the panel's plane,
-/// turned into UV and then viewport pixels, and pushed into the SubViewport as ordinary mouse
-/// events, so stock Controls and our own widgets work unchanged.
+/// Two ways to use it, both through the same ray-to-pixel path:
+/// - look at it from within reach and a cursor sits on the glass where you aim; click there
+///   (<see cref="ScreenPointer"/>);
+/// - press E to ease the view in and drive a free cursor with the mouse (<see cref="Interactor"/>).
+/// Either way, mouse events arrive as world-space rays; they are intersected with the panel's
+/// plane, turned into UV and then viewport pixels, and pushed into the SubViewport as ordinary
+/// mouse events, so stock Controls, our own widgets and self-painted pages (<see cref="HotSpots"/>)
+/// all work unchanged.
 ///
 /// Drawing is the expensive part on a low-end PC, so the SubViewport is normally switched off
 /// (UpdateMode.Disabled). It redraws once when its content changes and it can be seen
 /// (<see cref="ScreenManager"/> decides, within a per-frame budget). The cursor, scanlines and
-/// flicker live in the surface shader, so moving the mouse or time passing costs no redraw.
+/// flicker live in the surface shader, so moving the cursor or time passing costs no redraw.
 ///
 /// Local space: the panel lies in the XY plane facing +Z, centred on the origin.
 /// </summary>
 public partial class WorldScreen : Node3D, IFocusTarget
 {
-    /// <summary>Physics layer of the invisible slab used to pick screens by looking at them.</summary>
-    public const uint PickLayer = 1u << 1;
+    /// <summary>The physics layer screens are picked on unless a project gives its own (<see cref="PickLayer"/>).</summary>
+    public const uint DefaultPickLayer = 1u << 1;
+
+    /// <summary>The cursor arrow's height on the page, in page pixels, unless something sets <see cref="CursorSize"/>.</summary>
+    public const float DefaultCursorSize = 30;
 
     /// <summary>Every screen in the tree, for the manager. Plain list: there are only ever a handful.</summary>
     public static readonly List<WorldScreen> All = new();
@@ -40,9 +47,18 @@ public partial class WorldScreen : Node3D, IFocusTarget
     public string Prompt { get; set; } = "SCREEN";
     /// <summary>False for screens you never walk up to (the wrist): no pick slab.</summary>
     public bool Pickable { get; init; } = true;
+    /// <summary>Physics layer of the invisible slab used to pick the screen by looking at it. Pick one your project leaves free.</summary>
+    public uint PickLayer { get; init; } = DefaultPickLayer;
     public bool MovesCamera { get; init; } = true;
     /// <summary>A chunky dark frame around the glass, in metres. 0 for none.</summary>
     public float Bezel { get; init; } = 0.045f;
+    /// <summary>If set, the bezel lights up in this colour while the screen is in use (the cursor is on it).</summary>
+    public Color? BezelLit { get; init; }
+    /// <summary>
+    /// The glass shader. Null loads diegetic-ui's own (res://shaders/screen_surface.gdshader); a
+    /// project that reads the shader from elsewhere passes it here.
+    /// </summary>
+    public Shader SurfaceShader { get; init; }
     /// <summary>How much of the view the panel fills when framed for use.</summary>
     public float FocusFill { get; init; } = 0.8f;
     /// <summary>Content polling rate, which caps how often a busy page (a progress bar) redraws.</summary>
@@ -61,7 +77,22 @@ public partial class WorldScreen : Node3D, IFocusTarget
     public int Redraws { get; private set; }
     public Vector2 CursorPixel { get; private set; } = new(-100, -100);
 
+    /// <summary>The cursor arrow's height on the page, in page pixels. Lives in the shader: changing it costs no redraw.</summary>
+    public float CursorSize
+    {
+        get => _cursorSize;
+        set
+        {
+            _cursorSize = value;
+            _material?.SetShaderParameter("cursor_size", value);
+        }
+    }
+
+    static readonly Color BezelColour = new("15171c");
+
     ShaderMaterial _material;
+    StandardMaterial3D _bezel;
+    float _cursorSize = DefaultCursorSize;
     bool _renderQueued;
     double _nextPoll;
     Vector2 _lastPointer;
@@ -87,20 +118,22 @@ public partial class WorldScreen : Node3D, IFocusTarget
         };
         AddChild(Viewport);
 
-        _material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/screen_surface.gdshader") };
+        _material = new ShaderMaterial { Shader = SurfaceShader ?? GD.Load<Shader>("res://shaders/screen_surface.gdshader") };
         _material.SetShaderParameter("content", Viewport.GetTexture());
         _material.SetShaderParameter("pixels", (Vector2)Pixels);
         _material.SetShaderParameter("cursor_on", 0f);
+        _material.SetShaderParameter("cursor_size", _cursorSize);
         Surface = new MeshInstance3D { Name = "Surface", Mesh = Quad(SizeMeters), MaterialOverride = _material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(Surface);
 
         if (Bezel > 0)
         {
+            _bezel = new StandardMaterial3D { AlbedoColor = BezelColour, Roughness = 0.45f, Metallic = 0.3f };
             var frame = new MeshInstance3D
             {
                 Name = "Bezel",
                 Mesh = new BoxMesh { Size = new Vector3(SizeMeters.X + Bezel * 2, SizeMeters.Y + Bezel * 2, 0.05f) },
-                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("15171c"), Roughness = 0.45f, Metallic = 0.3f },
+                MaterialOverride = _bezel,
                 Position = new Vector3(0, 0, -0.027f),
             };
             AddChild(frame);
@@ -121,12 +154,15 @@ public partial class WorldScreen : Node3D, IFocusTarget
         }
     }
 
-    /// <summary>Puts a page on the screen. Its size is set to the screen's pixels.</summary>
+    /// <summary>
+    /// Puts a page on the screen. Its size is set to the screen's pixels. A page with no theme of
+    /// its own gets diegetic-ui's (its fonts); one that brings its own keeps it.
+    /// </summary>
     public void SetContent(Control content)
     {
         if (Content != null) Viewport.RemoveChild(Content);
         Content = content;
-        content.Theme = UiTheme.GodotTheme;
+        content.Theme ??= UiTheme.GodotTheme;
         content.Size = Pixels;
         Viewport.AddChild(content);
         MarkDirty();
@@ -268,11 +304,21 @@ public partial class WorldScreen : Node3D, IFocusTarget
         return rect;
     }
 
+    /// <summary>
+    /// The cursor is on this screen (or comes off it): the shader shows the cursor, the page hears
+    /// the mouse arrive or leave, and the bezel lights if <see cref="BezelLit"/> is set.
+    /// </summary>
     public void SetInUse(bool inUse)
     {
         if (InUse == inUse) return;
         InUse = inUse;
         _material.SetShaderParameter("cursor_on", inUse ? 1f : 0f);
+        if (_bezel != null && BezelLit is { } lit)
+        {
+            _bezel.AlbedoColor = inUse ? lit : BezelColour;
+            _bezel.EmissionEnabled = inUse;
+            _bezel.Emission = lit.Darkened(0.5f);
+        }
         if (inUse) Viewport.NotifyMouseEntered();
         else
         {
@@ -285,13 +331,17 @@ public partial class WorldScreen : Node3D, IFocusTarget
         MarkDirty();
     }
 
+    /// <summary>
+    /// A mouse event at the point a world-space ray meets the glass: moves the cursor there and
+    /// pushes the event into the page at that pixel (with its modifier keys, so Shift-click works).
+    /// </summary>
     public void Point(Vector3 origin, Vector3 direction, InputEvent e)
     {
         if (!RayToPixel(origin, direction, out Vector2 pixel, clamp: true)) return;
         CursorPixel = pixel;
         _material.SetShaderParameter("cursor", pixel);
 
-        InputEvent local = null;
+        InputEventMouse local = null;
         if (e is InputEventMouseMotion)
         {
             local = new InputEventMouseMotion
@@ -317,7 +367,15 @@ public partial class WorldScreen : Node3D, IFocusTarget
             MarkDirty(); // presses nearly always change something
         }
         _lastPointer = pixel;
-        if (local != null) Viewport.PushInput(local, true);
+        if (local == null) return;
+        if (e is InputEventWithModifiers keys)
+        {
+            local.ShiftPressed = keys.ShiftPressed;
+            local.CtrlPressed = keys.CtrlPressed;
+            local.AltPressed = keys.AltPressed;
+            local.MetaPressed = keys.MetaPressed;
+        }
+        Viewport.PushInput(local, true);
     }
 
     /// <summary>A quad facing +Z with UV (0,0) at the top left, wound clockwise for Godot's front face.</summary>

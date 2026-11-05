@@ -5,6 +5,7 @@ using GalHack.Items;
 using GalHack.Items.Bridge;
 using GalHack.Structures;
 using GalHack.Structures.Presentation;
+using DiegeticUi.Screens;
 using Godot;
 using Manufacturing.Screens;
 
@@ -15,6 +16,9 @@ namespace Manufacturing.Game;
 /// and a blueprint factory along its back wall, all working from the base's one shared storage;
 /// a wreck on a salvage pad; a launch pad where the factory's blueprints appear. Build on the
 /// base with the multi-tool, paying in survival and free in creative (F2).
+///
+/// Each machine's screen hangs at eye height on its face. Look at one from within reach and a
+/// cursor appears on the glass where you aim; click what's under it.
 /// </summary>
 public partial class Main : Node3D
 {
@@ -33,7 +37,12 @@ public partial class Main : Node3D
     public Hud Hud { get; private set; }
     public List<MachineScreen> Screens { get; } = new();
     public MachineScreen ConstructorScreen, DeconstructorScreen, FactoryScreen, StorageScreen;
-    public MachineScreen Focus { get; private set; }
+    /// <summary>Puts the cursor on whichever screen you aim at, within reach, and sends it your clicks.</summary>
+    public ScreenPointer Pointer { get; private set; }
+    /// <summary>Redraws the screens, only when their pages change and they can be seen.</summary>
+    public ScreenManager ScreenManager { get; private set; }
+    /// <summary>The screen the cursor is on, or null.</summary>
+    public MachineScreen Focus => Pointer.Target as MachineScreen;
     public List<StructureView> Spawned { get; } = new();
 
     GhostPreview _ghost;
@@ -80,8 +89,17 @@ public partial class Main : Node3D
 
         Player = new Player();
         AddChild(Player);
-        Player.StandAndLook(new Vector3(0, 1.05f, 4.5f), new Vector3(0, 2.2f, -6));
+        Player.StandAndLook(new Vector3(0, 1.05f, 4.5f), new Vector3(0, 1 + Player.EyeHeight, -6));
         AddChild(Hud = new Hud());
+
+        // The pointer aims before this node's own _Process reads it (priority 0), so the
+        // multi-tool's ghost and the HUD never lag a frame behind the cursor.
+        AddChild(Pointer = new ScreenPointer
+        {
+            Name = "Pointer", Camera = Player.Camera, Reach = ScreenReach, PickMask = MachineScreen.Layer,
+            BlockMask = PhysicsLayers.World | PhysicsLayers.Structures, ProcessPriority = -10,
+        });
+        AddChild(ScreenManager = new ScreenManager { Name = "ScreenManager", Camera = Player.Camera });
 
         Workshop.Toast += line => Hud.Toast(line);
         Workshop.Built += Spawn;
@@ -101,14 +119,28 @@ public partial class Main : Node3D
         }
     }
 
+    /// <summary>
+    /// Hangs a page's screen on a machine's front face with its centre at standing eye height
+    /// above the floor the machine stands on, facing straight out, so you look at it rather than
+    /// down at it.
+    /// </summary>
     MachineScreen Mount(Int3 cell, MachinePage page)
     {
         float size = Workshop.Base.Grid.CellSize;
-        var screen = new MachineScreen { Page = page, Position = new Vector3(cell.X, cell.Y, cell.Z) * size + new Vector3(0, 0.05f, size * 0.5f + 0.035f) };
+        float floor = (cell.Y - 0.5f) * size;
+        var screen = new MachineScreen
+        {
+            Name = page.GetType().Name.Replace("Page", "Screen"),
+            Page = page,
+            Position = new Vector3(cell.X * size, floor + Player.EyeHeight, cell.Z * size + size * 0.5f + 0.035f),
+        };
         AddChild(screen);
         Screens.Add(screen);
+        page.Said += line => Hud.Toast(line, IsBad(line));
         return screen;
     }
+
+    static bool IsBad(string line) => line.StartsWith("REFUSED") || line.Contains("NEEDS") || line.Contains("ONLY") || line.Contains("CAN'T");
 
     void Spawn(BlueprintEntry e)
     {
@@ -184,7 +216,7 @@ public partial class Main : Node3D
 
     public override void _Process(double delta)
     {
-        UpdateFocus();
+        Hud.Crosshair = Focus == null;
         UpdateAim();
         SyncCrates();
         if (Workshop.Wreck.Count == 0 && WreckView.Visible)
@@ -216,16 +248,6 @@ public partial class Main : Node3D
             Position = d["position"].AsVector3();
             Normal = d["normal"].AsVector3();
         }
-    }
-
-    void UpdateFocus()
-    {
-        RayHit hit = RayFrom(MachineScreen.PickLayer | PhysicsLayers.Structures, ScreenReach);
-        MachineScreen now = hit?.Collider is Node n && n.HasMeta("screen") ? (MachineScreen)n.GetMeta("screen").AsGodotObject() : null;
-        if (now == Focus) return;
-        if (Focus != null) Focus.Focused = false;
-        Focus = now;
-        if (Focus != null) Focus.Focused = true;
     }
 
     void UpdateAim()
@@ -305,7 +327,15 @@ public partial class Main : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (e is InputEventMouseButton { Pressed: true } mb && Input.MouseMode != Input.MouseModeEnum.Captured)
+        bool pressed = e is InputEventMouseButton { Pressed: true };
+        // Mouse buttons and the wheel go to the screen under the cursor, if there is one.
+        if (Pointer.HandleInput(e))
+        {
+            if (pressed) Input.MouseMode = Input.MouseModeEnum.Captured; // a click on a screen also takes the mouse back
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (pressed && Input.MouseMode != Input.MouseModeEnum.Captured)
         {
             Input.MouseMode = Input.MouseModeEnum.Captured;
             return;
@@ -315,11 +345,11 @@ public partial class Main : Node3D
             Input.MouseMode = Input.MouseModeEnum.Visible;
             return;
         }
+        // Keys stay as extras while the cursor is on a screen.
         if (Focus != null && ScreenKeyFor(e) is ScreenKey key)
         {
-            string toast = Focus.Page.Handle(key);
-            if (toast != null) Hud.Toast(toast, toast.StartsWith("REFUSED") || toast.Contains("NEEDS") || toast.Contains("ONLY") || toast.Contains("CAN'T"));
-            Focus.Page.Refresh();
+            string toast = Focus.Page.Press(key);
+            if (toast != null) Hud.Toast(toast, IsBad(toast));
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -346,11 +376,6 @@ public partial class Main : Node3D
 
     static ScreenKey? ScreenKeyFor(InputEvent e) => e switch
     {
-        InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp } => ScreenKey.Up,
-        InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelDown } => ScreenKey.Down,
-        InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left, ShiftPressed: true } => ScreenKey.ActMany,
-        InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } => ScreenKey.Act,
-        InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } => ScreenKey.Cancel,
         InputEventKey { Pressed: true, PhysicalKeycode: Key.Up } => ScreenKey.Up,
         InputEventKey { Pressed: true, PhysicalKeycode: Key.Down } => ScreenKey.Down,
         InputEventKey { Pressed: true, Echo: false, PhysicalKeycode: Key.Tab } => ScreenKey.Tab,

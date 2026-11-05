@@ -13,6 +13,7 @@ uniform float glow = 0.55;                // halo around bright strokes
 uniform float scanlines = 0.16;           // strength; fades out when lines get smaller than a pixel
 uniform vec2 cursor = vec2(-100.0);       // in page pixels
 uniform float cursor_on = 0.0;
+uniform float cursor_size = 30.0;         // the arrow's height, in page pixels
 uniform vec4 cursor_fill : source_color = vec4(1.0, 0.86, 0.32, 1.0);
 uniform vec4 cursor_edge : source_color = vec4(0.04, 0.05, 0.08, 1.0);
 uniform float alert = 0.0;                // red pulse around the edge during an alert
@@ -76,9 +77,9 @@ void fragment() {
 	float edge = smoothstep(0.9, 0.99, max(abs(q.x), abs(q.y)));
 	col = mix(col, alert_color.rgb, alert * edge * (0.45 + 0.4 * sin(TIME * 9.0)));
 
-	// The cursor: a chunky arrow with a dark outline, in page pixels.
+	// The cursor: a chunky arrow with a dark outline, drawn 30 units tall and scaled to cursor_size.
 	if (cursor_on > 0.5) {
-		vec2 p = px - cursor;
+		vec2 p = (px - cursor) * (30.0 / max(cursor_size, 1.0));
 		float d = sd_triangle(p, vec2(0.0, 0.0), vec2(0.0, 30.0), vec2(22.0, 22.0));
 		float aa = max(fwidth(d), 0.5);
 		float fill = 1.0 - smoothstep(-aa, aa, d);

@@ -25,6 +25,7 @@ public partial class Main : Node3D
     public Player Player { get; private set; }
     public Camera3D Camera { get; private set; }
     public Interactor Interactor { get; private set; }
+    public ScreenPointer Pointer { get; private set; }
     public ScreenManager Screens { get; private set; }
     public Visor Visor { get; private set; }
     public Wrist Wrist { get; private set; }
@@ -67,8 +68,12 @@ public partial class Main : Node3D
         AddChild(Player);
         Player.Place(Bridge.Spawn, 0);
 
-        Interactor = new Interactor { Name = "Interactor", Camera = Camera, HeadView = Player.HeadView, BlockMask = Layers.World };
+        Interactor = new Interactor { Name = "Interactor", Camera = Camera, HeadView = Player.HeadView, PickMask = Layers.Pick, BlockMask = Layers.World };
         AddChild(Interactor);
+        // Look at a screen within reach and a cursor sits where you aim; click there. E still
+        // steps in to frame it for close work (dragging roles).
+        Pointer = new ScreenPointer { Name = "Pointer", Camera = Camera, Reach = Interactor.Reach, PickMask = Layers.Pick, BlockMask = Layers.World };
+        AddChild(Pointer);
         Screens = new ScreenManager { Name = "ScreenManager", Camera = Camera };
         AddChild(Screens);
 
@@ -77,7 +82,7 @@ public partial class Main : Node3D
         Wrist = new Wrist { Name = "Wrist", Interactor = Interactor, State = State, HazardsHere = () => InColdStore ? Hazard.Cold : Hazard.None };
         Camera.AddChild(Wrist);
 
-        Visor = new Visor { Name = "Visor", State = State, Player = Player, Interactor = Interactor, Camera = Camera };
+        Visor = new Visor { Name = "Visor", State = State, Player = Player, Interactor = Interactor, Pointer = Pointer, Camera = Camera };
         AddChild(Visor);
 
         _sirenSound = new AudioStreamPlayer { Stream = Sfx.SirenLoop(), VolumeDb = -16 };
@@ -94,23 +99,31 @@ public partial class Main : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (Interactor.HandleInput(e))
+        bool used = Interactor.HandleInput(e);
+        if (!used && Pointer.HandleInput(e))
         {
-            GetViewport().SetInputAsHandled();
-            return;
+            used = true;
+            Player.HandleInput(e); // a click on a screen also takes the mouse back if Esc had freed it
         }
-        if (e is InputEventKey { Pressed: true, Echo: false } key)
+        if (!used && e is InputEventKey { Pressed: true, Echo: false } key)
         {
+            used = true;
             switch (key.PhysicalKeycode)
             {
-                case Key.Tab: ToggleWrist(); return;
-                case Key.C: ShoveIntoColdStore(); return;
-                case Key.I: StartInvasion(); return;
-                case Key.F: WarningShot(); return;
+                case Key.Tab: ToggleWrist(); break;
+                case Key.C: ShoveIntoColdStore(); break;
+                case Key.I: StartInvasion(); break;
+                case Key.F: WarningShot(); break;
+                default: used = false; break;
             }
         }
-        Player.HandleInput(e);
+        SyncPointer(); // E or Tab may have just handed the mouse to a framed screen
+        if (used) GetViewport().SetInputAsHandled();
+        else Player.HandleInput(e);
     }
+
+    /// <summary>The look cursor works only while nothing is framed: one cursor at a time.</summary>
+    void SyncPointer() => Pointer.Enabled = Interactor.Focus.State == FocusState.Free;
 
     public void ToggleWrist()
     {
@@ -169,6 +182,7 @@ public partial class Main : Node3D
 
         UpdateProps(delta);
 
+        SyncPointer();
         Player.LookLocked = Interactor.LookLocked;
         Player.MoveLocked = Interactor.Focus.Busy && Interactor.Focus.Target.MovesCamera;
     }

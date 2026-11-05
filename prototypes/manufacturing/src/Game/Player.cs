@@ -6,7 +6,9 @@ namespace Manufacturing.Game;
 /// <summary>A plain first-person walker: WASD, mouse look, Shift to sprint, Space to jump, N to fly.</summary>
 public partial class Player : CharacterBody3D
 {
-    const float Walk = 4.5f, Sprint = 8f, Jump = 4.6f, Gravity = 12f, Look = 0.0022f, EyeHeight = 1.62f;
+    /// <summary>Standing eye height above the feet. The machines' screens hang around it.</summary>
+    public const float EyeHeight = 1.62f;
+    const float Walk = 4.5f, Sprint = 8f, Jump = 4.6f, Gravity = 12f, Look = 0.0022f;
 
     public Camera3D Camera { get; private set; }
     public bool Flying { get; private set; }
@@ -30,6 +32,7 @@ public partial class Player : CharacterBody3D
         _pitch = Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length());
         Camera.Rotation = new Vector3(_pitch, 0, 0);
         Velocity = Vector3.Zero;
+        ResetPhysicsInterpolation(); // a teleport: don't smear the view from where we were
     }
 
     public override void _UnhandledInput(InputEvent e)

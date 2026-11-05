@@ -8,7 +8,8 @@ namespace Manufacturing.Screens;
 
 /// <summary>
 /// A container's screen: the structure's one shared storage, every stack on a grid of tiles in
-/// its rarity colour, the capacity bar, and any spill crates waiting to be emptied.
+/// its rarity colour, the capacity bar, and any spill crates waiting to be emptied. Point at a
+/// tile to read its stack in full; the arrows (or the wheel) turn the page.
 /// </summary>
 public partial class StoragePage : MachinePage
 {
@@ -18,19 +19,20 @@ public partial class StoragePage : MachinePage
 
     public StoragePage(Workshop w) => _w = w;
 
-    public override string Prompt => "WHEEL: SCROLL   G: GATHER ORE   F: TEST-FIRE THE GUNS   F2: SURVIVAL / CREATIVE";
+    public override string Prompt => "POINT AT A STACK: DETAILS   ARROWS OR WHEEL: PAGE   G: GATHER ORE   F2: SURVIVAL / CREATIVE";
 
     protected override int Signature() => HashCode.Combine(_w.Storage.Version, _w.Crates.Version, _page, _w.Rules.Mode);
 
+    int Pages => Math.Max(1, (int)Math.Ceiling(_w.Storage.Stacks.Count() / (double)(Cols * Rows)));
+
     public override string Handle(ScreenKey key)
     {
-        int pages = Math.Max(1, (int)Math.Ceiling(_w.Storage.Stacks.Count() / (double)(Cols * Rows)));
-        if (key == ScreenKey.Down) _page = Wrap(_page + 1, pages);
-        if (key == ScreenKey.Up) _page = Wrap(_page - 1, pages);
+        if (key == ScreenKey.Down) _page = Wrap(_page + 1, Pages);
+        if (key == ScreenKey.Up) _page = Wrap(_page - 1, Pages);
         return null;
     }
 
-    public override void _Draw()
+    protected override void Paint()
     {
         SharedStorage s = _w.Storage;
         this.Block(new Rect2(0, 0, W, H), Kit.Glass);
@@ -41,16 +43,19 @@ public partial class StoragePage : MachinePage
         this.Segments(new Rect2(24, 150, W - 48, 18), s.UsedSu, Math.Max(1, s.CapacitySu), load > 0.98 ? Kit.Danger : Kit.Accent2, 48, 3);
 
         var stacks = s.Stacks.ToList();
-        int pages = Math.Max(1, (int)Math.Ceiling(stacks.Count / (double)(Cols * Rows)));
-        int page = Wrap(_page, pages);
+        int pages = Pages, page = Wrap(_page, pages);
         const float tw = 200, th = 80, gap = 10, x0 = 24, y0 = 184;
         int i = 0;
+        (ItemDef item, int count)? pointed = null;
         foreach (var (item, count) in stacks.Skip(page * Cols * Rows).Take(Cols * Rows))
         {
             float x = x0 + i % Cols * (tw + gap), y = y0 + i / Cols * (th + gap);
             var r = new Rect2(x, y, tw, th);
-            this.Block(r, Kit.Panel);
-            this.Block(new Rect2(x, y, tw, 8), Kit.Of(item.Rarity));
+            bool hot = Spot(r, "stack:" + item.Id);
+            if (hot) pointed = (item, count);
+            this.Block(r, hot ? Kit.Panel.Lightened(0.15f) : Kit.Panel);
+            this.Block(new Rect2(x, y, tw, hot ? 12 : 8), Kit.Of(item.Rarity));
+            if (hot) this.Frame(r, Kit.Cream, 3);
             this.Text(Kit.Label, Kit.SizeTiny, new Vector2(x + 12, y + 16), Kit.Fit(Kit.Label, Kit.SizeTiny, item.ShortName.ToUpperInvariant(), tw - 24), Kit.Cream);
             this.Text(Kit.Mono, Kit.SizeSmall + 4, new Vector2(x + 12, y + 42), $"{count}", Kit.Cream);
             this.TextIn(Kit.Label, Kit.SizeTiny - 4, new Rect2(x, y + 44, tw - 10, 26), item.Category.ToString().ToUpperInvariant(), Kit.Dim, HorizontalAlignment.Right);
@@ -58,12 +63,20 @@ public partial class StoragePage : MachinePage
         }
         if (stacks.Count == 0) this.Text(Kit.Label, Kit.SizeLabel, new Vector2(x0, y0 + 20), "EMPTY", Kit.Dim);
 
+        // The footer: the stack under the cursor in full, or crates waiting, or how many kinds; the page keys on the right.
         var foot = new Rect2(24, 640, W - 48, 40);
         int crates = _w.Crates.Crates.Count;
-        this.Block(foot, crates > 0 ? Kit.Warn : Kit.Panel);
-        this.TextIn(Kit.Label, Kit.SizeSmall, foot, crates > 0 ? $"{crates} SPILL CRATE{(crates > 1 ? "S" : "")} NEARBY: {_w.Crates.Total.Total} ITEMS. CRATES NEVER DESPAWN" : $"{stacks.Count} KINDS OF ITEM",
-            crates > 0 ? Kit.Glass : Kit.Dim, padX: 16);
-        this.TextIn(Kit.Mono, Kit.SizeSmall, foot, $"PAGE {page + 1}/{pages}", crates > 0 ? Kit.Glass : Kit.Dim, HorizontalAlignment.Right, 16);
-        if (Focused) this.Hints(W, H, Prompt);
+        bool warn = crates > 0 && pointed == null;
+        this.Block(foot, warn ? Kit.Warn : Kit.Panel);
+        string text = pointed is var (p, n)
+            ? $"{n} {p.Name.ToUpperInvariant()}  -  {n * p.MassKg:0.#} KG  -  {n * p.VolumeSu:0.#} SU  -  {p.Rarity.ToString().ToUpperInvariant()}"
+            : crates > 0 ? $"{crates} SPILL CRATE{(crates > 1 ? "S" : "")} NEARBY: {_w.Crates.Total.Total} ITEMS. CRATES NEVER DESPAWN"
+            : $"{stacks.Count} KINDS OF ITEM";
+        this.TextIn(Kit.Label, Kit.SizeSmall, foot, Kit.Fit(Kit.Label, Kit.SizeSmall, text, foot.Size.X - 300), pointed != null ? Kit.Cream : warn ? Kit.Glass : Kit.Dim, padX: 16);
+        var next = new Rect2(foot.End.X - 44, foot.Position.Y + 4, 40, 32);
+        var prev = new Rect2(next.Position.X - 44, next.Position.Y, 40, 32);
+        this.Arrow(prev, true, Spot(prev, "page-up", _ => Handle(ScreenKey.Up)), pages > 1);
+        this.Arrow(next, false, Spot(next, "page-down", _ => Handle(ScreenKey.Down)), pages > 1);
+        this.TextIn(Kit.Mono, Kit.SizeSmall, new Rect2(foot.Position, foot.Size - new Vector2(96, 0)), $"PAGE {page + 1}/{pages}", warn ? Kit.Glass : Kit.Dim, HorizontalAlignment.Right, 16);
     }
 }
