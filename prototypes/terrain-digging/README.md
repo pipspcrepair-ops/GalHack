@@ -118,6 +118,7 @@ Typical numbers on a Ryzen 7 5800X3D:
 | Mesh swap-in on the main thread | avg 0.5 ms (render 0.08, collision 0.45) |
 | Worst frame of terrain work | 3.4–5.4 ms at 10 digs per frame, which is far more than a player can do |
 | Startup | 462 chunk meshes, 246k triangles in ~2 s headless, ~4.5 s windowed (behind a loading message) |
+| Remesh with a 30-block base cut in, one thread | avg 0.6 ms, max about 4 ms per chunk (0.2 ms for the same holes without it) |
 
 `tests/Screenshot.tscn -- --view=landscape|pit|crater|block|row|corner --out=file.png` renders a view (windowed; add `--position 20000,20000` before `--path` to keep the window off-screen). `--legacy` clears `row` and `corner` the old way, for before-and-after pictures. `--view=map` writes a top-down layout map headless; `--debug=1|2` shows normals or unlit albedo.
 
@@ -215,7 +216,7 @@ and in `Remove(Vessel v, Int3 cell)`, let go of every block that leaves the base
                 if (!s.Has(p)) _zone.Edits.ReleaseStructure(BlockKey(v, p));
 ```
 
-The two existing `ClearGround` calls (a new base's core in `StartStructure`, each block in `TryPlace`) stay as they are. If vessels are ever saved and loaded, call `ClearGround` for each block of a restored base: its cells are already cleared, so that only re-registers the volumes.
+The two existing `ClearGround` calls (a new base's core in `StartStructure`, each block in `TryPlace`) stay as they are. Checked on a scratch copy of the slice branch (9d6f974) with this terrain core: it builds, its `PlayerTest` passes all 76 checks (a base founded, five blocks built onto it, one taken down), and its `base` view goes from a sag ring round the base ([before](screenshots/slice-base-before.png)) to grass meeting the blocks ([after](screenshots/slice-base-after.png)). If vessels are ever saved and loaded, call `ClearGround` for each block of a restored base: its cells are already cleared, so that only re-registers the volumes.
 
 Optional tidying in the slice: `Player/SurvivalTool.cs` (the "ANCHORED" message) and `Start/Bunker.cs` (`Diggable`) test `Verdict.Anchored`, which compiles with an obsolete warning and is never true; drop those branches. `Bunker.Dig` digs the bunker's whole volume plus a margin on purpose (rooms underground); registering its blocks with `ClearForStructure` as well would make its stairwell meet the ground flush.
 
