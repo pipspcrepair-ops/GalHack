@@ -50,6 +50,9 @@ public sealed class Tunables
         public string Label { get; set; } = "";
         public float TopSpeedAir { get; set; }
         public float TopSpeedSpace { get; set; }
+
+        /// <summary>The fastest this class may turn, °/s, however much gyro it carries; 0 for no cap.</summary>
+        public float MaxTurn { get; set; }
     }
 
     public sealed class TurningData

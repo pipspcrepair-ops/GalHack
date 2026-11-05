@@ -153,7 +153,7 @@ public static class HandlingModel
             Thrust = thrust,
             GyroTorque = torque,
             RawTurnRate = rawTurn,
-            TurnRate = Mathf.Max(rawTurn, t.Turning.Floor),
+            TurnRate = cls.MaxTurn > 0f ? Mathf.Min(Mathf.Max(rawTurn, t.Turning.Floor), cls.MaxTurn) : Mathf.Max(rawTurn, t.Turning.Floor),
             RollFactor = t.Turning.RollFactor,
             TopSpeedAir = cls.TopSpeedAir,
             TopSpeedSpace = cls.TopSpeedSpace,
