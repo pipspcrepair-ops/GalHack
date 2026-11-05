@@ -14,11 +14,35 @@ public sealed class ServerSettings
     public double InvasionIntervalMinutes { get; set; } = 45;
     public double IntervalJitter { get; set; } = 0.25;
     public bool ShipRaids { get; set; } = true;
+    /// <summary>The host's on/off for invasions; the world's own setting (<see cref="WorldSettings"/>) overrides it.</summary>
+    public bool InvasionsEnabled { get; set; } = true;
     public double FastTimeScale { get; set; } = 60;
     public ulong Seed { get; set; } = 1977;
 
     public static ServerSettings FromJson(string json) => JsonSerializer.Deserialize<ServerSettings>(json, Json.Options)!;
     public ServerSettings Clone() => (ServerSettings)MemberwiseClone();
+}
+
+/// <summary>
+/// Settings that belong to one world and are saved with it, as opposed to the server's defaults. Null
+/// means "not set here": the server's value applies.
+/// </summary>
+public sealed class WorldSettings
+{
+    public bool? InvasionsEnabled { get; set; }
+
+    public static WorldSettings FromJson(string json) =>
+        string.IsNullOrWhiteSpace(json) ? new WorldSettings() : JsonSerializer.Deserialize<WorldSettings>(json, Json.Options)!;
+
+    public string ToJson() => JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+    /// <summary>The server's settings with this world's own on top.</summary>
+    public ServerSettings Apply(ServerSettings server)
+    {
+        ServerSettings s = server.Clone();
+        if (InvasionsEnabled is bool on) s.InvasionsEnabled = on;
+        return s;
+    }
 }
 
 public sealed class WarningStep

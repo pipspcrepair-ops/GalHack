@@ -116,7 +116,7 @@ public partial class Hud : CanvasLayer
 
         _help = MakeLabel(15, new Color(1f, 0.91f, 0.76f, 0.85f));
         Pin(_help, 0, 1, 16, -52, 1000, -8);
-        _help.Text = "WASD move · Shift sprint · Space jump · Ctrl crouch · LMB fire · F man turret · E recover crate · Esc mouse\n" +
+        _help.Text = "WASD move · Shift sprint · Space jump · Ctrl crouch · LMB fire · F man turret · E recover crate · Esc options\n" +
                      "I invade now (again: skip to next warning) · T fast time · P place new core · K knock out the source · J faction · - wrong it · = favour it";
         root.AddChild(_help);
 
@@ -232,7 +232,8 @@ public partial class Hud : CanvasLayer
             Invasion last = d.Base(InvasionController.HomeId).History.LastOrDefault();
             double? next = d.NextInvasionIn(InvasionController.HomeId);
             string quiet = last == null ? "quiet" : $"quiet · last: {Words(last.Outcome)}";
-            string nextText = next is double n ? $"next in ~{Clock(n)} of presence" : model.Online ? "none coming" : "none while offline";
+            string nextText = !d.InvasionsEnabled ? "invasions off (Esc: options)"
+                : next is double n ? $"next in ~{Clock(n)} of presence" : model.Online ? "none coming" : "none while offline";
             invasion = $"[color={Dim}]{quiet} · {nextText}[/color]";
         }
         else

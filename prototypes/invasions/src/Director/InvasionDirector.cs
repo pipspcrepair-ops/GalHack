@@ -21,6 +21,9 @@ namespace Invasions.Director;
 ///   clock is advanced. Sirens start with the warning that asks for them and stop when it ends.
 /// - Core destroyed: the base goes offline and the invaders withdraw. All invaders down or gone
 ///   with the core standing: victory. A new core brings the base back online.
+/// - Invasions can be switched off (a world setting, the host's in co-op). Off: nothing new is
+///   scheduled, an incoming invasion is called off and an assault withdraws, as when a faction
+///   stands down. Back on: a fresh countdown starts from then, with the full warnings.
 ///
 /// The scene feeds it presence, base stats, invader counts, core and enemy base changes and standing
 /// changes, and drains <see cref="DrainEvents"/> each frame to show warnings, spawn forces and sound sirens.
@@ -37,6 +40,9 @@ public sealed class InvasionDirector
 
     /// <summary>Debug: <see cref="Tick"/> runs the clock <see cref="ServerSettings.FastTimeScale"/> times faster.</summary>
     public bool FastTime { get; set; }
+
+    /// <summary>Whether invasions happen at all in this world (<see cref="SetInvasionsEnabled"/>).</summary>
+    public bool InvasionsEnabled { get; private set; }
 
     public IReadOnlyList<PlayerBase> Bases => _bases;
     public IReadOnlyList<EnemyBase> EnemyBases => _enemies;
@@ -56,6 +62,7 @@ public sealed class InvasionDirector
         Server = server;
         Seed = seed;
         Standings = new FactionStandings(data.Factions);
+        InvasionsEnabled = server.InvasionsEnabled;
     }
 
     // ---- World set-up -----------------------------------------------------------------
@@ -230,6 +237,31 @@ public sealed class InvasionDirector
         foreach (PlayerBase b in _bases) Refresh(b);
     }
 
+    // ---- Options ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Switches invasions off or on for this world. Off: no new invasion is scheduled, an incoming
+    /// one is called off (its warnings stop, and its sirens) and an assault under way withdraws, the
+    /// same way as when its faction stands down. Nothing already damaged or spilled is undone. On:
+    /// scheduling starts again from now, with a fresh countdown, so the next invasion comes on the
+    /// usual timing with all its warnings, never at once.
+    /// </summary>
+    public void SetInvasionsEnabled(bool on)
+    {
+        if (InvasionsEnabled == on) return;
+        InvasionsEnabled = on;
+        Emit(DirectorEventKind.InvasionsToggled, null, null, 0, Data.Message(on ? "enabled" : "disabled"));
+        foreach (PlayerBase b in _bases)
+        {
+            if (!on && b.Active is { Phase: InvasionPhase.Incoming } incoming)
+                End(b, incoming, InvasionOutcome.CalledOff, Format(Message("disabledCalledOff", incoming), b, incoming));
+            else if (!on && b.Active is { Phase: InvasionPhase.Assault } assault)
+                Withdraw(b, assault, InvasionOutcome.CalledOff, "disabledWithdraw");
+            if (on) ResetCountdown(b);
+            Refresh(b);
+        }
+    }
+
     // ---- Debug controls ---------------------------------------------------------------
 
     /// <summary>
@@ -239,7 +271,7 @@ public sealed class InvasionDirector
     public bool StartInvasionNow(string baseId)
     {
         PlayerBase b = Base(baseId);
-        if (b.PlayersPresent == 0 || !b.CoreAlive || b.Active != null || !HasSource(b)) return false;
+        if (!InvasionsEnabled || b.PlayersPresent == 0 || !b.CoreAlive || b.Active != null || !HasSource(b)) return false;
         b.NextAt = Now;
         Advance(0);
         return b.Active != null;
@@ -288,7 +320,7 @@ public sealed class InvasionDirector
     public double? NextInvasionIn(string baseId)
     {
         PlayerBase b = Base(baseId);
-        if (b.Active != null) return null;
+        if (b.Active != null || !InvasionsEnabled) return null;
         return b.NextAt is double at ? at - Now : (HasSource(b) && b.CoreAlive ? b.CountdownRemaining : null);
     }
 
@@ -412,7 +444,7 @@ public sealed class InvasionDirector
         b.NextAt = null;
         var rng = new DeterministicRng(DeterministicRng.Derive(Seed, DeterministicRng.Hash(b.Id), (ulong)++b.InvasionsBegun));
         InvasionSource source = ChooseSource(b, rng);
-        if (source == null || b.PlayersPresent == 0 || !b.CoreAlive)
+        if (source == null || !InvasionsEnabled || b.PlayersPresent == 0 || !b.CoreAlive)
         {
             Refresh(b);
             return;
@@ -530,7 +562,7 @@ public sealed class InvasionDirector
             Emit(DirectorEventKind.InvasionsResumed, b, null, 0, Format(Message("resumed", null), b, null));
         }
 
-        bool counting = b.PlayersPresent > 0 && b.CoreAlive && b.Active == null && hasSource;
+        bool counting = InvasionsEnabled && b.PlayersPresent > 0 && b.CoreAlive && b.Active == null && hasSource;
         if (counting && b.NextAt == null) b.NextAt = Now + b.CountdownRemaining;
         else if (!counting && b.NextAt is double at)
         {

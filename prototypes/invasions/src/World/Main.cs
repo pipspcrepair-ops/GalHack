@@ -26,7 +26,15 @@ public partial class Main : Node3D
     public Player Player { get; private set; }
     public InvasionController Controller { get; private set; }
     public Hud Hud { get; private set; }
+    public OptionsMenu Options { get; private set; }
     public InvasionData Data { get; private set; }
+
+    /// <summary>
+    /// Where this world's own settings (the options) are saved. Tests and screenshots set it to null so
+    /// they always start from the data files, untouched by anything a player chose.
+    /// </summary>
+    public static string WorldFile = "user://world.json";
+    WorldSettings _world;
 
     public static readonly Vector3 GarrisonPosition = new(430f, 0f, -420f);
 
@@ -52,7 +60,9 @@ public partial class Main : Node3D
     {
         Controls.Register();
         Data = GameData.Invasions();
-        ServerSettings server = GameData.Server();
+        // The server's defaults, with this world's own choices (saved from the options) on top.
+        _world = GameData.LoadWorld(WorldFile);
+        ServerSettings server = _world.Apply(GameData.Server());
         BaseData baseData = GameData.Base();
 
         BuildSky();
@@ -116,6 +126,14 @@ public partial class Main : Node3D
         Hud = new Hud { Name = "Hud", Controller = Controller, Player = Player };
         Controller.Hud = Hud;
         AddChild(Hud);
+
+        Options = new OptionsMenu { Name = "Options", Controller = Controller };
+        AddChild(Options);
+        Controller.SettingsChanged += () =>
+        {
+            _world.InvasionsEnabled = Director.InvasionsEnabled;
+            GameData.SaveWorld(WorldFile, _world);
+        };
     }
 
     public override void _UnhandledInput(InputEvent e)

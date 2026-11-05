@@ -202,6 +202,8 @@ public enum DirectorEventKind
     BaseOnline,
     /// <summary>A faction turned hostile, or stopped being hostile.</summary>
     StandingChanged,
+    /// <summary>Invasions were switched off or on in the options.</summary>
+    InvasionsToggled,
 }
 
 /// <summary>

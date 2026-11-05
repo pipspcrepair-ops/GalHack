@@ -38,6 +38,8 @@ public partial class InvasionController : Node
     public bool RaidOver { get; private set; }
     /// <summary>Everything the director said, newest last, for tests and the debug log.</summary>
     public readonly List<DirectorEvent> Heard = new();
+    /// <summary>Raised when the world's own settings change (the options), so they can be saved.</summary>
+    public event System.Action SettingsChanged;
 
     sealed class PendingVehicle
     {
@@ -139,6 +141,7 @@ public partial class InvasionController : Node
             case DirectorEventKind.BaseOffline:
             case DirectorEventKind.BaseOnline:
             case DirectorEventKind.StandingChanged:
+            case DirectorEventKind.InvasionsToggled:
                 Hud?.Announce(e.Text, 0);
                 break;
         }
@@ -336,6 +339,18 @@ public partial class InvasionController : Node
         else Director.Favour(id, amount);
     }
 
+    /// <summary>
+    /// The options' invasions switch. Off calls off what is incoming and pulls back what is under way
+    /// (the director does that); the sirens stop once the last invader is gone. Saved with the world.
+    /// </summary>
+    public void SetInvasionsEnabled(bool on)
+    {
+        if (Director.InvasionsEnabled == on) return;
+        Director.SetInvasionsEnabled(on);
+        foreach (DirectorEvent e in Director.DrainEvents()) Handle(e);
+        SettingsChanged?.Invoke();
+    }
+
     // ---- Consoles ---------------------------------------------------------------------
 
     void UpdateConsoles()
@@ -348,7 +363,7 @@ public partial class InvasionController : Node
         {
             header = $"{baseName} DEFENCE NET";
             body = $"ALL QUIET\nSTORAGE NET  {Model.Loot.Storage.Total} ITEMS\nTURRETS  {Model.TurretsAlive} ON AUTO\n" +
-                   $"THREAT  {SourceSummary().ToUpperInvariant()}";
+                   (Director.InvasionsEnabled ? $"THREAT  {SourceSummary().ToUpperInvariant()}" : "INVASIONS  OFF");
         }
         else if (inv.Phase == InvasionPhase.Incoming)
         {
@@ -383,6 +398,7 @@ public partial class InvasionController : Node
         if (Current is { Phase: InvasionPhase.Incoming }) return Director.SkipToNextWarning(HomeId) ? "Skipped to the next warning." : "";
         if (Current != null) return "An invasion is already under way.";
         if (Director.StartInvasionNow(HomeId)) return "";
+        if (!Director.InvasionsEnabled) return "No invasion: invasions are off (Esc: options).";
         return PlayersPresent == 0 ? "No invasion: nobody is in the base's zone." :
             !Model.Online ? "No invasion: the base is offline." : "No invasion: no hostile base in range and no ship raids.";
     }

@@ -103,6 +103,10 @@
     "noLongerHostile": "The {attacker} no longer count {base} as an enemy.",
     "stopped": "No hostile base in range of {base} and no ship raids: invasions have stopped.",
     "resumed": "Hostile forces are in range of {base} again.",
+    "disabled": "Invasions disabled.",
+    "enabled": "Invasions enabled. The next one comes on the usual schedule, with full warning.",
+    "disabledCalledOff": "Invasions disabled: the {attacker} assault from {source} is called off.",
+    "disabledWithdraw": "Invasions disabled: the {attacker} invaders are pulling out of {base}.",
     "offline": "{base} is offline: no power, turrets down. Place a new core.",
     "online": "New core online. {base} is powered again."
   }

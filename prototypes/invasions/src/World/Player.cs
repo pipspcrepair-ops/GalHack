@@ -76,9 +76,7 @@ public partial class Player : CharacterBody3D, IDamageable
         if (e is InputEventMouseMotion motion && Input.MouseMode == Input.MouseModeEnum.Captured)
             _mouse += motion.Relative;
         else if (e is InputEventMouseButton { Pressed: true } && Input.MouseMode != Input.MouseModeEnum.Captured)
-            Input.MouseMode = Input.MouseModeEnum.Captured;
-        else if (e.IsActionPressed(Controls.FreeMouse))
-            Input.MouseMode = Input.MouseModeEnum.Visible;
+            Input.MouseMode = Input.MouseModeEnum.Captured; // Esc (the options) frees it; the options' backdrop keeps clicks off
     }
 
     public override void _PhysicsProcess(double delta)

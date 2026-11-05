@@ -12,7 +12,7 @@ namespace Invasions.Tests;
 /// <summary>
 /// Renders one moment of an invasion to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/invasions res://tests/Screenshot.tscn -- --view=warning --out=shot.png
-/// Views: warning, arrival, firefight, offline, overview, and faction (with --faction=kessari|meridian|reavers|hollow|vharn).
+/// Views: warning, arrival, firefight, offline, overview, options, and faction (with --faction=kessari|meridian|reavers|hollow|vharn).
 /// Long stretches of the fight are simulated faster than real time (same 1/60 s physics steps,
 /// more of them per second) so a shot doesn't take minutes.
 /// </summary>
@@ -31,6 +31,7 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
             else if (arg.StartsWith("--faction=")) _faction = arg["--faction=".Length..];
         }
+        Main.WorldFile = null; // always the data files' settings, whatever a player saved
         _main = new Main();
         AddChild(_main);
         Input.MouseMode = Input.MouseModeEnum.Visible;
@@ -44,6 +45,7 @@ public partial class Screenshot : Node
             case "offline": await Offline(); break;
             case "probe": await Probe(); break;
             case "faction": await FactionInvasion(); break;
+            case "options": await OptionsView(); break;
             default: await Overview(); break;
         }
         await Capture();
@@ -266,6 +268,17 @@ public partial class Screenshot : Node
         P.Teleport(at + toBase * 19f + side * 11f + Vector3.Up * 0.1f, 0f, 0f);
         P.LookAtPoint(at + toBase * 5f + Vector3.Up * 1.8f);
         await Seconds(0.3f, 1f);
+    }
+
+    /// <summary>The in-game options over the base, with invasions just switched off mid-warning.</summary>
+    async Task OptionsView()
+    {
+        C.InvadeNow();
+        await Seconds(1f, 1f);
+        _main.Options.Open();
+        _main.Options.InvasionsSwitch.ButtonPressed = false;
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        await Seconds(0.5f, 1f);
     }
 
     async Task Overview()

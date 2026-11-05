@@ -14,6 +14,10 @@ The other factions' invasions:
 ![Carrion Reavers: hover bikes and a gunship come in hard and close](screenshots/faction-reavers.png)
 ![Hollow Bloom: a growth breaks the surface and the swarm pours out](screenshots/faction-hollow.png)
 
+The in-game options (Esc), with invasions just switched off during a warning:
+
+![Options: invasions off](screenshots/options.png)
+
 ## How it works
 
 | Layer | Where | What |
@@ -54,6 +58,9 @@ All of it is data in `data/factions.json`: carriers by source kind, vehicles, tr
 ### The rules every faction keeps
 
 - **Presence.** The countdown to the next invasion only runs while a player is in the base's zone. If everyone leaves for 60 s, an incoming invasion is called off and an assault withdraws.
+- **On or off.** Invasions can be switched off in the in-game options (Esc). This is a world setting, saved with the world; in co-op it is the host's setting, though this prototype has no networking.
+  - Off: nothing new is scheduled. An incoming invasion is called off, so its warnings and sirens stop, with an "Invasions disabled" notice. An assault under way withdraws, as when its faction stands down. Nothing already damaged or spilled is undone.
+  - On again: a fresh countdown starts from then, so the next invasion comes on the usual timing with all three warnings, never at once.
 - **Warnings.** These fire at exactly T-10, T-5 and T-1 minutes on the simulated clock, however coarsely the clock is stepped. The first names the attacking faction, the source base and the bearing. The second puts the force on long-range scans. The third starts the sirens, which sound until the last invader is down or gone. A faction can word its own warnings.
 - **Scaling.** Threat is stored goods value, plus block count, plus turrets. Troops are scaled by that threat, by the players present, by the source and by the faction's swarm multiplier, then capped by the source. A small outpost faces a squad (a Bloom "brood", a Reaver "gang"), and a fortress faces an army.
 - **Outcomes.** If the core falls, the base goes offline (no power, turrets dead) and the invaders withdraw to their vehicles. Placing a new core brings it back with every surviving block. All invaders down or gone with the core standing is a victory.
@@ -84,7 +91,7 @@ From the repo root, in PowerShell:
 | K | Knock out the base that would send the next invasion (or shoot its core out) |
 | J | Pick a faction for the standing keys (shown on the visor) |
 | - / = | Wrong the picked faction on purpose / do it a favour |
-| Esc | Free the mouse |
+| Esc | Options (frees the mouse): Invasions On/Off. Esc again or Resume to go back. |
 
 The neighbourhood has one base per faction. The Vharn garrison is 600 m NE, a Freeholder steading 410 m NW, a Kessari hold 735 m SE, the Reaver den 888 m W, a Meridian post 1060 m S, a Ledger Exchange depot 1250 m E and a Bloom infestation 1340 m SW. At the start the Vharn invade. Press K and the Reavers take over, K again and it's the Bloom. Pick the Kessari with J and press - twice, and their hold, now the nearest hostile base, invades next.
 
@@ -94,10 +101,11 @@ Every tunable lives in `data/`:
 
 | File | What |
 | --- | --- |
-| `server.json` | Invasion frequency, jitter, ship raids on or off, fast-time scale, seed |
+| `server.json` | Invasion frequency, jitter, ship raids on or off, invasions on or off for a new world, fast-time scale, seed |
 | `invasions.json` | Warning timeline and messages, presence grace, source rules, scaling formula, tiers, force size by source kind, approach distances, planner cost |
 | `factions.json` | The standing model. Per faction: whether it invades, its standing range, accident weight, ship raids and ship names, tier names, carriers by source kind, vehicles (body, seats, guns, speed, drop distance), troop roles (weapon, reach, pace, health, shield, how it breaks walls), tactics, tracer colour and its own wording |
 | `fire_control.json` | Warning shots, accuracy ramp, accuracy grades, the shooter by target matrix, weapons (spread, projectile speed, damage, rate, homing) |
+| `user://world.json` | Not in `data/`: this world's own settings, saved from the options (invasions on or off). It overrides `server.json`, and tests and screenshots ignore it. |
 | `base.json` | Base layout (ASCII), block hit points, container capacity, items and their values, starting goods, siren and light positions |
 
 ## Test it
@@ -106,7 +114,7 @@ Every tunable lives in `data/`:
 .\tools\test.ps1 -Project prototypes/invasions -Scene res://tests/InvasionTest.tscn
 ```
 
-This is the merge gate that `test-all.ps1` runs. It exits 0 if all 154 checks pass, 1 if any fail, and takes about 3 minutes. Its soak is reduced to 10 seeded invasions per faction. Every timing in it is simulated time (physics frames or the director's clock), never wall-clock, so it holds under load.
+This is the merge gate that `test-all.ps1` runs. It exits 0 if all 163 checks pass, 1 if any fail, and takes about 3 minutes. Its soak is reduced to 10 seeded invasions per faction. Every timing in it is simulated time (physics frames or the director's clock), never wall-clock, so it holds under load.
 
 The full soak runs 50 per faction (250 invasions) with the same limits, in about 13 minutes:
 
@@ -144,6 +152,12 @@ The full soak runs 50 per faction (250 invasions) with the same limits, in about
   - Reavers go for the storage, break it open and run with the core standing, leaving every item behind.
   - A Bloom growth spreads and pours, bursters burst, and killing a growth's heart kills its pods and its unborn.
   - No item is lost in any of them.
+- **Options, invasions on and off:**
+  - Off: no invasion in ten intervals (14 hours simulated) with a player home.
+  - Off during the five-minute warning: the invasion is called off, with no more warnings and no arrival. Off during the one-minute warning: the sirens stop at once.
+  - Off mid-assault: the invaders withdraw, and the sirens stop when they're gone.
+  - On again: the next invasion comes on the usual timing with all three warnings.
+  - In the scene: Esc, Invasions: Off mid-assault pulls every trooper back with a notice, and nothing is undone. The choice survives a reload of the world.
 - **Navigation soak, once per faction:**
   - Seeded forces among vehicle hulks, crates and rubble: 10 per faction in the gate, 50 in `InvasionSoakTest`.
   - No invader is stuck for more than 3 s.
@@ -152,7 +166,7 @@ The full soak runs 50 per faction (250 invasions) with the same limits, in about
 
 Other tools:
 
-- `tests/Screenshot.tscn -- --view=warning|arrival|firefight|offline --out=file.png` renders a view (windowed, not headless). `--view=faction --faction=kessari|meridian|reavers|hollow` renders that faction's invasion.
+- `tests/Screenshot.tscn -- --view=warning|arrival|firefight|offline|options --out=file.png` renders a view (windowed, not headless). `--view=faction --faction=kessari|meridian|reavers|hollow` renders that faction's invasion.
 - `tests/SirenPreview.tscn` renders 20 s of the siren (alert, then all-clear) to `audio-preview/siren-preview.wav`.
 
 ## Known limits

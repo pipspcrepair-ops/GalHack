@@ -38,6 +38,7 @@ public partial class InvasionTest : Node
     {
         try
         {
+            Main.WorldFile = null; // start every world from the data files, whatever a player saved
             _data = GameData.Invasions();
             _server = GameData.Server();
             _base = GameData.Base();
@@ -77,6 +78,12 @@ public partial class InvasionTest : Node
             ShipRaidsComeFromHostileFactions();
             EachFactionComposesItsOwnForce();
             KessariPlanStraightThroughWalls();
+
+            Section("Options: invasions on and off");
+            InvasionsOffStopsNewInvasions();
+            InvasionsOffCancelsTheWarnings();
+            InvasionsOffWithdrawsAnAssault();
+            InvasionsBackOnResumeWithFullWarnings();
 
             Section("Base model");
             LootTotalSurvivesWreckedContainers();
@@ -551,6 +558,7 @@ public partial class InvasionTest : Node
         await WarningRoundsNeverHitAndRoundsTakeTime();
         await FullInvasionInFastTime();
         await DestroyingTheGarrisonStopsItsInvasions();
+        await OptionsSwitchInvasionsOffAndSaveIt();
 
         Section("Faction rosters and tactics");
         foreach (string faction in InvadingFactions) await FactionRosterAndTactics(faction);
