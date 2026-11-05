@@ -12,7 +12,13 @@ global uniform vec2 planet_size;
 global uniform vec4 weather_ground;   // wetness, settled snow, dust, solar
 
 uniform bool far_ring = false;
-uniform vec4 hole = vec4(0.0);        // x0, z0, x1, z1: where voxel chunks cover the ground
+uniform vec4 hole = vec4(0.0);        // x0, z0, x1, z1: where the finer level covers the ground
+// The horizon: its vertices at least hole_sink_from inside the hole drop hole_sink metres, and it is
+// only cut hole_cut inside it. Where the coarse horizon sits above the finer ground's edge, its
+// ground then dives under that edge as a wall instead of leaving a gap the sky shows through.
+uniform float hole_sink = 0.0;
+uniform float hole_sink_from = 0.0;
+uniform float hole_cut = 0.0;
 uniform float strata = 0.4;
 uniform float snow_altitude = 100000.0; // above this, flat ground is snowy whatever the weather
 uniform float base_snow = 0.0;          // snow on flat ground everywhere (ice worlds)
@@ -23,13 +29,19 @@ uniform vec3 dust_color : source_color = vec3(0.62, 0.5, 0.36);
 varying vec3 wpos;
 varying vec3 wnormal;
 
+// How far a point is inside the hole (negative outside).
+float inside_hole(vec2 p) {
+	return min(min(p.x - hole.x, hole.z - p.x), min(p.y - hole.y, hole.w - p.y));
+}
+
 void vertex() {
+	if (hole_sink > 0.0 && inside_hole((MODEL_MATRIX * vec4(VERTEX, 1.0)).xz) >= hole_sink_from) VERTEX.y -= hole_sink;
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnormal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
-	if (far_ring && wpos.x > hole.x && wpos.x < hole.z && wpos.z > hole.y && wpos.z < hole.w) discard;
+	if (far_ring && inside_hole(wpos.xz) > hole_cut) discard;
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;
