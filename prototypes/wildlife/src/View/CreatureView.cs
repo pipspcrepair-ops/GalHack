@@ -74,6 +74,7 @@ public partial class CreatureView : Node3D
         Name = $"Creature{c.Id}";
         ShaderMaterial material = CreatureMaterials.For(c.Species);
         float range = c.Species.Plan == BodyPlan.Giant ? 600f : c.Species.Body.Size < 0.8f ? 110f : 220f;
+        if (c.Species.InSpace) range = MathF.Max(400f, c.Species.Body.Size * 45f); // nothing hides a leviathan in open space
 
         if (c.Rig is SwarmRig swarm)
         {

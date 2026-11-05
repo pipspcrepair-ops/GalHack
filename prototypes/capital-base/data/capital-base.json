@@ -1,0 +1,55 @@
+// Every number the capital-base prototype adds. The physics, handling, building, weather and
+// terrain numbers stay in their own prototypes' files; this file only holds what is new here.
+{
+  "schema": "galhack.capital-base",
+  "version": 1,
+
+  // The world: a planet from the planet generator (seed, archetype, variant, size in km), and the
+  // square of voxel chunk columns around its landing site that this prototype meshes and collides.
+  "planet": { "seed": 47, "archetype": "Arid", "variant": 0, "widthKm": 8, "patchColumns": 14 },
+
+  // Lift-off from a base. A capital ship built into or anchored onto the ground is cut free before
+  // it moves: every terrain cell within `margin` metres of a block, swept straight up through the
+  // first climb, is removed through terrain-digging's edit API (logged, deterministic, bedrock and
+  // POI anchors still refuse). The sweep is at least `minClimb` metres and grows until each
+  // block's column is clear for `clearBand` metres above it, never past `maxClimb`. While the hull
+  // is tilted, each block's margin also grows by how far it could swing if the wings level on
+  // the way up (its distance from the core times the sine of the tilt).
+  // The ship then climbs that far straight up at `climbSpeed` before the pilot has it.
+  // More than `maxCells` cells to cut, or any cell that refuses, and lift-off refuses instead.
+  "liftoff": {
+    "margin": 0.75,
+    "minClimb": 3.0,
+    "clearBand": 3.0,
+    "maxClimb": 40.0,
+    "climbSpeed": 3.0,
+    "maxCells": 6000,
+    "debrisSeconds": 2.5
+  },
+
+  // A base stands where it landed: switching to base mode locks the structure's pose. The ground
+  // directly under each landing foot (a square `radius` cells out, `depth` cells deep) is its
+  // footing and can't be dug while it is a base, so a base never looks undermined.
+  "footings": { "radius": 1, "depth": 2 },
+
+  // Building into the ground: a block placed where terrain is clears every cell whose centre lies
+  // within the block grown by `margin` metres, through the same edit API.
+  "build": { "margin": 0.1 },
+
+  // Auto-transmit to Home. A vessel with it on sends what it farms straight into Home's storage
+  // while it is within `radius` metres of Home's core and Home has room; anything that doesn't fit
+  // stays in its own cargo and goes across every `interval` seconds once Home is in range with room.
+  "autoTransmit": { "radius": 1000, "interval": 0.5 },
+
+  // The drill on a harvesting vessel: a ball of `radius` metres, at most `reach` below its keel.
+  "drill": { "radius": 2.0, "reach": 6.0 },
+
+  // What a dug cell gives, and how much room each unit takes (storage units, SU).
+  "items": {
+    "soil": { "su": 1 },
+    "rock": { "su": 1 },
+    "deep-rock": { "su": 1 },
+    "ore": { "su": 1 }
+  },
+  "yield": { "Soil": "soil", "Rock": "rock", "DeepRock": "deep-rock", "Ore": "ore" }
+}

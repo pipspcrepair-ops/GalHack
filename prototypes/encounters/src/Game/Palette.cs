@@ -37,6 +37,8 @@ public static class Palette
     public static readonly Color Distress = new("ff5d3a");
     public static readonly Color Transmission = new("6fe3d6");
     public static readonly Color Lasting = new("9bf26b");
+    /// <summary>Space fauna and their life-sign leads.</summary>
+    public static readonly Color Fauna = new("c9a7ff");
 
     /// <summary>The colour a faction reads as on the HUD and the map.</summary>
     public static Color Faction(string faction) => faction switch
@@ -51,7 +53,7 @@ public static class Palette
         _ => new Color("cfcfcf"),
     };
 
-    public static Color Lead(string kind) => kind == "distress" ? Distress : Transmission;
+    public static Color Lead(string kind) => kind switch { "distress" => Distress, "lifesign" => Fauna, _ => Transmission };
 }
 
 /// <summary>The director speaks System.Numerics; Godot has its own vectors.</summary>

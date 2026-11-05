@@ -1,0 +1,17 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Manufacturing</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Building's chunk mesher runs on every edit; let the JIT optimise, as building does. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The item catalogue, production machines, deposit shapes and the adapter to building. -->
+    <Compile Include="..\..\shared\Items\**\*.cs" />
+    <!-- Building's structure core and its view, compiled from where they live. Never copied, never changed here. -->
+    <Compile Include="..\building\src\Structures\**\*.cs" />
+    <Compile Include="..\building\src\Presentation\**\*.cs" />
+  </ItemGroup>
+</Project>

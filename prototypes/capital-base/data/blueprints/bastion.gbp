@@ -1,0 +1,138 @@
+# Bastion 7: a capital ship that lands on a planet, becomes a base and lifts off again.
+# Written by hand for the capital-base prototype, in building's blueprint format.
+#
+# Large grid (2 m cells). x is starboard, y up, -z forward. The core sits in the keel.
+# A sealed bridge (7 x 2 x 6 cells) behind a raked nose and windscreen, its door to port.
+# Behind the bulkhead, an open engineering hall: four containers, three generators under their
+# fuel tanks, four gyros. The roof aft of the bridge tower is a landing pad for a small vessel.
+# Six landing legs and six lift jets under the keel, engine nacelles either side.
+#
+# Livery after Chris Foss: cream and saffron hull, a red nose and rake, teal chevrons down the
+# nacelles, hazard stripes round the pad and on the legs, a big stencilled 47 amidships.
+
+schema galhack.blueprint
+version 1
+name "Bastion 7"
+grid large
+mode capital
+gravity on
+
+paint hull base=ede4cc grime=1
+paint saffron base=f2a516 grime=1
+paint red base=c92a2a grime=1
+paint belly base=2b2d42 grime=2
+paint dark base=3a3f47 texture=plates grime=2
+paint stripe base=ede4cc accent=e8590c pattern=stripes grime=1
+paint chev base=0b7285 accent=f2a516 pattern=chevrons grime=1
+paint hazard base=f2a516 accent=212529 pattern=hazard grime=2
+paint pad base=343a40 texture=plates grime=2
+paint n4 base=f2a516 accent=212529 stencil=4 grime=1
+paint n7 base=f2a516 accent=212529 stencil=7 grime=1
+
+# --- Keel (y 0), the core in it, a red chin at the front ----------------------------------
+block -4..4 0 -11 steel slope paint=red
+block -4..4 0 -10 steel paint=red
+block -4..4 0 -9..-1 steel paint=belly
+block -4..-1 0 0 steel paint=belly
+block 0 0 0 core
+block 1..4 0 0 steel paint=belly
+block -4..4 0 1..8 steel paint=belly
+block -4..4 0 9 steel slope rot=-y+z paint=belly
+
+# --- Nose: one 45-degree rake from the chin to the roof, the windscreen in it ---------------
+block -4..4 1 -10 steel slope paint=red
+block -4..4 1 -9 steel paint=red
+block -4..-3 2 -9 steel slope paint=red
+block -2..2 2 -9 glass slope
+block 3..4 2 -9 steel slope paint=red
+block -4..4 3 -8 steel slope paint=hull
+
+# --- Hull sides (y 1..2): racing stripe low, bridge windows, the door, the hull number -----
+block -4 1 -8..-6 steel paint=hull -x=stripe
+block -4 1 -5 door rot=+y-x
+block -4 1 -4..8 steel paint=hull -x=stripe
+block 4 1 -8..8 steel paint=hull +x=stripe
+block -4 2 -8 steel paint=hull
+block -4 2 -7..-6 glass
+block -4 2 -5..1 steel paint=hull
+block -4 2 2 steel paint=hull -x=n4
+block -4 2 3 steel paint=hull -x=n7
+block -4 2 4..8 steel paint=hull
+block 4 2 -8 steel paint=hull
+block 4 2 -7..-6 glass
+block 4 2 -5..1 steel paint=hull
+block 4 2 2 steel paint=hull +x=n7
+block 4 2 3 steel paint=hull +x=n4
+block 4 2 4..8 steel paint=hull
+
+# --- Bridge (air x -3..3, y 1..2, z -8..-3): the seat at the windscreen, two lights -------
+block 0 1 -8 cockpit
+block -2 2 -4 light rot=+z-y
+block 2 2 -4 light rot=+z-y
+block -3..3 1..2 -2 steel paint=hull
+
+# --- Engineering hall (z -1..8): storage, power, gyros --------------------------------------
+block -3 1 -1..0 container
+block 3 1 -1..0 container
+block -1..1 1 4 generator
+block -1..1 2 4 fueltank
+block -3 1 6..7 gyro
+block 3 1 6..7 gyro
+
+# --- Stern: four main engines under a chevron band -----------------------------------------
+block -4 1..2 9 steel paint=dark
+block -3 1 9 thruster
+block -2 1 9 steel paint=dark
+block -1 1 9 thruster
+block 0 1 9 steel paint=dark
+block 1 1 9 thruster
+block 2 1 9 steel paint=dark
+block 3 1 9 thruster
+block 4 1..2 9 steel paint=dark
+block -3..3 2 9 steel paint=chev
+block -4..4 3 9 steel slope rot=+y+z paint=hull
+
+# --- Roof (y 3): bevelled edges; aft of the tower, a landing pad ringed in hazard stripes ---
+block -3..3 3 -7..-2 steel paint=hull
+block -3..3 3 -1 steel paint=hazard
+block -3 3 0..6 steel paint=hazard
+block -2..2 3 0..6 steel paint=pad
+block 3 3 0..6 steel paint=hazard
+block -3..3 3 7 steel paint=hazard
+block -3..3 3 8 steel paint=hull
+block -4 3 -7..8 steel slope rot=+y-x paint=hull
+block 4 3 -7..8 steel slope rot=+y+x paint=hull
+
+# --- Bridge tower (y 4) with its own window; down jets beside it; a tail fin ----------------
+block -2..2 4 -7 glass slope
+block -2..2 4 -6..-3 steel paint=saffron
+block -3 4 -6 thruster rot=+z-y
+block 3 4 -6 thruster rot=+z-y
+block 0 4 8 steel paint=red -x=chev +x=chev
+block 0 5 8 steel slope rot=+y+z paint=red
+
+# --- Engine nacelles either side: retros in front, main engines behind, side jets ----------
+block -5 0..1 0..8 steel paint=saffron -x=chev
+block 5 0..1 0..8 steel paint=saffron +x=chev
+block -5 0..1 -1 thruster rot=+y+z
+block 5 0..1 -1 thruster rot=+y+z
+block -5 0..1 9 thruster
+block 5 0..1 9 thruster
+block -6 0 3 thruster rot=+y+x
+block -6 0 6 thruster rot=+y+x
+block 6 0 3 thruster rot=+y-x
+block 6 0 6 thruster rot=+y-x
+
+# --- Under the keel: six landing legs at the edges, six lift jets inboard ------------------
+block -4 -1 -7 gear
+block 4 -1 -7 gear
+block -4 -1 0 gear
+block 4 -1 0 gear
+block -4 -1 7 gear
+block 4 -1 7 gear
+block -2 -1 -5 thruster rot=+z+y
+block 2 -1 -5 thruster rot=+z+y
+block -2 -1 1 thruster rot=+z+y
+block 2 -1 1 thruster rot=+z+y
+block -2 -1 6 thruster rot=+z+y
+block 2 -1 6 thruster rot=+z+y
