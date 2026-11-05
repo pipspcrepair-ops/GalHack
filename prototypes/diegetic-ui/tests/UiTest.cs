@@ -47,8 +47,11 @@ public partial class UiTest : Node
             _drive = new Drive(this, _main);
             await _drive.Frames(5);
             await RayToPixelAccuracy();
+            ScreensAtEyeHeight();
             await FocusInTheScene();
             await WristFocus();
+            await LookAndClick();
+            await StockPanelOnAScreen();
             await ColdStoreFlash();
             await WarningShotCue();
             await ScreenRedrawCost();
@@ -249,7 +252,7 @@ public partial class UiTest : Node
                 Vector2 window = probe.UnprojectPosition(target);
                 Vector3 origin = probe.ProjectRayOrigin(window), normal = probe.ProjectRayNormal(window);
                 casts++;
-                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, origin + normal * 4, WorldScreen.PickLayer));
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, origin + normal * 4, screen.PickLayer));
                 if (hit.Count > 0 && hit["collider"].AsGodotObject() is Node c && c.GetMeta("focus_target").AsGodotObject() == screen) hits++;
                 if (screen.RayToPixel(origin, normal, out Vector2 got)) worst = Mathf.Max(worst, got.DistanceTo(pixel));
                 else worst = float.MaxValue;
@@ -264,16 +267,18 @@ public partial class UiTest : Node
     {
         WorldScreen console = _main.ConsoleScreen;
         Interactor interactor = _main.Interactor;
+        ScreenPointer pointer = _main.Pointer;
         Vector3 standAt = new(0, 0.05f, -4.15f);
         _drive.StandAndLook(standAt, console.GlobalPosition);
         await _drive.PhysicsFrames(3);
         await _drive.Frames(2);
-        Check(interactor.LookTarget == console && interactor.Focus.State == FocusState.Free && !interactor.CursorVisible && !console.InUse,
-            "looking at the console offers it (E prompt), with no cursor anywhere");
+        Check(interactor.LookTarget == console && interactor.Focus.State == FocusState.Free && !interactor.CursorVisible
+              && pointer.Target == console && console.InUse && WorldScreen.All.Count(s => s.InUse) == 1,
+            "looking at the console offers E and puts the look cursor on it; the framed cursor stays off");
 
         Drive.Tap(Key.E);
         await _drive.Frames(2);
-        bool entering = interactor.Focus.State == FocusState.Entering && !interactor.CursorVisible && !console.InUse;
+        bool entering = interactor.Focus.State == FocusState.Entering && !interactor.CursorVisible && !console.InUse && pointer.Target == null;
         for (int i = 0; i < 120 && interactor.Focus.State != FocusState.Using; i++) await _drive.Frames();
         Transform3D framed = console.FocusView(_main.Camera);
         bool cameraFramed = _main.Camera.GlobalPosition.DistanceTo(framed.Origin) < 0.01f;
@@ -328,11 +333,132 @@ public partial class UiTest : Node
 
         Drive.Tap(Key.Escape);
         await _drive.Frames(2);
-        bool leaving = interactor.Focus.State == FocusState.Leaving && !interactor.CursorVisible && !console.InUse;
+        bool leaving = interactor.Focus.State == FocusState.Leaving && !interactor.CursorVisible && !console.InUse && pointer.Target == null;
         for (int i = 0; i < 120 && interactor.Focus.State != FocusState.Free; i++) await _drive.Frames();
         bool backAtHead = _main.Camera.GlobalPosition.DistanceTo(_main.Player.HeadView().Origin) < 0.01f;
-        Check(leaving && interactor.Focus.State == FocusState.Free && backAtHead && WorldScreen.All.All(s => !s.InUse),
-            "Esc steps back: the cursor goes at once, the view eases back to the head");
+        await _drive.Frames(2);
+        Check(leaving && interactor.Focus.State == FocusState.Free && backAtHead && pointer.Target == console && WorldScreen.All.Count(s => s.InUse) == 1,
+            "Esc steps back: the framed cursor goes at once, the view eases back to the head, then the look cursor returns");
+    }
+
+    /// <summary>
+    /// The look-and-click cursor: aim at a button on the constructor from within reach and the
+    /// cursor sits on that exact pixel, the button lights, a click orders it; look away or step
+    /// out of reach and the cursor is gone.
+    /// </summary>
+    async Task LookAndClick()
+    {
+        WorldScreen screen = _main.ConstructorScreen;
+        ScreenPointer pointer = _main.Pointer;
+        var button = _main.ConstructorPage.OrderButtons[2];
+        Vector2 pixel = Drive.Centre(button) + new Vector2(37.3f, -11.6f); // off-centre, on purpose
+        _drive.StandAndLook(new Vector3(-3.6f, 0.05f, -2.1f), screen.GlobalPosition);
+        await _drive.PhysicsFrames(10); // let the feet settle on the deck before aiming exactly
+        _drive.Aim(screen.PixelToWorld(pixel));
+        await _drive.Frames(2);
+        float error = screen.CursorPixel.DistanceTo(pixel);
+        Check(pointer.Target == screen && screen.InUse && error < 1f && button.Hovered && WorldScreen.All.Count(s => s.InUse) == 1,
+            $"aiming at the constructor puts the cursor on the aimed pixel ({error:F3} px off) and lights the button under it");
+
+        // The cursor is a fixed share of the view's height (headless, the view is only 64 px tall).
+        float cursorPixels = pointer.CursorPixels;
+        pointer.CursorPixels = _main.Camera.GetViewport().GetVisibleRect().Size.Y * 0.03f;
+        await _drive.Frames(2);
+        float near = CursorOnView(screen);
+        _drive.StandAndLook(new Vector3(-2.45f, 0.05f, -1.75f), screen.GlobalPosition);
+        await _drive.PhysicsFrames(10);
+        _drive.Aim(screen.GlobalPosition);
+        await _drive.Frames(2);
+        float far = CursorOnView(screen), aim = pointer.CursorPixels;
+        pointer.CursorPixels = cursorPixels;
+        Check(pointer.Target == screen && Mathf.Abs(near / aim - 1) < 0.05f && Mathf.Abs(far / aim - 1) < 0.05f,
+            $"the cursor reads the same size on the view near and far ({near:F2} px at arm's length, {far:F2} px at 2.5 m; aim {aim:F2} px)");
+
+        int orders = _main.State.Constructor.Orders.Count;
+        _drive.StandAndLook(new Vector3(-3.6f, 0.05f, -2.1f), screen.GlobalPosition);
+        await _drive.PhysicsFrames(10);
+        _drive.Aim(screen.PixelToWorld(pixel));
+        await _drive.Frames(2);
+        Drive.Mouse(true);
+        await _drive.Frames();
+        Drive.Mouse(false);
+        await _drive.Frames(2);
+        var ordered = _main.State.Constructor.Orders;
+        Check(ordered.Count == orders + 1 && ordered[^1].Item == Catalog.HullPlate,
+            $"a click there orders it, with no E and no stepping in ({ordered.Count - orders} order: {(ordered.Count > 0 ? ordered[^1].Item.Name : "none")})");
+
+        _drive.Aim(new Vector3(-3.6f, 1.6f, -7f)); // along the wall, toward the window
+        await _drive.Frames(2);
+        Check(pointer.Target == null && !screen.InUse && !button.Hovered && WorldScreen.All.All(s => !s.InUse),
+            "looking away takes the cursor off the screen and the button goes dark");
+
+        _drive.StandAndLook(new Vector3(-1.4f, 0.05f, -3.2f), screen.GlobalPosition); // 4 m off, clear line of sight: out of reach
+        await _drive.PhysicsFrames(3);
+        await _drive.Frames(2);
+        Check(pointer.Target == null && !screen.InUse, "out of reach, looking straight at it shows no cursor");
+        _main.Player.Place(Bridge.Spawn, 0);
+        await _drive.Frames(2);
+    }
+
+    /// <summary>How tall the cursor arrow is on the view, in window pixels.</summary>
+    float CursorOnView(WorldScreen screen)
+    {
+        Vector2 tip = _main.Camera.UnprojectPosition(screen.PixelToWorld(screen.CursorPixel));
+        Vector2 foot = _main.Camera.UnprojectPosition(screen.PixelToWorld(screen.CursorPixel + new Vector2(0, screen.CursorSize)));
+        return tip.DistanceTo(foot);
+    }
+
+    /// <summary>Every screen you walk up to hangs near standing eye height and faces a standing player.</summary>
+    void ScreensAtEyeHeight()
+    {
+        const float deck = 0;
+        var walkUp = WorldScreen.All.Where(s => s.Pickable).ToList();
+        string report = string.Join("; ", walkUp.Select(s => $"{s.Name} {s.GlobalPosition.Y:F2} m, {ScreenMount.FacingError(s, deck):F0}° off"));
+        Check(walkUp.Count == 3 && walkUp.All(s => ScreenMount.AtEyeHeight(s, deck, band: 0.1f, maxDegrees: 15)) && Mathf.IsEqualApprox(Player.EyeHeight, ScreenMount.EyeHeight),
+            $"walk-up screens are within 10 cm of eye height ({ScreenMount.EyeHeight} m) and within 15° of facing you ({report})");
+    }
+
+    /// <summary>
+    /// The component hosts any panel: a plain container of stock controls, as a Tab-menu panel is
+    /// built, hung with the mounting helper. It gets the screen's pixels and theme, the look cursor
+    /// lights and presses its button (the screen redrawing for it with no help from the panel), and
+    /// looking away lets go of the hover.
+    /// </summary>
+    async Task StockPanelOnAScreen()
+    {
+        var screen = new WorldScreen
+        {
+            Name = "TestPanelScreen", Pixels = new Vector2I(960, 540), SizeMeters = new Vector2(0.96f, 0.54f),
+            Transform = ScreenMount.OnFace(new Vector3(2.4f, 0, 6f), Vector3.Forward, floorY: 0), // the back wall
+        };
+        _main.AddChild(screen);
+        var panel = new VBoxContainer();
+        panel.AddChild(new Label { Text = "A PANEL FROM THE TAB MENU", ThemeTypeVariation = "Heading" });
+        var button = new Button { Text = "PRESS", ToggleMode = true, CustomMinimumSize = new Vector2(300, 80) };
+        panel.AddChild(button);
+        screen.SetContent(panel);
+        await _drive.Frames(3);
+        Check(ScreenMount.AtEyeHeight(screen, 0) && panel.Size == (Vector2)screen.Pixels && panel.Theme == Theme.UiTheme.GodotTheme,
+            $"a stock panel fills the screen's {screen.Pixels.X} x {screen.Pixels.Y} pixels and takes its theme; the helper hung it at {screen.GlobalPosition.Y:F2} m");
+
+        _drive.StandAndLook(new Vector3(2.4f, 0.05f, 4.3f), screen.GlobalPosition);
+        await _drive.PhysicsFrames(10);
+        int before = screen.Redraws;
+        _drive.Aim(screen.PixelToWorld(Drive.Centre(button)));
+        await _drive.Frames(3);
+        bool lit = button.IsHovered() && screen.Redraws > before;
+        Drive.Mouse(true);
+        await _drive.Frames();
+        Drive.Mouse(false);
+        await _drive.Frames(2);
+        bool pressed = button.ButtonPressed;
+        _drive.Aim(new Vector3(-2f, 1.6f, 4.3f)); // along the room, off the screen
+        await _drive.Frames(2);
+        Check(lit && pressed && !button.IsHovered() && !screen.InUse,
+            "the look cursor lights a stock button (the screen redraws by itself), a click toggles it, looking away lets it go");
+        screen.QueueFree();
+        _main.Player.Place(Bridge.Spawn, 0);
+        await _drive.Frames(3);
     }
 
     async Task WristFocus()

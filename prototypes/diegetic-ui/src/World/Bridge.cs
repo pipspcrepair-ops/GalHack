@@ -24,8 +24,9 @@ public partial class Bridge : Node3D
     public static readonly Color Ice = new("8fb3cc");
     public static readonly Color Frost = new("e6f3fb");
 
-    // Anchors.
-    public static readonly Transform3D ConsoleScreen = new(Basis.FromEuler(new Vector3(Mathf.DegToRad(-24), 0, 0)), new Vector3(0, 1.42f, -5.62f));
+    // Anchors. Screens you walk up to hang near standing eye height (1.62 m), so you look at
+    // them, not down at them; the console's is tipped back a little toward a standing player.
+    public static readonly Transform3D ConsoleScreen = new(Basis.FromEuler(new Vector3(Mathf.DegToRad(-12), 0, 0)), new Vector3(0, 1.55f, -5.62f));
     public static readonly Vector3 HoloTable = new(0, 0, -1.3f);
     public static readonly Transform3D ConstructorScreen = new(Basis.FromEuler(new Vector3(0, Mathf.DegToRad(90), 0)), new Vector3(-4.93f, 1.62f, -1.4f));
     public static readonly Transform3D TraderScreen = new(Basis.FromEuler(new Vector3(0, Mathf.DegToRad(-90), 0)), new Vector3(4.98f, 1.6f, -1.4f));
@@ -133,13 +134,14 @@ public partial class Bridge : Node3D
 
     void BuildConsole()
     {
-        // A standing systems console: a dark desk with an orange lip, its screen tipped back,
-        // a real lever on the right and a shield switch on the left.
+        // A standing systems console: a dark desk with an orange lip, its screen raised to eye
+        // height on a stand and tipped back, a real lever on the right and a shield switch on the left.
         Solid(new Vector3(0, 0.5f, -5.5f), new Vector3(3.2f, 1.0f, 0.8f), Dark);
         Prop(new Vector3(0, 1.0f, -5.5f), new Vector3(3.26f, 0.05f, 0.86f), Orange);
         Prop(new Vector3(0, 0.25f, -5.08f), new Vector3(3.0f, 0.06f, 0.02f), Yellow);
-        var stand = Prop(new Vector3(0, 1.36f, -5.82f), new Vector3(1.5f, 0.92f, 0.12f), Dark);
-        stand.RotationDegrees = new Vector3(-24, 0, 0);
+        // The stand behind the screen, tipped with it and long enough to reach down into the desk.
+        var stand = Prop(Vector3.Zero, new Vector3(1.5f, 1.1f, 0.12f), Dark);
+        stand.Transform = ConsoleScreen * new Transform3D(Basis.Identity, new Vector3(0, -0.06f, -0.207f));
         foreach (Vector3 p in new[] { LeverProp, ShieldProp })
             Prop(p + new Vector3(0, 0.04f, 0), new Vector3(0.42f, 0.08f, 0.42f), new Color("1d1f27"));
         Label(new Vector3(0, 0.62f, -5.09f), Vector3.Zero, "SYSTEMS", 64, Cream);

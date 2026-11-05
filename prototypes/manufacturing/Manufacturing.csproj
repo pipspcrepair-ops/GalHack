@@ -13,5 +13,11 @@
     <!-- Building's structure core and its view, compiled from where they live. Never copied, never changed here. -->
     <Compile Include="..\building\src\Structures\**\*.cs" />
     <Compile Include="..\building\src\Presentation\**\*.cs" />
+    <!-- diegetic-ui's in-world screen (the glass, look-and-click cursor, hot spots, redraw manager)
+         and the theme it builds on, compiled from where they live, as the slice does. -->
+    <Compile Include="..\diegetic-ui\src\Screens\**\*.cs" />
+    <Compile Include="..\diegetic-ui\src\Theme\**\*.cs" />
+    <Compile Include="..\diegetic-ui\src\Logic\FocusMachine.cs" />
+    <Compile Include="..\diegetic-ui\src\Logic\Items.cs" />
   </ItemGroup>
 </Project>
