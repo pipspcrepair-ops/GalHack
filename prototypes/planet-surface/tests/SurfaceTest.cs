@@ -113,7 +113,12 @@ public partial class SurfaceTest : Node
 
     static System.Numerics.Vector3 N(Vector3 v) => new(v.X, v.Y, v.Z);
 
-    /// <summary>Main-thread time the last frame spent in game code: process plus physics, without the wait for the next frame.</summary>
+    /// <summary>
+    /// Main-thread time spent in game code (process plus physics, without the wait for the next
+    /// frame) by the slowest frame of the last whole second: Godot updates these monitors once a
+    /// second with the maximum. A check reading them must start more than a second after anything
+    /// it doesn't mean to measure.
+    /// </summary>
     static double FrameWorkMs() =>
         (Performance.GetMonitor(Performance.Monitor.TimeProcess) + Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess)) * 1000.0;
 
@@ -554,13 +559,17 @@ public partial class SurfaceTest : Node
         Walker player = _main.Player;
         player.Teleport(new Vector3((float)x, w.GroundHeight(x, 14) + 0.2f, 14f));
         await Streamed();
-        await PhysicsFrames(30);
+        // Stand for over a second first: the frame-time monitors hold the slowest frame of the last
+        // second, and the arrival from across the planet is not what this check measures.
+        await PhysicsFrames(80);
         player.SetLook(0f, 0f); // facing north (-z)
         Engine.MaxFps = 60;
         int shifts = _main.FrameShifts;
         double lowest = double.MaxValue, worstFrame = 0, worstStream = 0, worstWork = 0, crossingWork = 0;
         float minSpeed = float.MaxValue;
+        string worstParts = "";
         _main.Streamer.ResetStats();
+        _main.WorstMainMs = 0;
         player.MoveOverride = new Vector2(0, -1);
         var watch = Stopwatch.StartNew();
         long last = Stopwatch.GetTimestamp();
@@ -578,7 +587,12 @@ public partial class SurfaceTest : Node
             if (ticks > 30)
             {
                 worstFrame = Math.Max(worstFrame, ms);
-                worstWork = Math.Max(worstWork, FrameWorkMs());
+                double work = FrameWorkMs();
+                if (work > worstWork)
+                {
+                    worstWork = work;
+                    worstParts = $"process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F1}, physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:F1}";
+                }
                 minSpeed = Math.Min(minSpeed, new Vector2(player.Velocity.X, player.Velocity.Z).Length());
             }
             if (_main.FrameShifts > shifts && crossingWork == 0) crossingWork = Math.Max(FrameWorkMs(), 1e-6);
@@ -590,7 +604,8 @@ public partial class SurfaceTest : Node
         bool crossed = _main.FrameShifts > shifts && end.Z > w.Height * 0.5f;
         Check(crossed && lowest > -0.3 && minSpeed > 3.5f && worstStream < 8.0 && worstWork < 8.0,
             $"walking north across the edge: crossed {crossed} (now {end.Z:F0} m S of {w.Height:F0}), lowest {lowest:F2} m relative to the ground, " +
-            $"slowest {minSpeed:F1} m/s once walking; main-thread work per frame worst {worstWork:F2} ms ({crossingWork:F2} ms on the frame of the crossing), " +
+            $"slowest {minSpeed:F1} m/s once walking; main-thread work per frame worst {worstWork:F2} ms ({worstParts}; Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}), " +
+            $"{crossingWork:F2} ms on the frame of the crossing, " +
             $"terrain streaming worst {worstStream:F2} ms (headless, 60 fps cap)");
     }
 
