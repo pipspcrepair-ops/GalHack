@@ -23,8 +23,18 @@ public sealed class ChunkStore
     public const int MaskWords = Volume / 64;
 
     /// <summary>The playable world, in chunks. Edits outside it are refused.</summary>
-    public static readonly CellBox WorldChunks = new(new Int3(-8, -3, -8), new Int3(8, 5, 8));
-    public static readonly CellBox WorldCells = new(WorldChunks.Min * Size, WorldChunks.Max * Size);
+    public static CellBox WorldChunks { get; private set; } = new(new Int3(-8, -3, -8), new Int3(8, 5, 8));
+    public static CellBox WorldCells { get; private set; } = new(WorldChunks.Min * Size, WorldChunks.Max * Size);
+
+    /// <summary>
+    /// Widens (or narrows) the playable world. A streamed planet is far bigger than this
+    /// prototype's box; it sets its bounds once at startup, before any store is used.
+    /// </summary>
+    public static void SetWorldBounds(CellBox chunks)
+    {
+        WorldChunks = chunks;
+        WorldCells = new CellBox(chunks.Min * Size, chunks.Max * Size);
+    }
 
     /// <summary>
     /// Densities are clamped to ±this. Removed cells are fully open (−Limit), so a dug face sits

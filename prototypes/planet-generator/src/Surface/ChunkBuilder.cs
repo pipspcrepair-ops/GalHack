@@ -207,7 +207,7 @@ static class ChunkBuilder
             int s = (j + 1) * g + i + 1;
             if (river[s] || up[j * n + i] < FloraMeshes.MinUp(rule.Kind)) continue;
             float h = Bilinear(height, g, lx / step + 1f, lz / step + 1f);
-            if (h < 0.4f || pal.Map.Model.CapDepth(x, z) > -20f) continue;
+            if (h < 0.4f) continue;
 
             float scale = Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
             float angle = turn * Mathf.Tau;
@@ -232,11 +232,12 @@ static class ChunkBuilder
     /// </summary>
     static void PlaceDeposits(SurfacePalette pal, ChunkData data, int g, float step, float[] height)
     {
-        double x0 = data.Cx * Size, z0 = data.Cz * Size, width = pal.Map.WidthMeters;
+        double x0 = data.Cx * Size, z0 = data.Cz * Size, width = pal.Map.WidthMeters, mapHeight = pal.Map.HeightMeters;
         var list = new List<float>();
         foreach (Deposit d in pal.Map.Deposits.InRect(x0, z0, x0 + Size, z0 + Size))
         {
-            float lx = (float)(Mathx.WrapDelta(d.X - x0 - Size / 2, width) + Size / 2), lz = (float)(d.Y - z0);
+            float lx = (float)(Mathx.WrapDelta(d.X - x0 - Size / 2, width) + Size / 2);
+            float lz = (float)(Mathx.WrapDelta(d.Y - z0 - Size / 2, mapHeight) + Size / 2);
             if (lx < 0f || lx >= Size || lz < 0f || lz >= Size) continue;
             float h = Bilinear(height, g, lx / step + 1f, lz / step + 1f);
             if (h < 0f) continue;

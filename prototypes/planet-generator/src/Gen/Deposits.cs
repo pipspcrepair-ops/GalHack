@@ -58,7 +58,7 @@ public sealed class DepositField
         }
     }
 
-    /// <summary>Usable ground: dry land, off the polar walls, out of river channels, gentle enough to stand on.</summary>
+    /// <summary>Usable ground: dry land, out of river channels, gentle enough to stand on.</summary>
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
@@ -98,34 +98,33 @@ public sealed class DepositField
         return best < double.MaxValue;
     }
 
-    /// <summary>All deposits whose cells overlap a rectangle in metres (x may run past the seam).</summary>
+    /// <summary>All deposits whose cells overlap a rectangle in metres (either axis may run past a seam).</summary>
     public IEnumerable<Deposit> InRect(double x0, double y0, double x1, double y1)
     {
         int i0 = (int)Math.Floor(x0 / _cw) - 1, i1 = (int)Math.Floor(x1 / _cw) + 1;
-        int j0 = Math.Max(0, (int)Math.Floor(y0 / _ch) - 1), j1 = Math.Min(_ny - 1, (int)Math.Floor(y1 / _ch) + 1);
+        int j0 = (int)Math.Floor(y0 / _ch) - 1, j1 = (int)Math.Floor(y1 / _ch) + 1;
         for (int j = j0; j <= j1; j++)
         for (int i = i0; i <= i1; i++)
-            foreach (Deposit d in _cells[j * _nx + Wrap(i)])
+            foreach (Deposit d in _cells[WrapJ(j) * _nx + Wrap(i)])
                 yield return d;
     }
 
     /// <summary>Distance in metres to the nearest deposit of a kind, or infinity if the planet has none.</summary>
     public double Nearest(DepositKind kind, double x, double y, double giveUp = 3000)
     {
-        int ci = (int)Math.Floor(Mathx.WrapX(x, _map.WidthMeters) / _cw), cj = Math.Clamp((int)Math.Floor(y / _ch), 0, _ny - 1);
+        int ci = (int)Math.Floor(Mathx.WrapX(x, _map.WidthMeters) / _cw), cj = (int)Math.Floor(Mathx.Wrap(y, _map.HeightMeters) / _ch);
         double best = double.PositiveInfinity;
         for (int ring = 0; ring * Math.Min(_cw, _ch) < Math.Min(best, giveUp) + Math.Max(_cw, _ch); ring++)
         {
             for (int j = cj - ring; j <= cj + ring; j++)
             {
-                if (j < 0 || j >= _ny) continue;
                 for (int i = ci - ring; i <= ci + ring; i++)
                 {
                     if (Math.Max(Math.Abs(i - ci), Math.Abs(j - cj)) != ring) continue;
-                    foreach (Deposit d in _cells[j * _nx + Wrap(i)])
+                    foreach (Deposit d in _cells[WrapJ(j) * _nx + Wrap(i)])
                     {
                         if (d.Kind != kind) continue;
-                        double dx = Mathx.WrapDelta(d.X - x, _map.WidthMeters), dy = d.Y - y;
+                        double dx = Mathx.WrapDelta(d.X - x, _map.WidthMeters), dy = Mathx.WrapDelta(d.Y - y, _map.HeightMeters);
                         best = Math.Min(best, Math.Sqrt(dx * dx + dy * dy));
                     }
                 }
@@ -143,4 +142,5 @@ public sealed class DepositField
     }
 
     int Wrap(int i) => (i % _nx + _nx) % _nx;
+    int WrapJ(int j) => (j % _ny + _ny) % _ny;
 }

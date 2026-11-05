@@ -27,22 +27,19 @@ public static class PlanetGenerator
 
         // Continents, mountains, volcanoes and craters, before sea level exists.
         var raw = new float[n];
-        var cap = new float[n];
         Parallel.For(0, h, j =>
         {
             double y = map.CellY(j);
             for (int i = 0; i < w; i++)
             {
                 int k = j * w + i;
-                double x = map.CellX(i);
-                raw[k] = model.Raw(x, y, cellSize, out map.Special[k]);
-                cap[k] = model.CapDepth(x, y);
+                raw[k] = model.Raw(map.CellX(i), y, cellSize, out map.Special[k]);
             }
         });
 
-        // Sea level: the quantile that leaves the target fraction of the playable band above water.
+        // Sea level: the quantile that leaves the target fraction of the planet above water.
         map.LandTarget = RollLandTarget(spec, def);
-        model.SeaOffset = Quantile(raw, cap, 1f - map.LandTarget);
+        model.SeaOffset = Quantile(raw, 1f - map.LandTarget);
 
         var rain = new float[n];
         Parallel.For(0, h, j =>
@@ -54,8 +51,7 @@ public static class PlanetGenerator
                 double x = map.CellX(i);
                 float e = model.Shape(raw[k], x, y, cellSize);
                 map.Elevation[k] = e;
-                if (cap[k] > 0f) map.Flags[k] = CellFlags.Cap;
-                else if (e < 0f) map.Flags[k] = CellFlags.Water;
+                if (e < 0f) map.Flags[k] = CellFlags.Water;
                 else rain[k] = model.Rain(x, y) * def.Rain;
             }
         });
@@ -65,14 +61,10 @@ public static class PlanetGenerator
         BiomeRules.Run(map);
         map.Deposits = new DepositField(map);
 
-        int land = 0, playable = 0;
+        int land = 0;
         for (int k = 0; k < n; k++)
-        {
-            if (map.Has(k, CellFlags.Cap)) continue;
-            playable++;
             if (!map.Has(k, CellFlags.Water)) land++;
-        }
-        map.LandFraction = playable > 0 ? land / (float)playable : 0f;
+        map.LandFraction = land / (float)n;
         map.GenerationMs = watch.Elapsed.TotalMilliseconds;
         return map;
     }
@@ -85,14 +77,11 @@ public static class PlanetGenerator
         return Mathx.Lerp(def.LandMin, def.LandMax, t);
     }
 
-    static float Quantile(float[] values, float[] cap, float q)
+    static float Quantile(float[] values, float q)
     {
-        var playable = new List<float>(values.Length);
-        for (int k = 0; k < values.Length; k++)
-            if (cap[k] <= 0f) playable.Add(values[k]);
-        if (playable.Count == 0) return 0f;
-        playable.Sort();
-        int index = Math.Clamp((int)(q * playable.Count), 0, playable.Count - 1);
-        return playable[index];
+        var sorted = (float[])values.Clone();
+        Array.Sort(sorted);
+        int index = Math.Clamp((int)(q * sorted.Length), 0, sorted.Length - 1);
+        return sorted[index];
     }
 }

@@ -20,8 +20,7 @@ static class BiomeRules
             byte flags = map.Flags[k];
             float e = map.Elevation[k], t = map.Temperature[k];
             Biome biome;
-            if ((flags & CellFlags.Cap) != 0) biome = def.Cap == CapStyle.IceCliff ? Biome.IceCap : Biome.StormCap;
-            else if ((flags & CellFlags.Water) != 0) biome = Sea(def, e, t, map.Special[k]);
+            if ((flags & CellFlags.Water) != 0) biome = Sea(def, e, t, map.Special[k]);
             else if ((flags & (CellFlags.River | CellFlags.Riparian)) != 0 && map.Slope[k] < 0.6f && t > 0.08f)
                 biome = def.RiverbankBiome;
             else

@@ -18,8 +18,9 @@ namespace Planets.Surface;
 /// drawn straight from the 32 m world map reaches the horizon; it cuts a hole wherever detailed
 /// chunks are already loaded, so the two never fight.
 ///
-/// Chunk coordinates wrap east-west. Every frame each chunk is placed at whichever copy of its
-/// x lies nearest the camera, which keeps the seam invisible and the camera within one map width.
+/// Chunk coordinates wrap on both axes (the planet is a torus). Every frame each chunk is placed
+/// at whichever copy of its x and z lies nearest the camera, which keeps both seams invisible and
+/// the camera within one map width and height.
 /// </summary>
 public partial class ChunkStreamer : Node3D
 {
@@ -28,7 +29,7 @@ public partial class ChunkStreamer : Node3D
     const float FarSpacing = 64f, FarReach = 6400f, FarRebuildDistance = 1500f;
 
     readonly SurfacePalette _palette;
-    readonly double _width;
+    readonly double _width, _height;
     readonly int _nx, _nz;
     readonly ShaderMaterial _terrain, _far;
     readonly Material _water, _flora;
@@ -55,6 +56,7 @@ public partial class ChunkStreamer : Node3D
     {
         _palette = palette;
         _width = palette.Map.WidthMeters;
+        _height = palette.Map.HeightMeters;
         _nx = (int)Math.Round(_width / ChunkBuilder.Size);
         _nz = (int)Math.Round(palette.Map.HeightMeters / ChunkBuilder.Size);
         _water = water;
@@ -79,7 +81,7 @@ public partial class ChunkStreamer : Node3D
         var material = new ShaderMaterial { Shader = shader };
         Rgb glow = _palette.GlowColor;
         material.SetShaderParameter("glow_color", new Color(glow.R, glow.G, glow.B));
-        material.SetShaderParameter("map_width", (float)_width);
+        material.SetShaderParameter("map_size", new Vector2((float)_width, (float)_height));
         material.SetShaderParameter("veins", _palette.Map.Def.Archetype == Archetype.Lava ? 1f : 0f);
         return material;
     }
@@ -102,11 +104,9 @@ public partial class ChunkStreamer : Node3D
         for (int dz = -Radius; dz <= Radius; dz++)
         for (int dx = -Radius; dx <= Radius; dx++)
         {
-            int cz = ccz + dz;
-            if (cz < 0 || cz >= _nz) continue;
             int dist = Math.Max(Math.Abs(dx), Math.Abs(dz));
             int lod = dist <= Lod0Radius ? 0 : dist <= Lod1Radius ? 1 : 2;
-            _wanted.Add((Wrap(ccx + dx), cz, lod, dist));
+            _wanted.Add((Wrap(ccx + dx), WrapZ(ccz + dz), lod, dist));
         }
         _wanted.Sort((a, b) => a.dist.CompareTo(b.dist));
 
@@ -129,7 +129,8 @@ public partial class ChunkStreamer : Node3D
         Upload(ccx, ccz);
         Unload(ccx, ccz);
         UpdateFar(camX, camZ);
-        foreach (Chunk chunk in _chunks.Values) chunk.Node.Position = new Vector3((float)DisplayX(chunk.Cx * ChunkBuilder.Size), 0, chunk.Cz * ChunkBuilder.Size);
+        foreach (Chunk chunk in _chunks.Values)
+            chunk.Node.Position = new Vector3((float)DisplayX(chunk.Cx * ChunkBuilder.Size), 0, (float)DisplayZ(chunk.Cz * ChunkBuilder.Size));
         UpdateHole(ccx, ccz);
         Settled = settled && _building.Count == 0 && _built.IsEmpty && _farJob == null && _farMesh.Mesh != null;
     }
@@ -137,7 +138,11 @@ public partial class ChunkStreamer : Node3D
     /// <summary>The copy of a map x that lies nearest the camera.</summary>
     public double DisplayX(double mapX) => mapX + _width * Math.Round((_camX - mapX - ChunkBuilder.Size / 2) / _width);
 
+    /// <summary>The copy of a map z that lies nearest the camera.</summary>
+    public double DisplayZ(double mapZ) => mapZ + _height * Math.Round((_camZ - mapZ - ChunkBuilder.Size / 2) / _height);
+
     int Wrap(int cx) => (cx % _nx + _nx) % _nx;
+    int WrapZ(int cz) => (cz % _nz + _nz) % _nz;
 
     void Upload(int ccx, int ccz)
     {
@@ -146,7 +151,7 @@ public partial class ChunkStreamer : Node3D
         {
             _building.Remove((data.Cx, data.Cz, data.Lod));
             if (data.Lod < 0) continue;
-            int dist = Math.Max(Math.Abs(WrapDelta(data.Cx - ccx)), Math.Abs(data.Cz - ccz));
+            int dist = Math.Max(Math.Abs(WrapDelta(data.Cx - ccx)), Math.Abs(WrapDeltaZ(data.Cz - ccz)));
             if (dist > Radius + 1) continue; // flew away while it was building
             LastBuildMs = data.BuildMs;
             if (_chunks.TryGetValue((data.Cx, data.Cz), out Chunk old)) old.Node.QueueFree();
@@ -160,12 +165,18 @@ public partial class ChunkStreamer : Node3D
         return d > _nx / 2 ? d - _nx : d;
     }
 
+    int WrapDeltaZ(int d)
+    {
+        d = WrapZ(d);
+        return d > _nz / 2 ? d - _nz : d;
+    }
+
     void Unload(int ccx, int ccz)
     {
         List<(int, int)> gone = null;
         foreach (var (key, chunk) in _chunks)
         {
-            int dist = Math.Max(Math.Abs(WrapDelta(chunk.Cx - ccx)), Math.Abs(chunk.Cz - ccz));
+            int dist = Math.Max(Math.Abs(WrapDelta(chunk.Cx - ccx)), Math.Abs(WrapDeltaZ(chunk.Cz - ccz)));
             if (dist <= Radius + 1) continue; // one ring of slack, so hovering on a border never thrashes
             chunk.Node.QueueFree();
             (gone ??= new List<(int, int)>()).Add(key);
@@ -250,13 +261,13 @@ public partial class ChunkStreamer : Node3D
             _farX = fx;
             _farZ = fz;
         }
-        if (_farJob == null && Math.Abs(Mathx.WrapDelta(camX - _farX, _width)) + Math.Abs(camZ - _farZ) > FarRebuildDistance)
+        if (_farJob == null && Math.Abs(Mathx.WrapDelta(camX - _farX, _width)) + Math.Abs(Mathx.WrapDelta(camZ - _farZ, _height)) > FarRebuildDistance)
         {
             double fx = Math.Round(camX / FarSpacing) * FarSpacing, fz = Math.Round(camZ / FarSpacing) * FarSpacing;
             SurfacePalette palette = _palette;
             _farJob = Task.Run(() => (BuildFar(palette, fx, fz), fx, fz));
         }
-        if (_farMesh.Mesh != null) _farMesh.Position = new Vector3((float)DisplayX(_farX), 0, (float)_farZ);
+        if (_farMesh.Mesh != null) _farMesh.Position = new Vector3((float)DisplayX(_farX), 0, (float)DisplayZ(_farZ));
     }
 
     static ChunkData BuildFar(SurfacePalette pal, double cx, double cz)
@@ -272,7 +283,7 @@ public partial class ChunkStreamer : Node3D
         for (int i = 0; i < n; i++)
         {
             double x = cx - FarReach + i * FarSpacing, z = cz - FarReach + j * FarSpacing;
-            height[j * n + i] = map.Sample(map.Elevation, Mathx.WrapX(x, map.WidthMeters), z);
+            height[j * n + i] = map.Sample(map.Elevation, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters));
         }
         for (int j = 0; j < n; j++)
         for (int i = 0; i < n; i++)
@@ -286,8 +297,8 @@ public partial class ChunkStreamer : Node3D
             // Sit a little low: where both exist, the detailed chunks win.
             verts[k] = new Vector3((float)(x - cx), h - 3f, (float)(z - cz));
             normals[k] = normal;
-            uvs[k] = new Vector2((float)Mathx.WrapX(x, map.WidthMeters), (float)z);
-            Rgb c = pal.ColorAt(Mathx.WrapX(x, map.WidthMeters), Math.Clamp(z, 0, map.HeightMeters), out float glow);
+            uvs[k] = new Vector2((float)Mathx.WrapX(x, map.WidthMeters), (float)Mathx.Wrap(z, map.HeightMeters));
+            Rgb c = pal.ColorAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters), out float glow);
             c = Rgb.Lerp(c, pal.Cliff, Mathx.Smooth(0.85f, 0.65f, normal.Y) * 0.8f);
             if (h < 0f) c = Rgb.Lerp(c, pal.Seabed, Mathx.Smooth(0f, -5f, h));
             colors[k] = new Color(c.R, c.G, c.B, glow);
@@ -315,9 +326,7 @@ public partial class ChunkStreamer : Node3D
             for (int dx = -r; dx <= r && complete; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
-                int cz = ccz + dz;
-                if (cz < 0 || cz >= _nz) continue;
-                complete = _chunks.ContainsKey((Wrap(ccx + dx), cz));
+                complete = _chunks.ContainsKey((Wrap(ccx + dx), WrapZ(ccz + dz)));
             }
             if (!complete) break;
             full = r;
@@ -326,7 +335,7 @@ public partial class ChunkStreamer : Node3D
         if (full >= 0)
         {
             float size = ChunkBuilder.Size;
-            float x0 = (float)DisplayX(ccx * size) - full * size, z0 = (ccz - full) * size;
+            float x0 = (float)DisplayX(ccx * size) - full * size, z0 = (float)DisplayZ(ccz * size) - full * size;
             float span = (2 * full + 1) * size;
             hole = new Vector4(x0 + 1f, z0 + 1f, x0 + span - 1f, z0 + span - 1f);
         }

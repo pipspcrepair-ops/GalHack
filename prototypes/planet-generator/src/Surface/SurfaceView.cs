@@ -7,8 +7,9 @@ namespace Planets.Surface;
 
 /// <summary>
 /// Standing on the planet: streamed terrain with biome colours and scatter, sea and rivers, a sky
-/// and fog per archetype, the polar walls at the edges, and a free camera. World space is map space
-/// (x east, z south, metres), with the camera kept within one map width so floats stay precise.
+/// and fog per archetype, and a free camera. World space is map space (x east, z south, metres),
+/// with the camera kept within one map width and height so floats stay precise: the planet is a
+/// torus, so flying off any edge brings you in at the opposite one.
 /// </summary>
 public partial class SurfaceView : Node3D
 {
@@ -42,7 +43,6 @@ public partial class SurfaceView : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_sea);
-        AddChild(new CapWalls { Name = "Caps", Map = Map, Look = Look });
 
         Camera = new FreeCamera { Name = "Camera", Fov = 72f, Near = 0.2f, Far = 9000f };
         AddChild(Camera);
@@ -51,7 +51,7 @@ public partial class SurfaceView : Node3D
         double back = 70;
         double x = Landing.X - Math.Sin(Landing.Heading) * back, z = Landing.Y + Math.Cos(Landing.Heading) * back;
         float ground = _palette.Sampler.HeightAt(x, z);
-        Camera.Position = new Vector3((float)Mathx.WrapX(x, _width), Math.Max(ground, 0f) + 16f, (float)z);
+        Camera.Position = new Vector3((float)Mathx.WrapX(x, _width), Math.Max(ground, 0f) + 16f, (float)Mathx.Wrap(z, Map.HeightMeters));
         Camera.SetLook(Landing.Heading, -0.16f);
 
         BuildHud();
@@ -68,14 +68,15 @@ public partial class SurfaceView : Node3D
         UpdateHud();
     }
 
-    /// <summary>Wrap east-west, stop at the polar walls, never dip underground.</summary>
+    /// <summary>Wrap on both axes, never dip underground.</summary>
     void KeepInBounds()
     {
         Vector3 p = Camera.Position;
         if (p.X < 0f) p.X += (float)_width;
         else if (p.X >= _width) p.X -= (float)_width;
-        float band = (float)Map.Model.CapBand;
-        p.Z = Mathf.Clamp(p.Z, band * 0.3f, (float)Map.HeightMeters - band * 0.3f);
+        float height = (float)Map.HeightMeters;
+        if (p.Z < 0f) p.Z += height;
+        else if (p.Z >= height) p.Z -= height;
         float ground = Math.Max(_palette.Sampler.HeightAt(p.X, p.Z, 2), 0f);
         p.Y = Mathf.Clamp(p.Y, ground + 1.5f, 2500f);
         Camera.Position = p;
@@ -85,7 +86,7 @@ public partial class SurfaceView : Node3D
     public void PlaceCamera(double x, double z, float aboveGround, float heading, float pitch)
     {
         float ground = Math.Max(_palette.Sampler.HeightAt(x, z), 0f);
-        Camera.Position = new Vector3((float)Mathx.WrapX(x, _width), ground + aboveGround, (float)z);
+        Camera.Position = new Vector3((float)Mathx.WrapX(x, _width), ground + aboveGround, (float)Mathx.Wrap(z, Map.HeightMeters));
         Camera.SetLook(heading, pitch);
     }
 

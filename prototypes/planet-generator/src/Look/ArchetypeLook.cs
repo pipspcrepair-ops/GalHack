@@ -14,7 +14,6 @@ public sealed record ArchetypeLook
     public Rgb ShallowSea { get; init; }
     public Rgb FrozenSea { get; init; } = Rgb.Hex("b8d8ee");
     public float LiquidGlow { get; init; }        // lava seas light themselves
-    public Rgb CapColor { get; init; } = Rgb.Hex("3a3f55");
 
     // Sky from the surface
     public Rgb SkyTop { get; init; }
@@ -90,7 +89,7 @@ public sealed record ArchetypeLook
         {
             DeepSea = Rgb.Hex("10507e"), ShallowSea = Rgb.Hex("2cc0b8"),
             SkyTop = Rgb.Hex("1c4aa6"), SkyHorizon = Rgb.Hex("f8d09a"), SunColor = Rgb.Hex("fff8e6"),
-            SunEnergy = 1.25f, SunElevation = 44f, FogDensity = 0.00028f, CapColor = Rgb.Hex("9a6a48"),
+            SunEnergy = 1.25f, SunElevation = 44f, FogDensity = 0.00028f,
             Atmosphere = Rgb.Hex("f0b070"), CloudColor = Rgb.Hex("f8e0c0"), CloudCover = 0.12f,
             Nebula = Rgb.Hex("5a2a1a"), Moon = Rgb.Hex("8cc4dc"), MoonSize = 0.11f,
         },
@@ -98,14 +97,14 @@ public sealed record ArchetypeLook
         {
             DeepSea = Rgb.Hex("10507e"), ShallowSea = Rgb.Hex("2cc0b8"),
             SkyTop = Rgb.Hex("244c98"), SkyHorizon = Rgb.Hex("f4ac72"), SunColor = Rgb.Hex("fff0d0"),
-            SunEnergy = 1.3f, SunElevation = 30f, FogDensity = 0.00026f, CapColor = Rgb.Hex("8a4a38"),
+            SunEnergy = 1.3f, SunElevation = 30f, FogDensity = 0.00026f,
             Atmosphere = Rgb.Hex("ff9a5a"), CloudColor = Rgb.Hex("f8d8b8"), CloudCover = 0.18f,
             Nebula = Rgb.Hex("4a1a2a"), Moon = Rgb.Hex("f0e0d0"), MoonSize = 0.035f,
         },
         (Archetype.Ice, 0) => new()
         {
             DeepSea = Rgb.Hex("0c2250"), ShallowSea = Rgb.Hex("2a62a2"), FrozenSea = Rgb.Hex("a6cbea"),
-            CapColor = Rgb.Hex("f0f8ff"),
+           
             SkyTop = Rgb.Hex("2a2c72"), SkyHorizon = Rgb.Hex("f6c0d4"), SunColor = Rgb.Hex("ffd8bc"),
             SunEnergy = 1.05f, SunElevation = 14f, FogDensity = 0.0003f, Stars = 0.45f,
             Atmosphere = Rgb.Hex("b8b0ff"), CloudCover = 0.4f, Nebula = Rgb.Hex("2a1a5a"),
@@ -114,7 +113,7 @@ public sealed record ArchetypeLook
         (Archetype.Ice, _) => new()
         {
             DeepSea = Rgb.Hex("0c2c5a"), ShallowSea = Rgb.Hex("2a7aaa"), FrozenSea = Rgb.Hex("aed2ee"),
-            CapColor = Rgb.Hex("f0f8ff"),
+           
             SkyTop = Rgb.Hex("34488e"), SkyHorizon = Rgb.Hex("e6dcf2"), SunColor = Rgb.Hex("fff0e0"),
             SunEnergy = 1.15f, SunElevation = 22f, FogDensity = 0.0005f, Stars = 0.2f,
             Atmosphere = Rgb.Hex("a0d0ff"), CloudCover = 0.55f, Nebula = Rgb.Hex("1a2a5a"),
@@ -124,7 +123,7 @@ public sealed record ArchetypeLook
         {
             // Lava is hottest far from shore and crusts over darkly at the edges.
             DeepSea = Rgb.Hex("ff6414"), ShallowSea = Rgb.Hex("8a1a0a"), LiquidGlow = 1.6f,
-            CapColor = Rgb.Hex("2a2224"),
+           
             SkyTop = Rgb.Hex("2a0a12"), SkyHorizon = Rgb.Hex("d4502a"), SunColor = Rgb.Hex("ffa070"),
             SunEnergy = 0.9f, SunElevation = 26f, FogDensity = 0.0005f, Stars = 0.3f, Ambient = 0.25f,
             Atmosphere = Rgb.Hex("ff5a2a"), CloudColor = Rgb.Hex("4a3a3a"), CloudCover = 0.45f,
@@ -133,7 +132,7 @@ public sealed record ArchetypeLook
         (Archetype.Lava, _) => new()
         {
             DeepSea = Rgb.Hex("ff7a1a"), ShallowSea = Rgb.Hex("a0200a"), LiquidGlow = 1.9f,
-            CapColor = Rgb.Hex("2a2224"),
+           
             SkyTop = Rgb.Hex("3a0a08"), SkyHorizon = Rgb.Hex("ff7a2a"), SunColor = Rgb.Hex("ffb080"),
             SunEnergy = 0.85f, SunElevation = 20f, FogDensity = 0.0006f, Stars = 0.2f, Ambient = 0.25f,
             Atmosphere = Rgb.Hex("ff7a1a"), CloudColor = Rgb.Hex("3a2a2a"), CloudCover = 0.35f,
@@ -141,7 +140,7 @@ public sealed record ArchetypeLook
         },
         (Archetype.Alien, 0) => new()
         {
-            DeepSea = Rgb.Hex("0a4a5a"), ShallowSea = Rgb.Hex("2ad8c4"), CapColor = Rgb.Hex("4a2a6a"),
+            DeepSea = Rgb.Hex("0a4a5a"), ShallowSea = Rgb.Hex("2ad8c4"),
             SkyTop = Rgb.Hex("140a3c"), SkyHorizon = Rgb.Hex("46e2c4"), SunColor = Rgb.Hex("f0d8ff"),
             SunEnergy = 1.2f, SunElevation = 32f, FogDensity = 0.0003f, Stars = 0.7f, Ring = true, Ambient = 0.45f,
             RingColor = Rgb.Hex("ffb0e0"),
@@ -150,7 +149,7 @@ public sealed record ArchetypeLook
         },
         _ => new()
         {
-            DeepSea = Rgb.Hex("2a1050"), ShallowSea = Rgb.Hex("7a3aaa"), CapColor = Rgb.Hex("3a2a4a"),
+            DeepSea = Rgb.Hex("2a1050"), ShallowSea = Rgb.Hex("7a3aaa"),
             SkyTop = Rgb.Hex("3a2a72"), SkyHorizon = Rgb.Hex("d2ea6a"), SunColor = Rgb.Hex("fffad0"),
             SunEnergy = 1.2f, SunElevation = 34f, FogDensity = 0.0006f, Stars = 0.25f,
             Atmosphere = Rgb.Hex("c0ff60"), CloudColor = Rgb.Hex("f0e0a0"), CloudCover = 0.5f,

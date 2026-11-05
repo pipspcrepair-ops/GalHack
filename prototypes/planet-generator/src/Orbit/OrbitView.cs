@@ -8,8 +8,9 @@ namespace Planets.Orbit;
 
 /// <summary>
 /// The planet from orbit: a slowly turning globe against deep space. Its surface is the
-/// generator's own colour map (the 2:1 map is exactly an equirectangular projection, with the
-/// polar caps at the poles), so every coastline seen from here is one you can land on.
+/// generator's own colour map, wrapped as an equirectangular projection, so every coastline
+/// seen from here is one you can land on. The map itself is a torus (it wraps north-south too);
+/// on the globe its top and bottom rows each pinch to a pole, which shows no seam.
 /// </summary>
 public partial class OrbitView : Node3D
 {

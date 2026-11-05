@@ -6,6 +6,9 @@ namespace Planets.Gen;
 /// <summary>
 /// Temperature from latitude and altitude; humidity from distance to water. Both get a little
 /// weather noise so biome borders wander instead of following contour lines and latitude bands.
+///
+/// The equator is the middle row and both map edges are the pole: the map wraps north-south, so
+/// the polar band runs continuously across the seam and the cold never stops at a wall.
 /// </summary>
 static class Climate
 {
@@ -27,8 +30,8 @@ static class Climate
                 int k = j * w + i;
                 float e = map.Elevation[k];
                 float east = map.Elevation[map.Index(i + 1, j)], west = map.Elevation[map.Index(i - 1, j)];
-                float south = map.Elevation[map.Index(i, Math.Min(j + 1, h - 1))];
-                float north = map.Elevation[map.Index(i, Math.Max(j - 1, 0))];
+                float south = map.Elevation[map.Index(i, j + 1)];
+                float north = map.Elevation[map.Index(i, j - 1)];
                 float gx = (east - west) / (2f * map.CellSize), gy = (south - north) / (2f * map.CellSize);
                 map.Slope[k] = MathF.Sqrt(gx * gx + gy * gy);
 
@@ -44,7 +47,7 @@ static class Climate
 
     /// <summary>
     /// Approximate Euclidean distance (metres) from every cell to the nearest sea or river cell:
-    /// a 3-4 chamfer transform, run twice so distances carry across the east-west seam.
+    /// a chamfer transform, run three times so distances carry across both seams.
     /// </summary>
     static float[] DistanceToWater(WorldMap map)
     {
@@ -54,19 +57,16 @@ static class Climate
             d[k] = map.Has(k, CellFlags.Water) || map.Has(k, CellFlags.River) ? 0f : 1e9f;
 
         const float a = 1f, b = 1.4142f;
-        for (int round = 0; round < 2; round++)
+        for (int round = 0; round < 3; round++)
         {
             for (int j = 0; j < h; j++)
             for (int i = 0; i < w; i++)
             {
                 int k = j * w + i;
                 float v = Math.Min(d[k], d[map.Index(i - 1, j)] + a);
-                if (j > 0)
-                {
-                    v = Math.Min(v, d[map.Index(i, j - 1)] + a);
-                    v = Math.Min(v, d[map.Index(i - 1, j - 1)] + b);
-                    v = Math.Min(v, d[map.Index(i + 1, j - 1)] + b);
-                }
+                v = Math.Min(v, d[map.Index(i, j - 1)] + a);
+                v = Math.Min(v, d[map.Index(i - 1, j - 1)] + b);
+                v = Math.Min(v, d[map.Index(i + 1, j - 1)] + b);
                 d[k] = v;
             }
             for (int j = h - 1; j >= 0; j--)
@@ -74,12 +74,9 @@ static class Climate
             {
                 int k = j * w + i;
                 float v = Math.Min(d[k], d[map.Index(i + 1, j)] + a);
-                if (j < h - 1)
-                {
-                    v = Math.Min(v, d[map.Index(i, j + 1)] + a);
-                    v = Math.Min(v, d[map.Index(i + 1, j + 1)] + b);
-                    v = Math.Min(v, d[map.Index(i - 1, j + 1)] + b);
-                }
+                v = Math.Min(v, d[map.Index(i, j + 1)] + a);
+                v = Math.Min(v, d[map.Index(i + 1, j + 1)] + b);
+                v = Math.Min(v, d[map.Index(i - 1, j + 1)] + b);
                 d[k] = v;
             }
         }

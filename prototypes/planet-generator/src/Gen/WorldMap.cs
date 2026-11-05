@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace Planets.Gen;
 
 /// <summary>
-/// One river as a smoothed polyline from source to mouth, in metres. X is unwrapped (it can run
-/// past the map edge) so the line stays continuous across the east-west seam.
+/// One river as a smoothed polyline from source to mouth, in metres. X and Y are unwrapped (they
+/// can run past a map edge) so the line stays continuous across both seams.
 /// </summary>
 public sealed class River
 {
@@ -15,7 +15,8 @@ public sealed class River
 
 /// <summary>
 /// The coarse world map: one sample per cell (32 m by default) of everything the generator knows.
-/// Row 0 is the north edge; x wraps east-west, y does not (the poles are capped).
+/// Row 0 is the north edge. The map is a torus: x wraps east-west and y wraps north-south, so
+/// walking off the north edge brings you in at the south edge at the same x.
 /// </summary>
 public sealed class WorldMap
 {
@@ -68,7 +69,10 @@ public sealed class WorldMap
     public double HeightMeters => Height * (double)CellSize;
 
     public int WrapI(int i) => (i % Width + Width) % Width;
-    public int Index(int i, int j) => j * Width + WrapI(i);
+    public int WrapJ(int j) => (j % Height + Height) % Height;
+
+    /// <summary>The cell at column i, row j, both wrapped onto the torus.</summary>
+    public int Index(int i, int j) => WrapJ(j) * Width + WrapI(i);
     public bool Has(int index, byte flag) => (Flags[index] & flag) != 0;
 
     /// <summary>Centre of a cell in metres.</summary>
@@ -76,15 +80,15 @@ public sealed class WorldMap
     public double CellY(int j) => (j + 0.5) * CellSize;
 
     /// <summary>
-    /// Bilinear sample of a per-cell field at a point in metres, wrapping east-west and clamping
-    /// at the poles. Used by the far terrain ring and by everything that blends between cells.
+    /// Bilinear sample of a per-cell field at a point in metres, wrapping on both axes. Used by
+    /// the far terrain ring and by everything that blends between cells.
     /// </summary>
     public float Sample(float[] field, double x, double y)
     {
-        double gx = x / CellSize - 0.5, gy = Math.Clamp(y / CellSize - 0.5, 0, Height - 1.001);
+        double gx = x / CellSize - 0.5, gy = y / CellSize - 0.5;
         int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
         float tx = (float)(gx - i0), ty = (float)(gy - j0);
-        int j1 = Math.Min(j0 + 1, Height - 1);
+        int j1 = j0 + 1;
         float a = field[Index(i0, j0)], b = field[Index(i0 + 1, j0)];
         float c = field[Index(i0, j1)], d = field[Index(i0 + 1, j1)];
         return Mathx.Lerp(Mathx.Lerp(a, b, tx), Mathx.Lerp(c, d, tx), ty);
@@ -94,7 +98,7 @@ public sealed class WorldMap
     public int CellAt(double x, double y)
     {
         int i = (int)Math.Floor(x / CellSize);
-        int j = Math.Clamp((int)Math.Floor(y / CellSize), 0, Height - 1);
+        int j = (int)Math.Floor(y / CellSize);
         return Index(i, j);
     }
 

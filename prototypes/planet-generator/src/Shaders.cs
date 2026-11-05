@@ -9,8 +9,6 @@ namespace Planets;
 /// </summary>
 static class Shaders
 {
-    /// <summary>Integer hashing and value noise that repeats every `period` cells in x, so
-    /// patterns tied to map coordinates stay continuous across the planet's east-west seam.</summary>
     /// <summary>Vertex colours and instance tints arrive as sRGB (the palettes are hex); lighting needs linear.</summary>
     const string Srgb = """
         vec3 srgb_to_linear(vec3 c) {
@@ -18,18 +16,21 @@ static class Shaders
         }
         """;
 
+    /// <summary>Integer hashing and value noise that repeats every `period` cells on both axes, so
+    /// patterns tied to map coordinates stay continuous across both of the planet's seams.</summary>
     const string Noise2D = """
         float hash2(vec2 p) {
             uvec2 q = uvec2(ivec2(floor(p))) * uvec2(1597334673u, 3812015801u);
             return float((q.x ^ q.y) * 1597334673u) * 2.3283064e-10;
         }
-        float vnoise(vec2 p, float period) {
+        float vnoise(vec2 p, vec2 period) {
             vec2 i = floor(p);
             vec2 f = fract(p);
             vec2 u = f * f * (3.0 - 2.0 * f);
-            float x0 = mod(i.x, period), x1 = mod(i.x + 1.0, period);
-            float a = hash2(vec2(x0, i.y)), b = hash2(vec2(x1, i.y));
-            float c = hash2(vec2(x0, i.y + 1.0)), d = hash2(vec2(x1, i.y + 1.0));
+            float x0 = mod(i.x, period.x), x1 = mod(i.x + 1.0, period.x);
+            float y0 = mod(i.y, period.y), y1 = mod(i.y + 1.0, period.y);
+            float a = hash2(vec2(x0, y0)), b = hash2(vec2(x1, y0));
+            float c = hash2(vec2(x0, y1)), d = hash2(vec2(x1, y1));
             return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
         }
         """;
@@ -69,7 +70,7 @@ static class Shaders
         uniform vec3 glow_color : source_color = vec3(1.0, 0.3, 0.05);
         uniform float glow_strength = 4.0;
         uniform float veins = 0.0;  // 1: glow runs in cracks (lava fields); 0: a soft even glow (moss, springs)
-        uniform float map_width = 16000.0;
+        uniform vec2 map_size = vec2(16000.0, 8000.0);
         uniform vec4 hole = vec4(0.0);
         varying vec3 world_pos;
         {{Srgb}}
@@ -80,14 +81,14 @@ static class Shaders
         void fragment() {
             {{(far ? "if (world_pos.x > hole.x && world_pos.x < hole.z && world_pos.z > hole.y && world_pos.z < hole.w) discard;" : "")}}
             vec2 m = UV; // map coordinates in metres, continuous across chunk borders
-            float mottle = vnoise(m * 0.045, map_width * 0.045) * 0.6 + vnoise(m * 0.18, map_width * 0.18) * 0.4;
+            float mottle = vnoise(m * 0.045, map_size * 0.045) * 0.6 + vnoise(m * 0.18, map_size * 0.18) * 0.4;
             vec3 c = srgb_to_linear(COLOR.rgb) * (0.88 + 0.24 * mottle);
             ALBEDO = c;
             ROUGHNESS = 0.92;
             SPECULAR = 0.25;
             if (COLOR.a > 0.01) {
                 if (veins > 0.5) {
-                    float v = vnoise(m * 0.05, map_width * 0.05) + 0.5 * vnoise(m * 0.13, map_width * 0.13);
+                    float v = vnoise(m * 0.05, map_size * 0.05) + 0.5 * vnoise(m * 0.13, map_size * 0.13);
                     float vein = 1.0 - smoothstep(0.0, 0.035, abs(v - 0.78));
                     EMISSION = glow_color * glow_strength * COLOR.a * (vein + 0.08);
                 } else {
@@ -146,7 +147,7 @@ static class Shaders
             float t = TIME;
             if (lava > 0.5) {
                 // Dark crust plates with crisp, bright seams and open pools of melt between them.
-                float n = vnoise(p * 0.03 + vec2(t * 0.015, 0.0), 1e6) * 0.7 + vnoise(p * 0.09 - vec2(0.0, t * 0.02), 1e6) * 0.3;
+                float n = vnoise(p * 0.03 + vec2(t * 0.015, 0.0), vec2(1e6)) * 0.7 + vnoise(p * 0.09 - vec2(0.0, t * 0.02), vec2(1e6)) * 0.3;
                 float seam = 1.0 - smoothstep(0.0, 0.022, abs(n - 0.48));
                 float pool = smoothstep(0.6, 0.625, n);
                 float hot = max(seam, pool);
@@ -167,7 +168,7 @@ static class Shaders
                 float fres = pow(1.0 - clamp(dot(normalize(CAMERA_POSITION_WORLD - world_pos), n), 0.0, 1.0), 4.0);
                 c = mix(c, sky, fres * 0.3); // keep the water's own colour: a pale sky sheen reads as grey
                 float frozen = smoothstep(0.35, 0.65, sea.g);
-                float crack = 1.0 - smoothstep(0.0, 0.03, abs(vnoise(p * 0.02, 1e6) - 0.5));
+                float crack = 1.0 - smoothstep(0.0, 0.03, abs(vnoise(p * 0.02, vec2(1e6)) - 0.5));
                 c = mix(c, ice * (1.0 - 0.25 * crack), frozen);
                 n = normalize(mix(n, vec3(0.0, 1.0, 0.0), frozen));
                 NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);

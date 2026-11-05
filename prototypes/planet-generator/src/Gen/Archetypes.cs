@@ -5,9 +5,6 @@ namespace Planets.Gen;
 /// <summary>What fills the oceans and rivers.</summary>
 public enum Liquid { Water, Lava, Exotic }
 
-/// <summary>What stops you at the poles.</summary>
-public enum CapStyle { StormWall, IceCliff }
-
 /// <summary>
 /// Tuning for one archetype variant. Heights are metres, wavelengths metres unless noted,
 /// climate values 0-1. Each archetype differs from the others in terrain shape, palette, sky,
@@ -29,6 +26,8 @@ public sealed record ArchetypeDef
     public float MountainHeight { get; init; } = 500f;
     public float MountainWavelength { get; init; } = 3000f;
     public float RidgeSharpness { get; init; } = 2f;
+    public int MountainOctaves { get; init; } = 7;        // fewer octaves: massive faces instead of noisy bumps
+    public float RangeCover { get; init; } = 0.5f;        // share of inland ground in mountain ranges; the rest is lowland
     public float HillHeight { get; init; } = 60f;
     public float HillWavelength { get; init; } = 900f;
     public float Billow { get; init; }                     // 0 = soft hills, 1 = rounded domes with creases
@@ -41,6 +40,11 @@ public sealed record ArchetypeDef
     public float DuneWavelength { get; init; } = 140f;
     public float CanyonDepth { get; init; }
     public float CanyonWavelength { get; init; } = 2600f;
+    public float CanyonWidth { get; init; } = 0.075f;      // noise units: wider gives broad U valleys
+    public int CanyonSteps { get; init; }                  // stepped walls (0 = one smooth wall)
+    public float PlateauHeight { get; init; }              // escarpments, plateaus and tablelands (0 = none)
+    public float PlateauCover { get; init; } = 0.35f;      // share of land raised onto the first tier
+    public float PlateauWavelength { get; init; } = 1500f;
     public float VolcanoSpacing { get; init; }             // 0 = no volcanoes
     public float VolcanoHeight { get; init; }
     public float CraterSpacing { get; init; }              // 0 = no craters
@@ -56,7 +60,6 @@ public sealed record ArchetypeDef
     public float BaseHumidity { get; init; } = 0.5f;
     public Liquid Liquid { get; init; } = Liquid.Water;
     public bool SeaFreezes { get; init; } = true;
-    public CapStyle Cap { get; init; } = CapStyle.StormWall;
     public Biome RiverbankBiome { get; init; } = Biome.Riverbank;
 
     // Gameplay hooks: shown in the debug label and the README, used later by survival systems
@@ -97,8 +100,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Temperate, Variant = 0, VariantName = "meadow",
             LandMin = 0.36f, LandMax = 0.52f,
-            ContinentScale = 0.5f, ContinentAmp = 260f, MountainHeight = 700f, HillHeight = 70f,
+            ContinentScale = 0.5f, ContinentAmp = 260f, MountainHeight = 820f, MountainWavelength = 4200f, HillHeight = 70f,
             Roughness = 2.2f, RiverArea = 0.22f, Rain = 1f,
+            PlateauHeight = 45f, PlateauCover = 0.3f, CanyonDepth = 70f, CanyonWidth = 0.05f, CanyonWavelength = 2800f,
             BaseTemperature = 0.62f, LatitudeRange = 0.6f, BaseHumidity = 0.5f,
             Hazard = "mild: thunderstorms, predators", Resources = "timber, iron, copper, fresh water, titanium", Signature = DepositKind.Titanium,
         },
@@ -106,8 +110,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Temperate, Variant = 1, VariantName = "rainforest",
             LandMin = 0.40f, LandMax = 0.56f,
-            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 480f, RidgeSharpness = 1.6f,
+            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 560f, MountainWavelength = 3800f, RidgeSharpness = 1.6f,
             HillHeight = 95f, HillWavelength = 650f, Billow = 0.45f, Roughness = 2.8f,
+            PlateauHeight = 40f, PlateauCover = 0.2f, PlateauWavelength = 1700f, CanyonDepth = 60f, CanyonWidth = 0.05f,
             RiverArea = 0.12f, Rain = 1.6f,
             BaseTemperature = 0.84f, LatitudeRange = 0.4f, BaseHumidity = 0.78f,
             Hazard = "humidity, aggressive fauna, flash floods", Resources = "timber, rubber resin, medicinal plants, water", Signature = DepositKind.Resin,
@@ -119,6 +124,7 @@ public static class Archetypes
             ContinentScale = 0.38f, ContinentAmp = 150f, MountainHeight = 320f, RidgeSharpness = 2.6f,
             HillHeight = 30f, Roughness = 1.2f,
             DuneHeight = 22f, DuneWavelength = 170f, TerraceStep = 28f, TerraceCover = 0.3f,
+            PlateauHeight = 30f, PlateauCover = 0.2f, PlateauWavelength = 1800f,
             RiverArea = 1.2f, Rain = 0.3f, SeaFreezes = false,
             BaseTemperature = 0.88f, LatitudeRange = 0.35f, BaseHumidity = 0.1f, RiverbankBiome = Biome.Oasis,
             Hazard = "heat, sandstorms, dehydration", Resources = "silicon, salt, titanium sand", Signature = DepositKind.Titanium,
@@ -129,7 +135,8 @@ public static class Archetypes
             LandMin = 0.78f, LandMax = 0.90f,
             ContinentScale = 0.42f, ContinentAmp = 210f, MountainHeight = 220f, HillHeight = 25f,
             Roughness = 1.8f, TerraceStep = 42f, TerraceCover = 0.85f,
-            CanyonDepth = 170f, CanyonWavelength = 2400f,
+            CanyonDepth = 220f, CanyonWavelength = 2400f, CanyonWidth = 0.07f, CanyonSteps = 3,
+            PlateauHeight = 60f, PlateauCover = 0.4f,
             RiverArea = 0.45f, Rain = 0.45f, SeaFreezes = false,
             BaseTemperature = 0.8f, LatitudeRange = 0.35f, BaseHumidity = 0.16f, RiverbankBiome = Biome.Oasis,
             Hazard = "heat, rockfalls, flash floods", Resources = "copper, iron oxide, gemstones", Signature = DepositKind.Crystal,
@@ -138,22 +145,24 @@ public static class Archetypes
         {
             Archetype = Archetype.Ice, Variant = 0, VariantName = "glacier",
             LandMin = 0.52f, LandMax = 0.68f,
-            ContinentScale = 0.45f, ContinentAmp = 240f, MountainHeight = 760f, RidgeSharpness = 2.4f,
+            ContinentScale = 0.45f, ContinentAmp = 240f, MountainHeight = 880f, MountainWavelength = 4200f, RidgeSharpness = 2.4f,
             HillHeight = 45f, Roughness = 0.9f, ShelfHeight = 32f,
+            CanyonDepth = 110f, CanyonWidth = 0.11f, CanyonWavelength = 3200f, PlateauHeight = 40f, PlateauCover = 0.25f,
             RiverArea = 0.9f, Rain = 0.5f,
             BaseTemperature = 0.12f, LatitudeRange = 0.35f, BaseHumidity = 0.4f,
-            Cap = CapStyle.IceCliff, RiverbankBiome = Biome.IceTundra,
+            RiverbankBiome = Biome.IceTundra,
             Hazard = "extreme cold, crevasses, whiteouts", Resources = "ice, cobalt, frozen gases", Signature = DepositKind.Cobalt,
         },
         new()
         {
             Archetype = Archetype.Ice, Variant = 1, VariantName = "hot spring",
             LandMin = 0.56f, LandMax = 0.72f,
-            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 460f, HillHeight = 80f,
+            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 540f, HillHeight = 80f,
             Billow = 0.35f, Roughness = 1.6f, TerraceStep = 5f, TerraceCover = 0.35f,
+            PlateauHeight = 30f, PlateauCover = 0.3f, CanyonDepth = 60f, CanyonWidth = 0.06f,
             RiverArea = 0.4f, Rain = 0.8f,
             BaseTemperature = 0.2f, LatitudeRange = 0.35f, BaseHumidity = 0.5f,
-            Cap = CapStyle.IceCliff, RiverbankBiome = Biome.IceTundra,
+            RiverbankBiome = Biome.IceTundra,
             Hazard = "cold, scalding geysers, steam", Resources = "geothermal energy, sulfur, minerals, ice", Signature = DepositKind.Sulfur,
         },
         new()
@@ -162,7 +171,8 @@ public static class Archetypes
             LandMin = 0.68f, LandMax = 0.82f,
             ContinentScale = 0.4f, ContinentAmp = 200f, MountainHeight = 300f, RidgeSharpness = 3f,
             HillHeight = 45f, Roughness = 3f, TerraceStep = 22f, TerraceCover = 0.35f,
-            VolcanoSpacing = 3200f, VolcanoHeight = 720f,
+            VolcanoSpacing = 3200f, VolcanoHeight = 900f,
+            PlateauHeight = 35f, PlateauCover = 0.3f, CanyonDepth = 50f, CanyonWidth = 0.04f, CanyonSteps = 2,
             RiverArea = 0.6f, Rain = 0.6f, SeaFreezes = false,
             BaseTemperature = 0.95f, LatitudeRange = 0.2f, BaseHumidity = 0.1f,
             Liquid = Liquid.Lava, RiverbankBiome = Biome.Obsidian,
@@ -174,7 +184,7 @@ public static class Archetypes
             LandMin = 0.30f, LandMax = 0.45f,
             ContinentScale = 0.28f, ContinentAmp = 180f, MountainHeight = 200f, RidgeSharpness = 3f,
             HillHeight = 40f, Roughness = 2.6f,
-            VolcanoSpacing = 2300f, VolcanoHeight = 560f,
+            VolcanoSpacing = 2300f, VolcanoHeight = 700f, PlateauHeight = 25f, PlateauCover = 0.25f,
             RiverArea = 0.8f, Rain = 0.5f, SeaFreezes = false,
             BaseTemperature = 0.98f, LatitudeRange = 0.15f, BaseHumidity = 0.08f,
             Liquid = Liquid.Lava, RiverbankBiome = Biome.Obsidian,
@@ -184,8 +194,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Alien, Variant = 0, VariantName = "crystal",
             LandMin = 0.50f, LandMax = 0.66f,
-            ContinentScale = 0.45f, ContinentAmp = 230f, MountainHeight = 520f, RidgeSharpness = 4f,
+            ContinentScale = 0.45f, ContinentAmp = 230f, MountainHeight = 520f, MountainWavelength = 3600f, RidgeSharpness = 4f,
             HillHeight = 40f, Roughness = 1.4f, SpireHeight = 130f, TerraceStep = 18f, TerraceCover = 0.4f,
+            PlateauHeight = 50f, PlateauCover = 0.35f, CanyonDepth = 80f, CanyonWidth = 0.05f, CanyonSteps = 2,
             RiverArea = 0.4f, Rain = 0.7f, SeaFreezes = false,
             BaseTemperature = 0.55f, LatitudeRange = 0.4f, BaseHumidity = 0.35f,
             Liquid = Liquid.Exotic, RiverbankBiome = Biome.GlowMoss,
@@ -197,6 +208,7 @@ public static class Archetypes
             LandMin = 0.45f, LandMax = 0.60f,
             ContinentScale = 0.42f, ContinentAmp = 280f, MountainHeight = 280f, HillHeight = 65f,
             HillWavelength = 1100f, Billow = 0.85f, Roughness = 2f, TerraceStep = 9f, TerraceCover = 0.3f,
+            PlateauHeight = 25f, PlateauCover = 0.25f, CanyonDepth = 45f, CanyonWidth = 0.06f,
             RiverArea = 0.18f, Rain = 1.3f, SeaFreezes = false,
             BaseTemperature = 0.66f, LatitudeRange = 0.35f, BaseHumidity = 0.78f,
             Liquid = Liquid.Exotic, RiverbankBiome = Biome.SporeMarsh,

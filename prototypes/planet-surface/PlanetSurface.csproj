@@ -1,0 +1,26 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>PlanetSurface</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Terrain generation and meshing are tight numeric loops on worker threads; unoptimised
+         Debug code runs them several times slower and streaming would fall behind a flying player. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared terrain: the planet as diggable voxels, streaming plans, stamps. -->
+    <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <!-- The pure cores this prototype builds on, used in place. Only engine-free code (and plain
+         static helpers) is included; their scenes and nodes stay in their own projects. -->
+    <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Look\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
+    <Compile Include="..\weather\src\Model\**\*.cs" />
+    <Compile Include="..\weather\src\Forces\**\*.cs" />
+    <Compile Include="..\weather\src\Glue.cs" />
+    <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
+    <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
+  </ItemGroup>
+</Project>
