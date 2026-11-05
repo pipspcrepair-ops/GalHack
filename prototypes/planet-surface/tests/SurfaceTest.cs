@@ -59,6 +59,7 @@ public partial class SurfaceTest : Node
             await Run("Seams", Seams);
             await Run("Persistence", Persistence);
             await Run("Stuck", Stuck);
+            await Run("Steps", Steps);
             await Run("Water", Water);
             await Run("Solids", Solids);
             await Run("Flight", Flight);
@@ -413,6 +414,71 @@ public partial class SurfaceTest : Node
         Check(freed && inPit && loaded.Ok && afterLoad && _main.Guard.Rescues > rescuesBefore,
             $"stuck safety: a buried player is freed ({freed}), standing in a fresh pit is left alone ({inPit}), " +
             $"a load that fills the pit moves them out ({afterLoad}); {_main.Guard.Rescues} rescues so far");
+    }
+
+    // ---- 6a. Steps -------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The walker steps up onto anything a step tall, by the shared physics module's step-up and
+    /// step height: walked into a sheer slab 0.5 m tall on level ground, it is up on top without a
+    /// jump or a stop; the same slab 1 m tall is a wall.
+    /// </summary>
+    async Task Steps()
+    {
+        PlanetWorld w = _main.World;
+        if (w == null) return;
+        Walker player = _main.Player;
+        await Streamed();
+
+        // Level, dry, open ground near the player, 8 m of it eastward.
+        Vector3 here = player.GlobalPosition;
+        Vector3? found = null;
+        for (float r = 0f; r < 300f && found == null; r += 6f)
+            for (int k = 0; k < 16 && found == null; k++)
+            {
+                var p = new Vector3(here.X + MathF.Cos(k * MathF.Tau / 16) * r, 0f, here.Z + MathF.Sin(k * MathF.Tau / 16) * r);
+                float lo = float.MaxValue, hi = float.MinValue;
+                for (float m = 0f; m <= 8f; m += 0.5f)
+                {
+                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z, w.Height));
+                    lo = MathF.Min(lo, h);
+                    hi = MathF.Max(hi, h);
+                }
+                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && w.Source.StampWeight(p.X, p.Z) <= 0f
+                            && !_main.Streamer.SolidsNear(p + new Vector3(4f, 0f, 0f), 7f).Any();
+                if (open) found = new Vector3(p.X, hi, p.Z);
+            }
+        if (found is not Vector3 start)
+        {
+            Fail("no level open ground within 300 m for the step check");
+            return;
+        }
+        var slab = new StaticBody3D { Name = "Slab", CollisionLayer = Layers.Solid, CollisionMask = 0 };
+        slab.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(5f, 1.5f, 3f) } });
+        _main.AddChild(slab);
+
+        async Task<(float rise, bool past, int steps)> WalkAt(float height)
+        {
+            slab.GlobalPosition = start + new Vector3(5f, -2f, 0f); // out of the way, under the ground
+            player.Teleport(start + Vector3.Up * 0.1f);
+            player.SetLook(-MathF.PI / 2f, 0f); // facing east, at the slab
+            await SolidsIn();
+            await PhysicsFrames(2); // the teleport's stale floor contact gone
+            await UntilTicks(() => player.IsOnFloor() && MathF.Abs(player.Velocity.Y) < 0.05f, 60);
+            float y0 = player.GlobalPosition.Y;
+            // The slab sunk into the ground so it stands `height` above where the player stands, from 2.5 m ahead.
+            slab.GlobalPosition = new Vector3(start.X + 5f, y0 + height - 0.75f, start.Z);
+            await PhysicsFrames(1);
+            int before = player.StepsTaken;
+            await WalkForward(1.0f);
+            return (player.GlobalPosition.Y - y0, player.GlobalPosition.X > start.X + 3f, player.StepsTaken - before);
+        }
+        var (rise, past, steps) = await WalkAt(0.5f);
+        var (wallRise, wallPast, wallSteps) = await WalkAt(1.0f);
+        slab.QueueFree();
+        Check(steps >= 1 && past && MathF.Abs(rise - 0.5f) < 0.1f && wallSteps == 0 && !wallPast && wallRise < 0.1f,
+            $"the walker steps up onto anything a step tall ({player.StepHeight:0.0#} m, the shared physics module's): walked into a sheer 0.5 m slab it is up on top " +
+            $"({rise:F2} m up, {steps} step) without a jump; the same slab 1 m tall stops it ({wallRise:F2} m up)");
     }
 
     // ---- 6b. Water is a volume ------------------------------------------------------------------
@@ -1017,6 +1083,27 @@ public partial class SurfaceTest : Node
         Check(compared > 100 && off == 0 && worst < 0.004 && tilt < 0.05 && cornerOk,
             $"north-south seam: {compared} vertices of chunks beyond the north edge match their twins at the south edge to {worst * 1000:F2} mm, " +
             $"normals to {tilt:F3} deg; the corner chunk beyond both seams matches the far corner: {cornerOk}");
+
+        // The far rings tile the planet across the seam too: the last strip before it (64 m on an
+        // 8 km planet, 62.5 far chunks) has its far ground and its flora like any other.
+        await Until(() => _main.Streamer.FarComplete, 30);
+        int farGround = 0, farSamples = 0;
+        for (float fxo = -800f; fxo <= 800f; fxo += 100f)
+            for (float fzo = -60f; fzo < 0f; fzo += 20f)
+            {
+                farSamples++;
+                if (_main.Streamer.FarGroundAt(new Vector3(p.X + fxo, 0f, fzo))) farGround++;
+            }
+        int beyond = 0, before = 0;
+        foreach (Flora kind in Enum.GetValues<Flora>())
+            foreach (Transform3D f in _main.Streamer.FloraNear(kind, new Vector3(p.X, 0f, 0f), 120f))
+            {
+                if (f.Origin.Z >= -64f && f.Origin.Z < 0f) beyond++;
+                else if (f.Origin.Z >= 0f && f.Origin.Z < 64f) before++;
+            }
+        Check(farGround == farSamples && beyond > 0 && beyond > before / 3,
+            $"the far grid tiles the planet across the north-south seam: far ground under all {farSamples} points of the last 64 m strip before it, " +
+            $"and {beyond} flora there beside {before} in the 64 m just past it");
 
         // An edit straddling the seam shows on both sides, and survives a save and load.
         var centre = new TInt3((int)MathF.Floor(p.X) + 3, (int)MathF.Floor(w.GroundHeight(p.X + 3, 0)) - 1, 0);

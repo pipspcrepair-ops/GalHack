@@ -40,8 +40,18 @@ public sealed class PhysicsRules
         /// <summary>Closing speeds at or below this do no damage at all: landing, docking, nudging. m/s.</summary>
         public float SafeSpeed { get; set; } = 8f;
 
+        /// <summary>
+        /// A player's own safe speed, m/s. A suited player lands on their legs: hops, jetpack
+        /// landings and drops up to about 12 m (15.5 m/s) never hurt. Only the safe speed differs;
+        /// the damage formula is the same one.
+        /// </summary>
+        public float PlayerSafeSpeed { get; set; } = 15.5f;
+
         /// <summary>Damage = mass (t) × (closing − safe)² × this. Never capped, never scaled down.</summary>
         public float DamageScale { get; set; } = 0.001f;
+
+        /// <summary>The safe speed for a body of this kind: a player's own, everything else's <see cref="SafeSpeed"/>.</summary>
+        public float SafeSpeedFor(BodyKind kind) => kind == BodyKind.Player ? PlayerSafeSpeed : SafeSpeed;
 
         /// <summary>Kinematic hulls bounce off fixed things with this much of the closing speed.</summary>
         public float Restitution { get; set; } = 0.2f;
@@ -76,15 +86,16 @@ public sealed class PhysicsRules
 
     /// <summary>
     /// How much damage a body can take, per tonne of it: the one formula hurts everything the
-    /// same way, and toughness is all that differs. Hull points are ship-handling's 4 per tonne.
-    /// A suited player is far softer per tonne than armour plate: 0.5 per tonne makes a 30 m
-    /// fall cost about half their health, as in the weather prototype.
+    /// same way, and toughness (with a player's own safe speed) is all that differs. Hull points
+    /// are ship-handling's 4 per tonne. A suited player is far softer per tonne than armour plate:
+    /// 0.6 per tonne, over their 15.5 m/s safe speed, makes a 30 m fall cost about an eighth of
+    /// their health and a 50 m one about two fifths; only a fall of 80 m or so kills.
     /// </summary>
     public sealed class IntegrityData
     {
         public float HullPerTonne { get; set; } = 4f;
         public float CratePerTonne { get; set; } = 4f;
-        public float PlayerPerTonne { get; set; } = 0.5f;
+        public float PlayerPerTonne { get; set; } = 0.6f;
         public float CreaturePerTonne { get; set; } = 0.5f;
 
         public float PerTonne(BodyKind kind) => kind switch
@@ -108,8 +119,17 @@ public sealed class PhysicsRules
         public float LookAheadMin { get; set; } = 2f;
         public float LookAheadMax { get; set; } = 14f;
         public float StepAllowance { get; set; } = 0.5f;
+
+        /// <summary>The look-ahead never lifts the vessel more than this × its ride height: it clears rocks and steps, it never hops a cliff.</summary>
+        public float MaxLift { get; set; } = 1.5f;
         public float LevelRate { get; set; } = 6f;
-        public float MaxSlope { get; set; } = 30f;
+
+        /// <summary>
+        /// The steepest ground a hover vessel climbs, degrees, as a grade across its own length (the
+        /// rise from the ground under it over the run to the ground ahead): a crater's lip is climbed,
+        /// a cliff is not. Also the most it tilts to follow the ground.
+        /// </summary>
+        public float MaxSlope { get; set; } = 45f;
         public float JumpSpeed { get; set; } = 7f;
         public float JumpCooldown { get; set; } = 1.2f;
         public float ProbeDepth { get; set; } = 3f;
@@ -143,15 +163,16 @@ public sealed class PhysicsRules
         public float RejoinAfter { get; set; } = 0.5f;
 
         /// <summary>
-        /// Mag boots on the outer hull: down is the hull face under the rider's feet, at <see cref="MagBootGravity"/>,
-        /// and outside edges carry them round onto the next face. Off: the outer hull has the cabin's gravity
-        /// (the core's, or the zone's when the core is off).
+        /// Mag boots on the outer hull, switched off: out on the hull, down is the gravity the rider
+        /// is in (the core's, or the zone's when the core is off), so walls and undersides can't be
+        /// walked on. On, down would be the hull face under the rider's feet, at <see cref="MagBootGravity"/>,
+        /// and outside edges would carry them round onto the next face.
         /// </summary>
-        public bool MagBoots { get; set; } = true;
+        public bool MagBoots { get; set; }
         public float MagBootGravity { get; set; } = 9.8f;
 
-        /// <summary>Mag boots also carry a rider up onto a wall rising from their face, if it is taller than a step (<see cref="WalkingData.StepHeight"/>).</summary>
-        public bool InsideCorners { get; set; } = true;
+        /// <summary>With mag boots on, they would also carry a rider up onto a wall rising from their face, if taller than a step (<see cref="WalkingData.StepHeight"/>). Off.</summary>
+        public bool InsideCorners { get; set; }
 
         /// <summary>How far below the face just walked off to look for the next face round an outside edge, m.</summary>
         public float EdgeProbe { get; set; } = 0.35f;

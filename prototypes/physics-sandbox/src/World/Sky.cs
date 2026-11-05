@@ -126,19 +126,33 @@ public sealed class Sky
     }
 
     /// <summary>Space: near-black with a faint dusty band, hashed stars of a few sizes, and the sun's disc.</summary>
-    const string SpaceShader = @"
+    internal const string SpaceShader = @"
 shader_type sky;
 
 float hash(vec3 p) {
     return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 }
 
+// Stars: points scattered through a thin shell of a 3D lattice, `scale` cells out, each drawn where
+// the view ray passes within its radius. Every star is placed, and kept or dropped, by itself
+// (where it lies in its cell, and whether that is inside the shell), never by where the ray cuts a
+// cell, so the field is equally dense in every direction. (Cutting the lattice with the sky's
+// sphere left a star-free hole ringed by bands at each of the six axis directions.) A star that
+// close to the ray lies within half a cell of the ray's own point each way, so the two cells
+// round that point on each axis hold it.
 float stars(vec3 dir, float scale, float density) {
     vec3 p = dir * scale;
-    vec3 cell = floor(p);
-    float h = hash(cell);
-    float d = length(fract(p) - 0.5 - (vec3(hash(cell + 1.7), hash(cell + 4.1), hash(cell + 9.3)) - 0.5) * 0.4);
-    return step(1.0 - density, h) * smoothstep(0.3, 0.05, d) * (0.4 + 0.6 * hash(cell + 2.3));
+    vec3 base = floor(p + 0.28) - 1.0;
+    float sum = 0.0;
+    for (int i = 0; i < 8; i++) {
+        vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
+        if (hash(cell) < 1.0 - density) continue;
+        vec3 star = cell + 0.5 + (vec3(hash(cell + 1.7), hash(cell + 4.1), hash(cell + 9.3)) - 0.5) * 0.4;
+        if (abs(length(star) - scale) > 0.35) continue;
+        float off = length(star - dir * dot(star, dir));   // from the ray, in cells
+        sum += smoothstep(0.3, 0.05, off) * (0.4 + 0.6 * hash(cell + 2.3));
+    }
+    return sum;
 }
 
 void sky() {
