@@ -9,6 +9,8 @@ public sealed class Paint
     public readonly Color Base, Accent, Belly, Bone, Dark, Horn, EyeColor, Mouth, Glow, Veins;
     public readonly float EyeGlow, GlowStrength;
     public readonly bool Corrupted;
+    /// <summary>No eyes: sensing pits where they would be (the deep fauna far down).</summary>
+    public readonly bool Blind;
 
     public Paint(Species s)
     {
@@ -24,6 +26,7 @@ public sealed class Paint
         Glow = p.Glow;
         GlowStrength = p.GlowStrength;
         Corrupted = s.Corrupted;
+        Blind = s.Blind;
         Veins = s.Corrupted ? p.Accent : p.Glow;
         // Small, dark, wet eyes with a warm glint read as an animal that is watching you; big
         // pale eyes with pupils read as a cartoon. Glowing species get lamp eyes instead.
@@ -609,6 +612,13 @@ public static class Parts
     /// <summary>An eye: a small wet dark ball with a glint, or a lamp for glowing species.</summary>
     public static void Eye(Piece p, Paint k, Vector3 at, float size, int side = 0)
     {
+        if (k.Blind)
+        {
+            // Blind: a shallow pit of bare skin where an eye would be, and a ring of smaller ones.
+            p.Add(Shape.Sphere, new Vector3(size * 0.9f, size * 0.5f, size * 0.9f), at, k.Base.Darkened(0.45f), 0f, 0f, null, 6, Mat.Skin);
+            p.Add(Shape.Sphere, Vector3.One * size * 0.35f, at + new Vector3(0f, -size * 0.7f, -size * 0.6f), k.Base.Darkened(0.4f), 0f, 0f, null, 6, Mat.Skin);
+            return;
+        }
         if (k.EyeGlow > 0f)
         {
             // Glowing eyes are narrow slanted slits: a lamp-eyed animal reads as a cartoon.

@@ -142,6 +142,7 @@ public sealed class LeggedRig : Rig
     public override void Reset(WildSim w, Creature c)
     {
         ResetIntents(c);
+        _c = c;
         Basis yaw = new(Vector3.Up, c.Yaw);
         foreach (Leg leg in _legs)
         {
@@ -166,7 +167,8 @@ public sealed class LeggedRig : Rig
         Basis yaw = new(Vector3.Up, c.Yaw);
         Vector3 fwd = yaw * Vector3.Forward;
         Vector3 pos = WildSim.Flat(c.Position);
-        float gF = w.Terrain.Height(pos + fwd * L * 0.35f), gB = w.Terrain.Height(pos - fwd * L * 0.35f);
+        _c = c;
+        float gF = Ground(w, pos + fwd * L * 0.35f).Y, gB = Ground(w, pos - fwd * L * 0.35f).Y;
         float groundMid = (gF + gB) * 0.5f;
 
         // Body: lowered by crouching, hiding and death, bobbing twice per stride.
@@ -322,7 +324,7 @@ public sealed class LeggedRig : Rig
             float target = _neckRest + 0.15f * c.Alert;
             if (hasNeck && Graze > 0.05f)
             {
-                float groundY = w.Terrain.Height(baseW.X, baseW.Z) + hs * 0.35f;
+                float groundY = Ground(w, baseW).Y + hs * 0.35f;
                 float reachDown = MathF.Asin(Math.Clamp((groundY - baseW.Y) / _neckLen, -0.97f, 0.97f));
                 target = Mathf.Lerp(target, MathF.Max(reachDown, -1.25f), Graze);
             }
@@ -448,7 +450,9 @@ public sealed class LeggedRig : Rig
         return spike * MathF.Sin(c.Age * 40f);
     }
 
-    static Vector3 Ground(WildSim w, Vector3 p) => new(p.X, w.Terrain.Height(p.X, p.Z), p.Z);
+    /// <summary>The creature being posed: in a cave or a place its ground is the floor under it.</summary>
+    Creature _c;
+    Vector3 Ground(WildSim w, Vector3 p) => new(p.X, _c?.Space != null ? GroundY(w, _c, p.X, p.Z) : w.Terrain.Height(p.X, p.Z), p.Z);
 
     // ---- Layout -----------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -44,6 +45,30 @@ public sealed class Species
     /// <summary>Zero-g swimmers: how they move.</summary>
     public SwimStyle Swim;
     public bool InSpace => Habitat != Habitat.Surface;
+
+    /// <summary>When it is out (by day, by night, at dawn and dusk, or any hour) and where it rests otherwise.</summary>
+    public Activity Activity = Activity.Cathemeral;
+    public RestKind RestKind;
+    /// <summary>Clings to walls and ceilings (caves, tunnels, the inside of places); otherwise it keeps to floors.</summary>
+    public bool Climbs;
+    /// <summary>Its job in a cave or a place (lurker, prowler, ambusher...); None for the open surface's fauna.</summary>
+    public DeepRole Role;
+    /// <summary>The kind of place it lives in and how deep (0 at the way in), which set its look.</summary>
+    public PoiTheme Theme;
+    public int Depth;
+    /// <summary>No eyes: it finds you by sound, and clicks as it hunts.</summary>
+    public bool Blind;
+    /// <summary>How it gives an ambush away, and how long the tell runs before it strikes.</summary>
+    public TellKind[] Tells = Array.Empty<TellKind>();
+    public float TellSeconds;
+    /// <summary>How close a player walking upright gets before it notices them, and how close prey must come before an ambush springs.</summary>
+    public float NoticeRadius, StrikeRadius;
+    /// <summary>Nesters: the warning and defence radii round their nest.</summary>
+    public float WarnRadius, DefendRadius;
+    /// <summary>Hunts the place's subsisters; flees into cracks; what it eats.</summary>
+    public bool HuntsPrey, FleesIntoCracks;
+    public Diet Diet;
+    public bool IsDeep => Role != DeepRole.None;
 
     public string Part(string slot) => Parts.TryGetValue(slot, out var id) ? id : "none";
     public bool Has(string slot) => Part(slot) != "none";

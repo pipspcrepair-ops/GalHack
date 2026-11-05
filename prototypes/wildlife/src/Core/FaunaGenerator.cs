@@ -33,8 +33,15 @@ public sealed class PlanetFauna
 public sealed class FaunaGenerator
 {
     readonly FaunaTables _t;
+    readonly ActivityRules _activity;
 
-    public FaunaGenerator(FaunaTables tables) => _t = tables;
+    public FaunaGenerator(FaunaTables tables) : this(tables, null) { }
+
+    public FaunaGenerator(FaunaTables tables, ActivityRules activity)
+    {
+        _t = tables;
+        _activity = activity ?? new ActivityRules();
+    }
 
     public PlanetFauna Generate(ulong planetSeed, float alienness, bool bloom)
     {
@@ -62,8 +69,86 @@ public sealed class FaunaGenerator
             s.Weirdness = Score(s, picks[i].form);
             fauna.Species.Add(s);
         }
+        AssignActivity(fauna);
         return fauna;
     }
+
+    // ---- Day and night ----------------------------------------------------------------
+
+    /// <summary>
+    /// Each species' activity cycle and rest site, rolled on streams of their own so nothing
+    /// else about a planet's fauna changes. The planet's herd is out by day (or at dawn and
+    /// dusk) and at least one hunter is out by night: the same valley is a different place
+    /// after dark, with other hunters about.
+    /// </summary>
+    void AssignActivity(PlanetFauna fauna)
+    {
+        foreach (Species s in fauna.Species) RollActivity(s);
+        // The planet's herd grazes by day.
+        if (fauna.Species.Count > 0 && fauna.Species[0].Behaviour == Behaviour.Herd) fauna.Species[0].Activity = Activity.Diurnal;
+        if (!fauna.Species.Exists(s => s.IsHunter && s.Activity == Activity.Nocturnal))
+        {
+            Species hunter = fauna.Species.Find(s => s.Behaviour is Behaviour.Predator or Behaviour.PackHunter) ?? fauna.Species.Find(s => s.IsHunter);
+            if (hunter != null) hunter.Activity = Activity.Nocturnal;
+        }
+    }
+
+    void RollActivity(Species s)
+    {
+        FormDef form = _t.Forms.Find(f => f.Id == s.Form);
+        var rng = Rng.For(s.Seed, "activity");
+        // Walking plants root by day and wander by night; ambushers hide by day and strike at night.
+        if (s.Rooted || s.Behaviour == Behaviour.Ambusher) s.Activity = Activity.Nocturnal;
+        else if (s.Tumbles) s.Activity = Activity.Cathemeral;
+        else
+        {
+            var weights = _t.Behaviour(s.Behaviour).Activity;
+            var keys = new List<string>(weights.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            s.Activity = keys.Count == 0 ? Activity.Diurnal : Enum.Parse<Activity>(rng.Weighted(keys, k =>
+                weights[k] * (k == nameof(Activity.Nocturnal) && s.Colors.GlowStrength > 0.4f ? _activity.GlowNight : 1f)));
+        }
+        s.RestKind = form != null && form.Rest != "" ? Enum.Parse<RestKind>(form.Rest) : RestFor(s);
+    }
+
+    /// <summary>Where a body like this rests: fliers roost, burrowers and crawlers dig in, herds bed down, hunters den.</summary>
+    static RestKind RestFor(Species s)
+    {
+        if (s.Rig == RigKind.Swarm) return s.Flies ? RestKind.Nest : RestKind.Burrow;
+        if (s.Rig is RigKind.Winged or RigKind.GasBag) return RestKind.Roost;
+        if (s.Burrows || s.Rig == RigKind.Chain || (s.Rig == RigKind.Hopper && s.Body.Size < 1.1f)) return RestKind.Burrow;
+        return s.Behaviour is Behaviour.Herd or Behaviour.Grazer or Behaviour.HarmlessOddity ? RestKind.Nest : RestKind.Den;
+    }
+
+    // ---- One species at a time (the deep fauna) ---------------------------------------
+
+    /// <summary>
+    /// One species of a given form and behaviour, built by exactly the rules a planet's fauna
+    /// is (behaviour first, then parts that suit it, proportions that read as an animal,
+    /// palette, stats and a signature attack). The deep fauna of caves and places is rolled
+    /// one role at a time through this, then themed.
+    /// </summary>
+    public Species RollOne(ulong seed, string formId, Behaviour behaviour, float alienness)
+    {
+        FormDef form = _t.Forms.Find(f => f.Id == formId) ?? throw new ArgumentException($"unknown form {formId}");
+        alienness = Math.Clamp(alienness, 0f, 1f);
+        var rng = Rng.For(seed, "one", (long)Rng.Hash(formId));
+        Species s = Roll(rng, form, behaviour, alienness, new HashSet<string>());
+        s.Seed = seed;
+        s.CommonName = CommonName(s);
+        s.Weirdness = Score(s, form);
+        return s;
+    }
+
+    /// <summary>Takes a species over for the Hollow Bloom, as on a Bloom world.</summary>
+    public void CorruptSpecies(Species s, ulong seed)
+    {
+        Corrupt(Rng.For(seed, "bloom-one"), s);
+        s.Weirdness = Math.Clamp(s.Weirdness + _t.Corruption.WeirdnessBonus, 0f, 1f);
+    }
+
+    /// <summary>A common name for a species built or changed by hand.</summary>
+    public string NameFor(Species s) => CommonName(s);
 
     // ---- Forms ------------------------------------------------------------------------
 
@@ -83,11 +168,13 @@ public sealed class FaunaGenerator
         {
             Behaviour? role = i == 0 ? Behaviour.Herd : i == 1 ? hunter : null;
             bool distinct = i < _t.DistinctPlans;
+            // Cave and place forms are the deep fauna's: never rolled for the open surface.
             var options = _t.Forms.FindAll(f =>
-                (!distinct || !usedPlans.Contains(f.Plan))
+                !f.Deep
+                && (!distinct || !usedPlans.Contains(f.Plan))
                 && (role == null || f.Behaviours.ContainsKey(role.Value.ToString()))
                 && formUses.GetValueOrDefault(f.Id) < MaxUses(f));
-            if (options.Count == 0) options = _t.Forms.FindAll(f => formUses.GetValueOrDefault(f.Id) < MaxUses(f));
+            if (options.Count == 0) options = _t.Forms.FindAll(f => !f.Deep && formUses.GetValueOrDefault(f.Id) < MaxUses(f));
             FormDef form = rng.Weighted(options, f => f.Weight * Affinity(f.Weirdness, alienness));
             usedPlans.Add(form.Plan);
             formUses[form.Id] = formUses.GetValueOrDefault(form.Id) + 1;
@@ -348,6 +435,7 @@ public sealed class FaunaGenerator
             RigKind.Hopper => (16f * MathF.Pow(size, 1.5f), 1.6f + size * 0.6f, 0f),
             RigKind.Winged => (14f * MathF.Pow(size, 1.4f), 4f, 9f),
             RigKind.GasBag => (20f * size, 1.0f, 1.8f),
+            RigKind.Crawler => (20f * MathF.Pow(size, 1.4f), Math.Clamp(0.8f + size * 0.45f, 0.8f, 2.4f), 0f),
             _ => (Math.Max(20f, b.Members * 1.2f), 2.6f, 6.5f),
         };
         if (run <= 0f) run = Math.Clamp(walk * 2.5f, walk, 8.5f);
@@ -532,6 +620,7 @@ public static class FaunaQuality
     public static (float lo, float hi) HeadBand(RigKind rig) => rig switch
     {
         RigKind.Chain => (0.07f, 0.24f),
+        RigKind.Crawler => (0.08f, 0.32f),
         RigKind.GasBag => (0.1f, 0.35f),
         RigKind.Swarm => (0f, 10f),
         _ => (0.13f, 0.36f),
