@@ -1,0 +1,47 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>CapitalBase</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Voxel and structure meshing run on the main thread when the ground is cut or a block is
+         placed: let the JIT optimise. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared modules, compiled in where they live: physics (rules and engine adapters) and the
+         planet as diggable voxels. -->
+    <Compile Include="..\..\shared\Physics\**\*.cs" />
+    <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <!-- Other prototypes' pure cores, used in place and never changed here. -->
+    <Compile Include="..\building\src\Structures\**\*.cs" />
+    <Compile Include="..\ship-handling\src\Handling\**\*.cs" />
+    <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
+    <Compile Include="..\weather\src\Model\**\*.cs" />
+    <Compile Include="..\weather\src\Forces\**\*.cs" />
+    <Compile Include="..\weather\src\Glue.cs" />
+    <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Look\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
+    <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
+    <Compile Include="..\saves\src\Persistence\**\*.cs" />
+    <!-- The bridges that tie building and the handling model to shared physics (physics-sandbox's). -->
+    <Compile Include="..\physics-sandbox\src\Bridges\StructureBridge.cs" />
+    <Compile Include="..\physics-sandbox\src\Bridges\HandlingBridge.cs" />
+    <Compile Include="..\physics-sandbox\src\Bridges\WeatherBridge.cs" />
+    <Compile Include="..\physics-sandbox\src\Bridges\TerrainBridge.cs" />
+    <!-- Presentation helpers with no scene of their own: building's block mesher and livery
+         material; planet-surface's planet build, voxel and far-ring meshing, palette and sky data. -->
+    <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
+    <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="..\planet-surface\src\World\PlanetWorld.cs" />
+    <!-- Only for PlanetWorld's NearestCopy: this prototype draws a fixed patch, not a stream. -->
+    <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.cs" />
+    <Compile Include="..\planet-surface\src\World\Layers.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\VoxelMeshing.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\FarBuilder.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\GroundPalette.cs" />
+    <Compile Include="..\planet-surface\src\Sky\SkySystem.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
+  </ItemGroup>
+</Project>
