@@ -224,7 +224,7 @@ public partial class Screenshot : Node
         GetTree().Quit(result == Error.Ok ? 0 : 1);
     }
 
-    /// <summary>Top-down layout map: height shading, water, ore near the surface, caves, anchors.</summary>
+    /// <summary>Top-down layout map: height shading, water, ore near the surface, caves, the POI.</summary>
     void SaveMap()
     {
         ChunkStore store = _main.Store;
@@ -252,9 +252,9 @@ public partial class Screenshot : Node
                 if (x % 16 == 0 || z % 16 == 0) c = c.Darkened(0.15f);
                 image.SetPixel(x, z, c);
             }
-        foreach (AnchorZone zone in store.Anchors)
-            for (int z = zone.Box.Min.Z; z < zone.Box.Max.Z; z++)
-                for (int x = zone.Box.Min.X; x < zone.Box.Max.X; x++)
+        foreach (PoiSite poi in store.Source.PointsOfInterest)
+            for (int z = poi.Footprint.Min.Z; z < poi.Footprint.Max.Z; z++)
+                for (int x = poi.Footprint.Min.X; x < poi.Footprint.Max.X; x++)
                     image.SetPixel(x - w.Min.X, z - w.Min.Z, Palette.BeaconRed);
         var spawn = SimpleTerrainSource.Spawn;
         image.SetPixel((int)spawn.X - w.Min.X, (int)spawn.Y - w.Min.Z, Colors.White);

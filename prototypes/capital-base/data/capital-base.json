@@ -10,8 +10,8 @@
 
   // Lift-off from a base. A capital ship built into or anchored onto the ground is cut free before
   // it moves: every terrain cell within `margin` metres of a block, swept straight up through the
-  // first climb, is removed through terrain-digging's edit API (logged, deterministic, bedrock and
-  // POI anchors still refuse). The sweep is at least `minClimb` metres and grows until each
+  // first climb, is removed through terrain-digging's edit API (logged, deterministic, only
+  // bedrock refuses). The sweep is at least `minClimb` metres and grows until each
   // block's column is clear for `clearBand` metres above it, never past `maxClimb`. While the hull
   // is tilted, each block's margin also grows by how far it could swing if the wings level on
   // the way up (its distance from the core times the sine of the tilt).
@@ -28,9 +28,7 @@
   },
 
   // A base stands where it landed: switching to base mode locks the structure's pose. The ground
-  // directly under each landing foot (a square `radius` cells out, `depth` cells deep) is its
-  // footing and can't be dug while it is a base, so a base never looks undermined.
-  "footings": { "radius": 1, "depth": 2 },
+  // under and around it digs like any other (dig anywhere); undermining a base never moves it.
 
   // Building into the ground: a block placed where terrain is clears every cell whose centre lies
   // within the block grown by `margin` metres, through the same edit API.

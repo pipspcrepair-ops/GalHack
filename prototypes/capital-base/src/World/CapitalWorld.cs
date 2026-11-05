@@ -280,13 +280,11 @@ public partial class CapitalWorld : Node3D
             if (c.State == CraftState.Docked) return Reply($"BASE MODE REFUSED: {c.Name} is parked on another structure.");
             ToggleMode(c);
             if (c.Pin == null) c.Anchor();
-            SetFootings(c);
             UpdateWind(c);
             return Reply($"BASE MODE: {c.Name} is anchored where it stands. It can't fly and no wind moves it; storage, power and life support carry on.");
         }
 
         ToggleMode(c);
-        Ground.ClearFootings(c.Id);
         CutPlan plan = PlanCut(c);
         if (plan.Cells.Count > 0 || plan.Refused.Count > 0)
         {
@@ -313,26 +311,6 @@ public partial class CapitalWorld : Node3D
     {
         Say(message);
         return message;
-    }
-
-    /// <summary>The ground under each landing foot of an anchored base: the dig tool leaves it alone.</summary>
-    void SetFootings(Craft c)
-    {
-        LandingGear gear = c.Vessel.Gear;
-        var cells = new List<TInt3>();
-        int r = Rules.Footings.Radius, depth = Rules.Footings.Depth;
-        for (int i = 0; i < (gear?.Count ?? 0); i++)
-        {
-            N.Vector3 hip = c.Body.ToParent(gear.Leg(i).Hip);
-            float top = GroundTop(hip.X, hip.Z);
-            if (hip.Y - top > gear.Leg(i).Length + 1f) continue; // this foot stands in the air
-            var foot = TInt3.Floor(new N.Vector3(hip.X, top - 0.5f, hip.Z));
-            for (int dy = 0; dy < depth; dy++)
-            for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
-                cells.Add(new TInt3(foot.X + dx, foot.Y - dy, foot.Z + dz));
-        }
-        Ground.SetFootings(c.Id, cells);
     }
 
     /// <summary>The wind rules: bases and parked or keyed hulls are never pushed; anything flying or simply landed is.</summary>
@@ -394,8 +372,7 @@ public partial class CapitalWorld : Node3D
         double planMs = watch.Elapsed.TotalMilliseconds;
         if (!plan.Ok) return Reply(plan.Refusal);
 
-        PlanetEdit edit = Ground.Remove(plan.Cells, Cut.LiftOff, c.Id, keepFootings: false);
-        Ground.ClearFootings(c.Id);
+        PlanetEdit edit = Ground.Remove(plan.Cells, Cut.LiftOff, c.Id);
         Debris.Crumble(edit.Removed, Planet, Rules.Liftoff.DebrisSeconds);
         var run = new LiftOff(c, plan, edit, planMs);
         _liftoffs[c] = run;
@@ -437,11 +414,11 @@ public partial class CapitalWorld : Node3D
     public (PlaceError error, int cleared) PlaceBlock(Craft c, SInt3 cell, Block block)
     {
         // Ground a block is built into must give way, as terrain-digging's own placement rule says:
-        // bedrock and a POI's anchored ground refuse it (the cell counts as occupied).
+        // only bedrock refuses it (the cell counts as occupied). A POI's ground gives way like any other.
         List<TInt3> ground = GroundInside(c, cell);
-        if (ground.Any(t => Ground.Check(t) is Verdict.Bedrock or Verdict.Anchored or Verdict.OutsideWorld))
+        if (ground.Any(t => Ground.Check(t) is Verdict.Bedrock or Verdict.OutsideWorld))
         {
-            Say("Can't build there: bedrock or protected ground fills that space.");
+            Say("Can't build there: bedrock fills that space.");
             return (PlaceError.Occupied, 0);
         }
         Dictionary<string, int> cost = c.Structure.Catalogue.CostOf(block, c.Structure.Grid);
@@ -449,7 +426,7 @@ public partial class CapitalWorld : Node3D
         PlaceError error = Building.Place(c.Structure, cell, block, Inventory, c.Structure.Owner ?? Building.DefaultOwner);
         if (error != PlaceError.None) return (error, 0);
         Declare(paid ? -cost.Values.Sum() : 0, 1);
-        int cleared = ground.Count == 0 ? 0 : Ground.Remove(ground, Cut.Build, c.Id, keepFootings: false).Removed.Count;
+        int cleared = ground.Count == 0 ? 0 : Ground.Remove(ground, Cut.Build, c.Id).Removed.Count;
         c.ApplyEdits();
         if (c.State == CraftState.Landed && cleared > 0)
         {
@@ -484,12 +461,12 @@ public partial class CapitalWorld : Node3D
         var ground = new SortedSet<TInt3>();
         foreach (SInt3 p in cells) ground.UnionWith(GroundInside(c, p));
         if (ground.Count == 0) return 0;
-        return Ground.Remove(ground, Cut.Build, c.Id, keepFootings: false).Removed.Count;
+        return Ground.Remove(ground, Cut.Build, c.Id).Removed.Count;
     }
 
     // ==== Digging and drilling ====================================================================
 
-    /// <summary>The player's dig tool: a ball of ground, its yield into the player's inventory. Footings refuse.</summary>
+    /// <summary>The player's dig tool: a ball of ground, its yield into the player's inventory. Anywhere but bedrock, under a base too.</summary>
     public PlanetEdit Dig(N.Vector3 point, float radius)
     {
         PlanetEdit edit = Ground.Dig(TInt3.Floor(point), radius, "player");
@@ -527,7 +504,7 @@ public partial class CapitalWorld : Node3D
         Craft home = HomeCraft;
         LinkReport link = Measure(v, home);
         double room = v.FreeSu + (link.State == LinkState.InRange ? link.HomeFreeSu : 0.0);
-        int most = ChunkStore.SphereCells(centre, radius).Count(cell => Ground.Check(cell) == Verdict.Removable && !Ground.IsFooting(cell));
+        int most = ChunkStore.SphereCells(centre, radius).Count(cell => Ground.Check(cell) == Verdict.Removable);
         if (most * Rules.Catalog.LargestUnit > room + 1e-9)
             return new DrillResult($"CARGO FULL: {room:F0} SU free, a drill takes up to {most * Rules.Catalog.LargestUnit:F0}. Unload or get Home in range.",
                 0, 0, 0, link.State);
@@ -672,7 +649,6 @@ public partial class CapitalWorld : Node3D
     public void RestoreAnchor(Craft c, N.Vector3 position, N.Quaternion rotation)
     {
         c.AnchorAt(position, rotation);
-        if (c.IsBase) SetFootings(c);
         UpdateWind(c);
     }
 

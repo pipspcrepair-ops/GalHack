@@ -47,7 +47,7 @@ You land near the landing site of a temperate world. The help in the bottom righ
 | Shift | Sprint |
 | Space | Jump; hold in the air for the jetpack; swim up in deep water |
 | Ctrl (hold) | Crouch; swim down in deep water |
-| Left mouse | Dig (1.4 m ball; bedrock and anchored ground refuse); at a tree, fell it for wood |
+| Left mouse | Dig (1.4 m ball, anywhere but bedrock); at a tree, fell it for wood |
 | Right mouse | Place a block |
 | F | Free-fly (Shift fast, Space and Ctrl up and down) |
 | 1 to 5 | Planet: temperate, arid, ice, lava, alien |

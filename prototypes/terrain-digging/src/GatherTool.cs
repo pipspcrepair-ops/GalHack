@@ -6,7 +6,8 @@ namespace TerrainDigging;
 
 /// <summary>
 /// The survival tool in gather mode. Hold LMB to dig a small grid-aligned ball of cells under
-/// the crosshair; right click to place a 2 m building block; C fires a test crater.
+/// the crosshair (anywhere but bedrock, under blocks and the POI too); right click to place a
+/// 2 m building block; C fires a test crater.
 ///
 /// Aiming walks the cell grid itself (not the collision mesh), so the target is always the
 /// real terrain even while a chunk's new mesh is still being built.
@@ -99,12 +100,8 @@ public partial class GatherTool : Node
 
         Color color = AimingAtStructure ? Palette.Caution
             : !HasTarget ? new Color(1f, 1f, 1f, 0.5f)
-            : TargetVerdict switch
-            {
-                Verdict.Bedrock => Palette.Warning,
-                Verdict.Anchored => Palette.Caution,
-                _ => new Color(1f, 1f, 1f, 0.9f),
-            };
+            : TargetVerdict == Verdict.Bedrock ? Palette.Warning
+            : new Color(1f, 1f, 1f, 0.9f);
         Main.Hud.SetCrosshair(color);
         _cursor.Visible = HasTarget && ShowCursor;
         if (HasTarget)
@@ -153,15 +150,6 @@ public partial class GatherTool : Node
             Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint);
             Player.Kick(0.25f, 0.7f);
         }
-        else if (result.Headline == Verdict.Anchored)
-        {
-            Main.Hud.Toast("ANCHORED · ground under and around structures holds", Palette.Caution);
-            Main.Debris.Sparks(TargetPoint, normal, Palette.Caution);
-            Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint, 1.3f, -3f);
-            Player.Kick(0.2f, 0.4f);
-            foreach (AnchorZone zone in Store.Anchors.Where(z => z.Box.Contains(Target)))
-                Main.Structures.FlashAnchor(zone.Box, Palette.Caution);
-        }
         return result;
     }
 
@@ -195,20 +183,17 @@ public partial class GatherTool : Node
             case PlaceVerdict.Placed:
                 Main.View.MarkDirty(result.Cleared.DirtyChunks);
                 Main.Structures.Add(result.Structure);
-                Main.Structures.FlashAnchor(ChunkStore.AnchorBoxFor(box), Palette.Good);
+                Main.Structures.Flash(box, Palette.Good);
                 Main.Debris.Burst(result.Cleared.Removed, Player.EyePosition, 0.6f);
                 Main.Sfx.Play(Sfx.Sound.Place, ToGodot(box.CenterPosition));
                 Player.Kick(0.8f, 0.2f);
-                Main.Hud.Toast($"Block placed · cleared {result.Cleared.Removed.Count} cells · ground around it is now anchored", Palette.Good);
+                Main.Hud.Toast($"Block placed · cleared {result.Cleared.Removed.Count} cells · the ground around it meets it flush", Palette.Good);
                 break;
             case PlaceVerdict.Overlaps:
                 Main.Hud.Toast("Another block is in the way", Palette.Caution);
                 break;
             case PlaceVerdict.Bedrock:
                 Main.Hud.Toast("Can't build into bedrock", Palette.Warning);
-                break;
-            case PlaceVerdict.AnchoredByPoi:
-                Main.Hud.Toast("POI ground is protected: build elsewhere", Palette.Caution);
                 break;
             default:
                 Main.Hud.Toast("Can't place a block there", Palette.Caution);
@@ -242,9 +227,9 @@ public partial class GatherTool : Node
         Main.Flash(center, new Color("ffb070"));
         Main.Sfx.Play(Sfx.Sound.Boom, center, 1f, 4f);
         Player.Kick(1.2f, Mathf.Clamp(1.4f - distance / 50f, 0.4f, 1.4f));
-        int held = result.Bedrock + result.Anchored;
+        int held = result.Bedrock;
         Main.Hud.Toast($"Crater · {result.Removed.Count} cells removed (capped at {ChunkStore.MaxCraterCells})" +
-                       (held > 0 ? $" · {held} held by bedrock or anchors" : ""), Palette.Text);
+                       (held > 0 ? $" · {held} held by bedrock" : ""), Palette.Text);
         return result;
     }
 

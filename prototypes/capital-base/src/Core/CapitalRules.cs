@@ -31,12 +31,6 @@ public sealed class CapitalRules
         public float DebrisSeconds { get; set; } = 2.5f;
     }
 
-    public sealed class FootingData
-    {
-        public int Radius { get; set; } = 1;
-        public int Depth { get; set; } = 2;
-    }
-
     public sealed class BuildData
     {
         public float Margin { get; set; } = 0.1f;
@@ -63,7 +57,6 @@ public sealed class CapitalRules
     public int Version { get; set; }
     public PlanetData Planet { get; set; } = new();
     public LiftoffData Liftoff { get; set; } = new();
-    public FootingData Footings { get; set; } = new();
     public BuildData Build { get; set; } = new();
     public TransmitData AutoTransmit { get; set; } = new();
     public DrillData Drill { get; set; } = new();

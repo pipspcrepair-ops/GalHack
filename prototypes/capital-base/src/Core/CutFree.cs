@@ -18,7 +18,7 @@ public sealed class CutPlan
     /// <summary>Every terrain cell to remove, sorted, each once.</summary>
     public readonly List<TInt3> Cells = new();
 
-    /// <summary>Cells in the way that the terrain refuses to give up (bedrock, a POI's anchored ground).</summary>
+    /// <summary>Cells in the way that the terrain refuses to give up (bedrock: everything else digs).</summary>
     public readonly List<TInt3> Refused = new();
 
     /// <summary>How far the hull climbs straight up before the pilot has it, m.</summary>
@@ -120,7 +120,7 @@ public static class CutFree
             Verdict why = check(first);
             plan.Refusal = why == Verdict.Bedrock
                 ? $"LIFT-OFF REFUSED: the hull is keyed into bedrock at {first} ({plan.Refused.Count} cells). Build it free or dig round it."
-                : $"LIFT-OFF REFUSED: {plan.Refused.Count} cells of protected ground ({why}) hold the hull at {first}.";
+                : $"LIFT-OFF REFUSED: {plan.Refused.Count} cells the terrain won't give up ({why}) hold the hull at {first}.";
         }
         else if (plan.Cells.Count > rules.MaxCells)
             plan.Refusal = $"LIFT-OFF REFUSED: {plan.Cells.Count} m³ of ground hold the hull (most a lift-off cuts is {rules.MaxCells}). Dig some of it out first.";

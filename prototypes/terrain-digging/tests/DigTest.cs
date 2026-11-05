@@ -36,35 +36,19 @@ public partial class DigTest : Node
         var total = Stopwatch.StartNew();
         try
         {
-            Section("Terrain core");
-            TestRemoveOnly();
-            TestBedrock();
-            TestAnchors();
-            TestBlocksClearTerrain();
-            TestCraterCap();
-            TestWaterStaysPut();
-            TestGeneratorCaves();
-            Section("Edit log, replication and saves");
-            TestReplication();
-            TestRoundTrip();
-            TestAtomicSave();
-            TestLoadAudit();
-            Section("Mesher");
-            TestSeams();
-            TestMeshTimingSingleThread();
-
-            Section("Scene");
-            _main = new Main { Interactive = false, SavePath = Path.Combine(_saveDir, "scene.ghs") };
-            AddChild(_main);
-            while (!_main.IsReady) await NextFrame();
-            Info($"startup: {_main.View.MeshedChunks} chunk meshes, {_main.View.Triangles:N0} triangles in {_main.StartupSeconds:F2} s");
-            await TestStuckSafe();
-            await TestCrouch();
-            await TestGameActions();
-            await TestFloatingIsland();
-            await TestRebuildIdentical();
-            Section("Performance");
-            await TestPerformance();
+            // "-- --flush" runs only the flush-contact checks (quick, headless), for working on them.
+            bool flushOnly = OS.GetCmdlineUserArgs().Contains("--flush");
+            if (flushOnly)
+            {
+                Section("Blocks meet the ground flush");
+                TestFlushContact();
+                TestFlushSeams();
+                TestFlushRemoval();
+                TestFlushDeterminism();
+                TestFlushAtPlanetScale();
+                TestClipTiming();
+            }
+            else await RunEverything();
         }
         catch (Exception e)
         {
@@ -86,6 +70,50 @@ public partial class DigTest : Node
             ? $"ALL PASSED ({_checks} checks in {total.Elapsed.TotalSeconds:F1} s)"
             : $"{_failures} OF {_checks} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    async System.Threading.Tasks.Task RunEverything()
+    {
+        {
+            // (scene tests below need frames, so this half is async)
+            Section("Terrain core");
+            TestRemoveOnly();
+            TestBedrock();
+            TestDigAnywhere();
+            TestBlocksClearTerrain();
+            TestCraterCap();
+            TestWaterStaysPut();
+            TestGeneratorCaves();
+            Section("Edit log, replication and saves");
+            TestReplication();
+            TestRoundTrip();
+            TestAtomicSave();
+            TestLoadAudit();
+            Section("Mesher");
+            TestSeams();
+            TestMeshTimingSingleThread();
+            Section("Blocks meet the ground flush");
+            TestFlushContact();
+            TestFlushSeams();
+            TestFlushRemoval();
+            TestFlushDeterminism();
+            TestFlushAtPlanetScale();
+            TestClipTiming();
+
+            Section("Scene");
+            _main = new Main { Interactive = false, SavePath = Path.Combine(_saveDir, "scene.ghs") };
+            AddChild(_main);
+            while (!_main.IsReady) await NextFrame();
+            Info($"startup: {_main.View.MeshedChunks} chunk meshes, {_main.View.Triangles:N0} triangles in {_main.StartupSeconds:F2} s");
+            await TestStuckSafe();
+            await TestCrouch();
+            await TestGameActions();
+            await TestFlushInScene();
+            await TestFloatingIsland();
+            await TestRebuildIdentical();
+            Section("Performance");
+            await TestPerformance();
+        }
     }
 
     // ---- Terrain core -----------------------------------------------------------------
@@ -176,38 +204,59 @@ public partial class DigTest : Node
         Check(block.Verdict == PlaceVerdict.Bedrock, $"a block can't be placed into bedrock (result: {block.Verdict})");
     }
 
-    /// <summary>Rule 3: ground under and around structures and POIs refuses digs.</summary>
-    void TestAnchors()
+    /// <summary>
+    /// Rule 3, dig anywhere: the tool, craters and building all cut the ground under and right
+    /// next to a structure and a POI, as in Empyrion, and the structure stays exactly where it was.
+    /// </summary>
+    void TestDigAnywhere()
     {
         var store = NewStore();
         Int3 top = SurfaceCell(store, 30, 34);
         var box = CellBox.FromSize(new Int3(top.X, top.Y, top.Z), new Int3(2, 2, 2));
         PlaceResult placed = store.PlaceStructure(box);
-        Check(placed.Verdict == PlaceVerdict.Placed, $"block placed at {box.Min} for the anchor test");
+        Check(placed.Verdict == PlaceVerdict.Placed, $"block placed at {box.Min} for the dig-anywhere test");
+        int id = placed.Structure.Id;
+        StructureVolume volume = store.Volumes[VolumeKey.ForBlock(id)];
 
         Int3 under = new(box.Min.X, box.Min.Y - 1, box.Min.Z);
-        Int3 beside = new(box.Max.X + 1, box.Min.Y - 1, box.Min.Z);
-        Int3 deep = new(box.Min.X, box.Min.Y - ChunkStore.AnchorBelow, box.Min.Z);
-        var refused = new[] { under, beside, deep }.Select(c => (c, r: store.DigCells(new[] { c }))).ToList();
-        Check(refused.All(t => t.r.Headline == Verdict.Anchored && store.IsSolid(t.c)),
-            "ground under, beside and 6 m below a block refuses the tool");
+        Int3 beside = new(box.Max.X, box.Min.Y - 1, box.Min.Z);
+        Int3 deep = new(box.Min.X + 1, box.Min.Y - 6, box.Min.Z + 1);
+        var dug = new[] { under, beside, deep }.Select(c => (c, r: store.DigCells(new[] { c }))).ToList();
+        Check(dug.All(t => t.r.Removed.Count == 1 && !store.IsSolid(t.c)), "the tool digs the ground under, beside and 6 m below a block");
 
-        Int3 away = SurfaceCell(store, box.Max.X + ChunkStore.AnchorSide + 2, box.Min.Z) - Int3.Up;
-        Check(store.DigCells(new[] { away }).Removed.Count == 1, $"ground {ChunkStore.AnchorSide + 2} m from the block digs normally");
+        // Tunnel right under it: a 2 m passage across its whole footprint, a cell below its base.
+        var tunnel = new List<Int3>();
+        for (int x = box.Min.X - 3; x < box.Max.X + 3; x++)
+            for (int y = box.Min.Y - 3; y < box.Min.Y - 1; y++)
+                for (int z = box.Min.Z; z < box.Max.Z; z++)
+                    tunnel.Add(new Int3(x, y, z));
+        int solidBefore = tunnel.Count(store.IsSolid);
+        EditResult t = store.DigCells(tunnel);
+        bool stays = store.Structures.Count == 1 && store.Structures[0] == placed.Structure && store.Volumes[VolumeKey.ForBlock(id)].Equals(volume);
+        Check(t.Removed.Count == solidBefore && solidBefore > 0 && tunnel.All(c => !store.IsSolid(c)) && stays,
+            $"a tunnel dug right under the block takes all {solidBefore} cells, and the block stays exactly where it was built");
 
-        CellBox zone = ChunkStore.AnchorBoxFor(box);
-        var anchoredSolid = ChunkStore.BoxCells(zone).Where(store.IsSolid).ToList();
         EditResult crater = store.Crater(new NVector3(box.Max.X + 1.5f, box.Min.Y, box.Min.Z + 1f), ChunkStore.MaxCraterRadius);
-        Check(crater.Anchored > 0 && crater.Removed.Count > 0 && anchoredSolid.All(store.IsSolid),
-            $"a crater beside the block stops at its anchor zone ({crater.Anchored} cells held, {crater.Removed.Count} removed outside)");
+        int besideCut = crater.Removed.Count(r => r.Cell.X == box.Max.X && r.Cell.Z >= box.Min.Z && r.Cell.Z < box.Max.Z);
+        int underCut = crater.Removed.Count(r => r.Cell.Y < box.Min.Y && r.Cell.X >= box.Min.X && r.Cell.X < box.Max.X && r.Cell.Z >= box.Min.Z && r.Cell.Z < box.Max.Z);
+        Check(besideCut > 0 && underCut > 0 && crater.Refused == crater.Bedrock && store.Structures[0] == placed.Structure,
+            $"a crater beside the block cuts right up to it ({besideCut} cells against its face) and under it ({underCut}); the block stays put");
 
         PoiSite poi = store.Source.PointsOfInterest[0];
         Int3 poiGround = new(poi.Footprint.Min.X + 2, poi.Footprint.Min.Y + 1, poi.Footprint.Min.Z + 2);
         while (!store.IsSolid(poiGround)) poiGround -= Int3.Up;
-        EditResult poiDig = store.DigCells(new[] { poiGround });
-        Check(poiDig.Headline == Verdict.Anchored, $"ground under the {poi.Name} POI refuses the tool");
-        PlaceResult poiBlock = store.PlaceStructure(CellBox.FromSize(poiGround - Int3.Up, new Int3(2, 2, 2)));
-        Check(poiBlock.Verdict == PlaceVerdict.AnchoredByPoi, "a block can't cut into a POI's anchored ground");
+        EditResult poiDig = store.DigCells(new[] { poiGround, poiGround - Int3.Up, poiGround - Int3.Up * 2 });
+        Check(poiDig.Removed.Count == 3, $"ground under the {poi.Name} POI digs like any other ({poiDig.Removed.Count} cells)");
+        EditResult poiCrater = store.Crater(poiGround.Center + new NVector3(0f, 1f, 0f), 3f);
+        Check(poiCrater.Removed.Count > 0 && poiCrater.Refused == 0, $"a crater cuts into the POI's ground ({poiCrater.Removed.Count} cells)");
+        PlaceResult poiBlock = store.PlaceStructure(CellBox.FromSize(poiGround + new Int3(3, 0, 0), new Int3(2, 2, 2)));
+        Check(poiBlock.Verdict == PlaceVerdict.Placed, $"a block can be built into the POI's ground ({poiBlock.Verdict})");
+
+        // Only bedrock holds, under a block too.
+        Int3 rock = new(box.Min.X, box.Min.Y, box.Min.Z);
+        while (store.BaseMaterialAt(rock) != CellMaterial.Bedrock) rock -= Int3.Up;
+        EditResult bedrock = store.DigCells(new[] { rock });
+        Check(bedrock.Headline == Verdict.Bedrock && store.IsSolid(rock), $"bedrock under the block still refuses the tool ({rock})");
     }
 
     /// <summary>Rule 4: placing a block removes the terrain inside it.</summary>
@@ -226,7 +275,7 @@ public partial class DigTest : Node
         int neighbourSolid = store.CountSolid(neighbour);
         PlaceResult n = store.PlaceStructure(neighbour);
         Check(n.Verdict == PlaceVerdict.Placed && store.CountSolid(neighbour) == 0,
-            $"a block next to a block clears its own ground, even inside the first one's anchor zone ({neighbourSolid} cells)");
+            $"a block next to a block clears its own ground ({neighbourSolid} cells)");
     }
 
     /// <summary>Rule 10: crash and liftoff craters are capped spheres, remove-only.</summary>
@@ -716,8 +765,8 @@ public partial class DigTest : Node
         ulong savedHash = store.EditStateHash();
         int savedStructures = store.Structures.Count;
 
-        // Walk clear of the block's anchored ground, then dig straight down: the player drops
-        // into a hole the save knows nothing about.
+        // Walk away from the block, then dig straight down: the player drops into a hole the save
+        // knows nothing about.
         Int3 away = SurfaceCell(store, spot.X + 12, spot.Z - 6);
         player.Teleport(new Vector3(away.X + 0.5f, away.Y + 1.2f, away.Z + 0.5f));
         spot = away;
