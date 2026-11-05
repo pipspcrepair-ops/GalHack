@@ -7,4 +7,8 @@
          which would make in-editor play stutter while terrain streams. -->
     <Optimize>true</Optimize>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The sky seam check every prototype with a sky of its own runs (tests/SkySeamTest). -->
+    <Compile Include="..\..\shared\Sky\**\*.cs" />
+  </ItemGroup>
 </Project>

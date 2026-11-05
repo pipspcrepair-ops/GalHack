@@ -43,6 +43,7 @@ Shared code lives in [`shared/`](shared/): modules that prototypes compile in ra
 | `prototypes/capital-base/` | A capital ship lands on a real planet, becomes a base at its core console, is built onto and into the ground, parks a vessel, and lifts off clean, cut free; auto-transmit to Home |
 | `prototypes/planet-surface/` | A whole planet to stand on: diggable streamed terrain on a torus, skies from each system, weather, seated POIs |
 | `shared/Terrain/` | The planet generator's worlds as diggable voxel terrain (caves, ore, bedrock, POI pads), wrapping both ways; compiled into prototypes that need it |
+| `shared/Sky/` | The sky seam check: renders a sky looking straight at a cube's corners and edges, the poles, the axes and the azimuth's wrap, and fails on a line, a pinch or stars thinning at the axes; every prototype with a sky of its own runs it as `tests/SkySeamTest.tscn` |
 | `shared/Items/` | The item catalogue as data on the five-step rarity ladder, the recipe tree from ore to every block, the production machines, mode-aware block placement, and ore deposit shapes ([README](shared/Items/README.md), [ore notes](shared/Items/ORE-NOTES.md)) |
 
 ## Requirements
@@ -77,3 +78,5 @@ Every prototype has headless test scenes (`tests/*Test.tscn`, `tests/*Probe.tscn
 Run one with `.\tools\test.ps1 -Project prototypes/<name> -Scene res://tests/<Scene>.tscn`.
 
 The gate also fails if any Kenney asset is added: GalHack uses no Kenney assets of any kind.
+
+A few checks must see rendered pictures (the sky seam checks, planet-surface's `SkyTest`). Headless runs draw nothing, so those scenes start themselves again in a window placed off-screen (`--position 20000,20000`) and pass on what it prints; they need a GPU, as playing does. Render screenshots off-screen the same way.

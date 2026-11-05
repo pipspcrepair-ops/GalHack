@@ -22,10 +22,12 @@ void sky() {
 	vec3 dir = EYEDIR;
 	float up = dir.y;
 
-	// Gradient with a bright band at the horizon, the airbrushed look.
+	// Gradient with a bright band at the horizon, the airbrushed look. The band goes on after the
+	// ground's blend, so the colour is the same just above and just below the horizon (with it
+	// before, the band stopped dead there: a hard line seen from any height).
 	vec3 col = mix(horizon, zenith, pow(clamp(up, 0.0, 1.0), 0.42));
-	col += horizon * 0.22 * exp(-abs(up) * 14.0);
 	if (up < 0.0) col = mix(horizon, ground, clamp(-up * 5.0, 0.0, 1.0));
+	col += horizon * 0.22 * exp(-abs(up) * 14.0);
 
 	// Sun: disc and halo, dimmed by cloud along the way.
 	vec3 to_sun = LIGHT0_DIRECTION;
