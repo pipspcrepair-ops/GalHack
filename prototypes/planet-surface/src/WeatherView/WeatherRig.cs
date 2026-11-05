@@ -249,10 +249,16 @@ public partial class WeatherRig : Node3D
         // Only someone at or below the ground's surface can be under rock: a pit, a cave, a
         // building. Above it nothing shelters you, and asking would generate terrain on this thread.
         if (at.Y > Main.World.GroundHeight(Mathx.WrapX(at.X, Main.World.Width), Mathx.Wrap(at.Z, Main.World.Height)) + 2.5f) return false;
+        // Only chunks the streamer has already built are read: one that isn't loaded is open sky
+        // (everything above the meshed range is), and generating it here would hitch the frame.
         var store = Main.World.Terrain.Store;
         var cell = TerrainDigging.Terrain.Int3.Floor(new System.Numerics.Vector3(at.X, at.Y, at.Z));
         for (int up = 1; up <= 24; up++)
-            if (store.IsSolid(new TerrainDigging.Terrain.Int3(cell.X, cell.Y + up, cell.Z))) return true;
+        {
+            var above = new TerrainDigging.Terrain.Int3(cell.X, cell.Y + up, cell.Z);
+            if (!Main.Streamer.IsReady(TerrainDigging.Terrain.ChunkStore.ChunkOf(above))) return false;
+            if (store.IsSolid(above)) return true;
+        }
         return false;
     }
 
@@ -297,6 +303,19 @@ public partial class WeatherRig : Node3D
         }
     }
 
+    /// <summary>Screenshots: one weather turning into another, caught part way (0 to 1) through the change.</summary>
+    public void SnapPartway(WeatherKind from, WeatherKind to, float part, GroundCover? ground = null)
+    {
+        Sim.Snap(from);
+        Sim.Force(to);
+        float seconds = (float)Sim.SegmentAt(Sim.Time).Transition * part;
+        for (float t = 0; t < seconds; t += 0.5f) Sim.Step(0.5f, Main.Player.GlobalPosition);
+        if (ground is GroundCover g) Sim.DebugSetGround(g);
+    }
+
+    /// <summary>Screenshots: a bolt and its flash, now, with no build-up.</summary>
+    public void DebugStrike(Vector3 at) => _lightning.Strike(at);
+
     /// <summary>Tests and screenshots: jump straight to a weather and its ground cover.</summary>
     public void Snap(WeatherKind kind, GroundCover? ground = null)
     {
@@ -310,10 +329,13 @@ public partial class WeatherRig : Node3D
     {
         _rain = AddEmitter("Rain", 3200, 1.1f, new Vector3(22, 10, 22), new Vector3(0, 11, 0),
             new QuadMesh { Size = new Vector2(0.018f, 0.9f) }, new Color(0.78f, 0.85f, 0.9f, 0.32f), billboard: false, texture: null);
-        _snow = AddEmitter("Snow", 2600, 2.5f, new Vector3(16, 7, 16), new Vector3(0, 6, 0),
-            new QuadMesh { Size = new Vector2(0.08f, 0.42f) }, new Color(1, 1, 1, 0.95f), billboard: false, texture: SoftDot);
-        _snow.Draw.DistanceFadeMinDistance = 0.4f;
-        _snow.Draw.DistanceFadeMaxDistance = 2f;
+        _snow = AddEmitter("Snow", 4200, 2.5f, new Vector3(16, 7, 16), new Vector3(0, 6, 0),
+            new QuadMesh { Size = new Vector2(0.06f, 0.14f) }, new Color(1, 1, 1, 0.95f), billboard: false, texture: SoftDot);
+        // Flakes are stretched along their velocity only a little: in a blizzard that is sideways,
+        // and a long soft dot reads as a flying saucer rather than a streak. The ones right at the
+        // lens fade out, or a single flake would fill a corner of the screen.
+        _snow.Draw.DistanceFadeMinDistance = 0.8f;
+        _snow.Draw.DistanceFadeMaxDistance = 3f;
         _grit = AddEmitter("DustGrit", 1600, 1.2f, new Vector3(20, 5, 20), new Vector3(0, 3, 0),
             new QuadMesh { Size = new Vector2(0.035f, 0.8f) }, new Color(0.5f, 0.27f, 0.12f, 0.55f), billboard: false, texture: null);
         _puffs = AddEmitter("DustPuffs", 260, 4f, new Vector3(24, 6, 24), new Vector3(0, 4, 0),
