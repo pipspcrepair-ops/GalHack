@@ -23,11 +23,12 @@ site old_airfield
   part road 44 14 len 22 width 6 axis z cracks 0.2
   part road 44 36 len 50 width 6 axis x cracks 0.2
   part building 70 44 program control_tower vault yes
-  part hangar 108 40 w 28 d 20 h 9
-  part hangar 108 70 w 26 d 18 h 8
+  part hangar 108 40 w 28 d 20 h 14
+  part hangar 108 70 w 26 d 18 h 13
   part tanks 152 50 count 2 r 4 h 9 gap 5 axis z
-  part aircraft 14 26 len 18
-  part aircraft 120 18 len 14
+  part aircraft 14 26 len 28
+  part aircraft 120 18 len 22
+  part tower 30 -16 h 34 size 4 every 6
   part containers 50 70 rows 2 cols 3
   part poles 46 34 count 5 gap 12 h 7 axis x
   part vehicles 60 22 count 3 gap 7 axis x
@@ -119,6 +120,7 @@ site factory_low
   part vehicles 4 30 count 2 gap 8 axis x
   part containers 30 44 rows 1 cols 3
   part camp -6 34 gang yes
+  part crane 66 40 h 24 jib 12 back 4 axis x
 
 site factory_mid
   name Abandoned Factory
@@ -134,6 +136,7 @@ site factory_mid
   part vehicles 4 58 count 3 gap 7 axis x
   part containers 54 52 rows 2 cols 2
   part camp -6 46 gang yes
+  part crane 70 40 h 30 jib 16 back 5 axis z
 
 site factory_high
   name Automated Plant
@@ -148,6 +151,7 @@ site factory_high
   part pad 40 64 r 6
   part containers 4 62 rows 2 cols 3
   part camp -6 50 gang yes
+  part crane 80 60 h 32 jib 18 back 5 axis x
 
 # ---- Old-world farms: a farmhouse with a cellar, barns and sheds, silos and a windmill or water
 # tower to see it by, fields gone wild, empty pens, a machinery yard. Mid and high tech add
@@ -215,7 +219,7 @@ site sky_railgun
   entrance -16 10 west
   part road -14 8 len 14 width 6 axis x cracks 0.05
   part building 0 0 program command_bunker vault yes
-  part railgun 40 30 len 44
+  part railgun 40 30 len 66
   part hangar 40 0 w 30 d 18 h 9
   part stacks 0 46 count 2 r 3 h 24 gap 6 axis x type cooling
   part tanks 30 48 count 2 r 3 h 10 gap 5 axis x
@@ -243,6 +247,7 @@ site supply_depot
   part pad 76 10 r 8
   part tanks 72 30 count 3 r 3 h 9 gap 5 axis z
   part containers 4 40 rows 2 cols 4
+  part crane 70 50 h 26 jib 14 back 4 axis z
 
 # ---- Survivor settlements: old-world shells patched with scrap, new shacks along a street,
 # a market corner, gardens and a water tank, watch posts at the edge. No faction, no core.

@@ -61,6 +61,8 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
    - an open hall
    - an enfilade, with rooms opening through rooms
    - mine drifts with stopes
+   - a radial hub with spokes to every side, a tiered atrium (galleries stacked round one void), a ward loop (two parallel corridors joined at both ends), a hub hall round the stair core, branching tunnels
+   - round a courtyard: a full cloister walk, a horseshoe, or spokes out to the street
 
    A pattern already used on another storey is less likely again. A storey whose plan signature matches another storey's is planned again. Shape follows purpose: hospitals and prisons spread their wings, towers climb, bunkers and mines go down.
 3. **Rooms.** The space left over is cut into rooms by recursive wall splits. Each room gets a purpose from the program's demands (`rooms ground lobby! nurses ...`) and from the room library (`rooms.txt`). The library gives each room its size, props, adjacency, and a deco set for the decorations library. Slivers become hidden rooms behind breakable walls, each with its tells.
@@ -111,6 +113,11 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 - **Loot** comes from real `shared/Items` ids (`loot.txt`). The cache tier rises with rarity, depth and wrongness, and is higher for vaults, hidden stashes and infested places.
 - **Frozen moments** replace text logs: an abandoned meal, welded doors scratched from the inside, drag marks leading deeper, a last stand by the core. Terminals are props.
 - **Gangs** belong to no faction. Their camps and forts get spawn and patrol markers, and never a core.
+
+### Alien and the distance read
+
+- **Alien forms** (`BuildingAlien.cs`): an alien cathedral (its own nave program) grows a tapering spire and leaning fins, a library leaning crystal columns and a monolith, a hive chitin mounds and vents; every alien way in gets a pointed portal beside and above the door. The viewer dresses alien rooms from the decorations library (`shared/Deco`, its alien set) as scenery.
+- **Landmarks for 400 m**: towers lose their tops (girders and slab stubs against the sky, `crown broken`), airfields get big hangars and a 34 m mast, factories and depots a tower crane, the sky railgun a 66 m barrel. On the planet surface beacons, lit windows and outdoor lamps carry a glow that fades in past 40 m; smoke columns are taller.
 
 ### Placement
 
@@ -193,6 +200,7 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 - **Blast data.** `PoiSite.GroundZero` and `Instance.Layout.Extras.Blast` give the crater, ruin ring, dead zone and fade radii, for the ground tint and the world work. `BlastZone.Strength(d)` falls off with distance. Places within a blast take `StateTransforms.Blast`. Markers flag `shadow` (burnt faces toward ground zero), `hulk` and `radiation-edge`.
 - **Faction-held mix.** Most faction places are working sites (relays, depots, works, research, markets, flats, an air-defence battery, a sky railgun). Garrisons are tagged `fort` and uncommon.
 - **Composable stamps.** `TerrainStamp.Compose` is the one height rule. In list order, each stamp eases the height so far toward its own target, by its weight. Overlapping pads meet smoothly, and a road or rail stamp laid later wins wherever its weight is 1. Order the list by what should win. `TerrainStamp.Apply` is the step for a single stamp.
+- **Grounding stamps.** Beyond its pad a place lays a crater `Bowl` (shows in the far rings too), `Terraces` stepping down the slope below a hillside place, an approach `Cut` from the way in, a `Tilt` that half-buries a ruin (its rooms stay carved open), and an impact `Furrow` behind a wreck (`PoiSite.Extra`, `PoiSite.Stamps`; all compose and stay walkable to every gate).
 - **Dig anywhere.** Stamps are shape only. Faction places lay armoured foundations (`Material.Armour`), so tunnelling in is slow but a valid way in.
 - **Far rings.** `FarBuilder` samples `SurfaceHeight`, which already includes the stamps, so pads show in the distance. Underground carves and crater bowls below the pad don't show in the far heightfield. To show a crater there, the far ring's height sampling needs its bowl (a stamp target below the pad), not only the voxel carve mask.
 - **Screenshots and caps.** `PoiSiting.ForceFamily` seats one family near the landing site, for screenshots. `MaxSites` caps how many places are seated: the nearest half first, then an even spread to the far side.
@@ -221,6 +229,9 @@ The tests run headless and exit 0 or 1. Add `-- --only=Name,Name` to run only th
   - Collapse breaches lead in.
   - Keycards lie before their locks.
   - Cables and tendrils always hang from an anchor.
+  - No stray geometry: every vertex inside its place, no triangle edge over 24 m (what catches a stroke thrown across the landscape).
+  - Circulation varies within a type: no pattern walks more than 45% of a type's storeys.
+  - Grounding stamps: bowl, terraces, cut, tilt and furrow shapes, seams and composition.
   - Programs keep their must-have rooms.
   - Old-world places hold no food outside sealed rooms, and trees grow through them.
   - Factories and farms match their world's tech level.

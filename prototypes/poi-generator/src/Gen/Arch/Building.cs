@@ -91,6 +91,8 @@ public sealed partial class Building
         public byte[,] K = null!;
         public int[,] R = null!;            // room index for Free cells
         public string Pattern = "spine";
+        /// <summary>The ring this storey ran (loops, atriums, tiers): a tiered atrium stacks the same ring storey on storey.</summary>
+        public (int a, int b, int z1, int z2) Ring;
         public List<RoomPlan> Rooms = new();
         public int Corridor = -1;           // its corridor network's module
         public List<(int x, int z)> Holes = new();
@@ -203,6 +205,7 @@ public sealed partial class Building
         Out.Levels = Levels;
         Out.Min = Int3.Min(L(0, WalkY(Bottom) - 1, 0), L(W - 1, WalkY(Top) + 4, D - 1));
         Out.Max = Int3.Max(L(0, WalkY(Bottom) - 1, 0), L(W - 1, WalkY(Top) + 4, D - 1));
+        AlienForm();   // after the bounds: alien forms grow round the building's footprint
         int index = C.X.Plans.Select(p => p.Building).DefaultIfEmpty(-1).Max() + 1;
         foreach (var p in _plans.Values.OrderBy(p => p.S))
         {
@@ -398,9 +401,16 @@ public sealed partial class Building
         var rng = Rng.Fork($"plan{s}:{attempt}");
         // A building works through its repertoire: a circulation already used on another storey is less likely again.
         var usedPatterns = _plans.Values.Select(p => p.Pattern).ToList();
-        string pattern = options[Math.Max(0, rng.PickWeighted(options.Select(o => o.Weight * MathF.Pow(0.3f, usedPatterns.Count(u => u == o.Key))).ToList()))].Key;
+        // (Tiers are meant to repeat: a tiered atrium is galleries stacked round one void.)
+        string pattern = options[Math.Max(0, rng.PickWeighted(options.Select(o => o.Weight * (o.Key == "tiers" ? 1f : MathF.Pow(0.3f, usedPatterns.Count(u => u == o.Key)))).ToList()))].Key;
         if (attempt > 0 && options.Count > 1 && _plans.TryGetValue(s + 1, out var above) && above.Pattern == pattern)
             pattern = options[(options.FindIndex(o => o.Key == pattern) + attempt) % options.Count].Key;
+        // Round a courtyard the ring itself varies: a full cloister walk, a horseshoe open on one side, or spokes out to the street.
+        if (pattern == "court")
+        {
+            string[] forms = { "court", "cloister", "horseshoe" };
+            pattern = forms[Math.Max(0, rng.PickWeighted(forms.Select(fm => MathF.Pow(0.3f, usedPatterns.Count(u => u == fm))).ToList()))];
+        }
         plan.Pattern = pattern;
 
         var corr = new HashSet<(int, int)>();
@@ -418,11 +428,14 @@ public sealed partial class Building
         // The ring this storey runs (round the courtyard it is fixed; otherwise its size and form vary storey to storey).
         var ring = Ring;
         int ringForm = 0;
-        if (pattern is "loop" or "atrium")
+        if (pattern is "loop" or "atrium" or "tiers")
         {
-            ring = (rng.Between(4, 9), Wm - rng.Between(7, 11), Zs, Zm + Dm - rng.Between(6, 9));
+            ring = pattern == "tiers" && _plans.TryGetValue(s - 1, out var tierBelow) && tierBelow.Pattern == "tiers"
+                ? tierBelow.Ring
+                : (rng.Between(4, 9), Wm - rng.Between(7, 11), Zs, Zm + Dm - rng.Between(6, 9));
             if (pattern == "loop") ringForm = rng.Between(0, 2); // 0 a full ring, 1 a horseshoe, 2 a figure of eight
         }
+        plan.Ring = ring;
         switch (pattern)
         {
             case "spine":
@@ -450,9 +463,20 @@ public sealed partial class Building
             }
             case "loop":
             case "atrium":
+            case "tiers":
             case "court":
+            case "cloister":
+            case "horseshoe":
             {
                 var (a, b, z1, z2) = ring;
+                if (pattern == "horseshoe") ringForm = 1;
+                if (pattern == "cloister")
+                {
+                    int mz = (z1 + z2) / 2;
+                    Run(from, mz, a, mz + 1);
+                    Run(b, mz, to, mz + 1);
+                    Run((a + b) / 2, z2, (a + b) / 2 + 1, Zm + Dm - 2);
+                }
                 Run(from, z1, to, z1 + 1);
                 Run(a, z2, b + 1, z2 + 1);
                 bool westLeg = ringForm != 1 || rng.Chance(0.5f);
@@ -469,6 +493,30 @@ public sealed partial class Building
             case "enfilade":
                 Run(Cx, Zs, CoreEnd, Zs + 1);
                 break;
+            case "radial":
+            {
+                // A hub in the middle with spokes out to every side: the blocks hang off it.
+                int hx = Math.Clamp(Wm / 2, CoreEnd + 5, Math.Max(CoreEnd + 5, to - 6)), hz = Math.Clamp(Zm + Dm / 2, Zs + 3, Math.Max(Zs + 3, Zm + Dm - 6));
+                Run(hx - 3, hz - 2, hx + 3, hz + 3);
+                Run(from, hz, to, hz + 1);
+                Run(hx, Zm + 1, hx + 1, Zm + Dm - 2);
+                break;
+            }
+            case "racetrack":
+            {
+                // A ward loop: two parallel corridors joined at both ends, rooms inside and out.
+                int z2 = Math.Min(Zs + 8, Zm + Dm - 4);
+                Run(from, Zs, to, Zs + 1);
+                Run(from + 2, z2, to - 2, z2 + 1);
+                Run(from + 2, Zs, from + 3, z2 + 1);
+                Run(to - 3, Zs, to - 2, z2 + 1);
+                break;
+            }
+            case "hub":
+                // A hall round the stair core; the wings branch straight off it.
+                Run(Cx - 3, Zs, CoreEnd + 3, Zs + 4);
+                break;
+            case "branches":
             case "drifts":
             {
                 Run(from, Zs, to, Zs + 1);
@@ -496,7 +544,7 @@ public sealed partial class Building
         JoinCorridors(corr, K, Run);
 
         // The courtyard's inner block (open to the sky) or the atrium's void.
-        if (pattern == "atrium" && s > Math.Max(0, Bottom) && s >= 1)
+        if (pattern is "atrium" or "tiers" && s > Math.Max(0, Bottom) && s >= 1)
         {
             var (a, b, z1, z2) = ring;
             for (int z = z1 + 3; z <= z2 - 2; z++)
@@ -550,8 +598,11 @@ public sealed partial class Building
     bool Fits(string pattern, int s) => pattern switch
     {
         "atrium" when Floors < 2 => false,
-        "loop" or "atrium" => Dm >= 30 && Wm >= 30 && !Courtyard,
-        "court" => Courtyard,
+        "tiers" when Floors < 2 => false,
+        "loop" or "atrium" or "tiers" => Dm >= 30 && Wm >= 30 && !Courtyard,
+        "racetrack" => Zm + Dm - 4 - Zs >= 7 && !Courtyard,
+        "radial" => Dm >= 18 && Wm >= 24 && !Courtyard,
+        "court" or "cloister" or "horseshoe" => Courtyard,
         "enfilade" => s != 0,
         _ => !(Courtyard && pattern != "court"),
     };

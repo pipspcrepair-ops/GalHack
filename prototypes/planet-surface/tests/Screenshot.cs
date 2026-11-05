@@ -312,7 +312,7 @@ public static class Views
         }
         double bestScore = double.MinValue, bestDist = 400;
         Vector3 bestPos = default;
-        foreach (double dist in new[] { 300.0, 360.0, 420.0 })
+        foreach (double dist in new[] { 280.0, 330.0, 390.0 })
         for (int k = 0; k < 24; k++)
         {
             double ang = k * Math.PI / 12;
@@ -320,18 +320,22 @@ public static class Views
             float ground = w.GroundHeight(x, z);
             if (ground < 1f) continue; // not from the water
             float eye = ground + 2.5f;
-            // The line of sight to the place's landmark, short of its own apron: nothing in the way.
+            // Not from a peak looking down on it: a traveller sees it across the land.
+            if (eye > baseY + Math.Max(30f, site.Family.Rise)) continue;
+            // The whole of it in sight, not just its top over a ridge: nothing in the way of its lower walls.
             double blocked = 0;
+            float low = baseY + 3f;
             for (int s = 1; s < 60; s++)
             {
                 double f = s / 60.0 * 0.88, sx = x + (cx - x) * f, sz = z + (cz - z) * f;
                 blocked = Math.Max(blocked, w.GroundHeight(sx, sz) - (eye + (top - eye) * f));
+                blocked = Math.Max(blocked, 0.5 * (w.GroundHeight(sx, sz) - (eye + (low - eye) * f)));
             }
             // Trees close to the eye hide everything: keep the near half of the line out of woods.
             int woods = 0;
             for (int s = 0; s < 20; s++) if (Wooded(x + (cx - x) * s / 40.0, z + (cz - z) * s / 40.0)) woods++;
             // Eye level a little under the landmark's middle, so it stands against the sky.
-            double score = -Math.Max(0, blocked) * 10 - woods * 3 - Math.Abs(dist - 400) * 0.01 - Math.Abs(eye - (baseY + site.Family.Rise * 0.3)) * 0.08;
+            double score = -Math.Max(0, blocked) * 10 - woods * 3 - Math.Abs(dist - 320) * 0.02 - Math.Abs(eye - (baseY + 6f)) * 0.08;
             if (score > bestScore) { bestScore = score; bestPos = new Vector3((float)x, eye, (float)z); bestDist = dist; }
         }
         if (bestScore == double.MinValue) return LookAtPeak(m, 600, 20, 0);

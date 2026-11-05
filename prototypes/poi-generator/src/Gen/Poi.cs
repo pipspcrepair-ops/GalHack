@@ -165,6 +165,30 @@ public static class PoiFactory
     /// Repair after the fixtures go in: a side cache that ended up walled in by the other fixtures
     /// (a cache in a pocket behind another) is taken out rather than left unreachable.
     /// </summary>
+    /// <summary>
+    /// Repair after the fixtures go in: no cache or terminal stands on the plan's own way from the
+    /// door to the vault (a stash set down in a narrow pass would close it). Those few move aside or go.
+    /// </summary>
+    static void ClearPath(PoiInstance inst)
+    {
+        var layout = inst.Layout;
+        if (layout.VaultModule < 0) return;
+        var plan = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+        var vault = layout.Modules[layout.VaultModule];
+        Int3 goal = vault.Cells.Where(c => c.Y == vault.Min.Y && plan.Standable(c)).DefaultIfEmpty(layout.EntranceCell).First();
+        var path = plan.FindPath(layout.EntranceCell, goal);
+        if (path == null) return;
+        foreach (Int3 c in path.Take(System.Math.Max(0, path.Count - 2)))
+            foreach (Int3 q in new[] { c, c + Int3.Up })
+            {
+                var b = inst.Blocks.Get(q);
+                if (b.Type is not (BlockType.Cache or BlockType.Terminal) || inst.Caches.Any(k => k.Cell == q && k.InVault)) continue;
+                inst.Blocks.Set(q, Block.Air);
+                inst.Caches.RemoveAll(k => k.Cell == q && !k.InVault);
+                inst.Terminals.RemoveAll(t => t.Cell == q);
+            }
+    }
+
     static void Unblock(PoiInstance inst)
     {
         var nav = inst.Nav();
@@ -174,6 +198,24 @@ public static class PoiFactory
         foreach (var c in inst.Caches.Where(c => !c.Secret).ToList())
             if (nav.AccessCell(c.Cell, reach) is not Int3 && (!c.InVault || inst.Caches.Count(o => o.InVault && o != c && nav.AccessCell(o.Cell, reach) is Int3) > 0))
             { inst.Blocks.Set(c.Cell, Block.Air); inst.Caches.Remove(c); }
+        // A vault whose caches all ended up walled in by each other keeps one, moved where it can be reached;
+        // and a reachable vault cache comes first, the one the vault is judged by.
+        var vaultCaches = inst.Caches.Where(c => c.InVault).ToList();
+        if (vaultCaches.Count > 0 && vaultCaches.All(c => nav.AccessCell(c.Cell, reach) is not Int3))
+        {
+            var keep = vaultCaches[0];
+            var room = inst.Layout.Modules[keep.Module];
+            foreach (Int3 cell in room.Cells.Where(c => c.Y == room.Min.Y && inst.Blocks.Get(c).IsAir && reach.Contains(c)).OrderBy(c => Hash.Cell(c, 433)))
+            {
+                var block = inst.Blocks.Get(keep.Cell);
+                inst.Blocks.Set(keep.Cell, Block.Air);
+                inst.Blocks.Set(cell, block);
+                if (nav.AccessCell(cell, reach) is Int3) { keep.Cell = cell; break; }
+                inst.Blocks.Set(cell, Block.Air);
+                inst.Blocks.Set(keep.Cell, block);
+            }
+        }
+        inst.Caches = inst.Caches.OrderBy(c => c.InVault && nav.AccessCell(c.Cell, reach) is not Int3).ToList();
     }
 
     /// <summary>A core that cut the way to the vault (it stood in a narrow pass) moves to the first spot in a big room that doesn't.</summary>
@@ -217,6 +259,7 @@ public static class PoiFactory
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));
+        ClearPath(inst);
         if (inst.HasCore && !Reaches(inst)) RelocateCore(inst);
         Unblock(inst);
         using (Prof.Time("protect")) Fixtures.Protect(inst);

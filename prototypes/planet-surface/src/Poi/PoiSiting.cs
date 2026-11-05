@@ -48,6 +48,15 @@ public sealed class PoiSite
 
     public TerrainStamp Stamp;
 
+    /// <summary>Stamps that ground the place beyond its pad: a crater bowl, terraces, an approach cut, a tilt that half-buries a ruin, an impact furrow. Applied after the pad.</summary>
+    public List<TerrainStamp> Extra = new();
+
+    /// <summary>Every stamp this place lays, pad first.</summary>
+    public IEnumerable<TerrainStamp> Stamps => Extra.Prepend(Stamp);
+
+    /// <summary>A ruin sunk into rising ground (its back walls are meant to be in the earth; its rooms stay open).</summary>
+    public bool HalfBuried;
+
     /// <summary>Where it was fitted: ridge, valley, hillside or flat, and how much ground was cut and filled.</summary>
     public string Siting = "";
     public float CutFill;
@@ -331,8 +340,15 @@ public static class PoiSiting
             new TInt3(ox + lx0, bestPad + occupied.Min.Y, oz + lz0),
             new TInt3(ox + lx1, bestPad + Math.Max(occupied.Min.Y + occupied.Size.Y, inst.Blocks.Min.Y + inst.Blocks.Size.Y), oz + lz1));
 
+        // Half-buried ruins: the ground rises across the footprint away from the way in, so the
+        // building sinks into it toward the back. Every room stays open (carved up to the tilt's top).
+        PInt3 outward = inst.Layout.EntranceFacing.Vec();
+        bool ruin = inst.State == PoiState.Ruined && family.Faction == PoiGenerator.Gen.Faction.None && family.Site == null;
+        float tilt = ruin ? 0.08f + (PoiGenerator.Gen.Hash.Cell(new PInt3(origin.X, 0, origin.Z), 77) % 100) / 1000f : 0f;
+        double depthAlong = Math.Abs(outward.X) * (lx1 - lx0) + Math.Abs(outward.Z) * (lz1 - lz0);
+        int buryTop = ruin ? (int)Math.Ceiling(tilt * depthAlong) + 1 : 0;
         // Rooms below the pad (and the floor layer, which sits in the ground) stay open.
-        int carveH = Math.Max(0, -occupied.Min.Y);
+        int carveH = Math.Max(0, -occupied.Min.Y) + buryTop;
         bool[] carve = null;
         if (carveH > 0)
         {
@@ -346,26 +362,77 @@ public static class PoiSiting
         // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.
         // The blend has to take the whole difference between the pad and the ground at its outer
         // edge, so it grows until that difference fits at a walkable slope.
-        float blend = Math.Clamp(bestCut * 2f + 8f, 10f, 90f);
+        float blend = Math.Clamp(bestCut * 2f + 8f, 10f, 120f);
         for (int pass = 0; pass < 4; pass++)
         {
             float edge = 0f;
-            for (int k = 0; k < 24; k++)
-            {
-                double ang = k * Math.PI / 12;
-                double rx = Math.Cos(ang) * (halfX + Apron + blend), rz = Math.Sin(ang) * (halfZ + Apron + blend);
-                edge = MathF.Max(edge, MathF.Abs(bare.NaturalHeight(bestX + rx, bestZ + rz) - bestPad));
-            }
-            float wanted = Math.Clamp(edge * 1.7f, 10f, 90f);
+            for (int k = 0; k < 48; k++)
+                foreach (double f in new[] { 0.35, 0.7, 1.0 })
+                {
+                    double ang = k * Math.PI / 24;
+                    double rx = Math.Cos(ang) * (halfX + Apron + blend * f), rz = Math.Sin(ang) * (halfZ + Apron + blend * f);
+                    edge = MathF.Max(edge, MathF.Abs(bare.NaturalHeight(bestX + rx, bestZ + rz) - bestPad));
+                }
+            float wanted = Math.Clamp(edge * 1.8f, 10f, 120f);
             if (wanted <= blend) break;
             blend = wanted;
         }
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve);
 
+        // Grounding: shapes that sit the place in its land rather than on a flat pad.
+        var extra = new List<TerrainStamp>();
+        double fx0 = ox + lx0, fz0 = oz + lz0, fx1 = ox + lx1, fz1 = oz + lz1;
+        if (ruin)
+            extra.Add(new TerrainStamp(family.Name + " (half-buried)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, Apron, blend, width, height)
+                { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt });
+        // A crater's bowl, so it shows in the far rings too (its rim is the place's own rubble).
+        if (inst.Layout.Extras.Blast is { } blast)
+        {
+            int gx = ox + blast.Center.X, gz = oz + blast.Center.Z, rr = (int)Math.Ceiling(blast.Crater);
+            extra.Add(new TerrainStamp(family.Name + " (crater)", gx - rr, gz - rr, gx + rr, gz + rr, bestPad, 0f, 16f, width, height)
+                { Shape = StampShape.Bowl, Radius = blast.Crater, Depth = 6f, Rim = 0f });
+        }
+        // An impact gouge behind a wreck, ploughed out the way it came down.
+        if (family.Tags.Contains("wreck"))
+            extra.Add(new TerrainStamp(family.Name + " (furrow)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, 0f, 0f, width, height)
+                { Shape = StampShape.Furrow, DirX = -outward.X, DirZ = -outward.Z, Length = 70f, Width = 14f, Depth = 3f });
+        // Terraces stepping down the slope below a place on a hillside or in a valley.
+        if (!ruin && bestKind is "hillside" or "valley" or "ridge")
+        {
+            (float dx, float dz) down = (0, 0);
+            float lowest = float.MaxValue;
+            foreach (var (dx, dz) in new[] { (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) })
+            {
+                float n = bare.NaturalHeight(bestX + dx * (halfX + Apron + 14), bestZ + dz * (halfZ + Apron + 14));
+                if (n < lowest) { lowest = n; down = (dx, dz); }
+            }
+            float drop = bestPad - lowest;
+            if (drop > 4f)
+            {
+                float across = Math.Abs(down.dz) * (float)(fx1 - fx0) + Math.Abs(down.dx) * (float)(fz1 - fz0);
+                extra.Add(new TerrainStamp(family.Name + " (terraces)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, 0f, 0f, width, height)
+                    { Shape = StampShape.Terraces, DirX = down.dx, DirZ = down.dz, Length = Math.Min(48f, drop / 1.5f * 6f), Width = across + 6f, Step = Math.Clamp(drop / 18f * 6f, 1f, 2.5f) });
+            }
+        }
+        // An approach cut: a road bed out from the way in, into the hill or up onto a bank.
+        {
+            PInt3 ent = inst.Layout.EntranceCell;
+            double ex = ox + ent.X + 0.5, ez = oz + ent.Z + 0.5;
+            float ahead = bare.NaturalHeight(ex + outward.X * 24, ez + outward.Z * 24);
+            float diff = ahead - bestPad;
+            if (Math.Abs(diff) > 2.5f)
+            {
+                float len = Math.Clamp(Math.Abs(diff) / 0.35f, 10f, 40f);
+                double fcx = (fx0 + fx1) * 0.5, fcz = (fz0 + fz1) * 0.5;
+                float shift = (float)(-(ex - fcx) * outward.Z + (ez - fcz) * outward.X);
+                extra.Add(new TerrainStamp(family.Name + " (approach)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, 0f, 0f, width, height)
+                    { Shape = StampShape.Cut, DirX = outward.X, DirZ = outward.Z, Shift = shift, Length = len, Width = 7f, Grade = Math.Clamp(diff / len, -0.4f, 0.4f) });
+            }
+        }
+
         var gates = new List<PoiGate>();
         TInt3 W(PInt3 c) => new(ox + c.X, bestPad + c.Y, oz + c.Z);
-        PInt3 outward = inst.Layout.EntranceFacing.Vec();
         gates.Add(new PoiGate("entrance", W(inst.Layout.EntranceCell), outward.X, outward.Z));
         foreach (Marker m in inst.Markers.Where(m => m.Kind == "gate"))
             gates.Add(new PoiGate("gate", W(m.Cell), m.Note == "x" ? 1 : 0, m.Note == "z" ? 1 : 0));
@@ -376,7 +443,7 @@ public static class PoiSiting
         {
             Name = $"{family.Name}: {inst.Layout.Name} ({inst.State.ToString().ToLowerInvariant()})",
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
-            Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates,
+            Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
         };
     }
 
