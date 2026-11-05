@@ -135,10 +135,17 @@ public sealed class Playthrough
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f && Game.Survivor.Body.OnFloor,
             $"{label}up the stairwell's {b.Steps} steps to the surface on foot ({Game.Stats.Seconds - start:F0} s)");
         Vector3 away = AwayFrom(b.Outside, b.Outside - b.StairTop, 53f);
-        foreach (int x in Drive.WalkTo(away, 2f, 90f)) yield return x;
+        // Breadcrumbs on the way, to come back the way you went.
+        var crumbs = new List<Vector3>();
+        foreach (int x in Drive.WalkTo(away, 2f, 90f, dig: false))
+        {
+            if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
+            yield return x;
+        }
         Vector3 f = Game.Survivor.WorldFeet;
         float gone = new Vector2(f.X - b.Outside.X, f.Z - b.Outside.Z).Length();
         check(gone >= 50f, $"{label}and walks {gone:F0} m away from it (feet {f.Y - Game.Zone.GroundAt(f.X, f.Z).Y:+0.0;-0.0} m from the ground)");
+        for (int i = crumbs.Count - 1; i >= 0; i -= 2) foreach (int x in Drive.WalkTo(crumbs[i], 1.2f, 20f, dig: false)) yield return x;
         foreach (int x in Drive.WalkTo(b.Outside, 0.8f, 90f, dig: false)) yield return x;
         foreach (int x in Drive.ClimbIn(b)) yield return x;
         check(Game.Survivor.WorldFeet.DistanceTo(b.CryoFront) < 1.0f, $"{label}back down the stairs into the chamber");
@@ -158,15 +165,15 @@ public sealed class Playthrough
             var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
             float worst = 0f, last = Game.Zone.GroundAt(from.X, from.Z).Y;
             bool wet = false;
-            for (float d = 4f; d <= distance + 4f; d += 4f)
+            for (float d = 2f; d <= distance + 4f; d += 2f)
             {
                 Vector3 p = from + dir * d;
                 float h = Game.Zone.GroundAt(p.X, p.Z).Y;
                 wet |= h < 1.5f;
-                worst = MathF.Max(worst, MathF.Abs(h - last) / 4f);
+                worst = MathF.Max(worst, MathF.Abs(h - last) / 2f);
                 last = h;
             }
-            float score = (wet ? 100f : 0f) + worst + i * 0.02f;
+            float score = (wet ? 100f : 0f) + (worst > 0.55f ? 50f : 0f) + worst + i * 0.02f;
             if (score < bestScore) { bestScore = score; best = from + dir * distance; }
         }
         return best;
@@ -334,6 +341,7 @@ public sealed class Playthrough
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             // Dry, and near enough the surface for the survival tool (it can't cut deep rock).
             if (_triedDeposits.Contains(((int)at.X, (int)at.Z)) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            if (Game.Bunker != null && Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue; // dug through by the bunker
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
             if (dist < bestD) { bestD = dist; best = at; }
         }
@@ -372,6 +380,8 @@ public sealed class Playthrough
                     for (int i = 0; i < 10; i++) yield return 0;
                 }
                 idle = Pack[ore.Id] + store.RemovedCount > before ? 0 : idle + 1;
+                if (idle == 3)
+                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead}, menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
             }
             Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
@@ -624,7 +634,8 @@ public sealed class Playthrough
                     worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
-                bool clear = zone.Vessels.All(v => v.IsWreck || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f);
+                bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
+                             && (Game.Bunker == null || Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).All(w => new Vector2(w.X - g.X, w.Z - g.Z).Length() > 9f));
                 if (h0 > 1f && worst < allow && clear) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);

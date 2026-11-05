@@ -106,7 +106,7 @@ public sealed class StatsSection : IMenuSection
             ("DEPOSITS FOUND", $"{s.DepositsFound}"),
             ("ITEMS CRAFTED", $"{s.Crafted}"),
             ("BLOCKS PLACED / TAKEN DOWN", $"{_game.Builder.Placed} / {_game.Builder.TakenDown}"),
-            ("STRUCTURES", string.Join(", ", _game.Zone.Vessels.Where(v => !v.IsWreck).Select(v => v.Name))),
+            ("STRUCTURES", string.Join(", ", _game.Zone.Vessels.Where(v => !v.IsWreck && !v.IsRuin).Select(v => v.Name))),
             ("SUPPLIES USED", $"{s.Used}"),
             ("DEATHS", $"{s.Deaths}"),
         };

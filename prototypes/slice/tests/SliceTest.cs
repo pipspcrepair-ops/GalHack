@@ -247,6 +247,8 @@ public partial class SliceTest : Node
             }
         }
         var shortOf = need.Where(kv => _game.Pack[kv.Key] < kv.Value).ToList();
+        if (shortOf.Count > 0)
+            GD.Print($"  (the bag: {_game.Pack.Storage.UsedSu:F0} SU used: {_game.Zone.Data.Items.Describe(_game.Pack.Storage.Contents, 8)}; gathered {string.Join(", ", _game.Tool.Gathered.Select(kv => $"{kv.Value} {kv.Key}"))}; feet {_game.Survivor.WorldFeet}, {_game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y - _game.Survivor.WorldFeet.Y:F1} m under the ground)");
         Check(shortOf.Count == 0,
             $"the nearest deposits give every common ore: {string.Join(", ", need.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
     }
@@ -263,6 +265,10 @@ public partial class SliceTest : Node
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
             if (tried.Contains(at)) continue;
+            // Near enough the surface for the survival tool (it can't cut deep rock).
+            if (zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            // Not one the bunker was dug through (what is left of it is behind the bunker's walls).
+            if (_game.Bunker.WayOut.Append(_game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue;
             // Deposits under water can't be dug from the shore.
             if (zone.GroundAt(at.X, at.Z).Y < 0.5f) continue;
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
@@ -288,7 +294,10 @@ public partial class SliceTest : Node
             }
             if (eye.DistanceTo(t) > 6.5f)
             {
+                // Walking up to it counts as nothing dug: ore out of reach (deep, or behind the
+                // bunker's walls) is given up on after a while.
                 foreach (int x in _drive.WalkTo(t, 1.2f, 6f)) yield return x;
+                idle++;
                 continue;
             }
             int before = _game.Tool.Gathered.GetValueOrDefault(material);

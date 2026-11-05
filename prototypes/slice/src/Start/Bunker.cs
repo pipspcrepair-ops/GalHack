@@ -77,6 +77,16 @@ public sealed class Bunker
     public static Vector3 ExitOf(Site site) =>
         (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0.25f + site.Steps * Cell, StepZ(site.Steps) - 4f))).ToGodot();
 
+    /// <summary>Whether a point is down in the bunker: its chamber or its stairwell, below the ground's surface.</summary>
+    public bool Inside(Vector3 p, SurfaceZone zone)
+    {
+        N.Vector3 l = MathX.Unrotate(MathX.Yaw(Heading), p.ToNumerics() - Origin);
+        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f && l.Y > -0.5f && l.Y < RoomTop * Cell + 0.25f;
+        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f && l.Z < -RoomZ * Cell && l.Z > StepZ(Steps) - 0.5f && l.Y > -0.5f
+                      && p.Y < zone.GroundAt(p.X, p.Z).Y - 0.8f;
+        return room || stairs;
+    }
+
     /// <summary>The skyline the stairs face, if one was found (a peak or a ridge 300 to 1,200 m off).</summary>
     public Vector3? Landmark { get; private set; }
     public CryoPod Mine { get; private set; }

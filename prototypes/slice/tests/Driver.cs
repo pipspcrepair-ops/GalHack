@@ -99,6 +99,15 @@ public sealed class Driver
         for (int i = 0; i < ticks; i++)
         {
             Vector3 feet = Game.Survivor.WorldFeet;
+            // Down in the bunker (fallen into its stairwell from the side, say) and going
+            // somewhere above: up its stairs first, as a person would.
+            if (!_following && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
+            {
+                Controls.Hold(Key.W, false);
+                Controls.Hold(Key.Space, false);
+                foreach (int x in ClimbOut(b)) yield return x;
+                continue;
+            }
             Vector3 to = target - feet;
             float flat = new Vector2(to.X, to.Z).Length();
             if (flat <= within) break;
@@ -249,9 +258,17 @@ public sealed class Driver
     /// <summary>Walks back down into the bunker, to just outside the cryopod.</summary>
     public IEnumerable<int> ClimbIn(Slice.Start.Bunker b) => Follow(b.WayOut.Reverse().ToList(), "in");
 
+    bool _following;
+
     IEnumerable<int> Follow(IReadOnlyList<Vector3> way, string what)
     {
-        for (int i = 0; i < way.Count; i++)
+        _following = true;
+        // From the waypoint nearest where you are (part way up the stairs, say).
+        int first = 0;
+        Vector3 here = Game.Survivor.WorldFeet;
+        for (int i = 1; i < way.Count; i++)
+            if (way[i].DistanceTo(here) < way[first].DistanceTo(here)) first = i;
+        for (int i = first; i < way.Count; i++)
         {
             // At a walk, as a player takes stairs; again if it slid past.
             for (int tries = 0; tries < 3; tries++)
@@ -264,6 +281,7 @@ public sealed class Driver
             if (new Vector2(f.X - way[i].X, f.Z - way[i].Z).Length() > 0.8f || MathF.Abs(f.Y - way[i].Y) > 1.3f)
                 GD.Print($"  (the way {what}: short of waypoint {i} of {way.Count} at {way[i]}: feet {f}, on floor {Game.Survivor.Body.OnFloor})");
         }
+        _following = false;
     }
 
     /// <summary>On the open ground (not down in the bunker).</summary>

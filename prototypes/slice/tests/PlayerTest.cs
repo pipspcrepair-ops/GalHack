@@ -60,6 +60,7 @@ public partial class PlayerTest : Node
     readonly List<RescueInfo> _rescues = new();
     readonly Dictionary<string, double> _gameTimeAt = new();
     Vessel _base, _vessel;
+    string _said = "";
     Device _fab;
 
     public override void _Ready()
@@ -98,6 +99,7 @@ public partial class PlayerTest : Node
         _drive = _play.Drive;
         GD.Print($"-- TEST TIME-SCALE: crafting runs {CraftScale}x faster; everything else is real time --");
         while (_game.Phase != Phase.Playing) yield return 0;
+        _game.Said += (text, _) => _said = text;
         _game.Zone.Physics.Rescued += r =>
         {
             _rescues.Add(r);
@@ -303,15 +305,28 @@ public partial class PlayerTest : Node
         if (_fab == null) yield break;
 
         GD.Print("-- 6. the base core, made in the survival constructor --");
+        // Up to its front, as you would to use it.
+        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
+        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
+        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
         foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        if (_game.Opened?.Device != _fab)
+        {
+            bool seen = WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
+            GD.Print($"  (E at the constructor: the visor said \"{_said}\"; the look from {_game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} at {look.Distance:F1} m" : "meets nothing")}; the constructor's front {_fab.Front}, {_game.Survivor.WorldEye().DistanceTo(_fab.Front):F1} m off; opened {_game.Opened?.Title})");
+            Vector3 f = _game.Survivor.WorldFeet;
+            var q = PhysicsRayQueryParameters3D.Create(f + Vector3.Up * 0.3f, f + Vector3.Down * 3f, uint.MaxValue);
+            var under = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
+            GD.Print($"  (standing on {(under.Count > 0 ? ((Node)under["collider"].AsGodotObject()).GetPath().ToString() : "nothing")}, the ground {_game.Zone.GroundAt(f.X, f.Z).Y:F1} under feet at {f.Y:F1}, on floor {_game.Survivor.Body.OnFloor})");
+        }
         Check(_game.Opened?.Device == _fab, "E on it opens its hopper beside the bag");
         foreach (int x in _drive.ClickWidget("box:store-all")) yield return x;
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
         foreach (int x in _play.CloseMenu()) yield return x;
         // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
-        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
         foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
         _game.MachineScreens.Sync();
         MachineScreens.Mounted screen = _game.MachineScreens.Screens.TryGetValue((_fab, Int3.Zero), out var m) ? m : null;
@@ -346,6 +361,11 @@ public partial class PlayerTest : Node
         Check(!_fab.Constructor.Busy && blocks.All(kv => _fab.Storage.Count(kv.Key) + _game.Pack[kv.Key] >= kv.Value),
             $"the survival constructor made the base's parts: {_game.Zone.Data.Items.Describe(blocks, 5)}");
         // Take what it made.
+        // Up to its front, as you would to use it.
+        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
+        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
+        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
         foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
@@ -356,7 +376,7 @@ public partial class PlayerTest : Node
         Vector3 site = _play.FlatSpot(_fab.GlobalPosition, 14f, 1.2f, 0.5f);
         foreach (int x in _play.StandOff(site, _game.Survivor.WorldFeet, 6f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, site)) yield return x;
-        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase);
+        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
         Check(_base != null && _base.Structure.Mode == GalHack.Structures.CoreMode.Base && _base.Body.Motion == GalHack.Physics.Motion.Fixed,
             "the base core set down founds a base: large grid, base mode, a fixed body where it stands");
         if (_base == null) yield break;

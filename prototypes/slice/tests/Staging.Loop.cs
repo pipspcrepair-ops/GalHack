@@ -156,7 +156,7 @@ public sealed partial class Staging
         Vector3 site = Play.FlatSpot(_game.Start, 24f, 1.0f, 0.6f);
         foreach (int x in Play.StandOff(site, _game.Start, 7f)) yield return x;
         foreach (int x in Play.PlaceOnGround(3, site)) yield return x;
-        Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase);
+        Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
         if (b0 == null) yield break;
         var steps = new (int slot, Int3 on, Dir face)[]
         {
