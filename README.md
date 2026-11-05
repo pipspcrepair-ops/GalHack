@@ -4,6 +4,10 @@ A first-person space survival sandbox for one group of friends: crash on a hosti
 
 GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.md).
 
+## Licence
+
+GalHack's own code and data are licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): you may use, change, fork and share them for any noncommercial purpose, but not sell them or use them commercially. Third-party fonts and libraries keep their own licences, listed in [CREDITS.md](CREDITS.md).
+
 ## Design
 
 The full game design document lives here (private; ask for access): https://claude.ai/artifact/NayZQcRHckbPwmMSyygC97
