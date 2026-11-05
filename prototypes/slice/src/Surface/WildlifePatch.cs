@@ -32,6 +32,9 @@ public partial class WildlifePatch : Node3D
     public PlanetFauna Fauna { get; private set; }
     public WildlifeView View { get; private set; }
 
+    /// <summary>Wildlife's own synthesised calls: every wind-up is heard before it lands.</summary>
+    public ProceduralAudio Audio { get; private set; }
+
     /// <summary>The patch's middle, in the zone's frame.</summary>
     public Vector3 Origin { get; private set; }
 
@@ -69,6 +72,8 @@ public partial class WildlifePatch : Node3D
         Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
         View = new WildlifeView { Name = "Creatures" };
         AddChild(View);
+        Audio = new ProceduralAudio { Name = "Calls" };
+        AddChild(Audio);
         var (terrain, nav, origin) = Bake(planet, Snapped(landing), rules.PatchHalfSize);
         Swap(terrain, nav, origin, keepClear: landing, clear: rules.SafeRadius);
     }
@@ -97,7 +102,12 @@ public partial class WildlifePatch : Node3D
         WildSim old = Sim;
         Vector3 oldOrigin = Origin;
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen };
-        sim.Telegraph += e => { if (e.Target == Player) Telegraphed?.Invoke(e); };
+        sim.Telegraph += e =>
+        {
+            Audio.Telegraph(e.Creature);
+            if (e.Target == Player) Telegraphed?.Invoke(e);
+        };
+        sim.Warned += c => Audio.Telegraph(c);
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); };
         int carried = 0;
         if (old != null)
@@ -115,6 +125,7 @@ public partial class WildlifePatch : Node3D
         Sim = sim;
         Origin = origin;
         Position = origin;
+        Audio.Origin = origin;
         if (Player != null) sim.Targets.Add(Player);
         View.Bind(sim, null);
         Populate(keepClear - origin, clear, carriedOver: old != null);
@@ -191,6 +202,7 @@ public partial class WildlifePatch : Node3D
     {
         Origin += by;
         Position = Origin;
+        Audio.Origin = Origin;
         _baking = null; // baked for the old frame: the next tick starts another
 
     }

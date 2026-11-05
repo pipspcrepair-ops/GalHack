@@ -57,6 +57,8 @@
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
     <Compile Include="..\building\src\Presentation\GhostPreview.cs" />
     <Compile Include="..\wildlife\src\View\**\*.cs" />
+    <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />
+    <Compile Include="..\wildlife\src\Game\Shutdown.cs" />
     <Compile Include="..\diegetic-ui\src\Theme\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Screens\**\*.cs" />
 
