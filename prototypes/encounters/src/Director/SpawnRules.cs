@@ -4,12 +4,14 @@ using System.Numerics;
 
 namespace Encounters.Director;
 
-public enum SpawnVerdict { Ok, OutOfBounds, NoSpawnCircle, TooClose, InView }
+public enum SpawnVerdict { Ok, OutOfBounds, NoSpawnCircle, TooClose, InView, NearBase }
 
 /// <summary>
 /// Where a ship may appear. Nothing pops into view: every ship of a new event starts outside the
 /// view cone of every player in the zone, beyond the minimum distance from each of them, inside
-/// the zone and outside every no-spawn circle and player base.
+/// the zone and outside every no-spawn circle and player base. Creatures also keep the creature
+/// clearance outside every player base (no wildlife spawns near bases); ships, attackers
+/// included, are not held back by it.
 /// </summary>
 public static class SpawnRules
 {
@@ -21,10 +23,11 @@ public static class SpawnRules
         return Vector3.Dot(offset, player.Forward) / length > coneCos;
     }
 
-    public static SpawnVerdict Check(Vector3 point, ZoneDef zone, IReadOnlyList<PlayerState> players, DirectorConfig config)
+    public static SpawnVerdict Check(Vector3 point, ZoneDef zone, IReadOnlyList<PlayerState> players, DirectorConfig config, bool creature = false)
     {
         if (!zone.InBounds(point)) return SpawnVerdict.OutOfBounds;
         if (zone.BlocksSpawn(point)) return SpawnVerdict.NoSpawnCircle;
+        if (creature && zone.NearBase(point, config.CreatureBaseClearance)) return SpawnVerdict.NearBase;
         float minSq = config.MinSpawnDistance * config.MinSpawnDistance;
         float coneCos = config.ViewConeCos;
         foreach (PlayerState player in players)
@@ -36,8 +39,8 @@ public static class SpawnRules
     }
 }
 
-/// <summary>One ship an event is about to spawn, before it has a flight.</summary>
-internal readonly record struct PlannedShip(int GroupIndex, string Role, string Faction, string Hull, string Side, int Crew);
+/// <summary>One ship (or creature: Hull is then its kind, Crew 0) an event is about to spawn, before it has a flight.</summary>
+internal readonly record struct PlannedShip(int GroupIndex, string Role, string Faction, string Hull, string Side, int Crew, bool Creature = false);
 
 /// <summary>
 /// Lays out an event's ships and gives each its scripted flight. Positions at the start time
@@ -65,7 +68,36 @@ internal static class Formation
             case Behaviour.Dogfight: Dogfight(def, plan, anchor, rng, t0, into); break;
             case Behaviour.Dock: Dock(plan, anchor, zone.FindPoi(def.Anchor), speed, rng, t0, into); break;
             case Behaviour.Mine: Mine(plan, anchor, zone.FindPoi(def.Anchor), speed, rng, t0, into); break;
+            case Behaviour.Shoal: Shoal(plan, anchor, def.Anchor != "" ? zone.FindPoi(def.Anchor) : null, speed, rng, t0, into); break;
+            case Behaviour.Cling: Cling(plan, zone.FindPoi(def.Anchor), rng, t0, into); break;
             default: Drift(plan, anchor, speed, rng, t0, into); break;
+        }
+    }
+
+    /// <summary>
+    /// A shoal: the creatures bunched round the spawn point, all swimming the same slow course,
+    /// through their POI (rays through the asteroids) or off across the zone.
+    /// </summary>
+    static void Shoal(IReadOnlyList<PlannedShip> plan, Vector3 anchor, ZoneCircle poi, float speed, Rng rng, double t0, List<ShipScript> into)
+    {
+        Vector3 heading = poi != null
+            ? MathX.SafeNormalize(poi.Center + MathX.Flat(rng.OnSphere()) * rng.Range(0f, poi.R * 0.6f) - anchor, Vector3.UnitX)
+            : rng.AroundHorizon(0.25f);
+        float radius = 20f + 8f * MathF.Sqrt(plan.Count);
+        for (int i = 0; i < plan.Count; i++)
+        {
+            Vector3 start = anchor + rng.OnSphere() * radius * MathF.Sqrt(rng.NextFloat());
+            into[i] = ShipScript.Line(t0, start, heading * speed);
+        }
+    }
+
+    /// <summary>Leeches already on a derelict's hull: spots round its middle, holding still.</summary>
+    static void Cling(IReadOnlyList<PlannedShip> plan, ZoneCircle derelict, Rng rng, double t0, List<ShipScript> into)
+    {
+        for (int i = 0; i < plan.Count; i++)
+        {
+            Vector3 at = derelict.Center + rng.OnSphere() * derelict.R * rng.Range(0.1f, 0.3f);
+            into[i] = ShipScript.Line(t0, at, Vector3.Zero, MathX.SafeNormalize(rng.OnSphere(), -Vector3.UnitZ));
         }
     }
 

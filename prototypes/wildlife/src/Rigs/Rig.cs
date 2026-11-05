@@ -49,6 +49,8 @@ public abstract class Rig
         RigKind.Hopper => new HopRig(s),
         RigKind.Winged => new WingedRig(s),
         RigKind.GasBag => new GasBagRig(s),
+        RigKind.Finned => new SwimRig(s),
+        RigKind.Clinger => new ClingRig(s),
         _ => new SwarmRig(s, c),
     };
 

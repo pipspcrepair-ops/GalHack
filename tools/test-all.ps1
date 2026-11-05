@@ -8,6 +8,19 @@
 $failed = @()
 $ran = 0
 
+# House rule: no Kenney assets of any kind. Any file whose path names Kenney, or a Kenney credit,
+# fails the gate. (Mentions in prose, like "no Kenney audio is used", are fine.)
+$kenneyFiles = @(git -C $root ls-files | Where-Object { $_ -match '(?i)kenney' })
+$kenneyCredits = @(Select-String -Path (Join-Path $root "CREDITS.md") -Pattern 'kenney' -SimpleMatch -ErrorAction SilentlyContinue)
+if ($kenneyFiles -or $kenneyCredits) {
+    Write-Host "FAIL  asset rule: Kenney assets found"
+    $kenneyFiles | ForEach-Object { Write-Host "      file: $_" }
+    $kenneyCredits | ForEach-Object { Write-Host "      CREDITS.md: $($_.Line.Trim())" }
+    $failed += "asset rule (Kenney)"
+} else {
+    Write-Host "PASS  asset rule: no Kenney files or credits"
+}
+
 foreach ($proto in Get-ChildItem -Path (Join-Path $root "prototypes") -Directory) {
     $scenes = Get-ChildItem -Path (Join-Path $proto.FullName "tests") -Include *Test.tscn, *Probe.tscn -File -Recurse -ErrorAction SilentlyContinue
     if (-not $scenes) { continue }

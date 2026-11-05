@@ -1,0 +1,182 @@
+{
+  // Space fauna: rare creatures of nebulae, asteroid belts, gas giants' upper skies, derelict
+  // wrecks and the void between. Shape: src/Space/SpaceFaunaData.cs. Built the way planet
+  // wildlife is: a form gives the body plan, rig and job; swappable parts go on by the same
+  // combination rules ("roles", "forms", "excludes"); then palette, stats, attack and drops.
+  //
+  // The encounter director (prototypes/encounters, data/deck.json) brings them to players as
+  // event cards whose creature "kind" is a form id here.
+
+  // The design's rarity ladder (section 10). Space creatures drop only rare and better: always
+  // something rare or exotic, unique only sometimes (never above maxUniqueChance).
+  "ladder": {
+    "Common": ["Iron", "Copper", "Silicon", "Stone and ice", "Wood, fibre, biomass", "Burnstone"],
+    "Uncommon": ["Cobalt", "Magnesium", "Neodymium", "Gold", "Gravium"],
+    "Rare": ["Fold crystal", "Emberite", "Starsilver"],
+    "Exotic": ["Voidglass", "Stormcore", "Rimefire"],
+    "Unique": ["Precursor alloy", "Echo shards", "Lattice cores"]
+  },
+  "maxUniqueChance": 0.25,
+
+  // First attacks follow the planet rules (data/wildlife.json "combat"): the telegraph below is
+  // the wind-up, the creature commits part way through and lunges at where you were, so moving
+  // aside dodges it. Damage is never capped.
+  "forms": [
+    {
+      // Drifting grazers of the nebulae: shoals of pulsing bells trailing stinging veils, feeding
+      // on charged dust. Skittish; they lash only when cornered or hurt.
+      "id": "veil-drifter", "noun": "veil drifter", "habitats": ["Nebula"],
+      "rig": "Finned", "swim": "Pulse", "behaviour": "Herd",
+      "temperaments": { "Skittish": 4, "Calm": 3, "Bold": 1 },
+      "size": [3.5, 7], "width": [0.6, 0.85], "height": [0.6, 0.85], "headSize": [0.12, 0.18], "tail": [1.4, 2.4],
+      "group": [5, 9], "speed": [2.5, 9], "health": [60, 120], "damage": 9, "perception": 45,
+      "attack": { "name": "Stinging veil", "style": "Lunge", "telegraph": 1.3, "reach": 2.5, "lunge": 0.4, "sound": "buzz" },
+      "fixedParts": { "fins": "veil" },
+      "drops": [
+        { "material": "Fold crystal", "rarity": "Rare", "amount": [2, 5], "chance": 1.0 },
+        { "material": "Voidglass", "rarity": "Exotic", "amount": [1, 1], "chance": 0.12 }
+      ],
+      "palette": { "hues": [[250, 285], [170, 200]], "saturation": [0.3, 0.55], "value": [0.16, 0.32],
+        "glow": ["#9d8cff", "#7cf9ff", "#3dffb0"], "glowStrength": [0.85, 1.0], "patterns": ["Rings", "Bands", "Plain"] }
+    },
+    {
+      // Belt grazers: armoured rays that flap slowly between the rocks, scraping metal-rich dust
+      // off them. Shoals; the bold ones ram anything that crowds them.
+      "id": "rock-ray", "noun": "rock ray", "habitats": ["AsteroidField"],
+      "rig": "Finned", "swim": "Flap", "behaviour": "Herd",
+      "temperaments": { "Calm": 3, "Bold": 2, "Skittish": 2 },
+      "size": [2.5, 5], "width": [0.55, 0.7], "height": [0.12, 0.2], "headSize": [0.16, 0.22], "tail": [0.8, 1.4],
+      "group": [3, 6], "speed": [3, 11], "health": [70, 130], "damage": 14, "perception": 50,
+      "attack": { "name": "Ram", "style": "Charge", "telegraph": 1.2, "reach": 3, "lunge": 0.35, "sound": "bellow" },
+      "drops": [
+        { "material": "Starsilver", "rarity": "Rare", "amount": [2, 4], "chance": 1.0 },
+        { "material": "Rimefire", "rarity": "Exotic", "amount": [1, 2], "chance": 0.1 }
+      ],
+      "palette": { "hues": [[15, 35], [200, 230]], "saturation": [0.2, 0.45], "value": [0.25, 0.45],
+        "glow": ["#ffb03b", "#ff7a3d"], "glowStrength": [0.5, 0.85], "patterns": ["Mottle", "Spots", "Bands"] }
+    },
+    {
+      // Sky mantas of the gas giants' upper atmospheres: vast, slow, mostly calm, riding the
+      // storm bands on wings twenty metres across. A cornered one slams down with its wings.
+      "id": "sky-manta", "noun": "sky manta", "habitats": ["GasGiant"],
+      "rig": "Finned", "swim": "Flap", "behaviour": "Herd",
+      "temperaments": { "Calm": 4, "Bold": 1 },
+      "size": [14, 28], "width": [0.55, 0.7], "height": [0.1, 0.16], "headSize": [0.12, 0.16], "tail": [0.9, 1.6],
+      "group": [2, 4], "speed": [5, 14], "health": [600, 1400], "damage": 35, "perception": 70,
+      "attack": { "name": "Wing slam", "style": "Rear", "telegraph": 1.6, "reach": 6, "lunge": 0.5, "sound": "bellow" },
+      "drops": [
+        { "material": "Emberite", "rarity": "Rare", "amount": [3, 6], "chance": 1.0 },
+        { "material": "Stormcore", "rarity": "Exotic", "amount": [1, 3], "chance": 0.45 }
+      ],
+      "palette": { "hues": [[30, 50], [340, 360]], "saturation": [0.25, 0.45], "value": [0.45, 0.7],
+        "glow": ["#ffd27a", "#7cf9ff"], "glowStrength": [0.4, 0.7], "patterns": ["Bands", "Stripes", "Countershade"] }
+    },
+    {
+      // Hull leeches: segmented clingers that crawl over derelict hulls eating the metal. They
+      // rear off the hull before they strike: that is the telegraph. Then they drift back and
+      // latch on again.
+      "id": "hull-leech", "noun": "hull leech", "habitats": ["Derelict"],
+      "rig": "Clinger", "behaviour": "Ambusher",
+      "temperaments": { "Aggressive": 4, "Bold": 2 },
+      "size": [1.6, 3.2], "width": [0.16, 0.22], "height": [0.14, 0.2], "headSize": [0.16, 0.22], "tail": [0.1, 0.2],
+      "segments": [6, 9],
+      "group": [3, 6], "speed": [0.6, 9], "health": [40, 80], "damage": 16, "perception": 35,
+      "attack": { "name": "Latching strike", "style": "Rear", "telegraph": 1.1, "reach": 4, "lunge": 0.35, "sound": "hiss" },
+      "fixedParts": { "fins": "none" },
+      "drops": [
+        { "material": "Starsilver", "rarity": "Rare", "amount": [1, 3], "chance": 1.0 },
+        { "material": "Lattice cores", "rarity": "Unique", "amount": [1, 1], "chance": 0.04 }
+      ],
+      "palette": { "hues": [[340, 360], [0, 15], [270, 290]], "saturation": [0.3, 0.6], "value": [0.12, 0.25],
+        "glow": ["#ff3b3b", "#ff5ad1"], "glowStrength": [0.7, 1.0], "patterns": ["Bands", "Rings"] }
+    },
+    {
+      // The void leviathan: very rare, a hundred metres of armoured serpent swimming the deep and
+      // the darker nebulae. It warns intruders off its territory with a display, then charges
+      // with a long, readable wind-up. Its bite is not softened: a hit can kill outright.
+      "id": "void-leviathan", "noun": "void leviathan", "habitats": ["Void", "Nebula"],
+      "rig": "Finned", "swim": "Undulate", "behaviour": "TerritorialGiant",
+      "temperaments": { "Bold": 3, "Aggressive": 2 },
+      "size": [70, 120], "width": [0.09, 0.12], "height": [0.08, 0.11], "headSize": [0.1, 0.13], "tail": [0.12, 0.2],
+      "segments": [10, 14],
+      "group": [1, 1], "speed": [8, 26], "health": [4000, 8000], "damage": 140, "perception": 400, "territory": 300,
+      "attack": { "name": "Engulfing lunge", "style": "Charge", "telegraph": 2.6, "reach": 30, "lunge": 0.8, "sound": "roar" },
+      "drops": [
+        { "material": "Fold crystal", "rarity": "Rare", "amount": [6, 12], "chance": 1.0 },
+        { "material": "Voidglass", "rarity": "Exotic", "amount": [3, 6], "chance": 1.0 },
+        { "material": "Echo shards", "rarity": "Unique", "amount": [1, 2], "chance": 0.2 }
+      ],
+      "palette": { "hues": [[220, 260], [270, 300]], "saturation": [0.3, 0.55], "value": [0.08, 0.18],
+        "glow": ["#7cf9ff", "#9d8cff", "#3dffb0"], "glowStrength": [0.85, 1.0], "patterns": ["Bands", "Rings", "Stripes"] }
+    }
+  ],
+
+  // Swappable parts. "rigs" which bodies a part fits, "roles" which behaviours it suits (empty:
+  // any), "forms" which kinds it belongs on, "excludes" pairs that clash. "fixedOnly" parts are
+  // never rolled, only set by a form.
+  "parts": {
+    "head": [
+      { "id": "dome", "weirdness": 0.7, "rigs": ["Finned"], "adjective": "eyeless",
+        "roles": ["Herd", "Grazer", "HarmlessOddity"], "forms": ["veil-drifter", "rock-ray", "sky-manta"],
+        "excludes": ["tendrils/feelers"] },
+      { "id": "lantern", "weirdness": 0.8, "rigs": ["Finned", "Clinger"], "adjective": "lantern-jawed", "glow": true,
+        "roles": ["Herd", "Grazer", "Ambusher", "TerritorialGiant"], "forms": ["veil-drifter", "sky-manta", "hull-leech", "void-leviathan"],
+        "excludes": ["tendrils/glowing"] },
+      { "id": "maw", "weirdness": 0.85, "rigs": ["Finned", "Clinger"], "adjective": "lamprey-mouthed",
+        "roles": ["Herd", "Ambusher", "TerritorialGiant"], "forms": ["veil-drifter", "hull-leech", "void-leviathan"] },
+      { "id": "jaws", "weirdness": 0.5, "rigs": ["Finned", "Clinger"], "adjective": "fanged",
+        "roles": ["Herd", "Ambusher", "TerritorialGiant"], "forms": ["rock-ray", "hull-leech", "void-leviathan"] },
+      { "id": "skull", "weirdness": 0.55, "rigs": ["Finned"], "adjective": "bone-prowed",
+        "roles": ["Herd", "Grazer", "TerritorialGiant"], "forms": ["rock-ray", "sky-manta", "void-leviathan"] },
+      { "id": "hammer", "weirdness": 0.65, "rigs": ["Finned"], "adjective": "hammerheaded",
+        "roles": ["Herd", "Grazer"], "forms": ["rock-ray", "sky-manta"] }
+    ],
+    "fins": [
+      { "id": "none", "weirdness": 0.0, "fixedOnly": true },
+      { "id": "veil", "weirdness": 0.7, "fixedOnly": true, "adjective": "veiled" },
+      { "id": "wings", "weirdness": 0.4, "rigs": ["Finned"], "adjective": "broad-winged", "forms": ["rock-ray", "sky-manta"] },
+      { "id": "vanes", "weirdness": 0.6, "rigs": ["Finned"], "adjective": "vane-finned", "forms": ["rock-ray", "sky-manta", "void-leviathan"] },
+      { "id": "paddles", "weirdness": 0.5, "rigs": ["Finned"], "adjective": "paddle-finned", "forms": ["void-leviathan"] }
+    ],
+    "back": [
+      { "id": "none", "weirdness": 0.0 },
+      { "id": "spines", "weirdness": 0.45, "adjective": "spined" },
+      { "id": "crystals", "weirdness": 0.8, "glow": true, "adjective": "crystal-crowned",
+        "forms": ["veil-drifter", "rock-ray", "void-leviathan"] },
+      { "id": "plates", "weirdness": 0.35, "adjective": "armoured",
+        "forms": ["rock-ray", "sky-manta", "hull-leech", "void-leviathan"] },
+      { "id": "ridge", "weirdness": 0.3, "adjective": "ridge-backed", "forms": ["hull-leech", "void-leviathan"] },
+      { "id": "vents", "weirdness": 0.85, "adjective": "chimney-backed", "forms": ["sky-manta"] },
+      { "id": "bubbles", "weirdness": 0.85, "glow": true, "adjective": "blister-backed",
+        "forms": ["veil-drifter", "sky-manta"], "excludes": ["head/maw"] }
+    ],
+    "tail": [
+      { "id": "none", "weirdness": 0.0 },
+      { "id": "streamers", "weirdness": 0.6, "rigs": ["Finned"], "adjective": "ribbon-tailed", "forms": ["veil-drifter", "sky-manta"] },
+      { "id": "whip", "weirdness": 0.3, "rigs": ["Finned"], "adjective": "whip-tailed", "forms": ["rock-ray", "sky-manta"] },
+      { "id": "stinger", "weirdness": 0.55, "adjective": "stinging",
+        "roles": ["Ambusher", "TerritorialGiant"], "forms": ["hull-leech", "void-leviathan"] },
+      { "id": "fin", "weirdness": 0.4, "rigs": ["Finned"], "adjective": "fluke-tailed", "forms": ["rock-ray", "void-leviathan"] },
+      { "id": "twin", "weirdness": 0.7, "rigs": ["Finned"], "adjective": "fork-tailed", "forms": ["sky-manta", "void-leviathan"] }
+    ],
+    "tendrils": [
+      { "id": "none", "weirdness": 0.0 },
+      { "id": "filaments", "weirdness": 0.5, "rigs": ["Finned"], "adjective": "trailing", "forms": ["veil-drifter", "sky-manta"] },
+      { "id": "curtain", "weirdness": 0.7, "rigs": ["Finned"], "adjective": "curtained", "forms": ["veil-drifter"] },
+      { "id": "glowing", "weirdness": 0.8, "rigs": ["Finned"], "glow": true, "adjective": "glow-tressed", "forms": ["veil-drifter", "void-leviathan"] },
+      { "id": "feelers", "weirdness": 0.6, "adjective": "barbelled", "forms": ["hull-leech", "void-leviathan"] }
+    ]
+  },
+
+  // Names: harsher and stranger than most planets' fauna.
+  "syllables": {
+    "onsets": ["v", "x", "zr", "th", "kh", "q", "dr", "gh", "vl", "sk", "n", "r", "s", "m", "kr", "ph", "tz", "y"],
+    "vowels": ["a", "o", "u", "y", "aa", "oo", "ai", "ei", "ou", "ae"],
+    "codas": ["th", "x", "l", "n", "rr", "k", "sh", "m", "ng"],
+    "onsetsPerPlanet": 6,
+    "vowelsPerPlanet": 4,
+    "codasPerPlanet": 4,
+    "codaChance": 0.5,
+    "count": [2, 3]
+  }
+}

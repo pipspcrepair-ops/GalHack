@@ -1,0 +1,15 @@
+// Armour that building's catalogue doesn't have yet, appended to its materials the same way
+// building-parts.json is appended to its components. Precursor alloy is the design's prize
+// armour: it can't be crafted, only salvaged from alien ruins and derelicts, so its bill
+// (blocks.json) is marked uniqueOnly.
+{
+  "schema": "galhack.materials",
+  "version": 1,
+  "materials": [
+    {
+      "id": "precursor", "name": "Precursor alloy",
+      "hp": 2750, "armor": 60, "resist": { "kinetic": 0.4, "explosive": 0.4, "energy": 0.4 },
+      "mass": 5.0, "cpu": 110, "color": "8a7350", "metal": 3
+    }
+  ]
+}

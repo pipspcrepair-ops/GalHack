@@ -98,6 +98,15 @@ public sealed class Creature
     // Swarms: how many members are still flying, from health.
     public int SwarmAlive;
 
+    // Zero-g (space fauna): a full orientation, since there is no ground to stand level on, and
+    // for clingers the hull face they hold on to and the spot they go back to after a strike.
+    public Basis Facing = Basis.Identity;
+    public Hull ClingHull, HomeHull;
+    public int ClingFace, HomeFace;
+    public Vector3 Anchor;
+    public bool Clinging => ClingHull != null;
+    public List<SpaceDrops.Loot> Loot;
+
     // Paths (only when the straight line is blocked).
     public readonly List<Vector3> Path = new();
     public int PathIndex;

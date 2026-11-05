@@ -1,6 +1,8 @@
 // Zone data. The encounter director, the director map and content gating all read this file.
 //
 // Every zone has tags (kind, region, star class, danger grade, free tags) and a list of circles.
+// Free tags also say what lives there: "nebula" and "gas-giant" (and the asteroid and
+// derelict POIs) are where the space fauna cards in deck.json can turn up.
 // Coordinates are metres in the zone's own frame; circles are measured on the X/Z plane, the plane
 // the map shows. Circle kinds:
 //   territory  NPC faction territory: sets the faction mix of events. Unclaimed space has none.
@@ -36,12 +38,14 @@
       "star": "M",
       "danger": 4,
       "radius": 14000,
-      "tags": ["asteroids", "uncharted"],
+      // The Drift is a nebula: veil drifters graze it, and very rarely a leviathan passes.
+      "tags": ["asteroids", "uncharted", "nebula"],
       "circles": [
         { "kind": "territory", "faction": "kessari", "name": "Kessari claim", "x": 2500, "z": -2500, "r": 5000 },
         { "kind": "territory", "faction": "reavers", "name": "Reaver hunting ground", "x": -3500, "z": 1500, "r": 5500 },
         { "kind": "territory", "faction": "vharn", "name": "Vharn forward march", "x": -8500, "z": -7500, "r": 4500 },
         { "kind": "poi", "poi": "asteroids", "id": "cinder", "name": "Cinder cluster", "x": 1800, "z": -3400, "r": 900 },
+        { "kind": "poi", "poi": "derelict", "id": "ourra", "name": "Hulk of the Ourra", "x": -1200, "z": 3400, "r": 200 },
         { "kind": "nospawn", "name": "Grav shear", "x": -2600, "z": -3600, "r": 1200 }
       ]
     },
@@ -84,6 +88,19 @@
       "danger": 0,
       "radius": 16000,
       "tags": ["trade-lane"],
+      "circles": []
+    },
+    {
+      // Data only: the upper atmosphere of Veyra, the ringed gas giant, where sky mantas ride
+      // the storm bands. Nothing here but weather and fauna.
+      "id": "veyra-skies",
+      "name": "Veyra's upper skies",
+      "kind": "atmosphere",
+      "region": "Veyra Reach",
+      "star": "K",
+      "danger": 1,
+      "radius": 12000,
+      "tags": ["gas-giant"],
       "circles": []
     },
     {

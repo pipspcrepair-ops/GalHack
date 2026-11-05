@@ -25,6 +25,13 @@
 // signal        a lead for the players in the zone: a fuzzy direction and distance
 // ships         groups of crewed ships. hull "$fighter" is the faction's fighter hull.
 //               perExtraPlayer adds ships for each player beyond the first.
+// creatures     space fauna instead of ships: groups of a creature "kind", a form the wildlife
+//               prototype builds (prototypes/wildlife/data/space_fauna.json), with its drops.
+//               Creatures have no crew, no faction and no territory, count against the
+//               creature budget, and also keep director.json's creatureBaseClearance outside
+//               every player base. They shoal (drift as one group, through their anchor POI if
+//               it has one), cling (already on their anchor derelict, which must lie at a spawn
+//               distance and out of every player's sight), pass or drift.
 //
 // factions: display name, fighter hull, and "fights": false for factions that never attack.
 // Those can't appear in a hostile card (the deck refuses to load) or as a side in a border clash.
@@ -191,6 +198,60 @@
       "behaviour": "mine", "speed": [25, 40], "duration": [150, 220],
       "cleanup": "despawn",
       "ships": [ { "role": "miner", "hull": "mining-skiff", "count": [2, 4], "crew": [1, 3] } ]
+    },
+    {
+      // Space fauna: rare, so their cards are light and need the place they live in.
+      // Drifting grazers of the nebulae, pulsing along in a shoal. Harmless unless cornered.
+      "id": "veil-drifters", "name": "Veil drifters grazing the nebula", "category": "fauna",
+      "weight": 3, "territory": "any", "hostile": false,
+      "requires": ["nebula"],
+      "behaviour": "shoal", "speed": [2, 5], "duration": [180, 260],
+      "spawnDistance": [2000, 3800],
+      "cleanup": "despawn",
+      "signal": { "kind": "lifesign", "label": "Faint life signs drifting in the nebula" },
+      "creatures": [ { "kind": "veil-drifter", "role": "grazer", "count": [5, 9] } ]
+    },
+    {
+      // Belt grazers: a shoal of rock rays swimming in through an asteroid field.
+      "id": "rock-rays", "name": "Rock rays grazing the asteroids", "category": "fauna",
+      "weight": 3, "territory": "any", "hostile": false,
+      "requires": ["poi:asteroids"], "anchor": "asteroids",
+      "behaviour": "shoal", "speed": [5, 9], "duration": [200, 300],
+      "cleanup": "despawn",
+      "creatures": [ { "kind": "rock-ray", "role": "grazer", "count": [3, 6] } ]
+    },
+    {
+      // Vast mantas riding a gas giant's storm bands, in its upper atmosphere.
+      "id": "sky-mantas", "name": "Sky mantas riding the storm bands", "category": "fauna",
+      "weight": 4, "territory": "any", "hostile": false,
+      "requires": ["gas-giant"],
+      "behaviour": "shoal", "speed": [8, 14], "duration": [180, 260],
+      "cleanup": "despawn",
+      "signal": { "kind": "lifesign", "label": "Something huge riding the storm bands" },
+      "creatures": [ { "kind": "sky-manta", "role": "grazer", "count": [2, 4] } ]
+    },
+    {
+      // Hull leeches found on a derelict: dangerous to anyone who goes to salvage it.
+      "id": "hull-leeches", "name": "Hull leeches infesting a derelict", "category": "fauna",
+      "weight": 3, "territory": "any", "hostile": true,
+      "requires": ["poi:derelict"], "anchor": "derelict",
+      "behaviour": "cling", "speed": [0, 0], "duration": [240, 360],
+      "spawnDistance": [1800, 5000],
+      "cleanup": "despawn",
+      "signal": { "kind": "lifesign", "label": "Movement on the derelict's hull" },
+      "creatures": [ { "kind": "hull-leech", "role": "leech", "count": [3, 6], "perExtraPlayer": 1 } ]
+    },
+    {
+      // The void leviathan, very rarely: a tiny weight, its own category capped at one with a
+      // long cooldown (director.json), and only in deep space or nebulae at danger 3 and up.
+      "id": "void-leviathan", "name": "A void leviathan passing", "category": "leviathan",
+      "weight": 0.12, "territory": "any", "hostile": true,
+      "requires": ["nebula|kind:deep"], "danger": [3, 5],
+      "behaviour": "pass", "speed": [16, 24], "duration": [150, 220],
+      "spawnDistance": [3200, 5000],
+      "cleanup": "despawn",
+      "signal": { "kind": "lifesign", "label": "Something vast on long-range sensors" },
+      "creatures": [ { "kind": "void-leviathan", "role": "leviathan", "count": [1, 1] } ]
     }
   ]
 }

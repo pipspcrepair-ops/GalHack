@@ -5,7 +5,7 @@ using System.Numerics;
 namespace Encounters.Director;
 
 /// <summary>What kind of space a zone is. Decks gate on it through the "kind:..." tag.</summary>
-public enum ZoneKind { System, Orbit, Moon, Surface, Deep }
+public enum ZoneKind { System, Orbit, Moon, Surface, Deep, Atmosphere }
 
 public enum CircleKind
 {
@@ -86,6 +86,14 @@ public sealed class ZoneDef
     {
         foreach (ZoneCircle circle in Circles)
             if (circle.BlocksSpawns && circle.Contains(p)) return true;
+        return false;
+    }
+
+    /// <summary>Within <paramref name="clearance"/> of a player base's circle, measured from its edge.</summary>
+    public bool NearBase(Vector3 p, float clearance)
+    {
+        foreach (ZoneCircle circle in Circles)
+            if (circle.Kind == CircleKind.Base && circle.Contains(p, clearance)) return true;
         return false;
     }
 

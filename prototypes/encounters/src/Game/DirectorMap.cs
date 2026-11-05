@@ -109,14 +109,14 @@ public partial class DirectorMap : Control
             float r = lead.Distance * Mathf.Sin(Mathf.DegToRad(d.Config.Lead.AngleFuzzDeg)) * scale;
             DrawCircle(to, r, new Color(c, 0.12f));
             DrawArc(to, r, 0, Mathf.Tau, 48, c, 1.5f);
-            Label(to + new Vector2(r + 4, -4), lead.Kind == "distress" ? "distress lead" : "transmission lead", c, 12);
+            Label(to + new Vector2(r + 4, -4), lead.Kind == "distress" ? "distress lead" : lead.Kind == "lifesign" ? "life-sign lead" : "transmission lead", c, 12);
         }
 
         // Ships, wrecks, records.
         ZoneInstance zi = d.Instance(zone.Id);
         if (zi != null)
             foreach (WorldEntity e in zi.Ships)
-                Ship(Map(e.Position), e.Forward, Palette.Faction(e.Faction));
+                Ship(Map(e.Position), e.Forward, e.IsCreature ? Palette.Fauna : Palette.Faction(e.Faction));
         foreach (WorldEntity e in d.Records.InZone(zone.Id))
         {
             Vector2 p = Map(e.Position);
