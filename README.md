@@ -36,6 +36,8 @@ Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or s
 | `prototypes/saves/` | Crash-proof saves (shadow-paged plain files, audits, backups, migrations) and zone transitions; its `src/Persistence` is the core other prototypes adopt |
 | `prototypes/wildlife/` | Procedural fauna for every planet, and a harvester hovercraft |
 | `prototypes/poi-generator/` | Seeded points of interest from faction kits: four states, dressing, placement and validation |
+| `prototypes/planet-surface/` | A whole planet to stand on: diggable streamed terrain on a torus, skies from each system, weather, seated POIs |
+| `shared/Terrain/` | The planet generator's worlds as diggable voxel terrain (caves, ore, bedrock, POI pads), wrapping both ways; compiled into prototypes that need it |
 
 ## Requirements
 
