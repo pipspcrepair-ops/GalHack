@@ -126,6 +126,8 @@ public sealed class FamilyDef
     /// such as alien works: the same rooms and plans built in another kit.
     /// </summary>
     public string? Style;
+    /// <summary>The made ground of its pad on a planet (concrete, tarmac, gravel, dirt or natural); empty picks by purpose.</summary>
+    public string? Ground;
 
     public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -188,6 +190,7 @@ public static class FamilyParser
                 case "rise": F().Rise = int.Parse(p[1], CultureInfo.InvariantCulture); break;
                 case "tier": F().Tier = Enum<PoiTier>(p[1], Error); break;
                 case "style": F().Style = p[1]; break;
+                case "ground": F().Ground = p[1]; break;
                 case "faction": F().Faction = Enum<Faction>(p[1], Error); break;
                 case "roster": F().Roster = p[1]; break;
                 case "kit": F().Kits["main"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;

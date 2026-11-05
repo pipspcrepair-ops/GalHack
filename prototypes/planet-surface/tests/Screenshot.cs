@@ -124,6 +124,7 @@ public partial class Screenshot : Node
                  $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls");
         Vector3 fwd = -_main.Camera.GlobalBasis.Z;
         GD.Print($"time {_main.Sky.TimeOfDay:F3} · sun {_main.Sky.ToSun.X:F2}, {_main.Sky.ToSun.Y:F2}, {_main.Sky.ToSun.Z:F2} · facing {fwd.X:F2}, {fwd.Y:F2}, {fwd.Z:F2}");
+        if (_main.Pois.DecoRooms > 0) GD.Print($"rooms dressed from the decorations library: {_main.Pois.DecoRooms}");
         GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
         GetTree().Quit(result == Error.Ok ? 0 : 1);
     }

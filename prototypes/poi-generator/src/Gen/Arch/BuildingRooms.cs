@@ -868,15 +868,24 @@ public sealed partial class Building
             C.X.Markers.Add(new Marker("landing-pad", L(cxr, y, czr)));
         }
         if (P.Crown == "broken" && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal)) BrokenCrown(y);   // an alien cathedral grows a spire instead
+        if (P.Crown == "broken" && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal)) TornEdges();
         // Plant on the roof: tanks, a mast with a beacon (a light you see from far off).
         // The mast stands where there is roof under it (a tower that shed a corner keeps it on what is left).
         var mastAt = new[] { (Wm - 3, Zm + 2), (2, Zm + 2), (Wm - 3, Zm + Dm - 3), (2, Zm + Dm - 3) }.FirstOrDefault(c => InFoot(Top, c.Item1, c.Item2) && !C.Get(L(c.Item1, y - 1, c.Item2)).IsAir, (-1, -1));
         if (mastAt.Item1 >= 0 && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal))   // no radio mast on an alien place
         {
+            // On a torn tower the mast leans, stepping over every few metres as it climbs.
             Int3 mast = L(mastAt.Item1, y, mastAt.Item2);
-            for (int k = 0; k < 6 + Floors; k++) C.Set(mast + Int3.Up * k, new Block(BlockType.Pillar, Material.Steel, new Rgb(0x60, 0x64, 0x68), Role.Decor));
-            C.Set(mast + Int3.Up * (6 + Floors), new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
-            C.X.Lights.Add(new LightSpot { Cell = mast + Int3.Up * (6 + Floors), Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2f, Range = 14f, Storey = Top + 1 });
+            Int3 lean = P.Crown == "broken" ? L(mastAt.Item1 - 1, y, mastAt.Item2) - mast : new Int3(0, 0, 0);
+            int tall = 6 + Math.Min(Floors, 12);
+            var steel = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x60, 0x64, 0x68), Role.Decor);
+            for (int k = 0; k < tall; k++)
+            {
+                C.Set(mast + Int3.Up * k, steel);
+                if (k > 3 && k % 4 == 0 && lean != new Int3(0, 0, 0)) { mast += lean; C.Set(mast + Int3.Up * k, steel); }
+            }
+            C.Set(mast + Int3.Up * tall, new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
+            C.X.Lights.Add(new LightSpot { Cell = mast + Int3.Up * tall, Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2f, Range = 14f, Storey = Top + 1 });
         }
         for (int i = 0; i < 2; i++)
         {
@@ -887,6 +896,25 @@ public sealed partial class Building
         }
         Int3 ac = L(Wm / 2, y, Zm + Dm - 3);
         if (InFoot(Top, Wm / 2, Zm + Dm - 3)) C.Set(ac, new Block(BlockType.Machine, Material.Alloy, new Rgb(0x7a, 0x80, 0x88), Role.Decor));
+    }
+
+    /// <summary>Where the top storeys tore away: snapped columns and rebar standing on the exposed slabs below.</summary>
+    void TornEdges()
+    {
+        var steel = new Rgb(0x4a, 0x4c, 0x50);
+        for (int s = Math.Max(1, Top - 3); s <= Top; s++)
+            for (int z = 0; z < D; z++)
+                for (int x = 0; x < W; x++)
+                {
+                    if (InFoot(s, x, z) || !InFoot(s - 1, x, z)) continue;
+                    bool edge = InFoot(s, x + 1, z) || InFoot(s, x - 1, z) || InFoot(s, x, z + 1) || InFoot(s, x, z - 1);
+                    uint h = Hash.Cell(new Int3(x, s, z), 617);
+                    if (!(edge && h % 3 == 0) && h % 11 != 0) continue;
+                    Int3 at = L(x, WalkY(s), z);
+                    if (C.Get(at - Int3.Up).IsAir || !C.Get(at).IsAir || C.Occ.Contains(at)) continue;
+                    int tall = 1 + (int)(h % 3);
+                    for (int k = 0; k < tall; k++) C.Set(at + Int3.Up * k, new Block(BlockType.Pillar, Material.Steel, steel, Role.Wall));
+                }
     }
 
     /// <summary>
