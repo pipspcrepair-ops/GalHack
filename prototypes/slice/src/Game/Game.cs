@@ -65,6 +65,8 @@ public partial class Game : Node3D
     public Visor Visor { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
+    /// <summary>The in-world screens on constructors and base cores (looked at to use).</summary>
+    public MachineScreens MachineScreens { get; private set; }
     public DebugHud Debug { get; private set; }
     public Hands Hands { get; private set; }
     public SpotLight3D Torch { get; private set; }
@@ -235,6 +237,8 @@ public partial class Game : Node3D
 
         Console = new CockpitConsole { Name = "Console", Game = this };
         Zone.AddChild(Console);
+        MachineScreens = new MachineScreens { Name = "MachineScreens", Game = this };
+        AddChild(MachineScreens);
         Hands = new Hands { Name = "Hands", Game = this };
         Camera.AddChild(Hands);
         SliceRules.TorchRules torch = data.Rules.Torch;
@@ -471,6 +475,8 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         HandKind hand = Pack.Hand;
         bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen;
+        // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
+        if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
         if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
         else if (hands && hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint)

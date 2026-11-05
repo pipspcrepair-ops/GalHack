@@ -15,6 +15,7 @@ using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Ui;
+using DiegeticUi.Screens;
 using Slice.Vessels;
 using Wildlife;
 using N = System.Numerics;
@@ -345,11 +346,24 @@ public partial class PlayerTest : Node
         Check(_game.Opened?.Device == _fab, "E on it opens its hopper beside the bag");
         foreach (int x in _drive.ClickWidget("box:store-all")) yield return x;
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
-        foreach (int x in _drive.ClickWidget("tab:core")) yield return x;
-        foreach (int x in _play.Order("core", "base-core", 1)) yield return x;
-        Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "base-core") && _fab.Constructor.SubParts.Count > 0,
-            $"CORE tab: a base core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
         foreach (int x in _play.CloseMenu()) yield return x;
+        // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
+        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
+        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
+        _game.MachineScreens.Sync();
+        MachineScreens.Mounted screen = _game.MachineScreens.Screens.TryGetValue((_fab, Int3.Zero), out var m) ? m : null;
+        if (screen != null) foreach (int x in _play.ScreenClick(screen, "order:screen:base-core:1", "screen:down")) yield return x;
+        bool onScreen = _fab.Constructor.Orders.Any(j => j.Item.Id == "base-core");
+        Check(screen != null && onScreen && ScreenMount.AtEyeHeight(screen.Screen, _fab.GlobalPosition.Y, 0.15f, 15f),
+            $"its own screen, at eye height: a cursor where you look, +1 on the base core clicked there");
+        if (!onScreen)
+        {
+            foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+            foreach (int x in _play.Order("core", "base-core", 1)) yield return x;
+            foreach (int x in _play.CloseMenu()) yield return x;
+        }
+        Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "base-core") && _fab.Constructor.SubParts.Count > 0,
+            $"a base core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
         foreach (int x in _play.WaitFor(() => _fab.Storage.Count("base-core") > 0, 120)) yield return x;
         Check(_fab.Storage.Count("base-core") == 1, $"the base core came out ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play since looting)");
         Mark("base core");

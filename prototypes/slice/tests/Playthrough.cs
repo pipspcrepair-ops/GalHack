@@ -85,6 +85,40 @@ public sealed class Playthrough
         }
     }
 
+    /// <summary>
+    /// Clicks a widget on an in-world screen as a player does: look at the screen (a cursor
+    /// appears where you aim), page with its arrow until the widget shows, aim at it and click.
+    /// </summary>
+    public IEnumerable<int> ScreenClick(MachineScreens.Mounted m, string id, string next = null, int pages = 12)
+    {
+        for (int i = 0; i < 8 && m.Panel.RectOf(id) == null && (next == null || m.Panel.RectOf(next) == null); i++)
+        {
+            Drive.Face(m.Screen.GlobalPosition + Vector3.Up * (i % 2 == 0 ? 0.01f : -0.01f));
+            yield return 0;
+        }
+        for (int p = 0; p < pages && m.Panel.RectOf(id) == null && next != null && m.Panel.RectOf(next) != null; p++)
+            foreach (int x in ScreenPress(m, next)) yield return x;
+        foreach (int x in ScreenPress(m, id)) yield return x;
+    }
+
+    IEnumerable<int> ScreenPress(MachineScreens.Mounted m, string id)
+    {
+        if (MachineScreens.WidgetPoint(m, id) is not Vector3 at)
+        {
+            Log($"(no '{id}' on the screen: {string.Join(", ", m.Panel.WidgetIds.Take(12))})");
+            yield break;
+        }
+        foreach (int x in Drive.LookAt(at, 5)) yield return x;
+        if (Game.MachineScreens.Pointer.Target != m.Screen) Log($"(aiming at '{id}' on the screen, the cursor is on {Game.MachineScreens.Pointer.Target?.Name ?? "nothing"}; {Game.Survivor.WorldEye().DistanceTo(at):F1} m away)");
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        yield return 0;
+    }
+
     /// <summary>The bag slot holding an item, or -1.</summary>
     public int BagSlotOf(string itemId)
     {

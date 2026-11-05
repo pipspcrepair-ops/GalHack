@@ -323,20 +323,36 @@ public partial class SliceTest : Node
     {
         GD.Print("-- a plant --");
         foreach (int x in _drive.Wait(1)) yield return x;
-        // A tree if there is one near (its trunk is solid), any plant otherwise.
-        var found = NearestPlant(_game.Survivor.WorldFeet, 200f, trees: true) ?? NearestPlant(_game.Survivor.WorldFeet, 200f, trees: false);
-        if (found is not var (p, id))
+        // A tree if there is one near (its trunk is solid), any plant otherwise; the next one if a
+        // bank or a cliff keeps it out of the tool's reach.
+        var tried = new HashSet<long>();
+        Vector3 p = default;
+        long id = 0;
+        float reach = _game.Zone.Data.Rules.Tool.CutReach - 0.5f;
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            var found = NearestPlant(_game.Survivor.WorldFeet, 200f, trees: true, tried) ?? NearestPlant(_game.Survivor.WorldFeet, 200f, trees: false, tried);
+            if (found is not var (root, plant)) break;
+            tried.Add(plant);
+            (p, id) = (root, plant);
+            foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
+            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) > reach)
+                foreach (int x in _drive.WalkTo(p, 0.9f, 15f)) yield return x;
+            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach) break;
+        }
+        if (id == 0)
         {
             Fail("no plant found near the castaway to cut");
             yield break;
         }
-        foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
         bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
         bool trunkBefore = TrunkCollider(p, id);
         double organics = _game.Suit.Kit.Organics;
         int biomass = _game.Pack["biomass"];
         bool cutThisFrame = false, colliderGoneThatFrame = false;
-        for (int i = 0; i < 3 && !cutThisFrame; i++)
+        if (_game.Pack.Selected != 0) foreach (int x in _drive.Tap(Key.Key1)) yield return x;
+        if (_game.Tool.Mode != Slice.Player.ToolMode.Gather) foreach (int x in _drive.Tap(Key.Q)) yield return x;
+        for (int i = 0; i < 6 && !cutThisFrame; i++)
         {
             _drive.Face(p + Vector3.Up * 0.9f);
             _game.Controls.Primary = true;
@@ -348,6 +364,8 @@ public partial class SliceTest : Node
             }
         }
         _game.Controls.Primary = false;
+        if (!cutThisFrame)
+            GD.Print($"  (the cut: plant {id} at {p}, {(tree ? "a tree" : "a plant")}; eye {_game.Survivor.WorldEye()} {_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f):F1} m from it; hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, on a block {_game.Tool.OnBlock})");
         foreach (int x in _drive.Wait(90)) yield return x;
         Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
             $"cutting a plant gives organics (+{_game.Suit.Kit.Organics - organics:F1} kg) and biomass (+{_game.Pack["biomass"] - biomass})");
@@ -360,16 +378,17 @@ public partial class SliceTest : Node
     }
 
     /// <summary>The plant nearest a point within a radius, from the streamer's flora scatter: trees only (solid trunks), or any.</summary>
-    (Vector3 root, long id)? NearestPlant(Vector3 from, float radius, bool trees)
+    (Vector3 root, long id)? NearestPlant(Vector3 from, float radius, bool trees, HashSet<long> skip = null)
     {
         (Vector3, long)? best = null;
         float bestD = radius;
         var solids = trees ? _game.Zone.Streamer.SolidsNear(from, radius).Where(s => s.solid.IsTrunk && s.solid.Fellable).Select(s => s.solid.Id).ToHashSet() : null;
         foreach (var (_, root, _, id) in _game.Zone.Streamer.FloraNear(from, radius))
         {
-            if (solids != null && !solids.Contains(id)) continue;
+            if ((solids != null && !solids.Contains(id)) || (skip?.Contains(id) ?? false)) continue;
             float d = new Vector2(root.X - from.X, root.Z - from.Z).Length();
-            if (d < bestD && root.Y > 0.6f) { bestD = d; best = (root, id); }
+            // On ground you can walk to: above the water, and not up or down a cliff from here.
+            if (d < bestD && root.Y > 0.6f && MathF.Abs(root.Y - from.Y) < 3f) { bestD = d; best = (root, id); }
         }
         return best;
     }

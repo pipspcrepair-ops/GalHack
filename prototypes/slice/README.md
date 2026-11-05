@@ -119,6 +119,7 @@ Expected time to each gate for an experienced player (from the real-player test'
 - **The pod's hatch is walkable.** It is 2 m high, and the pod comes to rest with its sill a short step above the ground in front of it; where the ground under it is higher, its landing carves its bed (through the terrain's edit API, before the ground streams in).
 - **A new vessel is built on a stand.** Its core holds 2 m above the ground where you set it, so its underside can be built; it holds there until first flown, then lands on its own legs. A blueprint's vessel instead stands on the ground as it grows (its lowest block on the highest ground under it), so no part of it hangs in the air.
 - **Small vessels turn no faster than 110 °/s** (`build.smallVesselMaxTurn`): the stick asks for a share of the handling model's turn rate.
+- **Machines have their own screens.** A placed survival constructor carries a screen on a mast at its front; every constructor block on a base, and the base's core, has one on a free face. They are diegetic-ui's world screens hung at standing eye height (`ScreenMount`), each showing the same panel as the CORE tab (`MachineScreens`). Look at one within 3 m: a cursor sits where you aim (`ScreenPointer`), and the left button clicks there instead of firing the tool. The Tab menu stays the main way in.
 - **E answers only containers, bodies, backpacks, lockers and devices.** A cockpit says F; a machine block opens its CORE panel.
 - **Gamey cockpits, a calm opening, streaming ahead of a vessel**: unchanged from before.
 
@@ -133,13 +134,26 @@ Expected time to each gate for an experienced player (from the real-player test'
 
 The loop played the way a person plays it, headless with `--fixed-fps 60`: the pod comes down for real with the castaway strapped in, and from then on only the game's own inputs are used (look, walk, keys, and the mouse on the Tab menu: every click and drag lands on a widget the menu laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
 
-PLAYERTEST-RESULTS
+Latest run: **ALL PASSED, 73 checks** in 73 s of wall time (9 min of game time). The route and its numbers:
+
+1. **The pod.** It comes down for real with the castaway strapped in. F unstraps; E on the locker from inside, TAKE ALL (4 trail rations, 2 patch kits, 2 air cells, 6 biomass). A shot inside the pod: a bolt from the muzzle and a scorch on its wall exactly at the aim, the pod unharmed; the tool digs nothing through its floor. Out of the door (1.6 s from the seat to the ground, handed back to the planet on stepping off, never rescued), back in, and out again.
+2. **Gathering.** 1 puts the tool in hand (seen in the first-person hands); 20 cells of iron give 240 iron ore (12 a cell); the deposits near the start hold the whole loop's ore; a dug-out deposit drops off the compass; a plant cut gives 2 biomass.
+3. **Shooting.** A shot at the ground: bolt, sparks and a scorch 0.05 m from the aim. A hammerhead stalker shot down from 41 health, each hit with a bolt, a spray and the visor's marker: +21 XP.
+4. **The body and the inventory by hand.** Its body is a container (2 hide, 8 raw meat); E opens it beside the bag; a drag moves the meat, shift-click the hide, take all empties it, right-click splits a stack, a patch kit is dragged onto toolbar slot 8; the empty body goes once closed. Lifting off on the jetpack never flashes IMPACT.
+5. **The suit fabricator** (YOU tab) makes a survival constructor in 45 s of play while the castaway walks; dragged to toolbar slot 3 and set down on open ground.
+6. **The base core.** E opens the constructor's hopper beside the bag; STORE ALL loads 745 SU of ore. Then its own in-world screen, at eye height: a cursor where you look, +1 on the base core clicked there; it plans 6 lines of sub-parts and the core comes out 53 s later.
+7. **The base.** The constructor makes the base's parts; the core set down founds a base (large grid, base mode, fixed body). Level 4 by then (514 XP): the small constructor unlocked on the TECH tab, blocks dragged from the palette to the toolbar, 5 large blocks built by looking and clicking, each paid from the bag; a right click takes one down and refunds its whole bill.
+8. **Level 5 and the small vessel's core.** STORE MY ORE AND MATERIALS; the base's small constructor makes the vessel's parts; **level 5 at 686 XP after 3.8 min of play** (crafting at the test time-scale); the small-vessel core, cockpit, thruster and gyro unlocked with points; the constructor makes the core.
+9. **The vessel.** The core set down starts a small vessel on its build stand; 17 of 17 blocks built from the toolbar (a seat on top from a jetpack hop, lift jets and a retro turned with R/T, a down jet, three legs), lift margin +67 kN, never in the ground. F at the seat; the CORE tab shows its four numbers; Space lifts it 108 m in 2 s; it flies 574 m at up to 70 m/s and lands on its gear, undamaged.
+10. **The rest.** Every tab opens by its own button; L toggles the head torch (45 m, 32°). A running jump off the hovering vessel from 115 m kills the castaway: everything carried is in a backpack where they fell; R wakes them in the pod; they walk to the marker, E, take all, everything back. The castaway is never rescued from the ground all run.
+
+Game time at each step (min): pod 0.1, gathered 1.4, hunted 1.5, looted 1.5, base core 2.4, base 3.3, level 5 3.8, vessel core 3.8, vessel built 5.0, flown 6.7, recovered 8.6.
 
 ### The systems test (`tests/SliceTest.tscn`)
 
 Determinism, the pod, gathering, cutting a tree (its collider gone the frame it falls), the Skiff blueprint built block by block and paid for, the same in Creative for nothing, a 2 km flight and landing, a hop flown twice to the tick, creatures warned before they bite, and nothing stuck in the ground. It starts beside the landed pod (the real-player test covers the descent) and, as a systems test, hands over the Skiff's parts and opens the tech tree: printed when it does.
 
-SLICETEST-RESULTS
+Latest run: **ALL PASSED, 43 checks** in 28 s. The planet, its fauna and the starter blueprint generate identically twice; the weather opens calm for 12 minutes; the landing site is survivable (16.8 °C, 21 % oxygen) with 44 creatures of 9 species around it. In and out of the pod through its hatch, the locker emptied by TAKE ALL. Ore dug as real terrain (12 a cell, every common ore from the nearest deposits); a tree cut (+1.7 kg organics, +2 biomass, its collider gone the frame it falls). The Skiff blueprint built block by block (174 of 174, each paid for, four numbers as designed, never pushed out of the ground), the same in Creative for nothing; flown 2,133 m at up to 70 m/s and landed on its gear undamaged (main-thread cost 1.2 ms a frame in flight); a 4 s hop flown twice identically to the tick; a creature's attack warned (THREAT) 1.4 s before it bites; nothing stuck in the ground, no vessel rescued.
 
 ### Screenshots
 
@@ -179,7 +193,7 @@ So **about 45 to 55 minutes** from the crash to flying, inside the target with r
 | **Small vessel** | **5** | **680** | **about 35 to 40 min**, as the base's constructor finishes the vessel's parts |
 | Capital vessel | 7 | 1,340 | about 75 to 90 min, by playing on |
 
-The real-player test follows the same route at its own speed (a bot digs and walks faster than a person, and its crafting runs at the test time-scale): it reached level 5 with PLAYER-L5.
+The real-player test follows the same route at its own speed (a bot digs and walks faster than a person, and its crafting runs at the test time-scale): it reached level 5 with 686 XP after 3.8 minutes of play, so the experience is there whenever the base can make the vessel's parts; the constructors' real time is what paces a person.
 
 ## Changes to shared code and other prototypes
 
@@ -218,5 +232,4 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 - **Hover vessels** have their tab, core and pads, but the slice's handling of hover pads isn't tuned or tested.
 - **Deposits under deep rock** don't show on the compass: the survival tool can't cut deep rock.
 - **Creatures** are solid to the castaway through blockers on the props layer; they don't collide with vessels or each other's blockers, and they read the natural ground, not dug holes (wildlife's limit).
-- **In-world screens** for machines (the panels on diegetic-ui's screens) come once main's screen component is merged; everything is already doable from the Tab menu.
 - **Plants are cut whole** and don't regrow; **the open Skiff** has no cabin.

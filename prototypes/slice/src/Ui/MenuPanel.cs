@@ -41,6 +41,9 @@ public abstract partial class MenuPanel : Control
 
     bool _held;
 
+    /// <summary>True: every pointer move is an input pass too (a panel on an in-world screen, whose widgets a look must find before any click).</summary>
+    protected virtual bool LaysOutOnHover => false;
+
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Stop;
@@ -116,6 +119,7 @@ public abstract partial class MenuPanel : Control
                 break;
             case InputEventMouseMotion m:
                 Gui.Mouse = ToDesign(m.Position);
+                if (LaysOutOnHover) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed);
                 break;
         }
     }
@@ -140,6 +144,7 @@ public partial class SectionPanel : MenuPanel
 {
     public IMenuSection Section;
     public override Vector2 DesignSize => Section?.PreferredSize ?? new Vector2(800, 600);
+    protected override bool LaysOutOnHover => true;
 
     /// <summary>What the section shows changes: set by whoever hosts it (a few times a second is plenty).</summary>
     public Func<string> State;
