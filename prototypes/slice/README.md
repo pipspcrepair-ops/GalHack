@@ -1,13 +1,15 @@
 # Prototype: the slice (phase 1, the ground loop)
 
-The first playable slice of GalHack's core loop, built from the proven prototypes and nothing else: crash-land in an escape pod on a generated planet, walk out of it, survive, gather, craft, found a base, run its machines, build a small vessel block by block and fly it. Every system is compiled in from where it lives; the slice itself is glue, a game layer and its tests.
+The first playable slice of GalHack's core loop, built from the proven prototypes and nothing else: wake in a buried cryopod bunker on a freshly generated planet, climb out, survive, gather, craft, found a base, run its machines, build a small vessel block by block and fly it. Every system is compiled in from where it lives; the slice itself is glue, a game layer and its tests.
 
+![Waking in the bunker: the one working cryopod open, the other sleepers dead in theirs](screenshots/bunker.png)
+![Climbing the bunker's stairwell, its fallen-in top open to the morning sky](screenshots/climb.png)
 ![The Tab menu, YOU: the bag and toolbar, the paperdoll with its equipment and vitals, the suit fabricator](screenshots/menu-you.png)
 ![The Tab menu, CORE: a placed survival constructor making a base core](screenshots/menu-core.png)
 ![The Tab menu, TECH: the base tree](screenshots/menu-tech.png)
 ![A creature's body opened beside the bag](screenshots/loot.png)
 ![A bolt in flight from the tool's muzzle, the sparks and scorches of the shots before it](screenshots/bolt.png)
-![Inside the pod: a shot scorches its wall, harmlessly](screenshots/podshot.png)
+![Inside the bunker: a shot scorches its wall, harmlessly](screenshots/bunkershot.png)
 ![Night, the head torch on](screenshots/torch.png)
 ![A base built by hand: core, container, generator, small constructor, steel; the survival constructor beside it](screenshots/base.png)
 ![A small vessel built by hand on its core, lifting off](screenshots/vessel.png)
@@ -20,11 +22,11 @@ Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go
 .\tools\godot.ps1 -Project prototypes/slice -Play
 ```
 
-The pod comes down at dawn. **F** unstraps you. **E** on the yellow locker inside opens it beside your bag: **TAKE ALL**. Walk out of the hatch. The compass shows the nearest deposit of each common ore and drops one once it is dug out.
+A new game opens on the start screen: **Survival** or **Creative**, the planet type (**temperate** is the easy one; ice, alien swamp, barren, lava, or random) and a seed (leave it empty for a fresh world, or type one to replay it). Then you wake at dawn in a cryopod. **F** opens it. **E** on the orange locker opens it beside your bag: **TAKE ALL**. Climb the stairs to the surface. The compass shows the nearest deposit of each common ore and drops one once it is dug out.
 
 ### The loop (Survival)
 
-1. **The crash.** Walk out of the pod's door and back in; the locker has food, patch kits and air cells.
+1. **The bunker.** Get out of the cryopod and empty the locker (food, patch kits, air cells); the stairwell climbs to the surface. Come back down whenever you like: it is your respawn point, but too small and broken to build on.
 2. **Gather.** The survival tool is on toolbar slot 1 (and in your hands). Hold the left button on ore to dig it (12 raw ore a cell), on a plant to cut it (biomass). **Q** switches it to shooting: a bolt you can see, sparks and a scorch where it lands. Shots only hurt creatures.
 3. **The suit fabricator** (Tab, YOU) makes the bare minimum from raw finds: the survival tool, rations, patch kits, air cells and a **placeable survival constructor**. It works while you play.
 4. **The survival constructor.** Drag it onto the toolbar, select it and click open ground. **E** on it opens its hopper beside your bag (STORE ALL); its panel is on Tab, **CORE**, when you stand by it. It refines ore into parts and makes the **base core**, the first blocks' parts and the next constructor up.
@@ -56,7 +58,7 @@ The Skiff blueprint is still there as a shortcut: drag **BLUEPRINT PROJECTOR** f
 | Tab | The menu (the game doesn't pause; you can still walk) | |
 | H, B | Helmet, the survival replicator | |
 | V | Third person | Chase camera |
-| R (dead) | Wake at the pod (your backpack stays where you fell, on the compass) | |
+| R (dead) | Wake in the bunker (your backpack stays where you fell, on the compass) | |
 | F3, Esc | Debug numbers, free the mouse | |
 
 ### The Tab menu
@@ -69,7 +71,7 @@ One full-screen menu, styled as the suit's own terminal (the diegetic UI's scree
 | **TECH** | The tech tree: Base, Capital Vessel, Small Vessel, Hover Vessel, Tools, Weapons, Misc. Nodes in columns by level, joined to their parents; locked nodes say what they need (level, points, parent); click one you can afford |
 | **STATS** | What you have done since the crash, and the master volume |
 | **CORE** | The structure you are in or next to (or a device you stand by), the nearest picked, a button to switch: its manufacturing (each constructor's orders above, its own sub-parts below, missing materials, ammo restock), its storage, its settings (core mode, gravity, power, lights, Home, auto-transmit) and its numbers (mass, power, CPU, storage; a vessel's four numbers, turn cap and lift margin) |
-| **MAP** | 300 or 600 m round you: structures, devices, the pod, your backpack, bodies and drops, the nearest deposits, creatures |
+| **MAP** | 300 or 600 m round you: structures, devices, the bunker, your backpack, bodies and drops, the nearest deposits, creatures |
 
 The visor stays minimal: vitals, warnings, the compass with contacts, the toolbar, what is in hand and its keys, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play.
 
@@ -80,7 +82,7 @@ The visor stays minimal: vitals, warnings, the compass with contacts, the toolba
 | Physics | `shared/Physics` | One physics world for the zone: the survivor on the shared walk controller, riding hulls in cabin worlds and stepping off them onto the ground (`Riding.StepsOntoGround`), bases as fixed bodies walked on in the zone's world, every vessel one body flown by the handling model through the physics sandbox's bridges |
 | Items | `shared/Items` | The catalogue with the slice's additions (`data/items.json`, appended as it loads), `SharedStorage` under every bag, container and structure, `Constructor` for the suit fabricator, the survival constructor and every constructor block, `BlockPlacer` prices and refunds, `WorldRules` for Survival and Creative, the unlock and stack fields |
 | Terrain | `shared/Terrain`, `terrain-digging` | The planet as diggable voxels. `PlanetEdits` is the physics module's terrain editor; a base's blocks cut the ground they reach into |
-| Planet | `planet-generator`, `planet-surface` | The temperate starter world, streamed by planet-surface's `TerrainStreamer` with its sky, sea, fog and flora; trees are solid and felled for good |
+| Planet | `planet-generator`, `planet-surface` | A fresh world every game (the tests pin seed 7, temperate), streamed by planet-surface's `TerrainStreamer` with its sky, sea, fog and flora; trees are solid and felled for good |
 | Weather | `weather`, `planet-surface` | The weather model pushes bodies; planet-surface's effects and its wind and rain sounds |
 | Wildlife | `wildlife` | The planet's fauna on a patch that follows you, solid to you (blockers on the props layer), each species worth XP by toughness and danger; a dead creature's body is a container holding its drops |
 | Survival | `survival-vitals` | The suit (food, oxygen, temperature, radiation, stamina, health), warned before harm |
@@ -114,9 +116,10 @@ Expected time to each gate for an experienced player (from the real-player test'
 
 - **Warned before any harm.** Impacts use the physics module's one formula in full; the visor flashes IMPACT only while the body is airborne **and coming down** faster than the safe speed, never while lifting off on the jetpack. A creature's wind-up is heard and shown (THREAT) before its lunge.
 - **Nothing a player owns disappears.** A full bag sets things down in a container on the ground; a refund with nowhere to go likewise; a dead player's whole inventory is a backpack where they fell, marked on the compass and the map; bodies and drops stay until emptied.
-- **Every interaction asks the world you are in.** Aboard a structure, E, the tool and the build tool ray through its cabin world (a still copy of its blocks) as well as the zone's world beyond, so the locker answers from inside, a shot inside the pod scorches its wall (harmlessly) and the tool never digs through a floor.
+- **Every interaction asks the world you are in.** Aboard a structure, E, the tool and the build tool ray through its cabin world (a still copy of its blocks) as well as the zone's world beyond, so a locker answers from inside, a shot inside a structure scorches its wall (harmlessly) and the tool never digs through a floor.
 - **Walking out of a door hands you back to the planet at once.** A rider out of the interior with no block under its feet and the zone's ground within a step or two below leaves the cabin world there, onto the ground (`Riding.StepsOntoGround`).
-- **The pod's hatch is walkable.** It is 2 m high, and the pod comes to rest with its sill a short step above the ground in front of it; where the ground under it is higher, its landing carves its bed (through the terrain's edit API, before the ground streams in).
+- **A fresh world every game.** A new game rolls a fresh seed (`WorldChoice`); the start screen picks the planet type and can take a seed to replay one, and STATS shows the world and its seed. `-- --seed N --planet temperate|ice|swamp|barren|lava` pins both (tests and screenshots pin the tested world, seed 7 temperate, unless told otherwise). A save will keep its world's choice; the slice has no saves yet.
+- **Every game starts in a cryo bunker** (`src/Start/Bunker.cs`, `Game.Start.cs`). Its site is searched near the generator's landing site on any seed: dry and above the sea, 1.75 m of earth over its roof, even ground over it, no bedrock in the way, its stairs coming up level with the ground beyond, and turned to face the most striking skyline 300 to 1,200 m off. It is a fixed small-grid structure of the slice's own blocks (a 6.5 x 3 x 4.5 m chamber, a locker, a stairwell of half-metre steps whose top end has fallen open to the sky) set into rooms dug through the terrain's edit API before any ground streams in, dug tight round its own volume so its floor, walls and stairs are always solid and no gap is left to fall into. Four cryopods stand along its back wall; yours opens with F. It is a ruin: nothing can be built onto it and it is never a core of yours.
 - **A new vessel is built on a stand.** Its core holds 2 m above the ground where you set it, so its underside can be built; it holds there until first flown, then lands on its own legs. A blueprint's vessel instead stands on the ground as it grows (its lowest block on the highest ground under it), so no part of it hangs in the air.
 - **Small vessels turn no faster than 110 °/s** (`build.smallVesselMaxTurn`): the stick asks for a share of the handling model's turn rate.
 - **Machines have their own screens.** A placed survival constructor carries a screen on a mast at its front; every constructor block on a base, and the base's core, has one on a free face. They are diegetic-ui's world screens hung at standing eye height (`ScreenMount`), each showing the same panel as the CORE tab (`MachineScreens`). Look at one within 3 m: a cursor sits where you aim (`ScreenPointer`), and the left button clicks there instead of firing the tool. The Tab menu stays the main way in.
@@ -132,11 +135,11 @@ Expected time to each gate for an experienced player (from the real-player test'
 
 ### The real-player test (`tests/PlayerTest.tscn`)
 
-The loop played the way a person plays it, headless with `--fixed-fps 60`: the pod comes down for real with the castaway strapped in, and from then on only the game's own inputs are used (look, walk, keys, and the mouse on the Tab menu: every click and drag lands on a widget the menu laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
+The loop played the way a person plays it, headless with `--fixed-fps 60`, on the tested world (seed 7, temperate; `-- --seed N --planet type` for another): the castaway wakes in the cryopod, and from then on only the game's own inputs are used (look, walk, keys, the mouse on the Tab menu and on in-world screens: every click and drag lands on a widget the panel laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
 
-Latest run: **ALL PASSED, 73 checks** in 73 s of wall time (9 min of game time). The route and its numbers:
+Latest run: **ALL PASSED, 76 checks** in 60 s of wall time (9.5 min of game time). The route and its numbers:
 
-1. **The pod.** It comes down for real with the castaway strapped in. F unstraps; E on the locker from inside, TAKE ALL (4 trail rations, 2 patch kits, 2 air cells, 6 biomass). A shot inside the pod: a bolt from the muzzle and a scorch on its wall exactly at the aim, the pod unharmed; the tool digs nothing through its floor. Out of the door (1.6 s from the seat to the ground, handed back to the planet on stepping off, never rescued), back in, and out again.
+1. **The bunker.** The castaway wakes in the cryopod, its lid shut, 5.7 m under the ground. F opens it; out into the chamber; E on the locker, TAKE ALL (4 trail rations, 2 patch kits, 2 air cells, 6 biomass). A shot inside: a bolt from the muzzle and a scorch on the wall exactly at the aim, the bunker unharmed; the tool digs nothing through its floor. Up the stairwell's 12 steps to the surface on foot (6 s), 51 m away, back down the stairs into the chamber and out again, never rescued.
 2. **Gathering.** 1 puts the tool in hand (seen in the first-person hands); 20 cells of iron give 240 iron ore (12 a cell); the deposits near the start hold the whole loop's ore; a dug-out deposit drops off the compass; a plant cut gives 2 biomass.
 3. **Shooting.** A shot at the ground: bolt, sparks and a scorch 0.05 m from the aim. A hammerhead stalker shot down from 41 health, each hit with a bolt, a spray and the visor's marker: +21 XP.
 4. **The body and the inventory by hand.** Its body is a container (2 hide, 8 raw meat); E opens it beside the bag; a drag moves the meat, shift-click the hide, take all empties it, right-click splits a stack, a patch kit is dragged onto toolbar slot 8; the empty body goes once closed. Lifting off on the jetpack never flashes IMPACT.
@@ -145,15 +148,21 @@ Latest run: **ALL PASSED, 73 checks** in 73 s of wall time (9 min of game time).
 7. **The base.** The constructor makes the base's parts; the core set down founds a base (large grid, base mode, fixed body). Level 4 by then (514 XP): the small constructor unlocked on the TECH tab, blocks dragged from the palette to the toolbar, 5 large blocks built by looking and clicking, each paid from the bag; a right click takes one down and refunds its whole bill.
 8. **Level 5 and the small vessel's core.** STORE MY ORE AND MATERIALS; the base's small constructor makes the vessel's parts; **level 5 at 686 XP after 3.8 min of play** (crafting at the test time-scale); the small-vessel core, cockpit, thruster and gyro unlocked with points; the constructor makes the core.
 9. **The vessel.** The core set down starts a small vessel on its build stand; 17 of 17 blocks built from the toolbar (a seat on top from a jetpack hop, lift jets and a retro turned with R/T, a down jet, three legs), lift margin +67 kN, never in the ground. F at the seat; the CORE tab shows its four numbers; Space lifts it 108 m in 2 s; it flies 574 m at up to 70 m/s and lands on its gear, undamaged.
-10. **The rest.** Every tab opens by its own button; L toggles the head torch (45 m, 32°). A running jump off the hovering vessel from 115 m kills the castaway: everything carried is in a backpack where they fell; R wakes them in the pod; they walk to the marker, E, take all, everything back. The castaway is never rescued from the ground all run.
+10. **The rest.** Every tab opens by its own button; L toggles the head torch (45 m, 32°). A running jump off the hovering vessel from 115 m kills the castaway: everything carried is in a backpack where they fell; R wakes them in the bunker; they walk to the marker, E, take all, everything back. The castaway is never rescued from the ground all run.
 
-Game time at each step (min): pod 0.1, gathered 1.4, hunted 1.5, looted 1.5, base core 2.4, base 3.3, level 5 3.8, vessel core 3.8, vessel built 5.0, flown 6.7, recovered 8.6.
+Game time at each step (min): out 0.6, gathered 2.3, hunted 2.4, looted 2.5, base core 3.2, base 4.1, level 5 4.5, vessel core 4.6, vessel built 5.8, flown 7.6, recovered 9.5. Level 5 came at 693 XP after 4.5 minutes of play; the vessel flew 544 m and landed undamaged; a 113 m fall killed the castaway, R woke them in the bunker and they climbed out to their backpack.
 
 ### The systems test (`tests/SliceTest.tscn`)
 
-Determinism, the pod, gathering, cutting a tree (its collider gone the frame it falls), the Skiff blueprint built block by block and paid for, the same in Creative for nothing, a 2 km flight and landing, a hop flown twice to the tick, creatures warned before they bite, and nothing stuck in the ground. It starts beside the landed pod (the real-player test covers the descent) and, as a systems test, hands over the Skiff's parts and opens the tech tree: printed when it does.
+Fresh seeds, determinism, the bunker, gathering, cutting a tree (its collider gone the frame it falls), the Skiff blueprint built block by block and paid for, the same in Creative for nothing, a 2 km flight and landing, a hop flown twice to the tick, creatures warned before they bite, and nothing stuck in the ground. It starts with the cryopod already open (the real-player test wakes in it shut) and, as a systems test, hands over the Skiff's parts and opens the tech tree: printed when it does.
 
-Latest run: **ALL PASSED, 43 checks** in 28 s. The planet, its fauna and the starter blueprint generate identically twice; the weather opens calm for 12 minutes; the landing site is survivable (16.8 °C, 21 % oxygen) with 44 creatures of 9 species around it. In and out of the pod through its hatch, the locker emptied by TAKE ALL. Ore dug as real terrain (12 a cell, every common ore from the nearest deposits); a tree cut (+1.7 kg organics, +2 biomass, its collider gone the frame it falls). The Skiff blueprint built block by block (174 of 174, each paid for, four numbers as designed, never pushed out of the ground), the same in Creative for nothing; flown 2,133 m at up to 70 m/s and landed on its gear undamaged (main-thread cost 1.2 ms a frame in flight); a 4 s hop flown twice identically to the tick; a creature's attack warned (THREAT) 1.4 s before it bites; nothing stuck in the ground, no vessel rescued.
+Latest run: **ALL PASSED, 43 checks** in 35 s. Two fresh games roll different seeds, and `--seed`/`--planet` pin both; the planet, its fauna and the starter blueprint generate identically twice; the weather opens calm for 12 minutes. The cryo bunker is dug in at the start site, 5.8 m under the ground and above the sea, 19 m from the generator's landing site, 12 steps up; the castaway wakes in their cryopod with 3 dead sleepers beside it; the start site is survivable with the planet's own wildlife around it. The locker emptied by TAKE ALL and up the stairwell on foot, never rescued. Ore dug as real terrain (12 a cell, every common ore from the nearest shallow deposits); a tree cut (its collider gone the frame it falls). The Skiff blueprint built block by block (174 of 174, each paid for, never pushed out of the ground), the same in Creative for nothing; flown over 2 km and landed on its gear undamaged; a 4 s hop flown twice identically to the tick; a creature's attack warned (THREAT) before it bites; nothing stuck in the ground.
+
+### The start test (`tests/StartTest.tscn`)
+
+The owner's first concern: that you can always get out. On five fresh worlds (each game rolls its own seed) and one of every other planet type, the castaway wakes in the cryopod, opens it, takes the locker's kit, climbs the stairwell to the surface, walks 50 m away over dry ground, comes back down into the chamber and climbs out again, with the game's inputs only. A watch on every tick proves no teleports (the castaway never moves more than half a metre in a tick) and no rescues. `-- --seeds N` runs more worlds; `-- --seed N --planet type` one.
+
+Latest run: **ALL PASSED, 92 checks** in 43 s. Seeds 650102798, 85240623, 554930613, 472739100 and 124332800 (temperate), 500687335 (ice), 696836522 (alien swamp), 191788404 (barren) and 947958248 (lava): start sites 0 to 224 m from the landing sites, 8 to 22 steps up, each facing a skyline 436 to 1,213 m off; out, 50 m away and back in 34 to 58 s of play each; two fresh games rolled different seeds.
 
 ### Screenshots
 
@@ -165,7 +174,7 @@ dotnet build prototypes/slice/Slice.csproj
 & $GodotEditor --position 20000,20000 --path prototypes/slice res://tests/Screenshot.tscn -- --view=menu --tab=you --out="$PWD/menu-you.png"
 ```
 
-Views: `menu` (with `--tab=you|tech|stats|core|map`), `loot`, `bolt`, `podshot`, `torch`, `base`, `vessel`, and the earlier `pod`, `dig`, `build`, `liftoff`, `flying`, `cockpit`, `descent`.
+Views: `bunker`, `climb`, `bunkershot`, `menu` (with `--tab=you|tech|stats|core|map`), `loot`, `bolt`, `torch`, `base`, `vessel`, `dig`, `build`, `liftoff`, `flying`, `cockpit`. Add `--seed=N --planet=type` for another world.
 
 ## Pacing
 
@@ -173,7 +182,7 @@ The design target is a small vessel within one to two hours for an experienced p
 
 | Step | What it takes | An experienced player |
 | --- | --- | --- |
-| Out of the pod, locker emptied | | 1 min |
+| Out of the cryopod, locker emptied, up the stairs | | 1 min |
 | Ore for the whole loop (about 800 raw: iron, copper, carbon, silicon, a little ice and stone) | 45 ore/min | 18 min of digging, spread over the run |
 | Survival constructor (suit fabricator, 20 s) | 28 ore | at about 4 min |
 | Base core and the foothold's parts (survival constructor, half speed) | about 280 runs | 12 to 15 min, while gathering |
@@ -222,8 +231,9 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 
 ## Known limits
 
-- **Phase 1 only:** no orbit, boarding or saves yet; the planet is the starter world every time. Progress lives in one `ProgressState` ready for phase 3's saves.
-- **The escape pod is going**: the design now starts every game in a buried cryopod bunker (a follow-up). The start sequence (`Game.OnPlanetBuilt`, `Descend`) and the starting kit (`materials.podLocker`, `materials.toolbar` in `data/slice.json`) are kept separate so the bunker can replace the pod with little rework. The pod got only what the loop needs: a walkable hatch and its locker.
+- **Phase 1 only:** no orbit, boarding or saves yet. Progress lives in one `ProgressState` ready for phase 3's saves.
+- **The escape pod and its descent are gone**; the bunker start lives in `Game.Start.cs` and `src/Start/Bunker.cs`, apart from the rest. **No POI on the horizon yet**: the slice doesn't draw POIs (planet-surface's POI layer isn't compiled in), so the stairs face the most striking skyline instead; once POIs are drawn, the site search can prefer one in view 300 to 1,200 m off.
+- **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
 - **Blocks are not items** (shared/Items' rule): the toolbar holds block shortcuts paid from storage at placement, not stacks of blocks as in Empyrion. Cores are the exception, made as items in the slice's own data.
 - **Equipment is read-only**: the paperdoll's armour and booster slots show the survival suit's; there are no armour items to drag in yet.
 - **Power is a switch**: a generator on a structure powers its machines; fuel isn't burned yet, and the lights toggle doesn't switch light blocks yet.
