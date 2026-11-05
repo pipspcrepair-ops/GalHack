@@ -234,6 +234,7 @@ public partial class SurfaceTest : Node
     {
         int sites = 0, floating = 0, doors = 0, corners = 0, overlaps = 0, gates = 0, steep = 0;
         int roomsFilled = 0;
+        int madeChecked = 0, wrongGround = 0, grassInDesert = 0, hardEdges = 0;
         var shapes = new Dictionary<StampShape, int>();
         double widest = 1;
         bool same = false;
@@ -296,6 +297,23 @@ public partial class SurfaceTest : Node
                         if (occ[local] && inst.Blocks.Get(local).IsAir && store.IsSolid(site.World(local))) roomsFilled++;
                     }
                 foreach (TerrainStamp extraStamp in site.Extra) shapes[extraStamp.Shape] = shapes.TryGetValue(extraStamp.Shape, out int sc) ? sc + 1 : 1;
+                // Made ground: the surface its purpose calls for; never grass on a desert world; eased in, never a hard edge.
+                madeChecked++;
+                if (t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
+                var (mcx, mcz) = site.Center;
+                Color centre = w.Palette.Made(w.Palette.Natural(mcx, mcz, pad, 1f, out _), t.Surface, 1f, t.Wear, mcx, mcz);
+                if (a == (int)Archetype.Arid && centre.G > centre.R * 1.08f && centre.G > centre.B * 1.08f) grassInDesert++;
+                for (int ray = 0; ray < 8; ray++)
+                {
+                    double ra = ray * Math.PI / 4, first = -1, last = -1;
+                    for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
+                    {
+                        w.Source.MadeGround(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d, out float mw, out _);
+                        if (mw < 0.97f && first < 0) first = d;
+                        if (mw <= 0.5f) { last = d; break; }
+                    }
+                    if (first >= 0 && last >= 0 && last - first < 2.5) hardEdges++;
+                }
                 // Nothing buried: no block above the pad shares a cell with ground.
                 for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
                 for (int z = 0; z < occ.Size.Z; z++)
@@ -355,6 +373,8 @@ public partial class SurfaceTest : Node
             await Frames(1);
         }
         GD.Print("      " + string.Join("; ", notes));
+        Check(wrongGround == 0 && grassInDesert == 0 && hardEdges == 0,
+            $"made ground: {madeChecked} pads laid in the surface their purpose calls for (tarmac and concrete aprons, gravel and dirt yards, the land's own ground for ruins); no grass on a desert world ({grassInDesert}); every edge eased over metres, never a hard line ({hardEdges})");
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +

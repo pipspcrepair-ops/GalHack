@@ -1,4 +1,5 @@
 using System;
+using GalHack.Terrain;
 using Planets.Gen;
 using Planets.Look;
 using TerrainDigging.Terrain;
@@ -183,6 +184,89 @@ public sealed class GroundPalette
         if (height < 0.6f) c = Rgb.Lerp(c, Seabed, Math.Clamp(0.6f - height, 0f, 1f));
         flags = new Vector2(glow * cover, 0f);
         return new Color(c.R, c.G, c.B, 1f - cover);
+    }
+
+    // ---- made ground ----------------------------------------------------------------------
+
+    /// <summary>
+    /// A stamped place's made ground over the land's colour. Concrete aprons in slabs, tarmac with
+    /// its cracks, gravel or packed-dirt yards; or the land's own ground, broken up so a pad is never
+    /// a uniform carpet. It shows on the pad and its apron and gives way early in the blend, along
+    /// a ragged edge, never a hard rectangle. A century of weather (<paramref name="wear"/>) cracks it
+    /// and drifts the land's own sand, soil and weeds over it in patches.
+    /// </summary>
+    public Color Made(Color land, StampSurface surface, float weight, float wear, double x, double z)
+    {
+        if (weight <= 0f) return land;
+        float edge = ValueNoise(x * 0.23, z * 0.23, 11) - 0.5f;
+        float w = SmoothStep(0.5f + edge * 0.4f, 0.92f, weight);
+        if (w <= 0f) return land;
+        var landRgb = new Rgb(land.R, land.G, land.B);
+        Rgb made;
+        float hard = 1f;
+        switch (surface)
+        {
+            case StampSurface.Natural:
+                // The land's own ground, trodden and patchy: soil broken by stone and bare earth.
+                made = Rgb.Lerp(landRgb, Rgb.Lerp(Rock, Seabed, 0.3f), 0.2f + 0.35f * ValueNoise(x * 0.11, z * 0.11, 23));
+                hard = 0.4f;
+                break;
+            case StampSurface.Tarmac:
+                made = new Rgb(0.21f, 0.21f, 0.22f) * (0.88f + 0.24f * ValueNoise(x * 0.6, z * 0.6, 5));
+                break;
+            case StampSurface.Gravel:
+                made = new Rgb(0.5f, 0.47f, 0.42f) * (0.85f + 0.3f * ValueNoise(x * 1.3, z * 1.3, 7));
+                break;
+            case StampSurface.Dirt:
+                made = Rgb.Lerp(new Rgb(0.43f, 0.34f, 0.25f), landRgb, 0.25f) * (0.85f + 0.3f * ValueNoise(x * 0.4, z * 0.4, 9));
+                hard = 0.7f;
+                break;
+            default:
+            {
+                made = new Rgb(0.56f, 0.55f, 0.52f) * (0.9f + 0.18f * ValueNoise(x * 0.5, z * 0.5, 3));
+                // Slab joints every six metres.
+                double jx = x / 6 - Math.Floor(x / 6), jz = z / 6 - Math.Floor(z / 6);
+                if (jx < 0.04 || jz < 0.04) made *= 0.8f;
+                break;
+            }
+        }
+        if (surface is StampSurface.Concrete or StampSurface.Tarmac)
+        {
+            // Cracks: thin dark lines along a ridge of noise, more of them the older it is.
+            float ridge = MathF.Abs(ValueNoise(x * 0.19, z * 0.19, 17) - 0.5f);
+            if (ridge < 0.015f + 0.035f * wear) made *= 0.55f;
+        }
+        // The weather takes it back in drifts: the land's own ground over it in patches.
+        float drift = ValueNoise(x * 0.07, z * 0.07, 29);
+        float over = SmoothStep(0.8f - 0.5f * wear, 1.05f, drift) * (0.3f + 0.7f * wear);
+        made = Rgb.Lerp(made, landRgb, over);
+        Rgb c = Rgb.Lerp(landRgb, made, w);
+        return new Color(c.R, c.G, c.B, land.A + (1f - land.A) * w * hard * (1f - over));
+    }
+
+    static float SmoothStep(float a, float b, float v)
+    {
+        float t = Math.Clamp((v - a) / (b - a), 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    /// <summary>Smooth value noise in [0, 1] on a unit lattice: cheap, seeded, the same everywhere it is asked.</summary>
+    static float ValueNoise(double x, double z, int salt)
+    {
+        double fx = Math.Floor(x), fz = Math.Floor(z);
+        float tx = (float)(x - fx), tz = (float)(z - fz);
+        tx = tx * tx * (3 - 2 * tx);
+        tz = tz * tz * (3 - 2 * tz);
+        long ix = (long)fx, iz = (long)fz;
+        float a = Lattice(ix, iz, salt), b = Lattice(ix + 1, iz, salt), c = Lattice(ix, iz + 1, salt), d = Lattice(ix + 1, iz + 1, salt);
+        return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+    }
+
+    static float Lattice(long x, long z, int salt)
+    {
+        ulong h = (ulong)(x * 73856093L ^ z * 19349663L ^ salt * 83492791L);
+        h ^= h >> 33; h *= 0xff51afd7ed558ccdUL; h ^= h >> 33; h *= 0xc4ceb9fe1a85ec53UL; h ^= h >> 33;
+        return (h & 0xFFFFFF) / (float)0xFFFFFF;
     }
 
     void Jitter(double x, double z, out double gx, out double gz)

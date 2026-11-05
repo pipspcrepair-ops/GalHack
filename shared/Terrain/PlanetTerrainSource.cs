@@ -122,6 +122,27 @@ public sealed class PlanetTerrainSource : ITerrainSource
         return s with { Height = TerrainStamp.Compose(Stamps, s.Height, x, z) };
     }
 
+    /// <summary>
+    /// The made ground at a point: the surface of the pad that applies most here, how much of it
+    /// shows (eased off well inside the blend, so a made apron never ends in a hard edge), and how worn it is.
+    /// </summary>
+    public StampSurface MadeGround(double x, double z, out float weight, out float wear)
+    {
+        weight = 0f;
+        wear = 0f;
+        StampSurface best = StampSurface.Natural;
+        foreach (TerrainStamp t in Stamps)
+        {
+            if (t.Shape != StampShape.Pad) continue;
+            float w = t.Weight(x, z);
+            if (w <= weight) continue;
+            weight = w;
+            wear = t.Wear;
+            best = t.Surface;
+        }
+        return best;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {

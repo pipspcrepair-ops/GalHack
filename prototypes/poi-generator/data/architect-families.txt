@@ -283,6 +283,7 @@ family meridian_garrison
 # ---- landmarks: hand-authored site plans --------------------------------------------------------
 
 family old_airfield
+  ground tarmac
   tier base
   siting flat
   rise 18

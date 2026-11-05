@@ -142,6 +142,8 @@ public static class FarBuilder
     static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
     {
         Color c = pal.Natural(x, z, h, source.SoilCover(x, z, slope2), out flags);
+        StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear);
+        if (madeWeight > 0f) c = pal.Made(c, made, madeWeight, wear, x, z);
         if (inRiver)
         {
             Rgb bed = pal.RiverBed;
