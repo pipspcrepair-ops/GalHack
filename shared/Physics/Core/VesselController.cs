@@ -98,6 +98,10 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     float _idle, _settleLeft;
 
+    // Placed down landed (or docked) but not yet looked under: the first tick checks whether its
+    // feet are on a host, and parks it there.
+    bool _lookForHost;
+
     public VesselController(IFlightRules flight, Vector3[] hoverEngines, GearLeg[] gear)
     {
         Flight = flight;
@@ -119,12 +123,16 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         body.Asleep = false;
         _settleLeft = 0f;
         _idle = 0f;
+        _lookForHost = false;
         Parked = false;
         Hover?.Reset();
         Gear?.Reset(false);
     }
 
-    /// <summary>Puts the vessel down landed: gear out, settled, not simulating.</summary>
+    /// <summary>
+    /// Puts the vessel down landed: gear out, settled, not simulating. Put down on a base or a
+    /// capital ship's deck, it parks there on its first tick.
+    /// </summary>
     public void PlaceLanded(Body body, Vector3 position, float headingRadians)
     {
         Place(body, position, headingRadians);
@@ -132,6 +140,25 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         Frozen = true;
         Parked = true;
         body.Asleep = true;
+        _lookForHost = true;
+    }
+
+    /// <summary>
+    /// Docks the vessel to a host (a base or a capital ship) where it is now: it stops simulating,
+    /// parked on the host, riding it and out of the wind, until its pilot applies thrust.
+    /// </summary>
+    public void Dock(PhysicsWorld world, Body body, Body host)
+    {
+        body.Velocity = host.PointVelocity(body.Position);
+        body.AngularVelocity = host.AngularVelocity;
+        LocalSpin = Vector3.Zero;
+        _settleLeft = 0f;
+        _idle = 0f;
+        Frozen = true;
+        Parked = true;
+        body.Asleep = true;
+        Flight.Halt();
+        world.Park(body, host);
     }
 
     /// <summary>Knocked loose by something (a ram, the ground dug out from under it): simulate again, without a lift-off.</summary>
@@ -166,6 +193,12 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         if ((Frozen || Settling) && !TryWake(world, body))
         {
             if (Settling) Settle(world, body, dt);
+            if (_lookForHost)
+            {
+                _lookForHost = false;
+                Gear?.Probe(world, body);
+                if (PhysicsWorld.IsHost(Gear?.StandingOn)) world.Park(body, Gear.StandingOn);
+            }
             body.Asleep = true;
             return; // landed: no physics at all
         }
@@ -208,7 +241,16 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     {
         if (body.Asleep || body.Motion != Motion.Kinematic) return;
         CheckLanding(world, body, dt);
+
+        // Resting on a base or a capital ship (on its gear, or on its belly), with nobody pushing
+        // the controls: parked there, out of the wind. Under thrust, or off it, it isn't.
+        Body host = Flight.Seated && Flight.AnyThrust ? null : RestingOn(body);
+        if (PhysicsWorld.IsHost(host)) world.Park(body, host);
+        else world.Unpark(body);
     }
+
+    /// <summary>The registered body the vessel rests on: under its feet, or under its hull.</summary>
+    Body RestingOn(Body body) => Gear?.StandingOn ?? body.Underfoot;
 
     /// <summary>Nothing is silently immune to weather: a landed ship a tornado pulls hard enough is knocked loose.</summary>
     public void React(PhysicsWorld world, Body body, float dt)
@@ -246,7 +288,9 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         bool tooHeavy = !Stats.CanLiftOff && Zone.Gravity > 0f;
         bool onGear = Gear != null && Gear.Deployed && Gear.Contact;
         bool onGround = onGear || (tooHeavy && body.OnFloor);
-        bool slow = body.Velocity.Length() < t.LandSpeed;
+        // Slow against whatever it is standing on: a deck can be moving.
+        Vector3 under = RestingOn(body) is Body deck ? deck.PointVelocity(body.Position) : Vector3.Zero;
+        bool slow = (body.Velocity - under).Length() < t.LandSpeed;
         if (onGround && slow && (tooHeavy || _idle >= t.IdleBeforeLanding))
         {
             _settleLeft = t.SettleTime;
@@ -297,6 +341,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         bool wasLanded = Frozen;
         Wake(body);
         Parked = false;
+        world.Unpark(body); // lifting off its host: from here on the wind reaches it
         if (wasLanded) world.RaiseLiftedOff(body);
         return true;
     }

@@ -34,6 +34,12 @@ public abstract class BodyBinding
     /// <summary>The body was moved by the rules (a rescue, a placement): put the node there, at rest.</summary>
     public abstract void Teleport();
 
+    /// <summary>
+    /// The body was carried this tick (a landed vessel riding its host): put the node there,
+    /// smoothly, without resetting its interpolation.
+    /// </summary>
+    public virtual void Follow() => Node.GlobalTransform = GodotMath.TransformOf(Body);
+
     /// <summary>Something changed nearby: wake a sleeping engine body.</summary>
     public virtual void Wake() { }
 }
@@ -100,6 +106,32 @@ public sealed class HullBinding : BodyBinding
     {
         Hull.GlobalTransform = GodotMath.TransformOf(Body);
         Hull.ResetPhysicsInterpolation();
+    }
+}
+
+/// <summary>
+/// A base: one static body on the hull layer, holding the structure's per-chunk colliders, that
+/// nothing ever moves (<see cref="Motion.Fixed"/>). Vessels land and park on it, players walk on it
+/// in the zone's own world, and a hit on it is a hit on something fixed to the planet.
+/// </summary>
+public sealed class FixedBinding : BodyBinding
+{
+    public readonly StaticBody3D Static;
+
+    public FixedBinding(StaticBody3D body)
+    {
+        Static = body;
+        body.CollisionLayer = Layers.Hull;
+        body.CollisionMask = 0;
+    }
+
+    public override Node3D Node => Static;
+    public override CollisionObject3D Collider => Static;
+
+    public override void Teleport()
+    {
+        Static.GlobalTransform = GodotMath.TransformOf(Body);
+        Static.ResetPhysicsInterpolation();
     }
 }
 

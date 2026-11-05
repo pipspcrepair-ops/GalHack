@@ -98,6 +98,7 @@ public partial class PhysicsTest : Node
         foreach (int x in StepsEverywhere()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in GearOnDugGround()) yield return x;
+        foreach (int x in WindRules()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
         foreach (int x in Performance()) yield return x;
@@ -1228,6 +1229,111 @@ public partial class PhysicsTest : Node
             $"landing gear on dug ground: the legs drop by themselves, it settles tilted {tilt:F1}° to ground {spread:F1} m uneven under its feet, " +
             $"every foot within {worstFoot * 100f:F0} cm of the ground, raises Landed and stops simulating");
         _w.Remove(ship);
+        yield return 0;
+    }
+
+    // ==== Wind: bases, parked vessels, capital ships ============================================
+
+    /// <summary>
+    /// The wind rules, in a hurricane, in a fresh world of its own (so nothing else on the map is
+    /// blown about): a base never moves; a Corsair landed on it feels no wind and stays put on it
+    /// (one landed on the bare ground beside it does feel the wind); a capital ship flying on its
+    /// autopilot is pushed by its own mass, and the Corsair landed on its deck and a rover docked to
+    /// it ride along without a push of their own; once the Corsair lifts off, the wind has it again.
+    /// </summary>
+    IEnumerable<int> WindRules()
+    {
+        var view = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
+        AddChild(view);
+        var w = new SandboxWorld { Visuals = false, Populate = false };
+        view.AddChild(w);
+        w.Weather.Calm = true;
+        var lifted = new List<Body>();
+        w.Physics.LiftedOff += lifted.Add;
+        for (int i = 0; i < 3; i++) yield return 0;
+
+        // A base on the landing field, a Corsair landed on it and another on the bare ground beside it.
+        Ship pad = w.SpawnBase("pad.gbp", w.Ground(0f, 0f), 0f);
+        Ship onPad = w.SpawnLandedAt("corsair.gbp", pad.Body.ToParent(new N.Vector3(0f, 1f, 0f)), 0f);
+        Ship onGround = w.SpawnLanded("corsair.gbp", new N.Vector2(0f, -15f), 0f);
+
+        // A capital ship flying on at 4 m/s with nobody at the controls (its autopilot holds course).
+        Ship tender = w.SpawnVessel("tender.gbp", new N.Vector3(50f, 110f, 30f), 0f, landed: false);
+        tender.Body.Velocity = MathX.Forward(tender.Body.Rotation) * 4f;
+        tender.Flight.Input = PilotInput.Autopilot;
+        for (int i = 0; i < 3; i++) yield return 0;
+        // A Corsair landed on its deck, and a hover rover docked to it.
+        Ship onDeck = w.SpawnLandedAt("corsair.gbp", tender.Body.ToParent(new N.Vector3(0f, 1f, 3f)), 0f);
+        Ship docked = w.SpawnVessel("sandflea.gbp", tender.Body.ToParent(new N.Vector3(-3.5f, 4f, -7f)), 0f, landed: false);
+        docked.Vessel.Place(docked.Body, tender.Body.ToParent(new N.Vector3(-3.5f, 1.05f + docked.Body.Shape.FeetBelowOrigin, -7f)), 0f);
+        docked.Vessel.Dock(w.Physics, docked.Body, tender.Body);
+        docked.Binding.Teleport();
+        for (int i = 0; i < 5; i++) yield return 0;
+
+        bool parked = onPad.Body.ParkedOn == pad.Body && onDeck.Body.ParkedOn == tender.Body && docked.Body.ParkedOn == tender.Body
+                      && onGround.Body.ParkedOn == null && tender.Body.Class == StructureClass.Capital;
+        N.Vector3 padAt = pad.Body.Position;
+        N.Quaternion padRot = pad.Body.Rotation;
+        N.Vector3 onPadAt = onPad.Body.Position;
+        N.Vector3 deckLocal = tender.Body.ToLocal(onDeck.Body.Position), dockLocal = tender.Body.ToLocal(docked.Body.Position);
+        N.Quaternion deckTurn = N.Quaternion.Conjugate(tender.Body.Rotation) * onDeck.Body.Rotation;
+        N.Vector3 tenderV0 = tender.Body.Velocity;
+
+        w.Weather.Calm = false;
+        w.Weather.Sim.Snap(WeatherKind.Hurricane);
+        float sheltered = 0f, onGroundPush = 0f, padMoved = 0f, onPadMoved = 0f, deckSlip = 0f, deckTurned = 0f, dockSlip = 0f;
+        float tenderPush = 0f, worstFormula = 0f;
+        N.Vector3 integrated = N.Vector3.Zero;
+        bool stayedParked = true;
+        int ticks = 180;
+        for (int t = 0; t < ticks; t++)
+        {
+            yield return 0;
+            foreach (Body b in new[] { pad.Body, onPad.Body, onDeck.Body, docked.Body })
+                sheltered = MathF.Max(sheltered, b.LastForce(ForceKind.Weather).Length());
+            onGroundPush = MathF.Max(onGroundPush, onGround.Body.LastForce(ForceKind.Weather).Length());
+            padMoved = MathF.Max(padMoved, N.Vector3.Distance(pad.Body.Position, padAt) + (pad.Body.Rotation == padRot ? 0f : 1f));
+            onPadMoved = MathF.Max(onPadMoved, N.Vector3.Distance(onPad.Body.Position, onPadAt));
+            deckSlip = MathF.Max(deckSlip, N.Vector3.Distance(tender.Body.ToLocal(onDeck.Body.Position), deckLocal));
+            deckTurned = MathF.Max(deckTurned, AngleBetween(N.Quaternion.Conjugate(tender.Body.Rotation) * onDeck.Body.Rotation, deckTurn));
+            dockSlip = MathF.Max(dockSlip, N.Vector3.Distance(tender.Body.ToLocal(docked.Body.Position), dockLocal));
+            stayedParked &= onPad.Body.ParkedOn == pad.Body && onDeck.Body.ParkedOn == tender.Body && docked.Body.ParkedOn == tender.Body;
+
+            // The capital ship's own push: wind drag on its drag area, ½ρ·CdA·|w|·w, and it alone changes its course.
+            N.Vector3 push = tender.Body.LastForce(ForceKind.Weather);
+            N.Vector3 wind = w.Weather.Sim.WindAt(tender.Body.Position.ToGodot()).ToNumerics();
+            N.Vector3 drag = 0.5f * ForceModule.AirDensity * tender.Body.DragArea * wind.Length() * wind;
+            worstFormula = MathF.Max(worstFormula, N.Vector3.Distance(push, drag) / MathF.Max(1f, drag.Length()));
+            tenderPush = MathF.Max(tenderPush, push.Length());
+            integrated += push / tender.Body.Mass * Dt;
+        }
+        N.Vector3 gained = tender.Body.Velocity - tenderV0;
+        float pushedError = N.Vector3.Distance(gained, integrated) / MathF.Max(1e-3f, integrated.Length());
+        Check(parked && stayedParked && sheltered == 0f && padMoved == 0f && onPadMoved < 1e-4f && onGroundPush > 1000f,
+            $"a {w.Weather.Sim.WindAt(pad.Body.Position.ToGodot()).Length():F0} m/s hurricane never moves a base (0 N on it, not a hair in {ticks * Dt:F0} s), " +
+            $"and a Corsair landed on it is parked there: no wind force at all, {onPadMoved * 1000f:F2} mm moved; the same Corsair landed on the bare ground beside it takes up to {onGroundPush / 1000f:F1} kN");
+        Check(stayedParked && sheltered == 0f && deckSlip < 1e-3f && deckTurned < 0.01f && dockSlip < 1e-3f && gained.Length() > 0.5f,
+            $"a Corsair landed on a capital ship's deck and a rover docked to it feel no wind of their own and ride along as the ship is pushed: " +
+            $"{deckSlip * 1000f:F2} mm and {deckTurned:F4}° off their spot on the deck (rover {dockSlip * 1000f:F2} mm) while the ship goes from {tenderV0.Length():F1} to {tender.Body.Velocity.Length():F1} m/s");
+        Check(tenderPush > 10_000f && worstFormula < 0.02f && pushedError < 0.01f,
+            $"the capital ship itself is pushed, at its mass: up to {tenderPush / 1000f:F0} kN of ½ρ·CdA·|w|·w on its {tender.Body.DragArea:F0} m² (formula off by at most {worstFormula:P1}) " +
+            $"is {tenderPush / tender.Body.Mass:F2} m/s² on its {tender.Body.Mass / 1000f:F0} t; its course changed by {gained.Length():F2} m/s, exactly the push over its mass (off by {pushedError:P2})");
+
+        // The Corsair on the deck lifts off: the moment it leaves its host the wind has it again.
+        float before = onDeck.Body.LastForce(ForceKind.Weather).Length();
+        float liftedPush = 0f, rose = 0f;
+        for (int t = 0; t < 60; t++)
+        {
+            onDeck.Flight.Input = PilotInput.Hands(new Vector3(0f, 1f, 0f));
+            yield return 0;
+            liftedPush = onDeck.Body.LastForce(ForceKind.Weather).Length();
+            rose = tender.Body.ToLocal(onDeck.Body.Position).Y - deckLocal.Y;
+        }
+        Check(before == 0f && lifted.Contains(onDeck.Body) && onDeck.Body.ParkedOn == null && liftedPush > 500f && rose > 1f,
+            $"once the Corsair lifts off the deck ({rose:F1} m up off it) it is no longer parked, and the wind pushes it again: {liftedPush / 1000f:F1} kN");
+
+        view.GetParent().RemoveChild(view);
+        view.QueueFree();
         yield return 0;
     }
 

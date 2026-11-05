@@ -63,6 +63,9 @@ public sealed class PhysicsWorld
     /// <summary>Terrain or a structure changed here: sleeping bodies nearby must wake (engines don't wake them by themselves).</summary>
     public event Action<Region> RegionChanged;
 
+    /// <summary>A vessel parked on a host (landed on it, resting on it, docked to it), and when it leaves again.</summary>
+    public event Action<Body, Body> Parked, Unparked;
+
     public event Action<Body> Registered, Unregistered;
 
     readonly List<Body> _bodies = new();
@@ -90,6 +93,7 @@ public sealed class PhysicsWorld
             Label = spec.Label,
             Mass = spec.Mass,
             DragArea = spec.DragArea,
+            Class = spec.Class,
             CenterOfMass = spec.CenterOfMass,
             Position = spec.Position,
             Rotation = spec.Rotation,
@@ -108,9 +112,11 @@ public sealed class PhysicsWorld
     {
         if (!_bodies.Remove(body)) return;
         Stuck.Forget(body);
+        Unpark(body);
         foreach (Body b in _bodies)
         {
             if (b.Frame == body) Riding.LeaveCabin(b);
+            if (b.ParkedOn == body) Unpark(b);
         }
         Unregistered?.Invoke(body);
     }
@@ -123,12 +129,20 @@ public sealed class PhysicsWorld
 
     // ---- The one force path ---------------------------------------------------------
 
-    /// <summary>Adds a force for this tick, N. The only way anything pushes a body.</summary>
-    public void AddForce(Body body, Vector3 force, ForceKind kind) => body.Accumulate(force, kind);
+    /// <summary>
+    /// Adds a force for this tick, N. The only way anything pushes a body. Weather never reaches a
+    /// sheltered body (<see cref="IsSheltered"/>), whichever provider sends it.
+    /// </summary>
+    public void AddForce(Body body, Vector3 force, ForceKind kind)
+    {
+        if (kind == ForceKind.Weather && IsSheltered(body)) return;
+        body.Accumulate(force, kind);
+    }
 
-    /// <summary>Adds an instant change of momentum for this tick, N·s.</summary>
+    /// <summary>Adds an instant change of momentum for this tick, N·s. Weather's never reaches a sheltered body.</summary>
     public void AddImpulse(Body body, Vector3 impulse, ForceKind kind)
     {
+        if (kind == ForceKind.Weather && IsSheltered(body)) return;
         body.PendingImpulse += impulse;
         if (body.Asleep && body.Motion == Motion.Free) body.Asleep = false;
     }
@@ -139,6 +153,7 @@ public sealed class PhysicsWorld
     /// </summary>
     public void AddImpulseAt(Body body, Vector3 impulse, Vector3 point, ForceKind kind)
     {
+        if (kind == ForceKind.Weather && IsSheltered(body)) return;
         AddImpulse(body, impulse, kind);
         if (body.Motion == Motion.Free)
             body.PendingAngularImpulse += Vector3.Cross(point - body.CenterOfMassPosition, impulse);
@@ -159,12 +174,88 @@ public sealed class PhysicsWorld
         return MathX.Unrotate(body.Frame.Rotation, Zone.At(body.WorldPosition));
     }
 
+    // ---- Shelter and parking ----------------------------------------------------------
+
+    /// <summary>
+    /// Whether weather reaches a body at all: the one shelter rule, which every weather provider
+    /// goes through (<see cref="AddForce"/> drops weather pushes on a sheltered body, and providers
+    /// may ask first to skip the work). Sheltered are:
+    /// - a structure in base mode: nothing ever moves a base;
+    /// - a vessel parked on a base or a capital ship (landed on it, resting on it, docked to it): it
+    ///   rides its host and feels no wind of its own (the host's own push is the host's);
+    /// - a rider inside a structure's interior.
+    /// Everything else is pushed by its own mass and drag: players, creatures, crates, wrecks and
+    /// hover, small and capital vessels, a capital ship included.
+    /// </summary>
+    public bool IsSheltered(Body body) =>
+        body.Kind == BodyKind.Base || body.ParkedOn != null || body.Frame != null && !body.OnOuterHull;
+
+    /// <summary>A body other vessels park on and ride: a base, or a capital ship.</summary>
+    public static bool IsHost(Body body) =>
+        body != null && (body.Kind == BodyKind.Base || body.Kind == BodyKind.Vessel && body.Class == StructureClass.Capital);
+
+    /// <summary>
+    /// Parks a vessel on a host (landed on it, resting on it, or docked): from now on no wind reaches
+    /// it, and while it is landed (not simulating) it moves with its host, exactly. Vessel controllers
+    /// park and unpark themselves as they land, rest and lift off; a game docks a vessel by calling this.
+    /// </summary>
+    public void Park(Body body, Body host)
+    {
+        if (body.ParkedOn == host || !IsHost(host) || host == body) return;
+        Unpark(body);
+        body.ParkedOn = host;
+        body.HostStartPosition = host.Position;
+        body.HostStartRotation = host.Rotation;
+        Parked?.Invoke(body, host);
+    }
+
+    /// <summary>The vessel leaves its host (it lifted off, or was knocked off it): the wind reaches it again.</summary>
+    public void Unpark(Body body)
+    {
+        Body host = body.ParkedOn;
+        if (host == null) return;
+        body.ParkedOn = null;
+        Unparked?.Invoke(body, host);
+    }
+
+    /// <summary>
+    /// After every body has moved: each landed vessel parked on a host moves by exactly what its
+    /// host did this tick, turning included, and takes on the host's velocity there, so it rides it
+    /// whatever order the two step in. A parked vessel that is simulating (resting on its gear,
+    /// about to land or lift off) moves itself.
+    /// </summary>
+    public void CarryParked()
+    {
+        foreach (Body b in _bodies)
+        {
+            Body host = b.ParkedOn;
+            if (host == null || !b.Asleep) continue;
+            if (host.Position != b.HostStartPosition || host.Rotation != b.HostStartRotation)
+            {
+                Quaternion turn = Quaternion.Normalize(host.Rotation * Quaternion.Conjugate(b.HostStartRotation));
+                b.Position = host.Position + MathX.Rotate(turn, b.Position - b.HostStartPosition);
+                b.Rotation = Quaternion.Normalize(turn * b.Rotation);
+            }
+            b.Velocity = host.PointVelocity(b.Position);
+            b.AngularVelocity = host.AngularVelocity;
+            b.HostStartPosition = host.Position;
+            b.HostStartRotation = host.Rotation;
+        }
+    }
+
     // ---- Stepping ---------------------------------------------------------------------
 
     public void BeginTick()
     {
         Tick++;
         _pairs.Clear();
+        // Where each parked body's host starts this tick: carrying moves it by the host's whole motion.
+        foreach (Body b in _bodies)
+        {
+            if (b.ParkedOn == null) continue;
+            b.HostStartPosition = b.ParkedOn.Position;
+            b.HostStartRotation = b.ParkedOn.Rotation;
+        }
     }
 
     /// <summary>
@@ -181,8 +272,9 @@ public sealed class PhysicsWorld
         // Bodies' own drives first: a landed vessel decides here whether it wakes.
         foreach (Body b in _bodies) b.Controller?.Drive(this, b, dt);
 
+        // Nothing pulls on a base: nothing could move it.
         foreach (Body b in _bodies)
-            if (!b.Asleep) AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+            if (!b.Asleep && b.Motion != Motion.Fixed) AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
 
         foreach (IForceProvider p in ForceProviders) p.ApplyForces(this, dt);
 
@@ -273,11 +365,13 @@ public sealed class PhysicsWorld
         // hardest one. Touching two terrain blocks at once is still one crash, not two.
         int hardest = -1;
         float most = 0f;
+        body.Underfoot = null;
         for (int i = 0; i < contacts.Count; i++)
         {
             Contact c = contacts[i];
             if (c.Other != null && c.Other != body)
             {
+                if (c.Normal.Y > 0.6f) body.Underfoot = c.Other; // resting on it (a vessel on a deck)
                 velocity = Ram(body, c.Other, c, before, velocity);
                 continue;
             }
@@ -319,14 +413,14 @@ public sealed class PhysicsWorld
         if (closing <= 0f) return velocity;
         if (!_pairs.Add(Pair(body, other))) return velocity; // already resolved from the other side this tick
 
-        float m = body.Mass, mo = other.Mass;
+        float m = body.Mass, mo = MassOf(other);
         float mu = Impacts.ReducedMass(m, mo);
         float impulse = (1f + Rules.Contacts.Restitution) * mu * closing;
 
         // The slide already took out this body's normal speed; put back the exchange instead.
         velocity += c.Normal * (Vector3.Dot(before, c.Normal) + impulse / m);
         if (other.Motion == Motion.Kinematic) other.Velocity -= c.Normal * (impulse / mo);
-        else AddImpulse(other, -c.Normal * impulse, ForceKind.Contact);
+        else if (other.Motion == Motion.Free) AddImpulse(other, -c.Normal * impulse, ForceKind.Contact);
         if (other.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(other);
         other.Asleep = false;
 
@@ -348,7 +442,7 @@ public sealed class PhysicsWorld
         if (other != null)
         {
             if (!_pairs.Add(Pair(body, other))) return;
-            float mu = Impacts.ReducedMass(body.Mass, other.Mass);
+            float mu = Impacts.ReducedMass(body.Mass, MassOf(other));
             float both = Impacts.Damage(mu, closing, Rules.Contacts);
             Hurt(body, both);
             Hurt(other, both);
@@ -402,6 +496,9 @@ public sealed class PhysicsWorld
 
     static (int, int) Pair(Body a, Body b) => a.Id < b.Id ? (a.Id, b.Id) : (b.Id, a.Id);
 
+    /// <summary>The mass a contact meets: a base is fixed to the planet, so hitting one is like hitting the ground.</summary>
+    static float MassOf(Body b) => b.Motion == Motion.Fixed ? float.PositiveInfinity : b.Mass;
+
     // ---- Structures -------------------------------------------------------------------
 
     /// <summary>
@@ -432,6 +529,14 @@ public sealed class PhysicsWorld
         body.Motion = Motion.Free;
         body.Controller = null;
         body.Asleep = false;
+        // A wreck is nobody's host and parks nowhere: vessels landed on it are knocked loose.
+        Unpark(body);
+        foreach (Body b in _bodies)
+        {
+            if (b.ParkedOn != body) continue;
+            Unpark(b);
+            if (b.Controller is VesselController v) v.Wake(b);
+        }
         MotionChanged?.Invoke(body);
     }
 

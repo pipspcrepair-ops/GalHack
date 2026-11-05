@@ -25,6 +25,7 @@ public sealed class LandingGear
         _legs = legs;
         FootGround = new Vector3[legs.Length];
         FootFound = new bool[legs.Length];
+        FootBody = new Body[legs.Length];
     }
 
     public int Count => _legs.Length;
@@ -53,6 +54,24 @@ public sealed class LandingGear
     /// <summary>The ground under each foot at the last probe (valid where <see cref="FootFound"/>).</summary>
     public Vector3[] FootGround { get; }
     public bool[] FootFound { get; }
+
+    /// <summary>The registered body under each foot (a base's deck, a capital ship's), or null for the ground.</summary>
+    public Body[] FootBody { get; }
+
+    /// <summary>
+    /// The registered body the feet stand on, if the gear is in contact and any foot is on one
+    /// (a deck rather than the ground), else null.
+    /// </summary>
+    public Body StandingOn
+    {
+        get
+        {
+            if (!Contact) return null;
+            for (int i = 0; i < _legs.Length; i++)
+                if (FootFound[i] && FootBody[i] != null) return FootBody[i];
+            return null;
+        }
+    }
 
     public void Toggle()
     {
@@ -116,6 +135,7 @@ public sealed class LandingGear
             Vector3 hip = body.ToParent(leg.Hip);
             float reach = leg.Length + t.DeployAltitude + t.Hysteresis + 5f;
             FootFound[i] = world.Query.Ray(hip + Vector3.UnitY * 0.5f, hip - Vector3.UnitY * reach, Layers.ProbeMask, body, out RayHit ground);
+            FootBody[i] = FootFound[i] ? ground.Body : null;
             if (!FootFound[i]) continue;
             FootGround[i] = ground.Point;
             float full = hip.Y - leg.Length - ground.Point.Y;

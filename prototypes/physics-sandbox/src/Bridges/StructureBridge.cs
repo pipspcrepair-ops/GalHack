@@ -198,6 +198,14 @@ public static class StructureBridge
         return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * 0.8f;
     }
 
+    /// <summary>The shared module's class for a vessel: the handling model's own (hover, small, capital).</summary>
+    public static StructureClass ClassOf(StructureVessel vessel) => vessel.Class switch
+    {
+        VesselClass.Hover => StructureClass.Hover,
+        VesselClass.Capital => StructureClass.Capital,
+        _ => StructureClass.Small,
+    };
+
     /// <summary>Where the cockpit seat is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {

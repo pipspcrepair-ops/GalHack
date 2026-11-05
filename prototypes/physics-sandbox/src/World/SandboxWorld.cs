@@ -129,15 +129,29 @@ public partial class SandboxWorld : Node3D
     public Ship SpawnVessel(string file, N.Vector3 at, float heading, bool landed) => Track(Ship.SpawnVessel(this, LoadBlueprint(file), at, heading, landed));
 
     /// <summary>A vessel standing on its gear on the ground at a spot, settled and not simulating.</summary>
-    public Ship SpawnLanded(string file, N.Vector2 spot, float heading)
+    public Ship SpawnLanded(string file, N.Vector2 spot, float heading) => SpawnLandedAt(file, Ground(spot.X, spot.Y), heading);
+
+    /// <summary>
+    /// A vessel standing on its gear with its feet at a point (the ground, or a deck: on a base or
+    /// a capital ship it parks there), settled and not simulating.
+    /// </summary>
+    public Ship SpawnLandedAt(string file, N.Vector3 footing, float heading)
     {
         Structure s = LoadBlueprint(file);
         float feet = StructureBridge.ShapeOf(s).FeetBelowOrigin;
         float legs = 0f;
         var spec = new StructureVessel(s, Handling);
         foreach (GearSpec g in spec.LandingGear) legs = System.MathF.Max(legs, -g.Position.Y + g.Length);
-        N.Vector3 at = Ground(spot.X, spot.Y) + N.Vector3.UnitY * (System.MathF.Max(feet, legs) + 0.02f);
+        N.Vector3 at = footing + N.Vector3.UnitY * (System.MathF.Max(feet, legs) + 0.02f);
         return Track(Ship.SpawnVessel(this, s, at, heading, landed: true));
+    }
+
+    /// <summary>A structure in base mode, fixed where it is put, its keel at <paramref name="at"/>'s height.</summary>
+    public Ship SpawnBase(string file, N.Vector3 at, float heading)
+    {
+        Structure s = LoadBlueprint(file);
+        float keel = StructureBridge.ShapeOf(s).FeetBelowOrigin;
+        return Track(Ship.SpawnBase(this, s, at + N.Vector3.UnitY * keel, heading));
     }
 
     Ship Track(Ship ship)

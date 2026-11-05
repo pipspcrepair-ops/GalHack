@@ -3,8 +3,17 @@ using System.Numerics;
 
 namespace GalHack.Physics;
 
-/// <summary>What a body is. The rules are the same for all of them; only toughness and who moves it differ.</summary>
-public enum BodyKind { Vessel, Wreck, Crate, Player, Creature }
+/// <summary>
+/// What a body is. The rules are the same for all of them; only toughness and who moves it differ.
+/// A base is a structure in base mode: it never flies and nothing ever moves it (<see cref="Motion.Fixed"/>).
+/// </summary>
+public enum BodyKind { Vessel, Wreck, Crate, Player, Creature, Base }
+
+/// <summary>
+/// A structure's class, for the rules that care which: vessels parked on a base or a capital ship
+/// ride their host and feel no wind of their own. None for anything that isn't a vessel.
+/// </summary>
+public enum StructureClass { None, Hover, Small, Capital }
 
 /// <summary>Who integrates a body's motion.</summary>
 public enum Motion
@@ -22,6 +31,12 @@ public enum Motion
     /// exactly force / mass. The engine adds what it is good at: tumbling, stacking, resting.
     /// </summary>
     Free,
+
+    /// <summary>
+    /// Nobody: it stays exactly where it was placed (a base). It is registered so things can land
+    /// on it, park on it and hit it, but no force, contact or rescue ever moves it.
+    /// </summary>
+    Fixed,
 }
 
 /// <summary>Where a force came from. Every force goes through <see cref="PhysicsWorld.AddForce"/> with one of these.</summary>
@@ -48,6 +63,9 @@ public sealed class BodySpec
 
     /// <summary>Drag coefficient × frontal area, m². Wind pushes with ½ρ·CdA·|v|·v.</summary>
     public float DragArea;
+
+    /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
+    public StructureClass Class;
 
     /// <summary>Centre of mass in the body's own frame, m.</summary>
     public Vector3 CenterOfMass;
@@ -102,6 +120,20 @@ public sealed class Body
 
     /// <summary>CdA, m².</summary>
     public float DragArea { get; set; }
+
+    public StructureClass Class { get; set; }
+
+    /// <summary>
+    /// The host this vessel is parked on: a base or a capital ship it has landed on, rests on with
+    /// gear or contact, or is docked to. A parked body feels no wind and, while landed, moves with its
+    /// host. Null when it isn't parked. See <see cref="PhysicsWorld.Park"/>.
+    /// </summary>
+    public Body ParkedOn { get; internal set; }
+
+    // The host's pose at the start of this tick, so a landed body can be carried by exactly the
+    // host's motion over the tick (turning and moving alike), whatever order the two step in.
+    internal Vector3 HostStartPosition;
+    internal Quaternion HostStartRotation = Quaternion.Identity;
 
     /// <summary>Centre of mass in the body's own frame, m.</summary>
     public Vector3 CenterOfMass { get; set; }
@@ -168,6 +200,9 @@ public sealed class Body
 
     /// <summary>Set by the mover each tick: standing on something.</summary>
     public bool OnFloor { get; set; }
+
+    /// <summary>The registered body this one rested on in its last move (a contact from below), or null.</summary>
+    public Body Underfoot { get; internal set; }
 
     // ---- The force path ---------------------------------------------------------------
 

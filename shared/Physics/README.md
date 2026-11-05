@@ -67,13 +67,17 @@ Core never calls into a game system. What a game knows (its flight model, its te
 1. `BeginTick`; free bodies sync from the engine (and report impacts: velocity changes their forces don't explain, along the contact normal).
 2. `ApplyForces`: each body's own drive (thrust, walking), then gravity from its zone or core, then the force providers (weather), then reactors (legs gripping against the wind, a landed ship knocked loose by a tornado).
 3. `Integrate`: kinematic bodies get `v += ΣF/m·dt + ΣJ/m`.
-4. Kinematic bodies move with collisions: hulls first, then creatures, then characters (a rider's hull has already moved). Contacts go to `ResolveContacts`.
+4. Kinematic bodies move with collisions: hulls first, then creatures, then characters (a rider's hull has already moved). Contacts go to `ResolveContacts`. Then `CarryParked`: every landed vessel parked on a host moves by exactly what its host did this tick.
 5. `EndTick`: controllers react (landing), queued craters are cut, the stuck guard checks every body.
 6. Free bodies get their summed force and impulse handed to the engine, which integrates them in its own step right after (its gravity and damping are off, so acceleration is still exactly force / mass). `FinishTick` clears the sums; anything added between ticks lands in the next one.
 
 ## The rules
 
-**Bodies.** `BodyKind` is Vessel, Wreck, Crate, Player or Creature; the rules are the same for all of them. `Motion.Kinematic` bodies are integrated by the core and swept by a mover (vessels fly by the handling model; characters walk); `Motion.Free` bodies are rigid bodies the engine tumbles and stacks, fed by the same force sums.
+**Bodies.** `BodyKind` is Vessel, Wreck, Crate, Player, Creature or Base; the rules are the same for all of them. `Motion.Kinematic` bodies are integrated by the core and swept by a mover (vessels fly by the handling model; characters walk); `Motion.Free` bodies are rigid bodies the engine tumbles and stacks, fed by the same force sums; `Motion.Fixed` bodies (bases) are never moved by anything: no gravity, wind or rescue, and a hit on one is a hit on something fixed to the planet (infinite mass). A vessel also carries its `StructureClass` (hover, small or capital), for the rules below that care.
+
+**Wind and shelter.** Wind pushes players, creatures, crates, wrecks and hover, small and capital vessels alike, by ½ρ·CdA·|w|·w, so acceleration goes as 1/mass: a 200 t capital ship is pushed like any vessel, just less. Who is sheltered from weather is one rule, `PhysicsWorld.IsSheltered`, in the one force path: `AddForce` and `AddImpulse` drop any `ForceKind.Weather` push on a sheltered body, whichever provider sends it, and providers may ask first to skip the work. Sheltered are a base (structures in base mode never move in wind), a vessel parked on a base or a capital ship, and a rider inside a structure's interior.
+
+**Parking on a base or a capital ship.** A vessel is parked on a host (`Body.ParkedOn`; a host is a base or a capital ship) when it has landed on it, rests on it on its gear or its belly with nobody pushing the controls, or is docked to it (`VesselController.Dock`). Vessel controllers park and unpark themselves: settling onto a host's deck, placed down landed on one, lifting off. Parked, it feels no wind of its own. Landed (not simulating), it rides its host exactly: each tick `CarryParked` moves it by the host's whole motion over the tick, turning included, and gives it the host's velocity at that point, so it lifts off with the deck's motion. The host and what it carries ignore each other in the engine (a collision exception), so the deck's sweep never runs into what rides it. Landing on a moving deck counts its speed against the deck's, not the ground's.
 
 **Damage.** One formula, `Impacts.Damage`: mass (t) × (closing speed − 8)² × 0.001, zero at or below 8 m/s, never capped and never scaled down. Ramming uses the reduced mass and both sides take it. Bodies differ only in toughness, `Integrity` per tonne (hull 4, crate 4, player 0.5: a 30 m fall costs about half a player's health). A `DamageSink` can route damage into a game's own health; the only floor anywhere is the tornado fling's 15%, which the weather code passes to the player's health.
 
@@ -115,6 +119,9 @@ Riding.EnterCabin(rider, ship); Riding.LeaveCabin(rider);            // join a s
 Riding.LetGo(rules.Riding, rider, jumped, touching, distance, dt);   // the outer hull's let-go rule
 Riding.SetUp(walker, faceNormal);                                    // mag boots: a new down
 world.NotifyChanged(region);  world.NotifyZoneLoaded();              // wake and stuck-check
+world.IsSheltered(b);                                                // does weather reach it at all?
+world.Park(vessel, host); world.Unpark(vessel); vessel.ParkedOn;     // on a base or capital ship: no wind, rides it
+vesselController.Dock(world, vessel, host);                          // docking clamps: frozen and parked
 ```
 
 ## Known limits
@@ -126,3 +133,5 @@ world.NotifyChanged(region);  world.NotifyZoneLoaded();              // wake and
 - Mag boots handle edges up to about 90° and walls a step or more tall. Crossing a step's edge in mag boots, the up tips toward the edge for a moment (up to about 30° on the test stair); the camera eases it.
 - The weather force module's tornado lift carries the weight of its own 9.8 m/s² constant, not the zone's gravity; they agree on every planet so far.
 - Hover and gear numbers moved here from handling.json; ship-handling's own prototype still reads its copy.
+- Only a landed (or docked) parked vessel is carried by its host. One resting on a moving deck while still simulating (the moments before it settles, or after a knock) moves itself, and a vessel lifting off a moving deck keeps the deck's velocity but its assist then brakes against the ground, not the deck.
+- A base is fixed for good: switching a structure between base and capital mode at run time (building's core toggle) isn't wired to the physics body yet.
