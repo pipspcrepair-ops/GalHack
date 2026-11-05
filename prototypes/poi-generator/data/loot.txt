@@ -30,6 +30,8 @@ iron-ore            common    ore                        Iron ore
 copper-ore          common    ore                        Copper ore
 silicon-ore         common    ore                        Silicon ore
 biomass             common    food,science               Biomass
+survival-constructor common    tool,industry,farm         Survival constructor
+paint-cartridge     common    tool,industry              Paint cartridge
 ice                 common    ice                        Ice
 
 # ---- uncommon ------------------------------------------------------------------------------

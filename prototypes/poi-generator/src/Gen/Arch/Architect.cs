@@ -54,6 +54,10 @@ public static class Architect
                 Decay.Plan(canvas, family, rarity, rng.Fork("wrong"));
                 var layout = canvas.Finish(family, variant, rarity, seed, variant.Name);
                 var problems = LayoutCheck.Check(layout);
+                // A program guarantees its must-have rooms: a plan that left one out is planned again.
+                if (problems.Count == 0 && family.Site == null && variant.Site == null)
+                    foreach (string must in lib.Programs[variant.Program ?? family.Program!].Bands.Values.SelectMany(b => b).Where(d => d.Must).Select(d => d.Room).Distinct())
+                        if (must != "vault" && !layout.Extras.Rooms.Any(r => r.Purpose == must)) { problems.Add($"the plan has no {must}, which the program requires"); break; }
                 lock (typeof(Stats)) Stats.Generated++;
                 if (problems.Count == 0)
                 {
@@ -140,9 +144,15 @@ public static class LayoutCheck
             jamb1 = jamb1 with { Y = lo.Y };
             jamb2 = jamb2 with { Y = lo.Y };
             if (!nav.Solid(jamb1) && !nav.Solid(jamb2)) { problems.Add($"doorway at {lo} isn't set in a wall ({layout.Modules[d.ModuleA].Purpose} to {layout.Modules[d.ModuleB].Purpose}, facing {d.Facing}, jambs {g.Get(jamb1)} {g.Get(jamb2)}, {d.Cells.Count} cells)"); break; }
-            Int3 inSide = lo + d.Facing.Vec(), outSide = lo - d.Facing.Vec();
-            if (!nav.Standable(inSide) && !nav.LiftAt(inSide)) { problems.Add($"doorway at {lo} opens onto no floor (inside {inSide})"); break; }
-            if (!nav.Standable(outSide) && !nav.LiftAt(outSide)) { problems.Add($"doorway at {lo} opens onto no floor (outside {outSide})"); break; }
+            // Every cell of the doorway opens onto floor a body can stand on, both sides: no furniture in the way.
+            bool blocked = false;
+            foreach (Int3 c in d.Cells.Where(c => c.Y == lo.Y))
+            {
+                Int3 inSide = c + d.Facing.Vec(), outSide = c - d.Facing.Vec();
+                if (!nav.Standable(inSide) && !nav.LiftAt(inSide)) { problems.Add($"doorway at {c} opens onto no floor or is blocked (inside {inSide}: {g.Get(inSide)})"); blocked = true; break; }
+                if (!nav.Standable(outSide) && !nav.LiftAt(outSide)) { problems.Add($"doorway at {c} opens onto no floor or is blocked (outside {outSide}: {g.Get(outSide)})"); blocked = true; break; }
+            }
+            if (blocked) break;
         }
 
         // Stairs and ramps never clip: three clear cells over every slope a body walks.

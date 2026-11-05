@@ -40,8 +40,55 @@ public sealed class TerminalLog
 public sealed record StoryProp(string Kind, Int3 Cell, string Note);
 
 /// <summary>One spawn of a layout: a state, its damage, and its dressing.</summary>
+/// <summary>
+/// How old what's in a place is, for loot and dressing (and the decorations library's disorder
+/// pass): <c>New</c> for places in use now (worked today: fresh food, hay, crops), <c>OldWorld</c>
+/// for the long-abandoned (organics rotted away, metal rusted, plastics brittle), <c>Preserved</c>
+/// for sealed, frozen or airless rooms, where frozen moments look sharpest.
+/// </summary>
+public enum Age : byte { New, OldWorld, Preserved }
+
+/// <summary>Whether a room is out of the weather: in old-world places only what was left outdoors or under a breach has rotted away; sturdy indoor things survive faded and dusty.</summary>
+public enum Exposure : byte { Indoors, Outdoors, Breached }
+
 public sealed class PoiInstance
 {
+    /// <summary>The place's age as a whole; <see cref="AgeOf"/> gives a room's (a sealed vault keeps what's in it).</summary>
+    public Age Age;
+
+    public Age AgeOf(int module)
+    {
+        if (Age != Age.OldWorld || module < 0 || module >= Layout.Modules.Count) return Age;
+        var m = Layout.Modules[module];
+        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
+                          || Layout.Extras.Locks.Any(l => l.Blast && (Layout.Doorways[l.Doorway].ModuleA == module || Layout.Doorways[l.Doorway].ModuleB == module));
+        return sealedRoom ? Age.Preserved : Age.OldWorld;
+    }
+
+    /// <summary>Out in the weather: a yard, or a room open to the sky (a collapse breach, a ruin that lost its roof).</summary>
+    public Exposure ExposureOf(int module)
+    {
+        if (module < 0 || module >= Layout.Modules.Count) return Exposure.Outdoors;
+        var m = Layout.Modules[module];
+        if (m.Kind == ModuleKind.Outdoor) return Exposure.Outdoors;
+        if (Layout.Extras.Breaches.Any(b => b.Module == module)) return Exposure.Breached;
+        int top = Blocks.Min.Y + Blocks.Size.Y;
+        foreach (Int3 c in m.Cells.Where(c => c.Y == m.Min.Y).Take(12))
+        {
+            bool sky = true;
+            for (int y = c.Y + 1; y < top && sky; y++) sky = Blocks.Get(c with { Y = y }).IsAir;
+            if (sky) return Exposure.Breached;
+        }
+        return Exposure.Indoors;
+    }
+
+    /// <summary>The whole place's age from its family and state: in use now, frozen or airless, or long abandoned.</summary>
+    public static Age AgeFor(FamilyDef family, PoiState state, bool inSpace)
+    {
+        if (state == PoiState.Active && family.Faction != Faction.None) return Age.New;
+        if (inSpace || family.Tags.Contains("ice") || family.Tags.Contains("preserved")) return Age.Preserved;
+        return Age.OldWorld;
+    }
     public Layout Layout = null!;
     public PoiState State;
     public ulong SpawnSeed;
@@ -86,13 +133,43 @@ public static class PoiFactory
         return layout;
     }
 
+    /// <summary>How many spawns were rolled again because decay cut the way to the vault or the core (tests read it).</summary>
+    public static int Respawns;
+
+    /// <summary>
+    /// Spawns a layout in a state, then flood-fills it from the way in: if decay cut the way to the
+    /// vault or the core (it shouldn't: those paths are protected), the spawn is rolled again from a
+    /// new sub-seed, up to three times.
+    /// </summary>
     public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed)
+    {
+        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed);
+        for (int attempt = 1; attempt <= 3 && !Reaches(inst); attempt++)
+        {
+            System.Threading.Interlocked.Increment(ref Respawns);
+            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL));
+        }
+        return inst;
+    }
+
+    static bool Reaches(PoiInstance inst)
+    {
+        var nav = inst.Nav();
+        if (!nav.Standable(inst.Layout.EntranceCell)) return false;
+        var reach = nav.Reachable(inst.Layout.EntranceCell);
+        var vault = inst.Caches.FirstOrDefault(c => c.InVault);
+        if (vault != null && nav.AccessCell(vault.Cell, reach) is not Int3) return false;
+        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
+    }
+
+    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed)
     {
         var inst = new PoiInstance
         {
             Layout = layout, State = state, SpawnSeed = spawnSeed, Blocks = layout.Blocks.Clone(),
             HasCore = layout.Family.HasCore(state),
         };
+        inst.Age = PoiInstance.AgeFor(layout.Family, state, layout.Extras.InSpace);
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));
@@ -102,11 +179,17 @@ public static class PoiFactory
         {
             if (layout.Family.Damage > 0f) StateTransforms.Wreck(inst, rng.Fork("wreck"), layout.Family.Damage);
             StateTransforms.Apply(inst, rng.Fork("state"));
+            StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         }
         inst.StructureAfter = CountStructure(inst.Blocks);
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
+        // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
+        // ruin, a wall stub after the timber rotted) comes down. The flood fill in Spawn then checks the way in.
+        var anchors = layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null;
+        foreach (Int3 p in Structure.Floating(inst.Blocks, layout.Occupied, anchors)) inst.Blocks.Set(p, Block.Air);
+        Structure.DropUntethered(inst.Blocks);
         return inst;
     }
 

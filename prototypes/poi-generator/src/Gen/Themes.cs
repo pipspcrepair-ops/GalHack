@@ -19,6 +19,8 @@ public sealed class ThemeDef
     public List<(string Family, float Weight)> Set = new();
     /// <summary>POIs per square kilometre.</summary>
     public float Density = 1.4f;
+    /// <summary>The world's tech level: low, mid or high. Places with layouts for several tech levels pick theirs.</summary>
+    public string Tech = "mid";
     /// <summary>
     /// A start world: no faction holds ground here. Faction places turn up only as ruins of the old
     /// days (no core, no defenders); wrecks, abandoned and infested places, the Bloom and the
@@ -27,7 +29,7 @@ public sealed class ThemeDef
     public bool Start;
 
     /// <summary>The same theme for a start world.</summary>
-    public ThemeDef AsStart() => new() { Id = Id + "+start", Match = Match, OutlierMin = OutlierMin, OutlierMax = OutlierMax, Set = Set, Density = Density, Start = true };
+    public ThemeDef AsStart() => new() { Id = Id + "+start", Match = Match, OutlierMin = OutlierMin, OutlierMax = OutlierMax, Set = Set, Density = Density, Tech = Tech, Start = true };
 
     /// <summary>Whether a family belongs to a faction (its people, its core): on a start world it may only lie in ruins.</summary>
     public static bool FactionOwned(FamilyDef f) => f.Core == CoreRule.Owned || f.Faction != Faction.None;
@@ -57,6 +59,7 @@ public static class ThemeParser
                     T().OutlierMax = float.Parse(p[^1], CultureInfo.InvariantCulture);
                     break;
                 case "density": T().Density = float.Parse(p[1], CultureInfo.InvariantCulture); break;
+                case "tech": T().Tech = p[1]; break;
                 case "set":
                     for (int i = 1; i + 1 < p.Length; i += 2) T().Set.Add((p[i], float.Parse(p[i + 1], CultureInfo.InvariantCulture)));
                     break;
@@ -153,7 +156,10 @@ public static class WorldPlacement
             }
             if (fam == null) continue;
             if (fam.Rarity >= Rarity.Exotic) uniqueUsed.Add(fam.Id);
-            var variant = fam.Variants[rng.Range(0, fam.Variants.Count)];
+            // A layout for the world's tech level, where the family has them.
+            var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
+            if (fitting.Count == 0) fitting = fam.Variants;
+            var variant = fitting[rng.Range(0, fitting.Count)];
             int state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
             if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
             result.Pois.Add(new PlacedPoi

@@ -527,3 +527,70 @@ family alien_cathedral
     seed 9302
   variant The Long Nave
     seed 9303
+
+# ---- Industry and agriculture of the old world: tech level by variant (low, mid, high). Gangs
+# overrun some (active means a gang holds it: raiders, no core).
+
+family abandoned_factory
+  tier site
+  siting flat
+  rise 26
+  name Abandoned Factory
+  pitch A production line stopped mid-run, smokestacks over it, and a gang camped in the yard.
+  faction none
+  roster raiders
+  site factory_mid
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.6
+  wrong 0.1
+  tags industry fallen
+  states active 2 abandoned 5 infested 3 ruined 1
+  variant Old Mill Works
+    seed 9401
+    site factory_low
+    tech low
+  variant Kessler Fabrication
+    seed 9402
+    tech mid
+  variant Line Seven
+    seed 9403
+    site factory_high
+    tech high
+
+family old_farm
+  tier site
+  siting flat
+  rise 10
+  name Old Farm
+  pitch Fields gone wild, empty pens, silos against the sky, and a cellar nobody opened.
+  faction none
+  roster raiders
+  site farm_mid
+  core none
+  owner none
+  rarity common
+  biomes steppe desert fungal rock
+  territory any
+  spacing 14
+  reveal 400
+  ominous 0.4
+  wrong 0.05
+  tags farm fuel
+  states active 1 abandoned 6 infested 2 ruined 2
+  variant Old Homestead
+    seed 9501
+    site farm_low
+    tech low
+  variant Harlow Farmstead
+    seed 9502
+    tech mid
+  variant Greenline Agri-Complex
+    seed 9503
+    site agri_complex
+    tech high

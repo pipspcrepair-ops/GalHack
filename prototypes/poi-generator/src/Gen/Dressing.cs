@@ -59,28 +59,31 @@ public static class Dressing
                 if (inst.State == PoiState.Abandoned && rng.Chance(0.35f)) { cache.PickedOver = true; rolls = 1; }
                 if (inst.State == PoiState.Ruined && rng.Chance(0.3f)) rolls--;
             }
-            for (int i = 0; i < rolls; i++) cache.Items.Add(Roll(lib, cache.Tier, roomTags, rng, uniqueOk: cache.Tier >= 4));
+            // Long after the fall, nothing edible survives outside a sealed, frozen or airless room.
+            Age age = inst.AgeOf(cache.Module);
+            for (int i = 0; i < rolls; i++) cache.Items.Add(Roll(lib, cache.Tier, roomTags, rng, uniqueOk: cache.Tier >= 4, age));
             // Rare and deeper vaults have a real chance at a unique find on top; hidden stashes sometimes too.
-            if (cache.InVault && inst.Rarity >= Rarity.Rare && rng.Chance(0.5f)) cache.Items.Add(RollRarity(lib, Rarity.Unique, roomTags, rng));
-            else if (cache.Secret && cache.Tier >= 4 && rng.Chance(0.25f)) cache.Items.Add(RollRarity(lib, Rarity.Unique, roomTags, rng));
+            if (cache.InVault && inst.Rarity >= Rarity.Rare && rng.Chance(0.5f)) cache.Items.Add(RollRarity(lib, Rarity.Unique, roomTags, rng, age));
+            else if (cache.Secret && cache.Tier >= 4 && rng.Chance(0.25f)) cache.Items.Add(RollRarity(lib, Rarity.Unique, roomTags, rng, age));
         }
     }
 
     static readonly float[] Spread = { 0.12f, 0.26f, 0.38f, 0.19f, 0.05f }; // -2 .. +2 around the tier's centre
 
-    static LootItem Roll(PoiLibrary lib, int tier, HashSet<string> tags, Rng rng, bool uniqueOk)
+    static LootItem Roll(PoiLibrary lib, int tier, HashSet<string> tags, Rng rng, bool uniqueOk, Age age = Age.New)
     {
         // Tier 0 centres on common, tier 2 on uncommon, tier 4 on rare, tier 6 on exotic.
         int centre = Math.Clamp(tier / 2, 0, 3);
         int k = rng.PickWeighted(Spread) - 2;
         int r = Math.Clamp(centre + k, 0, uniqueOk ? 4 : 3);
-        return RollRarity(lib, (Rarity)r, tags, rng);
+        return RollRarity(lib, (Rarity)r, tags, rng, age);
     }
 
-    static LootItem RollRarity(PoiLibrary lib, Rarity rarity, HashSet<string> tags, Rng rng)
+    static LootItem RollRarity(PoiLibrary lib, Rarity rarity, HashSet<string> tags, Rng rng, Age age = Age.New)
     {
-        var pool = lib.Loot.Where(i => i.Rarity == rarity).ToList();
-        if (pool.Count == 0) pool = lib.Loot.Where(i => i.Rarity == Rarity.Common).ToList();
+        bool Keeps(LootItem i) => age != Age.OldWorld || !i.Tags.Contains("food");
+        var pool = lib.Loot.Where(i => i.Rarity == rarity && Keeps(i)).ToList();
+        if (pool.Count == 0) pool = lib.Loot.Where(i => i.Rarity == Rarity.Common && Keeps(i)).ToList();
         var weights = pool.Select(i => i.Tags.Any(tags.Contains) ? 3f : 1f).ToList();
         return pool[Math.Max(0, rng.PickWeighted(weights))];
     }
@@ -257,8 +260,12 @@ public static class Dressing
         foreach (var meal in props.Where(s => layout.Modules[s.Module].Kind is ModuleKind.Room or ModuleKind.Hall).Take(quiet ? 2 : 1).ToList())
         {
             props.Remove(meal);
-            g.Set(meal.Cell, new Block(quiet ? BlockType.Meal : BlockType.Table, Material.Timber, wood, Role.Story, Dir.North, (byte)rng.Range(0, 3)));
-            if (quiet) Add("abandoned meal", meal.Cell, "Plates still out, half eaten. The chairs were pushed back in a hurry.");
+            // Long after the fall: indoors the table and plates survive faded and dusty; out in the weather nothing is left on it.
+            bool weathered = inst.AgeOf(meal.Module) == Age.OldWorld && inst.ExposureOf(meal.Module) != Exposure.Indoors;
+            g.Set(meal.Cell, new Block(quiet && !weathered ? BlockType.Meal : BlockType.Table, Material.Timber, wood, Role.Story, Dir.North, (byte)rng.Range(0, 3)));
+            if (quiet && !weathered) Add("abandoned meal", meal.Cell, inst.AgeOf(meal.Module) == Age.OldWorld
+                ? "Plates still out, chairs pushed back in a hurry. Whatever was on them went to dust long ago."
+                : "Plates still out, half eaten. The chairs were pushed back in a hurry.");
         }
 
         // Welded doors. Something has been at them from the other side.

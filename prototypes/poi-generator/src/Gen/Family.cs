@@ -56,6 +56,8 @@ public sealed class VariantDef
     public List<KindRef> Grow = new();
     /// <summary>Architect families: a site plan or program for this layout only (else the family's).</summary>
     public string? Site, Program;
+    /// <summary>The world tech level this layout belongs to (low, mid, high; empty fits any).</summary>
+    public string Tech = "";
 
     /// <summary>Identifies the layout across a system, for the no-repeats rule.</summary>
     public string Key => $"{Family.Id}/{Index}";
@@ -224,6 +226,7 @@ public static class FamilyParser
                     F().Variants.Add(v);
                     break;
                 case "seed": V().Seed = ulong.Parse(p[1], CultureInfo.InvariantCulture); break;
+                case "tech": V().Tech = p[1]; break;
                 case "path":
                     V().Path = p.Skip(1).Select(t => ParseStep(t, Error)).ToList();
                     break;

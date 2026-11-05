@@ -101,3 +101,95 @@ site old_mine
   part vehicles -34 22 count 3 gap 6 axis x
   part road -44 8 len 30 width 5 axis x cracks 0.25
   part camp -24 30
+
+# ---- Factories: a production hall frozen mid-run (assembly line, robot arms, a load on the
+# crane's hook), a warehouse and loading bays, a works block of offices over a boiler house and
+# utilities basement, smokestacks and a water tower to see it by. Tech level by variant.
+
+site factory_low
+  name Old Mill Works
+  style urban
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part hangar 0 0 w 26 d 18 h 8 line yes
+  part building 34 0 program factory_works vault yes
+  part stacks 74 4 count 1 r 2 h 28
+  part tower 74 26 h 14 size 4 every 5 crown tank
+  part vehicles 4 30 count 2 gap 8 axis x
+  part containers 30 44 rows 1 cols 3
+  part camp -6 34 gang yes
+
+site factory_mid
+  name Abandoned Factory
+  style industrial
+  entrance -14 10 west
+  part road -12 8 len 12 width 6 axis x cracks 0.2
+  part hangar 0 0 w 34 d 22 h 10 line yes
+  part hangar 0 32 w 26 d 18 h 8
+  part building 44 0 program factory_works vault yes
+  part stacks 84 4 count 2 r 2 h 30 gap 4 axis z
+  part tower 84 30 h 18 size 4 every 5 crown tank
+  part tanks 34 56 count 2 r 3 h 8 gap 5 axis x
+  part vehicles 4 58 count 3 gap 7 axis x
+  part containers 54 52 rows 2 cols 2
+  part camp -6 46 gang yes
+
+site factory_high
+  name Automated Plant
+  style spaceport
+  entrance -14 12 west
+  part road -12 10 len 12 width 6 axis x cracks 0.1
+  part hangar 0 0 w 40 d 24 h 12 line yes
+  part hangar 0 34 w 30 d 20 h 10 line yes
+  part building 50 0 program factory_works vault yes
+  part stacks 92 4 count 2 r 3 h 32 gap 6 axis z type cooling
+  part tower 92 40 h 20 size 4 every 5 crown tank
+  part pad 40 64 r 6
+  part containers 4 62 rows 2 cols 3
+  part camp -6 50 gang yes
+
+# ---- Old-world farms: a farmhouse with a cellar, barns and sheds, silos and a windmill or water
+# tower to see it by, fields gone wild, empty pens, a machinery yard. Mid and high tech add
+# greenhouses, hydroponic sheds and a vertical farm tower. Nothing edible survives outside a
+# sealed store; tools, fuel and parts do.
+
+site farm_low
+  name Old Homestead
+  style miningtown
+  entrance -12 6 west
+  part road -10 4 len 10 width 4 axis x cracks 0.4
+  part building 0 0 program farmhouse vault yes
+  part hangar 34 0 w 16 d 12 h 7
+  part tanks 56 2 count 2 r 3 h 12 gap 5 axis z
+  part tower 56 24 h 12 size 4 every 4 crown wheel
+  part fields 0 44 w 34 d 18
+  part fence 36 22 len 12 h 2 axis x gate 6 breaches 0.2
+  part vehicles 38 32 count 2 gap 6 axis x
+
+site farm_mid
+  name Abandoned Farmstead
+  style miningtown
+  entrance -12 6 west
+  part road -10 4 len 10 width 4 axis x cracks 0.3
+  part building 0 0 program farmhouse vault yes
+  part hangar 34 0 w 20 d 14 h 8
+  part tanks 62 2 count 3 r 3 h 14 gap 5 axis z
+  part tower 62 34 h 16 size 4 every 4 crown tank
+  part greenhouse 34 22 w 16 d 8
+  part greenhouse 34 34 w 16 d 8
+  part fields 0 50 w 40 d 20
+  part vehicles 4 40 count 3 gap 6 axis x
+
+site agri_complex
+  name Agri-Complex
+  style colonydome
+  entrance -12 10 west
+  part road -10 8 len 10 width 6 axis x cracks 0.15
+  part building 0 0 program vertical_farm vault yes
+  part greenhouse 40 0 w 18 d 8 type hydro
+  part greenhouse 40 12 w 18 d 8 type hydro
+  part greenhouse 40 24 w 18 d 8
+  part tanks 64 2 count 3 r 3 h 16 gap 5 axis z
+  part tower 64 36 h 20 size 4 every 5 crown tank
+  part fields 0 44 w 56 d 20
+  part vehicles 20 70 count 3 gap 7 axis x

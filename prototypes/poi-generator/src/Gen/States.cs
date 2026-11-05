@@ -449,6 +449,71 @@ public static class StateTransforms
         return true;
     }
 
+    // ---- a century or two after the fall ----------------------------------------------
+
+    /// <summary>
+    /// Old-world places, long after the fall: timber that wasn't sheltered has rotted and fallen in
+    /// (concrete, stone and steel stand on as shells), and trees have grown up through courtyards,
+    /// yards and anything open to the sky, some of them mature. Never on the protected way to the
+    /// vault, the core or a cache.
+    /// </summary>
+    public static void Weather(PoiInstance inst, Rng rng)
+    {
+        if (inst.Age != Age.OldWorld || inst.State == PoiState.Active) return;
+        var g = inst.Blocks;
+        // Timber rots unless something sturdier roofs it over.
+        var rotten = new List<Int3>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (b.Material != Material.Timber || b.Role is not (Role.Wall or Role.Roof) || p.Y < 0 || inst.Protected[p]) continue;
+            bool sheltered = false;
+            for (int y = p.Y + 1; y <= Math.Min(g.Max.Y, p.Y + 8) && !sheltered; y++)
+            {
+                var above = g.Get(p with { Y = y });
+                sheltered = !above.IsAir && above.Material != Material.Timber && BlockInfo.Collides(above.Type);
+            }
+            if (!sheltered && rng.Chance(b.Role == Role.Roof ? 0.85f : 0.55f)) rotten.Add(p);
+        }
+        foreach (Int3 p in rotten) g.Set(p, Block.Air);
+        if (rotten.Count > 0) Collapse(inst, rng);
+
+        // Trees through the gaps: floor open to the sky, off the protected paths, with room to grow.
+        var nav = inst.Nav();
+        var spots = new List<Int3>();
+        foreach (var m in inst.Layout.Modules)
+            foreach (Int3 c in m.Cells)
+            {
+                if (c.Y != m.Min.Y || inst.Protected[c] || !g.Get(c).IsAir || !nav.Standable(c) || !OpenToSky(g, c)) continue;
+                bool clear = true;
+                foreach (Dir d in Dirs.Horizontal) clear &= !inst.Protected[c + d.Vec()];
+                if (clear) spots.Add(c);
+            }
+        int want = Math.Min(spots.Count / 30 + (inst.State == PoiState.Ruined ? 3 : 1), 8);
+        var bark = new Rgb(0x4a, 0x3a, 0x2a);
+        for (int t = 0; t < want && spots.Count > 0; t++)
+        {
+            Int3 root = spots[rng.Range(0, spots.Count)];
+            spots.RemoveAll(s => Math.Abs(s.X - root.X) + Math.Abs(s.Z - root.Z) < 6);
+            int height = Math.Min(rng.Between(5, 10), g.Max.Y - root.Y - 2);   // many are mature by now
+            if (height < 4) continue;
+            int top = root.Y + height;
+            bool ok = true;
+            for (int y = root.Y; y < top && ok; y++) ok = g.Get(root with { Y = y }).IsAir;
+            if (!ok) continue;
+            for (int y = root.Y; y < top; y++) g.Set(root with { Y = y }, new Block(BlockType.Pillar, Material.Timber, bark, Role.Decor));
+            var leaf = new Rgb(0x3a, 0x5a, 0x2a).Lerp(new Rgb(0x5a, 0x6a, 0x30), rng.Float());
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dz = -2; dz <= 2; dz++)
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        if (Math.Abs(dx) + Math.Abs(dz) + Math.Abs(dy) > 3 || (dx == 0 && dz == 0 && dy < 0)) continue;
+                        Int3 c = new(root.X + dx, top + dy, root.Z + dz);
+                        if (c.Y < root.Y + 3 || !g.InBounds(c) || !g.Get(c).IsAir || inst.Protected[c]) continue;
+                        g.Set(c, new Block(BlockType.Plant, Material.Plant, leaf, Role.Decor));
+                    }
+        }
+    }
+
     // ---- crash sites ------------------------------------------------------------------
 
     /// <summary>Baseline wreckage for crash sites: torn hull, scorch, and pieces strewn outside.</summary>

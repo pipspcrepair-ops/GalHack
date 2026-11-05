@@ -371,3 +371,65 @@ program pump_station
   rooms basement plant generator
   rooms deepest vault! reactor
   fill storage plant
+
+# Works offices over a utilities basement: the side of a factory that isn't the production hall
+# (the halls themselves are hangar parts in the factory sites).
+program factory_works
+  name Factory works
+  shapes rect 3 L 2
+  plans spine 2 enfilade 2 hall 1 jog 1
+  basement same 1 box 1
+  style industrial
+  width 24 30
+  depth 16 18
+  floors 2 3
+  levels 1 1
+  lift 0.3
+  windows 0.45
+  secrets 0 1
+  rooms ground lobby! loading-dock! warehouse
+  rooms upper office control! parts-store
+  rooms top office archive
+  rooms basement boiler-house! generator storage
+  rooms deepest vault! plant
+  fill storage parts-store
+
+# A farmhouse with a cellar (or a storm shelter) under it.
+program farmhouse
+  name Farmhouse
+  shapes rect 3 L 2
+  plans spine 2 enfilade 3 jog 1
+  basement bar 1 same 1
+  style miningtown
+  width 18 22
+  depth 16
+  floors 1 2
+  levels 1 1
+  windows 0.6
+  secrets 0 1
+  rooms ground farm-kitchen! quarters storage
+  rooms upper quarters washroom
+  rooms basement cellar!
+  rooms deepest vault! cellar
+  fill quarters storage
+
+# A vertical farm: grow rooms stacked round a core, the tech end of agriculture.
+program vertical_farm
+  name Vertical farm
+  shapes rect 3 court 1
+  plans loop 2 atrium 2 hall 2 spine 1
+  basement same 1
+  setback 0.2
+  style colonydome
+  width 30 32
+  depth 30 32
+  floors 5 7
+  levels 1 1
+  lift 1
+  windows 0.7
+  secrets 0 1
+  rooms ground lobby! storage control
+  rooms upper grow-room*1-2 hydroponics
+  rooms top grow-room plant
+  rooms deepest vault! generator
+  fill grow-room hydroponics

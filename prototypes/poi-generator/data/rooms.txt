@@ -528,3 +528,90 @@ room vault
   lock command
   blast
   tags vault
+
+# ---- industry and agriculture -----------------------------------------------------------------
+
+room warehouse
+  deco industrial
+  name Warehouse
+  kind hall
+  width 8 14
+  props shelf 6 crate 4
+  fill 0.7
+  island
+  near loading-dock storage
+  loot 1 3
+  light dim
+  tags cluster industry
+
+room loading-dock
+  deco industrial
+  name Loading dock
+  width 6 12
+  props crate 5 machine 1
+  fill 0.4
+  near warehouse
+  prefer entrance
+  loot 0 1
+  light dim
+  tags industry
+
+room boiler-house
+  deco industrial
+  name Boiler house
+  width 6 10
+  props tank 4 machine 3
+  fill 0.6
+  near generator plant
+  avoid office quarters
+  loot 0 1
+  light red
+  tags hum industry
+
+room parts-store
+  deco industrial
+  name Parts store
+  width 4 8
+  props shelf 5 locker 2
+  fill 0.75
+  near workshop control
+  loot 1 2
+  light dim
+  tags keyspot industry
+
+room farm-kitchen
+  deco farm
+  name Farm kitchen
+  width 4 8
+  props table 3 shelf 2
+  fill 0.5
+  island
+  near quarters cellar
+  prefer entrance
+  loot 0 1
+  light warm
+  tags food
+
+room cellar
+  deco farm
+  name Cellar
+  width 4 9
+  props shelf 4 crate 3 tank 1
+  fill 0.6
+  near farm-kitchen
+  loot 1 2
+  light dim
+  tags food fuel
+
+room grow-room
+  deco farm
+  name Grow room
+  kind hall
+  width 6 12
+  props planter 4 shelf 2
+  fill 0.5
+  island
+  near hydroponics
+  loot 0 1
+  light green
+  tags food cluster

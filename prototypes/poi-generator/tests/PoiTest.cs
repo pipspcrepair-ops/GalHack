@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -700,6 +700,8 @@ public partial class PoiTest : Node
     void WorldPlacementCheck()
     {
         int planets = 0, badShare = 0, noOutlier = 0, poorCover = 0, total = 0, outliers = 0;
+        var byRarity = new int[5];
+        int rareDupes = 0;
         float worstCover = 1f;
         string firstBad = "";
         foreach (var theme in _lib.Themes)
@@ -708,6 +710,8 @@ public partial class PoiTest : Node
                 var map = PlanetMap.GenerateWorld(Hash.Combine(Hash.Of(theme.Id), (ulong)s), 200, 100, 80f, theme.Id);
                 var r = WorldPlacement.Place(_lib, map, theme, Hash.Combine(0x91A7UL, (ulong)s));
                 planets++;
+                foreach (var p in r.Pois) byRarity[(int)p.Rarity]++;
+                rareDupes += r.Pois.Where(p => p.Rarity >= Rarity.Exotic).GroupBy(p => p.Family.Id).Count(g => g.Count() > 1);
                 int n = r.Pois.Count, o = r.Outliers;
                 total += n;
                 outliers += o;
@@ -723,7 +727,76 @@ public partial class PoiTest : Node
             }
         Check(badShare == 0 && noOutlier == 0, $"themed sets and outliers: {planets} planets over {_lib.Themes.Count} themes, {total} places, {outliers} outliers " +
                                                $"({outliers * 100f / total:F1}%); every planet's outlier share inside its theme's range and never zero{firstBad}");
+        Check(byRarity[0] > byRarity[1] && byRarity[1] > byRarity[2] && byRarity[2] > byRarity[3] && rareDupes == 0,
+            $"rarity in practice over {planets} planets: {byRarity[0]} common, {byRarity[1]} uncommon, {byRarity[2]} rare, {byRarity[3]} exotic, {byRarity[4]} unique; no exotic or unique family twice on a planet ({rareDupes})");
         Check(poorCover == 0, $"placement covers the whole planet, not just the landing site: the worst planet has places in {worstCover:P0} of its 18 regions (6 by 3)");
+    }
+
+    /// <summary>
+    /// A century or two after the fall: old-world places hold no fresh food outside sealed, frozen
+    /// or airless rooms; places worked today are new; trees grow through old ruins and unsheltered
+    /// timber has fallen in. Factories and farms pick the layout for the world's tech level.
+    /// </summary>
+    void Ages()
+    {
+        int oldCaches = 0, rottenFood = 0, sealedFood = 0, trees = 0, ruins = 0, timberStanding = 0;
+        foreach (var f in _lib.Families)
+            for (int s = 0; s < 3; s++)
+            {
+                var p = PoiFactory.Generate(_lib, f, s % f.Variants.Count, Rarity.Uncommon, s == 2 ? PoiState.Ruined : PoiState.Abandoned, (ulong)(60 + s));
+                if (p.Age != Age.OldWorld) continue;
+                ruins++;
+                foreach (var c in p.Caches)
+                {
+                    bool food = c.Items.Any(i => i.Tags.Contains("food"));
+                    if (p.AgeOf(c.Module) == Age.OldWorld) { oldCaches++; if (food) rottenFood++; }
+                    else if (food) sealedFood++;
+                }
+                trees += p.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Pillar && b.Block.Material == Gen.Material.Timber && b.Block.Role == Role.Decor
+                                                      && p.Blocks.Get(b.Cell + Int3.Down).Type != BlockType.Pillar) ;
+                timberStanding += p.Blocks.Blocks().Count(b => b.Block.Material == Gen.Material.Timber && b.Block.Role == Role.Roof && b.Cell.Y >= 0);
+            }
+        var farm = PoiFactory.Generate(_lib, _lib.Family("freeholder_farm"), 0, Rarity.Common, PoiState.Active, 3);
+        // Tech: on a world of each tech level, factories and farms take that level's layout.
+        int techMismatch = 0, techPlaced = 0;
+        foreach (var theme in _lib.Themes)
+            for (int s = 0; s < 4; s++)
+            {
+                var map = PlanetMap.GenerateWorld(Hash.Combine(Hash.Of(theme.Id), (ulong)s + 90), 200, 100, 80f, theme.Id);
+                foreach (var p in WorldPlacement.Place(_lib, map, theme, Hash.Combine(0x7EC4UL, (ulong)s)).Pois.Where(p => p.Family.Variants.Any(v => v.Tech.Length > 0)))
+                {
+                    techPlaced++;
+                    if (p.Variant.Tech != theme.Tech && p.Family.Variants.Any(v => v.Tech == theme.Tech)) techMismatch++;
+                }
+            }
+        Check(rottenFood == 0 && farm.Age == Age.New && trees > 0 && techMismatch == 0 && techPlaced > 0,
+            $"long after the fall: {ruins} old-world places, no food in {oldCaches} of their unsealed caches ({sealedFood} sealed stores kept some), " +
+            $"{trees} trees grown through them, {timberStanding} unsheltered timber roof blocks still up; a worked freeholder farm is new ({farm.Age}); " +
+            $"factories and farms match their world's tech level ({techPlaced} placed, {techMismatch} wrong)");
+    }
+
+    /// <summary>Programs guarantee their must-have rooms (`lobby!`, `vault!`): every building has every one at least once.</summary>
+    void RequiredRooms()
+    {
+        int buildings = 0, missing = 0, demands = 0;
+        string first = "";
+        foreach (var f in _lib.Families.Where(f => f.Generator == Generator.Building))
+        {
+            var program = _lib.Programs[f.Program!];
+            var musts = program.Bands.Values.SelectMany(b => b).Where(d => d.Must).GroupBy(d => d.Room).Select(g => (Room: g.Key, Min: 1)).ToList();
+            for (int s = 0; s < 12; s++)
+            {
+                var l = PoiFactory.BuildLayout(_lib, f, 0, (Rarity)(s % 3), (ulong)(500 + s * 37));
+                buildings++;
+                foreach (var (room, min) in musts)
+                {
+                    demands++;
+                    int have = l.Extras.Rooms.Count(r => r.Purpose == room) + (room == "vault" && l.VaultModule >= 0 ? 1 : 0);
+                    if (have == 0) { missing++; if (first.Length == 0) first = $" (first: {f.Id} seed {500 + s * 37} has no {room})"; }
+                }
+            }
+        }
+        Check(missing == 0, $"programs guarantee their must-have rooms: {buildings} buildings, {demands} required rooms, {missing} missing{first}");
     }
 
     /// <summary>Cables, wires and tendrils always hang from something: never in mid-air.</summary>

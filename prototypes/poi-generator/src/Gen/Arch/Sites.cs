@@ -64,6 +64,8 @@ public static class Sites
                 case "stacks": Stacks(x, part); break;
                 case "obelisks": Obelisks(x, part); break;
                 case "hangar": Hangar(x, part); break;
+                case "fields": Fields(x, part); break;
+                case "greenhouse": Greenhouse(x, part); break;
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
@@ -393,6 +395,20 @@ public static class Sites
                     x.C.Set(c, new Block(BlockType.Cube, Material.Rust, new Rgb(0x7a, 0x4a, 0x30), Role.Decor));
                 }
                 for (int y = 0; y < 2; y++) x.C.Set(crownAt + Int3.Up * y, new Block(BlockType.Pillar, Material.Steel, steel, Role.Decor));
+                break;
+            case "tank":
+                // A water tower: a squat tank held up on corner posts over the top platform, rust streaks down its side.
+                for (int dz = 0; dz <= s; dz += s)
+                    for (int dx = 0; dx <= s; dx += s)
+                        for (int y = 0; y < 3; y++) x.C.Set(new Int3(p.X + dx, h + y, p.Z + dz), new Block(BlockType.Pillar, Material.Steel, steel, Role.Decor));
+                for (int y = 3; y < 7; y++)
+                    for (int dz = 0; dz <= s; dz++)
+                        for (int dx = 0; dx <= s; dx++)
+                        {
+                            bool rim = dx == 0 || dx == s || dz == 0 || dz == s;
+                            if (!rim && y > 3 && y < 6) continue;
+                            x.C.Set(new Int3(p.X + dx, h + y, p.Z + dz), new Block(BlockType.Cube, Material.Rust, (dx + y) % 3 == 0 ? new Rgb(0x6a, 0x44, 0x30) : new Rgb(0x8a, 0x8a, 0x80), Role.Decor));
+                        }
                 break;
             case "hut":
                 for (int dz = 0; dz <= s; dz++)
@@ -829,15 +845,116 @@ public static class Sites
         var officeFloor = office.Where(c => c.Y == my + 1).OrderByDescending(c => c.X + c.Z).ToList();
         x.C.AddSlot(SlotKind.Loot, officeFloor[0], officeModule);
         // On the floor: what was being worked on, stopped mid-job.
-        var floor = hall.Where(c => c.Y == 0 && c.Z - p.Z > 2 && c.Z - p.Z < mz - 2 && c.X - p.X > 3 && c.X - p.X < w - 3).OrderBy(c => Hash.Cell(c, 31)).ToList();
-        foreach (var c in floor.Take(6)) x.C.Set(c, new Block(BlockType.Crate, Material.Scrap, new Rgb(0x6e, 0x5a, 0x40), Role.Prop));
+        bool line = p.Arg("line", "no") == "yes";
+        if (line) ProductionLine(x, W, w, h, mz);
+        var floor = hall.Where(c => c.Y == 0 && c.Z - p.Z > 2 && c.Z - p.Z < mz - 2 && c.X - p.X > 3 && c.X - p.X < w - 3
+                                    && !x.C.Blocks.ContainsKey(c) && !x.C.Blocks.ContainsKey(c + Int3.Up)).OrderBy(c => Hash.Cell(c, 31)).ToList();
+        foreach (var c in floor.Take(line ? 2 : 6)) x.C.Set(c, new Block(BlockType.Crate, Material.Scrap, new Rgb(0x6e, 0x5a, 0x40), Role.Prop));
         foreach (var c in floor.Skip(6).Take(2)) x.C.Set(c, new Block(BlockType.Machine, Material.Alloy, new Rgb(0x5a, 0x60, 0x66), Role.Prop));
         x.C.AddSlot(SlotKind.Loot, floor[8], floorModule);
         x.C.AddSlot(SlotKind.Spawn, floor[9], floorModule);
         x.C.AddSlot(SlotKind.Spawn, floor[10], floorModule);
         for (int i = 4; i < w - 4; i += 8)
             x.C.X.Lights.Add(new LightSpot { Cell = W(i, h - 2, d / 2), Color = new Rgb(0xff, 0xd0, 0x90), Mode = LightMode.Steady, Energy = 1.6f, Range = 14f, Module = floorModule });
-        x.C.X.Story.Add(new StoryProp("hangar", W(w / 2, 0, d / 2), "The door rolled half open and stopped there. The tools are still out."));
+        x.C.X.Story.Add(new StoryProp("hangar", W(w / 2, 0, d / 2), line
+            ? "The line stopped mid-run: work still on the belt, the arms mid-reach, a load still on the crane's hook."
+            : "The door rolled half open and stopped there. The tools are still out."));
+    }
+
+    /// <summary>
+    /// A production line frozen mid-run: a conveyor down the hall with gaps to cross it, work still
+    /// on the belt, robot arms reaching over it, and an overhead crane across the hall with its load
+    /// still on the hook (the chain hangs from the beam; the beam spans wall to wall).
+    /// </summary>
+    static void ProductionLine(Ctx x, Func<int, int, int, Int3> W, int w, int h, int mz)
+    {
+        int lj = Math.Max(3, mz / 2 - 1);
+        var metal = new Rgb(0x5a, 0x60, 0x66);
+        var safety = new Rgb(0xd0, 0x90, 0x20);
+        for (int i = 4; i < w - 4; i++)
+        {
+            if ((i - 4) % 9 == 8) continue;   // a gap to cross the line
+            Int3 belt = W(i, 0, lj);
+            x.C.Set(belt, new Block(BlockType.Bench, Material.Steel, metal, Role.Prop));
+            if (Hash.Cell(belt, 41) % 3 == 0) x.C.Set(belt + Int3.Up, new Block(BlockType.Crate, Material.Alloy, new Rgb(0x8a, 0x7a, 0x5a), Role.Prop));
+            if ((i - 4) % 9 != 3) continue;
+            // A robot arm: a post beside the belt, its arm reaching over it.
+            Int3 post = W(i, 0, lj + 1);
+            x.C.Set(post, new Block(BlockType.Pillar, Material.Steel, safety, Role.Prop));
+            x.C.Set(post + Int3.Up, new Block(BlockType.Pillar, Material.Steel, safety, Role.Prop));
+            x.C.Set(post + Int3.Up * 2, new Block(BlockType.Rib, Material.Steel, safety, Role.Prop));
+            x.C.Set(W(i, 2, lj), new Block(BlockType.Rib, Material.Steel, safety, Role.Prop));
+        }
+        // The overhead crane: a beam from wall to wall, a chain from its trolley and the load on the hook.
+        int cj = Math.Min(lj + 3, mz - 2), beamY = h - 2;
+        if (cj <= lj + 1) return;
+        for (int i = 1; i < w - 1; i++) x.C.Set(W(i, beamY, cj), new Block(BlockType.Cube, Material.Steel, safety.Scale(0.9f), Role.Decor));
+        int ti = w / 2 + 3;
+        for (int y = beamY - 1; y >= 3; y--) x.C.Set(W(ti, y, cj), new Block(BlockType.Cable, Material.Steel, new Rgb(0x3a, 0x3a, 0x3a), Role.Decor));
+        x.C.Set(W(ti, 2, cj), new Block(BlockType.Crate, Material.Steel, new Rgb(0x7a, 0x6a, 0x4a), Role.Prop));
+    }
+
+    /// <summary>Fields gone wild: crop rows overgrown, a few fence posts, the odd rusted implement.</summary>
+    static void Fields(Ctx x, SitePart p)
+    {
+        int w = p.Int("w", 30), d = p.Int("d", 20);
+        var crop = new Rgb(0x8a, 0x8a, 0x40);
+        var weed = new Rgb(0x4a, 0x6a, 0x30);
+        for (int j = 0; j < d; j++)
+            for (int i = 0; i < w; i++)
+            {
+                Int3 c = new(p.X + i, 0, p.Z + j);
+                if (x.C.Blocks.ContainsKey(c)) continue;
+                uint hsh = Hash.Cell(c, 71);
+                bool row = j % 3 != 2;
+                if (row && hsh % 100 < 55) x.C.Blocks[c] = new Block(BlockType.Plant, Material.Plant, hsh % 3 == 0 ? weed : crop, Role.Decor);
+                else if (!row && hsh % 100 < 12) x.C.Blocks[c] = new Block(BlockType.Plant, Material.Plant, weed, Role.Decor);
+                if ((i == 0 || i == w - 1) && j % 4 == 0) x.C.Blocks[c] = new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x44, 0x30), Role.Decor);
+            }
+        if (p.Arg("implement", "yes") == "yes")
+            x.C.Set(new Int3(p.X + w / 2, 0, p.Z + d / 2), new Block(BlockType.Machine, Material.Rust, new Rgb(0x8a, 0x4a, 0x2a), Role.Prop));
+    }
+
+    /// <summary>A greenhouse or hydroponic shed: a glass house on a low wall, planting tables inside gone to seed.</summary>
+    static void Greenhouse(Ctx x, SitePart p)
+    {
+        int w = p.Int("w", 14), d = p.Int("d", 8), h = p.Int("h", 4);
+        bool hydro = p.Arg("type", "glass") == "hydro";
+        Int3 W(int i, int y, int j) => new(p.X + i, y, p.Z + j);
+        var inside = new List<Int3>();
+        for (int j = 0; j < d; j++)
+            for (int i = 0; i < w; i++)
+            {
+                x.C.Set(W(i, -1, j), new Block(BlockType.Cube, Material.Concrete, new Rgb(0x5a, 0x58, 0x54), Role.Floor));
+                bool edge = i == 0 || i == w - 1 || j == 0 || j == d - 1;
+                bool door = j == 0 && (i == w / 2 || i == w / 2 - 1);
+                for (int y = 0; y < h; y++)
+                {
+                    Int3 c = W(i, y, j);
+                    if (edge && !(door && y < 3))
+                        x.C.Set(c, y == 0 || (i % 4 == 0 && (j == 0 || j == d - 1)) || hydro && y < 2
+                            ? new Block(BlockType.Cube, hydro ? Material.Alloy : Material.Concrete, hydro ? new Rgb(0xb8, 0xbc, 0xc0) : new Rgb(0x8a, 0x86, 0x7e), Role.Wall)
+                            : new Block(BlockType.Pane, Material.Glass, new Rgb(0x9a, 0xc8, 0xb0), Role.Window));
+                    else { x.C.Clear(c); if (y < 3 && !edge) inside.Add(c); }
+                }
+                x.C.Set(W(i, h, j), new Block(BlockType.Pane, Material.Glass, new Rgb(0x9a, 0xc8, 0xb0), Role.Roof));
+            }
+        // Planting tables down both sides, gone to seed (or hydroponic racks, their lamps long dead).
+        foreach (int j in new[] { 1, d - 2 })
+            for (int i = 2; i < w - 2; i++)
+            {
+                Int3 c = W(i, 0, j);
+                if (j == 1 && Math.Abs(i - (w / 2 - 0.5f)) < 1.6f) continue;   // keep the doorway clear
+                x.C.Set(c, new Block(hydro ? BlockType.Shelf : BlockType.Bench, hydro ? Material.Alloy : Material.Timber, hydro ? new Rgb(0xa0, 0xa8, 0xac) : new Rgb(0x6a, 0x50, 0x38), Role.Prop));
+                if (Hash.Cell(c, 73) % 3 != 0) x.C.Set(c + Int3.Up, new Block(BlockType.Plant, Material.Plant, new Rgb(0x5a, 0x7a, 0x3a), Role.Decor));
+                inside.Remove(c);
+                inside.Remove(c + Int3.Up);
+            }
+        int m = x.C.AddModule(ModuleKind.Room, hydro ? "hydroponic shed" : "greenhouse", 0, inside);
+        x.C.Link(x.Yard, m);
+        x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+        var floor = inside.Where(c => c.Y == 0 && !x.C.Blocks.ContainsKey(c)).OrderBy(c => Hash.Cell(c, 79)).ToList();
+        if (floor.Count > 1) x.C.AddSlot(SlotKind.Loot, floor[0], m);
     }
 
     /// <summary>Tall stacks: atmosphere processors, smelter chimneys, cooling towers.</summary>
