@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using Invasions.Combat;
@@ -11,7 +12,7 @@ namespace Invasions.Tests;
 /// <summary>
 /// Renders one moment of an invasion to a PNG and quits. Run windowed (not headless):
 ///   godot --path prototypes/invasions res://tests/Screenshot.tscn -- --view=warning --out=shot.png
-/// Views: warning, arrival, firefight, offline, overview.
+/// Views: warning, arrival, firefight, offline, overview, options, and faction (with --faction=kessari|meridian|reavers|hollow|vharn).
 /// Long stretches of the fight are simulated faster than real time (same 1/60 s physics steps,
 /// more of them per second) so a shot doesn't take minutes.
 /// </summary>
@@ -20,6 +21,7 @@ public partial class Screenshot : Node
     Main _main;
     string _view = "warning";
     string _out = "shot.png";
+    string _faction = "kessari";
 
     public override async void _Ready()
     {
@@ -27,7 +29,9 @@ public partial class Screenshot : Node
         {
             if (arg.StartsWith("--view=")) _view = arg["--view=".Length..];
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
+            else if (arg.StartsWith("--faction=")) _faction = arg["--faction=".Length..];
         }
+        Main.WorldFile = null; // always the data files' settings, whatever a player saved
         _main = new Main();
         AddChild(_main);
         Input.MouseMode = Input.MouseModeEnum.Visible;
@@ -40,6 +44,8 @@ public partial class Screenshot : Node
             case "firefight": await Firefight(); break;
             case "offline": await Offline(); break;
             case "probe": await Probe(); break;
+            case "faction": await FactionInvasion(); break;
+            case "options": await OptionsView(); break;
             default: await Overview(); break;
         }
         await Capture();
@@ -156,6 +162,123 @@ public partial class Screenshot : Node
                      $"core={(_main.Model.Grid.Core?.Health01 ?? 0):F2} phase={C.Current?.Phase} dead=[{string.Join(" ", dead)}]");
             foreach (var t in troops.Take(4)) GD.Print($"   {t.Role} at {_main.Model.Grid.ToLayout(_main.Combat.CellAt(t.GlobalPosition))} target={(t.BreachTarget == null ? "-" : t.BreachTarget.Kind.ToString())}");
         }
+    }
+
+    // ---- One faction's invasion ----------------------------------------------------------
+
+    /// <summary>
+    /// The chosen faction invades: it is made hostile if it isn't, every other faction's base is knocked
+    /// out, and the camera finds the moment that shows its troops, vehicles and tactics.
+    /// </summary>
+    async Task FactionInvasion()
+    {
+        InvasionDirector d = _main.Director;
+        if (!d.Standings.Invades(_faction)) d.Wrong(_faction, 200, deliberate: true);
+        foreach (EnemyBaseNode b in _main.EnemyBases.Where(b => b.Faction != _faction)) b.DestroyCore();
+        await Seconds(0.1f, 1f);
+        C.InvadeNow();
+        C.SkipToArrival();
+        C.SpawnPendingNow();
+        P.Invulnerable = true;
+        switch (_faction)
+        {
+            case "kessari": await KessariShot(); break;
+            case "meridian": await MeridianShot(); break;
+            case "reavers": await ReaversShot(); break;
+            case "hollow": await HollowShot(); break;
+            default: await Arrival(); break;
+        }
+    }
+
+    IEnumerable<PlaceholderSoldier> Troops => C.World.Troops.OfType<PlaceholderSoldier>().Where(t => IsInstanceValid(t) && t.IsAlive);
+
+    /// <summary>A strider has walked in and is setting down its frames and hovering cutters.</summary>
+    async Task KessariShot()
+    {
+        _main.Combat.TurretsEnabled = false;
+        Strider strider = null;
+        for (int i = 0; i < 240; i++)
+        {
+            await Seconds(0.25f, 4f);
+            strider = C.World.Vehicles.OfType<Strider>().FirstOrDefault(v => v.Unloaded >= 4);
+            if (strider != null) break;
+        }
+        strider ??= C.World.Vehicles.OfType<Strider>().First();
+        await Seconds(0.6f, 1f);
+        Vector3 at = strider.GlobalPosition;
+        Vector3 toBase = ((C.World.BaseCentre - at) with { Y = 0 }).Normalized();
+        var side = new Vector3(-toBase.Z, 0, toBase.X);
+        // Off its flank, between it and the base: the walker, and its troops heading for the walls.
+        P.Teleport(at + side * 11f + toBase * 10f + Vector3.Up * 0.1f, 0f, 0f);
+        P.LookAtPoint(at + toBase * 4f + Vector3.Up * 3.2f);
+        await Seconds(0.2f, 1f);
+    }
+
+    /// <summary>Shielded officers stacked at the wall while the breaching team's charge blinks.</summary>
+    async Task MeridianShot()
+    {
+        bool Ready() => _main.Combat.GetChildren().OfType<BreachCharge>().Any() && Troops.Any(t => t.Role != "breacher" && t.LongestStackUp > 1f);
+        for (int i = 0; i < 480 && !Ready(); i++) await Seconds(0.25f, 6f);
+        BreachCharge charge = _main.Combat.GetChildren().OfType<BreachCharge>().FirstOrDefault();
+        Vector3 breach = charge?.GlobalPosition ?? Centroid();
+        Vector3 outward = ((breach - C.World.BaseCentre) with { Y = 0 }).Normalized();
+        var side = new Vector3(-outward.Z, 0, outward.X);
+        // The turrets are firing at the stack; so the shields show in this one frame, each officer near
+        // the breach also takes a one-point hit, as if a round had just landed.
+        foreach (PlaceholderSoldier t in Troops.Where(t => t.GlobalPosition.DistanceTo(breach) < 9f)) t.TakeDamage(1f, breach, Team.Defenders);
+        // On the ground outside, off to one side, looking at the charge on the wall and the team stacked beside it.
+        P.Teleport(breach with { Y = 0.1f } + outward * 9f + side * 5f, 0f, 0f);
+        P.LookAtPoint(breach with { Y = 1.2f } + outward * 2f);
+        await Seconds(0.08f, 1f);
+    }
+
+    /// <summary>Hover bikes come in hard and close, a gunship behind them, raiders jumping off.</summary>
+    async Task ReaversShot()
+    {
+        _main.Combat.TurretsEnabled = false;
+        CrewedVehicle bike = null;
+        for (int i = 0; i < 120; i++)
+        {
+            await Seconds(0.25f, 3f);
+            bike = C.World.Vehicles.OfType<HoverBike>().FirstOrDefault(v => v.Phase == CrewedVehicle.Mode.Unload || v.Unloaded > 0);
+            if (bike != null) break;
+        }
+        bike ??= C.World.Vehicles.OfType<CrewedVehicle>().First();
+        await Seconds(0.5f, 1f);
+        Vector3 target = bike.GlobalPosition;
+        Vector3 toBase = ((C.World.BaseCentre - target) with { Y = 0 }).Normalized();
+        var side = new Vector3(-toBase.Z, 0, toBase.X);
+        // Between the bikes and the base, a little to the side, looking back out at the raid coming in.
+        P.Teleport(target + toBase * 14f + side * 7f + Vector3.Up * 0.1f, 0f, 0f);
+        P.LookAtPoint(target - toBase * 25f + Vector3.Up * 3f);
+        await Seconds(0.3f, 1f);
+    }
+
+    /// <summary>The growth has broken the surface and the swarm is pouring out of its maw.</summary>
+    async Task HollowShot()
+    {
+        _main.Combat.TurretsEnabled = false;
+        Growth growth = C.World.Vehicles.OfType<Growth>().FirstOrDefault();
+        for (int i = 0; i < 60 && growth != null && growth.Unloaded < 9; i++) await Seconds(0.25f, 2f);
+        await Seconds(1.5f, 1f);
+        Vector3 at = growth?.GlobalPosition ?? Centroid();
+        Vector3 toBase = ((C.World.BaseCentre - at) with { Y = 0 }).Normalized();
+        var side = new Vector3(-toBase.Z, 0, toBase.X);
+        // In front of the maw and off to one side: the swarm running past toward the walls.
+        P.Teleport(at + toBase * 19f + side * 11f + Vector3.Up * 0.1f, 0f, 0f);
+        P.LookAtPoint(at + toBase * 5f + Vector3.Up * 1.8f);
+        await Seconds(0.3f, 1f);
+    }
+
+    /// <summary>The in-game options over the base, with invasions just switched off mid-warning.</summary>
+    async Task OptionsView()
+    {
+        C.InvadeNow();
+        await Seconds(1f, 1f);
+        _main.Options.Open();
+        _main.Options.InvasionsSwitch.ButtonPressed = false;
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        await Seconds(0.5f, 1f);
     }
 
     async Task Overview()

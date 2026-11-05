@@ -57,7 +57,7 @@ public partial class Hud : CanvasLayer
 
         // Status panel, bottom left, leaving the top of the visor for warnings.
         var panel = Panel(new Color(0.06f, 0.07f, 0.09f, 0.72f), Palette.Amber);
-        Pin(panel, 0, 1, 16, -100, 616, -100);
+        Pin(panel, 0, 1, 16, -100, 716, -100);
         panel.GrowVertical = Control.GrowDirection.Begin;
         root.AddChild(panel);
         _status = new RichTextLabel
@@ -66,7 +66,7 @@ public partial class Hud : CanvasLayer
             FitContent = true,
             ScrollActive = false,
             AutowrapMode = TextServer.AutowrapMode.Off,
-            CustomMinimumSize = new Vector2(600, 0),
+            CustomMinimumSize = new Vector2(700, 0),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _status.AddThemeFontOverride("normal_font", Palette.Font);
@@ -116,8 +116,8 @@ public partial class Hud : CanvasLayer
 
         _help = MakeLabel(15, new Color(1f, 0.91f, 0.76f, 0.85f));
         Pin(_help, 0, 1, 16, -52, 1000, -8);
-        _help.Text = "WASD move · Shift sprint · Space jump · Ctrl crouch · LMB fire · F man turret · E recover crate\n" +
-                     "I invade now (again: skip to next warning) · T fast time · P place new core · K destroy garrison core · Esc mouse";
+        _help.Text = "WASD move · Shift sprint · Space jump · Ctrl crouch · LMB fire · F man turret · E recover crate · Esc options\n" +
+                     "I invade now (again: skip to next warning) · T fast time · P place new core · K knock out the source · J faction · - wrong it · = favour it";
         root.AddChild(_help);
 
         // Health bar, bottom left above the help.
@@ -232,12 +232,13 @@ public partial class Hud : CanvasLayer
             Invasion last = d.Base(InvasionController.HomeId).History.LastOrDefault();
             double? next = d.NextInvasionIn(InvasionController.HomeId);
             string quiet = last == null ? "quiet" : $"quiet · last: {Words(last.Outcome)}";
-            string nextText = next is double n ? $"next in ~{Clock(n)} of presence" : model.Online ? "none coming" : "none while offline";
+            string nextText = !d.InvasionsEnabled ? "invasions off (Esc: options)"
+                : next is double n ? $"next in ~{Clock(n)} of presence" : model.Online ? "none coming" : "none while offline";
             invasion = $"[color={Dim}]{quiet} · {nextText}[/color]";
         }
         else
         {
-            string src = $"{inv.Source.Name} · {inv.Source.BearingDegrees:000}° {inv.Source.Compass}";
+            string src = $"{d.Data.Faction(inv.Faction).Name} · {inv.Source.Name} · {inv.Source.BearingDegrees:000}° {inv.Source.Compass}";
             invasion = inv.Phase switch
             {
                 InvasionPhase.Incoming => $"[color={(inv.WarningLevel >= 3 ? Red : Amber)}]WARNING {inv.WarningLevel} OF 3 · T-{Clock(inv.SecondsToArrival(d.Now))}[/color] · from {src}",
@@ -246,7 +247,8 @@ public partial class Hud : CanvasLayer
                 _ => Words(inv.Outcome),
             };
             if (inv.Phase == InvasionPhase.Incoming && inv.OnLongRangeScan && inv.Force != null)
-                invasion += $"\n               [color={Dim}]on scan: {inv.Force.Tier}, {inv.Force.Troops} troops in {inv.Force.VehicleSummary(d.Data)}[/color]";
+                invasion += $"\n               [color={Dim}]on scan: {inv.Force.Tier}, {inv.Force.Troops} troops in {inv.Force.VehicleSummary()}[/color]";
+            if (c.RaidOver) invasion += $"  [color={Amber}]RAID OVER · running[/color]";
         }
 
         bool siren = c.View.Sirens.On;
@@ -261,14 +263,19 @@ public partial class Hud : CanvasLayer
             ? $"{total} items [color={Dim}]in the storage net[/color]"
             : $"{total} items [color={Dim}]= {storage} in storage + {crates} in {crateCount} spill crate{(crateCount == 1 ? "" : "s")}[/color]";
 
-        string garrison = c.Garrison.Destroyed ? $"[color={Green}]{c.Garrison.DisplayName} destroyed[/color]" : $"{c.Garrison.DisplayName} [color={Dim}]active, 600 m NE[/color]";
+        FactionData pick = c.SelectedFaction;
+        StandingTier tier = d.Standings.Tier(pick.Id);
+        string tierColor = tier == StandingTier.Hostile ? Red : tier == StandingTier.Friendly ? Green : Amber;
+        string invades = !pick.Invades ? "never invades" : d.Standings.Invades(pick.Id) ? "invades" : "won't invade";
+        string standing = $"{pick.Name} [color={tierColor}]{d.Standings[pick.Id]:0} {tier.ToString().ToLowerInvariant()}[/color] [color={Dim}]· {invades} · J next, - wrong, = favour[/color]";
 
         return $"[color={Amber}]BASE[/color]       {baseState}\n" +
                $"[color={Amber}]INVASION[/color]  {invasion}\n" +
                $"[color={Amber}]SIREN[/color]      {sirenText}\n" +
                $"[color={Amber}]INVADERS[/color]  {invaders}\n" +
                $"[color={Amber}]STORAGE[/color]   {loot}\n" +
-               $"[color={Amber}]SOURCE[/color]    {garrison}";
+               $"[color={Amber}]SOURCE[/color]    {c.SourceSummary()}\n" +
+               $"[color={Amber}]STANDING[/color] {standing}";
     }
 
     static string Words(InvasionOutcome outcome) => outcome switch
@@ -328,16 +335,21 @@ public partial class ScanDisplay : Control
         Vector2 me = Map(Player.GlobalPosition, out _);
         DrawCircle(me, 3f, Palette.Yellow);
 
-        // The garrison.
-        Garrison g = Controller.Garrison;
-        Vector2 gp = Map(g.GlobalPosition, out _);
-        if (g.Destroyed)
+        // Every faction's base: filled if its faction is hostile, outlined if not, crossed out if knocked out.
+        InvasionDirector d = Controller.Director;
+        foreach (EnemyBaseNode g in Controller.EnemyBases)
         {
-            DrawLine(gp - new Vector2(5, 5), gp + new Vector2(5, 5), Palette.Bone, 2f);
-            DrawLine(gp - new Vector2(5, -5), gp + new Vector2(5, -5), Palette.Bone, 2f);
+            Vector2 gp = Map(g.GlobalPosition, out bool off);
+            Color color = g.Livery?.Main ?? Palette.Oxblood;
+            if (g.Destroyed)
+            {
+                DrawLine(gp - new Vector2(5, 5), gp + new Vector2(5, 5), Palette.Bone, 2f);
+                DrawLine(gp - new Vector2(5, -5), gp + new Vector2(5, -5), Palette.Bone, 2f);
+            }
+            else if (d.Standings.IsHostile(g.Faction)) DrawRect(new Rect2(gp - new Vector2(5, 5), new Vector2(10, 10)), color);
+            else DrawRect(new Rect2(gp - new Vector2(5, 5), new Vector2(10, 10)), color, false, 2f);
+            if (!off) DrawString(font, gp + new Vector2(8, 4), d.Data.Faction(g.Faction).Tag, HorizontalAlignment.Left, -1, 11, ink);
         }
-        else DrawRect(new Rect2(gp - new Vector2(5, 5), new Vector2(10, 10)), Palette.Oxblood);
-        DrawString(font, gp + new Vector2(8, 4), g.Destroyed ? "OKKAR-9 (down)" : "OKKAR-9", HorizontalAlignment.Left, -1, 12, ink);
 
         // The incoming force on long-range scan.
         Invasion inv = Controller.Current;
@@ -346,7 +358,8 @@ public partial class ScanDisplay : Control
             Vector2 p = Map(new Vector3((float)sp.X, 0, (float)sp.Z), out bool clipped);
             float blink = 0.6f + 0.4f * Mathf.Sin(_sweep * 4f);
             DrawCircle(p, 7f, new Color(Palette.SirenRed, blink));
-            DrawString(font, p + new Vector2(-30, -10), clipped ? "VHARN >" : "VHARN", HorizontalAlignment.Left, -1, 12, Palette.SirenRed);
+            string tag = Controller.Director.Data.Faction(inv.Faction).Tag;
+            DrawString(font, p + new Vector2(-30, -10), clipped ? tag + " >" : tag, HorizontalAlignment.Left, -1, 12, Palette.SirenRed);
         }
 
         foreach (IInvaderVehicle v in Controller.World.Vehicles.Where(v => !v.IsGone && IsInstanceValid(v.Body)))

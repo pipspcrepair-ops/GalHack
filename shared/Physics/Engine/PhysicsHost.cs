@@ -47,6 +47,25 @@ public partial class PhysicsHost : Node
         world.Rescued += r => BindingOf(r.Body)?.Teleport();
         world.RegionChanged += WakeIn;
         world.Unregistered += b => Unbind(b);
+        // A parked vessel and its host move as one: the host's sweep never runs into what rides it.
+        world.Parked += (b, host) => Except(b, host, true);
+        world.Unparked += (b, host) => Except(b, host, false);
+    }
+
+    void Except(Body a, Body b, bool on)
+    {
+        if (BindingOf(a)?.Collider is not PhysicsBody3D x || BindingOf(b)?.Collider is not PhysicsBody3D y) return;
+        if (!GodotObject.IsInstanceValid(x) || !GodotObject.IsInstanceValid(y)) return;
+        if (on)
+        {
+            x.AddCollisionExceptionWith(y);
+            y.AddCollisionExceptionWith(x);
+        }
+        else
+        {
+            x.RemoveCollisionExceptionWith(y);
+            y.RemoveCollisionExceptionWith(x);
+        }
     }
 
     public override void _Ready() => ProcessPhysicsPriority = -10;
@@ -100,7 +119,9 @@ public partial class PhysicsHost : Node
     {
         _watch.Restart();
         if (_orderDirty) SortMoveOrder();
-        Query.Space = GetViewport()?.World3D?.DirectSpaceState;
+        // The world this host's bodies live in: a SubViewport with its own world (a test world, a
+        // cabin) reports it through FindWorld3D; its World3D property is only an explicitly set one.
+        Query.Space = GetViewport()?.FindWorld3D()?.DirectSpaceState;
 
         World.BeginTick();
         for (int i = 0; i < _bindings.Count; i++) _bindings[i].Sync(this, dt);
@@ -108,6 +129,10 @@ public partial class PhysicsHost : Node
         World.Integrate(dt);
         for (int i = 0; i < _moveOrder.Count; i++)
             if (_moveOrder[i].Body.Motion == Motion.Kinematic) _moveOrder[i].Move(this, dt);
+        // Landed vessels parked on a host ride it: placed by the host's motion this tick, now that it has moved.
+        World.CarryParked();
+        for (int i = 0; i < _bindings.Count; i++)
+            if (_bindings[i].Body.ParkedOn != null && _bindings[i].Body.Asleep) _bindings[i].Follow();
         World.EndTick(dt);
         for (int i = 0; i < _bindings.Count; i++) _bindings[i].Flush(this, dt);
         World.FinishTick();

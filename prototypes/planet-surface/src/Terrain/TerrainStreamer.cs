@@ -105,6 +105,9 @@ public partial class TerrainStreamer : Node3D
         public int Version;
         public Node3D Node;
         public List<(Flora Kind, float[] Buffer, int Count)> Flora;
+
+        /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
+        public List<FloraSolid> Solids;
     }
 
     readonly Dictionary<(int, int), FarChunk> _far = new();
@@ -138,6 +141,9 @@ public partial class TerrainStreamer : Node3D
     public int CollisionBodies { get; private set; }
     public int FarChunks => _far.Count;
     public int CompleteRadius => _completeRadius;
+
+    /// <summary>How many eviction passes (unloading far-off generated chunks) have run: tests wait on it.</summary>
+    public int EvictPasses { get; private set; }
     public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight;
 
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
@@ -161,6 +167,7 @@ public partial class TerrainStreamer : Node3D
         Clear();
         World = world;
         Focus = focus;
+        _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
@@ -211,6 +218,7 @@ public partial class TerrainStreamer : Node3D
         var queued = new List<(Int3, int)>();
         while (_queue.TryDequeue(out Int3 key, out int priority)) queued.Add((new Int3(key.X + dcx, key.Y, key.Z + dcz), priority));
         foreach (var (key, priority) in queued) _queue.Enqueue(key, priority);
+        ShiftSolids(dcx, dcz);
     }
 
     void PlaceChunkNodes(VChunk c)
@@ -280,6 +288,7 @@ public partial class TerrainStreamer : Node3D
         {
             _evictTimer = 0;
             Evict();
+            EvictPasses++;
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
@@ -398,6 +407,7 @@ public partial class TerrainStreamer : Node3D
 
         long collisionStart = Stopwatch.GetTimestamp();
         UpdateCollision(fcx, fcz, start);
+        UpdateSolids(fcx, fcz, start);
         _sections[4] = Stopwatch.GetElapsedTime(collisionStart).TotalMilliseconds;
         Unload(fcx, fcz);
         UpdateVisibility(fcx, fcz);
@@ -582,6 +592,7 @@ public partial class TerrainStreamer : Node3D
         {
             // Dug ground changes flora: rebuild those chunks with a fresh snapshot of the dug set.
             _dugSnapshot = new HashSet<long>(_dug);
+            _felledSnapshot = new HashSet<long>(World.Felled);
             foreach (var (fx, fz) in _floraDirty)
                 if (_far.TryGetValue((fx, fz), out FarChunk f)) { f.Lod = -1; f.Version++; }
             _floraDirty.Clear();
@@ -610,10 +621,10 @@ public partial class TerrainStreamer : Node3D
             var job = new FarJob { Fx = fx, Fz = fz, Lod = lod, Version = f.Version };
             PlanetTerrainSource source = World.Source;
             GroundPalette palette = World.Palette;
-            HashSet<long> dug = _dugSnapshot;
+            HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
             Task.Run(() =>
             {
-                FarBuilder.Build(job, source, palette, dug);
+                FarBuilder.Build(job, source, palette, dug, felled);
                 _farDone.Enqueue(job);
             });
         }
@@ -648,6 +659,8 @@ public partial class TerrainStreamer : Node3D
                 WorstFarNode = $"lod {job.Lod}, {job.Vertices.Length} vertices, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
             }
             f.Lod = job.Lod;
+            f.Solids = job.Solids;
+            if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
             AddChild(f.Node);
         }
 
@@ -696,10 +709,11 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>
     /// The flora drawn within a radius of a point (frame coordinates): each plant's kind, where its
-    /// trunk meets the ground and its scale. Read from the far chunks' own scatter, so it works
-    /// with or without a renderer.
+    /// trunk meets the ground, its scale and its scatter id (the one <see cref="PlanetWorld.Felled"/>
+    /// and <see cref="Fell"/> take). Read from the far chunks' own scatter, so it works with or
+    /// without a renderer; felled plants are left out at once.
     /// </summary>
-    public IEnumerable<(Flora Kind, Vector3 Root, float Scale)> FloraNear(Vector3 at, float radius)
+    public IEnumerable<(Flora Kind, Vector3 Root, float Scale, long Id)> FloraNear(Vector3 at, float radius)
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
         foreach (FarChunk f in _far.Values)
@@ -713,10 +727,14 @@ public partial class TerrainStreamer : Node3D
                 {
                     int o = i * 16;
                     var root = new Vector3(x0 + buffer[o + 3], buffer[o + 7], z0 + buffer[o + 11]);
-                    if (new Vector2(root.X - at.X, root.Z - at.Z).Length() <= radius) yield return (kind, root, buffer[o + 5]);
+                    if (new Vector2(root.X - at.X, root.Z - at.Z).Length() > radius) continue;
+                    // The scatter cell it was rolled in: its offset in the chunk, a cell to a ScatterCell.
+                    long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(buffer[o + 3] / FarBuilder.ScatterCell), (int)(buffer[o + 11] / FarBuilder.ScatterCell));
+                    if (!World.Felled.Contains(id)) yield return (kind, root, buffer[o + 5], id);
                 }
         }
     }
+
     public double WorstFarNodeMs { get; private set; }
     public string WorstFarNode { get; private set; } = "";
 
@@ -874,6 +892,7 @@ public partial class TerrainStreamer : Node3D
             c.Body?.QueueFree();
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
+        if (World != null) ClearSolids();
         _chunks.Clear();
         _columns.Clear();
         _far.Clear();

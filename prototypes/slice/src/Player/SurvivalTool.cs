@@ -47,7 +47,7 @@ public sealed class SurvivalTool
     public readonly SortedDictionary<string, int> Gathered = new(StringComparer.Ordinal);
 
     /// <summary>Plant columns cut so far (canonical cells), kept so they stay cut.</summary>
-    public readonly HashSet<(int x, int z)> CutPlants = new();
+    public int PlantsCut { get; private set; }
 
     public bool HasTarget { get; private set; }
     public Int3 Target { get; private set; }
@@ -57,7 +57,6 @@ public sealed class SurvivalTool
     float _cooldown;
 
     /// <summary>Cut plants by frame column, so one isn't found again before the ground's flora is rebuilt.</summary>
-    readonly HashSet<(int x, int z)> _cutHere = new();
 
     public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, Inventory pack)
     {
@@ -144,20 +143,19 @@ public sealed class SurvivalTool
 
     /// <summary>
     /// Cuts the plant nearest the crosshair within reach: organics for the replicator and carbon
-    /// for building, and the plant is gone from the ground (and stays gone).
+    /// for building, and the plant is gone from the ground, and stays gone: planet-surface's felling
+    /// rule (<see cref="PlanetWorld.Felled"/> and <see cref="TerrainStreamer.Fell"/>), so a tree's
+    /// collider goes in the same frame and the cut is kept through streaming and saves.
     /// </summary>
     public bool CutPlant()
     {
-        if (!FloraFinder.Nearest(_zone.Streamer, _cutHere, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out Vector3 plant, out float scale))
+        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out Vector3 plant, out float scale, out long id))
             return false;
+        if (!_zone.Planet.Felled.Add(id)) return false;
+        _zone.Streamer.Fell(id);
+        PlantsCut++;
         _cooldown = _rules.DigInterval * 2f;
         _suit.Worked();
-        int cx = (int)MathF.Floor(plant.X), cz = (int)MathF.Floor(plant.Z);
-        double canonX = Mathx.WrapX(cx, _zone.Planet.Width), canonZ = Mathx.Wrap(cz, _zone.Planet.Height);
-        CutPlants.Add(((int)canonX, (int)canonZ));
-        _cutHere.Add((cx, cz));
-        float surface = _zone.Planet.GroundHeight(canonX + 0.5, canonZ + 0.5);
-        _zone.Streamer.MarkDug(new[] { new RemovedCell(new Int3(cx, (int)MathF.Floor(surface), cz), CellMaterial.Soil) });
         double organics = Math.Round(_yields.OrganicsPerPlant * Math.Clamp(scale, 0.5f, 3f), 1);
         int carbon = Math.Max(1, (int)MathF.Round(_yields.CarbonPerPlant * Math.Clamp(scale, 0.5f, 3f)));
         _suit.Kit.Organics += organics;
@@ -188,14 +186,14 @@ public sealed class SurvivalTool
 /// <summary>Finds the plant nearest a look ray, from the planet streamer's own flora scatter.</summary>
 public static class FloraFinder
 {
-    public static bool Nearest(TerrainStreamer streamer, ICollection<(int x, int z)> cut, Vector3 eye, Vector3 dir, float reach, out Vector3 at, out float scale)
+    public static bool Nearest(TerrainStreamer streamer, Vector3 eye, Vector3 dir, float reach, out Vector3 at, out float scale, out long id)
     {
         at = default;
         scale = 0f;
+        id = 0;
         float best = float.MaxValue;
-        foreach (var (_, root, s) in streamer.FloraNear(eye, reach + 2f))
+        foreach (var (_, root, s, plantId) in streamer.FloraNear(eye, reach + 2f))
         {
-            if (cut.Contains(((int)MathF.Floor(root.X), (int)MathF.Floor(root.Z)))) continue;
             // A plant is a column from its root up to about twice its scale.
             Vector3 mid = root + Vector3.Up * Mathf.Min(1.2f, s);
             float along = (mid - eye).Dot(dir);
@@ -206,6 +204,7 @@ public static class FloraFinder
                 best = along;
                 at = root;
                 scale = s;
+                id = plantId;
             }
         }
         return best < float.MaxValue;

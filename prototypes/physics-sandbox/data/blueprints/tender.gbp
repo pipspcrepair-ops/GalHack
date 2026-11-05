@@ -1,0 +1,67 @@
+# Deck Tender: a small large-grid capital ship with a flat deck for small vessels to land on,
+# written by hand for the wind and parking tests.
+#
+# Large grid (2 m cells). x is starboard, y up, -z forward. A deck 14 m wide and 24 m long (y 0)
+# with the core in its middle and an open pilot seat at the bow; under it a keel (y -1) holding
+# the generator, two gyros and four lift jets firing down at its corners, with main engines aft,
+# retros forward and a side jet each way; four landing legs under the keel.
+#
+# About 200 t: lift margin about +2800 kN on a 9.8 m/s² world, 12 m/s² forward. In wind it is
+# pushed like any vessel, by its own mass; a vessel landed on its deck parks there and rides it.
+
+schema galhack.blueprint
+version 1
+name "Deck Tender"
+grid large
+mode capital
+gravity on
+
+paint deck base=3a3f47 texture=plates grime=2
+paint edge base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint hull base=ece3c8 grime=1
+paint belly base=2b2d42 grime=2
+
+# --- Deck (y 0), hazard stripes fore and aft, the core in the middle -------------------------
+block -3..3 0 -6 steel paint=edge
+block -3..3 0 -5..-1 steel paint=deck
+block -3..-1 0 0 steel paint=deck
+block 0 0 0 core
+block 1..3 0 0 steel paint=deck
+block -3..3 0 1..4 steel paint=deck
+block -3..3 0 5 steel paint=edge
+
+# --- Pilot seat at the bow ----------------------------------------------------------------------
+block 0 1 -6 cockpit
+
+# --- Keel (y -1): generator, gyros, lift jets at the corners ----------------------------------
+block -2 -1 -5 thruster rot=+z+y
+block 2 -1 -5 thruster rot=+z+y
+block -1..1 -1 -5 steel paint=belly
+block -2..2 -1 -4..-3 steel paint=belly
+block -2..-1 -1 -2 steel paint=belly
+block 0 -1 -2 generator
+block 1..2 -1 -2 steel paint=belly
+block -2..2 -1 -1..0 steel paint=belly
+block -2 -1 1 steel paint=belly
+block -1 -1 1 gyro
+block 0 -1 1 steel paint=belly
+block 1 -1 1 gyro
+block 2 -1 1 steel paint=belly
+block -2..2 -1 2..3 steel paint=belly
+block -2 -1 4 thruster rot=+z+y
+block 2 -1 4 thruster rot=+z+y
+block -1..1 -1 4 steel paint=belly
+
+# --- Main engines aft, retros forward, a side jet each way ------------------------------------
+block -2 -1 5 thruster
+block 2 -1 5 thruster
+block -2 -1 -6 thruster rot=+y+z
+block 2 -1 -6 thruster rot=+y+z
+block 3 -1 0 thruster rot=+y-x
+block -3 -1 0 thruster rot=+y+x
+
+# --- Landing legs ------------------------------------------------------------------------------
+block -1 -2 -3 gear
+block 1 -2 -3 gear
+block -1 -2 3 gear
+block 1 -2 3 gear

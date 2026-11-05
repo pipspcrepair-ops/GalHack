@@ -1,5 +1,6 @@
 using System;
 using GalHack.Physics;
+using GalHack.Physics.Engine;
 using GalHack.Terrain;
 using Planets.Gen;
 using PlanetSurface.Terrain;
@@ -54,6 +55,7 @@ public sealed class PlanetGround : IStuckField
         if (!Loaded(feet) || !Loaded(feet + N.Vector3.UnitY * shape.Height)) return false;
         if (body.Motion == Motion.Free)
             return _store.SampleDensity(feet + N.Vector3.UnitY * shape.FeetBelowOrigin) > 0f;
+        if (InsideSolid(feet, shape) != null) return true;
         return StuckResolver.IsInsideTerrain(_store, feet, Of(shape));
     }
 
@@ -73,8 +75,17 @@ public sealed class PlanetGround : IStuckField
     public float TopAt(Body body, float x, float z) =>
         _planet.GroundHeight(Mathx.WrapX(x, _planet.Width), Mathx.Wrap(z, _planet.Height)) + 0.5f;
 
+    /// <summary>Out of a trunk or a boulder a walker is inside (one grew a collider round it): where to stand beside it.</summary>
+    N.Vector3? InsideSolid(N.Vector3 feet, StuckShape shape) =>
+        _streamer.OutOfSolids(feet.ToGodot(), shape.Height, shape.Radius) is Godot.Vector3 beside ? beside.ToNumerics() : null;
+
     public bool TryFindOpen(Body body, N.Vector3 feet, StuckShape shape, out N.Vector3 openFeet)
     {
+        if (feet.Y > Floor && InsideSolid(feet, shape) is N.Vector3 beside)
+        {
+            openFeet = beside;
+            return true;
+        }
         if (feet.Y < Floor)
         {
             // Fallen out of the world: back on top of the ground straight above.

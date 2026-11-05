@@ -6,7 +6,7 @@ GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.
 
 ## Design
 
-The full game design document lives here: https://claude.ai/artifact/NayZQcRHckbPwmMSyygC97
+The full game design document lives here (private; ask for access): https://claude.ai/artifact/NayZQcRHckbPwmMSyygC97
 
 Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or stores ever disappears.
 
@@ -47,8 +47,24 @@ Shared code lives in [`shared/`](shared/): modules that prototypes compile in ra
 
 ## Requirements
 
-- [Godot 4.7.2 .NET](https://godotengine.org/download) (the "mono" / .NET build)
-- [.NET SDK](https://dotnet.microsoft.com/download) 8 or newer
+- [Godot 4.7.2 .NET](https://godotengine.org/download) (the "mono" / .NET build, not the standard one)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download): every project targets `net10.0`
+- Windows 10 or later (that's what everything is tested on); PowerShell for the scripts in `tools/`
+
+## Running a prototype
+
+Each folder under `prototypes/` is its own Godot project.
+
+**Simplest:** open Godot 4.7.2 .NET, choose **Import**, pick `prototypes/<name>/project.godot`, then press **Play** (F5). Godot builds the C# the first time. Each prototype's own README lists its controls.
+
+**With the repo's scripts:** `tools/` expects Godot and a portable .NET SDK inside a git-ignored `.tools/` folder at the repo root, so nothing is installed system-wide:
+
+- Godot .NET 4.7.2 for Windows unpacked to `.tools/godot/Godot_v4.7.2-stable_mono_win64/`
+- the .NET 10 SDK in `.tools/dotnet/`
+
+Then run `.\tools\godot.ps1 -Project prototypes/<name> -Play`.
+
+Steam co-op also needs Valve's `steam_api64.dll`, which isn't stored in the repo. Run `.\tools\steam-coop-test.ps1 -FetchSteamApi` to fetch and verify it.
 
 ## Testing
 

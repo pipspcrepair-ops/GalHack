@@ -11,25 +11,32 @@ namespace Invasions.Combat;
 // are deliberately simple placeholders; the boarding prototype's soldier AI, gunplay and A* replace
 // them by implementing the same interfaces (and IAssaultPlanner in Model/BreachPlanner.cs).
 
-public enum Faction { Defenders, Vharn }
+/// <summary>
+/// Which side of a fight something is on. Nobody hurts their own side. Only one faction invades a
+/// base at a time, so every invader, whoever they are, is on the invaders' side; which faction they
+/// belong to (factions.json) is <see cref="IInvaderTroop.Faction"/>.
+/// </summary>
+public enum Team { Defenders, Invaders }
 
-/// <summary>Anything a shot can hurt: players, soldiers, crew, turrets, base blocks, the garrison core.</summary>
+/// <summary>Anything a shot can hurt: players, soldiers, crew, turrets, base blocks, enemy base cores.</summary>
 public interface IDamageable
 {
-    Faction Faction { get; }
+    Team Team { get; }
     /// <summary>On foot, hover, small vessel or capital/base: picks the accuracy row in fire_control.json.</summary>
     TargetClass Class { get; }
     bool IsAlive { get; }
     Vector3 AimPoint { get; }
-    void TakeDamage(float amount, Vector3 from, Faction by);
+    void TakeDamage(float amount, Vector3 from, Team by);
 }
 
 public enum TroopState { Assaulting, Withdrawing, Gone, Dead }
 
-/// <summary>What the invasion layer needs from a Vharn foot soldier.</summary>
+/// <summary>What the invasion layer needs from an invader on foot.</summary>
 public interface IInvaderTroop
 {
     Node3D Body { get; }
+    /// <summary>The faction's design id (factions.json).</summary>
+    string Faction { get; }
     string Role { get; }
     TroopState State { get; }
     bool IsAlive { get; }
@@ -38,7 +45,7 @@ public interface IInvaderTroop
     /// <summary>The vehicle that brought them, and should take them home.</summary>
     IInvaderVehicle Ride { get; set; }
 
-    /// <summary>Fight toward the core, breaking through whatever is in the way.</summary>
+    /// <summary>Fight toward the target (the core, or the storage first for raiders), breaking through whatever is in the way.</summary>
     void Assault();
     /// <summary>Stop fighting and leave: to <paramref name="pickup"/>'s vehicle, or on foot out of the area if null.</summary>
     void Withdraw(IInvaderVehicle pickup);
@@ -70,15 +77,16 @@ public interface IInvaderVehicle
     void Extract(IInvaderTroop troop);
     /// <summary>Leave the area. Ignored if the driver is dead.</summary>
     void Depart();
-    /// <summary>A stranded vehicle's crew climb out to walk home. Returns where they stand.</summary>
+    /// <summary>A stranded vehicle's crew climb out to walk home. Returns where they stand (none, if they can't walk).</summary>
     IReadOnlyList<Vector3> BailOut();
 }
 
 /// <summary>Builds the invaders. The boarding prototype supplies its own factory.</summary>
 public interface ICombatFactory
 {
+    /// <summary>The plan names the faction and the body (apc, strider, growth, ...).</summary>
     IInvaderVehicle SpawnVehicle(VehiclePlan plan, VehicleRoute route);
-    IInvaderTroop SpawnTroop(string role, Vector3 position, Vector3 facing);
+    IInvaderTroop SpawnTroop(string faction, string role, Vector3 position, Vector3 facing);
 }
 
 /// <summary>Where a vehicle comes from and where it sets its troops down.</summary>

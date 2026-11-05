@@ -3,8 +3,17 @@ using System.Numerics;
 
 namespace GalHack.Physics;
 
-/// <summary>What a body is. The rules are the same for all of them; only toughness and who moves it differ.</summary>
-public enum BodyKind { Vessel, Wreck, Crate, Player, Creature }
+/// <summary>
+/// What a body is. The rules are the same for all of them; only toughness and who moves it differ.
+/// A base is a structure in base mode: it never flies and nothing ever moves it (<see cref="Motion.Fixed"/>).
+/// </summary>
+public enum BodyKind { Vessel, Wreck, Crate, Player, Creature, Base }
+
+/// <summary>
+/// A structure's class, for the rules that care which: vessels parked on a base or a capital ship
+/// ride their host and feel no wind of their own. None for anything that isn't a vessel.
+/// </summary>
+public enum StructureClass { None, Hover, Small, Capital }
 
 /// <summary>Who integrates a body's motion.</summary>
 public enum Motion
@@ -22,10 +31,16 @@ public enum Motion
     /// exactly force / mass. The engine adds what it is good at: tumbling, stacking, resting.
     /// </summary>
     Free,
+
+    /// <summary>
+    /// Nobody: it stays exactly where it was placed (a base). It is registered so things can land
+    /// on it, park on it and hit it, but no force, contact or rescue ever moves it.
+    /// </summary>
+    Fixed,
 }
 
 /// <summary>Where a force came from. Every force goes through <see cref="PhysicsWorld.AddForce"/> with one of these.</summary>
-public enum ForceKind { Gravity, Thrust, Weather, Walk, Contact, Other }
+public enum ForceKind { Gravity, Thrust, Weather, Walk, Contact, Other, Water }
 
 /// <summary>
 /// The room a body needs, for stuck checks: an upright capsule standing on its feet.
@@ -48,6 +63,15 @@ public sealed class BodySpec
 
     /// <summary>Drag coefficient × frontal area, m². Wind pushes with ½ρ·CdA·|v|·v.</summary>
     public float DragArea;
+
+    /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
+    public StructureClass Class;
+
+    /// <summary>
+    /// kg per cubic metre of the water it displaces: below water's density it floats, above it
+    /// sinks. NaN: the rules' density for its kind (physics.json, water.bodies).
+    /// </summary>
+    public float Density = float.NaN;
 
     /// <summary>Centre of mass in the body's own frame, m.</summary>
     public Vector3 CenterOfMass;
@@ -102,6 +126,30 @@ public sealed class Body
 
     /// <summary>CdA, m².</summary>
     public float DragArea { get; set; }
+
+    public StructureClass Class { get; set; }
+
+    /// <summary>kg/m³ of displaced water: buoyancy is water's density / this × weight × the share under water.</summary>
+    public float Density { get; set; }
+
+    /// <summary>
+    /// How the body sits in water this tick (the world updates it before anything reacts to it):
+    /// the share of it under the surface, and whether it is wholly under, the cue for a vitals
+    /// system that a suit must breathe its own oxygen.
+    /// </summary>
+    public WaterState Water { get; internal set; } = WaterState.Dry;
+
+    /// <summary>
+    /// The host this vessel is parked on: a base or a capital ship it has landed on, rests on with
+    /// gear or contact, or is docked to. A parked body feels no wind and, while landed, moves with its
+    /// host. Null when it isn't parked. See <see cref="PhysicsWorld.Park"/>.
+    /// </summary>
+    public Body ParkedOn { get; internal set; }
+
+    // The host's pose at the start of this tick, so a landed body can be carried by exactly the
+    // host's motion over the tick (turning and moving alike), whatever order the two step in.
+    internal Vector3 HostStartPosition;
+    internal Quaternion HostStartRotation = Quaternion.Identity;
 
     /// <summary>Centre of mass in the body's own frame, m.</summary>
     public Vector3 CenterOfMass { get; set; }
@@ -169,12 +217,15 @@ public sealed class Body
     /// <summary>Set by the mover each tick: standing on something.</summary>
     public bool OnFloor { get; set; }
 
+    /// <summary>The registered body this one rested on in its last move (a contact from below), or null.</summary>
+    public Body Underfoot { get; internal set; }
+
     // ---- The force path ---------------------------------------------------------------
 
     internal Vector3 PendingForce, PendingImpulse, PendingAngularImpulse;
     readonly Vector3[] _forceBy = new Vector3[ForceKinds];
     readonly Vector3[] _lastForceBy = new Vector3[ForceKinds];
-    internal const int ForceKinds = 6;
+    internal const int ForceKinds = 7;
 
     /// <summary>Total force from each source during the last completed tick, N. For tests and the HUD.</summary>
     public Vector3 LastForce(ForceKind kind) => _lastForceBy[(int)kind];

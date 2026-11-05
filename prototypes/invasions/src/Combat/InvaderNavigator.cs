@@ -14,7 +14,8 @@ namespace Invasions.Combat;
 /// - Smooths the route only where a straight line with the agent's full radius is clear, so it never
 ///   cuts a corner.
 /// - Holds at a radius-safe spot in front of a block it has to breach and lets the soldier attack it,
-///   instead of grinding into it.
+///   instead of grinding into it. Near its target with the way open, a rifleman with a clear line
+///   engages from where it stands instead of queueing for the last cell.
 /// - Light separation from other agents, cells they stand in cost a little extra when planning, and a
 ///   short look-ahead that steers round anything solid the grid doesn't know about.
 /// - Stuck detection: no progress for 1.5 s re-plans; still stuck, a side-step; still stuck, a hop to
@@ -33,7 +34,8 @@ public sealed class InvaderNavigator
 
     readonly CombatWorld _world;
     readonly CharacterBody3D _body;
-    readonly bool _mustTouch; // breachers walk right up to plant their charge
+    readonly bool _mustTouch; // breachers walk right up to plant a charge, cut or burst
+    readonly IAssaultPlanner _planner;
 
     AssaultPlan _plan;
     int _aim;
@@ -47,21 +49,34 @@ public sealed class InvaderNavigator
     int _stage, _sideSign = 1;
     Vector3 _sidestepDir, _avoidDir;
 
-    public InvaderNavigator(CombatWorld world, CharacterBody3D body, bool mustTouch)
+    public InvaderNavigator(CombatWorld world, CharacterBody3D body, bool mustTouch, IAssaultPlanner planner)
     {
         _world = world;
         _body = body;
         _mustTouch = mustTouch;
+        _planner = planner;
         _anchor = body.GlobalPosition;
     }
 
-    /// <summary>The block standing in the way (or the core, at the end of an assault).</summary>
+    /// <summary>The block standing in the way, or at the end of an assault the block it was sent for (the core, a container).</summary>
     public Block BreachTarget { get; private set; }
     /// <summary>Standing still on purpose, at an engagement position.</summary>
     public bool Holding { get; private set; }
     /// <summary>Reached the final point of a withdrawal.</summary>
     public bool Arrived { get; private set; }
     public float StuckTime => _stuckTime;
+
+    /// <summary>For tests and debugging: where the route stands.</summary>
+    public string Describe()
+    {
+        BaseGrid grid = Grid;
+        string route = _plan is { Found: true } p
+            ? $"route {p.Cells.Count} cells, aim {_aim} at {grid.ToLayout(p.Cells[System.Math.Min(_aim, p.Cells.Count - 1)])}, end {grid.ToLayout(p.Cells[^1])}"
+            : "no route";
+        Cell here = _world.CellAt(Position);
+        return $"{route}; goal {grid.ToLayout(_goal)}; here {grid.ToLayout(here)} obstacle={grid.IsObstacle(here)} block={grid.At(here)?.Kind}; " +
+               $"holding={Holding} target={BreachTarget?.Kind} stage={_stage}";
+    }
 
     BaseGrid Grid => _world.Model.Grid;
     Vector3 Position => _body.GlobalPosition;
@@ -167,10 +182,25 @@ public sealed class InvaderNavigator
         if (_aim >= cells.Count - 1)
         {
             if (_final is Vector3 f) return Finish(f);
-            // At the end of an assault route, beside the core: hit it until it falls.
-            BreachTarget = grid.Core;
+            // At the end of an assault route, beside its target (the core, or a container for raiders): hit it until it falls.
+            BreachTarget = grid.At(_goal);
             if (BreachTarget != null) Holding = InReach(BreachTarget, aimPoint);
             return aimPoint;
+        }
+        if (_final == null && firstBlocked >= cells.Count && grid.At(_goal) is { } goal &&
+            Flat(Position, _world.BlockAim(goal)) < ShootReach)
+        {
+            // Nearly there with nothing left in the way: the block it was sent for is already in reach.
+            // A rifleman with a clear line engages it from here rather than queue for the last cell
+            // (several raiders on one container, say). Anyone else keeps closing in, but is at the target
+            // now: one that must touch it, or one waiting its turn behind the others at the way in.
+            BreachTarget = goal;
+            Vector3 end = _world.CellCentre(cells[^1]);
+            if (InReach(goal, end))
+            {
+                Holding = true;
+                return end;
+            }
         }
         return aimPoint;
     }
@@ -181,8 +211,9 @@ public sealed class InvaderNavigator
         float toHold = Flat(Position, holdPoint);
         if (toHold < 0.9f) return true;
         if (_mustTouch) return false;
+        // Nothing built in the way (a crate or a hulk doesn't stop a round at a three-metre wall).
         return Flat(Position, _world.BlockAim(block)) < ShootReach &&
-               Grid.ClearLine(Ground(Position), Ground(holdPoint), 0.05f);
+               Grid.ClearLine(Ground(Position), Ground(holdPoint), 0.05f, blocksOnly: true);
     }
 
     Vector3? Finish(Vector3 final)
@@ -204,7 +235,7 @@ public sealed class InvaderNavigator
         foreach (IInvaderTroop t in _world.Troops)
             if (t.Body != _body && t.IsAlive && !t.IsGone && IsInstanceValid(t.Body)) occupied.Add(_world.CellAt(t.Body.GlobalPosition));
         Cell from = grid.Clamp(_world.CellAt(Position));
-        _plan = _world.Planner.Plan(grid, from, _goal, c => occupied.Contains(c) ? 2.5 : 0);
+        _plan = _planner.Plan(grid, from, _goal, c => occupied.Contains(c) ? 2.5 : 0);
         _aim = 0;
     }
 

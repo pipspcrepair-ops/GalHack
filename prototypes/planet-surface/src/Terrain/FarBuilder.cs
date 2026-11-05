@@ -22,6 +22,9 @@ public sealed class FarJob
     public Color[] WaterColors;     // alpha 1 on the channel, 0 on the ring past it: the shader frays the edge there
     public int[] WaterIndices;
     public readonly List<(Flora Kind, float[] Buffer, int Count)> Flora = new();
+
+    /// <summary>The solid flora (trunks, boulders) of a level-0 chunk, for the colliders near the player. Null at coarser levels.</summary>
+    public List<FloraSolid> Solids;
     public double Milliseconds;
     public Exception Error;
 }
@@ -31,17 +34,33 @@ public sealed class FarJob
 /// (planet generator heights plus stamps) at 2, 4 or 8 m, coloured with the same palette, with
 /// skirts that hide cracks between levels of detail, river water, and flora scatter. Flora is
 /// laid out here for the voxel area too, and skips spots that have been dug, covered by a pad or
-/// opened by a cave mouth, so nothing ever floats.
+/// opened by a cave mouth, so nothing ever floats. At the finest level it also lists the solid
+/// flora (trunks and boulders, <see cref="FloraSolidRules"/>) for the colliders near the player,
+/// and leaves out trees that have been felled.
 /// </summary>
 public static class FarBuilder
 {
     public const int Size = 128;           // metres: eight voxel columns
-    const float ScatterCell = 4f;
+    public const float ScatterCell = 4f;
+    public const int ScatterCells = (int)(Size / ScatterCell);
+
+    /// <summary>Which flora is solid (data/flora-solids.json). Null: nothing is.</summary>
+    public static FloraSolidRules Solids;
 
     public static float Step(int lod) => lod switch { 0 => 2f, 1 => 4f, _ => 8f };
 
+    /// <summary>
+    /// A scatter instance's id: its 4 m scatter cell, canonical. The same instance draws the same
+    /// random numbers at every level of detail, so the id holds across streaming and reloads.
+    /// </summary>
+    public static long ScatterId(int fx, int fz, int gi, int gj) => Key(fx * ScatterCells + gi, fz * ScatterCells + gj);
+
+    /// <summary>The far chunk a scatter id belongs to.</summary>
+    public static (int fx, int fz) ChunkOfScatter(long id) => ((int)(id >> 32) / ScatterCells, (int)(uint)id / ScatterCells);
+
     /// <param name="dug">columns (canonical x, z) whose surface has been dug: no flora there</param>
-    public static void Build(FarJob job, PlanetTerrainSource source, GroundPalette palette, IReadOnlySet<long> dug)
+    /// <param name="felled">scatter ids of trees that have been felled: gone for good</param>
+    public static void Build(FarJob job, PlanetTerrainSource source, GroundPalette palette, IReadOnlySet<long> dug, IReadOnlySet<long> felled = null)
     {
         try
         {
@@ -95,7 +114,7 @@ public static class FarBuilder
             job.Indices = indices.ToArray();
 
             BuildRiverWater(job, n, g, step, level, river);
-            if (job.Lod <= 1) Scatter(job, source, palette, dug, n, g, step, height, river, up);
+            if (job.Lod <= 1) Scatter(job, source, palette, dug, felled, n, g, step, height, river, up);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
         catch (Exception e)
@@ -195,10 +214,12 @@ public static class FarBuilder
     /// Scatter on a jittered 4 m grid. Every candidate draws the same random numbers at every
     /// level of detail, so trees stay put when a chunk sharpens; the coarser level skips small kinds.
     /// </summary>
-    static void Scatter(FarJob job, PlanetTerrainSource source, GroundPalette pal, IReadOnlySet<long> dug,
+    static void Scatter(FarJob job, PlanetTerrainSource source, GroundPalette pal, IReadOnlySet<long> dug, IReadOnlySet<long> felled,
         int n, int g, float step, float[] height, bool[] river, float[] up)
     {
-        int cells = (int)(Size / ScatterCell);
+        int cells = ScatterCells;
+        FloraSolidRules solids = job.Lod == 0 ? Solids : null;
+        if (solids != null) job.Solids = new List<FloraSolid>();
         var rng = new Rng(Hash.Of(pal.Map.Spec.Seed, job.Fx, job.Fz, 0x5CA7));
         var clump = new Fractal(Hash.Of(pal.Map.Spec.Seed, 0x636C756D), 70, 3);
         var buffers = new Dictionary<Flora, List<float>>();
@@ -209,6 +230,8 @@ public static class FarBuilder
             float lx = (gi + rng.NextFloat()) * ScatterCell, lz = (gj + rng.NextFloat()) * ScatterCell;
             float pick = rng.NextFloat(), chance = rng.NextFloat(), size = rng.NextFloat(), turn = rng.NextFloat(), shade = rng.NextFloat();
             double x = x0 + lx, z = z0 + lz;
+            long id = ScatterId(job.Fx, job.Fz, gi, gj);
+            if (felled != null && felled.Contains(id)) continue; // felled: gone, at every level of detail
 
             Biome biome = pal.BiomeAt(x, z);
             FloraRule[] rules = BiomeLook.FloraOf(biome);
@@ -254,6 +277,10 @@ public static class FarBuilder
             list.Add(0f); list.Add(scale); list.Add(0f); list.Add(h - 0.25f);
             list.Add(-sin); list.Add(0f); list.Add(cos); list.Add(lz);
             list.Add(tint.R); list.Add(tint.G); list.Add(tint.B); list.Add(glow);
+
+            // Trunks and boulders are solid: their colliders, in planet coordinates.
+            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, h - FloraSolidRules.Sink, (float)z), scale, angle, out FloraSolid solid))
+                job.Solids.Add(solid);
         }
         foreach (var (kind, list) in buffers) job.Flora.Add((kind, list.ToArray(), list.Count / 16));
     }

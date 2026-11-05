@@ -73,6 +73,8 @@ public partial class SurfaceZone : Node3D
         SliceRules.PlanetRules p = Data.Rules.Planet;
         Spec ??= PlanetSpec.Roll(p.Seed, Enum.Parse<Archetype>(p.Archetype), p.Variant);
         PlanetTerrain.ConfigureWorldBounds();
+        // Trunks and boulders are solid (planet-surface's rules): colliders in the near rings.
+        PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(GameData.Proto("planet-surface", "data", "flora-solids.json"));
 
         Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
         AddChild(Sky);

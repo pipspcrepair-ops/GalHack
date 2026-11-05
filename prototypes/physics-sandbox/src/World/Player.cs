@@ -48,6 +48,12 @@ public sealed class Player
 
     public float HealthShare => Health.Current / Health.Max;
 
+    /// <summary>
+    /// Head under water: the vitals hook. The suit breathes its own oxygen while this is set (the
+    /// sandbox has no oxygen to run down; its HUD shows the flag).
+    /// </summary>
+    public bool Underwater => Body.Water.Underwater;
+
     /// <summary>Raised when the player joins or lets go of a ship, or passes through its airlock.</summary>
     public event Action<string> Moved;
 
@@ -168,10 +174,11 @@ public sealed class Player
         }
         _wasOutside = Body.Frame != null && Body.OnOuterHull;
 
-        // Mag boots hold you to the face underfoot out on a hull; anywhere without gravity you float.
+        // Mag boots hold you to the face underfoot out on a hull; anywhere without gravity you float,
+        // and in deep water you swim (no floor to snap to either way).
         Binding.MagBoots = _wasOutside && rules.MagBoots;
-        Binding.Floating = !Binding.MagBoots && World.Physics.GravityAt(Body).LengthSquared() < 1e-6f;
-        Legs.Floating = Binding.Floating;
+        Legs.Floating = !Binding.MagBoots && World.Physics.GravityAt(Body).LengthSquared() < 1e-6f;
+        Binding.Floating = Legs.Floating || Legs.Swimming;
         Legs.Yaw = Yaw;
         Legs.Pitch = Pitch;
 

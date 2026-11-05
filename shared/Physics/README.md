@@ -53,11 +53,11 @@ Core never calls into a game system. What a game knows (its flight model, its te
   | 1 | `World`: terrain, rocks, POIs | World / Terrain = 1 everywhere |
   | 2 | `Hull`: one body per structure (vessels, bases, wrecks) | ShipHull / Structure = 2 everywhere |
   | 4 | `Interior`: only ever inside a cabin world (its own physics space) | walkable-ship's Interior = 4 |
-  | 8 | `Water`: probe-only surfaces | ship-handling's Water was 4 |
+  | 8 | `Water`: water surfaces, seen only by hover probes (the water itself is a volume, below) | ship-handling's Water was 4 |
   | 16 | `Player` | terrain-digging's Player was 4 |
   | 32 | `Props`: crates, creatures, loose cargo | terrain-digging's Props was 8 |
 
-  Masks: `VesselMask` (World, Hull: players and props get out of a hull's way, so a crate on the deck never stops a lift-off), `WreckMask`, `PlayerMask`, `PropMask`, `ProbeMask` (World, Hull, Water), `CabinMask`.
+  Masks: `VesselMask` (World, Hull: players and props get out of a hull's way, so a crate on the deck never stops a lift-off), `WreckMask`, `PlayerMask`, `PropMask`, `ProbeMask` (World, Hull, Water: hover engines ride water), `GearMask` (World, Hull: legs stand on solid things only), `CabinMask`.
 - **Gravity:** one `ZoneGravity` per zone (uniform, nothing above the atmosphere ceiling) and one `CoreGravity` per structure core: on by default, toggleable, costs no power, and pulls toward the structure's own floor on bodies in its cabin world. With the core off, the zone's gravity reaches into the cabin, turned into the structure's frame (none in space). Riders out on the hull in mag boots are pulled toward the face under their feet instead (see riding).
 
 ## One tick
@@ -65,15 +65,19 @@ Core never calls into a game system. What a game knows (its flight model, its te
 `PhysicsHost.Step` runs the world in a fixed order, bodies always in registration order, so the same inputs give bit-identical trajectories:
 
 1. `BeginTick`; free bodies sync from the engine (and report impacts: velocity changes their forces don't explain, along the contact normal).
-2. `ApplyForces`: each body's own drive (thrust, walking), then gravity from its zone or core, then the force providers (weather), then reactors (legs gripping against the wind, a landed ship knocked loose by a tornado).
+2. `ApplyForces`: each body's own drive (thrust, walking), then gravity from its zone or core and the water's buoyancy and drag (each body's `Water` state is updated here, before anything reacts to it), then the force providers (weather), then reactors (legs gripping against the wind, swimmers' strokes, a landed ship knocked loose by a tornado).
 3. `Integrate`: kinematic bodies get `v += ΣF/m·dt + ΣJ/m`.
-4. Kinematic bodies move with collisions: hulls first, then creatures, then characters (a rider's hull has already moved). Contacts go to `ResolveContacts`.
+4. Kinematic bodies move with collisions: hulls first, then creatures, then characters (a rider's hull has already moved). Contacts go to `ResolveContacts`. Then `CarryParked`: every landed vessel parked on a host moves by exactly what its host did this tick.
 5. `EndTick`: controllers react (landing), queued craters are cut, the stuck guard checks every body.
 6. Free bodies get their summed force and impulse handed to the engine, which integrates them in its own step right after (its gravity and damping are off, so acceleration is still exactly force / mass). `FinishTick` clears the sums; anything added between ticks lands in the next one.
 
 ## The rules
 
-**Bodies.** `BodyKind` is Vessel, Wreck, Crate, Player or Creature; the rules are the same for all of them. `Motion.Kinematic` bodies are integrated by the core and swept by a mover (vessels fly by the handling model; characters walk); `Motion.Free` bodies are rigid bodies the engine tumbles and stacks, fed by the same force sums.
+**Bodies.** `BodyKind` is Vessel, Wreck, Crate, Player, Creature or Base; the rules are the same for all of them. `Motion.Kinematic` bodies are integrated by the core and swept by a mover (vessels fly by the handling model; characters walk); `Motion.Free` bodies are rigid bodies the engine tumbles and stacks, fed by the same force sums; `Motion.Fixed` bodies (bases) are never moved by anything: no gravity, wind or rescue, and a hit on one is a hit on something fixed to the planet (infinite mass). A vessel also carries its `StructureClass` (hover, small or capital), for the rules below that care.
+
+**Wind and shelter.** Wind pushes players, creatures, crates, wrecks and hover, small and capital vessels alike, by ½ρ·CdA·|w|·w, so acceleration goes as 1/mass: a 200 t capital ship is pushed like any vessel, just less. Who is sheltered from weather is one rule, `PhysicsWorld.IsSheltered`, in the one force path: `AddForce` and `AddImpulse` drop any `ForceKind.Weather` push on a sheltered body, whichever provider sends it, and providers may ask first to skip the work. Sheltered are a base (structures in base mode never move in wind), a vessel parked on a base or a capital ship, and a rider inside a structure's interior.
+
+**Parking on a base or a capital ship.** A vessel is parked on a host (`Body.ParkedOn`; a host is a base or a capital ship) when it has landed on it, rests on it on its gear or its belly with nobody pushing the controls, or is docked to it (`VesselController.Dock`). Vessel controllers park and unpark themselves: settling onto a host's deck, placed down landed on one, lifting off. Parked, it feels no wind of its own. Landed (not simulating), it rides its host exactly: each tick `CarryParked` moves it by the host's whole motion over the tick, turning included, and gives it the host's velocity at that point, so it lifts off with the deck's motion. The host and what it carries ignore each other in the engine (a collision exception), so the deck's sweep never runs into what rides it. Landing on a moving deck counts its speed against the deck's, not the ground's.
 
 **Damage.** One formula, `Impacts.Damage`: mass (t) × (closing speed − 8)² × 0.001, zero at or below 8 m/s, never capped and never scaled down. Ramming uses the reduced mass and both sides take it. Bodies differ only in toughness, `Integrity` per tonne (hull 4, crate 4, player 0.5: a 30 m fall costs about half a player's health). A `DamageSink` can route damage into a game's own health; the only floor anywhere is the tornado fling's 15%, which the weather code passes to the player's health.
 
@@ -98,7 +102,15 @@ Why one mechanism, and not the engine's moving-platform velocity for the outside
 
 **Stuck-safety everywhere.** `StuckGuard` checks every registered body every tick against every `IStuckField` (terrain's density field, each structure's blocks), and straight away after `NotifyChanged` (terrain and structure edits) and `NotifyZoneLoaded`. Inside for two ticks in a row means moved to the nearest open space, preferring up and preferring somewhere to stand: each field's own suggestion first, then a shared 1 m grid search up to 14 m away, then the top of the column. Structure bodies are checked at their centre of mass against terrain and lifted straight up. Riders are checked along their own up (in mag boots it may point sideways or down) against their own ship's blocks, and out on the hull against the terrain too; one found inside its own ship is moved within it and stays aboard, one found inside anything else lets go of the ship. A field decides what "inside" means: the sandbox's terrain field also counts falling off the edge of the world (below the top of the atmosphere; nothing falls in space) and is stricter for rigid boxes (centre below the surface), whose engine can't push them back out of a thin mesh shell.
 
-**Vessels.** `VesselController` is ship-handling's vessel rules, ported: the flight rules (`IFlightRules`, e.g. the handling model) say what velocity and orientation the controls ask for, and the controller turns the difference into a thrust force on the force path, so wind and gravity add up the same way. Hover engines (`HoverController`, velocity servo with look-ahead) and landing gear (`LandingGear`, self-deploying, stiff probe suspension) are ported unchanged, except that a landed ship now tilts to sit on its feet on uneven ground (at most 12°). A landed ship stops simulating until thrust, a ram or a strong enough tornado wakes it; a parked ship knocked loose brakes back to a stop instead of holding course away.
+**Vessels.** `VesselController` is ship-handling's vessel rules, ported: the flight rules (`IFlightRules`, e.g. the handling model) say what velocity and orientation the controls ask for, and the controller turns the difference into a thrust force on the force path, so wind and gravity add up the same way. **A flying vessel never orients itself:** in air and in space it keeps whatever attitude the pilot leaves it in. There is no horizon assist and no self-levelling anywhere in the flight path; assist only brakes (to a stop, or holding course on the autopilot and in cruise). Two things still level: hover vessels, which aren't flying vessels, keep themselves level over the ground they ride on, and a landing ship settles onto its gear. Hover engines (`HoverController`, velocity servo with look-ahead) and landing gear (`LandingGear`, self-deploying, stiff probe suspension) are ported unchanged, except that a landed ship now tilts to sit on its feet on uneven ground (at most 12°). A landed ship stops simulating until thrust, a ram or a strong enough tornado wakes it; a parked ship knocked loose brakes back to a stop instead of holding course away.
+
+**Water: a volume you go into.** A zone's `IWaterField` (`world.Water`) says where water is: a surface height over each column that holds it (the planet generator's sea level and rivers, the sandbox's lake), decided by the natural ground alone, so digging never moves water. Everything below the surface and above the ground is water, and every body in the zone's world goes into it; only hover probes see the surface itself (the `Water` layer). Each tick a body's `WaterState` is the share of its height (feet to top, upright) under the surface, and the water adds, through the one force path as `ForceKind.Water`:
+- buoyancy, the displaced water's weight: water density / the body's density × its weight × that share, against gravity. Densities are data (`water.bodies` in physics.json, or a body's own `BodySpec.Density`): a crate lighter than water floats with that share under, a heavier one sinks to the bed;
+- drag, ½ρ·(CdA × `dragScale`)·|v|·v plus `damping`, times the share, applied implicitly (the velocity goes to v / (1 + k·dt)), so a body can hit the water at any speed and is only ever slowed.
+
+Vessels: one that holds itself up (it can lift off) holds its weight less its buoyancy, so it flies underwater exactly as in air, only crawling through the drag; one that can't (no power, too heavy) has its engines flat out already, and sinks or floats by its density (vessels 1600 kg/m³: they sink) until its legs, which see only solid things, settle it on the bed. Hover vessels ride the surface while their hover is powered, as they ride the ground. Walkers (`WalkController`) wade until `swimDepth` of them is under, then swim: Move strokes along the heading and Vertical goes up or down (Space and Ctrl), the strokes holding against weight, buoyancy and drag up to `swimGrip`; left alone, a swimmer drifts and floats up (players are 800 kg/m³, so they float with their head out). `WaterState.Underwater` (wholly under) is the vitals hook: the suit breathes its own oxygen. Being in water is never being stuck: the stuck guard asks only about solid matter.
+
+Swimming's feel follows Empyrion's (used as a reference only): you float unless you dive, two keys take you down and up, and you swim at about 2 m/s, 3 sprinting ([Empyrion wiki: Movement and Navigation](https://empyrion.fandom.com/wiki/Guide/Movement_and_Navigation)).
 
 ## API in a few lines
 
@@ -115,6 +127,12 @@ Riding.EnterCabin(rider, ship); Riding.LeaveCabin(rider);            // join a s
 Riding.LetGo(rules.Riding, rider, jumped, touching, distance, dt);   // the outer hull's let-go rule
 Riding.SetUp(walker, faceNormal);                                    // mag boots: a new down
 world.NotifyChanged(region);  world.NotifyZoneLoaded();              // wake and stuck-check
+world.IsSheltered(b);                                                // does weather reach it at all?
+world.Park(vessel, host); world.Unpark(vessel); vessel.ParkedOn;     // on a base or capital ship: no wind, rides it
+vesselController.Dock(world, vessel, host);                          // docking clamps: frozen and parked
+world.Water = myWaterField;                                          // IWaterField: seas, rivers, lakes
+b.Water.Fraction; b.Water.Underwater;                                // how it sits in water (the vitals hook)
+WaterForces.Buoyancy(...); WaterForces.Drag(...);                    // the formulas, for a game's own controller
 ```
 
 ## Known limits
@@ -126,3 +144,6 @@ world.NotifyChanged(region);  world.NotifyZoneLoaded();              // wake and
 - Mag boots handle edges up to about 90° and walls a step or more tall. Crossing a step's edge in mag boots, the up tips toward the edge for a moment (up to about 30° on the test stair); the camera eases it.
 - The weather force module's tornado lift carries the weight of its own 9.8 m/s² constant, not the zone's gravity; they agree on every planet so far.
 - Hover and gear numbers moved here from handling.json; ship-handling's own prototype still reads its copy.
+- Only a landed (or docked) parked vessel is carried by its host. One resting on a moving deck while still simulating (the moments before it settles, or after a knock) moves itself, and a vessel lifting off a moving deck keeps the deck's velocity but its assist then brakes against the ground, not the deck.
+- A base is fixed for good: switching a structure between base and capital mode at run time (building's core toggle) isn't wired to the physics body yet.
+- Water is still: no currents, waves or flow into dug holes. Buoyancy acts at the centre of mass and the submerged share is taken from a body's upright height, so a floating wreck doesn't right itself and a tumbling crate's share is approximate. Riders in a cabin world don't feel the water outside their ship.

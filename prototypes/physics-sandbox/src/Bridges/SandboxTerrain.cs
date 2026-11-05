@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using GalHack.Physics;
 using TerrainDigging.Terrain;
 
 namespace PhysicsSandbox.Bridges;
@@ -9,8 +10,8 @@ namespace PhysicsSandbox.Bridges;
 /// The sandbox's landscape, behind terrain-digging's public <see cref="ITerrainSource"/>: the
 /// same interface the planet generator will implement, so the two plug together later. Built
 /// for physics, with real relief: rolling hills, a long rocky ridge to the north, a steep bank
-/// dropping into a basin to the east, a level landing field at the centre and a gentle lane to
-/// the south for the hover rover. Rim mountains hide the edge of the 256 m world.
+/// dropping into a basin to the east with a deep lake in it, a level landing field at the centre
+/// and a gentle lane to the south for the hover rover. Rim mountains hide the edge of the 256 m world.
 ///
 /// Like terrain-digging's generator it uses only integer hashing and exact float operations, so
 /// every machine generates the same cells and edits always land in the same places.
@@ -29,9 +30,20 @@ public sealed class SandboxTerrain : ITerrainSource
     /// <summary>The steep bank runs north to south about this far east.</summary>
     public const float BankX = 52f;
 
+    /// <summary>
+    /// The lake in the basin below the bank: an oval <see cref="LakeRadiusX"/> by
+    /// <see cref="LakeRadiusZ"/> m round its centre, its surface at <see cref="LakeLevel"/>, a level
+    /// bed <see cref="LakeDepth"/> m down in the middle rising smoothly to its shore, and a gentle
+    /// beach beyond. Deep enough to dive 10 m and to sink a vessel in.
+    /// </summary>
+    public static readonly Vector2 LakeCenter = new(73f, 0f);
+    public const float LakeRadiusX = 16f, LakeRadiusZ = 18f, LakeLevel = 11.5f, LakeDepth = 12f;
+
     public int Seed { get; }
-    public string GeneratorId => "physics-sandbox/1";
-    public float WaterLevel => -100f; // a dry world: no water plane anywhere
+    public string GeneratorId => "physics-sandbox/2";
+
+    /// <summary>The lake's level. Only columns inside its shore hold water (<see cref="WaterSurfaceAt"/>).</summary>
+    public float WaterLevel => LakeLevel;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; } = Array.Empty<PoiSite>();
 
     readonly uint _hills, _ridge, _soil, _rim, _bank;
@@ -74,7 +86,34 @@ public sealed class SandboxTerrain : ITerrainSource
         // Rim mountains: the cut faces at the world edge face outwards, where nobody looks.
         float edge = MathF.Max(MathF.Abs(x), MathF.Abs(z));
         h += Noise.SmoothStep(92f, 124f, edge) * (24f + 10f * Noise.Value2(x * 0.045f, z * 0.045f, _rim));
+
+        // The lake: inside its shore the ground comes down to its bed; a beach blends the basin
+        // floor down to the waterline beyond it. Nothing outside the beach changes.
+        float s = LakeReach(x, z);
+        if (s < 1.3f)
+        {
+            float bed = LakeLevel - LakeDepth * (1f - Noise.SmoothStep(0.35f, 1f, s));
+            h -= MathF.Max(0f, h - bed) * (1f - Noise.SmoothStep(1f, 1.3f, s));
+        }
         return MathF.Min(h, 74f);
+    }
+
+    /// <summary>How far out from the lake's centre a point is, in shore radii: under 1 is inside its shore.</summary>
+    public static float LakeReach(float x, float z)
+    {
+        float dx = (x - LakeCenter.X) / LakeRadiusX, dz = (z - LakeCenter.Y) / LakeRadiusZ;
+        return MathF.Sqrt(dx * dx + dz * dz);
+    }
+
+    /// <summary>
+    /// The water surface over a column, if it holds water: inside the lake's shore, where the
+    /// natural ground lies below the lake's level. Decided by the natural ground alone (terrain-
+    /// digging's rule 6), so digging never moves water.
+    /// </summary>
+    public bool WaterSurfaceAt(float x, float z, out float surface)
+    {
+        surface = LakeLevel;
+        return LakeReach(x, z) < 1f && SurfaceHeight(x, z) < LakeLevel;
     }
 
     static float Distance(float x, float z, Vector2 p)
@@ -126,5 +165,23 @@ public sealed class SandboxTerrain : ITerrainSource
                         : CellMaterial.DeepRock;
                 }
             }
+    }
+}
+
+/// <summary>
+/// The sandbox's water, as the shared physics module sees it: its lake (<see cref="SandboxTerrain.WaterSurfaceAt"/>).
+/// A quick bounding check first, so bodies nowhere near it cost almost nothing.
+/// </summary>
+public sealed class LakeWater : IWaterField
+{
+    readonly SandboxTerrain _terrain;
+
+    public LakeWater(SandboxTerrain terrain) => _terrain = terrain;
+
+    public bool SurfaceAt(Vector3 point, out float surface)
+    {
+        surface = SandboxTerrain.LakeLevel;
+        if (point.Y > SandboxTerrain.LakeLevel + 50f || SandboxTerrain.LakeReach(point.X, point.Z) >= 1f) return false;
+        return _terrain.WaterSurfaceAt(point.X, point.Z, out surface);
     }
 }
