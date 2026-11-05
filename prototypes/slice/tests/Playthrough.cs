@@ -131,6 +131,7 @@ public sealed class Playthrough
 
         double start = Game.Stats.Seconds;
         foreach (int x in Drive.ClimbOut(b)) yield return x;
+        foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         GD.Print($"  (out: feet {Game.Survivor.WorldFeet}, the way out ends at {b.Outside}, ground there {Game.Zone.GroundAt(b.Outside.X, b.Outside.Z).Y:F2}, top step {b.StairTop})");
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f && Game.Survivor.Body.OnFloor,
             $"{label}up the stairwell's {b.Steps} steps to the surface on foot ({Game.Stats.Seconds - start:F0} s)");
@@ -210,8 +211,10 @@ public sealed class Playthrough
             }
         foreach (int x in Drive.WalkTo(b.Outside, 0.8f, 90f, dig: false)) yield return x;
         foreach (int x in Drive.ClimbIn(b)) yield return x;
+        foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         check(Game.Survivor.WorldFeet.DistanceTo(b.CryoFront) < 1.0f, $"{label}back down the stairs into the chamber");
         foreach (int x in Drive.ClimbOut(b)) yield return x;
+        foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f, $"{label}and out again, with no snag");
     }
 

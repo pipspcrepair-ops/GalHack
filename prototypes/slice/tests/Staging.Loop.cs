@@ -73,12 +73,32 @@ public sealed partial class Staging
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         var w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
-        var prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Species.Flies && c.Species.Plan != Wildlife.BodyPlan.Giant).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).First();
-        foreach (int x in _drive.WalkTo(w.FromPatch(prey.Position), 12f, 60f)) yield return x;
+        // An upright creature (a walker or a hopper), shot from closer whenever a shot doesn't land.
+        var prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is Wildlife.BodyPlan.Walker or Wildlife.BodyPlan.Hopper)
+            .OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).First();
+        float close = 20f;
         for (int i = 0; i < 40 && !prey.Dead; i++)
+        {
+            if (w.FromPatch(prey.Position).DistanceTo(_game.Survivor.WorldFeet) > close)
+            {
+                foreach (int x in _drive.WalkTo(w.FromPatch(prey.Position), close * 0.6f, 30f)) yield return x;
+                continue;
+            }
+            float before = prey.Health;
             foreach (int x in Play.ShootAt(() => w.FromPatch(prey.Rig.BoundsCenter))) yield return x;
+            if (prey.Health >= before) close = MathF.Max(6f, close * 0.6f);
+        }
         Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Creature == prey);
-        if (body == null) yield break;
+        if (body == null)
+        {
+            // STAGING: the hunt didn't land (the creature out of reach): a body set down in front
+            // of the castaway with what that creature drops, to show the loot view.
+            Vector3 at = _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z) + _game.Survivor.WorldLook() * 2.5f;
+            at = _game.Zone.GroundAt(at.X, at.Z);
+            int[] size = _game.Zone.Data.Rules.Containers.Corpse;
+            body = _game.Zone.Loot.Create(LootKind.Corpse, $"{prey.Species.CommonName} body", at, size[0], size[1], new GalHack.Items.Bill().Add("meat", 8).Add("hide", 2));
+            GD.Print("STAGING: the hunt didn't land; a body set down to show the loot view");
+        }
         foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;
         foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;

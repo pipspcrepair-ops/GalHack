@@ -84,7 +84,7 @@ public sealed class Driver
     /// Walks (sprinting when there is stamina) to within a distance of a point, jumping and using
     /// the jetpack over anything that stops it. Returns when there, or after the time limit.
     /// </summary>
-    public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f, bool sprint = true, bool dig = true)
+    public IEnumerable<int> WalkTo(Vector3 target, float within, float seconds = 90f, bool sprint = true, bool dig = true, bool hop = true)
     {
         // The menu takes the mouse: close it to look where you walk.
         if (Game.Menu.IsOpen)
@@ -117,7 +117,8 @@ public sealed class Driver
             float moved = (feet - last).Length();
             last = feet;
             stuck = moved < 0.02f ? stuck + 1f / 60f : 0f;
-            if (stuck > 0.4f) jet = 0.7f;
+            // Stuck against something: a hop on the jetpack, or on the stairs only a little jump.
+            if (stuck > 0.4f) jet = hop ? 0.7f : 0.12f;
             // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
@@ -132,7 +133,7 @@ public sealed class Driver
             // Over an edge: the jetpack brakes the fall, as a careful player would.
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
             // Down in a hole, the way on well above: up on the jetpack, as a player would.
-            bool climb = target.Y - feet.Y > 2.5f && flat < 20f;
+            bool climb = hop && target.Y - feet.Y > 2.5f && flat < 20f;
             Controls.Hold(Key.Space, jet > 0f || falling || climb);
             jet -= 1f / 60f;
             yield return 0;
@@ -275,7 +276,8 @@ public sealed class Driver
             // At a walk, as a player takes stairs; again if it slid past.
             for (int tries = 0; tries < 3; tries++)
             {
-                foreach (int x in WalkTo(way[i], 0.45f, 30f, sprint: false, dig: false)) yield return x;
+                // No hops on the stairs: a jump there lands on the kerb or the roof beside them.
+                foreach (int x in WalkTo(way[i], 0.45f, 30f, sprint: false, dig: false, hop: false)) yield return x;
                 Vector3 at = Game.Survivor.WorldFeet;
                 if (new Vector2(at.X - way[i].X, at.Z - way[i].Z).Length() <= 0.8f) break;
             }
