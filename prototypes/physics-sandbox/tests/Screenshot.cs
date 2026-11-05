@@ -16,7 +16,7 @@ namespace PhysicsSandbox;
 /// wreck in the crater it cut), sever (an engine pod shot off and tumbling away), hull (a player
 /// riding the roof of the flying Corsair), spacewalk (a player in mag boots standing on the side of
 /// the Corsair in orbit), cabin (inside the cabin mid-roll), tornado (a crate and the player lifted
-/// by a funnel).
+/// by a funnel), underwater (diving in the lake: a Corsair held under, crates sunk and floating).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -136,6 +136,23 @@ public partial class Screenshot : Node
                 _captureTick = 150;
                 break;
             }
+            case "underwater":
+            {
+                // Diving in the lake, looking north: a Corsair held under by its pilot, an ore crate
+                // sunk on the bed, a supply crate floating on the bright surface above.
+                N.Vector2 lake = SandboxTerrain.LakeCenter;
+                float level = SandboxTerrain.LakeLevel;
+                Player.PlaceOutside(new N.Vector3(lake.X - 1f, level - 6.5f, lake.Y + 9f));
+                Player.Yaw = 0.15f;
+                Player.Pitch = 0.12f;
+                Corsair.Vessel.Place(Corsair.Body, new N.Vector3(lake.X + 1.5f, level - 6f, lake.Y - 4f), 0.9f);
+                Corsair.Binding.Teleport();
+                Crate.Spawn(W, new N.Vector3(lake.X - 3f, level - 9f, lake.Y + 1f), 2, "ore");
+                Crate.Spawn(W, new N.Vector3(lake.X + 0.5f, level + 0.2f, lake.Y + 4f), 1);
+                Crate.Spawn(W, new N.Vector3(lake.X - 2.5f, level + 0.2f, lake.Y + 5.5f), 3);
+                _captureTick = 110;
+                break;
+            }
         }
     }
 
@@ -159,6 +176,10 @@ public partial class Screenshot : Node
                 break;
             case "cabin":
                 Corsair.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -0.5f), new Vector3(0f, 0.12f, _tick > 110 && _tick < 140 ? 0.5f : 0f));
+                break;
+            case "underwater":
+                Corsair.Flight.Input = PilotInput.LetGo; // its pilot holds it at depth
+                Player.Legs.Move = new N.Vector2(0f, -0.05f); // treading water: a stroke that holds the depth
                 break;
         }
     }
@@ -211,6 +232,7 @@ public partial class Screenshot : Node
                 break;
             }
             case "cabin":
+            case "underwater":
                 _main.FixedCamera = _main.Eye(Player);
                 _main.FixedIsEye = true;
                 break;

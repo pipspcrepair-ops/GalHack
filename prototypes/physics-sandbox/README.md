@@ -8,6 +8,7 @@ Proves the shared physics module (`shared/Physics`) in one place: a small vessel
 ![The player riding the Corsair's roof in flight](screenshots/hull.png)
 ![In orbit, the player in mag boots standing on the Corsair's side](screenshots/spacewalk.png)
 ![A tornado lifting crates and the player](screenshots/tornado.png)
+![Diving in the lake: the Corsair flown under by its pilot, a crate floating on the surface above](screenshots/underwater.png)
 
 ## How it fits together
 
@@ -100,7 +101,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1260 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
 - **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.75 ms on average against a 2 ms budget, timed in three separate 100-tick windows and judged on the best, so a machine busy with other work doesn't fail it but a real slowdown (which slows every window) does; the module's own step about 1.2 ms, and the main thread's CPU time per tick is printed too.
 
-`tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado --out=file.png` renders a scripted moment to a PNG (windowed, not headless).
+`tests/Screenshot.tscn -- --view=flight|crash|sever|hull|spacewalk|cabin|tornado|underwater --out=file.png` renders a scripted moment to a PNG (windowed, not headless).
 
 ## Decisions to review
 
