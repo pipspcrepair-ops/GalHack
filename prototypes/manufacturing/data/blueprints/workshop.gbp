@@ -1,0 +1,44 @@
+# Workshop: the manufacturing prototype's base, written by hand.
+#
+# Large grid (2 m cells). x is starboard, y up, -z forward. A plated floor with the core near
+# the front edge; along the back wall, from port to starboard: a generator, the small
+# constructor, a container, the deconstructor, a container, the blueprint factory and a fuel
+# tank. Two turrets stand on the containers, and a gatling and a rocket pod point out of the back
+# wall, so the constructor has three kinds of ammo to keep stocked. Every machine's screen faces
+# the floor.
+
+schema galhack.blueprint
+version 1
+name "Workshop"
+grid large
+mode base
+gravity on
+
+paint floor base=b9b2a4 texture=plates grime=2
+paint hull base=ece3c8 grime=1
+paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint dark base=3a3f47 texture=plates grime=2
+
+# --- Floor (y 0) ------------------------------------------------------------------------
+block -4..4 0 -3..2 steel paint=floor
+block -4..-1 0 3 steel paint=hazard
+block 0 0 3 core
+block 1..4 0 3 steel paint=hazard
+
+# --- The back wall of machines (y 1, z -3) ---------------------------------------------
+block -4 1 -3 generator
+block -3 1 -3 smallfab
+block -2 1 -3 container
+block -1 1 -3 steel paint=stripe
+block 0 1 -3 decon
+block 1 1 -3 steel paint=stripe
+block 2 1 -3 container
+block 3 1 -3 factory
+block 4 1 -3 fueltank
+
+# --- Guns ----------------------------------------------------------------------------------
+block -2 2 -3 turret
+block 2 2 -3 turret
+block 0 1 -4 gatling
+block 1 1 -4 rocketpod

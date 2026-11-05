@@ -16,9 +16,9 @@ Proves that the galaxy can feel alive without being simulated. An **encounter di
 
 | File | What's in it |
 | --- | --- |
-| `zones.json` | Zones and their tags (kind, region, star class, danger grade, free tags) and circles (faction territory, POIs, player bases, no-spawn areas). The director, the map and content gating all read it. |
-| `deck.json` | The event deck. Each event has a weight, tag conditions, faction and territory rule, hostility, crewed ship groups, scripted behaviour, speed, duration, cleanup rule, wrecks and signal. |
-| `director.json` | Spawn distances and the view cone, budget and category caps, gaps, cooldowns and the no-repeat window, hostile share by danger grade, despawn distances, touch range, and lead fuzz. |
+| `zones.json` | Zones and their tags (kind, region, star class, danger grade, free tags such as `nebula` and `gas-giant`) and circles (faction territory, POIs, player bases, no-spawn areas). The director, the map and content gating all read it. |
+| `deck.json` | The event deck. Each event has a weight, tag conditions, faction and territory rule, hostility, crewed ship groups (or creature groups), scripted behaviour, speed, duration, cleanup rule, wrecks and signal. |
+| `director.json` | Spawn distances and the view cone, budgets for ships and creatures and category caps, gaps, cooldowns and the no-repeat window, hostile share by danger grade, despawn distances, touch range, lead fuzz, and the creatures' clearance round player bases. |
 | `gunnery.json` | A hook for future combat (see below). |
 
 **Factions** are the design document's: the Meridian Combine (corporate fleet; patrols), the Ledger Exchange (neutral merchants; freighters, convoys, traders), the Carrion Reavers (pirates), the Kessari (robot clans; miners), the Hollow Bloom (corruption), the Vharn Dominion (the main enemy; patrols, capital ships and surface garrisons, only in their own territory) and the Freeholders (settlers; haulers and mining skiffs round their outposts). The Ledger Exchange and the Freeholders are marked `"fights": false`: the deck refuses to load a hostile card that uses them, and they never take a side in a border clash.
@@ -36,6 +36,24 @@ Unclaimed space has no territory. The danger grade sets the hostile share outrig
 - inside the zone, and outside every no-spawn circle and player base.
 
 Nothing pops into view. Each zone instance has its own concurrent budget, scaled by its players. With one player that's 4 events and 16 ships, plus 1.5 events and 6 ships for each extra player. On top of the budget come per-category caps, a spawn gap that shortens with more players, category cooldowns, and a no-repeat window per event type. Combat events add a ship per extra player.
+
+**Space fauna.** Rare creatures come as event cards too. A fauna card has creature groups instead of ships. Each group's `kind` is a space form of the wildlife prototype, which builds, animates and drops loot for it (see its README). Creatures have no crew, no faction and no territory, and count against their own creature budget (14, plus 4 per extra player).
+
+They follow every spawn rule ships do: out of every view cone, at least 1.8 km from every player, inside the zone, outside no-spawn circles. They also start at least 1 km outside every player base's circle, measured from its edge: no wildlife spawns near bases. Ships, attackers included, are not held back by that margin.
+
+Each card only turns up where its creatures live:
+
+| Card | Where | How it plays out | Lead |
+| --- | --- | --- | --- |
+| Veil drifters | zones tagged `nebula` | a shoal of 5 to 9 drifting slowly across the zone | life signs |
+| Rock rays | zones with an asteroid field | a shoal of 3 to 6 swimming in through the field | none |
+| Sky mantas | zones tagged `gas-giant` (a giant's upper skies) | a shoal of 2 to 4 riding the storm bands | life signs |
+| Hull leeches | zones with a derelict | 3 to 6 (plus one per extra player) already on the derelict. The derelict must lie 1.8 to 5 km from the player and out of everyone's sight. Hostile. | life signs |
+| Void leviathan | deep space or nebulae at danger 3 and up | one, passing the player a few hundred metres off. Hostile. | life signs |
+
+The leviathan is very rare. Its card has a tiny weight (0.3% of the Ashen Drift's deck) and its own category, capped at one, with a three-hour cooldown. In six simulated hours in the Drift it turned up twice.
+
+Creatures are wildlife: E can't mark or claim one, they never become permanent records or salvage, and they go when the zone closes. This prototype draws them as simple stand-ins at the right size.
 
 **Ships are crewed and scripted.** Every ship has a crew count; there are no drones. Flights are closed-form functions of time: pass, convoy, dogfight (tail-chasing pairs on tilted circles), dock, mine and drift. The director samples them on its tick, and the renderer samples the same functions every frame, so ships move smoothly without the director ticking faster. When an event's time is up its ships depart. They are removed once no player can see them go, or once every player is far away. A distress call nobody answers is lost and becomes a wreck.
 
@@ -91,12 +109,19 @@ The tests run `tests/DirectorTest.tscn` headless, on a simulated clock (about 6 
   - Every Freeholder card is peaceful and works round an outpost in Freeholder territory. A player at Holt meets them; a player away from it never does.
   - Reaver and Freeholder territory overlap at Holt, but there is no border clash there. The deck refuses to load a card where Freeholders attack.
 - **No-spawn circles and player bases** are never spawned in, even when they block much of the spawn ring.
+- **Space fauna:**
+  - Five fauna cards, creatures only, with no crew or faction. Each kind turns up only where it lives.
+  - The leviathan is 0.3% of the Drift's deck, capped at one, with a three-hour cooldown. In six simulated hours with the real rules it turns up once or twice, never two at once.
+  - In a busy hour in the Ashen Drift (three players, cooldowns cut to a tenth), every creature spawns out of view and at least 1.8 km away, the creature budget is never exceeded, and every leech is found on its derelict.
+  - Fauna send life-sign leads within the fuzz.
+  - A creature can't be touched into a record, and creatures go when the zone closes.
+- **No wildlife near bases:** in an hour of churn round two player bases, no creature spawns within 1 km of a base's edge, while ship spawns, raiders included, still land in that band.
 - **Leaving a zone** removes all its untouched ships. Touching a live freighter makes it a permanent record but not the player's, and touching a wreck claims it. Both stay, with the witnessed wrecks.
 - **Player-owned things survive.** 32 player-owned things survive 120 zone hops, including crates dropped inside a fight and a ship taken mid-event with the debug claim. A ship touched mid-event stays not theirs. A ship marked owned behind the director's back is caught by the guard.
 - **Determinism.** The same seed and inputs give a byte-identical log; a different seed gives a different one.
 - **Zones and scaling.** Two players in two zones get their own events, and four players in one zone get more events and ships than one.
 - **Leads** are within 10° and 20% across 1,000 distress calls, never exact, and resolve when you arrive.
-- **Tick cost.** Six players in four zones averages about 11 µs per tick, with a maximum under 100 µs, at 10 Hz.
+- **Tick cost.** Six players in four zones average about 14 µs per tick at 10 Hz. The check judges the best of three ten-minute windows (average under 100 µs, worst tick under 2 ms), so another program busy on the machine can't fail it.
 - **The gunnery hook** follows its rules.
 - **Export.** The export preset includes the data files.
 
@@ -112,6 +137,7 @@ The views are `orbit`, `skirmish`, `distress`, `frontier` and `overlay`. A sixth
 
 ## Known limits
 
+- **Creatures are stand-ins here.** The director moves a shoal or a leviathan along a scripted path like a ship; the real bodies, behaviour, attacks and drops are the wildlife prototype's. The gas giant's skies are a data-only zone.
 - **No combat or boarding.** Fights are scripted: who is wrecked and when is decided at spawn, and tracers are presentation only. E stands in for every interaction. Nothing shoots at the player.
   - `data/gunnery.json` and `Gunnery.cs` are an unwired hook for the gunnery rules (warning shots, a 2 s ramp reset by losing line of sight, a shooter-against-target class table, weapon modifiers, slow capital shells). Damage is never capped.
 - **No collisions.** You can fly through ships, rocks and the station. Traders hold beside the station rather than docking.

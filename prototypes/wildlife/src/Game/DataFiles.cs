@@ -6,11 +6,16 @@ namespace Wildlife;
 public static class DataFiles
 {
     public const string WildlifePath = "res://data/wildlife.json";
+    public const string SpacePath = "res://data/space_fauna.json";
 
-    public static WildlifeData LoadWildlife()
+    public static WildlifeData LoadWildlife() => WildlifeData.FromJson(Read(WildlifePath));
+
+    public static SpaceFaunaData LoadSpace() => SpaceFaunaData.FromJson(Read(SpacePath));
+
+    static string Read(string path)
     {
-        string json = FileAccess.GetFileAsString(WildlifePath);
-        if (string.IsNullOrEmpty(json)) throw new System.IO.FileNotFoundException($"could not read {WildlifePath}");
-        return WildlifeData.FromJson(json);
+        string json = FileAccess.GetFileAsString(path);
+        if (string.IsNullOrEmpty(json)) throw new System.IO.FileNotFoundException($"could not read {path}");
+        return json;
     }
 }

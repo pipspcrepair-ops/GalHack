@@ -182,9 +182,12 @@ public partial class Main : Node3D
                 if (Director.Leads.Count > 0 && Director.Leads[^1].PlayerId == LocalPlayer)
                 {
                     SignalLead lead = Director.Leads[^1];
-                    Hud.Toast(lead.Kind == "distress"
-                        ? $"Distress call picked up, ~{Hud.Km(lead.Distance)} away"
-                        : $"Transmission: \"{lead.Label}\", ~{Hud.Km(lead.Distance)} away", Palette.Lead(lead.Kind));
+                    Hud.Toast(lead.Kind switch
+                    {
+                        "distress" => $"Distress call picked up, ~{Hud.Km(lead.Distance)} away",
+                        "lifesign" => $"Life signs: {lead.Label}, ~{Hud.Km(lead.Distance)} away",
+                        _ => $"Transmission: \"{lead.Label}\", ~{Hud.Km(lead.Distance)} away",
+                    }, Palette.Lead(lead.Kind));
                 }
                 break;
             case "wreck":

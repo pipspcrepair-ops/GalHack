@@ -77,7 +77,7 @@ public partial class DirectorOverlay : PanelContainer
         if (zi == null) return sb.ToString();
 
         Head(sb, "BUDGET");
-        sb.AppendLine($"players {zi.Players.Count}   events {Bar(zi.Encounters.Count, zi.MaxEvents)} {zi.Encounters.Count}/{zi.MaxEvents}   ships {Bar(zi.Ships.Count, zi.MaxShips)} {zi.Ships.Count}/{zi.MaxShips}");
+        sb.AppendLine($"players {zi.Players.Count}   events {Bar(zi.Encounters.Count, zi.MaxEvents)} {zi.Encounters.Count}/{zi.MaxEvents}   ships {Bar(zi.ShipCount, zi.MaxShips)} {zi.ShipCount}/{zi.MaxShips}   creatures {Bar(zi.CreatureCount, zi.MaxCreatures)} {zi.CreatureCount}/{zi.MaxCreatures}");
         var caps = d.Config.CategoryCaps.Keys.Select(c => $"{c} {zi.CategoryCount(c)}/{d.Config.CategoryCap(c)}");
         sb.AppendLine(Dim("caps  " + string.Join("  ", caps)));
         sb.AppendLine($"next spawn in {Math.Max(0, zi.NextSpawnAt - t):F1} s · spawned {zi.Spawns} · placement retries {zi.PlacementFailures}");
@@ -109,7 +109,8 @@ public partial class DirectorOverlay : PanelContainer
             float dist = (float)enc.Ships.Where(s => s.Live).Select(s => (double)System.Numerics.Vector3.Distance(s.Position, at)).DefaultIfEmpty(0).Min();
             string state = enc.State == EncounterState.Active ? $"{t - enc.Start:F0}/{enc.End - enc.Start:F0}s" : "leaving";
             string sides = enc.SideA != null ? $" {enc.SideA} v {enc.SideB}" : "";
-            sb.AppendLine($"#{enc.Id,-4} {enc.Def.Id,-18} {state,-9} {live} ships, crew {crew}{(wrecked > 0 ? $", {wrecked} lost" : "")} · {Hud.Km(dist)}{sides}{(enc.Touched ? " [color=#9bf26b]touched[/color]" : "")}");
+            string who = enc.Def.IsFauna ? $"{live} creatures" : $"{live} ships, crew {crew}";
+            sb.AppendLine($"#{enc.Id,-4} {enc.Def.Id,-18} {state,-9} {who}{(wrecked > 0 ? $", {wrecked} lost" : "")} · {Hud.Km(dist)}{sides}{(enc.Touched ? " [color=#9bf26b]touched[/color]" : "")}");
         }
 
         List<SignalLead> leads = d.LeadsFor(Main.LocalPlayer).ToList();

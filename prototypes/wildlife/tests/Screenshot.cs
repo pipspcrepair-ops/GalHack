@@ -17,7 +17,8 @@ namespace Wildlife;
 /// - harvester: the hovercraft chewing through a grove
 /// - lineup: the bestiary of two or three planets, for scale
 /// - sheet: a contact sheet of one camera per species, for checking the generator by eye
-/// --hud keeps the debug HUD. No view shows anything about first sightings: there is nothing to show.
+/// - discovery: the brief card a first meeting brings up, over a stalking predator
+/// --hud keeps the debug HUD. Only the discovery view shows a discovery card.
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -44,9 +45,17 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--time=")) _time = float.Parse(arg["--time=".Length..], System.Globalization.CultureInfo.InvariantCulture);
         }
         ProcessPhysicsPriority = 100; // after Main has stepped the world
+        if (_view.StartsWith("space-"))
+        {
+            _space = new SpaceScene { Name = "Space" };
+            AddChild(_space);
+            return;
+        }
         _main = new Main();
         AddChild(_main);
     }
+
+    SpaceScene _space;
 
     public override void _PhysicsProcess(double delta)
     {
@@ -58,22 +67,125 @@ public partial class Screenshot : Node
             if (_aim != null)
             {
                 var (eye, at) = _aim();
-                _main.Camera.GlobalPosition = eye;
-                _main.Camera.LookAt(at, Vector3.Up);
+                Camera3D camera = _main?.Camera ?? _space.Camera;
+                camera.GlobalPosition = eye;
+                camera.LookAt(at, Vector3.Up);
             }
         }
         if (_tick == _captureTick && !_captured) Capture();
     }
 
+    /// <summary>
+    /// Space fauna in their places, run by the space simulation:
+    /// - space-nebula: a shoal of veil drifters pulsing through a nebula, a void leviathan behind
+    /// - space-asteroids: belt rays grazing between the rocks of an asteroid field
+    /// - space-derelict: hull leeches on a dead freighter, one rearing to strike at an intruder
+    /// </summary>
+    void SpaceSetup()
+    {
+        SpaceScene sp = _space;
+        switch (_view)
+        {
+            case "space-nebula":
+            {
+                // A region whose drifters have a mouth and whose leviathan has teeth: the menacing end of the range.
+                ulong region = 1;
+                for (ulong r = 1; r < 400; r++)
+                {
+                    SpaceFauna f = sp.Generator.Generate(r, Habitat.Nebula);
+                    Species d = f.Species.First(s => s.Swim == SwimStyle.Pulse), l = f.Species.First(s => s.Swim == SwimStyle.Undulate);
+                    if (d.Part("head") == "maw" && d.Part("back") is "crystals" or "spines" && l.Part("head") is "jaws" or "maw" && l.Part("back") is "spines" or "ridge") { region = r; break; }
+                }
+                sp.Build(Habitat.Nebula, region);
+                Species drifter = sp.Fauna.Species.First(s => s.Swim == SwimStyle.Pulse);
+                Species leviathan = sp.Fauna.Species.First(s => s.Swim == SwimStyle.Undulate);
+                List<Creature> shoal = sp.Sim.SpawnShoal(drifter, new Vector3(0f, 0f, -40f), 8);
+                Herd h = shoal[0].Herd;
+                sp.Sim.Spawn(leviathan, new Vector3(-80f, 22f, -190f), null, new Vector3(1f, -0.05f, 0.3f));
+                _aim = () => (h.Center + new Vector3(14f, 2f, 22f), h.Center + new Vector3(-12f, 4f, -30f));
+                _captureTick = 240;
+                break;
+            }
+            case "space-asteroids":
+            {
+                sp.Build(Habitat.AsteroidField, 11);
+                Species ray = sp.Fauna.Species.First(s => s.Swim == SwimStyle.Flap);
+                Asteroid rock = sp.Sim.Asteroids.OrderByDescending(a => a.Radius / (a.Center.Length() + 50f)).First();
+                Vector3 beside = rock.Center + (Vector3.Zero - rock.Center).Normalized() * (rock.Radius + 14f);
+                List<Creature> shoal = sp.Sim.SpawnShoal(ray, beside, 6);
+                Herd h = shoal[0].Herd;
+                Vector3 toRock = (rock.Center - beside).Normalized(), side = toRock.Cross(Vector3.Up).Normalized();
+                _aim = () => (h.Center - toRock * 22f + side * 16f + Vector3.Up * 12f, h.Center + toRock * 8f);
+                _captureTick = 260;
+                break;
+            }
+            case "space-derelict":
+            {
+                sp.Build(Habitat.Derelict, 5);
+                Species leech = sp.Fauna.Species.First(s => s.Rig == RigKind.Clinger);
+                Hull hull = sp.Sim.Hulls[0];
+                // The breach side: the leeches crawl round the torn plating.
+                List<Creature> leeches = sp.Sim.SpawnOnHull(leech, hull, 7, new Rng(9), onlyFace: 0);
+                Vector3 n = hull.Normal(0);
+                Creature striker = leeches.OrderBy(c => (c.Position - hull.FacePoint(0, 0.1f, 0f)).Length()).First();
+                var intruder = new DummyTarget { Name = "Salvager", Position = striker.Position + n * 6f, Health = new Health(1e9f) };
+                int strikeAt = _tick + 90;
+                _each = () =>
+                {
+                    if (_tick == strikeAt)
+                    {
+                        sp.Sim.Targets.Add(intruder);
+                        intruder.Position = striker.Position + n * 3f;
+                    }
+                };
+                Vector3 up = hull.Basis * Vector3.Up, along = hull.Basis * Vector3.Back;
+                Vector3 eye = striker.Position + n * 5.5f + up * 1.6f + along * 4.5f;
+                _aim = () => (eye, striker.Position + n * 1.2f - along * 1.5f);
+                _captureTick = strikeAt + (int)(leech.TelegraphWindup(sp.Data.Combat) * 0.75f * 60f);
+                break;
+            }
+        }
+    }
+
     void Setup()
     {
+        if (_space != null)
+        {
+            SpaceSetup();
+            return;
+        }
         Main m = _main;
         m.FreeCamera = true;
         m.Hud.StatusVisible = _hud;
+        // Discovery cards stay out of the shots, except the view staged to show one.
+        m.Hud.ShowCards = _view == "discovery";
+        m.Hud.ClearCards();
         m.Player.Muzzle.Visible = false;
         Player p = m.Player;
         switch (_view)
         {
+            case "discovery":
+            {
+                // The card a first meeting brings up, over a stalking predator.
+                World(WorldKind.Alien, 0.42f);
+                Species s = m.Fauna.Species.Where(x => x.Behaviour is Behaviour.Predator or Behaviour.PackHunter && x.Rig == RigKind.Legged && !m.Codex.Knows(x.Id))
+                    .OrderByDescending(x => x.Weirdness).FirstOrDefault() ?? m.Fauna.Species.First(x => !m.Codex.Knows(x.Id));
+                Vector3 toward = Turn(SunFlat(), 0.5f);
+                Vector3 eye = Ground(new Vector3(-60f, 0f, 60f)) + Vector3.Up * (0.45f + s.Body.Size * 0.3f);
+                p.Teleport(Ground(eye));
+                foreach (Creature other in m.Sim.Creatures) if (WildSim.Flat(other.Position - eye).Length() < 40f) m.Sim.Remove(other);
+                // Everything else on this world has been met already, so the card is this one's.
+                foreach (Species other in m.Fauna.Species) if (other != s) m.Codex.Record(other, "Player 1", 0f, m.Fauna.PlanetName);
+                m.Hud.ClearCards();
+                Creature c = m.Sim.Spawn(s, eye + toward * (3.5f + s.Body.Size * 2.8f));
+                c.Yaw = MathF.Atan2(toward.X, toward.Z);
+                _each = () => c.SetState(CState.Stalk);
+                // The codex looks from the game camera; first meetings queue the card.
+                _aim = () => (eye, c.Rig.BoundsCenter + Vector3.Up * 0.15f);
+                _each += () => { if (m.Hud.ShowingCard != null && m.Hud.Card.Modulate.A > 0.99f && _captureTick > _tick + 30) _captureTick = _tick + 30; };
+                _captureTick = 600;
+                break;
+            }
             case "herd":
             case "temperate":
             {
@@ -174,6 +286,18 @@ public partial class Screenshot : Node
                 _captureTick = windupAt + (int)(s.TelegraphWindup(m.Data.Combat) * 0.6f * 60f);
                 break;
             }
+            case "outpost":
+            {
+                // The players' outpost, whose zone the wildlife never spawns in, with the herds beyond it.
+                World(WorldKind.Temperate, 0.4f);
+                Structure s = m.Outpost.Structure;
+                Vector3 back = new Basis(Vector3.Up, s.Yaw) * new Vector3(0.55f, 0f, 1f).Normalized();
+                Vector3 eye = Ground(s.Center + back * 26f) + Vector3.Up * 7f;
+                p.Teleport(Ground(s.Center + back * 40f));
+                _aim = () => (eye, s.Center + Vector3.Up * 1.5f);
+                _captureTick = 90;
+                break;
+            }
             case "lineup":
                 Lineup();
                 break;
@@ -225,6 +349,7 @@ public partial class Screenshot : Node
         m.Forest.Visible = false;
         m.Grass.Visible = false;
         m.Vessel.Visible = false;
+        m.Outpost.Visible = false;
         m.Planet.ShowRocks(false);
         m.Player.Teleport(Ground(new Vector3(200f, 0f, 200f)));
         m.Sim.Clear();
@@ -302,6 +427,7 @@ public partial class Screenshot : Node
         m.Forest.Visible = false;
         m.Grass.Visible = false;
         m.Vessel.Visible = false;
+        m.Outpost.Visible = false;
         m.Planet.ShowRocks(false);
         m.Hud.Visible = false;
         m.Player.Teleport(Ground(new Vector3(200f, 0f, 200f)));

@@ -40,6 +40,9 @@ public partial class ProceduralAudio : Node3D
         _clips["shot"] = Make(0.35f, (t, n) => MathF.Exp(-t * 18f) * (n * 0.7f + MathF.Sin(MathF.Tau * (90f - 120f * t) * t) * 0.6f), rng);
         _clips["thud"] = Make(0.3f, (t, n) => MathF.Exp(-t * 14f) * (MathF.Sin(MathF.Tau * 55f * t) * 0.8f + n * 0.2f), rng);
         _clips["chop"] = Make(0.22f, (t, n) => MathF.Exp(-t * 20f) * (n * 0.9f + Square(t * 70f) * 0.3f), rng);
+        // The discovery chime: two soft glassy bell notes a fifth apart, rising, under a second
+        // long. Nothing like any creature's wind-up, so it never reads as a threat.
+        _clips["discover"] = Make(0.75f, (t, n) => 0.3f * (Bell(t, 659.3f) + 0.85f * Bell(t - 0.11f, 987.8f)) * Math.Clamp((0.75f - t) * 16f, 0f, 1f), rng);
         HoverLoop = Make(1.0f, (t, n) => (MathF.Sin(MathF.Tau * 55f * t) * 0.5f + MathF.Sin(MathF.Tau * 110f * t) * 0.25f + n * 0.08f) * 0.6f, rng, loop: true);
         GrindLoop = Make(0.5f, (t, n) => (Square(t * 36f) * 0.3f + n * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * MathF.Tau * 12f)), rng, loop: true);
 
@@ -49,6 +52,30 @@ public partial class ProceduralAudio : Node3D
             AddChild(p);
             _pool.Add(p);
         }
+        _ui = new AudioStreamPlayer { Name = "UiSound", Bus = "Master" };
+        AddChild(_ui);
+    }
+
+    AudioStreamPlayer _ui;
+
+    /// <summary>A sound that belongs to the interface, not to a place: the discovery chime.</summary>
+    public void PlayUi(string clip, float volumeDb = -11f)
+    {
+        if (_ui == null || !_clips.TryGetValue(clip, out var stream)) return;
+        _ui.Stream = stream;
+        _ui.VolumeDb = volumeDb;
+        _ui.Play();
+    }
+
+    /// <summary>The UI player, for the tests: is the chime playing?</summary>
+    public AudioStreamPlayer UiPlayer => _ui;
+
+    /// <summary>A small bell: a soft strike, a fast-fading inharmonic overtone, a ringing fundamental.</summary>
+    static float Bell(float t, float freq)
+    {
+        if (t < 0f) return 0f;
+        float strike = MathF.Min(1f, t * 250f);
+        return strike * MathF.Exp(-t * 6f) * (MathF.Sin(MathF.Tau * freq * t) + 0.35f * MathF.Exp(-t * 10f) * MathF.Sin(MathF.Tau * freq * 2.76f * t));
     }
 
     /// <summary>The wind-up sound of a creature's signature attack, pitched by size.</summary>

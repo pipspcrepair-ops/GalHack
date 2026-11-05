@@ -18,6 +18,10 @@ public partial class Main : Node3D
     public Forest Forest { get; private set; }
     public Grass Grass { get; private set; }
     public WildSim Sim { get; private set; }
+    /// <summary>Puts the fauna down and tops it back up, never near a base.</summary>
+    public Spawner Spawner { get; private set; }
+    /// <summary>The players' outpost: a base-mode structure the wildlife never spawns near.</summary>
+    public BaseOutpost Outpost { get; private set; }
     public WildlifeView View { get; private set; }
     public PlanetFauna Fauna { get; private set; }
     public Player Player { get; private set; }
@@ -25,7 +29,7 @@ public partial class Main : Node3D
     public Camera3D Camera { get; private set; }
     public Hud Hud { get; private set; }
     public ProceduralAudio Audio { get; private set; }
-    /// <summary>Sightings, recorded silently: nothing is ever announced when you first meet a creature.</summary>
+    /// <summary>Who met each species first. A first meeting shows a brief discovery card.</summary>
     public readonly Codex Codex = new();
     public WorldKind World { get; private set; } = WorldKind.Alien;
     /// <summary>Screenshots: drive the camera by hand instead of from the player.</summary>
@@ -51,6 +55,9 @@ public partial class Main : Node3D
         Forest = new Forest { Name = "Forest" };
         AddChild(Forest);
         Forest.Build(Planet.Terrain, Planet.Nav, Data.Harvest);
+        Outpost = new BaseOutpost { Name = "Outpost" };
+        AddChild(Outpost);
+        Outpost.Build(Planet.Terrain, Planet.Nav, Forest);
         Grass = new Grass { Name = "Grass" };
         AddChild(Grass);
         Grass.Build(Planet.Terrain, Planet.Nav);
@@ -79,6 +86,8 @@ public partial class Main : Node3D
 
         Hud = new Hud { Name = "Hud" };
         AddChild(Hud);
+        Hud.Danger = UnderAttack;
+        Hud.CardShown += _ => Audio.PlayUi("discover");
 
         SwitchWorld(World);
         Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -110,6 +119,7 @@ public partial class Main : Node3D
         Sim = new WildSim(Data, Planet.Terrain, Planet.Nav);
         Sim.Clock.Time01 = time;
         Sim.Targets.Add(Player.Target);
+        Sim.Structures.Add(Outpost.Structure);
         Sim.Telegraph += e => Audio.Telegraph(e.Creature);
         Sim.Warned += c => Audio.Telegraph(c);
         Sim.Attacked += OnAttacked;
@@ -121,36 +131,11 @@ public partial class Main : Node3D
         Grass.ApplyStyle(style);
         Vessel.SetChipColours(style.Trees == TreeStyle.Temperate ? new Color("e3c48a") : style.Trees == TreeStyle.Alien ? new Color("ff9fd0") : new Color("ff3cac"),
             style.Trees == TreeStyle.Bloom ? new Color("2a1426") : new Color("6b4a2e"));
-        Populate(style);
+        // Herds on the plain ahead, giants far off, ambushers by the groves; never by the outpost.
+        Spawner = new Spawner(Sim, Fauna, Forest.Groves, style.FaunaSeed);
+        Spawner.Populate();
         GD.Print($"{Fauna.PlanetName} ({style.Label}): {Fauna.Species.Count} species, {Sim.Creatures.Count} creatures");
         foreach (Species s in Fauna.Species) GD.Print($"  {s}");
-    }
-
-    /// <summary>Puts each species where its behaviour belongs: herds on the plain ahead, giants far off, ambushers by the groves.</summary>
-    void Populate(WorldStyle style)
-    {
-        var rng = Rng.For(style.FaunaSeed, "population", style.Bloom ? 1 : 0);
-        foreach (Species s in Fauna.Species)
-        {
-            int groups = s.Plan == BodyPlan.Giant ? 2 : s.Behaviour == Behaviour.Herd || s.Rig == RigKind.Swarm ? 2 : 3;
-            for (int g = 0; g < groups; g++)
-            {
-                int count = rng.Int(s.GroupMin, s.GroupMax);
-                Vector3 at;
-                if (s.Behaviour == Behaviour.Herd && g == 0) at = new Vector3(rng.Range(-15f, 15f), 0f, rng.Range(-30f, -15f));
-                else if (s.Behaviour == Behaviour.Ambusher) at = Forest.Groves[rng.Int(0, Forest.Groves.Count - 1)] + Ring(rng, 14f, 24f);
-                else if (s.Plan == BodyPlan.Giant) at = g == 0 ? new Vector3(rng.Range(30f, 60f), 0f, rng.Range(-110f, -80f)) : Ring(rng, 90f, 180f);
-                else if (s.Behaviour is Behaviour.Predator or Behaviour.PackHunter) at = Ring(rng, 50f, 120f);
-                else at = Ring(rng, g == 0 ? 25f : 40f, 170f);
-                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, count));
-            }
-        }
-    }
-
-    static Vector3 Ring(Rng rng, float min, float max)
-    {
-        float a = rng.Range(0f, MathF.Tau), r = rng.Range(min, max);
-        return new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
     }
 
     // ---- Input ------------------------------------------------------------------------
@@ -223,6 +208,7 @@ public partial class Main : Node3D
         else if (!Player.Health.Downed) Player.Step(dt);
 
         Sim.Step(dt);
+        Spawner.Step(dt);
         var players = new List<Vector3>(1) { Player.Driving ? Vessel.GlobalPosition : Player.GlobalPosition };
         Forest.Field.Update(dt, players);
         Forest.Sync();
@@ -373,7 +359,7 @@ public partial class Main : Node3D
 
     /// <summary>
     /// A species goes in the codex when you get a good look at one: close by, or near the middle
-    /// of the view. Silently: first meetings are never announced. Its name is there for the scan.
+    /// of the view. The first time anyone does, a brief card names it (see <see cref="Hud"/>).
     /// </summary>
     void RecordSightings(float dt)
     {
@@ -388,12 +374,28 @@ public partial class Main : Node3D
             Vector3 to = c.Rig.BoundsCenter - eye;
             float d = to.Length();
             float reach = 30f + c.Species.Body.Size * 6f;
-            if (d < 8f || (d < reach && look.Dot(to / d) > 0.93f))
-                Codex.Record(c.Species, Player.Target.Name, Sim.Time, Fauna.PlanetName);
+            if ((d < 8f || (d < reach && look.Dot(to / d) > 0.93f))
+                && Codex.Record(c.Species, Player.Target.Name, Sim.Time, Fauna.PlanetName))
+                Hud.QueueDiscovery(Codex.Get(c.Species.Id), CardStripe(c.Species));
         }
     }
 
-    /// <summary>Hold Q on a creature to scan it: its name and what it is, only when you ask.</summary>
+    /// <summary>The card's edge stripe: the species' glow if it has one, else its accent.</summary>
+    static Color CardStripe(Species s) => s.Colors.GlowStrength > 0.3f ? s.Colors.Glow : s.Colors.Accent.Lightened(0.25f);
+
+    /// <summary>
+    /// Is something winding up or lunging at the player, or have they just been knocked down?
+    /// The discovery card waits until it is over: it never covers a telegraph.
+    /// </summary>
+    public bool UnderAttack()
+    {
+        if (Player.Health.Downed) return true;
+        foreach (Creature c in Sim.Creatures)
+            if (!c.Removed && c.AttackTarget == Player.Target && c.Phase is AttackPhase.Windup or AttackPhase.Lunge) return true;
+        return false;
+    }
+
+    /// <summary>Hold Q on a creature to scan it: everything known about it, any time.</summary>
     string Scan()
     {
         if (Player.Driving || !Held(Key.Q)) return "";
@@ -401,13 +403,9 @@ public partial class Main : Node3D
         Creature c = Sim.Raycast(eye, dir, 80f, out float dist, out _);
         if (c == null) return "scanning...";
         Species s = c.Species;
-        string what = s.Behaviour switch
-        {
-            Behaviour.Herd => "herd grazer", Behaviour.TerritorialGiant => "territorial", Behaviour.HarmlessOddity => "harmless",
-            Behaviour.PackHunter => "pack hunter", _ => s.Behaviour.ToString().ToLowerInvariant(),
-        };
-        string attack = s.Stats.Damage > 0f ? $"   attack: {s.Attack.Name.ToLowerInvariant()}" : "";
-        return $"{s.Name}, {s.CommonName}\n{what}, {s.Temperament.ToString().ToLowerInvariant()}   {s.Body.Size:F1} m   {dist:F0} m away{attack}";
+        string attack = s.Stats.Damage > 0f ? $"   attack: {s.Attack.Name.ToLowerInvariant()} ({s.Stats.Damage:F0})" : "";
+        string found = Codex.Get(s.Id) is { } e ? $"\nfirst found by {e.Finder} on {e.Planet}" : "";
+        return $"{s.Name}, {s.CommonName}\n{s.FormLabel}, {s.BehaviourLabel}, {s.Temperament.ToString().ToLowerInvariant()}   {s.Body.Size:F1} m   {dist:F0} m away{attack}{found}";
     }
 
     void UpdateHud()
@@ -418,10 +416,12 @@ public partial class Main : Node3D
             : Player.Health.Downed ? "You were brought down. Back at the hovercraft in a moment." : $"On foot   health {Player.Health.Current:F0}/{Player.Health.Max:F0}";
         int alive = 0;
         foreach (Creature c in Sim.Creatures) if (!c.Removed && c.Alive) alive++;
+        float toBase = BaseZones.NearestBase(Sim.Structures, Player.Target.Position);
+        string zone = toBase < Data.Spawning.BaseClearance ? $"   inside the outpost's {Data.Spawning.BaseClearance:F0} m no-spawn zone" : "";
         Hud.SetStatus(
             $"{Fauna.PlanetName}, a {style.Label}   {Sim.Clock.Label}\n" +
-            $"{where}\n" +
-            $"{alive} creatures about\n\n" +
+            $"{where}{zone}\n" +
+            $"Codex {Codex.Count} species   {alive} creatures about\n\n" +
             "1 temperate  2 alien  3 Bloom   N skip time\n" +
             "WASD move  Shift sprint  Space jump  Ctrl crouch  Mouse look  LMB shoot  Q scan\n" +
             "E butcher a kill  F hovercraft  Esc free the mouse\n" +

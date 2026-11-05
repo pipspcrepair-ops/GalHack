@@ -1,0 +1,55 @@
+// The production machines. Every one works from its structure's single shared storage: inputs
+// come out of it and products go back in, with nothing to wire up.
+//
+//   tier     constructors only: the highest recipe tier it knows (recipes.json)
+//   speed    how fast it runs a recipe's seconds (1 = the small constructor)
+//   block    the building block that is this machine (blocks.json, building-parts.json)
+//   item     a carried machine: the item that is this machine
+//   lowestTierToBuild  checked by the tests: each machine's bill only needs recipes from below its
+//                      own tier, so the ladder climbs itself from the survival constructor up
+{
+  "schema": "galhack.machines",
+  "version": 1,
+  "constructors": [
+    { "id": "survival", "name": "Survival constructor", "tag": "FAB-0", "tier": 0, "speed": 0.5,  "item": "survival-constructor", "portable": true },
+    { "id": "portable", "name": "Portable constructor", "tag": "FAB-P", "tier": 1, "speed": 0.75, "block": "portfab" },
+    { "id": "small",    "name": "Small constructor",    "tag": "FAB-1", "tier": 1, "speed": 1.0,  "block": "smallfab" },
+    { "id": "large",    "name": "Large constructor",    "tag": "FAB-2", "tier": 2, "speed": 2.0,  "block": "largefab" },
+    { "id": "advanced", "name": "Advanced constructor", "tag": "FAB-3", "tier": 3, "speed": 3.0,  "block": "advfab" }
+  ],
+  "tierNames": [ "survival", "small", "large", "advanced" ],
+
+  // Breaks items and wreck blocks back into what they were made of, one step down the tree.
+  // The design's salvage runs 33% (survival tool, multi-tool T1) to 65% (T2) and 80% (vessel
+  // salvagers). The deconstructor is a fixed station you carry things to, so it sits between
+  // the field tools at 50%. Fractions carry over inside the machine, so nothing is rounded away
+  // and nothing is ever made from nothing.
+  "deconstructor": { "id": "deconstructor", "name": "Deconstructor", "tag": "DECON", "block": "decon", "speed": 1.5, "returnRate": 0.5,
+                     "secondsFactor": 0.5 },
+
+  // Builds a whole saved blueprint, paid in refined materials (design section 11). It makes the
+  // parts itself, so its time is the parts' recipe seconds plus fitting each block, at its speed.
+  "factory": { "id": "factory", "name": "Blueprint factory", "tag": "BP-FAB", "block": "factory", "speed": 4.0 },
+
+  // Pacing reference for the tests: an experienced player on a starter world.
+  "reference": {
+    // Ore a player gathers with the survival tool, walking between the deposits the planet
+    // generator puts within about 230 m of each other (a 1 m ore cell yields oreUnitsPerCell).
+    "gatherOrePerMinute": 45,
+    "oreUnitsPerCell": 12,
+    // Survival placement with the multi-tool, including picking and lining blocks up.
+    "placeSecondsPerBlock": 1.2,
+    // What a player builds between the crash and the first small vessel: a foothold base on the
+    // large grid (core, power, fuel, a small constructor, storage, a floor), then the vessel.
+    "foothold": [
+      { "block": "core", "grid": "large", "count": 1 },
+      { "block": "generator", "grid": "large", "count": 1 },
+      { "block": "fueltank", "grid": "large", "count": 1 },
+      { "block": "smallfab", "grid": "large", "count": 1 },
+      { "block": "container", "grid": "large", "count": 1 },
+      { "block": "steel", "grid": "large", "count": 12 }
+    ],
+    // Fuel to fly the first vessel: energy cells (common materials only).
+    "starterFuel": { "energy-cell": 20 }
+  }
+}

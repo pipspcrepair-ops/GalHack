@@ -19,7 +19,9 @@ public partial class WildlifeTest : Node
 
     WildlifeData _data;
     FaunaGenerator _gen;
-    int _failures;
+    SpaceFaunaData _space;
+    SpaceFaunaGenerator _spaceGen;
+    int _failures, _checks;
 
     public override void _Ready() => Run();
 
@@ -41,9 +43,21 @@ public partial class WildlifeTest : Node
             Packs();
             Ambushers();
             Harvesting();
+            CreaturesKeepOffTrunks();
             RunDown();
             StorageCap();
-            CodexIsSilent();
+            CodexFirstFinder();
+            NoSpawnsNearBases();
+            WanderersStillEnter();
+            _space = DataFiles.LoadSpace();
+            _spaceGen = new SpaceFaunaGenerator(_space, _data.Combat);
+            SpaceGenerator();
+            SpaceDropTables();
+            SpaceAnimation();
+            SpaceAttacksAreFair();
+            SpaceBehaviours();
+            DeckCreatureKinds();
+            SpacePerformance();
             Performance();
             await PlayableScene();
         }
@@ -51,7 +65,7 @@ public partial class WildlifeTest : Node
         {
             Fail($"crashed: {e}");
         }
-        GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
         // Stop sound and release shared resources before quitting, so nothing is left running.
         Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
@@ -65,7 +79,12 @@ public partial class WildlifeTest : Node
         await Frames(30);
         int live = main.Sim.Creatures.Count(c => !c.Removed);
         Check(live > 30 && main.View.ViewCount == live, $"the playable planet spawns its fauna ({live} creatures on {main.Fauna.PlanetName}, {main.View.ViewCount} views)");
-        await FirstSightingIsSilent(main);
+        Structure outpost = main.Outpost.Structure;
+        float closest = main.Sim.Creatures.Where(c => !c.Removed).Min(c => outpost.DistanceToFootprint(c.Home));
+        Check(main.Sim.Structures.Contains(outpost) && outpost.IsBase && closest >= _data.Spawning.BaseClearance,
+            $"the playable planet's outpost is a base, and nothing spawned within {_data.Spawning.BaseClearance:F0} m of it (closest {closest:F0} m from its deck)");
+        await DiscoveryCards(main);
+        await TrunksBlock(main);
 
         string alien = main.Fauna.PlanetName;
         Tap(Key.Key1);
@@ -102,49 +121,169 @@ public partial class WildlifeTest : Node
     }
 
     /// <summary>
-    /// Meeting a creature for the first time puts nothing on screen and plays nothing: no card,
-    /// banner, toast or chime. Puts a never-seen species right in front of the camera, waits
-    /// until the codex has silently recorded it, and compares everything the HUD shows.
+    /// The discovery card, in the real scene. Meeting a species for the first time brings up one
+    /// brief card (name, form, behaviour, size, planet and first finder) with its chime; meeting
+    /// it again brings up nothing. The card never takes input: nothing on the HUD can catch the
+    /// mouse or the keyboard focus, and keys and movement keep working under it. It never shows
+    /// while something is winding up or lunging at the player, or while the player is down, and
+    /// the player can still sidestep a lunge while a card waits.
     /// </summary>
-    async System.Threading.Tasks.Task FirstSightingIsSilent(Main main)
+    async System.Threading.Tasks.Task DiscoveryCards(Main main)
     {
-        Species s = main.Fauna.Species.First(x => !main.Codex.Knows(x.Id) && x.Rig != RigKind.Swarm);
-        Vector3 eye = main.Camera.GlobalPosition, look = -main.Camera.GlobalBasis.Z;
+        Player p = main.Player;
+        float maxHealth = p.Health.Max;
+        p.Health.Max = p.Health.Current = 1e6f; // nothing about may end the staging in a respawn
+        var shows = new Dictionary<string, int>();
+        var discovered = new Dictionary<string, int>();
+        main.Hud.CardShown += e => shows[e.SpeciesId] = shows.GetValueOrDefault(e.SpeciesId) + 1;
+        main.Codex.Discovered += e => discovered[e.SpeciesId] = discovered.GetValueOrDefault(e.SpeciesId) + 1;
+        main.Hud.ClearCards();
         await Frames(2);
-        string Snapshot() => string.Join("|", VisibleControls(main).Select(c => c is Label l ? $"{c.Name}:{StripLive(l.Text)}" : c.Name.ToString()));
-        string before = Snapshot();
-        int playersBefore = Playing(main);
-        int known = main.Codex.Count;
 
-        Creature c = main.Sim.Spawn(s, WildSim.Flat(eye + WildSim.Flat(look).Normalized() * 6f));
-        c.Yaw = main.Player.Yaw;
-        bool recorded = false;
-        string shown = null;
-        for (int i = 0; i < 90; i++)
+        var unseen = main.Fauna.Species.Where(x => !main.Codex.Knows(x.Id) && x.Rig != RigKind.Swarm).ToList();
+        Species attacker = unseen.Where(x => x.Stats.Damage > 0f).OrderBy(x => x.Plan == BodyPlan.Giant ? 1 : 0).FirstOrDefault();
+        // The two met in peace should be ones that leave the player alone, so no attack holds their cards back.
+        List<Species> calm = unseen.Where(x => x != attacker).OrderBy(x => Peaceful(x) ? 0 : 1).Take(2).ToList();
+        if (attacker == null || calm.Count < 2)
+        {
+            Fail($"discovery card test needs three never-seen species on {main.Fauna.PlanetName}, one that attacks (found {unseen.Count})");
+            return;
+        }
+        var spawned = new List<Creature>();
+        // Nobody may meet these three by chance while the test is setting up its own meetings,
+        // and no other hunter nearby may pick a fight that holds the cards back.
+        foreach (Creature c in main.Sim.Creatures)
+            if (c.Species == attacker || calm.Contains(c.Species)
+                || (c.Stats.Damage > 0f && WildSim.Flat(c.Position - p.GlobalPosition).Length() < 150f)) main.Sim.Remove(c);
+
+        // A first meeting: one card, with everything on it, and its chime.
+        Species s1 = calm[0];
+        spawned.Add(PutInView(main, s1, 6f));
+        int waited = await WaitFor(() => main.Hud.ShowingCard?.SpeciesId == s1.Id && main.Hud.CardVisible, 900);
+        bool chimed = main.Audio.UiPlayer.Playing;
+        string text = main.Hud.CardText;
+        bool complete = text.Contains(s1.Name) && text.Contains(s1.CommonName, StringComparison.OrdinalIgnoreCase) && text.Contains(s1.FormLabel)
+                        && text.Contains(s1.BehaviourLabel) && text.Contains($"{s1.Body.Size:F1} m") && text.Contains(main.Fauna.PlanetName) && text.Contains("Player 1");
+        await WaitFor(() => main.Hud.ShowingCard?.SpeciesId != s1.Id, 900);
+        float seconds = main.Hud.CardOnScreen;
+        Check(waited >= 0 && complete && chimed && seconds is > 3f and < 6f,
+            $"meeting a new species brings up its discovery card with a chime, for {seconds:F1} s ({text.Replace('\n', '|')})");
+
+        // Another of the same kind, right in front, brings up nothing.
+        spawned.Add(PutInView(main, s1, 4f));
+        await Frames(150);
+        Check(shows.GetValueOrDefault(s1.Id) == 1 && discovered.GetValueOrDefault(s1.Id) == 1 && main.Hud.ShowingCard?.SpeciesId != s1.Id,
+            $"the card appears once per species: a second {s1.CommonName} in view brings up nothing (cards for it: {shows.GetValueOrDefault(s1.Id)})");
+        foreach (Creature c in spawned) main.Sim.Remove(c);
+
+        // While a card is up, nothing can take the mouse or the keyboard, and the game plays on.
+        Species s2 = calm[1];
+        spawned.Add(PutInView(main, s2, 6f));
+        waited = await WaitFor(() => main.Hud.ShowingCard?.SpeciesId == s2.Id && main.Hud.Card.Modulate.A > 0.9f, 900);
+        List<Control> controls = main.Hud.FindChildren("*", "Control", true, false).OfType<Control>().ToList();
+        bool inert = controls.Count > 0 && controls.All(c => c.MouseFilter == Control.MouseFilterEnum.Ignore && c.FocusMode == Control.FocusModeEnum.None);
+        Vector2 centre = main.Hud.Card.GetGlobalRect().GetCenter();
+        GetViewport().PushInput(new InputEventMouseMotion { Position = centre, GlobalPosition = centre });
+        await Frames(1);
+        Control hovered = GetViewport().GuiGetHoveredControl();
+        Control focused = GetViewport().GuiGetFocusOwner();
+        float clock = main.Sim.Clock.Time01;
+        Tap(Key.N);
+        await Frames(1);
+        bool keyReached = MathF.Abs(Mathf.PosMod(main.Sim.Clock.Time01 - clock, 1f) - 0.25f) < 0.02f;
+        main.Sim.Clock.Time01 = clock;
+        Vector3 from = p.GlobalPosition;
+        Hold(Key.W, true);
+        await Frames(30);
+        Hold(Key.W, false);
+        float walked = WildSim.Flat(p.GlobalPosition - from).Length();
+        bool stillUp = main.Hud.CardVisible && main.Hud.ShowingCard?.SpeciesId == s2.Id;
+        Check(waited >= 0 && inert && hovered == null && focused == null && keyReached && walked > 1.5f && !GetTree().Paused && stillUp,
+            $"the card never takes input: all {controls.Count} HUD controls ignore the mouse and focus, nothing under the cursor at the card, a key still reaches the game, the player walks {walked:F1} m under it");
+
+        // Combat: a never-seen hunter lunges at the player while that card is still up. The card
+        // gets out of the way at once, the player sidesteps the lunge, and the hunter's own card
+        // waits until the fight is over.
+        foreach (Creature c in spawned) main.Sim.Remove(c);
+        Vector3 look = WildSim.Flat(-main.Camera.GlobalBasis.Z).Normalized();
+        Creature hunter = main.Sim.Spawn(attacker, WildSim.Flat(p.GlobalPosition + look * MathF.Max(1.2f, attacker.Stats.AttackRange * 0.8f)));
+        Vector3 toPlayer = WildSim.Flat(p.GlobalPosition - hunter.Position).Normalized();
+        hunter.Yaw = MathF.Atan2(-toPlayer.X, -toPlayer.Z);
+        spawned.Add(hunter);
+        AttackEvent? outcome = null;
+        void OnAttack(AttackEvent e) { if (e.Creature == hunter) outcome ??= e; }
+        main.Sim.Attacked += OnAttack;
+        bool started = Attacks.Start(main.Sim, hunter, p.Target), dodging = false, cardInFight = false;
+        int fightFrames = 0;
+        for (int i = 0; i < 900 && outcome == null; i++)
         {
             await Frames(1);
-            recorded |= main.Codex.Knows(s.Id);
-            string now = Snapshot();
-            if (now != before) shown ??= now;
-            if (VisibleControls(main).OfType<Label>().Any(l => l.Text.Contains(s.Name))) shown ??= $"the name {s.Name} on screen";
+            if (main.UnderAttack())
+            {
+                fightFrames++;
+                cardInFight |= main.Hud.CardVisible;
+            }
+            if (hunter.Committed && !dodging)
+            {
+                Hold(Key.D, true); // step aside once it has committed
+                dodging = true;
+            }
         }
-        int playersAfter = Playing(main);
-        Check(recorded && main.Codex.Count == known + 1 && shown == null && playersAfter <= playersBefore,
-            $"a first sighting is recorded silently: codex {known} -> {main.Codex.Count}, nothing new on screen{(shown != null ? $" (but showed: {shown})" : "")}, no UI sound");
-        main.Sim.Remove(c);
+        Hold(Key.D, false);
+        main.Sim.Attacked -= OnAttack;
+        main.Sim.Remove(hunter);
+        bool queuedInFight = main.Codex.Knows(attacker.Id);
+        waited = await WaitFor(() =>
+        {
+            cardInFight |= main.UnderAttack() && main.Hud.CardVisible;
+            return main.Hud.ShowingCard?.SpeciesId == attacker.Id && main.Hud.CardVisible;
+        }, 60 * 20);
+        bool ok = started && outcome is { Hit: false } && fightFrames > 20 && !cardInFight && queuedInFight && waited >= 0 && shows.GetValueOrDefault(attacker.Id) == 1;
+        Check(ok, ok
+            ? $"no card ever shows during an attack on the player ({fightFrames} frames of {attacker.Attack.Name.ToLowerInvariant()} wind-up and lunge, none with a card up), the sidestep still dodges it, and the {attacker.CommonName}'s own card comes once it is over"
+            : $"cards and combat: attack started {started}, outcome {(outcome == null ? "none" : outcome.Value.Hit ? "hit" : "dodged")}, {fightFrames} fight frames, card shown in the fight {cardInFight}, seen in the fight {queuedInFight}, its card after {waited} frames, shown {shows.GetValueOrDefault(attacker.Id)} times");
+
+        // A player who is down sees no card either; it comes once they are back on their feet.
+        var test = new CodexEntry { SpeciesId = "test-downed", Name = "Testbeast", CommonName = "test beast", Form = "walker", Behaviour = "grazer", Size = 1f, Planet = "Test", Finder = "Player 1" };
+        main.Hud.ClearCards();
+        p.Health.Current = 0f;
+        main.Hud.QueueDiscovery(test, Colors.White);
+        bool shownDown = false;
+        for (int i = 0; i < 600 && p.Health.Downed; i++)
+        {
+            shownDown |= main.Hud.CardVisible;
+            await Frames(1);
+        }
+        waited = await WaitFor(() => main.Hud.ShowingCard == test && main.Hud.CardVisible, 600);
+        Check(!shownDown && !p.Health.Downed && waited >= 0, "no card shows while the player is down; it comes once they are back up");
+
+        main.Hud.ClearCards();
+        foreach (Creature c in spawned) main.Sim.Remove(c);
+        p.Health.Max = p.Health.Current = maxHealth;
     }
 
-    static IEnumerable<Control> VisibleControls(Node root)
+    /// <summary>Leaves a player alone unless provoked: grazers, herds and oddities that don't hunt, and no giants.</summary>
+    static bool Peaceful(Species s) => s.Behaviour is Behaviour.Grazer or Behaviour.Herd or Behaviour.HarmlessOddity && !s.Stats.Hunts && s.Plan != BodyPlan.Giant;
+
+    /// <summary>A creature of this species on the ground straight ahead of the camera, facing it.</summary>
+    static Creature PutInView(Main main, Species s, float distance)
     {
-        foreach (Node n in root.FindChildren("*", "Control", true, false))
-            if (n is Control { Visible: true } ctl && ctl.IsVisibleInTree() && (ctl is not Label l || l.Text.Trim() != "")) yield return ctl;
+        Vector3 eye = main.Camera.GlobalPosition, look = WildSim.Flat(-main.Camera.GlobalBasis.Z).Normalized();
+        Creature c = main.Sim.Spawn(s, WildSim.Flat(eye + look * distance));
+        c.Yaw = MathF.Atan2(look.X, look.Z);
+        return c;
     }
 
-    /// <summary>The status text's live numbers (clock, fps, health, counts) change by themselves; blank them out.</summary>
-    static string StripLive(string text) => System.Text.RegularExpressions.Regex.Replace(text, @"[0-9]+", "#");
-
-    /// <summary>Non-positional sound players that are playing: a UI chime would be one.</summary>
-    static int Playing(Node root) => root.FindChildren("*", "AudioStreamPlayer", true, false).Count(n => n is AudioStreamPlayer { Playing: true });
+    /// <summary>Waits up to a number of physics frames for a condition; returns the frames waited, or -1.</summary>
+    async System.Threading.Tasks.Task<int> WaitFor(Func<bool> condition, int maxFrames)
+    {
+        for (int i = 0; i < maxFrames; i++)
+        {
+            if (condition()) return i;
+            await Frames(1);
+        }
+        return condition() ? maxFrames : -1;
+    }
 
     async System.Threading.Tasks.Task Frames(int n)
     {
@@ -646,6 +785,137 @@ public partial class WildlifeTest : Node
             $"a felled tree regrows only when no player is within {_data.Harvest.RegrowBlockRadius:F0} m (waited {_data.Harvest.RegrowSeconds + 30f:F0} s nearby)");
     }
 
+    /// <summary>
+    /// Tree trunks are solid to creatures: one driven straight at a trunk slides round it, and a
+    /// hunter chasing prey on the far side of one goes round it, never through.
+    /// </summary>
+    void CreaturesKeepOffTrunks()
+    {
+        Species walker = null, hunter = null;
+        for (ulong seed = 1; seed < 300 && (walker == null || hunter == null); seed++)
+            foreach (Species x in _gen.Generate(seed * 433, 0.4f, false).Species)
+            {
+                if (walker == null && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant) walker = x;
+                if (hunter == null && x.Behaviour == Behaviour.Predator && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant) hunter = x;
+            }
+        if (walker == null || hunter == null) { Fail("no walking species found for the trunk test"); return; }
+
+        // Pushed straight at a trunk, a hair off its middle, for 8 s.
+        WildSim w = NewSim(31, obstacles: false);
+        var field = new HarvestField(_data.Harvest, w.Nav);
+        Plant tree = field.Add(PlantKind.Tree, Ground(w, new Vector3(0f, 0f, -8f)), 0.45f, 8f, 3f, 0);
+        Creature c = w.Spawn(walker, new Vector3(0.05f, 0f, 0f));
+        float allowed = tree.TrunkRadius + c.Radius * 0.5f, closest = float.MaxValue;
+        bool past = false;
+        for (int step = 0; step < 480; step++)
+        {
+            c.Desired = new Vector3(0f, 0f, -c.Stats.WalkSpeed);
+            Locomotion.Move(w, c, Dt);
+            closest = MathF.Min(closest, WildSim.Flat(c.Position - tree.Position).Length());
+            past |= c.Position.Z < tree.Position.Z - allowed;
+        }
+
+        // A hunter chasing prey that stands behind a trunk.
+        WildSim w2 = NewSim(32, obstacles: false);
+        var field2 = new HarvestField(_data.Harvest, w2.Nav);
+        Plant tree2 = field2.Add(PlantKind.Tree, Ground(w2, new Vector3(0f, 0f, -7f)), 0.45f, 8f, 3f, 0);
+        Creature h = w2.Spawn(hunter, Vector3.Zero);
+        var prey = new DummyTarget { Name = "Prey", Position = Ground(w2, new Vector3(0f, 0f, -12f)), Health = new Health(1e9f) };
+        w2.Targets.Add(prey);
+        float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
+        bool reached = false;
+        w2.Attacked += e => reached = true;
+        for (int step = 0; step < 900 && !reached; step++)
+        {
+            w2.Step(Dt);
+            closest2 = MathF.Min(closest2, WildSim.Flat(h.Position - tree2.Position).Length());
+        }
+        Check(closest >= allowed - 1e-3f && past && closest2 >= allowed2 - 1e-3f && reached,
+            $"creatures can't pass through a tree trunk: one pushed straight at it slides round (closest {closest:F2} m from its middle, trunk + half body {allowed:F2} m), a hunter goes round one to reach its prey (closest {closest2:F2} m)");
+    }
+
+    /// <summary>
+    /// In the real scene: the player walks into a trunk and stops against it; the hovercraft
+    /// with a full hold drives into one and is held off it; chopping a tree drops its collider
+    /// the moment it falls, and the player walks through where it stood.
+    /// </summary>
+    async System.Threading.Tasks.Task TrunksBlock(Main main)
+    {
+        Player p = main.Player;
+        float maxHealth = p.Health.Max;
+        p.Health.Max = p.Health.Current = 1e6f; // a passing hunter must not end the staging in a respawn
+        HarvestField field = main.Forest.Field;
+        Vector3 start = p.GlobalPosition;
+        List<Plant> trees = field.Plants.Where(x => x.Kind == PlantKind.Tree && x.Alive).OrderBy(x => WildSim.Flat(x.Position - start).Length()).ToList();
+        int collidersOk = trees.Count(x => main.Forest.TrunkOf(x) is { Disabled: false, Shape: CylinderShape3D cyl } && MathF.Abs(cyl.Radius - x.TrunkRadius) < 1e-4f);
+        Check(collidersOk == trees.Count && trees.Count > 50, $"every standing tree has a trunk collider ({collidersOk} of {trees.Count})");
+
+        // Walk straight into the nearest trunk for two seconds.
+        Plant tree = trees[0];
+        Vector3 away = WildSim.Flat(start - tree.Position).Normalized();
+        p.Teleport(Ground(main, tree.Position + away * 3f) + Vector3.Up * 0.1f);
+        p.SetLook(MathF.Atan2(away.X, away.Z), 0f);
+        await Frames(2);
+        float closest = float.MaxValue;
+        Hold(Key.W, true);
+        for (int i = 0; i < 120; i++)
+        {
+            await Frames(1);
+            closest = MathF.Min(closest, WildSim.Flat(p.GlobalPosition - tree.Position).Length());
+        }
+        Hold(Key.W, false);
+        bool stopped = closest >= tree.TrunkRadius + 0.3f;
+
+        // Fell it: the collider goes the moment the tree does, and the player walks on through.
+        bool droppedAtOnce = false;
+        void OnFelled(Plant felled) { if (felled == tree) droppedAtOnce = main.Forest.TrunkOf(tree).Disabled; }
+        field.Felled += OnFelled;
+        field.Chip(tree, 1e6f);
+        field.Felled -= OnFelled;
+        float through = float.MaxValue;
+        Hold(Key.W, true);
+        for (int i = 0; i < 90; i++)
+        {
+            await Frames(1);
+            through = MathF.Min(through, WildSim.Flat(p.GlobalPosition - tree.Position).Length());
+        }
+        Hold(Key.W, false);
+        Check(stopped && droppedAtOnce && through < tree.TrunkRadius,
+            $"the player can't walk through a trunk (stopped {closest:F2} m from its middle, radius {tree.TrunkRadius:F2} m); felling it drops its collider at once, and then they walk over the stump ({through:F2} m)");
+
+        // The hovercraft with a full hold drives at a tree: the blades won't take it, and the hull is held off it.
+        Vessel v = main.Vessel;
+        Plant target = trees.Skip(1).First(x => trees.All(o => o == x || o == tree || WildSim.Flat(o.Position - x.Position).Length() > 4f));
+        Vector3 back = WildSim.Flat(start - target.Position).Normalized();
+        v.Yaw = MathF.Atan2(back.X, back.Z); // forward is -back: at the tree
+        v.GlobalPosition = Ground(main, target.Position + back * 7f) + Vector3.Up * 0.85f;
+        v.Velocity = Vector3.Zero;
+        v.Storage.Clear();
+        v.Storage.Add(Items.Wood, v.Storage.Capacity);
+        v.AutoThrottle = 0.5f;
+        float held = float.MaxValue;
+        for (int i = 0; i < 180; i++)
+        {
+            await Frames(1);
+            held = MathF.Min(held, WildSim.Flat(v.GlobalPosition - target.Position).Length());
+        }
+        bool standing = target.Alive;
+        // Room in the hold again: now it cuts, and the trunk stops blocking the moment it falls.
+        v.Storage.Clear();
+        bool cutAtOnce = false, felledIt = false;
+        void OnCut(Plant felled) { if (felled == target) { felledIt = true; cutAtOnce = main.Forest.TrunkOf(target).Disabled; } }
+        field.Felled += OnCut;
+        for (int i = 0; i < 600 && !felledIt; i++) await Frames(1);
+        field.Felled -= OnCut;
+        v.AutoThrottle = 0f;
+        v.Storage.Clear();
+        p.Health.Max = p.Health.Current = maxHealth;
+        Check(standing && held >= target.TrunkRadius + 0.45f && felledIt && cutAtOnce,
+            $"the hovercraft is held off a tree it isn't cutting (closest {held:F2} m from the trunk with a full hold, tree still standing); once there is room it cuts it down and the trunk's collider goes as it falls");
+    }
+
+    static Vector3 Ground(Main main, Vector3 p) => new(p.X, main.Planet.Terrain.Height(p.X, p.Z), p.Z);
+
     void RunDown()
     {
         PlanetFauna f = _gen.Generate(99, 0.5f, false);
@@ -698,27 +968,201 @@ public partial class WildlifeTest : Node
     }
 
     /// <summary>
-    /// The codex records who saw a species first, silently. It has no event to hang an
-    /// announcement on, and the HUD has nothing that could show one.
+    /// The codex records who met a species first, once, and raises one discovery for it: the
+    /// event the game hangs the discovery card on. Later sightings, by anyone, change nothing.
     /// </summary>
-    void CodexIsSilent()
+    void CodexFirstFinder()
     {
         var codex = new Codex();
         Species s = _gen.Generate(5, 0.5f, false).Species[0];
+        var raised = new List<CodexEntry>();
+        codex.Discovered += raised.Add;
         bool first = codex.Record(s, "Pip", 10f, "Test IV");
         bool again = codex.Record(s, "Rex", 20f, "Test IV");
+        bool againPip = codex.Record(s, "Pip", 30f, "Test IV");
         CodexEntry e = codex.Get(s.Id);
-        Check(first && !again && codex.Count == 1 && e.Finder == "Pip" && e.FoundAt == 10f,
-            $"a sighting is recorded once, to the first finder ({e?.Name}, seen first by {e?.Finder})");
+        Check(first && !again && !againPip && codex.Count == 1 && raised.Count == 1 && raised[0] == e && e.Finder == "Pip" && e.FoundAt == 10f
+              && e.Name == s.Name && e.Form == s.FormLabel && e.Behaviour == s.BehaviourLabel && e.Size == s.Body.Size && e.Planet == "Test IV",
+            $"the codex records the first finder, once, with one discovery raised ({e?.Name}: {e?.Form}, {e?.Behaviour}, {e?.Size:F1} m, first found by {e?.Finder} on {e?.Planet})");
+    }
 
-        var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static;
-        string[] announce = { "card", "discover", "newspecies", "announce", "toast", "banner", "popup" };
-        var leftovers = new[] { typeof(Codex), typeof(Hud), typeof(Main), typeof(ProceduralAudio) }
-            .SelectMany(t => t.GetMembers(flags).Select(m => $"{t.Name}.{m.Name}"))
-            .Where(n => announce.Any(a => n.ToLowerInvariant().Contains(a)))
-            .ToList();
-        Check(typeof(Codex).GetEvents(flags).Length == 0 && leftovers.Count == 0,
-            $"no first-encounter announcement code remains (codex has no events; announcement-like members: {(leftovers.Count == 0 ? "none" : string.Join(", ", leftovers))})");
+    // ---- Bases: nothing spawns near them -------------------------------------------------
+
+    /// <summary>
+    /// No creature spawns or respawns within the clearance of a base, measured from its
+    /// footprint's edge. An hour of a planet's fauna being killed off and topped back up, with a
+    /// small base right where the herd would start, a big one out in the hills, a capital ship
+    /// parked between and a player strolling through all of it: every spawn is checked.
+    /// </summary>
+    void NoSpawnsNearBases()
+    {
+        SpawnRules rules = _data.Spawning;
+        float clear = rules.BaseClearance;
+        const ulong Seed = 4040;
+        PlanetFauna f = _gen.Generate(Seed, 0.5f, false);
+        var groves = new List<Vector3> { new(-30f, 0f, -40f), new(110f, 0f, 20f), new(-90f, 0f, 120f), new(40f, 0f, -150f) };
+
+        WildSim w = NewSim(Seed);
+        var hut = new Structure { Name = "hut", Center = Ground(w, new Vector3(0f, 0f, -22f)), HalfExtents = new Vector2(3f, 3f) };
+        var fortress = new Structure { Name = "fortress", Center = Ground(w, new Vector3(125f, 0f, 115f)), HalfExtents = new Vector2(40f, 28f), Yaw = 0.6f };
+        var carrier = new Structure { Name = "carrier", Mode = CoreMode.Capital, Center = Ground(w, new Vector3(-100f, 0f, -80f)), HalfExtents = new Vector2(30f, 10f), Yaw = -0.3f };
+        w.Structures.AddRange(new[] { hut, fortress, carrier });
+        var player = new DummyTarget { Name = "Stroller", Health = new Health(1e9f) };
+        w.Targets.Add(player);
+
+        var spawns = new List<Vector3>();
+        float nearestPlayer = float.MaxValue;
+        bool respawning = false;
+        w.Spawned += c =>
+        {
+            spawns.Add(c.Position);
+            if (respawning) nearestPlayer = MathF.Min(nearestPlayer, WildSim.Flat(c.Position - player.Position).Length());
+        };
+        var spawner = new Spawner(w, f, groves, Seed);
+        spawner.Populate();
+        int opening = spawns.Count;
+        respawning = true;
+
+        var rng = new Rng(17);
+        const float Step = 0.5f;
+        int kills = 0;
+        for (int i = 0; i < (int)(3600f / Step); i++)
+        {
+            float t = i * Step;
+            // The player strolls a wide loop through everything, the bases included.
+            Vector3 at = new(MathF.Cos(t * 0.011f) * 160f, 0f, MathF.Sin(t * 0.017f) * 160f);
+            Vector3 ahead = new(MathF.Cos((t + 1f) * 0.011f) * 160f, 0f, MathF.Sin((t + 1f) * 0.017f) * 160f);
+            player.Position = Ground(w, at);
+            player.Forward = (ahead - at).Normalized();
+            // Something dies every few seconds: shot, harvested or eaten.
+            if (i % 8 == 0)
+            {
+                List<Creature> alive = w.Creatures.Where(c => !c.Removed && c.Alive).ToList();
+                if (alive.Count > 0)
+                {
+                    Creature victim = alive[rng.Int(0, alive.Count - 1)];
+                    w.Kill(victim, null);
+                    victim.Removed = true;
+                    kills++;
+                }
+            }
+            spawner.Step(Step);
+        }
+
+        int inside = spawns.Count(p => w.InBaseZone(p));
+        float nearest = spawns.Min(p => BaseZones.NearestBase(w.Structures, p));
+        Check(inside == 0 && spawner.Respawned > 300 && spawner.RejectedForBase > 0,
+            $"no creature spawns or respawns within {clear:F0} m of a base: {spawns.Count} spawns ({opening} at the start, {spawner.Respawned} respawns over an hour with {kills} kills), nearest {nearest:F1} m from a base's edge; {spawner.RejectedForBase} spots turned down for a base");
+        Check(nearestPlayer >= rules.MinPlayerDistance,
+            $"respawns keep away from the player and out of view (nearest {nearestPlayer:F0} m, at least {rules.MinPlayerDistance:F0}; {spawner.RejectedForPlayers} spots turned down)");
+
+        // The zone runs from the footprint's edge, so a big base keeps a bigger one.
+        bool EdgeAt(Structure s)
+        {
+            Vector3 along = new Basis(Vector3.Up, s.Yaw) * Vector3.Right;
+            float reach = s.HalfExtents.X + clear;
+            return BaseZones.Blocks(new[] { s }, s.Center + along * (reach - 0.5f), clear) && !BaseZones.Blocks(new[] { s }, s.Center + along * (reach + 0.5f), clear);
+        }
+        float Area(Structure s)
+        {
+            int n = 0;
+            for (float x = -400f; x <= 400f; x += 4f)
+                for (float z = -400f; z <= 400f; z += 4f)
+                    if (BaseZones.Blocks(new[] { s }, s.Center + new Vector3(x, 0f, z), clear)) n++;
+            return n * 16f;
+        }
+        float hutArea = Area(hut), fortArea = Area(fortress);
+        float hutReach = hut.HalfExtents.X + clear, fortReach = fortress.HalfExtents.X + clear;
+        float nearHut = spawns.Min(p => WildSim.Flat(p - hut.Center).Length()), nearFort = spawns.Min(p => WildSim.Flat(p - fortress.Center).Length());
+        Check(EdgeAt(hut) && EdgeAt(fortress) && fortArea > hutArea * 2f && nearHut >= hut.HalfExtents.X + clear && nearFort >= fortress.HalfExtents.Y + clear,
+            $"a large base gets a larger zone: it runs {clear:F0} m from the footprint's edge, {hutReach:F0} m out from a 6 m hut's centre and {fortReach:F0} m from an 80 x 56 m fortress's ({hutArea / 1e4f:F1} ha against {fortArea / 1e4f:F1} ha); nearest spawns {nearHut:F0} m and {nearFort:F0} m from their centres");
+
+        // Capital mode blocks nothing: a ship parked where the herd starts gets creatures round it;
+        // switch the same core to base mode and none come within the clearance.
+        (int near, float closest) Opening(CoreMode mode)
+        {
+            WildSim ws = NewSim(Seed);
+            var parked = new Structure { Name = "core", Mode = mode, Center = Ground(ws, new Vector3(0f, 0f, -22f)), HalfExtents = new Vector2(12f, 8f) };
+            ws.Structures.Add(parked);
+            var placed = new List<Vector3>();
+            ws.Spawned += c => placed.Add(c.Position);
+            new Spawner(ws, f, groves, Seed).Populate();
+            return (placed.Count(p => parked.DistanceToFootprint(p) < clear), placed.Min(p => parked.DistanceToFootprint(p)));
+        }
+        (int capitalNear, float capitalClosest) = Opening(CoreMode.Capital);
+        (int baseNear, float baseClosest) = Opening(CoreMode.Base);
+        int byCarrier = spawns.Count(p => carrier.DistanceToFootprint(p) < clear);
+        Check(capitalNear > 0 && baseNear == 0 && byCarrier > 0,
+            $"capital-mode structures don't block spawns: {capitalNear} creatures spawn within {clear:F0} m of a capital core parked where the herd starts (closest {capitalClosest:F1} m), none once it is in base mode (closest {baseClosest:F1} m); over the hour {byCarrier} spawned near the parked carrier");
+
+        // The clearance is past the furthest any creature can notice a player, so nothing new
+        // appears close enough to have seen you at home.
+        float longest = 0f;
+        for (ulong seed = 1; seed <= 200; seed++)
+            foreach (Species s in _gen.Generate(seed * 9137, seed % 4 * 0.33f, seed % 6 == 0).Species)
+                longest = MathF.Max(longest, s.Stats.Perception);
+        Check(clear > longest, $"the {clear:F0} m clearance is past the longest perception any creature rolls ({longest:F0} m over 200 planets)");
+    }
+
+    /// <summary>
+    /// Only spawning is blocked. A herd that settles just outside a base's zone still grazes its
+    /// way in, and a hunter shot at from the base charges all the way in and bites.
+    /// </summary>
+    void WanderersStillEnter()
+    {
+        float clear = _data.Spawning.BaseClearance;
+        Species grazers = null;
+        for (ulong seed = 1; seed < 200 && grazers == null; seed++)
+            grazers = _gen.Generate(seed * 211, 0.3f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Herd && x.Rig == RigKind.Legged && x.Plan != BodyPlan.Giant);
+        Species hunter = null;
+        for (ulong seed = 1; seed < 400 && hunter == null; seed++)
+            hunter = _gen.Generate(seed * 223, 0.4f, false).Species.FirstOrDefault(x => x.Behaviour == Behaviour.Predator && x.Rig == RigKind.Legged && x.Stats.Retaliates && x.Plan != BodyPlan.Giant);
+        if (grazers == null || hunter == null) { Fail("no herd or retaliating predator species found for the base tests"); return; }
+
+        // The herd: spawned legally, its edge a few metres outside the zone.
+        WildSim w = NewSim(grazers.Seed, obstacles: false);
+        var outpost = new Structure { Name = "outpost", Center = Ground(w, Vector3.Zero), HalfExtents = new Vector2(8f, 6f) };
+        w.Structures.Add(outpost);
+        float spread = w.GroupRadius(grazers, 6);
+        Vector3 home = Ground(w, new Vector3(outpost.HalfExtents.X + clear + spread + 4f, 0f, 0f));
+        List<Creature> herd = w.SpawnGroup(grazers, home, 6);
+        bool spawnedOutside = herd.Count == 6 && herd.All(c => !w.InBaseZone(c.Position));
+        var entered = new HashSet<Creature>();
+        float deepest = float.MaxValue;
+        for (int step = 0; step < 60 * 60 * 10; step++)
+        {
+            w.Step(Dt);
+            if (step % 30 != 0) continue;
+            foreach (Creature c in herd)
+            {
+                float d = outpost.DistanceToFootprint(c.Position);
+                deepest = MathF.Min(deepest, d);
+                if (d < clear) entered.Add(c);
+            }
+        }
+        Check(spawnedOutside && entered.Count > 0,
+            $"creatures already outside may wander in: {entered.Count} of a herd of 6 spawned outside the zone grazed into it within 10 minutes (deepest {deepest:F0} m from the base's edge)");
+
+        // The hunter: shot at from inside the base every few seconds, it comes for the shooter.
+        WildSim w2 = NewSim(hunter.Seed, obstacles: false);
+        var keep = new Structure { Name = "keep", Center = Ground(w2, Vector3.Zero), HalfExtents = new Vector2(8f, 6f) };
+        w2.Structures.Add(keep);
+        var defender = new DummyTarget { Name = "Defender", Position = Ground(w2, Vector3.Zero), Health = new Health(1e9f) };
+        w2.Targets.Add(defender);
+        Vector3 start = Ground(w2, new Vector3(keep.HalfExtents.X + clear + 2f, 0f, 0f));
+        Creature c2 = w2.Spawn(hunter, start);
+        bool legal = !w2.InBaseZone(c2.Position);
+        AttackEvent? bite = null;
+        w2.Attacked += e => bite ??= e;
+        float reachedAt = -1f;
+        for (int step = 0; step < 60 * 60 && bite == null; step++)
+        {
+            if (step % 240 == 0) w2.Damage(c2, 1f, defender); // a shot from the base
+            w2.Step(Dt);
+        }
+        if (bite != null) reachedAt = bite.Value.Time;
+        Check(legal && bite != null && keep.DistanceToFootprint(c2.Position) < 3f,
+            $"attackers still reach a base: a {hunter.CommonName} spawned outside the zone, shot at from the base, ran {start.Length():F0} m in and attacked after {reachedAt:F0} s");
     }
 
     // ---- Performance --------------------------------------------------------------------
@@ -834,6 +1278,7 @@ public partial class WildlifeTest : Node
 
     void Check(bool ok, string what)
     {
+        _checks++;
         if (ok) GD.Print($"PASS  {what}");
         else Fail(what);
     }

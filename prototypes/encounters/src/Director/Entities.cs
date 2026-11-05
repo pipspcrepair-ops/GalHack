@@ -3,7 +3,8 @@ using System.Numerics;
 
 namespace Encounters.Director;
 
-public enum EntityKind { NpcShip, PlayerCargo, PlayerShip }
+/// <summary>What a world entity is. Creatures are space fauna: transient, uncrewed, never salvage.</summary>
+public enum EntityKind { NpcShip, PlayerCargo, PlayerShip, Creature }
 
 /// <summary>
 /// How a player touched something. Any touch makes it a permanent record. Only a wreck (its core
@@ -30,14 +31,17 @@ public sealed class WorldEntity
     public long Id;
     public string ZoneId = "";
     public EntityKind Kind;
+    /// <summary>A ship's hull, or a creature's kind (a space fauna form of the wildlife prototype).</summary>
     public string Hull = "";
     public string Faction = "";
     public string Role = "";
     public string Side = "";
     public string Label = "";
-    /// <summary>Every NPC vehicle is crewed; there are no drones.</summary>
+    /// <summary>Every NPC vehicle is crewed; there are no drones. Creatures have no crew.</summary>
     public int Crew;
     public bool Hostile;
+
+    public bool IsCreature => Kind == EntityKind.Creature;
 
     /// <summary>The event that spawned it, if any (kept on records as history).</summary>
     public long EncounterId;
@@ -94,7 +98,7 @@ public sealed class Encounter
     public bool Touched;
     public bool Debug;
 
-    /// <summary>Every ship it spawned, whether still transient, now a record, or gone.</summary>
+    /// <summary>Every ship (or, for a fauna event, creature) it spawned, whether still transient, now a record, or gone.</summary>
     public readonly List<WorldEntity> Ships = new();
 
     internal readonly List<(long ShipId, double At)> WreckSchedule = new();

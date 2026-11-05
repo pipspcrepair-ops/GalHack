@@ -559,7 +559,10 @@ public static class FaunaQuality
     }
 
     /// <summary>Whether a part can join the parts a species already has, by both sides' rules.</summary>
-    public static bool Compatible(FaunaTables t, PartDef p, string slot, Species s)
+    public static bool Compatible(FaunaTables t, PartDef p, string slot, Species s) => Compatible(t.FindPart, p, slot, s);
+
+    /// <summary>The same rules over any part table (the space fauna has its own).</summary>
+    public static bool Compatible(Func<string, string, PartDef> findPart, PartDef p, string slot, Species s)
     {
         string key = $"{slot}/{p.Id}";
         foreach (var (otherSlot, otherId) in s.Parts)
@@ -567,7 +570,7 @@ public static class FaunaQuality
             if (otherSlot == slot || otherId == "none") continue;
             string other = $"{otherSlot}/{otherId}";
             if (Array.IndexOf(p.Excludes, other) >= 0) return false;
-            PartDef od = t.FindPart(otherSlot, otherId);
+            PartDef od = findPart(otherSlot, otherId);
             if (od != null && Array.IndexOf(od.Excludes, key) >= 0) return false;
         }
         if (p.Requires.Length == 0) return true;

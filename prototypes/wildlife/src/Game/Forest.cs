@@ -27,6 +27,7 @@ public partial class Forest : Node3D
     }
 
     readonly List<PlantView> _views = new();
+    readonly Dictionary<Plant, PlantView> _byPlant = new();
     ShaderMaterial _material;
     ArrayMesh[] _treeMeshes = Array.Empty<ArrayMesh>(), _bushMeshes = Array.Empty<ArrayMesh>();
     ArrayMesh _stump;
@@ -34,6 +35,9 @@ public partial class Forest : Node3D
     public void Build(Terrain terrain, NavGrid nav, HarvestRules rules)
     {
         Field = new HarvestField(rules, nav);
+        // A felled trunk stops blocking the moment it falls, not a frame later; a regrown one blocks again.
+        Field.Felled += p => SetTrunk(p, false);
+        Field.Regrown += p => SetTrunk(p, true);
         _material = CreatureMaterials.Plain(1.6f);
         var rng = Rng.For(Planet.LandSeed, "forest");
 
@@ -87,13 +91,26 @@ public partial class Forest : Node3D
         {
             view.Stump = new MeshInstance3D { MaterialOverride = _material, Visible = false, VisibilityRangeEnd = 120f };
             AddChild(view.Stump);
-            var body = new StaticBody3D { CollisionLayer = Layers.World, CollisionMask = 0, Position = p + Vector3.Up * 2f };
-            view.Shape = new CollisionShape3D { Shape = new CylinderShape3D { Radius = plant.TrunkRadius, Height = 4f } };
+            // The trunk: a cylinder from a little below the ground up to where the crown starts.
+            // Players and the gun's rays hit it; creatures and the hovercraft keep off the same
+            // trunk through its nav-grid obstacle.
+            float trunk = plant.Height * 0.6f + 0.5f;
+            var body = new StaticBody3D { Name = $"Trunk{plant.Id}", CollisionLayer = Layers.World, CollisionMask = 0, Position = p + Vector3.Up * (trunk * 0.5f - 0.5f) };
+            view.Shape = new CollisionShape3D { Shape = new CylinderShape3D { Radius = plant.TrunkRadius, Height = trunk } };
             body.AddChild(view.Shape);
             AddChild(body);
         }
         _views.Add(view);
+        _byPlant[plant] = view;
     }
+
+    void SetTrunk(Plant p, bool standing)
+    {
+        if (_byPlant.TryGetValue(p, out PlantView v) && v.Shape != null) v.Shape.Disabled = !standing;
+    }
+
+    /// <summary>The collider of a tree's trunk (null for bushes), for the tests.</summary>
+    public CollisionShape3D TrunkOf(Plant p) => _byPlant.TryGetValue(p, out PlantView v) ? v.Shape : null;
 
     public void ApplyStyle(WorldStyle style)
     {

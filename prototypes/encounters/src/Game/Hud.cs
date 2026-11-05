@@ -164,6 +164,7 @@ public partial class Hud : Control
     {
         EntityKind.PlayerCargo => "Your cargo pod",
         EntityKind.PlayerShip => "Player ship",
+        EntityKind.Creature => CreatureForms.Name(e.Hull),
         _ => $"{d.Deck.FactionName(e.Faction)} {HullName(e.Hull)}",
     };
 
@@ -202,7 +203,7 @@ public partial class Hud : Control
             Vector2 p = cam.UnprojectPosition(view.GlobalPosition);
             if (p.X < -50 || p.Y < -50 || p.X > screen.X + 50 || p.Y > screen.Y + 50) continue;
             WorldEntity e = view.Entity;
-            Color color = e.IsLasting ? Palette.Lasting : Palette.Faction(e.Faction);
+            Color color = e.IsLasting ? Palette.Lasting : e.IsCreature ? Palette.Fauna : Palette.Faction(e.Faction);
             float r = Mathf.Clamp(view.Hull.Radius / dist * pixelsPerRadian, 7f, 90f);
             bool target = e == TouchTarget;
             Bracket(p, r + (target ? 5f : 0f), color, target ? 3f : 1.6f);
@@ -215,6 +216,7 @@ public partial class Hud : Control
             string tag = e.Touch != TouchKind.None ? $"{e.Touch.ToString().ToUpperInvariant()} · permanent"
                 : e.PlayerOwned ? "yours · permanent"
                 : e.Wrecked ? $"salvage · {e.Crew} aboard"
+                : e.IsCreature ? $"life form{(e.Hostile ? " · dangerous" : "")}"
                 : $"crew {e.Crew}{(e.Hostile ? " · hostile event" : "")}";
             Text(at, head, 14, color);
             Text(at + new Vector2(0, 17), $"{tag} · {Km(dist)}", 13, new Color(color, 0.8f));
@@ -226,7 +228,7 @@ public partial class Hud : Control
             Vector3 estimate = lead.Estimate.ToGodot();
             float dist = estimate.DistanceTo(eye);
             Color color = Palette.Lead(lead.Kind);
-            string head = lead.Kind == "distress" ? "DISTRESS CALL" : "TRANSMISSION";
+            string head = lead.Kind == "distress" ? "DISTRESS CALL" : lead.Kind == "lifesign" ? "LIFE SIGNS" : "TRANSMISSION";
             string sub = lead.Kind == "distress" ? $"~{Km(dist)} · search the circle" : $"{lead.Label} · ~{Km(dist)}";
             Vector2 p = cam.UnprojectPosition(estimate);
             bool onScreen = !cam.IsPositionBehind(estimate) && p.X > 40 && p.Y > 40 && p.X < screen.X - 40 && p.Y < screen.Y - 40;

@@ -1,0 +1,88 @@
+// How each item is made. There is no smelter: a constructor refines ore as one more step of the
+// chain, and its queue adds every missing step by itself (orders above, auto sub-parts below).
+//
+//   make     the item made; one recipe per item. Raw and unique items have none.
+//   count    how many one run makes
+//   from     inputs for one run
+//   seconds  one run on a speed-1 machine (the small constructor). Faster machines divide it.
+//   tier     the lowest constructor that knows the recipe:
+//              0 survival (carried, the basics), 1 portable and small, 2 large, 3 advanced
+//
+// Rules the tests hold: no cycles; parts and components never take raw ore (refined first, so the
+// blueprint factory can pay in refined materials); an item is never less rare than its inputs;
+// every constructor and the blueprint factory can be built from recipes a lower tier knows.
+{
+  "schema": "galhack.recipes",
+  "version": 1,
+  "recipes": [
+    // ---- Refining ---------------------------------------------------------------------------
+    { "make": "iron-bar",         "count": 1, "from": { "iron-ore": 2 },                  "seconds": 2,   "tier": 0 },
+    { "make": "copper-bar",       "count": 1, "from": { "copper-ore": 2 },                "seconds": 2,   "tier": 0 },
+    { "make": "silicon-wafer",    "count": 1, "from": { "silicon-ore": 2 },               "seconds": 2.5, "tier": 0 },
+    { "make": "graphite",         "count": 1, "from": { "carbon-ore": 2 },                "seconds": 2,   "tier": 0 },
+    { "make": "glass",            "count": 2, "from": { "silicon-ore": 3 },               "seconds": 3,   "tier": 0 },
+    { "make": "polymer",          "count": 2, "from": { "carbon-ore": 2, "ice": 1 },      "seconds": 3,   "tier": 0 },
+    { "make": "ceramic",          "count": 2, "from": { "stone": 2, "silicon-ore": 1 },   "seconds": 3,   "tier": 0 },
+    { "make": "concrete-mix",     "count": 2, "from": { "stone": 3, "ice": 1 },           "seconds": 2,   "tier": 0 },
+    { "make": "cobalt-bar",       "count": 1, "from": { "cobalt-ore": 2 },                "seconds": 3,   "tier": 1 },
+    { "make": "magnesium-powder", "count": 2, "from": { "magnesium-ore": 2 },             "seconds": 2,   "tier": 1 },
+    { "make": "neodymium-bar",    "count": 1, "from": { "neodymium-ore": 2 },             "seconds": 3,   "tier": 1 },
+    { "make": "gold-bar",         "count": 1, "from": { "gold-ore": 3 },                  "seconds": 3,   "tier": 1 },
+    { "make": "gravium-ingot",    "count": 1, "from": { "gravium-ore": 3 },               "seconds": 4,   "tier": 2 },
+    { "make": "fold-crystal",     "count": 1, "from": { "fold-crystal-raw": 2 },          "seconds": 5,   "tier": 1 },
+    { "make": "emberite",         "count": 1, "from": { "emberite-ore": 2 },              "seconds": 6,   "tier": 2 },
+    { "make": "starsilver-bar",   "count": 1, "from": { "starsilver-ore": 3 },            "seconds": 6,   "tier": 2 },
+    { "make": "voidglass",        "count": 1, "from": { "voidglass-shard": 2 },           "seconds": 8,   "tier": 3 },
+    { "make": "stormcore",        "count": 1, "from": { "stormcore-nodule": 2 },          "seconds": 8,   "tier": 3 },
+    { "make": "rimefire",         "count": 1, "from": { "rimefire-crystal": 2 },          "seconds": 8,   "tier": 3 },
+
+    // ---- Parts --------------------------------------------------------------------------------
+    { "make": "hull-plate",       "count": 2, "from": { "iron-bar": 1, "graphite": 1 },   "seconds": 2,   "tier": 0 },
+    { "make": "copper-wire",      "count": 4, "from": { "copper-bar": 1 },                "seconds": 1.5, "tier": 0 },
+    { "make": "winding",          "count": 1, "from": { "copper-wire": 4, "iron-bar": 1 }, "seconds": 3,  "tier": 0 },
+    { "make": "propellant",       "count": 2, "from": { "graphite": 1 },                  "seconds": 2,   "tier": 0 },
+    { "make": "circuit-board",    "count": 1, "from": { "silicon-wafer": 1, "copper-wire": 2, "polymer": 1 }, "seconds": 4, "tier": 1 },
+    { "make": "servo",            "count": 1, "from": { "winding": 1, "iron-bar": 2 },    "seconds": 4,   "tier": 1 },
+    { "make": "nozzle",           "count": 1, "from": { "iron-bar": 2, "ceramic": 1 },    "seconds": 4,   "tier": 1 },
+    { "make": "gun-barrel",       "count": 1, "from": { "iron-bar": 3, "graphite": 1 },   "seconds": 4,   "tier": 1 },
+    { "make": "magnet",           "count": 2, "from": { "neodymium-bar": 1 },             "seconds": 3,   "tier": 1 },
+    { "make": "machine-frame",    "count": 1, "from": { "cobalt-bar": 2, "iron-bar": 2 }, "seconds": 6,   "tier": 1 },
+    { "make": "logic-module",     "count": 1, "from": { "circuit-board": 2, "gold-bar": 1 }, "seconds": 6, "tier": 1 },
+    { "make": "explosive-charge", "count": 1, "from": { "magnesium-powder": 1, "propellant": 1 }, "seconds": 3, "tier": 1 },
+
+    // ---- Components ---------------------------------------------------------------------------
+    { "make": "control-unit",     "count": 1, "from": { "circuit-board": 3, "winding": 1, "hull-plate": 1 }, "seconds": 8,  "tier": 1 },
+    { "make": "power-unit",       "count": 1, "from": { "winding": 4, "circuit-board": 1, "hull-plate": 2 }, "seconds": 10, "tier": 1 },
+    { "make": "thrust-assembly",  "count": 1, "from": { "nozzle": 2, "magnet": 2, "hull-plate": 2 }, "seconds": 10, "tier": 2 },
+    { "make": "field-emitter",    "count": 1, "from": { "fold-crystal": 2, "logic-module": 1, "winding": 2 }, "seconds": 14, "tier": 2 },
+    { "make": "warp-coil",        "count": 1, "from": { "fold-crystal": 4, "starsilver-bar": 2, "magnet": 4 }, "seconds": 30, "tier": 3 },
+    { "make": "fusion-core",      "count": 1, "from": { "emberite": 2, "magnet": 2, "machine-frame": 1 }, "seconds": 30, "tier": 3 },
+    { "make": "voidglass-lens",   "count": 1, "from": { "voidglass": 1, "glass": 2 },    "seconds": 14,  "tier": 3 },
+    { "make": "storm-capacitor",  "count": 1, "from": { "stormcore": 1, "winding": 2 },  "seconds": 14,  "tier": 3 },
+    { "make": "rimefire-injector","count": 1, "from": { "rimefire": 1, "nozzle": 1 },    "seconds": 14,  "tier": 3 },
+    { "make": "lattice-processor","count": 1, "from": { "lattice-core": 1, "logic-module": 4 }, "seconds": 20, "tier": 3 },
+    { "make": "lattice-matrix",   "count": 1, "from": { "lattice-array": 1, "logic-module": 8 }, "seconds": 30, "tier": 3 },
+    { "make": "charge-plating",   "count": 1, "from": { "echo-shard": 2, "gravium-ingot": 2 }, "seconds": 16, "tier": 3 },
+
+    // ---- Consumables --------------------------------------------------------------------------
+    { "make": "o2-bottle",        "count": 1, "from": { "ice": 2, "iron-bar": 1 },        "seconds": 2,   "tier": 0 },
+    { "make": "medkit",           "count": 1, "from": { "biomass": 2, "polymer": 1 },     "seconds": 3,   "tier": 0 },
+    { "make": "biofuel",          "count": 1, "from": { "biomass": 3 },                   "seconds": 2,   "tier": 0 },
+    { "make": "energy-cell",      "count": 2, "from": { "copper-bar": 1, "graphite": 1 }, "seconds": 3,   "tier": 0 },
+    { "make": "fuel-pack",        "count": 1, "from": { "burnstone": 3 },                 "seconds": 2,   "tier": 0 },
+    { "make": "large-fuel-pack",  "count": 1, "from": { "fuel-pack": 4, "polymer": 1 },   "seconds": 6,   "tier": 1 },
+    { "make": "fusion-cell",      "count": 1, "from": { "emberite": 1, "magnet": 1 },     "seconds": 10,  "tier": 3 },
+    { "make": "paint-cartridge",  "count": 4, "from": { "polymer": 1, "graphite": 1 },    "seconds": 2,   "tier": 0 },
+
+    // ---- Ammo: one run makes one box, so a restock lands exactly on its threshold ----------
+    { "make": "pistol-rounds",    "count": 1, "from": { "iron-bar": 1, "propellant": 1 }, "seconds": 2,   "tier": 0 },
+    { "make": "belt-12mm",        "count": 1, "from": { "iron-bar": 2, "propellant": 2 }, "seconds": 4,   "tier": 1 },
+    { "make": "shells-40mm",      "count": 1, "from": { "iron-bar": 3, "propellant": 3 }, "seconds": 5,   "tier": 1 },
+    { "make": "rocket",           "count": 1, "from": { "hull-plate": 1, "explosive-charge": 1, "circuit-board": 1 }, "seconds": 5, "tier": 1 },
+    { "make": "artillery-shell",  "count": 1, "from": { "iron-bar": 4, "explosive-charge": 2 }, "seconds": 8, "tier": 2 },
+    { "make": "plasma-charge",    "count": 1, "from": { "emberite": 1, "magnet": 1 },     "seconds": 6,   "tier": 3 },
+
+    // ---- Tools ----------------------------------------------------------------------------------
+    { "make": "survival-constructor", "count": 1, "from": { "iron-bar": 4, "copper-wire": 4, "winding": 1 }, "seconds": 10, "tier": 0 }
+  ]
+}
