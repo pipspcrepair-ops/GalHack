@@ -68,6 +68,7 @@ public static class Sites
                 case "blastring": BlastRing(x, part); break;
                 case "launchers": Launchers(x, part); break;
                 case "railgun": Railgun(x, part); break;
+                case "crane": Crane(x, part); break;
                 case "shacks": Shacks(x, part); break;
                 case "stalls": Stalls(x, part); break;
                 case "greenhouse": Greenhouse(x, part); break;
@@ -1019,7 +1020,7 @@ public static class Sites
         for (int k = 0; k < len; k++)
         {
             int bx = p.X + 3 + k, by = 3 + k;
-            for (int dz = 2; dz <= 3; dz++)
+            for (int dz = 2; dz <= 4; dz++)
             {
                 bool ring = k % 4 == 0;
                 x.C.Set(new Int3(bx, by, p.Z + dz), new Block(BlockType.Cube, ring ? Material.Lumen : Material.Alloy, ring ? new Rgb(0x60, 0xc8, 0xff) : barrel, ring ? Role.Light : Role.Wall));
@@ -1028,10 +1029,10 @@ public static class Sites
             // A column under the barrel every eight metres.
             if (k % 8 == 4)
                 for (int y = 0; y < by; y++)
-                    foreach (int dz in new[] { 1, 4 })
+                    foreach (int dz in new[] { 1, 5 })
                         x.C.Set(new Int3(bx, y, p.Z + dz), new Block(BlockType.Pillar, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall));
             if (k % 8 == 4)
-                for (int dz = 1; dz <= 4; dz++) x.C.Set(new Int3(bx, by - 1, p.Z + dz), new Block(BlockType.Cube, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall));
+                for (int dz = 1; dz <= 5; dz++) x.C.Set(new Int3(bx, by - 1, p.Z + dz), new Block(BlockType.Cube, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall));
         }
         Int3 muzzle = new(p.X + 3 + len, 3 + len, p.Z + 2);
         x.C.X.Lights.Add(new LightSpot { Cell = muzzle + Int3.Up, Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2.4f, Range = 20f });
@@ -1091,6 +1092,34 @@ public static class Sites
                     x.C.Set(c + new Int3(i, 3, j), new Block(BlockType.Cube, Material.Cloth, cloth[k % cloth.Length], Role.Roof));
             x.C.X.Markers.Add(new Marker("stall", c + new Int3(0, 0, 1), "a vendor's place behind the counter"));
         }
+    }
+
+    /// <summary>
+    /// A tower crane left standing: a lattice mast, a long jib and a short counter-jib with its
+    /// weight, the hook still hanging from the jib's end on its cable. A shape you know from far off.
+    /// </summary>
+    static void Crane(Ctx x, SitePart p)
+    {
+        int h = p.Int("h", 28), jib = p.Int("jib", 18), back = p.Int("back", 6);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var yellow = new Rgb(0xc8, 0x98, 0x28);
+        Int3 Along(int i) => alongX ? new Int3(i, 0, 0) : new Int3(0, 0, i);
+        for (int y = 0; y < h; y++)
+            for (int dz = 0; dz < 2; dz++)
+                for (int dx = 0; dx < 2; dx++)
+                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Lattice, Material.Steel, yellow.Scale(0.9f), Role.Decor));
+        for (int i = -back; i <= jib; i++)
+            x.C.Set(new Int3(p.X, h, p.Z) + Along(i), new Block(i % 3 == 0 ? BlockType.Cube : BlockType.Lattice, Material.Steel, yellow, Role.Decor));
+        for (int i = -back; i <= -back + 1; i++)
+            x.C.Set(new Int3(p.X, h - 1, p.Z) + Along(i), new Block(BlockType.Cube, Material.Concrete, new Rgb(0x6a, 0x66, 0x60), Role.Decor));
+        // The cab and a red lamp on the mast head.
+        x.C.Set(new Int3(p.X, h + 1, p.Z), new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
+        x.C.X.Lights.Add(new LightSpot { Cell = new Int3(p.X, h + 1, p.Z), Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2f, Range = 16f });
+        // The hook on its cable, straight down from the jib's end.
+        int drop = p.Int("drop", 8);
+        Int3 end = new Int3(p.X, h, p.Z) + Along(jib - 1);
+        for (int k = 1; k <= drop; k++) x.C.Set(end - Int3.Up * k, new Block(BlockType.Cable, Material.Steel, new Rgb(0x30, 0x30, 0x30), Role.Decor));
+        x.C.Set(end - Int3.Up * (drop + 1), new Block(BlockType.Crate, Material.Steel, new Rgb(0x6a, 0x5a, 0x40), Role.Prop));
     }
 
     /// <summary>Fields gone wild: crop rows overgrown, a few fence posts, the odd rusted implement.</summary>

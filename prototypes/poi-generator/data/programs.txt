@@ -140,6 +140,7 @@ program ice_outpost
 
 program tower_block
   name Ominous Tower
+  crown broken
   shapes rect 2 court 1
   plans loop 3 atrium 2 court 2 spine 1 jog 1 hall 1
   setback 0.3
