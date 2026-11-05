@@ -203,6 +203,7 @@ public sealed partial class Building
         Out.Levels = Levels;
         Out.Min = Int3.Min(L(0, WalkY(Bottom) - 1, 0), L(W - 1, WalkY(Top) + 4, D - 1));
         Out.Max = Int3.Max(L(0, WalkY(Bottom) - 1, 0), L(W - 1, WalkY(Top) + 4, D - 1));
+        AlienForm();   // after the bounds: alien forms grow round the building's footprint
         int index = C.X.Plans.Select(p => p.Building).DefaultIfEmpty(-1).Max() + 1;
         foreach (var p in _plans.Values.OrderBy(p => p.S))
         {

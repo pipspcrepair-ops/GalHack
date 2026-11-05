@@ -867,11 +867,11 @@ public sealed partial class Building
                 }
             C.X.Markers.Add(new Marker("landing-pad", L(cxr, y, czr)));
         }
-        if (P.Crown == "broken") BrokenCrown(y);
+        if (P.Crown == "broken" && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal)) BrokenCrown(y);   // an alien cathedral grows a spire instead
         // Plant on the roof: tanks, a mast with a beacon (a light you see from far off).
         // The mast stands where there is roof under it (a tower that shed a corner keeps it on what is left).
         var mastAt = new[] { (Wm - 3, Zm + 2), (2, Zm + 2), (Wm - 3, Zm + Dm - 3), (2, Zm + Dm - 3) }.FirstOrDefault(c => InFoot(Top, c.Item1, c.Item2) && !C.Get(L(c.Item1, y - 1, c.Item2)).IsAir, (-1, -1));
-        if (mastAt.Item1 >= 0)
+        if (mastAt.Item1 >= 0 && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal))   // no radio mast on an alien place
         {
             Int3 mast = L(mastAt.Item1, y, mastAt.Item2);
             for (int k = 0; k < 6 + Floors; k++) C.Set(mast + Int3.Up * k, new Block(BlockType.Pillar, Material.Steel, new Rgb(0x60, 0x64, 0x68), Role.Decor));

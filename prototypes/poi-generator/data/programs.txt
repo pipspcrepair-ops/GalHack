@@ -455,3 +455,25 @@ program market
   rooms top office quarters control!
   rooms deepest vault! storage
   fill shop quarters
+
+# An alien cathedral: a cruciform or long nave, tall open halls with galleries round them,
+# few windows, a spire on the crossing (the alien forms pass grows it). Not an office block.
+program cathedral
+  name Cathedral
+  shapes cross 3 rect 1
+  plans hall 3 atrium 2 spine 1 enfilade 1
+  basement same 1
+  setback 0.5
+  style alien_cathedral
+  width 30 36
+  depth 30 32
+  floors 4 6
+  levels 1 1
+  lift 0
+  windows 0.15
+  secrets 1 2
+  rooms ground lobby! chapel! archive
+  rooms upper chapel archive monitor
+  rooms top chapel monitor
+  rooms deepest vault! cryo-bay
+  fill chapel archive

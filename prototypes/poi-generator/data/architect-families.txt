@@ -508,7 +508,7 @@ family alien_cathedral
   pitch A spire of pale stone on the highest ground, built for a congregation that never came back.
   faction none
   roster precursor
-  program tower_block
+  program cathedral
   style alien_cathedral
   core none
   owner none
