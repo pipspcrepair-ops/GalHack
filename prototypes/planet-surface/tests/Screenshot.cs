@@ -102,6 +102,10 @@ public partial class Screenshot : Node
                 bool settled = _main.Streamer.Settled && _main.Pois.Built;
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
+                if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
+                    foreach (Node n in _main.Pois.GetChildren())
+                        foreach (Node c in n.GetChildren())
+                            if ((c is CpuParticles3D && hide.Contains("smoke")) || (c is MeshInstance3D && hide.Contains("mesh"))) ((Node3D)c).Visible = false;
                 if (_settled < SettleFrames) return;
                 _stage = 2;
                 Capture();

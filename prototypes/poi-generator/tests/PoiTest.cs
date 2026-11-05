@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -876,10 +876,48 @@ public partial class PoiTest : Node
         Check(missing == 0, $"programs guarantee their must-have rooms: {buildings} buildings, {demands} required rooms, {missing} missing{first}");
     }
 
+    /// <summary>
+    /// No stray geometry: every vertex of every place's mesh lies inside its block grid (a metre of
+    /// slack), and no triangle edge is longer than a chunk's diagonal. This is what catches a
+    /// "wire" across the landscape: a stroke or strand thrown out of its cell.
+    /// </summary>
+    void Geometry()
+    {
+        int places = 0, stray = 0, triangles = 0;
+        string first = "";
+        foreach (var f in _lib.Families)
+            foreach (PoiState s in Enum.GetValues<PoiState>())
+            {
+                var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 13);
+                places++;
+                var g = p.Blocks;
+                var chunks = Mesher.Build(g, p.Layout.Occupied, new MeshOptions { RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y });
+                float lo = -1f, maxEdge = 16f * 1.5f;
+                foreach (var c in chunks)
+                    foreach (var buf in c.Surfaces)
+                        for (int t = 0; t + 2 < buf.Indices.Count; t += 3)
+                        {
+                            triangles++;
+                            bool bad = false;
+                            for (int e = 0; e < 3 && !bad; e++)
+                            {
+                                int a = buf.Indices[t + e] * 3, b = buf.Indices[t + (e + 1) % 3] * 3;
+                                float x = buf.Positions[a], y = buf.Positions[a + 1], z = buf.Positions[a + 2];
+                                bad |= float.IsNaN(x) || x < g.Min.X + lo || y < g.Min.Y + lo - 64 || z < g.Min.Z + lo
+                                       || x > g.Min.X + g.Size.X + 1 || y > g.Min.Y + g.Size.Y + 1 || z > g.Min.Z + g.Size.Z + 1;
+                                float dx = x - buf.Positions[b], dy = y - buf.Positions[b + 1], dz = z - buf.Positions[b + 2];
+                                bad |= dx * dx + dy * dy + dz * dz > maxEdge * maxEdge;
+                            }
+                            if (bad) { stray++; if (first.Length == 0) first = $" (first: {f.Id} {s} near {buf.Positions[buf.Indices[t] * 3]:F1}, {buf.Positions[buf.Indices[t] * 3 + 1]:F1}, {buf.Positions[buf.Indices[t] * 3 + 2]:F1})"; }
+                        }
+            }
+        Check(stray == 0, $"no stray geometry: {triangles} triangles in {places} places, every vertex inside its place and no edge longer than {16 * 1.5f:F0} m ({stray} stray){first}");
+    }
+
     /// <summary>Cables, wires and tendrils always hang from something: never in mid-air.</summary>
     void Tethers()
     {
-        int places = 0, hanging = 0, loose = 0;
+        int places = 0, hanging = 0, loose = 0, longRuns = 0, buried = 0, sideways = 0;
         foreach (var f in _lib.Families)
             foreach (PoiState s in Enum.GetValues<PoiState>())
             {
@@ -888,7 +926,26 @@ public partial class PoiTest : Node
                 hanging += p.Blocks.Blocks().Count(b => Structure.Hangs(b.Block.Type));
                 loose += Structure.Untethered(p.Blocks).Count;
             }
-        Check(hanging > 0 && loose == 0, $"cables and tendrils: {hanging} hanging things in {places} places, every one hangs from an anchor above it ({loose} in mid-air)");
+        // No spans: a hanging run is one straight drop under its anchor, never longer than a tall hall,
+        // never in the ground, and never a strand strung sideways from one cell to the next.
+        foreach (var f in _lib.Families)
+        {
+            var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, PoiState.Infested, 31);
+            var g = p.Blocks;
+            foreach (var (c, b) in g.Blocks())
+            {
+                if (!Structure.Hangs(b.Type)) continue;
+                if (c.Y < 0 && !p.Layout.Occupied[c]) buried++;
+                if (Structure.Hangs(g.Get(c + Int3.Up).Type)) continue;   // count each run once, from its top
+                int run = 0;
+                while (Structure.Hangs(g.Get(c + Int3.Down * run).Type)) run++;
+                if (run > 16) longRuns++;
+                bool side = Dirs.Horizontal.Any(d => Structure.Hangs(g.Get(c + d.Vec()).Type) && !BlockInfo.Collides(g.Get(c + d.Vec() + Int3.Up).Type) && !Structure.Hangs(g.Get(c + d.Vec() + Int3.Up).Type));
+                if (side && BlockInfo.Collides(g.Get(c + Int3.Up).Type) == false) sideways++;
+            }
+        }
+        Check(hanging > 0 && loose == 0 && longRuns == 0 && buried == 0 && sideways == 0,
+            $"cables and tendrils: {hanging} hanging things in {places} places, every one hangs straight down from an anchor above it; {loose} in mid-air, {longRuns} runs over 16 m, {buried} in the ground, {sideways} strung sideways");
     }
 
     /// <summary>Start worlds: no faction holds ground (faction places only as ruins), no cores, no defenders; the rest stays.</summary>

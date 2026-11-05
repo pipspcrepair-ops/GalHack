@@ -241,7 +241,7 @@ public static class Mesher
                 float u = 0.2f + (h % 7) / 12f, v = 0.1f;
                 for (int k = 0; k < 4; k++)
                 {
-                    float du = ((h >> (k * 3)) % 5 - 2) * 0.06f, dv = 0.18f + ((h >> (k * 2 + 1)) % 3) * 0.04f;
+                    float du = ((int)((h >> (k * 3)) % 5) - 2) * 0.06f, dv = 0.18f + (int)((h >> (k * 2 + 1)) % 3) * 0.04f; // signed: an unsigned wrap here once threw strokes 250,000 km out
                     lines.Add((Math.Min(u, u + du), v, Math.Max(u, u + du) + 0.035f, v + dv));
                     u += du;
                     v += dv;
