@@ -24,15 +24,21 @@ public enum InvasionPhase
 
 public enum InvasionOutcome { None, Victory, CoreDestroyed, CalledOff, Abandoned }
 
-/// <summary>A Vharn base on the map. Destroying or hijacking it stops the invasions it sends.</summary>
+/// <summary>
+/// A faction's base on the map. While its faction is hostile it can send invasions; destroying or
+/// hijacking it stops them.
+/// </summary>
 public sealed class EnemyBase
 {
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
+    /// <summary>The faction's design id (factions.json).</summary>
+    public string Faction { get; init; } = "";
     public EnemyBaseKind Kind { get; init; }
     public GroundPos Position { get; init; }
     public EnemyBaseState State { get; internal set; } = EnemyBaseState.Active;
 
+    /// <summary>Still standing and in its faction's hands. Whether it invades also needs its faction hostile.</summary>
     public bool CanSendInvasions => State == EnemyBaseState.Active;
 }
 
@@ -42,6 +48,8 @@ public readonly record struct BaseStats(double StoredValue, int Blocks, int Turr
 public sealed class InvasionSource
 {
     public SourceKind Kind { get; init; }
+    /// <summary>The invading faction's design id.</summary>
+    public string Faction { get; init; } = "";
     /// <summary>The enemy base sending the invasion, or null for a ship raid.</summary>
     public string EnemyBaseId { get; init; }
     public string Name { get; init; } = "";
@@ -54,17 +62,25 @@ public sealed class InvasionSource
     public int BearingDegrees => (int)System.Math.Round(Bearing) % 360;
 
     public override string ToString() =>
-        string.Create(CultureInfo.InvariantCulture, $"{Kind} '{Name}' bearing {BearingDegrees:000} {Compass} at {Distance:F0} m");
+        string.Create(CultureInfo.InvariantCulture, $"{Faction} {Kind} '{Name}' bearing {BearingDegrees:000} {Compass} at {Distance:F0} m");
 }
 
 /// <summary>One crewed carrier and the troops it delivers.</summary>
 public sealed class VehiclePlan
 {
     public int Index { get; init; }
+    /// <summary>Whose vehicle it is (factions.json id).</summary>
+    public string Faction { get; init; } = "vharn";
     public string Type { get; init; } = "";
+    /// <summary>Which model and movement it uses: apc, dropship, strider, lifter, hovertruck, shuttle, hoverbike, gunship, growth.</summary>
+    public string Body { get; init; } = "apc";
     public string Label { get; init; } = "";
     public bool Flies { get; init; }
     public double Speed { get; init; }
+    /// <summary>How close to the base it sets troops down; null for the approach default.</summary>
+    public double? DropDistance { get; init; }
+    /// <summary>Seconds between troops climbing out; null for the vehicle's default.</summary>
+    public double? UnloadSeconds { get; init; }
     /// <summary>The weapon on each gun, one gunner per gun.</summary>
     public List<string> Guns { get; init; } = new();
     public int Gunners => Guns.Count;
@@ -85,6 +101,8 @@ public sealed class VehiclePlan
 /// <summary>The force composed for one invasion, from the scaling data.</summary>
 public sealed class ForcePlan
 {
+    /// <summary>The invading faction's design id.</summary>
+    public string Faction { get; init; } = "";
     public double Threat { get; init; }
     public double PlayerMultiplier { get; init; }
     public int PlayersPresent { get; init; }
@@ -97,14 +115,10 @@ public sealed class ForcePlan
     public int TotalInvaders => Troops + Crew;
 
     /// <summary>"2 APCs and 1 dropship".</summary>
-    public string VehicleSummary(InvasionData data)
+    public string VehicleSummary()
     {
         var parts = Vehicles.GroupBy(v => v.Type).OrderBy(g => g.Key, System.StringComparer.Ordinal)
-            .Select(g =>
-            {
-                string label = data.Vehicles.TryGetValue(g.Key, out var t) ? t.Label : g.Key;
-                return $"{g.Count()} {label}{(g.Count() == 1 ? "" : "s")}";
-            }).ToList();
+            .Select(g => $"{g.Count()} {g.First().Label}{(g.Count() == 1 ? "" : "s")}").ToList();
         return parts.Count switch
         {
             0 => "no vehicles",
@@ -115,7 +129,7 @@ public sealed class ForcePlan
 
     public override string ToString() =>
         string.Create(CultureInfo.InvariantCulture,
-            $"{Tier}: {Troops} troops, threat {Threat:F3} x{PlayerMultiplier:F2} ({PlayersPresent}p); ") +
+            $"{Faction} {Tier}: {Troops} troops, threat {Threat:F3} x{PlayerMultiplier:F2} ({PlayersPresent}p); ") +
         string.Join("; ", Vehicles);
 }
 
@@ -148,6 +162,8 @@ public sealed class Invasion
     public int Id { get; init; }
     public string BaseId { get; init; } = "";
     public InvasionSource Source { get; init; }
+    /// <summary>The invading faction's design id.</summary>
+    public string Faction => Source.Faction;
     public double ScheduledAt { get; init; }
     /// <summary>When the force arrives. Every warning is timed back from this.</summary>
     public double ArrivalAt { get; internal set; }
@@ -184,6 +200,10 @@ public enum DirectorEventKind
     InvasionsResumed,
     BaseOffline,
     BaseOnline,
+    /// <summary>A faction turned hostile, or stopped being hostile.</summary>
+    StandingChanged,
+    /// <summary>Invasions were switched off or on in the options.</summary>
+    InvasionsToggled,
 }
 
 /// <summary>

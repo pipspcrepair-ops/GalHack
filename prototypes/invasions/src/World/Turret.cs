@@ -60,7 +60,7 @@ public partial class Turret : Node3D
         _lamp = Palette.Box(_pitch, new Vector3(0, 0.5f, 0.5f), new Vector3(0.2f, 0.14f, 0.2f), Palette.Glow(Palette.Acid, 3f));
 
         _head = HitBox.Create(new BoxShape3D { Size = new Vector3(1.5f, 1.2f, 1.8f) }, new Vector3(0, 0.75f, 0),
-            Layers.Blocks, Faction.Defenders, () => Block.Alive, (amount, from, by) => Model.Damage(Block, amount));
+            Layers.Blocks, Team.Defenders, () => Block.Alive, (amount, from, by) => Model.Damage(Block, amount));
         _yaw.AddChild(_head);
         World.TurretHeads.Add(_head);
         _fireControl = new FireControl(World.FireData, World.FireData.Weapon("base_cannon"));
@@ -111,7 +111,7 @@ public partial class Turret : Node3D
             _fire = (float)_fireControl.Weapon.Interval;
             _barrel = !_barrel;
             ShotsFired++;
-            World.FireAt(_fireControl, Muzzle(), _target, Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler, _ignore, Range * 1.4f);
+            World.FireAt(_fireControl, Muzzle(), _target, Layers.DefenderShots, Team.Defenders, Palette.TracerSettler, _ignore, Range * 1.4f);
             Fx.Flash(Muzzle(), Palette.TracerSettler, 5f, 3f);
         }
     }
@@ -128,7 +128,7 @@ public partial class Turret : Node3D
         ShotsFired++;
         Vector3 muzzle = Muzzle();
         World.Fire(muzzle, muzzle + Forward * 100f, _fireControl.Weapon, (float)_fireControl.Weapon.AimedSpreadDegrees,
-            Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler, _ignore, maxDistance: 500f);
+            Layers.DefenderShots, Team.Defenders, Palette.TracerSettler, _ignore, maxDistance: 500f);
         Fx.Flash(muzzle, Palette.TracerSettler, 5f, 3f);
     }
 

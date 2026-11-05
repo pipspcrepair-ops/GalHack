@@ -1,0 +1,28 @@
+# Field Pad: a large-grid landing pad in base mode, written by hand for the wind and parking tests.
+#
+# Large grid (2 m cells). x is east, y up, -z north. A deck 16 m square and 2 m thick with the core
+# set into its middle and a hazard-striped border. A base never flies and nothing ever moves it;
+# a vessel landed on it parks there, out of the wind.
+
+schema galhack.blueprint
+version 1
+name "Field Pad"
+grid large
+mode base
+gravity on
+
+paint deck base=3a3f47 texture=plates grime=2
+paint edge base=f4a100 accent=2b2d42 pattern=hazard grime=2
+
+# --- The border ------------------------------------------------------------------------------
+block -4..3 0 -4 steel paint=edge
+block -4..3 0 3 steel paint=edge
+block -4 0 -3..2 steel paint=edge
+block 3 0 -3..2 steel paint=edge
+
+# --- The deck, with the core in the middle ---------------------------------------------------
+block -3..2 0 -3..-1 steel paint=deck
+block -3..-1 0 0 steel paint=deck
+block 0 0 0 core
+block 1..2 0 0 steel paint=deck
+block -3..2 0 1..2 steel paint=deck

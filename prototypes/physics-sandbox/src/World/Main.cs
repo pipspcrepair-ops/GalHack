@@ -96,6 +96,7 @@ public partial class Main : Node3D
             case Key.Key2: p.Sit(World.Rover); break;
             case Key.Key3: p.PlaceOutside(World.Corsair.Body.ToParent(new N.Vector3(-1f, 2.9f, -1.5f))); break;
             case Key.Key4: Orbit(); break;
+            case Key.Key5: Swim(); break;
             case Key.G: flying?.Vessel?.ToggleGear(); break;
             case Key.C: flying?.Flight.ToggleCruise(); break;
             case Key.Y:
@@ -129,6 +130,17 @@ public partial class Main : Node3D
         ship.Cabin.SetGravity(ship.Body.Core);
         p.PlaceAboard(ship, new N.Vector3(-1f, 2.78f, -1.5f));
         Hud.Log("in orbit: core gravity off, mag boots on. Walk off an edge and round the hull; jump to let go");
+    }
+
+    /// <summary>A swim: the player on the lake's southern beach, looking out across it.</summary>
+    public void Swim()
+    {
+        Player p = World.Player;
+        var beach = new N.Vector2(SandboxTerrain.LakeCenter.X, SandboxTerrain.LakeCenter.Y + SandboxTerrain.LakeRadiusZ * 1.15f);
+        p.PlaceOutside(World.Ground(beach.X, beach.Y) + N.Vector3.UnitY * 0.05f);
+        p.Yaw = 0f; // facing north, over the water
+        p.Pitch = -0.1f;
+        Hud.Log("the lake: walk in and swim; Space up, Ctrl down. Under water your suit breathes its own oxygen");
     }
 
     /// <summary>Shoots one of the Corsair's engine pods off (port, then starboard).</summary>
@@ -211,6 +223,10 @@ public partial class Main : Node3D
             : p.Seated is Ship ship && (ThirdPerson || ship.Flight.Stats?.IsHover == true) ? Chase(ship)
             : ThirdPerson ? Behind(Eye(p)) : Eye(p);
         Backdrop.Follow(!World.Physics.Zone.InAtmosphere(Camera.GlobalPosition.ToNumerics()));
+        N.Vector3 eye = Camera.GlobalPosition.ToNumerics();
+        float surface = float.NegativeInfinity;
+        bool under = World.Physics.Water?.SurfaceAt(eye, out surface) == true && eye.Y < surface;
+        Backdrop.Submerge(under, under ? surface - eye.Y : 0f);
     }
 
     /// <summary>

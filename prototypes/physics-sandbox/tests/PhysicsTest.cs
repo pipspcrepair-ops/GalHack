@@ -86,6 +86,7 @@ public partial class PhysicsTest : Node
 
         StructureChecks();
         foreach (int x in ForcePath()) yield return x;
+        foreach (int x in NoAutoOrientation()) yield return x;
         foreach (int x in DamageAndCraters()) yield return x;
         foreach (int x in Severing()) yield return x;
         foreach (int x in HullRider()) yield return x;
@@ -97,6 +98,8 @@ public partial class PhysicsTest : Node
         foreach (int x in StepsEverywhere()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in GearOnDugGround()) yield return x;
+        foreach (int x in WindRules()) yield return x;
+        foreach (int x in WaterVolume()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
         foreach (int x in Performance()) yield return x;
@@ -377,6 +380,65 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         _w.Player.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         yield return 0;
+    }
+
+    /// <summary>
+    /// A flying vessel never orients itself: left banked or pitched, hands off or on the autopilot,
+    /// in air or in space, it keeps that attitude. Flown through the whole shared flight path (the
+    /// handling model, the vessel controller, thrust against gravity), all six at once.
+    /// </summary>
+    IEnumerable<int> NoAutoOrientation()
+    {
+        var attitudes = new (string name, N.Quaternion turn)[]
+        {
+            ("40° of bank", MathX.AxisAngle(N.Vector3.UnitZ, Units.Radians(40f))),
+            ("30° nose up", MathX.AxisAngle(N.Vector3.UnitX, Units.Radians(30f))),
+            ("25° nose down and 60° of bank", N.Quaternion.Normalize(MathX.AxisAngle(N.Vector3.UnitX, Units.Radians(-25f)) * MathX.AxisAngle(N.Vector3.UnitZ, Units.Radians(60f)))),
+        };
+        var flown = new List<(string what, Ship ship, N.Quaternion start)>();
+        for (int i = 0; i < attitudes.Length * 2; i++)
+        {
+            bool space = i % 2 == 1;
+            var (name, turn) = attitudes[i / 2];
+            float altitude = space ? _w.Physics.Zone.Ceiling + 150f : 160f;
+            Ship ship = _w.SpawnVessel("corsair.gbp", new N.Vector3(-60f + i * 24f, altitude, -70f), 0f, landed: false);
+            ship.Body.Rotation = MathX.ThenLocal(ship.Body.Rotation, turn);
+            ship.Body.Velocity = MathX.Forward(ship.Body.Rotation) * 20f; // flying on at 20 m/s
+            ship.Binding.Teleport();
+            // Half of them with hands off the stick, half with nobody in the seat (the autopilot holds course).
+            ship.Flight.Input = i / 2 % 2 == 0 ? PilotInput.LetGo : PilotInput.Autopilot;
+            flown.Add(($"{name} in {(space ? "space" : "air")}, {(ship.Flight.Input.Seated ? "hands off" : "autopilot")}", ship, ship.Body.Rotation));
+        }
+        float worst = 0f;
+        string worstWhat = "";
+        for (int t = 0; t < 600; t++)
+        {
+            yield return 0;
+            foreach (var (what, ship, start) in flown)
+            {
+                float off = AngleBetween(ship.Body.Rotation, start);
+                if (off < worst) continue;
+                worst = off;
+                worstWhat = what;
+            }
+        }
+        bool flying = flown.All(f => !f.ship.Vessel.Frozen && !f.ship.IsWreck);
+        Check(flying && worst < 0.01f,
+            $"no auto-orientation through the shared flight path: six Corsairs left banked or pitched (40° of bank, 30° nose up, 25° down and 60° banked), " +
+            $"in air and in space, hands off or on the autopilot, keep that attitude for 10 s: worst drift {worst:F4}° ({worstWhat})");
+        foreach (var (_, ship, _) in flown) _w.Remove(ship);
+        yield return 0;
+    }
+
+    /// <summary>
+    /// The angle between two orientations, degrees, from the sine of the half angle (an arccosine of
+    /// their dot product can't resolve hundredths of a degree in single precision).
+    /// </summary>
+    static float AngleBetween(N.Quaternion a, N.Quaternion b)
+    {
+        N.Quaternion d = N.Quaternion.Normalize(a * N.Quaternion.Conjugate(b));
+        float sinHalf = MathF.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
+        return Units.Degrees(2f * MathF.Asin(MathF.Min(1f, sinHalf)));
     }
 
     /// <summary>The velocity each integrator integrates: a kinematic body's origin, a free body's centre of mass.</summary>
@@ -1169,6 +1231,323 @@ public partial class PhysicsTest : Node
             $"every foot within {worstFoot * 100f:F0} cm of the ground, raises Landed and stops simulating");
         _w.Remove(ship);
         yield return 0;
+    }
+
+    // ==== Wind: bases, parked vessels, capital ships ============================================
+
+    /// <summary>
+    /// The wind rules, in a hurricane, in a fresh world of its own (so nothing else on the map is
+    /// blown about): a base never moves; a Corsair landed on it feels no wind and stays put on it
+    /// (one landed on the bare ground beside it does feel the wind); a capital ship flying on its
+    /// autopilot is pushed by its own mass, and the Corsair landed on its deck and a rover docked to
+    /// it ride along without a push of their own; once the Corsair lifts off, the wind has it again.
+    /// </summary>
+    IEnumerable<int> WindRules()
+    {
+        var view = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
+        AddChild(view);
+        var w = new SandboxWorld { Visuals = false, Populate = false };
+        view.AddChild(w);
+        w.Weather.Calm = true;
+        var lifted = new List<Body>();
+        w.Physics.LiftedOff += lifted.Add;
+        for (int i = 0; i < 3; i++) yield return 0;
+
+        // A base on the landing field, a Corsair landed on it and another on the bare ground beside it.
+        Ship pad = w.SpawnBase("pad.gbp", w.Ground(0f, 0f), 0f);
+        Ship onPad = w.SpawnLandedAt("corsair.gbp", pad.Body.ToParent(new N.Vector3(0f, 1f, 0f)), 0f);
+        Ship onGround = w.SpawnLanded("corsair.gbp", new N.Vector2(0f, -15f), 0f);
+
+        // A capital ship flying on at 4 m/s with nobody at the controls (its autopilot holds course).
+        Ship tender = w.SpawnVessel("tender.gbp", new N.Vector3(50f, 110f, 30f), 0f, landed: false);
+        tender.Body.Velocity = MathX.Forward(tender.Body.Rotation) * 4f;
+        tender.Flight.Input = PilotInput.Autopilot;
+        for (int i = 0; i < 3; i++) yield return 0;
+        // A Corsair landed on its deck, and a hover rover docked to it.
+        Ship onDeck = w.SpawnLandedAt("corsair.gbp", tender.Body.ToParent(new N.Vector3(0f, 1f, 3f)), 0f);
+        Ship docked = w.SpawnVessel("sandflea.gbp", tender.Body.ToParent(new N.Vector3(-3.5f, 4f, -7f)), 0f, landed: false);
+        docked.Vessel.Place(docked.Body, tender.Body.ToParent(new N.Vector3(-3.5f, 1.05f + docked.Body.Shape.FeetBelowOrigin, -7f)), 0f);
+        docked.Vessel.Dock(w.Physics, docked.Body, tender.Body);
+        docked.Binding.Teleport();
+        for (int i = 0; i < 5; i++) yield return 0;
+
+        bool parked = onPad.Body.ParkedOn == pad.Body && onDeck.Body.ParkedOn == tender.Body && docked.Body.ParkedOn == tender.Body
+                      && onGround.Body.ParkedOn == null && tender.Body.Class == StructureClass.Capital;
+        N.Vector3 padAt = pad.Body.Position;
+        N.Quaternion padRot = pad.Body.Rotation;
+        N.Vector3 onPadAt = onPad.Body.Position;
+        N.Vector3 deckLocal = tender.Body.ToLocal(onDeck.Body.Position), dockLocal = tender.Body.ToLocal(docked.Body.Position);
+        N.Quaternion deckTurn = N.Quaternion.Conjugate(tender.Body.Rotation) * onDeck.Body.Rotation;
+        N.Vector3 tenderV0 = tender.Body.Velocity;
+
+        w.Weather.Calm = false;
+        w.Weather.Sim.Snap(WeatherKind.Hurricane);
+        float sheltered = 0f, onGroundPush = 0f, padMoved = 0f, onPadMoved = 0f, deckSlip = 0f, deckTurned = 0f, dockSlip = 0f;
+        float tenderPush = 0f, worstFormula = 0f;
+        N.Vector3 integrated = N.Vector3.Zero;
+        bool stayedParked = true;
+        int ticks = 180;
+        for (int t = 0; t < ticks; t++)
+        {
+            yield return 0;
+            foreach (Body b in new[] { pad.Body, onPad.Body, onDeck.Body, docked.Body })
+                sheltered = MathF.Max(sheltered, b.LastForce(ForceKind.Weather).Length());
+            onGroundPush = MathF.Max(onGroundPush, onGround.Body.LastForce(ForceKind.Weather).Length());
+            padMoved = MathF.Max(padMoved, N.Vector3.Distance(pad.Body.Position, padAt) + (pad.Body.Rotation == padRot ? 0f : 1f));
+            onPadMoved = MathF.Max(onPadMoved, N.Vector3.Distance(onPad.Body.Position, onPadAt));
+            deckSlip = MathF.Max(deckSlip, N.Vector3.Distance(tender.Body.ToLocal(onDeck.Body.Position), deckLocal));
+            deckTurned = MathF.Max(deckTurned, AngleBetween(N.Quaternion.Conjugate(tender.Body.Rotation) * onDeck.Body.Rotation, deckTurn));
+            dockSlip = MathF.Max(dockSlip, N.Vector3.Distance(tender.Body.ToLocal(docked.Body.Position), dockLocal));
+            stayedParked &= onPad.Body.ParkedOn == pad.Body && onDeck.Body.ParkedOn == tender.Body && docked.Body.ParkedOn == tender.Body;
+
+            // The capital ship's own push: wind drag on its drag area, ½ρ·CdA·|w|·w, and it alone changes its course.
+            N.Vector3 push = tender.Body.LastForce(ForceKind.Weather);
+            N.Vector3 wind = w.Weather.Sim.WindAt(tender.Body.Position.ToGodot()).ToNumerics();
+            N.Vector3 drag = 0.5f * ForceModule.AirDensity * tender.Body.DragArea * wind.Length() * wind;
+            worstFormula = MathF.Max(worstFormula, N.Vector3.Distance(push, drag) / MathF.Max(1f, drag.Length()));
+            tenderPush = MathF.Max(tenderPush, push.Length());
+            integrated += push / tender.Body.Mass * Dt;
+        }
+        N.Vector3 gained = tender.Body.Velocity - tenderV0;
+        float pushedError = N.Vector3.Distance(gained, integrated) / MathF.Max(1e-3f, integrated.Length());
+        Check(parked && stayedParked && sheltered == 0f && padMoved == 0f && onPadMoved < 1e-4f && onGroundPush > 1000f,
+            $"a {w.Weather.Sim.WindAt(pad.Body.Position.ToGodot()).Length():F0} m/s hurricane never moves a base (0 N on it, not a hair in {ticks * Dt:F0} s), " +
+            $"and a Corsair landed on it is parked there: no wind force at all, {onPadMoved * 1000f:F2} mm moved; the same Corsair landed on the bare ground beside it takes up to {onGroundPush / 1000f:F1} kN");
+        Check(stayedParked && sheltered == 0f && deckSlip < 1e-3f && deckTurned < 0.01f && dockSlip < 1e-3f && gained.Length() > 0.5f,
+            $"a Corsair landed on a capital ship's deck and a rover docked to it feel no wind of their own and ride along as the ship is pushed: " +
+            $"{deckSlip * 1000f:F2} mm and {deckTurned:F4}° off their spot on the deck (rover {dockSlip * 1000f:F2} mm) while the ship goes from {tenderV0.Length():F1} to {tender.Body.Velocity.Length():F1} m/s");
+        Check(tenderPush > 10_000f && worstFormula < 0.02f && pushedError < 0.01f,
+            $"the capital ship itself is pushed, at its mass: up to {tenderPush / 1000f:F0} kN of ½ρ·CdA·|w|·w on its {tender.Body.DragArea:F0} m² (formula off by at most {worstFormula:P1}) " +
+            $"is {tenderPush / tender.Body.Mass:F2} m/s² on its {tender.Body.Mass / 1000f:F0} t; its course changed by {gained.Length():F2} m/s, exactly the push over its mass (off by {pushedError:P2})");
+
+        // The Corsair on the deck lifts off: the moment it leaves its host the wind has it again.
+        float before = onDeck.Body.LastForce(ForceKind.Weather).Length();
+        float liftedPush = 0f, rose = 0f;
+        for (int t = 0; t < 60; t++)
+        {
+            onDeck.Flight.Input = PilotInput.Hands(new Vector3(0f, 1f, 0f));
+            yield return 0;
+            liftedPush = onDeck.Body.LastForce(ForceKind.Weather).Length();
+            rose = tender.Body.ToLocal(onDeck.Body.Position).Y - deckLocal.Y;
+        }
+        Check(before == 0f && lifted.Contains(onDeck.Body) && onDeck.Body.ParkedOn == null && liftedPush > 500f && rose > 1f,
+            $"once the Corsair lifts off the deck ({rose:F1} m up off it) it is no longer parked, and the wind pushes it again: {liftedPush / 1000f:F1} kN");
+
+        view.GetParent().RemoveChild(view);
+        view.QueueFree();
+        yield return 0;
+    }
+
+    // ==== Water: a volume, not a surface ========================================================
+
+    /// <summary>
+    /// The lake in the basin, through the shared force path: an ore crate sinks to the bed and a
+    /// supply crate floats; the player walks in, swims across and out the far side, dives 10 m and
+    /// surfaces; a Corsair that loses its power sinks and settles on the bed without tunnelling; a
+    /// powered one is flown under water, slowly, and holds its depth hands off; the hover rover
+    /// rides the surface; and the stuck guard never mistakes any of it for being stuck.
+    /// </summary>
+    IEnumerable<int> WaterVolume()
+    {
+        N.Vector2 lake = SandboxTerrain.LakeCenter;
+        float level = SandboxTerrain.LakeLevel;
+        var source = (SandboxTerrain)_w.Store.Source;
+        var watched = new List<Body>();
+        var streaks = new Dictionary<Body, int>();
+        var tally = new StuckTally();
+        int rescuesBefore = _rescues.Count;
+        void Watching(string when)
+        {
+            Watch(watched, streaks, when, tally);
+        }
+
+        // Crates: an ore crate denser than water, a supply crate lighter, dropped in off to one side.
+        Crate light = Crate.Spawn(_w, new N.Vector3(lake.X + 6f, level + 1f, lake.Y - 3f), 1);
+        Crate heavy = Crate.Spawn(_w, new N.Vector3(lake.X + 6f, level + 1f, lake.Y + 3f), 2, "ore");
+        watched.Add(light.Body);
+        watched.Add(heavy.Body);
+
+        // The player walks in from the southern beach, swims north across the lake and out on the far side.
+        Player p = _w.Player;
+        watched.Add(p.Body);
+        float beachZ = lake.Y + SandboxTerrain.LakeRadiusZ * 1.18f, farZ = lake.Y - SandboxTerrain.LakeRadiusZ * 1.1f;
+        p.PlaceOutside(_w.Ground(lake.X - 4f, beachZ) + N.Vector3.UnitY * 0.05f);
+        p.Yaw = 0f; // north
+        p.Pitch = 0f;
+        for (int i = 0; i < 10; i++) yield return 0;
+        bool swam = false, walkedOut = false, crateSettled = false;
+        float deepest = 0f, swimSpeed = 0f;
+        int calm = 0, ticks = 0;
+        while (ticks++ < 3000 && !(walkedOut && crateSettled))
+        {
+            p.Legs.Move = walkedOut ? N.Vector2.Zero : new N.Vector2(0f, -1f);
+            yield return 0;
+            Watching("swimming across");
+            WaterState wet = p.Body.Water;
+            if (p.Legs.Swimming)
+            {
+                swam = true;
+                deepest = MathF.Max(deepest, wet.Fraction);
+                if (MathF.Abs(p.Body.Position.Z - lake.Y) < 6f) swimSpeed = MathF.Max(swimSpeed, MathX.Flat(p.Body.Velocity).Length());
+            }
+            walkedOut |= swam && p.Body.Position.Z < farZ && wet.Fraction == 0f && p.Body.OnFloor;
+            bool still = light.Body.Velocity.Length() < 0.03f && heavy.Body.Velocity.Length() < 0.03f;
+            calm = still ? calm + 1 : 0;
+            crateSettled = calm > 30;
+        }
+        p.Legs.Move = N.Vector2.Zero;
+        Check(swam && walkedOut && deepest < 1f && swimSpeed > 1.8f && swimSpeed < _w.Rules.Water.SwimSpeed + 0.2f,
+            $"the player walks into the lake, swims across it ({swimSpeed:F1} m/s mid-lake, at most {deepest:P0} of them under: head above water) and walks out on the far shore " +
+            $"({ticks * Dt:F0} s beach to beach)");
+
+        float bed = source.SurfaceHeight(heavy.Body.Position.X, heavy.Body.Position.Z);
+        float floatAt = light.Body.CenterOfMassPosition.Y, sunkAt = heavy.Body.CenterOfMassPosition.Y;
+        float half = light.Kind.Size * 0.5f, share = light.Kind.Density / _w.Rules.Water.Density;
+        float floatsAt = level - half + share * light.Kind.Size; // its centre, with that share of it under
+        Check(crateSettled && MathF.Abs(floatAt - floatsAt) < 0.12f && MathF.Abs(light.Body.Water.Fraction - share) < 0.1f
+              && MathF.Abs(sunkAt - (bed + half)) < 0.25f && heavy.Body.Water.Underwater,
+            $"water buoys crates by their density in data: the {light.Kind.Density:F0} kg/m³ supply crate floats {light.Body.Water.Fraction:P0} under (it should be {share:P0}), its centre {floatAt - level:+0.00;-0.00} m from the surface; " +
+            $"the {heavy.Kind.Density:F0} kg/m³ ore crate sinks {level - sunkAt:F1} m to the bed and rests on it ({sunkAt - bed:F2} m centre above the bed)");
+
+        // Dive 10 m in the middle of the lake, then come back up.
+        p.PlaceOutside(new N.Vector3(lake.X - 4f, level - 1.5f, lake.Y));
+        for (int i = 0; i < 90; i++)
+        {
+            yield return 0;
+            Watching("floating");
+        }
+        bool floating = p.Legs.Swimming && !p.Underwater && p.Body.Water.Fraction > 0.6f;
+        float floatShare = p.Body.Water.Fraction;
+        float feetDepth = 0f;
+        bool underFlag = false;
+        int down = 0;
+        while (down++ < 900 && feetDepth < 10f)
+        {
+            p.Legs.Vertical = -1f;
+            yield return 0;
+            Watching("diving");
+            feetDepth = MathF.Max(feetDepth, level - p.Body.Position.Y);
+            underFlag |= p.Underwater;
+        }
+        bool stillUnder = p.Underwater;
+        int up = 0;
+        while (up++ < 900 && p.Underwater)
+        {
+            p.Legs.Vertical = 1f;
+            yield return 0;
+            Watching("surfacing");
+        }
+        p.Legs.Vertical = 0f;
+        for (int i = 0; i < 30; i++)
+        {
+            yield return 0;
+            Watching("surfaced");
+        }
+        Check(floating && feetDepth >= 10f && underFlag && stillUnder && !p.Underwater && p.Legs.Swimming,
+            $"left alone the player floats with {floatShare:P0} of them under and their head out; Ctrl dives them {feetDepth:F1} m down in {down * Dt:F1} s " +
+            $"(under water: the vitals flag says the suit is on its own oxygen) and Space brings them back up in {up * Dt:F1} s, head out again");
+
+        // A Corsair over the lake loses its generator: no power, it falls in, sinks and settles on the bed.
+        Ship sinker = _w.SpawnVessel("corsair.gbp", new N.Vector3(lake.X, level + 8f, lake.Y), 0.3f, landed: false);
+        sinker.Flight.Input = PilotInput.Autopilot;
+        watched.Add(sinker.Body);
+        for (int i = 0; i < 20; i++) yield return 0;
+        sinker.ShootThrough(new[] { new SInt3(-2, 0, 3) }); // the generator, set into the deck
+        int landedBefore = _landed;
+        float lowestKeel = float.PositiveInfinity, sinkSpeed = 0f;
+        bool wentUnder = false;
+        for (int t = 0; t < 2400 && _landed == landedBefore; t++)
+        {
+            yield return 0;
+            Watching("sinking");
+            Body b = sinker.Body;
+            wentUnder |= b.Water.Underwater;
+            if (b.Water.Underwater) sinkSpeed = MathF.Max(sinkSpeed, -b.Velocity.Y);
+            float keel = b.Position.Y - b.Shape.FeetBelowOrigin;
+            lowestKeel = MathF.Min(lowestKeel, keel - source.SurfaceHeight(b.Position.X, b.Position.Z));
+        }
+        float restsAt = sinker.Body.Position.Y - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z);
+        Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore && sinker.Body.Water.Underwater
+              && lowestKeel > -0.3f && !_w.Physics.Stuck.IsStuck(sinker.Body, out _),
+            $"a Corsair that loses its generator over the lake falls in and sinks ({sinkSpeed:F1} m/s at most under water, against buoyancy and heavy drag), " +
+            $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)");
+        _w.Remove(sinker);
+        watched.Remove(sinker.Body);
+
+        // A powered Corsair is flown down under the surface: it holds its depth hands off, and
+        // full ahead it crawls through the drag.
+        Ship diver = _w.SpawnVessel("corsair.gbp", new N.Vector3(lake.X, level + 6f, lake.Y), 0f, landed: false);
+        watched.Add(diver.Body);
+        float descent = 0f;
+        int dived = 0;
+        while (dived++ < 900 && diver.Body.Position.Y > level - 6f)
+        {
+            diver.Flight.Input = PilotInput.Hands(new Vector3(0f, -1f, 0f));
+            yield return 0;
+            Watching("flown under");
+            if (diver.Body.Water.Underwater) descent = MathF.Max(descent, -diver.Body.Velocity.Y);
+        }
+        diver.Flight.Input = PilotInput.LetGo;
+        for (int i = 0; i < 60; i++)
+        {
+            yield return 0;
+            Watching("holding depth");
+        }
+        N.Vector3 held = diver.Body.Position;
+        float drift = 0f;
+        for (int i = 0; i < 120; i++)
+        {
+            yield return 0;
+            Watching("holding depth");
+            drift = MathF.Max(drift, N.Vector3.Distance(diver.Body.Position, held));
+        }
+        float crawl = 0f;
+        for (int i = 0; i < 90; i++)
+        {
+            diver.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -1f));
+            yield return 0;
+            Watching("flown under");
+            crawl = MathF.Max(crawl, diver.Body.Velocity.Length());
+        }
+        diver.Flight.Input = PilotInput.LetGo;
+        float top = diver.Stats.TopSpeed;
+        Check(diver.Body.Water.Underwater && !diver.Vessel.Frozen && drift < 0.1f && crawl > 1f && crawl < 0.15f * top && descent > 0.5f,
+            $"a powered Corsair is flown under the water: it goes down at up to {descent:F1} m/s, holds its depth hands off ({drift * 100f:F1} cm in 2 s: its engines carry its weight less its buoyancy), " +
+            $"and full ahead the heavy drag holds it to {crawl:F1} m/s (top speed in air {top:F0})");
+        _w.Remove(diver);
+        watched.Remove(diver.Body);
+
+        // The hover rover rides the surface, powered, as it rides the ground.
+        Ship skiff = _w.SpawnVessel("sandflea.gbp", new N.Vector3(lake.X + 4f, level + 2.3f, lake.Y + 12f), 0f, landed: false);
+        watched.Add(skiff.Body);
+        float ride = 0f, worstRide = 0f, wetHull = 0f, overWater = 0f;
+        for (int t = 0; t < 240; t++)
+        {
+            skiff.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -0.25f));
+            yield return 0;
+            Watching("hovering");
+            ride = skiff.Stats.RideHeight;
+            HoverController h = skiff.Vessel.Hover;
+            bool onWater = source.WaterSurfaceAt(skiff.Body.Position.X, skiff.Body.Position.Z, out _) && MathF.Abs(h.GroundRef - level) < 0.05f;
+            if (t < 30 || !onWater) continue;
+            overWater += Dt;
+            worstRide = MathF.Max(worstRide, MathF.Abs(h.Clearance - ride));
+            wetHull = MathF.Max(wetHull, skiff.Body.Water.Fraction);
+        }
+        Check(overWater > 1.5f && worstRide < 0.25f && wetHull == 0f,
+            $"the hover rover rides the lake's surface with its hover powered: {overWater:F1} s over the water, its engines {ride:F1} m above it (within {worstRide:F2} m), its hull never wet");
+        _w.Remove(skiff);
+        watched.Remove(skiff.Body);
+
+        int wrongly = _rescues.Skip(rescuesBefore).Count(r => r.Body == p.Body || r.Body == light.Body || r.Body == heavy.Body || r.Body.Kind == BodyKind.Vessel);
+        Check(tally.Failures == 0 && wrongly == 0,
+            $"nothing in the water is taken for stuck: floating, sunk, diving, swimming, landed on the bed, flown under or hovering, {tally.SeenInside} ticks seen inside anything and {wrongly} rescues" +
+            (tally.First != null ? $". First failure: {tally.First}" : ""));
+
+        _w.Remove(light);
+        _w.Remove(heavy);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 5; i++) yield return 0;
     }
 
     // ==== Tornado ===============================================================================

@@ -3,6 +3,7 @@ using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
 using PlanetSurface.Fx;
+using PlanetSurface.Terrain;
 using PlanetSurface.World;
 using TerrainDigging.Terrain;
 
@@ -28,6 +29,10 @@ public partial class SurvivalTool : Node
     public Vector3 TargetPoint { get; private set; }
     public Verdict TargetVerdict { get; private set; }
     public bool AimingAtStructure { get; private set; }
+
+    /// <summary>Aiming at a tree the tool can fell (LMB cuts it down, for wood).</summary>
+    public bool AimingAtTree { get; private set; }
+    public FloraSolid TargetTree { get; private set; }
     public bool ShowCursor = true;
 
     float _cooldown;
@@ -66,7 +71,11 @@ public partial class SurvivalTool : Node
         bool captured = Input.MouseMode == Input.MouseModeEnum.Captured && Player.ControlsEnabled;
         bool left = captured && Input.IsMouseButtonPressed(MouseButton.Left);
         bool right = captured && Input.IsMouseButtonPressed(MouseButton.Right);
-        if (left && _cooldown <= 0f) DigAtTarget();
+        if (left && _cooldown <= 0f)
+        {
+            if (AimingAtTree) FellAtTarget();
+            else DigAtTarget();
+        }
         if (right && !_rightWasDown) PlaceBlock();
         _rightWasDown = right;
     }
@@ -83,6 +92,17 @@ public partial class SurvivalTool : Node
             HasTarget = false;
             AimingAtStructure = true;
         }
+        // A trunk or a boulder in front of the ground: a tree can be felled, a boulder only blocks the tool.
+        AimingAtTree = false;
+        var flora = PhysicsRayQueryParameters3D.Create(eye, eye + dir * Reach, Layers.Flora);
+        var floraHit = Player.GetWorld3D().DirectSpaceState.IntersectRay(flora);
+        if (!AimingAtStructure && floraHit.Count > 0 && (!HasTarget || eye.DistanceTo((Vector3)floraHit["position"]) < distance)
+            && Main.Streamer.SolidHit((Rid)floraHit["rid"], (int)floraHit["shape"], out FloraSolid solid))
+        {
+            HasTarget = false;
+            AimingAtTree = solid.Fellable;
+            TargetTree = solid;
+        }
         if (HasTarget)
         {
             Target = cell;
@@ -90,7 +110,7 @@ public partial class SurvivalTool : Node
             TargetPoint = eye + dir * distance;
             TargetVerdict = Terrain.Check(cell, EditKind.Tool);
         }
-        Color color = AimingAtStructure ? Hud.Caution
+        Color color = AimingAtTree ? Hud.Good : AimingAtStructure ? Hud.Caution
             : !HasTarget ? new Color(1f, 1f, 1f, 0.5f)
             : TargetVerdict switch { Verdict.Bedrock => Hud.Warning, Verdict.Anchored => Hud.Caution, _ => new Color(1f, 1f, 1f, 0.9f) };
         Main.Hud.SetCrosshair(color);
@@ -100,6 +120,20 @@ public partial class SurvivalTool : Node
             _cursor.Position = new Vector3(cell.X + 0.5f, cell.Y + 0.5f, cell.Z + 0.5f);
             _cursorMaterial.AlbedoColor = new Color(color, 0.45f);
         }
+    }
+
+    /// <summary>Fells the tree under the crosshair, for its wood. Public so tests can cut without a mouse.</summary>
+    public bool FellAtTarget()
+    {
+        if (!AimingAtTree) return false;
+        _cooldown = 0.4f;
+        bool felled = Main.FellTree(TargetTree);
+        if (felled)
+        {
+            Player.Kick(0.8f, 0.3f);
+            AimingAtTree = false;
+        }
+        return felled;
     }
 
     /// <summary>One dig pulse at the current target. Public so tests can dig without a mouse.</summary>

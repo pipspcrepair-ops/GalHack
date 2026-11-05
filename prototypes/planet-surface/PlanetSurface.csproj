@@ -11,6 +11,8 @@
   <ItemGroup>
     <!-- Shared terrain: the planet as diggable voxels, streaming plans, stamps. -->
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <!-- The shared physics module's rules (plain C# only): the walker swims by its water rules and numbers. -->
+    <Compile Include="..\..\shared\Physics\Core\**\*.cs" />
     <!-- The pure cores this prototype builds on, used in place. Only engine-free code (and plain
          static helpers) is included; their scenes and nodes stay in their own projects. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />

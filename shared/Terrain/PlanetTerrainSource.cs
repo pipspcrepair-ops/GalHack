@@ -142,6 +142,36 @@ public sealed class PlanetTerrainSource : ITerrainSource
         return w;
     }
 
+    // ---- Water ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The sea shows where the world map lies more than this far below sea level: the water
+    /// shader discards its plane where the map's depth (elevation / -120 m) is under 0.004.
+    /// </summary>
+    public const float SeaMaskDepth = 0.48f;
+
+    /// <summary>River water is drawn this far below a river's level (FarBuilder's river sheets).</summary>
+    public const float RiverDrop = 0.15f;
+
+    /// <summary>
+    /// The water over a column, if it holds any: a river's surface in its channel, or the sea at
+    /// sea level where the world map lies below it, wherever the ground there is lower; exactly where
+    /// that water is drawn. Water is a volume: everything under the surface and over the ground.
+    /// Decided by the generator (and stamps) alone, never by digging, as terrain-digging's static
+    /// water is: a pit dug below sea level inland stays dry. x and z wrap.
+    /// </summary>
+    public bool WaterSurfaceAt(double x, double z, out float surface)
+    {
+        GroundSample g = Ground(x, z, 1);
+        if (g.InRiver && g.RiverLevel - RiverDrop > g.Height)
+        {
+            surface = g.RiverLevel - RiverDrop;
+            return true;
+        }
+        surface = WaterLevel;
+        return g.Height < WaterLevel && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) < -SeaMaskDepth;
+    }
+
     /// <summary>The stamp whose footprint or apron covers a point, if any.</summary>
     public TerrainStamp StampAt(double x, double z)
     {

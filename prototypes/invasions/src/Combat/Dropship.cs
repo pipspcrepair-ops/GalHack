@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 using Invasions.Model;
 using Invasions.World;
@@ -5,22 +6,27 @@ using Invasions.World;
 namespace Invasions.Combat;
 
 /// <summary>
-/// A Vharn dropship: a pilot behind the canopy, two door gunners, eight troops. Flies in low, lands a
-/// few hundred metres out, drops the ramp, then hovers off the drop point so the door guns can work.
-/// Kill the pilot and it comes down where it is and stays there.
+/// A flying carrier: flies in low, lands a few hundred metres out, lets its troops out, then hovers off
+/// the drop point so the door guns can work. Departing, it climbs away. Kill the pilot and it comes
+/// down where it is and stays there. Subclasses supply the body: a ramp (optional), lift jets, the
+/// crew's seats.
 /// </summary>
-public partial class Dropship : CrewedVehicle
+public abstract partial class Flyer : CrewedVehicle
 {
-    const float CruiseAltitude = 70f, HoverAltitude = 22f, Gravity = 14f;
+    const float CruiseAltitude = 70f, Gravity = 14f;
 
-    Node3D _ramp;
-    readonly MeshInstance3D[] _jets = new MeshInstance3D[2];
+    protected Node3D Ramp;
+    protected readonly List<MeshInstance3D> Jets = new();
     float _climb, _fall;
     bool _crashed;
 
+    /// <summary>Where it hovers while giving fire support.</summary>
+    protected virtual float HoverAltitude => 22f;
+    /// <summary>Where troops climb out, in the flyer's space.</summary>
+    protected abstract Vector3 ExitLocal { get; }
+    protected virtual float RampOpen => 1.2f;
+
     public override Vector3 PickupPoint => Route.Drop;
-    protected override TargetClass HullClass => TargetClass.SmallVessel;
-    protected override Vector2 Footprint => new(9.4f, 10f);
     public override bool ReadyForPickup => Phase == Mode.Pickup && GlobalPosition.Y < 0.4f && Flat(GlobalPosition, Route.Drop) < 2f;
 
     public bool Landed => GlobalPosition.Y < 0.3f;
@@ -28,7 +34,7 @@ public partial class Dropship : CrewedVehicle
     protected override Vector3 ExitPoint()
     {
         float side = World.Rng.RandfRange(-1f, 1f);
-        return GlobalTransform * new Vector3(side, 0.1f, 6.6f) with { Y = 0.1f };
+        return (GlobalTransform * (ExitLocal + new Vector3(side, 0, 0))) with { Y = 0.1f };
     }
 
     protected override void Move(float dt)
@@ -86,26 +92,39 @@ public partial class Dropship : CrewedVehicle
         GlobalPosition = p;
 
         bool rampDown = Landed && Phase is Mode.Unload or Mode.Pickup or Mode.Stranded;
-        _ramp.Rotation = new Vector3(Mathf.MoveToward(_ramp.Rotation.X, rampDown ? 1.2f : 0f, 1.8f * dt), 0, 0);
-        foreach (MeshInstance3D jet in _jets) jet.Visible = Phase != Mode.Stranded && !(Landed && Phase is Mode.Unload or Mode.Pickup);
+        if (Ramp != null) Ramp.Rotation = new Vector3(Mathf.MoveToward(Ramp.Rotation.X, rampDown ? RampOpen : 0f, 1.8f * dt), 0, 0);
+        foreach (MeshInstance3D jet in Jets) jet.Visible = Phase != Mode.Stranded && !(Landed && Phase is Mode.Unload or Mode.Pickup);
     }
+
+    /// <summary>A pilot's canopy: see-through, so the pilot can be shot through it.</summary>
+    protected static Material Glass(Color tint) => new StandardMaterial3D
+    {
+        AlbedoColor = new Color(tint, 0.45f),
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        Roughness = 0.05f,
+        Metallic = 0.4f,
+    };
+}
+
+/// <summary>
+/// A Vharn dropship: a pilot behind the canopy, two door gunners, eight troops behind a rear ramp.
+/// </summary>
+public partial class Dropship : Flyer
+{
+    protected override TargetClass HullClass => TargetClass.SmallVessel;
+    protected override Vector2 Footprint => new(9.4f, 10f);
+    protected override Vector3 ExitLocal => new(0, 0.1f, 6.6f);
 
     protected override void OnStranded() => Fx.SmokeColumn(this, new Vector3(0, 3.6f, -3.5f), 0.6f);
 
     protected override void BuildBody()
     {
-        Material red = Palette.Mat(Palette.Oxblood, 0.5f);
-        Material maroon = Palette.Mat(Palette.Maroon, 0.6f);
-        Material bone = Palette.Mat(Palette.Bone, 0.45f);
-        Material black = Palette.Mat(Palette.Black, 0.7f);
+        Material red = Palette.Mat(Livery.Main, 0.5f);
+        Material maroon = Palette.Mat(Livery.Dark, 0.6f);
+        Material bone = Palette.Mat(Livery.Trim, 0.45f);
+        Material black = Palette.Mat(Livery.Black, 0.7f);
         Material check = Palette.Textured(Palette.VharnCheck, new Vector3(3f, 1f, 1f));
-        Material glass = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.08f, 0.1f, 0.12f, 0.45f),
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            Roughness = 0.05f,
-            Metallic = 0.4f,
-        };
+        Material glass = Glass(new Color(0.08f, 0.1f, 0.12f));
 
         // Fuselage on skids. Forward is -Z; the skids touch the ground at y = 0.
         Block(new Vector3(0, 2.05f, 0.3f), new Vector3(3.4f, 2.5f, 8.6f), red);
@@ -129,21 +148,20 @@ public partial class Dropship : CrewedVehicle
         }
 
         // Stub wings and engine pods with downward jets.
-        int j = 0;
         foreach (float side in new[] { -1f, 1f })
         {
             Block(new Vector3(side * 2.6f, 2.9f, 0.9f), new Vector3(1.9f, 0.35f, 2.8f), black);
             Block(new Vector3(side * 4.0f, 2.9f, 0.9f), new Vector3(1.4f, 1.5f, 3.8f), bone);
             Block(new Vector3(side * 4.0f, 3.7f, 0.9f), new Vector3(1.42f, 0.18f, 3.82f), maroon, solid: false);
             Block(new Vector3(side * 4.0f, 2.85f, -1.05f), new Vector3(1.0f, 1.0f, 0.12f), Palette.Mat(Palette.Black), solid: false);
-            _jets[j++] = Block(new Vector3(side * 4.0f, 2.08f, 0.9f), new Vector3(1.0f, 0.12f, 3.0f), Palette.Glow(Palette.Fire, 5f), solid: false);
+            Jets.Add(Block(new Vector3(side * 4.0f, 2.08f, 0.9f), new Vector3(1.0f, 0.12f, 3.0f), Palette.Glow(Palette.Fire, 5f), solid: false));
         }
 
         // Ramp at the back, hinged at the bottom.
-        _ramp = new Node3D { Position = new Vector3(0, 0.75f, 4.65f) };
-        AddChild(_ramp);
-        Palette.Box(_ramp, new Vector3(0, 1.0f, 0), new Vector3(2.6f, 2.0f, 0.14f), maroon);
-        Palette.Box(_ramp, new Vector3(0, 1.0f, 0.08f), new Vector3(2.0f, 0.18f, 0.04f), bone);
+        Ramp = new Node3D { Position = new Vector3(0, 0.75f, 4.65f) };
+        AddChild(Ramp);
+        Palette.Box(Ramp, new Vector3(0, 1.0f, 0), new Vector3(2.6f, 2.0f, 0.14f), maroon);
+        Palette.Box(Ramp, new Vector3(0, 1.0f, 0.08f), new Vector3(2.0f, 0.18f, 0.04f), bone);
 
         var number = new Label3D
         {
@@ -151,7 +169,7 @@ public partial class Dropship : CrewedVehicle
             Font = Palette.Font,
             FontSize = 96,
             PixelSize = 0.006f,
-            Modulate = Palette.Bone,
+            Modulate = Livery.Trim,
             Position = new Vector3(1.74f, 2.6f, -2.2f),
             Rotation = new Vector3(0, Mathf.Pi / 2, 0),
         };

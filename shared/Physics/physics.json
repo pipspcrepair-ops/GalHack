@@ -103,6 +103,29 @@
     "stepHeight": 0.6
   },
 
+  "water": {
+    // Water is a volume you go into, not a surface. Buoyancy is the displaced water's weight:
+    // density / a body's density (bodies, kg/m³ of water displaced) × its weight × the share of its
+    // height under the surface, so a body lighter than water floats with that share under and a
+    // heavier one sinks to the bed. Drag is ½ρ·(CdA × dragScale)·|v|·v plus damping (1/s), times
+    // the share under, applied so it can only slow a body. A vessel holding itself up holds its
+    // weight less its buoyancy, so it flies underwater (slowly, through heavy drag); one that can't
+    // (no power, too heavy) sinks. Hover vessels ride the surface while their hover is powered.
+    "density": 1000,
+    "dragScale": 0.25,
+    "damping": 3,
+    "bodies": { "vessel": 1600, "wreck": 2200, "crate": 450, "player": 800, "creature": 1000 },
+    // A walker swims once swimDepth of its height is under water, and wades again below wadeDepth.
+    // Swimming: swimSpeed (swimSprintSpeed sprinting) m/s, reached at swimAccel m/s², strokes holding
+    // against buoyancy and drag up to swimGrip m/s². Left alone, a swimmer floats up to the surface.
+    "swimDepth": 0.7,
+    "wadeDepth": 0.55,
+    "swimSpeed": 2.1,
+    "swimSprintSpeed": 3,
+    "swimAccel": 6,
+    "swimGrip": 30
+  },
+
   "stuck": {
     // A body inside terrain or a structure's blocks for this many ticks in a row is moved to the
     // nearest open space, searching a 1 m grid up to searchRadius metres away.

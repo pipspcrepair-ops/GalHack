@@ -22,7 +22,9 @@ namespace PhysicsSandbox.Bridges;
 /// the wind acts against their velocity relative to the hull, not the ship's airspeed (they ride
 /// in its frame, so a ship can fly with someone on its roof), and its push is turned into the
 /// ship's frame before it joins the one force path. A tornado still lifts them off a parked ship.
-/// Riders inside the interior feel no weather, and above the atmosphere nobody does.
+/// Above the atmosphere nobody feels any weather. Who is sheltered from it (riders inside an
+/// interior, bases, vessels parked on a base or a capital ship) is the shared module's one rule,
+/// <see cref="PhysicsWorld.IsSheltered"/>; this bridge asks it, and the world enforces it.
 /// </summary>
 public sealed class WeatherBridge : IForceProvider
 {
@@ -91,10 +93,14 @@ public sealed class WeatherBridge : IForceProvider
         }
 
         public float Mass => _body.Mass;
-        /// <summary>No air reaches a rider inside the interior, and there is none above the atmosphere.</summary>
-        public float DragArea => Inside || InSpace ? 0f : _body.DragArea;
 
-        bool Inside => _body.Frame != null && !_body.OnOuterHull;
+        /// <summary>
+        /// No air reaches a sheltered body (the shared module's one rule: a base, a vessel parked on
+        /// a base or a capital ship, a rider inside an interior), and there is none above the atmosphere.
+        /// </summary>
+        public float DragArea => Sheltered || InSpace ? 0f : _body.DragArea;
+
+        bool Sheltered => _bridge._world?.IsSheltered(_body) ?? false;
         bool InSpace => _bridge._world != null && !_bridge._world.Zone.InAtmosphere(_body.WorldPosition);
 
         public GVector3 Position
@@ -126,15 +132,10 @@ public sealed class WeatherBridge : IForceProvider
             }
         }
 
-        public void ApplyForce(GVector3 force)
-        {
-            if (!Inside) _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
-        }
+        // The world itself drops weather on sheltered bodies, tornado pulls and flings included.
+        public void ApplyForce(GVector3 force) => _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
 
-        public void ApplyImpulse(GVector3 impulse)
-        {
-            if (!Inside) _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
-        }
+        public void ApplyImpulse(GVector3 impulse) => _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
 
         /// <summary>A world push in the axes the body integrates in (its ship's, out on a hull).</summary>
         N.Vector3 IntoFrame(GVector3 v) => _body.Frame == null ? v.ToNumerics() : MathX.Unrotate(_body.Frame.Rotation, v.ToNumerics());

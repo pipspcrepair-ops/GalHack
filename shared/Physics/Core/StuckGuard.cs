@@ -99,7 +99,8 @@ public sealed class StuckGuard
     /// <summary>The field a body is stuck inside right now, or null.</summary>
     public IStuckField Inside(Body body)
     {
-        if (body.Mass <= 0f) return null;
+        // A base is fixed where it was built, into a hillside if need be: nothing ever moves it.
+        if (body.Mass <= 0f || body.Motion == Motion.Fixed) return null;
         foreach (IStuckField field in _world.StuckFields)
         {
             if (!field.Applies(body)) continue;

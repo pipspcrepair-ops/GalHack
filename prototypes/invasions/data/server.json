@@ -6,8 +6,12 @@
   // Each interval is stretched or shrunk by up to this fraction, so invasions don't arrive like clockwork.
   "intervalJitter": 0.25,
 
-  // When no Vharn base is in range, invasions come by ship from further away. Off: they simply stop.
+  // When no hostile faction's base is in range, invasions come by ship from further away. Off: they simply stop.
   "shipRaids": true,
+
+  // Invasions on or off: the default for a new world. Each world saves its own choice from the
+  // in-game options (Esc); in co-op that is the host's setting.
+  "invasionsEnabled": true,
 
   // Debug "fast time" (T in game): the simulated clock runs this many times faster, so the
   // ten-minute warning timeline plays out in ten seconds.

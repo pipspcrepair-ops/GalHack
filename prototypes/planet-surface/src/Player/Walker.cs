@@ -1,6 +1,9 @@
+using System;
 using Godot;
 using PlanetSurface.World;
 using Weather.Forces;
+using WaterForces = GalHack.Physics.WaterForces;
+using WaterRules = GalHack.Physics.PhysicsRules.WaterData;
 
 namespace PlanetSurface.Player;
 
@@ -12,6 +15,11 @@ namespace PlanetSurface.Player;
 ///
 /// The weather pushes it through the weather prototype's force module: wind as drag on the
 /// body (crouching halves it), tornado vortices that catch, carry and fling.
+///
+/// Water is a volume it goes into (seas and rivers, <see cref="WaterAt"/>), under the shared
+/// physics module's water rules: buoyancy and drag on the share of it under the surface, wading
+/// in the shallows and swimming once deep enough. Swimming, the move keys stroke along the
+/// heading and Space and Ctrl go up and down; left alone it floats up with its head out.
 /// </summary>
 public partial class Walker : CharacterBody3D, IForceBody
 {
@@ -32,6 +40,22 @@ public partial class Walker : CharacterBody3D, IForceBody
 
     /// <summary>The weather slows walking in deep snow, sand or a storm.</summary>
     public float MoveFactor = 1f;
+
+    /// <summary>Tests can swim without a keyboard: up (+1) or down (-1), in place of Space and Ctrl.</summary>
+    public float? VerticalOverride;
+
+    /// <summary>The water surface over a point's column (sea, river), or null on dry ground. Main sets it from the planet.</summary>
+    public Func<Vector3, float?> WaterAt;
+
+    /// <summary>The shared physics module's water numbers (shared/Physics/physics.json). Main loads them.</summary>
+    public WaterRules Water = new();
+
+    /// <summary>The share of the body under water this tick.</summary>
+    public float WaterShare { get; private set; }
+    public bool Swimming { get; private set; }
+
+    /// <summary>Head under water: the vitals hook. The suit breathes its own oxygen while this is set.</summary>
+    public bool Underwater => WaterShare >= 1f;
 
     public bool IsCrouching { get; private set; }
     public float CurrentHeight => IsCrouching ? CrouchHeight : StandHeight;
@@ -78,9 +102,61 @@ public partial class Walker : CharacterBody3D, IForceBody
         _yaw -= mouse.X * MouseSensitivity;
         _pitch = Mathf.Clamp(_pitch - mouse.Y * MouseSensitivity, -1.5f, 1.5f);
 
-        UpdateCrouch(CrouchOverride || (ControlsEnabled && Held(Key.Ctrl)));
-        Walk(dt);
+        UpdateWater();
+        UpdateCrouch(!Swimming && (CrouchOverride || (ControlsEnabled && Held(Key.Ctrl))));
+        if (Swimming) Swim(dt);
+        else Walk(dt);
         PlaceCamera(dt);
+    }
+
+    /// <summary>How deep in water the body is, and whether that is deep enough to swim (wading again below the wade depth).</summary>
+    void UpdateWater()
+    {
+        float? surface = WaterAt?.Invoke(GlobalPosition);
+        WaterShare = surface is float s ? WaterForces.SubmergedFraction(GlobalPosition.Y, CurrentHeight, s) : 0f;
+        bool swimming = WaterShare > 0f && (Swimming ? WaterShare > Water.WadeDepth : WaterShare >= Water.SwimDepth);
+        if (swimming == Swimming) return;
+        Swimming = swimming;
+        // Swimming there is no floor to snap to; wading and walking there is.
+        MotionMode = swimming ? MotionModeEnum.Floating : MotionModeEnum.Grounded;
+        if (swimming && IsCrouching && CanStand()) SetCrouch(false);
+    }
+
+    /// <summary>The water's own forces on the body this tick (buoyancy and drag on the share under), as acceleration.</summary>
+    Vector3 WaterAccel(Vector3 v, float dt)
+    {
+        if (WaterShare <= 0f) return Vector3.Zero;
+        float rho = Water.DensityOf(GalHack.Physics.BodyKind.Player);
+        var g = new System.Numerics.Vector3(0f, -Gravity, 0f);
+        System.Numerics.Vector3 f = WaterForces.Buoyancy(Mass, rho, WaterShare, g, Water)
+            + WaterForces.Drag(Mass, DragArea, new System.Numerics.Vector3(v.X, v.Y, v.Z), WaterShare, Water, dt);
+        return new Vector3(f.X, f.Y, f.Z) / Mass;
+    }
+
+    /// <summary>
+    /// Swimming: strokes reach the wished velocity, holding against weight, buoyancy, drag and wind
+    /// as far as the swimmer's strength allows (the shared WalkController's rule). Without a wish
+    /// there are no strokes, and the water has its way: lighter than water, the body floats up.
+    /// </summary>
+    void Swim(float dt)
+    {
+        Vector3 v = Velocity;
+        Vector3 outside = Vector3.Down * Gravity + WaterAccel(v, dt) + _externalForce / Mass; // m/s²
+        Vector2 move = MoveOverride ?? (ControlsEnabled ? MoveInput() : Vector2.Zero);
+        float vertical = VerticalOverride ?? (ControlsEnabled ? Axis(Key.Space, Key.Ctrl) : 0f);
+        Vector3 wish = (new Basis(Vector3.Up, _yaw) * new Vector3(move.X, 0f, move.Y) + Vector3.Up * vertical).LimitLength(1f);
+        Vector3 accel = outside;
+        if (wish.LengthSquared() > 1e-6f)
+        {
+            float speed = Held(Key.Shift) && ControlsEnabled ? Water.SwimSprintSpeed : Water.SwimSpeed;
+            Vector3 next = v.MoveToward(wish * speed, Water.SwimAccel * dt);
+            accel += ((next - v) / dt - outside).LimitLength(Water.SwimGrip);
+        }
+        v += accel * dt + _externalImpulse / Mass;
+        _externalForce = Vector3.Zero;
+        _externalImpulse = Vector3.Zero;
+        Velocity = v;
+        MoveAndSlide();
     }
 
     void Walk(float dt)
@@ -109,6 +185,11 @@ public partial class Walker : CharacterBody3D, IForceBody
 
         // Weather: wind drag and vortex pulls from the force module, as acceleration.
         v += _externalForce / Mass * dt + _externalImpulse / Mass;
+
+        // Wading: the water drags at the body; buoyancy only lightens it while its feet are down.
+        Vector3 water = WaterAccel(v, dt);
+        if (onFloor) water.Y = 0f;
+        v += water * dt;
         _externalForce = Vector3.Zero;
         _externalImpulse = Vector3.Zero;
 

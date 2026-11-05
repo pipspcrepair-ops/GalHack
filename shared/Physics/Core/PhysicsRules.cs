@@ -22,6 +22,7 @@ public sealed class PhysicsRules
     public StuckData Stuck { get; set; } = new();
     public RidingData Riding { get; set; } = new();
     public WalkingData Walking { get; set; } = new();
+    public WaterData Water { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -170,6 +171,46 @@ public sealed class PhysicsRules
         /// a ledge this deep steps down onto the floor below without leaving it. Taller is a wall. m.
         /// </summary>
         public float StepHeight { get; set; } = 0.6f;
+    }
+
+    /// <summary>Water as a volume: buoyancy, drag and swimming (see <see cref="WaterForces"/>).</summary>
+    public sealed class WaterData
+    {
+        /// <summary>kg/m³.</summary>
+        public float Density { get; set; } = 1000f;
+
+        /// <summary>
+        /// Water drag uses a body's CdA times this: anything moving through water goes streamlined,
+        /// not broadside as it stands in a wind.
+        /// </summary>
+        public float DragScale { get; set; } = 0.25f;
+
+        /// <summary>Linear damping in water, 1/s (times the share under): bobbing and drifting settle.</summary>
+        public float Damping { get; set; } = 3f;
+
+        /// <summary>
+        /// Each kind's density, kg/m³ of the water it displaces, when its spec gives none: below
+        /// water's it floats, above it sinks. Keys are body kinds in lower case.
+        /// </summary>
+        public System.Collections.Generic.Dictionary<string, float> Bodies { get; set; } = new()
+        {
+            ["vessel"] = 1600f, ["wreck"] = 2200f, ["crate"] = 450f, ["player"] = 800f, ["creature"] = 1000f,
+        };
+
+        /// <summary>A walking body swims once this share of its height is under water, and wades again below <see cref="WadeDepth"/>.</summary>
+        public float SwimDepth { get; set; } = 0.7f;
+        public float WadeDepth { get; set; } = 0.55f;
+
+        /// <summary>Swimming speed, m/s (sprinting: <see cref="SwimSprintSpeed"/>), reached at <see cref="SwimAccel"/> m/s².</summary>
+        public float SwimSpeed { get; set; } = 2.1f;
+        public float SwimSprintSpeed { get; set; } = 3f;
+        public float SwimAccel { get; set; } = 6f;
+
+        /// <summary>How hard strokes can hold against buoyancy and drag, m/s² of the body's mass.</summary>
+        public float SwimGrip { get; set; } = 30f;
+
+        public float DensityOf(BodyKind kind) =>
+            Bodies != null && Bodies.TryGetValue(kind.ToString().ToLowerInvariant(), out float d) && d > 0f ? d : Density;
     }
 
     public sealed class StuckData

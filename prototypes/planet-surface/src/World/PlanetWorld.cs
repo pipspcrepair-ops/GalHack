@@ -34,6 +34,50 @@ public sealed class PlanetWorld
     public double Width => Map.WidthMeters;
     public double Height => Map.HeightMeters;
 
+    /// <summary>
+    /// Trees felled on this planet, by scatter id (<see cref="Terrain.FarBuilder.ScatterId"/>): gone
+    /// at every level of detail, through streaming, saves and loads, as terrain edits are.
+    /// </summary>
+    public readonly HashSet<long> Felled = new();
+
+    /// <summary>Where the felled trees are saved: beside the terrain's save, written the same moment.</summary>
+    public string FelledPath => SavePath + ".felled";
+
+    /// <summary>Writes the felled trees atomically (a temporary file renamed over the old one).</summary>
+    public void SaveFelled()
+    {
+        var ids = new List<long>(Felled);
+        ids.Sort();
+        var text = new System.Text.StringBuilder("galhack.felled 1\n");
+        foreach (long id in ids) text.Append(id).Append('\n');
+        string tmp = FelledPath + ".tmp";
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FelledPath));
+        System.IO.File.WriteAllText(tmp, text.ToString());
+        System.IO.File.Move(tmp, FelledPath, overwrite: true);
+    }
+
+    /// <summary>Reads the felled trees back (none if there is no file). False if the file is unreadable: nothing changes.</summary>
+    public bool LoadFelled()
+    {
+        if (!System.IO.File.Exists(FelledPath))
+        {
+            Felled.Clear();
+            return true;
+        }
+        string[] lines = System.IO.File.ReadAllLines(FelledPath);
+        if (lines.Length == 0 || lines[0] != "galhack.felled 1") return false;
+        var ids = new HashSet<long>();
+        for (int i = 1; i < lines.Length; i++)
+        {
+            if (lines[i].Length == 0) continue;
+            if (!long.TryParse(lines[i], out long id)) return false;
+            ids.Add(id);
+        }
+        Felled.Clear();
+        Felled.UnionWith(ids);
+        return true;
+    }
+
     PlanetWorld(PlanetSpec spec, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
     {
         Spec = spec;
@@ -67,6 +111,13 @@ public sealed class PlanetWorld
         return new PlanetWorld(spec, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
     }
 
+    /// <summary>
+    /// The folder planets' saves go in. Tests give each run a folder of its own: user:// is shared
+    /// by every checkout of the repo on a machine (they share .tools, where it lives), so two test
+    /// runs at once would otherwise load and delete each other's saves.
+    /// </summary>
+    public static string SaveDirectory = "user://planets";
+
     /// <summary>Where saves for this planet's edits live: one file per terrain generator id.</summary>
     public string SavePath
     {
@@ -74,7 +125,7 @@ public sealed class PlanetWorld
         {
             ulong h = 14695981039346656037UL;
             foreach (char c in Source.GeneratorId) h = (h ^ c) * 1099511628211UL;
-            return ProjectSettings.GlobalizePath($"user://planets/{Spec.Archetype}-{Spec.Seed}-{h:x16}.ghs");
+            return ProjectSettings.GlobalizePath($"{SaveDirectory}/{Spec.Archetype}-{Spec.Seed}-{h:x16}.ghs");
         }
     }
 
@@ -88,6 +139,14 @@ public sealed class PlanetWorld
     public Vector3 Canonical(Vector3 p) => new((float)Mathx.WrapX(p.X, Width), p.Y, (float)Mathx.Wrap(p.Z, Height));
 
     public float GroundHeight(double x, double z) => Source.SurfaceHeight(x, z);
+
+    /// <summary>
+    /// The water surface over a point's column (the sea, a river), or null on dry ground. Water is
+    /// a volume: anything under that surface is in it. A lava world's seas are lava, not water, and
+    /// aren't entered.
+    /// </summary>
+    public float? WaterSurfaceAt(Vector3 p) =>
+        !Look.Lava && Source.WaterSurfaceAt(Mathx.WrapX(p.X, Width), Mathx.Wrap(p.Z, Height), out float surface) ? surface : null;
 
     /// <summary>A sea mask for the water shader: depth below sea level per world-map cell.</summary>
     public ImageTexture SeaTexture()

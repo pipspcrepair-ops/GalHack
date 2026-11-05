@@ -14,11 +14,17 @@ namespace Invasions.Tests;
 /// Headless tests for the invasion systems. Run with:
 ///   godot --headless --path prototypes/invasions res://tests/InvasionTest.tscn
 /// The director and base model are checked directly (instant, on the simulated clock); then the
-/// playable scene is built and driven frame by frame for the parts that need it.
+/// playable scene is built and driven frame by frame for the parts that need it, ending with a
+/// reduced navigation soak (10 seeded invasions per faction). The full soak is InvasionSoakTest.
 /// Exits 0 if every check passes, 1 if any fails.
 /// </summary>
 public partial class InvasionTest : Node
 {
+    /// <summary>Seeded soak runs per faction: a reduced soak for the merge gate; InvasionSoakTest runs the full one.</summary>
+    protected virtual int SoakRunsPerFaction => 10;
+    /// <summary>Skip straight to the soak (InvasionSoakTest does; so does --only-soak).</summary>
+    protected virtual bool SoakOnly => false;
+
     InvasionData _data;
     ServerSettings _server;
     BaseData _base;
@@ -32,11 +38,28 @@ public partial class InvasionTest : Node
     {
         try
         {
+            Main.WorldFile = null; // start every world from the data files, whatever a player saved
             _data = GameData.Invasions();
             _server = GameData.Server();
             _base = GameData.Base();
             _fire = GameData.FireControl();
+            // --only-soak skips straight to the navigation soak (for tuning it).
+            bool onlySoak = SoakOnly || OS.GetCmdlineUserArgs().Contains("--only-soak");
+            if (!onlySoak) DirectorAndModelTests();
+            await SceneTests(onlySoak);
+        }
+        catch (Exception e)
+        {
+            Fail($"test crashed: {e}");
+        }
 
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks)" : $"{_failures} CHECK(S) FAILED, {_passes} passed");
+        GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    void DirectorAndModelTests()
+    {
+        {
             Section("Director");
             NoInvasionWithoutPlayers();
             WarningsAtExactTimes();
@@ -45,6 +68,22 @@ public partial class InvasionTest : Node
             NearestEnemyBaseIsTheSource();
             DestroyedSourceStopsItsInvasions();
             SameSeedReplaysSameInvasion();
+
+            Section("Factions");
+            FactionDataIsComplete();
+            NearestHostileFactionSendsTheInvasion();
+            ExchangeAndFreeholdersNeverInvade();
+            FactionTurnedFriendlyStopsInvading();
+            StandingRespectsEachFactionsNature();
+            ShipRaidsComeFromHostileFactions();
+            EachFactionComposesItsOwnForce();
+            KessariPlanStraightThroughWalls();
+
+            Section("Options: invasions on and off");
+            InvasionsOffStopsNewInvasions();
+            InvasionsOffCancelsTheWarnings();
+            InvasionsOffWithdrawsAnAssault();
+            InvasionsBackOnResumeWithFullWarnings();
 
             Section("Base model");
             LootTotalSurvivesWreckedContainers();
@@ -61,16 +100,7 @@ public partial class InvasionTest : Node
             LineOfSightBreakResetsTheRamp();
             BaselineComesFromShooterTargetAndWeapon();
             DamageIsNeverScaled();
-
-            await SceneTests();
         }
-        catch (Exception e)
-        {
-            Fail($"test crashed: {e}");
-        }
-
-        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks)" : $"{_failures} CHECK(S) FAILED, {_passes} passed");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
     // ---- Director ---------------------------------------------------------------------
@@ -82,7 +112,7 @@ public partial class InvasionTest : Node
         var d = new InvasionDirector(_data, server, seed);
         d.AddPlayerBase("home", "Homestead", Home);
         d.SetBaseStats("home", new BaseStats(4000, 90, 2));
-        if (garrison) d.AddEnemyBase("okkar", "Garrison Okkar-9", EnemyBaseKind.Garrison, GarrisonPos);
+        if (garrison) d.AddEnemyBase("okkar", "Garrison Okkar-9", "vharn", EnemyBaseKind.Garrison, GarrisonPos);
         return d;
     }
 
@@ -196,14 +226,15 @@ public partial class InvasionTest : Node
         Check(strictly, $"troops rise with every player present: {string.Join(" → ", byPlayers)}");
 
         var rng = new DeterministicRng(5);
-        ForcePlan small = ForceComposer.Compose(new BaseStats(300, 24, 0), 1, SourceKind.Garrison, _data, rng);
-        ForcePlan huge = ForceComposer.Compose(new BaseStats(400000, 3000, 24), 4, SourceKind.Fortress, _data, rng);
+        FactionData vharn = _data.Faction("vharn");
+        ForcePlan small = ForceComposer.Compose(new BaseStats(300, 24, 0), 1, SourceKind.Garrison, vharn, _data, rng);
+        ForcePlan huge = ForceComposer.Compose(new BaseStats(400000, 3000, 24), 4, SourceKind.Fortress, vharn, _data, rng);
         Check(small.Tier == "squad" && huge.Tier == "army",
             $"a small outpost faces a squad ({small.Troops}), a fortress an army ({huge.Troops} {huge.Tier})");
 
         bool seated = new[] { small, huge }.All(f =>
             f.Vehicles.Sum(v => v.Troops.Count) == f.Troops &&
-            f.Vehicles.All(v => v.Crew == 1 + v.Gunners && v.Troops.Count <= _data.Vehicles[v.Type].Capacity) &&
+            f.Vehicles.All(v => v.Crew == 1 + v.Gunners && v.Troops.Count <= vharn.Vehicles[v.Type].Capacity) &&
             f.Vehicles.All(v => v.Troops.Count < 2 || v.Troops.Contains("breacher")));
         Check(seated, "every troop has a seat, every vehicle a driver and gunners, every squad a breacher");
     }
@@ -211,10 +242,10 @@ public partial class InvasionTest : Node
     void NearestEnemyBaseIsTheSource()
     {
         var d = NewDirector(garrison: false);
-        d.AddEnemyBase("ghul", "Fortress Ghul", EnemyBaseKind.Fortress, new GroundPos(-900, -1000));      // 1345 m
-        d.AddEnemyBase("okkar", "Garrison Okkar-9", EnemyBaseKind.Garrison, GarrisonPos);                 // 601 m
-        d.AddEnemyBase("sere", "Outpost Sere", EnemyBaseKind.Outpost, new GroundPos(300, 200));          // 361 m
-        d.AddEnemyBase("far", "Outpost Vey", EnemyBaseKind.Outpost, new GroundPos(2500, 0));            // out of range
+        d.AddEnemyBase("ghul", "Fortress Ghul", "vharn", EnemyBaseKind.Fortress, new GroundPos(-900, -1000));      // 1345 m
+        d.AddEnemyBase("okkar", "Garrison Okkar-9", "vharn", EnemyBaseKind.Garrison, GarrisonPos);                 // 601 m
+        d.AddEnemyBase("sere", "Outpost Sere", "vharn", EnemyBaseKind.Outpost, new GroundPos(300, 200));          // 361 m
+        d.AddEnemyBase("far", "Outpost Vey", "vharn", EnemyBaseKind.Outpost, new GroundPos(2500, 0));            // out of range
         PlayerBase home = d.Base("home");
         Check(d.NearestSourceBase(home)?.Id == "sere", "the nearest base in range is picked (outpost at 361 m)");
 
@@ -487,7 +518,7 @@ public partial class InvasionTest : Node
 
     Main _world;
 
-    async Task SceneTests()
+    async Task SceneTests(bool onlySoak)
     {
         // Run the scene faster than real time: same 1/60 s physics steps, as many per second as the CPU allows.
         Engine.PhysicsTicksPerSecond = 60 * 24;
@@ -495,19 +526,18 @@ public partial class InvasionTest : Node
         Engine.MaxPhysicsStepsPerFrame = 96;
         try
         {
-            Section("Scene");
-            await CrouchingShrinksTheCapsule();
-            await CrewDeathsInALiveApc();
-            await InvadersBreachIntoTheCoreRoom();
-            await WarningRoundsNeverHitAndRoundsTakeTime();
-            await FullInvasionInFastTime();
-            await DestroyingTheGarrisonStopsItsInvasions();
+            if (!onlySoak) await SceneAndFactionTests();
 
             Section("Navigation soak");
-            int runs = 50;
+            int runs = SoakRunsPerFaction;
+            string only = null;
             foreach (string arg in OS.GetCmdlineUserArgs())
+            {
                 if (arg.StartsWith("--soak=")) runs = int.Parse(arg["--soak=".Length..]);
-            await Soak(runs);
+                else if (arg.StartsWith("--soak-faction=")) only = arg["--soak-faction=".Length..];
+                else if (arg.StartsWith("--soak-first=")) _soakFirst = int.Parse(arg["--soak-first=".Length..]);
+            }
+            foreach (string faction in InvadingFactions.Where(f => only == null || f == only)) await Soak(runs, faction);
         }
         finally
         {
@@ -517,6 +547,21 @@ public partial class InvasionTest : Node
             _world = null;
             await PhysicsFrames(3); // let the last world go before quitting
         }
+    }
+
+    async Task SceneAndFactionTests()
+    {
+        Section("Scene");
+        await CrouchingShrinksTheCapsule();
+        await CrewDeathsInALiveApc();
+        await InvadersBreachIntoTheCoreRoom();
+        await WarningRoundsNeverHitAndRoundsTakeTime();
+        await FullInvasionInFastTime();
+        await DestroyingTheGarrisonStopsItsInvasions();
+        await OptionsSwitchInvasionsOffAndSaveIt();
+
+        Section("Faction rosters and tactics");
+        foreach (string faction in InvadingFactions) await FactionRosterAndTactics(faction);
     }
 
     async Task<Main> NewWorld()
@@ -569,7 +614,7 @@ public partial class InvasionTest : Node
         m.Combat.TurretsEnabled = false;
         m.Player.Invulnerable = true;
         m.Player.Teleport(new Vector3(0, 0.1f, -45f), 0f, 0f); // outside the north wall, in the open
-        var plan = new VehiclePlan { Index = 0, Type = "apc", Label = "APC", Speed = 17, Guns = new List<string> { "autocannon", "rocket_pod" } };
+        var plan = new VehiclePlan { Index = 0, Faction = "vharn", Type = "apc", Body = "apc", Label = "APC", Speed = 17, Guns = new List<string> { "autocannon", "rocket_pod" } };
         var at = new Vector3(0, 0, -120f);
         var route = new VehicleRoute(at, at, m.Combat.BaseCentre, Vector3.Forward, 520f);
         var apc = (CrewedVehicle)m.Controller.Factory.SpawnVehicle(plan, route);
@@ -594,6 +639,19 @@ public partial class InvasionTest : Node
         await Run(1);
         Check(moving > 2f && apc.Speed < 0.01f && apc.GlobalPosition.DistanceTo(stopped) < 0.01f && apc.IsStranded,
             $"killing the driver stops the APC ({moving:F1} m/s → {apc.Speed:F2} m/s)");
+
+        // Troops aboard a carrier whose driver is killed on the way in climb out of the wreck and fight on.
+        var loaded = new VehiclePlan { Index = 1, Faction = "vharn", Type = "apc", Body = "apc", Label = "APC", Speed = 17, Guns = new List<string> { "autocannon", "rocket_pod" } };
+        loaded.Troops.AddRange(new[] { "breacher", "rifleman", "rifleman", "heavy" });
+        var far = new Vector3(60f, 0, -400f);
+        var carrier = (CrewedVehicle)m.Controller.Factory.SpawnVehicle(loaded, new VehicleRoute(far, new Vector3(60f, 0, -150f), m.Combat.BaseCentre, Vector3.Forward, 520f));
+        int out0 = 0;
+        carrier.TroopDismounted += (_, _, _) => out0++;
+        await Run(3);
+        carrier.Crew.Damage(0, 1000);
+        bool emptied = await RunUntil(() => carrier.TroopsAboard == 0, 20);
+        Check(emptied && out0 == 4 && carrier.IsStranded,
+            $"troops aboard a carrier whose driver dies climb out of the wreck ({out0} of 4) instead of sitting in it forever");
     }
 
     async Task InvadersBreachIntoTheCoreRoom()
@@ -608,7 +666,7 @@ public partial class InvasionTest : Node
         for (int i = 0; i < roles.Length; i++)
         {
             Vector3 at = m.Combat.CellCentre(grid.FromLayout(10 + i, -10)) + Vector3.Up * 0.1f;
-            var troop = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop(roles[i], at, Vector3.Back);
+            var troop = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop("vharn", roles[i], at, Vector3.Back);
             troop.Assault();
             squad.Add(troop);
         }
@@ -627,7 +685,7 @@ public partial class InvasionTest : Node
         p.Teleport(new Vector3(0, 0.1f, 70f), 0f, 0f); // south of the base, in the open
         double firstHurt = double.NaN;
         p.Hurt += _ => { if (double.IsNaN(firstHurt)) firstHurt = m.Combat.Time; };
-        var shooter = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop("rifleman", new Vector3(4f, 0.1f, 100f), Vector3.Forward);
+        var shooter = (PlaceholderSoldier)m.Controller.Factory.SpawnTroop("vharn", "rifleman", new Vector3(4f, 0.1f, 100f), Vector3.Forward);
         shooter.Assault();
         int warnings = _fire.Warning.Shots;
         double firstAimed = double.NaN;
@@ -647,7 +705,7 @@ public partial class InvasionTest : Node
         q.Teleport(new Vector3(0, 0.1f, 60f), 0f, 0f);
         WeaponData capital = _fire.Weapon("capital_gun");
         Vector3 from = q.AimPoint + new Vector3(0, 0, 150f);
-        w.Combat.Fire(from, q.AimPoint, capital, 0f, Layers.InvaderShots, Faction.Vharn, Palette.TracerVharn);
+        w.Combat.Fire(from, q.AimPoint, capital, 0f, Layers.InvaderShots, Team.Invaders, Palette.TracerVharn);
         double fired = w.Combat.Time, expected = 150.0 / capital.ProjectileSpeed;
         await PhysicsFrames(2);
         bool aliveAfterLaunch = q.Health.Alive;
@@ -708,21 +766,27 @@ public partial class InvasionTest : Node
     {
         Main m = await NewWorld();
         PlayerBase home = m.Director.Base(InvasionController.HomeId);
-        Check(m.Director.NearestSourceBase(home)?.Id == m.Garrison.Id, "the garrison 600 m north-east is the source");
-        m.Garrison.DestroyCore(); // what K does
+        Check(m.Director.NearestSourceBase(home)?.Id == m.Garrison.Id, "the Vharn garrison 600 m north-east, the nearest hostile base, is the source");
+        Check(m.Controller.KnockOutSource() == "", "K knocks out the current source");
         await Run(0.25);
-        Check(m.Garrison.Destroyed && m.Director.Enemy(m.Garrison.Id).State == EnemyBaseState.Destroyed && m.Director.NearestSourceBase(home) == null,
-            "K destroys the garrison's core and it stops being a source");
+        Check(m.Garrison.Destroyed && m.Director.Enemy(m.Garrison.Id).State == EnemyBaseState.Destroyed &&
+              m.Director.NearestSourceBase(home)?.Faction == "reavers",
+            $"the garrison is down, so the next nearest hostile base takes over: {m.Controller.SourceSummary()}");
+        while (m.Director.NearestSourceBase(home) is EnemyBase next) m.Controller.Node(next).DestroyCore();
+        await Run(0.25);
         m.Controller.InvadeNow();
-        Check(home.Active?.Source.Kind == SourceKind.Ship, $"the next invasion comes by ship instead: {home.Active?.Source}");
+        Check(home.Active?.Source.Kind == SourceKind.Ship && home.Active.Faction is "vharn" or "reavers",
+            $"with every hostile base in range knocked out, the next invasion comes by ship: {home.Active?.Source}");
     }
 
     // ---- Navigation soak ---------------------------------------------------------------
 
     const double StuckLimit = 3.0, EngageLimit = 40.0, SoakSeconds = 70.0;
+    int _soakFirst = 1;
 
     sealed class SoakStats
     {
+        public string Faction = "";
         public int Runs, Troops, StuckOverLimit, Late, Clutter;
         public double WorstStuck, WorstEngage;
         public string WorstStuckWhere = "";
@@ -737,21 +801,24 @@ public partial class InvasionTest : Node
         public bool CountedStuck;
     }
 
-    async Task Soak(int runs)
+    async Task Soak(int runs, string faction)
     {
-        var stats = new SoakStats();
+        var stats = new SoakStats { Faction = faction };
         ulong started = Time.GetTicksMsec();
-        for (int seed = 1; seed <= runs; seed++) await SoakOne(seed, stats);
+        int repaths = InvaderNavigator.Repaths, sidesteps = InvaderNavigator.Sidesteps, unsticks = InvaderNavigator.Unsticks;
+        for (int seed = _soakFirst; seed < _soakFirst + runs; seed++) await SoakOne(seed, faction, stats);
         double seconds = (Time.GetTicksMsec() - started) / 1000.0;
-        GD.Print($"SOAK  {stats.Runs} seeded invasions, {stats.Troops} invaders, {stats.Clutter} obstacles, {seconds:F0} s real time");
-        GD.Print($"SOAK  worst stuck {stats.WorstStuck:F2} s ({stats.WorstStuckWhere}); stuck over {StuckLimit} s: {stats.StuckOverLimit}; " +
+        string name = _data.Faction(faction).Name;
+        GD.Print($"SOAK  {name}: {stats.Runs} seeded invasions, {stats.Troops} invaders, {stats.Clutter} obstacles, {seconds:F0} s real time");
+        GD.Print($"SOAK  {name}: worst stuck {stats.WorstStuck:F2} s ({stats.WorstStuckWhere}); stuck over {StuckLimit} s: {stats.StuckOverLimit}; " +
                  $"slowest to reach the core room or a breach: {stats.WorstEngage:F1} s; late or never: {stats.Late}");
-        GD.Print($"SOAK  recoveries: {InvaderNavigator.Repaths} re-paths, {InvaderNavigator.Sidesteps} side-steps, {InvaderNavigator.Unsticks} hops to a free cell");
-        Check(stats.StuckOverLimit == 0, $"no invader stays stuck for more than {StuckLimit} s across {stats.Runs} cluttered invasions (worst {stats.WorstStuck:F2} s)");
-        Check(stats.Late == 0, $"every invader reaches the core room or a breach within {EngageLimit} s (slowest {stats.WorstEngage:F1} s)");
+        GD.Print($"SOAK  {name}: recoveries: {InvaderNavigator.Repaths - repaths} re-paths, {InvaderNavigator.Sidesteps - sidesteps} side-steps, " +
+                 $"{InvaderNavigator.Unsticks - unsticks} hops to a free cell");
+        Check(stats.StuckOverLimit == 0, $"{name}: no invader stays stuck for more than {StuckLimit} s across {stats.Runs} cluttered invasions (worst {stats.WorstStuck:F2} s)");
+        Check(stats.Late == 0, $"{name}: every invader reaches the core room or a breach within {EngageLimit} s (slowest {stats.WorstEngage:F1} s, late {stats.Late})");
     }
 
-    async Task SoakOne(int seed, SoakStats stats)
+    async Task SoakOne(int seed, string faction, SoakStats stats)
     {
         Main m = await NewWorld();
         var rng = new RandomNumberGenerator { Seed = (ulong)(seed * 7919 + 17) };
@@ -767,16 +834,18 @@ public partial class InvasionTest : Node
         stats.Clutter += Clutter.Scatter(m, rng, outward, distance);
 
         ForcePlan plan = ForceComposer.Compose(new BaseStats(rng.RandfRange(1500f, 9000f), 90, 2), rng.RandiRange(1, 3),
-            SourceKind.Garrison, _data, new DeterministicRng((ulong)seed));
+            SourceKind.Garrison, _data.Faction(faction), _data, new DeterministicRng((ulong)seed));
         var tracked = new List<Tracked>();
         double now = 0;
         foreach (VehiclePlan v in plan.Vehicles)
         {
             Vector3 drop = outward * distance + right * (float)v.Offset * 0.6f;
+            // A big squad (a Bloom swarm) is set down over a wider patch, as it would pour out over time.
+            float half = 2.5f * Mathf.Max(1f, Mathf.Sqrt(v.Troops.Count / 8f));
             foreach (string role in v.Troops)
             {
-                Vector3 at = drop + new Vector3(rng.RandfRange(-2.5f, 2.5f), 0.1f, rng.RandfRange(-2.5f, 2.5f));
-                IInvaderTroop troop = m.Controller.Factory.SpawnTroop(role, at, -outward);
+                Vector3 at = drop + new Vector3(rng.RandfRange(-half, half), 0.1f, rng.RandfRange(-half, half));
+                IInvaderTroop troop = m.Controller.Factory.SpawnTroop(faction, role, at, -outward);
                 troop.Assault();
                 tracked.Add(new Tracked { Soldier = (PlaceholderSoldier)troop, Anchor = at, AnchorTime = 0, Spawned = 0 });
             }
@@ -814,6 +883,7 @@ public partial class InvasionTest : Node
                 {
                     t.CountedStuck = true;
                     stats.StuckOverLimit++;
+                    GD.Print($"  stuck: {faction} seed {seed} at {now:F1} s: {s.Describe()}");
                 }
             }
             bool coreDown = !m.Model.Online;
@@ -831,11 +901,11 @@ public partial class InvasionTest : Node
                 stats.Late++;
                 PlaceholderSoldier s = t.Soldier;
                 string where = IsInstanceValid(s) ? $"{s.Role} {s.State} at {m.Model.Grid.ToLayout(m.Combat.CellAt(s.GlobalPosition))}, {s.GlobalPosition.DistanceTo(m.Combat.BaseCentre):F0} m out" : "freed";
-                GD.Print($"  late: seed {seed}, {where}, run ended at {now:F1} s (core {(m.Model.Online ? "up" : "down")})");
+                GD.Print($"  late: {faction} seed {seed}, {where}, run ended at {now:F1} s (core {(m.Model.Online ? "up" : "down")})");
             }
             if (t.Engaged is double e) stats.WorstEngage = Math.Max(stats.WorstEngage, e);
         }
-        if (seed % 10 == 0) GD.Print($"  soak seed {seed}: worst stuck so far {stats.WorstStuck:F2} s, stuck {stats.StuckOverLimit}, late {stats.Late}");
+        if (seed % 10 == 0) GD.Print($"  soak {faction} seed {seed}: worst stuck so far {stats.WorstStuck:F2} s, stuck {stats.StuckOverLimit}, late {stats.Late}");
     }
 
     // ---- Reporting --------------------------------------------------------------------

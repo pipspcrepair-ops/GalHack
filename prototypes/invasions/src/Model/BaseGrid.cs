@@ -161,9 +161,10 @@ public sealed class BaseGrid
 
     /// <summary>
     /// True if a body of <paramref name="radius"/> can move in a straight line from a to b without
-    /// touching a block or an obstacle cell. Path smoothing only shortcuts where this holds.
+    /// touching a block or an obstacle cell (or, with <paramref name="blocksOnly"/>, a block). Path
+    /// smoothing only shortcuts where this holds.
     /// </summary>
-    public bool ClearLine(GroundPos a, GroundPos b, double radius)
+    public bool ClearLine(GroundPos a, GroundPos b, double radius, bool blocksOnly = false)
     {
         double length = a.DistanceTo(b);
         int steps = Math.Max(1, (int)Math.Ceiling(length / 0.25));
@@ -178,7 +179,7 @@ public sealed class BaseGrid
                 for (int dx = -1; dx <= 1; dx++)
                 {
                     var n = new Cell(c.X + dx, c.Z + dz);
-                    if (!BlocksMovement(n)) continue;
+                    if (blocksOnly ? At(n) == null : !BlocksMovement(n)) continue;
                     GroundPos nc = CellCentre(n);
                     double ex = Math.Max(0, Math.Abs(p.X - nc.X) - half), ez = Math.Max(0, Math.Abs(p.Z - nc.Z) - half);
                     if (ex * ex + ez * ez < radius * radius) return false;

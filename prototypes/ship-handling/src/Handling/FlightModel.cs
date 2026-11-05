@@ -78,7 +78,7 @@ public static class FlightModel
         }
         float boost = s.Boosting ? t.Boost.Multiplier : 1f;
 
-        Turn(ref s, input, stats, where, t, dt);
+        Turn(ref s, input, stats, t, dt);
         Translate(ref s, input, stats, where, t, dt, boost);
 
         if (s.BoostLeft > 0f) s.BoostLeft = Mathf.Max(0f, s.BoostLeft - dt);
@@ -108,9 +108,12 @@ public static class FlightModel
     /// <summary>
     /// Gyros alone turn the ship. Thrusters add no torque, so nothing about the build can make it
     /// spin by itself. Hover vessels only yaw; their tilt belongs to the hover controller.
+    ///
+    /// A flying vessel never orients itself: in air and in space alike it keeps whatever attitude
+    /// the pilot leaves it in. Letting go of the stick only stops the turn (the gyros spin down to
+    /// zero); nothing eases the wings or the nose back to level.
     /// </summary>
-    static void Turn(ref FlightState s, in PilotInput input, HandlingStats stats, FlightConditions where,
-        Tunables t, float dt)
+    static void Turn(ref FlightState s, in PilotInput input, HandlingStats stats, Tunables t, float dt)
     {
         float rate = Mathf.DegToRad(stats.TurnRate);
         var limit = new Vector3(rate, rate, rate * stats.RollFactor);
@@ -122,15 +125,6 @@ public static class FlightModel
             target.Z = 0f;
             s.AngularVelocity.X = 0f;
             s.AngularVelocity.Z = 0f;
-        }
-        else if (input.Seated && where.InAtmosphere && Mathf.Abs(input.Turn.Z) < 0.05f && t.Assist.HorizonLevel > 0f)
-        {
-            // Horizon assist, to keep a first ship forgiving: in air, if you aren't rolling, the
-            // wings ease back to level. Skipped when pointing nearly straight up or down, where
-            // "level" has no meaning.
-            Basis o = s.Orientation;
-            if (Mathf.Abs(o.Z.Y) < 0.85f)
-                target.Z = Mathf.Clamp(-o.X.Y * t.Assist.HorizonLevel, -limit.Z, limit.Z);
         }
 
         Vector3 spinUp = limit / Mathf.Max(t.Turning.SpinUpTime, 1e-3f);

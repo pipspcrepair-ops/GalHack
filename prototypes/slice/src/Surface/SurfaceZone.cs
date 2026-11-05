@@ -76,10 +76,12 @@ public partial class SurfaceZone : Node3D
         SliceRules.PlanetRules p = Data.Rules.Planet;
         Spec ??= PlanetSpec.Roll(p.Seed, Enum.Parse<Archetype>(p.Archetype), p.Variant);
         PlanetTerrain.ConfigureWorldBounds();
+        // Trunks and boulders are solid (planet-surface's rules): colliders in the near rings.
+        PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(GameData.Proto("planet-surface", "data", "flora-solids.json"));
 
         Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
         AddChild(Sky);
-        Streamer = new TerrainStreamer { Name = "Terrain" };
+        Streamer = new TerrainStreamer { Name = "Terrain", SolidLayer = GalHack.Physics.Layers.World };
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
@@ -128,6 +130,7 @@ public partial class SurfaceZone : Node3D
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
+        Physics.Water = new PlanetWater(Planet);
 
         Vector3 landing = LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));

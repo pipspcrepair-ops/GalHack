@@ -79,6 +79,12 @@ public partial class CapitalTest : Node
             : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
         if (_failures == 0 && _saveDir != null && Directory.Exists(_saveDir)) Directory.Delete(_saveDir, true); // test scratch only
+        // C# wrappers the run dropped (collision results, rebuilt hull shapes) are finalized now,
+        // while the engine is whole, not by the finalizer thread racing its teardown: that race
+        // crashed the exit (0xC0000005 in GodotObject.Finalize) after every check had passed.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
@@ -682,7 +688,10 @@ public partial class CapitalTest : Node
             p.Flight.Input = Pilot.Toward(p, spot, 6f);
             float d = _w.DistanceToHome(p, b);
             farthest = MathF.Max(farthest, d);
-            if (!returned && d > 1250f) returned = true;
+            // Back once Home is well out of range, or once it has got where it was sent: how far
+            // that leaves it from the drilling vessel depends on Home's attitude (flying vessels keep
+            // theirs, nothing levels them) and on how far the drill line has crept toward it.
+            if (!returned && (d > 1250f || N.Vector3.Distance(b.Body.Position, away) < 15f)) returned = true;
             if (t % 90 == 45)
             {
                 int homeBefore = b.Cargo.Total;

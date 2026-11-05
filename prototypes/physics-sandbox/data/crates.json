@@ -1,0 +1,7 @@
+// The crates the sandbox spawns. Each is a cube: size (m), mass (kg), drag area (CdA, m², what the
+// wind pushes on) and density: kg per cubic metre of the water it displaces. Below water's
+// (shared/Physics/physics.json, water.density) a crate floats, above it sinks to the bed.
+{
+  "supply": { "size": 0.8, "mass": 60, "dragArea": 0.75, "density": 450 },
+  "ore": { "size": 0.8, "mass": 420, "dragArea": 0.75, "density": 2600 }
+}

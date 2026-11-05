@@ -9,8 +9,8 @@ namespace Invasions.World;
 /// <summary>
 /// First-person player: walk, sprint (Shift), jump (Space) and crouch (hold Ctrl, which really
 /// shrinks the collision capsule), a placeholder rifle, manning a turret (F) and recovering spill
-/// crates into storage (E). NPC hits go through <see cref="PlayerHealth"/>, which caps every hit at
-/// 35% of max health and opens a short grace window below 25%.
+/// crates into storage (E). NPC hits go through <see cref="PlayerHealth"/> in full: damage is never
+/// reduced or capped.
 /// </summary>
 public partial class Player : CharacterBody3D, IDamageable
 {
@@ -23,7 +23,7 @@ public partial class Player : CharacterBody3D, IDamageable
     /// <summary>Test hook: ignore incoming damage.</summary>
     public bool Invulnerable;
 
-    public Faction Faction => Faction.Defenders;
+    public Team Team => Team.Defenders;
     public TargetClass Class => TargetClass.OnFoot;
     public bool IsAlive => Health.Alive;
     public Vector3 AimPoint => GlobalPosition + Vector3.Up * (Crouching ? 0.75f : 1.3f);
@@ -76,9 +76,7 @@ public partial class Player : CharacterBody3D, IDamageable
         if (e is InputEventMouseMotion motion && Input.MouseMode == Input.MouseModeEnum.Captured)
             _mouse += motion.Relative;
         else if (e is InputEventMouseButton { Pressed: true } && Input.MouseMode != Input.MouseModeEnum.Captured)
-            Input.MouseMode = Input.MouseModeEnum.Captured;
-        else if (e.IsActionPressed(Controls.FreeMouse))
-            Input.MouseMode = Input.MouseModeEnum.Visible;
+            Input.MouseMode = Input.MouseModeEnum.Captured; // Esc (the options) frees it; the options' backdrop keeps clicks off
     }
 
     public override void _PhysicsProcess(double delta)
@@ -183,7 +181,7 @@ public partial class Player : CharacterBody3D, IDamageable
         Godot.Collections.Dictionary hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
         Vector3 aim = hit.Count > 0 ? hit["position"].AsVector3() : far;
         Vector3 muzzle = _gun.GlobalTransform * new Vector3(0, 0.05f, -0.75f);
-        World.Fire(muzzle, aim, rifle, (float)rifle.AimedSpreadDegrees, Layers.DefenderShots, Faction.Defenders, Palette.TracerSettler,
+        World.Fire(muzzle, aim, rifle, (float)rifle.AimedSpreadDegrees, Layers.DefenderShots, Team.Defenders, Palette.TracerSettler,
             maxDistance: GunRange);
         Fx.Flash(muzzle, Palette.TracerSettler, 3f, 1.5f);
         _recoil += 0.012f;
@@ -253,9 +251,9 @@ public partial class Player : CharacterBody3D, IDamageable
 
     // ---- Damage -----------------------------------------------------------------------
 
-    public void TakeDamage(float amount, Vector3 from, Faction by)
+    public void TakeDamage(float amount, Vector3 from, Team by)
     {
-        if (by == Faction || Invulnerable || !Health.Alive) return;
+        if (by == Team || Invulnerable || !Health.Alive) return;
         float taken = (float)Health.TakeHit(amount); // never reduced or capped
         Hurt?.Invoke(taken);
         if (!Health.Alive)

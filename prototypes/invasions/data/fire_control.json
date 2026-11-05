@@ -52,6 +52,14 @@
     "capital_gun":  { "class": "capital",  "spreadMultiplier": 1.0,  "projectileSpeed": 280,  "damage": 400, "interval": 2.0 },
     "artillery":    { "class": "capital",  "spreadMultiplier": 1.0,  "projectileSpeed": 250,  "damage": 300, "interval": 4.0,
                       "targetSpreadMultipliers": { "on_foot": 3.0, "hover": 2.5, "small_vessel": 2.0, "capital": 0.6 } },
+    // Faction small arms (factions.json): Kessari frames and cutter drones, Meridian security, Reaver
+    // raiders, Hollow Bloom mutants and the growth's spitter pods (slow, visible gobs of acid).
+    "pulse_rifle":  { "class": "infantry", "spreadMultiplier": 0.8,  "projectileSpeed": 900,  "damage": 10,  "interval": 0.5 },
+    "cutter_laser": { "class": "infantry", "spreadMultiplier": 1.0,  "projectileSpeed": 3000, "damage": 6,   "interval": 0.3 },
+    "carbine":      { "class": "infantry", "spreadMultiplier": 0.9,  "projectileSpeed": 650,  "damage": 9,   "interval": 0.4 },
+    "scattergun":   { "class": "infantry", "spreadMultiplier": 2.4,  "projectileSpeed": 380,  "damage": 12,  "interval": 0.65 },
+    "acid_spit":    { "class": "infantry", "spreadMultiplier": 1.6,  "projectileSpeed": 60,   "damage": 10,  "interval": 0.9 },
+    "spitter":      { "class": "light",    "spreadMultiplier": 1.5,  "projectileSpeed": 80,   "damage": 22,  "interval": 1.4 },
     // The player's own rifle: aimed by hand, so it uses aimedSpreadDegrees rather than the matrix.
     "player_rifle": { "class": "infantry", "spreadMultiplier": 1.0,  "projectileSpeed": 700,  "damage": 34,  "interval": 0.13, "aimedSpreadDegrees": 0.25 }
   }

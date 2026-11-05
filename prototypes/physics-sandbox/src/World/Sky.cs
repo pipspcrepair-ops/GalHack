@@ -6,7 +6,7 @@ namespace PhysicsSandbox.World;
 /// The sky over the sandbox: a teal zenith warming to a peach horizon, a low warm sun, lavender
 /// shadows, a little height haze over the basin, and a ringed neighbour planet hanging over the
 /// northern ridge. Above the atmosphere it is space instead: black, a scatter of stars, the
-/// same sun and the same ringed giant, and no haze. Presentation only.
+/// same sun and the same ringed giant, and no haze. Under the lake it is teal murk. Presentation only.
 /// </summary>
 public sealed class Sky
 {
@@ -65,6 +65,13 @@ public sealed class Sky
         parent.AddChild(sun);
         parent.AddChild(RingedPlanet());
         result.Sun = sun;
+
+        // The tint over the view under water (under the HUD).
+        var layer = new CanvasLayer { Name = "UnderwaterTint", Layer = 5 };
+        result._tint = new ColorRect { Color = new Color(Palette.Water, 0.22f), Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        result._tint.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        layer.AddChild(result._tint);
+        parent.AddChild(layer);
         return result;
     }
 
@@ -78,6 +85,44 @@ public sealed class Sky
         _env.AmbientLightColor = inSpace ? Palette.Shadow.Darkened(0.35f) : Palette.Shadow.Lightened(0.25f);
         _env.AmbientLightEnergy = inSpace ? 0.4f : 0.55f;
         Sun.LightEnergy = inSpace ? 1.5f : 1.25f;
+    }
+
+    public bool Underwater { get; private set; }
+    ColorRect _tint;
+
+    /// <summary>
+    /// Under water the view closes in: teal murk thickening with depth instead of the sky, and a
+    /// tint over everything. Above it, the air again exactly as it was.
+    /// </summary>
+    public void Submerge(bool under, float depth)
+    {
+        if (under)
+        {
+            if (!Underwater)
+            {
+                Underwater = true;
+                _env.BackgroundMode = Godot.Environment.BGMode.Color;
+                _env.BackgroundColor = Palette.DeepWater;
+                _env.FogEnabled = true;
+                _env.FogLightColor = Palette.DeepWater.Lightened(0.15f);
+                _env.FogSkyAffect = 1f;
+                _env.FogHeightDensity = 0f;
+                _env.AmbientLightColor = Palette.Water;
+                if (_tint != null) _tint.Visible = true;
+            }
+            _env.FogDensity = 0.045f + 0.004f * depth; // murkier the deeper you go
+            return;
+        }
+        if (!Underwater) return;
+        Underwater = false;
+        _env.BackgroundMode = Godot.Environment.BGMode.Sky;
+        _env.FogEnabled = !InSpace;
+        _env.FogLightColor = Palette.Haze;
+        _env.FogDensity = 0.0022f;
+        _env.FogSkyAffect = 0.1f;
+        _env.FogHeightDensity = 0.02f;
+        _env.AmbientLightColor = Palette.Shadow.Lightened(0.25f);
+        if (_tint != null) _tint.Visible = false;
     }
 
     /// <summary>Space: near-black with a faint dusty band, hashed stars of a few sizes, and the sun's disc.</summary>

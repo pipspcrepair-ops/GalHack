@@ -358,38 +358,71 @@ public partial class SliceTest : Node
     IEnumerable<int> CutPlant()
     {
         GD.Print("-- a plant --");
-        Vector3 feet = _game.Survivor.WorldFeet;
-        Vector3? plant = null;
         foreach (int x in _drive.Wait(1)) yield return x;
-        plant = NearestPlant(feet, 200f);
-        if (plant is not Vector3 p)
+        // A tree if there is one near (its trunk is solid), any plant otherwise.
+        var found = NearestPlant(_game.Survivor.WorldFeet, 200f, trees: true) ?? NearestPlant(_game.Survivor.WorldFeet, 200f, trees: false);
+        if (found is not var (p, id))
         {
             Fail("no plant found near the castaway to cut");
             yield break;
         }
         foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
+        bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
+        bool trunkBefore = TrunkCollider(p, id);
         double organics = _game.Suit.Kit.Organics;
         int biomass = _game.Pack["biomass"];
-        foreach (int x in _drive.HoldPrimary(p + Vector3.Up * 0.9f, 3)) yield return x;
+        bool cutThisFrame = false, colliderGoneThatFrame = false;
+        for (int i = 0; i < 3 && !cutThisFrame; i++)
+        {
+            _drive.Face(p + Vector3.Up * 0.9f);
+            _game.Controls.Primary = true;
+            yield return 0;
+            if (_game.Zone.Planet.Felled.Contains(id))
+            {
+                cutThisFrame = true;
+                colliderGoneThatFrame = !TrunkCollider(p, id);
+            }
+        }
+        _game.Controls.Primary = false;
         foreach (int x in _drive.Wait(90)) yield return x;
-        Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.CutPlants.Count >= 1,
+        Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
             $"cutting a plant gives organics for the replicator (+{_game.Suit.Kit.Organics - organics:F1} kg) and biomass (+{_game.Pack["biomass"] - biomass})");
         bool gone = !_game.Zone.Streamer.FloraNear(p, 0.3f).Any();
-        Check(gone, "the cut plant is gone from the ground");
+        Check(gone && _game.Zone.Planet.Felled.Contains(id), "the cut plant is gone from the ground, and on the planet's felled list (kept through streaming and saves)");
+        if (tree)
+            Check(trunkBefore && cutThisFrame && colliderGoneThatFrame && !TrunkCollider(p, id),
+                $"the tree's trunk was solid, and its collider went in the frame it was cut (before {trunkBefore}, gone that frame {colliderGoneThatFrame})");
+        else GD.Print("  (no tree near: the plant cut was not a solid one)");
     }
 
-    /// <summary>The plant nearest a point within a radius, from the streamer's flora scatter.</summary>
-    Vector3? NearestPlant(Vector3 from, float radius)
+    /// <summary>The plant nearest a point within a radius, from the streamer's flora scatter: trees only (solid trunks), or any.</summary>
+    (Vector3 root, long id)? NearestPlant(Vector3 from, float radius, bool trees)
     {
-        Vector3? best = null;
+        (Vector3, long)? best = null;
         float bestD = radius;
-        foreach (var (_, root, _) in _game.Zone.Streamer.FloraNear(from, radius))
+        var solids = trees ? _game.Zone.Streamer.SolidsNear(from, radius).Where(s => s.solid.IsTrunk && s.solid.Fellable).Select(s => s.solid.Id).ToHashSet() : null;
+        foreach (var (_, root, _, id) in _game.Zone.Streamer.FloraNear(from, radius))
         {
-            if (_game.Tool.CutPlants.Contains(((int)MathF.Floor(root.X), (int)MathF.Floor(root.Z)))) continue;
+            if (solids != null && !solids.Contains(id)) continue;
             float d = new Vector2(root.X - from.X, root.Z - from.Z).Length();
-            if (d < bestD && root.Y > 0.6f) { bestD = d; best = root; }
+            if (d < bestD && root.Y > 0.6f) { bestD = d; best = (root, id); }
         }
         return best;
+    }
+
+    /// <summary>Whether a ray across a plant's root a metre up hits that plant's trunk collider.</summary>
+    bool TrunkCollider(Vector3 root, long id)
+    {
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 at = root + Vector3.Up * 1f;
+        foreach (Vector3 across in new[] { Vector3.Right, Vector3.Back })
+        {
+            var query = PhysicsRayQueryParameters3D.Create(at - across * 1.5f, at + across * 1.5f, _game.Zone.Streamer.SolidLayer);
+            var hit = space.IntersectRay(query);
+            if (hit.Count > 0 && _game.Zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out var solid) && solid.Id == id) return true;
+            // A felled tree's shape is disabled, so the ray passes; anything else it hits isn't this tree.
+        }
+        return false;
     }
 
     // ==== The pod's constructor =====================================================================
@@ -465,6 +498,31 @@ public partial class SliceTest : Node
             if (h0 > 1f && spread < 0.35f) return zone.GroundAt(p.X, p.Z);
         }
         return zone.GroundAt(near.X + distance, near.Z);
+    }
+
+    /// <summary>The nearest spot to a point that is flat, dry and clear of trunks and boulders for a vessel's footprint.</summary>
+    Vector3 ClearSpot(Vector3 near)
+    {
+        SurfaceZone zone = _game.Zone;
+        int steep = 0, wooded = 0, wet = 0;
+        for (float r = 0f; r <= 240f; r += 6f)
+            for (int k = 0; k < Math.Max(1, (int)(r / 3f)); k++)
+            {
+                float a = k * MathF.Tau / Math.Max(1, (int)(r / 3f));
+                var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
+                float h0 = zone.GroundAt(p.X, p.Z).Y, spread = 0f;
+                for (int j = 0; j < 8; j++)
+                {
+                    float b = j * MathF.Tau / 8f;
+                    spread = MathF.Max(spread, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 4f, p.Z + MathF.Sin(b) * 4f).Y - h0));
+                }
+                if (h0 <= 1f || zone.Physics.Water.SurfaceAt(new N.Vector3(p.X, h0, p.Z), out _)) { wet++; continue; }
+                if (spread >= 0.35f) { steep++; continue; }
+                if (zone.Streamer.SolidsNear(new Vector3(p.X, h0, p.Z), 8f).Any()) { wooded++; continue; }
+                return zone.GroundAt(p.X, p.Z);
+            }
+        GD.Print($"  (no clear spot within 240 m: {steep} steep, {wooded} wooded, {wet} wet)");
+        return near;
     }
 
     IEnumerable<int> Build()
@@ -564,6 +622,13 @@ public partial class SliceTest : Node
         GD.Print("-- flying the starter vessel 2 km and landing --");
         Vessel v = _skiff;
         if (v == null) { Fail("no vessel to fly"); yield break; }
+        // The full run reaches the flight after the calm opening: this check is about flying, so
+        // it flies in clear air (the weather's own checks are the weather prototype's and above).
+        if (_game.Zone.Weather.Sim is { } sky && sky.Dominant != WeatherKind.Clear)
+        {
+            GD.Print($"  (the sky was {sky.Dominant}: cleared for the flight)");
+            sky.Snap(WeatherKind.Clear);
+        }
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
@@ -613,6 +678,12 @@ public partial class SliceTest : Node
         probe.Remove();
         _game.Controls.ReleaseAll();
 
+        // Trunks and boulders are solid: now their data is in near the vessel, settle on a spot clear of them.
+        for (int i = 0; i < 120 && !_game.Zone.Streamer.SolidsReady; i++) yield return 0;
+        Vector3 before = target;
+        target = ClearSpot(target);
+        GD.Print($"  (landing spot moved {new Vector2(target.X - before.X, target.Z - before.Z).Length():F0} m to clear ground: {_game.Zone.Streamer.SolidsNear(target, 9f).Count()} solids within 9 m)");
+
         // Come down on the gear.
         int landing = 0;
         while (!v.Controller.Frozen && landing++ < 60 * 90)
@@ -637,8 +708,11 @@ public partial class SliceTest : Node
         float flown = new Vector2(end.X - start.X, end.Z - start.Z).Length();
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
+        if (!v.Controller.Frozen)
+            GD.Print($"  (not settled at {v.Body.Position}, target {target}, solids near: {string.Join("; ", _game.Zone.Streamer.SolidsNear(v.Body.Position.ToGodot(), 8f).Select(sv => $"{sv.solid.Kind} at {sv.solid.Center + sv.offset} ext {sv.solid.Extents}"))})");
         Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == 0f && worst < 8f,
-            $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
+            $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)"
+            + (v.Controller.Frozen && _landed > lands ? "" : $" [frozen {v.Controller.Frozen}, landings {_landed - lands}, gear {v.Controller.Gear.Deployed}, damage {v.Body.Damage:F1}, speed {v.Body.Velocity.Length():F1}, above ground {v.AboveGround:F1}]"));
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
         Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
         Check(_game.Suit.Vitals.Health >= healthBefore, "the pilot came through unhurt");
@@ -670,6 +744,9 @@ public partial class SliceTest : Node
         N.Vector3 at = v.Body.Position;
         N.Quaternion rot = v.Body.Rotation;
         var runs = new List<List<N.Vector3>>();
+        // Both hops in the same still air: the weather moves on with time, and isn't an input.
+        var weather = _game.Zone.Physics.ForceProviders.ToList();
+        _game.Zone.Physics.ForceProviders.Clear();
         for (int run = 0; run < 2; run++)
         {
             v.Controller.PlaceLanded(v.Body, at, MathX.Heading(rot));
@@ -689,9 +766,10 @@ public partial class SliceTest : Node
             _game.Controls.ReleaseAll();
             runs.Add(track);
         }
+        _game.Zone.Physics.ForceProviders.AddRange(weather);
         float diff = runs[0].Zip(runs[1], (a, b) => N.Vector3.Distance(a, b)).Max();
         Check(diff == 0f && N.Vector3.Distance(runs[0][^1], at) > 3f,
-            $"determinism: the same inputs fly the same 4 s hop twice (max difference {diff} m over {runs[0].Count} ticks)");
+            $"determinism: the same inputs fly the same 4 s hop twice, in still air (max difference {diff} m over {runs[0].Count} ticks)");
         // Set it down again where it was.
         v.Controller.PlaceLanded(v.Body, at, MathX.Heading(rot));
         v.Body.Rotation = rot;

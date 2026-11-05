@@ -30,6 +30,9 @@ public sealed class Suit : IDamageSink
     public TickReport Last => Sim.Last;
     public double HealthShare => Vitals.Health / Sim.Data.Vitals.Health.Max;
     public double FoodShare => Vitals.Food / Sim.Data.Vitals.Food.Max;
+    /// <summary>Wholly under water (the shared physics module's water state): no air to breathe.</summary>
+    public bool Underwater { get; private set; }
+
     public double OxygenShare => Sim.OxygenCapacity > 0 ? Vitals.Oxygen / Sim.OxygenCapacity : 0;
     public bool Dead => Sim.Player.Dead;
 
@@ -76,7 +79,7 @@ public sealed class Suit : IDamageSink
         double height = -_climate.LapsePerKm * Math.Max(0, p.Y) / 1000.0;
         string air = planet.Sky.Air.ToString();
         double oxygen = _climate.OxygenByAir.TryGetValue(air, out double o2) ? o2 : 21;
-        if (p.Y > _zone.Physics.Zone.Ceiling) oxygen = 0;
+        if (p.Y > _zone.Physics.Zone.Ceiling || Underwater) oxygen = 0; // above the air, or head under water: the suit's own
         double radiation = _climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0;
         return new Exposure(baseline + weather + day + height, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), double.PositiveInfinity);
     }
@@ -89,6 +92,7 @@ public sealed class Suit : IDamageSink
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
         InCockpit = survivor.Seated != null;
+        Underwater = survivor.Body.Frame == null && survivor.Body.Water.Underwater;
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         int events = Sim.Events.Count;

@@ -35,8 +35,8 @@ public partial class Hud : CanvasLayer
         _help.HorizontalAlignment = HorizontalAlignment.Right;
         _help.Position = new Vector2(-16, -16);
         _help.Text =
-            "WASD walk · Shift sprint · Space jump / jetpack · Ctrl crouch\n" +
-            "LMB dig · RMB place block · F free-fly (Shift fast, Space/Ctrl up/down)\n" +
+            "WASD walk · Shift sprint · Space jump / jetpack · Ctrl crouch · in deep water Space/Ctrl swim up/down\n" +
+            "LMB dig, or fell a tree · RMB place block · F free-fly (Shift fast, Space/Ctrl up/down)\n" +
             "1-5 planet: temperate, arid, ice, lava, alien · V variant · N new seed\n" +
             "K next weather · L lightning · O tornado · T time ×20 · Y dawn/noon/dusk/night\n" +
             "F5 save · F9 load · H hide help · Esc mouse";

@@ -52,6 +52,14 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// <summary>The legs pushed off this tick (a deliberate jump: it lets go of a hull at once).</summary>
     public bool Jumped { get; private set; }
 
+    /// <summary>
+    /// In water deep enough to swim: more than the rules' swimDepth of the body is under (and it
+    /// wades again below wadeDepth). Swimming, <see cref="Move"/> strokes along the heading and
+    /// <see cref="Vertical"/> goes up or down (Space and Ctrl): no other controls. Left alone, a
+    /// swimmer drifts, and floats up to the surface if it is lighter than water.
+    /// </summary>
+    public bool Swimming { get; private set; }
+
     /// <summary>Walking reacts to what else pushes this tick, so it acts in <see cref="React"/>.</summary>
     public void Drive(PhysicsWorld world, Body body, float dt) { }
 
@@ -63,6 +71,23 @@ public sealed class WalkController : IBodyController, IForceReactor
         float m = body.Mass;
         Quaternion frame = body.Rotation;
         Quaternion heading = MathX.ThenLocal(frame, MathX.Yaw(Yaw));
+
+        PhysicsRules.WaterData water = world.Rules.Water;
+        float wet = body.Water.Fraction;
+        Swimming = wet > 0f && (Swimming ? wet > water.WadeDepth : wet >= water.SwimDepth);
+        if (Swimming)
+        {
+            // Strokes reach the wished velocity, holding against whatever else pushes so far this
+            // tick (weight, buoyancy, drag, wind) as far as the swimmer's strength allows. Without
+            // a wish there are no strokes: the water has its way.
+            Vector2 stroke = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+            Vector3 swimWish = MathX.LimitLength(MathX.Rotate(heading, new Vector3(stroke.X, 0f, stroke.Y)) + up * Vertical, 1f);
+            if (swimWish.LengthSquared() < 1e-6f) return;
+            float swimSpeed = Sprint ? water.SwimSprintSpeed : water.SwimSpeed;
+            Vector3 swum = Toward(v, swimWish * swimSpeed, water.SwimAccel * dt);
+            world.AddForce(body, MathX.LimitLength(m * (swum - v) / dt - body.PendingTotalForce, m * water.SwimGrip), ForceKind.Walk);
+            return;
+        }
 
         if (Floating)
         {

@@ -22,7 +22,10 @@ public static class Layers
     /// <summary>Inside a cabin world: the motionless cabin copy, its cargo and anyone aboard.</summary>
     public const uint Interior = 1u << 2;
 
-    /// <summary>Water surfaces. Only probes see them: hover engines ride on water, hulls pass through.</summary>
+    /// <summary>
+    /// Water surfaces. Only hover probes see them: hover engines ride on water; everything else goes
+    /// into it (water is a volume, see <see cref="IWaterField"/>).
+    /// </summary>
     public const uint Water = 1u << 3;
 
     /// <summary>Players walking in the main world.</summary>
@@ -46,8 +49,14 @@ public static class Layers
     public const uint PlayerMask = World | Hull | Props;
     public const uint PropMask = World | Hull | Player | Props;
 
-    /// <summary>Hover engines and landing gear see ground, hulls and water.</summary>
+    /// <summary>Hover engines see ground, hulls and water: they ride on a water surface.</summary>
     public const uint ProbeMask = World | Hull | Water;
+
+    /// <summary>
+    /// Landing legs stand on solid things only. Water is a volume, not a floor: a vessel let down
+    /// onto a lake goes under, and its feet find the bed.
+    /// </summary>
+    public const uint GearMask = World | Hull;
 
     /// <summary>Everything solid in the main world.</summary>
     public const uint Solid = World | Hull;

@@ -39,6 +39,10 @@ public static class Palette
     public static readonly Color Flame = new("ffb347");
     public static readonly Color HoverGlow = new("5ee0e6");
 
+    // The lake: its surface, and the murk under it.
+    public static readonly Color Water = new("1f8a8a");
+    public static readonly Color DeepWater = new("0d3b4a");
+
     // The HUD (terrain-digging).
     public static readonly Color Text = new("ffe8c2");
     public static readonly Color Warning = new("ff6b4a");
