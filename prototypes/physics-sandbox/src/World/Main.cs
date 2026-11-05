@@ -195,14 +195,19 @@ public partial class Main : Node3D
             : ThirdPerson ? Behind(Eye(p)) : Eye(p);
     }
 
-    /// <summary>The player's eye, from interpolated transforms: their cabin's frame times the cabin-local eye while aboard.</summary>
+    /// <summary>
+    /// The player's eye, from interpolated transforms: their cabin's frame times the cabin-local
+    /// eye while aboard. It stands on the eased view frame, so the camera rolls smoothly when mag
+    /// boots carry the player round a hull edge or through an airlock.
+    /// </summary>
     public Transform3D Eye(Player p)
     {
         var look = new Basis(Vector3.Up, p.Yaw) * new Basis(Vector3.Right, p.Pitch);
         if (p.Seated is Ship seat)
             return seat.Node.GetGlobalTransformInterpolated() * new Transform3D(look, (seat.Seat + N.Vector3.UnitY * 0.95f).ToGodot());
         Vector3 feet = p.Node.GetGlobalTransformInterpolated().Origin;
-        var local = new Transform3D(look, feet + Vector3.Up * Player.EyeHeight);
+        Basis frame = p.ViewFrame.ToBasis();
+        var local = new Transform3D(frame * look, feet + frame.Y * Player.EyeHeight);
         Ship aboard = p.Aboard;
         return aboard == null ? local : aboard.Node.GetGlobalTransformInterpolated() * local;
     }

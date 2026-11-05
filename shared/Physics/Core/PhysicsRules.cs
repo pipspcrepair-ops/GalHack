@@ -20,6 +20,7 @@ public sealed class PhysicsRules
     public HoverData Hover { get; set; } = new();
     public GearData Gear { get; set; } = new();
     public StuckData Stuck { get; set; } = new();
+    public RidingData Riding { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -125,6 +126,40 @@ public sealed class PhysicsRules
 
         /// <summary>A landed ship tilts to its feet on uneven ground, but never more than this, degrees.</summary>
         public float MaxSettleTilt { get; set; } = 12f;
+    }
+
+    /// <summary>Riding a structure's cabin world out on its hull: letting go, rejoining and mag boots (see <see cref="GalHack.Physics.Riding"/>).</summary>
+    public sealed class RidingData
+    {
+        /// <summary>An outer-hull rider out of contact this long lets go of the ship, s. A jump lets go at once.</summary>
+        public float LetGoAfter { get; set; } = 0.4f;
+
+        /// <summary>An outer-hull rider farther than this from any block lets go at once, m.</summary>
+        public float LetGoDistance { get; set; } = 1.5f;
+
+        /// <summary>After letting go, a body can't join the same ship again for this long, s (no flicker at the hull).</summary>
+        public float RejoinAfter { get; set; } = 0.5f;
+
+        /// <summary>
+        /// Mag boots on the outer hull: down is the hull face under the rider's feet, at <see cref="MagBootGravity"/>,
+        /// and outside edges carry them round onto the next face. Off: the outer hull has the cabin's gravity
+        /// (the core's, or the zone's when the core is off).
+        /// </summary>
+        public bool MagBoots { get; set; } = true;
+        public float MagBootGravity { get; set; } = 9.8f;
+
+        /// <summary>Mag boots also carry a rider up onto a wall rising from their face, if it is taller than <see cref="StepHeight"/>.</summary>
+        public bool InsideCorners { get; set; } = true;
+        public float StepHeight { get; set; } = 0.6f;
+
+        /// <summary>How far below the face just walked off to look for the next face round an outside edge, m.</summary>
+        public float EdgeProbe { get; set; } = 0.35f;
+
+        /// <summary>How fast a mag-booted rider's up follows a gently changing face (1/s).</summary>
+        public float UpFollow { get; set; } = 20f;
+
+        /// <summary>How fast a camera eases its roll to a rider's new up (1/s). Presentation reads it.</summary>
+        public float ViewEase { get; set; } = 10f;
     }
 
     public sealed class StuckData

@@ -1,0 +1,42 @@
+# Deck Barge: a flat small-grid work barge for the mag-boot walking tests, written by hand.
+#
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. An 8 m square deck two blocks
+# (1 m) thick with square edges, a superstructure two blocks tall amidships, a lip one block
+# (0.5 m) tall down the starboard side, a seat at the bow and two engines at the stern. Nothing
+# is covered, so all of it is outer hull: in mag boots you can walk on any face of it.
+
+schema galhack.blueprint
+version 1
+name "Deck Barge"
+grid small
+mode capital
+gravity on
+
+paint deck base=3a3f47 texture=plates grime=2
+paint house base=ece3c8 grime=1
+paint lip base=f4a100 accent=2b2d42 pattern=hazard grime=2
+
+# --- Deck (y -1..0) with the core, a generator and a gyro set into its top -------------------
+block -8..7 -1 -8..7 steel paint=deck
+block -8..7 0 -8..-1 steel paint=deck
+block -8..-1 0 0 steel paint=deck
+block 0 0 0 core
+block 1..7 0 0 steel paint=deck
+block -8..7 0 1..2 steel paint=deck
+block -8..-5 0 3 steel paint=deck
+block -4 0 3 generator
+block -3..3 0 3 steel paint=deck
+block 4 0 3 gyro
+block 5..7 0 3 steel paint=deck
+block -8..7 0 4..7 steel paint=deck
+
+# --- The superstructure: 2 m by 2 m, two blocks tall ----------------------------------------
+block -2..1 1..2 -2..1 steel paint=house
+
+# --- A lip one block tall down the starboard side -------------------------------------------
+block 5 1 -6..6 steel paint=lip
+
+# --- A seat at the bow, two engines at the stern ----------------------------------------------
+block 0 1 -7 cockpit
+block -5 -1 8 thruster
+block 4 -1 8 thruster

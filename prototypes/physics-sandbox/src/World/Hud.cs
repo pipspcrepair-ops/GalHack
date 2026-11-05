@@ -78,11 +78,11 @@ public partial class Hud : CanvasLayer
         Player p = w.Player;
         var s = new StringBuilder();
         string where = p.Seated != null ? $"flying {p.Seated.Structure.Name}"
+            : p.OnHull != null ? $"on {p.OnHull.Structure.Name}'s hull{(p.Binding.MagBoots ? " (mag boots)" : "")}"
             : p.Aboard != null ? $"aboard {p.Aboard.Structure.Name}"
-            : p.OnHull != null ? $"on {p.OnHull.Structure.Name}'s hull"
             : "outside";
         s.AppendLine($"{where}   health {p.HealthShare:P0}{(p.Health.Dead ? "  (down: R to start again)" : "")}");
-        Ship ship = p.Seated ?? p.Aboard ?? p.OnHull ?? w.Corsair;
+        Ship ship = p.Seated ?? p.Aboard ?? w.Corsair;
         if (ship?.Flight?.Stats is HandlingStats st && !ship.IsWreck)
         {
             foreach (string line in st.ConsoleLines()) s.AppendLine(line);

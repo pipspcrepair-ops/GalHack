@@ -76,7 +76,12 @@ public sealed class TerrainBridge : ITerrainEditor
 /// The terrain only has collision inside its world box, so anything that leaves it (thrown
 /// over the rim by a tornado, knocked off the edge) would fall forever. Off the edge or under
 /// the floor counts as stuck too, and the rescue brings the body back to open ground inside.
-/// Flown vessels may cross the edge in the air; only falling out of the bottom brings them back.
+/// Flown vessels may cross the edge in the air; only falling out of the bottom brings them back,
+/// and so may anyone riding one (inside its cabin or out on its hull), or drifting above the
+/// atmosphere, where nothing falls.
+///
+/// Riders out on a hull are checked too: their ship's cabin world holds no terrain, so a ship
+/// flown low could scrape one through a hill. Riders inside the interior are the hull's to keep safe.
 /// </summary>
 public sealed class TerrainField : IStuckField
 {
@@ -87,9 +92,14 @@ public sealed class TerrainField : IStuckField
 
     public TerrainField(ChunkStore store) => _store = store;
 
+    /// <summary>The top of the atmosphere: above it nothing falls, so leaving the world's column there is no danger.</summary>
+    public float Ceiling = float.PositiveInfinity;
+
     public string Name => "terrain";
 
-    public bool Applies(Body body) => body.Frame == null;
+    public Body Owner => null;
+
+    public bool Applies(Body body) => body.Frame == null || body.OnOuterHull;
 
     static BodyShape Of(StuckShape s) => new(s.Height, s.Radius);
 
@@ -99,6 +109,9 @@ public sealed class TerrainField : IStuckField
     static bool BelowWorld(N.Vector3 p) => p.Y < ChunkStore.WorldCells.Min.Y;
 
     static bool IsStructure(Body b) => b.Kind is BodyKind.Vessel or BodyKind.Wreck;
+
+    /// <summary>Off the edge, this body would fall forever: it isn't riding anything and it is under the atmosphere's top.</summary>
+    bool Falls(Body body, N.Vector3 p) => body.Frame == null && p.Y < Ceiling;
 
     /// <summary>
     /// A rigid box is stuck as soon as its centre is below the ground surface: from there the
@@ -110,7 +123,7 @@ public sealed class TerrainField : IStuckField
     public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
     {
         // Off the world's edge only matters to something falling: a rider on a hull is carried.
-        if ((!InColumn(feet) && body.Platform == null) || BelowWorld(feet)) return true;
+        if ((!InColumn(feet) && Falls(body, feet)) || BelowWorld(feet)) return true;
         if (!InColumn(feet)) return false;
         if (body.Motion == GalHack.Physics.Motion.Free)
             return _store.SampleDensity(feet + N.Vector3.UnitY * shape.FeetBelowOrigin) > FreeBodyDepth;
@@ -122,7 +135,7 @@ public sealed class TerrainField : IStuckField
     public bool IsSolid(Body body, N.Vector3 point)
     {
         if (BelowWorld(point)) return true;
-        if (!InColumn(point)) return !IsStructure(body);
+        if (!InColumn(point)) return !IsStructure(body) && Falls(body, point);
         return _store.SampleDensity(point) > StuckResolver.InsideThreshold;
     }
 

@@ -9,11 +9,12 @@ using N = System.Numerics;
 namespace PhysicsSandbox.World;
 
 /// <summary>
-/// The player: a registered body like any other (100 kg, CdA 0.9 m², a suit with a jetpack),
-/// walked by the shared <see cref="WalkController"/> and moved by a character controller. It
-/// boards a structure by walking into its interior (then it walks in the structure's cabin
-/// world), stands on outer hulls (then the hull carries it), sits in a cockpit seat to fly,
-/// and is hurt by impacts through weather's health, with the tornado fling's floor.
+/// The player: a registered body like any other (100 kg, CdA 0.9 m², a suit with a jetpack and
+/// mag boots), walked by the shared <see cref="WalkController"/> and moved by a character
+/// controller. Landing on (or, in the air, touching) a ship's hull puts it in that ship's cabin
+/// world, the shared riding mechanism: inside, down is the core's; out on the hull, the boots hold
+/// it to the face underfoot. It lets go of a ship by the shared rules (a jump, or out of contact),
+/// sits in a cockpit seat to fly, and is hurt through weather's health, with the fling's floor.
 /// </summary>
 public sealed class Player
 {
@@ -27,24 +28,32 @@ public sealed class Player
 
     public CharacterBody3D Node => Binding.Character;
 
-    /// <summary>View heading and pitch, radians, in the frame the body is in (the world, or the cabin).</summary>
+    /// <summary>View heading and pitch, radians, within the body's walk frame (its up, wherever that points).</summary>
     public float Yaw, Pitch;
+
+    /// <summary>
+    /// The walk frame the camera uses, in the body's frame: it eases toward the body's walk frame,
+    /// so crossing a hull edge or an airlock rolls the view smoothly instead of snapping it.
+    /// </summary>
+    public N.Quaternion ViewFrame = N.Quaternion.Identity;
 
     /// <summary>The ship whose seat the player sits in, or null.</summary>
     public Ship Seated { get; private set; }
 
-    /// <summary>The ship whose cabin the player is in, or null.</summary>
+    /// <summary>The ship whose cabin world the player is in (inside it or out on its hull), or null.</summary>
     public Ship Aboard => Body.Frame == null ? null : World.ShipOf(Body.Frame);
 
-    /// <summary>The ship whose outer hull the player stands on, or null.</summary>
-    public Ship OnHull => Body.Platform == null ? null : World.ShipOf(Body.Platform);
+    /// <summary>The ship whose outer hull the player is on, or null.</summary>
+    public Ship OnHull => Body.Frame != null && Body.OnOuterHull ? Aboard : null;
 
     public float HealthShare => Health.Current / Health.Max;
 
-    /// <summary>Raised when the player boards or leaves a cabin, or stands on or steps off a hull.</summary>
+    /// <summary>Raised when the player joins or lets go of a ship, or passes through its airlock.</summary>
     public event Action<string> Moved;
 
-    Body _lastPlatform;
+    Body _letGoOf;
+    float _rejoinBlocked;
+    bool _wasOutside;
 
     Player(SandboxWorld world, Body body, CharacterBinding binding)
     {
@@ -54,21 +63,22 @@ public sealed class Player
         Health = new Health(body.Integrity) { RegenDelay = 8f, RegenPerSecond = body.Integrity * 0.02f };
         body.DamageSink = new HealthSink(Health, world.Weather);
         body.Controller = Legs;
-        binding.Carried += turned => Yaw += turned; // the hull turned under us: so does our view
     }
 
     /// <summary>What other people (and third-person cameras) see, always drawn in the main world.</summary>
     public Node3D View { get; private set; }
 
-    /// <summary>The body's pose in the world, from interpolated transforms: the cabin's frame times the cabin pose while aboard.</summary>
+    /// <summary>
+    /// The body's pose in the world, from interpolated transforms: the cabin's frame times the
+    /// cabin pose while aboard, standing along the (eased) view up.
+    /// </summary>
     public Transform3D WorldTransformInterpolated()
     {
-        var yaw = new Basis(Vector3.Up, Yaw);
         if (Seated != null)
-            return Seated.Node.GetGlobalTransformInterpolated() * new Transform3D(yaw, Seated.Seat.ToGodot());
-        Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
+            return Seated.Node.GetGlobalTransformInterpolated() * new Transform3D(new Basis(Vector3.Up, Yaw), Seated.Seat.ToGodot());
+        var pose = new Transform3D(MathX.ThenLocal(ViewFrame, MathX.Yaw(Yaw)).ToBasis(), Node.GetGlobalTransformInterpolated().Origin);
         Ship aboard = Aboard;
-        return aboard == null ? new Transform3D(yaw, feet) : aboard.Node.GetGlobalTransformInterpolated() * new Transform3D(yaw, feet);
+        return aboard == null ? pose : aboard.Node.GetGlobalTransformInterpolated() * pose;
     }
 
     void BuildView()
@@ -122,6 +132,8 @@ public sealed class Player
     {
         Health.Tick(dt);
         if (Body.OnFloor) World.Weather.Landed(Body); // a fling's protection ends when you touch down
+        PhysicsRules.RidingData rules = World.Rules.Riding;
+        _rejoinBlocked -= dt;
 
         if (Seated != null)
         {
@@ -133,62 +145,84 @@ public sealed class Player
 
         if (Body.Frame == null)
         {
-            foreach (Ship ship in World.Ships)
-            {
-                if (ship.Interior.Count == 0) continue;
-                N.Vector3 local = ship.ToLocal(Axis(Body.Position));
-                if (!ship.Interior.ContainsDeeply(local, Radius)) continue;
-                Board(ship);
-                break;
-            }
+            if (Node.GetParent() != World) MoveNodeTo(World, inCabin: false); // a rescue took it out of a cabin
+            // Landing on a hull, or touching one in the air, puts you in that ship's world. Leaning
+            // on a parked ship from the ground doesn't: its cabin world has no ground to stand on.
+            if (Binding.TouchedHull is Body hull && (Binding.TouchedHullUnderfoot || !Body.OnFloor)
+                && !(hull == _letGoOf && _rejoinBlocked > 0f) && World.ShipOf(hull) is Ship ship)
+                Join(ship, Binding.TouchedHullNormal);
         }
         else
         {
             Ship ship = Aboard;
-            if (ship == null || !ship.Interior.Contains(Axis(Body.Position))) Leave();
+            Body.OnOuterHull = !ship.Interior.Contains(Body.Position + Body.Up * 0.9f);
+            float distance = ship.DistanceFromHull(Body.Position, rules.LetGoDistance + 0.5f);
+            if (Riding.LetGo(rules, Body, Legs.Jumped, Binding.Touching, distance, dt))
+            {
+                _letGoOf = ship.Body;
+                _rejoinBlocked = rules.RejoinAfter;
+                Leave();
+            }
+            else if (Body.OnOuterHull != _wasOutside)
+                Moved?.Invoke(Body.OnOuterHull ? $"out on {ship.Structure.Name}'s hull" : $"inside {ship.Structure.Name}");
         }
+        _wasOutside = Body.Frame != null && Body.OnOuterHull;
 
-        if (Body.Platform != _lastPlatform)
-        {
-            Moved?.Invoke(Body.Platform != null ? $"standing on {Body.Platform.Label}" : $"stepped off {_lastPlatform?.Label}");
-            _lastPlatform = Body.Platform;
-        }
-        Binding.Floating = Body.Frame != null && Body.Frame.Core is { On: false };
+        // Mag boots hold you to the face underfoot out on a hull; anywhere without gravity you float.
+        Binding.MagBoots = _wasOutside && rules.MagBoots;
+        Binding.Floating = !Binding.MagBoots && World.Physics.GravityAt(Body).LengthSquared() < 1e-6f;
         Legs.Floating = Binding.Floating;
         Legs.Yaw = Yaw;
         Legs.Pitch = Pitch;
-    }
 
-    static N.Vector3 Axis(N.Vector3 feet) => feet + N.Vector3.UnitY * 0.9f;
+        // The camera's frame eases after the body's: edges and airlocks roll the view smoothly.
+        ViewFrame = N.Quaternion.Normalize(N.Quaternion.Slerp(ViewFrame, Body.Rotation, 1f - MathF.Exp(-rules.ViewEase * dt)));
+    }
 
     // ---- Changing frames ------------------------------------------------------------------
 
-    /// <summary>Walks into a ship's cabin world: position, velocity and view become ship-local.</summary>
-    public void Board(Ship ship)
+    /// <summary>
+    /// Into a ship's cabin world (landing on its hull, or placed aboard): world position, velocity
+    /// and orientation are kept. On the outer hull in mag boots, down is at once the face touched.
+    /// </summary>
+    public void Join(Ship ship, N.Vector3? worldNormal = null)
     {
-        N.Vector3 look = WorldLook();
+        N.Quaternion view = WorldView();
         Riding.EnterCabin(Body, ship.Body);
-        Node.Reparent(ship.Cabin, false);
-        Node.CollisionLayer = Layers.Interior;
-        Node.CollisionMask = Layers.CabinMask;
-        SetLook(Riding.DirectionToLocal(ship.Body, look));
+        ViewFrame = N.Quaternion.Normalize(N.Quaternion.Conjugate(ship.Body.Rotation) * view);
+        MoveNodeTo(ship.Cabin, inCabin: true);
+        Body.OnOuterHull = !ship.Interior.Contains(Body.Position + Body.Up * 0.9f);
+        if (Body.OnOuterHull && World.Rules.Riding.MagBoots && worldNormal is N.Vector3 n)
+            Riding.SetUp(Body, Riding.DirectionToLocal(ship.Body, n));
+        _wasOutside = Body.OnOuterHull;
+        Binding.MagBoots = _wasOutside && World.Rules.Riding.MagBoots;
         Binding.Teleport();
-        Moved?.Invoke($"aboard {ship.Structure.Name}");
+        Moved?.Invoke(Body.OnOuterHull ? $"on {ship.Structure.Name}'s hull" : $"aboard {ship.Structure.Name}");
     }
 
-    /// <summary>Steps out of the cabin into the world, keeping the ship's velocity at the door.</summary>
+    /// <summary>Lets go of the ship: back to the zone's world with the ship's velocity there plus your own.</summary>
     public void Leave()
     {
         Ship ship = Aboard;
-        N.Vector3 look = WorldLook();
+        N.Quaternion view = WorldView();
         Riding.LeaveCabin(Body);
-        Node.Reparent(World, false);
-        Node.CollisionLayer = Layers.Player;
-        Node.CollisionMask = Layers.PlayerMask;
-        SetLook(look);
+        ViewFrame = view;
+        MoveNodeTo(World, inCabin: false);
+        _wasOutside = false;
+        Binding.MagBoots = false;
         Binding.Teleport();
-        Moved?.Invoke($"left {ship?.Structure.Name}");
+        Moved?.Invoke($"let go of {ship?.Structure.Name}");
     }
+
+    void MoveNodeTo(Node parent, bool inCabin)
+    {
+        if (Node.GetParent() != parent) Node.Reparent(parent, false);
+        Node.CollisionLayer = inCabin ? Layers.Interior : Layers.Player;
+        Node.CollisionMask = inCabin ? Layers.CabinMask : Layers.PlayerMask;
+    }
+
+    /// <summary>The view frame in the world.</summary>
+    N.Quaternion WorldView() => Body.Frame == null ? ViewFrame : N.Quaternion.Normalize(Body.Frame.Rotation * ViewFrame);
 
     /// <summary>Sits in a ship's cockpit seat: the body stops simulating and the controls fly the ship.</summary>
     public bool Sit(Ship ship)
@@ -212,38 +246,49 @@ public sealed class Player
         Seated = null;
         ship.Flight.Input = ShipHandling.Handling.PilotInput.Autopilot; // nobody at the controls: it holds course
         Body.Asleep = false;
-        Node.CollisionLayer = Layers.Interior;
-        Node.CollisionMask = Layers.CabinMask;
+        MoveNodeTo(ship.Cabin, inCabin: true);
         Body.Position = ship.Seat + new N.Vector3(0f, 0.1f, 1.2f);
         Binding.Teleport();
     }
 
-    /// <summary>Puts the player in a ship's cabin at a ship-local spot, at rest relative to the ship. Tests and screenshots.</summary>
-    public void PlaceAboard(Ship ship, N.Vector3 local)
+    /// <summary>
+    /// Puts the player in a ship's cabin world at a ship-local spot, at rest relative to the ship:
+    /// upright, or standing on a hull face with the given up (ship-local). Tests and screenshots.
+    /// </summary>
+    public void PlaceAboard(Ship ship, N.Vector3 local, N.Vector3? up = null)
     {
         if (Seated != null) StandUp();
         if (Aboard != ship)
         {
             if (Body.Frame != null) Leave();
-            Riding.StepOff(Body);
             Body.Position = ship.Body.ToParent(local);
             Body.Velocity = ship.Body.PointVelocity(Body.Position);
-            Board(ship);
+            Join(ship);
         }
         Body.Position = local;
         Body.Velocity = N.Vector3.Zero;
+        Body.Rotation = N.Quaternion.Identity;
+        Body.Up = N.Vector3.UnitY;
+        if (up is N.Vector3 face) Riding.SetUp(Body, face);
+        ViewFrame = Body.Rotation;
+        Body.OnOuterHull = !ship.Interior.Contains(local + Body.Up * 0.9f);
+        _wasOutside = Body.OnOuterHull;
+        Binding.MagBoots = _wasOutside && World.Rules.Riding.MagBoots;
         Binding.Teleport();
     }
 
-    /// <summary>Puts the player in the world (or on a hull it lands on), at rest. Tests and screenshots.</summary>
+    /// <summary>Puts the player in the zone's world (landing on a hull joins it), upright. Tests and screenshots.</summary>
     public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default)
     {
         if (Seated != null) StandUp();
         if (Body.Frame != null) Leave();
-        Riding.StepOff(Body);
         Body.Position = feet;
         Body.Velocity = velocity;
+        Body.Rotation = N.Quaternion.Identity;
+        Body.Up = N.Vector3.UnitY;
+        ViewFrame = N.Quaternion.Identity;
         Body.OnFloor = false;
+        _letGoOf = null;
         Binding.Teleport();
     }
 
@@ -252,25 +297,7 @@ public sealed class Player
     /// <summary>The look direction in the world.</summary>
     public N.Vector3 WorldLook()
     {
-        N.Vector3 local = MathX.Rotate(MathX.ThenLocal(MathX.Yaw(Yaw), MathX.AxisAngle(N.Vector3.UnitX, Pitch)), -N.Vector3.UnitZ);
-        return Body.Frame != null ? Riding.DirectionToWorld(Body.Frame, local) : local;
-    }
-
-    void SetLook(N.Vector3 forward)
-    {
-        forward = N.Vector3.Normalize(forward);
-        Yaw = MathF.Atan2(-forward.X, -forward.Z);
-        Pitch = MathF.Asin(Math.Clamp(forward.Y, -1f, 1f));
-    }
-
-    /// <summary>Where the eyes are, in the world: the cabin's frame times the cabin-local eye while aboard.</summary>
-    public Transform3D EyeTransform()
-    {
-        var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
-        N.Vector3 eye = Seated != null ? Seated.Seat + N.Vector3.UnitY * 0.95f : Body.Position + N.Vector3.UnitY * EyeHeight;
-        var local = new Transform3D(look, eye.ToGodot());
-        Body frame = Body.Frame ?? Seated?.Body;
-        if (frame == null) return local;
-        return World.ShipOf(frame).Node.GlobalTransform * local;
+        N.Quaternion look = MathX.ThenLocal(MathX.ThenLocal(WorldView(), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
+        return MathX.Forward(look);
     }
 }

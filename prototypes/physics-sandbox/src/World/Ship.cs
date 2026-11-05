@@ -328,6 +328,28 @@ public sealed class Ship
 
     // ---- Helpers --------------------------------------------------------------------------
 
+    /// <summary>
+    /// How far a structure-frame point is from the nearest solid block, m, looking no farther than
+    /// <paramref name="max"/> (returned when nothing is that near). Riders on the hull let go past a limit.
+    /// </summary>
+    public float DistanceFromHull(N.Vector3 local, float max)
+    {
+        float cell = Structure.Grid.CellSize, best = max;
+        var half = new N.Vector3(cell * 0.5f);
+        Int3 c = StructureBridge.CellAt(Structure, local);
+        int r = (int)System.MathF.Ceiling(max / cell);
+        for (int z = -r; z <= r; z++)
+            for (int y = -r; y <= r; y++)
+                for (int x = -r; x <= r; x++)
+                {
+                    var p = new Int3(c.X + x, c.Y + y, c.Z + z);
+                    if (!Structure.TryGet(p, out Block b) || !Structure.IsSolid(b)) continue;
+                    N.Vector3 d = N.Vector3.Max(N.Vector3.Abs(local - StructureBridge.CellCenter(Structure, p)) - half, N.Vector3.Zero);
+                    best = System.MathF.Min(best, d.Length());
+                }
+        return best;
+    }
+
     /// <summary>The structure-frame point of a world point.</summary>
     public N.Vector3 ToLocal(N.Vector3 world) => Body.ToLocal(world);
 

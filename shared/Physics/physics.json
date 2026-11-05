@@ -74,6 +74,29 @@
     "maxSettleTilt": 12
   },
 
+  "riding": {
+    // A rider of a ship lives in its cabin world, inside it or out on its hull. Out on the hull
+    // it lets go of the ship when it jumps, or once it has been out of contact for letGoAfter (s)
+    // or is more than letGoDistance (m) off the hull, so bumps and edges never drop anyone. It
+    // can't rejoin the same ship for rejoinAfter (s).
+    "letGoAfter": 0.4,
+    "letGoDistance": 1.5,
+    "rejoinAfter": 0.5,
+    // Mag boots: out on the hull, down is the face under the feet (its normal followed at
+    // upFollow 1/s), pulling at magBootGravity (m/s²) with or without core gravity, in space or
+    // air. Walking off an outside edge, the boots look edgeProbe (m) below the face for the next
+    // one round the edge. With insideCorners, walking into a wall taller than stepHeight (m)
+    // climbs onto it; lower lips stay steps. Off (magBoots false): the outer hull has the
+    // cabin's down. The camera eases its roll at viewEase (1/s).
+    "magBoots": true,
+    "magBootGravity": 9.8,
+    "insideCorners": true,
+    "stepHeight": 0.6,
+    "edgeProbe": 0.35,
+    "upFollow": 20,
+    "viewEase": 10
+  },
+
   "stuck": {
     // A body inside terrain or a structure's blocks for this many ticks in a row is moved to the
     // nearest open space, searching a 1 m grid up to searchRadius metres away.

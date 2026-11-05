@@ -84,7 +84,7 @@ public partial class SandboxWorld : Node3D
         Physics.Zone.Ceiling = Handling.Planet.AtmosphereCeiling;
         Physics.Terrain = Terrain;
         Terrain.World = Physics;
-        Physics.StuckFields.Add(new TerrainField(Store));
+        Physics.StuckFields.Add(new TerrainField(Store) { Ceiling = Physics.Zone.Ceiling });
         Host = new PhysicsHost(Physics);
         AddChild(Host);
 

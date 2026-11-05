@@ -89,7 +89,11 @@ public partial class PhysicsTest : Node
         foreach (int x in DamageAndCraters()) yield return x;
         foreach (int x in Severing()) yield return x;
         foreach (int x in HullRider()) yield return x;
+        foreach (int x in LandingOnMovingHull()) yield return x;
         foreach (int x in CabinRider()) yield return x;
+        foreach (int x in SpaceWalk()) yield return x;
+        foreach (int x in Airlock()) yield return x;
+        foreach (int x in InsideCorners()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in GearOnDugGround()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
@@ -164,16 +168,42 @@ public partial class PhysicsTest : Node
         var ship = new Body { Mass = 1000f, Position = new N.Vector3(5, 50, -3), Rotation = MathX.AxisAngle(N.Vector3.Normalize(new N.Vector3(1, 2, 3)), 0.7f),
             Velocity = new N.Vector3(20, -3, 4), AngularVelocity = new N.Vector3(0.2f, 0.5f, -0.3f) };
         var rider = new Body { Mass = 100f, Position = new N.Vector3(6, 52, -1), Velocity = new N.Vector3(1, 2, 3) };
+        rider.Rotation = MathX.AxisAngle(N.Vector3.Normalize(new N.Vector3(-2, 1, 1)), 0.4f);
         N.Vector3 p0 = rider.WorldPosition, v0 = rider.WorldVelocity;
+        N.Quaternion q0 = rider.WorldRotation;
         Riding.EnterCabin(rider, ship);
         N.Vector3 p1 = rider.WorldPosition, v1 = rider.WorldVelocity;
+        N.Quaternion q1 = rider.WorldRotation;
         Riding.LeaveCabin(rider);
-        Riding.StandOn(rider, ship);
-        N.Vector3 v2 = rider.WorldVelocity;
-        Riding.StepOff(rider);
-        Check(N.Vector3.Distance(p0, p1) < 1e-4f && N.Vector3.Distance(v0, v1) < 1e-4f && N.Vector3.Distance(v0, v2) < 1e-4f
-              && N.Vector3.Distance(v0, rider.Velocity) < 1e-4f,
-            "boarding a cabin, standing on a hull and stepping off all keep world position and velocity (spin included)");
+        Check(N.Vector3.Distance(p0, p1) < 1e-4f && N.Vector3.Distance(v0, v1) < 1e-4f && N.Vector3.Distance(v0, rider.Velocity) < 1e-4f
+              && MathF.Abs(N.Quaternion.Dot(q0, q1)) > 0.99999f && MathF.Abs(N.Quaternion.Dot(q0, rider.Rotation)) > 0.99999f,
+            "joining a ship's cabin world and letting go both keep world position, velocity (spin included) and orientation");
+
+        // Letting go: a jump at once; out of contact only after the grace time; never inside.
+        var riding = new PhysicsRules.RidingData();
+        Riding.EnterCabin(rider, ship);
+        rider.OnOuterHull = true;
+        bool held = true;
+        for (float t = 0f; t < riding.LetGoAfter - 0.05f; t += 1f / 60f) held &= !Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
+        bool touchedAgain = !Riding.LetGo(riding, rider, false, true, 0.1f, 1f / 60f) && Riding.OutOfContactFor(rider) == 0f;
+        bool lost = false;
+        for (float t = 0f; t < riding.LetGoAfter + 0.05f; t += 1f / 60f) lost |= Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
+        bool far = Riding.LetGo(riding, rider, false, true, riding.LetGoDistance + 0.1f, 1f / 60f);
+        bool jump = Riding.LetGo(riding, rider, true, true, 0f, 1f / 60f);
+        rider.OnOuterHull = false;
+        bool inside = !Riding.LetGo(riding, rider, true, false, 9f, 10f);
+        Check(held && touchedAgain && lost && far && jump && inside,
+            $"letting go of a hull: a jump at once, {riding.LetGoAfter:0.0#} s out of contact or {riding.LetGoDistance:0.0#} m off it, never from inside");
+
+        // Turning a walk frame onto a new up keeps the heading as near as it can.
+        var walker = new Body { Rotation = MathX.Yaw(0.6f) };
+        N.Vector3 forward = MathX.Forward(walker.Rotation);
+        Riding.SetUp(walker, N.Vector3.UnitZ);
+        N.Vector3 turnedUp = MathX.Rotate(walker.Rotation, N.Vector3.UnitY), turnedForward = MathX.Forward(walker.Rotation);
+        N.Vector3 carried = N.Vector3.Normalize(MathX.Rotate(Riding.FromTo(N.Vector3.UnitY, N.Vector3.UnitZ), forward));
+        Check(N.Vector3.Distance(turnedUp, N.Vector3.UnitZ) < 1e-4f && N.Vector3.Distance(walker.Up, N.Vector3.UnitZ) < 1e-4f
+              && N.Vector3.Distance(turnedForward, carried) < 1e-3f,
+            "turning onto a new up (a hull face) turns the walk frame by the smallest rotation, so forward stays forward");
     }
 
     void StructureChecks()
@@ -514,18 +544,20 @@ public partial class PhysicsTest : Node
         yield return 0;
     }
 
-    // ==== Riding =================================================================================
+    // ==== Riding: one mechanism, the cabin world, inside and out on the hull =====================
 
     IEnumerable<int> HullRider()
     {
         Ship ship = _w.SpawnVessel("corsair.gbp", new N.Vector3(0f, 70f, -30f), 0f, landed: false);
         ship.Flight.Input = PilotInput.LetGo;
         Player p = _w.Player;
-        N.Vector3 standLocal = new(-1.0f, 2.78f, -1.5f); // on the roof, clear of the down jets and the fin
+        p.Yaw = 0f;
+        p.Pitch = 0f;
+        N.Vector3 standLocal = new(-1.0f, 2.85f, -1.5f); // just over the roof, clear of the down jets and the fin
         p.PlaceOutside(ship.Body.ToParent(standLocal));
         for (int i = 0; i < 30; i++) yield return 0;
-        bool standing = p.Body.Platform == ship.Body && p.Body.OnFloor;
-        N.Vector3 startLocal = ship.ToLocal(p.Body.Position);
+        bool joined = p.OnHull == ship && p.Body.OnFloor && p.Node.GetParent() == ship.Cabin;
+        N.Vector3 startLocal = p.Body.Position;
         float worst = 0f, maxSpeed = 0f, turned = 0f;
         float startHeading = MathX.Heading(ship.Body.Rotation);
         bool stayed = true;
@@ -536,32 +568,102 @@ public partial class PhysicsTest : Node
             Vector3 turn = s < 3f ? Vector3.Zero : s < 6f ? new Vector3(0f, 0.6f, 0f) : s < 8f ? new Vector3(0.15f, -0.5f, 0f) : Vector3.Zero;
             ship.Flight.Input = PilotInput.Hands(move, turn, boost: t == 30);
             yield return 0;
-            worst = MathF.Max(worst, N.Vector3.Distance(ship.ToLocal(p.Body.Position), startLocal));
+            worst = MathF.Max(worst, N.Vector3.Distance(p.Body.Position, startLocal));
             maxSpeed = MathF.Max(maxSpeed, ship.Body.Velocity.Length());
             turned = MathF.Max(turned, MathF.Abs(MathX.WrapAngle(MathX.Heading(ship.Body.Rotation) - startHeading)));
-            stayed &= p.Body.Platform == ship.Body;
+            stayed &= p.OnHull == ship;
         }
-        Check(standing && stayed && worst < 0.15f && maxSpeed > 40f && turned > 1f,
-            $"a player standing on the outer hull stays put through a 10 s manoeuvre (boost to {maxSpeed:F0} m/s, a {Units.Degrees(turned):F0}° turn, a climb, a stop): " +
-            $"carried by the hull, never more than {worst * 100f:F1} cm from where they stood");
-        float viewTurn = MathX.WrapAngle(p.Yaw - 0f);
-        Check(MathF.Abs(MathX.WrapAngle(viewTurn - MathX.WrapAngle(MathX.Heading(ship.Body.Rotation) - startHeading))) < 0.05f,
-            "and their view turned with the ship");
+        Check(joined && stayed && worst < 0.15f && maxSpeed > 40f && turned > 1f,
+            $"a player who lands on a hull joins its cabin world, and stays put on the outer hull through a 10 s manoeuvre (boost to {maxSpeed:F0} m/s, " +
+            $"a {Units.Degrees(turned):F0}° turn, a climb, a stop): never more than {worst * 100f:F1} cm from where they stood");
+        N.Vector3 look = p.WorldLook();
+        float lookHeading = MathF.Atan2(-look.X, -look.Z);
+        Check(MathF.Abs(MathX.WrapAngle(lookHeading - MathX.Heading(ship.Body.Rotation))) < 0.05f,
+            "and their view turned with the ship (it lives in the ship's frame)");
 
-        // Jumping off a moving hull keeps the hull's velocity. Back over the map first (the rider
-        // is carried along with the ship), so the jump lands on ground rather than off the edge.
+        // Weather reaches a rider out on the hull, bridged into the cabin world, against their
+        // motion relative to the hull: flying through still air is no wind at all, a storm is.
+        ship.Flight.Input = PilotInput.Hands(Vector3.Forward);
+        for (int i = 0; i < 60; i++) yield return 0;
+        float airspeed = ship.Body.Velocity.Length(), stillAir = p.Body.LastForce(ForceKind.Weather).Length();
+        _w.Weather.Calm = false;
+        _w.Weather.Sim.Snap(WeatherKind.DustStorm);
+        for (int i = 0; i < 5; i++) yield return 0;
+        N.Vector3 wind = _w.Weather.Sim.WindAt(p.Body.WorldPosition.ToGodot()).ToNumerics();
+        N.Vector3 push = Riding.DirectionToWorld(ship.Body, p.Body.LastForce(ForceKind.Weather));
+        bool stillOn = p.OnHull == ship;
+        _w.Weather.Calm = true;
+        Check(stillAir < 1f && stillOn && push.Length() > 10f && N.Vector3.Dot(push, wind) > 0.95f * push.Length() * wind.Length(),
+            $"weather reaches the rider on the hull relative to it: flying at {airspeed:F0} m/s through still air pushes them {stillAir:F1} N; " +
+            $"a {wind.Length():F0} m/s dust-storm wind pushes them {push.Length():F0} N along it, and their boots hold");
+
+        // A jump lets go at once, with the ship's velocity there plus the jump. Back over the map
+        // first (the rider goes wherever the ship goes), so the jump lands on ground.
         ship.Vessel.Place(ship.Body, new N.Vector3(-70f, 75f, 40f), -MathF.PI / 2f);
         ship.Binding.Teleport();
         ship.Flight.Input = PilotInput.Hands(Vector3.Forward);
         for (int i = 0; i < 90; i++) yield return 0;
-        N.Vector3 hullVelocity = ship.Body.PointVelocity(p.Body.Position);
+        bool onBefore = p.OnHull == ship;
+        N.Vector3 up = Riding.DirectionToWorld(ship.Body, p.Body.Up);
         p.Legs.Jump = true;
         yield return 0;
         p.Legs.Jump = false;
+        bool letGo = p.Body.Frame == null && p.Node.GetParent() == _w;
+        N.Vector3 hullVelocity = ship.Body.PointVelocity(p.Body.Position);
+        N.Vector3 relative = p.Body.WorldVelocity - hullVelocity;
+        float along = N.Vector3.Dot(relative, up), across = (relative - up * along).Length();
+        Check(onBefore && letGo && MathF.Abs(along - p.Legs.JumpSpeed) < 0.5f && across < 0.2f && hullVelocity.Length() > 20f,
+            $"a jump lets go of the ship at once, and the player keeps the ship's {hullVelocity.Length():F0} m/s plus the jump " +
+            $"({along:F2} m/s up off the hull, {across:F2} m/s astray)");
         for (int i = 0; i < 3; i++) yield return 0;
-        N.Vector3 flat = MathX.Flat(p.Body.WorldVelocity - hullVelocity);
-        Check(p.Body.Platform == null && flat.Length() < 2f && hullVelocity.Length() > 20f,
-            $"jumping off at {hullVelocity.Length():F0} m/s, the player keeps the hull's velocity (off by {flat.Length():F2} m/s sideways)");
+        _w.Remove(ship);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    IEnumerable<int> LandingOnMovingHull()
+    {
+        Ship ship = _w.SpawnVessel("corsair.gbp", new N.Vector3(-60f, 80f, 60f), MathF.PI / 2f, landed: false);
+        ship.Flight.Input = PilotInput.Hands(Vector3.Forward * 0.6f);
+        for (int i = 0; i < 120; i++) yield return 0;
+        ship.Flight.Input = PilotInput.Autopilot; // holds its course and speed
+        for (int i = 0; i < 10; i++) yield return 0;
+        Player p = _w.Player;
+        N.Vector3 drop = ship.Body.ToParent(new N.Vector3(-1.0f, 3.6f, -1.5f));
+        p.PlaceOutside(drop, ship.Body.PointVelocity(drop) - N.Vector3.UnitY * 1.5f);
+        N.Vector3 last = p.Body.WorldVelocity, lastPos = p.Body.WorldPosition;
+        float jolt = float.NaN, jump = float.NaN, slipBefore = 0f, slipAfter = 0f, fall = 0f, settled = float.NaN;
+        int afterTicks = -1;
+        for (int t = 0; t < 120 && afterTicks < 60; t++)
+        {
+            yield return 0;
+            N.Vector3 v = p.Body.WorldVelocity, pos = p.Body.WorldPosition;
+            N.Vector3 n = Riding.DirectionToWorld(ship.Body, N.Vector3.UnitY);
+            if (afterTicks < 0 && p.OnHull == ship)
+            {
+                // The tick it joined: along the hull nothing changes; only the fall into the roof stops.
+                N.Vector3 dv = v - last, slip = last - ship.Body.PointVelocity(pos);
+                fall = -N.Vector3.Dot(slip, n);
+                slipBefore = (slip - n * N.Vector3.Dot(slip, n)).Length();
+                jolt = (dv - n * N.Vector3.Dot(dv, n)).Length();
+                jump = N.Vector3.Distance(pos, lastPos + last * Dt);
+                afterTicks = 0;
+            }
+            else if (afterTicks >= 0)
+            {
+                afterTicks++;
+                N.Vector3 rel = v - ship.Body.PointVelocity(pos);
+                if (afterTicks == 1) slipAfter = rel.Length();
+                settled = rel.Length();
+            }
+            last = v;
+            lastPos = pos;
+        }
+        float speed = ship.Body.Velocity.Length();
+        Check(afterTicks >= 60 && p.OnHull == ship && jolt < 0.3f && jump < 0.1f && slipAfter < slipBefore + 0.3f && settled < 0.05f && speed > 15f,
+            $"landing on a hull flying at {speed:F0} m/s joins it without a jolt: the world velocity along the hull changes by {jolt:F2} m/s and the position by " +
+            $"{jump * 100f:F1} cm at the join (only the {fall:F1} m/s fall stops); sliding {slipBefore:F2} m/s on it as they land, {slipAfter:F2} m/s a tick later, " +
+            $"then their feet hold ({settled:F3} m/s)");
         _w.Remove(ship);
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
@@ -585,7 +687,7 @@ public partial class PhysicsTest : Node
             ticks++;
             rolled += MathF.Abs(ship.Vessel.LocalSpin.Z) * Dt;
             worst = MathF.Max(worst, N.Vector3.Distance(p.Body.Position, start));
-            aboard &= p.Aboard == ship;
+            aboard &= p.Aboard == ship && !p.Body.OnOuterHull;
             if (p.Body.OnFloor) floorTicks++;
         }
         Check(aboard && rolled >= MathF.Tau && worst < 0.05f && floorTicks >= ticks - 2,
@@ -611,16 +713,287 @@ public partial class PhysicsTest : Node
         Check(p.Aboard == ship && walked > 2f && walked < 3f && flown > 15f,
             $"walking forward in the cabin for 0.5 s covers {walked:F1} m of deck while the ship carries them {flown:F0} m");
 
-        // Core gravity is built in and toggleable, and costs no power.
+        // Core gravity is built in and toggleable, and costs no power. Off in the air, the planet's
+        // own gravity reaches into the cabin (turned into the ship's frame); on, ship-down again.
+        ship.Flight.Input = PilotInput.LetGo;
         ship.Body.Core.On = false;
         for (int i = 0; i < 30; i++) yield return 0;
-        bool floating = p.Legs.Floating && _w.Physics.GravityAt(p.Body) == N.Vector3.Zero;
+        N.Vector3 planet = MathX.Unrotate(ship.Body.Rotation, _w.Physics.Zone.At(p.Body.WorldPosition));
+        bool planetDown = N.Vector3.Distance(_w.Physics.GravityAt(p.Body), planet) < 1e-4f && planet.Length() > 9f && !p.Legs.Floating;
         ship.Body.Core.On = true;
         for (int i = 0; i < 60; i++) yield return 0;
-        Check(floating && p.Body.OnFloor && _w.Physics.GravityAt(p.Body).Y < -9f,
-            "core gravity toggles off (the player floats in zero-g) and on again (back on the floor)");
+        Check(planetDown && p.Body.OnFloor && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), ship.Body.Core.Local) < 1e-4f,
+            "core gravity toggles off (in the air, the planet's gravity reaches in) and on again (ship-down, on the floor)");
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         _w.Remove(ship);
+        for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    /// <summary>What a walk on a hull saw.</summary>
+    sealed class HullWalk
+    {
+        public bool Stayed = true;
+        public float LongestOff, Rolled;
+        public int Edges, Walls, Ticks;
+    }
+
+    /// <summary>
+    /// Walks the player forward on a ship until <paramref name="done"/> says so (or time runs out),
+    /// noting whether they ever left its cabin world and the longest they were out of contact.
+    /// </summary>
+    IEnumerable<int> WalkOn(Ship ship, HullWalk log, Func<Player, bool> done, int maxTicks, float speed = 1f, bool rolling = false)
+    {
+        Player p = _w.Player;
+        int edges = p.Binding.EdgesCrossed, walls = p.Binding.WallsClimbed;
+        for (int t = 0; t < maxTicks; t++)
+        {
+            if (rolling) ship.Flight.Input = PilotInput.Hands(Vector3.Zero, new Vector3(0f, 0f, 1f));
+            p.Legs.Move = new N.Vector2(0f, -speed);
+            yield return 0;
+            log.Ticks++;
+            log.Stayed &= p.Aboard == ship;
+            log.LongestOff = MathF.Max(log.LongestOff, Riding.OutOfContactFor(p.Body));
+            if (ship.Vessel != null) log.Rolled += MathF.Abs(ship.Vessel.LocalSpin.Z) * Dt;
+            if (done(p)) break;
+        }
+        p.Legs.Move = N.Vector2.Zero;
+        log.Edges += p.Binding.EdgesCrossed - edges;
+        log.Walls += p.Binding.WallsClimbed - walls;
+    }
+
+    /// <summary>A ship in orbit (100 m above the atmosphere), still, with its core gravity off.</summary>
+    Ship InOrbit(string blueprint, N.Vector3 spot)
+    {
+        Ship ship = _w.SpawnVessel(blueprint, new N.Vector3(spot.X, _w.Physics.Zone.Ceiling + 100f + spot.Y, spot.Z), 0f, landed: false);
+        ship.Flight.Input = PilotInput.LetGo;
+        ship.Body.Core.On = false;
+        ship.Cabin.SetGravity(ship.Body.Core);
+        return ship;
+    }
+
+    void Still(Ship ship)
+    {
+        ship.Flight.Input = PilotInput.LetGo;
+        ship.Vessel.Place(ship.Body, ship.Body.Position, 0f);
+        ship.Binding.Teleport();
+    }
+
+    IEnumerable<int> SpaceWalk()
+    {
+        Ship ship = InOrbit("corsair.gbp", new N.Vector3(30f, 0f, -20f));
+        Player p = _w.Player;
+        p.PlaceAboard(ship, new N.Vector3(-1.0f, 2.78f, -1.5f)); // on the roof
+        for (int i = 0; i < 20; i++) yield return 0;
+        float boots = _w.Rules.Riding.MagBootGravity, grace = _w.Rules.Riding.LetGoAfter;
+        bool booted = p.OnHull == ship && p.Binding.MagBoots && p.Body.OnFloor && _w.Physics.Zone.At(ship.Body.Position) == N.Vector3.Zero
+                      && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), -N.Vector3.UnitY * boots) < 1e-4f;
+
+        // A barrel roll in space, with someone on the roof.
+        N.Vector3 start = p.Body.Position;
+        float rolled = 0f, worst = 0f;
+        bool stayed = true;
+        int floorTicks = 0, ticks = 0;
+        while (rolled < MathF.Tau && ticks < 600)
+        {
+            ship.Flight.Input = PilotInput.Hands(Vector3.Forward * 0.1f, new Vector3(0f, 0f, 1f));
+            yield return 0;
+            ticks++;
+            rolled += MathF.Abs(ship.Vessel.LocalSpin.Z) * Dt;
+            worst = MathF.Max(worst, N.Vector3.Distance(p.Body.Position, start));
+            stayed &= p.OnHull == ship;
+            if (p.Body.OnFloor) floorTicks++;
+        }
+        Check(booted && stayed && rolled >= MathF.Tau && worst < 0.05f && floorTicks >= ticks - 2,
+            $"in orbit with core gravity off, a player in mag boots on the roof stays put through a barrel roll ({Units.Degrees(rolled):F0}°): " +
+            $"{worst * 100f:F2} cm from where they stood, the boots pulling at {boots:0.#} m/s² toward the face underfoot");
+
+        // Round the hull: starboard off the roof, over the bevel, down the side, round under the belly.
+        foreach (bool rolling in new[] { false, true })
+        {
+            Still(ship);
+            p.PlaceAboard(ship, new N.Vector3(0.9f, 2.78f, -1.5f));
+            p.Yaw = -MathF.PI / 2f; // facing starboard
+            p.Pitch = 0f;
+            for (int i = 0; i < 30; i++)
+            {
+                if (rolling) ship.Flight.Input = PilotInput.Hands(Vector3.Zero, new Vector3(0f, 0f, 1f)); // already rolling as they set off
+                yield return 0;
+            }
+            var walk = new HullWalk();
+            foreach (int x in WalkOn(ship, walk, q => q.Body.Up.Y < -0.95f && q.Body.OnFloor && q.Body.Position.X < 0.8f, 300, rolling: rolling)) yield return x;
+            for (int i = 0; i < 10; i++) yield return 0;
+            bool under = p.OnHull == ship && p.Body.OnFloor && p.Body.Up.Y < -0.99f && p.Body.Position.Y < 0f && p.Body.Position.X < 1f;
+            Check(walk.Stayed && under && walk.Edges >= 1 && walk.LongestOff < 0.1f && (!rolling || walk.Rolled > 0.5f),
+                $"in mag boots a player walks off the roof, over the bevel, down the side and round under the belly{(rolling ? $" while the ship rolls ({Units.Degrees(walk.Rolled):F0}°)" : "")}: " +
+                $"{walk.Edges} sharp edge(s) carried round, never out of contact for more than {walk.LongestOff:F2} s (they'd let go after {grace:0.0#} s)");
+        }
+
+        // Knocked off the roof by a bump that throws them clear for less than the grace time: still aboard.
+        Still(ship);
+        p.PlaceAboard(ship, new N.Vector3(-1.0f, 2.78f, -1.5f));
+        for (int i = 0; i < 10; i++) yield return 0;
+        _w.Physics.AddImpulse(p.Body, N.Vector3.UnitY * p.Body.Mass * 1.6f, ForceKind.Other);
+        float off = 0f;
+        bool held = true;
+        for (int i = 0; i < 60; i++)
+        {
+            yield return 0;
+            off = MathF.Max(off, Riding.OutOfContactFor(p.Body));
+            held &= p.OnHull == ship;
+        }
+        Check(held && off > 0.15f && off < grace && p.Body.OnFloor,
+            $"a bump that throws a rider off the hull for {off:F2} s (under the {grace:0.0#} s grace) doesn't let go of the ship");
+
+        // Knocked off hard: out of reach of the boots, they let go and drift off with their inertia.
+        _w.Physics.AddImpulse(p.Body, N.Vector3.UnitY * p.Body.Mass * 6f, ForceKind.Other);
+        int until = 0;
+        while (p.Body.Frame != null && until++ < 60) yield return 0;
+        bool knockedOff = p.Body.Frame == null;
+        N.Vector3 v0 = p.Body.Velocity;
+        float d0 = N.Vector3.Distance(p.Body.Position, ship.Body.Position);
+        float drift = 0f;
+        for (int i = 0; i < 60; i++)
+        {
+            yield return 0;
+            drift = MathF.Max(drift, N.Vector3.Distance(p.Body.Velocity, v0));
+        }
+        float d1 = N.Vector3.Distance(p.Body.Position, ship.Body.Position);
+        N.Vector3 away = v0 - ship.Body.Velocity;
+        Check(knockedOff && drift < 1e-3f && d1 - d0 > 0.9f * away.Length() && away.Length() > 1f,
+            $"knocked off hard, a rider lets go after {until * Dt:F2} s and drifts away with their inertia in space ({away.Length():F1} m/s, " +
+            $"{d1 - d0:F1} m in 1 s, velocity unchanged to {drift:F4} m/s)");
+
+        // A jump from the underside of a ship under way lets go at once and drifts away, with the
+        // ship's velocity plus the jump, while the ship flies on.
+        Still(ship);
+        ship.Flight.Input = PilotInput.Hands(Vector3.Forward * 0.3f);
+        p.PlaceAboard(ship, new N.Vector3(0.9f, 2.78f, -1.5f));
+        p.Yaw = -MathF.PI / 2f;
+        for (int i = 0; i < 10; i++) yield return 0;
+        var round = new HullWalk();
+        foreach (int x in WalkOn(ship, round, q => q.Body.Up.Y < -0.95f && q.Body.OnFloor && q.Body.Position.X < 0.8f, 300)) yield return x;
+        for (int i = 0; i < 15; i++) yield return 0;
+        bool underneath = p.OnHull == ship && p.Body.Up.Y < -0.99f;
+        N.Vector3 down = Riding.DirectionToWorld(ship.Body, p.Body.Up);
+        p.Legs.Jump = true;
+        yield return 0;
+        p.Legs.Jump = false;
+        bool jumped = p.Body.Frame == null;
+        N.Vector3 rel = p.Body.Velocity - ship.Body.PointVelocity(p.Body.Position);
+        N.Vector3 vj = p.Body.Velocity, shipThen = ship.Body.Velocity;
+        float j0 = N.Vector3.Distance(p.Body.Position, ship.Body.Position), coast = 0f;
+        for (int i = 0; i < 60; i++)
+        {
+            yield return 0;
+            coast = MathF.Max(coast, N.Vector3.Distance(p.Body.Velocity, vj));
+        }
+        float j1 = N.Vector3.Distance(p.Body.Position, ship.Body.Position);
+        Check(underneath && jumped && N.Vector3.Dot(rel, down) > 0.9f * p.Legs.JumpSpeed && (rel - down * N.Vector3.Dot(rel, down)).Length() < 0.2f
+              && coast < 1e-3f && j1 - j0 > 3f && shipThen.Length() > 5f,
+            $"a jump from the underside lets go at once: the player keeps the ship's {shipThen.Length():F0} m/s plus the jump, {N.Vector3.Dot(rel, down):F1} m/s " +
+            $"away below it, and drifts on with exactly that velocity ({j1 - j0:F1} m apart after 1 s)");
+        _w.Remove(ship);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    IEnumerable<int> Airlock()
+    {
+        Ship ship = InOrbit("corsair.gbp", new N.Vector3(-30f, 0f, -40f));
+        ship.Body.Core.On = true;
+        ship.Cabin.SetGravity(ship.Body.Core);
+        Player p = _w.Player;
+        p.PlaceAboard(ship, new N.Vector3(0f, 0.28f, 3.9f)); // on the porch behind the door
+        p.Yaw = 0f; // facing the door
+        p.Pitch = 0f;
+        for (int i = 0; i < 10; i++) yield return 0;
+        float boots = _w.Rules.Riding.MagBootGravity;
+        bool porch = p.OnHull == ship && p.Binding.MagBoots
+                     && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), -p.Body.Up * boots) < 1e-4f;
+        var walk = new HullWalk();
+        foreach (int x in WalkOn(ship, walk, q => q.Body.Position.Z < 1.5f, 120)) yield return x;
+        for (int i = 0; i < 20; i++) yield return 0;
+        bool inside = p.Aboard == ship && !p.Body.OnOuterHull && !p.Binding.MagBoots && p.Body.OnFloor
+                      && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), ship.Body.Core.Local) < 1e-4f;
+        Check(porch && inside && walk.Stayed && walk.LongestOff < 0.05f && p.Body.Up.Y > 0.999f,
+            "walking from the porch on the outer hull in through the door never leaves the ship's cabin world: mag-boot down outside, core down inside");
+
+        // Core off in orbit: they float inside, and the boots take hold again as they float out onto the porch.
+        ship.Body.Core.On = false;
+        ship.Cabin.SetGravity(ship.Body.Core);
+        for (int i = 0; i < 10; i++) yield return 0;
+        bool floating = p.Legs.Floating && _w.Physics.GravityAt(p.Body) == N.Vector3.Zero;
+        bool stayed = true;
+        int ticks = 0;
+        while (!p.Body.OnOuterHull && ticks++ < 180)
+        {
+            p.Legs.Move = new N.Vector2(0f, 0.5f); // backwards, out of the door
+            yield return 0;
+            stayed &= p.Aboard == ship;
+        }
+        p.Legs.Move = N.Vector2.Zero;
+        for (int i = 0; i < 40; i++)
+        {
+            yield return 0;
+            stayed &= p.Aboard == ship;
+        }
+        bool caught = p.OnHull == ship && p.Binding.MagBoots && p.Body.OnFloor && !p.Legs.Floating && p.Body.Position.Z > 3.25f && p.Body.Up.Y > 0.999f;
+        Check(floating && stayed && caught,
+            $"with core gravity off in orbit they float inside; floating out of the door, the mag boots pull them down onto the porch ({p.Body.Position.Z:F2} m aft)");
+        _w.Remove(ship);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 5; i++) yield return 0;
+    }
+
+    IEnumerable<int> InsideCorners()
+    {
+        Ship barge = InOrbit("barge.gbp", new N.Vector3(-20f, 0f, 30f));
+        Player p = _w.Player;
+
+        // Square edges: off the top of the deck over a 90° edge onto its side, down it, and over
+        // the next 90° edge onto the underside, with the barge still and then rolling.
+        foreach (bool rolling in new[] { false, true })
+        {
+            Still(barge);
+            p.PlaceAboard(barge, new N.Vector3(-2.5f, 0.28f, -2.5f));
+            p.Yaw = MathF.PI / 2f; // facing port
+            p.Pitch = 0f;
+            for (int i = 0; i < 30; i++)
+            {
+                if (rolling) barge.Flight.Input = PilotInput.Hands(Vector3.Zero, new Vector3(0f, 0f, 1f));
+                yield return 0;
+            }
+            var edges = new HullWalk();
+            foreach (int x in WalkOn(barge, edges, q => q.Body.Up.Y < -0.95f && q.Body.OnFloor && q.Body.Position.X > -3.0f, 300, rolling: rolling)) yield return x;
+            for (int i = 0; i < 10; i++) yield return 0;
+            bool under = p.OnHull == barge && p.Body.OnFloor && p.Body.Up.Y < -0.99f && MathF.Abs(p.Body.Position.Y + 0.75f) < 0.05f;
+            Check(edges.Stayed && under && edges.Edges >= 2 && edges.LongestOff < 0.1f && (!rolling || edges.Rolled > 0.5f),
+                $"in orbit with core gravity off, a player in mag boots walks off the top of a deck over a 90° edge, down its side and over another onto the underside" +
+                $"{(rolling ? $" while it rolls ({Units.Degrees(edges.Rolled):F0}°)" : "")}: {edges.Edges} edges carried round, never out of contact for more than {edges.LongestOff:F2} s");
+        }
+        Still(barge);
+        p.PlaceAboard(barge, new N.Vector3(-0.25f, 0.28f, 3.0f));
+        p.Yaw = 0f; // facing the superstructure
+        p.Pitch = 0f;
+        for (int i = 0; i < 10; i++) yield return 0;
+        var walk = new HullWalk();
+        foreach (int x in WalkOn(barge, walk, q => q.Body.Up.Y > 0.99f && q.Body.Position.Y > 1.2f && q.Body.Position.Z < 0.2f, 300)) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        bool onRoof = p.OnHull == barge && p.Body.OnFloor && p.Body.Up.Y > 0.999f && MathF.Abs(p.Body.Position.Y - 1.25f) < 0.1f;
+        Check(walk.Stayed && onRoof && walk.Walls >= 1 && walk.Edges >= 1 && walk.LongestOff < 0.1f,
+            $"in orbit with core gravity off, walking into a superstructure wall two blocks (1 m) tall, the boots carry the player up its face, " +
+            $"over its top edge and onto its roof ({walk.Walls} wall climbed, {walk.Edges} edge, never out of contact for more than {walk.LongestOff:F2} s)");
+
+        // A lip one block tall stays a step: walking into it doesn't climb it.
+        p.PlaceAboard(barge, new N.Vector3(1.4f, 0.28f, -2.5f));
+        p.Yaw = -MathF.PI / 2f; // facing the starboard lip
+        for (int i = 0; i < 10; i++) yield return 0;
+        var lip = new HullWalk();
+        foreach (int x in WalkOn(barge, lip, _ => false, 90)) yield return x;
+        Check(lip.Stayed && lip.Walls == 0 && p.Body.OnFloor && p.Body.Up.Y > 0.999f && p.Body.Position.X > 1.7f && p.Body.Position.X < 2.25f,
+            $"a lip one block ({barge.Structure.Grid.CellSize:0.0#} m) tall, under the {_w.Rules.Riding.StepHeight:0.0#} m step height, stays a step: walking into it the boots don't climb it");
+        _w.Remove(barge);
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
     }
 

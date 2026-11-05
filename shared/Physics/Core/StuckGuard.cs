@@ -15,9 +15,11 @@ namespace GalHack.Physics;
 /// only ways in are teleports, loads, network corrections, a tunnelling physics step, or a
 /// block placed where something stands. All of them end here.
 ///
-/// Riders inside a cabin are left to their cabin (its walls never move). Structure bodies
-/// (vessels and wrecks) are checked at their centre of mass against terrain only; hulls keep
-/// out of each other through the movers and the engine.
+/// Riders of a structure are checked in the world along their own up: against their own ship's
+/// blocks, and, out on the hull, against the terrain (a ship flown low can scrape a rider through
+/// a hill, since its cabin world holds no terrain). Structure bodies (vessels and wrecks) are
+/// checked at their centre of mass against terrain only; hulls keep out of each other through
+/// the movers and the engine.
 /// </summary>
 public sealed class StuckGuard
 {
@@ -64,7 +66,8 @@ public sealed class StuckGuard
     /// <summary>Checks one body: counts a tick inside, rescues it once it has been inside long enough.</summary>
     public void Check(Body body)
     {
-        if (!IsStuck(body, out string inside))
+        IStuckField inside = Inside(body);
+        if (inside == null)
         {
             _ticks[body] = 0;
             return;
@@ -83,36 +86,65 @@ public sealed class StuckGuard
 
     public static Vector3 Feet(Body b) => b.Position - Vector3.UnitY * b.Shape.FeetBelowOrigin;
 
+    /// <summary>The body's feet in the world, wherever it is simulated.</summary>
+    public static Vector3 WorldFeet(Body b) => b.Frame == null ? Feet(b) : b.Frame.ToParent(Feet(b));
+
     public bool IsStuck(Body body, out string inside)
     {
-        inside = null;
-        if (body.Frame != null || body.Mass <= 0f) return false;
+        IStuckField field = Inside(body);
+        inside = field?.Name;
+        return field != null;
+    }
+
+    /// <summary>The field a body is stuck inside right now, or null.</summary>
+    public IStuckField Inside(Body body)
+    {
+        if (body.Mass <= 0f) return null;
         foreach (IStuckField field in _world.StuckFields)
         {
             if (!field.Applies(body)) continue;
-            bool stuck = IsStructure(body)
-                ? field.IsSolid(body, body.CenterOfMassPosition)
-                : field.IsInside(body, Feet(body), body.Shape);
-            if (!stuck) continue;
-            inside = field.Name;
-            return true;
+            bool stuck = IsStructure(body) ? field.IsSolid(body, body.CenterOfMassPosition)
+                : body.Frame == null && body.Up.Y > 0.999f ? field.IsInside(body, Feet(body), body.Shape)
+                : InsideAlongUp(body, field);
+            if (stuck) return field;
         }
+        return null;
+    }
+
+    /// <summary>
+    /// A body's core, sampled along its own up in the world: a rider in mag boots on a ship's side
+    /// or underside points sideways or down (and so may someone drifting in space after letting
+    /// go), and must not be mistaken for being inside the hull.
+    /// </summary>
+    static bool InsideAlongUp(Body body, IStuckField field)
+    {
+        Vector3 feet = WorldFeet(body);
+        Vector3 up = Vector3.Normalize(body.Frame == null ? body.Up : MathX.Rotate(body.Frame.Rotation, body.Up));
+        float bottom = body.Shape.Radius, top = MathF.Max(body.Shape.Height - body.Shape.Radius, body.Shape.Radius);
+        int steps = Math.Max(1, (int)MathF.Ceiling((top - bottom) / 0.25f));
+        for (int i = 0; i <= steps; i++)
+            if (field.IsSolid(body, feet + up * (bottom + (top - bottom) * i / steps))) return true;
         return false;
     }
 
-    /// <summary>Moves a body to the nearest open space, at rest.</summary>
-    public void Rescue(Body body, string inside)
+    /// <summary>
+    /// Moves a body to the nearest open space, at rest. A rider found inside its own ship stays
+    /// aboard; one found inside anything else (terrain, another ship) goes back to the zone's world.
+    /// </summary>
+    public void Rescue(Body body, IStuckField inside)
     {
-        Vector3 from = body.Position;
-        Vector3 feet = IsStructure(body) ? LiftStructure(body) : FindOpen(body, Feet(body), body.Shape);
-        Riding.StepOff(body);
-        body.Position = feet + Vector3.UnitY * body.Shape.FeetBelowOrigin;
+        Vector3 from = body.WorldPosition;
+        Vector3 feet = IsStructure(body) ? LiftStructure(body) : FindOpen(body, WorldFeet(body), body.Shape);
+        if (body.Frame != null && inside?.Owner != body.Frame) Riding.LeaveCabin(body);
+        body.Position = body.Frame != null
+            ? body.Frame.ToLocal(feet) + Vector3.UnitY * body.Shape.FeetBelowOrigin
+            : feet + Vector3.UnitY * body.Shape.FeetBelowOrigin;
         body.Velocity = Vector3.Zero;
         body.AngularVelocity = Vector3.Zero;
         body.Asleep = false;
         if (body.Controller is VesselController vessel) vessel.Wake(body);
         Rescues++;
-        _world.RaiseRescued(new RescueInfo(body, from, body.Position, inside));
+        _world.RaiseRescued(new RescueInfo(body, from, body.WorldPosition, inside?.Name));
     }
 
     /// <summary>A whole hull goes straight up until its keel clears the highest ground under its footprint.</summary>
