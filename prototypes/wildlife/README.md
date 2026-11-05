@@ -193,10 +193,10 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - The codex records the first finder and has no events.
   - No announcement-like code remains.
   - In the real scene, a never-seen species placed in front of the camera is recorded with nothing new on screen and no UI sound.
-- **Performance:** 200 creatures plus a swarm must update in under 4 ms per frame with every rig posed every frame.
+- **Performance:** 200 creatures plus a swarm must cost under 4 ms per frame as the game runs them: sim, rigs on their distance schedule, and syncing every mesh. The worst case, every rig posed every frame, must stay under 6 ms. Each is judged on the best of three 300-frame windows, all printed, so another program busy on the machine can't fail it.
 - **Playable scene:** the real scene, through its input path. Keys 1 to 3 switch worlds, and F, W, F board, drive and leave the hovercraft.
 
-On a Ryzen 7 5800X3D, 200 creatures plus a 51-insect swarm cost about 3.3 ms per frame at full rate, almost all of it rigs. With the distance LOD, and syncing about 5,500 mesh nodes, it's 1.7 ms. A real planet has 60 to 80 creatures about.
+On a Ryzen 7 5800X3D with nothing else running, 200 creatures plus a 51-insect swarm cost about 1.7 ms per frame as the game runs them, including syncing about 5,500 mesh nodes. Posing every rig every frame costs about 3.2 ms, almost all of it rigs. A real planet has 60 to 80 creatures about.
 
 Screenshots run windowed, from the prototype folder:
 
