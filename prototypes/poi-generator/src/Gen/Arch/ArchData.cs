@@ -54,6 +54,8 @@ public sealed class ProgramDef
     public string Surface = "full";            // full: the building stands; hut: only a stair house shows
     public float Lift;                         // chance of a lift core
     public string Roof = "flat";               // flat, access (stair to the roof), pad (landing pad), none
+    /// <summary>The skyline: empty, or broken (the top torn off: girders and slab stubs stand ragged against the sky).</summary>
+    public string Crown = "";
     public float Windows = 0.4f;
     public float Cavern;                       // chance a natural cave breaks into the deepest storey
     public float Breach;                       // chance of a collapse breach into the top basement
@@ -179,6 +181,7 @@ public static class ArchParser
                 case "surface": P().Surface = p[1]; break;
                 case "lift": P().Lift = F(p[1]); break;
                 case "roof": P().Roof = p[1]; break;
+                case "crown": P().Crown = p[1]; break;
                 case "windows": P().Windows = F(p[1]); break;
                 case "cavern": P().Cavern = F(p[1]); break;
                 case "breach": P().Breach = F(p[1]); break;

@@ -26,7 +26,7 @@ public partial class PoiLayer : Node3D
 
     readonly List<Place> _places = new();
     readonly List<Task<(Place, List<ChunkMesh>)>> _building = new();
-    readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase)> _animated = new();
+    readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase, MeshInstance3D Glow)> _animated = new();
     double _time;
     PlanetWorld _world;
 
@@ -127,8 +127,9 @@ public partial class PoiLayer : Node3D
                 Position = new Vector3(spot.Cell.X + 0.5f, spot.Cell.Y + 0.5f, spot.Cell.Z + 0.5f),
             };
             node.AddChild(light);
+            MeshInstance3D glow = Glow(node, inst, spot);
             if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
-                _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f));
+                _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f, glow));
         }
         if (inst.HasCore)
         {
@@ -138,6 +139,60 @@ public partial class PoiLayer : Node3D
                 LightColor = new Color("3de8ff"), LightEnergy = inst.State == PoiState.Active ? 1.4f : 0.4f, OmniRange = 6f,
                 Position = new Vector3(core.X + 0.5f, core.Y + 1.6f, core.Z + 0.5f),
             });
+        }
+    }
+
+    /// <summary>
+    /// A glow you can see from far off: beacons, lit windows and lamps out in the open get a soft
+    /// additive halo a few metres across that fades in past 40 m (up close the light itself does).
+    /// Lights inside rooms get none, so nothing glows through a roof.
+    /// </summary>
+    static MeshInstance3D Glow(Node3D node, PoiInstance inst, LightSpot spot)
+    {
+        if (spot.Cell.Y < 0) return null;
+        Block b = inst.Blocks.Get(spot.Cell);
+        bool beacon = spot.Mode == LightMode.Beacon;
+        bool outward = b.Material == PoiGenerator.Gen.Material.Lumen && (b.Role is Role.Window or Role.Light);
+        if (!beacon && !outward && !(spot.Range >= 10f && !inst.Layout.Occupied[spot.Cell])) return null;
+        var c = new Color(spot.Color.R / 255f, spot.Color.G / 255f, spot.Color.B / 255f);
+        float size = beacon ? 8f : 3.5f;
+        var glow = new MeshInstance3D
+        {
+            Name = "Glow",
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Mesh = new QuadMesh
+            {
+                Size = new Vector2(size, size),
+                Material = new StandardMaterial3D
+                {
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                    BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled,
+                    Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                    BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+                    AlbedoColor = new Color(c, 0.55f),
+                    AlbedoTexture = GlowTexture,
+                    DistanceFadeMode = BaseMaterial3D.DistanceFadeModeEnum.PixelAlpha,
+                    DistanceFadeMinDistance = 40f, DistanceFadeMaxDistance = 120f,
+                },
+            },
+            Position = new Vector3(spot.Cell.X + 0.5f, spot.Cell.Y + 0.5f, spot.Cell.Z + 0.5f),
+        };
+        node.AddChild(glow);
+        return glow;
+    }
+
+    static Texture2D _glowTexture;
+    /// <summary>A soft round falloff, made once.</summary>
+    static Texture2D GlowTexture
+    {
+        get
+        {
+            if (_glowTexture != null) return _glowTexture;
+            var g = new Gradient();
+            g.SetColor(0, new Color(1, 1, 1, 1));
+            g.SetColor(1, new Color(1, 1, 1, 0));
+            _glowTexture = new GradientTexture2D { Gradient = g, Fill = GradientTexture2D.FillEnum.Radial, FillFrom = new Vector2(0.5f, 0.5f), FillTo = new Vector2(1f, 0.5f), Width = 64, Height = 64 };
+            return _glowTexture;
         }
     }
 
@@ -161,10 +216,10 @@ public partial class PoiLayer : Node3D
             var smoke = new CpuParticles3D
             {
                 Name = spores ? "Spores" : "Smoke",
-                Amount = 28, Lifetime = 16f, Preprocess = 16f, FixedFps = 20, LocalCoords = false,
+                Amount = 40, Lifetime = 26f, Preprocess = 26f, FixedFps = 20, LocalCoords = false,
                 Mesh = new QuadMesh
                 {
-                    Size = new Vector2(3f, 3f),
+                    Size = new Vector2(5f, 5f),   // big enough to read as a column from 400 m
                     Material = new StandardMaterial3D
                     {
                         BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
@@ -175,13 +230,13 @@ public partial class PoiLayer : Node3D
                     },
                 },
                 Direction = Vector3.Up, Spread = 6f,
-                InitialVelocityMin = 1.4f, InitialVelocityMax = 2.2f,
+                InitialVelocityMin = 2.2f, InitialVelocityMax = 3.2f,
                 Gravity = new Vector3(0.35f, 0.05f, 0.12f),
-                ScaleAmountMin = 1.2f, ScaleAmountMax = 2.4f, ScaleAmountCurve = curve,
+                ScaleAmountMin = 1.2f, ScaleAmountMax = 2.8f, ScaleAmountCurve = curve,
                 ColorRamp = ramp,
                 EmissionShape = CpuParticles3D.EmissionShapeEnum.Sphere, EmissionSphereRadius = 0.8f,
                 Position = new Vector3(m.Cell.X + 0.5f, m.Cell.Y + 1.5f, m.Cell.Z + 0.5f),
-                VisibilityAabb = new Aabb(new Vector3(-40, -4, -40), new Vector3(80, 60, 80)),
+                VisibilityAabb = new Aabb(new Vector3(-60, -4, -60), new Vector3(120, 110, 120)),
             };
             node.AddChild(smoke);
         }
@@ -190,7 +245,7 @@ public partial class PoiLayer : Node3D
     /// <summary>Flickering lamps, blinking beacons and the Bloom's slow pulse.</summary>
     void Animate(double t)
     {
-        foreach (var (light, energy, mode, phase) in _animated)
+        foreach (var (light, energy, mode, phase, glow) in _animated)
         {
             if (!IsInstanceValid(light)) continue;
             float s = (float)t + phase;
@@ -200,6 +255,7 @@ public partial class PoiLayer : Node3D
                 LightMode.Flicker => energy * (Mathf.Sin(s * 23f) * Mathf.Sin(s * 7.3f) > 0.55f ? 0.15f : 0.85f + 0.15f * Mathf.Sin(s * 41f)),
                 _ => energy * (0.6f + 0.4f * Mathf.Sin(s * 0.9f)),
             };
+            if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
         }
     }
 

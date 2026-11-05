@@ -867,11 +867,17 @@ public sealed partial class Building
                 }
             C.X.Markers.Add(new Marker("landing-pad", L(cxr, y, czr)));
         }
+        if (P.Crown == "broken" && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal)) BrokenCrown(y);   // an alien cathedral grows a spire instead
         // Plant on the roof: tanks, a mast with a beacon (a light you see from far off).
-        Int3 mast = L(Wm - 3, y, Zm + 2);
-        for (int k = 0; k < 6 + Floors; k++) C.Set(mast + Int3.Up * k, new Block(BlockType.Pillar, Material.Steel, new Rgb(0x60, 0x64, 0x68), Role.Decor));
-        C.Set(mast + Int3.Up * (6 + Floors), new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
-        C.X.Lights.Add(new LightSpot { Cell = mast + Int3.Up * (6 + Floors), Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2f, Range = 14f, Storey = Top + 1 });
+        // The mast stands where there is roof under it (a tower that shed a corner keeps it on what is left).
+        var mastAt = new[] { (Wm - 3, Zm + 2), (2, Zm + 2), (Wm - 3, Zm + Dm - 3), (2, Zm + Dm - 3) }.FirstOrDefault(c => InFoot(Top, c.Item1, c.Item2) && !C.Get(L(c.Item1, y - 1, c.Item2)).IsAir, (-1, -1));
+        if (mastAt.Item1 >= 0 && !(Fam.Style ?? "").StartsWith("alien_", StringComparison.Ordinal))   // no radio mast on an alien place
+        {
+            Int3 mast = L(mastAt.Item1, y, mastAt.Item2);
+            for (int k = 0; k < 6 + Floors; k++) C.Set(mast + Int3.Up * k, new Block(BlockType.Pillar, Material.Steel, new Rgb(0x60, 0x64, 0x68), Role.Decor));
+            C.Set(mast + Int3.Up * (6 + Floors), new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));
+            C.X.Lights.Add(new LightSpot { Cell = mast + Int3.Up * (6 + Floors), Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2f, Range = 14f, Storey = Top + 1 });
+        }
         for (int i = 0; i < 2; i++)
         {
             Int3 t = L(3 + i * 2, y, Zm + Dm - 3);
@@ -881,6 +887,45 @@ public sealed partial class Building
         }
         Int3 ac = L(Wm / 2, y, Zm + Dm - 3);
         if (InFoot(Top, Wm / 2, Zm + Dm - 3)) C.Set(ac, new Block(BlockType.Machine, Material.Alloy, new Rgb(0x7a, 0x80, 0x88), Role.Decor));
+    }
+
+    /// <summary>
+    /// The top torn off: over one side of the roof (cut on a slant), girders stand at ragged heights
+    /// with stubs of slab still clinging to them, and the outer walls run on up in broken teeth. A
+    /// skyline that reads as wrong from far off. Kept clear of the stair core and the roof pad.
+    /// </summary>
+    void BrokenCrown(int y)
+    {
+        var steel = new Rgb(0x4a, 0x4c, 0x50);
+        float slope = Rng.Float(-0.8f, 0.8f), cut = Rng.Float(0.3f, 0.55f) * Wm;
+        bool west = Rng.Chance(0.5f);
+        bool Torn(int x, int z) => (west ? Wm - 1 - x : x) + slope * (z - Zm) > cut;
+        bool Clear(int x, int z) => !(x >= Cx - 3 && x <= CoreEnd + 3 && z <= Zs + 4) && !(P.Roof == "pad" && Math.Abs(x - Math.Min(Wm - 6, Wm * 3 / 4)) <= 5 && Math.Abs(z - (Zs + 4)) <= 5)
+                                      && !(x >= Wm - 4 && z <= Zm + 3);
+        for (int z = 0; z < D; z++)
+            for (int x = 0; x < W; x++)
+            {
+                if (!InFoot(Top, x, z) || !Torn(x, z) || !Clear(x, z)) continue;
+                Int3 roof = L(x, y - 1, z);
+                if (C.Get(roof).IsAir) continue;
+                bool edge = !InFoot(Top, x - 1, z) || !InFoot(Top, x + 1, z) || !InFoot(Top, x, z - 1) || !InFoot(Top, x, z + 1);
+                uint h = Hash.Cell(new Int3(x, Top, z), 501);
+                if (x % 4 == 0 && z % 4 == 0)
+                {
+                    // A girder, taller the further into the torn side, with a stub of slab at its head.
+                    int tall = 3 + (int)(h % 6) + (int)(((west ? Wm - 1 - x : x) - cut) / 4);
+                    for (int k = 0; k < tall; k++) C.Set(L(x, y + k, z), new Block(BlockType.Pillar, Material.Steel, steel, Role.Wall));
+                    if (h % 3 == 0)
+                        foreach (var (dx, dz) in new[] { (1, 0), (2, 0), (1, 1) })
+                            if (InFoot(Top, x + dx, z + dz)) C.Set(L(x + dx, y + tall - 1, z + dz), new Block(BlockType.Cube, Material.Concrete, S.Floor.Colors[0].Scale(0.8f), Role.Wall));
+                }
+                else if (edge && h % 4 != 0)
+                {
+                    // Broken teeth of the outer wall.
+                    int tooth = 1 + (int)(h % 4);
+                    for (int k = 0; k < tooth; k++) C.Set(L(x, y + k, z), S.Wall.Make(L(x, y + k, z)));
+                }
+            }
     }
 
     void Levelinfo()

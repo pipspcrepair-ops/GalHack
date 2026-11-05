@@ -104,7 +104,7 @@ public sealed class PlanetWorld
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
         {
-            stamps.Add(p.Stamp);
+            stamps.AddRange(p.Stamps);   // the pad, then whatever grounds it (bowl, terraces, approach cut, tilt, furrow)
             anchors.Add(new TerrainDigging.Terrain.PoiSite(p.Name, p.Footprint));
         }
         var source = new PlanetTerrainSource(map, stamps, anchors);

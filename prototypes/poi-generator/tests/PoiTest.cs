@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -321,7 +321,9 @@ public partial class PoiTest : Node
     /// </summary>
     void Variety()
     {
-        int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0;
+        int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0, fewestPatterns = int.MaxValue;
+        float worstPattern = 0f;
+        string worstPatternType = "", fewestType = "";
         float worstShare = 0f;
         string worstType = "";
         var grammar = new Dictionary<string, Dictionary<string, int>>();
@@ -331,6 +333,7 @@ public partial class PoiTest : Node
             var full = new List<string>();
             var coarse = new List<string>();
             var mix = grammar[f.Id] = new Dictionary<string, int>();
+            var patterns = new Dictionary<string, int>();
             for (int i = 0; i < 20; i++)
             {
                 var l = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Uncommon, Hash.Combine(0x7A21EUL, (ulong)i, Hash.Of(f.Id)));
@@ -338,6 +341,7 @@ public partial class PoiTest : Node
                 full.Add(Signature(l) + "#" + string.Join("|", l.Extras.Plans.Select(p => p.Signature)));
                 coarse.Add(string.Join("|", l.Extras.Plans.OrderBy(p => p.Building).ThenBy(p => p.Storey).Select(p => Topology(p.Signature))));
                 foreach (var p in l.Extras.Plans) mix[Grammar(p.Signature)] = mix.GetValueOrDefault(Grammar(p.Signature)) + 1;
+                foreach (var p in l.Extras.Plans.Where(p => p.Signature != "hut")) patterns[p.Signature.Split('/')[1]] = patterns.GetValueOrDefault(p.Signature.Split('/')[1]) + 1;
                 foreach (var b in l.Extras.Plans.GroupBy(p => p.Building))
                 {
                     buildings++;
@@ -348,9 +352,18 @@ public partial class PoiTest : Node
             repeats += full.Count - full.Distinct().Count();
             float share = coarse.GroupBy(c => c).Max(g => g.Count()) / (float)coarse.Count;
             if (share > worstShare && f.Generator == Generator.Building) { worstShare = share; worstType = f.Id; }
+            // Circulation shape: no one pattern walks most storeys of a type, and a type with a broad grammar uses it.
+            if (f.Generator == Generator.Building && patterns.Count > 0 && _lib.Programs[f.Program!].Plans.Count >= 4)
+            {
+                float top = patterns.Values.Max() / (float)patterns.Values.Sum();
+                if (top > worstPattern) { worstPattern = top; worstPatternType = f.Id; }
+                if (patterns.Count < fewestPatterns) { fewestPatterns = patterns.Count; fewestType = f.Id; }
+            }
         }
-        Check(repeats == 0 && worstShare <= 0.25f,
-            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 25%)");
+        Check(repeats == 0 && worstShare <= 0.15f,
+            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 15%)");
+        Check(worstPattern <= 0.45f && fewestPatterns >= 3,
+            $"circulation varies within a type: no pattern walks more than {worstPattern:P0} of a type's storeys ({worstPatternType}; at most 45%), and every type with a broad grammar uses at least {fewestPatterns} of its patterns ({fewestType})");
         Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building");
 
         // Types that must never walk alike: footprint and circulation mixes overlap by less than half.
@@ -912,6 +925,48 @@ public partial class PoiTest : Node
                         }
             }
         Check(stray == 0, $"no stray geometry: {triangles} triangles in {places} places, every vertex inside its place and no edge longer than {16 * 1.5f:F0} m ({stray} stray){first}");
+    }
+
+    /// <summary>
+    /// Grounding stamps beyond the flat pad: a crater bowl sinks below the pad and meets it at the
+    /// rim, terraces step down a slope in level treads with walkable risers and only ever fill, an
+    /// approach cut keeps an easy grade, a tilt rises away from the way in, a furrow ploughs out
+    /// behind; each the same across a seam; and in a list the later stamp wins where it applies fully.
+    /// </summary>
+    void Stamps()
+    {
+        const double W = 4096, H = 2048;
+        float Flat(double x, double z) => 10f;
+        float Slope(double x, double z) => 10f - (float)x * 0.3f;
+        var bowl = new GalHack.Terrain.TerrainStamp("bowl", 80, 80, 120, 120, 10, 0f, 16f, W, H) { Shape = GalHack.Terrain.StampShape.Bowl, Radius = 20f, Depth = 6f };
+        float centre = bowl.Apply(10f, 100, 100), rim = bowl.Apply(10f, 120, 100), far = bowl.Apply(14f, 200, 100);
+        var terraces = new GalHack.Terrain.TerrainStamp("terraces", 0, -10, 20, 10, 10, 0f, 0f, W, H) { Shape = GalHack.Terrain.StampShape.Terraces, DirX = 1, DirZ = 0, Length = 36f, Width = 24f, Step = 1.5f };
+        float worst = 0f, prev = terraces.Apply(Slope(20, 0), 20, 0);
+        bool fillsOnly = true;
+        for (double x = 21; x < 70; x += 1)
+        {
+            float h = terraces.Apply(Slope(x, 0), x, 0);
+            worst = MathF.Max(worst, MathF.Abs(h - prev));
+            fillsOnly &= h >= Slope(x, 0) - 1e-3f;
+            prev = h;
+        }
+        var cut = new GalHack.Terrain.TerrainStamp("cut", 0, -2, 4, 2, 10, 0f, 0f, W, H) { Shape = GalHack.Terrain.StampShape.Cut, DirX = 1, Length = 30f, Width = 7f, Grade = 0.4f };
+        float cutWorst = 0f; prev = cut.Apply(20f, 4, 0);
+        for (double x = 5; x < 34; x++) { float h = cut.Apply(20f, x, 0); cutWorst = MathF.Max(cutWorst, MathF.Abs(h - prev)); prev = h; }
+        var tilt = new GalHack.Terrain.TerrainStamp("tilt", 0, 0, 40, 20, 10, 4f, 20f, W, H) { Shape = GalHack.Terrain.StampShape.Tilt, DirX = 0, DirZ = 1, Grade = 0.2f };
+        float front = tilt.Apply(Flat(20, 1), 20, 1), back = tilt.Apply(Flat(20, 19), 20, 19);
+        var furrow = new GalHack.Terrain.TerrainStamp("furrow", 0, 0, 20, 20, 10, 0f, 0f, W, H) { Shape = GalHack.Terrain.StampShape.Furrow, DirX = -1, Length = 60f, Width = 12f, Depth = 3f };
+        float gouge = furrow.Apply(10f, -8, 10);
+        // Across a seam: a bowl straddling x = 0 gives the same ground at x and x + the planet's width.
+        var seam = new GalHack.Terrain.TerrainStamp("seam", -20, 100, 20, 140, 10, 0f, 16f, W, H) { Shape = GalHack.Terrain.StampShape.Bowl, Radius = 18f, Depth = 6f };
+        float a = seam.Apply(10f, 5, 120), b = seam.Apply(10f, 5 + W, 120);
+        // Composed: a pad and then a cut over it: the cut wins in its strip.
+        var pad = new GalHack.Terrain.TerrainStamp("pad", 0, -10, 20, 10, 10, 4f, 12f, W, H);
+        float composed = GalHack.Terrain.TerrainStamp.Compose(new[] { pad, cut }, 20f, 20, 0), cutAlone = cut.Apply(pad.Apply(20f, 20, 0), 20, 0);
+        Check(Math.Abs(centre - 4f) < 0.01f && Math.Abs(rim - 10f) < 0.01f && Math.Abs(far - 14f) < 0.01f && worst <= 1.05f && fillsOnly && cutWorst <= 0.45f
+              && back > front + 2f && gouge < 10f - 2f && Math.Abs(a - b) < 1e-4f && Math.Abs(composed - cutAlone) < 1e-4f,
+            $"grounding stamps: a crater bowl {10 - centre:F1} m deep meeting the pad at its rim; terraces only fill, steepest step {worst:F2} m a metre; an approach cut at {cutWorst:F2} a metre; " +
+            $"a tilt rising {back - front:F1} m across a ruin; a furrow {10 - gouge:F1} m deep; the same across a seam; and composed, the later stamp wins");
     }
 
     /// <summary>Cables, wires and tendrils always hang from something: never in mid-air.</summary>

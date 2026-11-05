@@ -95,6 +95,7 @@ public partial class PoiView : Node3D
         if (opt.Lights) view.BuildLights();
         if (opt.Figures) view.BuildFigures();
         view.BuildInteractables();
+        view.DressFromDecoLibrary();
         return view;
     }
 

@@ -38,7 +38,7 @@ Programs are recipes (`programs.txt`): room demands, footprint shapes, circulati
 | Old Mine | site | site old_mine | headframe and lattice tower over the shaft, drifts and stopes |
 | Alien Hive Ruin | site | mine_works in alien_hive | chewed warrens; Bloom-thick infested state |
 | Alien Library | site | research_base in alien_library | crystal stacks underground |
-| Alien Cathedral | site | tower_block in alien_cathedral | a pale spire on a peak |
+| Alien Cathedral | site | program cathedral in alien_cathedral | a cruciform nave with a tapering spire and leaning fins |
 | Abandoned Factory | site | sites factory_low, factory_mid, factory_high | a production hall frozen mid-run (conveyor, robot arms, a load on the crane), warehouse and loading bays, works offices over a boiler house, smokestacks and a water tower; tech level by layout; gangs hold some |
 | Old Farm | site | sites farm_low, farm_mid, agri_complex | farmhouse with a cellar, barn, silos, windmill or water tower, fields gone wild, greenhouses and hydroponic sheds, a vertical farm tower at high tech |
 | Air-Defence Battery (Vharn) | base | site sam_site | launchers on emplacements, radar, a bunkered control room; ridge siting |
