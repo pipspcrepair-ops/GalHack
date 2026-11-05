@@ -59,6 +59,8 @@ public static class Dressing
         bool settlement = f.Tags.Contains("settlement"), civilian = f.Tags.Contains("civilian");
         if ((!settlement && !civilian) || inst.State != PoiState.Active) return;
         inst.Mood = settlement ? MoodFor(inst.SpawnSeed) : Mood.Peaceful;
+        // A settlement's people aren't a gang on duty: its guards are townsfolk (and enemies only if it's hostile).
+        if (settlement) inst.Enemies.RemoveAll(e => e.Defender);
         inst.Friendly = inst.Mood != Mood.Hostile;
         var layout = inst.Layout;
         var nav = inst.Nav();
