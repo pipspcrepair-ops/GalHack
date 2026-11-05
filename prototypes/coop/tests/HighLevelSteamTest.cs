@@ -112,10 +112,10 @@ public static class HighLevelSteamTest
 
     public static async Task Until(Node owner, Func<bool> done, double seconds)
     {
-        double end = NetClock.Now + seconds;
+        double end = NetClock.RealNow + seconds;
         while (!done())
         {
-            if (NetClock.Now > end) throw new TimeoutException("timed out");
+            if (NetClock.RealNow > end) throw new TimeoutException("timed out");
             await owner.ToSignal(owner.GetTree(), SceneTree.SignalName.ProcessFrame);
         }
     }

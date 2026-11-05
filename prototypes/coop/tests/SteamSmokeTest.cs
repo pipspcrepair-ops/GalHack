@@ -28,7 +28,7 @@ public partial class SteamSmokeTest : Node
     const double Watchdog = 120;
     int _failures;
     bool _skipped, _done;
-    readonly double _started = NetClock.Now;
+    readonly double _started = NetClock.RealNow;
 
     public override void _Ready()
     {
@@ -39,7 +39,7 @@ public partial class SteamSmokeTest : Node
 
     public override void _Process(double delta)
     {
-        if (_done || NetClock.Now - _started < Watchdog) return;
+        if (_done || NetClock.RealNow - _started < Watchdog) return;
         Fail($"watchdog: still running after {Watchdog} s");
         End();
     }
@@ -116,7 +116,7 @@ public partial class SteamSmokeTest : Node
     /// <summary>Steam Datagram Relay: access to the relay network, and our ping location measured.</summary>
     async Task RelayNetwork()
     {
-        double start = NetClock.Now;
+        double start = NetClock.RealNow;
         ESteamNetworkingAvailability status;
         SteamNetworkingUtils.InitRelayNetworkAccess();
         do
@@ -127,13 +127,13 @@ public partial class SteamSmokeTest : Node
         }
         while (status != ESteamNetworkingAvailability.k_ESteamNetworkingAvailability_Current
                && status > ESteamNetworkingAvailability.k_ESteamNetworkingAvailability_Unknown
-               && NetClock.Now - start < 30);
-        double seconds = NetClock.Now - start;
+               && NetClock.RealNow - start < 30);
+        double seconds = NetClock.RealNow - start;
         Check(status == ESteamNetworkingAvailability.k_ESteamNetworkingAvailability_Current,
             $"relay network access ready in {seconds:F1} s ({status})");
 
         float age = -1;
-        while (NetClock.Now - start < 30)
+        while (NetClock.RealNow - start < 30)
         {
             age = SteamNetworkingUtils.GetLocalPingLocation(out _);
             if (age >= 0) break;
@@ -151,8 +151,8 @@ public partial class SteamSmokeTest : Node
         var call = CallResult<LobbyCreated_t>.Create((result, ioFailure) =>
             created = ioFailure ? new LobbyCreated_t { m_eResult = EResult.k_EResultIOFailure } : result);
         call.Set(SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePrivate, 1));
-        double start = NetClock.Now;
-        while (created == null && NetClock.Now - start < 20)
+        double start = NetClock.RealNow;
+        while (created == null && NetClock.RealNow - start < 20)
         {
             await Frame();
             SteamworksApi.RunCallbacks();
@@ -171,7 +171,7 @@ public partial class SteamSmokeTest : Node
             string purpose = SteamMatchmaking.GetLobbyData(lobby, "purpose");
             Check(set && tag == "coop-smoke" && purpose == "automated smoke test"
                   && SteamMatchmaking.GetNumLobbyMembers(lobby) == 1 && SteamMatchmaking.GetLobbyOwner(lobby) == SteamUser.GetSteamID(),
-                $"private lobby created in {NetClock.Now - start:F1} s; metadata set and read back; we are its only member and its owner");
+                $"private lobby created in {NetClock.RealNow - start:F1} s; metadata set and read back; we are its only member and its owner");
         }
         finally
         {
@@ -191,8 +191,8 @@ public partial class SteamSmokeTest : Node
         host.PeerConnected += id => hostEvents.Add(id);
         host.PeerDisconnected += id => hostEvents.Add(-id);
 
-        double start = NetClock.Now;
-        while (client.GetConnectionStatus() != MultiplayerPeer.ConnectionStatus.Connected && NetClock.Now - start < 10)
+        double start = NetClock.RealNow;
+        while (client.GetConnectionStatus() != MultiplayerPeer.ConnectionStatus.Connected && NetClock.RealNow - start < 10)
         {
             await Frame();
             host.Poll();
@@ -200,7 +200,7 @@ public partial class SteamSmokeTest : Node
         }
         int id = client.GetUniqueId();
         Check(client.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected && hostEvents.SequenceEqual(new long[] { id }),
-            $"SteamMultiplayerPeer over a real Steam socket pair: connected in {(NetClock.Now - start) * 1000:F0} ms (peer {id})");
+            $"SteamMultiplayerPeer over a real Steam socket pair: connected in {(NetClock.RealNow - start) * 1000:F0} ms (peer {id})");
 
         for (int i = 0; i < 300; i++)
         {
@@ -212,8 +212,8 @@ public partial class SteamSmokeTest : Node
         var ordered = new List<int>();
         int unreliable = 0;
         bool mapped = true;
-        start = NetClock.Now;
-        while (reliable.Count < 300 && NetClock.Now - start < 5)
+        start = NetClock.RealNow;
+        while (reliable.Count < 300 && NetClock.RealNow - start < 5)
         {
             await Frame();
             client.Poll();
@@ -237,8 +237,8 @@ public partial class SteamSmokeTest : Node
         Pass($"real Steam sockets: loopback round trip reported as {ping} ms");
 
         client.Close();
-        start = NetClock.Now;
-        while (!hostEvents.Contains(-id) && NetClock.Now - start < 5)
+        start = NetClock.RealNow;
+        while (!hostEvents.Contains(-id) && NetClock.RealNow - start < 5)
         {
             await Frame();
             host.Poll();

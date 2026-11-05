@@ -28,7 +28,7 @@ namespace Coop;
 public partial class NetTest : Node
 {
     const string Sim = "80,10,1.5"; // 80 ms round trip, 10 ms jitter, 1.5% loss
-    const double ScenarioTimeout = 200;
+    const double ScenarioTimeout = 480; // real seconds: only for a stuck scenario (the agents' watchdog is 420)
 
     int _failures;
     readonly ConcurrentQueue<string> _output = new();
@@ -79,9 +79,10 @@ public partial class NetTest : Node
     {
         try
         {
+            await Frames(1); // the scene tree is still being set up during _Ready
             GD.Print("== Unit tests (in process, no Steam) ==");
             _failures += UnitTests.Run();
-            _failures += await ConditionerTest.Run(this);
+            _failures += ConditionerTest.Run();
             var fake = new FakeSteamNetwork();
             _failures += await HighLevelSteamTest.Run(this, "fake socket layer",
                 () => SteamMultiplayerPeer.CreateHost(fake.AddEndpoint(500)),
@@ -144,8 +145,8 @@ public partial class NetTest : Node
             await Seconds(name == processes[0].name ? 2.0 : 0.3); // the host first
         }
 
-        double end = NetClock.Now + ScenarioTimeout;
-        while (running.Any(r => !r.process.HasExited) && NetClock.Now < end)
+        double end = NetClock.RealNow + ScenarioTimeout;
+        while (running.Any(r => !r.process.HasExited) && NetClock.RealNow < end)
         {
             Flush();
             await Seconds(0.1);
