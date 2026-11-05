@@ -195,7 +195,7 @@ public partial class Screenshot : Node
         layer.AddChild(grid);
         var viewport = GetViewport().GetVisibleRect().Size;
         int rows = (tiles.Count + cols - 1) / cols;
-        float cellW = (viewport.X - 20 - 8 * (cols - 1)) / cols, cellH = (viewport.Y - 20 - 6 * (rows - 1)) / rows - 34;
+        float cellW = (viewport.X - 20 - 8 * (cols - 1)) / cols, cellH = (viewport.Y - 20 - 6 * (rows - 1)) / rows - 46;
         foreach (var (img, label) in tiles)
         {
             var box = new VBoxContainer();

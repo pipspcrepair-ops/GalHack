@@ -248,6 +248,16 @@ public sealed partial class Building
         Lx = Cx + 5;
         CoreEnd = Lift ? Cx + 7 : Cx + 4;
         if ((Rng.Chance(P.SecondStair) || Wm >= 40) && Wm - (CoreEnd + 1) >= 18 && !Hut) Cx2 = Wm - 10;
+        if (Shape == "H")
+        {
+            // An H keeps all four wings: narrower wings, and the core between them on the cross bar.
+            int core = CoreEnd - Cx + 1;
+            wingW = Math.Max(9, Math.Min(wingW - 4, (Wm - core - 4) / 2));
+            Cx = Math.Clamp((Wm - core) / 2, wingW + 1, Math.Max(wingW + 1, Wm - wingW - 2 - core + 1));
+            Lx = Cx + 5;
+            CoreEnd = Cx + core - 1;
+            Cx2 = -1;
+        }
         _bars.Add(new Bar(0, Zm, Wm - 1, Zm + Dm - 1, false, false));
         int x0 = Wm / 2 - wingW / 2;
         int zS = Zm + Dm - 1, zN = Zm;
@@ -267,8 +277,33 @@ public sealed partial class Building
         if (Cx2 >= 0) _bars.RemoveAll(b => b.Wing && b.Z1 == zN && b.X0 <= Cx2 + 5 && b.X1 >= Cx2 - 1);
         W = _bars.Max(b => b.X1) + 1;
         D = _bars.Max(b => b.Z1) + 1;
+        Notches();
         RoofHut = !Hut && Floors >= 2 && P.Roof is "access" or "pad";
         StairTop = RoofHut ? Top + 1 : Top;
+    }
+
+    /// <summary>Corners a tower sheds as it climbs (terraces): from the storey each starts at, upward.</summary>
+    readonly List<(int From, int X0, int Z0, int X1, int Z1)> _notches = new();
+
+    void Notches()
+    {
+        if (Hut || P.Setback <= 0f || _bars.Any(b => b.Wing)) return;
+        var corners = new List<int> { 0, 1, 2, 3 };
+        for (int s = 2; s <= Top && corners.Count > 0 && _notches.Count < 3; s++)
+        {
+            if (!Rng.Chance(P.Setback * 0.7f)) continue;
+            int nx = Rng.Between(5, Math.Max(5, Math.Min(10, Wm / 3))), nz = Rng.Between(4, Math.Max(4, Math.Min(8, Dm / 3)));
+            int pick = corners[Rng.Range(0, corners.Count)];
+            corners.Remove(pick);
+            bool east = (pick & 1) != 0, south = (pick & 2) != 0;
+            int x0 = east ? Wm - nx : 0, x1 = east ? Wm - 1 : nx - 1;
+            int z0 = south ? Zm + Dm - nz : Zm, z1 = south ? Zm + Dm - 1 : Zm + nz - 1;
+            // Never into a core, its landing or the courtyard ring.
+            bool Hits(int a0, int a1) => x0 <= a1 && x1 >= a0 && z0 <= Zs + 3;
+            if (Hits(Cx - 3, CoreEnd + 3) || (Cx2 >= 0 && Hits(Cx2 - 3, Cx2 + 7))) continue;
+            if (z0 <= Zs + 3 && z1 >= Zs - 1) continue;
+            _notches.Add((s, x0, z0, x1, z1));
+        }
     }
 
     bool Courtyard => Shape == "court" && Dm >= 30 && Wm >= 30;
@@ -292,6 +327,9 @@ public sealed partial class Building
         foreach (var b in bars)
             for (int z = b.Z0; z <= b.Z1; z++)
                 for (int x = b.X0; x <= b.X1; x++) f[x, z] = true;
+        foreach (var n in _notches.Where(n => s >= n.From))
+            for (int z = n.Z0; z <= n.Z1; z++)
+                for (int x = n.X0; x <= n.X1; x++) f[x, z] = false;
         if (s < 0 && Basement == "box")
             for (int z = Zm; z < Zm + Dm; z++)
                 for (int x = 0; x < W; x++) f[x, z] = true;
@@ -334,11 +372,11 @@ public sealed partial class Building
             {
                 plan.R[x, z] = -1;
                 if (!f[x, z]) { K[x, z] = OutK; continue; }
-                bool ring = false;
-                for (int dz = -1; dz <= 1 && !ring; dz++)
-                    for (int dx = -1; dx <= 1 && !ring; dx++)
-                        if (!InFoot(s, x + dx, z + dz)) ring = true;
-                K[x, z] = ring ? Ext : Free;
+                bool edge = false;
+                for (int dz = -1; dz <= 1 && !edge; dz++)
+                    for (int dx = -1; dx <= 1 && !edge; dx++)
+                        if (!InFoot(s, x + dx, z + dz)) edge = true;
+                K[x, z] = edge ? Ext : Free;
             }
         // The cores: a stair column (and a lift beside it, and maybe a second stair), solid behind.
         void CoreRect(int x0, int x1, int z0)
@@ -358,7 +396,9 @@ public sealed partial class Building
         var options = P.Plans.Where(o => Fits(o.Key, s)).ToList();
         if (options.Count == 0) options.Add(("spine", 1f));
         var rng = Rng.Fork($"plan{s}:{attempt}");
-        string pattern = options[Math.Max(0, rng.PickWeighted(options.Select(o => o.Weight).ToList()))].Key;
+        // A building works through its repertoire: a circulation already used on another storey is less likely again.
+        var usedPatterns = _plans.Values.Select(p => p.Pattern).ToList();
+        string pattern = options[Math.Max(0, rng.PickWeighted(options.Select(o => o.Weight * MathF.Pow(0.3f, usedPatterns.Count(u => u == o.Key))).ToList()))].Key;
         if (attempt > 0 && options.Count > 1 && _plans.TryGetValue(s + 1, out var above) && above.Pattern == pattern)
             pattern = options[(options.FindIndex(o => o.Key == pattern) + attempt) % options.Count].Key;
         plan.Pattern = pattern;
@@ -375,6 +415,14 @@ public sealed partial class Building
         if (Cx2 >= 0) Run(Cx2, Zs, Cx2 + 3, Zs + 1);
         bool ground = s == 0;
         int from = 1, to = Wm - 2;
+        // The ring this storey runs (round the courtyard it is fixed; otherwise its size and form vary storey to storey).
+        var ring = Ring;
+        int ringForm = 0;
+        if (pattern is "loop" or "atrium")
+        {
+            ring = (rng.Between(4, 9), Wm - rng.Between(7, 11), Zs, Zm + Dm - rng.Between(6, 9));
+            if (pattern == "loop") ringForm = rng.Between(0, 2); // 0 a full ring, 1 a horseshoe, 2 a figure of eight
+        }
         switch (pattern)
         {
             case "spine":
@@ -404,11 +452,13 @@ public sealed partial class Building
             case "atrium":
             case "court":
             {
-                var (a, b, z1, z2) = Ring;
+                var (a, b, z1, z2) = ring;
                 Run(from, z1, to, z1 + 1);
                 Run(a, z2, b + 1, z2 + 1);
-                Run(a, z1, a + 1, z2 + 1);
-                Run(b, z1, b + 1, z2 + 1);
+                bool westLeg = ringForm != 1 || rng.Chance(0.5f);
+                if (westLeg) Run(a, z1, a + 1, z2 + 1);
+                if (!westLeg || ringForm != 1) Run(b, z1, b + 1, z2 + 1);
+                if (ringForm == 2) Run((a + b) / 2, z1, (a + b) / 2 + 1, z2 + 1);
                 // Spokes from the ring out to the far façade.
                 if (pattern == "loop" && rng.Chance(0.5f)) Run((a + b) / 2, z2, (a + b) / 2 + 1, Zm + Dm - 2);
                 break;
@@ -448,7 +498,7 @@ public sealed partial class Building
         // The courtyard's inner block (open to the sky) or the atrium's void.
         if (pattern == "atrium" && s > Math.Max(0, Bottom) && s >= 1)
         {
-            var (a, b, z1, z2) = Ring;
+            var (a, b, z1, z2) = ring;
             for (int z = z1 + 3; z <= z2 - 2; z++)
                 for (int x = a + 3; x <= b - 2; x++)
                     if (K[x, z] == Free && (!_plans.TryGetValue(s - 1, out var under) || under.K[x, z] is Free or Void)) K[x, z] = Void; // open over rooms, never over a corridor
