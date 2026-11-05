@@ -1173,63 +1173,108 @@ public partial class PhysicsTest : Node
 
     // ==== Tornado ===============================================================================
 
+    /// <summary>What one run of the tornado scenario measured.</summary>
+    sealed class FlingRun
+    {
+        public bool Caught, Released, Landed, Dead, CrateKept;
+        public float Peak, LandingSpeed, Raw, Share, FloorSeen, CratePeak, CrateDamage, NoFlingShare;
+        public int Ticks;
+
+        /// <summary>Every number, exactly, for comparing runs.</summary>
+        public string Key =>
+            $"{Caught} {Released} {Landed} {Dead} {CrateKept} {Ticks} {Peak:R} {LandingSpeed:R} {Raw:R} {Share:R} {FloorSeen:R} {CratePeak:R} {CrateDamage:R} {NoFlingShare:R}";
+    }
+
+    /// <summary>
+    /// The tornado fling, run twice, each time in a fresh world of its own: its numbers depend on
+    /// nothing that ran before (the weather's state, the tick count, what lies on the field), and
+    /// the two runs must agree exactly.
+    /// </summary>
     IEnumerable<int> TornadoFling()
     {
-        Player p = _w.Player;
-        var spot = _w.Ground(-50f, 12f);
+        var runs = new FlingRun[2];
+        for (int r = 0; r < runs.Length; r++)
+        {
+            var view = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
+            AddChild(view);
+            var w = new SandboxWorld { Visuals = false };
+            view.AddChild(w);
+            w.Weather.Calm = true;
+            for (int i = 0; i < 3; i++) yield return 0;
+            runs[r] = new FlingRun();
+            foreach (int x in Fling(w, runs[r])) yield return x;
+            view.GetParent().RemoveChild(view); // out of the tree (and its physics space) at once
+            view.QueueFree();
+            yield return 0;
+        }
+
+        FlingRun a = runs[0];
+        Check(a.Caught && a.Released && a.Landed && !a.Dead && MathF.Abs(a.Share - 0.15f) < 1e-5f && a.Raw > 0.25f && a.FloorSeen == 0.15f,
+            $"a tornado catches the player at 40% health, carries them {a.Peak:F0} m up and flings them; the landing at {a.LandingSpeed:F0} m/s would cost " +
+            $"{a.Raw:P0} of their health, and they survive at exactly {a.Share:P2}: the fling floor, which belongs to the weather code");
+        Check(a.CratePeak > 8f && a.CrateKept && a.CrateDamage >= 0f,
+            $"the crate beside them is flung {a.CratePeak:F0} m up too, and is still there when it lands ({a.CrateDamage:P0} damage)");
+        Check(a.NoFlingShare < 0.15f,
+            $"the same fall without a fling leaves them at {a.NoFlingShare:P0}: the 15% floor is the tornado's alone");
+        Check(a.Key == runs[1].Key,
+            $"two separate fresh worlds, one after the other, run the tornado scenario to identical numbers, bit for bit ({a.Ticks} ticks: " +
+            $"{a.Peak:F2} m up, landing at {a.LandingSpeed:F3} m/s, {a.Raw:P2} of their health, the crate {a.CratePeak:F2} m up)");
+    }
+
+    /// <summary>One run of the tornado scenario in a world of its own, measured into <paramref name="run"/>.</summary>
+    IEnumerable<int> Fling(SandboxWorld w, FlingRun run)
+    {
+        var impacts = new List<ImpactInfo>();
+        w.Physics.Impact += impacts.Add;
+        Player p = w.Player;
+        var spot = w.Ground(-50f, 12f);
         p.PlaceOutside(spot + N.Vector3.UnitY * 0.05f);
         p.Health.Set(p.Health.Max * 0.4f);
         p.Health.RegenDelay = 1e6f; // no healing mid-test: the numbers stay readable
-        Crate crate = Crate.Spawn(_w, spot + new N.Vector3(3f, 0.45f, 0f), 2);
-        _w.Weather.Calm = false;
-        _w.Weather.Sim.Snap(WeatherKind.Clouds);
+        Crate crate = Crate.Spawn(w, spot + new N.Vector3(3f, 0.45f, 0f), 2);
+        w.Weather.Calm = false;
+        w.Weather.Sim.Snap(WeatherKind.Clouds);
         for (int i = 0; i < 20; i++) yield return 0;
         // It touches down beside the player heading east, across the middle of the map, so the
         // carry and the fling stay inside the 256 m world.
-        Tornado tornado = _w.Weather.Sim.SpawnTornado(new Vector3(spot.X - 5f, spot.Y, spot.Z + 1f), new Vector3(spot.X + 60f, spot.Y, spot.Z + 1f));
+        Tornado tornado = w.Weather.Sim.SpawnTornado(new Vector3(spot.X - 5f, spot.Y, spot.Z + 1f), new Vector3(spot.X + 60f, spot.Y, spot.Z + 1f));
         tornado.SkipFormation();
-        _impacts.Clear();
+        impacts.Clear();
 
-        bool caught = false, released = false, landed = false;
-        float floorSeen = 0f, peak = spot.Y, cratePeak = spot.Y;
-        for (int t = 0; t < 1500 && !landed; t++)
+        float peak = spot.Y, cratePeak = spot.Y;
+        for (int t = 0; t < 1500 && !run.Landed; t++)
         {
             yield return 0;
-            VortexPhase phase = _w.Weather.PhaseOf(p.Body);
-            caught |= phase == VortexPhase.Caught;
-            if (caught && phase == VortexPhase.Released && !released)
+            run.Ticks++;
+            VortexPhase phase = w.Weather.PhaseOf(p.Body);
+            run.Caught |= phase == VortexPhase.Caught;
+            if (run.Caught && phase == VortexPhase.Released && !run.Released)
             {
-                released = true;
-                _w.Weather.Sim.ClearTornadoes(); // gone once it has thrown you: no second catch
+                run.Released = true;
+                w.Weather.Sim.ClearTornadoes(); // gone once it has thrown you: no second catch
             }
-            floorSeen = MathF.Max(floorSeen, _w.Weather.FlingFloor(p.Body));
+            run.FloorSeen = MathF.Max(run.FloorSeen, w.Weather.FlingFloor(p.Body));
             peak = MathF.Max(peak, p.Body.Position.Y);
             cratePeak = MathF.Max(cratePeak, crate.Body.Position.Y);
-            landed = released && p.Body.OnFloor && p.Body.WorldVelocity.Length() < 1f;
+            run.Landed = run.Released && p.Body.OnFloor && p.Body.WorldVelocity.Length() < 1f;
         }
-        ImpactInfo landing = _impacts.Where(x => x.Body == p.Body && x.Point.Y < peak).OrderByDescending(x => x.Speed).FirstOrDefault();
-        float raw = landing == null ? 0f : Impacts.Damage(100f, landing.Speed, _w.Rules.Contacts);
-        float share = p.Health.Current / p.Health.Max;
-        Check(caught && released && landed && !p.Health.Dead && MathF.Abs(share - 0.15f) < 1e-5f && raw > 0.25f * p.Health.Max && floorSeen == 0.15f,
-            $"a tornado catches the player at 40% health, carries them {peak - spot.Y:F0} m up and flings them; the landing at {landing?.Speed:F0} m/s would cost " +
-            $"{raw / p.Health.Max:P0} of their health, and they survive at exactly {share:P2}: the fling floor, which belongs to the weather code");
-        Check(cratePeak - spot.Y > 8f && _w.Crates.Contains(crate) && crate.Body.Damage >= 0f,
-            $"the crate beside them is flung {cratePeak - spot.Y:F0} m up too, and is still there when it lands ({crate.Body.Damage / crate.Body.Integrity:P0} damage)");
+        ImpactInfo landing = impacts.Where(x => x.Body == p.Body && x.Point.Y < peak).OrderByDescending(x => x.Speed).FirstOrDefault();
+        run.Peak = peak - spot.Y;
+        run.LandingSpeed = landing?.Speed ?? 0f;
+        run.Raw = landing == null ? 0f : Impacts.Damage(100f, landing.Speed, w.Rules.Contacts) / p.Health.Max;
+        run.Share = p.Health.Current / p.Health.Max;
+        run.Dead = p.Health.Dead;
+        run.CratePeak = cratePeak - spot.Y;
+        run.CrateKept = w.Crates.Contains(crate);
+        run.CrateDamage = crate.Body.Damage / crate.Body.Integrity;
 
         // The same fall without a fling has no floor at all.
         p.Health.Set(p.Health.Max * 0.4f);
         p.PlaceOutside(spot + N.Vector3.UnitY * (peak - spot.Y));
         for (int t = 0; t < 400 && !(p.Body.OnFloor && p.Body.Velocity.Length() < 1f); t++) yield return 0;
-        Check(p.Health.Current / p.Health.Max < 0.15f,
-            $"the same fall without a fling leaves them at {p.Health.Current / p.Health.Max:P0}: the 15% floor is the tornado's alone");
-
-        _w.Weather.Calm = true;
-        _w.Weather.Sim.ClearTornadoes();
-        _w.Remove(crate);
-        p.Health.RegenDelay = 8f;
-        p.Health.Set(p.Health.Max);
-        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
-        for (int i = 0; i < 5; i++) yield return 0;
+        run.NoFlingShare = p.Health.Current / p.Health.Max;
+        w.Weather.Calm = true;
+        w.Weather.Sim.ClearTornadoes();
     }
 
     // ==== Stuck-safety ==========================================================================
