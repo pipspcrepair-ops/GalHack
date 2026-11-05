@@ -81,6 +81,7 @@ public partial class Game : Node3D
     public event Action Landed;
 
     Vector2 _stick;
+    readonly Dictionary<int, Node3D> _replicators = new();
     float _landingTime, _landingLength, _dropHeight;
     N.Vector3 _podRest;
     float _podHeading;
@@ -106,7 +107,17 @@ public partial class Game : Node3D
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
-        if (Interactive) Input.MouseMode = Input.MouseModeEnum.Captured;
+        if (Interactive)
+        {
+            Input.MouseMode = Input.MouseModeEnum.Captured;
+            // Closing the window quits through wildlife's shutdown: sound drained, caches released.
+            GetTree().AutoAcceptQuit = false;
+        }
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest && Interactive) Wildlife.Shutdown.Quit(this);
     }
 
     Vector3 Focus()
@@ -285,7 +296,7 @@ public partial class Game : Node3D
     void Fly(Vessel vessel, Controls c)
     {
         // The mouse moves a virtual stick that recentres by itself (as in ship-handling).
-        _stick = (_stick * 0.85f + c.Look * 0.02f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
+        _stick = (_stick * 0.85f + c.Look * 0.012f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
         if (c.WasPressed(Key.F))
         {
             Survivor.StandUp();
@@ -502,6 +513,7 @@ public partial class Game : Node3D
 
     public override void _Process(double delta)
     {
+        if (Suit != null) SyncReplicators();
         // A vessel in flight gets collision a column further out than someone on foot.
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false ? 3 : 2;
         if (Survivor == null)
@@ -512,6 +524,35 @@ public partial class Game : Node3D
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && (ThirdPerson || Phase == Phase.Landing)
             ? Chase(v, v == Pod ? 3.2f : 1.6f, 0.5f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : Survivor.Eye());
+    }
+
+    /// <summary>The survival replicators set down in the world, drawn as the kit's little cabinet.</summary>
+    void SyncReplicators()
+    {
+        var seen = new HashSet<int>();
+        foreach (Replicator r in Suit.Sim.Replicators)
+        {
+            seen.Add(r.Id);
+            if (_replicators.ContainsKey(r.Id)) continue;
+            var node = new Node3D { Name = $"Replicator{r.Id}", Position = new Vector3((float)r.Position.X, (float)r.Position.Y, (float)r.Position.Z) };
+            node.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh { Size = new Vector3(0.6f, 0.9f, 0.5f) }, Position = Vector3.Up * 0.45f,
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("0a9396"), Roughness = 0.5f, Metallic = 0.3f },
+            });
+            node.AddChild(new MeshInstance3D
+            {
+                Mesh = new BoxMesh { Size = new Vector3(0.62f, 0.12f, 0.52f) }, Position = Vector3.Up * 0.7f,
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("f4a100"), EmissionEnabled = true, Emission = new Color("f4a100"), EmissionEnergyMultiplier = 0.6f },
+            });
+            Zone.AddChild(node);
+            _replicators[r.Id] = node;
+        }
+        foreach (int id in _replicators.Keys.Where(id => !seen.Contains(id)).ToList())
+        {
+            _replicators[id].QueueFree();
+            _replicators.Remove(id);
+        }
     }
 
     /// <summary>A chase camera behind and above a vessel, sized to it.</summary>

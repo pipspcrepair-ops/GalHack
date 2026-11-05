@@ -40,9 +40,18 @@ public partial class VesselFx : Node3D
         if (vessel.Spec == null) return;
 
         float cell = vessel.Structure.Grid.CellSize;
-        foreach (ThrusterSpec t in vessel.Spec.Thrusters)
+        var nozzles = new List<(Vector3 at, Vector3 push)>();
+        foreach (ThrusterSpec t in vessel.Spec.Thrusters) nozzles.Add((t.Position, t.Facing.Normalized()));
+        if (nozzles.Count == 0)
         {
-            Vector3 push = t.Facing.Normalized(), exhaust = -push;
+            // No engines (the escape pod): its one-shot retro packs fire from under the floor's corners.
+            var (min, max) = vessel.Structure.Bounds();
+            for (int i = 0; i < 4; i++)
+                nozzles.Add((new Vector3((i % 2 == 0 ? min.X + 1 : max.X - 1) * cell, (min.Y - 0.5f) * cell, (i / 2 == 0 ? min.Z + 1 : max.Z - 1) * cell), Vector3.Up));
+        }
+        foreach (var (position, facing) in nozzles)
+        {
+            Vector3 push = facing, exhaust = -push;
             var flame = new MeshInstance3D
             {
                 Mesh = new CylinderMesh { TopRadius = cell * 0.32f, BottomRadius = 0.02f, Height = 1f, RadialSegments = 10, Rings = 1 },
@@ -52,7 +61,7 @@ public partial class VesselFx : Node3D
                 Visible = false,
             };
             AddChild(flame);
-            _flames.Add((flame, t.Position + exhaust * (cell * 0.5f), exhaust, push));
+            _flames.Add((flame, position + exhaust * (cell * 0.5f), exhaust, push));
         }
         for (int i = 0; i < vessel.Spec.LandingGear.Count; i++)
         {
@@ -71,13 +80,14 @@ public partial class VesselFx : Node3D
     {
         if (_vessel?.Flight == null) return;
         bool live = !_vessel.IsWreck && !_vessel.Body.Asleep && _vessel.Structure.Core != null;
+        // A retro burn draws flames longer than any thruster's, and from a sleeping body too.
         Vector3 thrust = _vessel.Flight.State.ThrustLocal;
         float boost = _vessel.Flight.State.Boosting ? 1.5f : 1f;
         foreach (var (flame, nozzle, exhaust, push) in _flames)
         {
             float effort = live ? Mathf.Clamp(thrust.Dot(push) / 10f, 0f, 1f) : 0f;
-            effort = Mathf.Max(effort, Burn);
             float length = effort > 0.03f ? 0.3f + 2.7f * effort * boost : 0f;
+            if (Burn > 0f) length = Mathf.Max(length, 2.5f + 3.5f * Burn);
             flame.Visible = length > 0.05f;
             flame.Scale = new Vector3(1f, Mathf.Max(length, 0.01f), 1f);
             flame.Position = nozzle + exhaust * (length * 0.5f);

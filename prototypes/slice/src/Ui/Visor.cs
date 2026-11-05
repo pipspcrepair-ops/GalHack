@@ -220,7 +220,7 @@ public partial class Visor : CanvasLayer
         _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), $"{heading:000}", C.Text);
 
         Vector3 feet = survivor.WorldFeet;
-        var labels = new List<float>();
+        var labels = new List<(float x, int row)>();
         void Mark(Vector3 at, string tag, Color colour)
         {
             Vector3 to = at - feet;
@@ -229,9 +229,10 @@ public partial class Visor : CanvasLayer
             float x = cx + off / 60f * width / 2;
             float d = new Vector2(to.X, to.Z).Length();
             _hud.Block(new Rect2(x - 5 * s, y + 4 * s, 10 * s, 10 * s), colour);
+            // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
-            foreach (float other in labels) if (MathF.Abs(other - x) < 110 * s) row++;
-            labels.Add(x);
+            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 110 * s)) row++;
+            labels.Add((x, row));
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Pod != null && survivor.Aboard != Game.Pod) Mark(Game.Pod.Body.Position.ToGodot(), "POD", C.Accent2);
@@ -326,7 +327,8 @@ public partial class Visor : CanvasLayer
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
         string line = $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
-        var band = new Rect2(size.X / 2 - 360 * s, size.Y * 0.72f, 720 * s, 34 * s);
+        // Under the compass, clear of the cockpit console.
+        var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
         string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Stats.LiftWarning;

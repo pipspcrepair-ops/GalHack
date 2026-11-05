@@ -76,7 +76,8 @@ public partial class SliceTest : Node
             ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)"
             : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         SetPhysicsProcess(false);
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        // Wildlife's way out: sound stopped and drained, shared caches released, then quit.
+        Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     IEnumerable<int> Scenarios()
@@ -86,6 +87,8 @@ public partial class SliceTest : Node
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
         SurfaceZone zone = _game.Zone;
+        var severe = zone.Weather.Sim.Timeline.Where(seg => seg.Start < SurfaceWeather.CalmOpening && zone.Data.Weather.State(seg.Kind).Severe).ToList();
+        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} …)");
         // The planet's weather is held calm and its creatures still for the scripted run, so it
         // can't be blown off course; each gets its own check below.
         zone.Weather.Bridge.Calm = true;

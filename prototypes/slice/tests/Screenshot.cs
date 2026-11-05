@@ -24,6 +24,7 @@ public partial class Screenshot : Node
 
     public override void _Ready()
     {
+        ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             int eq = arg.IndexOf('=');
@@ -44,7 +45,7 @@ public partial class Screenshot : Node
         if ((_elapsed += delta) > TimeoutSeconds)
         {
             GD.PrintErr($"screenshot '{_view}' timed out");
-            GetTree().Quit(1);
+            Wildlife.Shutdown.Quit(this, 1);
             return;
         }
         bool more;
@@ -52,7 +53,7 @@ public partial class Screenshot : Node
         catch (Exception e)
         {
             GD.PrintErr($"screenshot '{_view}' failed: {e}");
-            GetTree().Quit(1);
+            Wildlife.Shutdown.Quit(this, 1);
             return;
         }
         if (!more) Capture();
@@ -67,6 +68,6 @@ public partial class Screenshot : Node
         Image image = GetViewport().GetTexture().GetImage();
         Error err = image.SavePng(_out);
         GD.Print(err == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {err}");
-        GetTree().Quit(err == Error.Ok ? 0 : 1);
+        Wildlife.Shutdown.Quit(this, err == Error.Ok ? 0 : 1);
     }
 }
