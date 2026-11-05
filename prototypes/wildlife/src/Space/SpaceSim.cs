@@ -129,7 +129,6 @@ public sealed class SpaceSim
             Health = species.Stats.MaxHealth,
             Home = position,
             Position = position,
-            Altitude = 0f,
         };
         c.Rng = new Rng(Rng.Mix(species.Seed, (ulong)c.Id));
         Vector3 f = forward ?? new Vector3(c.Rng.Range(-1f, 1f), c.Rng.Range(-0.25f, 0.25f), c.Rng.Range(-1f, 1f));

@@ -101,7 +101,7 @@ public partial class Screenshot : Node
                 Species leviathan = sp.Fauna.Species.First(s => s.Swim == SwimStyle.Undulate);
                 List<Creature> shoal = sp.Sim.SpawnShoal(drifter, new Vector3(0f, 0f, -40f), 8);
                 Herd h = shoal[0].Herd;
-                Creature giant = sp.Sim.Spawn(leviathan, new Vector3(-80f, 22f, -190f), null, new Vector3(1f, -0.05f, 0.3f));
+                sp.Sim.Spawn(leviathan, new Vector3(-80f, 22f, -190f), null, new Vector3(1f, -0.05f, 0.3f));
                 _aim = () => (h.Center + new Vector3(14f, 2f, 22f), h.Center + new Vector3(-12f, 4f, -30f));
                 _captureTick = 240;
                 break;

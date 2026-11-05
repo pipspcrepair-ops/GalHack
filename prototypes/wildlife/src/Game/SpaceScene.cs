@@ -222,19 +222,4 @@ public partial class SpaceScene : Node3D
         Box(new Vector3(0.3f, 3f, 5f), new Vector3(9.6f, -2.5f, 7f), _rust, new Vector3(0, -20f, -30f));
         wreck.AddChild(new OmniLight3D { LightColor = new Color("ff3020"), LightEnergy = 2.5f, OmniRange = 14f, Position = new Vector3(7.5f, 0.5f, 4f) });
     }
-
-    /// <summary>Spawns this place's fauna where it belongs: shoals in open space or by rocks, leeches on the wreck.</summary>
-    public List<Creature> Populate(Vector3 around)
-    {
-        var all = new List<Creature>();
-        var rng = Rng.For(Fauna.Seed, "space-population", (long)Habitat);
-        foreach (Species s in Fauna.Species)
-        {
-            int count = rng.Int(s.GroupMin, s.GroupMax);
-            if (s.Rig == RigKind.Clinger && Sim.Hulls.Count > 0) all.AddRange(Sim.SpawnOnHull(s, Sim.Hulls[0], count, rng));
-            else if (s.Behaviour == Behaviour.TerritorialGiant) all.Add(Sim.Spawn(s, around + new Vector3(rng.Range(-200f, 200f), rng.Range(-40f, 40f), -420f)));
-            else all.AddRange(Sim.SpawnShoal(s, around + new Vector3(rng.Range(-20f, 20f), rng.Range(-8f, 8f), rng.Range(-60f, -30f)), count));
-        }
-        return all;
-    }
 }

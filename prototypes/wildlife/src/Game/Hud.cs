@@ -31,8 +31,10 @@ public partial class Hud : CanvasLayer
     Label _cardKicker, _cardName, _cardWhat, _cardWhere;
     StyleBoxFlat _cardStyle;
     readonly Queue<CodexEntry> _pending = new();
+    readonly Dictionary<string, Color> _stripes = new();
     CodexEntry _showing;
-    float _cardAge = -1f, _calm;
+    // The card's age in its life, how long since it last (re)entered, and how long things have been calm.
+    float _cardAge = -1f, _resume, _calm;
 
     /// <summary>Screenshots turn the cards off, except the one staged to show a card.</summary>
     public bool ShowCards = true;
@@ -191,8 +193,6 @@ public partial class Hud : CanvasLayer
         _stripes[entry.SpeciesId] = stripe;
     }
 
-    readonly Dictionary<string, Color> _stripes = new();
-
     /// <summary>Drops every card, shown or waiting (switching worlds, staging screenshots).</summary>
     public void ClearCards()
     {
@@ -215,8 +215,6 @@ public partial class Hud : CanvasLayer
         if (_stripes.TryGetValue(e.SpeciesId, out Color stripe)) _cardStyle.BorderColor = stripe;
         CardShown?.Invoke(e);
     }
-
-    float _resume;
 
     /// <summary>How long the current (or last) card has been on screen, in the HUD's own time.</summary>
     public float CardOnScreen { get; private set; }
