@@ -47,6 +47,10 @@ public static class ShipLayout
     public static readonly Vector3 SeatExitLocal = new(0, 0.05f, -8.4f);
     public static readonly Vector3 SpawnLocal = new(0, 0.05f, 4f);
 
+    /// <summary>The rear door opening (2.4 m wide, 3 m tall, in the 0.5 m rear wall).</summary>
+    public static readonly Vector3 DoorCenter = new(0, 1.5f, 12.25f);
+    public static readonly Vector3 DoorSize = new(2.4f, 3f, 0.5f);
+
     /// <summary>
     /// True while a player aboard is still in the ship. They leave once past the rear door's
     /// outer face (or if anything ever lets them slip out of the cabin).

@@ -23,15 +23,15 @@ Built on `prototypes/walkable-ship` (cabin worlds, two ships, walking aboard mov
 | `ITransport`, `EnetTransport`, `SteamTransport` | Make Godot `MultiplayerPeer`s. Steam adds friends-only lobbies, invites and the "friends hosting now" list. |
 | `SteamMultiplayerPeer` | A `MultiplayerPeerExtension` over Steam networking sockets, so RPCs, synchronizers and spawners work unchanged over Steam. It talks to an `ISteamSockets` layer: `SteamworksSockets` is the real one, `FakeSteamNetwork` an in-process fake for tests. |
 | `NetSession` | Host, join, leave, reconnect (3 tries, 1/2/4 s apart), a headless dedicated server, the player list with pings, a protocol version check. When the host leaves on purpose, clients are told and end gracefully instead of timing out. |
-| `ConditionedPeer` | Wraps any peer to add latency, jitter and loss for tests, and counts bandwidth. |
-| `SnapshotBuffer`, `NetSync` | The interpolation buffer, and synchronizers with zone filters built in code. |
+| `ConditionedPeer` | Wraps any peer to add latency, jitter and loss for tests (counted in simulation time, so a busy machine doesn't change the network), and counts bandwidth. |
+| `SnapshotBuffer`, `NetSync` | The interpolation buffer, and synchronizers with zone filters built in code. State is stamped with the physics tick it belongs to, never the wall clock, so a busy machine's catch-up bursts keep every state with its own time. When data runs late, the buffer glides on for 100 ms, then waits instead of jumping, and catches back up gently. |
 
 The game-specific part is `src/Coop`: `CoopWorld` (the replicated containers and spawners, zones, remote ship copies, avatars, the interaction RPCs), `NetShip` / `NetPlayer` (the replicated state) and `CoopGame` (one session; it rebuilds the world on a reconnect).
 
 What is replicated:
 - **Players:** zone, mode (outside, aboard, piloting), ship ID with a ship-local position, look, crouch. Sent by the owner at 30 Hz; the host passes them on to the same zone.
 - **Ships:** transform, velocity, spin and pilot, at 30 Hz; gravity and stunt state when they change.
-- **Cargo:** crates are simulated on the host and sent at 20 Hz while any is moving, once a second when they're all asleep. On clients they are frozen copies the local player still bumps into.
+- **Cargo:** crates are simulated on the host and sent at 20 Hz while any is moving, once a second when they're all asleep. On clients they are frozen copies the local player still bumps into. A cargo net across the door keeps crates aboard while people walk through.
 
 A dropped player's avatar is removed everywhere. A rejoining player gets a fresh spawn in the host's current world; real persistence is the save-system prototype's job. If the host leaves, everyone's session ends with "The host ended the session".
 
@@ -108,19 +108,24 @@ This is the part only you can test: it needs your Steam account and a friend's. 
 2. **A listen host and 3 clients**, as separate Godot processes over ENet loopback. The clients run on an 80 ms round trip, 10 ms jitter and 1.5% loss. The host flies ship A in barrel rolls at 100 m/s while client A walks circles aboard. Client B must draw A at the right ship-local spot, compared against A's own recorded path, without jumps. Also checked: bandwidth per client with 4 players; gravity toggled by one client's RPC applies everywhere; floating, then settled, cargo matches on every client; the stunt and pilot seat RPCs, with the client actually flying; a client in zone 2 gets no zone-1 entities and vice versa; a client leaves and rejoins into a consistent world (changed while it was away) with its old avatar gone everywhere; and when the host leaves, every client ends gracefully.
 3. **A headless dedicated server and 2 clients:** no local player, the same position check, bandwidth, the gravity RPC, a graceful end.
 
-Exits 0 if everything passed. Numbers from the last run (all 56 checks passed):
+**Pass or fail doesn't depend on how busy the machine is.** The scenario never waits a fixed number of seconds. It waits for states: every client sees gravity off, or the cargo has stayed below 2 cm/s for 30 host ticks and every client shows it from after that. Each client's view is compared with the truth at the exact tick its picture shows, with truth recorded per tick. Real time only bounds a test that is truly stuck. The simulator's own unit test steps a clock of its own. `.\tools\test-under-load.ps1` proves it: it runs NetTest again and again while other prototypes' tests load the CPU in parallel loops.
+
+Exits 0 if everything passed. Numbers from the last run (all 58 checks passed):
 
 ```text
-position error (B watching A aboard ship A, 100 m/s barrel rolls): 721 samples, mean 0.1 cm, p95 0.1 cm,
-  max 0.6 cm; largest jump between frames 2.6 cm (A's own largest step 2.5 cm); avatar missing 0/751 frames
-position error (dedicated server, E watching D): mean 0.1 cm, max 0.2 cm; largest jump 2.7 cm
+position error (B watching A aboard ship A, 100 m/s barrel rolls): 707 samples, mean 0.0 cm, p95 0.1 cm,
+  max 0.2 cm; largest jump between frames 2.6 cm (A's own largest step 2.5 cm); avatar missing 0/742 frames
+position error (dedicated server, E watching D): mean 0.0 cm, max 0.2 cm; largest jump 2.6 cm
 
 bandwidth per client, 4 players in one zone, ship stunting (payload / UDP incl. ENet headers):
-  down 10.5 KB/s / 11.0 KB/s (35 packets/s), up 1.4 KB/s / 1.7 KB/s (31 packets/s)
-bandwidth per client, 2 players on the dedicated server: down 5.1 KB/s, up 1.4 KB/s
+  down 7.3 KB/s / 7.8 KB/s (26 packets/s), up 1.4 KB/s / 1.7 KB/s (31 packets/s)
+bandwidth per client, 2 players on the dedicated server: down 5.2 KB/s, up 1.4 KB/s
 
-cargo: floating within 0.2 cm on every client, settled within 0.0 cm
-rejoin: ship A within 0.016 m, moved ship B within 0.000 m, gravity matches, 3 players seen
+cargo: all 7 crates stay aboard; floating within 0.4 cm on every client, settled within 0.0 cm
+rejoin: ship A within 0.000 m, moved ship B within 0.000 m, gravity matches, 3 players seen
+
+under load (tools/test-under-load.ps1): 10 of 10 runs passed with 4 load loops, 5 of 5 with 8 loops
+  (about 74% of all 16 CPU threads busy); worst position error 0.7 cm, worst jump 4.9 cm, settled cargo 0.0 cm
 ```
 
 `tests/SteamSmokeTest.tscn` is **opt-in** and uses the real Steam client on this machine (`.\tools\steam-coop-test.ps1 -Smoke`). It starts the Steam API as app 480 and checks relay network access and ping readiness. It creates a *private* lobby, sets and reads its metadata, then leaves it. It runs `SteamMultiplayerPeer`, and Godot's high-level multiplayer on top, over a real Steam socket pair on this machine, and shuts the Steam API down cleanly. It never contacts friends, never changes your profile or online status, and skips (exit 0) if Steam isn't running.
@@ -132,7 +137,7 @@ rejoin: ship A within 0.016 m, moved ship B within 0.000 m, gravity matches, 3 p
 - **Piloting has round-trip lag.** The host flies every ship, so a client pilot's controls take one round trip (about 80 ms) to bite, and they see their ship the usual 100 ms in the past. Fine for cruising, soft for racing. Next step: predict the piloted ship on the pilot's client, or hand flight to the pilot.
 - **Players don't collide with each other**, and a client can't shove crates directly: crates are frozen copies on clients, and shoves are sent to the host, so they move a moment later.
 - **No validation of trusted movement.** That's the design for friends; a stranger could teleport.
-- **Bandwidth isn't squeezed.** Full-precision state is sent at 30 Hz, even for a parked ship (about 10 KB/s down per client with 4 players). Quantising and resting detection would cut it a lot.
+- **Bandwidth isn't squeezed.** Full-precision state is sent at 30 Hz, even for a parked ship (about 7 KB/s down per client with 4 players). Quantising and resting detection would cut it a lot.
 - **The host simulates every zone all the time.** Ships don't travel between zones yet; only players do, with a debug key.
 - **No host migration**: the host leaving ends the session (by design for now). A dedicated server avoids it.
 - **Automatic reconnection is untested.** A client that loses the host unexpectedly tries 3 times (1, 2 and 4 s apart), but the tests only cover leaving and rejoining on purpose; a real cable pull over Steam is part of the manual test.

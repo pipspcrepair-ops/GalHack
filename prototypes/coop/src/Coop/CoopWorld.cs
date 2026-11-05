@@ -47,10 +47,14 @@ public partial class CoopWorld : Node, IPlayerActions
     /// <summary>Other players drawn in your zone, by peer ID.</summary>
     public IReadOnlyDictionary<int, AvatarView> Avatars => _avatars;
 
-    /// <summary>For each avatar drawn this tick: the sender-clock time drawn (s) and the snapshot used.</summary>
-    public IReadOnlyDictionary<int, (double renderTime, PlayerSnap snap)> AvatarSamples => _avatarSamples;
+    /// <summary>
+    /// For each avatar drawn this tick: the time on its owner's clock (s) that the drawn pose
+    /// shows, and the pose. While interpolating that is the render time; when packets run late
+    /// it is the moment the buffer is gliding from or holding at.
+    /// </summary>
+    public IReadOnlyDictionary<int, (double shownTime, PlayerSnap snap)> AvatarSamples => _avatarSamples;
 
-    /// <summary>Client: for each ship drawn this tick, the host-clock time (s) its motion and its cargo were drawn at.</summary>
+    /// <summary>Client: for each ship drawn this tick, the host-clock time (s) its motion and its cargo show.</summary>
     public IReadOnlyDictionary<int, (double motion, double cargo)> ShipRenderTimes => _shipRenderTimes;
 
     MultiplayerSpawner _playerSpawner, _shipSpawner;
@@ -68,7 +72,7 @@ public partial class CoopWorld : Node, IPlayerActions
     readonly List<Ship> _zoneShips = new();
     readonly Dictionary<int, AvatarView> _avatars = new();
     readonly Dictionary<int, (int ship, int mode)> _avatarFrames = new();
-    readonly Dictionary<int, (double renderTime, PlayerSnap snap)> _avatarSamples = new();
+    readonly Dictionary<int, (double shownTime, PlayerSnap snap)> _avatarSamples = new();
     readonly Dictionary<int, string> _avatarDebug = new();
 
     /// <summary>For diagnosing a test: the last sample drawn for each avatar, as text.</summary>
@@ -173,7 +177,7 @@ public partial class CoopWorld : Node, IPlayerActions
         _ships[id] = ship;
         var net = (NetShip)_shipSpawner.Spawn(SpawnData("ship", id, name, zone));
         _netShips[id] = net;
-        WriteShip(ship, net, NetClock.Ms);
+        WriteShip(ship, net, NetClock.Tick);
     }
 
     NetPlayer SpawnNetPlayer(int peer, string name, int zone, int shipId, Vector3 local)
@@ -439,9 +443,9 @@ public partial class CoopWorld : Node, IPlayerActions
         double now = NetClock.Now;
         if (IsServer)
         {
-            int ms = NetClock.Ms;
-            foreach (var (id, ship) in _ships) WriteShip(ship, _netShips[id], ms);
-            if (LocalPlayer != null && _netPlayers.TryGetValue(1, out NetPlayer me)) me.Report(ms, LocalZone, LocalSnap());
+            int tick = NetClock.Tick;
+            foreach (var (id, ship) in _ships) WriteShip(ship, _netShips[id], tick);
+            if (LocalPlayer != null && _netPlayers.TryGetValue(1, out NetPlayer me)) me.Report(tick, LocalZone, LocalSnap());
         }
         else if (LocalPlayer != null && _tick % SendEveryTicks == 0 && Session.Connected)
         {
@@ -475,10 +479,10 @@ public partial class CoopWorld : Node, IPlayerActions
         }
     }
 
-    static void WriteShip(Ship ship, NetShip net, int ms)
+    static void WriteShip(Ship ship, NetShip net, int tick)
     {
         Transform3D t = ship.GlobalTransform;
-        net.Stamp = ms;
+        net.Stamp = tick;
         net.Pos = t.Origin;
         net.Rot = t.Basis.GetRotationQuaternion();
         net.Vel = ship.Velocity;
@@ -486,7 +490,7 @@ public partial class CoopWorld : Node, IPlayerActions
         net.Pilot = ship.PilotPeer;
         net.Gravity = ship.GravityOn;
         net.Stunt = ship.StuntAutopilot;
-        net.CargoStamp = ms;
+        net.CargoStamp = tick;
         net.Cargo = ship.ReadCargo();
         net.CargoSync.ReplicationInterval = ship.CargoAwake ? NetShip.CargoAwakeInterval : NetShip.CargoAsleepInterval;
     }
@@ -510,7 +514,7 @@ public partial class CoopWorld : Node, IPlayerActions
     {
         if (LocalPlayer == null || !Session.Connected) return;
         PlayerSnap s = LocalSnap();
-        RpcId(1, MethodName.SubmitPlayer, NetClock.Ms, LocalZone, s.Mode, s.ShipId, s.Pos, s.Yaw, s.Pitch, s.Crouch);
+        RpcId(1, MethodName.SubmitPlayer, NetClock.Tick, LocalZone, s.Mode, s.ShipId, s.Pos, s.Yaw, s.Pitch, s.Crouch);
     }
 
     /// <summary>Client: crates shoved this tick go to the host, a few times a second at most.</summary>
@@ -577,8 +581,7 @@ public partial class CoopWorld : Node, IPlayerActions
                 ApplyMotion(ship, net, now);
                 ship.ResetPhysicsInterpolation();
             }
-            else ApplyMotion(ship, net, now);
-            double motionTime = net.Motion.TrySample(now, out var drawn) ? drawn.RenderTime : 0;
+            double motionTime = ApplyMotion(ship, net, now);
 
             ship.SetGravity(net.Gravity);
             ship.StuntAutopilot = net.Stunt;
@@ -586,17 +589,19 @@ public partial class CoopWorld : Node, IPlayerActions
             double cargoTime = 0;
             if (net.CargoBuffer.TrySample(now, out var cargo))
             {
-                ship.ApplyCargo(cargo.A, cargo.B, Mathf.Min(cargo.Alpha, 1f)); // crates hold rather than guess
-                cargoTime = cargo.RenderTime;
+                float alpha = Mathf.Min(cargo.Alpha, 1f); // crates hold rather than guess
+                ship.ApplyCargo(cargo.A, cargo.B, alpha);
+                cargoTime = cargo.TimeAt(alpha);
             }
             _shipRenderTimes[net.Id] = (motionTime, cargoTime);
         }
         foreach (int id in _ships.Keys.Where(id => !seen.Contains(id)).ToList()) FreeShipView(id);
     }
 
-    static void ApplyMotion(Ship ship, NetShip net, double now)
+    /// <summary>Places a remote ship from its buffer; returns the host time (s) it shows.</summary>
+    static double ApplyMotion(Ship ship, NetShip net, double now)
     {
-        if (!net.Motion.TrySample(now, out var s)) return;
+        if (!net.Motion.TrySample(now, out var s)) return 0;
         ShipSnap a = s.A, b = s.B;
         Vector3 pos;
         Quaternion rot;
@@ -618,6 +623,7 @@ public partial class CoopWorld : Node, IPlayerActions
             vel = a.Vel.Lerp(b.Vel, s.Alpha);
         }
         ship.ApplyRemoteState(new Transform3D(new Basis(rot), pos), vel, s.Extra > 0 ? b.Spin : a.Spin.Lerp(b.Spin, s.Alpha));
+        return s.Extra > 0 ? s.TimeB + Math.Min(s.Extra, MaxExtrapolation) : s.RenderTime;
     }
 
     /// <summary>Cubic Hermite: follows the curve a fast, turning ship really flew, not straight lines.</summary>
@@ -686,7 +692,8 @@ public partial class CoopWorld : Node, IPlayerActions
             var frameKey = (use.ShipId, use.Mode == (int)Player.Mode.Outside ? 0 : 1);
             if (!_avatarFrames.TryGetValue(net.PeerId, out var last) || last != frameKey) avatar.ResetPhysicsInterpolation();
             _avatarFrames[net.PeerId] = frameKey;
-            _avatarSamples[net.PeerId] = (s.RenderTime, use with { Pos = feet });
+            double shown = sameFrame ? s.TimeAt(s.Alpha) : s.Alpha >= 1f ? s.TimeB : s.TimeA;
+            _avatarSamples[net.PeerId] = (shown, use with { Pos = feet });
             _avatarDebug[net.PeerId] = $"t {s.RenderTime:F3} [{s.TimeA:F3} {s.TimeB:F3}] a {s.Alpha:F2} extra {s.Extra:F3} A {a.Pos} B {b.Pos} ship {use.ShipId} frame {frame.Origin}";
         }
         foreach (int peer in _avatars.Keys.Where(p => !seen.Contains(p)).ToList()) RemoveAvatar(peer);

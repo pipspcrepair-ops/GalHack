@@ -238,20 +238,30 @@ public static class UnitTests
         Check(worstError < 1e-6 && backwards == 0 && extrapolated < samples / 50 && minDelay > 0.13 && worstDelay < 0.16,
             $"interpolation buffer: draws {minDelay * 1000:F0}-{worstDelay * 1000:F0} ms behind the sender through 40±10 ms latency and 5% loss, never runs backwards, ran past the newest snapshot on {extrapolated} of {samples} frames");
 
-        // A gap: the sender goes quiet for 300 ms. Drawing glides on along the last motion for
-        // up to 100 ms past the newest snapshot, then holds; no stop-and-jump.
+        // A gap: the sender goes quiet for 300 ms (a stall on a busy machine), then carries on.
+        // Drawing glides on along the last motion for up to 100 ms, then its clock waits for the
+        // data; when the data comes, drawing carries on from where it was (no jump, never
+        // backwards) and creeps back to the usual delay.
         var gap = new SnapshotBuffer<double>();
-        for (int i = 0; i <= 30; i++) gap.Push(i / 30.0, i / 30.0, i / 30.0 + 0.04);
-        double glideError = 0, held = double.NaN;
-        for (double now = 1.04; now < 1.4; now += 1.0 / 60)
+        double next = 0, shownInGap = 0, lastShown = double.NaN, worstStep = 0, delayAtEnd = 0;
+        bool reversed = false;
+        for (double now = 0; now < 6; now += 1.0 / 60)
         {
-            gap.TrySample(now, out var s);
-            double value = s.A + (s.B - s.A) * s.Alpha;
-            if (s.Extra > 0 && s.Extra <= SnapshotBuffer<double>.MaxExtrapolation) glideError = Math.Max(glideError, Math.Abs(value - s.RenderTime));
-            if (s.Extra > SnapshotBuffer<double>.MaxExtrapolation + 0.02) held = value;
+            for (; next <= now - 0.04; next += 1.0 / 30)
+                if (next <= 1.0 + 1e-9 || next >= 1.3 - 1e-9) gap.Push(next, next, now);
+            if (!gap.TrySample(now, out var s)) continue;
+            double shown = s.A + (s.B - s.A) * s.Alpha;
+            if (now > 1.0 && now < 1.34) shownInGap = Math.Max(shownInGap, shown);
+            if (!double.IsNaN(lastShown))
+            {
+                worstStep = Math.Max(worstStep, shown - lastShown);
+                reversed |= shown < lastShown - 1e-9;
+            }
+            lastShown = shown;
+            delayAtEnd = now - s.RenderTime;
         }
-        Check(glideError < 1e-6 && Math.Abs(held - (1.0 + SnapshotBuffer<double>.MaxExtrapolation)) < 1e-6,
-            $"interpolation buffer: through a 300 ms gap it glides on for {SnapshotBuffer<double>.MaxExtrapolation * 1000:F0} ms along the last motion, then holds");
+        Check(Math.Abs(shownInGap - (1.0 + SnapshotBuffer<double>.MaxExtrapolation)) < 1e-6 && worstStep <= 1.06 / 60 && !reversed && delayAtEnd < 0.16,
+            $"interpolation buffer: through a 300 ms stall it glides {SnapshotBuffer<double>.MaxExtrapolation * 1000:F0} ms, waits, then carries on with no jump (largest step {worstStep * 60:F2} frames of time) and is back to {delayAtEnd * 1000:F0} ms behind");
     }
 
     static void Check(bool ok, string what)

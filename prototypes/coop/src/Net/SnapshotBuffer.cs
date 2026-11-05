@@ -4,14 +4,26 @@ using Godot;
 
 namespace GalHack.Net;
 
-/// <summary>Process-local clocks used to stamp and buffer network state.</summary>
+/// <summary>
+/// Process-local clocks. Network state is stamped and buffered in <b>simulation</b> time: the
+/// physics tick a state belongs to. A stamp then always matches its state exactly, however late,
+/// bunched or skipped the ticks run when the machine is busy (a wall-clock stamp taken during a
+/// catch-up burst would give three different states nearly the same time). Real time is only
+/// for people waiting: timeouts, pings, reconnect delays.
+/// </summary>
 public static class NetClock
 {
-    /// <summary>Milliseconds since this process started. Stamps travel as these (an int is small on the wire).</summary>
-    public static int Ms => (int)Time.GetTicksMsec();
+    /// <summary>The physics tick this process is on. Stamps travel as these (an int is small on the wire).</summary>
+    public static int Tick => (int)Engine.GetPhysicsFrames();
 
-    /// <summary>Seconds since this process started, for buffering.</summary>
-    public static double Now => Time.GetTicksUsec() / 1_000_000.0;
+    /// <summary>Seconds of simulation so far: ticks × the tick length.</summary>
+    public static double Now => Engine.GetPhysicsFrames() / (double)Engine.PhysicsTicksPerSecond;
+
+    /// <summary>A tick stamp in seconds of simulation.</summary>
+    public static double Seconds(int tick) => tick / (double)Engine.PhysicsTicksPerSecond;
+
+    /// <summary>Seconds since the process started, in real time. For timeouts and pings only.</summary>
+    public static double RealNow => Time.GetTicksUsec() / 1_000_000.0;
 }
 
 /// <summary>
@@ -22,6 +34,12 @@ public static class NetClock
 /// Snapshots carry the sender's own clock. The buffer learns the offset between that clock and
 /// ours from the fastest recent arrivals (a windowed minimum, which ignores jitter), and drifts
 /// toward a new offset slowly, by at most 5% time-warp, so the picture never jumps.
+///
+/// When snapshots stop coming (a lost burst, or a sender that stalled on a busy machine), the
+/// buffer glides on along the last motion for <see cref="MaxExtrapolation"/>, and then its clock
+/// waits for the data rather than running on into nothing (<see cref="HoldWhenStarved"/>). When
+/// the data comes, drawing carries on from where it was, with no jump, and the time-warp
+/// catches back up.
 /// </summary>
 public sealed class SnapshotBuffer<T>
 {
@@ -31,7 +49,13 @@ public sealed class SnapshotBuffer<T>
     const int MaxItems = 64;
     const int OffsetWindow = 48;
     const double MaxWarp = 0.05;
-    const double SnapOffset = 0.25;
+    const double SnapOffset = 1.0; // further behind than this, catching up by time-warp takes too long: jump
+
+    /// <summary>
+    /// Stop the clock when starved (continuous streams: players, ships). Off for streams that
+    /// legitimately go quiet, such as cargo at rest (once a second), which should just hold.
+    /// </summary>
+    public bool HoldWhenStarved = true;
 
     readonly List<(double time, T value)> _items = new();
     readonly double[] _offsets = new double[OffsetWindow];
@@ -94,6 +118,12 @@ public sealed class SnapshotBuffer<T>
         else _offset += Math.Clamp(drift, -MaxWarp * dt, MaxWarp * dt);
 
         double renderTime = now - _offset - Delay;
+        double limit = _items[^1].time + MaxExtrapolation;
+        if (HoldWhenStarved && renderTime > limit)
+        {
+            _offset += renderTime - limit; // wait here for the data
+            renderTime = limit;
+        }
         sample.RenderTime = renderTime;
 
         // Forget snapshots we have moved well past, keeping one before the render time.
@@ -153,5 +183,11 @@ public sealed class SnapshotBuffer<T>
         /// <summary>The sender-clock time being drawn.</summary>
         public double RenderTime;
         public double TimeA, TimeB;
+
+        /// <summary>
+        /// The sender-clock time a blend at <paramref name="alpha"/> actually shows. It is the
+        /// render time while interpolating, and lags it when the buffer runs dry and holds.
+        /// </summary>
+        public readonly double TimeAt(float alpha) => TimeB > TimeA ? TimeA + alpha * (TimeB - TimeA) : TimeB;
     }
 }

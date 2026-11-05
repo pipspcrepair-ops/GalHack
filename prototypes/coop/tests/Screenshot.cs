@@ -32,7 +32,7 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
         }
         _out = System.IO.Path.GetFullPath(_out);
-        _started = NetClock.Now;
+        _started = NetClock.RealNow;
 
         if (_view == "title")
         {
@@ -86,7 +86,7 @@ public partial class Screenshot : Node
 
     public override void _Process(double delta)
     {
-        if (NetClock.Now - _started > 120) Done(1); // never hang
+        if (NetClock.RealNow - _started > 120) Done(1); // never hang
     }
 
     void Done(int code)

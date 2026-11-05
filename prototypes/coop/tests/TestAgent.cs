@@ -16,12 +16,18 @@ namespace Coop;
 ///
 /// Commands travel over the game's own connection, so they suffer the same simulated latency
 /// and loss as everything else (they are reliable RPCs, so they still arrive).
+///
+/// Nothing here depends on how fast the machine is. Truth is recorded per simulation tick, and
+/// a client's view is compared with the truth at the exact moment it shows (its snapshot
+/// stamps), not at a wall-clock time. The scenario waits for states ("every client sees
+/// gravity off", "the cargo has come to rest"), never for a fixed number of seconds; real-time
+/// limits only catch a test that is truly stuck.
 /// </summary>
 public partial class TestAgent : Node
 {
     public CoopGame Game;
     public string TestName = "";
-    public string Scenario = "";   // "listen" or "dedicated" on the director; empty on clients
+    public string Scenario = "";   // "listen", "dedicated" or "shot" on the director; empty on clients
     public string SimDescription = "";
 
     /// <summary>Where the "capture" command saves screenshots (windowed runs only).</summary>
@@ -31,25 +37,30 @@ public partial class TestAgent : Node
     bool IsDirector => Scenario.Length > 0;
     CoopWorld World => Game.World;
 
-    const double Watchdog = 170;
+    const double Watchdog = 420;       // real seconds: only for a test that is stuck
+    const double StateTimeout = 60;    // real seconds to reach a state; generous, since a busy machine is slow
+    const int SettledTicks = 30;       // cargo counts as settled after this many ticks below the speeds below
+    const float SettledSpeed = 0.02f, SettledSpin = 0.05f;
 
     // Walking a circle here (left turns, centre 1.2 m to the left) stays clear of the crates and furniture.
     static readonly Vector3 WalkStart = new(2.7f, 0.05f, -7.5f);
     const float WalkRadius = 1.2f;
-    readonly double _started = NetClock.Now;
+    readonly double _started = NetClock.RealNow;
     bool _expectLeave, _done;
+
+    static double TicksPerSecond => Engine.PhysicsTicksPerSecond;
 
     // ---- Client side: what is being measured --------------------------------------------------
 
     bool _walking;
     float _walkYaw, _walkTurn, _walkSpeed;
-    readonly List<int> _truthTimes = new();
+    readonly List<int> _truthTicks = new();
     readonly List<Vector3> _truthPositions = new();
 
     int _observePeer, _observeShip, _observeMissing, _observeFrames;
     float _observeMaxStep;
     Vector3? _observeLast;
-    readonly List<double> _seenTimes = new();
+    readonly List<double> _seenTicks = new();
     readonly List<Vector3> _seenPositions = new();
 
     (long bytesIn, long bytesOut, long packetsIn, long packetsOut, double at) _meter;
@@ -60,7 +71,8 @@ public partial class TestAgent : Node
     readonly Dictionary<string, int> _ready = new();
     readonly Dictionary<int, TaskCompletionSource<Dict>> _waiting = new();
     int _nextRequest;
-    readonly Dictionary<int, List<(int ms, Vector3 pos, Vector3[] crates)>> _history = new();
+    readonly Dictionary<int, List<(int tick, Vector3 pos, Vector3[] crates)>> _history = new();
+    int _restingTicks;
 
     public override void _Ready()
     {
@@ -72,7 +84,7 @@ public partial class TestAgent : Node
 
     public override void _Process(double delta)
     {
-        if (!_done && NetClock.Now - _started > Watchdog)
+        if (!_done && NetClock.RealNow - _started > Watchdog)
         {
             Fail($"{TestName}: watchdog, still running after {Watchdog} s");
             Finish();
@@ -131,7 +143,7 @@ public partial class TestAgent : Node
         if (_waiting.Remove(id, out var waiter)) waiter.SetResult(result);
     }
 
-    async Task<Dict> Ask(string name, string op, Dict args = null, double timeout = 15)
+    async Task<Dict> Ask(string name, string op, Dict args = null, double timeout = StateTimeout)
     {
         if (!_ready.TryGetValue(name, out int peer)) throw new InvalidOperationException($"{name} isn't connected");
         int id = ++_nextRequest;
@@ -153,17 +165,39 @@ public partial class TestAgent : Node
         return tasks.ToDictionary(t => t.Key, t => t.Value.Result);
     }
 
-    async Task Until(Func<bool> done, double timeout, string what)
+    /// <summary>
+    /// Asks every client again and again until each answer passes <paramref name="ok"/>, and
+    /// returns the answers. If it never happens, returns the last answers (the check then fails
+    /// and says what they were).
+    /// </summary>
+    async Task<Dictionary<string, Dict>> AskUntil(IEnumerable<string> names, string op, Dict args, Func<Dict, bool> ok)
     {
-        double end = NetClock.Now + timeout;
-        while (!done())
+        double end = NetClock.RealNow + StateTimeout;
+        while (true)
         {
-            if (NetClock.Now > end) throw new TimeoutException($"timed out waiting for {what}");
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            var answers = await AskAll(names, op, args);
+            if (answers.Values.All(ok) || NetClock.RealNow > end) return answers;
+            await SimSeconds(0.1);
         }
     }
 
-    async Task Seconds(double seconds) => await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);
+    /// <summary>Waits for a state. Real time only bounds it, to catch a stuck test.</summary>
+    async Task Until(Func<bool> done, double timeout, string what)
+    {
+        double end = NetClock.RealNow + timeout;
+        while (!done())
+        {
+            if (NetClock.RealNow > end) throw new TimeoutException($"timed out waiting for {what}");
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
+    /// <summary>Waits for this many seconds of simulation (physics ticks), however long they take.</summary>
+    async Task SimSeconds(double seconds)
+    {
+        int until = NetClock.Tick + (int)Math.Ceiling(seconds * TicksPerSecond);
+        await Until(() => NetClock.Tick >= until, StateTimeout + seconds * 10, $"{seconds} s of simulation");
+    }
 
     // ---- Client: commands -------------------------------------------------------------------------
 
@@ -183,7 +217,7 @@ public partial class TestAgent : Node
                 _walkSpeed = args["speed"].AsSingle();
                 _walkTurn = _walkSpeed / args["radius"].AsSingle();
                 _walkYaw = player.Yaw;
-                _truthTimes.Clear();
+                _truthTicks.Clear();
                 _truthPositions.Clear();
                 _walking = true;
                 return Ok();
@@ -193,7 +227,7 @@ public partial class TestAgent : Node
                 player.ScriptedMove = null;
                 return new Dict
                 {
-                    ["t"] = _truthTimes.ToArray(), ["pos"] = _truthPositions.ToArray(),
+                    ["t"] = _truthTicks.ToArray(), ["pos"] = _truthPositions.ToArray(),
                     ["max_step"] = _truthPositions.Zip(_truthPositions.Skip(1), (p, q) => p.DistanceTo(q)).DefaultIfEmpty(0f).Max(),
                 };
 
@@ -203,7 +237,7 @@ public partial class TestAgent : Node
                 _observeMissing = _observeFrames = 0;
                 _observeMaxStep = 0;
                 _observeLast = null;
-                _seenTimes.Clear();
+                _seenTicks.Clear();
                 _seenPositions.Clear();
                 return Ok();
 
@@ -211,7 +245,7 @@ public partial class TestAgent : Node
                 _observePeer = 0;
                 return new Dict
                 {
-                    ["t"] = _seenTimes.ToArray(), ["pos"] = _seenPositions.ToArray(),
+                    ["t"] = _seenTicks.ToArray(), ["pos"] = _seenPositions.ToArray(),
                     ["max_step"] = _observeMaxStep, ["missing"] = _observeMissing, ["frames"] = _observeFrames,
                 };
 
@@ -232,20 +266,18 @@ public partial class TestAgent : Node
 
             case "sit":
                 player.DebugPlaceAboard(World.Ships[args["ship"].AsInt32()], ShipLayout.SeatExitLocal, Vector3.Zero);
-                await Seconds(0.2);
+                await SimSeconds(0.2);
                 Press(Key.F); // the real path: F asks the host for the seat
-                await Seconds(1.0);
+                await UntilQuietly(() => player.CurrentMode == Player.Mode.Piloting);
                 return new Dict { ["mode"] = (int)player.CurrentMode };
 
             case "stand":
                 Press(Key.F);
-                await Seconds(0.5);
+                await UntilQuietly(() => player.CurrentMode == Player.Mode.Aboard);
                 return new Dict { ["mode"] = (int)player.CurrentMode };
 
             case "thrust":
-                Hold(Key.W, true);
-                await Seconds(args["seconds"].AsDouble());
-                Hold(Key.W, false);
+                Hold(Key.W, args["on"].AsBool());
                 return Ok();
 
             case "state":
@@ -285,13 +317,20 @@ public partial class TestAgent : Node
         throw new ArgumentException($"unknown command {op}");
     }
 
+    /// <summary>Waits for a state, but just stops waiting at the limit (the director checks the outcome).</summary>
+    async Task UntilQuietly(Func<bool> done)
+    {
+        try { await Until(done, StateTimeout, "a state"); }
+        catch (TimeoutException) { }
+    }
+
     async Task Rejoin(double after)
     {
-        await Seconds(0.3);
+        await SimSeconds(0.3);
         _expectLeave = true;
         GD.Print($"[{TestName}] leaving on purpose, rejoining in {after:F1} s");
         Game.Leave();
-        await Seconds(after);
+        await SimSeconds(after);
         _expectLeave = false;
         Error result = Game.Rejoin();
         GD.Print($"[{TestName}] rejoining: {result}");
@@ -308,6 +347,7 @@ public partial class TestAgent : Node
     static void Hold(Key key, bool pressed) =>
         Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Keycode = key, Pressed = pressed });
 
+    /// <summary>What this client shows of some ships. "t" and "cargo_t" are the host ticks they show.</summary>
     Dict State(int[] ships)
     {
         var result = new Dict { ["mode"] = World.LocalPlayer != null ? (int)World.LocalPlayer.CurrentMode : -1 };
@@ -322,8 +362,8 @@ public partial class TestAgent : Node
                 ["stunt"] = ship.StuntAutopilot,
                 ["pilot"] = ship.PilotPeer,
                 ["speed"] = ship.Speed,
-                ["t"] = times.motion * 1000.0,
-                ["cargo_t"] = times.cargo * 1000.0,
+                ["t"] = times.motion * TicksPerSecond,
+                ["cargo_t"] = times.cargo * TicksPerSecond,
                 ["crates"] = Enumerable.Range(0, ship.Crates.Count).Select(ship.CratePosition).ToArray(),
             };
         }
@@ -341,17 +381,18 @@ public partial class TestAgent : Node
         ["views"] = World.Ships.Keys.ToArray(),
     };
 
+    // Bandwidth is per second of real time: it is what the network carries.
     void StartMeter()
     {
         ConditionedPeer peer = Game.Session.Peer;
-        _meter = (peer.BytesIn, peer.BytesOut, peer.PacketsIn, peer.PacketsOut, NetClock.Now);
+        _meter = (peer.BytesIn, peer.BytesOut, peer.PacketsIn, peer.PacketsOut, NetClock.RealNow);
         Game.Session.Transport.TryPopWireStats(out _, out _, out _, out _);
     }
 
     Dict StopMeter()
     {
         ConditionedPeer peer = Game.Session.Peer;
-        double seconds = NetClock.Now - _meter.at;
+        double seconds = NetClock.RealNow - _meter.at;
         Game.Session.Transport.TryPopWireStats(out _wireOut, out _wireIn, out _wirePacketsOut, out _wirePacketsIn);
         return new Dict
         {
@@ -377,14 +418,14 @@ public partial class TestAgent : Node
             _walkYaw += _walkTurn * (float)delta;
             player.DebugSetLook(_walkYaw, 0f);
             player.ScriptedMove = new Vector2(0f, -_walkSpeed / 5.5f); // walk speed is 5.5 m/s at full stick
-            _truthTimes.Add(NetClock.Ms);
+            _truthTicks.Add(NetClock.Tick); // the same tick its report to the host is stamped with
             _truthPositions.Add(player.ShipLocalPosition);
         }
         if (_observePeer != 0) Observe();
         if (IsDirector) Record();
     }
 
-    /// <summary>Where the watched player is drawn, in the ship's own frame, and how far it jumped since last tick.</summary>
+    /// <summary>Where the watched player is drawn, in the ship's own frame, the moment it shows, and how far it jumped since last tick.</summary>
     void Observe()
     {
         _observeFrames++;
@@ -401,34 +442,40 @@ public partial class TestAgent : Node
         {
             float step = last.DistanceTo(local);
             _observeMaxStep = Mathf.Max(_observeMaxStep, step);
-            if (step > 0.5f) GD.Print($"[{TestName}] JUMP {step:F2} m from {last} to {local}: {World.AvatarDebug.GetValueOrDefault(_observePeer)} / ship at {ship.GlobalPosition}");
+            if (step > 0.1f) GD.Print($"[{TestName}] JUMP {step * 100:F1} cm: {World.AvatarDebug.GetValueOrDefault(_observePeer)}");
         }
         _observeLast = local;
-        _seenTimes.Add(sample.renderTime * 1000.0);
+        _seenTicks.Add(sample.shownTime * TicksPerSecond);
         _seenPositions.Add(local);
     }
 
-    /// <summary>Director: the host's truth for every ship and its cargo, for the last 15 s.</summary>
+    /// <summary>Director: the host's truth for every ship and its cargo, per tick, for the last 15 s of simulation.</summary>
     void Record()
     {
-        int ms = NetClock.Ms;
+        int tick = NetClock.Tick;
+        bool resting = true;
         foreach (var (id, ship) in World.Ships)
         {
             if (!_history.TryGetValue(id, out var list)) _history[id] = list = new();
-            list.Add((ms, ship.GlobalPosition, Enumerable.Range(0, ship.Crates.Count).Select(ship.CratePosition).ToArray()));
+            list.Add((tick, ship.GlobalPosition, Enumerable.Range(0, ship.Crates.Count).Select(ship.CratePosition).ToArray()));
             if (list.Count > 900) list.RemoveAt(0);
+            if (id == 1)
+                foreach (RigidBody3D crate in ship.Crates)
+                    resting &= crate.LinearVelocity.Length() < SettledSpeed && crate.AngularVelocity.Length() < SettledSpin;
         }
+        _restingTicks = resting ? _restingTicks + 1 : 0;
     }
 
-    (Vector3 pos, Vector3[] crates) HistoryAt(int ship, double ms)
+    /// <summary>The host's truth at a (possibly fractional) tick.</summary>
+    (Vector3 pos, Vector3[] crates) HistoryAt(int ship, double tick)
     {
         var list = _history[ship];
         for (int i = list.Count - 1; i > 0; i--)
         {
-            if (list[i - 1].ms > ms) continue;
+            if (list[i - 1].tick > tick) continue;
             var (t0, p0, c0) = list[i - 1];
             var (t1, p1, c1) = list[i];
-            float f = t1 > t0 ? (float)Math.Clamp((ms - t0) / (t1 - t0), 0, 1) : 0f;
+            float f = t1 > t0 ? (float)Math.Clamp((tick - t0) / (t1 - t0), 0, 1) : 0f;
             return (p0.Lerp(p1, f), c0.Zip(c1, (a, b) => a.Lerp(b, f)).ToArray());
         }
         return (list[0].pos, list[0].crates);
@@ -450,14 +497,16 @@ public partial class TestAgent : Node
         }
         GD.Print(Failures == 0 ? $"[{TestName}] SCENARIO PASSED" : $"[{TestName}] SCENARIO FAILED: {Failures} check(s)");
         Game.Leave(); // ends the session for everyone, gracefully
-        await Seconds(1.0);
+        await SimSeconds(1.0);
         Finish();
     }
+
+    static Dict Ships(params int[] ids) => new() { ["ships"] = ids };
 
     async Task ListenScenario()
     {
         string[] clients = { "A", "B", "C" };
-        await Until(() => clients.All(_ready.ContainsKey), 60, "3 clients to join");
+        await Until(() => clients.All(_ready.ContainsKey), StateTimeout, "3 clients to join");
         Pass($"host + 3 clients joined over ENet loopback, clients on {SimDescription}");
         Ship shipA = World.Ships[1];
 
@@ -470,68 +519,80 @@ public partial class TestAgent : Node
         shipA.StuntSpeed = 100f;
         shipA.StuntIntensity = 2f;
         World.RequestStunt(shipA, true);
-        await Seconds(2.0);
+        await SimSeconds(2.0);
 
         await AskAll(clients, "meter-start");
         await Ask("A", "walk", new Dict { ["radius"] = WalkRadius, ["speed"] = 1.5f });
         await Ask("B", "observe", new Dict { ["peer"] = _ready["A"], ["ship"] = 1 });
-        await Seconds(12.0);
+        await SimSeconds(12.0);
         var meters = await AskAll(clients, "meter-stop"); // before the test's own reports go up
-        Dict truth = await Ask("A", "walk-stop");
         Dict seen = await Ask("B", "observe-stop");
+        Dict truth = await Ask("A", "walk-stop");
         CheckPositionError("B watching A aboard ship A (100 m/s barrel rolls)", truth, seen, maxError: 0.12f, maxStep: 0.15f);
         PrintBandwidth("4 players in one zone, ship stunting", meters);
 
         // Gravity toggled by one client's RPC, seen everywhere.
         await Ask("C", "gravity", new Dict { ["ship"] = 1 });
-        await Seconds(1.0);
-        var states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
+        var states = await AskUntil(clients, "state", Ships(1), s => !Ship1(s)["gravity"].AsBool());
         Check(!shipA.GravityOn && states.Values.All(s => !Ship1(s)["gravity"].AsBool()),
             $"gravity toggle from C's RPC applied on the host and all 3 clients (host {On(shipA.GravityOn)}, clients {string.Join("/", states.Values.Select(s => On(Ship1(s)["gravity"].AsBool())))})");
 
-        // Cargo floats in zero-g on the host; every client draws it where the host had it.
-        await Seconds(1.5);
-        states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
+        // Cargo floats in zero-g on the host; every client draws it as the host had it at the moment it shows.
+        await SimSeconds(1.5);
+        states = await AskAll(clients, "state", Ships(1));
         CheckCargo("floating cargo", states, 1, 0.15f);
+
+        // Gravity back on: wait until the cargo has come to rest on the host, then until every
+        // client shows the cargo from after that moment.
         World.RequestGravity(shipA);
-        await Seconds(6.0);
-        states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
+        _restingTicks = 0;
+        if (!await Reached(() => _restingTicks >= SettledTicks))
+            throw new TimeoutException("the cargo never settled: " + string.Join("; ", shipA.Crates.Select(c =>
+                $"{c.Name} v {c.LinearVelocity.Length():F3} w {c.AngularVelocity.Length():F3} sleeping {c.Sleeping} at {c.Position}")));
+        int settled = NetClock.Tick - SettledTicks;
+        Check(shipA.Crates.All(c => ShipLayout.Cabin.HasPoint(c.Position)),
+            $"all {shipA.Crates.Count} crates came to rest inside the cabin (none lost through a wall or the door)");
+        states = await AskUntil(clients, "state", Ships(1), s => Ship1(s)["cargo_t"].AsDouble() >= settled);
         CheckCargo("settled cargo", states, 1, 0.03f);
 
         // Stunt autopilot off by B's RPC.
         await Ask("B", "stunt", new Dict { ["ship"] = 1, ["on"] = false });
-        await Seconds(0.8);
-        states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
+        states = await AskUntil(clients, "state", Ships(1), s => !Ship1(s)["stunt"].AsBool());
         Check(!shipA.StuntAutopilot && states.Values.All(s => !Ship1(s)["stunt"].AsBool()), "stunt autopilot switched off by B's RPC, everywhere");
 
         // A asks for the pilot seat, flies, and stands up.
         shipA.Velocity = Vector3.Zero;
         shipA.LocalAngularVelocity = Vector3.Zero;
-        Dict sat = await Ask("A", "sit", new Dict { ["ship"] = 1 });
-        states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
         int a = _ready["A"];
+        Dict sat = await Ask("A", "sit", new Dict { ["ship"] = 1 });
+        states = await AskUntil(clients, "state", Ships(1), s => Ship1(s)["pilot"].AsInt32() == a);
         Check(shipA.PilotPeer == a && sat["mode"].AsInt32() == (int)Player.Mode.Piloting && states.Values.All(s => Ship1(s)["pilot"].AsInt32() == a),
             "A sat in the pilot seat by RPC; the host and every client agree A is flying");
-        await Ask("A", "thrust", new Dict { ["seconds"] = 1.5 });
-        Check(shipA.Speed > 10f, $"A's flight inputs reach the host, which flies the ship ({shipA.Speed:F0} m/s after 1.5 s of thrust)");
+        await Ask("A", "thrust", new Dict { ["on"] = true });
+        bool flew = await Reached(() => shipA.Speed > 10f);
+        await Ask("A", "thrust", new Dict { ["on"] = false });
+        Check(flew, $"A's flight inputs reach the host, which flies the ship ({shipA.Speed:F0} m/s under A's thrust)");
         Dict stood = await Ask("A", "stand");
-        await Seconds(0.5);
-        Check(shipA.PilotPeer == 0 && stood["mode"].AsInt32() == (int)Player.Mode.Aboard, "A stood up; the seat is free again");
+        bool free = await Reached(() => shipA.PilotPeer == 0);
+        Check(free && stood["mode"].AsInt32() == (int)Player.Mode.Aboard, "A stood up; the seat is free again");
 
         // Zones: B goes to the moon. It must get nothing from the desert, and the desert nothing of B.
-        await Ask("B", "zone", new Dict { ["zone"] = Zones.Moon });
-        await Seconds(2.0);
-        Dict bView = await Ask("B", "entities");
         int b = _ready["B"];
-        Check(bView["ships"].AsInt32Array().SequenceEqual(new[] { 3 }) && bView["players"].AsInt32Array().Length == 0
-              && bView["ship_zones"].AsInt32Array().All(z => z == Zones.Moon),
-            $"B in zone 2 has only zone-2 entities (ships [{Ids(bView["ships"])}], players [{Ids(bView["players"])}])");
+        await Ask("B", "zone", new Dict { ["zone"] = Zones.Moon });
+        Func<Dict, bool> onlyMoon = v => v["ships"].AsInt32Array().SequenceEqual(new[] { 3 }) && v["players"].AsInt32Array().Length == 0
+                                         && v["ship_zones"].AsInt32Array().All(z => z == Zones.Moon);
+        Func<Dict, bool> noB = v => !v["ships"].AsInt32Array().Contains(3) && !v["players"].AsInt32Array().Contains(b) && !v["avatars"].AsInt32Array().Contains(b);
+        await AskUntil(new[] { "B" }, "entities", null, onlyMoon);
+        await AskUntil(new[] { "A", "C" }, "entities", null, noB);
+        await SimSeconds(1.0); // and it stays that way
+        Dict bView = await Ask("B", "entities");
+        Check(onlyMoon(bView), $"B in zone 2 has only zone-2 entities (ships [{Ids(bView["ships"])}], players [{Ids(bView["players"])}])");
         var desert = await AskAll(new[] { "A", "C" }, "entities");
-        Check(desert.Values.All(v => !v["ships"].AsInt32Array().Contains(3) && !v["players"].AsInt32Array().Contains(b) && !v["avatars"].AsInt32Array().Contains(b)),
+        Check(desert.Values.All(noB),
             $"A and C in zone 1 have no zone-2 entities: no ship C, no B ({string.Join("; ", desert.Select(kv => $"{kv.Key}: ships [{Ids(kv.Value["ships"])}] players [{Ids(kv.Value["players"])}]"))})");
         await Ask("B", "zone", new Dict { ["zone"] = Zones.Desert });
-        await Seconds(2.0);
-        bView = await Ask("B", "entities");
+        bView = (await AskUntil(new[] { "B" }, "entities", null,
+            v => v["ships"].AsInt32Array().OrderBy(i => i).SequenceEqual(new[] { 1, 2 }) && v["players"].AsInt32Array().Length == 3))["B"];
         Check(bView["ships"].AsInt32Array().OrderBy(i => i).SequenceEqual(new[] { 1, 2 }) && bView["players"].AsInt32Array().Length == 3,
             $"B back in zone 1 gets zone 1 again (ships [{Ids(bView["ships"])}], players [{Ids(bView["players"])}])");
 
@@ -539,19 +600,20 @@ public partial class TestAgent : Node
         int oldC = _ready["C"];
         _ready.Remove("C");
         await Ask2(oldC, "rejoin", new Dict { ["after"] = 2.0 });
-        await Until(() => !World.NetPlayers.Any(p => p.PeerId == oldC), 10, "C's avatar to go");
-        await Seconds(0.5);
-        var others = await AskAll(new[] { "A", "B" }, "entities");
+        await Until(() => !World.NetPlayers.Any(p => p.PeerId == oldC), StateTimeout, "C's avatar to go");
+        var others = await AskUntil(new[] { "A", "B" }, "entities", null,
+            v => !v["players"].AsInt32Array().Contains(oldC) && !v["avatars"].AsInt32Array().Contains(oldC));
         Check(others.Values.All(v => !v["players"].AsInt32Array().Contains(oldC) && !v["avatars"].AsInt32Array().Contains(oldC)),
             "C left: its avatar is gone on the host, A and B");
         World.RequestGravity(shipA); // off again
         Ship shipB = World.Ships[2];
         shipB.Position = new Vector3(40f, 25f, -30f);
         shipB.Basis = new Basis(Vector3.Up, 0.7f);
-        await Until(() => _ready.ContainsKey("C"), 30, "C to rejoin");
-        await Seconds(2.5);
-        Dict c = await Ask("C", "state", new Dict { ["ships"] = new[] { 1, 2 } });
-        Dict cView = await Ask("C", "entities");
+        int moved = NetClock.Tick;
+        await Until(() => _ready.ContainsKey("C"), StateTimeout, "C to rejoin");
+        Dict c = (await AskUntil(new[] { "C" }, "state", Ships(1, 2),
+            s => s.ContainsKey("1") && s.ContainsKey("2") && ((Dict)s["2"])["t"].AsDouble() >= moved))["C"];
+        Dict cView = (await AskUntil(new[] { "C" }, "entities", null, v => v["players"].AsInt32Array().Length == 3))["C"];
         Dict cA = (Dict)c["1"], cB = (Dict)c["2"];
         Vector3 aTruth = HistoryAt(1, cA["t"].AsDouble()).pos;
         float shipAError = cA["pos"].AsVector3().DistanceTo(aTruth), shipBError = cB["pos"].AsVector3().DistanceTo(shipB.GlobalPosition);
@@ -565,7 +627,7 @@ public partial class TestAgent : Node
     async Task DedicatedScenario()
     {
         string[] clients = { "D", "E" };
-        await Until(() => clients.All(_ready.ContainsKey), 60, "2 clients to join");
+        await Until(() => clients.All(_ready.ContainsKey), StateTimeout, "2 clients to join");
         Check(World.LocalPlayer == null && World.NetPlayers.Count() == 2 && !World.NetPlayers.Any(p => p.PeerId == 1) && World.Avatars.Count == 0,
             "dedicated server: no local player, just the 2 clients' avatars, nothing drawn");
         Ship shipA = World.Ships[1];
@@ -574,27 +636,26 @@ public partial class TestAgent : Node
         shipA.Position = new Vector3(0, 300, 0);
         shipA.StuntIntensity = 1.5f;
         World.SetStunt(1, true);
-        await Seconds(1.5);
+        await SimSeconds(1.5);
         await AskAll(clients, "meter-start");
         await Ask("D", "walk", new Dict { ["radius"] = WalkRadius, ["speed"] = 1.5f });
         await Ask("E", "observe", new Dict { ["peer"] = _ready["D"], ["ship"] = 1 });
-        await Seconds(8.0);
+        await SimSeconds(8.0);
         var meters = await AskAll(clients, "meter-stop");
-        Dict truth = await Ask("D", "walk-stop");
         Dict seen = await Ask("E", "observe-stop");
+        Dict truth = await Ask("D", "walk-stop");
         CheckPositionError("dedicated: E watching D aboard the stunting ship", truth, seen, maxError: 0.12f, maxStep: 0.15f);
         PrintBandwidth("2 players on a dedicated server", meters);
 
         await Ask("E", "gravity", new Dict { ["ship"] = 1 });
-        await Seconds(1.0);
-        var states = await AskAll(clients, "state", new Dict { ["ships"] = new[] { 1 } });
+        var states = await AskUntil(clients, "state", Ships(1), s => !Ship1(s)["gravity"].AsBool());
         Check(!shipA.GravityOn && states.Values.All(s => !Ship1(s)["gravity"].AsBool()), "dedicated: E's gravity RPC applied on the server and on D");
     }
 
     /// <summary>Screenshots: sets the scene for the windowed client "Kit", which captures what it sees.</summary>
     async Task ShotScenario()
     {
-        await Until(() => _ready.ContainsKey("Ana") && _ready.ContainsKey("Kit"), 60, "Ana and Kit to join");
+        await Until(() => _ready.ContainsKey("Ana") && _ready.ContainsKey("Kit"), StateTimeout, "Ana and Kit to join");
         Ship shipA = World.Ships[1];
         shipA.Position = new Vector3(0, 140, 0);
         shipA.StuntSpeed = 45f;
@@ -605,17 +666,17 @@ public partial class TestAgent : Node
         await Ask("Ana", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(1.7f, 0.05f, 5.6f), ["yaw"] = Mathf.Pi + 0.6f });
         await Ask("Kit", "place", new Dict { ["ship"] = 1, ["pos"] = new Vector3(0.3f, 0.05f, 8.3f), ["yaw"] = 0.05f });
         await Ask("Kit", "look", new Dict { ["yaw"] = 0.05f, ["pitch"] = -0.12f, ["third"] = true });
-        await Seconds(4.0);
+        await SimSeconds(4.0);
         await Ask("Kit", "capture", new Dict { ["name"] = "aboard" });
 
         // The moon zone: Kit and Ana go; the host and the desert ships stay behind.
         await Ask("Ana", "zone", new Dict { ["zone"] = Zones.Moon });
         await Ask("Kit", "zone", new Dict { ["zone"] = Zones.Moon });
-        await Seconds(1.0);
+        await SimSeconds(1.0);
         await Ask("Ana", "place-outside", new Dict { ["pos"] = new Vector3(-6.3f, 0.05f, 25.4f), ["yaw"] = 2.25f });
         await Ask("Kit", "place-outside", new Dict { ["pos"] = new Vector3(-12f, 0.05f, 30f), ["yaw"] = -0.55f });
         await Ask("Kit", "look", new Dict { ["yaw"] = -0.55f, ["pitch"] = 0.08f, ["third"] = true });
-        await Seconds(2.0);
+        await SimSeconds(2.0);
         await Ask("Kit", "capture", new Dict { ["name"] = "moon" });
     }
 
@@ -627,8 +688,27 @@ public partial class TestAgent : Node
         _ready.Remove("__leaving");
     }
 
+    /// <summary>True once the state holds; false if it never does (the check then fails).</summary>
+    async Task<bool> Reached(Func<bool> state)
+    {
+        try
+        {
+            await Until(state, StateTimeout, "a state");
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
     // ---- Director: checks ---------------------------------------------------------------------------
 
+    /// <summary>
+    /// What B drew against what A really did, at the very moment B's picture shows (on A's own
+    /// tick clock), so a busy machine that delays B's picture can't fake an error; and how far
+    /// the picture ever jumped between two of B's frames.
+    /// </summary>
     void CheckPositionError(string what, Dict truth, Dict seen, float maxError, float maxStep)
     {
         int[] tt = truth["t"].AsInt32Array();
@@ -639,7 +719,7 @@ public partial class TestAgent : Node
         for (int i = 0; i < st.Length; i++)
         {
             double t = st[i];
-            if (tt.Length < 2 || t < tt[0] + 500 || t > tt[^1]) continue; // skip the first half second of walking
+            if (tt.Length < 2 || t < tt[0] + TicksPerSecond / 2 || t > tt[^1]) continue; // skip the first half second of walking
             int j = Array.FindIndex(tt, x => x >= t);
             if (j <= 0) continue;
             float f = tt[j] > tt[j - 1] ? (float)((t - tt[j - 1]) / (tt[j] - tt[j - 1])) : 0f;
@@ -657,6 +737,7 @@ public partial class TestAgent : Node
             $"{what}: drawn at the right ship-local spot (max error {max * 100:F1} cm < {maxError * 100:F0} cm), never popping (max {step * 100:F1} cm/frame < {maxStep * 100:F0} cm)");
     }
 
+    /// <summary>Every client's crates against the host's, at the host tick each client shows.</summary>
     void CheckCargo(string what, Dictionary<string, Dict> states, int ship, float tolerance)
     {
         float worst = 0f;
