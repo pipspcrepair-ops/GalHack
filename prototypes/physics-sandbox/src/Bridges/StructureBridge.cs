@@ -298,9 +298,10 @@ public sealed class StructureVessel : IVesselStructure
 }
 
 /// <summary>
-/// Which air cells are inside a structure, for boarding: covered above and floored below in
-/// the same column, and walled on at least three of the four sides. A doorway counts as inside
-/// (it has a wall either side and the cabin behind it), the deck outside does not.
+/// Which air cells are inside a structure: covered above and floored below in the same column,
+/// and walled on at least three of the four sides. A doorway counts as inside (it has a wall
+/// either side and the cabin behind it), the deck outside does not. Inside, a rider's down is the
+/// core's; outside it is on the outer hull.
 /// </summary>
 public sealed class InteriorMap
 {
@@ -323,18 +324,6 @@ public sealed class InteriorMap
     {
         Int3 c = StructureBridge.CellAt(_s, local);
         return IsInterior(c) || _s.TryGet(c, out Block b) && _s.IsSolid(b);
-    }
-
-    /// <summary>
-    /// Deep enough inside to board: the point and points <paramref name="margin"/> metres around
-    /// it are all inside. Leaving happens only when the point itself is outside, so there is a
-    /// margin-wide band at the door where nobody flickers between worlds.
-    /// </summary>
-    public bool ContainsDeeply(N.Vector3 local, float margin)
-    {
-        if (!IsInterior(StructureBridge.CellAt(_s, local))) return false;
-        return Contains(local + new N.Vector3(margin, 0, 0)) && Contains(local - new N.Vector3(margin, 0, 0))
-            && Contains(local + new N.Vector3(0, 0, margin)) && Contains(local - new N.Vector3(0, 0, margin));
     }
 
     void Refresh()
@@ -369,9 +358,10 @@ public sealed class InteriorMap
 
 /// <summary>
 /// Keeps bodies out of a structure's blocks (stuck-safety after structure edits): a point is
-/// inside if it falls in a solid block's cell. A structure never rescues itself, its riders on
-/// the hull are standing on it (their core is above it), and bodies inside its cabin are left to
-/// the cabin world.
+/// inside if it falls in a solid block's cell. It keeps out everything in the zone's world and
+/// its own riders (inside or on its hull: a block placed where someone stands); a rider rescued
+/// from its own ship's blocks stays aboard. A structure never rescues itself, and riders of other
+/// ships are their ships' business.
 /// </summary>
 public sealed class StructureField : IStuckField
 {
@@ -386,7 +376,10 @@ public sealed class StructureField : IStuckField
 
     public string Name => $"structure {Structure.Name}";
 
-    public bool Applies(Body body) => body != Body && body.Frame == null && body.Kind is not (BodyKind.Vessel or BodyKind.Wreck);
+    public Body Owner => Body;
+
+    public bool Applies(Body body) =>
+        body.Kind is not (BodyKind.Vessel or BodyKind.Wreck) && (body.Frame == null ? body != Body : body.Frame == Body);
 
     public bool IsSolid(Body body, N.Vector3 point)
     {

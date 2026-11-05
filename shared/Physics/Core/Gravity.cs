@@ -3,7 +3,8 @@ using System.Numerics;
 namespace GalHack.Physics;
 
 /// <summary>
-/// A zone's gravity: one uniform pull for everything in the zone that isn't inside a cabin.
+/// A zone's gravity: one uniform pull for everything in the zone's world (riders of a ship feel
+/// it only through their ship's cabin, when its core gravity is off).
 /// Above the atmosphere ceiling there is no weight at all, which is the handling model's one
 /// altitude switch between air and space handling, so flight and gravity always agree.
 /// </summary>
@@ -25,8 +26,9 @@ public sealed class ZoneGravity
 
 /// <summary>
 /// Ship gravity, built into every structure's core: on by default, toggled from the console,
-/// and it costs no power. It pulls toward the structure's own floor (structure-local -Y), and
-/// only on bodies inside its cabin world. Riders on the outer hull feel the zone's gravity.
+/// and it costs no power. It pulls toward the structure's own floor (structure-local -Y) on
+/// bodies in its cabin world. Off, the zone's own gravity reaches in, turned into the
+/// structure's frame (none in space). Riders out on the hull in mag boots feel the boots instead.
 /// </summary>
 public sealed class CoreGravity
 {

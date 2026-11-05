@@ -18,9 +18,11 @@ namespace PhysicsSandbox.Bridges;
 /// The tornado fling's health floor stays the weather code's: <see cref="FlingFloor"/> asks
 /// weather's force module, and the player's health sink passes it on.
 ///
-/// Riders on an outer hull feel the weather's wind against their velocity relative to the hull,
-/// not the ship's airspeed: their boots hold them, so a ship can fly with someone on its roof,
-/// but a tornado still lifts them off a parked one. Riders inside a cabin feel no weather.
+/// Riders on an outer hull live in their ship's cabin world, and the weather reaches them there:
+/// the wind acts against their velocity relative to the hull, not the ship's airspeed (they ride
+/// in its frame, so a ship can fly with someone on its roof), and its push is turned into the
+/// ship's frame before it joins the one force path. A tornado still lifts them off a parked ship.
+/// Riders inside the interior feel no weather, and above the atmosphere nobody does.
 /// </summary>
 public sealed class WeatherBridge : IForceProvider
 {
@@ -89,14 +91,19 @@ public sealed class WeatherBridge : IForceProvider
         }
 
         public float Mass => _body.Mass;
-        public float DragArea => _body.Frame != null ? 0f : _body.DragArea;
+        /// <summary>No air reaches a rider inside the interior, and there is none above the atmosphere.</summary>
+        public float DragArea => Inside || InSpace ? 0f : _body.DragArea;
+
+        bool Inside => _body.Frame != null && !_body.OnOuterHull;
+        bool InSpace => _bridge._world != null && !_bridge._world.Zone.InAtmosphere(_body.WorldPosition);
 
         public GVector3 Position
         {
             get
             {
                 // Players register at their feet; the force module wants the middle of the body.
-                N.Vector3 p = _body.WorldPosition + N.Vector3.UnitY * (_body.Kind == BodyKind.Player ? 0.9f : 0f);
+                N.Vector3 up = _body.Frame == null ? _body.Up : MathX.Rotate(_body.Frame.Rotation, _body.Up);
+                N.Vector3 p = _body.WorldPosition + up * (_body.Kind == BodyKind.Player ? 0.9f : 0f);
                 return new GVector3(p.X, p.Y, p.Z);
             }
         }
@@ -111,7 +118,7 @@ public sealed class WeatherBridge : IForceProvider
         {
             get
             {
-                if (_body.Frame != null) return _body.WorldVelocity.ToGodot();
+                if (_body.Frame != null) return MathX.Rotate(_body.Frame.Rotation, _body.Velocity).ToGodot();
                 if (_body.Kind == BodyKind.Vessel && _body.Motion == GalHack.Physics.Motion.Kinematic
                     && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught)
                     return GVector3.Zero;
@@ -121,13 +128,16 @@ public sealed class WeatherBridge : IForceProvider
 
         public void ApplyForce(GVector3 force)
         {
-            if (_body.Frame == null) _bridge._world?.AddForce(_body, force.ToNumerics(), ForceKind.Weather);
+            if (!Inside) _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
         }
 
         public void ApplyImpulse(GVector3 impulse)
         {
-            if (_body.Frame == null) _bridge._world?.AddImpulse(_body, impulse.ToNumerics(), ForceKind.Weather);
+            if (!Inside) _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
         }
+
+        /// <summary>A world push in the axes the body integrates in (its ship's, out on a hull).</summary>
+        N.Vector3 IntoFrame(GVector3 v) => _body.Frame == null ? v.ToNumerics() : MathX.Unrotate(_body.Frame.Rotation, v.ToNumerics());
     }
 }
 

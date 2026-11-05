@@ -110,7 +110,6 @@ public sealed class PhysicsWorld
         Stuck.Forget(body);
         foreach (Body b in _bodies)
         {
-            if (b.Platform == body) Riding.StepOff(b);
             if (b.Frame == body) Riding.LeaveCabin(b);
         }
         Unregistered?.Invoke(body);
@@ -145,9 +144,20 @@ public sealed class PhysicsWorld
             body.PendingAngularImpulse += Vector3.Cross(point - body.CenterOfMassPosition, impulse);
     }
 
-    /// <summary>The acceleration gravity gives this body: its ship core's inside a cabin, its zone's anywhere else.</summary>
-    public Vector3 GravityAt(Body body) =>
-        body.Frame != null ? body.Frame.Core?.Local ?? Vector3.Zero : Zone.At(body.Position);
+    /// <summary>
+    /// The acceleration gravity gives this body. In the zone's world, the zone's. Riding a structure:
+    /// on its outer hull in mag boots, toward the face underfoot; otherwise its core's (ship-down),
+    /// or the zone's turned into its frame when the core is off.
+    /// </summary>
+    public Vector3 GravityAt(Body body)
+    {
+        if (body.Frame == null) return Zone.At(body.Position);
+        // Out on a hull in mag boots, down is the face under the feet, whatever the core does.
+        if (body.OnOuterHull && Rules.Riding.MagBoots) return -body.Up * Rules.Riding.MagBootGravity;
+        if (body.Frame.Core is { On: true } core) return core.Local;
+        // Core gravity off: the zone's gravity, turned into the structure's frame (none in space).
+        return MathX.Unrotate(body.Frame.Rotation, Zone.At(body.WorldPosition));
+    }
 
     // ---- Stepping ---------------------------------------------------------------------
 

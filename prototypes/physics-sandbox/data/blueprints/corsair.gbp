@@ -2,9 +2,9 @@
 #
 # Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the deck.
 # A cabin 3.5 m wide, 2 m tall and 7 m long, with a windscreen at the front, a window band down
-# both sides and an open doorway at the back between the two engine pods. Lift jets and three
-# landing legs under the deck, side jets on the flanks, retros in the nose, two down jets on the
-# roof. A gyro and a generator are set into the deck.
+# both sides and an open doorway at the back onto a porch between the two engine pods. Lift jets
+# and three landing legs under the deck, side jets on the flanks, retros in the nose, two down
+# jets on the roof. A gyro and a generator are set into the deck.
 #
 # Its four numbers come from these blocks: about 9 t, 16 m/s² forward, ~65°/s turn, lift margin
 # about +60 kN on a 9.8 m/s² world.
@@ -39,6 +39,8 @@ block -1..1 0 3 steel paint=belly
 block 2 0 3 gyro
 block 3..4 0 3 steel paint=belly
 block -4..4 0 4..6 steel paint=belly
+# A step-out porch behind the door, between the engine pods: the deck runs on 1 m past the doorway.
+block -2..2 0 7..8 steel paint=belly
 
 # --- Hull sides (x ±4, y 1..4): racing stripe low, a window band, cream above -------------
 block -4 1..2 -9..6 steel paint=hull -x=stripe

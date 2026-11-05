@@ -28,6 +28,7 @@ public partial class Hud : CanvasLayer
         "F             sit in / leave the pilot seat\n" +
         "Q / E         roll        G gear        C cruise\n" +
         "1 / 2 / 3     into the Corsair's cabin / the rover's seat / onto the Corsair's roof\n" +
+        "4             spacewalk: the Corsair in orbit, you on its roof in mag boots\n" +
         "Y             ship core gravity on / off\n" +
         "K             shoot an engine pod off the Corsair\n" +
         "B / N         blast a crater / dig at the crosshair\n" +
@@ -78,11 +79,11 @@ public partial class Hud : CanvasLayer
         Player p = w.Player;
         var s = new StringBuilder();
         string where = p.Seated != null ? $"flying {p.Seated.Structure.Name}"
+            : p.OnHull != null ? $"on {p.OnHull.Structure.Name}'s hull{(p.Binding.MagBoots ? " (mag boots)" : "")}"
             : p.Aboard != null ? $"aboard {p.Aboard.Structure.Name}"
-            : p.OnHull != null ? $"on {p.OnHull.Structure.Name}'s hull"
             : "outside";
         s.AppendLine($"{where}   health {p.HealthShare:P0}{(p.Health.Dead ? "  (down: R to start again)" : "")}");
-        Ship ship = p.Seated ?? p.Aboard ?? p.OnHull ?? w.Corsair;
+        Ship ship = p.Seated ?? p.Aboard ?? w.Corsair;
         if (ship?.Flight?.Stats is HandlingStats st && !ship.IsWreck)
         {
             foreach (string line in st.ConsoleLines()) s.AppendLine(line);

@@ -48,6 +48,9 @@ public interface IStuckField
 {
     string Name { get; }
 
+    /// <summary>The structure these blocks belong to, or null (terrain). A rider found inside its own ship stays aboard.</summary>
+    Body Owner { get; }
+
     /// <summary>Whether this field should keep this body out at all (a structure never rescues its own riders or itself).</summary>
     bool Applies(Body body);
 

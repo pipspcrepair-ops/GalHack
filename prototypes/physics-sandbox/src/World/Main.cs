@@ -19,6 +19,7 @@ public partial class Main : Node3D
 {
     public SandboxWorld World { get; private set; }
     public Camera3D Camera { get; private set; }
+    public Sky Backdrop { get; private set; }
     public Hud Hud { get; private set; }
     public TornadoView Tornadoes { get; private set; }
 
@@ -42,7 +43,7 @@ public partial class Main : Node3D
         ProcessPhysicsPriority = -20; // input before the physics host steps
         World = new SandboxWorld { Name = "World", Visuals = true };
         AddChild(World);
-        Sky.Build(this);
+        Backdrop = Sky.Build(this);
         Tornadoes = new TornadoView { Name = "Tornadoes", Sim = World.Weather.Sim };
         AddChild(Tornadoes);
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 4000f, Current = true };
@@ -94,6 +95,7 @@ public partial class Main : Node3D
             case Key.Key1: p.PlaceAboard(World.Corsair, new N.Vector3(0f, 0.3f, 1.5f)); break;
             case Key.Key2: p.Sit(World.Rover); break;
             case Key.Key3: p.PlaceOutside(World.Corsair.Body.ToParent(new N.Vector3(-1f, 2.9f, -1.5f))); break;
+            case Key.Key4: Orbit(); break;
             case Key.G: flying?.Vessel?.ToggleGear(); break;
             case Key.C: flying?.Flight.ToggleCruise(); break;
             case Key.Y:
@@ -108,6 +110,25 @@ public partial class Main : Node3D
             case Key.N: AtCrosshair(blast: false); break;
             case Key.T: TornadoAhead(); break;
         }
+    }
+
+    /// <summary>
+    /// A spacewalk: the Corsair parked in orbit, 100 m above the atmosphere, with its core gravity
+    /// off, and the player on its roof in mag boots.
+    /// </summary>
+    public void Orbit()
+    {
+        Ship ship = World.Corsair;
+        Player p = World.Player;
+        if (ship == null || ship.IsWreck) return;
+        if (p.Seated != null) p.StandUp();
+        ship.Vessel.Place(ship.Body, new N.Vector3(0f, World.Physics.Zone.Ceiling + 100f, 0f), 0f);
+        ship.Binding.Teleport();
+        ship.Flight.Input = PilotInput.Autopilot;
+        ship.Body.Core.On = false;
+        ship.Cabin.SetGravity(ship.Body.Core);
+        p.PlaceAboard(ship, new N.Vector3(-1f, 2.78f, -1.5f));
+        Hud.Log("in orbit: core gravity off, mag boots on. Walk off an edge and round the hull; jump to let go");
     }
 
     /// <summary>Shoots one of the Corsair's engine pods off (port, then starboard).</summary>
@@ -186,23 +207,25 @@ public partial class Main : Node3D
             p.View.GlobalTransform = p.WorldTransformInterpolated();
             p.View.Visible = (FixedCamera != null && !FixedIsEye) || (FixedCamera == null && ThirdPerson);
         }
-        if (FixedCamera is Transform3D fixedCam)
-        {
-            Camera.GlobalTransform = fixedCam;
-            return;
-        }
-        Camera.GlobalTransform = p.Seated is Ship ship && (ThirdPerson || ship.Flight.Stats?.IsHover == true) ? Chase(ship)
+        Camera.GlobalTransform = FixedCamera is Transform3D fixedCam ? fixedCam
+            : p.Seated is Ship ship && (ThirdPerson || ship.Flight.Stats?.IsHover == true) ? Chase(ship)
             : ThirdPerson ? Behind(Eye(p)) : Eye(p);
+        Backdrop.Follow(!World.Physics.Zone.InAtmosphere(Camera.GlobalPosition.ToNumerics()));
     }
 
-    /// <summary>The player's eye, from interpolated transforms: their cabin's frame times the cabin-local eye while aboard.</summary>
+    /// <summary>
+    /// The player's eye, from interpolated transforms: their cabin's frame times the cabin-local
+    /// eye while aboard. It stands on the eased view frame, so the camera rolls smoothly when mag
+    /// boots carry the player round a hull edge or through an airlock.
+    /// </summary>
     public Transform3D Eye(Player p)
     {
         var look = new Basis(Vector3.Up, p.Yaw) * new Basis(Vector3.Right, p.Pitch);
         if (p.Seated is Ship seat)
             return seat.Node.GetGlobalTransformInterpolated() * new Transform3D(look, (seat.Seat + N.Vector3.UnitY * 0.95f).ToGodot());
         Vector3 feet = p.Node.GetGlobalTransformInterpolated().Origin;
-        var local = new Transform3D(look, feet + Vector3.Up * Player.EyeHeight);
+        Basis frame = p.ViewFrame.ToBasis();
+        var local = new Transform3D(frame * look, feet + frame.Y * Player.EyeHeight);
         Ship aboard = p.Aboard;
         return aboard == null ? local : aboard.Node.GetGlobalTransformInterpolated() * local;
     }

@@ -14,8 +14,9 @@ namespace PhysicsSandbox;
 ///   godot --path prototypes/physics-sandbox res://tests/Screenshot.tscn -- --view=flight --out=shot.png
 /// Views: flight (the Corsair low over the dug lane, the rover crossing its trench), crash (a
 /// wreck in the crater it cut), sever (an engine pod shot off and tumbling away), hull (a player
-/// riding the roof of the flying Corsair), cabin (inside the cabin mid-roll), tornado (a crate and
-/// the player lifted by a funnel).
+/// riding the roof of the flying Corsair), spacewalk (a player in mag boots standing on the side of
+/// the Corsair in orbit), cabin (inside the cabin mid-roll), tornado (a crate and the player lifted
+/// by a funnel).
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -104,6 +105,17 @@ public partial class Screenshot : Node
                 Player.Yaw = -Mathf.Pi / 2f + 0.5f;
                 _captureTick = 170;
                 break;
+            case "spacewalk":
+                // In orbit with the core gravity off: mag boots hold the player to the starboard side.
+                Corsair.Vessel.Place(Corsair.Body, new N.Vector3(-20f, W.Physics.Zone.Ceiling + 120f, 10f), 0.3f);
+                Corsair.Body.Rotation = MathX.ThenLocal(Corsair.Body.Rotation, MathX.AxisAngle(N.Vector3.UnitZ, 0.35f));
+                Corsair.Binding.Teleport();
+                Corsair.Body.Core.On = false;
+                Corsair.Cabin.SetGravity(Corsair.Body.Core);
+                Player.PlaceAboard(Corsair, new N.Vector3(2.27f, 1.15f, -1.6f), N.Vector3.UnitX);
+                Player.Yaw = Mathf.Pi - 0.4f; // looking aft, toward the camera
+                _captureTick = 60;
+                break;
             case "cabin":
                 Corsair.Vessel.Place(Corsair.Body, W.Ground(-40f, 30f) + N.Vector3.UnitY * 30f, -Mathf.Pi / 2f);
                 Corsair.Binding.Teleport();
@@ -141,6 +153,9 @@ public partial class Screenshot : Node
                 break;
             case "hull":
                 Corsair.Flight.Input = PilotInput.Hands(new Vector3(0f, _tick < 90 ? 0.08f : 0f, -0.35f), new Vector3(0f, 0.18f, 0f));
+                break;
+            case "spacewalk":
+                Corsair.Flight.Input = PilotInput.LetGo;
                 break;
             case "cabin":
                 Corsair.Flight.Input = PilotInput.Hands(new Vector3(0f, 0f, -0.5f), new Vector3(0f, 0.12f, _tick > 110 && _tick < 140 ? 0.5f : 0f));
@@ -184,6 +199,15 @@ public partial class Screenshot : Node
                 Transform3D eye = _main.Eye(Player);
                 Vector3 behind = eye.Origin + eye.Basis * new Vector3(1.6f, 1.2f, 4.6f);
                 _main.FixedCamera = new Transform3D(Basis.LookingAt(eye.Origin + eye.Basis * new Vector3(0f, -1.1f, -2f) - behind, Vector3.Up), behind);
+                break;
+            }
+            case "spacewalk":
+            {
+                // Off the starboard quarter, rolled with the ship, looking forward past the player.
+                Transform3D t = Corsair.Node.GetGlobalTransformInterpolated();
+                Vector3 eye = t * new Vector3(5.6f, 2.3f, 1.2f);
+                Vector3 at = t * new Vector3(2.0f, 0.9f, -2.6f);
+                _main.FixedCamera = new Transform3D(Basis.LookingAt(at - eye, t.Basis.Y), eye);
                 break;
             }
             case "cabin":

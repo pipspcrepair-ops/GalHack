@@ -108,15 +108,17 @@ public sealed class Body
 
     /// <summary>
     /// The body's origin. In the world frame, or in <see cref="Frame"/>'s frame while it rides
-    /// inside that structure's cabin.
+    /// that structure (inside its cabin or out on its hull: both are its cabin world).
     /// </summary>
     public Vector3 Position;
-    public Quaternion Rotation = Quaternion.Identity;
 
     /// <summary>
-    /// Velocity of <see cref="Position"/>, m/s. In the frame's axes while in a cabin; relative to
-    /// the platform (in world axes) while standing on an outer hull.
+    /// Orientation, in the same frame. For a walking body it is its walk frame: its Y is
+    /// <see cref="Up"/>, and its heading is the way "forward" points.
     /// </summary>
+    public Quaternion Rotation = Quaternion.Identity;
+
+    /// <summary>Velocity of <see cref="Position"/>, m/s, in the frame's axes.</summary>
     public Vector3 Velocity;
 
     /// <summary>Spin, rad/s, in the same frame as the velocity.</summary>
@@ -134,15 +136,26 @@ public sealed class Body
 
     public StuckShape Shape { get; set; }
 
-    /// <summary>The structure whose cabin world this body is inside, or null.</summary>
+    /// <summary>
+    /// The structure whose cabin world this body rides in (inside, or out on the hull), or null
+    /// for the zone's world. See <see cref="Riding"/>.
+    /// </summary>
     public Body Frame { get; internal set; }
 
-    /// <summary>The structure whose outer hull this body is standing on, or null.</summary>
-    public Body Platform { get; internal set; }
+    /// <summary>
+    /// Riding a structure but outside its interior: on the outer hull. Weather reaches it, losing
+    /// contact lets it go, and mag boots (if on) hold it to the face under its feet.
+    /// </summary>
+    public bool OnOuterHull { get; set; }
 
-    // Where a hull rider stood on its platform at the end of the last tick (see Riding).
-    internal Vector3 HullLocal;
-    internal float HullHeading;
+    /// <summary>
+    /// A walking body's up, in its frame: the way its feet push off. Gravity's up normally; the
+    /// hull face under its feet when mag boots hold it.
+    /// </summary>
+    public Vector3 Up = Vector3.UnitY;
+
+    // How long an outer-hull rider has been out of contact with the hull (see Riding.LetGo).
+    internal float LostContactFor;
 
     /// <summary>Ship gravity, for structures with a core. Null for everything else.</summary>
     public CoreGravity Core { get; set; }
@@ -217,6 +230,9 @@ public sealed class Body
     /// <summary>The velocity of a point fixed to the body, spin included. Passengers stepping off need this.</summary>
     public Vector3 PointVelocity(Vector3 point) => Velocity + Vector3.Cross(AngularVelocity, point - Position);
 
+    /// <summary>The body's orientation in the world, wherever it is simulated.</summary>
+    public Quaternion WorldRotation => Frame == null ? Rotation : Quaternion.Normalize(Frame.Rotation * Rotation);
+
     /// <summary>Where the body is in the world, wherever it is simulated.</summary>
     public Vector3 WorldPosition => Frame == null ? Position : Frame.ToParent(Position);
 
@@ -226,7 +242,6 @@ public sealed class Body
         get
         {
             if (Frame != null) return Frame.PointVelocity(WorldPosition) + Vector3.Transform(Velocity, Frame.Rotation);
-            if (Platform != null) return Velocity + Platform.PointVelocity(Position);
             return Velocity;
         }
     }

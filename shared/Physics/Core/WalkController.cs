@@ -8,6 +8,10 @@ namespace GalHack.Physics;
 /// it too). Walking is a force like any other on the one force path, so wind and tornadoes add
 /// to it, and a character controller (the mover) keeps the body out of the floor.
 ///
+/// It walks on whatever face the body's <see cref="Body.Up"/> says is underfoot: the ground,
+/// a cabin floor, or the side or underside of a hull in mag boots. Its look (<see cref="Yaw"/>,
+/// <see cref="Pitch"/>) is relative to the body's walk frame, <see cref="Body.Rotation"/>.
+///
 /// Numbers are walkable-ship's: brisk on the ground, a little air control that never bleeds off
 /// momentum (jumping off a fast ship keeps its speed), and a short jetpack for climbing back in.
 /// </summary>
@@ -18,11 +22,14 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// <summary>x right, y back (forward is -1), each -1..1, relative to <see cref="Yaw"/>.</summary>
     public Vector2 Move;
 
-    /// <summary>Heading of the walk frame, radians, in the frame the body is in.</summary>
+    /// <summary>Heading within the walk frame, radians.</summary>
     public float Yaw;
     public bool Sprint, Jump, Jetpack;
 
-    /// <summary>Zero-g aboard (core gravity off): drift and steer with suit thrusters instead of walking.</summary>
+    /// <summary>
+    /// Zero-g (no gravity where the body is): steer with suit thrusters instead of walking. The
+    /// thrusters fire only when asked, so a body coasts on its momentum.
+    /// </summary>
     public bool Floating;
 
     /// <summary>Up/down while floating, -1..1.</summary>
@@ -42,22 +49,27 @@ public sealed class WalkController : IBodyController, IForceReactor
 
     public float JetpackFuel { get; private set; } = 3f;
 
+    /// <summary>The legs pushed off this tick (a deliberate jump: it lets go of a hull at once).</summary>
+    public bool Jumped { get; private set; }
+
     /// <summary>Walking reacts to what else pushes this tick, so it acts in <see cref="React"/>.</summary>
     public void Drive(PhysicsWorld world, Body body, float dt) { }
 
     public void React(PhysicsWorld world, Body body, float dt)
     {
+        Jumped = false;
         if (body.Asleep) return;
-        Vector3 v = body.Velocity;
+        Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
-        Vector3 change;
+        Quaternion frame = body.Rotation;
+        Quaternion heading = MathX.ThenLocal(frame, MathX.Yaw(Yaw));
 
         if (Floating)
         {
-            Quaternion look = MathX.ThenLocal(MathX.Yaw(Yaw), MathX.AxisAngle(Vector3.UnitX, Pitch));
-            Vector3 wish = MathX.LimitLength(MathX.Rotate(look, new Vector3(Move.X, 0f, Move.Y)) + MathX.Up(look) * Vertical, 1f) * ZeroGSpeed;
-            change = Toward(v, wish, ZeroGAccel * dt) - v;
-            world.AddForce(body, m * change / dt, ForceKind.Walk);
+            Quaternion look = MathX.ThenLocal(heading, MathX.AxisAngle(Vector3.UnitX, Pitch));
+            Vector3 wish = MathX.LimitLength(MathX.Rotate(look, new Vector3(Move.X, 0f, Move.Y)) + MathX.Up(look) * Vertical, 1f);
+            if (wish.LengthSquared() < 1e-6f) return; // no thrusters asked for: keep the momentum
+            world.AddForce(body, m * (Toward(v, wish * ZeroGSpeed, ZeroGAccel * dt) - v) / dt, ForceKind.Walk);
             return;
         }
 
@@ -65,17 +77,20 @@ public sealed class WalkController : IBodyController, IForceReactor
         if (onFloor) JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
         float speed = Sprint ? SprintSpeed : WalkSpeed;
         Vector2 move = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
-        Vector3 wishDir = MathX.Rotate(MathX.Yaw(Yaw), new Vector3(move.X, 0f, move.Y));
-        Vector3 wishVel = wishDir * speed;
-        Vector3 h = MathX.Flat(v);
+        Vector3 wishDir = MathX.Rotate(heading, new Vector3(move.X, 0f, move.Y));
+        Vector3 h = v - up * Vector3.Dot(v, up); // velocity along the face underfoot
 
         if (onFloor)
         {
-            // Feet on the ground: reach the wished speed, holding against whatever else pushes
-            // sideways (wind) as far as grip allows. Gravity is vertical, so the flat part of the
-            // force so far is all outside forces.
-            var next = new Vector3(MathX.MoveToward(h.X, wishVel.X, GroundAccel * dt), 0f, MathX.MoveToward(h.Z, wishVel.Z, GroundAccel * dt));
-            Vector3 legs = m * (next - h) / dt - MathX.Flat(body.PendingTotalForce);
+            // Feet on the face: reach the wished speed, holding against whatever else pushes along
+            // it (wind) as far as grip allows. Gravity pushes into the face, so the part of the force
+            // so far that runs along it is all outside forces. Worked out in the walk frame, axis by
+            // axis, exactly as on flat ground.
+            Vector3 hf = MathX.Unrotate(frame, h), wf = MathX.Unrotate(frame, wishDir * speed);
+            var nextF = new Vector3(MathX.MoveToward(hf.X, wf.X, GroundAccel * dt), 0f, MathX.MoveToward(hf.Z, wf.Z, GroundAccel * dt));
+            Vector3 next = MathX.Rotate(frame, nextF);
+            Vector3 outside = body.PendingTotalForce - up * Vector3.Dot(body.PendingTotalForce, up);
+            Vector3 legs = m * (next - h) / dt - outside;
             world.AddForce(body, MathX.LimitLength(legs, m * Grip), ForceKind.Walk);
         }
         else if (move != Vector2.Zero)
@@ -86,10 +101,14 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddForce(body, m * (MathX.LimitLength(steered, cap) - h) / dt, ForceKind.Walk);
         }
 
-        if (Jump && onFloor) world.AddImpulse(body, Vector3.UnitY * m * MathF.Max(0f, JumpSpeed - v.Y), ForceKind.Walk);
-        else if (Jetpack && !onFloor && JetpackFuel > 0f && v.Y < 8f)
+        if (Jump && onFloor)
         {
-            world.AddForce(body, Vector3.UnitY * m * JetpackAccel, ForceKind.Walk);
+            world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed - Vector3.Dot(v, up)), ForceKind.Walk);
+            Jumped = true;
+        }
+        else if (Jetpack && !onFloor && JetpackFuel > 0f && Vector3.Dot(v, up) < 8f)
+        {
+            world.AddForce(body, up * m * JetpackAccel, ForceKind.Walk);
             JetpackFuel -= dt;
         }
     }
