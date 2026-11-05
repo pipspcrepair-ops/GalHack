@@ -321,7 +321,9 @@ public partial class PoiTest : Node
     /// </summary>
     void Variety()
     {
-        int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0;
+        int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0, fewestPatterns = int.MaxValue;
+        float worstPattern = 0f;
+        string worstPatternType = "", fewestType = "";
         float worstShare = 0f;
         string worstType = "";
         var grammar = new Dictionary<string, Dictionary<string, int>>();
@@ -331,6 +333,7 @@ public partial class PoiTest : Node
             var full = new List<string>();
             var coarse = new List<string>();
             var mix = grammar[f.Id] = new Dictionary<string, int>();
+            var patterns = new Dictionary<string, int>();
             for (int i = 0; i < 20; i++)
             {
                 var l = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Uncommon, Hash.Combine(0x7A21EUL, (ulong)i, Hash.Of(f.Id)));
@@ -338,6 +341,7 @@ public partial class PoiTest : Node
                 full.Add(Signature(l) + "#" + string.Join("|", l.Extras.Plans.Select(p => p.Signature)));
                 coarse.Add(string.Join("|", l.Extras.Plans.OrderBy(p => p.Building).ThenBy(p => p.Storey).Select(p => Topology(p.Signature))));
                 foreach (var p in l.Extras.Plans) mix[Grammar(p.Signature)] = mix.GetValueOrDefault(Grammar(p.Signature)) + 1;
+                foreach (var p in l.Extras.Plans.Where(p => p.Signature != "hut")) patterns[p.Signature.Split('/')[1]] = patterns.GetValueOrDefault(p.Signature.Split('/')[1]) + 1;
                 foreach (var b in l.Extras.Plans.GroupBy(p => p.Building))
                 {
                     buildings++;
@@ -348,9 +352,18 @@ public partial class PoiTest : Node
             repeats += full.Count - full.Distinct().Count();
             float share = coarse.GroupBy(c => c).Max(g => g.Count()) / (float)coarse.Count;
             if (share > worstShare && f.Generator == Generator.Building) { worstShare = share; worstType = f.Id; }
+            // Circulation shape: no one pattern walks most storeys of a type, and a type with a broad grammar uses it.
+            if (f.Generator == Generator.Building && patterns.Count > 0 && _lib.Programs[f.Program!].Plans.Count >= 4)
+            {
+                float top = patterns.Values.Max() / (float)patterns.Values.Sum();
+                if (top > worstPattern) { worstPattern = top; worstPatternType = f.Id; }
+                if (patterns.Count < fewestPatterns) { fewestPatterns = patterns.Count; fewestType = f.Id; }
+            }
         }
-        Check(repeats == 0 && worstShare <= 0.25f,
-            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 25%)");
+        Check(repeats == 0 && worstShare <= 0.15f,
+            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 15%)");
+        Check(worstPattern <= 0.45f && fewestPatterns >= 3,
+            $"circulation varies within a type: no pattern walks more than {worstPattern:P0} of a type's storeys ({worstPatternType}; at most 45%), and every type with a broad grammar uses at least {fewestPatterns} of its patterns ({fewestType})");
         Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building");
 
         // Types that must never walk alike: footprint and circulation mixes overlap by less than half.
