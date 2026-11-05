@@ -56,3 +56,5 @@ Every prototype has headless test scenes (`tests/*Test.tscn`, `tests/*Probe.tscn
 ```
 
 Run one with `.\tools\test.ps1 -Project prototypes/<name> -Scene res://tests/<Scene>.tscn`.
+
+The gate also fails if any Kenney asset is added: GalHack uses no Kenney assets of any kind.
