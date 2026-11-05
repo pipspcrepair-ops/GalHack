@@ -38,6 +38,9 @@ public partial class TerrainStreamer
     /// <summary>Every column within collision reach of the focus has its solid flora in (bodies built, or none to build).</summary>
     public bool SolidsReady { get; private set; }
 
+    /// <summary>The focus column (frame coordinates) <see cref="SolidsReady"/> was last worked out for.</summary>
+    public (int x, int z) SolidsFocus { get; private set; }
+
     void UpdateSolids(int fcx, int fcz, long frameStart)
     {
         // Out of reach: dropped, with a column of slack as the ground's collision has.
@@ -84,6 +87,7 @@ public partial class TerrainStreamer
         SolidBodies = bodies;
         SolidReach = reach;
         SolidsReady = ready;
+        SolidsFocus = (fcx, fcz);
     }
 
     /// <summary>The solids standing in a column (frame key), if its level-0 far chunk is in.</summary>
@@ -92,7 +96,16 @@ public partial class TerrainStreamer
         list = null;
         int ccx = Mod(cx, World.Terrain.ChunksX), ccz = Mod(cz, World.Terrain.ChunksZ);
         int per = FarBuilder.Size / S;
-        if (!_far.TryGetValue((ccx / per, ccz / per), out FarChunk f) || f.Lod != 0 || f.Solids == null) return false;
+        int fx = ccx / per, fz = ccz / per;
+        // The far grid holds whole 128 m chunks only: on a planet whose size isn't a multiple of
+        // 128 m (8 km is 62.5 chunks) the last strip before the seam has no far chunk, so no flora
+        // is scattered there, and nothing solid stands in it. Done, with nothing to build.
+        if (fx >= World.Terrain.Width / FarBuilder.Size || fz >= World.Terrain.Height / FarBuilder.Size)
+        {
+            list = new List<FloraSolid>();
+            return true;
+        }
+        if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Lod != 0 || f.Solids == null) return false;
         list = new List<FloraSolid>();
         float x0 = ccx * S, z0 = ccz * S;
         foreach (FloraSolid s in f.Solids)
@@ -182,6 +195,7 @@ public partial class TerrainStreamer
         _solidColumns.Clear();
         _felledSnapshot = new HashSet<long>();
         SolidColliders = SolidBodies = SolidReach = 0;
+        SolidsReady = false;
     }
 
     public override void _ExitTree()
@@ -227,6 +241,9 @@ public partial class TerrainStreamer
         }
         foreach (SolidColumn c in _solidColumns.Values) FreeSolids(c);
         _solidColumns.Clear();
+        // Every column builds again: not ready until a pass has built them, so nobody reads the
+        // last pass's "ready" for columns that are gone.
+        SolidsReady = false;
     }
 
     /// <summary>The solid a ray hit (by the body and shape index the physics server reports), if it is one.</summary>

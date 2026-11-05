@@ -97,6 +97,16 @@ public partial class SurfaceTest : Node
         for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
     }
 
+    /// <summary>
+    /// Waits physics ticks until <paramref name="condition"/> holds, at most <paramref name="ticks"/>:
+    /// for checks whose limit is simulation time ("out within four ticks"), which load can't stretch.
+    /// </summary>
+    async Task<bool> UntilTicks(Func<bool> condition, int ticks)
+    {
+        for (int i = 0; i < ticks && !condition(); i++) await PhysicsFrames(1);
+        return condition();
+    }
+
     async Task<bool> Until(Func<bool> condition, double seconds)
     {
         var watch = Stopwatch.StartNew();
@@ -323,6 +333,8 @@ public partial class SurfaceTest : Node
         PlanetWorld w = _main.World;
         if (w == null) return;
         Walker player = _main.Player;
+        // The ground round the player streamed in with its collision, and the player standing on it.
+        await Until(() => _main.Streamer.ReadyAround(player.GlobalPosition, 1, needCollision: true) && player.IsOnFloor(), 60);
         Vector3 at = player.GlobalPosition + new Vector3(6, 0, 0);
         var target = new TInt3((int)MathF.Floor(at.X), (int)MathF.Floor(w.GroundHeight(at.X, at.Z)) - 1, (int)MathF.Floor(at.Z));
         PlanetEdit edit = _main.Dig(target, 1.42f);
@@ -335,7 +347,8 @@ public partial class SurfaceTest : Node
         _main.ToggleFly();
         _main.Fly.Begin(player.GlobalPosition + new Vector3(900, 60, 0), 0, 0);
         bool unloaded = await Until(() => !_main.Streamer.IsLoaded(chunk), 20);
-        await Frames(40); // past an eviction pass
+        int passes = _main.Streamer.EvictPasses;
+        await Until(() => _main.Streamer.EvictPasses > passes, 10); // past an eviction pass
         int baseChunks = w.Terrain.Store.Base.Count;
         // ...and come back: it regenerates from the seed plus the edit set, identically.
         _main.Fly.Begin(player.GlobalPosition + Vector3.Up * 2, 0, 0);
@@ -374,8 +387,7 @@ public partial class SurfaceTest : Node
         // Buried by a teleport (a bad load, a network correction): out within a few ticks.
         Vector3 here = player.GlobalPosition;
         player.Teleport(new Vector3(here.X, w.GroundHeight(here.X, here.Z) - 3f, here.Z));
-        await PhysicsFrames(4);
-        bool freed = !_main.Guard.IsInside(store);
+        bool freed = await UntilTicks(() => !_main.Guard.IsInside(store), 4);
 
         // Standing in a dug hole when a load brings back an older terrain without it.
         _main.Save();
@@ -388,13 +400,15 @@ public partial class SurfaceTest : Node
         PlanetEdit dug = w.Terrain.DigCells(pit);
         _main.Streamer.MarkDirty(dug.DirtyChunks);
         await Until(() => _main.Streamer.Pending == 0, 10);
-        await PhysicsFrames(6);
+        // The pit's own collision rebuilt (its chunk's shape matches its new mesh) before stepping in.
+        await Until(() => _main.Streamer.ReadyAround(new Vector3(floor.X + 0.5f, floor.Y, floor.Z + 0.5f), 0, needCollision: true), 10);
         player.Teleport(new Vector3(floor.X + 0.5f, floor.Y + 0.05f, floor.Z + 0.5f));
-        await PhysicsFrames(10);
-        bool inPit = !_main.Guard.IsInside(store);
+        // Standing on the pit floor, and a tick after it, so the guard has looked at them there.
+        bool landed = await UntilTicks(() => player.IsOnFloor() && MathF.Abs(player.GlobalPosition.Y - floor.Y) < 0.3f, 10);
+        await PhysicsFrames(1);
+        bool inPit = landed && !_main.Guard.IsInside(store) && _main.Guard.Rescues == rescuesBefore;
         LoadResult loaded = _main.Load();
-        await PhysicsFrames(4);
-        bool afterLoad = !_main.Guard.IsInside(store);
+        bool afterLoad = await UntilTicks(() => !_main.Guard.IsInside(store) && _main.Guard.Rescues > rescuesBefore, 4);
         Check(freed && inPit && loaded.Ok && afterLoad && _main.Guard.Rescues > rescuesBefore,
             $"stuck safety: a buried player is freed ({freed}), standing in a fresh pit is left alone ({inPit}), " +
             $"a load that fills the pit moves them out ({afterLoad}); {_main.Guard.Rescues} rescues so far");
@@ -459,7 +473,8 @@ public partial class SurfaceTest : Node
         player.Teleport(shore);
         player.SetLook(MathF.Atan2(-toWater.X, -toWater.Z), 0f);
         await Streamed();
-        await PhysicsFrames(30);
+        await SolidsIn(); // the shore's ground and its trees have their colliders
+        await Until(() => player.IsOnFloor(), 10);
         int rescues = _main.Guard.Rescues;
         bool everInside = false, belowGround = false;
         void Watch()
@@ -490,7 +505,14 @@ public partial class SurfaceTest : Node
             Watch();
         }
         player.MoveOverride = null;
-        await PhysicsFrames(90);
+        // Left alone, the swimmer settles at its floating depth: wait until it has stopped bobbing.
+        int calm = 0, drifted = 0;
+        while (calm < 20 && drifted++ < 900)
+        {
+            await PhysicsFrames(1);
+            Watch();
+            calm = Mathf.Abs(player.Velocity.Y) < 0.05f ? calm + 1 : 0;
+        }
         bool floats = player.Swimming && !player.Underwater;
 
         // Dive until the head is under, and a little more.
@@ -501,12 +523,17 @@ public partial class SurfaceTest : Node
             await PhysicsFrames(1);
             Watch();
         }
-        await PhysicsFrames(30);
-        Watch();
+        // On down until the eye is under too (the camera sees the murk), and the head stays under.
+        bool tinted = false;
+        int deeper = 0;
+        while (!tinted && deeper++ < 600)
+        {
+            await Frames(1);
+            Watch();
+            tinted = _main.CameraUnderwater;
+        }
         bool under = player.Underwater;
         float depth = (w.WaterSurfaceAt(player.GlobalPosition) ?? player.GlobalPosition.Y) - player.GlobalPosition.Y;
-        await Frames(2);
-        bool tinted = _main.CameraUnderwater;
 
         // Back up.
         player.VerticalOverride = 1f;
@@ -517,8 +544,8 @@ public partial class SurfaceTest : Node
             Watch();
         }
         player.VerticalOverride = null;
-        await PhysicsFrames(30);
-        await Frames(2);
+        // Floating up the last of the way, until the eye is out and the camera sees the sky again.
+        await Until(() => !_main.CameraUnderwater, 10);
         bool surfaced = !player.Underwater && !_main.CameraUnderwater;
         Check(swam && floats && under && tinted && surfaced && !everInside && !belowGround && _main.Guard.Rescues == rescues,
             $"water is a volume: from a shore the player walks into the water for {walked / 60f:F1} s until they swim, swims out {swimOut / 60f:F1} s to deep water (floating with their head out: {floats}), " +
@@ -587,14 +614,27 @@ public partial class SurfaceTest : Node
     }
 
     /// <summary>
-    /// Waits (for the state, not for time) until the solid flora round where the player now stands
-    /// has its colliders: the streamer has taken the new focus, and every column in reach is built.
+    /// Waits (for the state, not for time) until the ground and the solid flora round where the
+    /// player now stands have their colliders: the streamer has taken the player's column as its
+    /// focus, every column in reach has its trunks and boulders, and the ground under and round the
+    /// player its collision. Then one physics step, so the engine has the new bodies.
     /// </summary>
     async Task SolidsIn()
     {
-        await Frames(3);
-        await Until(() => _main.Streamer.SolidsReady, 30);
-        await PhysicsFrames(3);
+        Walker player = _main.Player;
+        (int, int) Column(Vector3 p) => ((int)MathF.Floor(p.X / 16f), (int)MathF.Floor(p.Z / 16f));
+        bool ready = await Until(() =>
+        {
+            Vector3 p = player.GlobalPosition;
+            return _main.Streamer.SolidsFocus == Column(p) && _main.Streamer.SolidsReady && _main.Streamer.ReadyAround(p, 1, needCollision: true);
+        }, 60);
+        if (!ready)
+        {
+            Vector3 p = player.GlobalPosition;
+            Fail($"the colliders round the player never came in: player's column {Column(p)}, solids worked out for {_main.Streamer.SolidsFocus} " +
+                 $"(ready {_main.Streamer.SolidsReady}), ground with collision {_main.Streamer.ReadyAround(p, 1, needCollision: true)}");
+        }
+        await PhysicsFrames(1);
     }
 
     /// <summary>Walks the player forward for a time; returns how far they got along their facing, and their last position.</summary>
@@ -606,7 +646,8 @@ public partial class SurfaceTest : Node
         player.MoveOverride = new Vector2(0, -1);
         await PhysicsFrames((int)(seconds * 60));
         player.MoveOverride = null;
-        await PhysicsFrames(5);
+        int still = 0; // coming to rest: horizontal speed gone
+        while (new Vector2(player.Velocity.X, player.Velocity.Z).Length() > 0.05f && still++ < 60) await PhysicsFrames(1);
         return ((player.GlobalPosition - start).Dot(facing), player.GlobalPosition);
     }
 
@@ -705,7 +746,8 @@ public partial class SurfaceTest : Node
             from.Y = w.GroundHeight(Mathx.WrapX(from.X, w.Width), Mathx.Wrap(from.Z, w.Height)) + 0.1f;
             player.Teleport(from);
             player.SetLook(0f, 0f); // facing -z, over the pebble
-            await PhysicsFrames(10);
+            await SolidsIn();
+            await Until(() => player.IsOnFloor(), 10);
             (progress, _) = await WalkForward(1.5f);
             pebbleWalked = progress > 4.5f;
             pebbleNote = $"a rock {(0.85f * pebble.Basis.Y.Length() - FloraSolidRules.Sink):F2} m tall (under {rules.MinRockHeight} m) is walked over: {progress:F1} m in 1.5 s";
@@ -729,7 +771,7 @@ public partial class SurfaceTest : Node
             player.Teleport(middle with { Y = w.GroundHeight(Mathx.WrapX(middle.X, w.Width), Mathx.Wrap(middle.Z, w.Height)) + 0.3f });
             await SolidsIn();
             hull.GlobalTransform = new Transform3D(Basis.LookingAt(dir, Vector3.Up), start with { Y = Ride(start) });
-            await PhysicsFrames(2);
+            // No settling wait: MoveAndCollide sweeps from the transform just set, and every step below waits its tick first.
             for (float gone = 0f; gone < length; gone += 0.5f)
             {
                 await PhysicsFrames(1); // one move a physics tick, as vessels move
@@ -772,7 +814,6 @@ public partial class SurfaceTest : Node
         Vector3 eye = player.EyePosition;
         var ray = PhysicsRayQueryParameters3D.Create(eye, eye + player.LookDirection * 4f, Layers.Flora);
         bool goneAtOnce = player.GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
-        await PhysicsFrames(5);
         (progress, _) = await WalkForward(1.5f);
         bool walkThrough = progress > 3.2f;
         int gotWood = (_main.Tool.Gathered.TryGetValue("wood", out int n1) ? n1 : 0) - wood;
@@ -812,7 +853,7 @@ public partial class SurfaceTest : Node
         inside.Y = w.GroundHeight(Mathx.WrapX(inside.X, w.Width), Mathx.Wrap(inside.Z, w.Height)) + 0.05f;
         Vector3? guardSays = streamer.OutOfSolids(inside, Walker.StandHeight, Walker.Radius);
         player.Teleport(inside);
-        await PhysicsFrames(6);
+        await Until(() => _main.Guard.InsideSolid() == null, 5); // moved out (by the guard, or the character controller first)
         bool movedOut = guardSays is Vector3 to && !standing.solid.Contains(to + Vector3.Up * 0.9f - standing.offset)
                         && _main.Guard.InsideSolid() == null && !standing.solid.Contains(player.GlobalPosition + Vector3.Up * 0.9f - standing.offset);
         Check(standing.solid.Extents.X > 0f && movedOut && landingClear,
@@ -1008,21 +1049,31 @@ public partial class SurfaceTest : Node
         if (w == null) return;
         double x = FindSeamCrossing(w);
         if (x < 0) { Fail("no walkable ground across the north-south seam"); return; }
-        // Best of three walks: a machine busy with other work can stall one walk's frames, but a
-        // real slowdown stalls every walk. The first walk that passes ends it.
+        // Three walks. What the walk does (crosses, stays on the ground, keeps its speed) is
+        // simulation and must hold in every walk. The frame budgets are wall-clock and judged on the
+        // best walk: a machine busy with other work can stall one walk's frames, but a real slowdown
+        // stalls every walk. All three are printed, so a regression stays visible.
         var walks = new List<string>();
+        bool walkedEvery = true;
+        double bestBudget = double.MaxValue;
+        int bestWalk = 0;
         for (int attempt = 1; attempt <= 3; attempt++)
         {
-            var (passed, report) = await WalkAcrossOnce(w, x);
+            var (walked, budget, report) = await WalkAcrossOnce(w, x);
             walks.Add($"walk {attempt}: {report}");
-            if (!passed) continue;
-            Check(true, $"walking north across the edge (walk {attempt} of up to 3): {report}");
-            return;
+            walkedEvery &= walked;
+            if (budget < bestBudget) (bestBudget, bestWalk) = (budget, attempt);
         }
-        Check(false, $"walking north across the edge, none of three walks within budget: {string.Join(" | ", walks)}");
+        Check(walkedEvery && bestBudget < 1.0,
+            $"walking north across the edge: on the ground at speed in every walk ({walkedEvery}), frame budgets met in the best of three " +
+            $"(walk {bestWalk}, worst {bestBudget * 100:F0}% of a budget): {string.Join(" | ", walks)}");
     }
 
-    async Task<(bool passed, string report)> WalkAcrossOnce(PlanetWorld w, double x)
+    /// <summary>
+    /// One walk across the edge. Returns whether the walk itself went right, the worst of its frame
+    /// costs as a fraction of its budget (under 1 is within every budget), and a report.
+    /// </summary>
+    async Task<(bool walked, double budget, string report)> WalkAcrossOnce(PlanetWorld w, double x)
     {
         Walker player = _main.Player;
         player.Teleport(new Vector3((float)x, w.GroundHeight(x, 14) + 0.2f, 14f));
@@ -1030,7 +1081,9 @@ public partial class SurfaceTest : Node
         // A jump across the planet is an arrival: settle the heap as landing does (Main.BecomeReady),
         // so a full collection owed by the checks before this one doesn't fall inside the walk.
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-        await PhysicsFrames(80);
+        await Until(() => _main.Streamer.Settled, 30); // far rings and horizon in too, so the walk starts on a quiet frame
+        await SolidsIn(); // the ground (and trees) round the start have their colliders
+        await Until(() => player.IsOnFloor(), 10);
         player.SetLook(0f, 0f); // facing north (-z)
         Engine.MaxFps = 60;
         int shifts = _main.FrameShifts;
@@ -1043,10 +1096,10 @@ public partial class SurfaceTest : Node
         long gcIndexBefore = GC.GetGCMemoryInfo(GCKind.Any).Index;
         var probe = new FrameProbe(this);
         player.MoveOverride = new Vector2(0, -1);
-        var watch = Stopwatch.StartNew();
         int ticks = 0;
         bool crossing = false;
-        while (watch.Elapsed.TotalSeconds < 7)
+        // Seven seconds of simulation, counted in ticks so a busy machine can't shorten the walk.
+        while (ticks < 7 * 60)
         {
             await PhysicsFrames(1);
             ticks++;
@@ -1078,7 +1131,8 @@ public partial class SurfaceTest : Node
         bool crossed = _main.FrameShifts > shifts && end.Z > w.Height * 0.5f;
         // At the 60 fps cap a frame starts every 16.7 ms: a longer wait between one frame's last
         // callback and the next one's first means the engine itself stalled for the difference.
-        return (crossed && lowest > -0.3 && minSpeed > 3.5f && worstStream < 8.0 && worstWork < 8.0 && worstGap < 1000.0 / 60 + 8.0,
+        double budget = Math.Max(Math.Max(worstStream / 8.0, worstWork / 8.0), worstGap / (1000.0 / 60 + 8.0));
+        return (crossed && lowest > -0.3 && minSpeed > 3.5f, budget,
             $"crossed {crossed} (now {end.Z:F0} m S of {w.Height:F0}), lowest {lowest:F2} m relative to the ground, " +
             $"slowest {minSpeed:F1} m/s once walking; game code on the main thread worst {worstWork:F2} ms in {frames} frames, {crossingWork:F2} ms on the frame of the crossing " +
             $"(Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}); longest wait between frames {worstGap:F1} ms (16.7 at the cap, so no engine stall over {Math.Max(0, worstGap - 1000.0 / 60):F1} ms); " +

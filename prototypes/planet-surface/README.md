@@ -80,9 +80,9 @@ Runs headless in about 100 s and exits 0 or 1. Add `-- --only=Heights,Flight` to
 - flying 2 km at 100 m/s keeps streaming's main-thread cost under 8 ms a frame (about 4 ms) in the best of three windows of the flight, and catches up after landing; GC pauses that land inside streaming are left out of that figure and reported beside it, along with the flight's collections
 - chunks beyond the north edge match their twins at the south edge (heights to 0.24 mm, normals to 0.005°), as does the corner beyond both seams
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
-- walking north across the edge keeps you on the ground, at speed, with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames, in the best of up to three walks
+- walking north across the edge keeps you on the ground and at speed in every one of three walks (simulation ticks, so load can't shorten one), with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames in the best of the three
 
-The frame checks judge the best of three windows (or walks): a machine busy with other work stalls some frames, but a real slowdown shows in every one.
+The frame checks judge the best of three windows (or walks), and print all three: a machine busy with other work stalls some frames, but a real slowdown shows in every one. Everything else waits for a state (streamed in, colliders built, standing, at rest), or counts simulation ticks where the limit is simulation time, never wall-clock seconds.
 
 Frame costs are measured per frame by `tests/FrameProbe.cs`. Godot's own monitors give only the slowest process and physics passes of a whole second, possibly from different frames, and up to a second stale.
 
@@ -114,6 +114,7 @@ Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `po
 - **Solid flora has one shape each:** trunks without canopies, boulders as boxes (a rock's knobbly outline is a little larger than its box). There are no vessels or creatures on this planet yet, so the checks sweep a rover-sized hull in their place, and nothing here breaks a tree by ramming it; the layer (`Layers.Flora`, the shared module's World) and the blocked-cell query (`TerrainStreamer.BlockedAt`) are there for them. The walker has no step-up of its own, so a rock between 0.6 m and its jump height is jumped over or walked round.
 - **Weather is global** for the planet. There are no local storm cells yet, apart from tornadoes.
 - **Far rings are coarser than voxels.** On sheer cliffs the 2–8 m heightfields can show a slight comb where a wall is steeper than their spacing.
+- **The far grid stops 64 m short of the north-south seam.** Far chunks are whole 128 m squares, and 8 km is 62.5 of them, so the last strip before the seam has no far chunk: no flora is scattered there (so nothing solid stands in it), and the far rings have a 64 m gap there (near you, voxel ground covers it). Found while making the tests wait for colliders; not fixed here.
 - **Ore outcrops show their 1 m cells** where they break the surface.
 - **Planets are 16 x 8 km** by default.
 - Particles are hidden under rock only where the chunks overhead are already loaded.

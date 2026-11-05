@@ -140,6 +140,9 @@ public partial class TerrainStreamer : Node3D
     public int CollisionBodies { get; private set; }
     public int FarChunks => _far.Count;
     public int CompleteRadius => _completeRadius;
+
+    /// <summary>How many eviction passes (unloading far-off generated chunks) have run: tests wait on it.</summary>
+    public int EvictPasses { get; private set; }
     public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight;
 
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
@@ -284,6 +287,7 @@ public partial class TerrainStreamer : Node3D
         {
             _evictTimer = 0;
             Evict();
+            EvictPasses++;
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
