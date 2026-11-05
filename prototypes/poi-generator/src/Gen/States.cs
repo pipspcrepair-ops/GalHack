@@ -478,6 +478,36 @@ public static class StateTransforms
 /// <summary>Structural checks shared by the ruin pass and the validator.</summary>
 public static class Structure
 {
+    /// <summary>Whether a block hangs: cables, wires and Bloom tendrils, which must always hang from something.</summary>
+    public static bool Hangs(BlockType t) => t is BlockType.Cable or BlockType.Tendril;
+
+    /// <summary>
+    /// Hanging things with nothing holding them: a cable, wire or tendril hangs straight down from
+    /// its anchor (through any more of itself above), so the cell at the top of its run must be
+    /// under a solid block. One whose run ends in air is floating in mid-air.
+    /// </summary>
+    public static List<Int3> Untethered(BlockGrid g)
+    {
+        var loose = new List<Int3>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (!Hangs(b.Type)) continue;
+            Int3 up = p + Int3.Up;
+            while (Hangs(g.Get(up).Type)) up += Int3.Up;
+            var anchor = g.Get(up);
+            if (anchor.IsAir || !BlockInfo.Collides(anchor.Type)) loose.Add(p);
+        }
+        return loose;
+    }
+
+    /// <summary>Takes down every hanging thing left with nothing to hang from (a ruin lost its ceiling).</summary>
+    public static int DropUntethered(BlockGrid g)
+    {
+        var loose = Untethered(g);
+        foreach (Int3 p in loose) g.Set(p, Block.Air);
+        return loose.Count;
+    }
+
     /// <summary>
     /// Every block not joined (face to face, through other blocks) to the ground. Blocks below
     /// ground level that touch rock count as grounded.

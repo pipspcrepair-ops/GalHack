@@ -119,6 +119,11 @@ public sealed class FamilyDef
     /// spaceport, town, base, outpost, camp, site, wreck. Data: tier.
     /// </summary>
     public PoiTier Tier = PoiTier.Site;
+    /// <summary>
+    /// A style kit that re-skins the family's program or site (data: style). This is how a flavour
+    /// such as alien works: the same rooms and plans built in another kit.
+    /// </summary>
+    public string? Style;
 
     public Generator Generator => Site != null ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -180,6 +185,7 @@ public static class FamilyParser
                 case "siting": F().Siting = p[1]; break;
                 case "rise": F().Rise = int.Parse(p[1], CultureInfo.InvariantCulture); break;
                 case "tier": F().Tier = Enum<PoiTier>(p[1], Error); break;
+                case "style": F().Style = p[1]; break;
                 case "faction": F().Faction = Enum<Faction>(p[1], Error); break;
                 case "roster": F().Roster = p[1]; break;
                 case "kit": F().Kits["main"] = new KitRef(p[1], p.Length > 2 ? p[2] : ""); break;

@@ -33,9 +33,10 @@ public static class Architect
         for (int attempt = 0; attempt < MaxAttempts; attempt++)
         {
             var rng = new Rng(Hash.Combine(seed, (ulong)rarity + 1, 0xA2C417EUL + (ulong)attempt * 0x9E37UL));
-            string kitId = family.Site != null || variant.Site != null
+            // The family's own style kit re-skins its program or site (a flavour, such as alien).
+            string kitId = family.Style ?? (family.Site != null || variant.Site != null
                 ? lib.Sites[variant.Site ?? family.Site!].Style
-                : lib.Programs[variant.Program ?? family.Program!].Style;
+                : lib.Programs[variant.Program ?? family.Program!].Style);
             var canvas = new Canvas(lib.Kits[kitId]);
             canvas.X.Wrong = rng.Chance(family.Wrong);
             try

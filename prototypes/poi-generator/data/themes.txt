@@ -37,7 +37,7 @@ theme alien
   match alien alien.crystal alien.fungal
   density 0.26
   outliers 0.06 0.14
-  set precursor_vault 4 vharn_outpost 3 kessari_spire 3 biolab 2 research_base 3 crashed_freighter 2 deep_bunker 2
+  set precursor_vault 4 vharn_outpost 3 kessari_spire 3 biolab 2 research_base 3 crashed_freighter 2 deep_bunker 2 alien_hive_ruin 3 alien_library 1 alien_cathedral 1
 
 # A fallen world: the old civilisation's ruins after the collapse. Blast craters, dead cities,
 # bunkers and scrap forts of the roving gangs.

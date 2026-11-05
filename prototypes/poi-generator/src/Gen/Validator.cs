@@ -79,6 +79,9 @@ public static class Validator
         var anchors = layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null;
         var floating = Structure.Floating(g, layout.Occupied, anchors);
         if (floating.Count > 0) problems.Add($"{floating.Count} floating blocks, first at {floating[0]} ({g.Get(floating[0])})");
+        // Cables, wires and tendrils always hang from something.
+        var loose = Structure.Untethered(g);
+        if (loose.Count > 0) problems.Add($"{loose.Count} cables or tendrils hang from nothing, first at {loose[0]}");
 
         return problems;
     }

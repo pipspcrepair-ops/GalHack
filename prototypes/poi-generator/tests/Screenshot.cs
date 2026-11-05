@@ -62,6 +62,17 @@ public partial class Screenshot : Node
             WalkOnStorey(a[6], a.Length > 7 ? float.Parse(a[7], System.Globalization.CultureInfo.InvariantCulture) : 0.5f);
             return;
         }
+        // tell:<family>:<variant>:<rarity>:<state>:<seed> faces a hidden room's breakable wall from across the room;
+        // breach:... stands at a collapse breach's lip looking down into it.
+        if (_view.StartsWith("tell:") || _view.StartsWith("breach:"))
+        {
+            string[] a = _view.Split(':');
+            m.Inspect(a[1], int.Parse(a[2]), System.Enum.Parse<Rarity>(a[3], true), System.Enum.Parse<PoiState>(a[4], true), ulong.Parse(a[5]));
+            m.SetMode(Main.Mode.Walk);
+            m.Stage.AllKeys = true;
+            LookAtFeature(a[0] == "tell");
+            return;
+        }
         // ground:<family>:<variant>:<rarity>:<state>:<seed>:<distance>:<yaw from entrance>: an eye-level view from far off.
         if (_view.StartsWith("ground:"))
         {
@@ -208,6 +219,43 @@ public partial class Screenshot : Node
             grid.AddChild(box);
         }
         _main.HideHud(true);
+    }
+
+    /// <summary>Stands back from a hidden room's cracked wall (or at a breach's lip) and looks at it, head torch on.</summary>
+    void LookAtFeature(bool tell)
+    {
+        var stage = _main.Stage;
+        var poi = stage.Poi;
+        var nav = poi.Nav();
+        Int3 stand, target;
+        if (tell)
+        {
+            var s = poi.Layout.Extras.Secrets.FirstOrDefault();
+            if (s == null) return;
+            int floor = s.WallCells.Min(c => c.Y);
+            Int3 wall = s.WallCells.Where(c => c.Y == floor).OrderBy(c => c.X + c.Z).ElementAt(s.WallCells.Count(c => c.Y == floor) / 2);
+            Int3 outward = s.Facing.Vec();
+            stand = wall + outward;
+            for (int k = 4; k >= 1; k--)
+                if (nav.Standable(wall + outward * k)) { stand = wall + outward * k; break; }
+            target = wall + Int3.Up;
+        }
+        else
+        {
+            var b = poi.Layout.Extras.Breaches.FirstOrDefault();
+            if (b == null) return;
+            stand = b.SurfaceCell;
+            var low = b.Cells.OrderBy(c => c.Y).First();
+            target = low;
+        }
+        var feet = stage.ToGlobal(new Vector3(stand.X + 0.5f, stand.Y + 0.05f, stand.Z + 0.5f));
+        var look = stage.ToGlobal(new Vector3(target.X + 0.5f, target.Y + 0.5f, target.Z + 0.5f)) - (feet + Vector3.Up * 1.6f);
+        float yaw = Mathf.Atan2(-look.X, -look.Z);
+        _main.Player.Place(feet, yaw);
+        _main.Player.SetLook(yaw, Mathf.Clamp(Mathf.Asin(look.Normalized().Y), -0.9f, 0.3f));
+        _main.Player.Lamp.Visible = true;
+        _main.Player.ProcessMode = ProcessModeEnum.Disabled;
+        _main.SettleInterior();
     }
 
     /// <summary>Stands on the way to the vault on one storey, a fraction of the way along it, looking on.</summary>

@@ -112,26 +112,14 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
     public float SurfaceHeight(double x, double z, double spacing = 1)
     {
-        float h = Sampler.Sample(x, z, spacing).Height;
-        foreach (TerrainStamp t in Stamps)
-        {
-            float w = t.Weight(x, z);
-            if (w > 0f) h += (t.PadY - h) * w;
-        }
-        return h;
+        return TerrainStamp.Compose(Stamps, Sampler.Sample(x, z, spacing).Height, x, z);
     }
 
     /// <summary>Ground and river at a point, with stamps applied to the ground height.</summary>
     public GroundSample Ground(double x, double z, double spacing)
     {
         GroundSample s = Sampler.Sample(x, z, spacing);
-        float h = s.Height;
-        foreach (TerrainStamp t in Stamps)
-        {
-            float w = t.Weight(x, z);
-            if (w > 0f) h += (t.PadY - h) * w;
-        }
-        return s with { Height = h };
+        return s with { Height = TerrainStamp.Compose(Stamps, s.Height, x, z) };
     }
 
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>

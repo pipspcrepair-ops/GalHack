@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -724,6 +724,21 @@ public partial class PoiTest : Node
         Check(badShare == 0 && noOutlier == 0, $"themed sets and outliers: {planets} planets over {_lib.Themes.Count} themes, {total} places, {outliers} outliers " +
                                                $"({outliers * 100f / total:F1}%); every planet's outlier share inside its theme's range and never zero{firstBad}");
         Check(poorCover == 0, $"placement covers the whole planet, not just the landing site: the worst planet has places in {worstCover:P0} of its 18 regions (6 by 3)");
+    }
+
+    /// <summary>Cables, wires and tendrils always hang from something: never in mid-air.</summary>
+    void Tethers()
+    {
+        int places = 0, hanging = 0, loose = 0;
+        foreach (var f in _lib.Families)
+            foreach (PoiState s in Enum.GetValues<PoiState>())
+            {
+                var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 31);
+                places++;
+                hanging += p.Blocks.Blocks().Count(b => Structure.Hangs(b.Block.Type));
+                loose += Structure.Untethered(p.Blocks).Count;
+            }
+        Check(hanging > 0 && loose == 0, $"cables and tendrils: {hanging} hanging things in {places} places, every one hangs from an anchor above it ({loose} in mid-air)");
     }
 
     /// <summary>Start worlds: no faction holds ground (faction places only as ruins), no cores, no defenders; the rest stays.</summary>

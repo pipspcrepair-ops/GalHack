@@ -106,6 +106,7 @@ public static class PoiFactory
         inst.StructureAfter = CountStructure(inst.Blocks);
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
+        Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         return inst;
     }
 

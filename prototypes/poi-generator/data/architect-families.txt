@@ -440,3 +440,90 @@ family old_mine
     seed 9602
   variant Gallows Head
     seed 9603
+
+# ---- Alien flavour: the same programs and plans, built in alien style kits. Common on alien
+# worlds, rare outliers elsewhere. Alien is not Precursor: these were built by someone else.
+
+family alien_hive_ruin
+  tier site
+  siting valley
+  rise 4
+  name Alien Hive Ruin
+  pitch Warrens chewed into the rock by something that left, or is sleeping deeper down.
+  faction none
+  roster hollow
+  program mine_works
+  style alien_hive
+  core none
+  owner none
+  rarity rare
+  biomes fungal rock ash desert steppe ice
+  territory any
+  spacing 16
+  reveal 140
+  ominous 0.95
+  wrong 0.25
+  tags alien hive underground
+  states active 0 abandoned 3 infested 5 ruined 2
+  variant The Chewed Halls
+    seed 9101
+  variant Brood Warren
+    seed 9102
+  variant Hollow Comb
+    seed 9103
+
+family alien_library
+  tier site
+  siting hillside
+  rise 6
+  name Alien Library
+  pitch Shelves of crystal that still hum when you walk past, and a script nobody can read.
+  faction none
+  roster precursor
+  program research_base
+  style alien_library
+  core none
+  owner none
+  rarity exotic
+  biomes fungal rock ice desert steppe ash
+  territory any
+  spacing 20
+  reveal 200
+  ominous 0.9
+  wrong 0.2
+  tags alien library science underground
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant The Humming Stacks
+    seed 9201
+  variant Archive of Glass
+    seed 9202
+  variant The Reading Deep
+    seed 9203
+
+family alien_cathedral
+  tier site
+  siting peak
+  rise 30
+  name Alien Cathedral
+  pitch A spire of pale stone on the highest ground, built for a congregation that never came back.
+  faction none
+  roster precursor
+  program tower_block
+  style alien_cathedral
+  core none
+  owner none
+  rarity exotic
+  biomes fungal rock ice desert steppe ash
+  territory any
+  spacing 24
+  reveal 900
+  ominous 1
+  wrong 0.3
+  tags alien cathedral landmark
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant The Pale Choir
+    seed 9301
+  variant Spire of Waiting
+    seed 9302
+  variant The Long Nave
+    seed 9303
