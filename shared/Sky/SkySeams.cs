@@ -277,7 +277,7 @@ public static class SkySeams
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (string a in new[] { "--position", "20000,20000", "--path", ProjectSettings.GlobalizePath("res://"), scene.SceneFilePath, "--" })
+        foreach (string a in new[] { "--path", ProjectSettings.GlobalizePath("res://"), scene.SceneFilePath, "--" })
             start.ArgumentList.Add(a);
         foreach (string a in OS.GetCmdlineUserArgs()) start.ArgumentList.Add(a);
         var lines = new ConcurrentQueue<string>();

@@ -252,7 +252,7 @@ The planet surface's `SurfaceTest` checks the seated places:
 
 ### Screenshots
 
-Run screenshots windowed, and add `--position 20000,20000` to keep the window off-screen:
+Run screenshots windowed:
 
 ```
 tests/Screenshot.tscn -- --view=<view> --out=file.png

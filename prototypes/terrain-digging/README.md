@@ -120,7 +120,7 @@ Typical numbers on a Ryzen 7 5800X3D:
 | Startup | 462 chunk meshes, 246k triangles in ~2 s headless, ~4.5 s windowed (behind a loading message) |
 | Remesh with a 30-block base cut in, one thread | avg 0.6 ms, max about 4 ms per chunk (0.2 ms for the same holes without it) |
 
-`tests/Screenshot.tscn -- --view=landscape|pit|crater|block|row|corner --out=file.png` renders a view (windowed; add `--position 20000,20000` before `--path` to keep the window off-screen). `--legacy` clears `row` and `corner` the old way, for before-and-after pictures. `--view=map` writes a top-down layout map headless; `--debug=1|2` shows normals or unlit albedo.
+`tests/Screenshot.tscn -- --view=landscape|pit|crater|block|row|corner --out=file.png` renders a view (windowed). `--legacy` clears `row` and `corner` the old way, for before-and-after pictures. `--view=map` writes a top-down layout map headless; `--debug=1|2` shows normals or unlit albedo.
 
 ## Known limits
 

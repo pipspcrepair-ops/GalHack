@@ -117,7 +117,7 @@ The siren whoop and the warning chirp are synthesised in code (`src/World/Sfx.cs
 
 Run it windowed (`$GodotConsole --path prototypes/diegetic-ui res://tests/UiTest.tscn`) and it also prints what each SubViewport costs per redraw on your machine.
 
-`tests/Screenshot.tscn -- --view=console|holo|wrist|cold|invasion|invasion-late|fire|constructor|trader|look|overview --out=file.png` renders a view to a PNG. Run it windowed, not headless; add `--position 20000,20000` before `--path` to keep the window off-screen.
+`tests/Screenshot.tscn -- --view=console|holo|wrist|cold|invasion|invasion-late|fire|constructor|trader|look|overview --out=file.png` renders a view to a PNG. Run it windowed, not headless.
 
 ## Using the screen component
 

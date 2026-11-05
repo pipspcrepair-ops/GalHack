@@ -137,7 +137,7 @@ Only formations 0.8 m or bigger are solid; scree never is.
 `tests/Screenshot.tscn` renders one view to a PNG off-screen:
 
 ```powershell
-godot --position 20000,20000 --path prototypes/deco res://tests/Screenshot.tscn -- --view=<view> --out=shots/x.png
+godot --path prototypes/deco res://tests/Screenshot.tscn -- --view=<view> --out=shots/x.png
 ```
 
 | View | Shows |
