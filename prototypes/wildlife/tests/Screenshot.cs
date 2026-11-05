@@ -17,7 +17,8 @@ namespace Wildlife;
 /// - harvester: the hovercraft chewing through a grove
 /// - lineup: the bestiary of two or three planets, for scale
 /// - sheet: a contact sheet of one camera per species, for checking the generator by eye
-/// --hud keeps the debug HUD. No view shows anything about first sightings: there is nothing to show.
+/// - discovery: the brief card a first meeting brings up, over a stalking predator
+/// --hud keeps the debug HUD. Only the discovery view shows a discovery card.
 /// </summary>
 public partial class Screenshot : Node
 {
@@ -70,10 +71,35 @@ public partial class Screenshot : Node
         Main m = _main;
         m.FreeCamera = true;
         m.Hud.StatusVisible = _hud;
+        // Discovery cards stay out of the shots, except the view staged to show one.
+        m.Hud.ShowCards = _view == "discovery";
+        m.Hud.ClearCards();
         m.Player.Muzzle.Visible = false;
         Player p = m.Player;
         switch (_view)
         {
+            case "discovery":
+            {
+                // The card a first meeting brings up, over a stalking predator.
+                World(WorldKind.Alien, 0.42f);
+                Species s = m.Fauna.Species.Where(x => x.Behaviour is Behaviour.Predator or Behaviour.PackHunter && x.Rig == RigKind.Legged && !m.Codex.Knows(x.Id))
+                    .OrderByDescending(x => x.Weirdness).FirstOrDefault() ?? m.Fauna.Species.First(x => !m.Codex.Knows(x.Id));
+                Vector3 toward = Turn(SunFlat(), 0.5f);
+                Vector3 eye = Ground(new Vector3(-60f, 0f, 60f)) + Vector3.Up * (0.45f + s.Body.Size * 0.3f);
+                p.Teleport(Ground(eye));
+                foreach (Creature other in m.Sim.Creatures) if (WildSim.Flat(other.Position - eye).Length() < 40f) m.Sim.Remove(other);
+                // Everything else on this world has been met already, so the card is this one's.
+                foreach (Species other in m.Fauna.Species) if (other != s) m.Codex.Record(other, "Player 1", 0f, m.Fauna.PlanetName);
+                m.Hud.ClearCards();
+                Creature c = m.Sim.Spawn(s, eye + toward * (3.5f + s.Body.Size * 2.8f));
+                c.Yaw = MathF.Atan2(toward.X, toward.Z);
+                _each = () => c.SetState(CState.Stalk);
+                // The codex looks from the game camera; first meetings queue the card.
+                _aim = () => (eye, c.Rig.BoundsCenter + Vector3.Up * 0.15f);
+                _each += () => { if (m.Hud.ShowingCard != null && m.Hud.Card.Modulate.A > 0.99f && _captureTick > _tick + 30) _captureTick = _tick + 30; };
+                _captureTick = 600;
+                break;
+            }
             case "herd":
             case "temperate":
             {

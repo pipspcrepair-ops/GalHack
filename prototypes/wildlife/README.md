@@ -3,6 +3,7 @@
 Proves that every planet can roll its own fauna on a handful of reliable procedural rigs, from near-familiar grazers to properly weird things, and that they come out looking like animals rather than accidents. It also covers:
 - herds and hunting packs
 - telegraphed, dodgeable attacks
+- a brief discovery card the first time a species is met
 - the harvester hovercraft: mow through a forest or run down wildlife and watch the hold fill
 
 All of it runs cheaply enough for a world full of creatures on a low-end PC.
@@ -111,7 +112,14 @@ The rules that keep it fair:
   - so several lunges never land on you at once without warning
 - **Damage** is never capped or reduced. There is no last stand. No creature is ranged yet.
 
-**First sightings are silent.** Meeting a creature for the first time puts nothing on screen and plays nothing: no card, banner, toast or chime. The codex records who saw each species first without raising any event. Names show only when you ask: hold Q on a creature to scan it.
+**Discovery card.** The first time anyone gets a good look at a species (close by, or near the middle of the view), a brief card names it: its name, what it looks like, its form, behaviour and size, the planet, and who found it first. A short synthesised chime, two soft rising bell notes, plays with it. The codex records the first finder; later sightings, by anyone, bring up nothing. The card is built never to get in the way:
+- It slides in at the top of the screen, holds for 3.6 s and fades: about 4.4 s in all. Several new species queue up and show one at a time.
+- Nothing on the HUD takes the mouse or keyboard focus, so clicks and keys go straight to the game while it is up.
+- It never shows while a creature is winding up or lunging at you, or while you are down. A card already up vanishes the moment an attack starts and slides back in a second after it is over, for the rest of its time.
+
+Holding Q on a creature still scans it at any time: name, form, behaviour, temperament, size, distance, signature attack and damage, and who found it first.
+
+![The discovery card for a pack hunter met for the first time](screenshots/discovery.png)
 
 **Harvesting** (`src/Core/Harvest.cs`):
 - The blades are a box on the front of the vessel. Plants in it pay out wood and plant matter as they are chipped, and creatures in it are chewed and their meat (and the odd rare part) goes straight into storage.
@@ -147,7 +155,7 @@ From the repo root, in PowerShell:
 | Space | Jump |
 | Ctrl (hold) | Crouch: creatures find you less alarming |
 | Left mouse | Fire the blaster |
-| Q (hold) | Scan the creature under the crosshair: name, behaviour, signature attack |
+| Q (hold) | Scan the creature under the crosshair: name, form, behaviour, size, signature attack, first finder |
 | E | Butcher a kill into your pack |
 | F | Board or leave the harvester hovercraft (parked to your right at the start) |
 | 1 / 2 / 3 | Switch the planet: temperate, alien, Bloom-infested (new fauna and forest) |
@@ -189,10 +197,13 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - A harvested tree adds its wood, is removed, frees the nav grid, and regrows only when no player is near.
   - Running a creature down puts its meat in the hold.
   - The storage cap is enforced, and the blades leave alone anything the hold can't take in full.
-- **Silent first sightings:**
-  - The codex records the first finder and has no events.
-  - No announcement-like code remains.
-  - In the real scene, a never-seen species placed in front of the camera is recorded with nothing new on screen and no UI sound.
+- **Discovery card**, in the real scene through its input path:
+  - The codex records the first finder once and raises one discovery per species.
+  - A never-seen species in front of the camera brings up its card (name, form, behaviour, size, planet, finder) with the chime, for about 4.4 s.
+  - A second one of the same species brings up nothing: one card per species.
+  - While a card is up, every HUD control ignores the mouse and focus, nothing is under the cursor at the card, a key still reaches the game and the player walks under it.
+  - A never-seen hunter lunges at the player: no card shows on any frame of its wind-up or lunge, sidestepping still dodges it, and its card comes once the attack is over.
+  - No card shows while the player is down; it comes once they are back up.
 - **Performance:** 200 creatures plus a swarm must cost under 4 ms per frame as the game runs them: sim, rigs on their distance schedule, and syncing every mesh. The worst case, every rig posed every frame, must stay under 6 ms. Each is judged on the best of three 300-frame windows, all printed, so another program busy on the machine can't fail it.
 - **Playable scene:** the real scene, through its input path. Keys 1 to 3 switch worlds, and F, W, F board, drive and leave the hovercraft.
 
@@ -204,7 +215,7 @@ Screenshots run windowed, from the prototype folder:
 godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --out=file.png
 ```
 
-- **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`.
+- **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`, `discovery` (the only one that shows a discovery card).
 - **For checking the generator by eye:**
   - `sheet` renders a contact sheet with one camera per species. `--pick=0,3` narrows it to chosen species.
   - `--worlds=temperate,alien,bloom` or `seed123:0.6[:bloom]` picks the planets for `lineup` and `sheet`.

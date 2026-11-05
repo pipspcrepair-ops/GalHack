@@ -61,6 +61,29 @@ public sealed class Species
     /// <summary>Pack hunters, lone predators and ambushers: the ones built to kill.</summary>
     public bool IsHunter => Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;
 
+    /// <summary>Its body form in words, for the discovery card and the scan: "walker", "giant", "voidborne".</summary>
+    public string FormLabel => Plan switch
+    {
+        BodyPlan.Walker => "walker",
+        BodyPlan.Crawler => "crawler",
+        BodyPlan.Hopper => "leaper",
+        BodyPlan.Flier => "flier",
+        BodyPlan.Floater => "floater",
+        BodyPlan.Swarm => "swarm",
+        BodyPlan.Giant => "giant",
+        _ => "oddity",
+    };
+
+    /// <summary>What it does, in words: "herd grazer", "pack hunter", "territorial giant".</summary>
+    public string BehaviourLabel => Behaviour switch
+    {
+        Behaviour.Herd => "herd grazer",
+        Behaviour.PackHunter => "pack hunter",
+        Behaviour.TerritorialGiant => "territorial",
+        Behaviour.HarmlessOddity => "harmless",
+        _ => Behaviour.ToString().ToLowerInvariant(),
+    };
+
     public override string ToString() =>
         $"{Name} ({CommonName}) {Plan}/{Form} {Behaviour}+{Temperament} size {Body.Size:F1} m weird {Weirdness:F2}{(Corrupted ? " CORRUPTED" : "")}";
 }
