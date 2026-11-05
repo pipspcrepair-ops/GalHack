@@ -32,6 +32,9 @@ public sealed class PhysicsWorld
     /// <summary>The terrain's edit API, for craters. Null: impacts make no holes.</summary>
     public ITerrainEditor Terrain { get; set; }
 
+    /// <summary>Where the water is (seas, rivers, lakes): a volume bodies go into. Null: a dry zone.</summary>
+    public IWaterField Water { get; set; }
+
     public List<IForceProvider> ForceProviders { get; } = new();
     public List<IStuckField> StuckFields { get; } = new();
     public StuckGuard Stuck { get; }
@@ -103,6 +106,7 @@ public sealed class PhysicsWorld
             Tag = spec.Tag,
         };
         body.Integrity = float.IsNaN(spec.Integrity) ? Impacts.Integrity(spec.Kind, spec.Mass, Rules.Integrity) : spec.Integrity;
+        body.Density = float.IsNaN(spec.Density) || spec.Density <= 0f ? Rules.Water.DensityOf(spec.Kind) : spec.Density;
         _bodies.Add(body);
         Registered?.Invoke(body);
         return body;
@@ -172,6 +176,41 @@ public sealed class PhysicsWorld
         if (body.Frame.Core is { On: true } core) return core.Local;
         // Core gravity off: the zone's gravity, turned into the structure's frame (none in space).
         return MathX.Unrotate(body.Frame.Rotation, Zone.At(body.WorldPosition));
+    }
+
+    // ---- Water ------------------------------------------------------------------------
+
+    /// <summary>
+    /// How a body sits in water right now, from its pose: the share of its height (feet to top,
+    /// upright) under the surface over it. Only bodies in the zone's world are in water; riders
+    /// live in their ship's cabin world, and a base is fixed whatever laps at it.
+    /// </summary>
+    public WaterState WaterStateOf(Body b)
+    {
+        if (Water == null || b.Frame != null || b.Motion == Motion.Fixed) return WaterState.Dry;
+        Vector3 p = b.CenterOfMassPosition;
+        if (!Water.SurfaceAt(p, out float surface)) return WaterState.Dry;
+        float feet = b.Position.Y - b.Shape.FeetBelowOrigin;
+        return new WaterState(surface, WaterForces.SubmergedFraction(feet, b.Shape.Height, surface));
+    }
+
+    /// <summary>
+    /// The water's buoyancy on a body right now, N. A vessel holding itself up counts it into the
+    /// load its engines hold, so it flies underwater as in air (only slower, through the drag).
+    /// </summary>
+    public Vector3 BuoyancyOn(Body b)
+    {
+        WaterState w = WaterStateOf(b);
+        return WaterForces.Buoyancy(b.Mass, b.Density, w.Fraction, GravityAt(b), Rules.Water);
+    }
+
+    /// <summary>Everything the water does to a body this tick: buoyancy and drag (still water), N.</summary>
+    Vector3 WaterForce(Body b, float dt)
+    {
+        float fraction = b.Water.Fraction;
+        Vector3 v = b.Motion == Motion.Free ? b.PointVelocity(b.CenterOfMassPosition) : b.Velocity;
+        return WaterForces.Buoyancy(b.Mass, b.Density, fraction, GravityAt(b), Rules.Water)
+               + WaterForces.Drag(b.Mass, b.DragArea, v, fraction, Rules.Water, dt);
     }
 
     // ---- Shelter and parking ----------------------------------------------------------
@@ -272,20 +311,26 @@ public sealed class PhysicsWorld
         // Bodies' own drives first: a landed vessel decides here whether it wakes.
         foreach (Body b in _bodies) b.Controller?.Drive(this, b, dt);
 
-        // Nothing pulls on a base: nothing could move it.
+        // Nothing pulls on a base: nothing could move it. Water buoys and slows everything in it.
         foreach (Body b in _bodies)
-            if (!b.Asleep && b.Motion != Motion.Fixed) AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+        {
+            b.Water = WaterStateOf(b);
+            if (b.Asleep || b.Motion == Motion.Fixed) continue;
+            AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+            if (b.Water.InWater) AddForce(b, WaterForce(b, dt), ForceKind.Water);
+        }
 
         foreach (IForceProvider p in ForceProviders) p.ApplyForces(this, dt);
 
         // A sleeping rigid body that something now pushes (a gust, a tornado) wakes, and from
-        // then on carries its own weight like everything else.
+        // then on carries its own weight (and its buoyancy) like everything else.
         foreach (Body b in _bodies)
         {
             if (!b.Asleep || b.Motion != Motion.Free) continue;
             if (b.PendingForce.LengthSquared() < 1e-4f * b.Mass * b.Mass && b.PendingImpulse == Vector3.Zero) continue;
             b.Asleep = false;
             AddForce(b, b.Mass * GravityAt(b), ForceKind.Gravity);
+            if (b.Water.InWater) AddForce(b, WaterForce(b, dt), ForceKind.Water);
         }
 
         // Controllers that react to what is already pushing (legs gripping against the wind).

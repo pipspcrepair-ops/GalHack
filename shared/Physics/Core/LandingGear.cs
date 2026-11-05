@@ -134,7 +134,7 @@ public sealed class LandingGear
             GearLeg leg = _legs[i];
             Vector3 hip = body.ToParent(leg.Hip);
             float reach = leg.Length + t.DeployAltitude + t.Hysteresis + 5f;
-            FootFound[i] = world.Query.Ray(hip + Vector3.UnitY * 0.5f, hip - Vector3.UnitY * reach, Layers.ProbeMask, body, out RayHit ground);
+            FootFound[i] = world.Query.Ray(hip + Vector3.UnitY * 0.5f, hip - Vector3.UnitY * reach, Layers.GearMask, body, out RayHit ground);
             FootBody[i] = FootFound[i] ? ground.Body : null;
             if (!FootFound[i]) continue;
             FootGround[i] = ground.Point;

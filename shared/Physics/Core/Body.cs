@@ -40,7 +40,7 @@ public enum Motion
 }
 
 /// <summary>Where a force came from. Every force goes through <see cref="PhysicsWorld.AddForce"/> with one of these.</summary>
-public enum ForceKind { Gravity, Thrust, Weather, Walk, Contact, Other }
+public enum ForceKind { Gravity, Thrust, Weather, Walk, Contact, Other, Water }
 
 /// <summary>
 /// The room a body needs, for stuck checks: an upright capsule standing on its feet.
@@ -66,6 +66,12 @@ public sealed class BodySpec
 
     /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
     public StructureClass Class;
+
+    /// <summary>
+    /// kg per cubic metre of the water it displaces: below water's density it floats, above it
+    /// sinks. NaN: the rules' density for its kind (physics.json, water.bodies).
+    /// </summary>
+    public float Density = float.NaN;
 
     /// <summary>Centre of mass in the body's own frame, m.</summary>
     public Vector3 CenterOfMass;
@@ -122,6 +128,16 @@ public sealed class Body
     public float DragArea { get; set; }
 
     public StructureClass Class { get; set; }
+
+    /// <summary>kg/m³ of displaced water: buoyancy is water's density / this × weight × the share under water.</summary>
+    public float Density { get; set; }
+
+    /// <summary>
+    /// How the body sits in water this tick (the world updates it before anything reacts to it):
+    /// the share of it under the surface, and whether it is wholly under, the cue for a vitals
+    /// system that a suit must breathe its own oxygen.
+    /// </summary>
+    public WaterState Water { get; internal set; } = WaterState.Dry;
 
     /// <summary>
     /// The host this vessel is parked on: a base or a capital ship it has landed on, rests on with
@@ -209,7 +225,7 @@ public sealed class Body
     internal Vector3 PendingForce, PendingImpulse, PendingAngularImpulse;
     readonly Vector3[] _forceBy = new Vector3[ForceKinds];
     readonly Vector3[] _lastForceBy = new Vector3[ForceKinds];
-    internal const int ForceKinds = 6;
+    internal const int ForceKinds = 7;
 
     /// <summary>Total force from each source during the last completed tick, N. For tests and the HUD.</summary>
     public Vector3 LastForce(ForceKind kind) => _lastForceBy[(int)kind];

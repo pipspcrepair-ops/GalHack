@@ -232,9 +232,15 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         Gear?.Step(world, body, ref v, dt);
 
         // The flight rules said what velocity they want; the engines make the force for it. The
-        // world adds gravity and weather on top, so the thrust here cancels the weight it holds up.
+        // world adds gravity, water and weather on top, so the thrust here cancels the weight it
+        // holds up. In water a vessel that can hold itself up holds only what the water doesn't
+        // (its buoyancy carries the rest), so it flies underwater as in air, slowed by the drag; one
+        // that can't (no power, too heavy) has its engines flat out already, and sinks or floats by
+        // its density.
         Vector3 gravity = world.GravityAt(body);
-        world.AddForce(body, body.Mass * ((v - v0) / dt - gravity), ForceKind.Thrust);
+        bool holding = Stats.CanLiftOff || Zone.Gravity <= 0f;
+        Vector3 buoyed = holding ? world.BuoyancyOn(body) : Vector3.Zero;
+        world.AddForce(body, body.Mass * ((v - v0) / dt - gravity) - buoyed, ForceKind.Thrust);
     }
 
     public void AfterMove(PhysicsWorld world, Body body, float dt)

@@ -1,6 +1,6 @@
 # Prototype: physics sandbox
 
-Proves the shared physics module (`shared/Physics`) in one place: a small vessel built from a blueprint and flown by the handling model over diggable terrain in weather wind, landing gear on dug ground, a crash that cuts a real crater, a section shot off into a tumbling wreck, a player walking in the cabin while it flies, riding its roof, and spacewalking round its hull in orbit in mag boots, a tornado flinging a crate and the player (who survives at 15%), and a hover rover crossing a dug trench. It uses only `shared/Physics` and the other prototypes' pure-C# cores, compiled from where they live.
+Proves the shared physics module (`shared/Physics`) in one place: a small vessel built from a blueprint and flown by the handling model over diggable terrain in weather wind, landing gear on dug ground, a crash that cuts a real crater, a section shot off into a tumbling wreck, a player walking in the cabin while it flies, riding its roof, and spacewalking round its hull in orbit in mag boots, a tornado flinging a crate and the player (who survives at 15%), a hover rover crossing a dug trench, a hurricane that never moves a base or the vessels parked on it while it pushes a capital ship and carries what is landed on its deck, and a lake you can swim across, dive into and sink a ship in. It uses only `shared/Physics` and the other prototypes' pure-C# cores, compiled from where they live.
 
 ![The Corsair low over the rover lane in a dust storm, the hover rover crossing it](screenshots/flight.png)
 ![A wreck lying in the crater its crash cut](screenshots/crash.png)
@@ -18,10 +18,10 @@ Proves the shared physics module (`shared/Physics`) in one place: a small vessel
 | Terrain core | `prototypes/terrain-digging/src/Terrain` (compiled in) | Chunk store, edit rules, edit log, Surface Nets, stuck resolver, unchanged |
 | Structure core | `prototypes/building/src/Structures` (compiled in) | Blocks, blueprints, stats, damage and severing, unchanged |
 | Weather | `prototypes/weather/src/Model`, `src/Forces`, `src/Glue.cs` (compiled in) | The weather model and its wind and tornado forces, unchanged |
-| Bridges | `src/Bridges` | The only code that knows both sides: a structure as an `IVesselStructure`, the handling model as `IFlightRules`, craters through `ChunkStore.Crater` into a session `EditLog`, terrain and structure stuck fields, weather forces onto the force path, a health sink that asks weather for the fling floor, and the sandbox's landscape behind terrain-digging's `ITerrainSource` |
+| Bridges | `src/Bridges` | The only code that knows both sides: a structure as an `IVesselStructure`, the handling model as `IFlightRules`, craters through `ChunkStore.Crater` into a session `EditLog`, terrain and structure stuck fields, weather forces onto the force path, a health sink that asks weather for the fling floor, the sandbox's landscape behind terrain-digging's `ITerrainSource`, and its lake as the module's `IWaterField` |
 | World | `src/World` | Ships, crates, creatures and the player as registered bodies; the terrain view (8 collision blocks per chunk, as terrain-digging); a structure mesher with paint patterns; sky, flames, funnel, camera, HUD, keys |
 
-Data is read where each prototype keeps it: `shared/Physics/physics.json`, `ship-handling/data/handling.json` (flight numbers and the parts table), `building/data` (the catalogue, with `data/vessel-parts.json` appended: gyros, hover pads and landing legs, which the catalogue doesn't have yet) and `weather/data/weather.json`. The two vessels are hand-written small-grid blueprints in `data/blueprints`:
+Data is read where each prototype keeps it: `shared/Physics/physics.json`, `ship-handling/data/handling.json` (flight numbers and the parts table), `building/data` (the catalogue, with `data/vessel-parts.json` appended: gyros, hover pads and landing legs, which the catalogue doesn't have yet) and `weather/data/weather.json`; the crates (a light supply crate that floats and a dense ore crate that sinks) are `data/crates.json`. The two vessels are hand-written small-grid blueprints in `data/blueprints`:
 
 | | Corsair 9 (small vessel) | Sand Flea II (hover rover) |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ A third blueprint, the Deck Barge (`barge.gbp`), is a flat test hull for the wal
 
 Two large-grid blueprints (2 m cells) prove the wind and parking rules: the Field Pad (`pad.gbp`), a 16 m square landing pad in base mode, fixed to the ground, and the Deck Tender (`tender.gbp`), a 200 t capital ship with a flat 14 × 24 m deck, four lift jets, main engines, retros, side jets and four large legs (lift margin about +2800 kN).
 
-The landscape (`SandboxTerrain`) has real relief: rolling hills, a rocky ridge to the north, a 13 m bank dropping into a basin to the east, a level landing field in the middle and a gentle lane to the south where the trench is dug.
+The landscape (`SandboxTerrain`) has real relief: rolling hills, a rocky ridge to the north, a 13 m bank dropping into a basin to the east, with a lake in it (32 by 36 m, a level bed 12 m down, steep sides under water and a beach round it), a level landing field in the middle and a gentle lane to the south where the trench is dug.
 
 ## Play it
 
@@ -58,6 +58,7 @@ You start beside the Corsair, landed on the field with its doorway open behind i
 | G / C | Landing gear / cruise |
 | 1 / 2 / 3 | Into the Corsair's cabin / the rover's seat / onto the Corsair's roof |
 | 4 | Spacewalk: the Corsair parked in orbit, core gravity off, you on its roof in mag boots |
+| 5 | A swim: onto the lake's southern beach. In deep water Space swims up and Ctrl down |
 | Y | The ship's core gravity on or off: float in the cabin |
 | K | Shoot an engine pod off the Corsair (port, then starboard) |
 | B / N | Blast a crater / dig at the crosshair |
@@ -66,7 +67,7 @@ You start beside the Corsair, landed on the field with its doorway open behind i
 | R | Start again |
 | F1, Esc | Hide the help, free the mouse |
 
-Things to try: walk up the doorway step into the Corsair (jetpack up if it's landed high), take the seat and fly it while the dust blows; stand on its roof (3) and have it flown; go into orbit (4), walk off the roof's edge, down the side and under the belly, then round to the porch and in through the door; jump off and drift away; dive it into the field at full boost and walk to the hole; press K in flight; drive the rover over the trench; call a tornado and stand your ground.
+Things to try: walk up the doorway step into the Corsair (jetpack up if it's landed high), take the seat and fly it while the dust blows; stand on its roof (3) and have it flown; go into orbit (4), walk off the roof's edge, down the side and under the belly, then round to the porch and in through the door; jump off and drift away; dive it into the field at full boost and walk to the hole; press K in flight; drive the rover over the trench, then across the lake; call a tornado and stand your ground; go for a swim (5), dive to the bed and look up; fly the Corsair down into the lake.
 
 ## Test it
 
@@ -80,7 +81,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 . .\tools\env.ps1; & $GodotConsole --headless --fixed-fps 60 --path prototypes/physics-sandbox res://tests/PhysicsTest.tscn
 ```
 
-`.\tools\test.ps1 -Project prototypes/physics-sandbox -Scene res://tests/PhysicsTest.tscn` works too, in real time (under 2 minutes); its performance check then times only the module's own step. Both give the same results, check for check. The 63 checks, with typical numbers on a Ryzen 7 5800X3D:
+`.\tools\test.ps1 -Project prototypes/physics-sandbox -Scene res://tests/PhysicsTest.tscn` works too, in real time (under 2 minutes); its performance check then times only the module's own step. Both give the same results, check for check. The 70 checks, with typical numbers on a Ryzen 7 5800X3D:
 
 - **Pure rules:** rotation conventions; the damage formula for every mass and speed (uncapped: 2000 m/s does 992× the hull); reduced mass; crater sizes and the 6 m cap; toughness per tonne; the greedy box merge covers every solid cell once (20 random chunks); joining a ship and letting go keep world position, velocity and orientation; the let-go rule (a jump at once, 0.4 s out of contact or 1.5 m off, never from inside); turning onto a new up keeps forward forward.
 - **Determinism:** two whole sandbox worlds in their own physics spaces, 7 s of a dust storm with the Corsair flown and crashed (a crater), the rover driven and crates flung by a tornado: 3780 body-ticks, max difference exactly 0, identical terrain edits.
@@ -94,6 +95,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Steps** (`walking.stepHeight`, 0.6 m): in orbit in mag boots the barge's one-block lip is walked up and over in 0.4 s and a stair of three one-block steps climbed in 0.5 s, both never out of contact or off the floor; inside the deckhouse under core gravity the same lip is stepped up onto without a stop (off the far side, a 0.28 s drop); on terrain a sheer 0.5 m ledge is stepped up onto, and the steepest edge the terrain makes (one dug layer, 1.07 m over 2 m of slope) is walked out of at full speed.
 - **Rover and gear:** the rover crosses the 2 m dug trench at 23 m/s without touching it (engines dip to 1.16 m); the Corsair's legs drop by themselves and it settles tilted 10.5° on ground 0.5 m uneven, every foot within 1 cm.
 - **Wind on bases and parked vessels** (a 37 m/s hurricane, in a fresh world): the Field Pad takes 0 N and doesn't move a hair in 3 s; a Corsair landed on it is parked, takes 0 N and moves 0.00 mm, while the same Corsair landed on the bare ground beside it takes up to 23 kN; the Deck Tender flying on its autopilot is pushed by ½ρ·CdA·|w|·w (up to 104 kN on its 90 m², 0.52 m/s² on its 200 t), and its course changes by exactly the push over its mass; a Corsair landed on its deck and a rover docked to it take 0 N and stay within 0.00 mm and 0.0000° of their spots as it goes from 4.0 to 4.8 m/s; once the Corsair lifts off it is unparked and the wind pushes it again (16 kN).
+- **Water, a volume:** the player walks into the lake, swims across at 2.1 m/s with at most 76% of them under (head out) and walks out on the far beach (16 s beach to beach); left alone they float 79% under, Ctrl dives them 10 m in 4.3 s (the underwater flag set: the suit on its own oxygen) and Space brings them up in 4.6 s; the 450 kg/m³ supply crate floats exactly 45% under and the 2600 kg/m³ ore crate sinks 11 m to the bed; a Corsair whose generator is shot out over the lake sinks at up to 3.6 m/s and settles on its legs on the bed, its keel never below it; a powered Corsair flown under goes down at 3.9 m/s, holds its depth hands off (0.0 cm in 2 s) and crawls at 4.3 m/s full ahead; the hover rover rides the surface 1.5 m up (within 0.09 m), never wet; and none of it is ever taken for stuck (0 ticks inside anything, 0 rescues).
 - **Tornado** (in a fresh world, twice): caught at 40% health, carried 36 m up and flung, the 27 m/s landing would cost 69% and leaves exactly 15.00%; the crate beside them is flung too and is still there; the same fall without a fling leaves 0%; the two runs agree bit for bit.
 - **Stuck-safety:** 1000 random digs, craters, teleports into the ground, blocks built onto bodies, hard landings and zone loads: about 1260 rescues, every one within 2 frames, nothing ends inside terrain or a structure, nothing falls out of the world.
 - **Performance:** 20 vessels (all moving) + 50 crates in a dust storm: a whole physics tick (shared module, Jolt step, scripts and an empty headless frame) about 1.75 ms on average against a 2 ms budget, timed in three separate 100-tick windows and judged on the best, so a machine busy with other work doesn't fail it but a real slowdown (which slows every window) does; the module's own step about 1.2 ms, and the main thread's CPU time per tick is printed too.

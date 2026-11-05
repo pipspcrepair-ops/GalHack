@@ -18,8 +18,8 @@ namespace PhysicsSandbox.World;
 /// <summary>
 /// Everything the sandbox simulates, wired together through the shared physics module and
 /// nothing else: terrain-digging's chunk store (with the sandbox's landscape), building's
-/// structures flown by ship-handling's handling model, weather's wind and tornadoes, crates and
-/// a player. The playable scene and the tests both build on this; it has no camera, HUD or input.
+/// structures flown by ship-handling's handling model, weather's wind and tornadoes, a lake,
+/// crates and a player. The playable scene and the tests both build on this; it has no camera, HUD or input.
 ///
 /// Data is read from where each prototype keeps it (handling.json, building's data folder,
 /// weather.json) and the shared module's own physics.json, never copied.
@@ -43,6 +43,9 @@ public partial class SandboxWorld : Node3D
     public ChunkStore Store { get; private set; }
     public TerrainBridge Terrain { get; private set; }
     public TerrainView TerrainView { get; private set; }
+
+    /// <summary>The crates there are, by name (data/crates.json).</summary>
+    public IReadOnlyDictionary<string, CrateKind> CrateKinds { get; private set; }
 
     public readonly List<Ship> Ships = new();
     public readonly List<Crate> Crates = new();
@@ -70,6 +73,9 @@ public partial class SandboxWorld : Node3D
         Catalogue = StructureBridge.LoadCatalogue(DataPath("prototypes", "building", "data"),
             ProjectSettings.GlobalizePath("res://data/vessel-parts.json"));
         WeatherData weather = WeatherData.Parse(File.ReadAllText(DataPath("prototypes", "weather", "data", "weather.json")));
+        CrateKinds = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, CrateKind>>(
+            File.ReadAllText(ProjectSettings.GlobalizePath("res://data/crates.json")),
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
         Store = new ChunkStore(new SandboxTerrain(Seed));
         Terrain = new TerrainBridge(Store);
@@ -83,6 +89,8 @@ public partial class SandboxWorld : Node3D
         Physics.Zone.Strength = Handling.Planet.Gravity;
         Physics.Zone.Ceiling = Handling.Planet.AtmosphereCeiling;
         Physics.Terrain = Terrain;
+        Physics.Water = new LakeWater((SandboxTerrain)Store.Source);
+        Lake.Build(this, Visuals);
         Terrain.World = Physics;
         Physics.StuckFields.Add(new TerrainField(Store) { Ceiling = Physics.Zone.Ceiling });
         Host = new PhysicsHost(Physics);
