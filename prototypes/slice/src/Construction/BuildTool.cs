@@ -11,7 +11,8 @@ using Slice.Game;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Vessels;
-using Inventory = GalHack.Structures.Inventory;
+using GalHack.Items;
+using GalHack.Items.Bridge;
 using N = System.Numerics;
 using Structure = GalHack.Structures.Structure;
 
@@ -26,7 +27,9 @@ public readonly record struct BlockChoice(string Type, string Shape, string Labe
 /// <summary>
 /// The multi-tool in survival: building's structure model and rules (attach through a shared
 /// face, one core, nothing lost when something is cut loose), its ghosts and mesher, and a cost
-/// for every block from <see cref="IBuildCosts"/> (the pack first, then the target's storage).
+/// for every block (shared/Items: its bill from blocks.json, through <see cref="BlockPlacer"/>, which
+/// reads the world's Creative or Survival rule), drawn from the stores in reach: the pack first,
+/// then the target's own storage, then any structure's storage near by (the pod's lockers).
 ///
 /// Free building places the palette's block on the face under the crosshair, or starts a new
 /// structure with a core on the ground. Blueprint building sets a blueprint's ghost down on the
@@ -45,15 +48,20 @@ public sealed class BuildTool
 
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
-    readonly Inventory _pack;
+    readonly SharedStorage _pack;
     readonly SliceRules.BuildRules _rules;
     readonly GhostPreview _ghosts;
     readonly MeshInstance3D _planGhost;
+    readonly BuildCradle _cradle;
     readonly ShaderMaterial _planMaterial;
     readonly Catalogue _catalogue;
     readonly GridDef _small;
 
-    public IBuildCosts Costs;
+    /// <summary>shared/Items' placement: survival pays each block's bill, creative pays nothing.</summary>
+    public readonly BlockPlacer Placer;
+
+    /// <summary>A structure's storage counts as in reach within this distance of the survivor, m.</summary>
+    public const float StorageReach = 40f;
     public BuildStyle Style = BuildStyle.Free;
     public int Slot;
     public int Rot = Orientations.Identity;
@@ -68,7 +76,7 @@ public sealed class BuildTool
 
     /// <summary>Blocks placed and materials spent since the start (tests).</summary>
     public int Placed { get; private set; }
-    public readonly SortedDictionary<string, int> Spent = new(StringComparer.Ordinal);
+    public readonly Bill Spent = new();
 
     /// <summary>What the tool says: "missing 12 iron", "the Skiff is complete".</summary>
     public event Action<string, Color> Said;
@@ -89,12 +97,12 @@ public sealed class BuildTool
     float _placeTimer;
     bool _planDirty = true;
 
-    public BuildTool(SurfaceZone zone, Survivor survivor, Inventory pack, IBuildCosts costs)
+    public BuildTool(SurfaceZone zone, Survivor survivor, SharedStorage pack, BlockPlacer placer)
     {
         _zone = zone;
         _survivor = survivor;
         _pack = pack;
-        Costs = costs;
+        Placer = placer;
         _rules = zone.Data.Rules.Build;
         _catalogue = zone.Data.Catalogue;
         _small = _catalogue.Grid(GridSize.Small);
@@ -107,12 +115,73 @@ public sealed class BuildTool
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Off,
         };
         zone.AddChild(_planGhost);
+        _cradle = new BuildCradle { Name = "BuildCradle" };
+        zone.AddChild(_cradle);
     }
 
     public BlockChoice Choice => Palette[Slot];
 
     /// <summary>The stores a build near this vessel draws on: the pack, then its storage.</summary>
-    IReadOnlyList<Inventory> Stores(Vessel near) => near == null ? new[] { _pack } : new[] { _pack, near.Cargo };
+    IReadOnlyList<SharedStorage> Stores(Vessel near)
+    {
+        var stores = new List<SharedStorage> { _pack };
+        if (near != null) stores.Add(near.Cargo);
+        N.Vector3 me = _survivor.Body.WorldPosition;
+        foreach (Vessel v in _zone.Vessels)
+            if (v != near && !v.IsWreck && !v.Cargo.IsEmpty && N.Vector3.Distance(v.Body.Position, me) < StorageReach) stores.Add(v.Cargo);
+        return stores;
+    }
+
+    /// <summary>What the stores lack of a bill, all of them together.</summary>
+    static Bill MissingFrom(Bill bill, IReadOnlyList<SharedStorage> stores)
+    {
+        var missing = new Bill();
+        foreach (var (id, n) in bill)
+        {
+            int have = stores.Sum(st => st[id]);
+            if (have < n) missing.Add(id, n - have);
+        }
+        return missing;
+    }
+
+    /// <summary>
+    /// Takes a bill out of the stores, the pack first, into the tool's hands: a scratch storage
+    /// that placement pays from (<see cref="BlockPlacer.Place"/> fits the storage it is given to
+    /// the structure, so the pack itself never goes in). Null, taking nothing, if together they
+    /// don't hold it.
+    /// </summary>
+    SharedStorage Gather(Bill bill, IReadOnlyList<SharedStorage> stores)
+    {
+        if (!MissingFrom(bill, stores).IsEmpty) return null;
+        SharedStorage hands = SharedStorage.Unbounded(_zone.Data.Items, "hands");
+        foreach (var (id, n) in bill)
+        {
+            int lacking = n;
+            for (int i = 0; i < stores.Count && lacking > 0; i++)
+            {
+                int take = Math.Min(lacking, stores[i][id]);
+                if (take <= 0) continue;
+                stores[i].Remove(id, take);
+                hands.Add(id, take);
+                lacking -= take;
+            }
+        }
+        return hands;
+    }
+
+    /// <summary>
+    /// Places a block paid from the stores in reach (nothing, in Creative). Whatever the hands
+    /// still hold afterwards (all of it, if building's rules said no) goes back to the pack.
+    /// </summary>
+    PlaceResult PlacePaid(Structure s, Int3 cell, in Block block, IReadOnlyList<SharedStorage> stores)
+    {
+        SharedStorage hands = Gather(Placer.CostOf(s, block), stores);
+        if (hands == null) return new PlaceResult(PlaceStatus.NotEnoughMaterials, PlaceError.NotEnoughMaterials, new Bill(), MissingFrom(Placer.CostOf(s, block), stores));
+        PlaceResult placed = Placer.Place(s, cell, block, hands);
+        _pack.AddAll(hands.Contents);
+        if (placed.Ok) Spent.Add(placed.Paid);
+        return placed;
+    }
 
     // ---- Each tick ------------------------------------------------------------------------------
 
@@ -128,6 +197,7 @@ public sealed class BuildTool
         _ghosts.HideGhosts();
         _ghosts.HideOutline();
         _planGhost.Visible = false;
+        if (Underway == null) _cradle.Clear(); // a vessel going up keeps its cradle whatever is in hand
     }
 
     public void NextSlot(int step) => Slot = (Slot + step + Palette.Length) % Palette.Length;
@@ -251,6 +321,7 @@ public sealed class BuildTool
             Underway = null;
             Style = BuildStyle.Free;
             _planGhost.Visible = false;
+            _cradle.Clear();
             return;
         }
 
@@ -266,6 +337,7 @@ public sealed class BuildTool
             }
             Transform3D frame = AnchorFrame(_groundPoint);
             ShowPlan(frame, all: true);
+            _cradle.Show(Plan, frame, GroundY);
             var plan = Plan;
             Verdict = $"{plan.Name}: {plan.Count} blocks, {TotalText(plan)}. Click to set it down";
             if (pressed) StartVessel(frame, plan);
@@ -277,6 +349,7 @@ public sealed class BuildTool
             Said?.Invoke("The blueprint's vessel has no core any more", Tones.Warning);
             Plan = null;
             Underway = null;
+            _cradle.Clear();
             return;
         }
         if (_planDirty) RefreshRemaining();
@@ -327,6 +400,7 @@ public sealed class BuildTool
                 Underway = null;
                 Style = BuildStyle.Free;
                 _planGhost.Visible = false;
+                _cradle.Clear();
                 Finished?.Invoke(done);
             }
             return true;
@@ -334,6 +408,11 @@ public sealed class BuildTool
         if (blocked != null) Said?.Invoke(blocked, Tones.Caution);
         return false;
     }
+
+    float GroundY(float x, float z) => _zone.GroundAt(x, z).Y;
+
+    /// <summary>The cradle under the vessel going up (tests and screenshots).</summary>
+    public bool CradleShown => _cradle.Visible;
 
     /// <summary>Where a blueprint stands on the ground: its lowest point (the gear's feet) on the highest ground under it.</summary>
     Transform3D AnchorFrame(Vector3 ground)
@@ -421,13 +500,13 @@ public sealed class BuildTool
         Structure s = plan != null ? Like(plan) : new Structure(_catalogue, _small) { Name = "New Vessel" };
         Int3 coreCell = plan?.Core ?? Int3.Zero;
         Block core = plan != null ? plan.Get(coreCell) : GalHack.Structures.Building.Make(s, _catalogue.CoreType);
-        if (!Costs.TryPay(s, core, Stores(null)))
+        PlaceResult placed = PlacePaid(s, coreCell, core, Stores(null));
+        if (placed.Status == PlaceStatus.NotEnoughMaterials)
         {
-            Said?.Invoke($"A core needs {MissingText(s, core, null)}", Tones.Caution);
+            Said?.Invoke($"A core needs {_zone.Data.Items.Describe(placed.Missing, 4)}", Tones.Caution);
             return null;
         }
-        Pay(s, core);
-        GalHack.Structures.Building.Place(s, coreCell, core);
+        if (!placed.Ok) return null;
         s.DirtyChunks.Clear();
         N.Vector3 origin = frame.Origin.ToNumerics();
         float heading = MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics());
@@ -439,6 +518,7 @@ public sealed class BuildTool
         {
             Underway = v;
             _planDirty = true;
+            _cradle.Show(plan, frame, GroundY);
         }
         return v;
     }
@@ -464,8 +544,8 @@ public sealed class BuildTool
             _ => e.ToString(),
         };
         if (InSurvivor(v, cell)) return "Step out of the way to build there";
-        IReadOnlyDictionary<string, int> missing = Costs.Missing(s, block, Stores(v));
-        return missing.Count > 0 ? $"Missing {string.Join(", ", missing.Select(kv => $"{kv.Value} {kv.Key}"))}" : null;
+        Bill missing = MissingFrom(Placer.CostOf(s, block), Stores(v));
+        return missing.IsEmpty ? null : $"Missing {_zone.Data.Items.Describe(missing, 3)}";
     }
 
     bool TryPlace(Vessel v, Int3 cell, Block block, bool quiet)
@@ -476,33 +556,32 @@ public sealed class BuildTool
             if (!quiet) Said?.Invoke(why, Tones.Caution);
             return false;
         }
-        if (!Costs.TryPay(s, block, Stores(v))) return false;
-        Pay(s, block);
-        GalHack.Structures.Building.Place(s, cell, block);
-        v.ApplyEdits();
+        if (!PlacePaid(s, cell, block, Stores(v)).Ok) return false;
+        v.ApplyEdits(); // its own storage follows its containers (and the cargo's mass)
         Placed++;
         _planDirty |= Underway == v;
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.Body.ToParent(StructureBridge.CellCenter(s, cell)).ToGodot(), 1.3f, -6f);
         return true;
     }
 
-    void Pay(Structure s, in Block block)
-    {
-        foreach (var (item, n) in Costs.CostOf(s, block)) Spent[item] = Spent.GetValueOrDefault(item) + n;
-    }
-
     void Remove(Vessel v, Int3 cell)
     {
         Structure s = v.Structure;
         if (!s.TryGet(cell, out Block b)) return;
-        RemoveResult r = GalHack.Structures.Building.Remove(s, cell, null);
+        // The refund goes into the vessel's own storage (and a spill crate for what it can't
+        // take, a container's contents included); the castaway then picks it all up into the pack.
+        N.Vector3 at = v.Body.ToParent(StructureBridge.CellCenter(s, cell));
+        TakeDownResult taken = Placer.Remove(s, cell, v.Cargo, at.X, at.Y, at.Z);
+        RemoveResult r = taken.Removal;
+        foreach (var (id, n) in taken.Refunded.Minus(taken.Spilled))
+            _pack.Add(id, v.Cargo.Remove(id, n));
+        if (taken.Crate != null) Placer.Crates.Collect(taken.Crate, _pack);
         if (r.Status == RemoveStatus.CoreHoldsStructure)
         {
             Said?.Invoke("The core holds the vessel together: take the rest down first", Tones.Caution);
             return;
         }
         if (r.Status != RemoveStatus.Removed) return;
-        Costs.Refund(s, b, _pack);
         foreach (Structure piece in r.Wrecks) v.Sever(piece);
         if (s.Count == 0)
         {
@@ -572,25 +651,33 @@ public sealed class BuildTool
 
     string CostText(Structure s, in Block b)
     {
-        IReadOnlyDictionary<string, int> cost = Costs.CostOf(s, b);
-        return cost.Count == 0 ? "free" : string.Join(", ", cost.Select(kv => $"{kv.Value} {kv.Key}"));
+        Bill cost = Placer.CostOf(s, b);
+        return cost.IsEmpty ? "free" : _zone.Data.Items.Describe(cost, 4);
     }
 
-    string MissingText(Structure s, in Block b, Vessel near) =>
-        string.Join(", ", Costs.Missing(s, b, Stores(near)).Select(kv => $"{kv.Value} {kv.Key}"));
+    string MissingText(Structure s, in Block b, Vessel near) => _zone.Data.Items.Describe(MissingFrom(Placer.CostOf(s, b), Stores(near)), 4);
 
-    /// <summary>A whole blueprint's cost, from the same costs the tool charges.</summary>
-    public IReadOnlyDictionary<string, int> TotalCost(Structure plan)
+    /// <summary>A whole blueprint's bill, at the prices placement charges (nothing in creative).</summary>
+    public Bill TotalCost(Structure plan)
     {
-        var total = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (_, b) in plan.Blocks())
-            foreach (var (item, n) in Costs.CostOf(plan, b)) total[item] = total.GetValueOrDefault(item) + n;
+        var total = new Bill();
+        foreach (var (_, b) in plan.Blocks()) total.Add(Placer.CostOf(plan, b));
+        return total;
+    }
+
+    /// <summary>What is left to pay of a blueprint: all of it, or what the vessel underway still lacks.</summary>
+    public Bill RemainingCost(Structure plan)
+    {
+        if (Underway == null || plan != Plan) return TotalCost(plan);
+        if (_planDirty) RefreshRemaining();
+        var total = new Bill();
+        foreach (var (_, b) in _remaining) total.Add(Placer.CostOf(plan, b));
         return total;
     }
 
     string TotalText(Structure plan)
     {
-        IReadOnlyDictionary<string, int> total = TotalCost(plan);
-        return total.Count == 0 ? "free" : string.Join(", ", total.Select(kv => $"{kv.Value} {kv.Key}"));
+        Bill total = TotalCost(plan);
+        return total.IsEmpty ? "free" : _zone.Data.Items.Describe(total, 4);
     }
 }

@@ -19,8 +19,8 @@ namespace Slice.Surface;
 ///
 /// The patch follows the survivor on foot: once they are well away from its middle, a new patch
 /// is baked on a worker around them (on a 100 m grid, so a place always gets the same animals),
-/// and swapped in with every creature that stands inside it carried across. Meeting one puts
-/// nothing on screen in the slice (wildlife's discovery card is not wired in).
+/// and swapped in with every creature that stands inside it carried across. The first good look
+/// at a species goes in wildlife's codex and brings up its brief discovery card.
 /// </summary>
 public partial class WildlifePatch : Node3D
 {
@@ -40,6 +40,9 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>The player as a target for creatures (set by the game).</summary>
     public ITarget Player { get; private set; }
+
+    /// <summary>Who first saw each species (wildlife's codex): its first sighting raises the discovery card.</summary>
+    public Codex Codex { get; } = new();
 
     /// <summary>Patches baked so far (the first counts).</summary>
     public int Patches { get; private set; }
@@ -223,6 +226,101 @@ public partial class WildlifePatch : Node3D
         if (Sim == null) return;
         Sim.Clock.Time01 = (float)Zone.Sky.TimeOfDay;
         Sim.Step((float)delta);
+        KeepApart();
+    }
+
+    // ---- Sightings --------------------------------------------------------------------------
+
+    float _sightTimer;
+
+    /// <summary>
+    /// Wildlife's sighting rule: a species goes in the codex when someone gets a good look at one,
+    /// close by or near the middle of the view; the first time, its card is queued. Buried
+    /// ambushers can't be spotted.
+    /// </summary>
+    public void RecordSightings(float dt, Camera3D camera, string finder, Action<CodexEntry, Color> discovered)
+    {
+        if (Sim == null || camera == null || (_sightTimer -= dt) > 0f) return;
+        _sightTimer = 0.25f;
+        Vector3 eye = PatchLocal(camera.GlobalPosition), look = -camera.GlobalBasis.Z;
+        foreach (Creature c in Sim.Creatures)
+        {
+            if (c.Removed || c.Dead || Codex.Knows(c.Species.Id)) continue;
+            if (c.Species.Behaviour == Behaviour.Ambusher && c.WantHidden > 0.5f) continue;
+            Vector3 to = c.Rig.BoundsCenter - eye;
+            float d = to.Length();
+            float reach = 30f + c.Species.Body.Size * 6f;
+            if ((d < 8f || (d < reach && look.Dot(to / d) > 0.93f)) && Codex.Record(c.Species, finder, Sim.Time, Fauna.PlanetName))
+                discovered(Codex.Get(c.Species.Id), c.Species.Colors.GlowStrength > 0.3f ? c.Species.Colors.Glow : c.Species.Colors.Accent.Lightened(0.25f));
+        }
+    }
+
+    /// <summary>Something is winding up or lunging at the player: a discovery card must wait.</summary>
+    public bool AttackingPlayer()
+    {
+        if (Sim == null || Player == null) return false;
+        foreach (Creature c in Sim.Creatures)
+            if (!c.Removed && c.AttackTarget == Player && c.Phase is AttackPhase.Windup or AttackPhase.Lunge) return true;
+        return false;
+    }
+
+    // ---- Creatures and the player block each other ---------------------------------------
+
+    /// <summary>Creatures nearer the player than this get a collider, m.</summary>
+    const float SolidWithin = 30f;
+    const int MaxSolid = 24;
+    readonly List<(StaticBody3D body, CapsuleShape3D shape)> _solids = new();
+
+    /// <summary>
+    /// The player can't walk through a creature, and a creature can't walk through the player:
+    /// creatures near the player stand in the physics world as capsules on the props layer (the
+    /// player's controller stops against them), and any creature overlapping the player is moved
+    /// out of the way along the ground.
+    /// </summary>
+    void KeepApart()
+    {
+        int used = 0;
+        if (Player != null && Player.Attackable)
+        {
+            Vector3 feet = Player.Position;
+            foreach (Creature c in Sim.Creatures)
+            {
+                if (c.Removed || c.Dead || c.Species.Flies) continue;
+                Vector3 off = WildSim.Flat(c.Position - feet);
+                float d = off.Length();
+                if (d > SolidWithin) continue;
+                float apart = c.Radius + PlayerRadius;
+                if (d < apart && MathF.Abs(c.Position.Y - feet.Y) < 2.5f)
+                {
+                    Vector3 push = d > 1e-3f ? off / d : Vector3.Right;
+                    c.Position = new Vector3(feet.X, c.Position.Y, feet.Z) + push * apart;
+                    c.Position = new Vector3(c.Position.X, Sim.Terrain.Height(c.Position.X, c.Position.Z), c.Position.Z);
+                }
+                if (used < MaxSolid) Solid(used++, c);
+            }
+        }
+        for (int i = used; i < _solids.Count; i++) _solids[i].body.ProcessMode = ProcessModeEnum.Disabled;
+    }
+
+    const float PlayerRadius = 0.35f;
+
+    void Solid(int i, Creature c)
+    {
+        while (_solids.Count <= i)
+        {
+            var shape = new CapsuleShape3D();
+            var body = new StaticBody3D { Name = $"CreatureSolid{_solids.Count}", CollisionLayer = GalHack.Physics.Layers.Props, CollisionMask = 0 };
+            body.AddChild(new CollisionShape3D { Shape = shape });
+            AddChild(body);
+            _solids.Add((body, shape));
+        }
+        var (b, s) = _solids[i];
+        float radius = MathF.Max(0.2f, c.Radius * 0.8f);
+        float height = MathF.Max(radius * 2f, c.Species.Body.Size * 0.9f);
+        s.Radius = radius;
+        s.Height = height;
+        b.ProcessMode = ProcessModeEnum.Inherit;
+        b.Position = c.Position + Vector3.Up * (height * 0.5f);
     }
 
     public override void _Process(double delta)

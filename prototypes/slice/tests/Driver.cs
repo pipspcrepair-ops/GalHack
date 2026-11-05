@@ -60,9 +60,12 @@ public sealed class Driver
     {
         var s = Game.Survivor;
         Vector3 d = (point - s.WorldEye()).Normalized();
-        float frameHeading = s.Body.Frame == null ? 0f : MathX.Heading(s.Body.Frame.Rotation);
-        float yaw = MathF.Atan2(-d.X, -d.Z) - frameHeading;
-        float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f));
+        // Yaw and pitch turn in the survivor's view frame (the vessel's, aboard one): aim there.
+        N.Vector3 local = s.Seated is Vessel seat
+            ? MathX.Unrotate(seat.Body.Rotation, d.ToNumerics())
+            : MathX.Unrotate(s.WorldView(), d.ToNumerics());
+        float yaw = MathF.Atan2(-local.X, -local.Z);
+        float pitch = MathF.Asin(Math.Clamp(local.Y, -1f, 1f));
         float dy = Mathf.Wrap(yaw - s.Yaw, -MathF.PI, MathF.PI);
         Controls.Look = new Vector2(-dy / Sensitivity, -(pitch - s.Pitch) / Sensitivity);
     }
@@ -143,6 +146,24 @@ public sealed class Driver
     }
 
     // ---- Vessels ----------------------------------------------------------------------------
+
+    /// <summary>Walks to the front of the pod's hatchway and in through it.</summary>
+    public IEnumerable<int> IntoPod()
+    {
+        Vessel pod = Game.Pod;
+        if (Game.Survivor.Aboard == pod && !Game.Survivor.OnOuterHull) yield break;
+        foreach (int x in WalkTo(pod.Body.ToParent(new N.Vector3(0f, 0f, -3.6f)).ToGodot(), 0.8f, 60f)) yield return x;
+        foreach (int x in WalkTo(pod.Body.ToParent(new N.Vector3(0f, 0.3f, -1.1f)).ToGodot(), 0.4f, 10f)) yield return x;
+    }
+
+    /// <summary>Walks out of the pod through its hatchway, if aboard, to stand clear in front of it.</summary>
+    public IEnumerable<int> OutOfPod()
+    {
+        Vessel pod = Game.Pod;
+        if (Game.Survivor.Aboard != pod) yield break;
+        foreach (int x in WalkTo(pod.Body.ToParent(new N.Vector3(0f, 0.3f, -1.1f)).ToGodot(), 0.4f, 10f)) yield return x;
+        foreach (int x in WalkTo(pod.Body.ToParent(new N.Vector3(0f, 0f, -4.5f)).ToGodot(), 0.8f, 20f)) yield return x;
+    }
 
     /// <summary>Walks up to a vessel's seat and takes it.</summary>
     public IEnumerable<int> Board(Vessel v)

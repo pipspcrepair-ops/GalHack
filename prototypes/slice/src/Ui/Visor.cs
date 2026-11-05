@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DiegeticUi.Theme;
 using GalHack.Physics.Engine;
 using Godot;
@@ -306,13 +307,13 @@ public partial class Visor : CanvasLayer
         };
         _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y + 36 * s), detail, C.Text);
         _hud.Text(UiTheme.Mono, (int)(15 * s), new Vector2(x, y - 24 * s), PackLine(), C.Text);
-        if (Game.BuildMode == BuildMode.Creative) _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y - 48 * s), "CREATIVE: building is free", C.Accent2);
+        if (Game.Creative) _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y - 48 * s), "CREATIVE: building is free", C.Accent2);
     }
 
     string PackLine()
     {
         var parts = new List<string>();
-        foreach (var (item, n) in Game.Pack.Items) if (n > 0) parts.Add($"{item[..Math.Min(4, item.Length)].ToUpperInvariant()} {n}");
+        foreach (var (item, n) in Game.Pack.Stacks.OrderByDescending(x => x.Count).Take(5)) parts.Add($"{item.ShortName} {n}");
         parts.Add($"ORG {Game.Suit.Kit.Organics:F1}kg");
         return string.Join("  ", parts);
     }

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Screens;
 using DiegeticUi.Theme;
+using GalHack.Items;
+using GalHack.Items.Production;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -171,9 +173,9 @@ public partial class Wrist : Node3D
         protected override string Signature()
         {
             if (Game?.Suit == null) return "";
-            string pack = string.Join(",", Game.Pack.Items.Select(kv => $"{kv.Key}{kv.Value}"));
             string near = string.Join(",", _deposits.Near(Game.Zone, Game.Survivor.WorldFeet).Select(d => $"{d.kind}{(int)(d.at - Game.Survivor.WorldFeet).Length() / 5}"));
-            return $"{pack}|{Game.Suit.Kit.Organics:F1}|{Game.Suit.Kit.Food.Count}|{Game.Builder.Remaining.Count}|{near}";
+            Job job = Game.Workshop.Current;
+            return $"{Game.Pack.Version}|{Game.Pod.Cargo.Version}|{Game.Suit.Kit.Organics:F1}|{Game.Suit.Kit.Food.Count}|{Game.Builder.Remaining.Count}|{near}|{job?.Item.Id}{job?.Done}|{Game.Workshop.Version}";
         }
 
         public override void _Draw()
@@ -181,39 +183,102 @@ public partial class Wrist : Node3D
             float w = Size.X;
             this.Block(new Rect2(Vector2.Zero, Size), C.Glass);
             if (Game?.Suit == null) return;
-            this.Header(w, "PACK", Game.BuildMode == BuildMode.Creative ? "CREATIVE" : "SURVIVAL", C.Accent, height: 70);
-            float y = 92;
-            this.Caption(new Vector2(28, y), "MATERIALS (placeholder: iron, copper, silicon, carbon)");
-            y += 44;
+            ItemCatalogue items = Game.Zone.Data.Items;
+            this.Header(w, "PACK", Game.Creative ? "CREATIVE" : "SURVIVAL", C.Accent, height: 70);
+            float y = 86;
             var plan = Game.StarterPlan;
-            IReadOnlyDictionary<string, int> need = Game.Builder.TotalCost(plan);
-            foreach (string item in new[] { "iron", "copper", "silicon", "carbon" })
+            Bill need = Game.Builder.RemainingCost(plan);
+            this.Caption(new Vector2(28, y), $"THE {plan.Name.ToUpperInvariant()} STILL NEEDS (pack and pod together)");
+            y += 40;
+            int shown = 0;
+            foreach (var (id, n) in need)
             {
-                int have = Game.Pack[item];
-                int needed = need.TryGetValue(item, out int n) ? n : 0;
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(28, y), item.ToUpperInvariant(), C.Text);
-                this.Text(UiTheme.Mono, 26, new Vector2(200, y), $"{have,4}", have >= needed ? C.Good : C.Text);
-                this.Segments(new Rect2(300, y + 8, 300, 18), Math.Min(have, needed), Math.Max(1, needed), have >= needed ? C.Good : C.Accent2, count: 12, gap: 4);
-                this.Text(UiTheme.Mono, 20, new Vector2(620, y + 2), $"of {needed} for the {plan.Name}", C.Dim);
-                y += 40;
+                if (shown++ >= 7) break;
+                int have = Game.Pack[id] + Game.Pod.Cargo[id];
+                this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), items.Item(id).Name.ToUpperInvariant(), C.Text);
+                this.Segments(new Rect2(300, y + 6, 300, 16), Math.Min(have, n), Math.Max(1, n), have >= n ? C.Good : C.Accent2, count: 12, gap: 4);
+                this.Text(UiTheme.Mono, 20, new Vector2(620, y), $"{Math.Min(have, n),4} of {n}", have >= n ? C.Good : C.Dim);
+                y += 30;
             }
-            y += 10;
-            this.Caption(new Vector2(28, y), "SURVIVAL KIT");
-            y += 44;
-            var kit = Game.Suit.Kit;
-            this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), $"Organics {kit.Organics:F1} kg   Food items {kit.Food.Count}   Bottles {kit.SmallBottles}+{kit.LargeBottles}   Medkits {kit.Medkits}   Replicator kits {kit.Kits.Count}", C.Text);
-            y += 44;
+            if (need.IsEmpty) { this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), "Nothing: it is built, or Creative builds free", C.Good); y += 30; }
+            y += 8;
+            Job job = Game.Workshop.Current;
+            Bill missing = Game.Workshop.Missing;
+            this.Caption(new Vector2(28, y), "POD CONSTRUCTOR");
+            y += 40;
+            string state = job != null ? $"Making {job.Item.Name.ToLowerInvariant()} {job.Done}/{job.Count}" : Game.Workshop.Busy ? "Waiting for materials" : "Idle: E at it to make the Skiff's parts";
+            this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), state, job != null ? C.Good : C.Text);
+            y += 28;
+            if (!missing.IsEmpty) { this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), $"Short of {items.Describe(missing, 4)}", C.Warn); y += 28; }
+            y += 6;
             this.Caption(new Vector2(28, y), "SCANNER: NEAREST DEPOSITS");
-            y += 44;
+            y += 40;
             Vector3 feet = Game.Survivor.WorldFeet;
             foreach (var (kind, at) in _deposits.Near(Game.Zone, feet))
             {
                 Vector3 to = at - feet;
                 float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
                 this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(28, y), $"{kind.ToUpperInvariant(),-8}", C.Holo);
-                this.Text(UiTheme.Mono, 22, new Vector2(200, y), $"{new Vector2(to.X, to.Z).Length(),4:F0} m  bearing {bearing:000}°  depth {Math.Max(0, -to.Y):F0} m", C.Text);
-                y += 32;
+                this.Text(UiTheme.Mono, 20, new Vector2(200, y), $"{new Vector2(to.X, to.Z).Length(),4:F0} m  bearing {bearing:000}°  depth {Math.Max(0, -to.Y):F0} m", C.Text);
+                y += 28;
             }
+        }
+    }
+}
+
+/// <summary>
+/// The pod's constructor screen, on the wall above it: what it is making, what it is short of,
+/// and the pod's storage. Read-only; E at the constructor orders the starter vessel's parts.
+/// </summary>
+public partial class WorkshopScreen : Node3D
+{
+    public Game.Game Game;
+    public WorldScreen Screen { get; private set; }
+
+    public override void _Ready()
+    {
+        Screen = new WorldScreen { Name = "Screen", Pixels = new Vector2I(900, 560), SizeMeters = new Vector2(0.72f, 0.45f), Pickable = false, MovesCamera = false, Bezel = 0.02f };
+        AddChild(Screen);
+        Screen.SetContent(new WorkshopPage { Game = Game });
+    }
+
+    sealed partial class WorkshopPage : SlicePage
+    {
+        public Game.Game Game;
+
+        protected override string Signature()
+        {
+            if (Game?.Workshop == null) return "";
+            Job job = Game.Workshop.Current;
+            return $"{Game.Workshop.Version}|{job?.Item.Id}|{job?.Done}|{(int)((job?.Progress ?? 0) * 10)}|{Game.Pod.Cargo.Version}";
+        }
+
+        public override void _Draw()
+        {
+            float w = Size.X;
+            this.Block(new Rect2(Vector2.Zero, Size), C.Glass);
+            Constructor fab = Game?.Workshop;
+            if (fab == null) return;
+            ItemCatalogue items = Game.Zone.Data.Items;
+            this.Header(w, "CONSTRUCTOR", fab.Def.Tag, C.Accent2, height: 70);
+            float y = 86;
+            Job job = fab.Current;
+            this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(24, y), job != null ? $"{job.Item.Name}  {job.Done}/{job.Count}" : fab.Busy ? "Waiting for materials" : "Idle", job != null ? C.Good : C.Text);
+            y += 38;
+            if (job != null) this.Segments(new Rect2(24, y, w - 48, 16), job.Progress, 1, C.Good, count: 20, gap: 3);
+            y += 28;
+            this.Caption(new Vector2(24, y), "ORDERS");
+            y += 36;
+            foreach (Job o in fab.Orders.Take(5))
+            {
+                this.Text(UiTheme.Mono, 20, new Vector2(24, y), $"{o.Item.Name,-18} {o.Done,3}/{o.Count}", C.Text);
+                y += 26;
+            }
+            if (fab.SubParts.Count > 0) { this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(24, y), $"+ {fab.SubParts.Count} sub-part jobs it planned itself", C.Dim); y += 28; }
+            Bill missing = fab.Missing;
+            if (!missing.IsEmpty) { this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(24, y), $"Short of {items.Describe(missing, 3)}", C.Warn); y += 28; }
+            y = Size.Y - 40;
+            this.Text(UiTheme.Mono, 18, new Vector2(24, y), $"Lockers {fab.Storage.UsedSu:F0}/{fab.Storage.CapacitySu:F0} SU    E: make the Skiff's parts", C.Dim);
         }
     }
 }
@@ -247,7 +312,7 @@ public partial class DebugHud : CanvasLayer
             $"physics step {z.Host.LastStepMs:F2} ms, {z.Physics.Bodies.Count} bodies, creatures {z.Wildlife.Sim?.Creatures.Count}",
         };
         foreach (Vessel v in z.Vessels)
-            lines.Add($"{v.Name}: {v.Structure.Count} blocks, {v.Body.Mass:F0} kg, {(v.Controller?.Frozen == true ? "landed" : "flying")} at {v.Body.Position.Y:F0} m, cargo {v.Cargo.Total}");
+            lines.Add($"{v.Name}: {v.Structure.Count} blocks, {v.Body.Mass:F0} kg, {(v.Controller?.Frozen == true ? "landed" : "flying")} at {v.Body.Position.Y:F0} m, cargo {v.Cargo.UsedSu:F0} SU");
         _label.Text = string.Join("\n", lines);
     }
 }

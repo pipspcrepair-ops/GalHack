@@ -9,7 +9,8 @@ using PhysicsSandbox.Bridges;
 using Slice.Surface;
 using N = System.Numerics;
 using HandlingStats = ShipHandling.Handling.HandlingStats;
-using Inventory = GalHack.Structures.Inventory;
+using GalHack.Items;
+using GalHack.Items.Bridge;
 using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Vessels;
@@ -41,10 +42,10 @@ public sealed class Vessel
     public VesselFx Fx { get; private set; }
 
     /// <summary>
-    /// PLACEHOLDER shared storage for building materials, held in the structure's containers
-    /// (one storage unit per unit of material, up to the structure's storage capacity).
+    /// The structure's one shared storage (shared/Items): every container's room, capped per grid.
+    /// Its constructors work from it and building near it can draw on it.
     /// </summary>
-    public readonly Inventory Cargo = new() { Creative = false };
+    public readonly SharedStorage Cargo;
 
     public bool IsWreck => Body.Kind == BodyKind.Wreck;
     public HandlingStats Stats => Flight?.Stats;
@@ -62,6 +63,7 @@ public sealed class Vessel
         Body = body;
         Interior = new InteriorMap(structure);
         Field = new StructureField(body, structure);
+        Cargo = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         if (body.Kind == BodyKind.Vessel)
         {
             Spec = new StructureVessel(structure, zone.Data.Handling);
@@ -178,6 +180,8 @@ public sealed class Vessel
         }
         RefreshSeat();
         RefreshLegs();
+        Cargo.CapacitySu = BuildingBridge.StorageCapacity(Structure);
+        Structure.CargoSu = Cargo.UsedSu;
         Fx.Setup(this);
         Zone.Physics.NotifyChanged(RegionOf(dirty));
     }
@@ -305,15 +309,4 @@ public sealed class Vessel
     /// <summary>The structure's frame in the world, interpolated for drawing.</summary>
     public Transform3D DrawTransform => Node.GetGlobalTransformInterpolated();
 
-    /// <summary>Storage capacity for the placeholder materials, in units.</summary>
-    public int CargoCapacity => (int)StructureStats.Compute(Structure).StorageCapacity;
-
-    /// <summary>Stores up to <paramref name="n"/> units of a material; returns how many fitted.</summary>
-    public int Store(string material, int n)
-    {
-        int room = CargoCapacity - Cargo.Total;
-        int put = System.Math.Clamp(n, 0, System.Math.Max(0, room));
-        if (put > 0) Cargo.Add(new Dictionary<string, int> { [material] = put });
-        return put;
-    }
 }

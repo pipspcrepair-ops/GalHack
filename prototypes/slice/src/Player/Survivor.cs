@@ -109,7 +109,15 @@ public sealed class Survivor
             Vessel vessel = Aboard;
             Body.OnOuterHull = !vessel.Interior.Contains(Body.Position + Body.Up * 0.9f);
             float distance = vessel.DistanceFromHull(Body.Position, rules.LetGoDistance + 0.5f);
-            if (Riding.LetGo(rules, Body, Legs.Jumped, Binding.Touching, distance, dt))
+            if (Body.OnOuterHull && OnTheGround())
+            {
+                // Stepped off a hull onto the planet (out of a hatchway, down a landing leg): the
+                // cabin world holds no terrain, so the world takes the walker back at once.
+                _letGoOf = vessel.Body;
+                _rejoinBlocked = rules.RejoinAfter;
+                Leave();
+            }
+            else if (Riding.LetGo(rules, Body, Legs.Jumped, Binding.Touching, distance, dt))
             {
                 _letGoOf = vessel.Body;
                 _rejoinBlocked = rules.RejoinAfter;
@@ -168,7 +176,15 @@ public sealed class Survivor
         Node.CollisionMask = inCabin ? Layers.CabinMask : Layers.PlayerMask;
     }
 
-    N.Quaternion WorldView() => Body.Frame == null ? ViewFrame : N.Quaternion.Normalize(Body.Frame.Rotation * ViewFrame);
+    /// <summary>The ground is right under a rider's feet (they stand on it, not on the hull).</summary>
+    bool OnTheGround()
+    {
+        N.Vector3 up = MathX.Rotate(Body.Frame.Rotation, Body.Up);
+        return Zone.Ground.IsGround(StuckGuard.WorldFeet(Body) - up * 0.05f);
+    }
+
+    /// <summary>The frame the view's yaw and pitch turn in, in the world.</summary>
+    public N.Quaternion WorldView() => Body.Frame == null ? ViewFrame : N.Quaternion.Normalize(Body.Frame.Rotation * ViewFrame);
 
     /// <summary>Sits in a cockpit seat: the body stops simulating and the controls fly the vessel.</summary>
     public bool Sit(Vessel vessel)

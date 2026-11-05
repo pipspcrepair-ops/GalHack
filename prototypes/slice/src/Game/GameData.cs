@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Physics;
 using GalHack.Structures;
 using Godot;
@@ -24,6 +26,9 @@ public sealed class GameData
     public PhysicsRules Physics { get; private init; }
     public Tunables Handling { get; private init; }
     public Catalogue Catalogue { get; private init; }
+
+    /// <summary>shared/Items: every item, recipe, machine and block bill.</summary>
+    public ItemCatalogue Items { get; private init; }
     public WeatherData Weather { get; private init; }
     public WildlifeData Wildlife { get; private init; }
     public SliceRules Rules { get; private init; }
@@ -35,6 +40,7 @@ public sealed class GameData
     public static string PrototypesRoot => Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), ".."));
     public static string Proto(params string[] parts) => Path.Combine(PrototypesRoot, Path.Combine(parts));
     public static string Own(string relative) => ProjectSettings.GlobalizePath("res://" + relative);
+    public static string SharedPath(params string[] parts) => Path.Combine(PrototypesRoot, "..", "shared", Path.Combine(parts));
 
     GameData(string[] survival) => _survival = survival;
 
@@ -49,11 +55,15 @@ public sealed class GameData
         };
         return new GameData(survival)
         {
-            Physics = PhysicsRules.FromJson(File.ReadAllText(Path.Combine(PrototypesRoot, "..", "shared", "Physics", "physics.json"))),
+            Physics = PhysicsRules.FromJson(File.ReadAllText(SharedPath("Physics", "physics.json"))),
             Handling = Tunables.FromJson(File.ReadAllText(Proto("ship-handling", "data", "handling.json"))),
-            // Building's catalogue with the vessel parts (gyros, hover pads, landing legs) the
-            // physics sandbox appends to it, both read in place.
-            Catalogue = StructureBridge.LoadCatalogue(Proto("building", "data"), Proto("physics-sandbox", "data", "vessel-parts.json")),
+            // Building's catalogue with the vessel parts the physics sandbox appends (gyros, hover
+            // pads, landing legs) and shared/Items' machines, guns and precursor armour, all read
+            // where they live.
+            Catalogue = BuildingBridge.LoadCatalogue(Proto("building", "data"),
+                new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
+                new[] { SharedPath("Items", "data", "building-materials.json") }),
+            Items = ItemCatalogue.LoadDirectory(SharedPath("Items", "data")),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
             Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("wildlife", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
@@ -117,9 +127,9 @@ public sealed class SliceRules
 
     public sealed class MaterialRules
     {
-        public Dictionary<string, int> OrePerCell { get; set; } = new();
+        public int StonePerRockCell { get; set; } = 2;
         public double OrganicsPerPlant { get; set; } = 1.5;
-        public int CarbonPerPlant { get; set; } = 2;
+        public int BiomassPerPlant { get; set; } = 2;
         public Dictionary<string, int> PodLocker { get; set; } = new();
     }
 

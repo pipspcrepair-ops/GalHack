@@ -15,16 +15,16 @@
     "podDropSeconds": 7
   },
 
-  // PLACEHOLDER until materials and manufacturing are designed: digging ore and cutting plants
-  // give the building catalogue's recipe materials (iron, copper, silicon, carbon) directly.
+  // What gathering gives, in shared/Items' raw items. An ore cell gives its deposit's ore
+  // (shared/Items' reference rate, oreUnitsPerCell); a rock cell gives stone; cutting a plant
+  // gives organics (kg, for the replicator) and biomass.
   "materials": {
-    // Units of material per 1 m cell of ore dug, by the deposit's kind.
-    "orePerCell": { "iron": 6, "copper": 4, "silicon": 4, "carbon": 4, "titanium": 2, "cobalt": 2, "crystal": 2 },
-    // Cutting a plant: kg of organics for the replicator, and carbon.
+    "stonePerRockCell": 2,
     "organicsPerPlant": 1.5,
-    "carbonPerPlant": 2,
-    // What the escape pod's locker holds: enough for a core and a seat, not a ship.
-    "podLocker": { "iron": 30, "copper": 16, "silicon": 10, "carbon": 4 }
+    "biomassPerPlant": 2,
+    // The escape pod's locker: enough parts for the Skiff's core and seat, so its blueprint can be
+    // set down at once. Everything else is made from ore by the pod's own small constructor.
+    "podLocker": { "hull-plate": 8, "circuit-board": 4, "winding": 2, "glass": 2, "polymer": 1 }
   },
 
   // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to

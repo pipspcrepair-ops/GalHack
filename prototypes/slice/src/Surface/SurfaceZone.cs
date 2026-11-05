@@ -53,6 +53,9 @@ public partial class SurfaceZone : Node3D
     public readonly List<Vessel> Vessels = new();
 
     public bool IsBuilt => Planet != null;
+
+    /// <summary>How much of the valley fog's density is left within 150 m of the landing site.</summary>
+    public const float SpawnFogShare = 0.3f;
     public int FrameShifts { get; private set; }
 
     /// <summary>The planet has been generated and its world set up (fires once, on the main thread).</summary>
@@ -227,7 +230,11 @@ public partial class SurfaceZone : Node3D
             heights.Sort();
             _valleyFloor = heights[heights.Count / 6];
         }
-        Sky.SetValleyFog(_valleyFloor, Sky.Air);
+        // Valley fog stays, but thins near the landing site so the first view reads clearly.
+        PlanetSurface.Skies.AtmosphereState air = Sky.Air;
+        float fromLanding = new Vector2(focus.X - LandingSite.X, focus.Z - LandingSite.Z).Length();
+        float thin = Mathf.Lerp(SpawnFogShare, 1f, Mathf.Clamp((fromLanding - 150f) / 600f, 0f, 1f));
+        Sky.SetValleyFog(_valleyFloor, air with { ValleyFog = air.ValleyFog * thin });
     }
 
     /// <summary>

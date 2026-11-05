@@ -10,7 +10,8 @@ using Slice.Game;
 using Slice.Surface;
 using TerrainDigging.Terrain;
 using Wildlife;
-using Inventory = GalHack.Structures.Inventory;
+using System.Linq;
+using GalHack.Items;
 
 namespace Slice.Player;
 
@@ -20,16 +21,17 @@ public enum ToolMode { Gather, Shoot }
 /// <summary>
 /// The survival tool every castaway keeps: in Gather mode it digs a small ball of ground under
 /// the crosshair (terrain-digging's rules: bedrock and anchored ground refuse) and cuts plants;
-/// in Shoot mode it is a short blaster. Dug ore and cut plants go straight into the pack as the
-/// building catalogue's materials (a placeholder until manufacturing exists), plants also as
-/// organics for the replicator.
+/// in Shoot mode it is a short blaster. What it gathers goes straight into the pack as shared/Items'
+/// raw items: an ore cell gives its deposit's ore (shared/Items' rate per cell), a rock cell gives
+/// stone, a plant gives biomass, and organics (kg) for the replicator.
 /// </summary>
 public sealed class SurvivalTool
 {
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
     readonly Suit _suit;
-    readonly Inventory _pack;
+    readonly SharedStorage _pack;
+    readonly ItemCatalogue _items;
     readonly SliceRules.ToolRules _rules;
     readonly SliceRules.MaterialRules _yields;
 
@@ -44,7 +46,7 @@ public sealed class SurvivalTool
     public event Action<Vector3, Vector3, bool> Fired;
 
     /// <summary>Materials gathered since the start, by kind (tests and the wrist).</summary>
-    public readonly SortedDictionary<string, int> Gathered = new(StringComparer.Ordinal);
+    public readonly Bill Gathered = new();
 
     /// <summary>Plant columns cut so far (canonical cells), kept so they stay cut.</summary>
     public readonly HashSet<(int x, int z)> CutPlants = new();
@@ -59,7 +61,7 @@ public sealed class SurvivalTool
     /// <summary>Cut plants by frame column, so one isn't found again before the ground's flora is rebuilt.</summary>
     readonly HashSet<(int x, int z)> _cutHere = new();
 
-    public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, Inventory pack)
+    public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, SharedStorage pack)
     {
         _zone = zone;
         _survivor = survivor;
@@ -67,6 +69,7 @@ public sealed class SurvivalTool
         _pack = pack;
         _rules = zone.Data.Rules.Tool;
         _yields = zone.Data.Rules.Materials;
+        _items = zone.Data.Items;
     }
 
     /// <summary>One tick with the trigger held or not.</summary>
@@ -92,7 +95,7 @@ public sealed class SurvivalTool
         TargetVerdict = terrain.Check(cell, EditKind.Tool);
         CellMaterial m = terrain.Store.MaterialAt(cell);
         TargetLabel = TargetVerdict == Verdict.Bedrock ? "BEDROCK"
-            : m == CellMaterial.Ore ? MaterialOf(_zone.Planet.Source.OreKindAt(cell)).ToUpperInvariant() + " ORE"
+            : m == CellMaterial.Ore ? (OreOf(_zone.Planet.Source.OreKindAt(cell))?.Name ?? "ORE").ToUpperInvariant()
             : m.Label().ToUpperInvariant();
     }
 
@@ -108,21 +111,20 @@ public sealed class SurvivalTool
         Vector3 at = new(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f);
         if (edit.Removed.Count > 0)
         {
-            var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            var got = new Bill();
+            int perCell = _items.Machines.Reference.OreUnitsPerCell;
             foreach (RemovedCell r in edit.Removed)
             {
-                if (r.Material != CellMaterial.Ore) continue;
-                string material = MaterialOf(_zone.Planet.Source.OreKindAt(r.Cell));
-                if (!_yields.OrePerCell.TryGetValue(material, out int n) || n <= 0) continue;
-                got[material] = got.GetValueOrDefault(material) + n;
+                if (r.Material == CellMaterial.Ore && OreOf(_zone.Planet.Source.OreKindAt(r.Cell)) is ItemDef ore) got.Add(ore.Id, perCell);
+                else if (r.Material is CellMaterial.Rock or CellMaterial.DeepRock) got.Add("stone", _yields.StonePerRockCell);
             }
             foreach (var (material, n) in got) Give(material, n);
             Debris?.Burst(edit.Removed, _survivor.WorldEye());
             Sfx?.Play(Sfx.Sound.Dig, at);
-            if (got.Count > 0)
+            if (!got.IsEmpty)
             {
-                Sfx?.Play(Sfx.Sound.Ore, at, 1f, -4f);
-                foreach (var (material, n) in got) Said?.Invoke($"+{n} {material}", Tones.Good);
+                if (got.Ids.Any(id => id != "stone")) Sfx?.Play(Sfx.Sound.Ore, at, 1f, -4f);
+                foreach (var (material, n) in got) Said?.Invoke($"+{n} {_items.Item(material).Name.ToLowerInvariant()}", Tones.Good);
             }
             return edit;
         }
@@ -133,13 +135,21 @@ public sealed class SurvivalTool
         return edit;
     }
 
-    /// <summary>The deposit kinds as the catalogue's material names.</summary>
-    public static string MaterialOf(DepositKind kind) => kind.ToString().ToLowerInvariant();
+    /// <summary>The raw item a deposit kind holds (shared/Items' items.json "deposit"), or null.</summary>
+    public ItemDef OreOf(DepositKind kind) => OreFor(_items, kind);
+
+    public static ItemDef OreFor(ItemCatalogue items, DepositKind kind)
+    {
+        string name = kind.ToString();
+        foreach (ItemDef i in items.Items)
+            if (i.IsRaw && i.DepositKind == name) return i;
+        return null;
+    }
 
     void Give(string material, int n)
     {
-        _pack.Add(new Dictionary<string, int> { [material] = n });
-        Gathered[material] = Gathered.GetValueOrDefault(material) + n;
+        _pack.Add(material, n);
+        Gathered.Add(material, n);
     }
 
     /// <summary>
@@ -159,12 +169,12 @@ public sealed class SurvivalTool
         float surface = _zone.Planet.GroundHeight(canonX + 0.5, canonZ + 0.5);
         _zone.Streamer.MarkDug(new[] { new RemovedCell(new Int3(cx, (int)MathF.Floor(surface), cz), CellMaterial.Soil) });
         double organics = Math.Round(_yields.OrganicsPerPlant * Math.Clamp(scale, 0.5f, 3f), 1);
-        int carbon = Math.Max(1, (int)MathF.Round(_yields.CarbonPerPlant * Math.Clamp(scale, 0.5f, 3f)));
+        int biomass = Math.Max(1, (int)MathF.Round(_yields.BiomassPerPlant * Math.Clamp(scale, 0.5f, 3f)));
         _suit.Kit.Organics += organics;
-        Give("carbon", carbon);
+        Give("biomass", biomass);
         Debris?.Puff(plant + Vector3.Up * 0.8f, new Color(0.35f, 0.5f, 0.2f, 0.6f), 1.5f);
         Sfx?.Play(Sfx.Sound.Dig, plant, 1.4f, -6f);
-        Said?.Invoke($"+{organics:F1} kg organics, +{carbon} carbon", Tones.Good);
+        Said?.Invoke($"+{organics:F1} kg organics, +{biomass} biomass", Tones.Good);
         return true;
     }
 

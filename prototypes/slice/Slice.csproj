@@ -17,6 +17,9 @@
     <!-- Shared modules. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Core\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Production\**\*.cs" />
+    <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
 
     <!-- Pure cores. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
@@ -60,6 +63,7 @@
     <Compile Include="..\wildlife\src\View\**\*.cs" />
     <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />
     <Compile Include="..\wildlife\src\Game\Shutdown.cs" />
+    <Compile Include="..\wildlife\src\Game\Hud.cs" />
     <Compile Include="..\diegetic-ui\src\Theme\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Screens\**\*.cs" />
 

@@ -117,7 +117,7 @@ public sealed class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.34);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(new Dictionary<string, int> { [item] = n });
+        _game.Pack.AddAll(_game.Builder.TotalCost(_game.StarterPlan));
         Vector3 pod = _game.Pod.Body.Position.ToGodot();
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
@@ -194,7 +194,7 @@ public sealed class Staging
         {
             if (!pod.Structure.TypeOf(b).IsContainer) continue;
             Vector3 at = pod.Body.ToParent(PhysicsSandbox.Bridges.StructureBridge.CellCenter(pod.Structure, p)).ToGodot();
-            foreach (int x in _drive.WalkTo(at, 1.4f, 20f)) yield return x;
+            foreach (int x in _drive.IntoPod()) yield return x;
             foreach (int x in _drive.LookAt(at, 6)) yield return x;
             foreach (int x in _drive.Tap(Key.E)) yield return x;
             break;

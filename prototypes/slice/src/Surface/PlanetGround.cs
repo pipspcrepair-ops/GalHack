@@ -63,6 +63,9 @@ public sealed class PlanetGround : IStuckField
     public bool IsSolid(Body body, N.Vector3 point) =>
         point.Y < Floor || (Loaded(point) && _store.SampleDensity(point) > StuckResolver.InsideThreshold);
 
+    /// <summary>True if a point is at or under the ground's surface (loaded ground only).</summary>
+    public bool IsGround(N.Vector3 point) => Loaded(point) && _store.SampleDensity(point) > 0f;
+
     public bool Supports(Body body, N.Vector3 feet)
     {
         N.Vector3 below = feet - N.Vector3.UnitY * 0.3f;
