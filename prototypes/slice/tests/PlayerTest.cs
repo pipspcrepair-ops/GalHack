@@ -96,7 +96,12 @@ public partial class PlayerTest : Node
         _drive = _play.Drive;
         GD.Print($"-- TEST TIME-SCALE: crafting runs {CraftScale}x faster; everything else is real time --");
         while (_game.Phase != Phase.Playing) yield return 0;
-        _game.Zone.Physics.Rescued += _rescues.Add;
+        _game.Zone.Physics.Rescued += r =>
+        {
+            _rescues.Add(r);
+            if (r.Body == _game.Survivor.Body)
+                GD.Print($"  (rescued the castaway at {_game.Stats.Seconds:F0} s: {r.From} -> {r.To}, inside {r.Inside}; aboard {_game.Survivor.Aboard?.Name}, seated {_game.Survivor.Seated?.Name})");
+        };
         // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
@@ -615,16 +620,41 @@ public partial class PlayerTest : Node
         if (v == null || _game.Survivor.Seated != v) yield break;
         // Up high, out of the seat, and a jump off the side.
         _game.Controls.Hold(Key.Space);
-        for (int t = 0; t < 60 * 30 && v.AboveGround < 100f && v.Body.Position.Y < _game.Zone.Physics.Zone.Ceiling - 500f; t++) yield return 0;
+        for (int t = 0; t < 60 * 30 && v.AboveGround < 60f && v.Body.Position.Y < _game.Zone.Physics.Zone.Ceiling - 500f; t++) yield return 0;
+        _game.Controls.ReleaseAll();
+        // Hands off, it brakes to a hover (Ctrl's down jet if it still climbs).
+        for (int t = 0; t < 60 * 15 && MathF.Abs(v.Body.Velocity.Y) > 2f; t++)
+        {
+            _game.Controls.Hold(Key.Ctrl, v.Body.Velocity.Y > 2f);
+            yield return 0;
+        }
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(30)) yield return x;
         Bill carried = _game.Pack.Storage.Contents;
+        float high = v.AboveGround;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
-        foreach (int x in _drive.Tap(Key.Space)) yield return x;
+        // Standing on top of it (the boots hold you to its hull): a running jump off the side, no jetpack.
+        for (int attempt = 0; attempt < 3 && (_game.Survivor.Aboard == v || _game.Survivor.Body.Frame != null); attempt++)
+        {
+            Vector3 off = v.ToWorld(new System.Numerics.Vector3(-8f, 0f, 0f));
+            for (int t = 0; t < 70; t++)
+            {
+                _drive.Face(new Vector3(off.X, _game.Survivor.WorldEye().Y, off.Z));
+                _game.Controls.Hold(Key.W);
+                _game.Controls.Hold(Key.Shift);
+                if (t == 6) _game.Controls.Tap(Key.Space);
+                _game.Controls.Hold(Key.Space, t is >= 6 and < 9);
+                yield return 0;
+            }
+            _game.Controls.ReleaseAll();
+            foreach (int x in _drive.Wait(20)) yield return x;
+        }
         foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 30)) yield return x;
+        if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(carried))
+            GD.Print($"  (after the jump: dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(carried) && _game.Pack.Storage.IsEmpty,
-            $"a fall from {v.AboveGround:F0} m kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
+            $"a fall from {high:F0} m kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;

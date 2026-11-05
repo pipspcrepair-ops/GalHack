@@ -354,7 +354,7 @@ public sealed class Playthrough
     public static int ThrustingAlong(Dir push)
     {
         for (int o = 0; o < Orientations.Count; o++)
-            if (Orientations.ToWorld(o, Dir.NegZ) == push && Orientations.ToWorld(o, Dir.PosY) is Dir.PosZ or Dir.NegZ or Dir.PosY) return o;
+            if (Orientations.ToWorld(o, Dir.NegZ) == push && (push is Dir.PosY or Dir.NegY ? Orientations.ToWorld(o, Dir.PosY) is Dir.PosZ or Dir.NegZ : Orientations.ToWorld(o, Dir.PosY) == Dir.PosY)) return o;
         return Orientations.Identity;
     }
 
@@ -366,18 +366,20 @@ public sealed class Playthrough
     /// block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom, a
     /// thruster not by its nozzle, a leg by its top).
     /// </summary>
-    public static readonly (string block, Int3 on, Dir face, bool lift)[] VesselLayout =
+    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout =
     {
         // The deck round the core, from its sides.
-        ("generator", Int3.Zero, Dir.PosX, false), ("steel", Int3.Zero, Dir.NegX, false), ("steel", Int3.Zero, Dir.NegZ, false),
-        ("steel", new Int3(0, 0, -1), Dir.NegZ, false), ("gyro", Int3.Zero, Dir.PosZ, false), ("thruster", new Int3(0, 0, 1), Dir.PosZ, false),
-        ("steel", new Int3(0, 0, 1), Dir.PosX, false), ("steel", new Int3(0, 0, 1), Dir.NegX, false),
-        // The seat on top, from a hop.
-        ("cockpit", Int3.Zero, Dir.PosY, false),
+        ("generator", Int3.Zero, Dir.PosX, null), ("steel", Int3.Zero, Dir.NegX, null), ("steel", Int3.Zero, Dir.NegZ, null),
+        ("steel", new Int3(0, 0, -1), Dir.NegZ, null), ("gyro", Int3.Zero, Dir.PosZ, null), ("thruster", new Int3(0, 0, 1), Dir.PosZ, Dir.NegZ),
+        ("steel", new Int3(0, 0, 1), Dir.PosX, null), ("steel", new Int3(0, 0, 1), Dir.NegX, null),
+        // A retro at the nose, to brake.
+        ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
+        // On top, from hops: the seat, and a jet pushing down, to come down under control.
+        ("cockpit", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
         // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
-        ("thruster", new Int3(1, 0, 0), Dir.NegY, true), ("thruster", new Int3(-1, 0, 0), Dir.NegY, true),
-        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, false), ("gear", new Int3(1, 0, 1), Dir.NegY, false),
-        ("gear", new Int3(0, 0, -2), Dir.NegY, false), ("gear", new Int3(-1, -1, 1), Dir.NegY, false),
+        ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
+        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),
+        ("gear", new Int3(0, 0, -2), Dir.NegY, null), ("gear", new Int3(-1, -1, 1), Dir.NegY, null),
     };
 
     /// <summary>Builds <see cref="VesselLayout"/> on a vessel's core, from toolbar slots by block, walking round it to see each face. Counts what went down.</summary>
@@ -385,13 +387,13 @@ public sealed class Playthrough
     {
         int ok = 0;
         Vector3 centre = v.Body.Position.ToGodot();
-        foreach (var (block, on, face, lift) in VesselLayout)
+        foreach (var (block, on, face, push) in VesselLayout)
         {
             N.Vector3 cell = StructureBridge.CellCenter(v.Structure, on);
             Vector3 at = v.ToWorld(cell);
             // A side face from out in front of it; a bottom face from just beside the block,
             // looking up under it; a top face from beside it, on a hop of the jetpack.
-            Vector3 outward = face is Dir.NegY or Dir.PosY ? v.ToWorld(new N.Vector3(on.X, 0, on.Z) * 2f + new N.Vector3(0, 0, on.X == 0 && on.Z == 0 ? -1 : 0)) - centre
+            Vector3 outward = face is Dir.NegY or Dir.PosY ? v.ToWorld(new N.Vector3(on.X, 0, on.Z) * 2f + new N.Vector3(on.X == 0 && on.Z == 0 ? -1 : 0, 0, 0)) - centre
                 : v.ToWorld(face.Vec().ToVector3()) - centre;
             outward.Y = 0f;
             outward = outward.LengthSquared() < 1e-4f ? Vector3.Back : outward.Normalized();
@@ -406,7 +408,7 @@ public sealed class Playthrough
                 Vector3 stand = at + outward * d;
                 foreach (int x in WalkAround(centre, new Vector3(stand.X, 0, stand.Z), 4.5f)) yield return x;
                 foreach (int x in Select(slots[block])) yield return x;
-                foreach (int x in TurnTo(lift ? ThrustingAlong(Dir.PosY) : Orientations.Identity)) yield return x;
+                foreach (int x in TurnTo(push is Dir along ? ThrustingAlong(along) : Orientations.Identity)) yield return x;
                 if (face == Dir.PosY) foreach (int x in HopAndPlace(slots[block], v, on, face, p => done = p)) yield return x;
                 else
                 {
@@ -432,20 +434,26 @@ public sealed class Playthrough
         for (int attempt = 0; attempt < 3 && !done; attempt++)
         {
             int before = v.Structure.Count;
+            bool clicked = false;
+            // Up on the jetpack, watching the ghost: click only once it sits on that face, as a
+            // player would (a click on anything else puts the block somewhere unwanted).
             Controls.Hold(Key.Space);
-            for (int i = 0; i < 70 && Game.Survivor.WorldEye().Y < v.ToWorld(local).Y + 0.8f; i++)
+            for (int i = 0; i < 90 && !clicked; i++)
             {
                 Drive.Face(v.ToWorld(local));
                 yield return 0;
+                bool high = Game.Survivor.WorldEye().Y > v.ToWorld(local).Y + 0.4f;
+                if (high && Game.Builder.TargetVessel == v && Game.Builder.PlaceCell == target)
+                {
+                    Drive.Face(v.ToWorld(local));
+                    Controls.PrimaryPressed = true;
+                    Controls.Primary = true;
+                    clicked = true;
+                    yield return 0;
+                    Controls.Primary = false;
+                }
             }
-            Drive.Face(v.ToWorld(local));
-            yield return 0;
-            if (Game.Builder.PlaceCell != target) Log($"(the hop's crosshair: on {Game.Builder.TargetCell} of {Game.Builder.TargetVessel?.Name}, placing at {Game.Builder.PlaceCell}, eye {Game.Survivor.WorldEye().Y - v.ToWorld(local).Y:F2} m above the face)");
-            Drive.Face(v.ToWorld(local));
-            Controls.PrimaryPressed = true;
-            Controls.Primary = true;
-            yield return 0;
-            Controls.Primary = false;
+            if (!clicked) Log($"(the hop's crosshair: on {Game.Builder.TargetCell} of {Game.Builder.TargetVessel?.Name}, placing at {Game.Builder.PlaceCell}, eye {Game.Survivor.WorldEye().Y - v.ToWorld(local).Y:F2} m above the face)");
             Controls.Hold(Key.Space, false);
             foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 5)) yield return x;
             done = v.Structure.Has(target) && v.Structure.Count > before;
