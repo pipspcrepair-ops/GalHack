@@ -1,0 +1,48 @@
+# Escape pod: the slice's crash-landing capsule. Small grid (0.5 m cells), x starboard, y up,
+# -z forward. Not a vessel any more (no engines): a shelter, a respawn point and a locker.
+#
+# A 3.5 m square hull, 3 m tall, an open hatchway at the front, a seat facing it, a locker
+# (container) at the back, a light, and a scorched orange heat shield underneath.
+
+schema galhack.blueprint
+version 1
+name "Escape Pod"
+grid small
+mode capital
+gravity on
+
+paint shell base=e85d04 grime=3
+paint band base=ece3c8 accent=2b2d42 pattern=stripes grime=3
+paint shield base=2b2d42 grime=3
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=3
+
+# Floor and heat shield
+block -3..3 0 -3..-1 steel paint=shield
+block -3..-1 0 0 steel paint=shield
+block 0 0 0 core
+block 1..3 0 0 steel paint=shield
+block -3..3 0 1..3 steel paint=shield
+
+# Walls (y 1..4); the hatchway is the gap x -1..1 in the front wall
+block -3 1..2 -3..3 steel paint=shell
+block 3 1..2 -3..3 steel paint=shell
+block -3 4 -3..3 steel paint=shell
+block 3 4 -3..3 steel paint=shell
+block -2..2 1..4 3 steel paint=shell
+block -2 1..4 -3 steel paint=hazard
+block 2 1..4 -3 steel paint=hazard
+block -3 3 -3..3 steel paint=band
+block 3 3 -3..3 steel paint=band
+
+# Roof (y 5): bevelled edges
+block -2..2 5 -2..2 steel paint=shell
+block -2..2 5 -3 steel slope paint=shell
+block -2..2 5 3 steel slope rot=+y+z paint=shell
+block -3 5 -3..3 steel slope rot=+y-x paint=shell
+block 3 5 -3..3 steel slope rot=+y+x paint=shell
+block -1..1 4 -3 steel paint=hazard
+
+# Inside: the seat facing the hatch, the locker, a light
+block 0 1 1 cockpit
+block -2 1 2 container
+block 0 4 2 light rot=+z-y

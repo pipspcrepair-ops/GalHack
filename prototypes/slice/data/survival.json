@@ -1,0 +1,39 @@
+// The survival model's planet data for the slice. The climate fields are unused: the slice
+// supplies the exposure from the generated planet, its sky and its weather (SurvivalSim.Environment).
+// What matters here is the start: the suit, the kit and the pod's rations. Positions are set
+// at runtime from where the pod comes down.
+{
+  "name": "Slice",
+  "dayLengthSeconds": 1440,
+  "startHour": 6,
+  "baseTemperature": 15,
+  "dayNightSwing": 0,
+  "oxygenPercent": 21,
+  "weather": { "intervalSeconds": 0, "kinds": [] },
+  "zones": [],
+  "volumes": [],
+  "territories": [],
+  "respawnPoints": [],
+  "replicators": [],
+  "storage": { "position": [0, 0], "organics": 0 },
+  "basePower": 0,
+  "escapePod": { "position": [0, 0], "rations": 3 },
+  "freshStartRing": { "low": 70, "high": 105 },
+  "bushes": [],
+  "rocks": [],
+  "start": {
+    "position": [0, 0],
+    "yawDegrees": 0,
+    "food": 0.8,
+    "suit": "light",
+    "inventory": {
+      "organics": 6,
+      "smallBottles": 2,
+      "largeBottles": 1,
+      "medkits": 2,
+      "replicatorKits": 1,
+      "suits": [],
+      "boosters": []
+    }
+  }
+}

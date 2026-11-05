@@ -1,0 +1,69 @@
+// The slice's own numbers. Everything else is read from the prototype that owns it.
+{
+  "planet": {
+    // The starter world: a temperate planet from the planet generator.
+    "seed": 7,
+    "archetype": "Temperate",
+    "variant": 0,
+    "gravity": 9.8,
+    // Top of the atmosphere, m: no weight above it (the handling model's switch). Above the
+    // highest mountains any planet makes.
+    "ceiling": 4000,
+    // The pod comes down at dawn (0 midnight, 0.5 noon).
+    "startTimeOfDay": 0.255,
+    "podDropHeight": 260,
+    "podDropSeconds": 7
+  },
+
+  // PLACEHOLDER until materials and manufacturing are designed: digging ore and cutting plants
+  // give the building catalogue's recipe materials (iron, copper, silicon, carbon) directly.
+  "materials": {
+    // Units of material per 1 m cell of ore dug, by the deposit's kind.
+    "orePerCell": { "iron": 6, "copper": 4, "silicon": 4, "carbon": 4, "titanium": 2, "cobalt": 2, "crystal": 2 },
+    // Cutting a plant: kg of organics for the replicator, and carbon.
+    "organicsPerPlant": 1.5,
+    "carbonPerPlant": 2,
+    // What the escape pod's locker holds: enough for a core and a seat, not a ship.
+    "podLocker": { "iron": 30, "copper": 16, "silicon": 10, "carbon": 4 }
+  },
+
+  // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to
+  // 1 scorching) spread over this range, warmer by day, colder with height.
+  "climate": {
+    "coldestC": -45,
+    "hottestC": 65,
+    "dayNightSwing": 7,
+    "lapsePerKm": 6.5,
+    // Ambient oxygen, %, by the sky's air.
+    "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
+    // Background radiation, RAD (the visor warns above 3).
+    "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
+    // A cockpit seat with its canopy shut is a sealed, heated volume.
+    "cockpitC": 20
+  },
+
+  "tool": {
+    "reach": 7.5,
+    "digRadius": 1.42,
+    "digInterval": 0.18,
+    "cutReach": 4,
+    "shotDamage": 18,
+    "shotInterval": 0.22,
+    "shotRange": 120
+  },
+
+  "build": {
+    "reach": 9,
+    // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
+    "blueprintPlacesPerSecond": 8,
+    "starterBlueprint": "starter.gbp"
+  },
+
+  "wildlife": {
+    // Creatures live on a square of the planet around the landing site, this far each way, m.
+    "patchHalfSize": 300,
+    // Nothing spawns this close to the pod.
+    "safeRadius": 60,
+    "alienness": 0.25
+  }
+}
