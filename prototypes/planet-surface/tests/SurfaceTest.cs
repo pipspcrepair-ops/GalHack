@@ -113,15 +113,6 @@ public partial class SurfaceTest : Node
 
     static System.Numerics.Vector3 N(Vector3 v) => new(v.X, v.Y, v.Z);
 
-    /// <summary>
-    /// Main-thread time spent in game code (process plus physics, without the wait for the next
-    /// frame) by the slowest frame of the last whole second: Godot updates these monitors once a
-    /// second with the maximum. A check reading them must start more than a second after anything
-    /// it doesn't mean to measure.
-    /// </summary>
-    static double FrameWorkMs() =>
-        (Performance.GetMonitor(Performance.Monitor.TimeProcess) + Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess)) * 1000.0;
-
     /// <summary>The surface of the density field in a column: where it crosses zero, coming down from the sky.</summary>
     static float FieldSurface(ChunkStore store, int x, int z, int top, int bottom)
     {
@@ -414,7 +405,7 @@ public partial class SurfaceTest : Node
         _main.WorstMainMs = 0;
         _main.Fly.VelocityOverride = new Vector3(100f, 0f, 30f).Normalized() * 100f;
         var watch = Stopwatch.StartNew();
-        double worstFrame = 0, frameSum = 0, worstWork = 0, worstProcess = 0, worstPhysics = 0;
+        double worstFrame = 0, frameSum = 0, worstProcess = 0, worstPhysics = 0;
         int frames = 0;
         long last = Stopwatch.GetTimestamp();
         int shiftsBefore = _main.FrameShifts;
@@ -423,6 +414,8 @@ public partial class SurfaceTest : Node
         long allocatedBefore = GC.GetTotalAllocatedBytes();
         double worstPause = 0;
         string worstGc = "";
+        var probe = new FrameProbe(this);
+        bool probing = false;
         while (watch.Elapsed.TotalSeconds < 20)
         {
             await Frames(1);
@@ -437,14 +430,20 @@ public partial class SurfaceTest : Node
                     worstGc = $"gen{info.Generation} {(info.Concurrent ? "background" : "blocking")}, {info.PromotedBytes / 1e6:F1} MB promoted, heap {info.HeapSizeBytes / 1e6:F0} MB, compacted {info.Compacted}";
                 }
             if (watch.Elapsed.TotalSeconds < 1) continue;
+            if (!probing)
+            {
+                probe.Reset();
+                probing = true;
+            }
             worstFrame = Math.Max(worstFrame, ms);
-            worstWork = Math.Max(worstWork, FrameWorkMs());
             worstProcess = Math.Max(worstProcess, Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000);
             worstPhysics = Math.Max(worstPhysics, Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000);
             frameSum += ms;
             frames++;
         }
         _main.Fly.VelocityOverride = null;
+        double frameWork = probe.WorstMs, frameGap = probe.WorstGapMs;
+        probe.Remove();
         double flown = (_main.Camera.GlobalPosition - start).Length() + (_main.FrameShifts - shiftsBefore) * 0; // display only
         double worstStream = _main.Streamer.WorstFrameMs;
         GD.Print($"      garbage collections during the flight: gen0 {GC.CollectionCount(0) - gc0}, gen1 {GC.CollectionCount(1) - gc1}, gen2 {GC.CollectionCount(2) - gc2}; " +
@@ -455,7 +454,8 @@ public partial class SurfaceTest : Node
         Check(worstStream < 8.0 && caughtUp,
             $"flying 2 km at 100 m/s: terrain streaming's main-thread cost worst {worstStream:F2} ms per frame ({_main.Streamer.WorstBreakdown}; slowest far chunk {_main.Streamer.WorstFarNodeMs:F1} ms: {_main.Streamer.WorstFarNode}; " +
             $"GC pauses inside streaming, left out, up to {_main.Streamer.WorstGcPauseMs:F1} ms); " +
-            $"main-thread work per frame worst {worstWork:F2} ms (process {worstProcess:F1}, physics {worstPhysics:F1}; Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}); caught up after landing {caughtUp} (headless, 60 fps cap)");
+            $"whole frames: game code worst {frameWork:F2} ms, GC pauses included, longest wait between frames {frameGap:F1} ms (Godot's monitors, a second at a time: process {worstProcess:F1}, physics {worstPhysics:F1}; Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}); " +
+            $"caught up after landing {caughtUp} (headless, 60 fps cap)");
         _main.ToggleFly();
         await Until(() => _main.IsReady, 30);
     }
@@ -560,53 +560,62 @@ public partial class SurfaceTest : Node
         Walker player = _main.Player;
         player.Teleport(new Vector3((float)x, w.GroundHeight(x, 14) + 0.2f, 14f));
         await Streamed();
-        // Stand for over a second first: the frame-time monitors hold the slowest frame of the last
-        // second, and the arrival from across the planet is not what this check measures.
+        // A jump across the planet is an arrival: settle the heap as landing does (Main.BecomeReady),
+        // so a full collection owed by the checks before this one doesn't fall inside the walk.
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
         await PhysicsFrames(80);
         player.SetLook(0f, 0f); // facing north (-z)
         Engine.MaxFps = 60;
         int shifts = _main.FrameShifts;
-        double lowest = double.MaxValue, worstFrame = 0, worstStream = 0, worstWork = 0, crossingWork = 0;
+        double lowest = double.MaxValue, worstStream = 0, crossingWork = 0;
         float minSpeed = float.MaxValue;
-        string worstParts = "";
         _main.Streamer.ResetStats();
         _main.WorstMainMs = 0;
+        int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+        double longestPause = 0;
+        long gcIndexBefore = GC.GetGCMemoryInfo(GCKind.Any).Index;
+        var probe = new FrameProbe(this);
         player.MoveOverride = new Vector2(0, -1);
         var watch = Stopwatch.StartNew();
-        long last = Stopwatch.GetTimestamp();
         int ticks = 0;
+        bool crossing = false;
         while (watch.Elapsed.TotalSeconds < 7)
         {
             await PhysicsFrames(1);
             ticks++;
-            long now = Stopwatch.GetTimestamp();
-            double ms = Stopwatch.GetElapsedTime(last, now).TotalMilliseconds;
-            last = now;
+            GCMemoryInfo gcInfo = GC.GetGCMemoryInfo(GCKind.Any);
+            if (gcInfo.Index > gcIndexBefore)
+                foreach (TimeSpan pause in gcInfo.PauseDurations)
+                    longestPause = Math.Max(longestPause, pause.TotalMilliseconds);
             Vector3 p = player.GlobalPosition;
             float ground = w.GroundHeight(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height));
             lowest = Math.Min(lowest, p.Y - ground);
-            if (ticks > 30)
+            // The first half second is getting into stride; after it, every frame counts.
+            if (ticks == 30) probe.Reset();
+            if (ticks > 30) minSpeed = Math.Min(minSpeed, new Vector2(player.Velocity.X, player.Velocity.Z).Length());
+            // The frame shifts during a physics tick; the probe's last frame is that whole frame by
+            // the next tick, when this loop first sees the shift.
+            if (_main.FrameShifts > shifts && !crossing)
             {
-                worstFrame = Math.Max(worstFrame, ms);
-                double work = FrameWorkMs();
-                if (work > worstWork)
-                {
-                    worstWork = work;
-                    worstParts = $"process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F1}, physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:F1}";
-                }
-                minSpeed = Math.Min(minSpeed, new Vector2(player.Velocity.X, player.Velocity.Z).Length());
+                crossing = true;
+                crossingWork = probe.LastMs;
             }
-            if (_main.FrameShifts > shifts && crossingWork == 0) crossingWork = Math.Max(FrameWorkMs(), 1e-6);
         }
         player.MoveOverride = null;
+        double worstWork = probe.WorstMs, worstGap = probe.WorstGapMs;
+        int frames = probe.Frames;
+        probe.Remove();
         worstStream = _main.Streamer.WorstFrameMs;
         Engine.MaxFps = 0;
         Vector3 end = player.GlobalPosition;
         bool crossed = _main.FrameShifts > shifts && end.Z > w.Height * 0.5f;
-        Check(crossed && lowest > -0.3 && minSpeed > 3.5f && worstStream < 8.0 && worstWork < 8.0,
+        // At the 60 fps cap a frame starts every 16.7 ms: a longer wait between one frame's last
+        // callback and the next one's first means the engine itself stalled for the difference.
+        Check(crossed && lowest > -0.3 && minSpeed > 3.5f && worstStream < 8.0 && worstWork < 8.0 && worstGap < 1000.0 / 60 + 8.0,
             $"walking north across the edge: crossed {crossed} (now {end.Z:F0} m S of {w.Height:F0}), lowest {lowest:F2} m relative to the ground, " +
-            $"slowest {minSpeed:F1} m/s once walking; main-thread work per frame worst {worstWork:F2} ms ({worstParts}; Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}), " +
-            $"{crossingWork:F2} ms on the frame of the crossing, " +
+            $"slowest {minSpeed:F1} m/s once walking; game code on the main thread worst {worstWork:F2} ms in {frames} frames, {crossingWork:F2} ms on the frame of the crossing " +
+            $"(Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}); longest wait between frames {worstGap:F1} ms (16.7 at the cap, so no engine stall over {Math.Max(0, worstGap - 1000.0 / 60):F1} ms); " +
+            $"collections while walking gen0 {GC.CollectionCount(0) - gc0}, gen1 {GC.CollectionCount(1) - gc1}, gen2 {GC.CollectionCount(2) - gc2} (longest pause {longestPause:F1} ms); " +
             $"terrain streaming worst {worstStream:F2} ms (headless, 60 fps cap)");
     }
 

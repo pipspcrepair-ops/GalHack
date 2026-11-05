@@ -76,7 +76,9 @@ Runs headless in about 70 s and exits 0 or 1. Add `-- --only=Heights,Flight` to 
 - flying 2 km at 100 m/s keeps streaming's main-thread cost under 8 ms a frame (about 4 ms) and catches up after landing; GC pauses that land inside streaming are left out of that figure and reported beside it, along with the flight's collections
 - chunks beyond the north edge match their twins at the south edge (heights to 0.24 mm, normals to 0.005°), as does the corner beyond both seams
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
-- walking north across the edge keeps you on the ground, at speed, with no frame over 8 ms
+- walking north across the edge keeps you on the ground, at speed, with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames
+
+Frame costs are measured per frame by `tests/FrameProbe.cs`. Godot's own monitors give only the slowest process and physics passes of a whole second, possibly from different frames, and up to a second stale.
 
 ## Screenshots
 
@@ -99,7 +101,7 @@ Views are `mountains`, `canyon`, `foggy_valley`, `thunderstorm`, `blizzard`, `po
 
 ## Limits
 
-- **GC pauses.** Streaming itself costs about 4 ms of main-thread time at 100 m/s, but .NET collections still pause the frame for up to 6–9 ms now and then, so the whole frame occasionally reaches 11–14 ms while flying fast. Walking stays under 4 ms.
+- **GC pauses.** Streaming itself costs about 4 ms of main-thread time at 100 m/s, but .NET collections (about 16 MB allocated a second while flying fast) still pause for up to 6–9 ms now and then, so the slowest whole frame reaches about 10 ms. Walking stays under 3 ms.
 - **POIs only near the landing site.** Places are generated on a 3.2 km map around it, not across the whole planet.
 - **Water is static,** as in terrain-digging: seas and rivers don't flow into dug holes, and a pit dug below sea level stays dry.
 - **Weather is global** for the planet. There are no local storm cells yet, apart from tornadoes.
