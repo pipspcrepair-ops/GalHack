@@ -134,19 +134,64 @@ public sealed class Playthrough
         GD.Print($"  (out: feet {Game.Survivor.WorldFeet}, the way out ends at {b.Outside}, ground there {Game.Zone.GroundAt(b.Outside.X, b.Outside.Z).Y:F2}, top step {b.StairTop})");
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f && Game.Survivor.Body.OnFloor,
             $"{label}up the stairwell's {b.Steps} steps to the surface on foot ({Game.Stats.Seconds - start:F0} s)");
-        Vector3 away = AwayFrom(b.Outside, b.Outside - b.StairTop, 53f);
-        // Breadcrumbs on the way, to come back the way you went.
+        // Away a step at a time over ground that is really there (caves, crevasses and lava the
+        // map doesn't show are probed for), never far above or below the way out, as far from it
+        // as each step allows; breadcrumbs on the way, to come back the way you went.
         var crumbs = new List<Vector3>();
-        foreach (int x in Drive.WalkTo(away, 2f, 90f, dig: false))
+        Vector3 away = b.Outside;
+        for (int step = 0; step < 40; step++)
         {
-            if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
-            yield return x;
+            Vector3 here = Game.Survivor.WorldFeet;
+            if (new Vector2(here.X - b.Outside.X, here.Z - b.Outside.Z).Length() >= 53f) break;
+            Vector3? next = null;
+            float bestScore = float.MinValue;
+            for (int k = 0; k < 24; k++)
+            {
+                float ang = k * MathF.Tau / 24f;
+                Vector3 p = here + new Vector3(MathF.Cos(ang), 0f, MathF.Sin(ang)) * 4f;
+                var probe = PhysicsRayQueryParameters3D.Create(new Vector3(p.X, here.Y + 20f, p.Z), new Vector3(p.X, here.Y - 20f, p.Z), GalHack.Physics.Layers.World);
+                var hit = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(probe);
+                if (hit.Count == 0) continue;
+                float h = ((Vector3)hit["position"]).Y;
+                if (h < 1.5f || MathF.Abs(h - b.Outside.Y) > 14f || MathF.Abs(h - here.Y) > 2.4f || b.Over(p, 3f)) continue;
+                float score = new Vector2(p.X - b.Outside.X, p.Z - b.Outside.Z).Length();
+                if (score > bestScore) { bestScore = score; next = new Vector3(p.X, h, p.Z); }
+            }
+            if (next is not Vector3 n) break;
+            crumbs.Add(here);
+            away = n;
+            foreach (int x in Drive.WalkTo(n, 0.8f, 10f, sprint: false, dig: false)) yield return x;
+        }
+        // Boxed in by the ground's shape short of 50 m: on the gentlest straight line out from there.
+        Vector3 there = Game.Survivor.WorldFeet;
+        if (new Vector2(there.X - b.Outside.X, there.Z - b.Outside.Z).Length() < 52f)
+        {
+            Vector3 dir = there - b.Outside;
+            dir.Y = 0f;
+            Vector3 far = AwayFrom(there, dir.LengthSquared() > 1f ? dir : b.Outside - b.StairTop, 56f - new Vector2(there.X - b.Outside.X, there.Z - b.Outside.Z).Length());
+            foreach (int x in Drive.WalkTo(far, 2f, 60f, dig: false))
+            {
+                if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
+                if (new Vector2(Game.Survivor.WorldFeet.X - b.Outside.X, Game.Survivor.WorldFeet.Z - b.Outside.Z).Length() >= 52f) break;
+                yield return x;
+            }
+            Controls.ReleaseAll();
         }
         Vector3 f = Game.Survivor.WorldFeet;
         float gone = new Vector2(f.X - b.Outside.X, f.Z - b.Outside.Z).Length();
         if (gone < 50f) GD.Print($"  (walking away: from {b.Outside} toward {away}, stopped at {f}, on floor {Game.Survivor.Body.OnFloor}, the ground there {Game.Zone.GroundAt(f.X, f.Z).Y:F1}, inside the bunker {b.Inside(f, Game.Zone)})");
         check(gone >= 50f, $"{label}and walks {gone:F0} m away from it (feet {f.Y - Game.Zone.GroundAt(f.X, f.Z).Y:+0.0;-0.0} m from the ground)");
-        for (int i = crumbs.Count - 1; i >= 0; i -= 2) foreach (int x in Drive.WalkTo(crumbs[i], 1.2f, 20f, dig: false)) yield return x;
+        bool told = false;
+        for (int i = crumbs.Count - 1; i >= 0; i--)
+            foreach (int x in Drive.WalkTo(crumbs[i], 1.0f, 20f, sprint: false, dig: false))
+            {
+                if (!told && Game.Survivor.WorldFeet.Y < crumbs[i].Y - 4f)
+                {
+                    told = true;
+                    GD.Print($"  (coming back: dropped below the way out at crumb {i} of {crumbs.Count} ({crumbs[i]}): feet {Game.Survivor.WorldFeet}; the way out's last crumbs {string.Join(" ", crumbs.Take(4))})");
+                }
+                yield return x;
+            }
         foreach (int x in Drive.WalkTo(b.Outside, 0.8f, 90f, dig: false)) yield return x;
         foreach (int x in Drive.ClimbIn(b)) yield return x;
         check(Game.Survivor.WorldFeet.DistanceTo(b.CryoFront) < 1.0f, $"{label}back down the stairs into the chamber");
@@ -160,23 +205,28 @@ public sealed class Playthrough
         facing.Y = 0f;
         float a0 = MathF.Atan2(facing.Z, facing.X), bestScore = float.MaxValue;
         Vector3 best = from + facing.Normalized() * distance;
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < 32; i++)
         {
-            float a = a0 + (i % 2 == 0 ? 1 : -1) * ((i + 1) / 2) * MathF.Tau / 16f;
+            float a = a0 + (i % 2 == 0 ? 1 : -1) * ((i + 1) / 2) * MathF.Tau / 32f;
             var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
-            float worst = 0f, last = Game.Zone.GroundAt(from.X, from.Z).Y;
+            // The real ground (the terrain's own collision: caves, crevasses and ice the map
+            // doesn't show), probed from well above: gentle all the way, never far below or above
+            // where you start, so the way back is the way you went.
+            float start = from.Y, worst = 0f, last = start;
             bool wet = false;
             for (float d = 2f; d <= distance + 4f; d += 2f)
             {
                 Vector3 p = from + dir * d;
-                float h = Game.Zone.GroundAt(p.X, p.Z).Y;
-                wet |= h < 1.5f;
-                // Not back over the bunker: its stairwell is a trench the natural ground doesn't show.
+                var probe = PhysicsRayQueryParameters3D.Create(new Vector3(p.X, start + 40f, p.Z), new Vector3(p.X, start - 40f, p.Z), GalHack.Physics.Layers.World);
+                var hit = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(probe);
+                float h = hit.Count > 0 ? ((Vector3)hit["position"]).Y : start - 40f;
+                wet |= h < 1.5f || hit.Count == 0 || MathF.Abs(h - start) > 4f;
+                // Not back over the bunker: its stairwell is a trench.
                 if (Game.Bunker != null && Game.Bunker.Over(p, 3f)) wet = true;
                 worst = MathF.Max(worst, MathF.Abs(h - last) / 2f);
                 last = h;
             }
-            float score = (wet ? 100f : 0f) + (worst > 0.55f ? 50f : 0f) + worst + i * 0.02f;
+            float score = (wet ? 100f : 0f) + (worst > 0.45f ? 50f : 0f) + worst + i * 0.01f;
             if (score < bestScore) { bestScore = score; best = from + dir * distance; }
         }
         return best;

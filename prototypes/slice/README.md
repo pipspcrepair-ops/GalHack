@@ -238,6 +238,7 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 
 - **Phase 1 only:** no orbit, boarding or saves yet. Progress lives in one `ProgressState` ready for phase 3's saves.
 - **The escape pod and its descent are gone**; the bunker start lives in `Game.Start.cs` and `src/Start/Bunker.cs`, apart from the rest. The places the start faces are the POI generator's, drawn by planet-surface's layer; they can't be entered or looted from the slice yet.
+- **The start test's walk is a bot's.** Waking, the locker and the climb out pass on every world tried; the 50 m walk out and back is a bot stepping over ground it can't see, and on a few random worlds in ten (a cave mouth, a cliff, ground the map doesn't show) it falls short of 50 m or can't climb back to the stairs. Those are the walker's limits, not the bunker's: they show as the walk's own checks failing, never the wake, the locker or the climb out.
 - **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
 - **Blocks are not items** (shared/Items' rule): the toolbar holds block shortcuts paid from storage at placement, not stacks of blocks as in Empyrion. Cores are the exception, made as items in the slice's own data.
 - **Equipment is read-only**: the paperdoll's armour and booster slots show the survival suit's; there are no armour items to drag in yet.

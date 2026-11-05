@@ -51,6 +51,8 @@ public partial class Visor : CanvasLayer
     {
         Layer = 1;
         _glass = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/visor_glass.gdshader") };
+        // No straight reflection streaks: across the sky a straight line reads as a seam.
+        _glass.SetShaderParameter("streaks", 0f);
         var glass = new ColorRect { Name = "Glass", MouseFilter = Control.MouseFilterEnum.Ignore, Material = _glass };
         glass.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(glass);

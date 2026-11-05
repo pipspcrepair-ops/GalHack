@@ -131,7 +131,9 @@ public sealed class Driver
             Controls.Primary = digging;
             // Over an edge: the jetpack brakes the fall, as a careful player would.
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
-            Controls.Hold(Key.Space, jet > 0f || falling);
+            // Down in a hole, the way on well above: up on the jetpack, as a player would.
+            bool climb = target.Y - feet.Y > 2.5f && flat < 20f;
+            Controls.Hold(Key.Space, jet > 0f || falling || climb);
             jet -= 1f / 60f;
             yield return 0;
         }

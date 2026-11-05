@@ -125,11 +125,37 @@ public sealed class Bunker
     /// Searches outward from a point (the generator's landing site) for a place to dig the
     /// bunker: the first ring that has one wins, and on it the stairs that face a place in view best.
     /// </summary>
-    public static Site? FindSite(SurfaceZone zone, Vector3 near, int maxRings = 90)
+    public static Site? FindSite(SurfaceZone zone, Vector3 near, int maxRings = 130)
     {
         // Strict first (deep under even ground, well above the sea); then, on low wet worlds
         // (a swamp), shallower under rougher ground.
-        return Search(zone, near, maxRings, strict: true) ?? Search(zone, near, maxRings, strict: false);
+        return Search(zone, near, maxRings, strict: true) ?? Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+    }
+
+    /// <summary>
+    /// The last resort, for a world whose places are all out of sight from round the landing
+    /// site: round each place itself (nearest the landing site first), 400 to 1,100 m off it, on
+    /// any side, wherever a bunker fits with that place in view.
+    /// </summary>
+    static Site? AroundPlaces(SurfaceZone zone, Vector3 near)
+    {
+        foreach (var (poi, target) in PoisNear(zone, near, 0f, 4000f))
+            for (float r = 400f; r <= 1100f; r += 140f)
+            for (int i = 0; i < 24; i++)
+            {
+                float a = i * MathF.Tau / 24f;
+                var p = new Vector3(target.X + MathF.Cos(a) * r, 0f, target.Z + MathF.Sin(a) * r);
+                float toward = MathF.Atan2(-(target.X - p.X), -(target.Z - p.Z));
+                foreach (float turn in new[] { 0f, 0.6f, -0.6f })
+                {
+                    if (Fit(zone, p, toward + turn, strict: false) is not (N.Vector3 origin, int steps)) continue;
+                    var site = new Site(origin, toward + turn, steps, target, new Vector2(p.X - near.X, p.Z - near.Z).Length(), poi);
+                    Vector3 exit = ExitOf(site);
+                    float d = new Vector2(target.X - exit.X, target.Z - exit.Z).Length();
+                    if (d >= 300f && d <= 1200f && LineOfSight(zone, exit + Vector3.Up * 1.6f, target) && Diggable(zone, site)) return site;
+                }
+            }
+        return null;
     }
 
     static Site? Search(SurfaceZone zone, Vector3 near, int maxRings, bool strict)

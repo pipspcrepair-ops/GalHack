@@ -39,7 +39,7 @@ public partial class Game
     /// <summary>The castaway in their cryopod, the kit in the locker, the bunker their respawn point.</summary>
     void WakeInBunker()
     {
-        if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World}");
+        if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World} ({Zone.Planet.Pois.Count} places on the planet: {string.Join(", ", System.Linq.Enumerable.Select(Zone.Planet.Pois, q => $"{q.Name} {q.Instance?.State} {new Vector2(q.Origin.X - Zone.LandingSite.X, q.Origin.Z - Zone.LandingSite.Z).Length():F0} m off, {q.Siting}"))})");
         Bunker = Bunker.Dig(Zone, site);
         foreach (var (id, n) in Zone.Data.Rules.Materials.StartKit) Bunker.Ruin.Storage.Add(id, n);
 
