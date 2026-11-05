@@ -32,7 +32,8 @@ public partial class Staging
         int specks = 0, holes = 0, frames = 0;
         var places = new List<(string name, Vector3 eye)> { ("exit", _game.Survivor.WorldEye()) };
         Vector3 hill = Hilltop(_game.Survivor.WorldFeet, 300f);
-        places.Add(("hilltop", hill + Vector3.Up * 1.6f));
+        if (!(_args.TryGetValue("places", out string only) && only == "exit")) places.Add(("hilltop", hill + Vector3.Up * 1.6f));
+        bool all = _args.ContainsKey("all"); // every frame saved (before and after comparisons)
         Vector3 sun = _game.Zone.Sky.ToSun;
         float antiSolar = MathF.Atan2(sun.X, sun.Z); // the heading that looks away from the sun
         foreach (var (name, eye) in places)
@@ -61,7 +62,7 @@ public partial class Staging
                 specks += s;
                 holes += g;
                 int deg = (int)MathF.Round(((-yaw * 180f / MathF.PI) % 360f + 360f) % 360f);
-                if (s > 0 || g > 0 || h == 8)
+                if (all || s > 0 || g > 0 || h == 8)
                 {
                     string file = System.IO.Path.Combine(dir, $"sky-{name}-{deg:000}-{(int)(pitch * 180f / MathF.PI):00}.png");
                     shot.SavePng(file);
@@ -69,7 +70,9 @@ public partial class Staging
                 }
             }
         }
-        GD.Print($"sky check: {specks} dark specks and {holes} sky holes in {frames} frames {(specks + holes == 0 ? "(clean)" : "(SEAMS)")}");
+        // Specks must be none. The ground-hole count is a coarse screen (haze and gaps between
+        // trunks can match the sky's colour): its frames are saved to look at.
+        GD.Print($"sky check: {specks} dark specks in {frames} frames {(specks == 0 ? "(clean)" : "(SPECKS)")}; {holes} possible holes in the ground flagged for a look");
         _game.FixedCamera = new Transform3D(new Basis(Vector3.Up, antiSolar) * new Basis(Vector3.Right, 0.35f), places[0].eye);
         foreach (int x in _drive.Wait(4)) yield return x;
     }

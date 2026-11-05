@@ -198,10 +198,12 @@ public sealed partial class Staging
         foreach (int x in _drive.Board(v)) yield return x;
         _game.Visor.Visible = false;
         _game.Controls.Hold(Key.Space);
-        foreach (int x in _drive.Wait((int)Num("ticks", 70))) yield return x;
+        // A moment after lift-off (it climbs at about 10 g): a few metres up, seen from close by.
+        foreach (int x in _drive.Wait((int)Num("ticks", 24))) yield return x;
+        _game.Controls.Hold(Key.Space, false);
         Vector3 now = v.Body.Position.ToGodot();
         float heading = (float)Num("heading", 140) * Mathf.Pi / 180f;
-        Vector3 eye = ground + new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading)) * 9f;
+        Vector3 eye = ground + new Vector3(MathF.Sin(heading), 0f, MathF.Cos(heading)) * 11f;
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(now - eye, Vector3.Up), eye);
         foreach (int x in _drive.Wait(4)) yield return x;
