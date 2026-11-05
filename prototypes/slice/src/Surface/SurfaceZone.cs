@@ -1,0 +1,264 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
+using GalHack.Terrain;
+using Godot;
+using Planets.Gen;
+using PlanetSurface.Skies;
+using PlanetSurface.Terrain;
+using PlanetSurface.World;
+using Slice.Game;
+using Slice.Vessels;
+using N = System.Numerics;
+
+namespace Slice.Surface;
+
+/// <summary>
+/// A planet's surface as one zone: the generated planet streamed around a focus (planet-surface's
+/// streamer, sky and sea), its weather and wildlife, and one shared physics world in which the
+/// player, the pod and every vessel are registered bodies. It knows nothing about input, cameras
+/// or the HUD; the game and the tests drive it the same way.
+///
+/// The planet is a torus. Whatever the focus follows stays on the planet itself: past an edge,
+/// everything in the zone moves by a whole planet and the streamer re-keys its chunks.
+/// </summary>
+public partial class SurfaceZone : Node3D
+{
+    public GameData Data;
+    public PlanetSpec Spec;
+
+    /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
+    public Func<Vector3> Focus = () => Vector3.Zero;
+
+    /// <summary>The camera that draws this zone (weather effects face it). Set by whoever owns it.</summary>
+    public Camera3D Camera;
+
+    public PlanetWorld Planet { get; private set; }
+    public TerrainStreamer Streamer { get; private set; }
+    public SkyRig Sky { get; private set; }
+    public SurfaceWeather Weather { get; private set; }
+    public WildlifePatch Wildlife { get; private set; }
+    public PhysicsWorld Physics { get; private set; }
+    public PhysicsHost Host { get; private set; }
+    public PlanetEdits Edits { get; private set; }
+    public PlanetGround Ground { get; private set; }
+    public MeshInstance3D Sea { get; private set; }
+
+    /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
+    public PlanetSurface.Fx.Sfx Sfx { get; private set; }
+
+    /// <summary>Every vessel, wreck and pod in the zone.</summary>
+    public readonly List<Vessel> Vessels = new();
+
+    public bool IsBuilt => Planet != null;
+    public int FrameShifts { get; private set; }
+
+    /// <summary>The planet has been generated and its world set up (fires once, on the main thread).</summary>
+    public event Action Built;
+
+    /// <summary>Everything in the zone just moved by this much (a seam was crossed).</summary>
+    public event Action<Vector3> FrameShifted;
+
+    Task<PlanetWorld> _building;
+    readonly Dictionary<Body, Vessel> _vesselOf = new();
+    double _valleyTimer;
+    float _valleyFloor;
+
+    public override void _Ready()
+    {
+        ProcessPhysicsPriority = 50; // after the physics host (-10) and game logic (0): frame shifts see where things ended up
+        Data ??= GameData.Shared;
+        SliceRules.PlanetRules p = Data.Rules.Planet;
+        Spec ??= PlanetSpec.Roll(p.Seed, Enum.Parse<Archetype>(p.Archetype), p.Variant);
+        PlanetTerrain.ConfigureWorldBounds();
+
+        Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
+        AddChild(Sky);
+        Streamer = new TerrainStreamer { Name = "Terrain" };
+        AddChild(Streamer);
+        Sea = new MeshInstance3D
+        {
+            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(Sea);
+        Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };
+        AddChild(Sfx);
+
+        Physics = new PhysicsWorld(Data.Physics);
+        Physics.Zone.Strength = p.Gravity;
+        Physics.Zone.Ceiling = p.Ceiling;
+        Host = new PhysicsHost(Physics);
+        AddChild(Host);
+        Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
+        Physics.Unregistered += body => _vesselOf.Remove(body);
+
+        Weather = new SurfaceWeather { Name = "Weather", Zone = this };
+        AddChild(Weather);
+        Wildlife = new WildlifePatch { Name = "Wildlife", Zone = this };
+        AddChild(Wildlife);
+
+        PlanetSpec spec = Spec;
+        _building = Task.Run(() => PlanetWorld.Build(spec, catalog: null));
+    }
+
+    // ---- Arriving --------------------------------------------------------------------------
+
+    /// <summary>Waits for the planet to finish generating (tests and screenshots, which have nothing else to do).</summary>
+    public void WaitForPlanet()
+    {
+        if (_building == null) return;
+        _building.Wait();
+        Arrive();
+    }
+
+    void Arrive()
+    {
+        if (_building.IsFaulted) throw new InvalidOperationException("the planet failed to build", _building.Exception);
+        Planet = _building.Result;
+        _building = null;
+        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+
+        Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
+        Physics.Terrain = Edits;
+        Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
+        Physics.StuckFields.Add(Ground);
+
+        Vector3 landing = LandingSite;
+        Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
+        Sea.MaterialOverride = WaterMaterial(sea: true);
+        Sky.SetWorld(Planet);
+        Weather.SetWorld(Planet);
+        Wildlife.SetWorld(Planet, landing);
+        Built?.Invoke();
+    }
+
+    /// <summary>The generator's landing site, on the ground.</summary>
+    public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);
+
+    /// <summary>The natural ground (before digging) under a frame position.</summary>
+    public Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
+
+    ShaderMaterial WaterMaterial(bool sea)
+    {
+        WorldLook look = Planet.Look;
+        var water = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/water.gdshader") };
+        water.SetShaderParameter("shallow", look.Shallow);
+        water.SetShaderParameter("deep", look.Deep);
+        water.SetShaderParameter("lava", look.Lava);
+        water.SetShaderParameter("glow", look.LiquidGlow);
+        if (sea)
+        {
+            water.SetShaderParameter("sea", true);
+            water.SetShaderParameter("sea_map", Planet.SeaTexture());
+        }
+        return water;
+    }
+
+    // ---- Vessels --------------------------------------------------------------------------
+
+    public void Track(Vessel vessel)
+    {
+        Vessels.Add(vessel);
+        _vesselOf[vessel.Body] = vessel;
+    }
+
+    public void Untrack(Vessel vessel)
+    {
+        Vessels.Remove(vessel);
+        _vesselOf.Remove(vessel.Body);
+    }
+
+    public Vessel VesselOf(Body body)
+    {
+        if (body == null) return null;
+        if (_vesselOf.TryGetValue(body, out Vessel v)) return v;
+        foreach (Vessel vessel in Vessels)
+            if (vessel.Body == body)
+            {
+                _vesselOf[body] = vessel;
+                return vessel;
+            }
+        return null;
+    }
+
+    // ---- Every frame and tick --------------------------------------------------------------
+
+    public override void _Process(double delta)
+    {
+        if (_building != null)
+        {
+            if (!_building.IsCompleted) return;
+            Arrive();
+        }
+        if (Planet == null) return;
+        Vector3 focus = Focus();
+        Streamer.SetFocus(focus);
+        float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
+        Sky.Advance(delta, latitude, Weather.Air(Sky.ToSun.Y), Weather.Wind2D);
+        UpdateValleyFog(delta, focus);
+        Vector3 eye = Camera?.GlobalPosition ?? focus;
+        Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (Planet != null) WrapFrame();
+    }
+
+    /// <summary>Morning fog pools on the low ground within a kilometre or so (as planet-surface does it).</summary>
+    void UpdateValleyFog(double delta, Vector3 focus)
+    {
+        _valleyTimer -= delta;
+        if (_valleyTimer <= 0)
+        {
+            _valleyTimer = 1.0;
+            var heights = new List<float>(49);
+            for (int r = 1; r <= 3; r++)
+            for (int a = 0; a < 16; a++)
+            {
+                double angle = a * Math.Tau / 16;
+                heights.Add(Math.Max(0f, Planet.Map.Sample(Planet.Map.Elevation,
+                    Mathx.WrapX(focus.X + Math.Cos(angle) * r * 350, Planet.Width), Mathx.Wrap(focus.Z + Math.Sin(angle) * r * 350, Planet.Height))));
+            }
+            heights.Add(Math.Max(0f, Planet.GroundHeight(Mathx.WrapX(focus.X, Planet.Width), Mathx.Wrap(focus.Z, Planet.Height))));
+            heights.Sort();
+            _valleyFloor = heights[heights.Count / 6];
+        }
+        Sky.SetValleyFog(_valleyFloor, Sky.Air);
+    }
+
+    /// <summary>
+    /// Keeps the focus on the planet itself: past an edge (with a few metres of slack, so a
+    /// seam walked along doesn't flip back and forth) every body in the zone moves by a whole
+    /// planet, and the streamer re-keys what it has loaded.
+    /// </summary>
+    void WrapFrame()
+    {
+        Vector3 p = Focus();
+        int w = Planet.Terrain.Width, h = Planet.Terrain.Height;
+        int dx = p.X < -8 ? 1 : p.X >= w + 8 ? -1 : 0;
+        int dz = p.Z < -8 ? 1 : p.Z >= h + 8 ? -1 : 0;
+        if (dx == 0 && dz == 0) return;
+        ShiftFrame(dx, dz);
+    }
+
+    public void ShiftFrame(int dx, int dz)
+    {
+        var shift = new Vector3(dx * Planet.Terrain.Width, 0f, dz * Planet.Terrain.Height);
+        N.Vector3 s = shift.ToNumerics();
+        foreach (Body body in Physics.Bodies)
+        {
+            if (body.Frame != null) continue; // riders live in their ship's frame and move with it
+            body.Position += s;
+            Host.BindingOf(body)?.Teleport();
+        }
+        Streamer.ShiftFrame(dx * Planet.Terrain.ChunksX, dz * Planet.Terrain.ChunksZ);
+        Streamer.SetFocus(Focus());
+        Wildlife.Shift(shift);
+        FrameShifts++;
+        FrameShifted?.Invoke(shift);
+    }
+}
