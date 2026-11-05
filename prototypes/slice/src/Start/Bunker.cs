@@ -43,6 +43,9 @@ public sealed class Bunker
     /// <summary>Stairwell interior x -1..1 (1.5 m), walls at ±2; each step 0.5 m up and 1 m deep.</summary>
     const int StairHalf = 2;
     const float Cell = 0.5f;
+    /// <summary>How far the top tread stands over a whole metre (the ground dug level outside it lies on one).</summary>
+    const float TreadAbove = 0.02f;
+
     /// <summary>Earth over the roof, at least, m.</summary>
     const float Cover = 1.75f;
 
@@ -333,16 +336,27 @@ public sealed class Bunker
             float tread = floor + 0.25f + k * Cell;
             if (ground < 1.5f) return null; // the stairs would come up in water
             if (tread < ground - 0.3f) continue;
-            // Out: the ground beyond the top is open, not a wall of earth, and not a drop.
-            for (float d = 1f; d <= 4f; d += 1f)
+            // The top tread a hair over a whole metre: the terrain's cells are whole metres, so
+            // the ground dug level outside it meets it flush (a tread between two cell levels
+            // left a lip or a slot in front of it). Raised or lowered, whichever still fits.
+            foreach (float top in new[] { MathF.Round(tread) + TreadAbove, MathF.Round(tread) + (MathF.Round(tread) + TreadAbove > tread ? -1f : 1f) + TreadAbove })
             {
-                Vector3 b = At(0f, StepZ(k) - d);
-                float beyond = zone.GroundAt(b.X, b.Z).Y;
-                // Level with the top step, so you walk out, and back in, without a climb.
-                if (MathF.Abs(beyond - tread) > 0.5f || beyond < 1.5f) return null;
+                float shifted = floor + (top - tread);
+                if (shifted - 0.25f < aboveSea || top < ground - 0.3f) continue;
+                // Out: the ground beyond the top is open, not a wall of earth, and not a drop.
+                bool level = true;
+                for (float d = 1f; d <= 4f && level; d += 1f)
+                {
+                    Vector3 b = At(0f, StepZ(k) - d);
+                    float beyond = zone.GroundAt(b.X, b.Z).Y;
+                    // Level with the top step, so you walk out, and back in, without a climb.
+                    level = MathF.Abs(beyond - top) <= 0.5f && beyond >= 1.5f;
+                }
+                if (!level) continue;
+                Vector3 c = At(0f, 0f);
+                return (new N.Vector3(c.X, shifted, c.Z), k);
             }
-            Vector3 c = At(0f, 0f);
-            return (new N.Vector3(c.X, floor, c.Z), k);
+            return null;
         }
         return null;
     }
@@ -405,7 +419,14 @@ public sealed class Bunker
             b.AppendLine($"block -{StairHalf} {k + 1}..{wallTop} {zs} steel paint=wall");
             b.AppendLine($"block {StairHalf} {k + 1}..{wallTop} {zs} steel paint=wall");
             if (roofed) b.AppendLine($"block -{StairHalf}..{StairHalf} {k + 6} {zs} steel paint=wall");
+            // Each riser is a short ramp, on the last half metre of the step below: walked up, not
+            // stepped over (a half-metre riser is at the edge of what a walker steps up).
+            if (k >= 1) b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {k} {z0 + 1} steel slope rot=+y+z paint={(k % 2 == 0 ? "wall" : "floor")}");
         }
+        // A ramp off the top step's front edge, sunk into the ground outside: the way out meets
+        // the ground on a slope you walk up, never a riser to step over.
+        int ramp = -(RoomZ + 2) - (steps - 1) * 2 - 2;
+        b.AppendLine($"block -{StairHalf}..{StairHalf} {steps} {ramp} steel slope paint=floor");
         return b.ToString();
     }
 
@@ -423,6 +444,9 @@ public sealed class Bunker
         var solid = CellsFor(zone, site).Where(c => store.MaterialAt(c) != CellMaterial.Air).ToList();
         if (solid.Count > 0) zone.Edits.DigCells(solid);
         bunker.Ruin = Vessel.SpawnBase(zone, s, site.Origin, site.Heading);
+        // Its ramps are walked on: the stuck guard asks a field that knows them for what they are.
+        int field = zone.Physics.StuckFields.IndexOf(bunker.Ruin.Field);
+        if (field >= 0) zone.Physics.StuckFields[field] = new RampField(bunker.Ruin.Field);
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
         bunker.Furnish(zone);
@@ -470,7 +494,13 @@ public sealed class Bunker
             float zc = StepZ(k), half = k == 0 ? 0.25f : 0.5f;
             bool roofed = Buried(zone, site, k);
             float top = roofed ? (k + 6) * Cell + 0.25f : (k + 2) * Cell + 0.25f;
-            Box(new N.Vector3(-outer - m, -0.25f - m, zc - half - m), new N.Vector3(outer + m, top + m, zc + half + m));
+            // The top step's front meets the ground outside: no margin there, or the cells just
+            // in front of its riser would be dug out to the floor and leave a slot to catch a foot.
+            // The top step: dug only above its tread. Under it the ground can stay (the step is solid
+            // to the floor), and cells dug there that reach past its riser left a slot in front of it.
+            bool last = k == site.Steps;
+            float bottom = last ? k * Cell + 0.25f : -0.25f - m;
+            Box(new N.Vector3(-outer - m, bottom, zc - half - (last ? 0f : m)), new N.Vector3(outer + m, top + m, zc + half + m));
             // Under the open sky, the way up: clear above the step, the walls' width, to the sky.
             if (!roofed) Box(new N.Vector3(-outer, k * Cell + 0.25f, zc - half), new N.Vector3(outer, GroundOver(zone, site, k) - floorY + 3f, zc + half));
         }
@@ -529,6 +559,43 @@ public sealed class Bunker
         at.AddChild(new OmniLight3D { Name = "Lamp", Position = new Vector3(-2.2f, 2.8f, 0f), LightColor = new Color(1f, 0.9f, 0.75f), LightEnergy = 0.9f, OmniRange = 6f });
         at.AddChild(new OmniLight3D { Name = "Stairs", Position = new Vector3(0f, 2.2f, StepZ(Math.Max(1, Steps / 2))), LightColor = new Color(1f, 0.6f, 0.3f), LightEnergy = 0.7f, OmniRange = 6f });
     }
+}
+
+/// <summary>
+/// The bunker's stuck field: the structure's own, except that its ramps (the slopes on the
+/// stairs' risers and off the top step) are walked on, not stood inside. A body counts as inside
+/// only where a whole block is.
+/// </summary>
+sealed class RampField : IStuckField
+{
+    readonly StructureField _inner;
+
+    public RampField(StructureField inner) => _inner = inner;
+
+    public string Name => _inner.Name;
+    public Body Owner => _inner.Owner;
+    public bool Applies(Body body) => _inner.Applies(body);
+
+    public bool IsSolid(Body body, N.Vector3 point)
+    {
+        Structure s = _inner.Structure;
+        N.Vector3 local = _inner.Body.ToLocal(point);
+        return s.TryGet(StructureBridge.CellAt(s, local), out Block b) && s.IsSolid(b) && s.ShapeOf(b).Id == "cube";
+    }
+
+    public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
+    {
+        float bottom = shape.Radius, top = MathF.Max(shape.Height - shape.Radius, shape.Radius);
+        int steps = Math.Max(1, (int)MathF.Ceiling((top - bottom) / 0.25f));
+        for (int i = 0; i <= steps; i++)
+            if (IsSolid(body, feet + N.Vector3.UnitY * (bottom + (top - bottom) * i / steps))) return true;
+        return false;
+    }
+
+    public bool Fits(Body body, N.Vector3 feet, StuckShape shape) => _inner.Fits(body, feet, shape);
+    public bool Supports(Body body, N.Vector3 feet) => _inner.Supports(body, feet);
+    public float TopAt(Body body, float x, float z) => _inner.TopAt(body, x, z);
+    public bool TryFindOpen(Body body, N.Vector3 feet, StuckShape shape, out N.Vector3 openFeet) => _inner.TryFindOpen(body, feet, shape, out openFeet);
 }
 
 /// <summary>

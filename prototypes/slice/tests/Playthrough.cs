@@ -130,6 +130,7 @@ public sealed class Playthrough
         }
 
         double start = Game.Stats.Seconds;
+        int jumps = Drive.StairJumps;
         foreach (int x in Drive.ClimbOut(b)) yield return x;
         foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         GD.Print($"  (out: feet {Game.Survivor.WorldFeet}, the way out ends at {b.Outside}, ground there {Game.Zone.GroundAt(b.Outside.X, b.Outside.Z).Y:F2}, top step {b.StairTop})");
@@ -216,6 +217,7 @@ public sealed class Playthrough
         foreach (int x in Drive.ClimbOut(b)) yield return x;
         foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f, $"{label}and out again, with no snag");
+        check(Drive.StairJumps == jumps, $"{label}up and down the stairs and through the way out at a walk: no jump, no jetpack ({Drive.StairJumps - jumps} needed)");
     }
 
     /// <summary>A point a walk away over dry, gentle ground: the way you face first, then round from it.</summary>

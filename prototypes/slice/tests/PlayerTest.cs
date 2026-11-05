@@ -212,8 +212,20 @@ public partial class PlayerTest : Node
     IEnumerable<int> Hunting()
     {
         GD.Print("-- 3. shooting: the ground, then a creature --");
-        Vector3 ahead = _game.Survivor.WorldFeet + new Vector3(4f, 0f, 3f);
-        ahead = _game.Zone.GroundAt(ahead.X, ahead.Z);
+        // A patch of ground 5 m off that the eye can see (the real ground, dug holes and all).
+        Vector3 ahead = _game.Zone.GroundAt(_game.Survivor.WorldFeet.X + 4f, _game.Survivor.WorldFeet.Z + 3f);
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 eye = _game.Survivor.WorldEye();
+        for (int k = 0; k < 12; k++)
+        {
+            float a = 0.64f + k * MathF.Tau / 12f;
+            Vector3 p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 5f;
+            var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 6f, p + Vector3.Down * 6f, Layers.World));
+            if (down.Count == 0) continue;
+            Vector3 g = (Vector3)down["position"];
+            var seen = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, g + (g - eye).Normalized() * 0.5f, Layers.World | Layers.Hull | Layers.Props));
+            if (seen.Count > 0 && ((Vector3)seen["position"]).DistanceTo(g) < 0.3f) { ahead = g; break; }
+        }
         int impacts = _game.Shots.Impacts;
         foreach (int x in _play.ShootAt(() => ahead)) yield return x;
         foreach (int x in _drive.Wait(20)) yield return x;
