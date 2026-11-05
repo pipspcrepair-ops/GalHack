@@ -50,8 +50,12 @@ public partial class SliceTest : Node
     Vessel _skiff;
     const float Dt = 1f / 60f;
 
+    /// <summary>A run that hasn't finished in this long has hung: it fails rather than sitting there.</summary>
+    const int WatchdogMinutes = 12;
+
     public override void _Ready()
     {
+        StartWatchdog();
         ProcessPhysicsPriority = 100; // checks after the game has stepped
         GD.Print("-- the planet, before anything moves --");
         PureChecks();
@@ -88,7 +92,7 @@ public partial class SliceTest : Node
         foreach (int x in _drive.UntilPlaying()) yield return x;
         SurfaceZone zone = _game.Zone;
         var severe = zone.Weather.Sim.Timeline.Where(seg => seg.Start < SurfaceWeather.CalmOpening && zone.Data.Weather.State(seg.Kind).Severe).ToList();
-        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} …)");
+        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} â€¦)");
         // The planet's weather is held calm and its creatures still for the scripted run, so it
         // can't be blown off course; each gets its own check below.
         zone.Weather.Bridge.Calm = true;
@@ -665,6 +669,18 @@ public partial class SliceTest : Node
         if (b.Frame != null && !b.OnOuterHull) return false;
         PlanetGround ground = _game.Zone.Ground;
         return ground.IsInside(b, b.WorldPosition, b.Shape);
+    }
+
+    /// <summary>A thread of its own, so even a stuck main thread can't keep the run going for ever.</summary>
+    static void StartWatchdog()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true, Name = "SliceTest watchdog" };
+        thread.Start();
     }
 
     // ---- Reporting --------------------------------------------------------------------------

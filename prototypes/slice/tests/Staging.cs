@@ -49,6 +49,7 @@ public sealed class Staging
             "liftoff" => Liftoff(),
             "flying" => Flying(),
             "cockpit" => Cockpit(),
+            "wrist" => WristUp(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
         foreach (int x in script) yield return x;
@@ -182,6 +183,24 @@ public sealed class Staging
             yield return 0;
         }
         foreach (int x in _drive.UntilSettled(20)) yield return x;
+    }
+
+    /// <summary>The wrist computer raised beside the pod, after emptying its locker.</summary>
+    IEnumerable<int> WristUp()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.31);
+        Vessel pod = _game.Pod;
+        foreach (var (p, b) in pod.Structure.Blocks())
+        {
+            if (!pod.Structure.TypeOf(b).IsContainer) continue;
+            Vector3 at = pod.Body.ToParent(PhysicsSandbox.Bridges.StructureBridge.CellCenter(pod.Structure, p)).ToGodot();
+            foreach (int x in _drive.WalkTo(at, 1.4f, 20f)) yield return x;
+            foreach (int x in _drive.LookAt(at, 6)) yield return x;
+            foreach (int x in _drive.Tap(Key.E)) yield return x;
+            break;
+        }
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        foreach (int x in _drive.LookAt(_game.Survivor.WorldEye() + new Vector3(0.3f, -0.15f, 1f), 50)) yield return x;
     }
 
     /// <summary>In the Skiff's seat, the console showing its four numbers.</summary>
