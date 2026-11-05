@@ -146,7 +146,7 @@ public partial class BaseView : Node3D
             _ => 2.4f,
         };
         HitBox box = HitBox.Create(new BoxShape3D { Size = new Vector3(2f, h, 2f) }, new Vector3(0, h / 2, 0),
-            Layers.Blocks, Faction.Defenders, () => b.Alive, (amount, from, by) => Model.Damage(b, amount));
+            Layers.Blocks, Team.Defenders, () => b.Alive, (amount, from, by) => Model.Damage(b, amount));
         box.Name = "Body";
         box.AimOffset = Vector3.Zero;
         node.Root.AddChild(box);
@@ -374,7 +374,7 @@ public partial class BaseView : Node3D
         AddChild(node);
         node.GlobalPosition = new Vector3((float)crate.Position.X, 0f, (float)crate.Position.Z);
         _crates[crate.Id] = node;
-        World.RegisterObstacle(node.GlobalPosition, SpillCrateSize, 0f); // invaders path round it
+        World.RegisterObstacle(node.GlobalPosition, SpillCrateSize, 0f, SpillCrateInflate); // invaders path round it
     }
 
     void OnRecovered(SpillCrate crate)
@@ -386,11 +386,18 @@ public partial class BaseView : Node3D
             return;
         }
         _crates.Remove(crate.Id);
-        World.UnregisterObstacle(node.GlobalPosition, SpillCrateSize, 0f);
+        World.UnregisterObstacle(node.GlobalPosition, SpillCrateSize, 0f, SpillCrateInflate);
         node.QueueFree();
     }
 
     static readonly Vector3 SpillCrateSize = new(1.3f, 1f, 1.3f);
+
+    /// <summary>
+    /// A spill crate sits in the middle of its own grid cell, which the planner already keeps a body
+    /// clear of. Growing it by an agent's radius as well would close the cells round it too, and with
+    /// them the narrow aisles beside the storage, where raiders break containers open.
+    /// </summary>
+    const float SpillCrateInflate = 0f;
 
     void OnOnlineChanged(bool online) => ApplyPower();
 

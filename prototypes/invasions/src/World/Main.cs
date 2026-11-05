@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Invasions.Combat;
 using Invasions.Director;
@@ -7,8 +9,10 @@ namespace Invasions.World;
 
 /// <summary>
 /// Builds the prototype in code: a dusk world of ochre dust and mesas, the player's block-built base
-/// at the origin, the Vharn garrison 600 m to the north-east, the invasion director and the glue that
-/// lets them meet. Debug keys: I invade now, T fast time, P place a new core, K destroy the garrison core.
+/// at the origin, the bases of several factions around it, the invasion director and the glue that
+/// lets them meet. The nearest base of a faction hostile to the players sends the invasions: at the
+/// start that is the Vharn garrison 600 m north-east. Debug keys: I invade now, T fast time, P place
+/// a new core, K knock out the current source, J pick a faction, minus and equals wrong it or favour it.
 /// </summary>
 public partial class Main : Node3D
 {
@@ -16,19 +20,49 @@ public partial class Main : Node3D
     public BaseModel Model { get; private set; }
     public BaseView Base { get; private set; }
     public CombatWorld Combat { get; private set; }
+    /// <summary>The Vharn garrison, the nearest hostile base at the start.</summary>
     public Garrison Garrison { get; private set; }
+    public IReadOnlyList<EnemyBaseNode> EnemyBases => _enemyBases;
     public Player Player { get; private set; }
     public InvasionController Controller { get; private set; }
     public Hud Hud { get; private set; }
+    public OptionsMenu Options { get; private set; }
     public InvasionData Data { get; private set; }
 
+    /// <summary>
+    /// Where this world's own settings (the options) are saved. Tests and screenshots set it to null so
+    /// they always start from the data files, untouched by anything a player chose.
+    /// </summary>
+    public static string WorldFile = "user://world.json";
+    WorldSettings _world;
+
     public static readonly Vector3 GarrisonPosition = new(430f, 0f, -420f);
+
+    /// <summary>
+    /// The neighbourhood: one base per faction. Only hostile factions invade, so at the start the Vharn
+    /// (601 m), the Reavers (888 m) and the Bloom (1343 m) could, and the Vharn, being nearest, do. The
+    /// Kessari and the Meridian Combine would if wronged; the Freeholders and the Exchange never will.
+    /// </summary>
+    public static readonly (string Id, string Name, string Faction, EnemyBaseKind Kind, Vector3 Position)[] Neighbours =
+    {
+        ("okkar", "Garrison Okkar-9", "vharn", EnemyBaseKind.Garrison, GarrisonPosition),
+        ("larkspur", "Larkspur Steading", "freeholders", EnemyBaseKind.Outpost, new Vector3(-300f, 0f, -280f)),
+        ("tannic", "Hold Tannic-3", "kessari", EnemyBaseKind.Garrison, new Vector3(520f, 0f, 520f)),
+        ("scrapjaw", "Scrapjaw Den", "reavers", EnemyBaseKind.Garrison, new Vector3(-880f, 0f, 120f)),
+        ("vantage", "Vantage Security Post", "meridian", EnemyBaseKind.Garrison, new Vector3(-150f, 0f, 1050f)),
+        ("quay", "Ledger Quay 9", "exchange", EnemyBaseKind.Outpost, new Vector3(1250f, 0f, -100f)),
+        ("sere", "Bloom Infestation Sere", "hollow", EnemyBaseKind.Garrison, new Vector3(-950f, 0f, 950f)),
+    };
+
+    readonly List<EnemyBaseNode> _enemyBases = new();
 
     public override void _Ready()
     {
         Controls.Register();
         Data = GameData.Invasions();
-        ServerSettings server = GameData.Server();
+        // The server's defaults, with this world's own choices (saved from the options) on top.
+        _world = GameData.LoadWorld(WorldFile);
+        ServerSettings server = _world.Apply(GameData.Server());
         BaseData baseData = GameData.Base();
 
         BuildSky();
@@ -58,13 +92,22 @@ public partial class Main : Node3D
         Player.Position = Player.SpawnPoint;
         AddChild(Player);
 
-        Vector3 toBase = -GarrisonPosition.Normalized();
-        Garrison = new Garrison { Name = "Garrison", Position = GarrisonPosition, Facing = toBase };
-        AddChild(Garrison);
-
         // Enemy bases first: a player base's first countdown is timed for whoever will invade it.
         Director = new InvasionDirector(Data, server, server.Seed);
-        Director.AddEnemyBase(Garrison.Id, Garrison.DisplayName, EnemyBaseKind.Garrison, new GroundPos(GarrisonPosition.X, GarrisonPosition.Z));
+        foreach (var (id, name, faction, kind, position) in Neighbours)
+        {
+            EnemyBaseNode node = faction == "vharn"
+                ? Garrison = new Garrison { Id = id, DisplayName = name }
+                : new FactionOutpost { Id = id, DisplayName = name, Faction = faction };
+            node.Name = id;
+            node.Kind = kind;
+            node.Position = position;
+            node.Facing = -position.Normalized();
+            node.Livery = Combat.LiveryFor(faction);
+            AddChild(node);
+            _enemyBases.Add(node);
+            Director.AddEnemyBase(id, name, faction, kind, new GroundPos(position.X, position.Z));
+        }
         Director.AddPlayerBase(InvasionController.HomeId, baseData.Name, Model.Centre);
 
         Controller = new InvasionController
@@ -76,13 +119,21 @@ public partial class Main : Node3D
             World = Combat,
             Factory = new PlaceholderCombatFactory(Combat),
             Player = Player,
-            Garrison = Garrison,
+            EnemyBases = _enemyBases,
         };
         AddChild(Controller);
 
         Hud = new Hud { Name = "Hud", Controller = Controller, Player = Player };
         Controller.Hud = Hud;
         AddChild(Hud);
+
+        Options = new OptionsMenu { Name = "Options", Controller = Controller };
+        AddChild(Options);
+        Controller.SettingsChanged += () =>
+        {
+            _world.InvasionsEnabled = Director.InvasionsEnabled;
+            GameData.SaveWorld(WorldFile, _world);
+        };
     }
 
     public override void _UnhandledInput(InputEvent e)
@@ -102,9 +153,18 @@ public partial class Main : Node3D
             if (Model.Online) Hud.Announce("The core is still standing.", 0, 4f);
             else if (Model.PlaceNewCore() == null) Hud.Announce("Can't place a core here.", 0, 4f);
         }
-        else if (e.IsActionPressed(Controls.DebugKillGarrison))
+        else if (e.IsActionPressed(Controls.DebugKnockOutSource))
         {
-            Garrison.DestroyCore();
+            string why = Controller.KnockOutSource();
+            if (why != "") Hud.Announce(why, 0, 4f);
+        }
+        else if (e.IsActionPressed(Controls.DebugNextFaction))
+        {
+            Controller.SelectNextFaction();
+        }
+        else if (e.IsActionPressed(Controls.DebugWrong) || e.IsActionPressed(Controls.DebugFavour))
+        {
+            Controller.ShiftSelectedStanding(e.IsActionPressed(Controls.DebugWrong) ? -35 : 35);
         }
     }
 
@@ -211,7 +271,7 @@ public partial class Main : Node3D
         });
         AddChild(ground);
 
-        // Mesas and spires, kept clear of the base, the drop zone and the road to the garrison.
+        // Mesas and spires, kept clear of the base, the drop zone, the road to the garrison and every faction's base.
         var rng = new RandomNumberGenerator { Seed = 1975 };
         Color[] rock = { new("9c4a26"), new("b5651d"), new("7f3518"), new("cf8a52") };
         Vector2 road = new Vector2(GarrisonPosition.X, GarrisonPosition.Z);
@@ -220,7 +280,7 @@ public partial class Main : Node3D
             var spot = new Vector2(rng.RandfRange(-2600f, 2600f), rng.RandfRange(-2600f, 2600f));
             float fromBase = spot.Length();
             float fromRoad = DistanceToSegment(spot, Vector2.Zero, road * 1.1f);
-            if (fromBase < 760f || fromRoad < 120f || spot.DistanceTo(road) < 140f) continue;
+            if (fromBase < 760f || fromRoad < 120f || Neighbours.Any(n => spot.DistanceTo(new Vector2(n.Position.X, n.Position.Z)) < 150f)) continue;
             float width = rng.RandfRange(14f, 70f), height = rng.RandfRange(14f, 110f);
             bool spire = rng.Randf() < 0.3f;
             Vector3 size = spire

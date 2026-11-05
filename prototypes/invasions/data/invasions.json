@@ -1,8 +1,8 @@
-// Invasion tunables: the warning timeline, where invaders come from, how big the force is and what it rides in.
+// Invasion tunables shared by every faction: the warning timeline, where invaders come from, how big the
+// force is. Who invades, and with what troops, vehicles and tactics, is in factions.json.
 // Message templates can use {attacker} {source} {bearing} {compass} {minutes} {tier} {troops} {vehicles} {base}.
+// A faction can override any message (and warning1..3) in its own "messages".
 {
-  "attacker": "Vharn Dominion",
-
   // Warnings counted back from the moment the force arrives. The largest lead is when the invasion is
   // announced, so the first warning always fires the instant an invasion is scheduled.
   "timeline": {
@@ -29,24 +29,23 @@
   },
 
   "sources": {
-    // Vharn bases within this distance of a player base send its invasions; the nearest one is chosen.
+    // Bases of hostile factions within this distance of a player base send its invasions; the nearest one is chosen.
     "nearbyRange": 1500,
     // Ship raids have further to come, so they arrive less often than raids from a nearby base.
     "shipRaidIntervalMultiplier": 1.5,
     // Where a ship raid shows up on long-range scans at the second warning.
-    "shipScanDistance": 6000,
-    "shipNames": [ "the carrier Ishka Vol", "the cruiser Morrow Kesh", "the assault ship Thane Oruk", "the troopship Vel Hadra" ]
+    "shipScanDistance": 6000
   },
 
-  // What each kind of source can field. Vehicle weights pick the mix of carriers.
+  // How big a force each kind of source can field. What it rides in is the faction's (factions.json).
   "sourceKinds": {
-    "outpost":  { "label": "outpost",  "forceMultiplier": 0.8, "maxTroops": 16,  "vehicles": { "apc": 1 } },
-    "garrison": { "label": "garrison", "forceMultiplier": 1.0, "maxTroops": 48,  "vehicles": { "apc": 2, "dropship": 1 } },
-    "fortress": { "label": "fortress", "forceMultiplier": 1.3, "maxTroops": 160, "vehicles": { "apc": 1, "dropship": 1 } },
-    "ship":     { "label": "ship",     "forceMultiplier": 0.9, "maxTroops": 64,  "vehicles": { "dropship": 1 } }
+    "outpost":  { "label": "outpost",  "forceMultiplier": 0.8, "maxTroops": 16 },
+    "garrison": { "label": "garrison", "forceMultiplier": 1.0, "maxTroops": 48 },
+    "fortress": { "label": "fortress", "forceMultiplier": 1.3, "maxTroops": 160 },
+    "ship":     { "label": "ship",     "forceMultiplier": 0.9, "maxTroops": 64 }
   },
 
-  // troops = (baseTroops + troopsPerPoint * threat) * playerMultiplier * source forceMultiplier,
+  // troops = (baseTroops + troopsPerPoint * threat) * playerMultiplier * source forceMultiplier * faction troopMultiplier,
   // clamped to [minTroops, min(maxTroops, source maxTroops)], where
   // threat = storedValue / storedValuePerPoint + blocks / blocksPerPoint + turrets * pointsPerTurret.
   "scaling": {
@@ -62,7 +61,8 @@
     "maxTroops": 160
   },
 
-  // Names for the size of the force, by troop count. A small outpost faces a squad; a fortress faces an army.
+  // Sizes of force, by troop count. A small outpost faces a squad; a fortress faces an army. A faction
+  // can name them its own way (tierNames in factions.json, in this order).
   "tiers": [
     { "name": "squad",     "minTroops": 0 },
     { "name": "platoon",   "minTroops": 12 },
@@ -70,16 +70,6 @@
     { "name": "battalion", "minTroops": 60 },
     { "name": "army",      "minTroops": 100 }
   ],
-
-  // Crewed carriers. Every vehicle has a driver or pilot plus a gunner per gun; guns name weapons in fire_control.json.
-  "vehicles": {
-    "apc":      { "label": "APC",      "capacity": 6, "guns": [ "autocannon", "rocket_pod" ],     "flies": false, "speed": 17 },
-    "dropship": { "label": "dropship", "capacity": 8, "guns": [ "door_minigun", "door_minigun" ], "flies": true,  "speed": 42 }
-  },
-
-  // Share of each troop role. Breachers carry charges that open walls and doors quickly.
-  "troopRoles": { "rifleman": 0.6, "breacher": 0.25, "heavy": 0.15 },
-  "minBreachersPerVehicle": 1,
 
   "approach": {
     // Vehicles come into sight this far out, drive or fly in and set troops down at the drop distance.
@@ -92,9 +82,13 @@
   },
 
   // Placeholder breach planner: a wall with this many hit points is worth one extra cell of walking around.
+  // A faction's tactics can override it (Kessari cut through walls, so they plan straight through).
   "planner": { "hpPerCellOfDetour": 30 },
 
   "messages": {
+    "arriving": "{attacker} force arriving from {compass}: {troops} troops in {vehicles}.",
+    "broken": "The assault is broken: {attacker} vehicles are falling back.",
+    "raidOver": "The {attacker} raid is over: they are running for their rides.",
     "victory": "Assault repelled. All {attacker} invaders are down or gone.",
     "coreDestroyed": "Core destroyed. {base} is offline. {attacker} troops are withdrawing.",
     "withdrawn": "The last {attacker} invader has withdrawn.",
@@ -103,8 +97,16 @@
     "abandonedWithdraw": "No one is home: the {attacker} invaders are withdrawing from {base}.",
     "sourceDestroyed": "{source} destroyed. It sends no more invasions.",
     "sourceHijacked": "{source} hijacked. It sends no more invasions.",
-    "stopped": "No {attacker} base in range of {base} and ship raids are off: invasions have stopped.",
-    "resumed": "{attacker} forces are in range of {base} again.",
+    "nowHostile": "The {attacker} now count {base} as an enemy. Expect them.",
+    "standDown": "The {attacker} have stood down: the assault from {source} is called off.",
+    "standDownWithdraw": "The {attacker} have stood down: their invaders are pulling out of {base}.",
+    "noLongerHostile": "The {attacker} no longer count {base} as an enemy.",
+    "stopped": "No hostile base in range of {base} and no ship raids: invasions have stopped.",
+    "resumed": "Hostile forces are in range of {base} again.",
+    "disabled": "Invasions disabled.",
+    "enabled": "Invasions enabled. The next one comes on the usual schedule, with full warning.",
+    "disabledCalledOff": "Invasions disabled: the {attacker} assault from {source} is called off.",
+    "disabledWithdraw": "Invasions disabled: the {attacker} invaders are pulling out of {base}.",
     "offline": "{base} is offline: no power, turrets down. Place a new core.",
     "online": "New core online. {base} is powered again."
   }

@@ -17,9 +17,27 @@ namespace Invasions.Combat;
 public partial class CombatWorld : Node3D
 {
     public BaseModel Model;
+    /// <summary>Routes to the core for invaders whose faction has no planning tactics of its own.</summary>
     public IAssaultPlanner Planner;
+    /// <summary>Makes a planner with a faction's own wall cost (Kessari cut through walls, so walls cost them less).</summary>
+    public System.Func<double, IAssaultPlanner> MakePlanner = hpPerCell => new BreachPlanner(hpPerCell);
     public InvasionData Data;
     public FireControlData FireData;
+
+    readonly Dictionary<string, IAssaultPlanner> _planners = new();
+
+    /// <summary>The planner for a faction's invaders: the shared one, or one with the faction's wall cost.</summary>
+    public IAssaultPlanner PlannerFor(string faction)
+    {
+        if (_planners.TryGetValue(faction, out IAssaultPlanner planner)) return planner;
+        double? own = Data.Faction(faction).Tactics.HpPerCellOfDetour;
+        planner = own is double hp ? MakePlanner(hp) : Planner;
+        _planners[faction] = planner;
+        return planner;
+    }
+
+    /// <summary>A faction's colours, for its troops, vehicles and tracers.</summary>
+    public Livery LiveryFor(string faction) => Livery.For(Data.Faction(faction));
 
     /// <summary>Things invaders shoot at: players, and the heads of the base's turrets.</summary>
     public readonly List<IDamageable> Players = new();
@@ -74,7 +92,7 @@ public partial class CombatWorld : Node3D
         public Vector3 Position, Velocity;
         public float Speed, Damage, Travelled, MaxDistance, TurnRate;
         public uint Mask;
-        public Faction Shooter;
+        public Team Shooter;
         public Color Color;
         public Godot.Collections.Array<Rid> Exclude;
         public IDamageable Homing;
@@ -89,7 +107,7 @@ public partial class CombatWorld : Node3D
     /// only just started on a player, otherwise aimed with the ramped spread for this shooter and
     /// target class. Homing weapons (rockets) track the target.
     /// </summary>
-    public void FireAt(FireControl fireControl, Vector3 muzzle, IDamageable target, uint mask, Faction shooter, Color color,
+    public void FireAt(FireControl fireControl, Vector3 muzzle, IDamageable target, uint mask, Team shooter, Color color,
         Godot.Collections.Array<Rid> exclude = null, float maxDistance = 400f)
     {
         bool atPlayer = Players.Contains(target);
@@ -111,7 +129,7 @@ public partial class CombatWorld : Node3D
     }
 
     /// <summary>Fires one round toward a point, with a spread cone in degrees.</summary>
-    public void Fire(Vector3 from, Vector3 aim, WeaponData weapon, float spreadDegrees, uint mask, Faction shooter, Color color,
+    public void Fire(Vector3 from, Vector3 aim, WeaponData weapon, float spreadDegrees, uint mask, Team shooter, Color color,
         Godot.Collections.Array<Rid> exclude = null, IDamageable homing = null, float maxDistance = 400f, IDamageable warnedTarget = null)
     {
         Vector3 dir = Spread((aim - from).Normalized(), spreadDegrees);
@@ -225,7 +243,7 @@ public partial class CombatWorld : Node3D
     }
 
     /// <summary>Damages blocks and anyone standing near a blast. Breach charges use this.</summary>
-    public void Blast(Vector3 at, float radius, float blockDamage, float personDamage, Faction by)
+    public void Blast(Vector3 at, float radius, float blockDamage, float personDamage, Team by)
     {
         Fx.Explosion(at, radius * 0.7f);
         // The block the charge is stuck to takes the blast; its neighbours only get scorched.
@@ -264,16 +282,17 @@ public partial class CombatWorld : Node3D
 
     /// <summary>
     /// Marks something solid that can't be breached (a spill crate, a vehicle hulk, rubble) on the
-    /// planning grid, grown by an agent's radius plus a margin, so routes go round it.
+    /// planning grid, grown by an agent's radius plus a margin (or by <paramref name="inflate"/>), so
+    /// routes go round it.
     /// </summary>
-    public void RegisterObstacle(Vector3 centre, Vector3 size, float yaw) => MarkObstacle(centre, size, yaw, +1);
+    public void RegisterObstacle(Vector3 centre, Vector3 size, float yaw, float? inflate = null) => MarkObstacle(centre, size, yaw, inflate, +1);
 
-    public void UnregisterObstacle(Vector3 centre, Vector3 size, float yaw) => MarkObstacle(centre, size, yaw, -1);
+    public void UnregisterObstacle(Vector3 centre, Vector3 size, float yaw, float? inflate = null) => MarkObstacle(centre, size, yaw, inflate, -1);
 
-    void MarkObstacle(Vector3 centre, Vector3 size, float yaw, int delta)
+    void MarkObstacle(Vector3 centre, Vector3 size, float yaw, float? inflate, int delta)
     {
         int cells = Model.Grid.MarkObstacle(new GroundPos(centre.X, centre.Z), size.X, size.Z, yaw,
-            InvaderNavigator.Radius + InvaderNavigator.Clearance, delta);
+            inflate ?? InvaderNavigator.Radius + InvaderNavigator.Clearance, delta);
         if (cells > 0) ObstaclesChanged?.Invoke();
     }
 

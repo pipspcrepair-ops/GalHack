@@ -1,0 +1,263 @@
+// The design document's factions as invaders. Ids match prototypes/encounters.
+//
+// Who invades: the nearest active base of any faction that invades and is hostile to the players sends
+// the invasion. With none in range, a ship raid comes from one of those factions (if the server allows
+// ship raids), picked by shipRaidWeight. A faction that stops being hostile stops invading.
+//
+// How: each faction brings its own carriers (by source kind), vehicles, troop roles and tactics.
+// Weapons are named from fire_control.json; every gun and troop fires through fire control.
+{
+  // Standing with the players runs from min to max. At or below hostileAt a faction is hostile.
+  "standing": { "min": -100, "max": 100, "hostileAt": -40, "friendlyAt": 40 },
+
+  "factions": {
+    // ---- The Vharn Dominion: the main enemy. Disciplined infantry, APCs and dropships. ---------------
+    "vharn": {
+      "name": "Vharn Dominion",
+      "tag": "VHARN",
+      // false: never sends invasions, whatever its standing. true: invades while hostile.
+      "invades": true,
+      // Where the standing starts and the floor and ceiling it can move between. The Dominion can be
+      // pushed no higher than -60, so it is always hostile: there is no peace with the Vharn.
+      "standing": { "start": -100, "floor": -100, "ceiling": -60 },
+      // How much an accidental wrong counts against the standing. Deliberate wrongs always count in full.
+      "accidentWeight": 1.0,
+      "shipRaidWeight": 3,
+      "shipNames": [ "the carrier Ishka Vol", "the cruiser Morrow Kesh", "the assault ship Thane Oruk", "the troopship Vel Hadra" ],
+      "tierNames": [ "squad", "platoon", "company", "battalion", "army" ],
+      // Carriers by source kind: the weights pick the mix of vehicles.
+      "carriers": {
+        "outpost":  { "apc": 1 },
+        "garrison": { "apc": 2, "dropship": 1 },
+        "fortress": { "apc": 1, "dropship": 1 },
+        "ship":     { "dropship": 1 }
+      },
+      // Crewed carriers: a driver or pilot plus a gunner per gun. body picks the model and how it moves.
+      "vehicles": {
+        "apc":      { "label": "APC",      "body": "apc",      "capacity": 6, "guns": [ "autocannon", "rocket_pod" ],     "flies": false, "speed": 17 },
+        "dropship": { "label": "dropship", "body": "dropship", "capacity": 8, "guns": [ "door_minigun", "door_minigun" ], "flies": true,  "speed": 42 }
+      },
+      // Troop roles. share is the fraction drawn (0: never drawn, e.g. crew who bail out of a vehicle).
+      // breach: "charge" plants a breaching charge, "cut" burns through with a beam (damage per second),
+      // "burst" bursts against the wall. Breaching roles walk right up to the block.
+      "roles": {
+        "rifleman": { "share": 0.6,  "weapon": "rifle",   "range": 75, "speed": 5.2, "hp": 100 },
+        "breacher": { "share": 0.25, "weapon": "rifle",   "range": 60, "speed": 5.0, "hp": 100, "breach": "charge", "breachDamage": 340 },
+        "heavy":    { "share": 0.15, "weapon": "minigun", "range": 85, "speed": 4.4, "hp": 100 },
+        "crew":     { "share": 0,    "weapon": "rifle",   "range": 60, "speed": 5.2, "hp": 100 }
+      },
+      "breacherRole": "breacher",
+      "crewRole": "crew",
+      "minBreachersPerVehicle": 1,
+      "tactics": {
+        "summary": "Disciplined infantry ride APCs and dropships in, breach with charges and push to the core."
+      },
+      "tracer": "4dff7a"
+    },
+
+    // ---- The Kessari: robot clans. Invade only if wronged. Walkers, and drones that cut through walls.
+    "kessari": {
+      "name": "Kessari",
+      "tag": "KESSARI",
+      "invades": true,
+      "standing": { "start": 0, "floor": -100, "ceiling": 100 },
+      // Machines keep exact accounts: only a deliberate wrong counts.
+      "accidentWeight": 0,
+      "shipRaidWeight": 1,
+      "shipNames": [ "the clan-ship Tessellate", "the ore-hauler Unit 40-Kell", "the lift-tender Quorum Nine" ],
+      "tierNames": [ "cell", "array", "lattice", "clan host", "great clan" ],
+      "carriers": {
+        "outpost":  { "strider": 1 },
+        "garrison": { "strider": 2, "lifter": 1 },
+        "fortress": { "strider": 2, "lifter": 1 },
+        "ship":     { "lifter": 1 }
+      },
+      "vehicles": {
+        "strider": { "label": "strider", "body": "strider", "capacity": 6, "guns": [ "rail", "autocannon" ], "flies": false, "speed": 12 },
+        "lifter":  { "label": "lifter",  "body": "lifter",  "capacity": 8, "guns": [ "laser", "laser" ],     "flies": true,  "speed": 38 }
+      },
+      "roles": {
+        "frame":  { "share": 0.55, "weapon": "pulse_rifle",  "range": 80, "speed": 4.7, "hp": 130 },
+        "cutter": { "share": 0.3,  "weapon": "cutter_laser", "range": 40, "speed": 5.6, "hp": 70, "breach": "cut", "breachDamage": 120, "look": "drone" },
+        "lancer": { "share": 0.15, "weapon": "rail",         "range": 95, "speed": 4.2, "hp": 150 },
+        "crew":   { "share": 0,    "weapon": "pulse_rifle",  "range": 60, "speed": 4.7, "hp": 130, "look": "frame" }
+      },
+      "breacherRole": "cutter",
+      "crewRole": "crew",
+      "minBreachersPerVehicle": 1,
+      "tactics": {
+        "summary": "Walkers stride in and set down machine frames and cutter drones, which burn straight through the walls.",
+        // Cutting is cheap for them, so they plan straight through walls rather than round to a door.
+        "hpPerCellOfDetour": 90
+      },
+      "tracer": "5ef2ff",
+      "messages": {
+        "warning1": "{attacker} war-clan inbound from {source}. Bearing {bearing} {compass}. Arrival in {minutes} minutes. You wronged them.",
+        "warning2": "{attacker} on long-range scan: a {tier} of {troops} frames and drones in {vehicles}. Arrival in {minutes} minutes."
+      }
+    },
+
+    // ---- The Meridian Combine: corporate security. Invades only if the players made it hostile. -----
+    "meridian": {
+      "name": "Meridian Combine",
+      "tag": "MERIDIAN",
+      "invades": true,
+      "standing": { "start": 10, "floor": -100, "ceiling": 100 },
+      // Corporate security logs every incident, accidents at half weight.
+      "accidentWeight": 0.5,
+      "shipRaidWeight": 1,
+      "shipNames": [ "the security cutter Fiduciary", "the corvette Due Diligence", "the transport Clause Seven" ],
+      "tierNames": [ "detail", "response team", "security company", "task force", "corporate army" ],
+      "carriers": {
+        "outpost":  { "carrier": 1 },
+        "garrison": { "carrier": 2, "shuttle": 1 },
+        "fortress": { "carrier": 1, "shuttle": 1 },
+        "ship":     { "shuttle": 1 }
+      },
+      "vehicles": {
+        "carrier": { "label": "security carrier", "body": "hovertruck", "capacity": 6, "guns": [ "autocannon", "rocket_pod" ],     "flies": false, "speed": 20 },
+        "shuttle": { "label": "shuttle",          "body": "shuttle",    "capacity": 8, "guns": [ "door_minigun", "door_minigun" ], "flies": true,  "speed": 45 }
+      },
+      // shield: a personal energy shield that soaks hits before health and recharges (see tactics).
+      "roles": {
+        "officer":  { "share": 0.55, "weapon": "carbine", "range": 75, "speed": 5.0, "hp": 90,  "shield": 60 },
+        "breacher": { "share": 0.3,  "weapon": "carbine", "range": 55, "speed": 5.0, "hp": 90,  "shield": 60, "breach": "charge", "breachDamage": 650 },
+        "warden":   { "share": 0.15, "weapon": "minigun", "range": 80, "speed": 4.2, "hp": 110, "shield": 140 },
+        "crew":     { "share": 0,    "weapon": "carbine", "range": 60, "speed": 5.0, "hp": 90,  "shield": 30, "look": "officer" }
+      },
+      "breacherRole": "breacher",
+      "crewRole": "crew",
+      // Breaching teams: two charges per squad.
+      "minBreachersPerVehicle": 2,
+      "tactics": {
+        "summary": "Shielded security teams stack up at a wall while their breachers set shaped charges, then go through together.",
+        // Officers and wardens at a breach hold fire on the wall this long, waiting for the charges.
+        "stackUpSeconds": 7,
+        "shieldRechargeDelay": 3,
+        "shieldRechargePerSecond": 30
+      },
+      "tracer": "8ab4ff",
+      "messages": {
+        "warning1": "{attacker} security action inbound from {source}. Bearing {bearing} {compass}. Arrival in {minutes} minutes.",
+        "warning2": "{attacker} {tier} on long-range scan: {troops} shielded officers in {vehicles}. Arrival in {minutes} minutes."
+      }
+    },
+
+    // ---- The Ledger Exchange: neutral merchants. Never invades, and can't be made hostile by accident.
+    "exchange": {
+      "name": "Ledger Exchange",
+      "tag": "EXCHANGE",
+      "invades": false,
+      "standing": { "start": 20, "floor": -100, "ceiling": 100 },
+      "accidentWeight": 0,
+      "shipRaidWeight": 0,
+      "tracer": "ffd166"
+    },
+
+    // ---- The Carrion Reavers: pirates. They raid: hover bikes and gunships that grab and run. --------
+    "reavers": {
+      "name": "Carrion Reavers",
+      "tag": "REAVERS",
+      "invades": true,
+      // Pirates can be paid off to a truce, never to friendship.
+      "standing": { "start": -70, "floor": -100, "ceiling": 0 },
+      "accidentWeight": 1.0,
+      "shipRaidWeight": 2,
+      "shipNames": [ "the raider Gutter Saint", "the gunboat Last Mercy", "the scow Ninefingers" ],
+      "tierNames": [ "gang", "crew", "band", "warband", "horde" ],
+      "carriers": {
+        "outpost":  { "bike": 1 },
+        "garrison": { "bike": 3, "gunship": 1 },
+        "fortress": { "bike": 2, "gunship": 1 },
+        "ship":     { "gunship": 1 }
+      },
+      // dropDistance: how close to the base a vehicle sets its troops down (default: approach.dropDistance).
+      "vehicles": {
+        "bike":    { "label": "hover bike", "body": "hoverbike", "capacity": 2, "guns": [],                           "flies": false, "speed": 34, "dropDistance": 75 },
+        "gunship": { "label": "gunship",    "body": "gunship",   "capacity": 4, "guns": [ "autocannon", "rocket_pod" ], "flies": true,  "speed": 55, "dropDistance": 110 }
+      },
+      "roles": {
+        "raider":  { "share": 0.6,  "weapon": "scattergun", "range": 55, "speed": 6.4, "hp": 85 },
+        "wrecker": { "share": 0.28, "weapon": "scattergun", "range": 50, "speed": 6.2, "hp": 85, "breach": "charge", "breachDamage": 300 },
+        "brute":   { "share": 0.12, "weapon": "minigun",    "range": 70, "speed": 5.4, "hp": 110 },
+        "crew":    { "share": 0,    "weapon": "scattergun", "range": 50, "speed": 6.2, "hp": 85, "look": "raider" }
+      },
+      "breacherRole": "wrecker",
+      "crewRole": "crew",
+      "minBreachersPerVehicle": 1,
+      "vehicleSpacing": 11,
+      "tactics": {
+        "summary": "Hover bikes and gunships race in close, raiders smash the storage first, then run. They can't take loot: wrecked containers spill into crates they can't shift.",
+        // "core" heads for the core; "storage" smashes the storage containers first, then the core.
+        "targets": "storage",
+        // Grab and run: they run for their rides this long after the first raider lands, or as soon as
+        // every storage container is broken open and there is nothing left to grab (0: fight to the end).
+        "raidSeconds": 60
+      },
+      "tracer": "ff5470",
+      "messages": {
+        "warning1": "{attacker} raiders inbound from {source}. Bearing {bearing} {compass}. They hit in {minutes} minutes.",
+        "warning3": "{attacker} raid one minute out from {compass}. Sirens sounding. Guard the storage.",
+        "arriving": "{attacker} coming in hard from the {compass}: {troops} raiders in {vehicles}.",
+        "raidOver": "The {attacker} are running for their rides empty-handed: the spill crates are too heavy to lift."
+      }
+    },
+
+    // ---- The Freeholders: settlers. Never attack, and can't be made hostile by accident. ------------
+    "freeholders": {
+      "name": "Freeholders",
+      "tag": "FREEHOLD",
+      "invades": false,
+      "standing": { "start": 40, "floor": -100, "ceiling": 100 },
+      "accidentWeight": 0,
+      "shipRaidWeight": 0,
+      "tracer": "ff9e2c"
+    },
+
+    // ---- The Hollow Bloom: corruption. Attacks from its infestations in Bloom space. ----------------
+    "hollow": {
+      "name": "Hollow Bloom",
+      "tag": "BLOOM",
+      "invades": true,
+      // Nothing to bargain with: always hostile.
+      "standing": { "start": -100, "floor": -100, "ceiling": -100 },
+      "accidentWeight": 1.0,
+      // No ships: the Bloom only spreads from its infestations.
+      "shipRaidWeight": 0,
+      "tierNames": [ "brood", "swarm", "tide", "flood", "bloom" ],
+      "baseLabels": { "outpost": "spore patch", "garrison": "infestation", "fortress": "great bloom" },
+      "carriers": {
+        "outpost":  { "growth": 1 },
+        "garrison": { "growth": 1 },
+        "fortress": { "growth": 1 }
+      },
+      // A growth erupts near the base and pours out the swarm. Its heart is the "driver" (kill it and the
+      // growth dies, and the unborn die with it); its spitter pods are the gunners.
+      "vehicles": {
+        "growth": { "label": "growth", "body": "growth", "capacity": 160, "guns": [ "spitter", "spitter" ], "flies": false, "speed": 0, "dropDistance": 100, "unloadSeconds": 0.22 }
+      },
+      "roles": {
+        "mutant":    { "share": 0.6,  "weapon": "acid_spit", "range": 32, "speed": 7.0, "hp": 55 },
+        "corrupted": { "share": 0.25, "weapon": "rifle",     "range": 70, "speed": 4.6, "hp": 110 },
+        "burster":   { "share": 0.15, "weapon": "acid_spit", "range": 20, "speed": 5.6, "hp": 70, "breach": "burst", "breachDamage": 420 }
+      },
+      "breacherRole": "burster",
+      "crewRole": "corrupted",
+      "minBreachersPerVehicle": 1,
+      "tactics": {
+        "summary": "A growth breaks the surface a hundred metres out and a swarm of mutants and corrupted crews pours from it. Bursters burst against the walls.",
+        // A swarm: more, weaker bodies than the base alone would draw.
+        "troopMultiplier": 1.4
+      },
+      "tracer": "e2ff5a",
+      "messages": {
+        "warning1": "{attacker} surge rising from {source}. Bearing {bearing} {compass}. It breaks the surface in {minutes} minutes.",
+        "warning2": "{attacker} growth on long-range scan: a {tier} of {troops} in {vehicles}, spreading toward us. {minutes} minutes.",
+        "warning3": "{attacker} growth one minute out, {compass}. Sirens sounding. Burn it at the heart.",
+        "arriving": "A {attacker} growth breaks the surface to the {compass}: {troops} pouring out.",
+        "victory": "The swarm is down and the growth is dead. {base} held.",
+        "broken": "The swarm is spent: the growth is drawing back into the ground."
+      }
+    }
+  }
+}
