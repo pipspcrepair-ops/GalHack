@@ -103,6 +103,7 @@ public static class ZoneScenery
                 CircleKind.Poi when circle.Poi == "station" => new Station(),
                 CircleKind.Poi when circle.Poi == "asteroids" => Asteroids(circle, seed++),
                 CircleKind.Poi when circle.Poi == "outpost" => Outpost(),
+                CircleKind.Poi when circle.Poi == "derelict" => Derelict(),
                 CircleKind.Base => RelayBeacon(),
                 _ => null,
             };
@@ -163,6 +164,28 @@ public static class ZoneScenery
         b.Box(0, 82, 0, 4, 4, 4, Yellow, 2f);
         var node = new Node3D { Name = "Outpost" };
         node.AddChild(new MeshInstance3D { Mesh = b.Commit().Mesh, MaterialOverride = Visuals.Hull });
+        return node;
+    }
+
+    /// <summary>
+    /// A long-dead freighter broken in two, tumbling very slowly: where hull leeches are found.
+    /// Dark plating, a torn midsection with ribs showing, one red light still blinking.
+    /// </summary>
+    static Node3D Derelict()
+    {
+        var b = new BlockBuilder("derelict");
+        b.Box(0, 0, -40, 22, 18, 70, Gunmetal);
+        b.Box(0, 13, -66, 14, 10, 14, Dark);
+        b.Tilted(new Vector3(6, -4, 38), new Vector3(22, 16, 52), new Vector3(8, 12, -10), Gunmetal);
+        b.Tilted(new Vector3(10, -12, 72), new Vector3(16, 14, 16), new Vector3(8, 12, -10), Dark);
+        for (int r = 0; r < 6; r++) b.Box(r % 2 == 0 ? -4 : 4, 0, -2 + r * 3f, 2, 20, 1.2f, Steel);
+        b.Box(0, -10, -40, 22.4f, 3, 50, Rust);
+        b.Box(-11.2f, 2, -50, 0.5f, 6, 12, Black);
+        var node = new Node3D { Name = "Derelict" };
+        node.AddChild(new MeshInstance3D { Mesh = b.Commit().Mesh, MaterialOverride = Visuals.Hull });
+        MeshInstance3D light = Visuals.Flare(new Color(3f, 0.3f, 0.2f), 10f);
+        light.Position = new Vector3(0, 19, -66);
+        node.AddChild(light);
         return node;
     }
 

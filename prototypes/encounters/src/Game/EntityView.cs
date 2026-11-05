@@ -29,14 +29,14 @@ public partial class EntityView : Node3D
     public static EntityView Create(WorldEntity entity, Fx fx) => new()
     {
         Entity = entity,
-        Hull = HullLibrary.Get(entity.Hull),
+        Hull = entity.IsCreature ? CreatureForms.Get(entity.Hull) : HullLibrary.Get(entity.Hull),
         Name = $"E{entity.Id}",
         _fx = fx,
     };
 
     public override void _Ready()
     {
-        _mesh = new MeshInstance3D { Mesh = Hull.Mesh, MaterialOverride = Visuals.Hull };
+        _mesh = new MeshInstance3D { Mesh = Hull.Mesh, MaterialOverride = Entity.IsCreature ? CreatureForms.Material(Entity.Hull) : Visuals.Hull };
         AddChild(_mesh);
         foreach (var (at, size) in Hull.Engines)
         {
@@ -101,6 +101,7 @@ public partial class EntityView : Node3D
             basis = new Basis(_spinAxis, age * _spinRate) * basis;
         }
         else if (e.Hull == "bloom-hulk") basis = new Basis(_spinAxis, (float)time * _spinRate * 0.5f) * basis;
+        else if (e.IsCreature) basis *= new Basis(Vector3.Right, Mathf.Sin((float)time * 0.8f + e.Id) * 0.08f); // a slow swimming sway
 
         if (_placed && !_wrecked && dt > 0f) _lastPosition = GlobalPosition;
         GlobalTransform = new Transform3D(basis, position);

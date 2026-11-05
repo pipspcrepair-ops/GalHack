@@ -3,8 +3,11 @@ using System.Collections.Generic;
 
 namespace Encounters.Director;
 
-/// <summary>The scripted flight an event's ships fly. Combat and boarding belong elsewhere.</summary>
-public enum Behaviour { Pass, Convoy, Dogfight, Dock, Mine, Drift }
+/// <summary>
+/// The scripted flight an event's ships fly. Combat and boarding belong elsewhere. Creatures
+/// also shoal (drift together as one group) or cling (hold on to a derelict's hull).
+/// </summary>
+public enum Behaviour { Pass, Convoy, Dogfight, Dock, Mine, Drift, Shoal, Cling }
 
 public enum TerritoryRule { Any, Inside, Outside, Border }
 
@@ -31,6 +34,19 @@ public sealed class ShipGroupDef
     public int[] Count { get; set; } = { 1, 1 };
     public float PerExtraPlayer { get; set; }
     public int[] Crew { get; set; } = { 2, 4 };
+}
+
+/// <summary>
+/// A group of space creatures. Kind names a space fauna form of the wildlife prototype
+/// (prototypes/wildlife/data/space_fauna.json), which builds, animates and drops loot for them.
+/// Creatures have no crew and no faction.
+/// </summary>
+public sealed class CreatureGroupDef
+{
+    public string Kind { get; set; } = "";
+    public string Role { get; set; } = "creature";
+    public int[] Count { get; set; } = { 1, 1 };
+    public float PerExtraPlayer { get; set; }
 }
 
 public sealed class SignalDef
@@ -75,12 +91,20 @@ public sealed class EventDef
     public WreckDef Wrecks { get; set; }
     public SignalDef Signal { get; set; }
     public List<ShipGroupDef> Ships { get; set; } = new();
+    /// <summary>Space fauna events have creature groups instead of ships.</summary>
+    public List<CreatureGroupDef> Creatures { get; set; } = new();
 
     /// <summary>Each Requires entry split into its "a|b" alternatives, once, at load.</summary>
     internal string[][] RequiresAlternatives = Array.Empty<string[]>();
 
     /// <summary>The fewest ships this event can spawn with.</summary>
     public int MinShips { get; private set; }
+
+    /// <summary>The fewest creatures this event can spawn with.</summary>
+    public int MinCreatures { get; private set; }
+
+    /// <summary>A space fauna event: creatures, not crewed ships.</summary>
+    public bool IsFauna => Creatures.Count > 0;
 
     public bool MatchesTags(ZoneDef zone)
     {
@@ -101,9 +125,19 @@ public sealed class EventDef
         CheckRange(Duration, where, "duration");
         if (SpawnDistance != null) CheckRange(SpawnDistance, where, "spawnDistance");
         if (Danger is not { Length: 2 } || Danger[0] > Danger[1]) throw new FormatException($"{where}: danger must be [min, max]");
-        if (Ships.Count == 0) throw new FormatException($"{where} has no ships");
-        if (Behaviour is Behaviour.Dock or Behaviour.Mine && Anchor == "")
+        if (Behaviour is Behaviour.Dock or Behaviour.Mine or Behaviour.Cling && Anchor == "")
             throw new FormatException($"{where}: {Behaviour} needs an anchor POI");
+        RequiresAlternatives = new string[Requires.Length][];
+        for (int i = 0; i < Requires.Length; i++)
+            RequiresAlternatives[i] = Requires[i].Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (IsFauna)
+        {
+            PrepareFauna(where);
+            return;
+        }
+        if (Ships.Count == 0) throw new FormatException($"{where} has no ships");
+        if (Behaviour is Behaviour.Shoal or Behaviour.Cling) throw new FormatException($"{where}: only creatures shoal or cling");
         if (Territory == TerritoryRule.Border && Faction != "*")
             throw new FormatException($"{where}: border events take faction \"*\"");
 
@@ -124,10 +158,29 @@ public sealed class EventDef
             MinShips += group.Count[0];
         }
         if (MinShips == 0) throw new FormatException($"{where} can spawn with no ships");
+    }
 
-        RequiresAlternatives = new string[Requires.Length][];
-        for (int i = 0; i < Requires.Length; i++)
-            RequiresAlternatives[i] = Requires[i].Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+    /// <summary>
+    /// Space fauna: creature groups only, no crew, no faction, no territory. They shoal, cling
+    /// to a derelict, pass or drift; nothing wrecks or docks.
+    /// </summary>
+    void PrepareFauna(string where)
+    {
+        if (Ships.Count > 0) throw new FormatException($"{where}: a fauna event has creatures, not ships");
+        if (Faction != "") throw new FormatException($"{where}: creatures belong to no faction");
+        if (Territory != TerritoryRule.Any) throw new FormatException($"{where}: creatures don't keep to faction territory");
+        if (Behaviour is not (Behaviour.Shoal or Behaviour.Cling or Behaviour.Pass or Behaviour.Drift))
+            throw new FormatException($"{where}: creatures shoal, cling, pass or drift");
+        if (Wrecks != null) throw new FormatException($"{where}: creatures don't leave wrecks");
+        MinCreatures = 0;
+        foreach (CreatureGroupDef group in Creatures)
+        {
+            if (group.Kind == "") throw new FormatException($"{where}: a creature group has no kind");
+            if (group.Count is not { Length: 2 } || group.Count[0] < 0 || group.Count[0] > group.Count[1])
+                throw new FormatException($"{where}: creature count must be [min, max]");
+            MinCreatures += group.Count[0];
+        }
+        if (MinCreatures == 0) throw new FormatException($"{where} can spawn with no creatures");
     }
 
     static void CheckRange(float[] range, string where, string what)

@@ -5,7 +5,8 @@ using static Encounters.Director.MathX;
 
 namespace Encounters.Director;
 
-public enum TouchStatus { Touched, TooFar, NotFound, AlreadyLasting }
+/// <summary>What came of a touch. Wildlife: creatures can't be marked or claimed, only met.</summary>
+public enum TouchStatus { Touched, TooFar, NotFound, AlreadyLasting, Wildlife }
 
 public readonly record struct TouchOutcome(TouchStatus Status, TouchKind Kind, WorldEntity Entity);
 
@@ -22,8 +23,13 @@ public sealed class ZoneInstance
     public IReadOnlyList<PlayerState> Players => _players;
     public IReadOnlyList<Encounter> Encounters => _encounters;
 
-    /// <summary>Untouched event ships: the only things cleanup can remove.</summary>
+    /// <summary>Untouched event ships and creatures: the only things cleanup can remove.</summary>
     public IReadOnlyList<WorldEntity> Ships => _ships;
+
+    /// <summary>Crewed ships among them, against the ship budget.</summary>
+    public int ShipCount { get; private set; }
+    /// <summary>Space creatures among them, against the creature budget.</summary>
+    public int CreatureCount { get; private set; }
 
     public double NextSpawnAt { get; private set; }
     public IReadOnlyDictionary<string, double> CategoryReadyAt => _categoryReadyAt;
@@ -34,10 +40,11 @@ public sealed class ZoneInstance
     public int PlacementFailures { get; private set; }
 
     /// <summary>Candidate spawn points turned down, by <see cref="SpawnVerdict"/>.</summary>
-    public readonly int[] Rejections = new int[5];
+    public readonly int[] Rejections = new int[Enum.GetValues<SpawnVerdict>().Length];
 
     public int MaxEvents => Config.MaxEvents(_players.Count);
     public int MaxShips => Config.MaxShips(_players.Count);
+    public int MaxCreatures => Config.MaxCreatures(_players.Count);
 
     internal readonly Rng Rng;
     readonly EncounterDirector _director;
@@ -95,7 +102,8 @@ public sealed class ZoneInstance
         if (CategoryCount(def.Category) >= Config.CategoryCap(def.Category)) return "category cap";
         if (_categoryReadyAt.TryGetValue(def.Category, out double ready) && time < ready) return "category cooldown";
         if (_lastSpawnOf.TryGetValue(def.Id, out double last) && time < last + Config.NoRepeatWindow) return "no-repeat";
-        if (def.MinShips > MaxShips - _ships.Count) return "ship budget";
+        if (def.MinShips > MaxShips - ShipCount) return "ship budget";
+        if (def.MinCreatures > MaxCreatures - CreatureCount) return "creature budget";
         return null;
     }
 
@@ -161,7 +169,8 @@ public sealed class ZoneInstance
 
     ShipScript DepartScript(Encounter enc, WorldEntity ship, double time)
     {
-        if (enc.Def.Behaviour == Behaviour.Drift) return ship.Script; // hulks drift on until out of sight
+        // Hulks drift on until out of sight; creatures just carry on with what they were doing.
+        if (enc.Def.Behaviour == Behaviour.Drift || enc.Def.IsFauna) return ship.Script;
         ship.Sample(time, out Vector3 position, out Vector3 forward);
         ship.Sample(time - 0.5, out Vector3 before, out _);
         float speed = Vector3.Distance(position, before) / 0.5f;
@@ -252,7 +261,7 @@ public sealed class ZoneInstance
             break;
         }
 
-        if (!PlanShips(chosen.Def, chosen.SideA, chosen.SideB, MaxShips - _ships.Count)) return;
+        if (!PlanShips(chosen.Def, chosen.SideA, chosen.SideB, MaxShips - ShipCount, MaxCreatures - CreatureCount)) return;
         if (!TryPlace(chosen.Def, focus, time, out Vector3 anchor))
         {
             PlacementFailures++;
@@ -261,10 +270,11 @@ public sealed class ZoneInstance
         Create(chosen.Def, chosen.SideA, chosen.SideB, anchor, focus.Id, time, debug: false);
     }
 
-    /// <summary>Rolls ship counts and crews, adding ships per extra player and trimming to the budget.</summary>
-    bool PlanShips(EventDef def, string sideA, string sideB, int shipBudget)
+    /// <summary>Rolls ship counts and crews (or creature counts), adding some per extra player and trimming to the budget.</summary>
+    bool PlanShips(EventDef def, string sideA, string sideB, int shipBudget, int creatureBudget)
     {
         _plan.Clear();
+        if (def.IsFauna) return PlanCreatures(def, creatureBudget);
         int extraPlayers = Math.Max(0, _players.Count - 1);
         Span<int> counts = stackalloc int[def.Ships.Count];
         int total = 0;
@@ -294,6 +304,24 @@ public sealed class ZoneInstance
         return _plan.Count > 0;
     }
 
+    /// <summary>A fauna event's creatures: no crew, no faction, trimmed to the creature budget.</summary>
+    bool PlanCreatures(EventDef def, int budget)
+    {
+        int extraPlayers = Math.Max(0, _players.Count - 1);
+        for (int g = 0; g < def.Creatures.Count; g++)
+        {
+            CreatureGroupDef group = def.Creatures[g];
+            int count = Rng.Range(group.Count[0], group.Count[1]) + (int)(group.PerExtraPlayer * extraPlayers);
+            for (int n = 0; n < count; n++) _plan.Add(new PlannedShip(g, group.Role, "", group.Kind, "", 0, Creature: true));
+        }
+        if (_plan.Count > budget)
+        {
+            if (budget < def.MinCreatures) return false;
+            _plan.RemoveRange(budget, _plan.Count - budget);
+        }
+        return _plan.Count > 0;
+    }
+
     /// <summary>Tries spawn points around the focus player until every ship of the event starts hidden from every player.</summary>
     bool TryPlace(EventDef def, PlayerState focus, double time, out Vector3 anchor)
     {
@@ -302,6 +330,17 @@ public sealed class ZoneInstance
         {
             min = MathF.Max(min, def.SpawnDistance[0]);
             max = MathF.Max(min, def.SpawnDistance[1]);
+        }
+        if (def.Behaviour == Behaviour.Cling)
+        {
+            // Clingers are found on their derelict: it must lie at a spawn distance from the
+            // focus player, and every creature on it must be hidden from every player.
+            ZoneCircle derelict = Zone.FindPoi(def.Anchor);
+            anchor = derelict.Center;
+            float d = Vector3.Distance(Flat(focus.Position), derelict.Center);
+            if (d < min || d > max) return false;
+            Formation.Build(def, _plan, anchor, anchor, Zone, Rng, time, _scripts);
+            return AllHidden(time, creature: true);
         }
         float coneCos = Config.ViewConeCos;
         for (int attempt = 0; attempt < Config.SpawnAttempts; attempt++)
@@ -315,18 +354,18 @@ public sealed class ZoneInstance
             anchor = focus.Position + dir * Rng.Range(min, max);
             Vector3 passTarget = Formation.PassTargetNear(anchor, focus.Position, Rng);
             Formation.Build(def, _plan, anchor, passTarget, Zone, Rng, time, _scripts);
-            if (AllHidden(time)) return true;
+            if (AllHidden(time, def.IsFauna)) return true;
         }
         anchor = default;
         return false;
     }
 
-    bool AllHidden(double time)
+    bool AllHidden(double time, bool creature)
     {
         foreach (ShipScript script in _scripts)
         {
             script.Evaluate(time, out Vector3 position, out _);
-            SpawnVerdict verdict = SpawnRules.Check(position, Zone, _players, Config);
+            SpawnVerdict verdict = SpawnRules.Check(position, Zone, _players, Config, creature);
             if (verdict == SpawnVerdict.Ok) continue;
             Rejections[(int)verdict]++;
             return false;
@@ -348,13 +387,13 @@ public sealed class ZoneInstance
             PlannedShip p = _plan[i];
             var ship = new WorldEntity
             {
-                Id = Records.NextId(), ZoneId = Zone.Id, Kind = EntityKind.NpcShip,
+                Id = Records.NextId(), ZoneId = Zone.Id, Kind = p.Creature ? EntityKind.Creature : EntityKind.NpcShip,
                 Hull = p.Hull, Faction = p.Faction, Role = p.Role, Side = p.Side, Crew = p.Crew,
                 Hostile = def.Hostile, EncounterId = enc.Id, EventId = def.Id,
                 Script = _scripts[i], CreatedAt = time, Encounter = enc, Live = true,
             };
             ship.Sample(time, out ship.Position, out ship.Forward);
-            _ships.Add(ship);
+            AddTransient(ship);
             enc.Ships.Add(ship);
             crew += p.Crew;
         }
@@ -375,7 +414,7 @@ public sealed class ZoneInstance
         }
 
         _director.Log(Zone.Id, debug ? "debug" : "spawn", enc.Id,
-            Inv($"{def.Id} x{enc.Ships.Count} crew {crew} at ({anchor.X:F0}, {anchor.Y:F0}, {anchor.Z:F0}) for P{focusId}"));
+            Inv($"{def.Id} x{enc.Ships.Count} {(def.IsFauna ? "creatures" : $"crew {crew}")} at ({anchor.X:F0}, {anchor.Y:F0}, {anchor.Z:F0}) for P{focusId}"));
         _director.OnSpawned(this, enc);
         if (def.Signal != null)
             foreach (PlayerState player in _players) _director.EmitLead(this, enc, player);
@@ -411,7 +450,7 @@ public sealed class ZoneInstance
             factions.MoveNext(); sideA = factions.Current;
             factions.MoveNext(); sideB = factions.Current;
         }
-        if (!PlanShips(def, sideA, sideB, int.MaxValue)) return null;
+        if (!PlanShips(def, sideA, sideB, int.MaxValue, int.MaxValue)) return null;
         Formation.Build(def, _plan, anchor, passTarget, Zone, Rng, time, _scripts);
         return Create(def, sideA, sideB, anchor, _players.Count > 0 ? _players[0].Id : -1, time, debug: true);
     }
@@ -431,6 +470,8 @@ public sealed class ZoneInstance
         if (entity == null && Records.TryGet(entityId, out WorldEntity lasting) && lasting.ZoneId == Zone.Id) entity = lasting;
         if (entity == null) return new TouchOutcome(TouchStatus.NotFound, TouchKind.None, null);
 
+        // Wildlife is met, not marked or claimed: a creature never becomes a record or anyone's.
+        if (entity.IsCreature) return new TouchOutcome(TouchStatus.Wildlife, TouchKind.None, entity);
         entity.Sample(time, out Vector3 at, out _);
         if (!debugClaim && Vector3.Distance(at, player.Position) > Config.TouchDistance) return new TouchOutcome(TouchStatus.TooFar, TouchKind.None, entity);
         if (entity.PlayerOwned || (entity.Touch != TouchKind.None && !(entity.Touch == TouchKind.Touched && debugClaim)))
@@ -477,7 +518,7 @@ public sealed class ZoneInstance
         ship.Script = null;
         ship.Live = false;
         ship.Encounter = null;
-        _ships.Remove(ship);
+        DropTransient(ship);
         Records.Keep(ship, time, why);
     }
 
@@ -495,9 +536,23 @@ public sealed class ZoneInstance
             _director.Log(Zone.Id, "guard", ship.Id, why);
             return;
         }
-        _ships.Remove(ship);
+        DropTransient(ship);
         ship.Live = false;
         _director.Log(Zone.Id, "despawn", ship.Id, why);
+    }
+
+    void AddTransient(WorldEntity e)
+    {
+        _ships.Add(e);
+        if (e.IsCreature) CreatureCount++;
+        else ShipCount++;
+    }
+
+    void DropTransient(WorldEntity e)
+    {
+        if (!_ships.Remove(e)) return;
+        if (e.IsCreature) CreatureCount--;
+        else ShipCount--;
     }
 
     /// <summary>The last player left: every untouched ship goes, everything lasting stays in the permanent records.</summary>
