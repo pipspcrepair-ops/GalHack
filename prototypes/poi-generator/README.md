@@ -181,7 +181,17 @@ A family names a `style` to re-skin its program or site. That is how the alien f
   - `FactionHeld`: its core is live or its faction is home, so its own infrastructure works.
 
   Approach stamps stay local to each place: the pad, its apron, and the blend back to natural ground.
-- **Start worlds.** Set `PoiSiting.StartWorld = true` before building a start world, or pass `startWorld: true` to `PoiSiting.Place`. Then no faction-held place and no core is sited.
+- **Start worlds.** Set `PoiSiting.StartWorld = true` before building a start world, or pass `startWorld: true` to `PoiSiting.Place`. Then no faction-held place and no core is sited. Any blast site lies at least 3 km from the bunker, and settlements within 1.5 km of it are never hostile.
+- **Townsfolk hooks** (`PoiInstance.Townsfolk`, `PoiSite.Townsfolk`, local cells). Lived-in places carry data for a light ambient routine:
+  - `Spots`: activity spots tagged stall, work, sit, chat, garden or home.
+  - `Links` between spots, and `Routes` for rushers.
+  - `People`: a role and a gait each. A vendor mans a stall, a rusher hurries, a wanderer ambles, a worker stays put, a guard posts and patrols.
+  - `Animals`: stock, working or pet, gated by tech level.
+  - `AreaCenter` and `AreaRadius`, for wildlife to keep out of.
+
+  `PoiInstance.Mood` is peaceful, wary or hostile, rolled per settlement. `Friendly` means the guards keep order and turn only if you start shooting. There are no schedules: at night everyone goes indoors to a home spot.
+- **Blast data.** `PoiSite.GroundZero` and `Instance.Layout.Extras.Blast` give the crater, ruin ring, dead zone and fade radii, for the ground tint and the world work. `BlastZone.Strength(d)` falls off with distance. Places within a blast take `StateTransforms.Blast`. Markers flag `shadow` (burnt faces toward ground zero), `hulk` and `radiation-edge`.
+- **Faction-held mix.** Most faction places are working sites (relays, depots, works, research, markets, flats, an air-defence battery, a sky railgun). Garrisons are tagged `fort` and uncommon.
 - **Composable stamps.** `TerrainStamp.Compose` is the one height rule. In list order, each stamp eases the height so far toward its own target, by its weight. Overlapping pads meet smoothly, and a road or rail stamp laid later wins wherever its weight is 1. Order the list by what should win. `TerrainStamp.Apply` is the step for a single stamp.
 - **Dig anywhere.** Stamps are shape only. Faction places lay armoured foundations (`Material.Armour`), so tunnelling in is slow but a valid way in.
 - **Far rings.** `FarBuilder` samples `SurfaceHeight`, which already includes the stamps, so pads show in the distance. Underground carves and crater bowls below the pad don't show in the far heightfield. To show a crater there, the far ring's height sampling needs its bowl (a stamp target below the pad), not only the voxel carve mask.

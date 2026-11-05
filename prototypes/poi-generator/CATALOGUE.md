@@ -9,7 +9,7 @@ Every kind of place asked for so far, and how far along it is.
 
 Programs are recipes (`programs.txt`): room demands, footprint shapes, circulation patterns, storeys and basements. Sites (`sites.txt`) compose parts: buildings, runways, hangars, towers, craters, rockets, fences, camps. Style kits (`kits/*.kit`) re-skin either one. A family can name its own `style`, and that is how a flavour works. **Alien** is a flavour: the same plans built in an alien kit (`alien_hive`, `alien_cathedral`, `alien_library`, `alien_temple`). Families opt in. Alien places are common on alien worlds (the alien theme's set) and rare outliers elsewhere. Alien is not Precursor: Precursor ruins are their own kit-built family.
 
-## Built (28 families)
+## Built (38 families)
 
 | Family | Tier | How it's made | Notes |
 | --- | --- | --- | --- |
@@ -41,6 +41,16 @@ Programs are recipes (`programs.txt`): room demands, footprint shapes, circulati
 | Alien Cathedral | site | tower_block in alien_cathedral | a pale spire on a peak |
 | Abandoned Factory | site | sites factory_low, factory_mid, factory_high | a production hall frozen mid-run (conveyor, robot arms, a load on the crane), warehouse and loading bays, works offices over a boiler house, smokestacks and a water tower; tech level by layout; gangs hold some |
 | Old Farm | site | sites farm_low, farm_mid, agri_complex | farmhouse with a cellar, barn, silos, windmill or water tower, fields gone wild, greenhouses and hydroponic sheds, a vertical farm tower at high tech |
+| Air-Defence Battery (Vharn) | base | site sam_site | launchers on emplacements, radar, a bunkered control room; ridge siting |
+| Sky Railgun (Meridian) | base | site sky_railgun | a barrel 44 m up the sky on columns, capacitor halls, cooling towers, control bunker; rare landmark |
+| Comms Relay (Meridian) | outpost | site comms_relay | masts and dishes on a peak, a cab tower |
+| Supply Depot (Ledger) | outpost | site supply_depot | warehouses, landing pad, fuel tanks |
+| Kessari Works | base | factory_mid in industrial | an old factory the machines restarted |
+| Meridian Research Station | outpost | research_base in lab | labs back in use |
+| Ledger Market | town | program market | stalls, shops, canteen; citizens, not hostile until provoked |
+| Meridian Flats | town | tower_block in urban | apartment blocks lived in again |
+| Survivor Hamlet | camp | site survivor_hamlet | shacks on a street, market corner, gardens, a water tank, a watch post; mood per settlement |
+| Survivor Town | town | site survivor_town | old shells patched with scrap, two rows of shacks, a market, walls of salvage, watch posts |
 
 ## Procgen-able (a family entry away)
 
