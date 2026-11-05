@@ -16,8 +16,11 @@ $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:TEMP = Join-Path $tools "tmp"
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
-# Godot keeps each project's user:// data (shader cache, logs) under %APPDATA%\Godot\app_userdata.
-$env:APPDATA = Join-Path $tools "appdata"
+# Godot keeps each project's user:// data (shader cache, logs, test saves) under
+# %APPDATA%\Godot\app_userdata. Point it at this checkout's own .tools-local folder: on G:, off C:,
+# and never shared between worktrees, so two checkouts testing the same prototype at once can't
+# overwrite each other's saves (.tools itself is a junction shared by every worktree).
+$env:APPDATA = Join-Path $root ".tools-local\appdata"
 New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
 
 $GodotDir = Join-Path $tools "godot\Godot_v4.7.2-stable_mono_win64"
