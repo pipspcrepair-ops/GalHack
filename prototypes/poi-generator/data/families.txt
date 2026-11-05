@@ -155,6 +155,7 @@ family abandoned_mine
 
 family research_lab
   tier outpost
+  tech mid high
   siting any
   rise 2
   name Research Station
@@ -231,6 +232,7 @@ family crashed_freighter
 
 family kessari_spire
   tier outpost
+  tech high
   siting ridge
   rise 12
   name Kessari Relay Spire
