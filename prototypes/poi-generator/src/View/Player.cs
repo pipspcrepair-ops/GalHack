@@ -27,6 +27,11 @@ public partial class Player : CharacterBody3D
     /// <summary>For tests: walk toward this point instead of reading the keyboard.</summary>
     public Vector3? AutoTarget;
 
+    /// <summary>Asks the place whether there is a ladder at a point (global): then the body climbs.</summary>
+    public System.Func<Vector3, bool> LadderQuery;
+    public bool Climbing { get; private set; }
+    const float ClimbSpeed = 2.6f;
+
     public Vector3 EyePosition => GlobalPosition + Vector3.Up * _eye;
     public Vector3 LookDirection => LookBasis() * Vector3.Forward;
 
@@ -81,7 +86,16 @@ public partial class Player : CharacterBody3D
 
         Vector3 v = Velocity;
         bool onFloor = IsOnFloor();
-        if (!onFloor) v.Y -= Gravity * dt;
+        // On a ladder (or just over its top rung) there is no falling: you climb.
+        Climbing = LadderQuery != null && (LadderQuery(GlobalPosition + Vector3.Up * 0.1f) || LadderQuery(GlobalPosition + Vector3.Down * 0.45f));
+        if (Climbing)
+        {
+            float climb = AutoTarget is Vector3 at
+                ? Mathf.Clamp((at.Y + 0.12f - GlobalPosition.Y) * 4f, -ClimbSpeed, ClimbSpeed)
+                : Axis(Key.W, Key.S) * ClimbSpeed;
+            v.Y = climb;
+        }
+        else if (!onFloor) v.Y -= Gravity * dt;
         Crouch(onFloor && Held(Key.Ctrl));
 
         var move = new Vector2(Axis(Key.D, Key.A), Axis(Key.S, Key.W)).LimitLength(1f);
@@ -96,7 +110,7 @@ public partial class Player : CharacterBody3D
         float accel = onFloor ? GroundAccel : AirAccel;
         v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
         v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
-        if (onFloor && Held(Key.Space) && !Crouching) v.Y = JumpSpeed;
+        if ((onFloor || Climbing) && Held(Key.Space) && !Crouching && AutoTarget == null) v.Y = JumpSpeed;
         Velocity = v;
         MoveAndSlide();
 

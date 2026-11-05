@@ -8,6 +8,7 @@ namespace PoiGenerator.Gen;
 /// The shape of a block: what the mesher draws and what collides. A stand-in for the canonical
 /// block-and-component model, which isn't merged yet; only <see cref="IBlockStructure"/> and
 /// <see cref="Block"/> leak out of the generator, so swapping models later is local.
+/// New types are only ever appended, so saved byte values keep their meaning.
 /// </summary>
 public enum BlockType : byte
 {
@@ -41,6 +42,20 @@ public enum BlockType : byte
     Vine,
     Machine,
     Crystal,
+    // Added with the architect: vertical traversal, breakable walls and more props.
+    Stair,      // walked like a ramp (rising toward Facing), drawn as steps
+    Ladder,     // climbable and never blocks; the rungs sit against the wall behind Facing
+    Rail,       // a waist-high guard rail: collides, never stood on
+    Breakable,  // a weak wall section hiding something; drawn as a wall with cracks
+    Sign,       // a plate on a wall (warnings, directories); never blocks
+    Shelf,      // a tall storage rack
+    Locker,
+    Puddle,     // standing water or slick on a floor; never blocks
+    Cable,      // hanging cables; never blocks
+    Bed,        // an infirmary bed
+    Bench,      // a lab or work bench
+    Tank,       // a vertical tank or drum
+    Statue,     // a carved figure (temples, plazas)
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
@@ -48,6 +63,9 @@ public enum Material : byte
 {
     Rock, Soil, Concrete, Steel, Alloy, Scrap, Timber, Chitin, Resin, Bone, Basalt, Bronze,
     Glass, Lumen, DeadLumen, Glyph, Crystal, Bloom, Flesh, Plant, Ash, Cloth, Ceramic,
+    Fused, Rust, Water,
+    /// <summary>Armoured plate: the foundations and floors of places a faction holds, so tunnelling in is slow.</summary>
+    Armour,
 }
 
 /// <summary>The part a block plays in the place. State transforms read it.</summary>
@@ -55,6 +73,7 @@ public enum Role : byte
 {
     None, Floor, Wall, Roof, Window, Light, Decor, Door, Loot, Core, Terminal, Prop, Story,
     Debris, Growth, Rock,
+    Hazard, Secret, Traverse,
 }
 
 /// <summary>One grid cell. Eight bytes, so a dense grid stays small.</summary>
@@ -86,6 +105,12 @@ public struct Block
 public static class DoorState
 {
     public const byte Closed = 0, Jammed = 1, Open = 2;
+    /// <summary>Shut until a keycard of the doorway's clearance is swiped, or it is hacked or breached.</summary>
+    public const byte Locked = 3;
+    /// <summary>A blast door: heavy, shut, and locked like a security door.</summary>
+    public const byte Blast = 4;
+
+    public static bool IsLocked(byte v) => v is Locked or Blast;
 }
 
 public static class BlockInfo
@@ -94,15 +119,19 @@ public static class BlockInfo
     public static bool Collides(BlockType t) => t switch
     {
         BlockType.Air or BlockType.Door or BlockType.Scorch or BlockType.Scatter or BlockType.Tendril
-            or BlockType.Plant or BlockType.Vine or BlockType.Ash or BlockType.Remains => false,
+            or BlockType.Plant or BlockType.Vine or BlockType.Ash or BlockType.Remains
+            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable => false,
         _ => true,
     };
 
     /// <summary>You can stand on top of it.</summary>
-    public static bool Supports(BlockType t) => t is BlockType.Cube or BlockType.Lattice or BlockType.Crate;
+    public static bool Supports(BlockType t) => t is BlockType.Cube or BlockType.Lattice or BlockType.Crate or BlockType.Breakable;
 
     /// <summary>Fills its cell completely, so it hides its neighbours' faces.</summary>
-    public static bool IsFullCube(BlockType t) => t == BlockType.Cube;
+    public static bool IsFullCube(BlockType t) => t is BlockType.Cube or BlockType.Breakable;
+
+    /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
+    public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;
 
     public static bool IsTransparent(Material m) => m == Material.Glass;
 
@@ -111,6 +140,26 @@ public static class BlockInfo
 
     /// <summary>Structural blocks: the ones counted when a ruin takes the place apart.</summary>
     public static bool IsStructure(Role r) => r is Role.Floor or Role.Wall or Role.Roof or Role.Window or Role.Light or Role.Decor;
+
+    /// <summary>
+    /// Hit points for the structure model's damage. Breakable walls are weak on purpose: a few
+    /// shots, a survival-tool dig or one charge opens them.
+    /// </summary>
+    public static int HitPoints(Block b) => b.Type switch
+    {
+        BlockType.Breakable => 60,
+        BlockType.Door when b.Variant == DoorState.Blast => 2400,
+        BlockType.Door => 400,
+        _ => b.Material switch
+        {
+            Material.Glass => 80,
+            Material.Timber or Material.Cloth or Material.Plant => 120,
+            Material.Rock or Material.Basalt or Material.Concrete => 900,
+            Material.Glyph => 5000,
+            Material.Armour => 3000,
+            _ => 600,
+        },
+    };
 }
 
 /// <summary>

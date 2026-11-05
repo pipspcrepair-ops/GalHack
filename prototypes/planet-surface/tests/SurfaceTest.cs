@@ -232,14 +232,33 @@ public partial class SurfaceTest : Node
 
     async Task PoiChecks()
     {
-        int sites = 0, floating = 0, doors = 0, corners = 0, overlaps = 0;
+        int sites = 0, floating = 0, doors = 0, corners = 0, overlaps = 0, gates = 0, steep = 0;
+        double widest = 1;
+        bool same = false;
         var kinds = new Dictionary<string, int>();
+        var byKind = new Dictionary<string, int>();
+        var families = new HashSet<string>();
         var notes = new List<string>();
         for (int a = 0; a < 5; a++)
         {
             var spec = PlanetSpec.Roll((ulong)(800 + a * 7), (Archetype)a, 0);
             PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
             ChunkStore store = w.Terrain.Store;
+            // Spread over the planet: the farthest seated place from the landing site, as a share of the way to its far side.
+            double far = 0;
+            foreach (PoiSite site in w.Pois)
+            {
+                double fx = Mathx.WrapDelta(site.Center.X - w.Landing.X, w.Width), fz = Mathx.WrapDelta(site.Center.Z - w.Landing.Y, w.Height);
+                far = Math.Max(far, Math.Sqrt(fx * fx + fz * fz) / (0.5 * Math.Sqrt(w.Width * w.Width + w.Height * w.Height)));
+                families.Add(site.Family.Id);
+            }
+            widest = Math.Min(widest, far);
+            if (a == 0)
+            {
+                // The same planet seats the same places, cell for cell.
+                PlanetWorld again = PlanetWorld.Build(spec, Main.Catalog);
+                same = again.Pois.Count == w.Pois.Count && again.Pois.Zip(w.Pois).All(p => p.First.Family.Id == p.Second.Family.Id && p.First.Origin.Equals(p.Second.Origin) && p.First.Gates.Count == p.Second.Gates.Count);
+            }
             foreach (PoiSite site in w.Pois)
             {
                 sites++;
@@ -278,6 +297,44 @@ public partial class SurfaceTest : Node
                 bool open = !store.IsSolid(e) && !store.IsSolid(e + TInt3.Up) && !store.IsSolid(e + TInt3.Up + TInt3.Up);
                 bool footing = store.IsSolid(e - TInt3.Up) || !inst.Blocks.Get(inst.Layout.EntranceCell + PInt3.Down).IsAir;
                 if (!open || !footing) doors++;
+                // Every way in can be walked up to from outside: straight out from it, past the apron
+                // and the blend, the ground never climbs or drops more than a body can walk (45 degrees)
+                // except where the natural ground beyond the stamp is that steep anyway.
+                foreach (PoiGate g in site.Gates)
+                {
+                    if (g.Kind == "breach") continue; // a breach is a climb down a rubble slope by design
+                    gates++;
+                    double ox = g.OutX, oz = g.OutZ;
+                    if (ox == 0 && oz == 0) { ox = Math.Sign(g.Cell.X + 0.5 - site.Center.X); oz = ox == 0 ? 1 : 0; }
+                    double len = Math.Sqrt(ox * ox + oz * oz), baseAngle = Math.Atan2(oz / len, ox / len);
+                    double reach = Math.Max(t.ReachX, t.ReachZ) + 10;
+                    // The ground as it would be without this place's stamp (the landing pad or a neighbour may shape it too).
+                    var others = w.Source.Stamps.Where(s => s != t).ToList();
+                    float Without(double x, double z) => TerrainStamp.Compose(others, w.Source.NaturalHeight(x, z), x, z);
+                    // A way up to it: any of seven straight lines fanned out from the way in (out to 60 degrees
+                    // either side), on which the stamp never makes a step steeper than a body walks.
+                    string worst = null;
+                    bool walkable = false;
+                    for (int fan = 0; fan < 7 && !walkable; fan++)
+                    {
+                        double ang = baseAngle + (fan - 3) * Math.PI / 9, ux = Math.Cos(ang), uz = Math.Sin(ang);
+                        float last = w.Source.SurfaceHeight(g.Cell.X + 0.5, g.Cell.Z + 0.5), lastNatural = Without(g.Cell.X + 0.5, g.Cell.Z + 0.5);
+                        bool ok = true;
+                        for (double d = 1; d <= reach && ok; d += 1)
+                        {
+                            double x = g.Cell.X + 0.5 + ux * d, z = g.Cell.Z + 0.5 + uz * d;
+                            float h = w.Source.SurfaceHeight(x, z), natural = Without(x, z);
+                            // A step only counts against the stamp if the stamp made it: steeper than the natural ground there.
+                            bool made = Math.Abs(h - last) > Math.Abs(natural - lastNatural) + 0.25f;
+                            if (t.Weight(x, z) > 0f && made && Math.Abs(h - last) > 1.05f) { ok = false; worst ??= $"{d:F0} m ({h - last:F1} m)"; }
+                            last = h;
+                            lastNatural = natural;
+                        }
+                        walkable = ok;
+                    }
+                    if (!walkable) { steep++; if (notes.Count < 16) notes.Add($"no walkable approach to {site.Family.Id} {g.Kind}: {worst}"); }
+                }
+                byKind[site.Siting] = byKind.TryGetValue(site.Siting, out int gk) ? gk + site.Gates.Count : site.Gates.Count;
                 if (notes.Count < 12) notes.Add($"{site.Family.Id} on {site.Siting} ground (cut/fill {site.CutFill:F1} m)");
             }
             await Frames(1);
@@ -286,6 +343,10 @@ public partial class SurfaceTest : Node
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +
             $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in");
+        Check(gates >= sites && steep == 0,
+            $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a line out past the stamp (within 60 degrees of straight out) where the stamp makes no step over 1 m");
+        Check(same, "the same planet seats the same places at the same cells with the same ways in");
+        Check(widest >= 0.45, $"places spread over the whole planet, not just the landing site: on every world the farthest is {widest:P0} or more of the way to the far side; {families.Count} families seated");
     }
 
     // ---- 4. Seams: chunk borders, ghost copies, the corner ---------------------------------

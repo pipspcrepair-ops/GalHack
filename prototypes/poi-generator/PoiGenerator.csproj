@@ -7,4 +7,9 @@
          debug runs use an optimised build (about five times faster). -->
     <Optimize>true</Optimize>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The terrain stamp planet-surface seats places with: the tests check that it carves
+         every underground room out of the ground and leaves solid walls around them. -->
+    <Compile Include="..\..\shared\Terrain\TerrainStamp.cs" />
+  </ItemGroup>
 </Project>

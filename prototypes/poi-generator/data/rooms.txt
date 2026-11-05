@@ -1,0 +1,644 @@
+# The shared room library. Every architect-built place (bunkers, hospitals, towers, research
+# bases, prisons, cryo vaults, spaceport terminals, ships...) is a recipe of these rooms; a style
+# kit re-skins them, so one cryo bay is a colony ship's, a vault's or a prison infirmary's.
+#
+#   room <id>
+#     name        what it's called
+#     kind        room, hall or vault (what the dressing and the validator treat it as)
+#     width a b   interior width along the corridor it prefers, in cells
+#     props       perimeter furniture and weights: bench machine shelf locker crate table bunk
+#                 bed pod tank statue crystal cell pillar barricade planter screen
+#     fill        share of the wall cells that get furniture
+#     island      furniture in rows across the middle of big rooms (pod rows, bed rows, tables)
+#     near/avoid  rooms it should and shouldn't share a wall with (or face across the corridor)
+#     prefer      any, entrance (near the way in), end (far from the stair), core (by the stair)
+#     loot a b    caches; terminals a b; spawns a b
+#     light       warm, cold, dim, red, green, cryo, glyph, none
+#     lock        the keycard clearance its door needs: staff, science, security, command
+#     blast       its door is a blast door
+#     deco        the decorations library's set for it (proto/deco), beside the generic props
+#     tags        keyspot (a keycard may be left here), core (a faction's core goes here),
+#                 hum, cluster (likes its own kind next door), and loot tags (medical, military...)
+
+# ---- circulation and arrival ---------------------------------------------------------------------
+room lobby
+  deco reception
+  name Lobby
+  width 6 11
+  props table 2 screen 1 planter 2 pillar 1
+  fill 0.3
+  prefer entrance
+  near security office
+  spawns 1 2
+  light warm
+  tags keyspot
+
+room security
+  deco guardpost
+  name Security post
+  width 4 7
+  props locker 3 table 1 screen 1
+  fill 0.45
+  prefer entrance
+  near lobby armoury
+  loot 1 1
+  terminals 1 1
+  spawns 1 2
+  light cold
+  tags keyspot military
+
+room airlock
+  deco airlock
+  name Airlock
+  width 4 5
+  props locker 3 shelf 1
+  fill 0.5
+  prefer entrance
+  loot 0 1
+  light red
+  tags space
+
+room decon
+  deco decon
+  name Decontamination
+  width 4 6
+  props locker 2 tank 1 screen 1
+  fill 0.4
+  near airlock quarantine
+  light green
+  tags medical
+
+# ---- work ------------------------------------------------------------------------------------------
+room office
+  deco office
+  name Offices
+  width 5 9
+  props table 3 shelf 2 locker 1
+  fill 0.45
+  island table
+  near archive lobby
+  loot 0 1
+  terminals 0 1
+  spawns 0 1
+  light warm
+  tags keyspot
+
+room archive
+  deco archive
+  name Archive
+  width 5 9
+  props shelf 5 crate 1
+  fill 0.6
+  near office lab
+  loot 1 2
+  light dim
+  tags science
+
+room lab
+  deco lab
+  name Laboratory
+  width 6 10
+  props bench 4 machine 2 shelf 1 tank 1
+  fill 0.5
+  island bench
+  near storage containment cold-store
+  avoid quarters mess
+  loot 1 2
+  terminals 0 1
+  spawns 1 2
+  light cold
+  lock science
+  tags science
+
+room cold-store
+  deco coldstore
+  name Cold store
+  width 4 7
+  props shelf 3 tank 2
+  fill 0.6
+  near lab
+  loot 1 2
+  light cryo
+  tags science ice
+
+room containment
+  deco containment
+  name Containment
+  width 6 10
+  props cell 4 machine 1
+  fill 0.55
+  near lab
+  avoid quarters mess lobby
+  loot 0 1
+  spawns 1 2
+  light red
+  lock security
+  tags science
+
+room control
+  deco control
+  name Control room
+  width 5 9
+  props screen 2 bench 3 machine 1
+  fill 0.5
+  prefer core
+  near office plant
+  loot 1 1
+  terminals 1 2
+  spawns 1 1
+  light cold
+  lock security
+  tags core keyspot tech
+
+room command
+  deco warroom
+  name Command centre
+  width 7 11
+  kind hall
+  props screen 3 table 2 bench 2
+  fill 0.45
+  island table
+  near security armoury
+  loot 1 2
+  terminals 1 2
+  spawns 1 2
+  light cold
+  lock command
+  tags core keyspot military
+
+room workshop
+  deco workshop
+  name Workshop
+  width 6 10
+  props bench 3 machine 3 shelf 2 crate 1
+  fill 0.55
+  near storage plant
+  loot 1 2
+  spawns 0 1
+  light warm
+  tags industry
+
+room storage
+  deco storage
+  name Storage
+  width 4 10
+  props crate 4 shelf 3
+  fill 0.6
+  near workshop lab
+  loot 1 2
+  light dim
+  tags salvage cluster
+
+room armoury
+  deco armoury
+  name Armoury
+  width 4 8
+  props locker 4 shelf 2
+  fill 0.65
+  near security command
+  loot 2 3
+  light red
+  lock security
+  tags military
+
+# ---- living ----------------------------------------------------------------------------------------
+room quarters
+  deco quarters
+  name Quarters
+  width 5 10
+  props bunk 5 locker 2
+  fill 0.6
+  near mess washroom
+  avoid reactor containment plant
+  loot 0 1
+  spawns 0 1
+  light warm
+  tags keyspot cluster
+
+room mess
+  deco canteen
+  name Mess
+  width 7 11
+  kind hall
+  props table 1 machine 1 shelf 1
+  fill 0.25
+  island table
+  near quarters galley
+  avoid containment
+  spawns 1 2
+  light warm
+
+room galley
+  deco galley
+  name Galley
+  width 4 7
+  props bench 3 machine 2 shelf 2
+  fill 0.6
+  near mess storage
+  loot 0 1
+  light warm
+  tags food
+
+room washroom
+  deco washroom
+  name Washroom
+  width 4 6
+  props tank 2 locker 2
+  fill 0.45
+  near quarters
+  light dim
+
+room chapel
+  deco chapel
+  name Chapel
+  width 6 10
+  props statue 1 table 2 planter 1
+  fill 0.25
+  island table
+  avoid plant
+  light dim
+  tags story
+
+# ---- medicine ----------------------------------------------------------------------------------------
+room ward
+  deco ward
+  name Ward
+  width 7 11
+  props bed 5 locker 1 screen 1
+  fill 0.6
+  island bed
+  near nurses pharmacy
+  avoid mortuary plant
+  spawns 0 1
+  light cold
+  tags medical cluster
+
+room nurses
+  deco nursestation
+  name Nurses' station
+  width 4 7
+  props table 2 shelf 2 screen 1
+  fill 0.45
+  near ward pharmacy
+  loot 0 1
+  terminals 1 1
+  light cold
+  tags medical keyspot
+
+room theatre
+  deco theatre
+  name Operating theatre
+  width 6 9
+  props machine 2 bench 2 tank 1 screen 1
+  fill 0.4
+  island bed
+  near ward pharmacy
+  loot 1 1
+  light cold
+  tags medical
+
+room pharmacy
+  deco pharmacy
+  name Pharmacy
+  width 4 7
+  props shelf 5 locker 1
+  fill 0.65
+  near ward nurses theatre
+  loot 2 3
+  light cold
+  lock staff
+  tags medical
+
+room quarantine
+  deco quarantine
+  name Quarantine ward
+  width 7 11
+  props bed 4 screen 3 tank 1
+  fill 0.55
+  island bed
+  near decon containment
+  avoid lobby mess quarters
+  spawns 1 2
+  light red
+  lock security
+  tags medical
+
+room mortuary
+  deco morgue
+  name Mortuary
+  width 5 9
+  props locker 5 bench 1
+  fill 0.6
+  near theatre
+  avoid ward mess
+  loot 0 1
+  light cryo
+  tags medical
+
+# ---- sleep and life support ----------------------------------------------------------------------------
+room cryo-bay
+  deco cryo
+  name Cryo bay
+  kind hall
+  width 8 11
+  props pod 6 machine 1
+  fill 0.75
+  island pod
+  near monitor plant
+  spawns 0 1
+  light cryo
+  tags science ice cluster
+
+room monitor
+  deco control
+  name Sleeper monitoring
+  width 4 7
+  props screen 2 bench 3
+  fill 0.5
+  near cryo-bay
+  loot 1 1
+  terminals 1 1
+  light cold
+  tags keyspot tech
+
+room hydroponics
+  deco hydroponics
+  name Hydroponics
+  width 7 11
+  kind hall
+  props planter 5 tank 2
+  fill 0.6
+  island planter
+  near storage galley
+  loot 0 1
+  spawns 0 1
+  light green
+  tags food
+
+room plant
+  deco plant
+  name Life support
+  width 5 9
+  props machine 4 tank 3
+  fill 0.6
+  near reactor control workshop
+  avoid quarters ward
+  loot 0 1
+  light dim
+  tags hum industry
+
+room reactor
+  deco reactor
+  name Reactor
+  kind hall
+  width 7 11
+  props machine 3 tank 3
+  fill 0.5
+  island tank
+  prefer end
+  near plant control
+  avoid quarters ward mess
+  loot 1 2
+  spawns 1 1
+  light red
+  lock security
+  tags hum reactor
+
+room generator
+  deco plant
+  name Generator hall
+  width 6 10
+  props machine 4 tank 2
+  fill 0.55
+  near plant
+  avoid quarters
+  loot 0 1
+  light red
+  tags hum industry
+
+# ---- holding ---------------------------------------------------------------------------------------
+room cellblock
+  deco cellblock
+  name Cell block
+  width 7 11
+  props cell 5 bunk 2
+  fill 0.7
+  near guardroom
+  spawns 1 2
+  light dim
+  tags cluster
+
+room guardroom
+  deco guardpost
+  name Guard room
+  width 4 7
+  props locker 3 table 1 screen 1
+  fill 0.5
+  near cellblock armoury
+  loot 1 1
+  terminals 1 1
+  spawns 1 2
+  light cold
+  tags keyspot military
+
+room solitary
+  deco cellblock
+  name Solitary
+  width 4 7
+  props cell 3
+  fill 0.4
+  near cellblock
+  avoid mess
+  spawns 1 1
+  light red
+  lock security
+
+room evidence
+  deco evidence
+  name Confiscation lockers
+  width 4 7
+  props locker 5 shelf 2
+  fill 0.7
+  near guardroom
+  loot 2 3
+  light dim
+  lock command
+  tags military vault
+
+# ---- mines and works ------------------------------------------------------------------------------
+room stope
+  deco mine
+  name Stope
+  width 6 11
+  props crate 2 machine 1 pillar 2
+  fill 0.3
+  near ore-store
+  loot 0 1
+  spawns 1 2
+  light dim
+  tags ore mine cluster
+
+room ore-store
+  deco mine
+  name Ore store
+  width 4 8
+  props crate 5
+  fill 0.65
+  near stope
+  loot 1 2
+  light dim
+  tags ore
+
+room magazine
+  deco armoury
+  name Powder magazine
+  width 4 6
+  props crate 3 locker 2
+  fill 0.6
+  avoid quarters
+  loot 1 2
+  light red
+  lock staff
+  tags mine military
+
+room pump-hall
+  deco plant
+  name Pump hall
+  kind hall
+  width 7 11
+  props tank 4 machine 3
+  fill 0.55
+  island tank
+  near plant
+  light dim
+  tags hum industry
+
+# ---- the prize ---------------------------------------------------------------------------------------
+room vault
+  deco vault
+  name Vault
+  kind vault
+  width 4 9
+  props shelf 2 locker 2
+  fill 0.4
+  prefer end
+  loot 2 3
+  spawns 0 1
+  light red
+  lock command
+  blast
+  tags vault
+
+# ---- industry and agriculture -----------------------------------------------------------------
+
+room warehouse
+  deco industrial
+  name Warehouse
+  kind hall
+  width 8 14
+  props shelf 6 crate 4
+  fill 0.7
+  island
+  near loading-dock storage
+  loot 1 3
+  light dim
+  tags cluster industry
+
+room loading-dock
+  deco industrial
+  name Loading dock
+  width 6 12
+  props crate 5 machine 1
+  fill 0.4
+  near warehouse
+  prefer entrance
+  loot 0 1
+  light dim
+  tags industry
+
+room boiler-house
+  deco industrial
+  name Boiler house
+  width 6 10
+  props tank 4 machine 3
+  fill 0.6
+  near generator plant
+  avoid office quarters
+  loot 0 1
+  light red
+  tags hum industry
+
+room parts-store
+  deco industrial
+  name Parts store
+  width 4 8
+  props shelf 5 locker 2
+  fill 0.75
+  near workshop control
+  loot 1 2
+  light dim
+  tags keyspot industry
+
+room farm-kitchen
+  deco farm
+  name Farm kitchen
+  width 4 8
+  props table 3 shelf 2
+  fill 0.5
+  island
+  near quarters cellar
+  prefer entrance
+  loot 0 1
+  light warm
+  tags food
+
+room cellar
+  deco farm
+  name Cellar
+  width 4 9
+  props shelf 4 crate 3 tank 1
+  fill 0.6
+  near farm-kitchen
+  loot 1 2
+  light dim
+  tags food fuel
+
+room grow-room
+  deco farm
+  name Grow room
+  kind hall
+  width 6 12
+  props planter 4 shelf 2
+  fill 0.5
+  island
+  near hydroponics
+  loot 0 1
+  light green
+  tags food cluster
+
+# ---- civilian places in use ----------------------------------------------------------------------
+
+room market-hall
+  deco market
+  name Market hall
+  kind hall
+  width 10 16
+  props table 6 crate 3 shelf 2
+  fill 0.5
+  island
+  near shop mess
+  prefer entrance
+  loot 0 1
+  light warm
+  tags civilian cluster
+
+room shop
+  deco market
+  name Shop
+  width 4 8
+  props shelf 4 table 1 crate 1
+  fill 0.6
+  near market-hall
+  loot 1 1
+  light warm
+  tags civilian keyspot

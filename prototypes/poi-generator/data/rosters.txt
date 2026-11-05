@@ -62,3 +62,22 @@ fauna   none          mandibles        Ash Crawler
 fauna   none          swarm            Dust Mite Swarm
 fauna   none          talons           Carrion Wing
 fauna   none          claws            Rock Lurker
+
+# The old civilisation's own security: dormant frames and sentry guns still waking in its ruins
+# (the same machines the Kessari grew out of, never woken to independence).
+[oldworld]
+guard   infantry      needle-gun       Dormant Security Frame
+guard   infantry      carbine          Sentry Walker
+turret  small-vessel  light-autocannon Old-world Sentry Gun
+boss    capital       rail-cannon      Warden Mech
+
+# Roving gangs: fallen-world survivors gone feral. They belong to no faction, so no standing
+# applies and they are always hostile. Their camps are POIs; spawn and patrol markers in the
+# layouts are for a later pass to bring them to life.
+[raiders]
+guard   infantry      scattergun       Scrap Raider
+guard   infantry      hunting-rifle    Raider Gunner
+guard   infantry      pipe-rifle       Wasteland Killer
+turret  small-vessel  scrap-autocannon Welded Gun Nest
+hover   small-vessel  scrap-autocannon Raider Buggy Gunner
+boss    infantry      scattergun       Gang Boss

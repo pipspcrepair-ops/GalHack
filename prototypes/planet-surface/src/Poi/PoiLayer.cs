@@ -26,6 +26,8 @@ public partial class PoiLayer : Node3D
 
     readonly List<Place> _places = new();
     readonly List<Task<(Place, List<ChunkMesh>)>> _building = new();
+    readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase)> _animated = new();
+    double _time;
     PlanetWorld _world;
 
     public IReadOnlyList<PoiSite> Sites => _world?.Pois ?? new List<PoiSite>();
@@ -73,6 +75,8 @@ public partial class PoiLayer : Node3D
             break; // one place per frame keeps the main thread smooth
         }
         if (_world == null) return;
+        _time += delta;
+        Animate(_time);
         Vector3 camera = GetViewport().GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
         foreach (Place p in _places)
         {
@@ -96,27 +100,107 @@ public partial class PoiLayer : Node3D
             if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
         }
         AddLights(node, inst);
+        AddSmoke(node, inst);
         return node;
     }
 
-    /// <summary>A lamp per lit room when the place has power, the core's glow always.</summary>
-    static void AddLights(Node3D node, PoiInstance inst)
+    /// <summary>
+    /// The place's own lights as the POI generator left them at spawn: the lamps still burning (most
+    /// are dead in an abandoned place), the one lit window, beacons on masts and towers, the Bloom's
+    /// glow, and the core's glow only where a faction holds the place. Lights above ground and
+    /// beacons come first so the place carries from a distance; the count is capped for the frame.
+    /// </summary>
+    void AddLights(Node3D node, PoiInstance inst)
     {
-        Layout layout = inst.Layout;
-        var light = new Color(inst.Kit.Light.R / 255f, inst.Kit.Light.G / 255f, inst.Kit.Light.B / 255f);
-        if (inst.State == PoiState.Active)
-            foreach (PlacedModule m in layout.Modules.Take(8))
-                node.AddChild(new OmniLight3D
-                {
-                    LightColor = light, LightEnergy = 1.3f, OmniRange = System.Math.Max(m.Shape.W, m.Shape.D) * 0.85f + 2f, ShadowEnabled = false,
-                    Position = new Vector3((m.Min.X + m.Max.X + 1) / 2f, m.Min.Y + 3f, (m.Min.Z + m.Max.Z + 1) / 2f),
-                });
-        Int3 core = inst.CoreCell;
-        node.AddChild(new OmniLight3D
+        const int MaxLights = 20;
+        var chosen = inst.Lights
+            .OrderByDescending(l => l.Mode == LightMode.Beacon)
+            .ThenByDescending(l => l.Cell.Y >= 0)
+            .ThenByDescending(l => l.Cell.Y)
+            .Take(MaxLights);
+        foreach (LightSpot spot in chosen)
         {
-            LightColor = new Color("3de8ff"), LightEnergy = inst.State == PoiState.Active ? 1.4f : 0.4f, OmniRange = 6f,
-            Position = new Vector3(core.X + 0.5f, core.Y + 1.6f, core.Z + 0.5f),
-        });
+            var light = new OmniLight3D
+            {
+                LightColor = new Color(spot.Color.R / 255f, spot.Color.G / 255f, spot.Color.B / 255f),
+                LightEnergy = spot.Energy, OmniRange = spot.Range, ShadowEnabled = false,
+                Position = new Vector3(spot.Cell.X + 0.5f, spot.Cell.Y + 0.5f, spot.Cell.Z + 0.5f),
+            };
+            node.AddChild(light);
+            if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
+                _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f));
+        }
+        if (inst.HasCore)
+        {
+            Int3 core = inst.CoreCell;
+            node.AddChild(new OmniLight3D
+            {
+                LightColor = new Color("3de8ff"), LightEnergy = inst.State == PoiState.Active ? 1.4f : 0.4f, OmniRange = 6f,
+                Position = new Vector3(core.X + 0.5f, core.Y + 1.6f, core.Z + 0.5f),
+            });
+        }
+    }
+
+    /// <summary>A thin column of smoke (or Bloom spores) where something still burns or vents: quiet, seen from afar.</summary>
+    static void AddSmoke(Node3D node, PoiInstance inst)
+    {
+        foreach (Marker m in inst.Markers.Where(m => m.Kind == "smoke").Take(2))
+        {
+            bool spores = m.Note == "spores";
+            var tint = spores ? new Color(0.55f, 0.42f, 0.62f) : new Color(0.42f, 0.42f, 0.42f);
+            var ramp = new Gradient();
+            ramp.SetColor(0, new Color(tint, 0f));
+            ramp.SetOffset(0, 0f);
+            ramp.SetColor(1, new Color(tint, 0f));
+            ramp.SetOffset(1, 1f);
+            ramp.AddPoint(0.15f, new Color(tint, spores ? 0.22f : 0.3f));
+            ramp.AddPoint(0.6f, new Color(tint.Lightened(0.15f), 0.14f));
+            var curve = new Curve();
+            curve.AddPoint(new Vector2(0f, 0.4f));
+            curve.AddPoint(new Vector2(1f, 1f));
+            var smoke = new CpuParticles3D
+            {
+                Name = spores ? "Spores" : "Smoke",
+                Amount = 28, Lifetime = 16f, Preprocess = 16f, FixedFps = 20, LocalCoords = false,
+                Mesh = new QuadMesh
+                {
+                    Size = new Vector2(3f, 3f),
+                    Material = new StandardMaterial3D
+                    {
+                        BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
+                        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                        VertexColorUseAsAlbedo = true, AlbedoColor = Colors.White,
+                        ShadingMode = BaseMaterial3D.ShadingModeEnum.PerVertex,
+                        DisableReceiveShadows = true,
+                    },
+                },
+                Direction = Vector3.Up, Spread = 6f,
+                InitialVelocityMin = 1.4f, InitialVelocityMax = 2.2f,
+                Gravity = new Vector3(0.35f, 0.05f, 0.12f),
+                ScaleAmountMin = 1.2f, ScaleAmountMax = 2.4f, ScaleAmountCurve = curve,
+                ColorRamp = ramp,
+                EmissionShape = CpuParticles3D.EmissionShapeEnum.Sphere, EmissionSphereRadius = 0.8f,
+                Position = new Vector3(m.Cell.X + 0.5f, m.Cell.Y + 1.5f, m.Cell.Z + 0.5f),
+                VisibilityAabb = new Aabb(new Vector3(-40, -4, -40), new Vector3(80, 60, 80)),
+            };
+            node.AddChild(smoke);
+        }
+    }
+
+    /// <summary>Flickering lamps, blinking beacons and the Bloom's slow pulse.</summary>
+    void Animate(double t)
+    {
+        foreach (var (light, energy, mode, phase) in _animated)
+        {
+            if (!IsInstanceValid(light)) continue;
+            float s = (float)t + phase;
+            light.LightEnergy = mode switch
+            {
+                LightMode.Beacon => (s % 1.6f) < 0.25f ? energy : energy * 0.05f,
+                LightMode.Flicker => energy * (Mathf.Sin(s * 23f) * Mathf.Sin(s * 7.3f) > 0.55f ? 0.15f : 0.85f + 0.15f * Mathf.Sin(s * 41f)),
+                _ => energy * (0.6f + 0.4f * Mathf.Sin(s * 0.9f)),
+            };
+        }
     }
 
     public void Clear()
@@ -124,6 +208,7 @@ public partial class PoiLayer : Node3D
         foreach (Place p in _places) p.Node?.QueueFree();
         _places.Clear();
         _building.Clear();
+        _animated.Clear();
         _world = null;
     }
 }

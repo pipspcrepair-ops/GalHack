@@ -18,6 +18,10 @@ public sealed class PlacedModule
     public int Parent = -1;
     public int Step;            // position on the critical path, or -1 for branches
     public bool OnPath;
+    /// <summary>The storey it stands on: 0 ground, positive up, negative below ground.</summary>
+    public int Storey;
+    /// <summary>Its purpose (architect rooms: lab, quarters, reactor...), or the template id.</summary>
+    public string Purpose = "";
 
     public ModuleKind Kind => Template.Kind;
     public Int3 Min => Offset;
@@ -35,6 +39,10 @@ public sealed class Slot
     public SlotKind Kind;
     public Int3 Cell;
     public int Module;
+    /// <summary>The architect places exactly what it planned; kit slots are filled by chance.</summary>
+    public bool Sure;
+    /// <summary>A loot slot hidden behind a breakable wall.</summary>
+    public bool Secret;
 }
 
 /// <summary>A doorway where two modules join: the cells on the child's side, facing out of the child.</summary>
@@ -76,9 +84,14 @@ public sealed class Layout
     public List<int> KeyModules = new();
     public int Attempts;
     public Kit Kit = null!;
+    public LayoutExtras Extras = new();
+    /// <summary>Whether the generator had to repair or regenerate it (counted by the tests).</summary>
+    public int Repairs, Regenerations;
 
     public PlacedModule Vault => Modules[VaultModule];
     public bool Underground => Modules.Any(m => m.Underground);
+    /// <summary>The module deepest below ground (or the vault when nothing is below ground).</summary>
+    public int DeepestModule => Modules.Count == 0 ? -1 : Modules.Where(m => m.Shape.Occupied.Count > 0).OrderBy(m => m.Min.Y).ThenByDescending(m => m.Index == VaultModule).First().Index;
 }
 
 /// <summary>
@@ -128,7 +141,7 @@ public static class Assembler
             int n = rng.Between(s.Min, s.Max);
             for (int i = 0; i < n; i++) steps.Add(new KindRef(s.Alias, s.Kind));
         }
-        int grow = rarity switch { Rarity.Uncommon => 2, Rarity.Rare => 4, _ => 0 };
+        int grow = rarity switch { Rarity.Uncommon => 2, Rarity.Rare => 4, Rarity.Exotic => 5, Rarity.Unique => 6, _ => 0 };
         if (v.Grow.Count > 0)
             for (int i = 0; i < grow; i++)
                 steps.Insert(steps.Count - 1, v.Grow[i % v.Grow.Count]);
@@ -267,7 +280,7 @@ public static class Assembler
     static void AddBranches(State s, VariantDef v, Rarity rarity, Rng rng)
     {
         if (v.BranchChains.Count == 0) return;
-        int count = rng.Between(v.BranchMin, v.BranchMax) + (v.BranchMax > 0 ? (int)rarity : 0);
+        int count = rng.Between(v.BranchMin, v.BranchMax) + (v.BranchMax > 0 ? System.Math.Min(3, (int)rarity) : 0);
         for (int b = 0; b < count; b++)
         {
             var chain = rng.Pick(v.BranchChains);
@@ -318,7 +331,12 @@ public static class Assembler
         layout.Blocks = new BlockGrid(min, max - min + new Int3(1, 1, 1));
         layout.Occupied = new CellMask(min, max - min + new Int3(1, 1, 1));
 
-        foreach (var m in s.Modules) Stamp(layout, m);
+        foreach (var m in s.Modules)
+        {
+            Stamp(layout, m);
+            m.Storey = m.Min.Y >= GroundY ? 0 : -((GroundY - m.Min.Y + 3) / 4);
+            m.Purpose = m.Template.Id;
+        }
 
         // Doorways and the way in.
         foreach (var link in s.Links)
@@ -375,7 +393,7 @@ public static class Assembler
         if (!layout.KeyModules.Contains(layout.CoreModule)) layout.KeyModules.Add(layout.CoreModule);
 
         // Rare places have a boss room: the last room or hall before the vault.
-        if (rarity == Rarity.Rare)
+        if (rarity >= Rarity.Rare)
         {
             var boss = s.Path.Take(s.Path.Count - 1).LastOrDefault(i => s.Modules[i].Kind is ModuleKind.Room or ModuleKind.Hall, -1);
             layout.BossModule = boss >= 0 ? boss : layout.VaultModule;

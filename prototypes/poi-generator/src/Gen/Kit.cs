@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -30,7 +30,7 @@ public static class Factions
     };
 }
 
-public enum ModuleKind : byte { Entrance, Corridor, Room, Hall, Vault, Tower, Descent }
+public enum ModuleKind : byte { Entrance, Corridor, Room, Hall, Vault, Tower, Descent, Stair, Lift, Outdoor, Cave }
 
 /// <summary>Spots a module offers to the dressing pass. All are air in the template.</summary>
 public enum SlotKind : byte { Loot, Terminal, Core, Spawn, Boss, Prop }
@@ -45,7 +45,7 @@ public sealed class PaletteEntry
     public Role Role;
 
     /// <summary>Picks the colour from the world cell, so patchwork differs between spawns of one module.</summary>
-    public Block Make(Int3 worldCell, Dir facing)
+    public Block Make(Int3 worldCell, Dir facing = Dir.North)
     {
         Rgb c = Colors.Length == 1 ? Colors[0] : Colors[Hash.Cell(worldCell, 17) % (uint)Colors.Length];
         return new Block(Type, Material, c, Role, facing);
