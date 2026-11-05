@@ -118,7 +118,15 @@ public sealed class Driver
             last = feet;
             stuck = moved < 0.02f ? stuck + 1f / 60f : 0f;
             // Stuck against something: a hop on the jetpack, or on the stairs only a little jump.
-            if (stuck > 0.4f) jet = hop ? 0.7f : 0.12f;
+            if (stuck > 0.4f && jet <= 0f)
+            {
+                jet = hop ? 0.7f : 0.12f;
+                if (_following)
+                {
+                    StairJumps++;
+                    GD.Print($"  (stuck on the bunker's way at {feet} toward {target}: {Probe(feet)})");
+                }
+            }
             // Getting nowhere for a while (a pit, a bank too steep): dig a way out ahead with the
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
@@ -262,6 +270,27 @@ public sealed class Driver
     public IEnumerable<int> ClimbIn(Slice.Start.Bunker b) => Follow(b.WayOut.Reverse().ToList(), "in");
 
     bool _following;
+
+    /// <summary>Jumps the walker needed on the bunker's stairs and at its way out (there should be none).</summary>
+    public int StairJumps;
+
+    /// <summary>What is under and in front of the feet (a diagnostic for a snag).</summary>
+    string Probe(Vector3 feet)
+    {
+        var space = Game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 look = Game.Survivor.WorldLook();
+        look.Y = 0f;
+        look = look.Normalized();
+        string Hit(Vector3 a, Vector3 b)
+        {
+            var h = space.IntersectRay(PhysicsRayQueryParameters3D.Create(a, b, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props));
+            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).Name} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
+        }
+        Vector3 q = feet + look * 0.6f;
+        var store = Game.Zone.Planet.Terrain.Store;
+        string column = string.Join("", Enumerable.Range(-2, 5).Select(dy => store.MaterialAt(new TerrainDigging.Terrain.Int3((int)MathF.Floor(q.X), (int)MathF.Floor(feet.Y) + dy, (int)MathF.Floor(q.Z))) == TerrainDigging.Terrain.CellMaterial.Air ? "." : "#"));
+        return $"natural ground 0.6 m ahead {Game.Zone.GroundAt(q.X, q.Z).Y - feet.Y:+0.00;-0.00}, cells there from {(int)MathF.Floor(feet.Y) - 2} up: {column}; down {Hit(feet + Vector3.Up * 0.5f, feet + Vector3.Down * 1f)}; ahead at 0.1 m {Hit(feet + Vector3.Up * 0.1f, feet + Vector3.Up * 0.1f + look * 0.8f)}, at 0.4 m {Hit(feet + Vector3.Up * 0.4f, feet + Vector3.Up * 0.4f + look * 0.8f)}, at 0.7 m {Hit(feet + Vector3.Up * 0.7f, feet + Vector3.Up * 0.7f + look * 0.8f)}; ground 0.6 m ahead {Hit(feet + look * 0.6f + Vector3.Up * 1.5f, feet + look * 0.6f + Vector3.Down * 1f)}";
+    }
 
     IEnumerable<int> Follow(IReadOnlyList<Vector3> way, string what)
     {
