@@ -120,8 +120,12 @@ public partial class TerrainStreamer : Node3D
     int _evictTimer;
 
     // ---- Stats ----
+    // Streaming's own main-thread time. A garbage collection that happens to pause the process
+    // while streaming runs is left out: it would pause whatever was running, and it is measured
+    // and reported on its own (LastGcPauseMs, and the tests' GC summary).
     public double LastFrameMs { get; private set; }
     public double WorstFrameMs { get; private set; }
+    public double LastGcPauseMs { get; private set; }
 
     /// <summary>Where the worst frame's time went, section by section.</summary>
     public string WorstBreakdown { get; private set; } = "";
@@ -138,7 +142,10 @@ public partial class TerrainStreamer : Node3D
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
     public event Action<Int3> ChunkApplied;
 
-    public void ResetStats() => WorstFrameMs = 0;
+    /// <summary>The longest GC pause that landed inside streaming's own time since the last reset.</summary>
+    public double WorstGcPauseMs { get; private set; }
+
+    public void ResetStats() => WorstFrameMs = WorstGcPauseMs = 0;
 
     public override void _Ready()
     {
@@ -258,6 +265,7 @@ public partial class TerrainStreamer : Node3D
     {
         if (World == null) return;
         long start = Stopwatch.GetTimestamp();
+        TimeSpan pausedBefore = GC.GetTotalPauseDuration();
         _frameStart = start;
         Array.Clear(_sections);
 
@@ -274,14 +282,17 @@ public partial class TerrainStreamer : Node3D
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
-        LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
+        LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs;
         if (LastFrameMs > WorstFrameMs)
         {
             WorstFrameMs = LastFrameMs;
             var parts = new System.Text.StringBuilder();
             for (int i = 0; i < _sections.Length; i++) parts.Append($"{SectionNames[i]} {_sections[i]:F1} ");
+            if (LastGcPauseMs > 0) parts.Append($"(less a {LastGcPauseMs:F1} ms GC pause inside them)");
             WorstBreakdown = parts.ToString().TrimEnd();
         }
+        if (LastGcPauseMs > WorstGcPauseMs) WorstGcPauseMs = LastGcPauseMs;
     }
 
     void StreamVoxels()

@@ -453,7 +453,8 @@ public partial class SurfaceTest : Node
         bool caughtUp = await Streamed(30);
         Engine.MaxFps = 0;
         Check(worstStream < 8.0 && caughtUp,
-            $"flying 2 km at 100 m/s: terrain streaming's main-thread cost worst {worstStream:F2} ms per frame ({_main.Streamer.WorstBreakdown}; slowest far chunk {_main.Streamer.WorstFarNodeMs:F1} ms: {_main.Streamer.WorstFarNode}); " +
+            $"flying 2 km at 100 m/s: terrain streaming's main-thread cost worst {worstStream:F2} ms per frame ({_main.Streamer.WorstBreakdown}; slowest far chunk {_main.Streamer.WorstFarNodeMs:F1} ms: {_main.Streamer.WorstFarNode}; " +
+            $"GC pauses inside streaming, left out, up to {_main.Streamer.WorstGcPauseMs:F1} ms); " +
             $"main-thread work per frame worst {worstWork:F2} ms (process {worstProcess:F1}, physics {worstPhysics:F1}; Main {_main.WorstMainMs:F1} ms: {_main.WorstMain}); caught up after landing {caughtUp} (headless, 60 fps cap)");
         _main.ToggleFly();
         await Until(() => _main.IsReady, 30);
