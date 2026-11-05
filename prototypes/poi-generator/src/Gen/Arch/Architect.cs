@@ -171,6 +171,9 @@ public static class LayoutCheck
             if (hidden.Contains(m.Index) || m.Shape.Occupied.Count == 0) continue;
             if (!m.Cells.Any(reach.Contains)) { problems.Add($"{m.Purpose} (storey {m.Storey}) at {m.Min} is unreachable from the way in"); break; }
         }
+        // Every cache the plan put down can be reached (hidden stashes open when their wall breaks).
+        foreach (var sl in layout.Slots.Where(s => s.Kind == SlotKind.Loot && !s.Secret && !hidden.Contains(s.Module)))
+            if (nav.AccessCell(sl.Cell, reach) is not Int3) { problems.Add($"cache slot at {sl.Cell} ({layout.Modules[sl.Module].Purpose}) is unreachable"); break; }
         // Stairwells join their storeys: the next storey up is reached through the stair.
         foreach (var lvl in x.Levels)
             if (!reach.Any(c => c.Y == lvl.WalkY)) { problems.Add($"storey {lvl.Name} can't be reached"); break; }

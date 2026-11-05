@@ -30,10 +30,10 @@ family vharn_outpost
   rise 6
   name Vharn Garrison
   faction vharn
-  tags military alien
+  tags military alien fort
   pitch A Vharn garrison grown into the rock: guarded, with a core you can hijack.
   kit vharn
-  rarity common
+  rarity uncommon
   biomes rock ash desert fungal
   territory vharn
   near deposits 3

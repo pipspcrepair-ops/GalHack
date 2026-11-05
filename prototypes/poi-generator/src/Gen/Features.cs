@@ -145,6 +145,8 @@ public sealed class LayoutExtras
     public bool InSpace;
     /// <summary>Under water (sunken places): everything below WaterY is flooded unless sealed.</summary>
     public int? WaterY;
+    /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
+    public BlastZone? Blast;
 }
 
 /// <summary>What the planner decided about one room, for tests and the overlay.</summary>
@@ -157,4 +159,47 @@ public sealed class RoomNote
     public bool NearSatisfied;
     public bool AvoidBroken;
     public List<string> Neighbours = new();
+}
+
+/// <summary>
+/// A nuclear blast site, as data for the world and ground-tint work: ground zero (local cells),
+/// the glassed crater, the ring of flattened, outward-blown ruins, the dead zone (scorched ground,
+/// radiation signs at its edge) and the fade back to the normal biome. Radii in metres.
+/// </summary>
+public sealed record BlastZone(Int3 Center, float Crater, float Ruin, float Dead, float Fade)
+{
+    /// <summary>How much of the blast reaches a point this far from ground zero: 1 in the crater, 0 past the fade.</summary>
+    public float Strength(float distance) =>
+        distance <= Crater ? 1f : distance >= Fade ? 0f : 1f - (distance - Crater) / (Fade - Crater);
+}
+
+/// <summary>A settlement's or a civilian place's temper: peaceful (walk in and trade), wary (guns ready, wants you gone) or hostile.</summary>
+public enum Mood : byte { Peaceful, Wary, Hostile }
+
+/// <summary>Where townsfolk do things: stall, work, sit, chat, garden or home.</summary>
+public sealed record ActivitySpot(string Tag, Int3 Cell, int Module);
+
+/// <summary>
+/// One townsperson as data (the AI comes later): a role and a gait. vendor mans a stall, rusher
+/// hurries between distant spots, wanderer ambles to random nearby spots, worker stays at work or
+/// garden spots, guard posts and walks short patrols.
+/// </summary>
+public sealed record CitizenSpawn(string Role, string Gait, Int3 Cell, int Spot);
+
+/// <summary>
+/// The light ambient routine's data for a lived-in place: activity spots, walkable links between
+/// them, a few long cross-town routes for rushers, and who's there. No schedules or needs: at
+/// night everyone goes indoors (to a home spot).
+/// </summary>
+public sealed class Townsfolk
+{
+    public List<ActivitySpot> Spots = new();
+    public List<(int A, int B)> Links = new();
+    public List<(int A, int B)> Routes = new();
+    public List<CitizenSpawn> People = new();
+    /// <summary>Animals the town keeps: stock in pens and fields, a working beast by the cart, pets by the homes.</summary>
+    public List<(string Kind, Int3 Cell)> Animals = new();
+    /// <summary>The town's area as a circle (local cells, metres), for wildlife to keep out of.</summary>
+    public Int3 AreaCenter;
+    public float AreaRadius;
 }

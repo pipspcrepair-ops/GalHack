@@ -71,6 +71,12 @@ public sealed class PoiSite
     /// <summary>Held by a faction (its core is live, or its people are home): its own infrastructure works.</summary>
     public bool FactionHeld => Instance.HasCore || (Family.Faction != PoiGenerator.Gen.Faction.None && Instance.State == PoiState.Active);
 
+    /// <summary>A blast site's ground zero in world metres (its radii are in <c>Instance.Layout.Extras.Blast</c>): for the dead-zone ground tint and the world work.</summary>
+    public (double X, double Z)? GroundZero => Instance.Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
+
+    /// <summary>A settlement's or civilian place's townsfolk data (spots, links, routes, people, animals, area), in local cells; null elsewhere.</summary>
+    public Townsfolk Townsfolk => Instance.Townsfolk;
+
     /// <summary>The ways in a road can end at: the main entrance, fence gates, collapse breaches. World cells and the way out.</summary>
     public IReadOnlyList<PoiGate> Gates = Array.Empty<PoiGate>();
 }
@@ -153,11 +159,41 @@ public static class PoiSiting
         {
             if (sites.Count >= MaxSites + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, p.SpawnSeed);
+            ulong spawnSeed = p.SpawnSeed;
+            if (start)
+            {
+                // A start world: any blast site lies far from the bunker, and the settlements near it are never hostile.
+                if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 1500)
+                    for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
+            }
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             if (site != null) sites.Add(site);
         }
+        Blasts(sites, map);
         return sites;
+    }
+
+    /// <summary>
+    /// Places inside a blast's radius take the blasted decay: roofs gone, the walls that faced
+    /// ground zero stripped, interiors burnt, by how close they stand.
+    /// </summary>
+    static void Blasts(List<PoiSite> sites, WorldMap map)
+    {
+        foreach (PoiSite b in sites.Where(s => s.GroundZero != null).ToList())
+        {
+            var (gx, gz) = b.GroundZero!.Value;
+            BlastZone zone = b.Instance.Layout.Extras.Blast!;
+            foreach (PoiSite o in sites)
+            {
+                if (o == b) continue;
+                double dx = Mathx.WrapDelta(o.Center.X - gx, map.WidthMeters), dz = Mathx.WrapDelta(o.Center.Z - gz, map.HeightMeters);
+                float d = (float)Math.Sqrt(dx * dx + dz * dz), strength = zone.Strength(d);
+                if (strength < 0.05f || d < 1f) continue;
+                StateTransforms.Blast(o.Instance, (float)(-dx / d), (float)(-dz / d), strength, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
+            }
+        }
     }
 
     /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>
@@ -238,7 +274,8 @@ public static class PoiSiting
             if (Dist(cx, cz, landing.X, landing.Y, width, height) < 160) continue;
             bool crowded = false;
             foreach (PoiSite o in others)
-                crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height) < 140;
+                crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
+                           < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) continue;
 
             // Ground across the footprint and apron.
@@ -305,7 +342,24 @@ public static class PoiSiting
             for (int x = 0; x < occupied.Size.X; x++)
                 carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = occupied[new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z)];
         }
-        float blend = Math.Clamp(bestCut * 2f + 8f, 10f, 40f); // wide enough that cut and fill slopes stay walkable
+        // Wide enough that cut and fill slopes stay walkable: the further the ground round the pad is
+        // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.
+        // The blend has to take the whole difference between the pad and the ground at its outer
+        // edge, so it grows until that difference fits at a walkable slope.
+        float blend = Math.Clamp(bestCut * 2f + 8f, 10f, 90f);
+        for (int pass = 0; pass < 4; pass++)
+        {
+            float edge = 0f;
+            for (int k = 0; k < 24; k++)
+            {
+                double ang = k * Math.PI / 12;
+                double rx = Math.Cos(ang) * (halfX + Apron + blend), rz = Math.Sin(ang) * (halfZ + Apron + blend);
+                edge = MathF.Max(edge, MathF.Abs(bare.NaturalHeight(bestX + rx, bestZ + rz) - bestPad));
+            }
+            float wanted = Math.Clamp(edge * 1.7f, 10f, 90f);
+            if (wanted <= blend) break;
+            blend = wanted;
+        }
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve);
 

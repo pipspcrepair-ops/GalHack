@@ -65,6 +65,11 @@ public static class Sites
                 case "obelisks": Obelisks(x, part); break;
                 case "hangar": Hangar(x, part); break;
                 case "fields": Fields(x, part); break;
+                case "blastring": BlastRing(x, part); break;
+                case "launchers": Launchers(x, part); break;
+                case "railgun": Railgun(x, part); break;
+                case "shacks": Shacks(x, part); break;
+                case "stalls": Stalls(x, part); break;
                 case "greenhouse": Greenhouse(x, part); break;
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
@@ -892,6 +897,200 @@ public static class Sites
         int ti = w / 2 + 3;
         for (int y = beamY - 1; y >= 3; y--) x.C.Set(W(ti, y, cj), new Block(BlockType.Cable, Material.Steel, new Rgb(0x3a, 0x3a, 0x3a), Role.Decor));
         x.C.Set(W(ti, 2, cj), new Block(BlockType.Crate, Material.Steel, new Rgb(0x7a, 0x6a, 0x4a), Role.Prop));
+    }
+
+    /// <summary>
+    /// The blast around a crater: a ring of flattened, outward-blown ruins whose stubs stand taller
+    /// the further out they are, burnt shadow marks on the faces toward ground zero, debris and
+    /// wrecked vehicles thrown out along radial lines, and radiation signs where the dead zone
+    /// ends. The zone itself goes out as data for the ground tint. Laid after the other parts, it
+    /// keeps clear of them.
+    /// </summary>
+    static void BlastRing(Ctx x, SitePart p)
+    {
+        float r = p.Num("r", 22f), outer = p.Num("out", 44f);
+        var gz = new Int3(p.X, 0, p.Z);
+        x.C.X.Blast = new BlastZone(gz, r, r + (outer - r) * 0.6f, outer, outer * 2f);
+        bool Clear(Int3 c)
+        {
+            for (int dz = -2; dz <= 2; dz++)
+                for (int dx = -2; dx <= 2; dx++)
+                    for (int y = -1; y <= 2; y++)
+                        if (x.C.Occ.Contains(new Int3(c.X + dx, y, c.Z + dz))) return false;
+            return true;
+        }
+        var concrete = new Rgb(0x6a, 0x66, 0x60);
+        var burnt = new Rgb(0x2a, 0x26, 0x24);
+        // Wall stubs: short tangential runs, taller with distance (nearer in, everything was flattened).
+        for (int k = 0; k < 40; k++)
+        {
+            float a = k / 40f * MathF.Tau + (Hash.Cell(new Int3(k, 0, 0), 91) % 100) / 400f;
+            float d = r + 6 + (Hash.Cell(new Int3(k, 1, 0), 93) % 1000) / 1000f * (outer - r - 8);
+            if (Hash.Cell(new Int3(k, 2, 0), 95) % 100 < 40) continue;
+            int h = 1 + (int)MathF.Floor((d - r - 6) / (outer - r - 6) * 3f);
+            Int3 at = new(p.X + (int)MathF.Round(MathF.Cos(a) * d), 0, p.Z + (int)MathF.Round(MathF.Sin(a) * d));
+            // Tangential run of 2 to 4 cells.
+            int run = 2 + (int)(Hash.Cell(at, 97) % 3);
+            Int3 step = MathF.Abs(MathF.Sin(a)) > MathF.Abs(MathF.Cos(a)) ? new Int3(1, 0, 0) : new Int3(0, 0, 1);
+            Dir toward = MathF.Abs(MathF.Cos(a)) > MathF.Abs(MathF.Sin(a)) ? (MathF.Cos(a) > 0 ? Dir.West : Dir.East) : (MathF.Sin(a) > 0 ? Dir.North : Dir.South);
+
+            for (int i = 0; i < run; i++)
+            {
+                Int3 c = at + step * i;
+                if (!Clear(c)) continue;
+                for (int y = 0; y < h; y++) x.C.Set(c + Int3.Up * y, new Block(BlockType.Cube, Material.Concrete, y == h - 1 ? burnt : concrete.Scale(0.85f + 0.1f * (i % 2)), Role.Wall));
+                x.C.X.Markers.Add(new Marker("shadow", c, toward.ToString()));   // burnt shadow on the face toward ground zero
+
+            }
+        }
+        // Radial lines of debris thrown outward, a wrecked vehicle on every other line.
+        for (int line = 0; line < 8; line++)
+        {
+            float a = line / 8f * MathF.Tau + 0.2f;
+            if (line % 2 == 0) Hulk(a);
+            for (float d = r + 4; d < outer; d += 3f + (Hash.Cell(new Int3(line, (int)d, 3), 99) % 3))
+            {
+                Int3 c = new(p.X + (int)MathF.Round(MathF.Cos(a) * d), 0, p.Z + (int)MathF.Round(MathF.Sin(a) * d));
+                if (Clear(c)) x.C.Set(c, new Block(BlockType.Rubble, Material.Rock, burnt.Scale(1.4f), Role.Debris));
+            }
+        }
+        void Hulk(float a)
+        {
+            // The first clear spot out along the line.
+            Int3 v = default;
+            bool found = false;
+            for (float vd = r + 8; vd < outer - 3 && !found; vd += 2f)
+            {
+                v = new(p.X + (int)MathF.Round(MathF.Cos(a) * vd), 0, p.Z + (int)MathF.Round(MathF.Sin(a) * vd));
+                found = Clear(v) && Clear(v + new Int3(2, 0, 1));
+            }
+            if (!found) return;
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 2; j++)
+                    x.C.Set(v + new Int3(i, 0, j), new Block(BlockType.Cube, Material.Rust, new Rgb(0x5a, 0x3a, 0x2a).Scale(0.8f + 0.1f * ((i + j) % 2)), Role.Debris));
+            x.C.Set(v + new Int3(1, 1, 0), new Block(BlockType.Cube, Material.Rust, new Rgb(0x4a, 0x30, 0x24), Role.Debris));
+            x.C.X.Markers.Add(new Marker("hulk", v, "a vehicle thrown outward, burnt to the frame"));
+        }
+        // Radiation signs where the dead zone ends, on the four axes.
+        foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+        {
+            Int3 post = new(p.X + (int)(dx * outer), 0, p.Z + (int)(dz * outer));
+            if (!Clear(post)) continue;
+            x.C.Set(post, new Block(BlockType.Pillar, Material.Steel, new Rgb(0x6a, 0x6a, 0x6a), Role.Decor));
+            x.C.Set(post + Int3.Up, new Block(BlockType.Sign, Material.Steel, new Rgb(0xe0, 0xc0, 0x20), Role.Decor, Dir.North));
+            x.C.X.Markers.Add(new Marker("radiation-edge", post, "the dead zone ends here"));
+        }
+    }
+
+    /// <summary>Missile launchers on low emplacement walls, tubes raised toward the sky, for defenders to man.</summary>
+    static void Launchers(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), gap = p.Int("gap", 9);
+        var olive = new Rgb(0x4a, 0x52, 0x3a);
+        for (int k = 0; k < n; k++)
+        {
+            Int3 c = new(p.X + k * gap, 0, p.Z);
+            // The emplacement: a low wall round three sides, open at the back.
+            for (int dz = -2; dz <= 2; dz++)
+                for (int dx = -2; dx <= 2; dx++)
+                    if ((Math.Abs(dx) == 2 || dz == -2) && dz != 2) x.C.Set(c + new Int3(dx, 0, dz), new Block(BlockType.Cube, Material.Concrete, new Rgb(0x6a, 0x66, 0x5a), Role.Wall));
+            // The launcher: a turntable and a box of tubes stepped up toward the sky.
+            x.C.Set(c, new Block(BlockType.Machine, Material.Steel, olive, Role.Prop));
+            foreach (var o in new[] { new Int3(0, 1, 0), new Int3(0, 2, 0), new Int3(0, 2, -1), new Int3(0, 3, -1), new Int3(1, 2, 0), new Int3(1, 3, -1) })
+                x.C.Set(c + o, new Block(BlockType.Cube, Material.Steel, olive.Scale(0.9f), Role.Decor));
+            x.C.X.Markers.Add(new Marker("weapon", c + new Int3(0, 0, 1), "a launcher for a defender to man"));
+        }
+    }
+
+    /// <summary>
+    /// A railgun aimed at the sky: a concrete mount and a barrel stepping up at 45 degrees for
+    /// tens of metres, held up on columns, its capacitor rings glowing down its length. The
+    /// landmark you see from very far off.
+    /// </summary>
+    static void Railgun(Ctx x, SitePart p)
+    {
+        int len = p.Int("len", 40);
+        var concrete = new Rgb(0x6e, 0x6a, 0x64);
+        var barrel = new Rgb(0x3a, 0x3e, 0x44);
+        for (int y = 0; y < 3; y++)
+            for (int dz = 0; dz < 6; dz++)
+                for (int dx = 0; dx < 6; dx++)
+                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, concrete.Scale(0.9f + 0.05f * ((dx + dz + y) % 3)), Role.Wall));
+        for (int k = 0; k < len; k++)
+        {
+            int bx = p.X + 3 + k, by = 3 + k;
+            for (int dz = 2; dz <= 3; dz++)
+            {
+                bool ring = k % 4 == 0;
+                x.C.Set(new Int3(bx, by, p.Z + dz), new Block(BlockType.Cube, ring ? Material.Lumen : Material.Alloy, ring ? new Rgb(0x60, 0xc8, 0xff) : barrel, ring ? Role.Light : Role.Wall));
+                x.C.Set(new Int3(bx + 1, by, p.Z + dz), new Block(BlockType.Cube, Material.Alloy, barrel.Scale(0.9f), Role.Wall));
+            }
+            // A column under the barrel every eight metres.
+            if (k % 8 == 4)
+                for (int y = 0; y < by; y++)
+                    foreach (int dz in new[] { 1, 4 })
+                        x.C.Set(new Int3(bx, y, p.Z + dz), new Block(BlockType.Pillar, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall));
+            if (k % 8 == 4)
+                for (int dz = 1; dz <= 4; dz++) x.C.Set(new Int3(bx, by - 1, p.Z + dz), new Block(BlockType.Cube, Material.Steel, new Rgb(0x5a, 0x5e, 0x62), Role.Wall));
+        }
+        Int3 muzzle = new(p.X + 3 + len, 3 + len, p.Z + 2);
+        x.C.X.Lights.Add(new LightSpot { Cell = muzzle + Int3.Up, Color = new Rgb(0xff, 0x40, 0x30), Mode = LightMode.Beacon, Energy = 2.4f, Range = 20f });
+        x.C.X.Markers.Add(new Marker("weapon", new Int3(p.X + 2, 3, p.Z + 2), "the railgun's breech"));
+    }
+
+    /// <summary>Shacks of salvage along a street: one room each, a door onto the street, someone's home.</summary>
+    static void Shacks(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), gap = p.Int("gap", 2);
+        var scrapCols = new[] { new Rgb(0x6a, 0x5a, 0x4a), new Rgb(0x5a, 0x62, 0x5a), new Rgb(0x7a, 0x5a, 0x3a), new Rgb(0x5a, 0x5a, 0x62) };
+        int at = 0;
+        for (int k = 0; k < n; k++)
+        {
+            int w = 5 + (int)(Hash.Cell(new Int3(p.X, k, p.Z), 161) % 2), d = 5;
+            Int3 W(int i, int y, int j) => new(p.X + at + i, y, p.Z + j);
+            var inside = new List<Int3>();
+            var col = scrapCols[(k + p.X) % scrapCols.Length];
+            for (int j = 0; j < d; j++)
+                for (int i = 0; i < w; i++)
+                {
+                    x.C.Set(W(i, -1, j), new Block(BlockType.Cube, Material.Scrap, col.Scale(0.7f), Role.Floor));
+                    bool edge = i == 0 || i == w - 1 || j == 0 || j == d - 1;
+                    bool door = j == 0 && (i == w / 2 || i == w / 2 - 1);
+                    for (int y = 0; y < 3; y++)
+                    {
+                        Int3 c = W(i, y, j);
+                        if (edge && !door) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, col.Scale(0.85f + 0.1f * ((i + y + j) % 2)), Role.Wall));
+                        else { x.C.Clear(c); if (!edge) inside.Add(c); }
+                    }
+                    x.C.Set(W(i, 3, j), new Block(BlockType.Cube, Material.Rust, new Rgb(0x6a, 0x4a, 0x34), Role.Roof));
+                }
+            int m = x.C.AddModule(ModuleKind.Room, "shack", 0, inside);
+            x.C.Link(x.Yard, m);
+            x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+            x.C.X.Markers.Add(new Marker("home", W(1, 0, d - 2)));
+            x.C.X.Lights.Add(new LightSpot { Cell = W(w / 2, 2, d / 2), Color = new Rgb(0xff, 0xc0, 0x70), Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Module = m });
+            at += w + gap;
+        }
+    }
+
+    /// <summary>A market corner: stalls under scrap awnings, a vendor's spot behind each.</summary>
+    static void Stalls(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), gap = p.Int("gap", 4);
+        var cloth = new[] { new Rgb(0xa0, 0x4a, 0x3a), new Rgb(0x3a, 0x6a, 0x8a), new Rgb(0xb0, 0x90, 0x40) };
+        for (int k = 0; k < n; k++)
+        {
+            Int3 c = new(p.X + k * gap, 0, p.Z);
+            x.C.Set(c, new Block(BlockType.Table, Material.Timber, new Rgb(0x6a, 0x50, 0x38), Role.Prop));
+            x.C.Set(c + new Int3(1, 0, 0), new Block(BlockType.Crate, Material.Scrap, new Rgb(0x7a, 0x6a, 0x4a), Role.Prop));
+            // The awning on a post behind the counter.
+            Int3 post = c + new Int3(-1, 0, 1);
+            for (int y = 0; y < 3; y++) x.C.Set(post + Int3.Up * y, new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x44, 0x30), Role.Decor));
+            for (int i = -1; i <= 1; i++)
+                for (int j = 0; j <= 1; j++)
+                    x.C.Set(c + new Int3(i, 3, j), new Block(BlockType.Cube, Material.Cloth, cloth[k % cloth.Length], Role.Roof));
+            x.C.X.Markers.Add(new Marker("stall", c + new Int3(0, 0, 1), "a vendor's place behind the counter"));
+        }
     }
 
     /// <summary>Fields gone wild: crop rows overgrown, a few fence posts, the odd rusted implement.</summary>

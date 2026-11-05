@@ -308,6 +308,9 @@ public partial class SurfaceTest : Node
                     if (ox == 0 && oz == 0) { ox = Math.Sign(g.Cell.X + 0.5 - site.Center.X); oz = ox == 0 ? 1 : 0; }
                     double len = Math.Sqrt(ox * ox + oz * oz), baseAngle = Math.Atan2(oz / len, ox / len);
                     double reach = Math.Max(t.ReachX, t.ReachZ) + 10;
+                    // The ground as it would be without this place's stamp (the landing pad or a neighbour may shape it too).
+                    var others = w.Source.Stamps.Where(s => s != t).ToList();
+                    float Without(double x, double z) => TerrainStamp.Compose(others, w.Source.NaturalHeight(x, z), x, z);
                     // A way up to it: any of seven straight lines fanned out from the way in (out to 60 degrees
                     // either side), on which the stamp never makes a step steeper than a body walks.
                     string worst = null;
@@ -315,12 +318,12 @@ public partial class SurfaceTest : Node
                     for (int fan = 0; fan < 7 && !walkable; fan++)
                     {
                         double ang = baseAngle + (fan - 3) * Math.PI / 9, ux = Math.Cos(ang), uz = Math.Sin(ang);
-                        float last = w.Source.SurfaceHeight(g.Cell.X + 0.5, g.Cell.Z + 0.5), lastNatural = w.Source.NaturalHeight(g.Cell.X + 0.5, g.Cell.Z + 0.5);
+                        float last = w.Source.SurfaceHeight(g.Cell.X + 0.5, g.Cell.Z + 0.5), lastNatural = Without(g.Cell.X + 0.5, g.Cell.Z + 0.5);
                         bool ok = true;
                         for (double d = 1; d <= reach && ok; d += 1)
                         {
                             double x = g.Cell.X + 0.5 + ux * d, z = g.Cell.Z + 0.5 + uz * d;
-                            float h = w.Source.SurfaceHeight(x, z), natural = w.Source.NaturalHeight(x, z);
+                            float h = w.Source.SurfaceHeight(x, z), natural = Without(x, z);
                             // A step only counts against the stamp if the stamp made it: steeper than the natural ground there.
                             bool made = Math.Abs(h - last) > Math.Abs(natural - lastNatural) + 0.25f;
                             if (t.Weight(x, z) > 0f && made && Math.Abs(h - last) > 1.05f) { ok = false; worst ??= $"{d:F0} m ({h - last:F1} m)"; }

@@ -76,6 +76,7 @@ site blast_crater
   part vehicles -44 18 count 4 gap 6 axis z
   part poles -40 -30 count 4 gap 14 h 6 axis z
   part camp -36 -16
+  part blastring 0 0 r 22 out 46
 
 site scrap_fort
   name Scrap Fort
@@ -193,3 +194,83 @@ site agri_complex
   part tower 64 36 h 20 size 4 every 5 crown tank
   part fields 0 44 w 56 d 20
   part vehicles 20 70 count 3 gap 7 axis x
+
+# ---- Faction working sites (defensible and functional, not fort-shaped) ----------------------
+
+site sam_site
+  name Air-Defence Battery
+  style military
+  entrance -16 8 west
+  part road -14 6 len 14 width 5 axis x cracks 0.05
+  part building 0 0 program command_bunker vault yes
+  part launchers 40 4 count 3 gap 9
+  part launchers 40 26 count 3 gap 9
+  part tower 70 12 h 14 size 4 every 5 crown wheel
+  part trench 36 16 len 30 axis x
+  part vehicles 4 40 count 2 gap 8 axis x
+
+site sky_railgun
+  name Sky Railgun
+  style military
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.05
+  part building 0 0 program command_bunker vault yes
+  part railgun 40 30 len 44
+  part hangar 40 0 w 30 d 18 h 9
+  part stacks 0 46 count 2 r 3 h 24 gap 6 axis x type cooling
+  part tanks 30 48 count 2 r 3 h 10 gap 5 axis x
+  part pad 4 70 r 6
+
+site comms_relay
+  name Comms Relay
+  style spaceport
+  entrance -14 6 west
+  part road -12 4 len 12 width 5 axis x cracks 0.05
+  part building 0 0 program control_tower floors 3 vault yes
+  part tower 30 2 h 24 size 4 every 5
+  part tower 30 22 h 12 size 4 every 4 crown wheel
+  part tower 46 12 h 12 size 4 every 4 crown wheel
+  part poles 0 30 count 4 gap 10 h 9 axis x
+
+site supply_depot
+  name Supply Depot
+  style industrial
+  entrance -14 10 west
+  part road -12 8 len 12 width 6 axis x cracks 0.05
+  part building 0 0 program factory_works vault yes
+  part hangar 36 0 w 28 d 18 h 9
+  part hangar 36 26 w 28 d 18 h 9
+  part pad 76 10 r 8
+  part tanks 72 30 count 3 r 3 h 9 gap 5 axis z
+  part containers 4 40 rows 2 cols 4
+
+# ---- Survivor settlements: old-world shells patched with scrap, new shacks along a street,
+# a market corner, gardens and a water tank, watch posts at the edge. No faction, no core.
+
+site survivor_hamlet
+  name Survivor Hamlet
+  style scrap
+  entrance -12 4 west
+  part road -10 2 len 52 width 4 axis x cracks 0.5
+  part building 0 -40 program farmhouse vault yes
+  part shacks 4 8 count 3 gap 2
+  part stalls 26 -2 count 2 gap 4
+  part fields 26 10 w 14 d 10 implement no
+  part tanks 44 -12 count 1 r 2 h 6
+  part tower 44 14 h 7 size 4 every 4 crown hut
+
+site survivor_town
+  name Survivor Town
+  style scrap
+  entrance -12 4 west
+  part road -10 2 len 86 width 5 axis x cracks 0.5
+  part building 0 -48 program factory_works vault yes
+  part building 40 -46 program farmhouse
+  part shacks 4 9 count 4 gap 2
+  part shacks 34 9 count 4 gap 2
+  part stalls 64 -3 count 3 gap 4
+  part fields 4 26 w 30 d 12 implement no
+  part tanks 70 -16 count 2 r 2 h 6 gap 5 axis z
+  part tower -8 -14 h 8 size 4 every 4 crown hut
+  part tower 78 14 h 8 size 4 every 4 crown hut
+  part fence -8 20 len 92 h 2 axis x gate 44 breaches 0.1 type wall

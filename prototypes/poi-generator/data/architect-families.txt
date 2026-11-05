@@ -265,13 +265,13 @@ family meridian_garrison
   faction meridian
   program garrison_hq
   core owned
-  rarity common
+  rarity uncommon
   biomes desert rock ash ice steppe fungal
   territory meridian wild
   spacing 10
   reveal 500
   ominous 0.2
-  tags military recovery
+  tags military recovery fort
   states active 6 abandoned 2 infested 1 ruined 1
   variant Outpost Talon
     seed 9001
@@ -594,3 +594,282 @@ family old_farm
     seed 9503
     site agri_complex
     tech high
+
+# ---- Faction working sites: most of what a faction holds is working ground, with defenders and
+# a core. Old-world versions turn up abandoned or ruined anywhere.
+
+family vharn_sam_site
+  tier base
+  siting ridge
+  rise 14
+  name Air-Defence Battery
+  pitch Launchers on a ridge, a radar turning, and a bunker that tracks everything overhead.
+  faction vharn
+  roster vharn
+  site sam_site
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 900
+  ominous 0.3
+  wrong 0
+  tags military working
+  states active 6 abandoned 2 ruined 1
+  variant Battery
+    seed 9601
+  variant Battery East
+    seed 9602
+  variant Battery West
+    seed 9603
+
+family meridian_railgun
+  tier base
+  siting open
+  rise 40
+  name Sky Railgun
+  pitch A barrel the length of a street aimed at the sky, and the power to fire it.
+  faction meridian
+  roster meridian
+  site sky_railgun
+  core owned
+  owner faction
+  rarity rare
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 3000
+  ominous 0.3
+  wrong 0
+  tags military working landmark
+  states active 6 abandoned 2 ruined 2
+  variant Long Gun
+    seed 9611
+  variant Long Gun East
+    seed 9612
+  variant Long Gun West
+    seed 9613
+
+family meridian_relay
+  tier outpost
+  siting peak
+  rise 24
+  name Comms Relay
+  pitch Masts and dishes on high ground, listening to the whole sky.
+  faction meridian
+  roster meridian
+  site comms_relay
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 900
+  ominous 0.3
+  wrong 0
+  tags comms working
+  states active 6 abandoned 2 ruined 1
+  variant Relay
+    seed 9621
+  variant Relay East
+    seed 9622
+  variant Relay West
+    seed 9623
+
+family exchange_depot
+  tier outpost
+  siting flat
+  rise 12
+  name Supply Depot
+  pitch Warehouses, a landing pad and fuel tanks: the Ledger's stock for the region.
+  faction exchange
+  roster meridian
+  site supply_depot
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 500
+  ominous 0.3
+  wrong 0
+  tags trade working industry
+  states active 7 abandoned 2 ruined 1
+  variant Depot
+    seed 9631
+  variant Depot East
+    seed 9632
+  variant Depot West
+    seed 9633
+
+family kessari_works
+  tier base
+  siting flat
+  rise 26
+  name Kessari Works
+  pitch An old factory the machines restarted and never let stop.
+  faction kessari
+  roster kessari
+  site factory_mid
+  style industrial
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.3
+  wrong 0
+  tags industry working machine
+  states active 6 abandoned 2 ruined 1
+  variant Works
+    seed 9641
+  variant Works East
+    seed 9642
+  variant Works West
+    seed 9643
+
+family meridian_research
+  tier outpost
+  siting flat
+  rise 6
+  name Meridian Research Station
+  pitch Labs back in use, a lift down to the sublevels, guards at the hatch.
+  faction meridian
+  roster meridian
+  program research_base
+  style lab
+  core owned
+  owner faction
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 300
+  ominous 0.3
+  wrong 0
+  tags science working
+  states active 6 abandoned 2 ruined 1
+  variant Station
+    seed 9651
+  variant Station East
+    seed 9652
+  variant Station West
+    seed 9653
+
+family exchange_market
+  tier town
+  siting flat
+  rise 10
+  name Ledger Market
+  pitch Stalls, shops and a canteen, lit and busy. The guards keep the peace.
+  faction exchange
+  roster meridian
+  program market
+  style spaceport
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 500
+  ominous 0.3
+  wrong 0
+  tags civilian working trade
+  states active 8 abandoned 1 ruined 1
+  variant Market
+    seed 9661
+  variant Market East
+    seed 9662
+  variant Market West
+    seed 9663
+
+family meridian_apartments
+  tier town
+  siting flat
+  rise 30
+  name Meridian Flats
+  pitch Apartment blocks patched up and lived in again.
+  faction meridian
+  roster meridian
+  program tower_block
+  style urban
+  core owned
+  owner faction
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 700
+  ominous 0.3
+  wrong 0
+  tags civilian working city
+  states active 7 abandoned 2 ruined 1
+  variant Block
+    seed 9671
+  variant Block East
+    seed 9672
+  variant Block West
+    seed 9673
+
+# ---- Survivor settlements: no faction and no core. Each rolls its own mood.
+
+family survivor_hamlet
+  tier camp
+  siting flat
+  rise 7
+  name Survivor Hamlet
+  pitch Shacks along a street of salvage, a market corner, gardens and a well.
+  faction none
+  roster raiders
+  site survivor_hamlet
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 400
+  ominous 0.3
+  wrong 0
+  tags settlement
+  states active 8 abandoned 2 ruined 1
+  variant Hamlet
+    seed 9681
+  variant Hamlet East
+    seed 9682
+  variant Hamlet West
+    seed 9683
+
+family survivor_town
+  tier town
+  siting flat
+  rise 9
+  name Survivor Town
+  pitch A town built in and from the ruins: walls of salvage, watch posts, a market.
+  faction none
+  roster raiders
+  site survivor_town
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 600
+  ominous 0.3
+  wrong 0
+  tags settlement
+  states active 8 abandoned 1 ruined 1
+  variant Town
+    seed 9691
+  variant Town East
+    seed 9692
+  variant Town West
+    seed 9693

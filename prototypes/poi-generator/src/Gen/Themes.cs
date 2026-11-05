@@ -125,7 +125,8 @@ public static class WorldPlacement
         var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
         // A start world: faction places only as ruins (no core, no one home), and less often.
         static bool CanRuin(FamilyDef f) => !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f;
-        float StartWeight(FamilyDef f) => theme.Start && ThemeDef.FactionOwned(f) ? 0.3f : 1f;
+        // Blast sites are rare on a start world (PoiSiting also keeps them far from the bunker).
+        float StartWeight(FamilyDef f) => !theme.Start ? 1f : ThemeDef.FactionOwned(f) ? 0.3f : f.Tags.Contains("radiation") ? 0.2f : 1f;
         var uniqueUsed = new HashSet<string>();
         for (int i = 0; i < sites.Count; i++)
         {

@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -394,6 +394,7 @@ public partial class PoiTest : Node
     {
         bool abandonedQuiet = true, infestedBloom = true, ruinedOk = true;
         float minRemoved = 1f;
+        string ruinFirst = "";
         foreach (var f in _lib.Families)
         {
             int v = 0;
@@ -404,13 +405,15 @@ public partial class PoiTest : Node
             infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
             var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
             minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
-            ruinedOk &= ru.RemovedFraction >= RuinShare && Validator.Check(ru).Count == 0;
+            var ruProblems = Validator.Check(ru);
+            if ((ru.RemovedFraction < RuinShare || ruProblems.Count > 0) && ruinFirst.Length == 0) ruinFirst = $" (first: {f.Id} lost {ru.RemovedFraction:P1}{(ruProblems.Count > 0 ? ", " + ruProblems[0] : "")})";
+            ruinedOk &= ru.RemovedFraction >= RuinShare && ruProblems.Count == 0;
         }
         var garrison = PoiFactory.Generate(_lib, _lib.Family("vharn_outpost"), 0, Rarity.Rare, PoiState.Active, 3);
         Check(garrison.Enemies.Count(e => e.Defender) > 0, $"active faction places are guarded ({garrison.Enemies.Count(e => e.Defender)} defenders in a rare Vharn garrison)");
         Check(abandonedQuiet, "abandoned places have no one on duty (wildlife, and the Bloom's creatures deep down)");
         Check(infestedBloom, "infested places have Hollow Bloom growths and Hollow or corrupted enemies");
-        Check(ruinedOk, $"ruined places lose at least {RuinShare:P0} of their blocks (least {minRemoved:P0}) and keep the loot path open");
+        Check(ruinedOk, $"ruined places lose at least {RuinShare:P0} of their blocks (least {minRemoved:P0}) and keep the loot path open{ruinFirst}");
     }
 
     void LootByRarity()
@@ -773,6 +776,80 @@ public partial class PoiTest : Node
             $"long after the fall: {ruins} old-world places, no food in {oldCaches} of their unsealed caches ({sealedFood} sealed stores kept some), " +
             $"{trees} trees grown through them, {timberStanding} unsheltered timber roof blocks still up; a worked freeholder farm is new ({farm.Age}); " +
             $"factories and farms match their world's tech level ({techPlaced} placed, {techMismatch} wrong)");
+    }
+
+    /// <summary>
+    /// What factions hold is mostly working ground: across many planets that aren't start worlds,
+    /// fortifications are at most about 15% of faction-held places, and at least five kinds of
+    /// faction-held place turn up. Every one has its core and defenders.
+    /// </summary>
+    void FactionMix()
+    {
+        int held = 0, forts = 0, noCore = 0;
+        var kinds = new HashSet<string>();
+        foreach (var theme in _lib.Themes.Where(t => !t.Match.Contains("fallen")))
+            for (int s = 0; s < 10; s++)
+            {
+                var map = PlanetMap.GenerateWorld(Hash.Combine(Hash.Of(theme.Id), (ulong)s + 300), 200, 100, 80f, theme.Id);
+                foreach (var p in WorldPlacement.Place(_lib, map, theme, Hash.Combine(0xFAC7UL, (ulong)s)).Pois)
+                {
+                    if (!p.Family.HasCore(p.State) || p.State != PoiState.Active) continue;
+                    held++;
+                    kinds.Add(p.Family.Id);
+                    if (p.Family.Tags.Contains("fort")) forts++;
+                }
+            }
+        foreach (var f in _lib.Families.Where(f => f.Core == CoreRule.Owned && f.Tags.Contains("working")))
+        {
+            var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, PoiState.Active, 5);
+            if (!p.HasCore || (!p.Enemies.Any(e => e.Defender) && !f.Tags.Contains("civilian"))) noCore++;
+        }
+        float share = held == 0 ? 1f : forts / (float)held;
+        Check(share <= 0.15f && kinds.Count >= 5 && noCore == 0,
+            $"faction ground is mostly working sites: {held} faction-held places, {forts} fortifications ({share:P0}, at most 15%), {kinds.Count} kinds ({string.Join(", ", kinds.OrderBy(k => k).Take(10))}); every working site has its core and defenders ({noCore} without)");
+    }
+
+    /// <summary>Settlements and civilian places: activity spots, links, routes, people with roles and gaits, a mood, animals by tech level, an area.</summary>
+    void TownsfolkCheck()
+    {
+        var moods = new Dictionary<Mood, int>();
+        int places = 0, bad = 0, hostileFriendly = 0, workingAnimalsHighTech = 0;
+        string first = "";
+        foreach (var f in _lib.Families.Where(f => f.Tags.Contains("settlement") || f.Tags.Contains("civilian")))
+            for (int s = 0; s < 8; s++)
+            {
+                var p = PoiFactory.Generate(_lib, f, s % f.Variants.Count, Rarity.Common, PoiState.Active, (ulong)(400 + s));
+                places++;
+                var t = p.Townsfolk;
+                moods[p.Mood] = moods.TryGetValue(p.Mood, out int n) ? n + 1 : 1;
+                if (t == null || t.Spots.Count < 3 || t.Links.Count < 2 || t.Routes.Count == 0 || !t.People.Any(c => c.Role == "guard") || t.AreaRadius <= 0
+                    || t.People.Any(c => c.Role is not ("vendor" or "rusher" or "wanderer" or "worker" or "guard")))
+                { bad++; if (first.Length == 0) first = $" (first: {f.Id} seed {400 + s}: {t?.Spots.Count ?? 0} spots, {t?.People.Count ?? 0} people)"; }
+                if (p.Mood == Mood.Hostile && p.Friendly) hostileFriendly++;
+                if (f.Tags.Contains("civilian") && (p.Mood != Mood.Peaceful || !p.Friendly)) hostileFriendly++;
+                if (t != null && (p.Layout.Variant?.Tech ?? "") == "high" && t.Animals.Any(a => a.Kind == "working")) workingAnimalsHighTech++;
+            }
+        Check(bad == 0 && hostileFriendly == 0 && workingAnimalsHighTech == 0 && moods.Count >= 2,
+            $"townsfolk: {places} lived-in places with activity spots, links, cross-town routes, vendors, workers, rushers, wanderers and guards; " +
+            $"moods {string.Join(", ", moods.Select(m => $"{m.Value} {m.Key.ToString().ToLowerInvariant()}"))}; civilian places friendly; animals by tech level{first}");
+    }
+
+    /// <summary>A blast site: the zone as data, ruins blown down round it with shadow marks, and the blasted decay on a nearby place.</summary>
+    void Blasts()
+    {
+        var site = PoiFactory.Generate(_lib, _lib.Family("blast_crater"), 0, Rarity.Uncommon, PoiState.Ruined, 3);
+        var zone = site.Layout.Extras.Blast;
+        int shadows = site.Layout.Extras.Markers.Count(m => m.Kind == "shadow"), edges = site.Layout.Extras.Markers.Count(m => m.Kind == "radiation-edge"), hulks = site.Layout.Extras.Markers.Count(m => m.Kind == "hulk");
+        var before = PoiFactory.Generate(_lib, _lib.Family("hospital"), 0, Rarity.Uncommon, PoiState.Abandoned, 3);
+        var after = PoiFactory.Generate(_lib, _lib.Family("hospital"), 0, Rarity.Uncommon, PoiState.Abandoned, 3);
+        Gen.StateTransforms.Blast(after, 1f, 0f, 0.8f, new Rng(5));
+        int roofsBefore = before.Blocks.Blocks().Count(b => b.Block.Role == Role.Roof), roofsAfter = after.Blocks.Blocks().Count(b => b.Block.Role == Role.Roof);
+        int Facing(PoiInstance p) => p.Blocks.Blocks().Count(b => b.Block.Role == Role.Wall && b.Cell.Y >= 0 && p.Blocks.Get(b.Cell + new Int3(1, 0, 0)).IsAir && !p.Layout.Occupied[b.Cell + new Int3(1, 0, 0)]);
+        int eastBefore = Facing(before), eastAfter = Facing(after);
+        var problems = Validator.Check(after);
+        Check(zone != null && zone.Fade > zone.Dead && zone.Dead > zone.Crater && shadows > 0 && edges > 0 && hulks > 0 && roofsAfter < roofsBefore / 2 && eastAfter < eastBefore && problems.Count == 0,
+            $"blast sites: crater {zone?.Crater:F0} m, dead zone to {zone?.Dead:F0} m fading by {zone?.Fade:F0} m (data for the ground tint), {shadows} shadow marks facing ground zero, {hulks} hulks thrown outward, {edges} radiation signs at the edge; " +
+            $"a hospital in the blast keeps {roofsAfter} of {roofsBefore} roof blocks and {eastAfter} of {eastBefore} walls on the side facing it, still valid{(problems.Count > 0 ? ": " + problems[0] : "")}");
     }
 
     /// <summary>Programs guarantee their must-have rooms (`lobby!`, `vault!`): every building has every one at least once.</summary>

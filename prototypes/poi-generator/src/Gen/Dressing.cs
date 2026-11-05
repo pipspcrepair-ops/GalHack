@@ -16,6 +16,7 @@ public static class Dressing
         Story(inst, rng.Fork("story"));
         Loot(lib, inst, rng.Fork("loot"));
         Enemies(lib, inst, rng.Fork("enemies"));
+        Townsfolk(lib, inst, rng.Fork("townsfolk"));
         foreach (var t in inst.Terminals) t.Text = TerminalText(inst, t);
     }
 
@@ -23,6 +24,114 @@ public static class Dressing
     {
         bool power = inst.State == PoiState.Active;
         return power ? "DOOR CONTROL // ONLINE" : "NO POWER";
+    }
+
+    // ---- townsfolk --------------------------------------------------------------------
+
+    /// <summary>A settlement's temper, from its spawn seed: mostly peaceful, some wary, a few hostile.</summary>
+    public static Mood MoodFor(ulong spawnSeed)
+    {
+        uint h = (uint)(Hash.Combine(spawnSeed, 0x300DUL) % 10);
+        return h < 5 ? Mood.Peaceful : h < 8 ? Mood.Wary : Mood.Hostile;
+    }
+
+    /// <summary>What townsfolk do in a room of this purpose.</summary>
+    static string? SpotTag(string purpose) => purpose switch
+    {
+        "market-hall" or "shop" or "market" or "stall" => "stall",
+        "office" or "workshop" or "control" or "galley" or "storage" or "warehouse" or "parts-store" or "loading-dock" or "plant" or "generator" => "work",
+        "mess" or "canteen" or "lobby" or "farm-kitchen" => "sit",
+        "quarters" or "apartment" or "shack" or "washroom" => "home",
+        "greenhouse" or "hydroponic shed" or "grow-room" or "hydroponics" or "garden" => "garden",
+        "yard" or "corridor" or "square" or "plaza" => "chat",
+        _ => null,
+    };
+
+    /// <summary>
+    /// People in a lived-in place (a settlement, or a faction's civilian place while it's in use):
+    /// activity spots by what each room is for, walkable links to the nearest few, long routes for
+    /// rushers, and a role and gait for each person. Settlements roll a mood; faction civilian
+    /// places are friendly until someone starts shooting.
+    /// </summary>
+    static void Townsfolk(PoiLibrary lib, PoiInstance inst, Rng rng)
+    {
+        var f = inst.Family;
+        bool settlement = f.Tags.Contains("settlement"), civilian = f.Tags.Contains("civilian");
+        if ((!settlement && !civilian) || inst.State != PoiState.Active) return;
+        inst.Mood = settlement ? MoodFor(inst.SpawnSeed) : Mood.Peaceful;
+        inst.Friendly = inst.Mood != Mood.Hostile;
+        var layout = inst.Layout;
+        var nav = inst.Nav();
+        var reach = nav.Reachable(layout.EntranceCell);
+        var town = new Townsfolk();
+        foreach (var m in layout.Modules)
+        {
+            string? tag = SpotTag(m.Purpose) ?? (m.Kind == ModuleKind.Corridor ? "chat" : m.Kind == ModuleKind.Outdoor && m.Index == 0 ? "chat" : null);
+            if (tag == null) continue;
+            var cells = m.Cells.Where(c => c.Y == m.Min.Y && reach.Contains(c) && g(c).IsAir).OrderBy(c => Hash.Cell(c, 151)).ToList();
+            int n = Math.Min(cells.Count / 12 + 1, tag == "chat" ? 4 : 3);
+            foreach (Int3 c in cells.Take(n)) town.Spots.Add(new ActivitySpot(tag, c, m.Index));
+        }
+        foreach (var mk in layout.Extras.Markers.Where(mk => mk.Kind is "stall" or "garden" or "home"))
+            if (reach.Contains(mk.Cell)) town.Spots.Add(new ActivitySpot(mk.Kind, mk.Cell, -1));
+        if (town.Spots.Count < 2) return;
+        // Links to the nearest few; routes between the furthest pairs.
+        float Dist(Int3 a, Int3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z)) + MathF.Abs(a.Y - b.Y) * 2f;
+        for (int i = 0; i < town.Spots.Count; i++)
+            foreach (int j in Enumerable.Range(0, town.Spots.Count).Where(j => j != i).OrderBy(j => Dist(town.Spots[i].Cell, town.Spots[j].Cell)).Take(3))
+                if (!town.Links.Contains((Math.Min(i, j), Math.Max(i, j)))) town.Links.Add((Math.Min(i, j), Math.Max(i, j)));
+        var pairs = from a in Enumerable.Range(0, town.Spots.Count) from b in Enumerable.Range(0, town.Spots.Count) where a < b select (a, b);
+        town.Routes.AddRange(pairs.OrderByDescending(p => Dist(town.Spots[p.a].Cell, town.Spots[p.b].Cell)).Take(4));
+        // People: a vendor per stall, workers at work and garden spots, guards at the way in, then rushers and wanderers.
+        var raiders = lib.Roster("raiders").Where(e => e.Kind == EnemyKind.Guard).ToList();
+        for (int i = 0; i < town.Spots.Count; i++)
+        {
+            var s = town.Spots[i];
+            if (s.Tag == "stall") town.People.Add(new CitizenSpawn("vendor", "still", s.Cell, i));
+            else if (s.Tag is "work" or "garden" && rng.Chance(0.6f)) town.People.Add(new CitizenSpawn("worker", "steady", s.Cell, i));
+        }
+        int guards = inst.Mood == Mood.Peaceful ? 2 : 4;
+        var edge = town.Spots.Select((s, i) => (s, i)).OrderBy(t => Dist(t.s.Cell, layout.EntranceCell)).Take(guards).ToList();
+        foreach (var (s, i) in edge)
+        {
+            town.People.Add(new CitizenSpawn("guard", "patrol", s.Cell, i));
+            if (inst.Mood == Mood.Hostile && raiders.Count > 0)
+                inst.Enemies.Add(new EnemySpawn(s.Cell, "Settlement guard", EnemyKind.Guard, raiders[rng.Range(0, raiders.Count)], s.Module, true));
+        }
+        int crowd = Math.Max(3, town.Spots.Count / 2);
+        for (int k = 0; k < crowd; k++)
+        {
+            int i = rng.Range(0, town.Spots.Count);
+            town.People.Add(rng.Chance(0.3f) ? new CitizenSpawn("rusher", "hurry", town.Spots[i].Cell, i) : new CitizenSpawn("wanderer", "amble", town.Spots[i].Cell, i));
+        }
+        // Animals by tech level: working beasts only where tech is low; stock where tech is low or
+        // on any farm; elsewhere machines do that work. Pets anywhere.
+        string tech = layout.Variant?.Tech is { Length: > 0 } t ? t : settlement ? "low" : "mid";
+        bool farm = f.Tags.Contains("farm");
+        if (tech == "low" || farm)
+        {
+            foreach (var s in town.Spots.Where(s => s.Tag == "garden").Take(3)) town.Animals.Add(("stock", s.Cell));
+            foreach (var mk in layout.Extras.Markers.Where(mk => mk.Kind == "pen").Take(2)) town.Animals.Add(("stock", mk.Cell));
+        }
+        if (tech == "low" && edge.Count > 0) town.Animals.Add(("working", edge[0].s.Cell));
+        foreach (var s in town.Spots.Where(s => s.Tag == "home").Take(2)) town.Animals.Add(("pet", s.Cell));
+        // The area wildlife keeps out of: a circle round every spot, with a margin.
+        town.AreaCenter = new Int3((int)town.Spots.Average(s => s.Cell.X), 0, (int)town.Spots.Average(s => s.Cell.Z));
+        town.AreaRadius = town.Spots.Max(s => Dist(s.Cell with { Y = 0 }, town.AreaCenter)) + 8f;
+        // A wary or hostile settlement shows it at the way in: barricades and a warning sign.
+        if (inst.Mood != Mood.Peaceful)
+        {
+            Int3 e = layout.EntranceCell;
+            foreach (Dir d in Dirs.Horizontal)
+            {
+                Int3 c = e + d.Vec() * 2;
+                if (!inst.Blocks.Get(c).IsAir || inst.Protected[c] || inst.Blocks.Get(c + Int3.Down).IsAir) continue;
+                inst.Blocks.Set(c, new Block(BlockType.Barricade, Material.Scrap, new Rgb(0x5a, 0x4a, 0x3a), Role.Prop));
+            }
+            inst.Story.Add(new StoryProp(inst.Mood == Mood.Hostile ? "keep out" : "warning sign", e, inst.Mood == Mood.Hostile ? "TURN BACK. WE SHOOT." : "State your business at the gate."));
+        }
+        inst.Townsfolk = town;
+        Block g(Int3 c) => inst.Blocks.Get(c);
     }
 
     // ---- loot -------------------------------------------------------------------------

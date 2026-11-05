@@ -66,6 +66,15 @@ public sealed class PoiInstance
     }
 
     /// <summary>Out in the weather: a yard, or a room open to the sky (a collapse breach, a ruin that lost its roof).</summary>
+    /// <summary>A lived-in place's temper (settlements roll it; faction civilian places are peaceful until provoked).</summary>
+    public Mood Mood;
+    /// <summary>Not hostile by default: its guards keep order and turn on you only if you start shooting (the standing system).</summary>
+    public bool Friendly;
+    /// <summary>Townsfolk as data for the ambient routine to come; null where nobody lives.</summary>
+    public Townsfolk? Townsfolk;
+    /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
+    public float Blasted;
+
     public Exposure ExposureOf(int module)
     {
         if (module < 0 || module >= Layout.Modules.Count) return Exposure.Outdoors;
@@ -85,7 +94,7 @@ public sealed class PoiInstance
     /// <summary>The whole place's age from its family and state: in use now, frozen or airless, or long abandoned.</summary>
     public static Age AgeFor(FamilyDef family, PoiState state, bool inSpace)
     {
-        if (state == PoiState.Active && family.Faction != Faction.None) return Age.New;
+        if (state == PoiState.Active && (family.Faction != Faction.None || family.Tags.Contains("settlement") || family.Tags.Contains("civilian"))) return Age.New;
         if (inSpace || family.Tags.Contains("ice") || family.Tags.Contains("preserved")) return Age.Preserved;
         return Age.OldWorld;
     }
@@ -152,13 +161,48 @@ public static class PoiFactory
         return inst;
     }
 
+    /// <summary>
+    /// Repair after the fixtures go in: a side cache that ended up walled in by the other fixtures
+    /// (a cache in a pocket behind another) is taken out rather than left unreachable.
+    /// </summary>
+    static void Unblock(PoiInstance inst)
+    {
+        var nav = inst.Nav();
+        if (!nav.Standable(inst.Layout.EntranceCell)) return;
+        var reach = nav.Reachable(inst.Layout.EntranceCell);
+        // A vault keeps at least one cache: only its extra ones can go.
+        foreach (var c in inst.Caches.Where(c => !c.Secret).ToList())
+            if (nav.AccessCell(c.Cell, reach) is not Int3 && (!c.InVault || inst.Caches.Count(o => o.InVault && o != c && nav.AccessCell(o.Cell, reach) is Int3) > 0))
+            { inst.Blocks.Set(c.Cell, Block.Air); inst.Caches.Remove(c); }
+    }
+
+    /// <summary>A core that cut the way to the vault (it stood in a narrow pass) moves to the first spot in a big room that doesn't.</summary>
+    static void RelocateCore(PoiInstance inst)
+    {
+        var g = inst.Blocks;
+        Int3 original = inst.CoreCell;
+        var core = g.Get(original);
+        g.Set(original, Block.Air);
+        var nav = inst.Nav();
+        var rooms = inst.Layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall).OrderByDescending(m => m.Cells.Count()).Take(6);
+        foreach (var m in rooms)
+            foreach (Int3 c in m.Cells.Where(c => c.Y == m.Min.Y && g.Get(c).IsAir && nav.Standable(c)).OrderBy(c => Hash.Cell(c, 401)).Take(8))
+            {
+                g.Set(c, core);
+                inst.CoreCell = c;
+                if (Reaches(inst)) return;
+                g.Set(c, Block.Air);
+            }
+        inst.CoreCell = original;
+        g.Set(original, core);
+    }
+
     static bool Reaches(PoiInstance inst)
     {
         var nav = inst.Nav();
         if (!nav.Standable(inst.Layout.EntranceCell)) return false;
         var reach = nav.Reachable(inst.Layout.EntranceCell);
-        var vault = inst.Caches.FirstOrDefault(c => c.InVault);
-        if (vault != null && nav.AccessCell(vault.Cell, reach) is not Int3) return false;
+        if (inst.Caches.Any(c => !c.Secret && nav.AccessCell(c.Cell, reach) is not Int3)) return false;
         return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
     }
 
@@ -173,15 +217,17 @@ public static class PoiFactory
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));
+        if (inst.HasCore && !Reaches(inst)) RelocateCore(inst);
+        Unblock(inst);
         using (Prof.Time("protect")) Fixtures.Protect(inst);
         inst.StructureBefore = CountStructure(inst.Blocks);
         using (Prof.Time("state"))
         {
             if (layout.Family.Damage > 0f) StateTransforms.Wreck(inst, rng.Fork("wreck"), layout.Family.Damage);
             StateTransforms.Apply(inst, rng.Fork("state"));
-            StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         }
         inst.StructureAfter = CountStructure(inst.Blocks);
+        StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something

@@ -42,7 +42,7 @@ public static class StateTransforms
             case PoiState.Ruined:
                 PowerOff(inst);
                 BlowDoors(inst);
-                Ruin(inst, rng, 0.26f);
+                Ruin(inst, rng, 0.3f);
                 break;
         }
     }
@@ -355,6 +355,9 @@ public static class StateTransforms
         }
         int before = PoiFactory.CountStructure(g);
         Carve(inst, rng, (int)(before * share), 1.6f, 3.8f);
+        // Big places (towers) protect long paths: keep carving until a fair share is really gone.
+        for (int pass = 0; pass < 4 && before - PoiFactory.CountStructure(g) < before * share * 0.6f; pass++)
+            Carve(inst, rng, (int)(before * share * 0.3f), 1.6f, 3.8f);
 
         // A whole roof comes down on one side room.
         var branches = inst.Layout.Modules.Where(m => !m.OnPath && !m.Underground).ToList();
@@ -512,6 +515,50 @@ public static class StateTransforms
                         g.Set(c, new Block(BlockType.Plant, Material.Plant, leaf, Role.Decor));
                     }
         }
+    }
+
+    /// <summary>
+    /// The "blasted" decay for a place inside a blast's radius: roofs gone, the walls that faced
+    /// ground zero stripped, interiors burnt, more of it the stronger the blast was here
+    /// (<paramref name="strength"/> 0..1). <paramref name="towardX"/>, <paramref name="towardZ"/>
+    /// point from the place toward ground zero. The protected way in survives; whatever is left
+    /// hanging comes down.
+    /// </summary>
+    public static void Blast(PoiInstance inst, float towardX, float towardZ, float strength, Rng rng)
+    {
+        if (strength <= 0f) return;
+        var g = inst.Blocks;
+        var occ = inst.Layout.Occupied;
+        var gone = new List<Int3>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (p.Y < 0 || inst.Protected[p] || b.Role is Role.Floor or Role.Core) continue;
+            if (b.Role == Role.Roof && rng.Chance(0.4f + 0.6f * strength)) { gone.Add(p); continue; }
+            if (b.Role is not (Role.Wall or Role.Window)) continue;
+            // An outer wall whose open side looks toward ground zero takes the blast face on.
+            foreach (Dir d in Dirs.Horizontal)
+            {
+                Int3 v = d.Vec();
+                if (v.X * towardX + v.Z * towardZ < 0.5f) continue;
+                Int3 n = p + v;
+                if (!g.Get(n).IsAir || occ[n]) continue;
+                if (rng.Chance(0.3f + 0.7f * strength)) gone.Add(p);
+                break;
+            }
+        }
+        foreach (Int3 p in gone) g.Set(p, Block.Air);
+        // Burnt inside: scorch and ash on the floors left open.
+        foreach (var m in inst.Layout.Modules)
+            foreach (Int3 c in m.Cells.Where(c => c.Y == m.Min.Y))
+            {
+                if (!g.Get(c).IsAir || inst.Protected[c] || g.Get(c + Int3.Down).IsAir) continue;
+                uint h = Hash.Cell(c, 211);
+                if (h % 100 < 25 * strength) g.Set(c, new Block(BlockType.Scorch, Material.Ash, new Rgb(0x1e, 0x1a, 0x18), Role.Debris));
+                else if (h % 100 < 40 * strength) g.Set(c, new Block(BlockType.Ash, Material.Ash, new Rgb(0x3a, 0x34, 0x30), Role.Debris));
+            }
+        Collapse(inst, rng);
+        Structure.DropUntethered(g);
+        inst.Blasted = strength;
     }
 
     // ---- crash sites ------------------------------------------------------------------

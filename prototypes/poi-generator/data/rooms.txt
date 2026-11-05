@@ -615,3 +615,30 @@ room grow-room
   loot 0 1
   light green
   tags food cluster
+
+# ---- civilian places in use ----------------------------------------------------------------------
+
+room market-hall
+  deco market
+  name Market hall
+  kind hall
+  width 10 16
+  props table 6 crate 3 shelf 2
+  fill 0.5
+  island
+  near shop mess
+  prefer entrance
+  loot 0 1
+  light warm
+  tags civilian cluster
+
+room shop
+  deco market
+  name Shop
+  width 4 8
+  props shelf 4 table 1 crate 1
+  fill 0.6
+  near market-hall
+  loot 1 1
+  light warm
+  tags civilian keyspot

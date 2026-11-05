@@ -433,3 +433,24 @@ program vertical_farm
   rooms top grow-room plant
   rooms deepest vault! generator
   fill grow-room hydroponics
+
+# A market or mall in use: a hall of stalls by the way in, shops round it, a canteen, offices
+# and flats above. Lit, stocked and peopled.
+program market
+  name Market
+  shapes rect 2 L 2 T 1
+  plans hall 2 plaza 2 spine 1 loop 1
+  basement same 1
+  style spaceport
+  width 28 34
+  depth 18 22
+  floors 2 3
+  levels 1 1
+  lift 0.4
+  windows 0.7
+  secrets 0 0
+  rooms ground market-hall! shop*2-3 mess lobby
+  rooms upper shop office quarters
+  rooms top office quarters control!
+  rooms deepest vault! storage
+  fill shop quarters
