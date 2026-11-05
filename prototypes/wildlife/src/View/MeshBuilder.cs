@@ -28,6 +28,18 @@ public sealed class MeshBuilder
         return b.Commit();
     });
 
+    /// <summary>
+    /// Drops the shared meshes on the main thread (at shutdown), rather than leaving their C#
+    /// wrappers to the finalizer thread. Meshes still on screen stay alive in the engine.
+    /// </summary>
+    public static void ReleaseCache()
+    {
+        var meshes = new List<ArrayMesh>();
+        foreach (var (_, mesh) in (IEnumerable<KeyValuePair<Piece, ArrayMesh>>)Cache) meshes.Add(mesh);
+        Cache.Clear();
+        foreach (ArrayMesh mesh in meshes) mesh.Dispose();
+    }
+
     public void Add(Prim p)
     {
         // Vertex colours go in linear: the shader treats COLOR as linear albedo.

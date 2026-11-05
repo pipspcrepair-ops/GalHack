@@ -82,6 +82,20 @@ public partial class Main : Node3D
 
         SwitchWorld(World);
         Input.MouseMode = Input.MouseModeEnum.Captured;
+        // Closing the window quits through Shutdown (sound stopped, caches released) rather
+        // than straight away.
+        GetTree().AutoAcceptQuit = false;
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest) Shutdown.Quit(this);
+    }
+
+    public override void _ExitTree()
+    {
+        // With no Main left to handle it, a close request must quit on its own again.
+        if (IsInsideTree()) GetTree().AutoAcceptQuit = true;
     }
 
     // ---- Worlds -----------------------------------------------------------------------

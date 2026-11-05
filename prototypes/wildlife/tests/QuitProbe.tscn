@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/QuitProbe.cs" id="1_quit"]
+
+[node name="QuitProbe" type="Node"]
+script = ExtResource("1_quit")

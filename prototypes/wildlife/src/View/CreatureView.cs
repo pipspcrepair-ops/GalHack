@@ -31,6 +31,17 @@ public static class CreatureMaterials
         return m;
     });
 
+    /// <summary>Drops the shared materials and shader on the main thread (at shutdown).</summary>
+    public static void Release()
+    {
+        var materials = new List<ShaderMaterial>();
+        foreach (var (_, material) in (IEnumerable<KeyValuePair<Species, ShaderMaterial>>)Cache) materials.Add(material);
+        Cache.Clear();
+        foreach (ShaderMaterial material in materials) material.Dispose();
+        _shader?.Dispose();
+        _shader = null;
+    }
+
     /// <summary>A plain vertex-colour material for plants and props, glowing in their own colours.</summary>
     public static ShaderMaterial Plain(float glow)
     {

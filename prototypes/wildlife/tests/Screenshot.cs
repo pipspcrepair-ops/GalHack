@@ -386,7 +386,7 @@ public partial class Screenshot : Node
             if (herd && pack && giant)
                 GD.Print($"SURVEY {seed}: " + string.Join(" | ", f.Species.Select(x => $"{x.CommonName} {x.Behaviour} {x.Body.Size:F1}")));
         }
-        GetTree().Quit(0);
+        Shutdown.Quit(this);
     }
 
     /// <summary>The planets a lineup row can show: the game's three worlds, or any seed.</summary>
@@ -458,6 +458,6 @@ public partial class Screenshot : Node
         Image image = GetViewport().GetTexture().GetImage();
         Error result = image.SavePng(_out);
         GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        Shutdown.Quit(this, result == Error.Ok ? 0 : 1);
     }
 }
