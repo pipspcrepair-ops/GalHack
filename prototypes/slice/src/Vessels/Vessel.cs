@@ -54,6 +54,21 @@ public sealed class Vessel
     /// <summary>Its production machines (constructors), one per machine block, by cell.</summary>
     public readonly SortedDictionary<Int3, Constructor> Machines = new(Comparer<Int3>.Create((a, b) => (a.X, a.Y, a.Z).CompareTo((b.X, b.Y, b.Z))));
 
+    /// <summary>
+    /// A vessel being built holds where its core was set up (its build stand) until someone first
+    /// flies it: edits wake nearby bodies, and this keeps it from dropping to the ground meanwhile.
+    /// </summary>
+    public N.Vector3? Stand;
+
+    /// <summary>Holds a vessel on its stand (called every tick until it is first flown).</summary>
+    public void HoldOnStand()
+    {
+        if (Stand is not N.Vector3 at || Controller is not VesselController c) return;
+        if (c.Frozen && N.Vector3.DistanceSquared(Body.Position, at) < 1e-6f) return;
+        c.PlaceLanded(Body, at, MathX.Heading(Body.Rotation));
+        Binding.Teleport();
+    }
+
     /// <summary>Settings the Core tab changes: power to its devices, its lights, Home, auto-transmit.</summary>
     public bool PowerOn = true, LightsOn = true, Home, AutoTransmit;
 

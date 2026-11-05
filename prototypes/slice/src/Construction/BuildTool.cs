@@ -123,7 +123,7 @@ public sealed class BuildTool
     bool Creative => _zone.WorldRules.Creative;
 
     /// <summary>How high a new vessel's core is set up above the ground it is placed on, m.</summary>
-    public const float BuildHeight = 2.25f;
+    public const float BuildHeight = 2.75f;
 
     /// <summary>The armour shapes the wheel steps through.</summary>
     public IReadOnlyList<ShapeDef> Shapes => _catalogue.Shapes;
@@ -281,6 +281,7 @@ public sealed class BuildTool
         float heading = MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics());
         Vessel v = large ? Vessel.SpawnBase(_zone, s, origin, heading) : Vessel.Spawn(_zone, s, origin, heading, landed: true);
         if (large) ClearGround(v, Int3.Zero);
+        else v.Stand = v.Body.Position;
         Placed++;
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, frame.Origin, 0.7f, -2f);
         Said?.Invoke(large ? $"{s.Name} founded: build onto its core (blocks from the palette, Tab)" : $"{s.Name} begun: build it up from its core", Tones.Good);

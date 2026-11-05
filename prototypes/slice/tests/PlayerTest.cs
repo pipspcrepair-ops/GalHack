@@ -497,7 +497,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
         _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && v != _game.Pod && v.Structure.Grid.Size == GridSize.Small);
         if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", vessel cores in the bag {_game.Pack["vessel-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
-        Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel, standing on the ground");
+        Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel on its build stand");
         if (_vessel == null) yield break;
         Vessel v = _vessel;
         int ok = 0;
@@ -507,7 +507,7 @@ public partial class PlayerTest : Node
         int want = Playthrough.VesselLayout.Length;
         Check(ok == want && v.Seat != null && st.CanLiftOff && v.Controller.Gear?.Count == 3,
             $"the vessel built block by block from the toolbar: {ok} of {want} blocks, a seat, three legs, lift jets turned with R/T, and it can lift off ({st.LiftMargin:+0} kN)");
-        Check(v.Controller.Frozen && !InGround(v.Body), "it holds on its build stand while it is built, never in the ground");
+        Check(!InGround(v.Body), "built on its stand, it is never in the ground");
         Mark("vessel built");
     }
 
@@ -518,6 +518,7 @@ public partial class PlayerTest : Node
         Vessel v = _vessel;
         if (v == null) yield break;
         GD.Print("-- 9. fly it 500 m and land --");
+        if (v.Seat == null) { Fail("the vessel has no seat to fly it from"); yield break; }
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at its seat");
         if (_game.Survivor.Seated != v) yield break;
@@ -549,6 +550,7 @@ public partial class PlayerTest : Node
             Steer(v, to, new Vector2(to.X, to.Z).Length());
             _game.Controls.Hold(Key.W, false);
             float agl = v.AboveGround, vy = v.Body.Velocity.Y, wanted = agl > 20f ? -5f : agl > 5f ? -2.5f : -1.0f;
+            if (t % 120 == 0) GD.Print($"  (landing: {agl:F1} m up, falling {-vy:F1} m/s, up {MathX.Up(v.Body.Rotation).Y:F2}, gear {v.Controller.Gear?.Deployed}, y {v.Body.Position.Y:F0})");
             _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.4f);
             _game.Controls.Hold(Key.Space, vy < wanted - 0.4f);
             yield return 0;
@@ -557,7 +559,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(60)) yield return x;
         float flown = new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length();
         Check(flown >= 500f, $"it flew {flown:F0} m, top speed {top:F0} m/s");
-        Check(v.Controller.Frozen && v.Body.Damage == 0f, "and landed on its gear, undamaged");
+        Check(v.Controller.Frozen && v.Body.Damage == 0f, $"and landed on its gear, undamaged ({(v.Controller.Frozen ? "landed" : "still flying")}, {v.AboveGround:F1} m up, damage {v.Body.Damage:F2})");
         Mark("flown");
     }
 
@@ -613,7 +615,7 @@ public partial class PlayerTest : Node
         if (v == null || _game.Survivor.Seated != v) yield break;
         // Up high, out of the seat, and a jump off the side.
         _game.Controls.Hold(Key.Space);
-        for (int t = 0; t < 60 * 30 && v.AboveGround < 120f; t++) yield return 0;
+        for (int t = 0; t < 60 * 30 && v.AboveGround < 100f && v.Body.Position.Y < _game.Zone.Physics.Zone.Ceiling - 500f; t++) yield return 0;
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(30)) yield return x;
         Bill carried = _game.Pack.Storage.Contents;

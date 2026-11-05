@@ -299,8 +299,13 @@ public sealed class Playthrough
     /// <summary>Puts what is on a toolbar slot down on the ground at a point (a core or a device).</summary>
     public IEnumerable<int> PlaceOnGround(int slot, Vector3 at)
     {
+        // Within reach of the spot first (the build tool reaches 9 m).
+        if (Game.Survivor.WorldEye().DistanceTo(at) > 7f) foreach (int x in Drive.WalkTo(at, 4.5f, 30f)) yield return x;
         foreach (int x in Select(slot)) yield return x;
         foreach (int x in Drive.LookAt(at, 8)) yield return x;
+        bool seen = WorldRay.Cast(Game.Zone, Game.Survivor, 20f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit look);
+        if (!seen || look.Point.DistanceTo(at) > 1.5f)
+            Log($"(placing on the ground at {at}: the look from {Game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} on {look.Vessel?.Name} at {look.Point}, {look.Distance:F1} m" : "meets nothing")}; aboard {Game.Survivor.Aboard?.Name}, menu {Game.Menu.IsOpen})");
         foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(3)) yield return x;
     }
@@ -354,17 +359,25 @@ public sealed class Playthrough
     }
 
     /// <summary>
-    /// The small vessel the real-player test and the screenshots build on a core: a seat at the
-    /// front, a generator and a fuel tank to the sides, a gyro behind, a main engine at the back,
-    /// two lift jets under the sides, two struts, and three legs. Every block goes on a side or
-    /// bottom face, which a player standing by the core on its build stand can see.
+    /// The small vessel the real-player test and the screenshots build on a core: a deck of a
+    /// generator, struts and a gyro round the core, a main engine at the back, a seat on top
+    /// (reached with a hop on the jetpack), and under the outer blocks two lift jets, a fuel tank
+    /// and three legs, all reachable from outside the vessel's footprint. Each
+    /// block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom, a
+    /// thruster not by its nozzle, a leg by its top).
     /// </summary>
     public static readonly (string block, Int3 on, Dir face, bool lift)[] VesselLayout =
     {
-        ("cockpit", Int3.Zero, Dir.NegZ, false), ("generator", Int3.Zero, Dir.PosX, false), ("fueltank", Int3.Zero, Dir.NegX, false), ("gyro", Int3.Zero, Dir.PosZ, false),
-        ("thruster", new Int3(0, 0, 1), Dir.PosZ, false), ("thruster", new Int3(1, 0, 0), Dir.NegY, true), ("thruster", new Int3(-1, 0, 0), Dir.NegY, true),
+        // The deck round the core, from its sides.
+        ("generator", Int3.Zero, Dir.PosX, false), ("steel", Int3.Zero, Dir.NegX, false), ("steel", Int3.Zero, Dir.NegZ, false),
+        ("steel", new Int3(0, 0, -1), Dir.NegZ, false), ("gyro", Int3.Zero, Dir.PosZ, false), ("thruster", new Int3(0, 0, 1), Dir.PosZ, false),
         ("steel", new Int3(0, 0, 1), Dir.PosX, false), ("steel", new Int3(0, 0, 1), Dir.NegX, false),
-        ("gear", new Int3(0, 0, -1), Dir.NegY, false), ("gear", new Int3(1, 0, 1), Dir.NegY, false), ("gear", new Int3(-1, 0, 1), Dir.NegY, false),
+        // The seat on top, from a hop.
+        ("cockpit", Int3.Zero, Dir.PosY, false),
+        // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
+        ("thruster", new Int3(1, 0, 0), Dir.NegY, true), ("thruster", new Int3(-1, 0, 0), Dir.NegY, true),
+        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, false), ("gear", new Int3(1, 0, 1), Dir.NegY, false),
+        ("gear", new Int3(0, 0, -2), Dir.NegY, false), ("gear", new Int3(-1, -1, 1), Dir.NegY, false),
     };
 
     /// <summary>Builds <see cref="VesselLayout"/> on a vessel's core, from toolbar slots by block, walking round it to see each face. Counts what went down.</summary>
@@ -376,22 +389,70 @@ public sealed class Playthrough
         {
             N.Vector3 cell = StructureBridge.CellCenter(v.Structure, on);
             Vector3 at = v.ToWorld(cell);
-            // Out from the face for a side face, out from the block for a bottom one (looking up under it).
-            Vector3 outward = face == Dir.NegY ? v.ToWorld(new N.Vector3(on.X, 0, on.Z) * 2f + new N.Vector3(0, 0, on.X == 0 && on.Z == 0 ? -1 : 0)) - centre
+            // A side face from out in front of it; a bottom face from just beside the block,
+            // looking up under it; a top face from beside it, on a hop of the jetpack.
+            Vector3 outward = face is Dir.NegY or Dir.PosY ? v.ToWorld(new N.Vector3(on.X, 0, on.Z) * 2f + new N.Vector3(0, 0, on.X == 0 && on.Z == 0 ? -1 : 0)) - centre
                 : v.ToWorld(face.Vec().ToVector3()) - centre;
             outward.Y = 0f;
             outward = outward.LengthSquared() < 1e-4f ? Vector3.Back : outward.Normalized();
-            Vector3 stand = at + outward * (face == Dir.NegY ? 1.4f : 2.4f);
-            foreach (int x in WalkAround(centre, new Vector3(stand.X, 0, stand.Z), 4.5f)) yield return x;
-            foreach (int x in Select(slots[block])) yield return x;
-            foreach (int x in TurnTo(lift ? ThrustingAlong(Dir.PosY) : Orientations.Identity)) yield return x;
+            Int3 target = on + face.Vec();
             bool done = false;
-            foreach (int x in PlaceBlock(slots[block], v, on, face, p => done = p)) yield return x;
+            // Where to stand: tried nearer and further until the crosshair is on that very face,
+            // as a player shuffles until the ghost sits where they want it.
+            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
+            foreach (float d in distances)
+            {
+                if (done) break;
+                Vector3 stand = at + outward * d;
+                foreach (int x in WalkAround(centre, new Vector3(stand.X, 0, stand.Z), 4.5f)) yield return x;
+                foreach (int x in Select(slots[block])) yield return x;
+                foreach (int x in TurnTo(lift ? ThrustingAlong(Dir.PosY) : Orientations.Identity)) yield return x;
+                if (face == Dir.PosY) foreach (int x in HopAndPlace(slots[block], v, on, face, p => done = p)) yield return x;
+                else
+                {
+                    N.Vector3 aim = cell + face.Vec().ToVector3() * (v.Structure.Grid.CellSize * 0.49f);
+                    foreach (int x in Drive.LookAt(v.ToWorld(aim), 6)) yield return x;
+                    if (Game.Builder.TargetVessel != v || Game.Builder.PlaceCell != target) continue;
+                    foreach (int x in PlaceBlock(slots[block], v, on, face, p => done = p)) yield return x;
+                }
+            }
             if (done) ok++;
+            else Log($"(could not place the {block} at {target}: the crosshair was on {Game.Builder.TargetCell}, placing at {Game.Builder.PlaceCell}, \"{Game.Builder.Verdict}\")");
         }
         placed(ok);
     }
 
+    /// <summary>A top face out of sight from the ground: up on the jetpack, looking down at it, and a click at the top of the hop.</summary>
+    public IEnumerable<int> HopAndPlace(int slot, Vessel v, Int3 on, Dir face, Action<bool> placed)
+    {
+        float cell = v.Structure.Grid.CellSize;
+        N.Vector3 local = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
+        Int3 target = on + face.Vec();
+        bool done = false;
+        for (int attempt = 0; attempt < 3 && !done; attempt++)
+        {
+            int before = v.Structure.Count;
+            Controls.Hold(Key.Space);
+            for (int i = 0; i < 70 && Game.Survivor.WorldEye().Y < v.ToWorld(local).Y + 0.8f; i++)
+            {
+                Drive.Face(v.ToWorld(local));
+                yield return 0;
+            }
+            Drive.Face(v.ToWorld(local));
+            yield return 0;
+            if (Game.Builder.PlaceCell != target) Log($"(the hop's crosshair: on {Game.Builder.TargetCell} of {Game.Builder.TargetVessel?.Name}, placing at {Game.Builder.PlaceCell}, eye {Game.Survivor.WorldEye().Y - v.ToWorld(local).Y:F2} m above the face)");
+            Drive.Face(v.ToWorld(local));
+            Controls.PrimaryPressed = true;
+            Controls.Primary = true;
+            yield return 0;
+            Controls.Primary = false;
+            Controls.Hold(Key.Space, false);
+            foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 5)) yield return x;
+            done = v.Structure.Has(target) && v.Structure.Count > before;
+        }
+        if (!done) Log($"(placing at {target} on {v.Name} from a hop: {Game.Builder.Verdict})");
+        placed(done);
+    }
     /// <summary>Walks round something (a structure) at a radius to reach a point on its far side, the way a person walks round a building rather than into it.</summary>
     public IEnumerable<int> WalkAround(Vector3 centre, Vector3 to, float radius)
     {
@@ -418,22 +479,25 @@ public sealed class Playthrough
         foreach (int x in Drive.WalkTo(stand, 0.8f, 40f)) yield return x;
     }
 
-    /// <summary>A flat, dry spot this far from a point (for a base or a vessel).</summary>
+/// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
     public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f)
     {
         SurfaceZone zone = Game.Zone;
-        for (int i = 0; i < 96; i++)
-        {
-            float a = startAngle + i * 0.61f, r = distance + (i / 16) * 6f;
-            var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-            float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f;
-            for (int k = 0; k < 8; k++)
+        foreach (float allow in new[] { spread, spread * 2f, spread * 4f, 4f })
+            for (int i = 0; i < 96; i++)
             {
-                float b = k * MathF.Tau / 8f;
-                worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
+                float a = startAngle + i * 0.61f, r = distance + (i / 16) * 6f;
+                var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
+                float h0 = zone.GroundAt(p.X, p.Z).Y, worst = 0f;
+                for (int k = 0; k < 8; k++)
+                {
+                    float b = k * MathF.Tau / 8f;
+                    worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
+                }
+                Vector3 g = zone.GroundAt(p.X, p.Z);
+                bool clear = zone.Vessels.All(v => v.IsWreck || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f);
+                if (h0 > 1f && worst < allow && clear) return g;
             }
-            if (h0 > 1f && worst < spread) return zone.GroundAt(p.X, p.Z);
-        }
         return zone.GroundAt(near.X + distance, near.Z);
     }
 }
