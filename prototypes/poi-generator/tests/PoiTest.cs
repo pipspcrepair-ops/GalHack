@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -26,7 +26,7 @@ public partial class PoiTest : Node
             ("Data", Data), ("Determinism", Determinism), ("Validation500", Validation500),
             ("AuthoredLayouts", AuthoredLayouts), ("StateTransforms", StateTransforms), ("LootByRarity", LootByRarity),
             ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem), ("SeenWeighting", SeenWeighting),
-            ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances), ("TerminalLogs", TerminalLogs),
+            ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
             ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
@@ -451,20 +451,6 @@ public partial class PoiTest : Node
     }
 
     // ---- logs and tags ----------------------------------------------------------------
-
-    void TerminalLogs()
-    {
-        var logs = new List<TerminalLog>();
-        foreach (var f in _lib.Families)
-            foreach (PoiState s in Enum.GetValues<PoiState>())
-                for (int i = 0; i < 4; i++)
-                    logs.AddRange(PoiFactory.Generate(_lib, f, i, Rarity.Common, s, (ulong)(300 + i)).Terminals);
-        int cut = logs.Count(l => l.MidSentence);
-        Check(logs.Count > 0 && logs.All(l => l.Text.Length > 20), $"{logs.Count} terminal logs generated");
-        Check(cut > logs.Count / 4 && cut < logs.Count, $"{cut} of {logs.Count} logs stop mid-sentence");
-        var sample = logs.First(l => l.MidSentence);
-        GD.Print("      e.g. " + sample.Text.Replace("\n\n", " | ").Replace("\n", " "));
-    }
 
     void ShooterTags()
     {

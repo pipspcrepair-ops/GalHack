@@ -112,6 +112,8 @@ public sealed class PlacedPoi
     public int CellX, CellY;
     public float X, Z;            // metres from the map's corner
     public string Planet = "";
+    /// <summary>From outside the planet's themed set: something that doesn't belong here.</summary>
+    public bool Outlier;
 
     public Rarity Rarity => Family.Rarity;
     public RevealRule Reveal => Family.Reveal;

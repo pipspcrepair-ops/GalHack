@@ -1,0 +1,54 @@
+# Placement themes: what usually turns up on a kind of world (its themed set, weighted), and the
+# share of outliers, places from outside the set that don't belong there. Outliers are rarer and
+# lean toward the ominous and the rare; every planet gets at least one, never more than the max.
+#
+#   theme <id>
+#     match     archetype[.variant] names it applies to (temperate, arid.canyon, ice.glacier...),
+#               or fallen (a post-collapse world), or default
+#     density   POIs per square kilometre
+#     outliers  min max   the share of a planet's POIs that are outliers
+#     set       family weight ...
+
+theme temperate
+  match temperate temperate.meadow temperate.rainforest
+  density 0.32
+  outliers 0.05 0.12
+  set freeholder_farm 6 meridian_garrison 3 research_base 3 hospital 2 ominous_tower 2 deep_bunker 2 crashed_freighter 3 old_mine 2 old_airfield 1 kessari_spire 1 biolab 1
+
+theme arid
+  match arid arid.dunes arid.canyon
+  density 0.3
+  outliers 0.05 0.12
+  set old_airfield 2 crashed_freighter 4 precursor_vault 1 old_mine 4 abandoned_mine 2 scrap_fort 3 vharn_outpost 3 deep_bunker 2 command_bunker 2 military_base 1 abandoned_spaceport 1 blast_crater 1
+
+theme ice
+  match ice ice.glacier ice.hot_spring
+  density 0.26
+  outliers 0.05 0.12
+  set ice_outpost 6 research_base 3 cryo_vault 2 old_mine 2 deep_bunker 3 crashed_freighter 3 kessari_spire 2 old_airfield 1 command_bunker 1
+
+theme lava
+  match lava lava.volcanic lava.lava_ocean
+  density 0.24
+  outliers 0.05 0.12
+  set vharn_outpost 5 old_mine 3 abandoned_mine 3 precursor_vault 2 crashed_freighter 3 command_bunker 2 prison_block 2 deep_bunker 2
+
+theme alien
+  match alien alien.crystal alien.fungal
+  density 0.26
+  outliers 0.06 0.14
+  set precursor_vault 4 vharn_outpost 3 kessari_spire 3 biolab 2 research_base 3 crashed_freighter 2 deep_bunker 2
+
+# A fallen world: the old civilisation's ruins after the collapse. Blast craters, dead cities,
+# bunkers and scrap forts of the roving gangs.
+theme fallen
+  match fallen
+  density 0.36
+  outliers 0.04 0.1
+  set blast_crater 4 scrap_fort 5 ominous_tower 4 deep_bunker 4 command_bunker 3 military_base 2 hospital 2 prison_block 2 old_airfield 2 abandoned_spaceport 1 cryo_vault 1 crashed_freighter 2
+
+theme default
+  match default
+  density 0.3
+  outliers 0.05 0.12
+  set crashed_freighter 3 deep_bunker 2 research_base 2 old_mine 2 vharn_outpost 2 freeholder_farm 2 meridian_garrison 2 precursor_vault 1

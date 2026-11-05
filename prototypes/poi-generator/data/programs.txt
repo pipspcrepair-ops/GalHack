@@ -1,0 +1,321 @@
+# Building programs: what a building is for, so its plan follows it. A program is a recipe of
+# shared rooms (data/rooms.txt) by band of storeys, plus its massing; a style kit re-skins it.
+#
+#   program <id>
+#     style        the kit whose palette builds it (concrete, clinic, ice, mine, meridian...)
+#     width a b    length along the spine; depth a b across it (16 or more)
+#     floors a b   storeys at and above ground; levels a b, storeys below ground
+#     surface      full (the building stands) or hut (only a stair house shows above ground)
+#     stair        switch (a switchback stairwell) or ladder (a ladderway shaft)
+#     lift p       chance of a lift core beside the stair
+#     roof         flat, access (the stair goes on up to the roof), pad (and a landing pad)
+#     windows p    share of the outer wall's middle row glazed, above ground
+#     cavern p     chance the deepest storey breaks into a natural cave
+#     breach p     chance of a collapse breach from the surface into the top basement (hut only)
+#     secrets a b  hidden rooms behind breakable walls
+#     hall <band> <room>   on those storeys, one side of the spine is a single great room
+#     rooms <band> <room>[!][*min-max][?] ...   ! a must on every such storey, ? optional
+#         bands: ground, upper (between ground and top), top, above (every storey above ground),
+#                surface (ground and above), basement, shallow (sublevel 1), deep (lower half),
+#                deepest (the lowest storey), any
+#     fill         rooms that fill whatever is left
+
+# ---- the deep places ------------------------------------------------------------------------------
+
+program bunker
+  name Deep Bunker
+  style concrete
+  width 24 32
+  depth 16 20
+  floors 1 1
+  levels 4 5
+  surface hut
+  lift 0.45
+  windows 0
+  cavern 0.7
+  breach 0.45
+  secrets 1 2
+  rooms shallow security! quarters*1-2 mess storage
+  rooms basement storage office armoury? plant
+  rooms deep archive containment? generator workshop
+  rooms deepest vault! chapel? generator
+  fill storage office quarters
+
+program cryo_vault
+  name Cryo Vault
+  style clinic
+  width 26 32
+  depth 18 20
+  floors 1 1
+  levels 4 5
+  surface hut
+  lift 0.8
+  windows 0
+  cavern 0.25
+  breach 0.3
+  secrets 1 2
+  hall basement cryo-bay
+  rooms shallow decon! monitor security
+  rooms basement monitor plant storage
+  rooms deep plant generator monitor
+  rooms deepest vault! monitor reactor?
+  fill storage monitor
+
+program biolab
+  name Biolab
+  style meridian
+  width 24 30
+  depth 18 20
+  floors 1 2
+  levels 3 4
+  surface full
+  lift 0.6
+  windows 0.35
+  cavern 0.5
+  secrets 1 2
+  rooms ground lobby! security office
+  rooms upper office archive lab
+  rooms basement lab*1-2 containment cold-store storage
+  rooms deep containment*1-2 lab theatre plant
+  rooms deepest vault! containment reactor?
+  fill storage lab
+
+# ---- research ------------------------------------------------------------------------------------------
+
+program research_base
+  name Abandoned Research Base
+  style meridian
+  width 24 30
+  depth 16 20
+  floors 1 2
+  levels 3 4
+  surface full
+  lift 0.7
+  roof flat
+  windows 0.4
+  cavern 0.45
+  secrets 1 2
+  rooms ground lobby! security office
+  rooms upper office archive quarters
+  rooms shallow lab*1-2 storage cold-store
+  rooms basement lab containment archive plant
+  rooms deepest vault! containment generator?
+  fill storage office lab
+
+program ice_outpost
+  name Ice Research Outpost
+  style ice
+  width 22 28
+  depth 16 18
+  floors 1 1
+  levels 3 4
+  surface hut
+  lift 0.4
+  windows 0
+  cavern 0.85
+  breach 0.4
+  secrets 1 1
+  rooms shallow quarters mess lab storage
+  rooms basement lab cold-store archive plant
+  rooms deep lab cold-store containment
+  rooms deepest vault! lab
+  fill storage cold-store
+
+# ---- above ground -------------------------------------------------------------------------------------
+
+program tower_block
+  name Ominous Tower
+  style concrete
+  width 20 24
+  depth 16 18
+  floors 8 12
+  levels 1 1
+  lift 0.8
+  roof access
+  windows 0.55
+  secrets 1 2
+  collapse 0.12
+  rooms ground lobby! security storage
+  rooms upper office*1-2 quarters*1-2 archive washroom
+  rooms top command! office
+  rooms basement generator! storage plant
+  fill office quarters storage
+
+program hospital
+  name Abandoned Hospital
+  style clinic
+  width 26 32
+  depth 18 20
+  floors 4 6
+  levels 2 2
+  lift 1
+  roof pad
+  windows 0.55
+  secrets 1 2
+  rooms ground lobby! nurses security pharmacy
+  rooms upper ward*1-2 nurses theatre pharmacy lab
+  rooms top ward theatre quarantine
+  rooms shallow mortuary! storage plant
+  rooms deepest quarantine*1-2 decon! vault!
+  fill ward storage
+
+program control_tower
+  name Control Tower
+  style concrete
+  width 18 20
+  depth 16 16
+  floors 4 5
+  levels 2 2
+  lift 0.3
+  roof access
+  windows 0.75
+  secrets 1 1
+  rooms ground lobby! security
+  rooms upper office archive
+  rooms top control!
+  rooms basement storage armoury generator
+  rooms deepest vault! command?
+  fill office storage
+
+program terminal
+  name Spaceport Terminal
+  style meridian
+  width 30 36
+  depth 18 20
+  floors 2 3
+  levels 1 2
+  lift 0.8
+  roof pad
+  windows 0.65
+  secrets 1 1
+  hall ground lobby
+  rooms ground security! office storage
+  rooms upper office quarters mess archive
+  rooms top control! office
+  rooms basement storage*2 plant workshop
+  rooms deepest vault! storage
+  fill office storage
+
+program hangar
+  name Hangar
+  style concrete
+  width 28 34
+  depth 18 20
+  floors 1 1
+  levels 0 0
+  lift 0
+  windows 0.25
+  hall ground workshop
+  rooms ground storage office workshop
+  fill storage
+
+# ---- military, law and order -------------------------------------------------------------------------
+
+program command_bunker
+  name Command Bunker
+  style concrete
+  width 26 32
+  depth 18 20
+  floors 1 1
+  levels 3 4
+  surface hut
+  lift 0.4
+  windows 0
+  cavern 0.4
+  breach 0.35
+  secrets 1 2
+  rooms shallow security! armoury quarters*1-2 mess
+  rooms basement storage armoury? office generator
+  rooms deep command! storage workshop
+  rooms deepest vault! armoury
+  fill storage quarters
+
+program barracks
+  name Barracks
+  style concrete
+  width 22 28
+  depth 16 18
+  floors 1 2
+  levels 0 1
+  lift 0
+  windows 0.4
+  rooms ground security! mess quarters*1-2
+  rooms upper quarters*2-3 washroom
+  rooms basement armoury storage
+  rooms deepest vault!
+  fill quarters storage
+
+program garrison_hq
+  name Meridian Garrison
+  style meridian
+  width 24 30
+  depth 16 20
+  floors 2 3
+  levels 1 2
+  lift 0.6
+  roof pad
+  windows 0.45
+  secrets 0 1
+  rooms ground lobby! security armoury
+  rooms upper quarters*1-2 office mess
+  rooms top control! office
+  rooms basement storage armoury generator
+  rooms deepest vault!
+  fill storage quarters
+
+program prison
+  name Prison Block
+  style concrete
+  width 28 34
+  depth 18 20
+  floors 2 3
+  levels 2 3
+  lift 0.5
+  windows 0.15
+  secrets 2 3
+  rooms ground security! guardroom lobby
+  rooms upper cellblock*2-3 guardroom
+  rooms top guardroom command
+  rooms basement cellblock solitary mess storage
+  rooms deepest evidence! solitary vault
+  fill cellblock storage
+
+# ---- industry ------------------------------------------------------------------------------------------
+
+program mine_works
+  name Old Mine
+  style mine
+  width 24 30
+  depth 16 18
+  floors 1 1
+  levels 4 5
+  surface hut
+  stair ladder
+  lift 0.85
+  windows 0
+  cavern 0.75
+  breach 0.3
+  secrets 1 2
+  rooms shallow ore-store stope magazine storage
+  rooms basement stope*2-3 ore-store pump-hall
+  rooms deep stope*2 ore-store
+  rooms deepest vault! stope
+  fill stope ore-store
+
+program pump_station
+  name Pump Station
+  style concrete
+  width 26 30
+  depth 18 20
+  floors 1 2
+  levels 2 3
+  lift 0.5
+  windows 0.3
+  cavern 0.3
+  secrets 1 1
+  hall basement pump-hall
+  rooms ground lobby! control
+  rooms upper office quarters
+  rooms basement plant generator
+  rooms deepest vault! reactor
+  fill storage plant

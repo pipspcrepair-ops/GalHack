@@ -115,10 +115,13 @@ public partial class Overlay : Control
         }
 
         // The core: a diamond with a ring, so it stands out from everything else.
-        var core = C(_poi.CoreCell);
-        float k = s * 0.9f;
-        DrawColoredPolygon(new[] { core + new Vector2(0, -k), core + new Vector2(k, 0), core + new Vector2(0, k), core + new Vector2(-k, 0) }, CoreColor);
-        DrawArc(core, k * 1.7f, 0, Mathf.Tau, 24, CoreColor, 2f);
+        if (_poi.HasCore)
+        {
+            var core = C(_poi.CoreCell);
+            float k = s * 0.9f;
+            DrawColoredPolygon(new[] { core + new Vector2(0, -k), core + new Vector2(k, 0), core + new Vector2(0, k), core + new Vector2(-k, 0) }, CoreColor);
+            DrawArc(core, k * 1.7f, 0, Mathf.Tau, 24, CoreColor, 2f);
+        }
 
         if (PlayerCell is Vector3 pc)
         {

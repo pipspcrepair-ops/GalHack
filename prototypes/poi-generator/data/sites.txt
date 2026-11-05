@@ -1,0 +1,103 @@
+# Site plans: hand-authored landmarks, the Empyrion way. Each plan places its parts (buildings
+# from data/programs.txt, and yard features) in site cells, metres from the site origin; the
+# buildings' rooms are planned with the family variant's seed, so a landmark is always the same
+# place. Buildings face west (their way in is on their west side) unless turned with rot.
+#
+#   site <id>
+#     style      the kit the yard and buildings use unless a part names its own
+#     entrance   x z facing      where you arrive
+#     part <kind> <x> <z> [rot n] [key value]...
+#       building  program <id> [w d floors levels style vault yes]   vault yes: it holds the prize
+#       runway    len width axis cracks;  road  len width axis;  pad  r
+#       tanks     count r h gap axis;  stacks  count r h gap type;  containers  rows cols
+#       fence     len h axis gate breaches type(mesh|wall);  poles  count gap h axis
+#       tower     h size every crown(lamp|wheel|hut) loot;  crater  r depth radiation
+#       aircraft  len;  rocket  decks r;  trench  len axis;  vehicles  count gap axis
+#       camp      gang(yes|no);  obelisks  count h spread
+
+site old_airfield
+  name Old Airfield
+  style concrete
+  entrance -12 7 west
+  part runway 0 0 len 160 width 14 axis x cracks 0.14
+  part road 44 14 len 22 width 6 axis z cracks 0.2
+  part road 44 36 len 50 width 6 axis x cracks 0.2
+  part building 70 44 program control_tower vault yes
+  part building 108 44 program hangar w 30
+  part building 108 70 program hangar w 30
+  part tanks 152 50 count 2 r 4 h 9 gap 5 axis z
+  part aircraft 14 26 len 18
+  part aircraft 120 18 len 14
+  part containers 50 70 rows 2 cols 3
+  part poles 46 34 count 5 gap 12 h 7 axis x
+  part vehicles 60 22 count 3 gap 7 axis x
+  part fence -6 96 len 175 h 2 axis x gate 40 breaches 0.1
+  part camp 30 52
+
+site spaceport
+  name Abandoned Spaceport
+  style meridian
+  entrance -96 4 west
+  part rocket 0 0 decks 7 r 4
+  part pad 0 0 r 15
+  part road -90 2 len 74 width 6 axis x cracks 0.1
+  part building 34 -46 program terminal vault yes
+  part building -56 -46 program control_tower floors 5
+  part building 40 30 program hangar w 32
+  part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part containers 84 -6 rows 3 cols 3
+  part poles -60 -6 count 6 gap 12 h 8 axis x
+  part vehicles -30 20 count 3 gap 8 axis x
+  part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
+
+site military_base
+  name Abandoned Military Base
+  style concrete
+  entrance -18 46 west
+  part fence -6 0 len 92 h 3 axis z gate 46 breaches 0.06 type wall
+  part fence -6 0 len 130 h 3 axis x gate 70 breaches 0.08 type wall
+  part fence -6 92 len 130 h 3 axis x gate 40 breaches 0.08 type wall
+  part tower -2 4 h 9 size 5 every 4 crown hut loot yes
+  part tower -2 84 h 9 size 5 every 4 crown hut
+  part building 12 8 program barracks
+  part building 56 46 program command_bunker vault yes
+  part vehicles 14 66 count 5 gap 7 axis x
+  part pad 104 18 r 8
+  part tower 102 72 h 26 size 4 every 5 crown lamp
+  part trench 60 30 len 34 axis x
+  part containers 16 78 rows 1 cols 3
+
+site blast_crater
+  name Blast Crater
+  style concrete
+  entrance -64 0 west
+  part crater 0 0 r 22 depth 8 radiation 14
+  part building 32 -40 program bunker vault yes
+  part vehicles -44 18 count 4 gap 6 axis z
+  part poles -40 -30 count 4 gap 14 h 6 axis z
+  part camp -36 -16
+
+site scrap_fort
+  name Scrap Fort
+  style concrete
+  entrance -24 22 west
+  part containers 0 -6 rows 1 cols 6
+  part vehicles 0 54 count 7 gap 8 axis x
+  part fence -8 -2 len 56 h 3 axis z gate 24 breaches 0 type wall
+  part fence 60 -2 len 56 h 3 axis z gate 30 breaches 0.04 type wall
+  part tower -6 -12 h 9 size 5 every 4 crown hut loot yes
+  part tower 62 60 h 9 size 5 every 4 crown hut
+  part building 18 8 program hangar w 30 d 18
+  part camp 8 44 gang yes
+  part camp 30 46 gang yes
+
+site old_mine
+  name Old Mine Works
+  style mine
+  entrance -46 10 west
+  part building 0 0 program mine_works vault yes
+  part tower -16 2 h 16 size 5 every 5 crown wheel
+  part tanks -26 -16 count 1 r 3 h 7
+  part vehicles -34 22 count 3 gap 6 axis x
+  part road -44 8 len 30 width 5 axis x cracks 0.25
+  part camp -24 30

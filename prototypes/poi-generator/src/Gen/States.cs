@@ -68,6 +68,8 @@ public static class StateTransforms
         foreach (var d in inst.Layout.Doorways)
         {
             if (d.ModuleB == inst.Layout.VaultModule) continue; // vault doors hold
+            if (d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant)) continue; // so do locks
+            if (inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)))) continue; // lift doors follow the car
             byte state = rng.Chance(0.7f) ? usual : other;
             foreach (Int3 c in d.Cells) inst.Blocks.At(c).Variant = state;
         }
@@ -77,15 +79,20 @@ public static class StateTransforms
     static void BlowDoors(PoiInstance inst)
     {
         foreach (var d in inst.Layout.Doorways)
+        {
+            bool lift = inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)));
+            bool locked = d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant);
             foreach (Int3 c in d.Cells)
-                if (d.ModuleB == inst.Layout.VaultModule) inst.Blocks.At(c).Variant = DoorState.Jammed;
+                if (d.ModuleB == inst.Layout.VaultModule || locked) continue;          // vault and secure doors hold
+                else if (lift) inst.Blocks.At(c).Variant = DoorState.Closed;
                 else inst.Blocks.Set(c, Block.Air);
+        }
         foreach (Int3 c in inst.Layout.ExitCells) inst.Blocks.Set(c, Block.Air);
     }
 
     /// <summary>Floor cells inside a module you could stand in right now.</summary>
     public static List<Int3> FloorCells(PoiInstance inst, PlacedModule m, NavGrid nav) =>
-        m.Cells.Where(c => inst.Blocks.Get(c).IsAir && nav.Standable(c)).ToList();
+        m.Cells.Where(c => inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LiftAt(c) && !nav.LadderAt(c)).ToList();
 
     static bool NextToWall(PoiInstance inst, Int3 c)
     {
@@ -215,7 +222,7 @@ public static class StateTransforms
         rng.Shuffle(tops);
         foreach (Int3 t in tops.Take(Math.Clamp(layout.Modules.Count * 2 / 3, 3, 10)))
             Grow(inst, t, rng.Between(10, 24), rng, insideOnly: false);
-        var spireHost = layout.Modules[layout.CoreModule];
+        var spireHost = layout.Modules[layout.CoreModule >= 0 ? layout.CoreModule : layout.KeyModules.Count > 0 ? layout.KeyModules[0] : layout.VaultModule];
         Int3? top = TopOf(inst, spireHost);
         if (top is Int3 st) Spire(inst, st, rng.Between(9, 15), rng);
     }
@@ -229,6 +236,9 @@ public static class StateTransforms
         }
         return false;
     }
+
+    /// <summary>A Bloom mass inside a place, for the depth pass: it creeps in wherever it is deep enough.</summary>
+    public static void GrowAt(PoiInstance inst, Int3 seed, int size, Rng rng) => Grow(inst, seed, size, rng, insideOnly: true);
 
     /// <summary>A lumpy mass that creeps over surfaces from a seed cell.</summary>
     static void Grow(PoiInstance inst, Int3 seed, int size, Rng rng, bool insideOnly)
@@ -416,8 +426,9 @@ public static class StateTransforms
     static void Collapse(PoiInstance inst, Rng rng)
     {
         var g = inst.Blocks;
-        var floating = Structure.Floating(g, inst.Layout.Occupied);
-        var nav = new NavGrid(g, inst.Layout.Occupied);
+        var anchors = inst.Layout.Extras.InSpace ? LayoutCheck.StationAnchors(inst.Layout) : null;
+        var floating = Structure.Floating(g, inst.Layout.Occupied, anchors);
+        var nav = new NavGrid(g, inst.Layout.Occupied, null, inst.Layout.Extras.InSpace);
         foreach (Int3 p in floating) g.Set(p, Block.Air);
         foreach (Int3 p in floating)
         {
@@ -428,7 +439,7 @@ public static class StateTransforms
                 Put(inst, c, BlockType.Rubble, Material.Rock, g.Get(c + Int3.Down).Color.Scale(0.8f), Role.Debris);
         }
         // Rubble can't hang either.
-        foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied)) g.Set(p, Block.Air);
+        foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied, anchors)) g.Set(p, Block.Air);
     }
 
     static bool OpenToSky(BlockGrid g, Int3 c)
@@ -471,14 +482,16 @@ public static class Structure
     /// Every block not joined (face to face, through other blocks) to the ground. Blocks below
     /// ground level that touch rock count as grounded.
     /// </summary>
-    public static List<Int3> Floating(BlockGrid g, CellMask occupied)
+    public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null)
     {
-        var nav = new NavGrid(g, occupied);
+        bool space = anchors != null;
+        var nav = new NavGrid(g, occupied, null, space);
         var grounded = new CellMask(g.Min, g.Size);
         var queue = new Queue<Int3>();
+        var anchorSet = anchors != null ? new HashSet<Int3>(anchors) : null;
         foreach (var (p, _) in g.Blocks())
         {
-            bool anchor = p.Y == g.Min.Y;
+            bool anchor = space ? anchorSet!.Contains(p) : p.Y == g.Min.Y;
             if (!anchor)
                 foreach (Dir d in Dirs.All)
                     if (nav.IsRock(p + d.Vec())) { anchor = true; break; }

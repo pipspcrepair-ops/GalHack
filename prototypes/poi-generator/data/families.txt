@@ -7,7 +7,7 @@
 #   roster <section>      rosters.txt section for its defenders (default: the faction id)
 #   kit <kit> [tag]       the faction kit (and module tag) the layout is built from
 #   deep <kit> [tag]      a second kit for steps written "deep:<kind>" (deeper levels)
-#   rarity                common, uncommon or rare (the rarity ladder)
+#   rarity                common, uncommon, rare, exotic or unique (the rarity ladder)
 #   biomes                desert rock ash ice steppe fungal
 #   territory             faction territories it can spawn in, "wild" (no one's), or "any"
 #   near/avoid <f> <r>    within / beyond r map cells of f: "deposits", "territory:<faction>",
@@ -27,6 +27,8 @@
 family vharn_outpost
   name Vharn Garrison
   faction vharn
+  tags military alien
+  pitch A Vharn garrison grown into the rock: guarded, with a core you can hijack.
   kit vharn
   rarity common
   biomes rock ash desert fungal
@@ -69,6 +71,8 @@ family vharn_outpost
 family freeholder_farm
   name Freeholder Farm
   faction freeholders
+  tags farm recovery
+  pitch Survivors farming the ruins of the old world.
   kit freeholder farm
   rarity common
   biomes steppe fungal desert
@@ -107,6 +111,9 @@ family freeholder_farm
 family abandoned_mine
   name Abandoned Mine
   faction freeholders
+  tags mine ore
+  ominous 0.5
+  pitch A Freeholder mine that dug into something older two levels down.
   kit freeholder mine
   deep precursor
   rarity common
@@ -140,6 +147,9 @@ family abandoned_mine
 family research_lab
   name Research Station
   faction meridian
+  tags science
+  ominous 0.4
+  pitch A buried Meridian lab, recovering old-world tech.
   kit meridian lab
   rarity uncommon
   biomes ice ash rock
@@ -171,6 +181,9 @@ family research_lab
 family crashed_freighter
   name Crashed Freighter
   faction meridian
+  core none
+  tags wreck salvage ship
+  pitch A freighter came down hard. No one holds it now: strip it, or fit a core and fly it out.
   kit meridian ship
   rarity common
   biomes desert ash ice rock steppe fungal
@@ -203,6 +216,8 @@ family crashed_freighter
 family kessari_spire
   name Kessari Relay Spire
   faction kessari
+  tags machine
+  pitch Old-world machines, woken and independent, signalling to each other.
   kit kessari
   rarity uncommon
   biomes rock ice desert
@@ -229,6 +244,10 @@ family kessari_spire
 family precursor_vault
   name Precursor Vault
   faction none
+  core none
+  tags alien precursor
+  ominous 0.4
+  pitch Black stone that hums. Something older than everyone built it, and sealed it.
   roster precursor
   kit precursor
   rarity rare

@@ -193,6 +193,7 @@ public partial class PoiView : Node3D
         }
 
         // The core always gives off a little light; less when dormant.
+        if (!Poi.HasCore) return;
         var core = Poi.Blocks.Get(Poi.CoreCell);
         float coreEnergy = core.Variant == 1 ? 0.35f : 1.4f;
         AddLight(new Vector3(Poi.CoreCell.X + 0.5f, Poi.CoreCell.Y + 1.6f, Poi.CoreCell.Z + 0.5f), new Color("3de8ff"), coreEnergy, 6f,
@@ -238,7 +239,7 @@ public partial class PoiView : Node3D
         string core = Poi.State == PoiState.Active
             ? "BASE CORE // ONLINE\n\nThis core runs the base. Hijack it (hold E, in the full game) and the base is yours.\nOr destroy it and place your own."
             : "BASE CORE // DORMANT\n\nThe core still holds a charge. Restart it to claim the base,\nor tear it out and place your own.";
-        Interactables.Add(new Interactable(new Vector3(Poi.CoreCell.X + 0.5f, Poi.CoreCell.Y + 1f, Poi.CoreCell.Z + 0.5f), "CORE", core));
+        if (Poi.HasCore) Interactables.Add(new Interactable(new Vector3(Poi.CoreCell.X + 0.5f, Poi.CoreCell.Y + 1f, Poi.CoreCell.Z + 0.5f), "CORE", core));
         foreach (var c in Poi.Caches)
         {
             string items = c.Items.Count == 0 ? "Empty. Someone got here first." : string.Join("\n", c.Items.Select(i => $"  {i.Name}  ({i.Value} cr)"));

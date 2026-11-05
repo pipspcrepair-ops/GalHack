@@ -1,24 +1,77 @@
-# Loot pool.   tier  value  [unique]  name
-# Tier 1 is everyday salvage, tier 4 is the stuff you cross a system for. "unique" marks a
-# unique material: only rare places can roll it.
+# Loot pool: real shared/Items ids on the five-step rarity ladder.
+#   id  rarity  tags  name
+# Tags weight what a place holds: a hospital's caches lean medical, an armoury's military, a
+# mine's ore. A cache's tier (the place's rarity, how deep and dangerous its storey is, and
+# whether it's a vault or a hidden stash) decides which rarities it rolls; the PoiTest checks
+# every id and rarity here against shared/Items/data/items.json.
 
-1   4  Scrap Metal
-1   6  Wiring Bundle
-1   5  Ration Pack
-1   7  Med Gel
-1   8  Ammo Box
-1   6  Filter Cartridge
-2  18  Alloy Plate
-2  22  Power Cell
-2  26  Circuit Board
-2  20  Sealant Canister
-2  30  Fuel Rod
-3  55  Combine Data Shard
-3  60  Vharn Resin Core
-3  65  Kessari Logic Lattice
-3  70  Plasma Coupling
-3  58  Weapon Schematic
-4 150  unique  Precursor Glyphstone
-4 140  unique  Hollow Pearl
-4 170  unique  Starmetal Ingot
-4 160  unique  Living Crystal
+# ---- common -------------------------------------------------------------------------------
+iron-bar            common    metal,salvage,industry     Iron bar
+copper-bar          common    metal,salvage,industry     Copper bar
+silicon-wafer       common    tech,science               Silicon wafer
+graphite            common    industry                   Graphite
+glass               common    salvage                    Glass pane
+polymer             common    salvage,industry           Polymer
+ceramic             common    salvage                    Ceramic tile
+hull-plate          common    salvage,ship               Hull plate
+copper-wire         common    tech,salvage               Copper wire
+circuit-board       common    tech,science               Circuit board
+servo               common    tech,industry              Servo
+gun-barrel          common    military                   Gun barrel
+propellant          common    military,fuel              Propellant
+o2-bottle           common    medical,space,ship         Oxygen bottle
+medkit              common    medical                    Medkit
+biofuel             common    fuel,food                  Biofuel
+energy-cell         common    tech,fuel                  Energy cell
+fuel-pack           common    fuel,industry              Burnstone pack
+pistol-rounds       common    military,ammo              Pistol rounds
+belt-12mm           common    military,ammo              12 mm belt
+iron-ore            common    ore                        Iron ore
+copper-ore          common    ore                        Copper ore
+silicon-ore         common    ore                        Silicon ore
+biomass             common    food,science               Biomass
+ice                 common    ice                        Ice
+
+# ---- uncommon ------------------------------------------------------------------------------
+control-unit        uncommon  tech,science,ship          Control unit
+power-unit          uncommon  tech,industry,ship         Power unit
+large-fuel-pack     uncommon  fuel                       Large burnstone pack
+shells-40mm         uncommon  military,ammo              40 mm shells
+cobalt-bar          uncommon  metal,industry             Cobalt bar
+neodymium-bar       uncommon  metal,tech                 Neodymium bar
+gold-bar            uncommon  metal,vault                Gold bar
+magnet              uncommon  tech                       Neodymium magnet
+machine-frame       uncommon  industry,ship              Machine frame
+logic-module        uncommon  tech,science               Logic module
+explosive-charge    uncommon  military,mine              Explosive charge
+thrust-assembly     uncommon  ship                       Thrust assembly
+rocket              uncommon  military,ammo              Rocket
+cobalt-ore          uncommon  ore                        Cobalt ore
+gold-ore            uncommon  ore,mine                   Gold ore
+
+# ---- rare ------------------------------------------------------------------------------------
+fold-crystal        rare      science,alien              Fold crystal
+emberite            rare      industry,volcanic          Refined emberite
+starsilver-bar      rare      metal,vault                Starsilver bar
+field-emitter       rare      tech,science               Field emitter
+warp-coil           rare      ship,tech                  Warp coil
+fusion-core         rare      ship,industry,reactor      Fusion core
+fusion-cell         rare      reactor,fuel               Fusion cell
+plasma-charge       rare      military,ammo              Plasma charge
+fold-crystal-raw    rare      ore,alien                  Raw fold crystal
+
+# ---- exotic ----------------------------------------------------------------------------------
+voidglass           exotic    science,alien              Voidglass pane
+stormcore           exotic    tech,weather               Charged stormcore
+rimefire            exotic    ice,science                Stilled rimefire
+voidglass-lens      exotic    science,tech               Voidglass lens
+storm-capacitor     exotic    tech,weather,reactor       Storm capacitor
+rimefire-injector   exotic    ship,ice                   Rimefire injector
+
+# ---- unique: only from explored places ---------------------------------------------------------
+precursor-alloy     unique    alien,precursor,vault      Precursor alloy
+echo-shard          unique    alien,precursor            Echo shard
+lattice-core        unique    tech,ship,vault            Lattice core
+lattice-array       unique    tech,ship                  Lattice array
+lattice-processor   unique    tech,science               Lattice processor
+charge-plating      unique    military,ship              Charge plating
