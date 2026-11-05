@@ -26,7 +26,8 @@ public readonly record struct Contact(Vector3 Point, Vector3 Normal, Body Other,
 /// <summary>
 /// One collision, as the rest of the game hears about it. <see cref="Other"/> is null for the
 /// ground or anything else fixed. Speed is the closing speed along the normal, m/s; damage is
-/// what each side took (ramming: both the same).
+/// what <see cref="Body"/> took (ramming: both the same, unless one side is a player, whose own
+/// safe speed is higher).
 /// </summary>
 public sealed record ImpactInfo(
     Body Body,

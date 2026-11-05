@@ -7,19 +7,33 @@ namespace GalHack.Physics;
 /// Holds a hover vessel at its ride height (ported from ship-handling's physics module, the
 /// same rules). Each hover engine probes straight down for ground or water; the vessel rides
 /// at the engines' average clearance. Look-ahead probes read the ground in front so it rises
-/// over rocks early instead of snagging, and refuse slopes steeper than the limit. Tilt follows
-/// the ground and settles within a second after a bump or a jump.
+/// over rocks early instead of snagging.
+///
+/// It follows the ground's attitude, pitching and rolling to the plane through what its engines
+/// and look-ahead probes see (never more than the slope limit), so its nose comes up as it
+/// reaches a rise and it drives down into and back out of dips, dug holes and craters. The
+/// look-ahead points keep a short gap from tipping it: a dug trench narrower than the footprint
+/// is just a dip the engines average over. Slopes are judged the same way, as a grade across
+/// the vessel's own length (the rise from the ground under it to the ground ahead, over the run),
+/// not by the face at one point: a crater's short, steep lip is climbed, a long ramp or cliff
+/// steeper than the limit is refused.
 ///
 /// Height is a velocity servo, not a spring: the target climb rate is the ground's own rise
-/// rate (from the probe normals) plus a gain times the height error, reached within fixed
-/// acceleration limits. It tracks bumps tightly and can't oscillate. A dug trench narrower than
-/// the footprint is just a dip the engines average over.
+/// rate (from its attitude) plus a gain times the height error, reached within fixed
+/// acceleration limits. It tracks bumps tightly and can't oscillate.
 /// </summary>
 public sealed class HoverController
 {
     readonly Vector3[] _engines;
+    readonly Vector3[] _seen;   // this tick's probe hits: engines, then look-ahead
     float _lift, _jumpCooldown, _jumpGrace;
     static readonly float[] Reaches = { 0.5f, 1f }, Sides = { -1f, 1f };
+
+    /// <summary>
+    /// How strongly the attitude leans on the probes' own normals where its points can't say
+    /// (a single probe, engines in a line), m². Small beside any real footprint's spread.
+    /// </summary>
+    const float NormalPrior = 0.5f;
 
     /// <summary>Mean world height of the ground or water under the engines.</summary>
     public float GroundRef { get; private set; }
@@ -27,7 +41,11 @@ public sealed class HoverController
     /// <summary>Mean height of the engines above what is under them. Ride height when all is well.</summary>
     public float Clearance { get; private set; } = float.PositiveInfinity;
 
+    /// <summary>The up of the ground under the engines: the plane through their probes' hits.</summary>
     public Vector3 GroundNormal { get; private set; } = Vector3.UnitY;
+
+    /// <summary>The attitude the vessel tilts to: the plane through what the engines and the look-ahead probes see.</summary>
+    public Vector3 Attitude { get; private set; } = Vector3.UnitY;
 
     /// <summary>How far the look-ahead has raised the vessel above ride height, m.</summary>
     public float LookAheadLift => _lift;
@@ -35,13 +53,20 @@ public sealed class HoverController
     /// <summary>True while a slope ahead or underneath is steeper than the limit.</summary>
     public bool SlopeRefused { get; private set; }
 
+    /// <summary>The steepest grade seen ahead this tick, degrees: the rise from the ground under the vessel over the run to it.</summary>
+    public float SteepestAhead { get; private set; }
+
     public bool Grounded { get; private set; }
 
     /// <summary>Look-ahead probes on. Only switched off to prove what they are for.</summary>
     public bool LookAhead = true;
 
     /// <param name="engines">Engine positions in the vessel's frame: the plane they ride on.</param>
-    public HoverController(Vector3[] engines) => _engines = engines;
+    public HoverController(Vector3[] engines)
+    {
+        _engines = engines;
+        _seen = new Vector3[engines.Length + Reaches.Length * Sides.Length];
+    }
 
     public int EngineCount => _engines.Length;
 
@@ -52,6 +77,8 @@ public sealed class HoverController
         _jumpGrace = 0f;
         Clearance = float.PositiveInfinity;
         SlopeRefused = false;
+        SteepestAhead = 0f;
+        GroundNormal = Attitude = Vector3.UnitY;
     }
 
     /// <summary>
@@ -63,7 +90,7 @@ public sealed class HoverController
     {
         PhysicsRules.HoverData h = world.Rules.Hover;
         float depth = ride * h.ProbeDepth;
-        float maxSlopeCos = MathF.Cos(Units.Radians(h.MaxSlope));
+        float maxSlopeCos = MathF.Cos(Units.Radians(h.MaxSlope)), maxGrade = MathF.Tan(Units.Radians(h.MaxSlope));
         Vector3 pos = body.Position;
         Quaternion basis = orientation;
         var horizontal = MathX.Flat(velocity);
@@ -71,9 +98,9 @@ public sealed class HoverController
         _jumpCooldown -= dt;
         _jumpGrace -= dt;
 
-        // Engine probes: ground (or water) height, its normal, and how fast it rises under us.
+        // Engine probes: the ground (or water) under each engine.
         int hits = 0;
-        float groundSum = 0f, engineSum = 0f, riseSum = 0f;
+        float groundSum = 0f, engineSum = 0f;
         Vector3 normalSum = Vector3.Zero;
         foreach (Vector3 engine in _engines)
         {
@@ -81,12 +108,10 @@ public sealed class HoverController
             if (!world.Query.Ray(p + Vector3.UnitY * ride, p - Vector3.UnitY * depth, Layers.ProbeMask, body, out RayHit hit)
                 || hit.Normal.Y < 0.1f)
                 continue;
-            Vector3 n = hit.Normal;
-            hits++;
+            _seen[hits++] = hit.Point;
             groundSum += hit.Point.Y;
             engineSum += p.Y;
-            normalSum += n;
-            riseSum += -(n.X * horizontal.X + n.Z * horizontal.Z) / n.Y;
+            normalSum += hit.Normal;
         }
 
         Grounded = hits > 0;
@@ -95,6 +120,7 @@ public sealed class HoverController
             // Off a ledge or mid-jump, out of the engines' reach: fall freely and level out.
             Clearance = float.PositiveInfinity;
             SlopeRefused = false;
+            SteepestAhead = 0f;
             velocity.Y -= g * dt;
             orientation = MathX.TiltToward(orientation, Vector3.UnitY, 1f - MathF.Exp(-h.LevelRate * dt));
             return;
@@ -103,8 +129,8 @@ public sealed class HoverController
         GroundRef = groundSum / hits;
         float engineY = engineSum / hits;
         Clearance = engineY - GroundRef;
-        GroundNormal = Vector3.Normalize(normalSum);
-        float groundRise = Math.Clamp(riseSum / hits, -h.MaxClimbRate, h.MaxClimbRate);
+        int under = hits;
+        Vector3 underNormal = Vector3.Normalize(normalSum);
 
         // Look-ahead: probe in front of the footprint, along the direction of travel.
         float speed = horizontal.Length();
@@ -119,36 +145,48 @@ public sealed class HoverController
         }
         float reach = Math.Clamp(speed * h.LookAheadTime, h.LookAheadMin, h.LookAheadMax);
 
-        // On a slope we're already climbing, the ground ahead is expected to be higher: only the
-        // rise beyond that (a rock, a step) needs lifting for.
-        Vector3 gn = GroundNormal;
-        float climbPerMetre = MathF.Max(0f, -(gn.X * dir.X + gn.Z * dir.Z) / gn.Y);
-        float aheadRise = 0f;
-        Vector3? wall = null;
-        float probeTop = engineY + ride + 3f;
+        // The ground ahead: anything rising more steeply than the limit, as a grade from the ground
+        // under the vessel over the run to it, is refused rather than lifted over. A short steep
+        // lip (a crater's rim, a dug edge) rises little over that run and is climbed; a long ramp
+        // or a cliff steeper than the limit is not.
+        float steepest = 0f;
         if (LookAhead)
         {
             foreach (float k in Reaches)
             {
                 float distance = halfLength + reach * k;
+                // From above anything it could climb there, so a wall ahead is seen, not started inside.
+                float probeTop = MathF.Max(engineY, GroundRef + distance * maxGrade) + ride + 3f;
                 foreach (float lateral in Sides)
                 {
                     Vector3 q = pos + dir * distance + side * halfWidth * lateral;
                     if (!world.Query.Ray(new Vector3(q.X, probeTop, q.Z), new Vector3(q.X, GroundRef - depth, q.Z),
                             Layers.ProbeMask, body, out RayHit hit))
                         continue;
-                    Vector3 n = hit.Normal;
-                    bool uphill = n.X * dir.X + n.Z * dir.Z < 0f;
-                    if (n.Y < maxSlopeCos && uphill && hit.Point.Y > GroundRef + 0.3f)
-                    {
-                        wall = n; // too steep to climb: refuse it rather than lift over it
-                        continue;
-                    }
-                    aheadRise = MathF.Max(aheadRise, hit.Point.Y - GroundRef - climbPerMetre * distance);
+                    _seen[hits++] = hit.Point;
+                    steepest = MathF.Max(steepest, (hit.Point.Y - GroundRef) / distance);
                 }
             }
         }
-        float lift = MathF.Max(0f, aheadRise - h.StepAllowance * ride);
+        SteepestAhead = Units.Degrees(MathF.Atan(steepest));
+        bool wall = steepest > maxGrade;
+
+        // The ground under the engines (how fast it rises under the vessel, whether it is too steep
+        // to stay on), and the attitude to tilt to: the plane through what the engines and the
+        // look-ahead see, so the nose comes up as a rise arrives and a short gap doesn't tip it.
+        GroundNormal = FitPlane(_seen.AsSpan(0, under), pos, underNormal);
+        Attitude = hits > under ? FitPlane(_seen.AsSpan(0, hits), pos, underNormal) : GroundNormal;
+        Vector3 gn = GroundNormal;
+        float groundRise = Math.Clamp(-(gn.X * horizontal.X + gn.Z * horizontal.Z) / gn.Y, -h.MaxClimbRate, h.MaxClimbRate);
+
+        // On a slope we're already climbing, the ground ahead is expected to be higher: only the
+        // rise beyond that (a rock, a step) needs lifting for.
+        float climbPerMetre = MathF.Max(0f, -(gn.X * dir.X + gn.Z * dir.Z) / gn.Y);
+        float aheadRise = 0f;
+        if (!wall)
+            for (int i = under; i < hits; i++)
+                aheadRise = MathF.Max(aheadRise, _seen[i].Y - GroundRef - climbPerMetre * Vector3.Dot(MathX.Flat(_seen[i] - pos), dir));
+        float lift = Math.Clamp(aheadRise - h.StepAllowance * ride, 0f, h.MaxLift * ride);
         _lift = lift >= _lift ? lift : MathX.MoveToward(_lift, lift, 2f * ride * dt); // rise at once, let down gently
 
         if (jump && canHover && _jumpCooldown <= 0f && Clearance < ride + 0.6f)
@@ -173,22 +211,53 @@ public sealed class HoverController
             }
         }
 
-        // Slope limit: never climb into a slope steeper than the limit; slide off one underneath.
-        bool steepUnder = GroundNormal.Y < maxSlopeCos;
-        SlopeRefused = wall != null || steepUnder;
-        if (wall is Vector3 w) BlockUphill(ref velocity, w);
+        // Slope limit: never climb into a slope steeper than the limit; slide off one it is on (the
+        // ground under it and ahead: a short steep lip under its engines alone is just being climbed).
+        Vector3 att = Attitude;
+        bool steepUnder = att.Y < maxSlopeCos;
+        SlopeRefused = wall || steepUnder;
+        if (wall) BlockUphill(ref velocity, Vector3.Normalize(new Vector3(-dir.X * steepest, 1f, -dir.Z * steepest)));
         if (steepUnder)
         {
-            BlockUphill(ref velocity, GroundNormal);
-            Vector3 downhill = MathX.SafeNormalize(MathX.Flat(GroundNormal), Vector3.Zero);
-            velocity += downhill * g * MathF.Sqrt(1f - GroundNormal.Y * GroundNormal.Y) * dt;
+            BlockUphill(ref velocity, att);
+            Vector3 downhill = MathX.SafeNormalize(MathX.Flat(att), Vector3.Zero);
+            velocity += downhill * g * MathF.Sqrt(1f - att.Y * att.Y) * dt;
         }
 
-        // Level with the ground (never tilting past the slope limit), or with the horizon in the air.
-        Vector3 targetUp = Clearance < ride * 2.5f ? GroundNormal : Vector3.UnitY;
+        // Tilt to the ground's attitude (never past the slope limit), or level with the horizon in the air.
+        Vector3 targetUp = Clearance < ride * 2.5f ? Attitude : Vector3.UnitY;
         float tilt = MathX.Angle(targetUp, Vector3.UnitY), maxTilt = Units.Radians(h.MaxSlope);
         if (tilt > maxTilt) targetUp = MathX.Slerp(Vector3.UnitY, targetUp, maxTilt / tilt);
         orientation = MathX.TiltToward(orientation, targetUp, 1f - MathF.Exp(-h.LevelRate * dt));
+    }
+
+    /// <summary>
+    /// The plane through some ground points, by least squares, as its up normal. Where the points
+    /// can't tell a tilt (one point, or all in a line) it leans on <paramref name="normal"/>, the
+    /// probes' own surface normals.
+    /// </summary>
+    static Vector3 FitPlane(ReadOnlySpan<Vector3> points, Vector3 origin, Vector3 normal)
+    {
+        Vector3 mean = Vector3.Zero;
+        foreach (Vector3 p in points) mean += p - origin;
+        mean /= points.Length;
+        float ny = MathF.Max(normal.Y, 0.1f);
+        float sxx = NormalPrior, szz = NormalPrior, sxz = 0f;
+        float sxy = NormalPrior * -normal.X / ny, szy = NormalPrior * -normal.Z / ny;
+        foreach (Vector3 p in points)
+        {
+            Vector3 d = p - origin - mean;
+            sxx += d.X * d.X;
+            szz += d.Z * d.Z;
+            sxz += d.X * d.Z;
+            sxy += d.X * d.Y;
+            szy += d.Z * d.Y;
+        }
+        // Solve [sxx sxz; sxz szz] (b, c) = (sxy, szy) for the plane y = b x + c z. The prior keeps
+        // the determinant at least NormalPrior², so it never divides by nothing.
+        float det = sxx * szz - sxz * sxz;
+        float b = (sxy * szz - szy * sxz) / det, c = (szy * sxx - sxy * sxz) / det;
+        return Vector3.Normalize(new Vector3(-b, 1f, -c));
     }
 
     /// <summary>A bump tips the vessel a little; the levelling brings it back.</summary>

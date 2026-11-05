@@ -153,7 +153,7 @@ void fragment() {
 }
 ";
 
-    const string SkyCode = @"
+    internal const string SkyCode = @"
 shader_type sky;
 render_mode use_debanding;
 
@@ -168,18 +168,27 @@ uniform vec3 moon_dir = vec3(0.84, 0.47, 0.25);
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
-float fbm(vec2 p) { return 0.5 * noise(p) + 0.25 * noise(p * 2.1 + 3.0) + 0.125 * noise(p * 4.3 + 7.0); }
+// Value noise that repeats every `period` cells along x, and its fbm (each octave twice the last's
+// period): the cloud streaks run round the sky by azimuth and must meet themselves where it wraps.
+float noise_wrap(vec2 p, float period) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    float x0 = mod(i.x, period), x1 = mod(i.x + 1.0, period);
+    return mix(mix(hash(vec2(x0, i.y)), hash(vec2(x1, i.y)), f.x), mix(hash(vec2(x0, i.y + 1.0)), hash(vec2(x1, i.y + 1.0)), f.x), f.y); }
+float fbm_wrap(vec2 p, float period) {
+    return 0.5 * noise_wrap(p, period) + 0.25 * noise_wrap(p * 2.0 + vec2(0.0, 3.0), period * 2.0) + 0.125 * noise_wrap(p * 4.0 + vec2(0.0, 7.0), period * 4.0); }
 
 void sky() {
     vec3 d = normalize(EYEDIR);
     float h = d.y;
     vec3 col = mix(horizon, zenith, pow(smoothstep(0.0, 0.9, h), 0.55));
     col = mix(col, haze, exp(-max(h, 0.0) * 10.0) * 0.6);
-    if (h < 0.0) col = mix(haze, ground, smoothstep(0.0, 0.2, -h));
+    // Below the horizon, from the very colour just above it down to the ground's (from the haze
+    // alone, it was a hard line along the horizon seen from any height).
+    if (h < 0.0) col = mix(mix(horizon, haze, 0.6), ground, smoothstep(0.0, 0.2, -h));
 
-    // Long streaks of high cloud, the airbrushed kind.
-    float az = atan(d.x, d.z);
-    float streak = fbm(vec2(az * 5.0, h * 34.0)) * smoothstep(0.02, 0.08, h) * (1.0 - smoothstep(0.16, 0.34, h));
+    // Long streaks of high cloud, the airbrushed kind: noise round the sky by azimuth, 32 cells
+    // to the turn, repeating so it meets itself behind (at -Z), where the azimuth wraps, with no seam.
+    float around = (atan(d.x, d.z) / 6.2831853 + 0.5) * 32.0;
+    float streak = fbm_wrap(vec2(around, h * 34.0), 32.0) * smoothstep(0.02, 0.08, h) * (1.0 - smoothstep(0.16, 0.34, h));
     col = mix(col, vec3(1.0, 0.9, 0.78), smoothstep(0.45, 0.8, streak) * 0.45);
 
     vec3 sun = LIGHT0_ENABLED ? LIGHT0_DIRECTION : normalize(vec3(0.5, 0.6, 0.6));

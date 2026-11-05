@@ -584,7 +584,7 @@ public partial class TerrainStreamer : Node3D
     void StreamFar()
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
-        int nx = World.Terrain.Width / FarBuilder.Size, nz = World.Terrain.Height / FarBuilder.Size;
+        int nx = FarBuilder.Count(World.Terrain.Width), nz = FarBuilder.Count(World.Terrain.Height);
         double cx = Mod(Focus.X, w), cz = Mod(Focus.Z, h);
         int ffx = (int)Math.Floor(cx / FarBuilder.Size), ffz = (int)Math.Floor(cz / FarBuilder.Size);
 
@@ -618,7 +618,11 @@ public partial class TerrainStreamer : Node3D
             if (f.Lod == lod || f.InFlight || _farInFlight >= 3) continue;
             f.InFlight = true;
             _farInFlight++;
-            var job = new FarJob { Fx = fx, Fz = fz, Lod = lod, Version = f.Version };
+            var job = new FarJob
+            {
+                Fx = fx, Fz = fz, Lod = lod, Version = f.Version,
+                SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height),
+            };
             PlanetTerrainSource source = World.Source;
             GroundPalette palette = World.Palette;
             HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
@@ -695,14 +699,35 @@ public partial class TerrainStreamer : Node3D
         Vector4 hole = Vector4.Zero;
         if (full >= 0)
         {
-            float x0 = (float)NearestCopy(ffx * FarBuilder.Size, FarBuilder.Size, Focus.X, w) - full * FarBuilder.Size;
-            float z0 = (float)NearestCopy(ffz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h) - full * FarBuilder.Size;
-            float span = (2 * full + 1) * FarBuilder.Size;
-            hole = new Vector4(x0 + 1f, z0 + 1f, x0 + span - 1f, z0 + span - 1f);
+            // From the near edge of the first chunk of the square to the far edge of its last, in
+            // the frame: a chunk cut short at a seam makes the square that much smaller.
+            var (x0, x1) = FarEdges(ffx - full, ffx + full, nx, World.Terrain.Width, Focus.X);
+            var (z0, z1) = FarEdges(ffz - full, ffz + full, nz, World.Terrain.Height, Focus.Z);
+            hole = new Vector4(x0 + 1f, z0 + 1f, x1 - 1f, z1 - 1f);
         }
         _horizonMaterial.SetShaderParameter("hole", hole);
         FarComplete = full >= FarRadius;
         UpdateHorizon(cx, cz, w, h);
+    }
+
+    /// <summary>
+    /// The frame coordinates of the near edge of far chunk <paramref name="first"/> and the far edge
+    /// of far chunk <paramref name="last"/> (unwrapped indices, a few chunks either side of the focus),
+    /// along one axis of a planet <paramref name="planet"/> metres and <paramref name="count"/> chunks across.
+    /// </summary>
+    static (float from, float to) FarEdges(int first, int last, int count, int planet, double focus)
+    {
+        int a = Mod(first, count), b = Mod(last, count);
+        double from = NearestCopy(a * FarBuilder.Size, FarBuilder.Span(a, planet), focus, planet);
+        double to = NearestCopy(b * FarBuilder.Size, FarBuilder.Span(b, planet), focus, planet) + FarBuilder.Span(b, planet);
+        return ((float)from, (float)to);
+    }
+
+    /// <summary>Whether a far chunk's ground is in under a point (frame coordinates). Tests ask it at the seams.</summary>
+    public bool FarGroundAt(Vector3 p)
+    {
+        int fx = (int)(Mod(p.X, World.Terrain.Width) / FarBuilder.Size), fz = (int)(Mod(p.Z, World.Terrain.Height) / FarBuilder.Size);
+        return _far.TryGetValue((fx, fz), out FarChunk f) && f.Node != null;
     }
 
     public bool FarComplete { get; private set; }

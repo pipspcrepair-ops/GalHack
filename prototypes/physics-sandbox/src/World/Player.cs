@@ -9,12 +9,13 @@ using N = System.Numerics;
 namespace PhysicsSandbox.World;
 
 /// <summary>
-/// The player: a registered body like any other (100 kg, CdA 0.9 m², a suit with a jetpack and
-/// mag boots), walked by the shared <see cref="WalkController"/> and moved by a character
-/// controller. Landing on (or, in the air, touching) a ship's hull puts it in that ship's cabin
-/// world, the shared riding mechanism: inside, down is the core's; out on the hull, the boots hold
-/// it to the face underfoot. It lets go of a ship by the shared rules (a jump, or out of contact),
-/// sits in a cockpit seat to fly, and is hurt through weather's health, with the fling's floor.
+/// The player: a registered body like any other (100 kg, CdA 0.9 m², a suit with a jetpack),
+/// walked by the shared <see cref="WalkController"/> and moved by a character controller. Landing
+/// on (or, in the air, touching) a ship's hull puts it in that ship's cabin world, the shared
+/// riding mechanism: inside and out on the hull alike, down is the core's (the zone's when the
+/// core is off), so a hull's walls and underside can't be walked on. It lets go of a ship by the
+/// shared rules (a jump, or out of contact), sits in a cockpit seat to fly, and is hurt through
+/// weather's health, with the fling's floor.
 /// </summary>
 public sealed class Player
 {
@@ -174,8 +175,8 @@ public sealed class Player
         }
         _wasOutside = Body.Frame != null && Body.OnOuterHull;
 
-        // Mag boots hold you to the face underfoot out on a hull; anywhere without gravity you float,
-        // and in deep water you swim (no floor to snap to either way).
+        // Mag boots (if physics.json switches them on) hold you to the face underfoot out on a hull;
+        // anywhere without gravity you float, and in deep water you swim (no floor to snap to either way).
         Binding.MagBoots = _wasOutside && rules.MagBoots;
         Legs.Floating = !Binding.MagBoots && World.Physics.GravityAt(Body).LengthSquared() < 1e-6f;
         Binding.Floating = Legs.Floating || Legs.Swimming;

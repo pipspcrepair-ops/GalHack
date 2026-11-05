@@ -14,6 +14,9 @@ public sealed class FarJob
 {
     public int Fx, Fz, Lod;     // canonical far-chunk coordinates
     public int Version;
+
+    /// <summary>The chunk's extent each way, m: <see cref="FarBuilder.Size"/>, or less for the last one before a seam (<see cref="FarBuilder.Span"/>).</summary>
+    public int SpanX = FarBuilder.Size, SpanZ = FarBuilder.Size;
     public Vector3[] Vertices, Normals;
     public Color[] Colors;
     public Vector2[] Flags;
@@ -50,6 +53,16 @@ public static class FarBuilder
     public static float Step(int lod) => lod switch { 0 => 2f, 1 => 4f, _ => 8f };
 
     /// <summary>
+    /// How many far chunks cross a planet this many metres across. A planet whose size isn't a
+    /// multiple of <see cref="Size"/> (8 km is 62.5 chunks) has a shorter last chunk before the seam,
+    /// so the far grid tiles it exactly, flora and all.
+    /// </summary>
+    public static int Count(int planetMetres) => (planetMetres + Size - 1) / Size;
+
+    /// <summary>Far chunk <paramref name="f"/>'s extent, m: <see cref="Size"/>, or what is left of the planet before the seam.</summary>
+    public static int Span(int f, int planetMetres) => Math.Min(Size, planetMetres - f * Size);
+
+    /// <summary>
     /// A scatter instance's id: its 4 m scatter cell, canonical. The same instance draws the same
     /// random numbers at every level of detail, so the id holds across streaming and reloads.
     /// </summary>
@@ -66,13 +79,15 @@ public static class FarBuilder
         {
             var watch = Stopwatch.StartNew();
             float step = Step(job.Lod);
-            int n = (int)(Size / step) + 1, g = n + 2;
+            // Grid points each way (nx along x, nz along z), and the sampled grid with a ring round it.
+            var grid = new Grid((int)(job.SpanX / step) + 1, (int)(job.SpanZ / step) + 1);
+            int g = grid.G;
             double x0 = job.Fx * (double)Size, z0 = job.Fz * (double)Size;
 
-            var height = new float[g * g];
-            var level = new float[g * g];
-            var river = new bool[g * g];
-            for (int j = 0; j < g; j++)
+            var height = new float[g * (grid.Nz + 2)];
+            var level = new float[height.Length];
+            var river = new bool[height.Length];
+            for (int j = 0; j < grid.Nz + 2; j++)
             for (int i = 0; i < g; i++)
             {
                 GroundSample s = source.Ground(x0 + (i - 1) * step, z0 + (j - 1) * step, step);
@@ -82,16 +97,16 @@ public static class FarBuilder
                 river[k] = s.InRiver;
             }
 
-            int skirt = 4 * n;
-            job.Vertices = new Vector3[n * n + skirt];
-            job.Normals = new Vector3[n * n + skirt];
-            job.Colors = new Color[n * n + skirt];
-            job.Flags = new Vector2[n * n + skirt];
-            var up = new float[n * n];
-            for (int j = 0; j < n; j++)
-            for (int i = 0; i < n; i++)
+            int points = grid.Nx * grid.Nz, skirt = 2 * (grid.Nx + grid.Nz);
+            job.Vertices = new Vector3[points + skirt];
+            job.Normals = new Vector3[points + skirt];
+            job.Colors = new Color[points + skirt];
+            job.Flags = new Vector2[points + skirt];
+            var up = new float[points];
+            for (int j = 0; j < grid.Nz; j++)
+            for (int i = 0; i < grid.Nx; i++)
             {
-                int k = j * n + i, s = (j + 1) * g + i + 1;
+                int k = j * grid.Nx + i, s = grid.Sample(i, j);
                 float h = height[s];
                 float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
                 var normal = new Vector3(-gx, 1f, -gz).Normalized();
@@ -102,19 +117,19 @@ public static class FarBuilder
                 up[k] = normal.Y;
             }
 
-            var indices = new List<int>((n - 1) * (n - 1) * 6 + skirt * 12);
-            for (int j = 0; j < n - 1; j++)
-            for (int i = 0; i < n - 1; i++)
+            var indices = new List<int>((grid.Nx - 1) * (grid.Nz - 1) * 6 + skirt * 12);
+            for (int j = 0; j < grid.Nz - 1; j++)
+            for (int i = 0; i < grid.Nx - 1; i++)
             {
-                int a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+                int a = j * grid.Nx + i, b = a + 1, c = a + grid.Nx, d = c + 1;
                 indices.Add(a); indices.Add(b); indices.Add(c);
                 indices.Add(b); indices.Add(d); indices.Add(c);
             }
-            AddSkirts(job, n, step, indices);
+            AddSkirts(job, grid, step, indices);
             job.Indices = indices.ToArray();
 
-            BuildRiverWater(job, n, g, step, level, river);
-            if (job.Lod <= 1) Scatter(job, source, palette, dug, felled, n, g, step, height, river, up);
+            BuildRiverWater(job, grid, step, level, river);
+            if (job.Lod <= 1) Scatter(job, source, palette, dug, felled, grid, step, height, river, up);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
         catch (Exception e)
@@ -135,24 +150,35 @@ public static class FarBuilder
         return c;
     }
 
-    /// <summary>A short wall under each edge, so a coarser neighbour never shows a crack.</summary>
-    static void AddSkirts(FarJob job, int n, float step, List<int> indices)
+    /// <summary>A chunk's grid points each way, and its sampled grid: one more sample beyond each edge, for normals.</summary>
+    readonly record struct Grid(int Nx, int Nz)
     {
+        /// <summary>The sampled grid's row length.</summary>
+        public int G => Nx + 2;
+
+        /// <summary>Grid point (i, j)'s index in the sampled grid.</summary>
+        public int Sample(int i, int j) => (j + 1) * G + i + 1;
+    }
+
+    /// <summary>A short wall under each edge, so a coarser neighbour never shows a crack.</summary>
+    static void AddSkirts(FarJob job, Grid grid, float step, List<int> indices)
+    {
+        int nx = grid.Nx, nz = grid.Nz;
+        int Edge(int edge, int t) => edge switch { 0 => t, 1 => (nz - 1) * nx + t, 2 => t * nx, _ => t * nx + nx - 1 };
         float drop = step * 2f + 2f;
-        int baseIndex = n * n;
+        int dst = nx * nz;
         for (int edge = 0; edge < 4; edge++)
         {
-            for (int t = 0; t < n; t++)
+            int count = edge < 2 ? nx : nz;
+            for (int t = 0; t < count; t++, dst++)
             {
-                int src = edge switch { 0 => t, 1 => (n - 1) * n + t, 2 => t * n, _ => t * n + n - 1 };
-                int dst = baseIndex + edge * n + t;
+                int src = Edge(edge, t);
                 job.Vertices[dst] = job.Vertices[src] + Vector3.Down * drop;
                 job.Normals[dst] = job.Normals[src];
                 job.Colors[dst] = job.Colors[src];
                 job.Flags[dst] = job.Flags[src];
                 if (t == 0) continue;
-                int a = edge switch { 0 => t - 1, 1 => (n - 1) * n + t - 1, 2 => (t - 1) * n, _ => (t - 1) * n + n - 1 };
-                int b = src, c = dst - 1, d = dst;
+                int a = Edge(edge, t - 1), b = src, c = dst - 1, d = dst;
                 indices.Add(a); indices.Add(b); indices.Add(c);
                 indices.Add(b); indices.Add(d); indices.Add(c);
                 indices.Add(a); indices.Add(c); indices.Add(b);
@@ -162,15 +188,16 @@ public static class FarBuilder
     }
 
     /// <summary>Flat water at the river's surface over every grid square that touches the channel.</summary>
-    static void BuildRiverWater(FarJob job, int n, int g, float step, float[] level, bool[] river)
+    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river)
     {
+        int g = grid.G;
         var verts = new List<Vector3>();
         var colors = new List<Color>();
         var indices = new List<int>();
         var map = new Dictionary<int, int>();
         int Vertex(int i, int j)
         {
-            int s = (j + 1) * g + i + 1;
+            int s = grid.Sample(i, j);
             if (map.TryGetValue(s, out int v)) return v;
             v = verts.Count;
             float l = level[s];
@@ -191,9 +218,9 @@ public static class FarBuilder
         // Water reaches one grid square past the channel, under the banks, so the ground hides its
         // edge instead of a staircase of quads. Its level comes from the nearest channel sample.
         // Where the banks are too low to hide it, the shader frays the edge across that square.
-        bool Wet(int i, int j) => i >= 0 && j >= 0 && i < n && j < n && river[(j + 1) * g + i + 1];
-        for (int j = 0; j < n - 1; j++)
-        for (int i = 0; i < n - 1; i++)
+        bool Wet(int i, int j) => i >= 0 && j >= 0 && i < grid.Nx && j < grid.Nz && river[grid.Sample(i, j)];
+        for (int j = 0; j < grid.Nz - 1; j++)
+        for (int i = 0; i < grid.Nx - 1; i++)
         {
             bool wet = false;
             for (int dj = -1; dj <= 2 && !wet; dj++)
@@ -215,17 +242,19 @@ public static class FarBuilder
     /// level of detail, so trees stay put when a chunk sharpens; the coarser level skips small kinds.
     /// </summary>
     static void Scatter(FarJob job, PlanetTerrainSource source, GroundPalette pal, IReadOnlySet<long> dug, IReadOnlySet<long> felled,
-        int n, int g, float step, float[] height, bool[] river, float[] up)
+        Grid grid, float step, float[] height, bool[] river, float[] up)
     {
-        int cells = ScatterCells;
+        // A whole chunk is 32 cells each way; one cut short at a seam has fewer. Cells keep their
+        // ids (and their random numbers, drawn in the same order) whatever the chunk's size.
+        int cellsX = (int)(job.SpanX / ScatterCell), cellsZ = (int)(job.SpanZ / ScatterCell);
         FloraSolidRules solids = job.Lod == 0 ? Solids : null;
         if (solids != null) job.Solids = new List<FloraSolid>();
         var rng = new Rng(Hash.Of(pal.Map.Spec.Seed, job.Fx, job.Fz, 0x5CA7));
         var clump = new Fractal(Hash.Of(pal.Map.Spec.Seed, 0x636C756D), 70, 3);
         var buffers = new Dictionary<Flora, List<float>>();
         double x0 = job.Fx * (double)Size, z0 = job.Fz * (double)Size;
-        for (int gj = 0; gj < cells; gj++)
-        for (int gi = 0; gi < cells; gi++)
+        for (int gj = 0; gj < cellsZ; gj++)
+        for (int gi = 0; gi < cellsX; gi++)
         {
             float lx = (gi + rng.NextFloat()) * ScatterCell, lz = (gj + rng.NextFloat()) * ScatterCell;
             float pick = rng.NextFloat(), chance = rng.NextFloat(), size = rng.NextFloat(), turn = rng.NextFloat(), shade = rng.NextFloat();
@@ -253,9 +282,9 @@ public static class FarBuilder
             }
             if (job.Lod > 0 && (!FloraMeshes.IsLarge(rule.Kind) || shade > 0.6f)) continue;
 
-            int i = Math.Clamp((int)MathF.Round(lx / step), 0, n - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, n - 1);
-            int s = (j + 1) * g + i + 1;
-            if (river[s] || up[j * n + i] < FloraMeshes.MinUp(rule.Kind) || height[s] < 0.6f) continue;
+            int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
+            int s = grid.Sample(i, j);
+            if (river[s] || up[j * grid.Nx + i] < FloraMeshes.MinUp(rule.Kind) || height[s] < 0.6f) continue;
             if (source.StampWeight(x, z) > 0f) continue; // pads and their aprons stay clear
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.

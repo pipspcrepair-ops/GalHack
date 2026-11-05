@@ -115,14 +115,18 @@ public sealed class Places : IZoneContent
         var rng = new Random(2001);
         var data = new OrbitData { StarsWidth = 2048, StarsHeight = 1024, SkinWidth = 1024, SkinHeight = 512 };
 
-        // Stars on deep blue-black, with a band of pink and teal nebula across the sky.
+        // Stars on deep blue-black, with a band of pink and teal nebula across the sky. The panorama
+        // wraps round the sky: the band's wobble repeats a whole number of times across it, so its
+        // two edges meet with no seam, and stars are spread evenly over the sphere (by the sine of
+        // their latitude), not over the image, which would crowd them toward the poles.
         data.Stars = new byte[data.StarsWidth * data.StarsHeight * 4];
         for (int y = 0; y < data.StarsHeight; y++)
         {
             float band = Mathf.Exp(-Mathf.Pow((y - data.StarsHeight * 0.42f) / (data.StarsHeight * 0.09f), 2));
             for (int x = 0; x < data.StarsWidth; x++)
             {
-                float wobble = 0.5f + 0.5f * Mathf.Sin(x * 0.011f + Mathf.Sin(x * 0.003f) * 4f);
+                float around = x * Mathf.Tau / data.StarsWidth;
+                float wobble = 0.5f + 0.5f * Mathf.Sin(around * 4f + Mathf.Sin(around) * 4f);
                 float n = band * wobble;
                 int i = (y * data.StarsWidth + x) * 4;
                 data.Stars[i] = (byte)(6 + 70 * n);
@@ -133,7 +137,8 @@ public sealed class Places : IZoneContent
         }
         for (int s = 0; s < 9000; s++)
         {
-            int x = rng.Next(data.StarsWidth), y = rng.Next(data.StarsHeight);
+            int x = rng.Next(data.StarsWidth);
+            int y = Math.Clamp((int)(Math.Acos(1.0 - 2.0 * rng.NextDouble()) / Math.PI * data.StarsHeight), 0, data.StarsHeight - 1);
             int i = (y * data.StarsWidth + x) * 4;
             byte b = (byte)rng.Next(120, 256);
             bool warm = rng.NextDouble() < 0.2;

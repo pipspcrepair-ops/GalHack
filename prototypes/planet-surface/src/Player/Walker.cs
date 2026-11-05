@@ -9,7 +9,9 @@ namespace PlanetSurface.Player;
 
 /// <summary>
 /// The survivor on foot, with terrain-digging's feel: walk, sprint, jump, a small jetpack for
-/// climbing out of pits and up cliffs, and crouch on Ctrl. Crouching shrinks the capsule and
+/// climbing out of pits and up cliffs, and crouch on Ctrl. Anything up to a step tall (a rock, a
+/// block's edge, a dug ledge) is walked up onto without a stop, by the shared physics module's
+/// step-up and step height. Crouching shrinks the capsule and
 /// lowers the eye; standing back up waits until there's room overhead, so an overhang can hold
 /// you down but never trap you inside it.
 ///
@@ -49,6 +51,15 @@ public partial class Walker : CharacterBody3D, IForceBody
 
     /// <summary>The shared physics module's water numbers (shared/Physics/physics.json). Main loads them.</summary>
     public WaterRules Water = new();
+
+    /// <summary>
+    /// Anything up to this tall is stepped up onto without a stop (the shared physics module's
+    /// walking.stepHeight, by its shared step-up). Main loads it.
+    /// </summary>
+    public float StepHeight = new GalHack.Physics.PhysicsRules.WalkingData().StepHeight;
+
+    /// <summary>How many times the walker has stepped up onto something. For tests.</summary>
+    public int StepsTaken { get; private set; }
 
     /// <summary>The share of the body under water this tick.</summary>
     public float WaterShare { get; private set; }
@@ -173,9 +184,14 @@ public partial class Walker : CharacterBody3D, IForceBody
         v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
         v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
 
+        bool jumped = false;
         if (ControlsEnabled && Held(Key.Space) && !IsCrouching)
         {
-            if (onFloor) v.Y = JumpSpeed;
+            if (onFloor)
+            {
+                v.Y = JumpSpeed;
+                jumped = true;
+            }
             else if (_jetFuel > 0f && v.Y < 7f)
             {
                 v.Y += JetpackThrust * dt;
@@ -195,6 +211,8 @@ public partial class Walker : CharacterBody3D, IForceBody
 
         Velocity = v;
         MoveAndSlide();
+        // A rock, a block's edge or a dug ledge up to a step tall: up onto it, still walking.
+        if ((onFloor || IsOnFloor()) && !jumped && GalHack.Physics.Engine.Steps.Up(this, Vector3.Up, v, StepHeight, Radius, dt)) StepsTaken++;
     }
 
     void UpdateCrouch(bool wantCrouch)

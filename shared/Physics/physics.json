@@ -2,9 +2,12 @@
 // seconds, newtons. Code defaults (GalHack.Physics.PhysicsRules) are the same numbers.
 {
   "contacts": {
-    // Damage = mass (t) × (closing speed − safeSpeed)² × damageScale. Never capped, never scaled
-    // down; ramming uses the reduced mass m1·m2/(m1+m2) and both sides take it.
+    // Damage = mass (t) × (closing speed − safe speed)² × damageScale. Never capped, never scaled
+    // down; ramming uses the reduced mass m1·m2/(m1+m2) and both sides take it. The safe speed is
+    // safeSpeed for everything but players, who land on their legs: playerSafeSpeed, so hops,
+    // jetpack landings and falls up to about 12 m (15.5 m/s) never hurt them.
     "safeSpeed": 8,
+    "playerSafeSpeed": 15.5,
     "damageScale": 0.001,
     // Kinematic hulls glance off fixed things with restitution × the closing speed, and lose
     // scrape × their sliding speed only on contacts that did damage.
@@ -28,10 +31,12 @@
 
   "integrity": {
     // How much damage a body takes to break, per tonne of it. The formula is the same for
-    // everything; only toughness differs. Hull points are 4 per tonne (ship-handling's).
+    // everything; only toughness differs. Hull points are 4 per tonne (ship-handling's). A 100 kg
+    // player at 0.6 per tonne, over their 15.5 m/s safe speed: a 20 m fall costs 3% of their
+    // health, 30 m 13%, 50 m 42%, and about 80 m kills.
     "hullPerTonne": 4,
     "cratePerTonne": 4,
-    "playerPerTonne": 0.5,
+    "playerPerTonne": 0.6,
     "creaturePerTonne": 0.5
   },
 
@@ -39,9 +44,13 @@
     // The ride-height servo (from ship-handling): verticalGain (1/s) closes the height error,
     // limited to maxRise up and maxGrip down (m/s²); grip holds only within gripBand metres above
     // ride height, so jumps fly. Look-ahead probes reach speed × lookAheadTime ahead (clamped);
-    // terrain ahead rising more than stepAllowance × ride height lifts the vessel early.
-    // levelRate (1/s) settles tilt. Slopes steeper than maxSlope (°) are refused. Probes reach
-    // probeDepth × ride height below the engines.
+    // terrain ahead rising more than stepAllowance × ride height lifts the vessel early, never
+    // more than maxLift × ride height. It tilts to the ground's attitude (the plane through what
+    // its engines and look-ahead probes see), settling at levelRate (1/s). Ground rising more
+    // steeply than maxSlope (°), as a grade across the vessel's own length (the rise from the
+    // ground under it over the run to the ground ahead), is refused, and it slides off ground
+    // that steep; a crater's lip or a dug pit's edge is climbed, a cliff is not. maxSlope also
+    // limits the tilt. Probes reach probeDepth × ride height below the engines.
     "verticalGain": 8,
     "maxRise": 40,
     "maxGrip": 30,
@@ -51,8 +60,9 @@
     "lookAheadMin": 2,
     "lookAheadMax": 14,
     "stepAllowance": 0.5,
+    "maxLift": 1.5,
     "levelRate": 6,
-    "maxSlope": 30,
+    "maxSlope": 45,
     "jumpSpeed": 7,
     "jumpCooldown": 1.2,
     "probeDepth": 3
@@ -82,15 +92,16 @@
     "letGoAfter": 0.4,
     "letGoDistance": 1.5,
     "rejoinAfter": 0.5,
-    // Mag boots: out on the hull, down is the face under the feet (its normal followed at
-    // upFollow 1/s), pulling at magBootGravity (m/s²) with or without core gravity, in space or
-    // air. Walking off an outside edge, the boots look edgeProbe (m) below the face for the next
-    // one round the edge. With insideCorners, walking into a wall taller than a step
-    // (walking.stepHeight) climbs onto it; lower lips are stepped over. Off (magBoots false):
-    // the outer hull has the cabin's down. The camera eases its roll at viewEase (1/s).
-    "magBoots": true,
+    // Out on the hull, down is the gravity the rider is in, as inside: the ship's core gravity,
+    // or the zone's when the core is off (none in space, where they float). Walls and undersides
+    // can't be walked on; a lip up to a step tall (walking.stepHeight) is stepped over.
+    // Mag boots are switched off. On (magBoots true), down would be the face under the feet
+    // (followed at upFollow 1/s, pulling at magBootGravity m/s²), outside edges would be walked
+    // round (the boots look edgeProbe m below the face for the next one) and, with insideCorners,
+    // walls taller than a step climbed. The camera eases its roll at viewEase (1/s).
+    "magBoots": false,
     "magBootGravity": 9.8,
-    "insideCorners": true,
+    "insideCorners": false,
     "edgeProbe": 0.35,
     "upFollow": 20,
     "viewEase": 10
@@ -99,7 +110,7 @@
   "walking": {
     // Anything up to stepHeight (m) tall is a step, for every walking body on terrain, a cabin
     // floor or an outer hull: walking into it steps up onto it, walking off a ledge that deep
-    // steps down without leaving the floor. Taller is a wall (in mag boots, one to climb).
+    // steps down without leaving the floor. Taller is a wall.
     "stepHeight": 0.6
   },
 

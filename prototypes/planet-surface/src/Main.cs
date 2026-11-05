@@ -101,9 +101,12 @@ public partial class Main : Node3D
         AddChild(Fly);
 
         Player = new Walker { Name = "Player", Camera = Camera, ControlsEnabled = false, ProcessMode = ProcessModeEnum.Disabled };
-        // Water is a volume: the walker swims in seas and rivers by the shared physics module's water rules.
-        Player.Water = GalHack.Physics.PhysicsRules.FromJson(System.IO.File.ReadAllText(
-            ProjectSettings.GlobalizePath("res://") + "../../shared/Physics/physics.json")).Water;
+        // Water is a volume: the walker swims in seas and rivers by the shared physics module's water
+        // rules, and steps up onto anything a step tall by its walking rules.
+        var rules = GalHack.Physics.PhysicsRules.FromJson(System.IO.File.ReadAllText(
+            ProjectSettings.GlobalizePath("res://") + "../../shared/Physics/physics.json"));
+        Player.Water = rules.Water;
+        Player.StepHeight = rules.Walking.StepHeight;
         Player.WaterAt = p => World?.WaterSurfaceAt(p);
         AddChild(Player);
         Guard = new StuckGuard { Name = "StuckGuard", Store = () => World?.Terrain.Store, Player = Player, OutOfSolids = (feet, height, radius) => Streamer.OutOfSolids(feet, height, radius) };

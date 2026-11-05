@@ -14,12 +14,20 @@ public static class Impacts
 {
     /// <summary>
     /// The one damage formula: mass (t) × (closing speed − safe speed)² × scale. Below the safe
-    /// speed it is exactly zero. Ramming uses the reduced mass and both sides take it.
+    /// speed it is exactly zero. Ramming uses the reduced mass and both sides take it. This is
+    /// the safe speed of everything but players (<see cref="PhysicsRules.ContactData.SafeSpeed"/>).
     /// </summary>
-    public static float Damage(float massKg, float closingSpeed, PhysicsRules.ContactData c)
+    public static float Damage(float massKg, float closingSpeed, PhysicsRules.ContactData c) =>
+        Damage(massKg, closingSpeed, c.SafeSpeed, c.DamageScale);
+
+    /// <summary>The same formula with a body kind's own safe speed: a player lands on their legs.</summary>
+    public static float Damage(float massKg, float closingSpeed, PhysicsRules.ContactData c, BodyKind kind) =>
+        Damage(massKg, closingSpeed, c.SafeSpeedFor(kind), c.DamageScale);
+
+    static float Damage(float massKg, float closingSpeed, float safeSpeed, float scale)
     {
-        float excess = MathF.Max(0f, closingSpeed - c.SafeSpeed);
-        return Units.Tonnes(massKg) * excess * excess * c.DamageScale;
+        float excess = MathF.Max(0f, closingSpeed - safeSpeed);
+        return Units.Tonnes(massKg) * excess * excess * scale;
     }
 
     /// <summary>

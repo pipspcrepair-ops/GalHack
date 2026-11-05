@@ -8,8 +8,8 @@
 //
 // Rocks are solid only if they stand taller than minRockHeight above the ground: anything lower
 // is a pebble you walk over. It is the shared physics module's step height (walking.stepHeight,
-// 0.6 m), the height a walker steps up without a thought; the planet's walker has no step-up yet,
-// so it simply walks through those.
+// 0.6 m), the height a walker steps up onto without a thought (the planet's walker uses the shared
+// step-up), so a pebble needs no collider: it simply walks through those.
 //
 // wood: what felling one with the survival tool drops. Kinds without wood can't be felled.
 {
