@@ -4,14 +4,15 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>
-/// Hoppers and living boulders. Locomotion does the ballistic hop; the rig sells it with
+/// Leapers and living boulders. Locomotion does the ballistic hop; the rig sells it with
 /// squash and stretch: the body sinks and the spring legs fold deeper before take-off, snap
-/// straight in the air, and absorb the landing. Idle hoppers inflate their throat sacs.
-/// Living boulders tumble a quarter turn per hop on stubby legs that only show on the ground.
+/// straight in the air, and absorb the landing. (No throat sacs: they made leapers read as
+/// frogs.) Living boulders tumble a quarter turn per hop on stubby legs that only show on
+/// the ground.
 /// </summary>
 public sealed class HopRig : Rig
 {
-    readonly int _body, _head, _sac;
+    readonly int _body, _head;
     readonly int[,] _hind = new int[2, 3];
     readonly int[] _front = new int[2];
     readonly int[] _tail;
@@ -28,7 +29,6 @@ public sealed class HopRig : Rig
         var pieces = Layout.Pieces;
         _body = pieces.FindIndex(p => p.Name == "body");
         _head = pieces.FindIndex(p => p.Name == "head");
-        _sac = pieces.FindIndex(p => p.Name == "sac");
         for (int side = 0; side < 2; side++)
         {
             for (int j = 0; j < 3; j++) _hind[side, j] = pieces.FindIndex(p => p.Name == $"hind{side}_{j}");
@@ -74,7 +74,7 @@ public sealed class HopRig : Rig
             case HopPhase.Land: squash = 0.7f * (1f - c.HopTime); ext = 0f; break;
             default: squash = 0.12f + MathF.Sin(c.Age * 2f + c.Id) * 0.03f; ext = 0f; break;
         }
-        squash = Mathf.Lerp(squash, 0.5f, Hidden + Crouch * 0.5f) * (1f - Dead);
+        squash = Mathf.Lerp(squash, 0.5f, Math.Clamp(Hidden + Crouch * 0.5f + Bracing * 0.5f, 0f, 1f)) * (1f - Dead);
         _squash = Geo.Smooth(_squash, squash, 18f, dt);
         _ext = Geo.Smooth(_ext, ext, 16f, dt);
 
@@ -115,14 +115,6 @@ public sealed class HopRig : Rig
             Vector3 at = frameT * new Vector3(0, H * 0.3f * (1f - 0.22f * _squash), -L * 0.4f);
             Basis hb = yaw * new Basis(Vector3.Up, LookYaw) * new Basis(Vector3.Right, -0.1f - Graze * 0.5f + Rearing * 0.2f);
             Pose[_head] = new Transform3D(hb, at);
-        }
-        if (_sac >= 0)
-        {
-            bool idle = c.Hop == HopPhase.Ground && WildSim.Flat(c.Desired).Length() < 0.2f && !c.Dead;
-            float puff = idle ? MathF.Pow(MathF.Max(0f, MathF.Sin(c.Age * 1.6f + c.Id)), 3f) : 0f;
-            float s = 0.3f + 0.75f * puff + 0.4f * Rearing;
-            Vector3 at = frameT * new Vector3(0, -H * 0.12f, -L * 0.36f);
-            Pose[_sac] = new Transform3D(frame.Scaled(Vector3.One * s), at);
         }
 
         // Spring legs: folded on the ground, deeper before a jump, straight out behind in the air.
@@ -190,69 +182,74 @@ public sealed class HopRig : Rig
         (float thigh, float shin, float foot) = LegLengths(s);
 
         var body = new Piece("body");
+        LoftProfile shape = null;
         if (s.Tumbles)
         {
-            // A living boulder: lumps of rock, moss in the cracks, veins of light if it glows.
-            body.Add(Shape.Sphere, new Vector3(W, H, L * 0.9f), Vector3.Zero, k.Base.Lerp(new Color(0.5f, 0.48f, 0.45f), 0.5f), 1f);
+            // A living boulder: lumps of rock, moss in the cracks, a slit of light where it sees.
+            body.Add(Shape.Sphere, new Vector3(W, H, L * 0.9f), Vector3.Zero, k.Base.Lerp(new Color(0.5f, 0.48f, 0.45f), 0.5f), 1f, 0f, null, 12, Mat.Carapace);
             int lumps = rng.Int(5, 8);
             for (int i = 0; i < lumps; i++)
             {
                 Vector3 dir = new Vector3(rng.Range(-1f, 1f), rng.Range(-0.4f, 1f), rng.Range(-1f, 1f)).Normalized();
                 var at = new Vector3(dir.X * W, dir.Y * H, dir.Z * L) * 0.35f;
-                Shape shape = i % 2 == 0 ? Shape.Box : Shape.Sphere;
-                body.Add(shape, Vector3.One * MathF.Min(W, H) * rng.Range(0.35f, 0.6f), at, k.Base.Darkened(rng.Range(0f, 0.3f)), 0.6f, 0f,
-                    new Basis(new Vector3(rng.Range(-1f, 1f), 1f, rng.Range(-1f, 1f)).Normalized(), rng.Range(0f, 3f)));
+                Shape shapeKind = i % 2 == 0 ? Shape.Box : Shape.Sphere;
+                body.Add(shapeKind, Vector3.One * MathF.Min(W, H) * rng.Range(0.35f, 0.6f), at, k.Base.Darkened(rng.Range(0f, 0.3f)), 0.6f, 0f,
+                    new Basis(new Vector3(rng.Range(-1f, 1f), 1f, rng.Range(-1f, 1f)).Normalized(), rng.Range(0f, 3f)), 0, Mat.Carapace);
             }
             for (int i = 0; i < 4; i++)
             {
                 var at = new Vector3(rng.Range(-0.3f, 0.3f) * W, H * 0.42f, rng.Range(-0.3f, 0.3f) * L);
-                body.Add(Shape.Sphere, new Vector3(W * 0.3f, H * 0.12f, W * 0.3f), at, k.Accent, 0f, k.GlowStrength * 0.5f);
+                body.Add(Shape.Sphere, new Vector3(W * 0.3f, H * 0.1f, W * 0.3f), at, k.Accent, 0f, k.GlowStrength * 0.5f);
             }
-            Parts.Eye(body, k, new Vector3(-W * 0.18f, H * 0.12f, -L * 0.43f), W * 0.1f, -1);
-            Parts.Eye(body, k, new Vector3(W * 0.18f, H * 0.12f, -L * 0.43f), W * 0.1f, 1);
+            body.Add(Shape.Sphere, new Vector3(W * 0.5f, H * 0.05f, W * 0.08f), new Vector3(0, H * 0.1f, -L * 0.44f), k.EyeGlow > 0 ? k.Glow : k.Mouth, 0f, k.EyeGlow, null, 0, Mat.Eye);
         }
         else
         {
-            body.Add(Shape.Sphere, new Vector3(W, H, L * 0.85f), Vector3.Zero, k.Base, 1f);
-            body.Add(Shape.Sphere, new Vector3(W * 0.85f, H * 0.55f, L * 0.75f), new Vector3(0, -H * 0.2f, -L * 0.02f), k.Belly);
-            Parts.Back(body, s.Part("back"), W, H, L * 0.85f, k, rng);
+            // A hunched body: heavy shoulders over the forelegs, the weight over the haunches.
+            shape = LoftProfile.Smooth(-L * 0.46f, L * 0.44f, new[]
+            {
+                (0f, W * 0.28f, H * 0.32f, H * 0.04f), (0.35f, W * 0.44f, H * 0.48f, H * 0.12f), (0.72f, W * 0.5f, H * 0.48f, 0f), (1f, W * 0.34f, H * 0.34f, -H * 0.06f),
+            }, 14, 0.2f);
+            body.Loft(shape, k.Base, k.Belly, 1f, 0f, Mat.Skin, null, null, 16);
+            Parts.Back(body, s.Part("back"), W, H, L * 0.86f, k, rng, shape);
         }
-        if (s.Corrupted) Parts.Corruption(body, W, H, L * 0.85f, k, rng);
+        if (s.Corrupted) Parts.Corruption(body, W, H, L * 0.85f, k, rng, shape);
         layout.Add(body);
 
         if (s.Part("head") != "none")
         {
             var head = new Piece("head");
-            Parts.Head(head, s.Part("head"), hs, k, rng);
-            Parts.Horns(head, s.Part("horns"), hs, k, rng);
+            HeadShape info = Parts.Head(head, s.Part("head"), hs, k, rng);
+            Parts.Horns(head, s.Part("horns"), hs, k, rng, info);
             if (s.Part("tendrils") is "chin" or "whiskers" or "back")
                 for (int i = 0; i < 4; i++)
-                    head.Rod(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.25f, -hs * 0.7f), new Vector3((i - 1.5f) * hs * 0.3f, -hs * 0.9f, -hs * 0.8f),
-                        hs * 0.05f, s.Corrupted ? k.Veins : k.Base.Lerp(k.Accent, 0.4f), 0f, s.Corrupted ? 0.8f : 0f);
+                    head.Taper(new Vector3((i - 1.5f) * hs * 0.15f, -hs * 0.22f, -hs * 0.7f), new Vector3((i - 1.5f) * hs * 0.3f, -hs * 0.9f, -hs * 0.8f),
+                        hs * 0.035f, hs * 0.01f, s.Corrupted ? k.Veins : k.Base.Lerp(k.Accent, 0.4f), 0f, s.Corrupted ? 0.8f : 0f);
             layout.Add(head);
-
-            var sac = new Piece("sac") { Shadow = false };
-            sac.Add(Shape.Sphere, new Vector3(hs * 0.9f, hs * 0.8f, hs * 0.9f), new Vector3(0, -hs * 0.25f, 0),
-                k.Accent.Lightened(0.25f), 0.3f, k.GlowStrength * 0.6f);
-            layout.Add(sac);
         }
 
+        // Spring legs: a heavy thigh, a long shin and a long foot, every joint the same radius
+        // on both sides so the leg folds without a seam.
         float legT = s.Tumbles ? W * 0.16f : W * 0.2f;
-        Color leg = k.Base.Darkened(0.12f);
+        Color leg = k.Base.Darkened(0.1f);
+        float rT = legT * 0.72f, rK = legT * 0.42f, rA = legT * 0.3f, rToe = legT * 0.14f;
         for (int side = 0; side < 2; side++)
         {
             var t = new Piece($"hind{side}_0");
-            t.Add(Shape.Capsule, new Vector3(legT * 1.3f, thigh + legT, legT * 1.3f), new Vector3(0, thigh * 0.5f, 0), leg, 0.7f);
+            t.Taper(Vector3.Zero, new Vector3(0, thigh, 0), rT, rK, leg, 0.8f);
+            if (!s.Tumbles) t.Add(Shape.Sphere, new Vector3(legT * 1.7f, legT * 2.2f, legT * 2f), new Vector3(0, thigh * 0.22f, 0), k.Base, 1f, 0f, null, 10);
             layout.Add(t);
             var sh = new Piece($"hind{side}_1");
-            sh.Add(Shape.Capsule, new Vector3(legT * 0.8f, shin + legT * 0.8f, legT * 0.8f), new Vector3(0, shin * 0.5f, 0), leg, 0.5f);
+            sh.Taper(Vector3.Zero, new Vector3(0, shin, 0), rK, rA, leg, 0.5f);
             layout.Add(sh);
             var f = new Piece($"hind{side}_2") { Shadow = false };
-            f.Add(Shape.Sphere, new Vector3(legT * 1.4f, foot * 1.1f, legT * 0.5f), new Vector3(0, foot * 0.5f, 0), k.Dark);
+            f.Taper(Vector3.Zero, new Vector3(0, foot, 0), rA, rToe, k.Dark, 0.2f);
+            for (int c = -1; c <= 1; c += 2)
+                f.Horn(k.Horn, rToe * 0.9f, Mat.Horn, new Vector3(c * rToe, foot, 0), new Vector3(c * rToe * 1.6f, foot + rToe * 3f, -rToe * 0.5f));
             layout.Add(f);
             var front = new Piece($"front{side}") { Shadow = false };
             float fl = H * 0.9f;
-            front.Add(Shape.Capsule, new Vector3(legT * 0.6f, fl + legT * 0.6f, legT * 0.6f), new Vector3(0, fl * 0.5f, 0), leg, 0.4f);
+            front.Taper(Vector3.Zero, new Vector3(0, fl, 0), legT * 0.42f, legT * 0.2f, leg, 0.4f);
             layout.Add(front);
         }
 
@@ -261,8 +258,8 @@ public sealed class HopRig : Rig
             for (int i = 0; i < 2; i++)
             {
                 var t = new Piece($"tail{i}");
-                float seg = b.TailLength / 2f, d = W * 0.22f * (1f - 0.4f * i);
-                t.Add(Shape.Capsule, new Vector3(d, seg + d, d), new Vector3(0, seg * 0.5f, 0), k.Base, 0.8f);
+                float seg = b.TailLength / 2f, r0 = W * 0.12f * (1f - 0.5f * i), r1 = W * 0.12f * (1f - 0.5f * (i + 1)) + W * 0.01f;
+                t.Taper(Vector3.Zero, new Vector3(0, seg, 0), r0, r1, k.Base, 0.8f);
                 if (i == 1) Parts.TailTip(t, s.Part("tail"), seg, W * 0.6f, k);
                 layout.Add(t);
             }

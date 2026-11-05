@@ -4,8 +4,9 @@
   // pulls its rolls towards forms, parts and patterns of matching weirdness.
 
   // Fairness comes from warning, not damage reduction: every creature's first attack on a
-  // player is a telegraphed lunge (wind-up per behaviour below), aimed where you stood when it
-  // committed, so stepping aside dodges it. Damage is never capped. No creature is ranged yet.
+  // player is its behaviour's signature attack, telegraphed (wind-up per behaviour below), and
+  // aimed where you stood when it committed, so stepping aside dodges it. Damage is never
+  // capped. No creature is ranged yet.
   "combat": {
     "telegraphWindup": 1.1,
     "normalWindup": 0.45,
@@ -42,62 +43,66 @@
     "distinctPlans": 5,
     "surprise": [0.04, 0.35],
     "weirdnessFocus": 0.32,
+    // Alien worlds may push proportions this far past a form's ranges (share of the range,
+    // below and above). Kept small: further out, bodies read as broken rather than strange.
+    "proportionPush": [0.15, 0.35],
 
+    // Head sizes are kept modest on purpose: a big head on a small body reads as a baby animal.
     "forms": [
       { "id": "strider", "plan": "Walker", "rig": "Legged", "weight": 1.2, "weirdness": 0.05, "noun": "strider",
-        "size": [1.1, 2.2], "legs": [4, 4], "legStyles": ["Upright"], "legLength": [0.5, 0.8], "neck": [0.25, 0.7], "tail": [0.3, 0.8],
-        "width": [0.36, 0.5], "height": [0.36, 0.5], "headSize": [0.28, 0.38],
-        "behaviours": { "Grazer": 3, "Herd": 5, "Predator": 2, "Scavenger": 1 } },
+        "size": [1.1, 2.2], "legs": [4, 4], "legStyles": ["Upright"], "legLength": [0.5, 0.8], "neck": [0.25, 0.6], "tail": [0.4, 0.9],
+        "width": [0.36, 0.5], "height": [0.38, 0.5], "headSize": [0.22, 0.3],
+        "behaviours": { "Grazer": 3, "Herd": 5, "Predator": 2, "PackHunter": 3, "Scavenger": 1 } },
 
       { "id": "longneck", "plan": "Walker", "rig": "Legged", "weight": 0.9, "weirdness": 0.2, "noun": "longneck",
-        "size": [1.4, 2.6], "legs": [4, 6], "legStyles": ["Upright", "Stilt"], "legLength": [0.7, 1.2], "neck": [1.0, 1.8], "tail": [0.2, 0.6],
-        "width": [0.34, 0.46], "height": [0.36, 0.48], "headSize": [0.2, 0.3],
+        "size": [1.4, 2.6], "legs": [4, 6], "legStyles": ["Upright", "Stilt"], "legLength": [0.7, 1.1], "neck": [1.0, 1.6], "tail": [0.3, 0.7],
+        "width": [0.34, 0.46], "height": [0.38, 0.48], "headSize": [0.17, 0.23],
         "behaviours": { "Grazer": 3, "Herd": 5, "TerritorialGiant": 0.3 } },
 
       { "id": "stalker", "plan": "Walker", "rig": "Legged", "weight": 1.0, "weirdness": 0.3, "noun": "stalker",
-        "size": [1.3, 2.4], "legs": [2, 4], "legStyles": ["Upright", "Stilt"], "legLength": [0.6, 0.95], "neck": [0.3, 0.6], "tail": [0.7, 1.3],
-        "width": [0.3, 0.42], "height": [0.32, 0.42], "headSize": [0.3, 0.42],
-        "behaviours": { "Predator": 5, "Ambusher": 1, "Scavenger": 1 } },
+        "size": [1.3, 2.4], "legs": [2, 4], "legStyles": ["Upright"], "legLength": [0.6, 0.9], "neck": [0.3, 0.55], "tail": [0.8, 1.3],
+        "width": [0.3, 0.4], "height": [0.34, 0.42], "headSize": [0.24, 0.32],
+        "behaviours": { "Predator": 5, "PackHunter": 4, "Ambusher": 1, "Scavenger": 1 } },
 
       { "id": "skitterer", "plan": "Walker", "rig": "Legged", "weight": 0.8, "weirdness": 0.5, "noun": "skitterer",
-        "size": [0.8, 1.6], "legs": [6, 8], "legStyles": ["Splayed"], "legLength": [0.6, 1.0], "neck": [0.0, 0.15], "tail": [0.0, 0.4],
-        "width": [0.45, 0.65], "height": [0.3, 0.42], "headSize": [0.3, 0.4],
-        "behaviours": { "Predator": 3, "Scavenger": 2, "Ambusher": 2, "Herd": 1 } },
+        "size": [0.8, 1.6], "legs": [6, 8], "legStyles": ["Splayed"], "legLength": [0.6, 1.0], "neck": [0.0, 0.12], "tail": [0.0, 0.0],
+        "width": [0.45, 0.62], "height": [0.32, 0.42], "headSize": [0.2, 0.28],
+        "behaviours": { "Predator": 3, "PackHunter": 2, "Scavenger": 2, "Ambusher": 2, "Herd": 1 } },
 
-      { "id": "tripod", "plan": "Walker", "rig": "Legged", "weight": 0.5, "weirdness": 0.8, "noun": "tripod",
-        "size": [1.0, 1.8], "legs": [3, 5], "legStyles": ["Stilt", "Splayed"], "legLength": [1.0, 1.6], "neck": [0.2, 0.9], "tail": [0.0, 0.5],
-        "width": [0.5, 0.75], "height": [0.45, 0.7], "headSize": [0.3, 0.45],
+      { "id": "tripod", "plan": "Walker", "rig": "Legged", "weight": 0.4, "weirdness": 0.8, "noun": "tripod",
+        "size": [1.0, 1.8], "legs": [3, 3], "legStyles": ["Stilt"], "legLength": [0.9, 1.3], "neck": [0.2, 0.7], "tail": [0.0, 0.3],
+        "width": [0.55, 0.72], "height": [0.45, 0.6], "headSize": [0.2, 0.28],
         "behaviours": { "Grazer": 2, "Herd": 2, "Predator": 2, "HarmlessOddity": 1 } },
 
       { "id": "centipede", "plan": "Crawler", "rig": "Chain", "weight": 1.0, "weirdness": 0.35, "noun": "crawler",
-        "size": [1.4, 3.0], "segments": [7, 12], "legs": [2, 2], "legLength": [0.18, 0.3], "width": [0.12, 0.18], "headSize": [0.13, 0.2], "tail": [0.1, 0.3],
-        "behaviours": { "Scavenger": 3, "Ambusher": 3, "Predator": 2, "Grazer": 1 } },
+        "size": [1.4, 3.0], "segments": [7, 12], "legs": [2, 2], "legLength": [0.18, 0.3], "width": [0.12, 0.18], "headSize": [0.13, 0.18], "tail": [0.1, 0.3],
+        "behaviours": { "Scavenger": 3, "Ambusher": 3, "Predator": 2, "PackHunter": 1, "Grazer": 1 } },
 
       { "id": "serpent", "plan": "Crawler", "rig": "Chain", "weight": 0.9, "weirdness": 0.2, "noun": "slitherer",
         "size": [1.8, 4.0], "segments": [10, 16], "legs": [0, 0], "width": [0.07, 0.11], "headSize": [0.09, 0.13], "tail": [0.1, 0.3],
         "behaviours": { "Predator": 3, "Ambusher": 3, "Scavenger": 1 } },
 
       { "id": "burrower", "plan": "Crawler", "rig": "Chain", "weight": 0.8, "weirdness": 0.55, "noun": "burrower",
-        "size": [1.4, 3.0], "segments": [5, 8], "legs": [0, 2], "legLength": [0.12, 0.2], "width": [0.18, 0.26], "headSize": [0.18, 0.26], "tail": [0.1, 0.2],
+        "size": [1.4, 3.0], "segments": [5, 8], "legs": [0, 2], "legLength": [0.12, 0.2], "width": [0.18, 0.26], "headSize": [0.16, 0.22], "tail": [0.1, 0.2],
         "burrows": true,
         "behaviours": { "Ambusher": 6, "Scavenger": 1 } },
 
-      { "id": "springer", "plan": "Hopper", "rig": "Hopper", "weight": 1.0, "weirdness": 0.2, "noun": "hopper",
-        "size": [0.6, 1.4], "legLength": [0.55, 0.9], "width": [0.5, 0.7], "height": [0.45, 0.65], "headSize": [0.35, 0.5], "tail": [0.0, 0.5],
-        "behaviours": { "Grazer": 3, "Herd": 3, "Scavenger": 2, "Predator": 1 } },
+      { "id": "springer", "plan": "Hopper", "rig": "Hopper", "weight": 1.0, "weirdness": 0.2, "noun": "leaper",
+        "size": [0.8, 1.6], "legLength": [0.65, 0.95], "width": [0.38, 0.48], "height": [0.36, 0.46], "headSize": [0.2, 0.27], "tail": [0.4, 0.8],
+        "behaviours": { "Grazer": 3, "Herd": 3, "Scavenger": 2, "Predator": 1, "PackHunter": 1 } },
 
       { "id": "glider", "plan": "Flier", "rig": "Winged", "weight": 0.9, "weirdness": 0.25, "noun": "glider",
-        "size": [0.9, 2.0], "wings": [2, 2], "width": [0.25, 0.35], "height": [0.22, 0.3], "headSize": [0.22, 0.32], "neck": [0.1, 0.4], "tail": [0.4, 1.1],
+        "size": [0.9, 2.0], "wings": [2, 2], "width": [0.25, 0.35], "height": [0.22, 0.3], "headSize": [0.2, 0.28], "neck": [0.1, 0.4], "tail": [0.5, 1.1],
         "flies": true,
         "behaviours": { "Scavenger": 4, "Predator": 2, "Grazer": 1 } },
 
       { "id": "mothwing", "plan": "Flier", "rig": "Winged", "weight": 0.6, "weirdness": 0.6, "noun": "flutterer",
-        "size": [0.6, 1.5], "wings": [4, 4], "width": [0.3, 0.42], "height": [0.28, 0.36], "headSize": [0.28, 0.38], "neck": [0.0, 0.2], "tail": [0.2, 0.6],
+        "size": [0.6, 1.5], "wings": [4, 4], "width": [0.3, 0.42], "height": [0.28, 0.36], "headSize": [0.22, 0.3], "neck": [0.0, 0.2], "tail": [0.2, 0.6],
         "flies": true,
         "behaviours": { "Scavenger": 2, "HarmlessOddity": 2, "Predator": 1 } },
 
       { "id": "gasbag", "plan": "Floater", "rig": "GasBag", "weight": 0.8, "weirdness": 0.65, "noun": "drifter",
-        "size": [1.6, 3.6], "bags": [1, 3], "width": [0.8, 1.1], "height": [0.8, 1.2], "headSize": [0.2, 0.3], "tail": [0.8, 1.8],
+        "size": [1.6, 3.6], "bags": [1, 3], "width": [0.8, 1.1], "height": [0.8, 1.2], "headSize": [0.18, 0.26], "tail": [0.9, 1.8],
         "flies": true,
         "behaviours": { "HarmlessOddity": 4, "Grazer": 2, "Ambusher": 0.6 } },
 
@@ -110,18 +115,18 @@
         "behaviours": { "Swarm": 1 } },
 
       { "id": "colossus", "plan": "Giant", "rig": "Legged", "weight": 0.8, "weirdness": 0.3, "noun": "colossus",
-        "size": [6.0, 10.0], "legs": [4, 6], "legStyles": ["Upright"], "legLength": [0.42, 0.65], "neck": [0.3, 1.1], "tail": [0.3, 0.9],
-        "width": [0.4, 0.55], "height": [0.4, 0.55], "headSize": [0.18, 0.26], "speedScale": 0.6, "healthScale": 1.0,
+        "size": [6.0, 10.0], "legs": [4, 6], "legStyles": ["Upright"], "legLength": [0.42, 0.62], "neck": [0.3, 0.9], "tail": [0.4, 0.9],
+        "width": [0.42, 0.55], "height": [0.42, 0.55], "headSize": [0.16, 0.22], "speedScale": 0.6, "healthScale": 1.0,
         "behaviours": { "TerritorialGiant": 4, "Grazer": 3 } },
 
       { "id": "titanstilt", "plan": "Giant", "rig": "Legged", "weight": 0.5, "weirdness": 0.7, "noun": "stiltwalker",
-        "size": [5.0, 8.0], "legs": [3, 6], "legStyles": ["Stilt"], "legLength": [1.2, 1.9], "neck": [0.0, 0.6], "tail": [0.0, 0.5],
-        "width": [0.5, 0.7], "height": [0.35, 0.5], "headSize": [0.2, 0.3], "speedScale": 0.55,
+        "size": [5.0, 8.0], "legs": [4, 6], "legStyles": ["Stilt"], "legLength": [0.7, 0.9], "neck": [0.0, 0.5], "tail": [0.0, 0.4],
+        "width": [0.58, 0.75], "height": [0.48, 0.62], "headSize": [0.15, 0.2], "speedScale": 0.55,
         "behaviours": { "TerritorialGiant": 2, "Grazer": 3, "HarmlessOddity": 1 } },
 
       { "id": "walkingplant", "plan": "Oddity", "rig": "Legged", "weight": 0.6, "weirdness": 0.8, "noun": "walking bloom",
-        "size": [0.8, 1.8], "legs": [3, 6], "legStyles": ["Roots"], "legLength": [0.6, 1.0], "neck": [0.0, 0.0], "tail": [0.0, 0.0],
-        "width": [0.6, 0.9], "height": [0.6, 0.9], "headSize": [0.2, 0.3], "rooted": true, "speedScale": 0.6,
+        "size": [0.8, 1.8], "legs": [4, 6], "legStyles": ["Roots"], "legLength": [0.6, 1.0], "neck": [0.0, 0.0], "tail": [0.0, 0.0],
+        "width": [0.6, 0.8], "height": [0.6, 0.75], "headSize": [0.2, 0.3], "rooted": true, "speedScale": 0.6,
         "fixedParts": { "head": "none", "horns": "none", "back": "fronds", "tail": "none", "limbs": "none" },
         "behaviours": { "HarmlessOddity": 5, "Ambusher": 1 } },
 
@@ -132,43 +137,71 @@
         "behaviours": { "HarmlessOddity": 5, "TerritorialGiant": 0.5 } },
 
       { "id": "crystalback", "plan": "Oddity", "rig": "Legged", "weight": 0.6, "weirdness": 0.7, "noun": "crystalback",
-        "size": [1.1, 2.2], "legs": [4, 6], "legStyles": ["Upright", "Splayed"], "legLength": [0.4, 0.7], "neck": [0.2, 0.6], "tail": [0.2, 0.6],
-        "width": [0.45, 0.6], "height": [0.36, 0.5], "headSize": [0.26, 0.34],
+        "size": [1.1, 2.2], "legs": [4, 6], "legStyles": ["Upright", "Splayed"], "legLength": [0.45, 0.7], "neck": [0.2, 0.5], "tail": [0.3, 0.6],
+        "width": [0.45, 0.6], "height": [0.38, 0.5], "headSize": [0.2, 0.28],
         "fixedParts": { "back": "crystals" },
         "behaviours": { "Grazer": 3, "Herd": 3, "HarmlessOddity": 2 } }
     ],
 
+    // Swappable parts. "rigs" says which bodies a part fits, "roles" which behaviours it suits
+    // (empty: any), and "excludes" / "requires" rule out pairings that clash, whichever part
+    // is rolled first. Behaviour is rolled before parts, so a hunter is built as a hunter.
     "parts": {
       "head": [
-        { "id": "snout", "weirdness": 0.05, "rigs": ["Legged", "Hopper", "Chain", "Winged"], "adjective": "snouted" },
+        { "id": "snout", "weirdness": 0.05, "rigs": ["Legged", "Hopper", "Chain", "Winged"], "adjective": "snouted",
+          "roles": ["Grazer", "Herd", "Scavenger", "TerritorialGiant", "HarmlessOddity"] },
+        { "id": "jaws", "weirdness": 0.1, "rigs": ["Legged", "Hopper", "Chain", "Winged"], "adjective": "fanged",
+          "roles": ["Predator", "PackHunter", "Ambusher", "Scavenger", "TerritorialGiant"],
+          "rare": { "name": "Fang", "chance": 0.25, "value": 40 } },
         { "id": "beak", "weirdness": 0.15, "rigs": ["Legged", "Hopper", "Winged"], "adjective": "beaked" },
-        { "id": "mandibles", "weirdness": 0.45, "rigs": ["Legged", "Chain", "Swarm"], "adjective": "mandibled",
+        { "id": "skull", "weirdness": 0.25, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "bone-browed",
+          "rare": { "name": "Skull plate", "chance": 0.25, "value": 50 } },
+        { "id": "mandibles", "weirdness": 0.45, "rigs": ["Legged", "Chain", "Hopper", "Swarm"], "adjective": "mandibled",
+          "forms": ["skitterer", "tripod", "centipede", "burrower", "springer", "cloud", "pack", "crystalback"],
           "rare": { "name": "Mandible blade", "chance": 0.2, "value": 45 } },
         { "id": "hammer", "weirdness": 0.55, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "hammerhead" },
-        { "id": "eyestalks", "weirdness": 0.65, "rigs": ["Legged", "Chain", "Hopper", "GasBag", "Swarm"], "adjective": "stalk-eyed" },
-        { "id": "lantern", "weirdness": 0.7, "rigs": ["Legged", "Chain", "GasBag", "Winged"], "adjective": "lantern-headed", "glow": true,
+        { "id": "lantern", "weirdness": 0.7, "rigs": ["Legged", "Chain", "GasBag", "Winged"], "adjective": "lantern-jawed", "glow": true,
+          "roles": ["Predator", "PackHunter", "Ambusher", "Scavenger", "HarmlessOddity"],
           "rare": { "name": "Glow gland", "chance": 0.35, "value": 80 } },
-        { "id": "maw", "weirdness": 0.75, "rigs": ["Legged", "Chain", "GasBag"], "adjective": "lamprey-mouthed" },
+        { "id": "maw", "weirdness": 0.75, "rigs": ["Legged", "Chain", "GasBag"], "adjective": "lamprey-mouthed",
+          "roles": ["Predator", "PackHunter", "Ambusher", "Scavenger", "TerritorialGiant", "HarmlessOddity"] },
         { "id": "dome", "weirdness": 0.85, "rigs": ["Legged", "Hopper", "GasBag"], "adjective": "faceless" },
-        { "id": "twin", "weirdness": 0.95, "rigs": ["Legged"], "adjective": "twin-headed" },
+        { "id": "twin", "weirdness": 0.95, "rigs": ["Legged"], "adjective": "twin-headed", "needsNeck": true },
         { "id": "none", "weirdness": 0.6, "fixedOnly": true }
       ],
       "horns": [
         { "id": "none", "weirdness": 0.0 },
         { "id": "pair", "weirdness": 0.12, "rigs": ["Legged", "Hopper", "Chain", "Winged"], "adjective": "horned",
+          "excludes": ["head/mandibles", "head/maw"],
           "rare": { "name": "Horn pair", "chance": 0.25, "value": 35 } },
+        { "id": "tusks", "weirdness": 0.2, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "tusked",
+          "excludes": ["head/beak", "head/mandibles", "head/maw", "head/skull", "head/dome", "head/hammer"],
+          "rare": { "name": "Tusk", "chance": 0.25, "value": 40 } },
         { "id": "ram", "weirdness": 0.2, "rigs": ["Legged", "Hopper"], "adjective": "ram-horned",
+          "roles": ["Grazer", "Herd", "TerritorialGiant", "HarmlessOddity", "Scavenger"],
+          "excludes": ["head/mandibles", "head/maw", "head/lantern", "head/hammer", "head/dome"],
           "rare": { "name": "Spiral horn", "chance": 0.25, "value": 50 } },
+        { "id": "brow", "weirdness": 0.25, "rigs": ["Legged", "Hopper"], "adjective": "brow-horned",
+          "excludes": ["head/mandibles", "head/maw", "head/lantern", "head/hammer", "head/dome", "head/beak"],
+          "rare": { "name": "Brow horn", "chance": 0.25, "value": 45 } },
         { "id": "antlers", "weirdness": 0.3, "rigs": ["Legged"], "adjective": "antlered",
+          "roles": ["Grazer", "Herd", "TerritorialGiant", "HarmlessOddity"],
+          "excludes": ["head/mandibles", "head/maw", "head/lantern", "head/hammer", "head/dome", "head/twin"],
           "rare": { "name": "Antler velvet", "chance": 0.3, "value": 40 } },
-        { "id": "spike", "weirdness": 0.3, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "spike-nosed" },
-        { "id": "antennae", "weirdness": 0.45, "rigs": ["Legged", "Chain", "Hopper", "Winged", "Swarm"], "adjective": "feelered" },
-        { "id": "frill", "weirdness": 0.5, "rigs": ["Legged", "Chain", "Winged"], "adjective": "frilled" },
+        { "id": "spike", "weirdness": 0.3, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "spike-nosed",
+          "excludes": ["head/maw", "head/hammer", "head/beak", "head/mandibles"] },
+        { "id": "antennae", "weirdness": 0.45, "rigs": ["Legged", "Chain", "Hopper", "Winged", "Swarm"], "adjective": "feelered",
+          "forms": ["skitterer", "tripod", "centipede", "burrower", "springer", "mothwing", "cloud", "pack", "crystalback"],
+          "requires": ["head/mandibles", "head/dome", "head/hammer"] },
+        { "id": "frill", "weirdness": 0.5, "rigs": ["Legged", "Chain", "Winged"], "adjective": "frilled",
+          "excludes": ["head/hammer", "head/mandibles", "head/maw"] },
         { "id": "crown", "weirdness": 0.6, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "crowned",
+          "excludes": ["head/hammer", "head/maw"],
           "rare": { "name": "Crown spur", "chance": 0.3, "value": 70 } }
       ],
       "back": [
         { "id": "none", "weirdness": 0.0 },
+        { "id": "ridge", "weirdness": 0.15, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "ridge-backed" },
         { "id": "plates", "weirdness": 0.2, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "armoured",
           "rare": { "name": "Armour plate", "chance": 0.3, "value": 40 } },
         { "id": "shell", "weirdness": 0.35, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "shelled",
@@ -177,7 +210,7 @@
         { "id": "sail", "weirdness": 0.45, "rigs": ["Legged", "Chain", "Winged"], "adjective": "sail-backed" },
         { "id": "crystals", "weirdness": 0.75, "rigs": ["Legged", "Chain", "Hopper"], "adjective": "crystal-backed", "glow": true,
           "rare": { "name": "Resonant crystal", "chance": 0.4, "value": 120 } },
-        { "id": "bubbles", "weirdness": 0.85, "rigs": ["Legged", "Hopper", "GasBag"], "adjective": "bubble-backed", "glow": true },
+        { "id": "bubbles", "weirdness": 0.85, "rigs": ["Legged", "Hopper", "GasBag"], "adjective": "blister-backed", "glow": true },
         { "id": "vents", "weirdness": 0.9, "rigs": ["Legged", "Chain", "GasBag"], "adjective": "chimney-backed",
           "rare": { "name": "Vent soot", "chance": 0.25, "value": 60 } },
         { "id": "fronds", "weirdness": 0.7, "fixedOnly": true, "adjective": "frond-crowned",
@@ -188,59 +221,84 @@
       "tail": [
         { "id": "none", "weirdness": 0.0 },
         { "id": "whip", "weirdness": 0.1, "rigs": ["Legged", "Hopper", "Winged", "Chain"], "adjective": "whip-tailed" },
-        { "id": "plume", "weirdness": 0.3, "rigs": ["Legged", "Winged", "Hopper"], "adjective": "plumed" },
+        { "id": "spiked", "weirdness": 0.3, "rigs": ["Legged", "Chain"], "adjective": "spike-tailed" },
+        { "id": "quills", "weirdness": 0.3, "rigs": ["Legged", "Winged", "Hopper"], "adjective": "quill-tailed" },
         { "id": "club", "weirdness": 0.35, "rigs": ["Legged", "Chain"], "adjective": "club-tailed",
           "rare": { "name": "Tail club", "chance": 0.25, "value": 45 } },
-        { "id": "fan", "weirdness": 0.4, "rigs": ["Legged", "Winged", "Chain"], "adjective": "fan-tailed" },
+        { "id": "fin", "weirdness": 0.4, "rigs": ["Legged", "Winged", "Chain"], "adjective": "fin-tailed" },
         { "id": "stinger", "weirdness": 0.5, "rigs": ["Legged", "Chain", "Winged", "Swarm"], "adjective": "stinging",
+          "roles": ["Predator", "PackHunter", "Ambusher", "Scavenger", "Swarm", "TerritorialGiant"],
           "rare": { "name": "Venom sac", "chance": 0.3, "value": 75 } },
         { "id": "twin", "weirdness": 0.7, "rigs": ["Legged", "Winged"], "adjective": "fork-tailed" }
       ],
       "limbs": [
         { "id": "none", "weirdness": 0.0 },
-        { "id": "arms", "weirdness": 0.4, "rigs": ["Legged"], "adjective": "grasping" },
-        { "id": "feelers", "weirdness": 0.5, "rigs": ["Legged", "Chain"], "adjective": "groping" },
+        { "id": "arms", "weirdness": 0.4, "rigs": ["Legged"], "adjective": "clawed",
+          "roles": ["Predator", "PackHunter", "Ambusher", "Scavenger", "TerritorialGiant", "HarmlessOddity"] },
+        { "id": "feelers", "weirdness": 0.5, "rigs": ["Legged", "Chain"], "adjective": "groping",
+          "forms": ["skitterer", "tripod", "centipede", "burrower", "crystalback", "titanstilt"],
+          "excludes": ["horns/antennae"] },
         { "id": "scythes", "weirdness": 0.6, "rigs": ["Legged", "Chain"], "adjective": "scythe-armed",
+          "roles": ["Predator", "PackHunter", "Ambusher"],
           "rare": { "name": "Scythe claw", "chance": 0.3, "value": 65 } }
       ],
       "tendrils": [
         { "id": "none", "weirdness": 0.0 },
-        { "id": "whiskers", "weirdness": 0.35, "rigs": ["Legged", "Chain", "Hopper", "Winged"], "adjective": "whiskered" },
-        { "id": "chin", "weirdness": 0.5, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "bearded" },
-        { "id": "back", "weirdness": 0.6, "rigs": ["Legged", "Hopper"], "adjective": "tendrilled" },
+        { "id": "whiskers", "weirdness": 0.35, "rigs": ["Legged", "Chain", "Hopper", "Winged"], "adjective": "barbelled",
+          "excludes": ["head/beak", "head/mandibles"] },
+        { "id": "chin", "weirdness": 0.5, "rigs": ["Legged", "Hopper", "Chain"], "adjective": "bearded",
+          "excludes": ["head/beak", "head/mandibles", "head/maw"] },
+        { "id": "back", "weirdness": 0.6, "rigs": ["Legged", "Hopper"], "adjective": "tendrilled",
+          "excludes": ["back/shell", "back/sail", "back/crystals", "back/plates"] },
         { "id": "dangling", "weirdness": 0.55, "rigs": ["GasBag"], "adjective": "trailing" },
         { "id": "curtain", "weirdness": 0.7, "rigs": ["GasBag"], "adjective": "veiled" },
-        { "id": "glowing", "weirdness": 0.75, "rigs": ["GasBag", "Legged"], "adjective": "glow-tressed", "glow": true }
+        { "id": "glowing", "weirdness": 0.75, "rigs": ["GasBag", "Legged"], "adjective": "glow-tressed", "glow": true,
+          "excludes": ["back/shell", "back/sail", "back/crystals", "back/plates"] }
       ]
     },
 
+    // Checkerboards are gone: on a living thing they read as a missing texture.
     "patterns": [
       { "id": "Plain", "weirdness": 0.0 },
       { "id": "Countershade", "weirdness": 0.05 },
+      { "id": "Mottle", "weirdness": 0.15 },
       { "id": "Spots", "weirdness": 0.2 },
       { "id": "Stripes", "weirdness": 0.25 },
       { "id": "Bands", "weirdness": 0.3 },
       { "id": "Rings", "weirdness": 0.55 },
-      { "id": "Checker", "weirdness": 0.75 },
       { "id": "Veins", "weirdness": 0.85 }
     ],
 
+    // Each behaviour's signature attack. Its telegraph is the wind-up of the first attack on a
+    // player: the creature crouches, lowers its head or rears (by style) and its sound swells.
+    // Fliers turn it into a dive, crawlers into a coiled strike, swarms into a sting cloud.
     "behaviours": {
-      "Grazer": { "group": [2, 3], "perception": 24, "damage": 6, "speed": 1.0, "telegraph": 1.0,
+      "Grazer": { "group": [2, 3], "perception": 24, "damage": 6, "speed": 1.0,
+        "attack": { "name": "Head butt", "style": "Charge", "telegraph": 1.0, "reach": 1.0, "lunge": 0.3, "sound": "bellow" },
         "temperaments": { "Skittish": 4, "Calm": 4, "Bold": 1 } },
-      "Herd": { "group": [5, 8], "perception": 28, "damage": 8, "speed": 1.0, "telegraph": 1.2,
+      "Herd": { "group": [5, 8], "perception": 28, "damage": 8, "speed": 1.0,
+        "attack": { "name": "Stampede charge", "style": "Charge", "telegraph": 1.2, "reach": 1.6, "lunge": 0.32, "sound": "bellow" },
         "temperaments": { "Skittish": 5, "Calm": 3, "Bold": 1, "Aggressive": 0.4 } },
-      "Predator": { "group": [1, 2], "perception": 42, "damage": 20, "speed": 1.15, "telegraph": 1.1,
+      "Predator": { "group": [1, 2], "perception": 42, "damage": 20, "speed": 1.15,
+        "attack": { "name": "Pounce", "style": "Pounce", "telegraph": 1.1, "reach": 1.4, "lunge": 0.3, "sound": "growl" },
         "temperaments": { "Bold": 4, "Aggressive": 4, "Skittish": 0.3 } },
-      "Ambusher": { "group": [2, 3], "perception": 14, "damage": 18, "speed": 1.3, "ambushRadius": 7, "telegraph": 0.9,
+      "PackHunter": { "group": [3, 6], "perception": 40, "damage": 12, "speed": 1.2,
+        "attack": { "name": "Flank bite", "style": "Lunge", "telegraph": 1.0, "reach": 1.2, "lunge": 0.25, "sound": "snarl" },
+        "temperaments": { "Bold": 3, "Aggressive": 5 } },
+      "Ambusher": { "group": [2, 3], "perception": 14, "damage": 18, "speed": 1.3, "ambushRadius": 7,
+        "attack": { "name": "Eruption", "style": "Burst", "telegraph": 0.9, "reach": 1.2, "lunge": 0.25, "sound": "hiss" },
         "temperaments": { "Aggressive": 4, "Bold": 2 } },
-      "Scavenger": { "group": [2, 4], "perception": 45, "damage": 7, "speed": 1.0, "telegraph": 1.0,
+      "Scavenger": { "group": [2, 4], "perception": 45, "damage": 7, "speed": 1.0,
+        "attack": { "name": "Snap", "style": "Lunge", "telegraph": 1.0, "reach": 1.0, "lunge": 0.22, "sound": "chitter" },
         "temperaments": { "Skittish": 4, "Calm": 2, "Bold": 2 } },
-      "Swarm": { "group": [1, 1], "perception": 26, "damage": 3, "speed": 1.0, "telegraph": 1.0,
+      "Swarm": { "group": [1, 1], "perception": 26, "damage": 3, "speed": 1.0,
+        "attack": { "name": "Sting cloud", "style": "Sting", "telegraph": 1.0, "sound": "buzz" },
         "temperaments": { "Calm": 2, "Aggressive": 3, "Skittish": 1 } },
-      "TerritorialGiant": { "group": [1, 1], "perception": 40, "damage": 30, "speed": 0.8, "territory": 32, "telegraph": 1.8,
+      "TerritorialGiant": { "group": [1, 1], "perception": 40, "damage": 30, "speed": 0.8, "territory": 32,
+        "attack": { "name": "Trample", "style": "Rear", "telegraph": 1.8, "reach": 2.0, "lunge": 0.4, "sound": "roar" },
         "temperaments": { "Bold": 4, "Aggressive": 2, "Skittish": 0.6 } },
-      "HarmlessOddity": { "group": [2, 4], "perception": 22, "damage": 0, "speed": 0.8, "telegraph": 1.0,
+      "HarmlessOddity": { "group": [2, 4], "perception": 22, "damage": 0, "speed": 0.8,
+        "attack": { "name": "Shove", "style": "Lunge", "telegraph": 1.0, "sound": "grunt" },
         "temperaments": { "Calm": 4, "Skittish": 2, "Bold": 1 } }
     },
 
@@ -251,10 +309,24 @@
       "Aggressive": { "flee": 0, "retaliates": true, "hunts": true }
     },
 
+    // Pack hunters: a planet's second species is a pack this often (otherwise a lone predator).
+    "pack": {
+      "roleChance": 0.6,
+      "surroundRadius": 20,
+      "ringRadius": 7.5,
+      "flankAngle": 110,
+      "surroundSeconds": 7,
+      "hurtBelow": 0.7,
+      "retreatShare": 0.5,
+      "retreatSeconds": 8,
+      "regroupSeconds": 25,
+      "spacing": 2.4
+    },
+
     "palette": {
-      "familiarHues": [[16, 46], [50, 90], [0, 12], [200, 225]],
-      "familiarSaturation": [0.3, 0.62],
-      "familiarValue": [0.34, 0.72],
+      "familiarHues": [[16, 46], [50, 90], [6, 16], [200, 225]],
+      "familiarSaturation": [0.3, 0.6],
+      "familiarValue": [0.3, 0.64],
       "alienSaturation": [0.6, 0.95],
       "alienValue": [0.5, 0.92],
       "glowColors": ["#7cf9ff", "#b6ff4a", "#ff5ad1", "#ffb03b", "#9d8cff", "#3dffb0"],

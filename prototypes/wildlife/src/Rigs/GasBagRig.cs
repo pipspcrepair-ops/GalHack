@@ -119,26 +119,39 @@ public sealed class GasBagRig : Rig
         Proportions b = s.Body;
         float W = b.Width, H = b.Height, hs = b.HeadSize;
 
+        // The gondola: a ribbed, armoured belly slung under the bags, where the mouth is.
         var body = new Piece("body");
-        body.Add(Shape.Sphere, new Vector3(W * 0.36f, H * 0.26f, W * 0.42f), Vector3.Zero, k.Base, 1f);
-        body.Add(Shape.Cylinder, new Vector3(W * 0.42f, H * 0.06f, W * 0.42f), new Vector3(0, H * 0.08f, 0), k.Accent, 0f, k.GlowStrength * 0.5f, null, 12);
+        var hull = LoftProfile.Smooth(-W * 0.24f, W * 0.24f, new[]
+        {
+            (0f, W * 0.16f, H * 0.1f, 0f), (0.5f, W * 0.2f, H * 0.14f, -H * 0.02f), (1f, W * 0.16f, H * 0.1f, 0f),
+        }, 10, 0.3f);
+        body.Loft(hull, k.Base, k.Belly, 1f, 0f, Mat.Carapace, null, null, 14);
+        body.Add(Shape.Cylinder, new Vector3(W * 0.42f, H * 0.05f, W * 0.42f), new Vector3(0, H * 0.08f, 0), k.Accent, 0f, k.GlowStrength * 0.5f, null, 14, Mat.Carapace);
         if (s.Corrupted) Parts.Corruption(body, W * 0.36f, H * 0.26f, W * 0.42f, k, rng);
         layout.Add(body);
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head") is "maw" or "lantern" or "dome" or "eyestalks" ? s.Part("head") : "dome", hs, k, rng);
+        Parts.Head(head, s.Part("head") is "maw" or "lantern" or "dome" ? s.Part("head") : "dome", hs, k, rng);
         layout.Add(head);
 
+        // The bags: long bladders of thin, veined skin, lit through from behind, each with a
+        // crest along the top like a man-of-war's float. A balloon reads as a toy.
         Vector3[] spots = BagSpots(s);
         float scale = BagScale(s);
-        Color bag = k.Belly.Lerp(k.Accent, 0.3f).Lightened(0.1f);
+        Color bagTop = k.Base.Lerp(k.Belly, 0.35f), bagUnder = k.Belly;
         for (int i = 0; i < spots.Length; i++)
         {
             var piece = new Piece($"bag{i}");
             float bw = W * scale, bh = H * scale * rng.Range(0.85f, 1.1f);
-            piece.Add(Shape.Sphere, new Vector3(bw, bh, bw * 1.08f), Vector3.Zero, i == 0 ? bag : bag.Lerp(k.Base, 0.25f), 1f, k.GlowStrength * 0.3f);
-            piece.Add(Shape.Sphere, new Vector3(bw * 0.5f, bh * 0.12f, bw * 0.5f), new Vector3(0, -bh * 0.46f, 0), k.Base.Darkened(0.2f));
-            if (i == 0) Parts.Back(piece, s.Part("back"), bw, bh, bw * 1.08f, k, rng);
+            var bladder = LoftProfile.Smooth(-bw * 0.66f, bw * 0.66f, new[]
+            {
+                (0f, bw * 0.34f, bh * 0.36f, -bh * 0.03f), (0.45f, bw * 0.44f, bh * 0.46f, bh * 0.02f), (1f, bw * 0.28f, bh * 0.3f, bh * 0.08f),
+            }, 14, 0.3f);
+            piece.Loft(bladder, i == 0 ? bagTop : bagTop.Lerp(k.Base, 0.25f), bagUnder, 0.45f, k.GlowStrength * 0.3f, Mat.Membrane, null, null, 16);
+            piece.Add(Shape.Sphere, new Vector3(bw * 0.05f, bh * 0.44f, bw * 1.05f), new Vector3(0, bh * 0.38f, bw * 0.02f), k.Accent, 0.6f, k.GlowStrength * 0.3f, null, 14, Mat.Membrane);
+            // A muscular collar where the bag meets the gondola.
+            piece.Add(Shape.Sphere, new Vector3(bw * 0.5f, bh * 0.14f, bw * 0.5f), new Vector3(0, -bh * 0.45f, 0), k.Base.Darkened(0.2f), 0.4f, 0f, null, 12);
+            if (i == 0) Parts.Back(piece, s.Part("back"), bw, bh, bw * 1.32f, k, rng, bladder);
             layout.Add(piece);
         }
 
@@ -151,11 +164,19 @@ public sealed class GasBagRig : Rig
             for (int i = 0; i < segs; i++)
             {
                 var piece = new Piece($"tendril{t}_{i}") { Shadow = false };
-                float d = W * 0.05f * (1f - 0.6f * i / segs);
+                float r0 = W * 0.025f * (1f - 0.6f * i / segs), r1 = W * 0.025f * (1f - 0.6f * (i + 1) / segs);
                 bool tip = i == segs - 1;
-                piece.Add(Shape.Capsule, new Vector3(d, len + d, d), new Vector3(0, len * 0.5f, 0),
+                piece.Taper(Vector3.Zero, new Vector3(0, len, 0), r0, r1,
                     glowing && tip ? k.Veins : k.Base.Lerp(k.Accent, 0.5f * i / segs), 0.3f, glowing ? (tip ? 1f : 0.25f) : 0f);
-                if (tip && glowing) piece.Add(Shape.Sphere, Vector3.One * d * 2.2f, new Vector3(0, len, 0), k.Veins, 0f, 1f);
+                // Stinging barbs along the trailing end.
+                if (i >= segs - 2)
+                    for (int bb = 0; bb < 2; bb++)
+                    {
+                        float a = bb * MathF.PI + t;
+                        var at = new Vector3(0, len * (0.3f + 0.4f * bb), 0);
+                        piece.Taper(at, at + new Vector3(MathF.Cos(a), 0.6f, MathF.Sin(a)).Normalized() * r0 * 4f, r0 * 0.6f, r0 * 0.05f, k.Bone, 0f, 0f, Mat.Horn, 5);
+                    }
+                if (tip && glowing) piece.Add(Shape.Sphere, Vector3.One * r1 * 4f, new Vector3(0, len, 0), k.Veins, 0f, 1f);
                 layout.Add(piece);
             }
         }

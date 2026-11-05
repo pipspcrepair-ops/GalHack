@@ -11,8 +11,6 @@ namespace Wildlife;
 /// </summary>
 public partial class Player : CharacterBody3D
 {
-    public const string FinderName = "Player 1";
-
     public Camera3D Camera;
     public Health Health;
     public readonly Storage Pack = new(60);
@@ -148,7 +146,7 @@ public partial class Player : CharacterBody3D
     {
         readonly Player _p;
         public PlayerTarget(Player p) => _p = p;
-        public string Name => FinderName;
+        public string Name => "Player 1";
         public Vector3 Position => _p.Driving && _p.Vehicle != null ? _p.Vehicle.GlobalPosition : _p.GlobalPosition;
         public Vector3 Forward => _p.LookDirection;
         public Health Health => _p.Health;

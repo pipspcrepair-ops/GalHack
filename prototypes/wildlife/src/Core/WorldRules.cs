@@ -107,23 +107,24 @@ public sealed class CodexEntry
 }
 
 /// <summary>
-/// Names each species the first time anyone sees it and remembers who that was. Later
-/// sightings, by the same player or anyone else, change nothing.
+/// Remembers each species the first time anyone gets a good look at one, and who that was.
+/// Deliberately silent: it raises no event, so nothing can announce a first meeting. Names
+/// show up only when a player looks one up (the scan).
 /// </summary>
 public sealed class Codex
 {
     readonly Dictionary<string, CodexEntry> _entries = new();
-    public event Action<CodexEntry> Discovered;
 
     public int Count => _entries.Count;
     public IEnumerable<CodexEntry> Entries => _entries.Values;
     public CodexEntry Get(string speciesId) => _entries.GetValueOrDefault(speciesId);
     public bool Knows(string speciesId) => _entries.ContainsKey(speciesId);
 
-    public bool Discover(Species species, string finder, float time, string planet)
+    /// <summary>Records a sighting; returns true only the first time this species is seen by anyone.</summary>
+    public bool Record(Species species, string finder, float time, string planet)
     {
         if (_entries.ContainsKey(species.Id)) return false;
-        var entry = new CodexEntry
+        _entries[species.Id] = new CodexEntry
         {
             SpeciesId = species.Id,
             Name = species.Name,
@@ -132,8 +133,6 @@ public sealed class Codex
             Planet = planet,
             FoundAt = time,
         };
-        _entries[species.Id] = entry;
-        Discovered?.Invoke(entry);
         return true;
     }
 }

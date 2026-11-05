@@ -28,6 +28,8 @@ public sealed class Species
 
     public Behaviour Behaviour;
     public Temperament Temperament;
+    /// <summary>Its signature attack: what the telegraph looks and sounds like, and how long it is.</summary>
+    public AttackDef Attack = new();
     public int GroupMin = 1, GroupMax = 1;
 
     public Stats Stats = new();
@@ -55,6 +57,9 @@ public sealed class Species
 
     /// <summary>Seconds of wind-up before this species' first, telegraphed attack on a player.</summary>
     public float TelegraphWindup(CombatRules rules) => Stats.Telegraph > 0f ? Stats.Telegraph : rules.TelegraphWindup;
+
+    /// <summary>Pack hunters, lone predators and ambushers: the ones built to kill.</summary>
+    public bool IsHunter => Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;
 
     public override string ToString() =>
         $"{Name} ({CommonName}) {Plan}/{Form} {Behaviour}+{Temperament} size {Body.Size:F1} m weird {Weirdness:F2}{(Corrupted ? " CORRUPTED" : "")}";

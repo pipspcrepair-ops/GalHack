@@ -182,12 +182,18 @@ public sealed class ChainRig : Rig
         {
             float s = f == 0 ? -1f : 1f;
             Vector3 p = head * new Vector3(s * hs * 0.3f, hs * 0.1f, -hs * 0.6f);
+            bool scythes = Species.Part("limbs") == "scythes";
+            float seg = hs * (scythes ? 0.55f : 0.8f);
             for (int i = 0; i < _feelers[f].Length; i++)
             {
                 float wave = MathF.Sin(c.Age * 3f + f * 2f + i) * 0.35f;
-                Vector3 dir = (head.Basis * new Vector3(s * 0.5f, 0.4f + wave, -1f)).Normalized();
-                Pose[_feelers[f][i]] = Geo.Segment(p, p + dir * hs * 0.8f, head.Basis.X);
-                p += dir * hs * 0.8f;
+                // Scythes are a mantis's folded arms: out and down, then the blade back up.
+                Vector3 local = scythes
+                    ? (i == 0 ? new Vector3(s * 0.6f, -0.5f + Rearing * 0.8f, -0.6f) : new Vector3(s * 0.1f, 0.9f, -0.4f - Lunging))
+                    : new Vector3(s * 0.5f, 0.4f + wave, -1f);
+                Vector3 dir = (head.Basis * local).Normalized();
+                Pose[_feelers[f][i]] = Geo.Segment(p, p + dir * seg, head.Basis.X);
+                p += dir * seg;
             }
         }
     }
@@ -233,54 +239,64 @@ public sealed class ChainRig : Rig
         float[] r = Radii(s);
         float seg = b.Size / n, hs = b.HeadSize;
         string back = s.Part("back");
+        bool legged = b.Legs > 0;
 
         var head = new Piece("head");
-        Parts.Head(head, s.Part("head"), hs, k, rng);
-        Parts.Horns(head, s.Part("horns"), hs, k, rng);
+        HeadShape shape = Parts.Head(head, s.Part("head"), hs, k, rng);
+        Parts.Horns(head, s.Part("horns"), hs, k, rng, shape);
         layout.Add(head);
 
         for (int i = 0; i < n; i++)
         {
             var piece = new Piece($"seg{i}") { Shadow = r[i] > 0.12f };
             float d = r[i] * 2f;
-            Color c = i % 2 == 0 ? k.Base : k.Base.Lerp(k.Accent, 0.18f);
-            piece.Add(Shape.Sphere, new Vector3(d, d * 0.85f, seg * 1.45f), Vector3.Zero, c, 1f);
-            piece.Add(Shape.Sphere, new Vector3(d * 0.85f, d * 0.4f, seg * 1.3f), new Vector3(0, -r[i] * 0.4f, 0), k.Belly);
+            Color c = i % 2 == 0 ? k.Base : k.Base.Lerp(k.Accent, 0.15f);
+            // Each segment overlaps its neighbours, so the chain reads as one body that bends.
+            var profile = LoftProfile.Smooth(-seg * 0.78f, seg * 0.78f, new[]
+            {
+                (0f, r[i] * 0.92f, r[i] * 0.8f, 0f), (0.45f, r[i], r[i] * 0.86f, r[i] * 0.02f), (1f, r[i] * 0.88f, r[i] * 0.76f, 0f),
+            }, 8, 0.32f);
+            piece.Loft(profile, c, k.Belly, 1f, 0f, Mat.Skin, null, null, 12);
+            // Armoured crawlers wear a hard plate over each segment; slitherers are bare scales.
+            if (legged || back is "plates" or "shell")
+                piece.Add(Shape.Sphere, new Vector3(d * 1.08f, d * 0.5f, seg * 1.25f), new Vector3(0, r[i] * 0.42f, seg * 0.12f), back == "shell" ? k.Accent.Lerp(k.Base, 0.3f) : k.Accent,
+                    back == "shell" ? 0.6f : 0.15f, 0f, Parts.Pitch(-8f), 12, Mat.Carapace);
             switch (back)
             {
-                case "plates":
-                case "shell":
-                    piece.Add(Shape.Sphere, new Vector3(d * 1.1f, d * 0.55f, seg * 1.2f), new Vector3(0, r[i] * 0.35f, seg * 0.1f), k.Accent, back == "shell" ? 1f : 0.2f);
-                    break;
                 case "spines":
-                    piece.Rod(new Vector3(0, r[i] * 0.7f, 0), new Vector3(0, r[i] * 1.9f, seg * 0.4f), r[i] * 0.4f, k.Bone, 0, 0, cone: true);
+                    piece.Taper(new Vector3(0, r[i] * 0.6f, 0), new Vector3(0, r[i] * 1.9f, seg * 0.45f), r[i] * 0.18f, r[i] * 0.02f, k.Bone, 0f, 0f, Mat.Horn, 6);
+                    break;
+                case "ridge" when i % 2 == 0:
+                    piece.Taper(new Vector3(0, r[i] * 0.7f, 0), new Vector3(0, r[i] * 1.3f, seg * 0.25f), r[i] * 0.2f, r[i] * 0.04f, k.Accent.Lerp(k.Bone, 0.3f), 0f, 0f, Mat.Horn, 6);
                     break;
                 case "sail":
-                    piece.Add(Shape.Sphere, new Vector3(r[i] * 0.12f, r[i] * 1.8f, seg * 1.2f), new Vector3(0, r[i] * 1.2f, 0), k.Accent, 1f);
+                    piece.Add(Shape.Sphere, new Vector3(r[i] * 0.1f, r[i] * 1.8f, seg * 1.25f), new Vector3(0, r[i] * 1.2f, 0), k.Accent, 1f, 0f, null, 0, Mat.Membrane);
                     break;
                 case "crystals" when i % 2 == 1:
                     piece.Add(Shape.Cone, new Vector3(r[i] * 0.7f, r[i] * 2.2f, 0), new Vector3(0, r[i] * 1.5f, 0), (k.GlowStrength > 0 ? k.Glow : k.Accent).Lightened(0.25f), 0f, 0.9f,
-                        new Basis(Vector3.Back, rng.Range(-0.4f, 0.4f)), 6);
+                        new Basis(Vector3.Back, rng.Range(-0.4f, 0.4f)), 6, Mat.Horn);
                     break;
                 case "vents" when i % 3 == 1:
-                    piece.Add(Shape.Cylinder, new Vector3(r[i] * 0.8f, r[i] * 1.4f, r[i] * 0.6f), new Vector3(0, r[i] * 1.2f, 0), k.Dark, 0f, 0f, null, 8);
+                    piece.Add(Shape.Cylinder, new Vector3(r[i] * 0.8f, r[i] * 1.4f, r[i] * 0.6f), new Vector3(0, r[i] * 1.2f, 0), k.Dark, 0f, 0f, null, 8, Mat.Carapace);
                     piece.Add(Shape.Cylinder, new Vector3(r[i] * 0.5f, r[i] * 0.1f, r[i] * 0.5f), new Vector3(0, r[i] * 1.9f, 0), k.Accent.Lightened(0.3f), 0f, 0.9f, null, 8);
                     break;
             }
             if (s.Corrupted && i % 3 == 1)
-                piece.Add(Shape.Sphere, Vector3.One * r[i] * 0.6f, new Vector3(r[i] * 0.5f * (i % 2 == 0 ? 1 : -1), r[i] * 0.6f, 0), k.Veins, 0f, 1f);
+                piece.Add(Shape.Sphere, Vector3.One * r[i] * 0.55f, new Vector3(r[i] * 0.5f * (i % 2 == 0 ? 1 : -1), r[i] * 0.6f, 0), k.Veins, 0f, 1f, null, 0, Mat.Membrane);
             layout.Add(piece);
         }
 
-        if (b.Legs > 0)
+        if (legged)
         {
+            // Jointed legs that end in a point, posed from hip to tip by the rig.
             float legLen = MathF.Max(b.LegLength, b.Width * 0.6f);
             for (int i = 1; i < n - 1; i++)
             for (int side = -1; side <= 1; side += 2)
             {
                 var leg = new Piece($"leg{i}_{side}") { Shadow = false };
-                float d = MathF.Max(0.02f, r[i] * 0.22f);
-                leg.Add(Shape.Capsule, new Vector3(d, legLen + d, d), new Vector3(0, legLen * 0.5f, 0), k.Dark, 0.3f);
+                float rr = MathF.Max(0.015f, r[i] * 0.16f);
+                leg.Taper(Vector3.Zero, new Vector3(0, legLen * 0.5f, 0), rr, rr * 0.8f, k.Dark, 0.3f, 0f, Mat.Carapace, 6);
+                leg.Taper(new Vector3(0, legLen * 0.5f, 0), new Vector3(0, legLen, 0), rr * 0.8f, rr * 0.12f, k.Dark.Lerp(k.Horn, 0.3f), 0f, 0f, Mat.Carapace, 6);
                 layout.Add(leg);
             }
         }
@@ -296,7 +312,7 @@ public sealed class ChainRig : Rig
         if (s.Burrows)
         {
             var mound = new Piece("mound") { Shadow = false };
-            mound.Add(Shape.Sphere, new Vector3(b.Width * 2.4f, b.Width * 0.6f, b.Width * 2.8f), Vector3.Zero, new Color(0.3f, 0.24f, 0.18f).Lerp(k.Base, 0.25f));
+            mound.Add(Shape.Sphere, new Vector3(b.Width * 2.4f, b.Width * 0.6f, b.Width * 2.8f), Vector3.Zero, new Color(0.3f, 0.24f, 0.18f).Lerp(k.Base, 0.25f), 0f, 0f, null, 12);
             for (int i = 0; i < 5; i++)
                 mound.Add(Shape.Sphere, Vector3.One * b.Width * rng.Range(0.3f, 0.6f), new Vector3(rng.Range(-1f, 1f) * b.Width, b.Width * 0.15f, rng.Range(-1.2f, 1.2f) * b.Width), new Color(0.26f, 0.2f, 0.15f));
             layout.Add(mound);
@@ -304,14 +320,15 @@ public sealed class ChainRig : Rig
 
         if (s.Part("limbs") is "feelers" or "scythes" || s.Part("horns") == "antennae")
         {
+            bool scythes = s.Part("limbs") == "scythes";
             for (int f = 0; f < 2; f++)
             for (int i = 0; i < 2; i++)
             {
                 var piece = new Piece($"feeler{f}_{i}") { Shadow = false };
-                float len = hs * 0.8f, d = hs * 0.07f;
-                piece.Add(Shape.Capsule, new Vector3(d, len + d, d), new Vector3(0, len * 0.5f, 0), s.Part("limbs") == "scythes" ? k.Bone : k.Dark);
-                if (i == 1 && s.Part("limbs") == "scythes")
-                    piece.Add(Shape.Cone, new Vector3(hs * 0.15f, len * 1.2f, 0), new Vector3(0, len * 1.2f, 0), k.Bone);
+                float len = hs * (scythes ? 0.55f : 0.8f), rr = hs * (scythes ? 0.06f : 0.03f);
+                piece.Taper(Vector3.Zero, new Vector3(0, len, 0), rr, rr * 0.7f, scythes ? k.Base.Darkened(0.2f) : k.Dark, 0f, 0f, Mat.Carapace, 6);
+                if (i == 1 && scythes)
+                    piece.Horn(k.Bone, hs * 0.06f, Mat.Horn, new Vector3(0, len, 0), new Vector3(0, len * 1.3f, len * 0.25f), new Vector3(0, len * 1.4f, len * 0.6f));
                 layout.Add(piece);
             }
         }
@@ -322,9 +339,10 @@ public sealed class ChainRig : Rig
             for (int i = 0; i < 3; i++)
             {
                 var piece = new Piece($"whisker{f}_{i}") { Shadow = false };
-                float len = hs * 0.45f, d = hs * 0.05f;
+                float len = hs * 0.45f, rr = hs * 0.025f;
                 bool glow = s.Corrupted || s.Part("tendrils") == "glowing";
-                piece.Add(Shape.Capsule, new Vector3(d, len + d, d), new Vector3(0, len * 0.5f, 0), glow && i == 2 ? k.Veins : k.Base.Lerp(k.Accent, 0.4f), 0f, glow && i == 2 ? 1f : 0f);
+                piece.Taper(Vector3.Zero, new Vector3(0, len, 0), rr * (1f - 0.3f * i), rr * (0.7f - 0.3f * i) + 0.002f,
+                    glow && i == 2 ? k.Veins : k.Base.Lerp(k.Accent, 0.4f), 0f, glow && i == 2 ? 1f : 0f);
                 layout.Add(piece);
             }
         }

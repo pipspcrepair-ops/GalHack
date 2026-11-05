@@ -6,16 +6,16 @@ namespace Wildlife;
 
 /// <summary>
 /// Every sound in the prototype is synthesised here at start-up: no audio files, no licences.
-/// The important ones are the attack telegraphs: a growl that builds through the wind-up
-/// (hiss for crawlers, buzz for swarms, a long roar for giants), so you hear a lunge coming
-/// before you see it land.
+/// The important ones are the attack telegraphs: each behaviour's signature attack has its
+/// own wind-up sound (a predator's growl, a pack's snarl, a herd's bellow, a giant's roar, an
+/// ambusher's hiss, a scavenger's chitter, a swarm's buzz) that builds through the wind-up,
+/// so you hear a lunge coming, and what kind, before you see it land.
 /// </summary>
 public partial class ProceduralAudio : Node3D
 {
     const int Rate = 22050;
     readonly Dictionary<string, AudioStreamWav> _clips = new();
     readonly List<AudioStreamPlayer3D> _pool = new();
-    AudioStreamPlayer _ui;
     int _next;
 
     public AudioStreamWav HoverLoop { get; private set; }
@@ -28,12 +28,15 @@ public partial class ProceduralAudio : Node3D
         _clips["roar"] = Make(2.0f, (t, n) => Envelope(t, 2.0f, 1.4f) * (Saw(t * (42f + 12f * MathF.Sin(t * 3f))) * 0.6f + n * 0.6f), rng);
         _clips["hiss"] = Make(1.2f, (t, n) => Envelope(t, 1.2f, 0.9f) * n * (0.7f + 0.3f * MathF.Sin(t * 60f)), rng, highpass: true);
         _clips["buzz"] = Make(1.2f, (t, n) => Envelope(t, 1.2f, 0.95f) * (Square(t * (190f + 60f * t)) * 0.35f + n * 0.15f) * (0.5f + 0.5f * MathF.Sin(t * 45f)), rng);
+        _clips["snarl"] = Make(1.0f, (t, n) => Envelope(t, 1.0f, 0.75f) * (Saw(t * (120f + 50f * MathF.Sin(t * 23f))) * 0.45f + n * 0.55f) * (0.5f + 0.5f * MathF.Abs(MathF.Sin(t * 17f))), rng);
+        _clips["bellow"] = Make(1.4f, (t, n) => Envelope(t, 1.4f, 1.0f) * (Saw(t * (58f - 8f * t)) * 0.7f + MathF.Sin(MathF.Tau * 116f * t) * 0.2f + n * 0.25f) * (0.8f + 0.2f * MathF.Sin(t * 9f)), rng);
+        _clips["chitter"] = Make(1.0f, (t, n) => Envelope(t, 1.0f, 0.8f) * n * (MathF.Sin(t * 140f) > 0.3f ? 1f : 0.1f), rng, highpass: true);
+        _clips["grunt"] = Make(0.6f, (t, n) => Envelope(t, 0.6f, 0.4f) * (Saw(t * 85f) * 0.5f + n * 0.3f), rng);
         _clips["chirp"] = Make(1.0f, (t, n) => Envelope(t, 1.0f, 0.8f) * MathF.Sin(MathF.Tau * (380f + 300f * MathF.Sin(t * 14f)) * t) * 0.5f, rng);
         _clips["snap"] = Make(0.18f, (t, n) => MathF.Exp(-t * 30f) * (n * 0.8f + MathF.Sin(MathF.Tau * 110f * t) * 0.5f), rng);
         _clips["shot"] = Make(0.35f, (t, n) => MathF.Exp(-t * 18f) * (n * 0.7f + MathF.Sin(MathF.Tau * (90f - 120f * t) * t) * 0.6f), rng);
         _clips["thud"] = Make(0.3f, (t, n) => MathF.Exp(-t * 14f) * (MathF.Sin(MathF.Tau * 55f * t) * 0.8f + n * 0.2f), rng);
         _clips["chop"] = Make(0.22f, (t, n) => MathF.Exp(-t * 20f) * (n * 0.9f + Square(t * 70f) * 0.3f), rng);
-        _clips["discover"] = Make(0.9f, (t, n) => MathF.Exp(-t * 3f) * (MathF.Sin(MathF.Tau * 523f * t) + MathF.Sin(MathF.Tau * (t < 0.25f ? 659f : 784f) * t)) * 0.25f, rng);
         HoverLoop = Make(1.0f, (t, n) => (MathF.Sin(MathF.Tau * 55f * t) * 0.5f + MathF.Sin(MathF.Tau * 110f * t) * 0.25f + n * 0.08f) * 0.6f, rng, loop: true);
         GrindLoop = Make(0.5f, (t, n) => (Square(t * 36f) * 0.3f + n * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * MathF.Tau * 12f)), rng, loop: true);
 
@@ -43,11 +46,9 @@ public partial class ProceduralAudio : Node3D
             AddChild(p);
             _pool.Add(p);
         }
-        _ui = new AudioStreamPlayer();
-        AddChild(_ui);
     }
 
-    /// <summary>The wind-up sound for a creature, pitched by size.</summary>
+    /// <summary>The wind-up sound of a creature's signature attack, pitched by size.</summary>
     public void Telegraph(Creature c)
     {
         string clip = c.Species.Rig switch
@@ -55,9 +56,10 @@ public partial class ProceduralAudio : Node3D
             RigKind.Chain => "hiss",
             RigKind.Swarm => "buzz",
             _ when c.Species.Plan == BodyPlan.Giant => "roar",
-            _ when c.Species.Body.Size < 0.9f => "chirp",
-            _ => "growl",
+            _ when c.Species.Body.Size < 0.8f => "chirp",
+            _ => c.Species.Attack.Sound,
         };
+        if (!_clips.ContainsKey(clip)) clip = "growl";
         float pitch = Math.Clamp(1.4f / MathF.Sqrt(MathF.Max(0.3f, c.Species.Body.Size)), 0.55f, 1.8f);
         Play(clip, c.Position + Vector3.Up, pitch, c.Species.Plan == BodyPlan.Giant ? 6f : 2f);
     }
@@ -71,14 +73,6 @@ public partial class ProceduralAudio : Node3D
         p.VolumeDb = volumeDb;
         p.GlobalPosition = at;
         p.Play();
-    }
-
-    public void PlayUi(string clip, float volumeDb = -6f)
-    {
-        if (!_clips.TryGetValue(clip, out var stream)) return;
-        _ui.Stream = stream;
-        _ui.VolumeDb = volumeDb;
-        _ui.Play();
     }
 
     static AudioStreamWav Make(float seconds, Func<float, float, float> wave, Rng rng, bool highpass = false, bool loop = false)

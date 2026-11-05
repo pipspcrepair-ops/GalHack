@@ -28,12 +28,29 @@ public sealed class MeshBuilder
         return b.Commit();
     });
 
+    /// <summary>
+    /// Drops the shared meshes on the main thread (at shutdown), rather than leaving their C#
+    /// wrappers to the finalizer thread. Meshes still on screen stay alive in the engine.
+    /// </summary>
+    public static void ReleaseCache()
+    {
+        var meshes = new List<ArrayMesh>();
+        foreach (var (_, mesh) in (IEnumerable<KeyValuePair<Piece, ArrayMesh>>)Cache) meshes.Add(mesh);
+        Cache.Clear();
+        foreach (ArrayMesh mesh in meshes) mesh.Dispose();
+    }
+
     public void Add(Prim p)
     {
         // Vertex colours go in linear: the shader treats COLOR as linear albedo.
         Color c = p.Color.SrgbToLinear();
         c.A = Math.Clamp(p.Glow, 0f, 1f);
         int start = _v.Count;
+        if (p.Shape == Shape.Loft)
+        {
+            Loft(p, c);
+            return;
+        }
         switch (p.Shape)
         {
             case Shape.Sphere: Sphere(p.Size * 0.5f, p.Sides > 0 ? p.Sides : 10, 7); break;
@@ -41,6 +58,7 @@ public sealed class MeshBuilder
             case Shape.Capsule: Capsule(p.Size.X * 0.5f, p.Size.Y, p.Sides > 0 ? p.Sides : 8); break;
             case Shape.Cylinder: Cylinder(p.Size.X * 0.5f, p.Size.Z * 0.5f, p.Size.Y, p.Sides > 0 ? p.Sides : 10); break;
             case Shape.Cone: Cylinder(p.Size.X * 0.5f, 0f, p.Size.Y, p.Sides > 0 ? p.Sides : 8); break;
+            case Shape.Taper: Taper(p.Size.X * 0.5f, p.Size.Z * 0.5f, p.Size.Y, p.Sides > 0 ? p.Sides : 10); break;
         }
         Basis nb = p.Local.Basis;
         for (int i = start; i < _v.Count; i++)
@@ -48,7 +66,7 @@ public sealed class MeshBuilder
             _v[i] = p.Local * _v[i];
             _n[i] = (nb * _n[i]).Normalized();
             _c.Add(c);
-            _uv.Add(new Vector2(p.Pattern, 0f));
+            _uv.Add(new Vector2(p.Pattern, p.Material));
         }
     }
 
@@ -88,6 +106,79 @@ public sealed class MeshBuilder
             }
         }
         Grid(start, segs, rings);
+    }
+
+    /// <summary>
+    /// A sphere-swept cone along Y: a sphere of radius r0 at the origin and one of radius r1 at
+    /// len, joined where a cone touches both (at latitude asin((r0 - r1) / len)). Normals are
+    /// the spheres' own, so they run on smoothly across the join and into the next taper.
+    /// </summary>
+    void Taper(float r0, float r1, float len, int segs)
+    {
+        int start = _v.Count;
+        float sa = Math.Clamp((r0 - r1) / MathF.Max(len, 1e-4f), -0.92f, 0.92f);
+        float a = MathF.Asin(sa);
+        const int cap = 4;
+        int rows = 0;
+        // Top sphere from its pole down to the tangent latitude, then the bottom sphere on down.
+        for (int k = 0; k <= cap * 2 + 1; k++)
+        {
+            bool top = k <= cap;
+            float lat = top
+                ? MathF.PI * 0.5f - (MathF.PI * 0.5f - a) * k / cap
+                : a - (a + MathF.PI * 0.5f) * (k - cap - 1) / cap;
+            float r = top ? r1 : r0, cy = top ? len : 0f;
+            float cl = MathF.Cos(lat), sl = MathF.Sin(lat);
+            for (int x = 0; x <= segs; x++)
+            {
+                float theta = x / (float)segs * MathF.Tau;
+                var n = new Vector3(cl * MathF.Cos(theta), sl, cl * MathF.Sin(theta));
+                _v.Add(new Vector3(n.X * r, cy + n.Y * r, n.Z * r));
+                _n.Add(n);
+            }
+            rows++;
+        }
+        Grid(start, segs, rows - 1);
+    }
+
+    /// <summary>
+    /// A loft: an elliptical ring at each station along Z, blended from the top colour to the
+    /// underside colour round the ring. Normals come from the surface itself; the closed ends
+    /// (zero-radius stations) face straight along the axis.
+    /// </summary>
+    void Loft(Prim p, Color top)
+    {
+        LoftProfile f = p.Loft;
+        int segs = p.Sides > 0 ? p.Sides : 14, n = f.Count, start = _v.Count;
+        Color under = p.Color2.SrgbToLinear();
+        under.A = top.A;
+        var local = new Vector3[n * (segs + 1)];
+        for (int i = 0; i < n; i++)
+        for (int x = 0; x <= segs; x++)
+        {
+            float theta = x / (float)segs * MathF.Tau;
+            local[i * (segs + 1) + x] = new Vector3(f.W[i] * MathF.Cos(theta), f.Y[i] + f.H[i] * MathF.Sin(theta), f.Z[i]);
+        }
+        Basis nb = p.Local.Basis;
+        for (int i = 0; i < n; i++)
+        for (int x = 0; x <= segs; x++)
+        {
+            int xm = x == 0 ? segs - 1 : x - 1, xp = x == segs ? 1 : x + 1;
+            int im = Math.Max(0, i - 1), ip = Math.Min(n - 1, i + 1);
+            Vector3 du = local[i * (segs + 1) + xp] - local[i * (segs + 1) + xm];
+            Vector3 dv = local[ip * (segs + 1) + x] - local[im * (segs + 1) + x];
+            Vector3 normal = du.Cross(dv);
+            if (normal.LengthSquared() < 1e-12f || f.W[i] < 1e-4f) normal = i < n / 2 ? Vector3.Back * -1f : Vector3.Back;
+            float s = MathF.Sin(x / (float)segs * MathF.Tau);
+            float belly = Math.Clamp((0.15f - s) / 0.75f, 0f, 1f);
+            belly = belly * belly * (3f - 2f * belly);
+            _v.Add(p.Local * local[i * (segs + 1) + x]);
+            _n.Add((nb * normal).Normalized());
+            _c.Add(top.Lerp(under, belly));
+            _uv.Add(new Vector2(p.Pattern * (1f - 0.85f * belly), p.Material));
+        }
+        // Rings run front to back and round each ring, the same orientation as the sphere grid.
+        Grid(start, segs, n - 1);
     }
 
     /// <summary>A capsule along Y: total length len, two hemispheres of radius r.</summary>

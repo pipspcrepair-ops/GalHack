@@ -31,6 +31,7 @@ public sealed class WildSim
     public readonly DayClock Clock;
     public readonly List<Creature> Creatures = new();
     public readonly List<Herd> Herds = new();
+    public readonly List<Pack> Packs = new();
     public readonly List<ITarget> Targets = new();
     public Vector3 Wind = new(1.2f, 0f, 0.5f);
     public float Time;
@@ -40,12 +41,20 @@ public sealed class WildSim
     int _pathBudget;
     int _nextId;
 
+    /// <summary>
+    /// Stops every brain and attack: creatures stand where they are and only idle (breathe,
+    /// look about, fliers hover). For the bestiary lineup screenshot.
+    /// </summary>
+    public bool Frozen;
+
     /// <summary>When set, Step adds up time spent thinking, moving and posing (for the perf test).</summary>
     public bool Profile;
     public double ThinkMs, MoveMs, RigMs;
 
     /// <summary>A wind-up has started: the view plays the growl and the creature rears.</summary>
     public event Action<AttackEvent> Telegraph;
+    /// <summary>A wind-up has reached its commit: the creature is now locked onto where you stood.</summary>
+    public event Action<AttackEvent> Committed;
     /// <summary>A lunge has landed or missed.</summary>
     public event Action<AttackEvent> Attacked;
     public event Action<Creature, ITarget> Died;
@@ -63,13 +72,14 @@ public sealed class WildSim
 
     // ---- Spawning ---------------------------------------------------------------------
 
-    public Creature Spawn(Species species, Vector3 position, Herd herd = null)
+    public Creature Spawn(Species species, Vector3 position, Herd herd = null, Pack pack = null)
     {
         var c = new Creature
         {
             Id = _nextId++,
             Species = species,
             Herd = herd,
+            Pack = pack,
             Health = species.Stats.MaxHealth,
             Home = position,
             Yaw = 0f,
@@ -88,6 +98,12 @@ public sealed class WildSim
             c.HerdSlot = herd.Members.Count;
             herd.Members.Add(c);
         }
+        if (pack != null)
+        {
+            c.HerdSlot = pack.Members.Count;
+            pack.Members.Add(c);
+            pack.Leader ??= c;
+        }
         c.Rig = Rig.Create(species, c);
         c.Rig.Reset(this, c);
         Creatures.Add(c);
@@ -104,13 +120,20 @@ public sealed class WildSim
             herd = new Herd { Home = center, Goal = center, Center = center, Spread = HerdSpread(species, count) };
             Herds.Add(herd);
         }
+        Pack pack = null;
+        if (species.Behaviour == Behaviour.PackHunter)
+        {
+            pack = new Pack { Home = center, Center = center };
+            Packs.Add(pack);
+        }
         var rng = Rng.For(species.Seed, "spawn", _nextId);
+        float spread = herd?.Spread ?? (pack != null ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : species.Body.Size * 3f);
         for (int i = 0; i < count; i++)
         {
-            float a = i * 2.39996f, r = (herd?.Spread ?? species.Body.Size * 3f) * MathF.Sqrt((i + 0.5f) / count);
+            float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
-            list.Add(Spawn(species, p, herd));
+            list.Add(Spawn(species, p, herd, pack));
         }
         return list;
     }
@@ -131,6 +154,7 @@ public sealed class WildSim
     {
         Creatures.Clear();
         Herds.Clear();
+        Packs.Clear();
     }
 
     // ---- Stepping ---------------------------------------------------------------------
@@ -150,6 +174,11 @@ public sealed class WildSim
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
             if (c.Dead) UpdateCorpse(c, dt);
+            else if (Frozen)
+            {
+                c.Desired = Vector3.Zero;
+                c.FacePoint = null;
+            }
             else
             {
                 Brain.Update(this, c, dt);
@@ -228,6 +257,7 @@ public sealed class WildSim
 
     internal void RaiseTelegraph(AttackEvent e) => Telegraph?.Invoke(e);
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
+    internal void RaiseCommitted(AttackEvent e) => Committed?.Invoke(e);
     internal void RaiseWarned(Creature c) => Warned?.Invoke(c);
 
     // ---- Queries ----------------------------------------------------------------------

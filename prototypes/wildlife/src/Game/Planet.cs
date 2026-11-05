@@ -22,7 +22,7 @@ public static class Layers
 public partial class Planet : Node3D
 {
     public const ulong LandSeed = 1977;
-    public const float GridStep = 2f;
+    public const float GridStep = Terrain.Step;
 
     public Terrain Terrain { get; private set; }
     public NavGrid Nav { get; private set; }
@@ -45,6 +45,12 @@ public partial class Planet : Node3D
         BuildSky();
         BuildGround();
         BuildRocks();
+    }
+
+    /// <summary>Shows or hides the rocks (the bestiary lineup wants clear ground).</summary>
+    public void ShowRocks(bool show)
+    {
+        foreach (var (mesh, _) in _rocks) mesh.GetParent<Node3D>().Visible = show;
     }
 
     /// <summary>Which way the sunlight travels (for staging shots with the light behind the camera).</summary>
@@ -186,7 +192,7 @@ public partial class Planet : Node3D
         {
             Mesh = new PlaneMesh { Size = new Vector2(9000f, 9000f) },
             MaterialOverride = _farGround,
-            Position = new Vector3(0f, -2.5f, 0f),
+            Position = new Vector3(0f, -6f, 0f),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         });
         float h = Terrain.HalfSize - 4f;
@@ -253,7 +259,10 @@ public partial class Planet : Node3D
             bool spire = rng.Chance(0.3f);
             float w = spire ? rng.Range(1.2f, 3f) : rng.Range(2f, 7f);
             var size = spire ? new Vector3(w, rng.Range(6f, 16f), w * rng.Range(0.8f, 1.3f)) : new Vector3(w, rng.Range(1.2f, 5f), w * rng.Range(0.6f, 1.4f));
+            // Seat it on the lowest corner, so a rock on a slope is buried uphill, never floating downhill.
             float ground = Terrain.Height(p.X, p.Z);
+            for (int c = 0; c < 4; c++)
+                ground = MathF.Min(ground, Terrain.Height(p.X + (c % 2 == 0 ? -0.5f : 0.5f) * size.X, p.Z + (c < 2 ? -0.5f : 0.5f) * size.Z));
             var body = new StaticBody3D { CollisionLayer = Layers.World, CollisionMask = 0 };
             body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
             int shade = i % 2;
