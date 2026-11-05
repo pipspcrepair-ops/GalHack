@@ -14,9 +14,11 @@ public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Od
 /// <summary>
 /// The small set of reliable rigs every body plan is drawn and animated with. Finned and
 /// Clinger are the zero-g rigs of space fauna: swimmers that pulse, flap or undulate through
-/// open space, and leeches that crawl on a hull.
+/// open space, and leeches that crawl on a hull. Crawler is the rig of things that live in
+/// caves, tunnels and places: a body that lies against whatever surface it holds (floor, wall
+/// or ceiling) on legs that plant on it.
 /// </summary>
-public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger }
+public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger, Crawler }
 
 /// <summary>Where a species lives. Planet wildlife lives on the surface; space fauna in the rest.</summary>
 public enum Habitat { Surface, Nebula, AsteroidField, GasGiant, Derelict, Void }
@@ -56,6 +58,8 @@ public enum AttackStyle
     Dive,
     /// <summary>A swarm pulls in tight and buzzes, then streams at you.</summary>
     Sting,
+    /// <summary>Lets go of a ceiling and drops onto where you stood.</summary>
+    Drop,
 }
 
 public sealed class WildlifeData
@@ -65,6 +69,10 @@ public sealed class WildlifeData
     public WorldRules World { get; set; } = new();
     public SpawnRules Spawning { get; set; } = new();
     public FaunaTables Fauna { get; set; } = new();
+    /// <summary>When each kind of animal is out, and where it rests the other hours.</summary>
+    public ActivityRules Activity { get; set; } = new();
+    /// <summary>The fauna of caves, tunnels and places: roles, themes, tells and how places are populated.</summary>
+    public DeepTables Deep { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -111,6 +119,14 @@ public sealed class WildlifeData
         if (Spawning.BaseClearance < 0f) problems.Add("spawning: baseClearance must not be negative");
         if (Spawning.RespawnSeconds <= 0f || Spawning.CheckSeconds <= 0f) problems.Add("spawning: respawnSeconds and checkSeconds must be positive");
         if (Spawning.Attempts < 1) problems.Add("spawning: attempts must be at least 1");
+        foreach (var (name, _) in Activity.Windows)
+            if (!Enum.TryParse<Activity>(name, out _)) problems.Add($"activity: unknown cycle {name}");
+        foreach (var (name, def) in Fauna.Behaviours)
+        foreach (string a in def.Activity.Keys)
+            if (!Enum.TryParse<Activity>(a, out _)) problems.Add($"behaviour {name}: unknown activity {a}");
+        foreach (var form in Fauna.Forms)
+            if (form.Rest != "" && !Enum.TryParse<RestKind>(form.Rest, out _)) problems.Add($"form {form.Id}: unknown rest site {form.Rest}");
+        problems.AddRange(Deep.Validate(Fauna));
         foreach (Behaviour b in Enum.GetValues<Behaviour>())
         {
             if (!Fauna.Behaviours.TryGetValue(b.ToString(), out BehaviourDef def)) problems.Add($"no behaviour entry for {b}");
@@ -268,6 +284,15 @@ public sealed class FormDef
     public bool Tumbles { get; set; }
     /// <summary>Walking plants: put down roots by day.</summary>
     public bool Rooted { get; set; }
+    /// <summary>
+    /// A form of caves, tunnels and places, never rolled for the open surface (the deep fauna
+    /// generator picks these by role).
+    /// </summary>
+    public bool Deep { get; set; }
+    /// <summary>Clings to walls and ceilings as readily as floors.</summary>
+    public bool Climbs { get; set; }
+    /// <summary>Where it rests outside its hours (Den, Burrow, Roost, Nest); empty: worked out from its body and job.</summary>
+    public string Rest { get; set; } = "";
     public float SpeedScale { get; set; } = 1f;
     public float HealthScale { get; set; } = 1f;
     /// <summary>Behaviour name to weight.</summary>
@@ -361,6 +386,8 @@ public sealed class BehaviourDef
     public float AmbushRadius { get; set; } = 7f;
     public AttackDef Attack { get; set; } = new();
     public Dictionary<string, float> Temperaments { get; set; } = new();
+    /// <summary>Activity cycle name (Diurnal, Nocturnal, Crepuscular, Cathemeral) to weight: when this kind of animal is out.</summary>
+    public Dictionary<string, float> Activity { get; set; } = new();
 }
 
 /// <summary>

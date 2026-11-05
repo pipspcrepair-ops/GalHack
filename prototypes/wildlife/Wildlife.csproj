@@ -12,5 +12,8 @@
   <ItemGroup>
     <!-- The sky seam check every prototype with a sky of its own runs (tests/SkySeamTest). -->
     <Compile Include="..\..\shared\Sky\**\*.cs" />
+    <!-- Terrain-digging's engine-free voxel store and mesher, used in place: cave crawlers live
+         in real dug tunnels and generator caves (src/Bridges/VoxelSpace.cs, the showroom, tests). -->
+    <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
   </ItemGroup>
 </Project>

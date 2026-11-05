@@ -35,6 +35,45 @@ public sealed class WildSim
     public readonly List<ITarget> Targets = new();
     /// <summary>Player structures on the surface. Bases (core in base mode) keep spawns away; see <see cref="SpawnRules"/>.</summary>
     public readonly List<Structure> Structures = new();
+
+    /// <summary>
+    /// Day and night: each species keeps its hours and rests at its rest site the rest of the
+    /// day. Natural spawns (<see cref="SpawnGroup"/>) get rest sites when this is on; creatures
+    /// put down by hand with <see cref="Spawn"/> stay awake unless given one (<see cref="AssignRest"/>).
+    /// Off by default, so a sim that predates it behaves exactly as before.
+    /// </summary>
+    public bool ActivityCycles;
+    /// <summary>Settlements: wild creatures don't spawn in or near them, steer round them, and hunt nobody inside them.</summary>
+    public readonly List<Settlement> Settlements = new();
+    /// <summary>A wild creature has ended up inside a settlement: the town sends its guards (<see cref="CullStray"/>).</summary>
+    public event Action<Creature, Settlement> StrayEntered;
+    /// <summary>Groves: cover that bedding grounds and burrows like to be near.</summary>
+    public readonly List<Vector3> Groves = new();
+    public readonly List<RestSite> RestSites = new();
+
+    // Caves and places: the cracks small things slip into, nests, and what subsisters eat.
+    public readonly List<Crack> Cracks = new();
+    public readonly List<Nest> Nests = new();
+    public readonly List<FoodPatch> Food = new();
+    /// <summary>Subsister species that keep their numbers up from a place's cracks.</summary>
+    public readonly List<Colony> Colonies = new();
+    /// <summary>Kills of one creature by another (a place's food chain at work).</summary>
+    public int Predations;
+    /// <summary>Times a creature in a space lost every surface and was put back where it last stood (should stay at zero).</summary>
+    public int Rescues;
+    /// <summary>A creature was put back where it last stood firmly (it lost every surface).</summary>
+    public event Action<Creature> Rescued;
+    internal void RaiseRescued(Creature c)
+    {
+        Rescues++;
+        Rescued?.Invoke(c);
+    }
+    /// <summary>An ambush or a hunt gives itself away: a rattle, dust, scratching, breathing.</summary>
+    public event Action<TellEvent> Told;
+    /// <summary>A predator brought down another creature.</summary>
+    public event Action<Creature, Creature> Preyed;
+    /// <summary>Something slipped into a crack, vent or door, or came out of one.</summary>
+    public event Action<Creature, Crack, bool> Slipped;
     public Vector3 Wind = new(1.2f, 0f, 0.5f);
     public float Time;
     public int Frame;
@@ -80,7 +119,65 @@ public sealed class WildSim
     /// True inside a base's no-spawn zone (widened by <paramref name="margin"/>). Natural spawns
     /// (<see cref="SpawnGroup"/> and the <see cref="Spawner"/>) never land there.
     /// </summary>
-    public bool InBaseZone(Vector3 p, float margin = 0f) => BaseZones.Blocks(Structures, p, Data.Spawning.BaseClearance, margin);
+    public bool InBaseZone(Vector3 p, float margin = 0f) => BaseZones.Blocks(Structures, p, Data.Spawning.BaseClearance, margin) || TownZone(p, margin);
+
+    /// <summary>A settlement registers its area here: from then on wildlife treats it like a base, and keeps out.</summary>
+    public Settlement AddSettlement(string name, Vector3 center, float radius)
+    {
+        var s = new Settlement { Name = name, Center = center, Radius = radius };
+        Settlements.Add(s);
+        return s;
+    }
+
+    /// <summary>The settlement a point is inside (widened by a margin), if any.</summary>
+    public Settlement TownAt(Vector3 p, float margin = 0f)
+    {
+        foreach (Settlement s in Settlements)
+            if (s.Contains(p, margin)) return s;
+        return null;
+    }
+
+    public bool InTown(Vector3 p, float margin = 0f) => TownAt(p, margin) != null;
+
+    /// <summary>Inside a settlement or its spawning margin (the base clearance unless the town sets its own).</summary>
+    bool TownZone(Vector3 p, float margin)
+    {
+        foreach (Settlement s in Settlements)
+            if (s.Contains(p, (s.SpawnMargin >= 0f ? s.SpawnMargin : Data.Spawning.BaseClearance) + margin)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The town's guards deal with a wild creature that got in: it is killed outright (its
+    /// corpse stays, for whoever butchers it). The guard AI that calls this comes later.
+    /// </summary>
+    public void CullStray(Creature c, ITarget guards = null)
+    {
+        if (c.Dead || c.Species.Domestic != DomesticKind.None) return;
+        Damage(c, c.Health + 1f, guards);
+    }
+
+    /// <summary>Wild creatures inside a settlement now.</summary>
+    public List<Creature> Strays(Settlement town)
+    {
+        var list = new List<Creature>();
+        foreach (Creature c in Creatures)
+            if (!c.Removed && c.Alive && c.Species.Domestic == DomesticKind.None && !c.Species.InSpace && town.Contains(c.Position)) list.Add(c);
+        return list;
+    }
+
+    /// <summary>
+    /// A settlement's own animal, kept to an area: stock in a pen or field, a working beast by
+    /// its cart, a pet with its owner (it follows them about, or lies around near home).
+    /// </summary>
+    public Creature SpawnDomestic(Species species, Vector3 at, Vector3 penCenter, float penRadius, ITarget owner = null)
+    {
+        Creature c = Spawn(species, at);
+        c.PenCenter = penCenter;
+        c.PenRadius = penRadius;
+        c.Owner = owner;
+        return c;
+    }
 
     /// <summary>
     /// Puts one creature down exactly where asked. This is the raw primitive the tests and the
@@ -156,6 +253,7 @@ public sealed class WildSim
             if (InBaseZone(p) || (allow != null && !allow(p))) continue;
             list.Add(Spawn(species, p, herd, pack));
         }
+        if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
         return list;
     }
 
@@ -174,6 +272,25 @@ public sealed class WildSim
     }
 
     public void Remove(Creature c) => c.Removed = true;
+
+    /// <summary>
+    /// Puts a creature into a cave or a place, on the surface nearest <paramref name="near"/>
+    /// (a floor for a walker; floor, wall or ceiling for a climber, the one along
+    /// <paramref name="up"/> if given). Its body is held off the surface by its clearance.
+    /// </summary>
+    public Creature SpawnIn(Species species, ISolidSpace space, Vector3 near, Vector3? up = null, Herd herd = null, Pack pack = null)
+    {
+        Creature c = Spawn(species, near, herd, pack);
+        c.Space = space;
+        c.Clearance = Crawl.ClearanceFor(species);
+        Crawl.Place(this, c, near, up);
+        c.Home = c.Position;
+        c.Rig.Reset(this, c);
+        return c;
+    }
+
+    /// <summary>Gives creatures put down by hand a rest site (a group shares one), as natural spawns get.</summary>
+    public void AssignRest(List<Creature> group) => Rests.Assign(this, group);
 
     public void Clear()
     {
@@ -230,8 +347,26 @@ public sealed class WildSim
             RigMs += rigTicks * ms;
         }
 
+        if (Colonies.Count > 0) Colony.StepAll(this, dt);
+        if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
+        // Moss, fungus and scraps grow back slowly.
+        if (Food.Count > 0 && Frame % 30 == 0)
+            foreach (FoodPatch f in Food) f.Amount = MathF.Min(1f, f.Amount + dt * 30f / 90f);
+
         // Drop removed creatures now and then, never mid-loop.
         if (Frame % 120 == 0) Creatures.RemoveAll(c => c.Removed);
+    }
+
+    /// <summary>Tells a town when something wild gets in.</summary>
+    void WatchTowns()
+    {
+        foreach (Creature c in Creatures)
+        {
+            if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None || c.Species.InSpace) continue;
+            Settlement town = TownAt(c.Position);
+            if (town != null && !c.InTown) StrayEntered?.Invoke(c, town);
+            c.InTown = town != null;
+        }
     }
 
     void UpdateCorpse(Creature c, float dt)
@@ -241,6 +376,9 @@ public sealed class WildSim
         c.Phase = AttackPhase.None;
         if (c.DeadTime > 150f || (c.MeatLeft <= 0f && c.DeadTime > 4f)) c.Removed = true;
     }
+
+    /// <summary>Gives back this step's path searches (for driving creatures outside <see cref="Step"/>).</summary>
+    public void RefillPathBudget() => _pathBudget = PathBudgetPerStep;
 
     public bool TakePathBudget()
     {
@@ -277,9 +415,18 @@ public sealed class WildSim
         c.Phase = AttackPhase.None;
         c.Lunge = 0f;
         c.Rear = 0f;
+        c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
+        if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);
     }
 
+    internal void RaiseTell(TellEvent e) => Told?.Invoke(e);
+    internal void RaisePreyed(Creature predator, Creature prey)
+    {
+        Predations++;
+        Preyed?.Invoke(predator, prey);
+    }
+    internal void RaiseSlipped(Creature c, Crack crack, bool entering) => Slipped?.Invoke(c, crack, entering);
     internal void RaiseTelegraph(AttackEvent e) => Telegraph?.Invoke(e);
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
     internal void RaiseCommitted(AttackEvent e) => Committed?.Invoke(e);
@@ -294,6 +441,8 @@ public sealed class WildSim
         foreach (ITarget t in Targets)
         {
             if (t.Health != null && t.Health.Downed) continue;
+            // Nobody is hunted inside a settlement: wildlife keeps out.
+            if (Settlements.Count > 0 && InTown(t.Position)) continue;
             float d = Flat(t.Position - from).Length();
             if (d < distance)
             {

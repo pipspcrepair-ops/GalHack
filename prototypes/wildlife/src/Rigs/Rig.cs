@@ -37,7 +37,8 @@ public abstract class Rig
     protected Rig(Species species, Func<Species, RigLayout> build)
     {
         Species = species;
-        Layout = Layouts.GetValue(species, s => build(s));
+        // A mutagenic world's growths, asymmetry and extra parts go on after the body is built (none at strength 0).
+        Layout = Layouts.GetValue(species, s => Mutation.Decorate(Tack.Decorate(build(s), s), s));
         Pose = new Transform3D[Layout.Pieces.Count];
         for (int i = 0; i < Pose.Length; i++) Pose[i] = Transform3D.Identity;
     }
@@ -51,8 +52,19 @@ public abstract class Rig
         RigKind.GasBag => new GasBagRig(s),
         RigKind.Finned => new SwimRig(s),
         RigKind.Clinger => new ClingRig(s),
+        RigKind.Crawler => new CrawlRig(s),
         _ => new SwarmRig(s, c),
     };
+
+    /// <summary>
+    /// Ground height under a point for this creature: the planet's heights on the open surface,
+    /// the floor under it inside a cave or a place.
+    /// </summary>
+    public static float GroundY(WildSim w, Creature c, float x, float z)
+    {
+        if (c?.Space is { } s && SpaceMath.FloorBelow(s, x, c.Position.Y + 0.9f, z, 3f) is float y) return y;
+        return c?.Space != null ? c.Position.Y : w.Terrain.Height(x, z);
+    }
 
     /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
     public abstract void Reset(WildSim w, Creature c);

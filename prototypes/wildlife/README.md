@@ -7,6 +7,11 @@ Proves that every planet can roll its own fauna on a handful of reliable procedu
 - no wildlife spawning near bases, and fauna that respawns
 - rare space fauna: drifting grazers in nebulae, rays in asteroid fields, mantas in gas giants' skies, leeches on derelicts and, very rarely, a void leviathan
 - the harvester hovercraft: mow through a forest or run down wildlife and watch the hold fill
+- day and night: every species keeps its hours (by day, by night, at dawn and dusk) and rests in dens, burrows, roosts and nests the rest of the time
+- caves, tunnels and places (POIs): crawlers that hold walls and ceilings and drop onto prey, lurkers, prowlers, ambushers in vents, on ceilings and behind doors, nests that get worse with depth, subsisters grazing moss and scraps, and the food chain between them; derelict ships' nesters; every ambush gives itself away first
+- mutagenic worlds: growths, asymmetry and the odd extra part, at a strength from 0 to 1
+- settlements: wildlife keeps out of towns, preys on townsfolk outside them, and towns keep their own stock, working beasts and pets
+- an underground showroom to walk through all of it
 
 All of it runs cheaply enough for a world full of creatures on a low-end PC.
 
@@ -19,6 +24,13 @@ All of it runs cheaply enough for a world full of creatures on a low-end PC.
 ![A shoal of veil drifters in a nebula, a void leviathan passing behind](screenshots/space-nebula.png)
 ![Rock rays grazing between the rocks of an asteroid field](screenshots/space-asteroids.png)
 ![Hull leeches on a derelict freighter, the nearest rearing at an intruder](screenshots/space-derelict.png)
+![A cave crawler on the ceiling of a generator cave, seen from the floor under it](screenshots/deep-ceiling.png)
+![An ambush's tell: grit trickling from a corridor ceiling, a vent grille beside it](screenshots/deep-tell.png)
+![The food chain: a lurker taking a grazing scrap grub in a dark room](screenshots/deep-food.png)
+![The deep nest: pale, blind guards round their clutch](screenshots/deep-nest.png)
+![Wreck nesters on their scrap nest in a derelict freighter's hold](screenshots/deep-hold.png)
+![One species at mutation 0, 0.5 and 1](screenshots/mutation.png)
+![A settlement's animals: stock in a pen, a draught beast in its cart's shafts, pets at a townsperson's heel](screenshots/domestic.png)
 
 ## How it works
 
@@ -167,6 +179,56 @@ How they work:
 - **How players meet them.** In the game the encounter director brings them: its deck (`prototypes/encounters/data/deck.json`) has a card for each kind, gated by where it lives, with life-sign leads.
 - **Space screenshots.** The `space-*` views build a patch of space (`src/Game/SpaceScene.cs`): a procedural nebula sky (`shaders/space_sky.gdshader`), lumpy noise-displaced asteroids and a block-built derelict.
 
+**Day and night** (`src/Core/Activity.cs`, `src/Sim/Rests.cs`, `"activity"` in `data/wildlife.json`). Every species has an activity cycle, rolled from its behaviour's weights on a stream of its own (so nothing else about a planet's fauna changes): **diurnal**, **nocturnal**, **crepuscular** (dawn and dusk) or **cathemeral** (any hour; underground there is no day). Glowing species lean nocturnal. A planet's herd always grazes by day and at least one of its hunters always hunts by night. Outside its hours a creature walks to its rest site and rests there:
+- **Dens** (walking hunters) on a slope or against a rock; **burrows** (crawlers, burrowers, small leapers) in flat ground near cover, half dug in; **roosts** (fliers, drifters) on high ground, landed and folded; **nests** (herds bed down together, swarms settle into a hive) on flat ground at a grove's edge. Never in rock, a tree, the sea (where the nav grid marks it) or a base's zone. A herd or a pack shares one site and lies spread round it.
+- Each creature's hours shift a little (`stagger`), so a herd doesn't stand up in one second.
+- A sleeper wakes for 45 s if a player comes within 7 m (crouch and it is about 4.5 m), if it is hurt, or if its herd takes fright; a woken herd gets up and runs together. A pack mid-hunt or a herd in flight doesn't go to bed.
+- It is opt-in per sim (`WildSim.ActivityCycles`): the planet here turns it on; a sim that predates it behaves as before. Natural spawns get rest sites; creatures put down by hand stay awake unless given one (`WildSim.AssignRest`). Ambushers hiding by day and walking plants rooting by day were already their own kind of rest.
+- **T** on the planet jumps between noon and midnight: the same valley, other animals out. In the test valley at noon a tendrilled strider herd, two colossi and a swarm are out; at midnight the herd is bedded down and a crowned leaper and a crystal-backed crawler hunt.
+
+Empyrion was a reference: its creatures have separate night speeds (`NightWanderSpeed`, `NightApproachSpeed` in its EClassConfig.ecf) and night-only groups (a `RaptorsNight` group in EGroupsConfig.ecf), so the dark is more dangerous there too. Hours and rest sites are GalHack's own; nothing was copied.
+
+**Caves, tunnels and places** (`src/Sim/SolidSpace.cs`, `Crawl.cs`, `SpaceNav.cs`, `Brain.Deep.cs`, `PoiFauna.cs`, `src/Core/DeepFauna.cs`, `src/Rigs/CrawlRig.cs`, `src/Bridges/VoxelSpace.cs`, `"deep"` in `data/wildlife.json`).
+- **Spaces.** A creature with a solid space lives inside it instead of on the terrain's heights. A space is anything with a density (positive in rock) and 1 m solid cells: the voxel terrain (`VoxelSpace` over terrain-digging's `ChunkStore`, the same density the Surface Nets mesh is drawn from, so a crawler holds exactly the rock you see and a hole dug under one drops it) or a place built of blocks (`BlockSpace`: an exact distance to the nearest block, inside corners filleted a little). Both take a whole-metre offset, so a sim can work in its own frame.
+- **Crawling.** A climber's body rides a surface held its clearance off the rock, found by Newton steps along the density gradient: it can't sink in. Corners need no special case: walking into a wall pulls the body onto the wall, and the heading is carried over the bend by the smallest rotation taking the old normal to the new one (parallel transport), so "into the wall" becomes "up the wall" and then "along the ceiling". When the way it wants to go points straight out of the surface (an inside corner), it keeps crawling the way it faces, round the corner. Floor walkers (prowlers, lurkers, nesters) walk level over floors instead, up small steps, never off a ledge they couldn't climb back, held off walls by their body's clearance. Anything that lets go (a drop, a leap, a death on a ceiling) falls until it lands on its feet; if a creature ever lost every surface it would be put back where it last stood firmly, and the sim counts it (`Rescues`: zero in every test).
+- **Paths.** A bounded A* over 1 m cells: climbers use any open cell touching rock, round any corner; walkers need floor and headroom.
+- **The rig** (`CrawlRig`): a chain of segments following the head, each pressed back onto the surface every frame (so the body bends from floor to wall to ceiling with the creature, and nothing trails through rock even in a leap), legs planting on the surface in two alternating sets, knees high. A telegraph lifts the front off the surface; hidden in a crack, nothing is drawn.
+- **Cracks** too small to follow: crawlers and subsisters slip into one and travel through the rock to another of its network (scratching as they go, heard where they are), or are gone for good if it leads nowhere. Vents and the dark behind doors are holes of the same kind.
+
+**The deep fauna** (`DeepFauna`). For each role, kind of place and depth band, one species per planet, rolled by the surface generator's own rules (`FaunaGenerator.RollOne`: behaviour first, parts that suit it, proportions that read as an animal) and then themed. Four new deep-only forms: **creepers** (a low body slung between long hooked legs, which drop from ceilings), **duct eels**, soft **moss grubs** and armoured **scrappers**; lurkers, prowlers and nesters borrow surface bodies (stalkers, striders, skitterers). The places theme their looks:
+- **Natural** (caves, mines): earthy; **pale** from level 2 down, **blind** from level 3 (sensing pits where eyes would be; they find you by sound and click).
+- **Industrial** (garrisons, labs, stations): armoured, oily and rust-dark. **Derelict** (wrecks): armoured scrap-eaters. **Alien** (alien places, Precursor ruins): glossy, saturated, glowing.
+- Warning colours (rust bands on dark armour) only on what can hurt you; subsisters wear none.
+- An infested place's species are taken by the Bloom. All 3,360 species of 40 planets pass every body rule.
+
+| Role | Body | What it does | Its tell |
+| --- | --- | --- | --- |
+| Crawler (caves) | creeper, duct eel | waits on a cave ceiling; drops onto prey below, or stalks along the ceiling until it is over your head | grit trickling down and a shadow gathering on the floor; clicks if blind |
+| Lurker | stalker, skitterer | still in a dark room's far corner, eyes shut; strikes what comes close, takes subsisters that wander in | slow breathing, its eyes opening (they light up) |
+| Prowler | stalker, strider, skitterer | walks a beat through the corridors; hunts what it notices | a growl; blind ones click as they walk |
+| Ambusher | creeper, duct eel | on a corridor ceiling, in a vent, behind a door | dust from the ceiling; the vent grille rattling; knocking behind the door; scratching in the wall |
+| Nester | skitterer, creeper | guards a nest in the deepest levels: a warning display between you and the nest, the bite only if you come on or linger; more and bigger guards the deeper the nest | a hiss and a rear |
+| Subsister | moss grub, scrapper | grazes moss and fungus, or picks at scraps; runs from hunters and players into cracks; its colony keeps coming back out of them | none: it is what gets eaten |
+| Wreck nester | scrapper, creeper | builds a nest from the hold's scraps (you can watch it grow) in holds, ducts and engine rooms, and defends it | a hiss, a rattle |
+
+**Frightening, but fair.** No creature of a cave or place may start an attack on a player until it has given itself away with a tell that has run for its species' tell time (1 to 1.4 s, never under a second). Then the attack begins with its own telegraphed wind-up on top, so a tell always comes at least about 2 s before anything lands (2.67 s at the tightest in the tests). An ambush's drop or burst can be escaped by running when the tell comes; a hunter's committed lunge, by stepping back. Creatures notice a player inside their notice radius, which crouching shrinks and sprinting grows, by sight (a clear line) or, blind, by sound; until then the place's hunters go after its subsisters, creeping in and pouncing through the same telegraphed attacks: a food chain you can watch, crouched in a doorway.
+
+**The population function** (`PoiFauna.Populate(plan, deepFauna, data.Deep)`): a place describes its rooms (a box each, its kind, its depth, whether it is dark, its links, vents and doors), its theme, its state and whether it is a derelict ship; it gets back the creatures (role, species, spot, how each hides), nests, food patches, cracks and the food chain, or `Silent` for an empty, silent place. Deterministic from the place's seed. By state: active places are kept clear by their garrison (at most vermin down in the dark; 100% silent in the tests), about a quarter of abandoned and a third of ruined places are empty and silent, and infested places are overrun (39.5 creatures a place against 17 in abandoned ones) with nests on every lower level. `PoiFauna.Spawn(sim, population, space)` puts it into a sim. `CaveFauna.Populate` does the same for a voxel cave round a point (and `CaveFauna.FindChamber` finds one).
+
+Empyrion was a reference: there, a POI's creatures come from spawner blocks its builder places by hand (`EntitySpawner` blocks with a `SpawnClass`, a `SpawnCount` and `AllowWander` in BlocksConfig.ecf); GalHack places asks a function with the place's rooms instead, so every generated place is populated. Its cave crawler tilts to the ground it stands on (`RotateToGround: true` in EClassConfig.ecf); GalHack's hold walls and ceilings. Its configs also warn that spawned creatures "might clip/vanish into walls" without room behind them, which is the thing the tests here rule out. Nothing was copied.
+
+**Mutagenic worlds** (`src/Rigs/Mutation.cs`, `FaunaGenerator.Mutate`). A world or region's mutation strength, 0 to 1, twists its fauna: a few tumorous growths (paler, swollen tissue) on the body, the head or a limb; one side heavier than the other (legs thicker, never longer, so feet still plant; one side of the head bigger, as a heavier horn or a wider eye); from 0.3 up, now and then (always at 1) an extra part: a cluster of extra eyes, a withered spare limb on the flank, or tendrils that split at the tip; and a patch of skin in a hue off the species' palette. The rig decorates the pieces after it builds them, so it works on every rig. Same species and strength, same mutation; strength 0 returns the species itself, untouched. It stays bounded (at most five growths, the heavier side at most 1.32 times, growths at most about a fifth of the body's bulk), passes every body rule and animates cleanly. No player ailments: the doc has none.
+
+**Settlements** (`src/Core/Domestic.cs`, `src/Sim/Brain.Town.cs`). A settlement registers its area with the sim (`WildSim.AddSettlement(name, centre, radius)`), and wildlife treats it like a base: nothing wild spawns in it or within the base clearance of its edge, roaming creatures steer round it (a herd stampeded straight at one veers round, closest 9 m), and nobody inside it is hunted. Townsfolk are targets like players (`WildSim.Targets`): out on the road a predator takes them with its usual telegraphed attack; once they are home it stops at the edge. A wild creature that gets in raises `StrayEntered`, and the town's guards call `CullStray` (the guard AI comes later). Towns keep their own animals (`FaunaGenerator.RollDomestic(planetSeed, kind, alienness)`, `WildSim.SpawnDomestic`): **stock** grazing a pen, **working** beasts by their carts (blanket, girth strap and packs), and **pets** that follow their owner at heel and lie down when they stop (a collar). They are calm, plainly coloured, smooth-backed, unarmed, with no signature attack; they keep to their pens and run from anything wild rather than fight. Each has a `DomesticKind`, so callers can place them by the rule: working animals only in low-tech places, stock in low-tech places and on farms of any tech level, pets anywhere.
+
+**The underground showroom** (`Showroom.tscn`, key 4 on the planet): stations, one at a time, keys 1 to 6:
+1. a chamber of terrain-digging's first generator cave (real voxel terrain): cave crawlers on the ceiling, moss grubs at the moss, cracks in the walls;
+2. a tunnel dug with the survival tool into the same rock, a creeper on its ceiling;
+3. an abandoned outpost built of blocks, three levels deep: an entrance hall with a lamp still burning, a corridor with a creeper on its ceiling and a vent, a store behind a door, a dark room with a lurker and grazing grubs (its food chain), an emergency lamp blinking, stairs down to a lower hall and a deep, fungus-choked room with a nest;
+4. a derelict freighter's hold, where wreck nesters have built in the hold and the engine room;
+5. the mutation row; 6. a settlement's animals. 7 goes back to the planet.
+Your shoulder lamp (L) is the light; listen for scratching, rattling vents, grit falling, breathing. The discovery card is the planet's, unchanged.
+
 **Terrain.** A gentle plain in the middle rises into rolling hills. The height function is baked into a 2 m grid at the ground mesh's own spacing and read back bilinearly, which is cheaper for creature legs and matches the drawn ground.
 
 All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`), the discovery chime included. Everything is made in code: the prototype uses no third-party assets at all (no Kenney or other packs, no sound, model, texture or font files).
@@ -200,6 +262,8 @@ From the repo root, in PowerShell:
 | F | Board or leave the harvester hovercraft (parked to your right at the start) |
 | 1 / 2 / 3 | Switch the planet: temperate, alien, Bloom-infested (new fauna and forest) |
 | N | Skip a quarter day (ambushers strike at night, walking plants wander) |
+| T | Noon or midnight: the same valley with different animals out |
+| 4 | The underground showroom (1 to 6 its stations, L lamp, 7 back to the planet) |
 | Esc | Free the mouse |
 
 You start on the alien world with a herd on the plain ahead and a grove to the left to drive the harvester into. Packs roam 50 to 120 m out.
@@ -208,6 +272,8 @@ You start on the alien world with a herd on the plain ahead and a grove to the l
 
 ```powershell
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/WildlifeTest.tscn
+.\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/CreaturesTest.tscn
+.\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/ShowroomProbe.tscn
 ```
 
 Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way out: it drives the hovercraft with its sounds playing, closes the window, and must exit 0 with nothing leaked. `WildlifeTest` checks:
@@ -261,6 +327,21 @@ Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way
   - A skittish shoal scatters together from a ship that comes too close; a leviathan warns an intruder before it charges.
   - The encounter deck's creature cards name exactly the space forms.
   - Cost: 61 space creatures (shoals, leeches on a wreck, a leviathan), every rig posed every frame, must stay under 2.5 ms, judged on the best of three windows (about 1.1 ms).
+- **`tests/CreaturesTest.tscn`** (headless, 53 checks) covers day and night, caves, places, mutation and settlements:
+  - Every one of 200 planets has animals out by day and a hunter out by night, its herd grazing by day; rest sites suit the body (dens, burrows, roosts, nests); the same seed gives the same hours.
+  - The same valley at noon and at midnight has different species out (4 at noon, 2 at midnight), and every resting animal is at its rest site (furthest 1.1 m past its edge). A sleeping herd wakes at 7.5 m from someone walking, 4.7 m crouched, and runs together. Dens lie on slopes, bedding grounds on the flat, none in rock or a base's zone.
+  - All 3,360 cave and place species of 40 planets pass every body rule; they go pale below level 2 (saturation 0.10 against 0.37) and blind below level 3 (all of them); industrial places and wrecks breed armour (92%), alien places glow (75%); subsisters are harmless and wear no warning colours.
+  - In a tunnel dug with the tool (1,114 cells, 6 m floor to ceiling) and in the generator's cave (a chamber 6 m high, nothing dug), a creeper crawls floor > wall > ceiling, drops onto a walker below with dust first (3.13 s before the hit), lands on its feet and reaches a target 18 m (11 m in the cave) along the rock. It stays attached (worst 0.004 m off its surface, no slips) and is never inside the rock (body and every segment checked every step, no rescues).
+  - A populated cave runs 3 minutes with a caver walking through: nothing in the rock, nothing put back, and every hit came after a tell from its creature (tightest 6.7 s).
+  - Spaces fit any sim frame: a cave chamber is found from nearby, and offset voxel and block spaces agree cell for cell.
+  - 400 generated places: silent shares by state (abandoned 25%, ruined 33%, infested 0%, active 100%), infested overrun, nests only in the deepest levels (451 of 451), every place with hunters and subsisters has a food chain, every derelict has wreck nesters, every role appears, populations are deterministic. Nests get worse with depth: 3, 4 and 6 guards at levels 1, 3 and 5, the same species growing from 0.94 to 1.13 m and 31 to 45 health from level 3 to 5.
+  - Every ambush (a creeper on a ceiling, a duct eel in a vent, something behind a door, a lurker, a prowler, a nest guard) gives itself away at least a second before it lands (tightest 2.67 s), and every one can be escaped. Walking right through the outpost (17 creatures), every hit came after a tell (tightest 3.17 s), and nothing ever ends up inside a block.
+  - The food chain runs while a crouched player watches unnoticed: 7 subsisters taken in 7 minutes, each after a full wind-up; subsisters run into cracks and their colony keeps coming back; the hunters feed and leave the watcher alone.
+  - Wreck nesters build up their nests (1.10 to 2.00 over 2.5 minutes), warn an intruder with a hiss and bite only after (tightest 5.8 s).
+  - Mutation: the same seed gives the same mutation and strength 0 changes nothing (46 of 46 species); it grows with strength (46, 105 and 181 growths at 0.25, 0.5 and 1); at full strength every species has an extra part and a patch, passes every body rule, stays within bounds (heavier side at most 1.31 times, growths at most 23% of the body) and animates 20 s cleanly.
+  - Settlements: no wild spawn within 80 m of a town over 15 minutes of respawns (closest 89 m); a stampeding herd veers round one; a predator takes a townsperson on the road (telegraphed) but stops at the town's edge once they are home; a stray inside is reported and killed through the guards' hook. Domestic animals of each kind (120) are calm, plain, unarmed and have no signature attack; working beasts are the biggest, pets the smallest; they keep to their pens for 2 minutes, a pet keeps up with its owner, and stock scatter from a wild hunter inside the pen without fighting.
+  - Cost: 29 cave and place creatures, every one posed every frame, about 1 ms per frame (budget 2 ms, best of three windows).
+- **`tests/ShowroomProbe.tscn`** drives the real scenes: on the planet T flips between midnight and noon; the showroom builds every station, each has its creatures drawn, none inside the rock or a block, and the settlement's animals are all inside the town.
 - **Performance:** 200 creatures plus a swarm must cost under 4 ms per frame as the game runs them: sim, rigs on their distance schedule, and syncing every mesh. The worst case, every rig posed every frame, must stay under 6 ms. Each is judged on the best of three 300-frame windows, all printed, so another program busy on the machine can't fail it.
 - **Playable scene:** the real scene, through its input path. Keys 1 to 3 switch worlds, and F, W, F board, drive and leave the hovercraft.
 
@@ -274,13 +355,97 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
 
 - **Views:** `lineup`, `herd`, `pack`, `giant`, `bloom`, `predator`, `harvester`, `outpost`, `discovery` (the only one that shows a discovery card).
 - **Space views:** `space-nebula`, `space-asteroids`, `space-derelict`.
+- **Showroom views:** `deep-ceiling` (a crawler on a cave ceiling), `deep-tell` (grit falling from a corridor ceiling as someone walks under), `deep-food` (a lurker taking a grub), `deep-nest`, `deep-hold`, `mutation`, `domestic`.
 - **For checking the generator by eye:**
   - `sheet` renders a contact sheet with one camera per species. `--pick=0,3` narrows it to chosen species.
   - `--worlds=temperate,alien,bloom` or `seed123:0.6[:bloom]` picks the planets for `lineup` and `sheet`.
   - `survey` (headless) lists seeds that would make good demo worlds.
 - `--hud` keeps the debug HUD.
 
+## Integration
+
+Everything here is additive: no public name was renamed or removed, and a sim that doesn't opt in (day and night, settlements) behaves exactly as before. These are the changes for other folders, to make after the merges; none of them is made here.
+
+### The slice (`prototypes/slice`)
+
+1. **Compile list.** `src/Core`, `Rigs`, `Sim`, `View`, `Game/ProceduralAudio.cs` and `Game/Shutdown.cs` gained new files that compile with what the slice already includes. For the voxel caves add one line to `Slice.csproj`, next to the other wildlife lines (it needs terrain-digging's `src/Terrain`, already compiled there):
+   ```xml
+   <Compile Include="..\wildlife\src\Bridges\**\*.cs" />
+   ```
+2. **Merging the wildlife files the slice also edited.** `Species.cs`: my fields sit after `InSpace`, its `Stats.Xp` is untouched; `Species.Copy()` clones by `MemberwiseClone`, so `Xp` carries into variants. `FaunaGenerator.cs`: `RollStats`'s first switch gained a `RigKind.Crawler` row (about 20 lines above its `Xp` lines) and `HeadBand` a row; new methods follow `Generate`. `ProceduralAudio.cs`: `_Ready` gained one call (`MakeTells(rng)`) after `GrindLoop`, new methods sit at the end of the class; its `Origin` field and `Play` change are untouched. `Terrain.cs`: unchanged. Expect clean merges; if not, keep both sides.
+3. **Day and night** in `src/Surface/WildlifePatch.cs`, `Swap`:
+   ```csharp
+   var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+   // ... after carrying creatures across with sim.Spawn(...), give each a rest site again:
+   //     var carriedNow = new List<Creature>();  carriedNow.Add(sim.Spawn(c.Species, local));
+   foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
+   ```
+   `Populate` already uses `SpawnGroup`, which gives rest sites when `ActivityCycles` is on. Its `_PhysicsProcess` already sets `Sim.Clock.Time01` from the sky every frame.
+4. **Tells** (sounds and grit) for whatever lives in the patch, in `SetWorld` after `Audio` is made, and in `Swap` after `View.Bind(sim, null)`:
+   ```csharp
+   Tells = new TellView { Name = "Tells", Audio = Audio };  AddChild(Tells);   // once, in SetWorld
+   Tells.Bind(sim);                                                            // in Swap
+   ```
+   `TellView` and `LairView` place their effects in their own node's frame, the sim's, so as children of `WildlifePatch` (at `Origin`) they land in the right place.
+5. **Planet-surface caves.** The planet's voxel store is `planet.Terrain.Store`; the patch frame is the zone frame minus `Origin` (snapped to whole metres). When the survivor is near or under ground, find a chamber and fill it once per patch:
+   ```csharp
+   var deep = new DeepFauna(Zone.Data.Wildlife, Fauna);                     // once per planet
+   var caves = new VoxelSpace(planet.Terrain.Store, new Vector3I((int)Origin.X, 0, (int)Origin.Z));
+   if (CaveFauna.FindChamber(caves, PatchLocal(feet), 24f, out Vector3 chamber,
+           (x, z) => planet.Source.SurfaceHeight(x + Origin.X, z + Origin.Z)))
+       CaveFauna.Populate(Sim, caves, deep, chamber + Vector3.Up, 16f, seedFor(chamber), depth: 1);
+   Lairs.Build(Sim);   // a LairView child of the patch, for the cracks and moss
+   ```
+   Cave creatures move on the voxel rock, so a hole the player digs under one drops it. Their `Space` is per creature, so they share the patch's sim with the surface fauna.
+6. **Settlements** (when towns exist): per settlement in the patch `Sim.AddSettlement(name, PatchLocal(centre), radius)`; townsfolk are `ITarget`s added to `Sim.Targets` like the player (wildlife hunts them only outside town); `Sim.StrayEntered += (creature, town) => /* send guards */ Sim.CullStray(creature, guard)`; a town's animals from `new FaunaGenerator(fauna, activity).RollDomestic(planet.Spec.Seed, kind, alienness)` placed with `Sim.SpawnDomestic(species, at, penCentre, penRadius, owner)`, filtered by `species.Domestic` (working only in low-tech places, stock in low-tech places and on farms, pets anywhere).
+7. **Mutagenic worlds**: generate with `Generate(seed, alienness, bloom, mutation)` (or `Mutate(species, strength)` per region).
+
+### The POI generator (`prototypes/poi-generator`)
+
+Call the population function once per place instance, after `PoiFactory.Spawn` (or `Generate`) gives a `PoiInstance inst`; it needs only plain numbers, no wildlife types inside the generator if you keep the call at the game side:
+```csharp
+var plan = new Wildlife.PoiPlan
+{
+    Seed = inst.SpawnSeed,
+    State = (Wildlife.PlaceState)(int)inst.State,           // Active, Abandoned, Infested, Ruined: same order
+    Theme = ThemeOf(inst.Kit.Faction),                       // see below (Kit.Faction)
+    Derelict = IsShip(inst.Family),                          // the crashed freighter (and any wreck)
+};
+foreach (PlacedModule m in inst.Layout.Modules)
+{
+    if (m.Kind == ModuleKind.Outdoor) continue;
+    var room = new Wildlife.PoiRoom
+    {
+        Index = m.Index,
+        Kind = KindOf(m.Kind, m.Purpose),                    // see below
+        Min = new Vector3(m.Min.X, m.Min.Y, m.Min.Z) + interiorInset,   // the open interior: floor at Min.Y, ceiling at Max.Y
+        Max = new Vector3(m.Max.X + 1, m.Max.Y + 1, m.Max.Z + 1) - interiorInset,
+        Depth = Math.Max(0, -m.Storey),                      // levels below the way in
+        Dark = inst.State != PoiState.Active || m.Underground,
+    };
+    // Links: from inst.Layout.Links (or m.Parent), both ways round.
+    // Vents: room.Vents.Add((mouth, normalIntoRoom)) for each vent or grille block; doors: room.Doors.Add((doorwayMiddleAtFloor, normalIntoRoom)).
+    plan.Rooms.Add(room);
+}
+PoiPopulation pop = Wildlife.PoiFauna.Populate(plan, deepFauna, wildlifeData.Deep);   // deepFauna = new DeepFauna(data, planetFauna), once per planet
+```
+- **Kinds:** `Entrance` to Entrance, `Corridor` to Corridor, `Room` and `Tower` to Room, `Hall` to Hall, `Vault` to Vault, `Descent`, `Stair` and `Lift` to Descent, `Cave` to Cave, `Outdoor` skipped; in a ship, purposes `hold`/`cargo` to Hold, `engine`/`reactor` to EngineRoom, ducts and crawlways to Duct.
+- **Themes:** `meridian`, `exchange`, `reavers`, `freeholders` to Industrial; `vharn`, `kessari`, `hollow` and `none` (Precursor) to Alien; a mine's cave levels to Natural; ships set `Derelict = true` (theme Derelict).
+- **The space:** the place's blocks, 1 m cells, in the frame the game's sim uses (`Offset` = where grid cell (0,0,0) sits):
+  `new Wildlife.BlockSpace((x, y, z) => inst.Blocks.InBounds(new Int3(x, y, z)) && IsSolid(inst.Blocks.Get(new Int3(x, y, z))), min, max) { Offset = placeOriginInSim }`, where `IsSolid` is true for walls, floors, roofs and machines, false for air, doors, vents, glass panes you can see through and props a creature could walk under. For a place set into the voxel terrain, `new CombinedSpace(blockSpace, voxelSpace)`.
+- **Into the game:** `Wildlife.PoiFauna.Spawn(sim, pop, space)` when the place streams in; its `LairView.Build(sim)` draws cracks, food and nests. `pop.Silent` places stay empty. `pop.FoodChain` lists who eats whom, for a codex or a scanner.
+- The generator's own `EnemyKind.Fauna` roster lines can give way to this; its defenders and Bloom bosses are unaffected.
+
 ## Known limits
+
+- **Caves and places:**
+  - Floor walkers stay on their own storey: they step up 0.4 m at most, so 1 m block stairs are climbers' only (the outpost's prowlers, lurkers and guards each keep to one level; crawlers go anywhere). Ramp blocks would fix it once places have them.
+  - Paths are a bounded A* on 1 m cells, replanned now and then; a crawler can be slow to find its way round a large, convoluted cave.
+  - The block places here are the showroom's own, small and hand-built; the POI generator's places plug in through the population function (see Integration).
+  - Hidden creatures travel through the rock in a straight line between cracks; nothing models the passages.
+  - Drifting derelicts in space would use the same crawlers with gravity off; only crashed ones (with gravity) are built here.
+- **Mutation** decorates bodies only: no behaviour or stats change, and no player ailments (the doc has none; mutagen exposure is a later environmental hazard).
+- **Settlements:** the town side (townsfolk, guards, placement by tech level) comes later; here a stand-in townsperson and the hooks.
 
 - **Rigid pieces, no skinning.** Lofts and tapers hide most joints, but a piece is still rigid: bellies don't bulge and skin doesn't slide. Each piece is a draw call (about 30 per creature on average); a skinned single mesh per creature would be cheaper on the GPU.
 - **Some combinations are still plain or odd.** Leapers still read a little like round frogs on stilts. Variety means the odd creature is merely dull rather than broken.
@@ -292,9 +457,9 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
   - Tendrils, tails and necks are procedural sway, not physics.
 - **Few collisions.** Creatures don't collide with each other (herd and pack members keep apart) or with the player on foot. The hovercraft shoves them aside.
 - **Behaviour scope.**
-  - Day and night only change ambushers, walking plants and lighting.
+  - Day and night change who is out and where the rest sleep, but not how far anything sees; the planet's light changes, the caves' doesn't.
   - No creature is ranged.
-  - Nothing fights anything else; predators and packs only hunt players.
+  - On the open surface nothing fights anything else; there predators and packs only hunt players (and townsfolk). In caves and places the hunters eat the subsisters.
   - A pack's feinter never bites while it has flankers left.
 - **Single player.** The codex finder is always "Player 1"; nothing is networked or saved.
 - **Space fauna are not playable here.** They run in the tests and the screenshot views. In the encounters prototype the director spawns and moves them as cards, drawn as simple stand-ins. Nothing yet lets a player fight one in space, harvest its drops or meet one in a gas giant's skies, which has no scene. Space creatures don't fight each other, and only rocks and hulls block them.

@@ -118,6 +118,11 @@ public static class Attacks
                 c.Brace = MathF.Min(1f, k * 1.6f);
                 c.Rear = 0f;
                 break;
+            case AttackStyle.Drop:
+                // Flattens to the ceiling, legs bunching, head swinging down at you.
+                c.WantCrouch = 1f;
+                c.Rear = 0.5f * k;
+                break;
             default:
                 c.Rear = k;
                 break;
@@ -127,6 +132,11 @@ public static class Attacks
     /// <summary>Launches at the committed aim point, stopping with the jaws on it.</summary>
     static void Launch(WildSim w, Creature c)
     {
+        if (c.Space != null)
+        {
+            Crawl.Launch(w, c);
+            return;
+        }
         CombatRules r = w.Combat;
         Vector3 to = WildSim.Flat(c.AimPoint - c.Position);
         float d = to.Length();
@@ -146,15 +156,42 @@ public static class Attacks
     static void Land(WildSim w, Creature c, ITarget t)
     {
         CombatRules r = w.Combat;
-        Vector3 dir = WildSim.Flat(c.LungeTo - c.LungeFrom);
-        dir = dir.LengthSquared() > 1e-4f ? dir.Normalized() : c.Forward;
-        Vector3 strike = c.LungeTo + dir * c.Radius * 0.5f;
-        float groundAtStrike = w.Terrain.Height(strike.X, strike.Z);
-        Vector3 off = t.Position - strike;
-        bool hit = t.Attackable
-                   && WildSim.Flat(off).Length() <= r.ContactRadius + c.Radius * 0.4f
-                   && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
-        float dealt = hit ? t.Health.Apply(c.Stats.Damage) : 0f;
+        bool hit;
+        if (c.Space != null)
+        {
+            // In a cave or a place the lunge is a flight through the open: judged where it ends.
+            Vector3 d3 = c.LungeTo - c.LungeFrom;
+            Vector3 along = d3.LengthSquared() > 1e-4f ? d3.Normalized() : -c.Facing.Z;
+            Vector3 end = c.LungeTo + along * c.Radius * 0.3f;
+            float rise = end.Y - t.Position.Y;
+            hit = t.Attackable
+                  && WildSim.Flat(t.Position - end).Length() <= r.ContactRadius + c.Radius * 0.4f
+                  && rise > -0.8f && rise < 2.3f;
+        }
+        else
+        {
+            Vector3 dir = WildSim.Flat(c.LungeTo - c.LungeFrom);
+            dir = dir.LengthSquared() > 1e-4f ? dir.Normalized() : c.Forward;
+            Vector3 strike = c.LungeTo + dir * c.Radius * 0.5f;
+            float groundAtStrike = w.Terrain.Height(strike.X, strike.Z);
+            Vector3 off = t.Position - strike;
+            hit = t.Attackable
+                  && WildSim.Flat(off).Length() <= r.ContactRadius + c.Radius * 0.4f
+                  && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
+        }
+        float dealt = 0f;
+        if (hit)
+        {
+            // Another creature takes its wounds through the sim (it may die and be eaten).
+            if (t is CreatureTarget prey)
+            {
+                float before = prey.Creature.Health;
+                w.Damage(prey.Creature, c.Stats.Damage, c.AsTarget);
+                dealt = before - MathF.Max(0f, prey.Creature.Health);
+            }
+            else dealt = t.Health.Apply(c.Stats.Damage);
+        }
+        if (c.Space != null) Crawl.Release(w, c);
         c.RememberAttack(t, w.Time);
         w.RaiseAttacked(new AttackEvent
         {

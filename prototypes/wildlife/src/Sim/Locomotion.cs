@@ -15,6 +15,12 @@ public static class Locomotion
 
     public static void Move(WildSim w, Creature c, float dt)
     {
+        // Creatures of caves and places move on that space's surfaces, not the terrain's heights.
+        if (c.Space != null)
+        {
+            Crawl.Move(w, c, dt);
+            return;
+        }
         if (c.Dead)
         {
             Fall(w, c, dt);
