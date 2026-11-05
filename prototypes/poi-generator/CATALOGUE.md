@@ -91,6 +91,59 @@ Derelict freighter, wreck field, escape pod cluster, drifting hulk, broken stati
 | Alien colony domes, alien orbital habitats | the colony dome and orbital habitat above, in an alien kit |
 | Gas giant moon research post | an `InSpace` variant of research_base on a moon |
 
+## Ideas from the owner's brainstorm (design doc rev 425)
+
+Recorded with a tech band each (L low, M mid, H high; the pre-collapse level they belong to). Starred
+ones are built next, after the infrastructure, underground and utilities job, in this order:
+evacuation camps, cisterns and missile silos first, then quarantine zones, stadiums used as camps,
+collapsed highway interchanges, open-pit mines, offshore drilling platforms and arcologies.
+
+| Group | Place | Band | Notes |
+| --- | --- | --- | --- |
+| Underground | Cisterns ★ | L M H | Vast half-flooded vaulted halls under towns; a water table and columns in the dark |
+| Underground | Missile silos ★ | M H | A blast-door hatch in a fenced pad, a launch-control capsule, the silo shaft storeys down |
+| Underground | Civil-defence shelters, fallout bunkers under towns | M H | Entrances in the street grid; bunk halls, decontamination, air plant |
+| Underground | Catacombs and ossuaries | L | Niches and passages; bones as ornament, never gore |
+| Underground | Underground car parks | M H | Ramps and levels of rusted cars, flooded lowest level |
+| Underground | Bank and records vaults | M H | A vault door and deposit boxes; the archive stacks behind |
+| Underground | Pneumatic freight tubes | H | Tube network with capsules stuck in it; a hub station |
+| Underground | Funicular and cable-car tunnels | M | An inclined tunnel with a stranded car; anchored cables only |
+| Collapse story | Evacuation camps ★ | M H | Tent rows, fences, registration tents, abandoned vehicle queues on the road in |
+| Collapse story | Quarantine zones ★ | M H | A walled district with checkpoints, decontamination tents, the wall breached |
+| Collapse story | Emergency broadcast towers | M H | A mast (anchored guy wires) and a bunkered transmitter hut |
+| Collapse story | Battlefields | M H | Trench lines, tank graveyards, burnt-out convoys along a road |
+| Civic and city | Stadiums and arenas ★ | M H | Bowl of terraces, the pitch turned into a camp, tunnels under the stands |
+| Civic and city | Malls, hotels, cinemas | M H | Atriums, escalators, a dark screen hall |
+| Civic and city | Museums with pre-fall artifacts | M H | Galleries round a hall; a few artifacts as loot |
+| Civic and city | Universities and schools | M H | Lecture halls, labs, a library |
+| Civic and city | Churches and cathedrals | L M | Nave, crypt and tower; stone survives |
+| Civic and city | Cemeteries and mausoleums | L M | Grave rows (no gore), a mausoleum with a sealed crypt |
+| Civic and city | Botanical domes gone wild | M H | Broken glass domes, jungle inside |
+| Transport | Highway interchanges ★ | M H | Part of the network: stacked ramps on piers, a span or two down |
+| Transport | Toll plazas, service stations, truck stops | M H | Network stops on highways, wrecked queues at the booths |
+| Transport | Grand rail termini | L M H | A train shed over platforms; the network's rail ends there |
+| Transport | Ferry terminals, harbours with sunken ships | L M H | Needs water work (sunken hulls, flooded docks) |
+| Transport | Canals and locks, aqueducts, lighthouses | L M | Network pieces: lock gates, arched aqueducts, a lighthouse landmark |
+| Industry | Open-pit mines ★ | L M H | Terraced pit stamp, haul roads spiralling down, slag heaps |
+| Industry | Toxic tailings ponds | M H | A dam of tailings round a poisoned pond (warned hazard) |
+| Industry | Offshore drilling platforms ★ | M H | A rig on legs in the sea, decks storeys up; needs sea siting |
+| Industry | Container ports | M H | Stacks, gantry cranes, quays |
+| Industry | Shipbreaking yards | M H | Hulls beached and half cut up |
+| Industry | Chemical plants | M H | Columns, pipe racks, tank farms; warned leaks |
+| Industry | Sawmills, paper mills, logging camps | L M | Log ponds, saw halls, stacked timber |
+| Military and signals | Radar stations | M H | Domes and dishes on a ridge |
+| Military and signals | Artillery emplacements, coastal batteries, fortress lines | L M | Casemates in a line along a coast or a ridge |
+| Military and signals | Satellite dish arrays | M H | A field of dishes, a control block |
+| High tech | Arcologies ★ | H | A town-sized structure, storeys on storeys; far-ring landmark |
+| High tech | Space-elevator anchor | H | Tether site part, far-ring silhouette (see Ideas above) |
+| High tech | Mass-driver track | H | A long ramp of coils up a mountainside |
+| High tech | Cloning facility | H | Vat halls, sealed labs |
+| High tech | Robot assembly works | H | Assembly lines, dormant frames |
+| Low tech | Windmills and watermills | L | Small landmarks along rivers and ridges |
+| Low tech | Frontier keeps and stockades | L | Timber walls and a stone keep |
+| Low tech | Lumber camps, stone quarries | L | A quarry face stamp, sheds, a cart track |
+| Low tech | Village chapels | L | A small stone chapel and graveyard |
+
 ## Settings and flavours
 
 - **Themes** (`themes.txt`): a themed set per kind of world plus 4 to 14% outliers, rarer and more ominous. A **start world** keeps its theme with no faction holding ground. Faction places turn up only as ruins (no core, no defenders).
