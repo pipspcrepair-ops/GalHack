@@ -33,6 +33,20 @@ public sealed class Terrain
             _grid[j * _n + i] = Sample(-halfSize + i * Step, -halfSize + j * Step);
     }
 
+    /// <summary>
+    /// Someone else's ground: <paramref name="height"/> (local x, z to height) baked into the same
+    /// 2 m grid over ±<paramref name="halfSize"/>, for creatures living on a patch of a real planet.
+    /// </summary>
+    public Terrain(Func<float, float, float> height, float halfSize)
+    {
+        HalfSize = halfSize;
+        _n = (int)(halfSize * 2f / Step) + 1;
+        _grid = new float[_n * _n];
+        for (int j = 0; j < _n; j++)
+        for (int i = 0; i < _n; i++)
+            _grid[j * _n + i] = height(-halfSize + i * Step, -halfSize + j * Step);
+    }
+
     /// <summary>Ground height at a point, from the baked grid (clamped at the edge of the map).</summary>
     public float Height(float x, float z)
     {
