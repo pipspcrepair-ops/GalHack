@@ -12,7 +12,8 @@ public static class Controls
     public const string Jump = "jump", Sprint = "sprint", Crouch = "crouch";
     public const string Fire = "fire", Interact = "interact", ManTurret = "man_turret";
     public const string DebugInvade = "debug_invade", DebugFastTime = "debug_fast_time";
-    public const string DebugPlaceCore = "debug_place_core", DebugKillGarrison = "debug_kill_garrison";
+    public const string DebugPlaceCore = "debug_place_core", DebugKnockOutSource = "debug_knock_out_source";
+    public const string DebugNextFaction = "debug_next_faction", DebugWrong = "debug_wrong", DebugFavour = "debug_favour";
     public const string FreeMouse = "free_mouse";
 
     public static void Register()
@@ -29,7 +30,10 @@ public static class Controls
         Bind(DebugInvade, Godot.Key.I);
         Bind(DebugFastTime, Godot.Key.T);
         Bind(DebugPlaceCore, Godot.Key.P);
-        Bind(DebugKillGarrison, Godot.Key.K);
+        Bind(DebugKnockOutSource, Godot.Key.K);
+        Bind(DebugNextFaction, Godot.Key.J);
+        Bind(DebugWrong, Godot.Key.Minus);
+        Bind(DebugFavour, Godot.Key.Equal);
         Bind(FreeMouse, Godot.Key.Escape);
         if (!InputMap.HasAction(Fire))
         {

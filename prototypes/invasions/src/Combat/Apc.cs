@@ -5,25 +5,39 @@ using Invasions.World;
 namespace Invasions.Combat;
 
 /// <summary>
-/// A six-wheeled Vharn armoured personnel carrier: a driver in the front hatch, two roof gunners, six
-/// troops in the back. Drives in from the source, drops the ramp a few hundred metres out, then sits
-/// and gives fire support. Kill the driver and it rolls to a stop where it is.
+/// A ground carrier: drives (or walks) in from the source, stops at the drop point to let its troops
+/// out, then sits and gives fire support. Departing, it swings round to face away and drives off. Kill
+/// the driver and it rolls to a stop where it is. Subclasses supply the body and its animation.
 /// </summary>
-public partial class Apc : CrewedVehicle
+public abstract partial class GroundCarrier : CrewedVehicle
 {
-    Node3D _ramp;
-    readonly Node3D[] _wheels = new Node3D[6];
-    float _wheelSpin, _turnedFor;
+    float _turnedFor;
 
-    public override Vector3 PickupPoint => GlobalTransform * new Vector3(0, 0, 6f);
-    protected override TargetClass HullClass => TargetClass.Hover;
-    protected override Vector2 Footprint => new(3.6f, 8.4f);
+    /// <summary>Radians per second it can turn.</summary>
+    protected virtual float TurnRate => 0.8f;
+    /// <summary>Metres per second squared it can speed up or slow down.</summary>
+    protected virtual float Acceleration => 5f;
+    /// <summary>Where troops climb out and back in, in the vehicle's space.</summary>
+    protected abstract Vector3 ExitLocal { get; }
+    protected virtual float ExitSpread => 1f;
+
+    public override Vector3 PickupPoint
+    {
+        get
+        {
+            Vector3 exit = ExitLocal with { Y = 0 };
+            return GlobalTransform * (exit + exit.Normalized() * 0.6f);
+        }
+    }
     public override bool ReadyForPickup => Phase == Mode.Pickup && Speed < 0.5f;
 
     protected override Vector3 ExitPoint()
     {
-        float side = World.Rng.RandfRange(-1f, 1f);
-        return GlobalTransform * new Vector3(side, 0.1f, 5.4f);
+        float side = World.Rng.RandfRange(-ExitSpread, ExitSpread);
+        Vector3 local = ExitLocal;
+        // Spread along the exit's own side: across the back for a rear door, along the flank for a side exit.
+        Vector3 across = Mathf.Abs(local.X) > Mathf.Abs(local.Z) ? new Vector3(0, 0, side) : new Vector3(side, 0, 0);
+        return (GlobalTransform * (local + across)) with { Y = 0.1f };
     }
 
     protected override void Move(float dt)
@@ -41,39 +55,61 @@ public partial class Apc : CrewedVehicle
                     Phase = Mode.Unload;
                     break;
                 }
-                TurnToward(to, 0.8f, dt);
+                TurnToward(to, TurnRate, dt);
                 target = Mathf.Min((float)Plan.Speed, distance * 0.6f + 1.5f);
                 break;
             }
             case Mode.Depart:
                 // Swing round to face away from the base, then drive off.
                 _turnedFor += dt;
-                TurnToward(Route.Outward, 0.7f, dt);
+                TurnToward(Route.Outward, TurnRate * 0.875f, dt);
                 target = _turnedFor < 1.5f ? 3f : (float)Plan.Speed;
                 break;
         }
 
         // A dead driver means no throttle: coast to a stop.
-        float accel = Phase == Mode.Stranded ? 6f : 5f;
+        float accel = Phase == Mode.Stranded ? Acceleration * 1.2f : Acceleration;
         Speed = Mathf.MoveToward(Speed, Phase == Mode.Stranded ? 0f : target, accel * dt);
         GlobalPosition += heading * Speed * dt;
 
+        Animate(dt, Phase is Mode.Unload or Mode.Support or Mode.Pickup or Mode.Stranded);
+    }
+
+    /// <summary>Wheels, legs or hover glow, and the ramp or doors (open while stopped to let troops out).</summary>
+    protected abstract void Animate(float dt, bool open);
+}
+
+/// <summary>
+/// A six-wheeled Vharn armoured personnel carrier: a driver in the front hatch, two roof gunners, six
+/// troops in the back behind a ramp.
+/// </summary>
+public partial class Apc : GroundCarrier
+{
+    Node3D _ramp;
+    readonly Node3D[] _wheels = new Node3D[6];
+    float _wheelSpin;
+
+    protected override TargetClass HullClass => TargetClass.Hover;
+    protected override Vector2 Footprint => new(3.6f, 8.4f);
+    protected override Vector3 ExitLocal => new(0, 0.1f, 5.4f);
+    public override Vector3 PickupPoint => GlobalTransform * new Vector3(0, 0, 6f);
+
+    protected override void Animate(float dt, bool open)
+    {
         _wheelSpin += Speed * dt / 0.62f;
         foreach (Node3D wheel in _wheels) wheel.Rotation = new Vector3(-_wheelSpin, 0, 0);
-
-        bool rampDown = Phase is Mode.Unload or Mode.Support or Mode.Pickup or Mode.Stranded;
-        _ramp.Rotation = new Vector3(Mathf.MoveToward(_ramp.Rotation.X, rampDown ? 1.35f : 0f, 1.6f * dt), 0, 0);
+        _ramp.Rotation = new Vector3(Mathf.MoveToward(_ramp.Rotation.X, open ? 1.35f : 0f, 1.6f * dt), 0, 0);
     }
 
     protected override void OnStranded() => Fx.SmokeColumn(this, new Vector3(-0.8f, 2.6f, -2.4f), 0.4f);
 
     protected override void BuildBody()
     {
-        Material red = Palette.Mat(Palette.Oxblood, 0.55f);
-        Material maroon = Palette.Mat(Palette.Maroon, 0.6f);
-        Material bone = Palette.Mat(Palette.Bone, 0.5f);
-        Material black = Palette.Mat(Palette.Black, 0.7f);
-        Material metal = Palette.Mat(Palette.Gunmetal, 0.4f, 0.5f);
+        Material red = Palette.Mat(Livery.Main, 0.55f);
+        Material maroon = Palette.Mat(Livery.Dark, 0.6f);
+        Material bone = Palette.Mat(Livery.Trim, 0.5f);
+        Material black = Palette.Mat(Livery.Black, 0.7f);
+        Material metal = Palette.Mat(Livery.Metal, 0.4f, 0.5f);
         Material check = Palette.Textured(Palette.VharnCheck, new Vector3(6f, 1f, 1f));
 
         // Running gear and hull. Forward is -Z.
@@ -85,8 +121,8 @@ public partial class Apc : CrewedVehicle
         Block(new Vector3(1.72f, 1.95f, 0.6f), new Vector3(0.05f, 0.5f, 6.0f), check, solid: false);
         Block(new Vector3(-1.72f, 1.95f, 0.6f), new Vector3(0.05f, 0.5f, 6.0f), check, solid: false);
         Block(new Vector3(0, 1.4f, -4.15f), new Vector3(2.6f, 0.35f, 0.15f), bone, solid: false);           // dozer lip
-        Block(new Vector3(1.1f, 1.75f, -4.12f), new Vector3(0.4f, 0.2f, 0.06f), Palette.Glow(Palette.Acid, 4f), solid: false);
-        Block(new Vector3(-1.1f, 1.75f, -4.12f), new Vector3(0.4f, 0.2f, 0.06f), Palette.Glow(Palette.Acid, 4f), solid: false);
+        Block(new Vector3(1.1f, 1.75f, -4.12f), new Vector3(0.4f, 0.2f, 0.06f), Palette.Glow(Livery.Glow, 4f), solid: false);
+        Block(new Vector3(-1.1f, 1.75f, -4.12f), new Vector3(0.4f, 0.2f, 0.06f), Palette.Glow(Livery.Glow, 4f), solid: false);
         Block(new Vector3(1.2f, 3.4f, 3.2f), new Vector3(0.05f, 1.6f, 0.05f), black, solid: false);          // whip antenna
         Block(new Vector3(-0.8f, 2.55f, -2.3f), new Vector3(1.0f, 0.12f, 1.0f), black, solid: false);        // driver's hatch ring
 
@@ -118,7 +154,7 @@ public partial class Apc : CrewedVehicle
                 Font = Palette.Font,
                 FontSize = 96,
                 PixelSize = 0.006f,
-                Modulate = Palette.Bone,
+                Modulate = Livery.Trim,
                 OutlineSize = 0,
                 Position = new Vector3(side * 1.74f, 2.2f, -1.6f),
                 Rotation = new Vector3(0, side * Mathf.Pi / 2, 0),
