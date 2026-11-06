@@ -490,6 +490,111 @@ public partial class SurfaceTest
             $"the town's edge keeps the start's rules: no living settlement within {StartTown.NoSettlement:F0} m ({settlementsNear}), a place nobody holds in view 300 to 1,200 m off ({landmarks} of {towns}), walkable 60 m in three of eight directions ({walkable} of {towns})");
     }
 
+    // ---- what runs under a town ------------------------------------------------------------------
+
+    /// <summary>
+    /// The networks under real towns: the terrain opens every cell they take and none of the ground
+    /// over them changes; they keep their cover; every way in reaches the sky; walking from the first
+    /// way in reaches all the others and every chamber; the metro only where the world had one.
+    /// </summary>
+    async Task UnderChecks()
+    {
+        bool was = PlanetSurface.Poi.PoiSiting.StartWorld;
+        PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        int worlds = 0, cells = 0, closed = 0, moved = 0, surfaced = 0, buried = 0, unreached = 0, stations = 0, outfalls = 0, shallow = 0, tested = 0, spaces = 0, houses = 0;
+        var notes = new List<string>();
+        try
+        {
+            foreach (var (a, seed) in new[] { (0, 31UL), (1, 32UL), (2, 33UL), (0, 34UL) })
+            {
+                var spec = PlanetSpec.Roll(seed, (Archetype)a, 0);
+                PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
+                UnderTown under = w.StartTown?.Under;
+                if (under == null) { notes.Add($"no underground on {spec.Archetype} {seed}"); continue; }
+                worlds++;
+                UnderBuilt built = under.Built;
+                PlanetTerrainSource source = w.Source;
+                if (UnderPlan.Metro(w.Profile.Before) != under.Scheme.HasMetro) notes.Add($"metro wrong for {w.Profile.Before} on {seed}");
+                stations += under.Scheme.Stations.Count;
+                outfalls += under.Scheme.Outfalls.Count;
+                spaces += built.Spaces.Count;
+                // A sample of every open cell: carved out of the ground, by a stamp, on the map.
+                int n = 0;
+                foreach (PoiGenerator.Gen.Int3 c in built.Open)
+                {
+                    if (n++ % 53 != 0) continue;
+                    cells++;
+                    int cx = (int)Math.Floor(Mathx.WrapX(c.X + 0.5, w.Width)), cz = (int)Math.Floor(Mathx.Wrap(c.Z + 0.5, w.Height));
+                    if (source.CellDensity(cx, c.Y, cz) > 0f) closed++;
+                }
+                // Over the tunnels the ground stays the street's, and they keep some rock over them.
+                foreach (UnderRun r in under.Scheme.Runs.Where(r => r.Kind != UnderKind.Metro))
+                    for (int i = 6; i + 6 < r.Length; i += 11)
+                    {
+                        var (x, z) = r.Column(i);
+                        double gx = Mathx.WrapX(x + 0.5, w.Width), gz = Mathx.Wrap(z + 0.5, w.Height);
+                        float g = source.SurfaceHeight(gx, gz);
+                        if (float.IsNaN(g) || g > 4000) moved++;
+                        if (g - (r.Floors[i] + r.Height) < 0.5f && !under.Scheme.Outfalls.Any(o => Math.Abs(o.X - x) + Math.Abs(o.Z - z) < 20))
+                        {
+                            shallow++;
+                            if (notes.Count < 6) notes.Add($"{r.Kind} {g - (r.Floors[i] + r.Height):F1} m under the ground at {x},{z}");
+                        }
+                    }
+                // Every way in opens to the sky at the ground's own level.
+                foreach (PoiGenerator.Gen.Int3 p in built.WaysIn)
+                {
+                    float g = source.SurfaceHeight(Mathx.WrapX(p.X + 0.5, w.Width), Mathx.Wrap(p.Z + 0.5, w.Height));
+                    if (Math.Abs(g - p.Y) <= 1.6f) surfaced++;
+                    else
+                    {
+                        buried++;
+                        notes.Add($"way in at {p} with the ground at {g:F1}");
+                    }
+                }
+                // Walked from the first way in, on the real plan.
+                var view = new UnderView(built);
+                var nav = new PoiGenerator.Gen.NavGrid(view, view.Mask());
+                HashSet<PoiGenerator.Gen.Int3> reach = nav.Reachable(view.Local(built.WaysIn[0]));
+                foreach (PoiGenerator.Gen.Int3 p in built.WaysIn) { tested++; if (!reach.Contains(view.Local(p))) unreached++; }
+                foreach (UnderRoom r in under.Scheme.Rooms)
+                {
+                    tested++;
+                    int mx = (r.Min.X + r.Max.X) / 2, mz = (r.Min.Z + r.Max.Z) / 2;
+                    bool ok = false;
+                    for (int k = -3; k <= 3 && !ok; k++)
+                        for (int v = -1; v <= 1 && !ok; v++)
+                            ok = reach.Contains(view.Local(new PoiGenerator.Gen.Int3(mx + k, r.Min.Y + v, mz))) || reach.Contains(view.Local(new PoiGenerator.Gen.Int3(mx, r.Min.Y + v, mz + k)));
+                    if (!ok) unreached++;
+                }
+                houses += w.StartTown.Houses.Count;
+                // No house stands on the underground: its cellars and the tunnels never meet.
+                foreach (FlavourRuin h in w.StartTown.Houses)
+                {
+                    var (hx, hz) = h.Center;
+                    double half = Math.Max(h.Stamp.MaxX - h.Stamp.MinX, h.Stamp.MaxZ - h.Stamp.MinZ) * 0.5;
+                    foreach (PoiGenerator.Gen.Int3 c in built.Open)
+                        if (Math.Abs(Mathx.WrapDelta(c.X - hx, w.Width)) < h.Stamp.MaxX - hx && Math.Abs(Mathx.WrapDelta(c.Z - hz, w.Height)) < h.Stamp.MaxZ - hz && c.Y > h.OriginY - 9)
+                        {
+                            if (notes.Count < 6) notes.Add($"tunnels under a house at {hx:F0},{hz:F0}: {c}");
+                            moved++;
+                            break;
+                        }
+                }
+                await Frames(1);
+            }
+        }
+        finally
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = was;
+        }
+        Check(worlds >= 3 && closed == 0 && shallow == 0 && moved == 0,
+            $"under {worlds} towns the ground is opened for every tunnel ({cells} cells sampled, {closed} still solid), their cover kept ({shallow} too shallow), no cellar in the way ({moved}){(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
+        Check(buried == 0 && unreached == 0 && tested > 0,
+            $"walked in from the surface: {surfaced} ways in at the ground's level ({buried} not), {tested} ways and chambers reached from the first ({unreached} not){(buried > 0 ? "; " + string.Join("; ", notes.Where(k => k.StartsWith("way in")).Take(3)) : "")}");
+        Check(spaces > 0, $"{spaces} spaces underground for creatures, {stations} stations, {outfalls} outfall culverts over {worlds} towns");
+    }
+
     // ---- a blast's dead zone and ruin ring ---------------------------------------------------------
 
     async Task BlastChecks()

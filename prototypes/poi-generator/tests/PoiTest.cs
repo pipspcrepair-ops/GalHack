@@ -26,7 +26,7 @@ public partial class PoiTest : Node
         {
             ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
-            ("Sense", Sense), ("Variety", Variety), ("Cores", Cores), ("StateTransforms", StateTransforms),
+            ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
@@ -310,6 +310,88 @@ public partial class PoiTest : Node
         if (parts.Length < 7) return signature;
         int rooms = int.Parse(parts[6][1..]);
         return $"{parts[0]}/{parts[1]}/{parts[4]}/{parts[5]}/r{rooms / 3}";
+    }
+
+    /// <summary>
+    /// The networks under a town, on invented ground of three kinds at each tech level (the planet
+    /// surface's tests do the same on real towns). Walked by the same grid walker as every place: every
+    /// way in, every room and every stretch of tunnel reachable from the first way in; no open cell
+    /// against bare rock; the right things at the right tech level.
+    /// </summary>
+    void UndergroundNet()
+    {
+        int plans = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
+        var notes = new List<string>();
+        var grounds = new (string Name, Func<int, int, float> F)[]
+        {
+            ("flat", (_, _) => 40.5f),
+            ("tilted", (x, z) => 60f - (x - 1000) * 0.06f - (z - 1000) * 0.03f),
+            ("rolling", (x, z) => 50f + 7f * MathF.Sin(x / 47f) * MathF.Cos(z / 61f) - (x - 1000) * 0.03f),
+        };
+        foreach (TechLevel tech in new[] { TechLevel.Low, TechLevel.Mid, TechLevel.High })
+            foreach (var (name, ground) in grounds)
+                foreach (var (ax, az, back) in new[] { (1, 0, 1), (-1, 0, -1), (0, 1, -1), (0, -1, 1) })
+                {
+                    var site = new UnderSite { X = 1000, Z = 1000, AlongX = ax, AlongZ = az, BackSide = back, Tech = tech, Seed = (ulong)(plans + 3), Ground = ground };
+                    UnderPlan plan = Underground.Plan(site);
+                    UnderBuilt built = Underground.Build(plan);
+                    plans++;
+                    string where = $"{tech} {name} ({ax},{az})";
+                    if (plan.HasMetro != UnderPlan.Metro(tech)) { wrongTech++; notes.Add("metro on " + where); }
+                    // Brick sewers on a low-tech world: none of the higher levels' poured concrete or composite.
+                    if (tech == TechLevel.Low && built.Blocks.Values.Any(b => b.Type == BlockType.Cube && b.Role == Role.Wall && b.Material is PoiGenerator.Gen.Material.Concrete or PoiGenerator.Gen.Material.Alloy)) { wrongTech++; notes.Add("concrete on " + where); }
+                    stations += plan.Stations.Count;
+                    outfalls += plan.Outfalls.Count;
+                    if (plan.Outfalls.Count == 0) stubs++;
+                    var view = new UnderView(built);
+                    var nav = new NavGrid(view, view.Mask());
+                    HashSet<Int3> reach = nav.Reachable(view.Local(built.WaysIn[0]));
+                    foreach (Int3 w in built.WaysIn)
+                    {
+                        ways++;
+                        if (!reach.Contains(view.Local(w))) { unreached++; notes.Add($"way in {w} on {where}"); }
+                    }
+                    bool Reached(int x, int y, int z, int hx, int hz, int hw)
+                    {
+                        for (int k = -hw; k <= hw; k++)
+                            for (int v = -1; v <= 1; v++)
+                                if (reach.Contains(view.Local(new Int3(x + hx * k, y + v, z + hz * k)))) return true;
+                        return false;
+                    }
+                    foreach (UnderRoom r in plan.Rooms)
+                    {
+                        rooms++;
+                        Int3 c = new((r.Min.X + r.Max.X) / 2, r.Min.Y, (r.Min.Z + r.Max.Z) / 2);
+                        if (!Reached(c.X, c.Y, c.Z, 1, 0, 3)) { unreached++; notes.Add($"{r.Kind} {r.Min} on {where}"); }
+                    }
+                    foreach (UnderRun r in plan.Runs)
+                    {
+                        // The far end of a run that stops in a fall of rock is the fall of rock.
+                        int end = r.Length - (plan.Collapses.Any(k => k.X == r.Column(r.Length - 1).X && k.Z == r.Column(r.Length - 1).Z) ? 6 : 0);
+                        for (int i = 0; i < end; i += 3)
+                        {
+                            columns++;
+                            var (x, z) = r.Column(i);
+                            if (!Reached(x, r.Floors[i], z, Math.Abs(r.DirZ), Math.Abs(r.DirX), r.HalfWidth)) { unreached++; notes.Add($"{r.Kind} column {i}/{r.Length} at {x},{z} on {where}"); break; }
+                        }
+                    }
+                    // Sealed: nothing open opens straight onto the rock (the terrain would show through).
+                    foreach (Int3 p in built.Open)
+                        foreach (Dir d in Dirs.All)
+                        {
+                            Int3 n = p + d.Vec();
+                            if (!built.Open.Contains(n) && !built.Daylight.Contains(n) && !built.Blocks.ContainsKey(n)) { leaks++; break; }
+                        }
+                    spaces += built.Spaces.Count;
+                    unlinked += built.Spaces.Count(sp => sp.Links.Count == 0);
+                    // Determinism: the plan and its blocks are a pure function of the site.
+                    if (plans % 11 == 0 && Underground.Build(Underground.Plan(site)).Blocks.Count != built.Blocks.Count) { unreached++; notes.Add("not deterministic on " + where); }
+                }
+        Check(unreached == 0 && leaks == 0,
+            $"under {plans} towns: {ways} ways in, {rooms} chambers and {columns} sampled tunnel stretches all walked to from one way in ({unreached} not), {leaks} open cells against bare rock{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
+        Check(wrongTech == 0 && stations == plans * 2 / 3 && outfalls > 0,
+            $"the networks fit their worlds: {stations} metro stations and none on a low-tech world ({wrongTech} wrong), {outfalls} outfall culverts, {stubs} drains ending in a fall of rock where the ground never drops");
+        Check(spaces > 0 && unlinked == 0, $"{spaces} spaces for creatures, all dark, each linked to its neighbours ({unlinked} alone)");
     }
 
     /// <summary>

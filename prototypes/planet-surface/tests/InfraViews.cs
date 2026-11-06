@@ -4,6 +4,7 @@ using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
 using PlanetSurface.Infra;
+using PoiGenerator.Gen;
 using Weather.Model;
 using Archetype = Planets.Gen.Archetype;
 
@@ -23,8 +24,17 @@ public static class InfraViews
         var arch = Enum.Parse<Archetype>(a[2], true);
         ulong seed = a.Length > 3 ? ulong.Parse(a[3]) : 61;
         string what = a[1];
-        return new(PlanetSpec.Roll(seed, arch, 0), m => Frame(m, what), 0.4, WeatherKind.Clear);
+        bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
+        if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        Action<Main> torch = what is "sewer" or "drain" or "metro" or "gallery" ? Torch : null;
+        return new(PlanetSpec.Roll(seed, arch, 0), m => Frame(m, what), 0.4, WeatherKind.Clear, BeforeCapture: torch);
     }
+
+    /// <summary>What you'd have with you down there: a soft light at the eye (it's black underground without one).</summary>
+    static void Torch(Main m) => m.GetViewport().GetCamera3D()?.AddChild(new OmniLight3D
+    {
+        LightColor = new Color("ffeeda"), LightEnergy = 5f, OmniRange = 48f, OmniAttenuation = 0.8f, ShadowEnabled = false, Position = new Vector3(0.2f, -0.2f, 0f),
+    });
 
     static (Vector3, float, float) Frame(Main m, string what)
     {
@@ -60,6 +70,40 @@ public static class InfraViews
                 .OrderBy(dp => Away(dp.X, dp.Y)).FirstOrDefault();
             double vx = d.X + 5, vz = d.Y + 5;
             return Look(w, vx, vz, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 1.8f, d.X, d.Y, w.GroundHeight(d.X, d.Y) + 0.5f);
+        }
+        // A ruined town and what runs under it.
+        if (w.StartTown is StartTown town)
+        {
+            UnderTown under = town.Under;
+            if (what == "town")
+            {
+                // Standing at the edge, looking back down the main street into the town.
+                return Look(w, town.EdgeX, town.EdgeZ, w.GroundHeight(town.EdgeX, town.EdgeZ) + 2.2f, town.CenterX, town.CenterZ, w.GroundHeight(Mathx.WrapX(town.CenterX, w.Width), Mathx.Wrap(town.CenterZ, w.Height)) + 3f);
+            }
+            if (under != null && what == "sewer" && under.Scheme.Rooms.FirstOrDefault(r => r.Kind == UnderSpaceKind.Junction && r.Network == UnderKind.Sewer) is UnderRoom room)
+            {
+                // A corner of a junction chamber, looking across it.
+                return Look(w, room.Min.X + 1.5, room.Max.Z - 0.5, room.Min.Y + 2.6f, room.Max.X, room.Min.Z, room.Min.Y + 1f);
+            }
+            if (under != null && what == "drain" && under.Scheme.Runs.FirstOrDefault(r => r.Kind == UnderKind.Drain) is UnderRun run)
+            {
+                var (ax, az) = run.Column(run.Length / 2);
+                var (bx, bz) = run.Column(run.Length / 2 + 20);
+                return Look(w, ax + 0.5, az + 0.5, run.Floors[run.Length / 2] + 1.6f, bx + 0.5, bz + 0.5, run.Floors[run.Length / 2 + 20] + 1.2f);
+            }
+            if (under != null && what == "metro" && under.Scheme.Stations.FirstOrDefault() is UnderStation st)
+            {
+                // Down the platform from near one end.
+                double ax = st.X - st.DirX * (st.HalfLength - 6), az = st.Z - st.DirZ * (st.HalfLength - 6), bx = st.X + st.DirX * 10, bz = st.Z + st.DirZ * 10;
+                int sideX = Math.Abs(st.DirZ), sideZ = Math.Abs(st.DirX);
+                return Look(w, ax + sideX * 1.5 + 0.5, az + sideZ * 1.5 + 0.5, st.Y + 2.8f, bx + 0.5, bz + 0.5, st.Y + 2.2f);
+            }
+            if (under != null && what == "culvert" && under.Scheme.Outfalls.FirstOrDefault() is UnderOutfall o)
+            {
+                // Out on the apron, looking back at the mouth.
+                double vx = o.X + o.DirX * 13 + 0.5 + 2 * Math.Abs(o.DirZ), vz = o.Z + o.DirZ * 13 + 0.5 + 2 * Math.Abs(o.DirX);
+                return Look(w, vx, vz, o.Y + 2.6f, o.X + 0.5, o.Z + 0.5, o.Y + 1.6f);
+            }
         }
         // A structure: the nearest of its kind.
         if (what is "bridge" or "viaduct" or "tunnel")

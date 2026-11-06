@@ -19,7 +19,7 @@ namespace GalHack.Terrain;
 public enum StampSurface : byte { Natural, Concrete, Tarmac, Gravel, Dirt }
 
 /// <summary>What a stamp does to the ground: see <see cref="TerrainStamp.Shape"/>.</summary>
-public enum StampShape : byte { Pad, Bowl, Terraces, Cut, Tilt, Furrow, Road }
+public enum StampShape : byte { Pad, Bowl, Terraces, Cut, Tilt, Furrow, Road, Buried }
 
 /// <summary>What a stretch of a road stamp does: lies on the ground (cut and filled to its deck), crosses on a bridge (the ground is left alone), or runs in a tunnel (the ground is left alone and a bore is kept open).</summary>
 public enum RoadSpan : byte { Ground, Bridge, Tunnel }
@@ -85,6 +85,7 @@ public sealed class TerrainStamp
     public float Weight(double x, double z)
     {
         if (Shape == StampShape.Road) return RoadWeight(x, z);
+        if (Shape == StampShape.Buried) return OverCarve(x, z) ? 0.01f : 0f;
         Offset(x, z, out double dx, out double dz);
         double ox = Math.Max(0, Math.Abs(dx) - _halfX), oz = Math.Max(0, Math.Abs(dz) - _halfZ);
         if (ox > Apron + Blend || oz > Apron + Blend) return 0f;
@@ -187,6 +188,7 @@ public sealed class TerrainStamp
     /// <summary>The height this stamp wants at a point and how much it applies there, given the height so far.</summary>
     float Shaped(float height, double x, double z)
     {
+        if (Shape == StampShape.Buried) return height;
         if (Shape != StampShape.Pad && Kept(x, z)) return height;
         switch (Shape)
         {
@@ -305,6 +307,38 @@ public sealed class TerrainStamp
         }
         float a = L(ix, iz), b = L(ix + 1, iz), c = L(ix, iz + 1), d = L(ix + 1, iz + 1);
         return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+    }
+
+    // ---- buried: cells taken out of the ground, nothing changed on its surface -------------------
+
+    bool[] _columns;
+
+    /// <summary>
+    /// Cells opened underground with the surface left as it is: a stretch of sewer, a station. carve
+    /// holds height layers of sizeZ rows of sizeX cells. Its weight is the merest trace over a column
+    /// it opens, and nothing elsewhere, so chunks look for its cells and the ground, flora and made
+    /// surfaces above go on as they were.
+    /// </summary>
+    public static TerrainStamp Buried(string name, int minX, int minZ, int sizeX, int sizeZ, int bottomY, int height, bool[] carve, double planetWidth, double planetHeight)
+    {
+        var t = new TerrainStamp(name, minX, minZ, minX + sizeX, minZ + sizeZ, bottomY + height, 0f, 0f, planetWidth, planetHeight, minX, bottomY, minZ, sizeX, height, sizeZ, carve)
+        {
+            Shape = StampShape.Buried,
+        };
+        var columns = new bool[sizeX * sizeZ];
+        for (int y = 0; y < height; y++)
+            for (int z = 0; z < sizeZ; z++)
+                for (int x = 0; x < sizeX; x++)
+                    if (carve[(y * sizeZ + z) * sizeX + x]) columns[z * sizeX + x] = true;
+        t._columns = columns;
+        return t;
+    }
+
+    bool OverCarve(double x, double z)
+    {
+        int lx = (int)Math.Floor(Wrap(x - _carveX - _carveW * 0.5, _width) + _carveW * 0.5);
+        int lz = (int)Math.Floor(Wrap(z - _carveZ - _carveD * 0.5, _height) + _carveD * 0.5);
+        return (uint)lx < (uint)_carveW && (uint)lz < (uint)_carveD && _columns[lz * _carveW + lx];
     }
 
     /// <summary>Road: a tunnel's bore, half its width and its height over the deck.</summary>
