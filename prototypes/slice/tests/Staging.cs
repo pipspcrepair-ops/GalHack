@@ -57,7 +57,7 @@ public sealed partial class Staging
             "torch" => Torch(),
             "base" => BaseView(),
             "vessel" => VesselTakeoff(),
-            _ => throw new ArgumentException($"no view '{view}'"),
+            _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";

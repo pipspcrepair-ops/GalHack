@@ -33,6 +33,7 @@ public sealed class DepositFinder
         if (frame - _lastFrame < 20 && _near.Count > 0) return _near;
         _lastFrame = frame;
         _near.Clear();
+        if (zone.Planet == null) return _near; // in orbit: no ground under you, no deposits
         foreach (DepositKind kind in Kinds)
             if (Nearest(zone, kind, from, 600f) is Vector3 at) _near.Add((kind == DepositKind.Water ? "ice" : kind.ToString().ToLowerInvariant(), at));
         return _near;

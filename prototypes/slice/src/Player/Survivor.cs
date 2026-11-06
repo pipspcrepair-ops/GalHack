@@ -20,7 +20,8 @@ public sealed class Survivor
 {
     public const float Mass = 100f, Radius = 0.35f, Height = 1.8f, EyeHeight = 1.6f;
 
-    public readonly SurfaceZone Zone;
+    /// <summary>The zone the castaway is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    public SurfaceZone Zone { get; internal set; }
     public readonly Body Body;
     public readonly CharacterBinding Binding;
     public readonly WalkController Legs = new();
@@ -92,7 +93,7 @@ public sealed class Survivor
     {
         PhysicsRules.RidingData rules = Zone.Physics.Rules.Riding;
         _rejoinBlocked -= dt;
-        if (Body.OnFloor) Zone.Weather.Bridge.Landed(Body); // a fling's protection ends on touching down
+        if (Body.OnFloor) Zone.Weather.Bridge?.Landed(Body); // a fling's protection ends on touching down
 
         if (Seated != null)
         {

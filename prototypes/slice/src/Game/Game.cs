@@ -154,6 +154,7 @@ public partial class Game : Node3D
         Zone.Camera = Camera;
         Zone.Focus = Focus;
         Zone.Built += OnPlanetBuilt;
+        StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
         AddChild(new DiegeticUi.Screens.ScreenManager { Name = "Screens", Camera = Camera });
         Visor = new Visor { Name = "Visor", Game = this };
@@ -415,6 +416,7 @@ public partial class Game : Node3D
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
+        if (hands && Spaceflight.TakeHands(dt, hand, primary, pressed)) hands = false; // in space: salvage, claiming
         if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
         else if (hands && hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);

@@ -24,9 +24,10 @@ namespace Slice.Vessels;
 /// anyone aboard. Blocks change through <see cref="ApplyEdits"/>, which rebuilds only dirty chunks
 /// and keeps mass, centre of mass, landing legs and the four numbers in step with the blocks.
 /// </summary>
-public sealed class Vessel
+public sealed partial class Vessel
 {
-    public readonly SurfaceZone Zone;
+    /// <summary>The zone it is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    public SurfaceZone Zone { get; internal set; }
     public readonly Structure Structure;
     public readonly Body Body;
     public readonly InteriorMap Interior;

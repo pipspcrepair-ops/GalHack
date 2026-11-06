@@ -1,0 +1,218 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
+using GalHack.Structures;
+using Godot;
+using PhysicsSandbox.Bridges;
+using Slice.Orbit;
+using Slice.Vessels;
+using N = System.Numerics;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// Phase 2's screenshots: the climb out, the globe from orbit, a wreck field, floating across to
+/// a derelict, a derelict's dark inside, and landing back on the surface. Each is played through
+/// the game's controls (the Skiff built from its blueprint, flown up and over). The one liberty:
+/// the climbs and long flights run at a raised time-scale, printed, so a screenshot doesn't take
+/// minutes; nothing is moved by hand.
+/// </summary>
+public sealed partial class Staging
+{
+    Pilot _pilot;
+    string _said;
+
+    IEnumerable<int> OrbitViews(string view) => view switch
+    {
+        "climbout" => ClimbOutView(),
+        "globe" => GlobeView(),
+        "wrecks" => WreckFieldView(),
+        "eva" => EvaView(),
+        "derelict" => DerelictView(),
+        "landing" => LandingView(),
+        _ => throw new ArgumentException($"no view '{view}'"),
+    };
+
+    Vessel Skiff => BuiltSkiff();
+
+    /// <summary>Builds the Skiff and takes its seat.</summary>
+    IEnumerable<int> Seated()
+    {
+        _pilot = new Pilot(_game, _drive);
+        _game.Said += (text, _) => _said = text;
+        foreach (int x in Build(half: false)) yield return x;
+        Vessel v = Skiff;
+        foreach (int x in _pilot.Board(v)) yield return x;
+        GD.Print($"(boarding: seated {_game.Survivor.Seated?.Name}, said: {_said})");
+    }
+
+    /// <summary>Faster than life, printed: for long climbs and flights in screenshots only.</summary>
+    void Hurry(double scale)
+    {
+        Engine.TimeScale = scale;
+        if (scale != 1) GD.Print($"(screenshot: game time runs {scale}x for this stretch)");
+    }
+
+    /// <summary>Straight up and out into orbit.</summary>
+    IEnumerable<int> ToOrbit()
+    {
+        foreach (int x in Seated()) yield return x;
+        Hurry(4);
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++)
+        {
+            if (i % 300 == 0) GD.Print($"(climbing: seated {_game.Survivor.Seated?.Name}, the Skiff at {Skiff?.Body.Position.ToGodot()}, tunnel {_game.Spaceflight.Tunnel:F2})");
+            yield return 0;
+        }
+        _game.Controls.ReleaseAll();
+        Hurry(1);
+        GD.Print($"(screenshot: {(_game.InOrbit ? "in orbit" : "still on the surface")}, the Skiff at {Skiff.Body.Position.ToGodot()})");
+        if (!_game.InOrbit) yield break;
+        _game.Orbit.SpawnAll();
+        // Out of the tunnel.
+        for (int i = 0; i < 90; i++) yield return 0;
+    }
+
+    /// <summary>The Skiff climbing, the land far below.</summary>
+    IEnumerable<int> ClimbOutView()
+    {
+        foreach (int x in Seated()) yield return x;
+        Hurry(4);
+        _game.Controls.Hold(Key.Space);
+        float stop = (float)Num("alt", 1400);
+        Vessel v = Skiff;
+        for (int i = 0; i < 60 * 60 && v.Body.Position.Y < stop; i++) yield return 0;
+        Hurry(1);
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
+        for (int i = 0; i < 10; i++) yield return 0;
+        Vector3 at = v.Body.Position.ToGodot();
+        float heading = (float)Num("heading", 200) * Mathf.Pi / 180f;
+        Vector3 eye = at + new Vector3(MathF.Sin(heading) * 14f, -5f, MathF.Cos(heading) * 14f);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Down * 3f - eye, Vector3.Up), eye);
+        for (int i = 0; i < 6; i++) yield return 0;
+    }
+
+    /// <summary>The globe from orbit, the Skiff in front of it.</summary>
+    IEnumerable<int> GlobeView()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        Vessel v = Skiff;
+        OrbitZone orbit = _game.Orbit;
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
+        // Out a way, to see the globe whole: fly straight out from it.
+        Vector3 up = v.Body.Position.ToGodot().Normalized();
+        Hurry(3);
+        foreach (int x in _pilot.FlyTo(v, () => up * (orbit.AtmosphereRadius + (float)Num("away", 2600)), 40f, 90f)) yield return x;
+        Hurry(1);
+        Vector3 at = v.Body.Position.ToGodot();
+        Vector3 side = up.Cross(Vector3.Up).Normalized();
+        if (side.LengthSquared() < 0.01f) side = Vector3.Right;
+        Vector3 ahead = side.Cross(up);
+        // From behind and above the Skiff, looking down past it at the world.
+        Vector3 eye = at + up * 9f + ahead * 16f;
+        Vector3 look = at - up * 900f - ahead * 1400f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, up), eye);
+        for (int i = 0; i < 12; i++) yield return 0;
+    }
+
+    /// <summary>The nearest wreck of a kind (by its site's kind in the POI data).</summary>
+    Vessel NearestWreck(Func<Vessel, bool> which)
+    {
+        Vector3 from = _game.Survivor.WorldEye();
+        return _game.Orbit.Wrecks.Where(which).OrderBy(w => w.Body.Position.ToGodot().DistanceTo(from)).FirstOrDefault();
+    }
+
+    /// <summary>A wreck field: fragments and cargo boxes adrift, the globe beyond.</summary>
+    IEnumerable<int> WreckFieldView()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        Vessel v = Skiff;
+        Vessel piece = NearestWreck(w => w.Derelict.Site.Kind == "field" && !w.Derelict.Site.Id.Contains("pod"));
+        if (piece == null) yield break;
+        Vector3 centre = piece.Body.Position.ToGodot();
+        foreach (Vessel w in _game.Orbit.Wrecks.Where(w => w.Derelict.Site == piece.Derelict.Site)) centre += w.Body.Position.ToGodot();
+        centre /= 1 + _game.Orbit.Wrecks.Count(w => w.Derelict.Site == piece.Derelict.Site);
+        Vector3 up = centre.Normalized();
+        Hurry(3);
+        foreach (int x in _pilot.FlyTo(v, () => centre + up * 60f + (v.Body.Position.ToGodot() - centre).Normalized() * 120f, 30f, 120f)) yield return x;
+        Hurry(1);
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
+        Vector3 eye = v.Body.Position.ToGodot() + up * 6f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(centre - up * 40f - eye, up), eye);
+        for (int i = 0; i < 12; i++) yield return 0;
+    }
+
+    /// <summary>The derelict ship nearest, and its airlock's outer door in the world.</summary>
+    (Vessel ship, Vector3 door, Vector3 outward) Derelict()
+    {
+        Vessel ship = NearestWreck(w => w.Derelict.Site.Kind == "wreck" && w.Derelict.Airlock != null);
+        if (ship == null) return default;
+        Int3 cell = ship.Derelict.Airlock.Value;
+        Vector3 door = ship.ToWorld(StructureBridge.CellCenter(ship.Structure, cell));
+        Vector3 outward = MathX.Rotate(ship.Body.Rotation, N.Vector3.UnitX * Math.Sign(cell.X)).ToGodot();
+        return (ship, door, outward);
+    }
+
+    /// <summary>Flies the Skiff to a stop off a derelict's airlock, and steps out onto its deck.</summary>
+    IEnumerable<int> ToDerelict()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        Vessel v = Skiff;
+        var (ship, door, outward) = Derelict();
+        if (ship == null) yield break;
+        Hurry(3);
+        foreach (int x in _pilot.FlyTo(v, () => door + outward * 9f, 2.5f, 150f)) yield return x;
+        Hurry(1);
+        foreach (int x in _drive.Tap(Key.F)) yield return x; // up from the seat
+        for (int i = 0; i < 20; i++) yield return 0;
+    }
+
+    /// <summary>Floating across to a derelict's airlock, the Skiff behind.</summary>
+    IEnumerable<int> EvaView()
+    {
+        foreach (int x in ToDerelict()) yield return x;
+        var (ship, door, outward) = Derelict();
+        if (ship == null) yield break;
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 6; i++) yield return 0;
+        _game.Controls.ReleaseAll();
+        foreach (int x in _pilot.FloatTo(() => door + outward * 3.5f, 1.0f, 30f)) yield return x;
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") != "0";
+        _game.ThirdPerson = true;
+        foreach (int x in _drive.LookAt(door, 8)) yield return x;
+    }
+
+    /// <summary>Inside a derelict, dark but for the head torch.</summary>
+    IEnumerable<int> DerelictView()
+    {
+        foreach (int x in ToDerelict()) yield return x;
+        var (ship, door, outward) = Derelict();
+        if (ship == null) yield break;
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 6; i++) yield return 0;
+        _game.Controls.ReleaseAll();
+        foreach (int x in _pilot.FloatTo(() => door + outward * 2.2f, 0.8f, 30f)) yield return x;
+        foreach (int x in _drive.LookAt(door, 4)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        Int3 c = ship.Derelict.Airlock.Value;
+        int s = Math.Sign(c.X);
+        Vector3 Cell(int x, int y, int z) => ship.ToWorld(StructureBridge.CellCenter(ship.Structure, new Int3(x, y, z)));
+        foreach (int x in _pilot.FloatTo(() => Cell(c.X - s, 1, c.Z), 0.6f, 20f)) yield return x;
+        foreach (int x in _drive.LookAt(Cell(c.X - 2 * s, 1, c.Z), 4)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => Cell(c.X - 3 * s, 1, c.Z), 0.6f, 20f)) yield return x;
+        foreach (int x in _drive.Tap(Key.L)) yield return x; // the head torch
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") != "0";
+        var (min, max) = ship.Structure.Bounds();
+        foreach (int x in _drive.LookAt(Cell(0, 1, max.Z - 2), 20)) yield return x;
+    }
+
+    /// <summary>Back down: over the start, descending, landing beside the bunker.</summary>
+    IEnumerable<int> LandingView()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        yield break;
+    }
+}
