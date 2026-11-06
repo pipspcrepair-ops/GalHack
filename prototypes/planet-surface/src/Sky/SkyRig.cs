@@ -217,6 +217,13 @@ public partial class SkyRig : Node3D
         Sun.LightColor = C(s.StarColor);
     }
 
+    /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
+    public void SetCells(Vector4[] cells, int count)
+    {
+        _sky.SetShaderParameter("tower", cells);
+        _sky.SetShaderParameter("tower_count", count);
+    }
+
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
     public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
 
@@ -306,6 +313,8 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("cloud_thick", air.CloudThickness);
         _sky.SetShaderParameter("cloud_drift", _cloudDrift);
         _sky.SetShaderParameter("overcast", air.Overcast);
+        _sky.SetShaderParameter("stratus", air.Stratus);
+        _sky.SetShaderParameter("cirrus", air.Cirrus);
         Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter("overcast_color", C(grey));
         _sky.SetShaderParameter("cloud_lit", C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));

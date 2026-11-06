@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 using Slice.Game;
@@ -90,6 +91,56 @@ public partial class ClimateTest : Node
         foreach (int x in Storms()) yield return x;
         foreach (int x in Lava()) yield return x;
         foreach (int x in Node()) yield return x;
+        foreach (int x in Cells()) yield return x;
+    }
+
+    /// <summary>A storm is a place in the sky: its rain, strikes and funnels come from its cells, and its thunder takes its time.</summary>
+    IEnumerable<int> Cells()
+    {
+        Weather.Model.WeatherSim sky = Zone.Weather.Sim;
+        sky.ClearCells();
+        sky.Snap(WeatherKind.Thunderstorm);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(sky.Cells.Count > 0 && sky.CellCover(Me.WorldFeet) > 0.2f, $"a storm that arrives at once has its first cell overhead ({sky.Cells.Count} in the sky)");
+        StormCell over = sky.Cells[0];
+        Vector3 outside = over.Position + Vector3.Right * (over.Radius + 1500f);
+        Check(sky.RainAt(over.Position) > sky.Current.Rain * 0.95f && sky.RainAt(outside) < sky.Current.Rain * 0.25f,
+            $"it rains from the cell: {sky.RainAt(over.Position):F2} under it, {sky.RainAt(outside):F2} a way off");
+
+        // Moved well off: the strikes go there, every one under a cell.
+        sky.ClearCells();
+        StormCell off = sky.AddCell(Me.WorldFeet + new Vector3(1400f, 0f, 0f), 1f);
+        int strikes = 0, underCell = 0;
+        var seen = new HashSet<int>();
+        for (int i = 0; i < 2400 && strikes < 4; i++)
+        {
+            foreach (Hazard h in sky.Hazards)
+                if (h.Kind == HazardKind.Lightning && seen.Add(h.Id))
+                {
+                    strikes++;
+                    foreach (StormCell c in sky.Cells)
+                        if (new Vector2(h.Center.X - c.Position.X, h.Center.Z - c.Position.Z).Length() < c.Radius) { underCell++; break; }
+                }
+            yield return 0;
+        }
+        Check(strikes > 0 && underCell == strikes, $"lightning comes from the cells: {underCell} of {strikes} strikes under one");
+
+        Tornado funnel = sky.SpawnTornado(off.Position, off.Position);
+        Check(sky.Cells.Any(c => c.Funnel == funnel), "a funnel hangs from a cell");
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Check(sky.Cells.Any(c => c.Funnel == funnel && new Vector2(c.Position.X - funnel.Position.X, c.Position.Z - funnel.Position.Z).Length() < 1f), "and the cell stays over it");
+        sky.ClearTornadoes();
+
+        Vector3 eye = _game.Camera.GlobalPosition;
+        int coming = Zone.Weather.ThunderComing;
+        Zone.Weather.Thunder(eye + new Vector3(1000f, 0f, 0f));
+        Check(Zone.Weather.ThunderComing == coming + 1 && MathF.Abs(SurfaceWeather.ThunderDelay(1000f) - 2.9f) < 0.1f, "a strike a kilometre off is seen at once, its thunder on its way");
+        foreach (int x in _drive.Wait(120)) yield return x;
+        bool still = Zone.Weather.ThunderComing >= coming + 1;
+        foreach (int x in _drive.Wait(120)) yield return x;
+        Check(still && Zone.Weather.ThunderComing <= coming, "and arrives about three seconds later");
+        sky.Snap(WeatherKind.Clear);
+        sky.ClearCells();
     }
 
     /// <summary>The climate node: bench-made, in the hand it sets down like a device, and only burning does it hold the air.</summary>

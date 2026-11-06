@@ -198,6 +198,13 @@ public partial class LightningFx : Node3D
         Jag(_segments, cloud, target, 7, 1.1f, 1f, 0);
     }
 
+    /// <summary>Lightning inside a cloud: no bolt, just the tower lighting up from within.</summary>
+    public void CloudFlash(Vector3 at, float brightness)
+    {
+        FlashDirection = (at - Fx.Camera.GlobalPosition).Normalized();
+        Flash = Mathf.Max(Flash, brightness);
+    }
+
     /// <summary>Midpoint displacement: a jagged path, with branches forking off and fading.</summary>
     void Jag(List<(Vector3 a, Vector3 b, float width, float alpha)> into, Vector3 from, Vector3 to, int levels, float width, float alpha, int depth)
     {
@@ -221,7 +228,7 @@ public partial class LightningFx : Node3D
         {
             float taper = Mathf.Lerp(0.6f, 1f, i / (float)points.Count);
             into.Add((points[i], points[i + 1], width * taper, alpha));
-            if (depth < 2 && levels > 3 && _rng.Randf() < 0.05f)
+            if (depth < 2 && levels > 3 && _rng.Randf() < (depth == 0 ? 0.09f : 0.05f))
             {
                 Vector3 down = (to - from).Normalized();
                 float length = from.DistanceTo(to) * _rng.RandfRange(0.15f, 0.35f);

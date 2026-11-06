@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 using Weather.Model;
@@ -88,6 +89,50 @@ public partial class Staging
             _game.Zone.Dust.Puff(at + Vector3.Up * 0.3f, new Color(0.55f, 0.5f, 0.42f, 1f), 0.9f);
             foreach (int x in _drive.Wait(4)) yield return x;
         }
+    }
+
+    /// <summary>A storm cell a kilometre and a half off over open ground: its tower, its shaft, a bolt out of it.</summary>
+    IEnumerable<int> StormCellShot()
+    {
+        var sky = _game.Zone.Weather.Sim;
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.45);
+        sky.Snap(_args.TryGetValue("kind", out string kind) ? Enum.Parse<WeatherKind>(kind) : WeatherKind.Thunderstorm);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        Vector3 hill = Hilltop(_game.Survivor.WorldFeet, 300f);
+        _game.Survivor.PlaceOutside(hill.ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        sky.ClearCells();
+        Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized();
+        var cell = sky.AddCell(hill + toward * (float)Num("off", 1500), 1f);
+        Vector3 eye = hill + Vector3.Up * 16f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(toward + Vector3.Up * (float)Num("pitch", 0.12), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(90)) yield return x;
+        if (Num("bolt", 0) != 0)
+        {
+            // The next strike out of it, caught as it lands.
+            for (int i = 0; i < 1800 && !sky.Events.Any(e => e.Kind == WeatherEventKind.LightningStrike); i++) yield return 0;
+            foreach (int x in _drive.Wait(1)) yield return x;
+        }
+        GD.Print($"storm cell: radius {cell.Radius:F0} m, {sky.Cells.Count} in the sky, rain here {_game.Zone.Weather.RainHere:F2} of {sky.Current.Rain:F2}, under it {sky.RainAt(cell.Position):F2}");
+    }
+
+    /// <summary>A clear or clouded sky for the cloud types: --kind=Clear, Clouds, Rain.</summary>
+    IEnumerable<int> CloudTypes()
+    {
+        var sky = _game.Zone.Weather.Sim;
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        sky.Snap(_args.TryGetValue("kind", out string kind) ? Enum.Parse<WeatherKind>(kind) : WeatherKind.Clouds);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        Vector3 hill = Hilltop(_game.Survivor.WorldFeet, 300f);
+        _game.Survivor.PlaceOutside(hill.ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 eye = hill + Vector3.Up * 16f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(1f, (float)Num("pitch", 0.35), 0.35f).Normalized(), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(60)) yield return x;
     }
 
     /// <summary>Under the nearest deep water, a few metres down, looking up at the surface (--up=0 looks across).</summary>

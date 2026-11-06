@@ -54,7 +54,91 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     double _lastStep = -1;
 
     /// <summary>The rain falling where the camera is, 0 to 1.</summary>
-    public float RainHere => Sim?.Current.Rain ?? 0f;
+    public float RainHere => Sim == null || Camera == null ? 0f : Sim.RainAt(Camera.GlobalPosition);
+
+    /// <summary>The storm towers this frame, and their rain shafts.</summary>
+    readonly Vector4[] _towers = new Vector4[MostTowers];
+    readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
+    const int MostTowers = 4;
+    float _flicker = 4f;
+    readonly RandomNumberGenerator _rng = new() { Seed = 90125 };
+
+    /// <summary>Thunder on its way: seconds yet, where the strike was, how far off.</summary>
+    readonly List<(float left, Vector3 at, float distance)> _thunder = new();
+
+    /// <summary>Thunders still on their way to the ear (tests).</summary>
+    public int ThunderComing => _thunder.Count;
+
+    /// <summary>How long a strike's thunder takes to arrive, seconds: sound crosses a kilometre in about three.</summary>
+    public static float ThunderDelay(float metres) => metres / 343f;
+
+    /// <summary>A strike was seen: its thunder arrives when the sound has come that far.</summary>
+    public void Thunder(Vector3 at)
+    {
+        float distance = (Camera?.GlobalPosition ?? Observer()).DistanceTo(at);
+        _thunder.Add((ThunderDelay(distance), at, distance));
+    }
+
+    void Rumble(float dt, Vector3 camera)
+    {
+        for (int i = _thunder.Count - 1; i >= 0; i--)
+        {
+            var (left, at, distance) = _thunder[i];
+            left -= dt;
+            if (left > 0f)
+            {
+                _thunder[i] = (left, at, distance);
+                continue;
+            }
+            _thunder.RemoveAt(i);
+            Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Thunder, camera + (at - camera).Normalized() * 20f,
+                1f - Mathf.Clamp(distance / 5000f, 0f, 0.3f), Mathf.Clamp(6f - distance / 60f, -14f, 6f));
+        }
+    }
+
+    /// <summary>Tells the sky where the towers stand, hangs a rain shaft under each, and flickers them from within.</summary>
+    void SyncCells(float dt, Vector3 camera)
+    {
+        int count = 0;
+        Conditions c = Sim.Current;
+        foreach (StormCell cell in Sim.Cells)
+        {
+            if (count >= MostTowers) break;
+            float strength = cell.Strength * c.Cellular;
+            if (strength < 0.04f) continue;
+            Vector3 at = _planet.NearestCopy(_planet.Canonical(cell.Position), camera);
+            _towers[count] = new Vector4(at.X, at.Z, cell.Radius, strength);
+            if (count >= _shafts.Count) _shafts.Add(AddShaft());
+            var (node, draw) = _shafts[count];
+            float height = CloudBaseY - at.Y + 80f, reach = cell.Radius * 0.62f;
+            node.Visible = true;
+            node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(reach, height, reach)), new Vector3(at.X, height / 2f - 80f, at.Z));
+            // Standing in it there's nothing to see of it: the falling rain has taken over.
+            float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
+            draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
+            draw.SetShaderParameter("tint", new Color(0.24f, 0.26f, 0.3f) * (0.2f + 0.8f * Zone.Sky.Daylight));
+            count++;
+        }
+        Zone.Sky.SetCells(_towers, count);
+        for (int i = count; i < _shafts.Count; i++) _shafts[i].node.Visible = false;
+
+        if (count == 0 || c.LightningPerMinute < 0.1f || (_flicker -= dt) > 0f) return;
+        _flicker = _rng.RandfRange(2.5f, 9f);
+        Vector4 tower = _towers[_rng.RandiRange(0, count - 1)];
+        _lightning.CloudFlash(new Vector3(tower.X, CloudBaseY + 120f, tower.Y), _rng.RandfRange(0.25f, 0.6f));
+    }
+
+    (MeshInstance3D, ShaderMaterial) AddShaft()
+    {
+        var draw = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/rainshaft.gdshader") };
+        var node = new MeshInstance3D
+        {
+            Name = "RainShaft", MaterialOverride = draw, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
+            Mesh = new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, CapTop = false, CapBottom = false, RadialSegments = 24, Rings = 1 },
+        };
+        AddChild(node);
+        return (node, draw);
+    }
 
     /// <summary>What falls stops on whatever is there (ground, roofs, ships, water): there is no other cover check.</summary>
     public bool FallStopsOnContact => _rain?.Process.CollisionMode == ParticleProcessMaterial.CollisionModeEnum.HideOnContact && _stops != null;
@@ -224,7 +308,23 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     /// <summary>The air right now, for the sky.</summary>
     public AtmosphereState Air(float sunHeight) =>
-        Atmosphere.Compute(_planet?.Sky ?? Zone.Sky.System, Sim?.Current ?? Atmosphere.Clear(), sunHeight);
+        Atmosphere.Compute(_planet?.Sky ?? Zone.Sky.System, Sim == null ? Atmosphere.Clear() : AirHere(), sunHeight);
+
+    /// <summary>
+    /// The weather where the camera is: out from under a cell the air is clear and the sun comes
+    /// through, with the storm standing in plain sight over there; under it, the weather in full.
+    /// </summary>
+    Conditions AirHere()
+    {
+        Conditions c = Sim.Current;
+        if (c.Cellular <= 0.01f || Camera == null) return c;
+        float open = c.Cellular * (1f - Sim.CellCover(Camera.GlobalPosition));
+        c[Param.VisibilityLog] = Mathf.Lerp(c[Param.VisibilityLog], MathF.Max(c[Param.VisibilityLog], 3.95f), open);
+        c[Param.GroundFog] *= 1f - open;
+        c[Param.Solar] = Mathf.Lerp(c.Solar, MathF.Max(c.Solar, 0.75f), open);
+        c[Param.Cellular] = open; // right under a tower the whole deck is the storm's
+        return c;
+    }
 
     // ---- Each tick: the model has stepped inside the physics host; pass on what happened ------
 
@@ -366,6 +466,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _dust.Draw.AlbedoColor = new Color(dust.R * 0.8f, dust.G * 0.75f, dust.B * 0.7f, 0.2f);
         _motes.Draw.AlbedoColor = new Color(dust.R * 1.1f, dust.G * 1.05f, dust.B, 0.55f);
         KeepStops(camera, dt);
+        SyncCells(dt, camera);
+        Rumble(dt, camera);
 
         Vector2 w = c.Wind;
         float speed = w.Length();

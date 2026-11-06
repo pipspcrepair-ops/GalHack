@@ -647,8 +647,7 @@ public partial class Game : Node3D
         {
             case WeatherEventKind.LightningStrike:
                 float distance = feet.DistanceTo(e.Position);
-                Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Thunder, Camera.GlobalPosition + (e.Position - Camera.GlobalPosition).Normalized() * 20f,
-                    1f, Mathf.Clamp(6f - distance / 60f, -12f, 6f));
+                Zone.Weather.Thunder(e.Position);
                 if (Survivor.Seated == null && distance < e.DamageRadius && !Sheltered())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);

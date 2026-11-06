@@ -92,7 +92,7 @@ public partial class SliceAudio : Node
         bool under = g.Zone.Underwater?.CameraUnder == true;
         Muffle(under);
         Fade(_under, under, -20f, dt);
-        g.Zone.Sfx.SetWeather(under ? 0f : w.Wind2D.Length(), under ? 0f : w.Sim?.Current.Rain ?? 0f, shelter);
+        g.Zone.Sfx.SetWeather(under ? 0f : w.Wind2D.Length(), under ? 0f : w.RainHere, shelter);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
         bool jetting = g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack && !g.Suit.Dead;
