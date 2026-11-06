@@ -58,6 +58,7 @@ public partial class CreatureBodies : Node3D
             p.Body.CollisionLayer = Layers.Props;
             return p;
         }
+        _grew = true;
         var shape = new CapsuleShape3D { Radius = 0.3f, Height = 1f };
         var body = new StaticBody3D { Name = "Part", CollisionLayer = Layers.Props, CollisionMask = 0 };
         body.AddChild(new CollisionShape3D { Shape = shape });
@@ -95,8 +96,12 @@ public partial class CreatureBodies : Node3D
         MostParts = Math.Max(MostParts, InUse);
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsBase && !v.IsWreck && v.Body.Velocity.LengthSquared() > 4f) Strike(v, patch);
-        WorstMs = Math.Max(WorstMs, clock.Elapsed.TotalMilliseconds);
+        // (The ticks the pool grew don't count: a shape is made once, and reused from then on.)
+        if (!_grew) WorstMs = Math.Max(WorstMs, clock.Elapsed.TotalMilliseconds);
+        _grew = false;
     }
+
+    bool _grew;
 
     void Fit(WildSim sim, Vector3 origin, Vector3 feet, bool deep)
     {

@@ -132,6 +132,8 @@ public partial class PoiPlaces : Node3D
     {
         foreach (Place p in Standing.ToList())
         {
+            // (A place stood up while the planet was still loading: its far drawing arrived after it.)
+            if (!p.FarHidden) p.FarHidden = ShowFar(p.Site, false);
             float d = DistanceTo(p.Site, focus);
             if (d <= DropRadius) { p.SetDormant(false); continue; }
             if (p.Memory.Modified) { p.SetDormant(true); continue; }
@@ -250,7 +252,7 @@ public partial class PoiPlaces : Node3D
         Place p = j.Place;
         p.Ready = true;
         Standing.Add(p);
-        ShowFar(p.Site, false);
+        p.FarHidden = ShowFar(p.Site, false);
         BuildLog.Add((p.Site.Name, j.Clock.Elapsed.TotalSeconds, p.ChunkCount));
         _job = null;
         Stood?.Invoke(p);
@@ -270,16 +272,17 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>The far drawing's blocks (and its own dressing) shown or hidden; its lamps, glows and smoke always stay.</summary>
-    void ShowFar(PoiSite site, bool show)
+    bool ShowFar(PoiSite site, bool show)
     {
         Node3D far = Zone.Pois.NodeOf(site);
-        if (far == null) return;
+        if (far == null) return false;
         foreach (Node n in far.GetChildren())
         {
             string name = n.Name.ToString();
             if (n is CollisionObject3D body) body.ProcessMode = show ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
             else if (n is Node3D n3 && (name.StartsWith("Chunk") || name == "Deco")) n3.Visible = show;
         }
+        return true;
     }
 
     /// <summary>

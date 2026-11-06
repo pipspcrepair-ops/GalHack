@@ -188,8 +188,28 @@ public partial class PoiPlaces
         return (share, s.Empty ? $"{s.Name}: stripped bare" : $"Salvaged from the {s.Name.ToLowerInvariant()}");
     }
 
-    /// <summary>A bolt struck a place: only a hidden room's cracked wall gives (a few shots open it). True if it broke.</summary>
-    public bool Shot(Hit h, float damage) => h.Place.SecretAt(h.Cell) is SecretRoom s && Hurt(h.Place, s, damage);
+    /// <summary>A bolt struck a place: a hidden room's cracked wall gives (a few shots open it), and a faction's core can be shot out. True if a wall broke.</summary>
+    public bool Shot(Hit h, float damage)
+    {
+        Block b = h.Place.Inst.Blocks.Get(h.Cell);
+        if (b.Type == BlockType.Core)
+        {
+            PlaceMemory m = h.Place.Memory;
+            float done = m.BlockDamage.GetValueOrDefault(h.Cell) + damage;
+            m.BlockDamage[h.Cell] = done;
+            if (done >= BlockInfo.HitPoints(b))
+            {
+                h.Place.Inst.Blocks.Set(h.Cell, Block.Air);
+                h.Place.Remesh(new[] { h.Cell });
+                CoreDestroyed?.Invoke(h.Place);
+            }
+            return false;
+        }
+        return h.Place.SecretAt(h.Cell) is SecretRoom s && Hurt(h.Place, s, damage);
+    }
+
+    /// <summary>A faction's core was shot out (no start world has one): the place is nobody's now.</summary>
+    public event Action<Place> CoreDestroyed;
 
     bool Hurt(Place p, SecretRoom s, float damage)
     {

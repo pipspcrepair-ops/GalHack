@@ -116,7 +116,7 @@ public partial class DeepSite : Node3D
         // The lair marks (cracks, moss and scraps, nests), a handful at a time: wildlife's own
         // lair view, each drawing a share of them (they keep scaling with the nests and food).
         int lairs = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
-        while (_lairNext < lairs && clock.Elapsed.TotalMilliseconds < BudgetMs) BuildLairs(6);
+        while (_lairNext < lairs && clock.Elapsed.TotalMilliseconds < BudgetMs) BuildLairs(2);
         if (Patch.Zone.Camera != null) SyncViews(Local(Patch.Zone.Camera.GlobalPosition), clock);
         WorstViewMs = Math.Max(WorstViewMs, clock.Elapsed.TotalMilliseconds);
     }

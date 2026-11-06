@@ -219,7 +219,7 @@ public partial class Place
             body.AddChild(shape);
             body.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("5a5e64"), Metallic = 0.5f, Roughness = 0.5f } });
             // A hazard rim round the car's floor.
-            body.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(size.X, 0.05f, 0.08f) }, Position = new Vector3(0, 0.12f, size.Z / 2f - 0.04f), MaterialOverride = _band ??= new StandardMaterial3D { AlbedoColor = new Color("e0a800") } });
+            body.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(size.X, 0.05f, 0.08f) }, Position = new Vector3(0, 0.13f, size.Z / 2f - 0.05f), MaterialOverride = _band ??= new StandardMaterial3D { AlbedoColor = new Color("e0a800") } });
             AddChild(body);
             var car = new Car { Shaft = shaft, Body = body, Shape = shape, Centre = new Vector3((min.X + max.X + 1) / 2f, 0, (min.Z + max.Z + 1) / 2f), Y = Memory.LiftY[i] };
             car.Target = car.Y;

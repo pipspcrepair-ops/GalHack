@@ -314,7 +314,8 @@ public partial class Place
         foreach (PlaceRoom room in Memory.Rooms.Values)
         {
             if (_dressed.ContainsKey(room.Module)) continue;
-            var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y, room.Corner.Z) } };
+            // A hair off the floor: nothing the dressing lays flat is ever coplanar with the blocks.
+            var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y + 0.008f, room.Corner.Z) } };
             AddChild(d.Node);
             _dressed[room.Module] = d;
             HashSet<int> taken = Memory.DecoTaken.GetValueOrDefault(room.Module);

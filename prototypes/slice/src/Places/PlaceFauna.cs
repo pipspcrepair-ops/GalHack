@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 using PlanetSurface.Terrain;
 using PoiGenerator.Gen;
@@ -180,7 +181,12 @@ public partial class Caves : Node3D
     public SurfaceZone Zone;
     public Func<Vector3> Feet;
     public Func<bool> OnFoot;
+    /// <summary>In somewhere that isn't a cave: a place's rooms, the bunker.</summary>
+    public Func<bool> Indoors = () => false;
     public PlaceFauna.Deep Deep;
+
+    /// <summary>The longest search for a chamber so far, on its worker, ms (tests).</summary>
+    public double WorstMs { get; private set; }
 
     sealed class Cave
     {
@@ -211,27 +217,50 @@ public partial class Caves : Node3D
             else if (c.Site == null && d < 100f) Stand(c, at);
             else if (c.Site != null) c.Site.Position = at;
         }
-        if (!OnFoot()) return;
+        if (_search != null)
+        {
+            if (!_search.IsCompleted) return;
+            Task<(Cave Cave, (int, int, int) Key)> done = _search;
+            _search = null;
+            if (done.IsFaulted) return; // the streamer changed under the search: the next one will do
+            var (found, key) = done.Result;
+            if (found != null && !_caves.ContainsKey(key))
+            {
+                _caves[key] = found;
+                Stand(found, planet.NearestCopy(found.Anchor, feet));
+            }
+            return;
+        }
+        if (!OnFoot() || Indoors()) return;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
         if (feet.Y > surface - 4f) return; // only underground
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
         var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z));
-        if (!CaveFauna.FindChamber(space, Vector3.Zero, 16f, out Vector3 floor,
-                (x, z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(anchor.X + x, planet.Width), Planets.Gen.Mathx.Wrap(anchor.Z + z, planet.Height)) - anchor.Y))
-            return;
+        float time = Zone.Wildlife.Sim?.Time ?? 0f;
+        _search = Task.Run(() => Search(planet, space, anchor, surface, time));
+    }
+
+    /// <summary>Looks for the roomiest chamber round a point and fills it, off the main thread (a private sim, its rock only read).</summary>
+    (Cave, (int, int, int)) Search(PlanetSurface.World.PlanetWorld planet, LoadedVoxels space, Vector3 anchor, float surface, float time)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        float Height(float x, float z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(anchor.X + x, planet.Width), Planets.Gen.Mathx.Wrap(anchor.Z + z, planet.Height)) - anchor.Y;
+        bool found = CaveFauna.FindChamber(space, Vector3.Zero, 16f, out Vector3 floor, Height);
+        WorstMs = Math.Max(WorstMs, clock.Elapsed.TotalMilliseconds);
+        if (!found) return (null, default);
         Vector3 chamber = planet.Canonical(anchor + floor);
         var key = ((int)MathF.Floor(chamber.X / 24f), (int)MathF.Floor(chamber.Y / 24f), (int)MathF.Floor(chamber.Z / 24f));
-        if (_caves.ContainsKey(key)) return;
+        if (_caves.ContainsKey(key)) return (null, default);
         var cave = new Cave { Anchor = planet.Canonical(anchor) };
-        var terrain = new WTerrain((x, z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(anchor.X + x, planet.Width), Planets.Gen.Mathx.Wrap(anchor.Z + z, planet.Height)) - anchor.Y, 40f);
-        cave.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = Zone.Wildlife.Sim?.Time ?? 0f };
+        var terrain = new WTerrain(Height, 40f);
+        cave.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = time };
         ulong seed = (ulong)(key.Item1 * 73856093L ^ key.Item2 * 19349663L ^ key.Item3 * 83492791L) ^ planet.Spec.Seed;
         int depth = Math.Max(1, (int)((surface - (anchor.Y + floor.Y)) / 12f) + 1);
         lock (Deep.Lock) CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth);
-        _caves[key] = cave;
-        Stand(cave, anchor);
+        return (cave, key);
     }
 
+    Task<(Cave Cave, (int, int, int) Key)> _search;
     void Stand(Cave c, Vector3 at)
     {
         c.Site = DeepSite.Create(Zone.Wildlife, c.Sim, "Cave");

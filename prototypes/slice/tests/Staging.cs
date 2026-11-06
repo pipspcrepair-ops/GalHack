@@ -38,7 +38,7 @@ public sealed partial class Staging
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = view != "dig";
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
-        if (view is not ("bunker" or "climb" or "bunkershot"))
+        if (view is not ("bunker" or "climb" or "bunkershot" or "bunkerclose"))
             foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         IEnumerable<int> script = view switch
         {
@@ -57,6 +57,13 @@ public sealed partial class Staging
             "torch" => Torch(),
             "base" => BaseView(),
             "vessel" => VesselTakeoff(),
+            "place" => PlaceApproach(),
+            "interior" => PlaceInterior(),
+            "tell" => PlaceTell(),
+            "cache" => PlaceCache(),
+            "town" => TownView(),
+            "salvage" => Salvage(),
+            "bunkerclose" => BunkerClose(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
         foreach (int x in script) yield return x;

@@ -46,6 +46,7 @@ public partial class Game
         {
             Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Deep = Places.Fauna,
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
+            Indoors = () => Places.PlaceAt(Survivor.WorldFeet) != null || Bunker.Inside(Survivor.WorldFeet, Zone),
         };
         Zone.AddChild(Caves);
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
@@ -54,6 +55,7 @@ public partial class Game
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;
+        Places.CoreDestroyed += p => Say($"{p.Site.Name.ToUpperInvariant()}: ITS CORE IS DESTROYED", Tones.Good);
         Places.WarmUp(); // still loading: the first build's one-off costs are paid now
     }
 
@@ -149,6 +151,11 @@ public partial class Game
         {
             Open(new OpenContainer { Title = loot.Name, Grid = loot.Grid, Loot = loot, Where = () => loot.Position });
             h.Place.Memory.Entered = true;
+            return true;
+        }
+        if (b.Type == BlockType.Core)
+        {
+            Say("A faction's core: shoot it out to free the place (hijacking waits for the factions)", Tones.Caution);
             return true;
         }
         if (b.Type == BlockType.Terminal)

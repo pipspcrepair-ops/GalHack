@@ -32,6 +32,9 @@ public partial class Place : Node3D
     /// <summary>Everything is in: the planet's far drawing of it is hidden and this one answers.</summary>
     public bool Ready { get; internal set; }
 
+    /// <summary>The planet's far drawing of it has given way (it may arrive after a place stood up while loading).</summary>
+    internal bool FarHidden;
+
     /// <summary>Beyond the drop radius, kept only because its blocks changed: drawn, nothing more.</summary>
     public bool Dormant { get; private set; }
 
