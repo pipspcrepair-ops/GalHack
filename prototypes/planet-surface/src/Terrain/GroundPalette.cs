@@ -32,7 +32,7 @@ public sealed class GroundPalette
     public GroundPalette(WorldMap map)
     {
         Map = map;
-        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), 160, 4);
+        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), ColorMap.BorderWave, 4);
         _tone = new Fractal(Hash.Of(map.Spec.Seed, 0x746F6E), 700, 3);
         _cells = new Rgb[map.Count];
         _glow = new float[map.Count];
@@ -42,6 +42,7 @@ public sealed class GroundPalette
             _cells[k] = Soil(biome);
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
+        _cells = ColorMap.Soften(map, _cells);
 
         (Rock, Strata) = (map.Def.Archetype, map.Def.Variant) switch
         {
@@ -109,14 +110,10 @@ public sealed class GroundPalette
     public Rgb SoilAt(double x, double z, out float glow)
     {
         Jitter(x, z, out double gx, out double gz);
-        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
-        float tx = (float)(gx - i0), tz = (float)(gz - j0);
         Rgb c = default;
         float g = 0f, total = 0f;
-        Add(i0, j0, (1 - tx) * (1 - tz), ref c, ref g, ref total);
-        Add(i0 + 1, j0, tx * (1 - tz), ref c, ref g, ref total);
-        Add(i0, j0 + 1, (1 - tx) * tz, ref c, ref g, ref total);
-        Add(i0 + 1, j0 + 1, tx * tz, ref c, ref g, ref total);
+        Around(gx, gz, ref c, ref g, ref total);
+        if (total <= 0f) Around(x / Map.CellSize - 0.5, z / Map.CellSize - 0.5, ref c, ref g, ref total); // by the shore a border can wander right out over water
         if (total <= 0f)
         {
             glow = 0f;
@@ -269,11 +266,21 @@ public sealed class GroundPalette
         return (h & 0xFFFFFF) / (float)0xFFFFFF;
     }
 
+    void Around(double gx, double gz, ref Rgb c, ref float g, ref float total)
+    {
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
+        float tx = (float)(gx - i0), tz = (float)(gz - j0);
+        Add(i0, j0, (1 - tx) * (1 - tz), ref c, ref g, ref total);
+        Add(i0 + 1, j0, tx * (1 - tz), ref c, ref g, ref total);
+        Add(i0, j0 + 1, (1 - tx) * tz, ref c, ref g, ref total);
+        Add(i0 + 1, j0 + 1, tx * tz, ref c, ref g, ref total);
+    }
+
     void Jitter(double x, double z, out double gx, out double gz)
     {
         P4 p = Map.Model.Torus.At(x, z);
-        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * 0.9;
-        gz = z / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * 0.9;
+        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * ColorMap.BorderWander;
+        gz = z / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * ColorMap.BorderWander;
     }
 
     void Add(int i, int j, float w, ref Rgb c, ref float g, ref float total)
