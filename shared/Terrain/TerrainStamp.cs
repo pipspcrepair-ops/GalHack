@@ -254,7 +254,7 @@ public sealed class TerrainStamp
                 // (their mouths are faces in the slope); under a bridge the ground is the land's own,
                 // except where the embankment's end spills down under it round the abutment.
                 if (!NearestOnPath(x, z, out _, out _, out RoadSpan span) || span == RoadSpan.Tunnel) return height;
-                if (!NearestOnPath(x, z, out float s, out float target, out _, groundOnly: true, out float mouth)) return height;
+                if (!Bed(x, z, out float s, out float target, out float mouth)) return height;
                 // A century of frost and roots buckles a neglected deck: a gentle heave, never a step.
                 if (Buckle > 0f) target += Buckle * (Heave(x, z) * 2f - 1f);
                 // Near a tunnel the cutting opens out to the portal's width, its banks drawing in to the portal's
@@ -434,16 +434,11 @@ public sealed class TerrainStamp
     /// The nearest point of the path to a world point: how far off it is, the deck height there and
     /// the span it is on. False when the point is beyond the stamp's reach or the path is empty.
     /// </summary>
-    public bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly = false, bool skipTunnels = false) =>
-        NearestOnPath(x, z, out distance, out deck, out span, groundOnly, out _, skipTunnels);
-
-    /// <summary>The same, and how far along the road the nearest point is from a tunnel's mouth.</summary>
-    bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly, out float mouth, bool skipTunnels = false)
+    public bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly = false, bool skipTunnels = false)
     {
         distance = float.MaxValue;
         deck = 0f;
         span = RoadSpan.Ground;
-        mouth = float.MaxValue;
         if (_px == null || _px.Length < 2) return false;
         Offset(x, z, out double dxd, out double dzd);
         float reach = HalfWidth + BankMax + StripBlend;
@@ -461,10 +456,46 @@ public sealed class TerrainStamp
             best = d2;
             deck = _py[i] + (_py[i + 1] - _py[i]) * u;
             span = _spans[i];
-            if (_mouth != null) mouth = _mouth[i] + (_mouth[i + 1] - _mouth[i]) * u;
         }
         if (best == float.MaxValue) return false;
         distance = MathF.Sqrt(best);
+        return true;
+    }
+
+    /// <summary>
+    /// The road bed at a point: how far off its ground stretches are, and their deck and distance from a
+    /// tunnel's mouth, each blended along the road by how near every stretch is. Nearest-point values jump
+    /// across the inside of a bend, where two stretches are equally near; these don't, so banks run smooth
+    /// round a bend. On the bed itself the nearest stretch all but decides it.
+    /// </summary>
+    bool Bed(double x, double z, out float distance, out float deck, out float mouth)
+    {
+        distance = float.MaxValue;
+        deck = 0f;
+        mouth = float.MaxValue;
+        if (_px == null || _px.Length < 2) return false;
+        Offset(x, z, out double dxd, out double dzd);
+        float reach = HalfWidth + BankMax + StripBlend;
+        if (Math.Abs(dxd) > _halfX + reach || Math.Abs(dzd) > _halfZ + reach) return false;
+        float dx = (float)dxd, dz = (float)dzd;
+        float best = float.MaxValue, total = 0f, decks = 0f, mouths = 0f;
+        for (int i = 0; i + 1 < _px.Length; i++)
+        {
+            if (_spans[i] != RoadSpan.Ground) continue;
+            float ax = _px[i], az = _pz[i], bx = _px[i + 1], bz = _pz[i + 1];
+            float ex = bx - ax, ez = bz - az, len2 = ex * ex + ez * ez;
+            float u = len2 > 1e-6f ? Math.Clamp(((dx - ax) * ex + (dz - az) * ez) / len2, 0f, 1f) : 0f;
+            float qx = ax + ex * u - dx, qz = az + ez * u - dz, d2 = qx * qx + qz * qz;
+            best = MathF.Min(best, d2);
+            float near = d2 + 0.25f, w = 1f / (near * near * near);
+            total += w;
+            decks += w * (_py[i] + (_py[i + 1] - _py[i]) * u);
+            mouths += w * (_mouth != null ? _mouth[i] + (_mouth[i + 1] - _mouth[i]) * u : float.MaxValue / 1e6f);
+        }
+        if (best == float.MaxValue) return false;
+        distance = MathF.Sqrt(best);
+        deck = decks / total;
+        mouth = mouths / total;
         return true;
     }
 

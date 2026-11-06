@@ -163,6 +163,29 @@ public static class FlavourRuins
             ruins.Add(ruin);
             k++;
         }
+        // A survivor town's landing clearing, at its edge, with a track in, where traders set down.
+        if (lib.Families.FirstOrDefault(f => f.Id == "landing_clearing") is { } clearing)
+            foreach (PoiSite p in pois.Where(p => p.Family.Id == "survivor_town" && p.Instance.State == PoiState.Active))
+            {
+                if (!rng.Chance(0.7f)) continue;
+                Layout layout = LayoutFor(lib, clearing, rng.Range(0, clearing.Variants.Count));
+                // Clear of the town's square reach whichever way round it lands.
+                double start = rng.Float() * Math.PI * 2, reach = (Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 50) * 1.45;
+                for (int k = 0; k < 36; k++)
+                {
+                    // Round the town, then further out: a clearing is flattened, so it takes rougher ground than a house.
+                    double a = start + k * Math.PI / 6, far = reach + 40 * (k / 12);
+                    double cx = p.Center.X + Math.Cos(a) * far, cz = p.Center.Z + Math.Sin(a) * far;
+                    var ruin = Try(lib, clearing, layout, cx, cz, bare, net, pois, ruins, w, h, rng, roadGap: 4, maxCut: 12f);
+                    if (ruin == null) continue;
+                    ruin.State = PoiState.Abandoned;
+                    ruins.Add(ruin);
+                    var (rx, rz) = ruin.Center;
+                    net.LandingSpots.Add(new LandingSpot(rx, rz, ruin.OriginY, 12f, p));
+                    net.Spur((rx, rz), RouteKind.Track, 900);
+                    break;
+                }
+            }
         // Round a blast: the ruin ring, every ruin in it flattened outward from ground zero.
         foreach (PoiSite p in pois)
         {

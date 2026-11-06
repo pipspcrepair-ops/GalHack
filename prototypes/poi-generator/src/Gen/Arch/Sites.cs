@@ -78,6 +78,8 @@ public static class Sites
                 case "dome": Dome(x, part); break;
                 case "turbines": Turbines(x, part); break;
                 case "panels": Panels(x, part); break;
+                case "slipway": Slipway(x, part); break;
+                case "freighter": Freighter(x, part); break;
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
@@ -1366,6 +1368,70 @@ public static class Sites
                 x.C.Set(new Int3(cx, 2, z + 1), new Block(BlockType.Ramp, Material.Glass, glass.Scale(1.15f), Role.Decor, Dir.North));
             }
         }
+    }
+
+    /// <summary>
+    /// A shipyard slipway: a long concrete bed sloping to nothing, a keel laid down it, and the ribs of
+    /// a hull that was never finished arching over it. len, w, h.
+    /// </summary>
+    static void Slipway(Ctx x, SitePart p)
+    {
+        int len = p.Int("len", 50), w = p.Int("w", 16), h = p.Int("h", 10);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var bed = new Rgb(0x7a, 0x7a, 0x74);
+        var steel = new Rgb(0x5a, 0x4a, 0x42);
+        Int3 At(int a, int u, int v) => alongX ? new Int3(p.X + a, v, p.Z + u) : new Int3(p.X + u, v, p.Z + a);
+        for (int a = 0; a < len; a++)
+        {
+            for (int u = -w / 2; u <= w / 2; u++)
+                x.C.Set(At(a, u, -1), new Block(BlockType.Cube, Material.Concrete, bed.Scale(Math.Abs(u) == w / 2 ? 0.8f : 0.95f), Role.Floor));
+            x.C.Set(At(a, 0, 0), new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+            // A rib every five metres over the middle stretch: a half hoop springing from the keel's bed.
+            if (a % 5 != 0 || a < 4 || a > len - 8) continue;
+            float taper = MathF.Sin(MathF.PI * a / len);
+            int ribH = Math.Max(3, (int)(h * taper)), ribW = Math.Max(2, (int)(w * 0.45f * taper));
+            int lastU = 0, lastV = -1;
+            foreach (int side in new[] { -1, 1 })
+            {
+                (lastU, lastV) = (0, 0);
+                for (float t = 0f; t <= 1.001f; t += 0.08f)
+                {
+                    int u = (int)MathF.Round(ribW * MathF.Sin(t * MathF.PI * 0.5f)) * side, v = (int)MathF.Round(ribH * (1f - MathF.Cos(t * MathF.PI * 0.5f)));
+                    if (u != lastU && v != lastV) x.C.Set(At(a, u, lastV), new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+                    x.C.Set(At(a, u, v), new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+                    (lastU, lastV) = (u, v);
+                }
+                // Each rib stands on a leg from the bed, so what's left of the hull holds up.
+                for (int v = 0; v < ribH; v++) x.C.Set(At(a, side * ribW, v), new Block(BlockType.Pillar, Material.Steel, steel, Role.Wall));
+            }
+        }
+    }
+
+    /// <summary>A small trading freighter set down on its legs: a slab-sided hull, a cockpit, a ramp down at the stern.</summary>
+    static void Freighter(Ctx x, SitePart p)
+    {
+        int len = p.Int("len", 18);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var hull = new Rgb(0x8a, 0x82, 0x72);
+        var dark = new Rgb(0x4a, 0x48, 0x46);
+        Int3 At(int a, int u, int v) => alongX ? new Int3(p.X + a, v, p.Z + u) : new Int3(p.X + u, v, p.Z + a);
+        const int Half = 3;
+        for (int a = 0; a < len; a++)
+        {
+            int nose = Math.Min(Half, (len - 1 - a) + 1);
+            for (int u = -nose; u <= nose; u++)
+                for (int v = 2; v <= 5; v++)
+                {
+                    bool shell = Math.Abs(u) == nose || v == 2 || v == 5 || a == 0 || a == len - 1;
+                    if (!shell) continue;
+                    x.C.Set(At(a, u, v), new Block(BlockType.Cube, Material.Alloy, (v == 3 && a % 4 == 1 ? dark : hull).Scale(0.92f + 0.08f * ((a + v) & 1)), Role.Wall));
+                }
+        }
+        // Landing legs at the corners, standing on the field.
+        foreach (int a in new[] { 2, len - 4 })
+            foreach (int u in new[] { -Half, Half })
+                for (int v = 0; v < 2; v++)
+                    x.C.Set(At(a, u, v), new Block(BlockType.Cube, Material.Steel, dark, Role.Wall));
     }
 
     /// <summary>A greenhouse or hydroponic shed: a glass house on a low wall, planting tables inside gone to seed.</summary>

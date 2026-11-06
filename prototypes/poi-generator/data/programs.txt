@@ -574,7 +574,7 @@ program kiosk
 program boiler_house
   name Boiler House
   shapes rect
-  plans hall 2 spine 1
+  plans hall 2 spine 2 enfilade 1 jog 1
   basement same 1
   style concrete
   width 24 28

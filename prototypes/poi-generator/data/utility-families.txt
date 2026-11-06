@@ -396,3 +396,114 @@ family solar_farm
     seed 9869
   variant The Glass Acres
     seed 9870
+
+# ---- ports the world's profile sites, and what grew up round them --------------------------------
+
+family scrappy_port
+  tier camp
+  siting flat
+  rise 18
+  name Improvised Launch Field
+  pitch A cleared field, scaffolding, fuel drums, and a ship that was never going to make it.
+  faction none
+  roster raiders
+  site scrappy_port
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 6
+  reveal 500
+  ominous 0.5
+  wrong 0
+  tags scrappy fallen
+  states active 0 abandoned 7 infested 1 ruined 2
+  variant Last Ditch Field
+    seed 9881
+  variant Car Park Launch
+    seed 9882
+  variant Field Twelve
+    seed 9883
+
+family evacuation_camp
+  tier camp
+  siting flat
+  rise 6
+  name Evacuation Camp
+  pitch Rows of shelters, a queue that never moved, names chalked on the containers.
+  faction none
+  roster raiders
+  site evacuation_camp
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 6
+  reveal 300
+  ominous 0.6
+  wrong 0
+  tags evacuation fallen
+  states active 0 abandoned 7 infested 1 ruined 2
+  variant Holding Camp Four
+    seed 9884
+  variant Reception Centre
+    seed 9885
+  variant Camp Hope
+    seed 9886
+
+# Flavour, not a place of its own: the planet surface sets one at a survivor town's edge.
+family landing_clearing
+  tier site
+  siting flat
+  rise 10
+  name Landing Clearing
+  pitch A flattened field, a beacon pole, and whoever's trading this month.
+  faction none
+  roster raiders
+  site landing_clearing
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 2
+  reveal 200
+  ominous 0
+  wrong 0
+  tags flavour clearing
+  states active 0 abandoned 2 infested 0 ruined 0
+  variant Clearing
+    seed 9887
+  variant Traders' Field
+    seed 9888
+  variant The Flats
+    seed 9889
+
+family frontier_base
+  tier outpost
+  siting flat
+  rise 14
+  name Frontier Base
+  pitch A walled yard and a mast, and people who chose to stay.
+  faction none
+  roster raiders
+  site frontier_base
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 14
+  reveal 400
+  ominous 0.2
+  wrong 0
+  tags settlement frontier
+  states active 8 abandoned 2 ruined 1
+  variant Fort Hollis
+    seed 9890
+  variant Last Water
+    seed 9891
+  variant Outstation Six
+    seed 9892

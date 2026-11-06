@@ -58,6 +58,7 @@ public partial class SurfaceTest : Node
             await Run("StartTown", StartTownChecks);
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
+            await Run("Ports", PortChecks);
             await Run("Stitches", StitchChecks);
             await Run("Blast", BlastChecks);
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);

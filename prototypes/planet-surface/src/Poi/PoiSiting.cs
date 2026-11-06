@@ -37,6 +37,8 @@ public sealed class PoiCatalog
 public sealed class PoiSite
 {
     public string Name = "";
+    /// <summary>The world's main starport: the network's main node.</summary>
+    public bool Primary;
     public FamilyDef Family;
     public PoiInstance Instance;
 
@@ -151,11 +153,16 @@ public static class PoiSiting
         var spread = far.Where((_, i) => i % stride == 0).ToList();
         // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
         var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
+        // The ports come first and don't count against the rest: the main one above all, an exodus world's crowd round it.
+        var ports = placed.Where(IsPort).OrderByDescending(p => p.Primary).ToList();
+        order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
+        static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("evacuation");
+        int budget = MaxSites + ports.Count;
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
             // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
-            PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned ? PoiState.Active : PoiState.Abandoned;
+            PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             int forcedVariant = profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0;
             PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
             for (int k = 0; k < 12 && sites.Count == 0; k++)
@@ -167,7 +174,7 @@ public static class PoiSiting
         }
         foreach (PlacedPoi p in order)
         {
-            if (sites.Count >= MaxSites + (ForceFamily != null ? 1 : 0)) break;
+            if (sites.Count >= budget + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
             ulong spawnSeed = p.SpawnSeed;
             if (start)
@@ -182,7 +189,16 @@ public static class PoiSiting
             }
             PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
-            if (site != null) sites.Add(site);
+            // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
+            int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
+            for (int k = 0; site == null && k < retries; k++)
+            {
+                double a = k * 2.399963, r = 300 + (p.Primary ? 90 : 60) * k;
+                site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+            }
+            if (site == null) continue;
+            site.Primary = p.Primary;
+            sites.Add(site);
         }
         Blasts(sites, map);
         return sites;

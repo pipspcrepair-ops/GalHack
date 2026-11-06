@@ -158,6 +158,28 @@ public static class InfraViews
                 return Look(w, vx, vz, o.Y + 2.6f, o.X + 0.5, o.Z + 0.5, o.Y + 1.6f);
             }
         }
+        // A natural cave mouth near the landing: the generator's own caves, from close by or 300 m off.
+        if (what is "cave" or "cavefar")
+        {
+            for (double r = 60; r < 4000; r += 7)
+            {
+                double a = r * 0.11, x = lx + Math.Cos(a) * r, z = lz + Math.Sin(a) * r;
+                double cx = Mathx.WrapX(x, w.Width), cz = Mathx.Wrap(z, w.Height);
+                float g = w.GroundHeight(cx, cz);
+                if (g < 3f || w.Source.StampWeight(cx, cz) > 0f) continue;
+                // Open a couple of metres under the surface, and more below that: a mouth, not a pit in a wall.
+                if (w.Source.CellDensity((int)cx, (int)g - 2, (int)cz) >= 0f || w.Source.CellDensity((int)cx, (int)g - 5, (int)cz) >= 0f) continue;
+                double back = what == "cave" ? 15 : 300;
+                foreach (int k in Enumerable.Range(0, 8))
+                {
+                    double b = k * Math.PI / 4, vx = cx + Math.Cos(b) * back, vz = cz + Math.Sin(b) * back;
+                    float eye = w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height));
+                    // From a spot about level with it or above, so the mouth faces the camera.
+                    if (eye < g - 2f || (what == "cave" && eye > g + 6f)) continue;
+                    return Look(w, vx, vz, eye + (what == "cave" ? 2.5f : 30f), cx, cz, g - 2f);
+                }
+            }
+        }
         // A tunnel mouth in the steepest slope near the landing: from the road, or from 300 m off.
         if (what is "portal" or "portalfar")
         {

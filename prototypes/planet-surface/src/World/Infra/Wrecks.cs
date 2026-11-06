@@ -84,6 +84,8 @@ public static class Wrecks
                 for (int i = 4; i + 8 < main.Count && !laid; i += 2)
                     if (TryOnRoute(main, i, kind, source, net, rng, profile.Before, out WreckSite jam, steep: 0.12f, town: true)) { sites.Add(jam); laid = true; }
         }
+        // An exodus: every road to a port jammed, thicker the nearer the port.
+        if (profile.Exodus) ExodusJams(net, source, sites, rng);
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind == RouteKind.Track) continue;
@@ -141,6 +143,36 @@ public static class Wrecks
             && Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - r.X[i], net.Width), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - r.Z[i], net.Height), 2)) < 1200);
 
     /// <summary>A site laid on the route from point i: straight and nearly level for its length, all on the ground, off every pad.</summary>
+    /// <summary>Whether people tried to leave from here: a starport of any class, a scrappy field.</summary>
+    public static bool IsPort(PoiSite p) => p != null && (p.Tier == PoiTier.Spaceport || p.Family.Tags.Contains("scrappy"));
+
+    /// <summary>
+    /// The roads people tried to leave by: walking out from each port along every road that reaches it,
+    /// a jam of abandoned vehicles every so often, the gap growing with the distance from the port.
+    /// </summary>
+    static void ExodusJams(InfraNetwork net, PlanetTerrainSource source, List<WreckSite> sites, PoiGenerator.Gen.Rng rng)
+    {
+        const double Reach = 2400;
+        foreach (InfraRoute r in net.Routes)
+        {
+            if (r.Kind == RouteKind.Rail) continue;
+            foreach (bool fromStart in new[] { true, false })
+            {
+                if (!IsPort(fromStart ? r.From : r.To)) continue;
+                double next = 50, run = 0;
+                for (int k = 2; k + 12 < r.Count && run < Reach; k++)
+                {
+                    run += InfraNetwork.Spacing;
+                    if (run < next) continue;
+                    int i = fromStart ? k : r.Count - 1 - k - 8;
+                    if (i < 0 || !TryOnRoute(r, i, "evacuation-jam", source, net, rng, net.Profile.Before, out WreckSite jam) || Overlaps(sites, jam, net)) continue;
+                    sites.Add(jam);
+                    next = run + 70 + run * 0.45;
+                }
+            }
+        }
+    }
+
     static bool TryOnRoute(InfraRoute r, int i, string site, PlanetTerrainSource source, InfraNetwork net, PoiGenerator.Gen.Rng rng, TechLevel tech, out WreckSite w, float steep = 0.04f, bool town = false)
     {
         w = null;

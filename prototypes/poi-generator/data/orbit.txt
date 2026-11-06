@@ -16,6 +16,29 @@
 #     danger          the most dangerous kind allowed
 #     nofactions      no live faction anywhere: held places only as dead wrecks
 
+# A class A starport's orbital works hang over its world (port a): sited with the port, not from a set.
+space orbital_highport
+  name Orbital Highport
+  kind broken
+  rarity rare
+  danger 2
+  salvage rare
+  zones orbit
+  port a
+  tags station highport
+  pitch The great port's upper terminal, docking arms bent, its lifts long since stopped.
+
+space orbital_yards
+  name Orbital Shipyards
+  kind broken
+  rarity rare
+  danger 2
+  salvage rare
+  zones orbit
+  port a
+  tags station yards
+  pitch Gantries round a hull that was never finished.
+
 space derelict_freighter
   name Derelict Freighter
   kind wreck

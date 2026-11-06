@@ -312,10 +312,9 @@ public partial class SurfaceTest
         Check(never > 0 && neverRoutes == 0, $"a world never inhabited has no infrastructure ({never} such, {neverRoutes} routes)");
         Check(unrouted == 0 && joined == places && routes > 40,
             $"the network reaches every place it serves at one of its gates: {joined} of {places} places, {routes} routes ({km}), {unrouted} links unrouted, {separated} across a sea never bridged{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
-        // A rail junction on broken ground can pin two neighbouring points to different lines: a handful in the planet, never a road.
-        Check(withinGrade >= stretches * 0.9 && unwalkable <= stretches / 10000,
+        Check(withinGrade >= stretches * 0.9 && unwalkable == 0,
             $"grades: {withinGrade} of {stretches} stretches within their kind's limit (the rest frontier roads following the land, or ramps to gates and junctions), {unwalkable} steeper than a walkable 31 degrees{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
-        Check(longViaducts == 0 && lowOverWater <= bridges / 100 + 1 && longTunnels == 0,
+        Check(longViaducts == 0 && lowOverWater == 0 && longTunnels == 0,
             $"bridges and tunnels within what their builders could do: {bridges} bridges ({longViaducts} dry ones too long, {lowOverWater} points too low over water), {tunnels} tunnels ({longTunnels} too long){(notes.Count > 3 ? "; " + string.Join("; ", notes.Skip(3).Take(3)) : "")}");
         Check(offDeck <= deckSamples / 50 && tilted <= deckSamples / 25,
             $"roads are walkable decks: the ground is at the deck on {deckSamples - offDeck} of {deckSamples} centre-line samples and level across on {2 * deckSamples - tilted} of {2 * deckSamples} edge samples");
@@ -490,6 +489,77 @@ public partial class SurfaceTest
             $"start worlds begin at a ruined town by the landing site: {towns} of {worlds} worlds, {houses} abandoned houses on {streets} streets, rusted cars on the main street of {jams}{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
         Check(settlementsNear == 0 && landmarks == towns && walkable == towns,
             $"the town's edge keeps the start's rules: no living settlement within {StartTown.NoSettlement:F0} m ({settlementsNear}), a place nobody holds in view 300 to 1,200 m off ({landmarks} of {towns}), walkable 60 m in three of eight directions ({walkable} of {towns})");
+    }
+
+    // ---- ports, and the people who tried to leave ---------------------------------------------------
+
+    /// <summary>
+    /// On real worlds: the main starport is seated and is the network's main node, with roads leading to
+    /// it; an exodus world's jams thicken toward its ports; a survivor town's clearing has a spot to land on.
+    /// </summary>
+    async Task PortChecks()
+    {
+        int worlds = 0, withPort = 0, seated = 0, served = 0, highways = 0, exodus = 0, scrappy = 0, thicker = 0, spots = 0, spotsOnGround = 0;
+        double nearKm = 0, farKm = 0;
+        int nearJams = 0, farJams = 0;
+        var notes = new List<string>();
+        var seeds = new List<(int A, ulong Seed)>();
+        // Worlds with what we're after: rolled until there are enough of each.
+        for (ulong s = 200; s < 900 && seeds.Count < 6; s++)
+        {
+            var spec = PlanetSpec.Roll(s, (Archetype)0, 0);
+            WorldProfile p = PlanetWorld.ProfileFor(spec, false);
+            if (p.Exodus && p.Before != TechLevel.Low && seeds.Count(x => x.A == 1) < 3) seeds.Add((1, s));
+            else if (!p.Exodus && p.Starport >= Starport.C && seeds.Count(x => x.A == 0) < 3) seeds.Add((0, s));
+        }
+        foreach (var (kind, seed) in seeds)
+        {
+            // Each world gets a survivor town, for its clearing.
+            string wasForced = PlanetSurface.Poi.PoiSiting.ForceFamily;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = "survivor_town";
+            PlanetWorld w;
+            try { w = PlanetWorld.Build(PlanetSpec.Roll(seed, (Archetype)0, 0), Main.Catalog); }
+            finally { PlanetSurface.Poi.PoiSiting.ForceFamily = wasForced; }
+            InfraNetwork net = w.Infra;
+            worlds++;
+            if (w.Profile.Starport != Starport.None) withPort++;
+            PoiSite main = w.Pois.FirstOrDefault(p => p.Primary);
+            if (main != null)
+            {
+                seated++;
+                var routes = net.Routes.Where(r => r.From == main || r.To == main).ToList();
+                if (routes.Count > 0) served++; else notes.Add($"the main port on {seed} has no road");
+                if (routes.Any(r => r.Kind == RouteKind.Highway) || w.Profile.Before == TechLevel.Low) highways++;
+            }
+            foreach (LandingSpot l in net.LandingSpots)
+            {
+                spots++;
+                if (Math.Abs(w.GroundHeight(Mathx.WrapX(l.X, w.Width), Mathx.Wrap(l.Z, w.Height)) - l.Y) < 1.5f) spotsOnGround++;
+            }
+            if (w.Profile.Exodus)
+            {
+                exodus++;
+                var ports = w.Pois.Where(Wrecks.IsPort).ToList();
+                scrappy += ports.Count(p => p.Family.Tags.Contains("scrappy"));
+                // Jams per kilometre of road, near a port and further out.
+                foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
+                    for (int i = 0; i < r.Count; i += 5)
+                    {
+                        double d = ports.Count == 0 ? 1e9 : ports.Min(p => Dist(w, p.Center.X, p.Center.Z, r.X[i], r.Z[i]));
+                        if (d < 1000) nearKm += 0.02; else farKm += 0.02;
+                    }
+                foreach (WreckSite j in net.Wrecks.Where(k => k.Site == "evacuation-jam"))
+                {
+                    double d = ports.Count == 0 ? 1e9 : ports.Min(p => Dist(w, p.Center.X, p.Center.Z, j.X, j.Z));
+                    if (d < 1000) nearJams++; else farJams++;
+                }
+            }
+            await Frames(1);
+        }
+        double nearRate = nearJams / Math.Max(0.01, nearKm), farRate = farJams / Math.Max(0.01, farKm);
+        Check(seated == withPort && served == seated && highways == seated, $"the main starport is the network's main node: {seated} of {withPort} seated on {worlds} worlds, {served} with roads, {highways} with a highway{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
+        Check(exodus > 0 && scrappy >= exodus * 3 && nearRate > farRate * 2, $"exodus jams thicken toward the ports: {exodus} worlds, {scrappy} scrappy ports seated, {nearRate:F1} jams a km within 1 km of a port against {farRate:F1} further out");
+        Check(spots > 0 && spots == spotsOnGround, $"{spots} landing clearings by survivor towns, each flat at its spot ({spotsOnGround} on the ground)");
     }
 
     // ---- no stitches on the hillsides --------------------------------------------------------------

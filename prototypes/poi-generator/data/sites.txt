@@ -16,6 +16,7 @@
 #       camp      gang(yes|no);  obelisks  count h spread
 #       basins    count r h gap axis water(clean|foul);  heaps  count r h gap type(coal|spoil)
 #       conveyor  len h0 h axis;  dome  r wall breach;  turbines  count h blade gap axis;  panels  rows len gap
+#       slipway   len w h axis;  freighter  len axis
 
 site old_airfield
   name Old Airfield
@@ -48,13 +49,40 @@ site spaceport
   part building -56 -46 program control_tower floors 5
   part hangar 40 30 w 30 d 20 h 10
   part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part tanks -48 62 count 3 r 4 h 10 gap 4 axis x
+  part crane 92 26 h 24 jib 16 back 6 axis x
   part containers 84 -6 rows 3 cols 3
   part poles -60 -6 count 6 gap 12 h 8 axis x
   part vehicles -30 20 count 3 gap 8 axis x
   part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
 
-# The old starport's size sets the spaceport: a landing field on a world with a small one, the
-# full port, and a grand yard with two launch pads where the old port was among the biggest.
+# The starport class sets the spaceport. A: a sprawling complex with shipyard slipways. B: the full
+# port with yards and refined fuel. C: a working port, terminal and hangars. D: a few pads and a depot.
+# E: a marked field, a beacon and what never left.
+site port_e
+  name Frontier Field
+  style miningtown
+  entrance -30 4 west
+  part road -24 2 len 12 width 5 axis x cracks 0.4
+  part pad 0 0 r 13
+  part tower 20 -14 h 12 size 4 crown lamp
+  part building -6 -30 program shed vault yes
+  part crater 8 22 r 5 depth 1
+  part vehicles -18 16 count 2 gap 8 axis x
+
+site port_d
+  name Depot Field
+  style concrete
+  entrance -40 4 west
+  part road -34 2 len 22 width 5 axis x cracks 0.3
+  part pad 0 0 r 11
+  part pad 30 0 r 9
+  part pad 0 34 r 9
+  part building 26 -36 program works_office vault yes
+  part tanks -30 26 count 3 r 3 h 7 gap 4 axis x
+  part tower 54 18 h 12 size 4 crown lamp
+  part vehicles -24 -18 count 2 gap 8 axis x
+
 site spaceport_field
   name Landing Field
   style meridian
@@ -63,6 +91,7 @@ site spaceport_field
   part pad 0 0 r 11
   part road -58 2 len 46 width 6 axis x cracks 0.12
   part building 26 -34 program terminal vault yes
+  part hangar 40 18 w 28 d 18 h 10
   part tanks -30 26 count 2 r 3 h 8 gap 4 axis x
   part poles -44 -6 count 3 gap 12 h 8 axis x
   part vehicles -24 16 count 2 gap 8 axis x
@@ -81,6 +110,9 @@ site spaceport_grand
   part building -56 -46 program control_tower floors 6
   part hangar 40 30 w 30 d 20 h 10
   part hangar 44 78 w 30 d 20 h 12
+  part slipway 40 112 len 64 w 18 h 12 axis x
+  part slipway 40 138 len 52 w 14 h 10 axis x
+  part crane 112 104 h 30 jib 22 back 8 axis z
   part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
   part tanks -48 84 count 3 r 4 h 10 gap 4 axis x
   part containers 84 -6 rows 3 cols 4
@@ -500,3 +532,58 @@ site solar_farm
   part building 0 0 program works_office vault yes
   part panels 28 0 rows 8 len 60 gap 3
   part fence -6 -6 len 96 h 2 axis x gate 12 breaches 0.3
+
+# ---- what people left, and what they scraped together ------------------------------------------------
+
+# A scrappy port: a cleared field with scrap pads, a gantry of scaffolding, fuel drums, a ship half
+# loaded and never launched, the scars of the ones that tried, containers stacked for walls.
+site scrappy_port
+  name Improvised Launch Field
+  style miningtown
+  entrance -30 4 west
+  part road -24 2 len 14 width 5 axis x cracks 0.5
+  part rocket 0 0 decks 5 r 3
+  part pad 0 0 r 9
+  part tower 12 -4 h 16 size 4 crown lamp
+  part building -8 -30 program shed vault yes
+  part containers 24 -26 rows 2 cols 3
+  part tanks -26 18 count 3 r 1 h 3 gap 3 axis x
+  part crater 26 20 r 5 depth 1
+  part crater 2 30 r 4 depth 1
+  part vehicles -22 -14 count 3 gap 7 axis z
+
+# An evacuation camp: rows of shelters inside a wire fence by the road, an aid post, what was left behind.
+site evacuation_camp
+  name Evacuation Camp
+  style concrete
+  entrance -30 6 west
+  part road -24 4 len 14 width 5 axis x cracks 0.4
+  part building -6 -34 program kiosk vault yes
+  part shacks 0 0 count 4 gap 2
+  part shacks 0 18 count 4 gap 2
+  part containers 30 -22 rows 2 cols 2
+  part vehicles -20 16 count 3 gap 7 axis z
+  part fence -14 -8 len 66 h 2 axis x gate 12 breaches 0.2
+
+# A landing clearing at a survivor town's edge: a flattened field, a beacon pole, fuel drums, a trader set down.
+site landing_clearing
+  name Landing Clearing
+  style miningtown
+  entrance -18 4 west
+  part pad 0 0 r 11
+  part freighter -6 -3 len 14 axis x
+  part poles 13 -9 count 1 gap 4 h 9 axis z
+  part tanks 13 9 count 2 r 1 h 2 gap 2 axis x
+  part building -8 -26 program shed vault yes
+
+# A frontier base: a walled yard of containers, one solid building, a mast.
+site frontier_base
+  name Frontier Base
+  style miningtown
+  entrance -24 8 west
+  part road -18 6 len 8 width 5 axis x cracks 0.2
+  part building 0 0 program works_office vault yes
+  part containers 28 2 rows 2 cols 2
+  part tower 32 22 h 14 size 4 crown lamp
+  part tanks 4 24 count 2 r 2 h 4 gap 3 axis x
+  part fence -10 -8 len 62 h 3 axis x gate 12 breaches 0.05 type wall

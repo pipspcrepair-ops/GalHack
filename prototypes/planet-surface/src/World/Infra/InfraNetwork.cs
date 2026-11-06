@@ -46,6 +46,9 @@ public sealed class InfraRoute
     public int Count => X.Length;
 }
 
+/// <summary>A flattened clearing a vessel can set down on, and the town it serves.</summary>
+public sealed record LandingSpot(double X, double Z, float Y, float Radius, PoiSite Town);
+
 /// <summary>A bridge (or viaduct) or a tunnel: a run of a route's stretches.</summary>
 public sealed class InfraStructure
 {
@@ -91,6 +94,8 @@ public sealed class InfraNetwork
     public PowerLines Power = new();
     /// <summary>Sites of abandoned vehicles along the network and in the fields (planned once the terrain is final: <see cref="Wrecks.Plan"/>).</summary>
     public List<WreckSite> Wrecks = new();
+    /// <summary>Where a trader can set down: the clearings at survivor towns' edges, for live traders to plug into later.</summary>
+    public readonly List<LandingSpot> LandingSpots = new();
     /// <summary>A start world's ruined town by the landing site, where the start begins (null elsewhere).</summary>
     public StartTown Town;
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
@@ -153,7 +158,7 @@ public sealed class InfraNetwork
     };
 
     /// <summary>How much a place matters to the network: 3 cities and spaceports, 2 towns, bases, mines and works, 1 the rest.</summary>
-    public static int Rank(PoiSite p) => p.Tier switch
+    public static int Rank(PoiSite p) => p.Primary ? 4 : p.Tier switch
     {
         PoiTier.City or PoiTier.Spaceport => 3,
         PoiTier.Town or PoiTier.Base => 2,
@@ -241,7 +246,8 @@ public sealed class InfraNetwork
         int r = Math.Min(Rank(a), Rank(b));
         static bool Urban(PoiSite p) => p.Tier is PoiTier.Town or PoiTier.City or PoiTier.Spaceport;
         // Highways between cities and spaceports, and between towns on a world that built them.
-        RouteKind k = r >= 3 || Urban(a) && Urban(b) && tech >= TechLevel.Mid ? RouteKind.Highway : r >= 2 ? RouteKind.Road : RouteKind.Track;
+        // Whatever matters on the world has a highway to its main starport.
+        RouteKind k = r >= 3 || Urban(a) && Urban(b) && tech >= TechLevel.Mid || a.Primary || b.Primary ? RouteKind.Highway : r >= 2 ? RouteKind.Road : RouteKind.Track;
         // Frontier worlds had no highways: their best roads were gravel.
         if (tech == TechLevel.Low && k == RouteKind.Highway) k = RouteKind.Road;
         return k;
@@ -329,8 +335,8 @@ public sealed class InfraNetwork
             List<(double X, double Z)> path = Resample(Smooth(pts, run.From == 0 ? 2 : 0, run.To == cells.Count - 1 ? 2 : 0), Spacing);
             if (path.Count < 2) continue;
             // Junction ends land exactly on the route they join, at its deck height.
-            if (run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out var p0, out float y0)) { path[0] = p0; pins.Add((0, y0)); }
-            if (run.JoinTo >= 0 && Snap(Routes[run.JoinTo], path[^1], out var p1, out float y1)) { path[^1] = p1; pins.Add((path.Count - 1, y1)); }
+            if (run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out var p0, out float y0)) { path[0] = p0; ClearStart(path); pins.Add((0, y0)); }
+            if (run.JoinTo >= 0 && Snap(Routes[run.JoinTo], path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
             if (run.From == 0) pins.Add((0, ga.Y));
             if (run.To == cells.Count - 1) pins.Add((path.Count - 1, gb.Y));
             // A railway crosses roads on the level: its deck meets theirs where they cross.
@@ -338,7 +344,9 @@ public sealed class InfraNetwork
                 for (int k = 2; k < path.Count - 2; k += 1)
                 {
                     int road = router.RouteAtPoint(path[k].X, path[k].Z, RouteKind.Road);
-                    if (road >= 0 && Snap(Routes[road], path[k], out _, out float yr) && !pins.Any(p => Math.Abs(p.Index - k) < 6)) pins.Add((k, yr));
+                    if (road < 0 || !Snap(Routes[road], path[k], out _, out float yr) || pins.Any(p => Math.Abs(p.Index - k) < 6)) continue;
+                    // A road up on a bank or down in a cutting at this spot passes over or under: no level crossing.
+                    if (Math.Abs(yr - router.Ground(Mathx.WrapX(path[k].X, _w), Mathx.Wrap(path[k].Z, _h), 2, out _, out _)) < 1.5f) pins.Add((k, yr));
                 }
             var route = Build(router, path, pins, kind, a, b, run.From == 0 ? ga.Index : -1, run.To == cells.Count - 1 ? gb.Index : -1, rng);
             if (route == null) continue;
@@ -374,8 +382,8 @@ public sealed class InfraNetwork
         List<(double X, double Z)> path = Resample(pts, Spacing);
         var pins = new List<(int Index, float Y)>();
         int a = _router.RouteAtPoint(path[0].X, path[0].Z, kind), b = _router.RouteAtPoint(path[^1].X, path[^1].Z, kind);
-        if (a >= 0 && Snap(Routes[a], path[0], out var p0, out float y0)) { path[0] = p0; pins.Add((0, y0)); }
-        if (b >= 0 && Snap(Routes[b], path[^1], out var p1, out float y1)) { path[^1] = p1; pins.Add((path.Count - 1, y1)); }
+        if (a >= 0 && Snap(Routes[a], path[0], out var p0, out float y0)) { path[0] = p0; ClearStart(path); pins.Add((0, y0)); }
+        if (b >= 0 && Snap(Routes[b], path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
         InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
         if (route != null) _router.Mark(route);
         return route;
@@ -395,12 +403,28 @@ public sealed class InfraNetwork
         Unwrap(pts);
         List<(double X, double Z)> path = Resample(Smooth(pts, 1, 0), Spacing);
         var pins = new List<(int Index, float Y)>();
-        if (Snap(near, path[^1], out var p1, out float y1)) { path[^1] = p1; pins.Add((path.Count - 1, y1)); }
+        if (Snap(near, path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
         InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
         if (route == null) return false;
         _router.Mark(route);
         return true;
     }
+
+    /// <summary>
+    /// A snapped end can land almost on the next point. Takes that point out: a stretch of centimetres
+    /// between a pinned junction and the deck beside it would stand as a cliff.
+    /// </summary>
+    static void ClearStart(List<(double X, double Z)> path)
+    {
+        while (path.Count > 2 && Near(path[0], path[1])) path.RemoveAt(1);
+    }
+
+    static void ClearEnd(List<(double X, double Z)> path)
+    {
+        while (path.Count > 2 && Near(path[^1], path[^2])) path.RemoveAt(path.Count - 2);
+    }
+
+    static bool Near((double X, double Z) a, (double X, double Z) b) => Math.Abs(a.X - b.X) + Math.Abs(a.Z - b.Z) < Spacing * 0.6;
 
     /// <summary>The nearest point of a route to a point (the short way round the seams), moved to the copy nearest it, and the deck height there.</summary>
     bool Snap(InfraRoute r, (double X, double Z) near, out (double X, double Z) at, out float y)
@@ -511,10 +535,6 @@ public sealed class InfraNetwork
         // Over water the deck never drops below its clearance; the grade passes ramp up to it.
         var floor = new float[n];
         for (int i = 0; i < n; i++) floor[i] = water[i] ? ground[i] : float.MinValue;
-        // Right by a pin (a junction, a gate) a deck can only climb so fast, water or no water: walkable wins.
-        foreach (var (at, y) in pins)
-            for (int i = 0; i < n; i++)
-                if (floor[i] != float.MinValue) floor[i] = Math.Min(floor[i], y + 0.4f * Spacing * Math.Abs(i - at));
         HoldGrade(deck, fixedAt, floor, step, 6);
         // A last light smoothing, so the deck has no kinks (never below a water clearance).
         var smooth = (float[])deck.Clone();
@@ -551,11 +571,7 @@ public sealed class InfraNetwork
         TrimMouths(spans, path, deck, router, HalfWidthOf(kind));
         Clean(spans, RoadSpan.Tunnel, 3);
         // Wherever the land was followed, the deck may be steep but always walkable: never more than 0.45 a stretch.
-        HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 8);
-        // Beside a pin a floor can still force a step: walkable wins over clearance there.
-        var free = new float[n];
-        Array.Fill(free, float.MinValue);
-        HoldGrade(deck, fixedAt, free, 0.45f * Spacing, 1);
+        HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 3);
         // Never a bridge or tunnel at a gate: the first and last stretches lie on the ground.
         if (gateA >= 0 && spans.Length > 1) spans[0] = RoadSpan.Ground;
         if (gateB >= 0 && spans.Length > 1) spans[^1] = RoadSpan.Ground;
