@@ -102,7 +102,14 @@ public static class WorldPlacement
         public int Outliers => Pois.Count(p => p.Outlier);
     }
 
-    public static Result Place(PoiLibrary lib, PlanetMap map, ThemeDef theme, ulong seed, int? count = null)
+    /// <param name="profile">
+    /// The world's profile, when it has one: families stand only where their tech level fits the
+    /// level they are built at (the old world at the pre-collapse level, the living at the
+    /// post-collapse one), never-inhabited worlds have no old-world places, the trade and old
+    /// population weight the set, and each place's layout and state follow it. Without one, the
+    /// theme's own tech level picks layouts, as before.
+    /// </param>
+    public static Result Place(PoiLibrary lib, PlanetMap map, ThemeDef theme, ulong seed, int? count = null, WorldProfile? profile = null)
     {
         var rng = new Rng(Hash.Combine(seed, 0x0A71D5UL));
         float km2 = map.Width * map.CellSize * map.Height * map.CellSize / 1e6f;
@@ -120,18 +127,71 @@ public static class WorldPlacement
         rng.Shuffle(order);
         foreach (int i in order.Take(outliers)) outlierAt.Add(i);
 
-        var themed = theme.Set.Where(s => lib.Families.Any(f => f.Id == s.Family)).ToList();
+        // Ports are sited on purpose, from the world's profile, not drawn from the set.
+        bool ByProfile(FamilyDef f) => profile != null && (f.Tier == PoiTier.Spaceport || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation"));
+        var themed = theme.Set.Where(s => lib.Families.Any(f => f.Id == s.Family) && !ByProfile(lib.Family(s.Family))).ToList();
         var inSet = new HashSet<string>(themed.Select(s => s.Family));
-        var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
+        // Flavour ruins (houses, sheds by the road) are never places of their own.
+        var strangers = lib.Families.Where(f => !f.Space && !f.Tags.Contains("flavour") && !inSet.Contains(f.Id) && !ByProfile(f)).Where(f => !theme.Start || CanRuin(f)).ToList();
+        // The world's profile: only what fits its tech levels and its past, weighted by its trade.
+        if (profile != null)
+        {
+            themed = themed.Where(t => Stands(lib.Family(t.Family))).Select(t => (t.Family, t.Weight * profile.Weight(lib.Family(t.Family)))).ToList();
+            strangers = strangers.Where(Stands).ToList();
+        }
+        bool Stands(FamilyDef f) => StatesFor(f).Any(w => w > 0f);
+        // The states a family can take here: a start world's faction places only as ruins, and only states the profile allows.
+        float[] StatesFor(FamilyDef f)
+        {
+            var w = profile != null ? profile.StateWeights(f) : (float[])f.StateWeights.Clone();
+            if (theme.Start && ThemeDef.FactionOwned(f))
+                for (int s = 0; s < w.Length; s++) if (s != (int)PoiState.Ruined) w[s] = 0f;
+            return w;
+        }
         // A start world: faction places only as ruins (no core, no one home), and less often.
         static bool CanRuin(FamilyDef f) => !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f;
         // Blast sites are rare on a start world (PoiSiting also keeps them far from the bunker).
         float StartWeight(FamilyDef f) => !theme.Start ? 1f : ThemeDef.FactionOwned(f) ? 0.3f : f.Tags.Contains("radiation") ? 0.2f : 1f;
         var uniqueUsed = new HashSet<string>();
+        // The ports: one primary of the world's class, its lesser ports, and on an exodus world the scrappy
+        // ports and evacuation camps crowding round the primary.
+        var ports = new Dictionary<int, (FamilyDef Fam, Starport? Class, bool Primary)>();
+        FamilyDef? spaceport = lib.Families.FirstOrDefault(f => f.Tier == PoiTier.Spaceport && !f.Tags.Contains("scrappy"));
+        if (profile != null && profile.Starport != Starport.None && spaceport != null && sites.Count > 0)
+        {
+            var portRng = rng.Fork("ports");
+            int main = portRng.Range(0, sites.Count);
+            ports[main] = (spaceport, profile.Starport, true);
+            var others = Enumerable.Range(0, sites.Count).Where(k => k != main).ToList();
+            portRng.Shuffle(others);
+            for (int k = 0; k < profile.SecondaryPorts && k < others.Count / 3; k++)
+            {
+                Starport lesser = (Starport)Math.Max((int)Starport.E, (int)profile.Starport - portRng.Range(1, 3));
+                ports[others[k]] = (spaceport, lesser, false);
+            }
+            var round = Enumerable.Range(0, sites.Count).Where(k => !ports.ContainsKey(k))
+                .OrderBy(k => TorusDist(map, sites[k].x, sites[k].y, sites[main].x, sites[main].y)).ToList();
+            FamilyDef? scrappy = lib.Families.FirstOrDefault(f => f.Tags.Contains("scrappy")), camp = lib.Families.FirstOrDefault(f => f.Tags.Contains("evacuation"));
+            int at = 0;
+            for (int k = 0; scrappy != null && k < profile.ScrappyPorts && at < round.Count; k++) ports[round[at++]] = (scrappy, null, false);
+            for (int k = 0; camp != null && k < profile.EvacuationCamps && at < round.Count; k++) ports[round[at++]] = (camp, null, false);
+        }
+        int living = 0, livingCap = profile?.LivingCap ?? int.MaxValue;
         for (int i = 0; i < sites.Count; i++)
         {
             var (x, y) = sites[i];
             bool outlier = outlierAt.Contains(i);
+            if (ports.TryGetValue(i, out var port))
+            {
+                var weights = StatesFor(port.Fam);
+                int portState = Math.Max(0, rng.PickWeighted(weights.ToList()));
+                result.Pois.Add(new PlacedPoi
+                {
+                    Family = port.Fam, Variant = port.Fam.Variants[profile!.Variant(port.Fam, (PoiState)portState, rng, port.Class)], State = (PoiState)portState, SpawnSeed = rng.NextU64(),
+                    CellX = x, CellY = y, X = (x + 0.5f) * map.CellSize, Z = (y + 0.5f) * map.CellSize, Planet = map.Name, Primary = port.Primary, Port = port.Class,
+                });
+                continue;
+            }
             FamilyDef? fam = null;
             if (outlier && strangers.Count > 0)
             {
@@ -157,12 +217,35 @@ public static class WorldPlacement
             }
             if (fam == null) continue;
             if (fam.Rarity >= Rarity.Exotic) uniqueUsed.Add(fam.Id);
-            // A layout for the world's tech level, where the family has them.
-            var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
-            if (fitting.Count == 0) fitting = fam.Variants;
-            var variant = fitting[rng.Range(0, fitting.Count)];
-            int state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
-            if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
+            VariantDef variant;
+            int state;
+            if (profile != null)
+            {
+                // The state first (it decides whether the place is old or living), then the layout for that level.
+                state = Math.Max(0, rng.PickWeighted(StatesFor(fam).ToList()));
+                // A world this empty keeps only so many living places: past that, this one is another ruin, or nothing.
+                if (WorldProfile.Living(fam, (PoiState)state) && !WorldProfile.Unbuilt(fam))
+                {
+                    if (living >= livingCap)
+                    {
+                        var dead = StatesFor(fam);
+                        for (int s = 0; s < dead.Length; s++) if (WorldProfile.Living(fam, (PoiState)s)) dead[s] = 0f;
+                        if (dead.All(d => d <= 0f)) continue;
+                        state = Math.Max(0, rng.PickWeighted(dead.ToList()));
+                    }
+                    else living++;
+                }
+                variant = fam.Variants[profile.Variant(fam, (PoiState)state, rng)];
+            }
+            else
+            {
+                // A layout for the world's tech level, where the family has them.
+                var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
+                if (fitting.Count == 0) fitting = fam.Variants;
+                variant = fitting[rng.Range(0, fitting.Count)];
+                state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
+                if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
+            }
             result.Pois.Add(new PlacedPoi
             {
                 Family = fam, Variant = variant, State = (PoiState)state, SpawnSeed = rng.NextU64(),

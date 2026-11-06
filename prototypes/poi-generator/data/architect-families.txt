@@ -321,7 +321,6 @@ family old_airfield
 
 family abandoned_spaceport
   tier spaceport
-  tech high
   siting flat
   rise 30
   name Abandoned Spaceport
@@ -342,10 +341,26 @@ family abandoned_spaceport
   states active 0 abandoned 6 infested 2 ruined 2
   variant Port Meridian
     seed 9201
+    port b
   variant Launch Complex Four
     seed 9202
+    port b
   variant Ascension Yard
     seed 9203
+    site spaceport_grand
+    port a
+  variant Landing Field Nine
+    seed 9204
+    site spaceport_field
+    port c
+  variant Depot Field
+    seed 9205
+    site port_d
+    port d
+  variant Marker Field
+    seed 9206
+    site port_e
+    port e
 
 family military_base
   tier base

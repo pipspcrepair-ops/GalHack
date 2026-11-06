@@ -53,6 +53,15 @@ public partial class SurfaceTest : Node
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
+            await Run("Profile", ProfileChecks);
+            await Run("Infra", InfraChecks);
+            await Run("StartTown", StartTownChecks);
+            await Run("Under", UnderChecks);
+            await Run("Water", WaterChecks);
+            await Run("Ports", PortChecks);
+            await Run("Stitches", StitchChecks);
+            await Run("Blast", BlastChecks);
+            if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);
             await Run("Heights", Heights);
@@ -171,7 +180,9 @@ public partial class SurfaceTest : Node
             // Compare natural ground only: pads, cave mouths and river channels are meant to differ.
             float natural = w.Source.NaturalHeight(wx, wz);
             GroundSample g = w.Source.Sampler.Sample(wx, wz, 1);
-            if (w.Source.StampWeight(wx, wz) > 0f || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
+            // (A stamp changes the ground there: a pad, its blend, a road's bed and banks.)
+            bool stamped = w.Source.StampWeight(wx, wz) > 0f || Math.Abs(w.Source.SurfaceHeight(wx, wz) - natural) > 0.001f;
+            if (stamped || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
             float field = FieldSurface(store, cx, cz, (int)MathF.Ceiling(natural) + 6, (int)MathF.Floor(natural) - 6);
             if (float.IsNaN(field)) { skipped++; continue; }
             double d = Math.Abs(field - natural);
@@ -245,6 +256,7 @@ public partial class SurfaceTest : Node
         var byKind = new Dictionary<string, int>();
         var families = new HashSet<string>();
         var notes = new List<string>();
+        var blockedWays = new List<string>();
         for (int a = 0; a < 5; a++)
         {
             var spec = PlanetSpec.Roll((ulong)(800 + a * 7), (Archetype)a, 0);
@@ -311,7 +323,8 @@ public partial class SurfaceTest : Node
                     double ra = ray * Math.PI / 4, first = -1, last = -1;
                     for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
                     {
-                        w.Source.MadeGround(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d, out float mw, out _);
+                        // The place's own pad (a road leaving its gate has edges of its own).
+                        float mw = t.Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
                         if (mw < 0.97f && first < 0) first = d;
                         if (mw <= 0.5f) { last = d; break; }
                     }
@@ -329,7 +342,20 @@ public partial class SurfaceTest : Node
                 TInt3 e = site.Entrance;
                 bool open = !store.IsSolid(e) && !store.IsSolid(e + TInt3.Up) && !store.IsSolid(e + TInt3.Up + TInt3.Up);
                 bool footing = store.IsSolid(e - TInt3.Up) || !inst.Blocks.Get(inst.Layout.EntranceCell + PInt3.Down).IsAir;
-                if (!open || !footing) doors++;
+                if (!open || !footing) { doors++; if (blockedWays.Count < 4)
+                    {
+                        double ex = e.X + 0.5, ez = e.Z + 0.5;
+                        float hh = w.Source.NaturalHeight(ex, ez);
+                        var steps = new List<string> { $"natural {hh:F2}" };
+                        foreach (TerrainStamp st in w.Source.Stamps)
+                        {
+                            float before = hh;
+                            hh = st.Apply(hh, ex, ez);
+                            if (hh != before) steps.Add($"{st.Name}/{st.Shape} {hh:F2}");
+                        }
+                        blockedWays.Add($"{site.Name} way in {(open ? "has no footing" : "is not open")} at {e} (solid {store.IsSolid(e)} {store.IsSolid(e + TInt3.Up)} {store.IsSolid(e + TInt3.Up + TInt3.Up)}; {string.Join(", ", steps)}; surface {w.Source.SurfaceHeight(ex, ez):F2})");
+                    }
+                }
                 // Every way in can be walked up to from outside: straight out from it, past the apron
                 // and the blend, the ground never climbs or drops more than a body can walk (45 degrees)
                 // except where the natural ground beyond the stamp is that steep anyway.
@@ -381,7 +407,7 @@ public partial class SurfaceTest : Node
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +
-            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in");
+            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in{(blockedWays.Count > 0 ? ": " + string.Join("; ", blockedWays) : "")}");
         Check(gates >= sites && steep == 0,
             $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a walk on foot out past everything the place stamped, no step steeper than 45 degrees");
         Check(same, "the same planet seats the same places at the same cells with the same ways in");
@@ -538,13 +564,19 @@ public partial class SurfaceTest : Node
             {
                 var p = new Vector3(here.X + MathF.Cos(k * MathF.Tau / 16) * r, 0f, here.Z + MathF.Sin(k * MathF.Tau / 16) * r);
                 float lo = float.MaxValue, hi = float.MinValue;
+                // Level along the walk and across it (not a hillside that happens to run level along x).
                 for (float m = 0f; m <= 8f; m += 0.5f)
+                for (float side = -0.6f; side <= 0.6f; side += 0.6f)
                 {
-                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z, w.Height));
+                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z + side, w.Height));
                     lo = MathF.Min(lo, h);
                     hi = MathF.Max(hi, h);
                 }
-                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && w.Source.StampWeight(p.X, p.Z) <= 0f
+                // Open ground, or an old road's level deck (clear of its poles).
+                bool ground = w.Source.StampWeight(p.X, p.Z) <= 0f
+                              || w.Source.OnRoad(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height), out _) && w.Source.OnRoad(Mathx.WrapX(p.X + 8f, w.Width), Mathx.Wrap(p.Z, w.Height), out _)
+                                 && !w.Infra.Power.Poles.Any(pp => Math.Abs(Mathx.WrapDelta(pp.X - p.X - 4, w.Width)) < 7 && Math.Abs(Mathx.WrapDelta(pp.Z - p.Z, w.Height)) < 4);
+                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && ground
                             && !_main.Streamer.SolidsNear(p + new Vector3(4f, 0f, 0f), 7f).Any();
                 if (open) found = new Vector3(p.X, hi, p.Z);
             }
@@ -562,6 +594,11 @@ public partial class SurfaceTest : Node
             slab.GlobalPosition = start + new Vector3(5f, -2f, 0f); // out of the way, under the ground
             player.Teleport(start + Vector3.Up * 0.1f);
             player.SetLook(-MathF.PI / 2f, 0f); // facing east, at the slab
+            // Held still until the ground there has streamed in, so it can't fall through ground not yet built.
+            var mode = player.ProcessMode;
+            player.ProcessMode = ProcessModeEnum.Disabled;
+            await Until(() => _main.Streamer.ReadyAround(start, 1, needCollision: true), 60);
+            player.ProcessMode = mode;
             await SolidsIn();
             await PhysicsFrames(2); // the teleport's stale floor contact gone
             await UntilTicks(() => player.IsOnFloor() && MathF.Abs(player.Velocity.Y) < 0.05f, 60);

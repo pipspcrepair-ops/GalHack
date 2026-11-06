@@ -107,8 +107,10 @@ public static class Dressing
             town.People.Add(rng.Chance(0.3f) ? new CitizenSpawn("rusher", "hurry", town.Spots[i].Cell, i) : new CitizenSpawn("wanderer", "amble", town.Spots[i].Cell, i));
         }
         // Animals by tech level: working beasts only where tech is low; stock where tech is low or
-        // on any farm; elsewhere machines do that work. Pets anywhere.
-        string tech = layout.Variant?.Tech is { Length: > 0 } t ? t : settlement ? "low" : "mid";
+        // on any farm; elsewhere machines do that work. Pets anywhere. On a world, the living keep
+        // the animals of its post-collapse level, whatever the ruins round them were.
+        string tech = inst.World is { } world && WorldProfile.Living(f, inst.State) ? WorldProfile.Tag(world.Now)
+            : layout.Variant?.Tech is { Length: > 0 } t ? t : settlement ? "low" : "mid";
         bool farm = f.Tags.Contains("farm");
         if (tech == "low" || farm)
         {

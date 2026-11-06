@@ -119,6 +119,10 @@ public sealed class PlacedPoi
     public int CellX, CellY;
     public float X, Z;            // metres from the map's corner
     public string Planet = "";
+    /// <summary>The world's one main starport: the network's main node.</summary>
+    public bool Primary;
+    /// <summary>The class this port was built to, if it's a port.</summary>
+    public Starport? Port;
     /// <summary>From outside the planet's themed set: something that doesn't belong here.</summary>
     public bool Outlier;
 

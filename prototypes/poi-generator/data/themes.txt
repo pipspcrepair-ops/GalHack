@@ -15,35 +15,35 @@ theme temperate
   tech mid
   density 0.32
   outliers 0.05 0.12
-  set freeholder_farm 6 meridian_garrison 1 research_base 3 hospital 2 ominous_tower 2 deep_bunker 2 crashed_freighter 3 old_mine 2 old_airfield 1 kessari_spire 1 biolab 1 abandoned_factory 2 old_farm 4 meridian_relay 3 exchange_depot 3 meridian_research 2 exchange_market 2 meridian_apartments 2 kessari_works 1 vharn_sam_site 1 meridian_railgun 0.3 survivor_hamlet 3 survivor_town 1
+  set freeholder_farm 6 meridian_garrison 1 research_base 3 hospital 2 ominous_tower 2 deep_bunker 2 crashed_freighter 3 old_mine 2 old_airfield 1 kessari_spire 1 biolab 1 abandoned_factory 2 old_farm 4 meridian_relay 3 exchange_depot 3 meridian_research 2 exchange_market 2 meridian_apartments 2 kessari_works 1 vharn_sam_site 1 meridian_railgun 0.3 survivor_hamlet 3 survivor_town 1 coal_plant 1 nuclear_plant 0.3 water_works 2 sewage_works 2 substation 2 refinery 1 grain_elevator 3 rail_yard 2 docks 1 telecom_exchange 2 wind_farm 2 solar_farm 1
 
 theme arid
   match arid arid.dunes arid.canyon
   tech low
   density 0.3
   outliers 0.05 0.12
-  set old_airfield 2 crashed_freighter 4 precursor_vault 1 old_mine 4 abandoned_mine 2 scrap_fort 3 vharn_outpost 1 deep_bunker 2 command_bunker 2 military_base 1 abandoned_spaceport 1 blast_crater 1 old_farm 2 abandoned_factory 1 vharn_sam_site 2 exchange_depot 2 meridian_relay 2 kessari_works 1 survivor_hamlet 3 survivor_town 1 exchange_market 1
+  set old_airfield 2 crashed_freighter 4 precursor_vault 1 old_mine 4 abandoned_mine 2 scrap_fort 3 vharn_outpost 1 deep_bunker 2 command_bunker 2 military_base 1 abandoned_spaceport 1 blast_crater 1 old_farm 2 abandoned_factory 1 vharn_sam_site 2 exchange_depot 2 meridian_relay 2 kessari_works 1 survivor_hamlet 3 survivor_town 1 exchange_market 1 coal_plant 1 water_works 1 sewage_works 1 substation 1 refinery 2 steelworks 1 rail_yard 1 solar_farm 2 wind_farm 1
 
 theme ice
   match ice ice.glacier ice.hot_spring
   tech high
   density 0.26
   outliers 0.05 0.12
-  set ice_outpost 6 research_base 3 cryo_vault 2 old_mine 2 deep_bunker 3 crashed_freighter 3 kessari_spire 2 old_airfield 1 command_bunker 1 meridian_research 2 meridian_relay 2 exchange_depot 1 survivor_hamlet 1
+  set ice_outpost 6 research_base 3 cryo_vault 2 old_mine 2 deep_bunker 3 crashed_freighter 3 kessari_spire 2 old_airfield 1 command_bunker 1 meridian_research 2 meridian_relay 2 exchange_depot 1 survivor_hamlet 1 nuclear_plant 0.4 fusion_plant 0.2 water_works 1 substation 1 telecom_exchange 1 wind_farm 1
 
 theme lava
   match lava lava.volcanic lava.lava_ocean
   tech low
   density 0.24
   outliers 0.05 0.12
-  set vharn_outpost 1 old_mine 3 abandoned_mine 3 precursor_vault 2 crashed_freighter 3 command_bunker 2 prison_block 2 deep_bunker 2 abandoned_factory 2 vharn_sam_site 2 kessari_works 2 exchange_depot 1 meridian_railgun 0.4 survivor_hamlet 1
+  set vharn_outpost 1 old_mine 3 abandoned_mine 3 precursor_vault 2 crashed_freighter 3 command_bunker 2 prison_block 2 deep_bunker 2 abandoned_factory 2 vharn_sam_site 2 kessari_works 2 exchange_depot 1 meridian_railgun 0.4 survivor_hamlet 1 coal_plant 1 refinery 1 steelworks 2 substation 1
 
 theme alien
   match alien alien.crystal alien.fungal
   tech high
   density 0.26
   outliers 0.06 0.14
-  set precursor_vault 4 vharn_outpost 1 kessari_spire 3 biolab 2 research_base 3 crashed_freighter 2 deep_bunker 2 alien_hive_ruin 3 alien_library 1 alien_cathedral 1 meridian_research 2 meridian_relay 1 vharn_sam_site 1
+  set precursor_vault 4 vharn_outpost 1 kessari_spire 3 biolab 2 research_base 3 crashed_freighter 2 deep_bunker 2 alien_hive_ruin 3 alien_library 1 alien_cathedral 1 meridian_research 2 meridian_relay 1 vharn_sam_site 1 fusion_plant 0.3 telecom_exchange 1 solar_farm 1
 
 # A fallen world: the old civilisation's ruins after the collapse. Blast craters, dead cities,
 # bunkers and scrap forts of the roving gangs.
@@ -52,7 +52,7 @@ theme fallen
   tech high
   density 0.36
   outliers 0.04 0.1
-  set blast_crater 4 scrap_fort 5 ominous_tower 4 deep_bunker 4 command_bunker 3 military_base 2 hospital 2 prison_block 2 old_airfield 2 abandoned_spaceport 1 cryo_vault 1 crashed_freighter 2 abandoned_factory 3 old_farm 2 survivor_hamlet 3 survivor_town 2
+  set blast_crater 4 scrap_fort 5 ominous_tower 4 deep_bunker 4 command_bunker 3 military_base 2 hospital 2 prison_block 2 old_airfield 2 abandoned_spaceport 1 cryo_vault 1 crashed_freighter 2 abandoned_factory 3 old_farm 2 survivor_hamlet 3 survivor_town 2 coal_plant 2 nuclear_plant 0.6 fusion_plant 0.2 water_works 2 sewage_works 2 substation 2 refinery 2 steelworks 2 rail_yard 2 telecom_exchange 2 wind_farm 1 solar_farm 1
 
 theme default
   match default

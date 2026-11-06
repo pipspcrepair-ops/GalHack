@@ -126,6 +126,13 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 - **Space** (`orbit.txt`, `OrbitPlacement`): places in space, as data, sited per system. A start system gets plenty of wrecks close to home, with danger 2 at most and no live faction.
 - **Siting by purpose**: each family names the ground it wants (`siting`: peak, ridge, hillside, valley, flat, open or any), how high its landmark stands (`rise`), and its importance tier (`tier`).
 - **Tech level**: a theme names its world's tech level (`tech low|mid|high`). Families with layouts per tech level (factories, farms) pick that level's layout.
+- **The world profile** (`WorldProfile`, design doc "Tech level comes first"): rolled first from a world's seed and kind, with ideas from the Traveller tabletop RPG's world profiles under GalHack's own names.
+  - It holds whether the world was ever inhabited, its old population (a power of ten), its old starport (none, strip, field, port, major, grand), its main trade (agricultural, industrial, mining, research, military, commerce), and two independent tech levels, low, mid or high.
+  - **Before** (pre-collapse) decides the old world: which ruins and POI families appear, and with them the infrastructure, wrecked traffic and decorations.
+  - **Now** (post-collapse) decides the living: settlements and any place a faction holds now, their layouts and their animals (working beasts where the living are low-tech; farms keep stock at any level).
+  - Survivors usually live a level or two below the ruins round them. Now and then a faction brings stellar tech to a world of older ruins ("new on old"): `WorldProfile.NewOnOld`, `PoiInstance.NewOnOld`.
+  - Families say which levels they belong to (`tech low mid high` before any variant; none means any). `WorldPlacement.Place(..., profile:)` then places a family only in a state whose level it fits, weights the set by the trade and the old population (farms on agricultural worlds, mines on mining worlds, labs on research worlds, more towns where many lived), puts no old-world place on a world never inhabited (wrecks, alien and Precursor sites still appear), and picks the layout built for that level.
+  - The old starport sets the spaceport ruins: none below a field, then a landing field, the port, and a grand yard with two pads (`port` on a spaceport's variants).
 
 ## Authoring a kit module as data
 
@@ -189,6 +196,7 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 
   Approach stamps stay local to each place: the pad, its apron, and the blend back to natural ground.
 - **Start worlds.** Set `PoiSiting.StartWorld = true` before building a start world, or pass `startWorld: true` to `PoiSiting.Place`. Then no faction-held place and no core is sited. Any blast site lies at least 3 km from the bunker, and settlements within 1.5 km of it are never hostile.
+- **The world profile.** `PlanetWorld.Profile` (rolled by `PlanetWorld.ProfileFor(spec, startWorld)`, the first thing a world build does) is the world's `WorldProfile`. `PoiSiting.Place(..., profile:)` places by it, and `PoiFactory.Generate(..., world:)` gives each place its world, so `PoiInstance.Tech` is the level it is built at and `PoiInstance.NewOnOld` says a living place of a higher level stands on older ruins. Map deco's tech tags straight across: low, mid, high. Animal gating reads the post-collapse level (`WorldProfile.Now`).
 - **Townsfolk hooks** (`PoiInstance.Townsfolk`, `PoiSite.Townsfolk`, local cells). Lived-in places carry data for a light ambient routine:
   - `Spots`: activity spots tagged stall, work, sit, chat, garden or home.
   - `Links` between spots, and `Routes` for rushers.
