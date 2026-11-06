@@ -27,6 +27,7 @@ public static partial class Brain
         {
             // Mid-attack the attack owns the body; just keep looking at the target.
             c.LookAt = c.AttackTarget?.Position;
+            if (c.Noticed != null) c.NoticedAt = w.Time;
             return;
         }
 
@@ -44,13 +45,16 @@ public static partial class Brain
             return;
         }
 
+        // Thinking every time is what it can see and hear, never how far off someone is: what it hasn't
+        // noticed isn't there. (A living boulder is the exception: it goes by being looked at.)
         ITarget near = w.NearestTarget(c.Position, out float dist);
-        if (near != null && dist < c.Stats.Perception)
+        Senses.Surface(w, c, near, dist, dt);
+        if (c.Noticed == null && !c.Species.Tumbles)
         {
-            c.LookAt = near.Position + Vector3.Up * 1.4f;
-            c.Alert = 1f;
+            near = null;
+            dist = float.MaxValue;
         }
-        else c.Alert = 0f;
+        else if (near != null && c.Noticed != null) near = c.Noticed;
 
         // Outside its hours it goes to its rest site and stays there, unless something wakes it.
         if (w.ActivityCycles && c.Rest != null && Resting(w, c, near, dist, dt)) return;
@@ -332,14 +336,10 @@ public static partial class Brain
                     }
                 foreach (Creature m in p.Members)
                 {
-                    if (!m.Alive) continue;
-                    ITarget t = w.NearestTarget(m.Position, out float d);
-                    if (t != null && t.Attackable && d < m.Stats.Perception)
-                    {
-                        p.Prey = t;
-                        p.SetPhase(PackPhase.Stalk);
-                        break;
-                    }
+                    if (!m.Alive || m.Noticed is not { Attackable: true } t) continue;
+                    p.Prey = t;
+                    p.SetPhase(PackPhase.Stalk);
+                    break;
                 }
                 break;
             }
@@ -372,7 +372,16 @@ public static partial class Brain
 
     static bool PreyValid(Pack p) =>
         p.Prey != null && p.Prey.Attackable && !(p.Prey.Health?.Downed ?? false)
-        && WildSim.Flat(p.Prey.Position - p.Center).Length() < (p.Leader?.Stats.Perception ?? 40f) * 2f;
+        && WildSim.Flat(p.Prey.Position - p.Center).Length() < (p.Leader?.Stats.Perception ?? 40f) * 2f
+        && Tracked(p);
+
+    /// <summary>Whether any of the pack still has its prey, by sight, by ear or by memory, or was hurt by it.</summary>
+    static bool Tracked(Pack p)
+    {
+        foreach (Creature m in p.Members)
+            if (m.Alive && (m.Noticed == p.Prey || m.ProvokedBy == p.Prey || m.Attacking)) return true;
+        return false;
+    }
 
     static void EndHunt(WildSim w, Pack p, float rest)
     {
@@ -789,7 +798,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, t);
         }
-        else Steer(w, c, t.Position, c.Stats.RunSpeed);
+        else Steer(w, c, Senses.Aim(c, t), c.Stats.RunSpeed);
     }
 
     static void WanderAndGraze(WildSim w, Creature c, float radius, float dt)

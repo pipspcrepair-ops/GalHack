@@ -124,6 +124,7 @@ public partial class WildlifePatch : Node3D
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
@@ -229,6 +230,20 @@ public partial class WildlifePatch : Node3D
         if (_baking == null) return;
         _baking.Wait();
         Follow(Vector3.Zero, false);
+    }
+
+    /// <summary>A line through what stands in the world: ground, walls, closed doors, hulls. For creatures' eyes; only from a physics step.</summary>
+    public bool SightClear(Vector3 from, Vector3 to)
+    {
+        var ray = PhysicsRayQueryParameters3D.Create(from, to, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
+        return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
+    }
+
+    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it.</summary>
+    public void Noise(Vector3 at, float radius)
+    {
+        Sim?.Noise(PatchLocal(at), radius);
+        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
     }
 
     /// <summary>Zone frame to patch frame and back.</summary>

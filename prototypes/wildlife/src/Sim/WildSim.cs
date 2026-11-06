@@ -105,6 +105,39 @@ public sealed class WildSim
 
     public CombatRules Combat => Data.Combat;
 
+    /// <summary>
+    /// A line through the world's own collision, sim frame: true when nothing solid is on it. The game
+    /// sets this to a physics ray (buildings, doors, voxel rock); unset, creatures go by the terrain,
+    /// the solid cells of their space and the nav grid.
+    /// </summary>
+    public Func<Vector3, Vector3, bool> SightLine;
+
+    /// <summary>Loud sounds of the last moment.</summary>
+    public readonly List<WorldNoise> Noises = new();
+
+    /// <summary>A loud sound: everything within the radius turns to look.</summary>
+    public void Noise(Vector3 at, float radius) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time });
+
+    readonly Dictionary<ITarget, (Vector3 at, float speed)> _moved = new();
+
+    /// <summary>How much noise a target is making: a share of its threat by how fast it is going.</summary>
+    public float NoiseOf(ITarget t)
+    {
+        float speed = _moved.TryGetValue(t, out var m) ? m.speed : 2f;
+        return speed < 0.4f ? 0.45f : speed > 4.5f ? 1.3f : 1f;
+    }
+
+    void WatchTargets(float dt)
+    {
+        foreach (ITarget t in Targets)
+        {
+            Vector3 p = t.Position;
+            float speed = _moved.TryGetValue(t, out var m) ? Mathf.Lerp(m.speed, (p - m.at).Length() / MathF.Max(dt, 1e-3f), 0.15f) : 2f;
+            _moved[t] = (p, speed);
+        }
+        if (Noises.Count > 0) Noises.RemoveAll(n => Time - n.Time > 1f);
+    }
+
     public WildSim(WildlifeData data, Terrain terrain, NavGrid nav)
     {
         Data = data;
@@ -323,6 +356,7 @@ public sealed class WildSim
         Frame++;
         Clock.Advance(dt);
         _pathBudget = PathBudgetPerStep;
+        WatchTargets(dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
         for (int i = 0; i < Creatures.Count; i++)

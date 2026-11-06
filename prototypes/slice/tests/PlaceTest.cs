@@ -519,14 +519,16 @@ public partial class PlaceTest : Node
                      .OrderBy(c => s.World(c.Position).DistanceTo(way) + Mathf.Abs(c.Position.Y - way.Y) * 3f))
         {
             var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(c.Position.X), Mathf.FloorToInt(c.Position.Y), Mathf.FloorToInt(c.Position.Z));
+            // Close enough that it can tell you are there: it won't give itself away for nothing.
+            float keep = MathF.Max(2f, c.Species.StrikeRadius * 0.7f);
             PoiGenerator.Gen.Int3? near = null;
             float best = float.MaxValue;
             foreach (var q in reach)
             {
                 float d = new Vector2(q.X - cell.X, q.Z - cell.Z).Length() + Mathf.Abs(q.Y - cell.Y) * 3f;
-                if (d >= 5f && d < best) { best = d; near = q; }
+                if (d >= keep && d < best) { best = d; near = q; }
             }
-            if (near == null || best > 9f) continue;
+            if (near == null || best > keep + 2f) continue;
             _hunter = c;
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;

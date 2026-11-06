@@ -74,6 +74,7 @@ public partial class CreaturesTest : Node
             Mutations();
             Settlements();
             DomesticAnimals();
+            SensesAreReal();
             DeepPerformance();
             CrowdedPlaceCost();
         }
@@ -1321,8 +1322,10 @@ public partial class CreaturesTest : Node
         var sim3 = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
         sim3.AddSettlement("Hollowmere", Vector3.Zero, 30f);
         var farmer = new DummyTarget { Name = "Townsperson", Position = new Vector3(60f, 0f, 0f), Health = new Health(1e6f) };
+        farmer.Position = new Vector3(60f, sim3.Terrain.Height(60f, 0f), 0f); // on the road, where it can be seen
         sim3.Targets.Add(farmer);
         Creature p3 = sim3.Spawn(hunter, new Vector3(75f, 0f, 6f));
+        p3.Yaw = MathF.Atan2(-(farmer.Position.X - p3.Position.X), -(farmer.Position.Z - p3.Position.Z)); // the farmer is in front of it: a hunter sees what it faces
         int outsideHits = 0;
         float firstWindup = -1f;
         sim3.Telegraph += e => { if (e.Target == farmer && firstWindup < 0f) firstWindup = e.Windup; };
@@ -1336,6 +1339,7 @@ public partial class CreaturesTest : Node
         {
             Vector3 to = new Vector3(5f, 0f, 0f) - farmer.Position;
             if (to.Length() > 0.2f) farmer.Position += to.Normalized() * 4.5f * Dt;
+            farmer.Position = new Vector3(farmer.Position.X, sim3.Terrain.Height(farmer.Position.X, farmer.Position.Z), farmer.Position.Z);
             sim3.Step(Dt);
             if (WildSim.Flat(farmer.Position).Length() < 30f) predatorDeepest = MathF.Min(predatorDeepest, WildSim.Flat(p3.Position).Length() - 30f);
         }
@@ -1440,6 +1444,89 @@ public partial class CreaturesTest : Node
         }
         double best = windows.Min();
         Check(best < 2.0, $"{n} cave and place creatures, every one posed every frame, cost {best:F2} ms/frame (budget 2 ms, best of three windows: {string.Join(", ", windows.Select(x => x.ToString("F2")))})");
+    }
+
+    /// <summary>Line of sight, the cone, memory, hearing apart from sight, the meter; and nothing alerted by what it can't sense.</summary>
+    void SensesAreReal()
+    {
+        // Two rooms with a solid wall between them, a doorway at one end.
+        var cells = new HashSet<Vector3I>();
+        for (int x = 0; x < 30; x++)
+        for (int z = 0; z < 12; z++)
+        for (int y = 0; y < 6; y++)
+        {
+            bool wall = x == 15 && z > 1;
+            if (x == 0 || x == 29 || z == 0 || z == 11 || y == 0 || y == 5 || wall) cells.Add(new Vector3I(x, y, z));
+        }
+        var space = new BlockSpace((x, y, z) => cells.Contains(new Vector3I(x, y, z)), Vector3I.Zero, new Vector3I(30, 6, 12));
+        var fauna = new DeepFauna(_data, 2024, 0.5f);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        Species sighted = fauna.For(DeepRole.Prowler, PoiTheme.Industrial, 0), blind = fauna.For(DeepRole.Prowler, PoiTheme.Industrial, 3);
+        Vector3 at = new(8f, 1f, 6f);
+        Creature Put(Species s, Vector3 target)
+        {
+            Creature c = sim.SpawnIn(s, space, at);
+            Vector3 to = (target - c.Position).Normalized();
+            c.Facing = SpaceMath.Frame(to, Vector3.Up);
+            return c;
+        }
+        var p = new DummyTarget { Name = "Quiet", Health = new Health(1e7f) };
+        sim.Targets.Add(p);
+        void Run(float seconds, Creature c, Action each = null)
+        {
+            for (float t = 0f; t < seconds; t += Dt)
+            {
+                each?.Invoke();
+                // Only its senses: it stays where it is, facing the way it was put.
+                Basis facing = c.Facing;
+                sim.Step(Dt);
+                c.Position = at;
+                c.Velocity = Vector3.Zero;
+                c.Facing = facing;
+            }
+        }
+        // Behind the wall, in plain range, with it looking straight at the wall.
+        p.Position = new Vector3(19f, 1f, 6f);
+        Creature c1 = Put(sighted, p.Position);
+        bool alerted = false;
+        Run(4f, c1, () => alerted |= c1.Alert > 0f);
+        Check(!alerted && c1.Noticed == null, $"through a wall a {sighted.CommonName} senses nothing at {sighted.NoticeRadius:F0} m range: not alerted, awareness {c1.Awareness:F2}");
+        sim.Remove(c1);
+        // In the open behind it, standing still: outside the cone, outside a still target's noise.
+        p.Position = at + new Vector3(-6f, 0f, 0f);
+        Creature c2 = Put(sighted, at + Vector3.Right * 5f);
+        Run(3f, c2);
+        bool blindSide = c2.Noticed == null;
+        // In front of it, the same distance: it notices, but not at once.
+        p.Position = at + new Vector3(6f, 0f, 0f);
+        float noticedAfter = -1f, elapsed = 0f;
+        Run(5f, c2, () => { elapsed += Dt; if (noticedAfter < 0f && c2.Noticed != null) noticedAfter = elapsed; });
+        Check(blindSide && noticedAfter > 0.4f, $"a sighted creature sees in a cone (nothing from behind) and notices by degrees: {noticedAfter:F2} s to place someone in plain view");
+        sim.Remove(c2);
+        // Memory: gone behind the wall, it knows for a few seconds where they went, then forgets.
+        Creature c3 = Put(sighted, at + Vector3.Right * 5f);
+        p.Position = at + new Vector3(6f, 0f, 0f);
+        Run(4f, c3);
+        bool had = c3.Noticed == p;
+        p.Position = new Vector3(19f, 1f, 6f);
+        Run(2f, c3);
+        bool held = c3.Noticed == p, lastAtRoom = c3.LastSeen.X < 16f;
+        Run(5f, c3);
+        Check(had && held && lastAtRoom && c3.Noticed == null, $"out of sight it holds on {Senses.Memory:F0} s and goes by where it last knew you, then forgets");
+        sim.Remove(c3);
+        // Blind: hears a walker in the room, nothing behind a wall, nothing of someone standing still.
+        Creature c4 = Put(blind, at + Vector3.Right * 5f);
+        p.Position = at + new Vector3(4f, 0f, 0f);
+        Run(3f, c4);
+        bool stillUnheard = !blind.Blind || c4.Noticed == null || 4f < blind.NoticeRadius * Senses.BlindHearing * 0.45f;
+        float step = 1f;
+        Run(5f, c4, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
+        bool heard = c4.Noticed == p;
+        sim.Remove(c4);
+        Creature c5 = Put(blind, at + Vector3.Right * 5f);
+        p.Position = new Vector3(19f, 1f, 6f);
+        Run(4f, c5, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
+        Check(blind.Blind && heard && stillUnheard && c5.Noticed == null, $"something blind goes by ear alone: a walker in its room heard, nothing through a wall ({blind.NoticeRadius * Senses.BlindHearing:F1} m earshot)");
     }
 
     /// <summary>An overrun place with someone walking its halls, timed by part: the crowded case the owner plays.</summary>

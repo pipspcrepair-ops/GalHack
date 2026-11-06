@@ -64,6 +64,9 @@ public sealed class SurvivalTool
     public event Action PlantCut;
     public event Action<Creature> CreatureHit;
 
+    /// <summary>How far a shot carries, m: what lives round here turns to look.</summary>
+    const float ShotHeard = 45f;
+
     /// <summary>Items gathered since the start, by id (tests and stats).</summary>
     public readonly SortedDictionary<string, int> Gathered = new(StringComparer.Ordinal);
 
@@ -366,6 +369,7 @@ public sealed class SurvivalTool
         PoiPlaces.Hit? onPlace = null;
         if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
             && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph)) onPlace = ph;
+        _zone.Wildlife.Noise(eye, ShotHeard);
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
         // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.

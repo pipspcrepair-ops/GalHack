@@ -158,6 +158,13 @@ public sealed class Creature
     /// <summary>The player it has noticed, and when.</summary>
     public ITarget Noticed;
     public float NoticedAt = -999f;
+    /// <summary>0..1: how far it has got to noticing a player (see <see cref="Senses"/>); at 1 it has.</summary>
+    public float Awareness;
+    /// <summary>Whether it could see or hear a player at its last think.</summary>
+    public bool Sensing;
+    /// <summary>Where it last knew a player, or a loud noise, to be.</summary>
+    public Vector3 LastSeen;
+    public float HeardAt = -999f;
     /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
     public float Wake;
     // Domestic animals: the pen or town area they keep to, and (pets) who they follow.
