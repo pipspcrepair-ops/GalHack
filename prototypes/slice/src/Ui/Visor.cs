@@ -398,7 +398,8 @@ public partial class Visor : CanvasLayer
                     _ => "SURVIVAL TOOL · GATHER",
                 };
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : "";
+                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
                     : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
                     : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
@@ -418,6 +419,7 @@ public partial class Visor : CanvasLayer
         string keys = hand switch
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
+            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
@@ -472,6 +474,7 @@ public partial class Visor : CanvasLayer
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
+        if (pack.Hand == HandKind.Block && pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem) DrawGallery(layout);
         // The shape picker: the family's shapes, the current one lit (the wheel steps through them).
         if (pack.Hand == HandKind.Block && pack.HandItem is string id && Game.Zone.Data.Items.TryGet(id, out var item) && item.Family == GalHack.Items.BlockFamily.Armour)
         {
@@ -479,12 +482,55 @@ public partial class Visor : CanvasLayer
             float w = layout.Shapes.Size.X / shapes.Count;
             for (int i = 0; i < shapes.Count; i++)
             {
-                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, 0), new Vector2(w - 2 * s, layout.Shapes.Size.Y));
+                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, layout.Shapes.Size.Y - 26 * s), new Vector2(w - 2 * s, 26 * s));
                 bool on = shapes[i] == Game.Builder.Shape;
                 _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.9f : 0.5f));
                 _hud.TextIn(UiTheme.Label, (int)(11 * s), box, HudLayout.Fit(UiTheme.Label, (int)(11 * s), shapes[i].Name.ToUpperInvariant(), box.Size.X - 4), on ? C.Glass : C.Dim, HorizontalAlignment.Center);
             }
         }
+    }
+
+    /// <summary>
+    /// The deco gallery, in the shape picker's place above the toolbar: the pieces on offer as small
+    /// 3D icons with their names, the chosen one lit (the wheel steps through them), and the theme
+    /// they are filtered to at the left (G changes it).
+    /// </summary>
+    void DrawGallery(HudLayout layout)
+    {
+        float s = layout.Scale;
+        var builder = Game.Builder;
+        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+        var choices = builder.DecoChoices(small);
+        var cur = builder.CurrentDeco(small);
+        Rect2 r = layout.Shapes;
+        var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
+        string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
+        _hud.Block(chip, new Color(C.Holo, 0.85f));
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
+        if (cur == null)
+        {
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            return;
+        }
+        float cw = 46 * s, gap = 3 * s;
+        int fit = Math.Max(1, (int)((r.Size.X - 98 * s) / (cw + gap)));
+        int at = Math.Max(0, choices.FindIndex(p => p.Id == cur.Id));
+        int start = Math.Clamp(at - fit / 2, 0, Math.Max(0, choices.Count - fit));
+        for (int i = 0; i < fit && start + i < choices.Count; i++)
+        {
+            var p = choices[start + i];
+            var box = new Rect2(r.Position + new Vector2(98 * s + i * (cw + gap), 0), new Vector2(cw, r.Size.Y));
+            bool on = p.Id == cur.Id;
+            _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.92f : 0.55f));
+            Texture2D icon = ItemIcons.Shared?.GetPiece(p.Id);
+            float side = r.Size.Y - 16 * s;
+            if (icon != null) _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cw - side) / 2, 1 * s), new Vector2(side, side)), false);
+            _hud.TextIn(UiTheme.Label, (int)(8 * s), new Rect2(box.Position + new Vector2(1, r.Size.Y - 14 * s), new Vector2(cw - 2, 13 * s)),
+                HudLayout.Fit(UiTheme.Label, (int)(8 * s), p.Name.ToUpperInvariant(), cw - 3), on ? C.Glass : C.Text, HorizontalAlignment.Center);
+        }
+        string more = choices.Count > fit ? $"{at + 1}/{choices.Count}" : "";
+        if (more.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(10 * s), new Rect2(r.End.X - 60 * s, r.Position.Y - 12 * s, 60 * s, 12 * s), more, C.Dim, HorizontalAlignment.Right);
     }
 
     // ---- Flying --------------------------------------------------------------------------------

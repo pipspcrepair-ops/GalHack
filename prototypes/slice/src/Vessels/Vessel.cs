@@ -92,6 +92,7 @@ public sealed partial class Vessel
         set
         {
             _lightsOn = value;
+            SetDecoLights(value);
             bool changed = false;
             foreach (var (cell, block) in Structure.Blocks().ToList())
             {

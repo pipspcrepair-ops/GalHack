@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
@@ -360,8 +360,8 @@ public sealed class YouSection : IMenuSection
         ItemView view = FilterBar.Build(g, "palette", new Rect2(r.Position, new Vector2(r.Size.X, FilterBar.Height)));
         // Creative has every block, the cores too; Survival's cores are items you craft and carry.
         IEnumerable<ItemDef> families = creative
-            ? items.Items.Where(i => (i.IsBlock && i.Family != BlockFamily.Deco) || PlayerInventory.CoreItems.Contains(i.Id))
-            : items.BlockItems.Where(i => i.Family != BlockFamily.Deco && !PlayerInventory.CoreItems.Contains(i.Id));
+            ? items.Items.Where(i => (i.IsBlock && !i.IsDecoPiece) || PlayerInventory.CoreItems.Contains(i.Id))
+            : items.BlockItems.Where(i => !i.IsDecoPiece && !PlayerInventory.CoreItems.Contains(i.Id));
         var entries = view.Apply(families, i => pack[i.Id])
             .OrderBy(i => view.Sort == ItemSort.Slot ? (p.ItemAllowed(i) ? 0 : 1) : 0).ToList();
         int perPage = 13;

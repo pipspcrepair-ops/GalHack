@@ -14,6 +14,7 @@ using ShipHandling.Handling;
 using Slice.Construction;
 using Slice.Game;
 using Slice.Items;
+using Slice.Places;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Ui;
@@ -497,6 +498,7 @@ public partial class BuildTest : Node
         Pack.ClearRemote(6);
         foreach (int x in RemoteRules()) yield return x;
         foreach (int x in StorageMenu()) yield return x;
+        foreach (int x in DecoBlock()) yield return x;
     }
 
 
@@ -631,6 +633,72 @@ public partial class BuildTest : Node
         foreach (int x in _play.CloseMenu()) yield return x;
         _base.Storage.Remove(steel, _base.Storage.Count(steel));
         Pack.Remove(steel, Pack[steel]);
+    }
+
+    /// <summary>The universal deco block: one item for every piece, a gallery to pick from, pieces on the grid, flat cost, real lights.</summary>
+    IEnumerable<int> DecoBlock()
+    {
+        GD.Print("-- the universal deco block --");
+        ItemDef block = Items.Item(DecoCatalogue.UniversalItem);
+        Check(block.IsBlock && block.Family == BlockFamily.Deco && block.Places.Count == 4 && block.Recipe.Tier >= 1, $"one deco block item goes on every class of structure and needs a small constructor or better (tier {block.Recipe.Tier})");
+        var survival = new Constructor(Items, Items.Machines.Get("survival"), SharedStorage.Unbounded(Items, "t"), new WorldRules());
+        var small = new Constructor(Items, Items.Machines.Get("small"), SharedStorage.Unbounded(Items, "t2"), new WorldRules());
+        Check(!survival.Knows(block) && small.Knows(block), "the survival tier doesn't make the deco block; the small constructor does");
+        var pieces = Items.Items.Where(i => i.IsDecoPiece).ToList();
+        Check(pieces.Count > 100 && !block.IsDecoPiece && pieces.All(p => p.Group != null), $"individual deco items ({pieces.Count}) are marked as pieces, kept off the constructor lists");
+        Check(Items.Has("ceiling-light@large") && Items.Has("strip-light@small"), "ceiling lights and strip lights are in the deco catalogue");
+
+        // The gallery.
+        _game.Progress.Creative = true;
+        var tool = _game.Builder;
+        int all = tool.DecoChoices(false).Count;
+        tool.DecoTheme = "industrial";
+        int industrial = tool.DecoChoices(false).Count;
+        Check(all > industrial && industrial >= 10 && tool.DecoThemes(false).Count > 5, $"the gallery filters by theme ({all} pieces, {industrial} industrial, {tool.DecoThemes(false).Count} themes)");
+        tool.DecoTheme = null;
+
+        // Pieces go on the grid: floor, wall and ceiling, and nothing overlaps.
+        var deco = Decor.Shared.Catalogue;
+        float cell = _base.Structure.Grid.CellSize;
+        var crate = deco.Piece("cargo-crate");
+        var onFloor = tool.PlanDeco(_base, crate, Int3.Zero, new Int3(0, 1, 0), 0);
+        Check(onFloor.Why == null && onFloor.Cells.Count == 1 && Math.Abs(onFloor.Local.Origin.Y - cell * 0.5f) < 0.01f, $"a floor piece stands on the top face, one grid cell: {onFloor.Why} (y {onFloor.Local.Origin.Y})");
+        var light = deco.Piece("ceiling-light");
+        var up = tool.PlanDeco(_base, light, new Int3(0, 3, 0), new Int3(0, 2, 0), 0);
+        Check(up.Why == null && Math.Abs(up.Local.Origin.Y - (2 * cell + cell * 0.5f - light.Height)) < 0.01f, $"a ceiling light hangs from the underside of the block above ({up.Why})");
+        Check(tool.PlanDeco(_base, light, Int3.Zero, new Int3(0, 1, 0), 0).Why?.Contains("ceiling") == true, "a ceiling piece is refused on a floor face");
+        Check(tool.PlanDeco(_base, crate, new Int3(0, 3, 0), new Int3(0, 2, 0), 0).Why?.Contains("floor") == true, "a floor piece is refused under a ceiling");
+        var panel = deco.Piece("junction-box");
+        var wall = tool.PlanDeco(_base, panel, new Int3(5, 1, 0), new Int3(4, 1, 0), 0);
+        Check(wall.Why == null && wall.Cells.Count >= 1, $"a wall piece mounts against a side face ({wall.Why})");
+
+        // Placing through the game: one block each, flat, whatever the piece.
+        foreach (int x in StandByBase(0, 8)) yield return x;
+        Pack.Remove(block.Id, Pack[block.Id]);
+        foreach (int x in Carry(block.Id, 2, 5)) yield return x;
+        tool.DecoPieceId = "junction-box";
+        int zmax = Enumerable.Range(0, 12).Where(z => _base.Structure.Has(new Int3(0, 0, z))).Max();
+        tool.DecoYaw = 0;
+        int decos = _base.Decos.Count;
+        foreach (int x in _play.PlaceBlock(5, _base, new Int3(0, 0, zmax), Dir.PosZ)) yield return x;
+        Check(_base.Decos.Count == decos + 1 && Pack[block.Id] == 1, $"a click sets the chosen piece on the grid and uses one deco block ({_base.Decos.Count - decos} placed, {Pack[block.Id]} blocks left; \"{tool.Verdict}\")");
+        foreach (int x in _play.PlaceBlock(5, _base, new Int3(0, 0, zmax), Dir.PosZ)) yield return x;
+        Check(_base.Decos.Count == decos + 1 && Pack[block.Id] == 1, "the same cell can't take a second piece, and no block is spent");
+        DecoPlaced placed = _base.Decos.Last();
+        _base.RemoveDeco(placed);
+        Check(_base.Decos.Count == decos && !_base.DecoAt(placed.Cells[0], out _), "a piece taken down frees its cells");
+
+        // Lights are real, and follow the structure's light switch.
+        var lamp = tool.PlanDeco(_base, light, new Int3(0, 3, 0), new Int3(0, 2, 0), 0);
+        DecoPlaced lit = _base.AddDeco("ceiling-light", new Int3(0, 2, 0), 0, lamp.Cells, lamp.Local);
+        var lights = lit.Node.GetChildren().OfType<Light3D>().ToList();
+        Check(lights.Count > 0 && lights.All(l => l.Visible), $"a ceiling light gives real light ({lights.Count} lamp)");
+        _base.LightsOn = false;
+        Check(lights.All(l => !l.Visible), "and goes dark with the structure's lights");
+        _base.LightsOn = true;
+        _base.RemoveDeco(lit);
+        _game.Progress.Creative = false;
+        Pack.Remove(block.Id, Pack[block.Id]);
     }
     IEnumerable<int> BackIntoInventories()
     {

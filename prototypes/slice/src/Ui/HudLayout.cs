@@ -35,7 +35,7 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         Rect2 toolbar = Row(vitals.Position.Y - (8 + Cell) * s, barW, Cell);
         Rect2 item = Row(toolbar.Position.Y - (4 + 22) * s, WideRow, 22);
         Rect2 hints = Row(item.Position.Y - (2 + 16) * s, WideRow, 16);
-        Rect2 shapes = Row(hints.Position.Y - (4 + 26) * s, barW, 26);
+        Rect2 shapes = Row(hints.Position.Y - (4 + 58) * s, barW, 58);
         float linesH = 5 * 26 * s;
         var lines = new Rect2(40 * s, shapes.Position.Y - 8 * s - linesH, size.X - 80 * s, linesH);
         return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines);

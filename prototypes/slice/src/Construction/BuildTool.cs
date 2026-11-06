@@ -45,7 +45,7 @@ public enum NewThing { None, Base, Vessel, Hover, Device, Capital }
 /// on the toolbar: the CORE tab starts it (<see cref="Project"/>), and it builds the Skiff block by
 /// block while the button is held, each block one item from your bag.
 /// </summary>
-public sealed class BuildTool
+public sealed partial class BuildTool
 {
     readonly SurfaceZone _zone;
     readonly Survivor _survivor;
@@ -146,6 +146,7 @@ public sealed class BuildTool
 
     public void Hide()
     {
+        if (_decoGhost != null) _decoGhost.Visible = false;
         _ghosts.HideGhosts();
         _ghosts.HideOutline();
         _planGhost.Visible = false;
@@ -188,6 +189,13 @@ public sealed class BuildTool
         _deviceGhost.Visible = false;
         _ghosts.HideGhosts();
         Aim();
+        if (DecoToDeconstruct(out string decoVerdict))
+        {
+            _ghosts.HideOutline();
+            Verdict = decoVerdict;
+            if (pressed) RemoveDecoNear(TargetVessel);
+            return;
+        }
         if (!HasTarget || TargetVessel == null || !TargetVessel.Structure.TryGet(TargetCell, out Block b))
         {
             _ghosts.HideOutline();
@@ -221,6 +229,12 @@ public sealed class BuildTool
 
     void TickBlock(string itemId, int slotIndex, bool place, bool remove)
     {
+        if (itemId != null && Items.TryGet(itemId, out ItemDef deco) && deco.IsUniversalDeco)
+        {
+            TickDeco(deco, slotIndex, place, remove);
+            return;
+        }
+        if (_decoGhost != null) _decoGhost.Visible = false;
         _planGhost.Visible = false;
         _deviceGhost.Visible = false;
         Aim();

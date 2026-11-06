@@ -357,8 +357,16 @@ public partial class Game : Node3D
         }
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
-            if (c.Wheel != 0 && hand == HandKind.Block) Builder.NextShape(c.Wheel);
-            if (c.WasPressed(Key.R)) Builder.Rotate(1);
+            bool decoInHand = hand == HandKind.Block && Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem;
+            bool smallGrid = Builder.TargetVessel != null && Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+            if (c.Wheel != 0 && hand == HandKind.Block)
+            {
+                if (decoInHand) Builder.NextPiece(c.Wheel, smallGrid);
+                else Builder.NextShape(c.Wheel);
+            }
+            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme(smallGrid);
+            if (decoInHand && c.WasPressed(Key.R)) Builder.TurnDeco();
+            else if (c.WasPressed(Key.R)) Builder.Rotate(1);
             if (c.WasPressed(Key.T)) Builder.Rotate(0);
             if (c.WasPressed(Key.X))
             {

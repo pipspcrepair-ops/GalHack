@@ -143,6 +143,10 @@ public sealed class ItemDef
     public bool IsAmmo => Category == ItemCategory.Ammo;
     /// <summary>A block family item: placed as a block (survival uses one per placement, taking it down gives it back).</summary>
     public bool IsBlock => BlockId != null;
+    /// <summary>The universal deco block: one item, every deco piece is built under it (the piece is chosen from a gallery before placing, each placement costs one).</summary>
+    public bool IsUniversalDeco => BlockId == DecoCatalogue.UniversalBlock;
+    /// <summary>One deco piece's own item (an unlock node and a gallery entry): never crafted or carried, since the universal block places every piece.</summary>
+    public bool IsDecoPiece => Family == BlockFamily.Deco && !IsUniversalDeco;
     public string ShortName => Short ?? Name;
 
     public override string ToString() => Id;
