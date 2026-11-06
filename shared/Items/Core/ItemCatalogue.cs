@@ -321,6 +321,26 @@ public sealed class ItemCatalogue
         }
     }
 
+    /// <summary>Adds the one universal deco block item (see <see cref="DecoCatalogue.AddUniversalBlockTo"/>).</summary>
+    internal void AddUniversalDeco(string id, string name, string shortName, Bill bill, int tier, Unlock unlock)
+    {
+        var inputs = bill.Select(kv => (Item(kv.Key), kv.Value)).ToList();
+        var item = new ItemDef
+        {
+            Id = id, Name = name, Short = shortName, Named = true,
+            Category = ItemCategory.Block, Rarity = inputs.Select(i => i.Item1.Rarity).Aggregate(Rarity.Common, Rarities.Max), Source = ItemSource.Crafted,
+            MassKg = MassOf(bill), VolumeSu = VolumeOf(bill),
+            Uses = "One block places any deco piece: pick the piece from the gallery, each placement uses one block",
+            StackSize = 50, Unlock = unlock, BlockId = DecoCatalogue.UniversalBlock, SmallGrid = false, Family = BlockFamily.Deco,
+            Places = StructureClasses.All,
+        };
+        item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = 3, Tier = Math.Max(tier, inputs.Max(i => TierOf(i.Item1, null))) };
+        item.Index = _items.Count;
+        _items.Add(item);
+        _byId[id] = item;
+        _recipes.Add(item.Recipe);
+    }
+
     /// <summary>The lowest constructor tier that can make an item and everything it is made of.</summary>
     static int TierOf(ItemDef item, HashSet<ItemDef> path = null)
     {

@@ -409,4 +409,25 @@ public sealed class DecoCatalogue
     }
 
     static Unlock ToUnlock(DecoUnlock u) => u == null ? null : ItemCatalogue.ToUnlock(u.Level, u.Cost, u.Parent, u.Tab);
+
+    /// <summary>The block id of the universal deco block, and its item id.</summary>
+    public const string UniversalBlock = "deco", UniversalItem = "deco-block";
+
+    /// <summary>
+    /// Adds the one universal deco block item (call after <see cref="AddBillsTo"/>): a single item, a
+    /// single block type in a stack, with a flat cost. Every deco piece is built under it: the piece is
+    /// picked from a gallery before placing and each placement uses one block, whatever the piece. It goes
+    /// on all four classes of structure and is made in a small constructor or better; the survival tier
+    /// does not make it. The pieces' own items stay as tech-tree nodes and gallery entries.
+    /// </summary>
+    public void AddUniversalBlockTo(ItemCatalogue items)
+    {
+        if (items.Has(UniversalItem)) return;
+        var bill = new Bill();
+        bill.Add("hull-plate", 1);
+        bill.Add("glass", 1);
+        bill.Add("polymer", 1);
+        items.AddUniversalDeco(UniversalItem, "Deco block", "DECO", bill, tier: 1, ToUnlock(new DecoUnlock(3, 1, null, "deco")));
+        items.Rebuild();
+    }
 }

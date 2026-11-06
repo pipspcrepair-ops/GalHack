@@ -41,7 +41,7 @@ public sealed class ConstructorSection : IMenuSection
 
     /// <summary>What a constructor lists: only what it knows and the player has unlocked (cores, devices and blocks first, deco last).</summary>
     static IEnumerable<ItemDef> Recipes(Constructor c, Progress p) =>
-        c.Items.Items.Where(i => c.Knows(i) && p.ItemAllowed(i)
+        c.Items.Items.Where(i => c.Knows(i) && p.ItemAllowed(i) && !i.IsDecoPiece // pieces are placed from the universal deco block, never crafted one by one
                 && !(c.Def.Tier <= 0 && ItemView.GroupOf(i) == ItemGroup.Deco)) // survival-tier machines and the suit fabricator never make deco
             .OrderBy(i => !c.Knows(i))
             .ThenBy(i => i.Recipe.Inputs.Count > 0) // anything free (the survival tool) first

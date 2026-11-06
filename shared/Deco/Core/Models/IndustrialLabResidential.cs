@@ -179,6 +179,29 @@ public static partial class DecoModels
             b.Spark(0, 0.45f, 0.0f);
             b.Light(0.12f, 0.3f, -0.2f, Signal);
         };
+
+        // A flat panel light fixed to the ceiling: a frame on the ceiling with a glowing diffuser under it.
+        r["ceiling-light"] = b =>
+        {
+            b.Box(-0.46f, 0.43f, -0.46f, 0.46f, 0.5f, 0.46f, Metal);
+            b.Box(-0.44f, 0.05f, -0.44f, 0.44f, 0.43f, 0.44f, Body);
+            b.Box(-0.38f, 0.0f, -0.38f, 0.38f, 0.06f, 0.38f, Lamp).Lit();
+            b.Box(-0.4f, 0.04f, -0.01f, 0.4f, 0.07f, 0.01f, Metal).Ghost();
+            b.Box(-0.01f, 0.04f, -0.4f, 0.01f, 0.07f, 0.4f, Metal).Ghost();
+            b.Light(0, -0.15f, 0, Lamp);
+        };
+
+        // A long tube light on two brackets under the ceiling.
+        r["strip-light"] = b =>
+        {
+            b.Box(-0.92f, 0.38f, -0.2f, 0.92f, 0.5f, 0.2f, Metal);
+            b.Box(-0.9f, 0.08f, -0.17f, 0.9f, 0.38f, 0.17f, Body);
+            b.Box(-0.86f, 0.0f, -0.13f, 0.86f, 0.09f, 0.13f, Lamp).Lit();
+            b.Box(-0.94f, 0.04f, -0.2f, -0.9f, 0.44f, 0.2f, Dark).Ghost();
+            b.Box(0.9f, 0.04f, -0.2f, 0.94f, 0.44f, 0.2f, Dark).Ghost();
+            b.Light(-0.5f, -0.15f, 0, Lamp);
+            b.Light(0.5f, -0.15f, 0, Lamp);
+        };
     }
 
     static void Lab(Dictionary<string, Action<DecoBuilder>> r)

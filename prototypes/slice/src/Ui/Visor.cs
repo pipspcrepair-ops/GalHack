@@ -364,12 +364,13 @@ public partial class Visor : CanvasLayer
     {
         var items = Game.Zone.Data.Items;
         Slice.Items.PlayerInventory pack = Game.Pack;
-        if (pack.OnStructureBar)
+        if (pack.ShowRemote)
         {
-            string id = pack.StructureBar[i];
+            if (pack.Remote[i] is not RemoteSlot rs) return ("", "", true);
+            string id = rs.ItemId;
             if (id == null) return ("", "", true);
-            int n = pack.Linked.Count(id);
-            return (items.Item(id).ShortName, $"{n}", n == 0);
+            int n = rs.Count;
+            return (items.Item(id).ShortName, $"{n}", n == 0 || !pack.RemoteReady(i));
         }
         Slice.Items.Slot slot = pack.Grid[i];
         if (slot.Block == Slice.Items.PlayerInventory.BlueprintBlock) return ("SKIFF", "", false);
@@ -384,7 +385,8 @@ public partial class Visor : CanvasLayer
         Slice.Items.PlayerInventory pack = Game.Pack;
         if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
-        string bar = pack.OnStructureBar ? $"{pack.LinkedName.ToUpperInvariant()} TOOLBAR · " : "";
+        string bar = pack.OnRemoteBar ? $"REMOTE · {pack.HandRemote?.Origin.ToUpperInvariant()} · " : "";
+        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE: step back into the core's area to use it";
         HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
@@ -396,9 +398,10 @@ public partial class Visor : CanvasLayer
                     _ => "SURVIVAL TOOL · GATHER",
                 };
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : "";
+                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
-                    : pack.OnStructureBar ? $"{pack.Linked.Count(id)} in {pack.LinkedName}"
+                    : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
                     : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
             case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
@@ -416,10 +419,11 @@ public partial class Visor : CanvasLayer
         string keys = hand switch
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
+            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
-        string bar = Game.Pack.Linked != null ? "[Y] TOOLBAR   " : "";
+        string bar = Game.Pack.OnRemoteBar ? "[Y] YOUR TOOLBAR   " : "[Y] REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
         return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
     }
@@ -431,21 +435,46 @@ public partial class Visor : CanvasLayer
         float s = layout.Scale;
         float cell = HudLayout.Cell * s, gap = HudLayout.CellGap * s;
         Slice.Items.PlayerInventory pack = Game.Pack;
-        bool structure = pack.OnStructureBar;
+        bool remote = pack.ShowRemote;
+        var items = Game.Zone.Data.Items;
         for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
         {
-            bool on = pack.Selected == i;
+            bool on = pack.Selected == i && (pack.Bar == (remote ? BarSource.Remote : BarSource.Personal));
             var box = new Rect2(layout.Toolbar.Position + new Vector2(i * (cell + gap), 0), new Vector2(cell, cell));
             var (label, count, empty) = SlotText(i);
-            _hud.Block(box, new Color(on ? (structure ? C.Holo : C.Accent) : C.Glass, on ? 0.9f : 0.55f));
-            if (structure && !on) _hud.Frame(box, new Color(C.Holo, 0.6f), 1.5f * s);
-            _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, on ? C.Glass : empty ? C.Dim : C.Text, HorizontalAlignment.Center);
-            if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : C.Accent2, HorizontalAlignment.Right);
+            // A remote slot is tinted, carries a pip in its core's colour, and greys out of reach.
+            RemoteSlot rs = remote ? pack.Remote[i] : null;
+            bool out_ = rs != null && !pack.RemoteReady(i);
+            _hud.Block(box, new Color(on ? (remote ? C.Holo : C.Accent) : remote ? C.Holo.Darkened(0.55f) : C.Glass, on ? 0.9f : 0.55f));
+            if (remote && !on) _hud.Frame(box, new Color(C.Holo, 0.6f), 1.5f * s);
+            string iconId = remote ? rs?.ItemId : pack.Grid[i].Block is string blk && blk != PlayerInventory.BlueprintBlock ? blk : pack.Grid[i].Item;
+            Texture2D icon = iconId == null ? null : ItemIcons.Shared?.Get(iconId);
+            Color ink = on ? C.Glass : empty || out_ ? C.Dim : C.Text;
+            if (icon != null)
+            {
+                float side = cell - 14 * s;
+                _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cell - side) / 2, 2 * s), new Vector2(side, side)), false, new Color(1, 1, 1, out_ || empty ? 0.4f : 1f));
+                _hud.TextIn(UiTheme.Label, (int)(9 * s), new Rect2(box.Position + new Vector2(1, cell - 14 * s), new Vector2(cell - 2, 13 * s)), HudLayout.Fit(UiTheme.Label, (int)(9 * s), label, cell - 3), ink, HorizontalAlignment.Center);
+                if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, 2), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : out_ ? C.Dim : C.Accent2, HorizontalAlignment.Right);
+            }
+            else
+            {
+                _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, ink, HorizontalAlignment.Center);
+                if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : out_ ? C.Dim : C.Accent2, HorizontalAlignment.Right);
+            }
             _hud.Text(UiTheme.Mono, (int)(11 * s), box.Position + new Vector2(3, 1), $"{i + 1}", on ? C.Glass : C.Dim);
+            if (rs != null)
+            {
+                _hud.Block(new Rect2(box.Position + new Vector2(3 * s, cell - 10 * s), new Vector2(8 * s, 8 * s)), out_ ? new Color(YouSection.PipOf(pack.ColourOf(rs.Source)), 0.4f) : YouSection.PipOf(pack.ColourOf(rs.Source)));
+                if (out_) _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(box.Position + new Vector2(0, cell * 0.38f), new Vector2(cell, 12 * s)), "OUT", C.Danger, HorizontalAlignment.Center);
+            }
         }
+        // Which bar this is: a label and the tint, at the toolbar's left.
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
+        if (pack.Hand == HandKind.Block && pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem) DrawGallery(layout);
         // The shape picker: the family's shapes, the current one lit (the wheel steps through them).
         if (pack.Hand == HandKind.Block && pack.HandItem is string id && Game.Zone.Data.Items.TryGet(id, out var item) && item.Family == GalHack.Items.BlockFamily.Armour)
         {
@@ -453,12 +482,55 @@ public partial class Visor : CanvasLayer
             float w = layout.Shapes.Size.X / shapes.Count;
             for (int i = 0; i < shapes.Count; i++)
             {
-                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, 0), new Vector2(w - 2 * s, layout.Shapes.Size.Y));
+                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, layout.Shapes.Size.Y - 26 * s), new Vector2(w - 2 * s, 26 * s));
                 bool on = shapes[i] == Game.Builder.Shape;
                 _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.9f : 0.5f));
                 _hud.TextIn(UiTheme.Label, (int)(11 * s), box, HudLayout.Fit(UiTheme.Label, (int)(11 * s), shapes[i].Name.ToUpperInvariant(), box.Size.X - 4), on ? C.Glass : C.Dim, HorizontalAlignment.Center);
             }
         }
+    }
+
+    /// <summary>
+    /// The deco gallery, in the shape picker's place above the toolbar: the pieces on offer as small
+    /// 3D icons with their names, the chosen one lit (the wheel steps through them), and the theme
+    /// they are filtered to at the left (G changes it).
+    /// </summary>
+    void DrawGallery(HudLayout layout)
+    {
+        float s = layout.Scale;
+        var builder = Game.Builder;
+        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+        var choices = builder.DecoChoices(small);
+        var cur = builder.CurrentDeco(small);
+        Rect2 r = layout.Shapes;
+        var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
+        string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
+        _hud.Block(chip, new Color(C.Holo, 0.85f));
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
+        if (cur == null)
+        {
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            return;
+        }
+        float cw = 46 * s, gap = 3 * s;
+        int fit = Math.Max(1, (int)((r.Size.X - 98 * s) / (cw + gap)));
+        int at = Math.Max(0, choices.FindIndex(p => p.Id == cur.Id));
+        int start = Math.Clamp(at - fit / 2, 0, Math.Max(0, choices.Count - fit));
+        for (int i = 0; i < fit && start + i < choices.Count; i++)
+        {
+            var p = choices[start + i];
+            var box = new Rect2(r.Position + new Vector2(98 * s + i * (cw + gap), 0), new Vector2(cw, r.Size.Y));
+            bool on = p.Id == cur.Id;
+            _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.92f : 0.55f));
+            Texture2D icon = ItemIcons.Shared?.GetPiece(p.Id);
+            float side = r.Size.Y - 16 * s;
+            if (icon != null) _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cw - side) / 2, 1 * s), new Vector2(side, side)), false);
+            _hud.TextIn(UiTheme.Label, (int)(8 * s), new Rect2(box.Position + new Vector2(1, r.Size.Y - 14 * s), new Vector2(cw - 2, 13 * s)),
+                HudLayout.Fit(UiTheme.Label, (int)(8 * s), p.Name.ToUpperInvariant(), cw - 3), on ? C.Glass : C.Text, HorizontalAlignment.Center);
+        }
+        string more = choices.Count > fit ? $"{at + 1}/{choices.Count}" : "";
+        if (more.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(10 * s), new Rect2(r.End.X - 60 * s, r.Position.Y - 12 * s, 60 * s, 12 * s), more, C.Dim, HorizontalAlignment.Right);
     }
 
     // ---- Flying --------------------------------------------------------------------------------

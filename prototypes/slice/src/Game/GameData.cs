@@ -59,8 +59,10 @@ public sealed class GameData
             File.ReadAllText(Own("data/survival.json")),
         };
         var items = Slice.Items.SliceItems.Load(SharedPath("Items", "data"), Own("data/items.json"), out var consumables);
-        // Deco pieces are craftable block items too, unlocked on the tech tree's deco tab.
-        GalHack.Items.DecoCatalogue.LoadDirectory(SharedPath("Items", "data")).AddBillsTo(items);
+        // Deco pieces are block items on the tech tree's deco tab (nodes and gallery entries); the one universal deco block places any of them.
+        var decoLibrary = GalHack.Items.DecoCatalogue.LoadDirectory(SharedPath("Items", "data"));
+        decoLibrary.AddBillsTo(items);
+        decoLibrary.AddUniversalBlockTo(items);
         var catalogue = GalHack.Items.Bridge.BuildingBridge.LoadCatalogue(Proto("building", "data"),
             new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
             new[] { SharedPath("Items", "data", "building-materials.json") });
