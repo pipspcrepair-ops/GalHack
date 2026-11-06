@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Landform = Planets.Gen.Landform;
+using LandformHabitat = Planets.Gen.LandformHabitat;
 
 namespace Wildlife;
 
@@ -71,6 +73,181 @@ public sealed class FaunaGenerator
         }
         AssignActivity(fauna);
         return fauna;
+    }
+
+    // ---- Landforms ----------------------------------------------------------------------
+
+    /// <summary>
+    /// A planet's wildlife built for its landforms (LANDFORMS.md; design doc rev 423, end of
+    /// "Landforms"). Each landform of the planet's mix gets two or three species of its own,
+    /// filling the niches its ground offers, with bodies, behaviours and colours to suit:
+    /// - open ground (plains, steppe, ice and basalt plains, rocky desert): long-legged herds and
+    ///   the pack hunters that run them down, and the odd giant;
+    /// - steep ground (mountains, fjords, cliffs, mesas, canyons, karst): splay-legged climbers
+    ///   with grip, cliff gliders and ambushers on the ledges;
+    /// - sand (dune seas, badlands): burrowers, sand-swimmers and quick leapers;
+    /// - wet ground (deltas, wetlands, lake districts, river valleys, archipelagos): stilt-legged
+    ///   waders, ambushers in the shallows, and scavenging gliders;
+    /// - broken ground (hills, domes, volcanic fields): grazers, lone predators, armoured crawlers.
+    /// Landforms of the same kind share one ranging species as well. Every species knows its home
+    /// landforms. The same seed and mix always give the same species.
+    /// </summary>
+    /// <param name="landforms">The planet's landforms, dominant first (its landform mix).</param>
+    /// <param name="ground">The colour of each landform's ground on this planet, if known (from its biomes); otherwise a stock colour.</param>
+    public PlanetFauna Generate(ulong planetSeed, float alienness, bool bloom, IReadOnlyList<Landform> landforms,
+        IReadOnlyDictionary<Landform, Color> ground = null)
+    {
+        alienness = Math.Clamp(alienness, 0f, 1f);
+        var names = new NameGen(planetSeed, _t.Syllables);
+        var fauna = new PlanetFauna { Seed = planetSeed, Alienness = alienness, Bloom = bloom };
+        fauna.PlanetName = names.Make(Rng.For(planetSeed, "planet-name")) + " " + Roman(Rng.For(planetSeed, "planet-number").Int(2, 9));
+        var takenNames = new HashSet<string>();
+        var signatures = new HashSet<string>();
+        List<Landform> mix = LandformFauna.Distinct(landforms);
+
+        void Add(Species s, ulong seed, string id, Landform[] homes, LandformFauna.Niche niche, Rng srng)
+        {
+            s.Index = fauna.Species.Count;
+            s.Seed = seed;
+            s.Id = id;
+            s.Homes = homes;
+            Adapt(srng, s, niche.Adaptation, homes, ground, alienness);
+            s.Name = names.MakeUnique(srng, takenNames);
+            s.CommonName = CommonName(s);
+            if (bloom) Corrupt(Rng.For(seed, "bloom"), s);
+            s.Weirdness = Score(s, _t.Forms.Find(f => f.Id == s.Form));
+            fauna.Species.Add(s);
+        }
+
+        // Each landform's own: its first two niches always, the third often.
+        foreach (Landform l in mix)
+        {
+            var lrng = Rng.For(planetSeed, "landform-fauna", (long)l);
+            LandformFauna.Niche[] niches = LandformFauna.Niches(LandformFauna.HabitatOf(l));
+            int count = lrng.Chance(0.6f) ? 3 : 2;
+            for (int i = 0; i < count && i < niches.Length; i++)
+            {
+                ulong seed = Rng.Mix(Rng.Mix(planetSeed, (ulong)l + 1000), (ulong)i);
+                var srng = Rng.For(seed, "niche");
+                Species s = RollFor(srng, niches[i], alienness, signatures);
+                if (s == null) continue;
+                Add(s, seed, $"{planetSeed:x}-{l}-{i}", new[] { l }, niches[i], srng);
+            }
+        }
+
+        // Landforms of the same kind share a ranging species: a herd that roams plains and
+        // steppe alike, gliders over every cliff.
+        var byHabitat = new Dictionary<LandformHabitat, List<Landform>>();
+        foreach (Landform l in mix)
+        {
+            LandformHabitat h = LandformFauna.HabitatOf(l);
+            if (!byHabitat.TryGetValue(h, out var list)) byHabitat[h] = list = new List<Landform>();
+            list.Add(l);
+        }
+        foreach (var (habitat, homes) in byHabitat)
+        {
+            if (homes.Count < 2) continue;
+            ulong seed = Rng.Mix(planetSeed, 0xBA5E + (ulong)habitat);
+            var srng = Rng.For(seed, "ranging");
+            LandformFauna.Niche niche = LandformFauna.Niches(habitat)[srng.Int(0, 1)];
+            Species s = RollFor(srng, niche, alienness, signatures);
+            if (s != null) Add(s, seed, $"{planetSeed:x}-{habitat}-ranging", homes.ToArray(), niche, srng);
+        }
+
+        AssignActivity(fauna);
+        return fauna;
+    }
+
+    /// <summary>One species for a niche: a body that can do the job, built by the planet's usual rules.</summary>
+    Species RollFor(Rng rng, LandformFauna.Niche niche, float alienness, HashSet<string> signatures)
+    {
+        var options = new List<FormDef>();
+        foreach (string id in niche.Forms)
+        {
+            FormDef f = _t.Forms.Find(x => x.Id == id);
+            if (f != null && !f.Deep) options.Add(f);
+        }
+        if (options.Count == 0) return null;
+        FormDef form = rng.Weighted(options, f => (f.Behaviours.ContainsKey(niche.Behaviour.ToString()) ? 1f : 0.25f) * f.Weight * Affinity(f.Weirdness, alienness));
+        // A swarm form is a swarm whatever the niche asked for; everything else takes the niche's job.
+        Behaviour? role = form.Plan == BodyPlan.Swarm ? null : niche.Behaviour;
+        if (role == Behaviour.PackHunter && (form.Plan == BodyPlan.Giant || form.Rig is not (RigKind.Legged or RigKind.Chain or RigKind.Hopper))) role = Behaviour.Predator;
+        return Roll(rng, form, role, alienness, signatures);
+    }
+
+    /// <summary>
+    /// Builds a species for its ground: longer, lighter legs for runners, splayed thick-legged
+    /// grip for climbers, stilts and a long neck for waders, a sleek burrowing body for
+    /// sand-swimmers, plates for the armoured; and colours that fit the ground it lives on.
+    /// </summary>
+    void Adapt(Rng rng, Species s, Adaptation adaptation, Landform[] homes, IReadOnlyDictionary<Landform, Color> ground, float alienness)
+    {
+        s.Adaptation = adaptation;
+        FormDef form = _t.Forms.Find(f => f.Id == s.Form);
+        Proportions b = s.Body;
+        Stats st = s.Stats;
+        bool legged = s.Rig == RigKind.Legged && b.LegStyle != LegStyle.Roots;
+        switch (adaptation)
+        {
+            case Adaptation.Runner:
+                if (legged)
+                {
+                    b.LegLength *= 1.2f;
+                    b.Width *= 0.92f;
+                    if (b.LegStyle == LegStyle.Splayed) b.LegStyle = LegStyle.Upright;
+                }
+                st.RunSpeed *= 1.25f;
+                st.WalkSpeed *= 1.1f;
+                break;
+            case Adaptation.Climber:
+                if (legged)
+                {
+                    b.LegStyle = LegStyle.Splayed;
+                    b.LegLength *= 0.85f;
+                    b.Width *= 1.08f;
+                }
+                break;
+            case Adaptation.Wader:
+                if (legged)
+                {
+                    b.LegStyle = LegStyle.Stilt;
+                    b.LegLength *= 1.45f;
+                    if (b.NeckLength > 0f) b.NeckLength *= 1.25f;
+                }
+                break;
+            case Adaptation.SandSwimmer:
+                s.Burrows = true;
+                b.Width *= 0.85f;
+                b.Height *= 0.85f;
+                break;
+            case Adaptation.Burrower:
+                s.Burrows = true;
+                break;
+            case Adaptation.Armoured:
+                foreach (string back in new[] { "plates", "shell" })
+                {
+                    PartDef part = _t.FindPart("back", back);
+                    if (part == null || !Allowed(part, "back", form, s)) continue;
+                    s.Parts["back"] = back;
+                    break;
+                }
+                break;
+        }
+        if (form != null) FaunaQuality.Clamp(form, b);
+        if (legged)
+            b.LegThickness = b.LegStyle switch
+            {
+                LegStyle.Stilt => b.Width * (form?.Plan == BodyPlan.Giant ? 0.2f : 0.13f),
+                LegStyle.Splayed => b.Width * 0.14f,
+                _ => b.Width * 0.25f,
+            };
+
+        // Colours that fit the ground: the coat takes on its home's colour (less so on alien
+        // worlds, whose creatures are allowed to clash), the belly a paler shade of it.
+        Color g = ground != null && ground.TryGetValue(homes[0], out Color c) ? c : LandformFauna.Ground(homes[0]);
+        float k = Mathf.Lerp(0.7f, 0.4f, alienness) * rng.Range(0.85f, 1.1f);
+        s.Colors.Base = s.Colors.Base.Lerp(g, k);
+        s.Colors.Belly = s.Colors.Belly.Lerp(g.Lightened(0.3f), k * 0.6f);
     }
 
     // ---- Day and night ----------------------------------------------------------------
@@ -726,7 +903,8 @@ public sealed class FaunaGenerator
             Pattern.Veins => "veined",
             _ => s.Colors.GlowStrength > 0.4f ? "glowing" : s.Body.LegStyle == LegStyle.Stilt ? "stilt-legged" : "common",
         };
-        return $"{adjective} {noun}";
+        string adapted = LandformFauna.Adjective(s.Adaptation);
+        return adapted == "" || adjective == adapted ? $"{adjective} {noun}" : $"{adapted} {adjective} {noun}";
     }
 
     static float Wrap(float h) => h - MathF.Floor(h);

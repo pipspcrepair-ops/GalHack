@@ -35,6 +35,9 @@ public partial class Main : Node3D
     /// <summary>Screenshots: drive the camera by hand instead of from the player.</summary>
     public bool FreeCamera;
 
+    /// <summary>Ground to stand on instead of the prototype's own (a patch of a generated planet), if set before the node enters the tree.</summary>
+    public Terrain PatchTerrain;
+
     static readonly Vector3 Start = new(0f, 0f, 22f), VesselSpot = new(7f, 0f, 12f);
     const float GunCooldown = 0.2f, GunDamage = 16f, GunRange = 140f;
 
@@ -49,7 +52,7 @@ public partial class Main : Node3D
         Data = DataFiles.LoadWildlife();
         Generator = new FaunaGenerator(Data.Fauna);
 
-        Planet = new Planet { Name = "Planet" };
+        Planet = new Planet { Name = "Planet", TerrainOverride = PatchTerrain };
         AddChild(Planet);
         Planet.Build();
         Forest = new Forest { Name = "Forest" };
@@ -116,6 +119,29 @@ public partial class Main : Node3D
         float time = Sim?.Clock.Time01 ?? 0.36f;
 
         Fauna = Generator.Generate(style.FaunaSeed, style.Alienness, style.Bloom);
+        StartSim(time, style.FaunaSeed, null);
+
+        Planet.ApplyStyle(style);
+        Forest.ApplyStyle(style);
+        Grass.ApplyStyle(style);
+        Vessel.SetChipColours(style.Trees == TreeStyle.Temperate ? new Color("e3c48a") : style.Trees == TreeStyle.Alien ? new Color("ff9fd0") : new Color("ff3cac"),
+            style.Trees == TreeStyle.Bloom ? new Color("2a1426") : new Color("6b4a2e"));
+        GD.Print($"{Fauna.PlanetName} ({style.Label}): {Fauna.Species.Count} species, {Sim.Creatures.Count} creatures");
+        foreach (Species s in Fauna.Species) GD.Print($"  {s}");
+    }
+
+    /// <summary>
+    /// Wildlife built for a planet's landforms (FaunaGenerator's landform overload), spawned by
+    /// where each species' home ground is: the sim restarts with it.
+    /// </summary>
+    public void UseFauna(PlanetFauna fauna, Func<Vector3, Planets.Gen.LandformBlend> landformAt)
+    {
+        Fauna = fauna;
+        StartSim(Sim?.Clock.Time01 ?? 0.36f, fauna.Seed, landformAt);
+    }
+
+    void StartSim(float time, ulong spawnSeed, Func<Vector3, Planets.Gen.LandformBlend> landformAt)
+    {
         // Day and night: each species keeps its hours and beds down at its rest site the rest of the day.
         Sim = new WildSim(Data, Planet.Terrain, Planet.Nav) { ActivityCycles = true };
         Sim.Groves.AddRange(Forest.Groves);
@@ -127,17 +153,9 @@ public partial class Main : Node3D
         Sim.Attacked += OnAttacked;
         View.Bind(Sim, null);
         Vessel.Rebind(Sim);
-
-        Planet.ApplyStyle(style);
-        Forest.ApplyStyle(style);
-        Grass.ApplyStyle(style);
-        Vessel.SetChipColours(style.Trees == TreeStyle.Temperate ? new Color("e3c48a") : style.Trees == TreeStyle.Alien ? new Color("ff9fd0") : new Color("ff3cac"),
-            style.Trees == TreeStyle.Bloom ? new Color("2a1426") : new Color("6b4a2e"));
         // Herds on the plain ahead, giants far off, ambushers by the groves; never by the outpost.
-        Spawner = new Spawner(Sim, Fauna, Forest.Groves, style.FaunaSeed);
+        Spawner = new Spawner(Sim, Fauna, Forest.Groves, spawnSeed) { LandformAt = landformAt };
         Spawner.Populate();
-        GD.Print($"{Fauna.PlanetName} ({style.Label}): {Fauna.Species.Count} species, {Sim.Creatures.Count} creatures");
-        foreach (Species s in Fauna.Species) GD.Print($"  {s}");
     }
 
     // ---- Input ------------------------------------------------------------------------

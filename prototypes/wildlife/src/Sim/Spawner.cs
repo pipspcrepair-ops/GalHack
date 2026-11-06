@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using LandformBlend = Planets.Gen.LandformBlend;
 
 namespace Wildlife;
 
@@ -37,6 +38,16 @@ public sealed class Spawner
     /// <summary>Groups that found nowhere to go this time and wait for the next check.</summary>
     public int Deferred { get; private set; }
     public int Respawned { get; private set; }
+
+    /// <summary>
+    /// The landforms at a spot (sim frame), if the planet has them. When set, a species with home
+    /// landforms only spawns where they hold: deep in a region, only its own species; near a
+    /// border, either side's, as much as each holds there. Unset, everything spawns anywhere.
+    /// </summary>
+    public Func<Vector3, LandformBlend> LandformAt { get; set; }
+
+    /// <summary>Candidate spots turned down because they were not the species' home ground.</summary>
+    public int RejectedForLandform { get; private set; }
 
     public Spawner(WildSim sim, PlanetFauna fauna, IReadOnlyList<Vector3> groves, ulong seed)
     {
@@ -108,6 +119,11 @@ public sealed class Spawner
         {
             Vector3 at = attempt == 0 ? wanted : wanted + Ring(_rng, 10f, 20f + attempt * 12f);
             at = _sim.FreeSpot(at, _rng);
+            if (!AtHome(s, at))
+            {
+                RejectedForLandform++;
+                continue;
+            }
             if (_sim.InBaseZone(at, margin))
             {
                 RejectedForBase++;
@@ -139,9 +155,27 @@ public sealed class Spawner
         return true;
     }
 
+    /// <summary>Whether a spot is a species' home ground: always without landforms, else as much as its homes hold there.</summary>
+    bool AtHome(Species s, Vector3 at)
+    {
+        if (LandformAt == null || s.Homes.Length == 0) return true;
+        float w = s.HomeWeight(LandformAt(at));
+        return w >= 0.98f || (w > LandformFauna.MinHome && _rng.Float() < w);
+    }
+
     /// <summary>Where a species' groups belong: herds on the plain, ambushers by the groves, giants far off, hunters out in the hills.</summary>
     Vector3 Habitat(Species s, int group)
     {
+        // On a planet with landforms, somewhere in the species' home ground first.
+        if (LandformAt != null && s.Homes.Length > 0)
+        {
+            float edge = _sim.Terrain.HalfSize - 20f;
+            for (int tries = 0; tries < 60; tries++)
+            {
+                var spot = new Vector3(_rng.Range(-edge, edge), 0f, _rng.Range(-edge, edge));
+                if (s.HomeWeight(LandformAt(spot)) >= 0.6f) return spot;
+            }
+        }
         if (s.Behaviour == Behaviour.Herd && group == 0) return new Vector3(_rng.Range(-15f, 15f), 0f, _rng.Range(-30f, -15f));
         if (s.Behaviour == Behaviour.Ambusher && _groves.Count > 0) return _groves[_rng.Int(0, _groves.Count - 1)] + Ring(_rng, 14f, 24f);
         if (s.Plan == BodyPlan.Giant) return group == 0 ? new Vector3(_rng.Range(30f, 60f), 0f, _rng.Range(-110f, -80f)) : Ring(_rng, 90f, 180f);
