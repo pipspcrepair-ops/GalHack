@@ -275,7 +275,9 @@ public sealed class PlaceWalk
             foreach (int x in Step(far, 0.3f, tries == 0 ? 8f : 5f, r => ok = r)) yield return x;
             if (ok) break;
         }
-        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2}, {d.Width:F1} m wide, feet {_game.Survivor.WorldFeet}, from {near} to {far})");
+        string Across() => string.Join(" ", new[] { -0.4f, -0.2f, 0f, 0.2f, 0.4f }.Select(o => { Vector3 s = near + d.Along.Normalized() * o + Vector3.Up * 1f; var r = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(s, s + n * 2.3f)); return r.Count == 0 ? "clear" : $"{((Vector3)r["position"]).DistanceTo(s):F2}:{(r["collider"].AsGodotObject() as Node)?.Name}"; }));
+        if (!ok) Notes.Add($"blocked across the gap: {Across()}; door cells {string.Join(" ", d.Cells.Select(c => $"{c}={p.Inst.Blocks.Get(c).Type}"))}");
+        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2}, {d.Width:F1} m wide, leaves at {d.Leaves[0].GlobalPosition} and {d.Leaves[1].GlobalPosition} round {centre}, feet {_game.Survivor.WorldFeet}, from {near} to {far})");
         done(ok);
     }
 

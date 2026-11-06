@@ -224,6 +224,9 @@ public partial class PlaceTest : Node
         float stoodAt = -1f;
         game.Places.Stood += p => { if (p.Site == site) stoodAt = game.Places.DistanceTo(site, game.Survivor.WorldFeet); };
         double t0 = game.Stats.Seconds;
+        // A roaming pack on the way decides nothing about the land route or the place: held still from here (printed).
+        GD.Print("  (TEST: creatures held still on the walk over the land)");
+        game.Zone.Wildlife.Frozen = true;
         List<Vector3> way = walk.Overland(game.Survivor.WorldFeet, entrance, site);
         Check(way != null, $"a way over the land to it, picked as a player picks one by eye: {way?.Count * 4} m of 4 m steps round cave mouths, water and steep ground");
         if (way == null) { GD.Print($"  ({string.Join("; ", walk.Notes)})"); yield break; }
@@ -235,6 +238,7 @@ public partial class PlaceTest : Node
             if (game.Suit.Dead) break;
         }
         foreach (int x in Watched(drive.WalkTo(entrance, 0.8f, 30f, sprint: false, dig: false))) yield return x;
+        if (game.Suit.Dead) { Fail("the castaway died on the walk to the place"); game.QueueFree(); yield break; }
         Vector3 f = game.Survivor.WorldFeet;
         GD.Print($"  (arrived: feet {f}, the way in {entrance}, ground {game.Zone.GroundAt(f.X, f.Z).Y:F1})");
         Place place = game.Places.PlaceOf(site);
