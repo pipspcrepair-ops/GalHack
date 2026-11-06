@@ -154,6 +154,7 @@ public partial class OrbitTest : Node
     IEnumerable<int> BuildSkiff()
     {
         GD.Print("-- the Skiff, built by hand --");
+        foreach (int x in new Playthrough(_game).MakeTool()) yield return x; // you wake empty-handed: the tool is made first, for what the boarding wants of it
         // SETUP SHORTCUT (printed): the Skiff's parts and a base core handed over, the tech tree
         // opened. The real-player test makes and earns all of it; this test is about orbit.
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
@@ -166,6 +167,9 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+        // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
+        for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+            foreach (int x in _drive.LookAt(pad, 1)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
         if (skiff == null)
