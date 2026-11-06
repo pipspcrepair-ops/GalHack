@@ -61,7 +61,17 @@ public partial class Game
         Lootable loot = Zone.Loot.Pick(eye, dir, reach + 0.3f, out _);
         if (loot != null)
         {
+            if (loot == Bunker?.MineLocker.Loot)
+            {
+                Bunker.MineLocker.Swing();
+                if (Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
+            }
             Open(new OpenContainer { Title = loot.Name, Grid = loot.Grid, Loot = loot, Where = () => loot.Position });
+            return;
+        }
+        if (Bunker?.SealedAlong(eye, dir, reach + 0.3f) is Slice.Start.BunkerLocker sealedOne)
+        {
+            Say($"Locker {sealedOne.Number} is sealed: its sleeper never woke", Tones.Caution);
             return;
         }
         if (!hit)
@@ -79,9 +89,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer)
             {
-                if (v == Bunker?.Ruin && Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
-                Vector3 at = v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell));
-                Open(new OpenContainer { Title = v == Bunker?.Ruin ? "Bunker locker" : $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
+                Open(new OpenContainer { Title = $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
                 return;
             }
             if (type.IsCockpit)
@@ -107,13 +115,14 @@ public partial class Game
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
+        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"Locker {sealedOne.Number}: sealed";
         if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
         {
             BlockType type = v.Structure.TypeOf(b);
-            if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
+            if (type.IsContainer) return "E  Open storage";
             if (type.IsCockpit) return "F  Take the seat";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }

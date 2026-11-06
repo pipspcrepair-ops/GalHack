@@ -198,11 +198,11 @@ public partial class SliceTest : Node
         foreach (int x in _drive.LookAt(b.Locker, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(_game.Opened?.Vessel == b.Ruin && _game.Menu.IsOpen, "E at the bunker's locker opens it beside the bag");
+        Check(_game.Opened?.Loot == b.MineLocker.Loot && _game.Menu.IsOpen, $"E at locker {b.MineLocker.Number} opens it beside the bag; the other three stay sealed ({b.Lockers.Count(l => l.Sealed)})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         Dictionary<string, int> want = _game.Zone.Data.Rules.Materials.StartKit;
-        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && b.Ruin.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
+        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && b.MineLocker.Loot.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
             $"TAKE ALL empties the locker into the bag: {string.Join(", ", want.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}, and the rations");
         foreach (int x in _drive.ClimbOut(b)) yield return x;
         Check(_drive.OnSurface && _game.Survivor.Body.OnFloor && !_rescues.Any(r => r.Body == _game.Survivor.Body),

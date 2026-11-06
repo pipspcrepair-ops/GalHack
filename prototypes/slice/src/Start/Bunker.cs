@@ -22,11 +22,13 @@ namespace Slice.Start;
 /// slept through the collapse, a century or two ago, sealed in ever since. Theirs is the only pod
 /// that worked; the other sleepers died in theirs.
 /// A stairwell, its top end fallen open to the sky, climbs from the chamber's door to the
-/// surface. The chamber is a ruin: its locker holds the starting kit, but it is too small and
+/// surface. The chamber is a ruin: each pod has its numbered locker on the side walls (the working
+/// pod's holds the starting kit; the others stay sealed until their sleepers wake, which on a co-op
+/// world a joining player's will), but it is too small and
 /// broken to live in as it is, but it is built of ordinary blocks: build onto it, make it part of
 /// your first base, or take it apart for materials (each block refunds its bill).
 ///
-/// It is a fixed small-grid structure (the slice's own blocks: steel walls, a locker, lights)
+/// It is a fixed small-grid structure (the slice's own blocks: steel walls, lights)
 /// set into rooms dug out of the terrain through the terrain's edit API before any ground
 /// streams in, so the floor, walls and stairs are always solid and the ground around them is
 /// whole. The site is searched near the generator's landing site on any seed: dry, above the
@@ -59,9 +61,9 @@ public sealed class Bunker
     /// <summary>Just outside the pod, in the room.</summary>
     public Vector3 CryoFront => At(new Vector3(PodX, 0.25f, 0.6f));
     public Vector3 RoomCentre => At(new Vector3(0f, 0.25f, 0f));
-    /// <summary>The locker (a container block on the room's port wall) and where to stand to open it.</summary>
-    public Vector3 Locker => At(new Vector3(-(RoomX - 1) * Cell, 1 * Cell, 0f));
-    public Vector3 LockerFront => At(new Vector3(-(RoomX - 3) * Cell, 0.25f, 0f));
+    /// <summary>The working pod's locker (the middle of its door) and where to stand to open it.</summary>
+    public Vector3 Locker => At(MineLocker.Front);
+    public Vector3 LockerFront => At(MineLocker.Stand);
     public Vector3 Door => At(new Vector3(0f, 0.25f, -RoomZ * Cell));
     /// <summary>The top step, and the ground a few metres beyond it (outside).</summary>
     public Vector3 StairTop => At(new Vector3(0f, 0.25f + Steps * Cell, StepZ(Steps) - 0.25f));
@@ -100,6 +102,27 @@ public sealed class Bunker
     public PlanetSurface.Poi.PoiSite Poi { get; private set; }
     public Vector3? Landmark { get; private set; }
     public CryoPod Mine { get; private set; }
+
+    /// <summary>The four pods by slot, and their lockers by the same slot (a joining player's pod and locker come alive together).</summary>
+    public readonly List<CryoPod> Pods = new();
+    public readonly List<BunkerLocker> Lockers = new();
+
+    /// <summary>The working pod's locker: unsealed, the starting kit in it.</summary>
+    public BunkerLocker MineLocker { get; private set; }
+
+    /// <summary>A sealed locker along a look (bunker-world points), within reach.</summary>
+    public BunkerLocker SealedAlong(Vector3 eye, Vector3 dir, float reach)
+    {
+        foreach (BunkerLocker l in Lockers)
+        {
+            if (!l.Sealed) continue;
+            Vector3 c = At(l.Front);
+            float along = (c - eye).Dot(dir);
+            if (along < 0f || along > reach || (eye + dir * along - c).Length() > 0.75f) continue;
+            return l;
+        }
+        return null;
+    }
     public readonly List<CryoPod> Dead = new();
 
     const float PodX = 0.75f;
@@ -390,7 +413,7 @@ public sealed class Bunker
         b.AppendLine("paint floor base=33415c grime=3");
         b.AppendLine("paint band base=0a9396 accent=1b263b pattern=stripes grime=3");
         b.AppendLine("paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=3");
-        b.AppendLine("paint locker base=e85d04 grime=2");
+
         // Floor, with the dead power core at its centre.
         b.AppendLine($"block -{RoomX}..-1 0 -{RoomZ}..{RoomZ} steel paint=floor");
         b.AppendLine($"block 1..{RoomX} 0 -{RoomZ}..{RoomZ} steel paint=floor");
@@ -405,8 +428,7 @@ public sealed class Bunker
         b.AppendLine($"block {StairHalf}..{RoomX} 1..{RoomTop - 1} -{RoomZ} steel paint=wall");
         b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} 6 -{RoomZ} steel paint=hazard");
         b.AppendLine($"block -{RoomX}..{RoomX} {RoomTop} -{RoomZ}..{RoomZ} steel paint=wall");
-        // The locker on the port wall.
-        b.AppendLine($"block -{RoomX - 1} 1 0 container paint=locker");
+
         // The stairwell: a landing at the door, then a step up each metre. Under the open sky its
         // roof has fallen in; below ground it is roofed over.
         for (int k = 0; k <= steps; k++)
@@ -529,15 +551,36 @@ public sealed class Bunker
     void Furnish(SurfaceZone zone)
     {
         Node3D at = Ruin.Node;
-        // Four pods along the back wall; the castaway's is the second from starboard.
-        foreach (float x in new[] { -2.25f, -0.75f, PodX, 2.25f })
+        // Four pods along the back wall, numbered 1 to 4 from port; the castaway's is the third.
+        float[] pods = { -2.25f, -0.75f, PodX, 2.25f };
+        for (int slot = 0; slot < pods.Length; slot++)
         {
-            var pod = new CryoPod { Name = x == PodX ? "YourCryopod" : "Cryopod", Alive = x == PodX };
+            var pod = new CryoPod { Name = pods[slot] == PodX ? "YourCryopod" : "Cryopod", Alive = pods[slot] == PodX, Slot = slot };
             at.AddChild(pod);
-            pod.Position = new Vector3(x, 0.25f, 1.8f);
+            pod.Position = new Vector3(pods[slot], 0.25f, 1.8f);
+            Pods.Add(pod);
             if (pod.Alive) Mine = pod;
             else Dead.Add(pod);
         }
+        // Their lockers flank the room, two against each side wall; each is tied to its pod by slot.
+        for (int slot = 0; slot < pods.Length; slot++)
+        {
+            bool port = slot < 2;
+            var locker = new BunkerLocker { Name = $"Locker {slot + 1}", Slot = slot, Port = port };
+            at.AddChild(locker);
+            float side = port ? -1f : 1f, z = slot % 2 == 0 ? -0.75f : 0.25f;
+            float wall = RoomX * Cell - 0.25f; // the inner face of the side wall
+            locker.Position = new Vector3(side * (wall - BunkerLocker.Depth / 2f - 0.01f), 0.25f + 0.01f, z);
+            locker.RotationDegrees = new Vector3(0f, port ? -90f : 90f, 0f);
+            float front = wall - BunkerLocker.Depth - 0.04f;
+            locker.Front = new Vector3(side * front, 0.25f + 1f, z);
+            locker.Stand = new Vector3(side * (front - 1f), 0.25f, z);
+            Lockers.Add(locker);
+        }
+        MineLocker = Lockers[Mine.Slot];
+        // The working pod's locker answers; the others stay sealed until their sleepers wake.
+        int[] size = zone.Data.Rules.Containers.Corpse;
+        MineLocker.Unseal(zone.Loot.Create(Slice.Items.LootKind.Cache, $"Locker {MineLocker.Slot + 1}", At(MineLocker.Front) + Vector3.Down * 0.25f, Math.Max(4, size[0]), Math.Max(3, size[1])));
         // Long sealed: dust lying on the floor in drifts, and motes hanging in the lamplight.
         var dustNoise = new NoiseTexture2D { Width = 256, Height = 256, Seamless = true, Noise = new FastNoiseLite { Frequency = 0.02f, Seed = 11 } };
         var dust = new StandardMaterial3D
@@ -546,7 +589,7 @@ public sealed class Bunker
             Roughness = 1f, Uv1Scale = new Vector3(2f, 2f, 1f),
         };
         foreach (var (x, z, w, d) in new[] { (-1.6f, -0.6f, 3.2f, 2.2f), (1.9f, 0.6f, 2.2f, 1.6f), (0f, -2.0f, 1.6f, 0.6f), (-2.6f, 1.6f, 1.4f, 1.0f) })
-            at.AddChild(new MeshInstance3D { Name = "Dust", Mesh = new PlaneMesh { Size = new Vector2(w, d) }, Position = new Vector3(x, 0.255f, z), MaterialOverride = dust, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            at.AddChild(new MeshInstance3D { Name = "Dust", Mesh = new PlaneMesh { Size = new Vector2(w, d) }, Position = new Vector3(x, 0.268f, z), MaterialOverride = dust, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         at.AddChild(new CpuParticles3D
         {
             Name = "Motes", Position = new Vector3(0f, 1.6f, 0f), Amount = 60, Lifetime = 12f, Preprocess = 12f,
@@ -606,6 +649,9 @@ sealed class RampField : IStuckField
 public partial class CryoPod : Node3D
 {
     public bool Alive;
+
+    /// <summary>Its place in the row (0 to 3): the number on its glass less one, and its locker's slot.</summary>
+    public int Slot;
     public bool Open { get; private set; }
     Node3D _lid;
     CollisionShape3D _lidCollider;
@@ -621,11 +667,13 @@ public partial class CryoPod : Node3D
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha, Roughness = Alive ? 0.05f : 0.8f,
         };
         // Back, sides, roof and base (the pod's local z: +z against the wall, -z the glass front).
-        AddChild(Box(new Vector3(0.95f, 2.2f, 0.06f), new Vector3(0f, 1.1f, 0.42f), shell));
-        AddChild(Box(new Vector3(0.06f, 2.2f, 0.9f), new Vector3(-0.47f, 1.1f, 0f), shell));
-        AddChild(Box(new Vector3(0.06f, 2.2f, 0.9f), new Vector3(0.47f, 1.1f, 0f), shell));
-        AddChild(Box(new Vector3(0.95f, 0.12f, 0.9f), new Vector3(0f, 2.2f, 0f), dark));
-        AddChild(Box(new Vector3(0.95f, 0.06f, 0.9f), new Vector3(0f, 0.03f, 0f), dark));
+        // Every part stands clear of its neighbours' faces: the roof and base lip out past the
+        // sides, the back sits between them, nothing shares a plane with the floor or the glass.
+        AddChild(Box(new Vector3(0.86f, 2.1f, 0.06f), new Vector3(0f, 1.1f, 0.41f), shell));
+        AddChild(Box(new Vector3(0.06f, 2.16f, 0.9f), new Vector3(-0.47f, 1.1f, 0f), shell));
+        AddChild(Box(new Vector3(0.06f, 2.16f, 0.9f), new Vector3(0.47f, 1.1f, 0f), shell));
+        AddChild(Box(new Vector3(1.04f, 0.12f, 0.98f), new Vector3(0f, 2.2f, 0f), dark));
+        AddChild(Box(new Vector3(1.04f, 0.05f, 0.98f), new Vector3(0f, 0.04f, 0f), dark));
         var body = new StaticBody3D { Name = "Shell", CollisionLayer = Layers.Props, CollisionMask = 0 };
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(0.06f, 2.2f, 0.9f) }, Position = new Vector3(-0.47f, 1.1f, 0f) });
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(0.06f, 2.2f, 0.9f) }, Position = new Vector3(0.47f, 1.1f, 0f) });
@@ -635,17 +683,24 @@ public partial class CryoPod : Node3D
         AddChild(body);
         // The lid hinges on the port side.
         _lid = new Node3D { Name = "Lid", Position = new Vector3(-0.45f, 0f, -0.45f) };
-        _lid.AddChild(Box(new Vector3(0.9f, 2.1f, 0.04f), new Vector3(0.45f, 1.1f, 0f), glass));
+        _lid.AddChild(Box(new Vector3(0.86f, 2.04f, 0.03f), new Vector3(0.45f, 1.1f, 0f), glass));
+        // Its number, stencilled on the glass and standing just off it.
+        _lid.AddChild(new Label3D
+        {
+            Name = "Number", Text = (Slot + 1).ToString(), Font = DiegeticUi.Theme.UiTheme.Display, FontSize = 96, OutlineSize = 0, PixelSize = 0.0022f,
+            Position = new Vector3(0.45f, 1.72f, -0.024f), RotationDegrees = new Vector3(0f, 180f, 0f),
+            Modulate = Alive ? new Color("cfefff") : new Color(0.25f, 0.28f, 0.32f), Shaded = false, DoubleSided = false,
+        });
         AddChild(_lid);
         if (Alive)
         {
             AddChild(new OmniLight3D { Name = "Glow", Position = new Vector3(0f, 1.9f, -0.1f), LightColor = new Color(0.45f, 0.8f, 1f), LightEnergy = 1.4f, OmniRange = 3.5f });
-            AddChild(Box(new Vector3(0.5f, 0.06f, 0.02f), new Vector3(0f, 2.05f, -0.46f), new StandardMaterial3D { AlbedoColor = new Color("48cae4"), EmissionEnabled = true, Emission = new Color("48cae4"), EmissionEnergyMultiplier = 2f }));
+            AddChild(Box(new Vector3(0.5f, 0.05f, 0.016f), new Vector3(0f, 2.2f, -0.5f), new StandardMaterial3D { AlbedoColor = new Color("48cae4"), EmissionEnabled = true, Emission = new Color("48cae4"), EmissionEnergyMultiplier = 2f }));
         }
         else
         {
             // A failed pod: its status lamp dead red, its glass furred with dust and frost.
-            AddChild(Box(new Vector3(0.5f, 0.06f, 0.02f), new Vector3(0f, 2.05f, -0.46f), new StandardMaterial3D { AlbedoColor = new Color("6a040f"), EmissionEnabled = true, Emission = new Color("9d0208"), EmissionEnergyMultiplier = 0.4f }));
+            AddChild(Box(new Vector3(0.5f, 0.05f, 0.016f), new Vector3(0f, 2.2f, -0.5f), new StandardMaterial3D { AlbedoColor = new Color("6a040f"), EmissionEnabled = true, Emission = new Color("9d0208"), EmissionEnergyMultiplier = 0.4f }));
             // Its sleeper, slumped against the back (the castaway's own figure, in grey).
             Node3D sleeper = Slice.Player.CharacterModel.Build();
             sleeper.Name = "Sleeper";
@@ -685,4 +740,82 @@ public partial class CryoPod : Node3D
         }
         foreach (Node c in n.GetChildren()) Grey(c);
     }
+}
+
+/// <summary>
+/// A pod's locker: a tall, narrow steel locker on the chamber's side wall, its door with vents
+/// near the top and a handle, its number stencilled on the door and a small lamp saying whether
+/// it is sealed (red) or open to you (green). It is tied to its pod by <see cref="Slot"/>: a
+/// locker stays sealed until its sleeper wakes, so on a co-op world a joining player's pod and
+/// locker come alive together. Local -z faces the room; every part stands clear of the next.
+/// </summary>
+public partial class BunkerLocker : Node3D
+{
+    public const float Width = 0.5f, Height = 1.9f, Depth = 0.42f;
+
+    public int Slot;
+    public bool Port;
+    /// <summary>Where its door's middle is (chamber local), and where to stand to open it.</summary>
+    public Vector3 Front, Stand;
+
+    public bool Sealed => Loot == null;
+    public Slice.Items.Lootable Loot { get; private set; }
+    public int Number => Slot + 1;
+
+    Node3D _hinge;
+    MeshInstance3D _lamp;
+    float _swing, _target;
+
+    static StandardMaterial3D Lamp(Color c) => new() { AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 1.8f };
+
+    public override void _Ready()
+    {
+        var steel = new StandardMaterial3D { AlbedoColor = new Color("5f666d"), Roughness = 0.55f, Metallic = 0.6f };
+        var door = new StandardMaterial3D { AlbedoColor = new Color("737b83"), Roughness = 0.5f, Metallic = 0.55f };
+        var dark = new StandardMaterial3D { AlbedoColor = new Color("15181c"), Roughness = 0.8f };
+        AddChild(Box(new Vector3(Width, Height, Depth), new Vector3(0f, Height / 2f, 0f), steel));
+        const float doorW = Width - 0.04f, doorH = Height - 0.06f, doorT = 0.02f;
+        float face = -Depth / 2f - 0.004f - doorT; // the door's front, 4 mm of shadow gap off the body
+        _hinge = new Node3D { Name = "Door", Position = new Vector3(-doorW / 2f, 0f, -Depth / 2f - 0.004f) };
+        AddChild(_hinge);
+        void OnDoor(MeshInstance3D part) => _hinge.AddChild(part);
+        OnDoor(Box(new Vector3(doorW, doorH, doorT), new Vector3(doorW / 2f, Height / 2f, -doorT / 2f), door));
+        // Vents near the top: dark slats standing a few millimetres proud of the door.
+        for (int i = 0; i < 5; i++)
+            OnDoor(Box(new Vector3(doorW * 0.56f, 0.012f, 0.006f), new Vector3(doorW / 2f, Height - 0.2f - i * 0.032f, -doorT - 0.005f), dark));
+        // The handle, and the small lamp above it.
+        OnDoor(Box(new Vector3(0.03f, 0.16f, 0.03f), new Vector3(doorW - 0.07f, Height * 0.5f, -doorT - 0.016f), dark));
+        _lamp = Box(new Vector3(0.05f, 0.025f, 0.008f), new Vector3(doorW - 0.07f, Height * 0.5f + 0.13f, -doorT - 0.006f), Lamp(Sealed ? new Color("c1121f") : new Color("38b000")));
+        OnDoor(_lamp);
+        // Its number, stencilled on the door, standing just off it.
+        _hinge.AddChild(new Label3D
+        {
+            Name = "Number", Text = Number.ToString(), Font = DiegeticUi.Theme.UiTheme.Display, FontSize = 96, OutlineSize = 0, PixelSize = 0.002f,
+            Position = new Vector3(doorW / 2f, Height * 0.72f, -doorT - 0.006f), RotationDegrees = new Vector3(0f, 180f, 0f),
+            Modulate = new Color(0.9f, 0.88f, 0.8f), Shaded = true, DoubleSided = false,
+        });
+        var body = new StaticBody3D { Name = "Body", CollisionLayer = Layers.Props, CollisionMask = 0 };
+        body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(Width, Height, Depth + 0.06f) }, Position = new Vector3(0f, Height / 2f, -0.03f) });
+        AddChild(body);
+    }
+
+    /// <summary>Its sleeper woke: the locker answers now, holding this container.</summary>
+    public void Unseal(Slice.Items.Lootable loot)
+    {
+        Loot = loot;
+        if (_lamp != null) _lamp.MaterialOverride = Lamp(new Color("38b000"));
+    }
+
+    /// <summary>The door swings open (it stays open once it has been).</summary>
+    public void Swing() => _target = 1f;
+
+    public override void _Process(double delta)
+    {
+        if (_swing >= _target) return;
+        _swing = MathF.Min(_target, _swing + (float)delta * 1.6f);
+        _hinge.Rotation = new Vector3(0f, -1.7f * (1f - MathF.Pow(1f - _swing, 3f)), 0f);
+    }
+
+    static MeshInstance3D Box(Vector3 size, Vector3 at, Material m) =>
+        new() { Mesh = new BoxMesh { Size = size }, Position = at, MaterialOverride = m };
 }

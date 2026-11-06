@@ -41,7 +41,8 @@ public partial class Game
     {
         if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World} ({Zone.Planet.Pois.Count} places on the planet: {string.Join(", ", System.Linq.Enumerable.Select(Zone.Planet.Pois, q => $"{q.Name} {q.Instance?.State} {new Vector2(q.Origin.X - Zone.LandingSite.X, q.Origin.Z - Zone.LandingSite.Z).Length():F0} m off, {q.Siting}"))})");
         Bunker = Bunker.Dig(Zone, site);
-        foreach (var (id, n) in Zone.Data.Rules.Materials.StartKit) Bunker.Ruin.Storage.Add(id, n);
+        foreach (var (id, n) in Zone.Data.Rules.Materials.StartKit) Bunker.MineLocker.Loot.Storage.Add(id, n);
+        Bunker.MineLocker.Loot.Grid.Reconcile();
 
         N.Vector3 stand = Bunker.CryoStand.ToNumerics();
         Survivor = Survivor.Spawn(Zone, stand);
@@ -66,7 +67,7 @@ public partial class Game
         if (Survivor == null || !Zone.Streamer.ReadyAround(Survivor.WorldFeet, 1, needCollision: true)) return;
         Phase = Phase.Playing;
         Say(Bunker.Mine.Open
-            ? "Out of the cryopod. The locker (E) has the kit. The stairs lead up."
+            ? $"Out of the cryopod. Locker {Bunker.MineLocker.Number} (E) has the kit. The stairs lead up."
             : "CRYO CYCLE COMPLETE. F: open the pod.", Tones.Good);
         Woke?.Invoke();
     }
@@ -78,7 +79,7 @@ public partial class Game
         if (Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) > 1.5f) return false;
         pod.OpenLid();
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Bunker.CryoStand + Vector3.Up * 1.5f, 0.6f, -10f);
-        Say("You are the only one who woke. Tab: inventory and crafting. The locker (E) has supplies; the stairs lead up.", Tones.Good);
+        Say($"You are the only one who woke. Tab: inventory and crafting. Locker {Bunker.MineLocker.Number} (E) has supplies; the stairs lead up.", Tones.Good);
         return true;
     }
 

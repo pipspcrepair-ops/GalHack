@@ -107,10 +107,10 @@ public sealed class Playthrough
         foreach (int x in Drive.LookAt(b.Locker, 8)) yield return x;
         foreach (int x in Drive.Tap(Key.E)) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
-        check(Game.Opened?.Vessel == b.Ruin && Game.Menu.IsOpen && Game.Menu.Tab == MenuTab.You, $"{label}E on the locker opens it beside the bag");
+        check(Game.Opened?.Loot == b.MineLocker.Loot && Game.Menu.IsOpen && Game.Menu.Tab == MenuTab.You, $"{label}E on locker {b.MineLocker.Number} on the side wall opens it beside the bag");
         foreach (int x in Drive.ClickWidget("box:take-all")) yield return x;
         var kit = Game.Zone.Data.Rules.Materials.StartKit;
-        check(b.Ruin.Storage.IsEmpty && kit.All(kv => Pack[kv.Key] >= kv.Value),
+        check(b.MineLocker.Loot.Storage.IsEmpty && kit.All(kv => Pack[kv.Key] >= kv.Value),
             $"{label}TAKE ALL moves the kit into the bag: {string.Join(", ", kit.Select(kv => $"{Pack[kv.Key]} {kv.Key}"))}");
         foreach (int x in CloseMenu()) yield return x;
 
