@@ -184,14 +184,14 @@ public partial class PlayerTest : Node
         {
             int want = raw[ore] + 6;
             if (want <= 6) continue;
-            int cells = _game.Tool.OreCells, before = _game.Pack[ore];
+            int cells = _game.Tool.OreCells, before = _game.Pack[ore], rock = _game.Tool.TellOre;
             foreach (int x in _play.Gather(kind, want)) yield return x;
             GD.Print($"  {ore}: {_game.Pack[ore]}/{want} ({_game.Tool.OreCells - cells} cells), level {_game.Progress.Level}, {_game.Progress.Xp} XP");
             if (firstCells < 0)
             {
                 firstCells = _game.Tool.OreCells - cells;
-                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell && firstCells > 0,
-                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells, +{_game.Pack[ore] - before}");
+                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell + _game.Tool.TellOre - rock && firstCells > 0,
+                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
             }
         }
         var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();
