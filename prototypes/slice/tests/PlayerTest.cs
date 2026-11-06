@@ -190,8 +190,10 @@ public partial class PlayerTest : Node
             if (firstCells < 0)
             {
                 firstCells = _game.Tool.OreCells - cells;
-                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell + _game.Tool.TellOre - rock && firstCells > 0,
-                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
+                // Gathering chips, so ore trickles in as the beam wears cells: every cell taken has paid its whole yield, and the
+                // cells only partly worn pay a share on top.
+                Check(_game.Pack[ore] - before >= firstCells * _game.Zone.Data.Rules.Materials.OrePerCell + _game.Tool.TellOre - rock && firstCells > 0,
+                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell, trickling in as it chips: {firstCells} cells taken and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
             }
         }
         var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();

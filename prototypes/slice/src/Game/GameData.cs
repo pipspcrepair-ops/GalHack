@@ -173,6 +173,39 @@ public sealed class SliceRules
         public float ShotDamage { get; set; } = 18f;
         public float ShotInterval { get; set; } = 0.22f;
         public float ShotRange { get; set; } = 120f;
+
+        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the survival tool), against each thing's durability.</summary>
+        public float GatherRate { get; set; } = 3f;
+        public DurabilityRules Durability { get; set; } = new();
+        /// <summary>Each hand tool by item id: the faster drills the tech tree unlocks.</summary>
+        public Dictionary<string, ToolTier> Tiers { get; set; } = new();
+
+        public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
+    }
+
+    /// <summary>How much a hand tool does: its gather rate as a multiple of the survival tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
+    public sealed class ToolTier
+    {
+        public string Name { get; set; } = "Survival tool";
+        public float Rate { get; set; } = 1f;
+        public float Radius { get; set; } = 1.42f;
+        public float Shot { get; set; } = 1f;
+    }
+
+    /// <summary>How much work each thing takes before it is gone (damage units; a pulse does rate x interval of them).</summary>
+    public sealed class DurabilityRules
+    {
+        public float Soil { get; set; } = 1f;
+        public float Rock { get; set; } = 2f;
+        public float DeepRock { get; set; } = 3f;
+        public float Ore { get; set; } = 3f;
+        /// <summary>A plant, a tree and a boulder, at scale 1 (they grow with the plant's size).</summary>
+        public float Plant { get; set; } = 1.5f;
+        public float Tree { get; set; } = 9f;
+        public float Boulder { get; set; } = 5f;
+        /// <summary>A tree gives this many times a plant's materials.</summary>
+        public float TreeYield { get; set; } = 3f;
+        public float BoulderStone { get; set; } = 6f;
     }
 
     public sealed class BuildRules

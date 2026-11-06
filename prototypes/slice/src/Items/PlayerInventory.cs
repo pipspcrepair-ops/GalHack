@@ -6,7 +6,7 @@ using GalHack.Items;
 namespace Slice.Items;
 
 /// <summary>What the selected toolbar slot puts in your hands.</summary>
-public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Other }
+public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Other }
 
 /// <summary>Which toolbar the number keys use: your own, or the remote one (items left in cores' storage).</summary>
 public enum BarSource { Personal, Remote }
@@ -48,6 +48,9 @@ public sealed class PlayerInventory
     public const string BlueprintBlock = "@blueprint";
 
     /// <summary>Items that found a new structure when set down.</summary>
+    /// <summary>The hand tools, plainest first: each is the survival tool's gather, shoot and deconstruct, faster.</summary>
+    public static readonly string[] ToolItems = { "survival-tool", "mining-drill", "plasma-drill" };
+
     public static readonly string[] CoreItems = { "base-core", "vessel-core", "hover-core", "capital-core" };
 
     public readonly SharedStorage Storage;
@@ -227,7 +230,8 @@ public sealed class PlayerInventory
             if (s.Block == BlueprintBlock) return HandKind.Blueprint;
             string id = HandItem;
             if (id == null || !_items.TryGet(id, out ItemDef item)) return HandKind.Empty;
-            if (id == "survival-tool") return HandKind.Tool;
+            if (ToolItems.Contains(id)) return HandKind.Tool;
+            if (id == "hover-bike") return HandKind.Vehicle;
             if (CoreItems.Contains(id)) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
             if (_items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;

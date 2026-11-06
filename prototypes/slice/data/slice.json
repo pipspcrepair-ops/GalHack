@@ -52,7 +52,20 @@
     "cutReach": 4,
     "shotDamage": 18,
     "shotInterval": 0.22,
-    "shotRange": 120
+    "shotRange": 120,
+    // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
+    // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
+    // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
+    // store has no partial density), so it sinks in cell-sized stages, the beam's ball of cells
+    // wearing down from the centre out.
+    "gatherRate": 3,
+    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 3, "boulderStone": 6 },
+    // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
+    "tiers": {
+      "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
+      "mining-drill":  { "name": "Mining drill",  "rate": 2.5, "radius": 1.6, "shot": 1.4 },
+      "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
+    }
   },
 
   "build": {

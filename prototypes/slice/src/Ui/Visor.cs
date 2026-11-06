@@ -380,6 +380,7 @@ public partial class Visor : CanvasLayer
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
+            HandKind.Vehicle => "click to set it down",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
@@ -418,12 +419,15 @@ public partial class Visor : CanvasLayer
         switch (hand)
         {
             case HandKind.Tool:
+                string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
                 return Game.Tool.Mode switch
                 {
-                    ToolMode.Shoot => "SURVIVAL TOOL · SHOOT",
-                    ToolMode.Deconstruct => "SURVIVAL TOOL · DECONSTRUCT",
-                    _ => "SURVIVAL TOOL · GATHER",
+                    ToolMode.Shoot => $"{toolName} · SHOOT",
+                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
+                    _ => $"{toolName} · GATHER",
                 };
+            case HandKind.Vehicle:
+                return "HOVER BIKE · click to set it down";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
