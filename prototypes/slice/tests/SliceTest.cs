@@ -346,9 +346,11 @@ public partial class SliceTest : Node
             tried.Add(plant);
             (p, id) = (root, plant);
             foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) > reach)
+            // In reach, and not up a bank over the castaway's head, where the tool can't be aimed at it.
+            bool InReach() => _game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach && p.Y < _game.Survivor.WorldEye().Y;
+            if (!InReach())
                 foreach (int x in _drive.WalkTo(p, 0.9f, 15f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach) break;
+            if (InReach()) break;
         }
         if (id == 0)
         {
@@ -537,6 +539,7 @@ public partial class SliceTest : Node
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
         double healthBefore = _game.Suit.Vitals.Health;
+        float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
         Vector3 target = FlatSpot(start, 2150f, 0.8f);
         int lifts = _liftedOff, lands = _landed;
@@ -595,8 +598,10 @@ public partial class SliceTest : Node
             // Creep on toward the flat spot while coming down.
             float ground = new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length();
             _game.Controls.Hold(Key.W, flat > 12f && ground < 6f && agl > 4f);
-            _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, vy < wanted - 0.5f);
+            // Feet down: let go, and it settles. Pushing on would only skid it along a slope.
+            bool down = v.Controller.Gear.Contact;
+            _game.Controls.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
+            _game.Controls.Hold(Key.Space, !down && vy < wanted - 0.5f);
             yield return 0;
         }
         _game.Controls.ReleaseAll();
@@ -606,7 +611,7 @@ public partial class SliceTest : Node
         float flown = new Vector2(end.X - start.X, end.Z - start.Z).Length();
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
-        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == 0f && worst < 8f,
+        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,
             $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
         Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
