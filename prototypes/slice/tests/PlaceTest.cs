@@ -64,6 +64,10 @@ public partial class PlaceTest : Node
 
     void Fail(string what) => Check(false, what);
 
+    static string WorstViews(Game.Game game) => game.Zone.Wildlife.Sites.OrderByDescending(s => s.WorstViewMs).FirstOrDefault()?.WorstViewNote ?? "no creatures";
+
+    static string WorstPause(Game.Game game) => game.Zone.Wildlife.Sites.OrderByDescending(s => s.WorstPauseMs).Select(s => $"{s.WorstPauseMs:F1} ms, {s.WorstPauseNote}").FirstOrDefault() ?? "none";
+
     IEnumerable<int> Scenario()
     {
         string[] args = OS.GetCmdlineUserArgs();
@@ -431,7 +435,8 @@ public partial class PlaceTest : Node
         Check(rescues == 0 && worst < 1.5f, $"no teleports all the visit (largest move in a tick {worst:F2} m), never rescued");
 
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
-        Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame");
+        Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame ({WorstViews(game)})");
+        GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  (build log: {string.Join("; ", game.Places.BuildLog.Select(l => $"{l.Name} {l.Seconds:F2} s, {l.Chunks} chunks"))}; slow steps: {string.Join(", ", game.Places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (GC)" : "")}"))})");
         GD.Print($"  (shot down {_shotDown} creatures that came for you, {_healed} patch kits used)");
         GD.Print($"  (walk notes: {string.Join("; ", walk.Notes)}; worst move {worst:F2} m, rescues {rescues}; tells {game.Zone.Wildlife.Sites.Sum(s => s.TellsShown)})");
@@ -886,7 +891,8 @@ public partial class PlaceTest : Node
         Check(places.WorstFrameMs < places.BudgetMs + 12.0, $"built over frames: {log.Chunks} chunks; worst frame {places.WorstFrameMs:F1} ms of building, worst single step {places.WorstStepMs:F1} ms (by stage {string.Join(", ", places.StageWorst.Select(kv => $"{kv.Key}: {kv.Value:F1}"))}) (budget {places.BudgetMs} ms a frame)");
         for (int i = 0; i < 240; i++) yield return 0; // the creatures and lairs go in over these frames
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
-        Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame");
+        Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame ({WorstViews(game)})");
+        GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  slow steps: {string.Join("; ", places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (a garbage collection)" : "")}"))}");
         bool farHidden = far.GetChildren().OfType<MeshInstance3D>().Where(m => m.Name.ToString().StartsWith("Chunk")).All(m => !m.Visible) && farBody.ProcessMode == ProcessModeEnum.Disabled;
         Check(farHidden, "the far drawing's blocks give way to it in the same frame (hidden, its collision off); its lamps and smoke stay");

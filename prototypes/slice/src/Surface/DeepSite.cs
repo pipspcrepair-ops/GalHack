@@ -28,8 +28,20 @@ public partial class DeepSite : Node3D
     public int TellsShown { get; private set; }
     public event Action<TellEvent> Told;
 
-    /// <summary>The most time one frame spent putting views in, ms (tests).</summary>
+    /// <summary>
+    /// The most time one frame spent putting views in, ms (tests). A collector pause that lands in the
+    /// frame is left out and named apart (<see cref="WorstPauseMs"/>), as the terrain streamer's timing
+    /// does: a gen1 collection stops the whole game for up to about 100 ms wherever it lands, whatever
+    /// this code does, and views are where it lands most often because they allocate.
+    /// </summary>
     public double WorstViewMs { get; private set; }
+
+    /// <summary>What that worst frame was made of (tests): lair marks, views built, the walk over the creatures, collector pauses.</summary>
+    public string WorstViewNote { get; private set; } = "";
+
+    /// <summary>The longest the collector stopped the game between two frames while this site stood, ms, and what kind of collection it was (tests).</summary>
+    public double WorstPauseMs { get; private set; }
+    public string WorstPauseNote { get; private set; } = "";
 
     public float FarDistance = 120f, NearDistance = 40f;
     const double BudgetMs = 1.2;
@@ -41,6 +53,9 @@ public partial class DeepSite : Node3D
     int _sightFrame;
     Node3D _creatures, _lairs;
     int _lairNext;
+    TimeSpan _pausedAtLastFrame;
+    int _built;
+    double _buildMs;
 
     public static DeepSite Create(WildlifePatch patch, WildSim sim, string name)
     {
@@ -116,12 +131,30 @@ public partial class DeepSite : Node3D
     public override void _Process(double delta)
     {
         var clock = Stopwatch.StartNew();
+        TimeSpan paused = GC.GetTotalPauseDuration();
+        double pause = (paused - _pausedAtLastFrame).TotalMilliseconds;
+        if (_pausedAtLastFrame != default && pause > WorstPauseMs)
+        {
+            WorstPauseMs = pause;
+            GCMemoryInfo gc = GC.GetGCMemoryInfo(GCKind.Any);
+            WorstPauseNote = $"gen{gc.Generation} {(gc.Concurrent ? "background" : "blocking")}{(gc.Compacted ? ", compacted" : "")}, {gc.PromotedBytes / 1e6:F0} MB promoted, heap {gc.HeapSizeBytes / 1e6:F0} MB";
+        }
         // The lair marks (cracks, moss and scraps, nests), a handful at a time: wildlife's own
         // lair view, each drawing a share of them (they keep scaling with the nests and food).
         int lairs = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
+        int lairsBefore = _lairNext;
         while (_lairNext < lairs && clock.Elapsed.TotalMilliseconds < BudgetMs) BuildLairs(2);
+        double lairMs = clock.Elapsed.TotalMilliseconds;
+        _built = 0;
+        _buildMs = 0;
         if (Patch.Zone.Camera != null) SyncViews(Local(Patch.Zone.Camera.GlobalPosition), clock);
-        WorstViewMs = Math.Max(WorstViewMs, clock.Elapsed.TotalMilliseconds);
+        _pausedAtLastFrame = GC.GetTotalPauseDuration();
+        double all = clock.Elapsed.TotalMilliseconds, stopped = (_pausedAtLastFrame - paused).TotalMilliseconds, ms = all - stopped;
+        if (ms > WorstViewMs)
+        {
+            WorstViewMs = ms;
+            WorstViewNote = $"{lairMs:F1} ms on {_lairNext - lairsBefore} lair marks, {_buildMs:F1} ms on {_built} views, {all - lairMs - _buildMs:F1} ms on the rest, with {stopped:F1} ms of collector pauses left out";
+        }
     }
 
     void BuildLairs(int count)
@@ -161,10 +194,13 @@ public partial class DeepSite : Node3D
             if (!_views.TryGetValue(c, out CreatureView view))
             {
                 if (d > FarDistance || clock.Elapsed.TotalMilliseconds > BudgetMs) continue;
+                double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);
                 view.Build(c);
                 _views[c] = view;
+                _built++;
+                _buildMs += clock.Elapsed.TotalMilliseconds - before;
             }
             bool visible = d < FarDistance;
             if (view.Visible != visible) view.Visible = visible;
