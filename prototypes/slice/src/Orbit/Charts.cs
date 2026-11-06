@@ -60,6 +60,9 @@ public sealed class Charts
         return m;
     }
 
+    /// <summary>Takes down one of your own marks (nothing else on the chart can be removed).</summary>
+    public bool Unmark(string key) => _marks.TryGetValue(key, out ChartMark m) && m.Kind == "mark" && _marks.Remove(key);
+
     /// <summary>Places on the planet come onto the chart as you come near them (map metres, torus distance).</summary>
     public void LookAround(IEnumerable<(string key, string label, double x, double z)> places, double x, double z, double width, double height)
     {
