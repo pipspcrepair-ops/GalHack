@@ -31,7 +31,7 @@ public partial class ShotFx : Node3D
     readonly List<(Decal decal, float age)> _scorches = new();
     readonly List<(OmniLight3D light, float left)> _flashes = new();
     StandardMaterial3D _boltMaterial;
-    BoxMesh _boltMesh;
+    CylinderMesh _boltMesh;
     ImageTexture _scorchTexture;
 
     /// <summary>For tests and screenshots: bolts fired, impacts shown, and the last impact.</summary>
@@ -47,7 +47,7 @@ public partial class ShotFx : Node3D
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = GunFeel.Tool.Colour,
             EmissionEnabled = true, Emission = GunFeel.Tool.Colour, EmissionEnergyMultiplier = 4f,
         };
-        _boltMesh = new BoxMesh { Size = new Vector3(0.035f, 0.035f, 1f) };
+        _boltMesh = new CylinderMesh { TopRadius = 0.0175f, BottomRadius = 0.0175f, Height = 1f, RadialSegments = 10, Rings = 1 };
         _scorchTexture = ScorchTexture();
         _starTexture = FlashTexture(true);
         _bloomTexture = FlashTexture(false);
@@ -279,7 +279,7 @@ public partial class ShotFx : Node3D
         Vector3 dir = full > 1e-4f ? line / full : Vector3.Forward;
         float length = Mathf.Max(0.05f, Mathf.Min(b.Travelled, full));
         var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
-        b.Mesh.GlobalTransform = new Transform3D(basis * Basis.FromScale(new Vector3(1f, 1f, length)), b.From + dir * length * 0.5f);
+        b.Mesh.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), b.From + dir * length * 0.5f); // the cylinder's axis laid along the beam
         b.Light.GlobalPosition = b.From + dir * length;
     }
 
