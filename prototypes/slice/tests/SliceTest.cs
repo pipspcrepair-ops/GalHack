@@ -734,6 +734,11 @@ public partial class SliceTest : Node
         if (_game.Survivor.Seated != null) _game.Controls.Tap(Key.F);
         foreach (int x in _drive.Wait(3)) yield return x;
         Vector3 clear = _skiff != null ? _skiff.Body.Position.ToGodot() + new Vector3(6f, 0f, 6f) : _game.Survivor.WorldFeet;
+        // Out of the water, if it landed on a shore: nothing that hunts on land comes in after you.
+        PlanetSurface.World.PlanetWorld planet = _game.Zone.Planet;
+        bool Wet(Vector3 p) => planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, planet.Width), Planets.Gen.Mathx.Wrap(p.Z, planet.Height), out _) || _game.Zone.GroundAt(p.X, p.Z).Y < 1f;
+        for (int k = 0; k < 96 && Wet(clear); k++)
+            clear += new Vector3(MathF.Cos(k * 0.7f), 0f, MathF.Sin(k * 0.7f)) * (2f + k * 0.5f);
         _game.Survivor.PlaceOutside(_game.Zone.GroundAt(clear.X, clear.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
         // The wildlife follows the castaway: a patch of the planet's own animals is baked around them.
         float Away() { Vector3 l = w.PatchLocal(_game.Survivor.WorldFeet); return new Vector2(l.X, l.Z).Length(); }

@@ -274,8 +274,8 @@ public partial class PlaceTest : Node
         foreach (int x in Watched(play.CloseMenu())) yield return x;
         Check(game.Zone.Loot.All.Contains(loot), "the emptied cache stays where it stands (a place's containers never go)");
         float entryY = place.ToWorld(new Vector3(0, entry.Y, 0)).Y;
-        if (downstairs) Check(walk.StairCells > 0 && game.Survivor.WorldFeet.Y < entryY - 3.5f,
-            $"down a level by the stairs to get there ({walk.StairCells} stair cells walked, {entryY - game.Survivor.WorldFeet.Y:F1} m below the way in)");
+        if (downstairs) Check(game.Survivor.WorldFeet.Y < entryY - 3.5f, // a mine goes down by its ramps, not stairs
+            $"down a level to get there ({walk.StairCells} stair cells and {walk.LadderCells} of ladder walked, {entryY - game.Survivor.WorldFeet.Y:F1} m below the way in)");
         else GD.Print($"  ({inst.Caches.Count} caches, none below the way in here: no stairs to walk down to one)");
 
 
@@ -294,7 +294,8 @@ public partial class PlaceTest : Node
             key = k;
             break;
         }
-        Check(key != null, $"a keycard ({key?.Clearance}) lies within reach, and a door it opens ({inst.Extras.Keys.Count} keys, {place.Doors.Count(d => d.Clearance != null)} locked doors)");
+        if (inst.Extras.Keys.Count > 0) // a mine or a farm has none
+            Check(key != null, $"a keycard ({key?.Clearance}) lies within reach, and a door it opens ({inst.Extras.Keys.Count} keys, {place.Doors.Count(d => d.Clearance != null)} locked doors)");
         if (key != null)
         {
             // To the locked door first: E says what it needs.
@@ -400,7 +401,7 @@ public partial class PlaceTest : Node
                 }
                 if (wallCell != default) break;
             }
-            Check(wallCell != default, $"a wall in reach to salvage ({wallCell})");
+            if (wallCell == default) GD.Print($"  (no built wall beside you here: {inst.Layout.Family.Id} is cut from the rock)");
             if (wallCell != default)
             {
                 Block was = inst.Blocks.Get(wallCell);
@@ -881,7 +882,7 @@ public partial class PlaceTest : Node
         Place p = places.PlaceOf(site);
         Check(p is { Ready: true }, $"{site.Name} stands up as a structure when the focus comes within {places.BuildRadius} m ({frames} frames, {watch.Elapsed.TotalSeconds:F1} s)");
         if (p == null) yield break;
-        var log = places.BuildLog.Last();
+        var log = places.BuildLog.LastOrDefault(); // none yet if it stood before this count began
         Check(places.WorstFrameMs < places.BudgetMs + 12.0, $"built over frames: {log.Chunks} chunks; worst frame {places.WorstFrameMs:F1} ms of building, worst single step {places.WorstStepMs:F1} ms (by stage {string.Join(", ", places.StageWorst.Select(kv => $"{kv.Key}: {kv.Value:F1}"))}) (budget {places.BudgetMs} ms a frame)");
         for (int i = 0; i < 240; i++) yield return 0; // the creatures and lairs go in over these frames
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;

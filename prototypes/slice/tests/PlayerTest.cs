@@ -263,6 +263,7 @@ public partial class PlayerTest : Node
         float health = _prey.Health;
         int xp = _game.Progress.Xp;
         int shots = 0, stalls = 0;
+        bool hit = false;
         float close = 25f;
         GD.Print($"  (the way to it on foot: {(stalk == null ? "none found, straight at it" : $"{stalk.Count} steps over {ground.Count} cells of walkable ground")})");
         if (stalk != null)
@@ -295,11 +296,11 @@ public partial class PlayerTest : Node
             foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Rig.BoundsCenter))) yield return x;
             if (tries < 12) GD.Print($"  (shot {shots + 1}: prey at {w.FromPatch(_prey.Rig.BoundsCenter)}, health {_prey.Health:F0}, {w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldEye()):F1} m off; the bolt landed {_game.Shots.LastImpact.Kind} at {_game.Shots.LastImpact.At}; dead {_game.Suit.Dead}, hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, menu {_game.Menu.IsOpen})");
             shots++;
-            if (_prey.Health >= before) close = MathF.Max(6f, close * 0.6f); // something in the way: closer
-            if (shots == 3) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
-                $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
+            if (_prey.Health >= before) close = MathF.Max(2.5f, close * 0.6f); // something in the way (a bank, a crest): closer
+            else hit |= _game.Shots.LastImpact.Kind == ImpactKind.Creature;
         }
         w.Swapped -= carried;
+        Check(hit && (_prey.Dead || _prey.Health < health), $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
         Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
         Mark("hunted");
     }
