@@ -1,8 +1,19 @@
-# GalHack
+﻿# GalHack
 
-A first-person space survival sandbox for one group of friends: crash on a hostile world, build your way up from a hover rover to a capital ship, and explore a procedurally generated galaxy full of strange worlds, ruins and wrecks.
+A first-person space survival sandbox for one group of friends: wake from cryosleep in a buried bunker on a ruined world long after the collapse, build your way up from a hover rover to a capital ship, and explore a procedurally generated galaxy full of strange worlds, ruins and wrecks.
 
 GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.md).
+
+## Gallery
+
+Work in progress, straight from the prototypes. Click an image for full size.
+
+<table>
+<tr><td width="33%"><a href="prototypes/slice/screenshots/bunker.png"><img src="prototypes/slice/screenshots/bunker.png" alt="Waking in the cryo bunker"></a><br><sub>Waking in the cryo bunker</sub></td><td width="33%"><a href="prototypes/slice/screenshots/climb.png"><img src="prototypes/slice/screenshots/climb.png" alt="Climbing out into the ruined world"></a><br><sub>Climbing out into the ruined world</sub></td><td width="33%"><a href="prototypes/slice/screenshots/menu-you.png"><img src="prototypes/slice/screenshots/menu-you.png" alt="The Tab menu: bag, toolbar, suit fabricator"></a><br><sub>The Tab menu: bag, toolbar, suit fabricator</sub></td></tr>
+<tr><td width="33%"><a href="prototypes/slice/screenshots/base.png"><img src="prototypes/slice/screenshots/base.png" alt="A first base and survival constructor"></a><br><sub>A first base and survival constructor</sub></td><td width="33%"><a href="prototypes/slice/screenshots/flying.png"><img src="prototypes/slice/screenshots/flying.png" alt="Flying a self-built vessel"></a><br><sub>Flying a self-built vessel</sub></td><td width="33%"><a href="prototypes/poi-generator/screenshots/far-abandoned-spaceport-dusk.png"><img src="prototypes/poi-generator/screenshots/far-abandoned-spaceport-dusk.png" alt="A derelict spaceport at dusk"></a><br><sub>A derelict spaceport at dusk</sub></td></tr>
+<tr><td width="33%"><a href="prototypes/poi-generator/screenshots/far-alien-cathedral-dusk.png"><img src="prototypes/poi-generator/screenshots/far-alien-cathedral-dusk.png" alt="An alien cathedral on a ridge"></a><br><sub>An alien cathedral on a ridge</sub></td><td width="33%"><a href="prototypes/poi-generator/screenshots/families-2.png"><img src="prototypes/poi-generator/screenshots/families-2.png" alt="Some of the POI families"></a><br><sub>Some of the POI families</sub></td><td width="33%"><a href="prototypes/poi-generator/screenshots/families-interiors.png"><img src="prototypes/poi-generator/screenshots/families-interiors.png" alt="POI interiors"></a><br><sub>POI interiors</sub></td></tr>
+<tr><td width="33%"><a href="prototypes/wildlife/screenshots/deep-ceiling.png"><img src="prototypes/wildlife/screenshots/deep-ceiling.png" alt="Cave crawlers on the ceiling"></a><br><sub>Cave crawlers on the ceiling</sub></td><td width="33%"><a href="prototypes/wildlife/screenshots/deep-food.png"><img src="prototypes/wildlife/screenshots/deep-food.png" alt="A lurker taking its prey"></a><br><sub>A lurker taking its prey</sub></td><td width="33%"><a href="prototypes/deco/screenshots/canteen.png"><img src="prototypes/deco/screenshots/canteen.png" alt="A canteen as used, and a century on"></a><br><sub>A canteen as used, and a century on</sub></td></tr>
+</table>
 
 ## Licence
 
