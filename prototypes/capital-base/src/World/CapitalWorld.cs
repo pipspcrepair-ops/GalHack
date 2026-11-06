@@ -76,6 +76,12 @@ public partial class CapitalWorld : Node3D
     /// <summary>The voxel patch's per-frame rebuild budget in play, ms.</summary>
     public double RebuildBudgetMs = 4.0;
 
+    /// <summary>A manual test's changes to the rules before the world is built from them (a bigger patch); null in play.</summary>
+    public static Action<CapitalRules> Tune;
+
+    /// <summary>A manual test's choice of where the patch goes, given the planet and the area picked; null in play.</summary>
+    public static Func<PlanetWorld, N.Vector2, N.Vector2> TuneArea;
+
     public override void _Ready()
     {
         ProcessPhysicsPriority = 0; // after the physics host (-10): react to where things ended up
@@ -87,6 +93,7 @@ public partial class CapitalWorld : Node3D
     void Build()
     {
         Rules = CapitalRules.FromJson(File.ReadAllText(Paths.Own("data", "capital-base.json")));
+        Tune?.Invoke(Rules);
         PhysicsRules = PhysicsRules.FromJson(File.ReadAllText(Paths.Repo("shared", "Physics", "physics.json")));
         Handling = Tunables.FromJson(File.ReadAllText(Paths.Repo("prototypes", "ship-handling", "data", "handling.json")));
         Catalogue = StructureBridge.LoadCatalogue(Paths.Repo("prototypes", "building", "data"),
@@ -107,6 +114,7 @@ public partial class CapitalWorld : Node3D
         int s = ChunkStore.Size;
         var landing = new N.Vector2((float)Planet.Landing.X, (float)Planet.Landing.Y);
         (N.Vector2 area, List<Spot> spots) = Sites.FindArea(Planet.Source, landing, (p.PatchColumns - 6) * s, CapitalFeet, 4, 44f, 9f * Mathf.Pi / 180f);
+        if (TuneArea != null) area = TuneArea(Planet, area);
         Spots = spots;
         int cx = (int)Math.Floor(area.X / s), cz = (int)Math.Floor(area.Y / s);
         SiteCentre = new N.Vector2(cx * s + s * 0.5f, cz * s + s * 0.5f);

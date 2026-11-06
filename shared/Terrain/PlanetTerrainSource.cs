@@ -31,7 +31,7 @@ namespace GalHack.Terrain;
 /// </summary>
 public sealed class PlanetTerrainSource : ITerrainSource
 {
-    public const float BedrockDepth = 30f;
+    public static float BedrockDepth = 30f; // static only so a manual test can lower it; nothing in play sets it
     /// <summary>The ground a tunnel's bore always leaves over it, metres: its mouth is a face in the slope, never a hole from above.</summary>
     public const float TunnelRoof = 1.2f;
     public const float CaveTop = 3f, CaveBottom = 36f;
