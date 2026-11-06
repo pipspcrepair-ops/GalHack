@@ -156,6 +156,10 @@ public sealed class LavaRules
 {
     public double DamagePerSecond { get; set; }
     public double WarnMetres { get; set; }
+
+    /// <summary>This close to the edge the heat alone burns, health per second.</summary>
+    public double BesideMetres { get; set; }
+    public double BesideDamagePerSecond { get; set; }
 }
 
 public sealed class HealingRules

@@ -48,7 +48,11 @@
     // reaches that (about 5 health a second). Any shelter or cover stops it at once.
     "stormWarnFrom": 0.5,
     "stormHarmFrom": 1,
-    "stormHealthPerSecond": 3
+    "stormHealthPerSecond": 3,
+    // In water at or below iceWaterC the visor warns at once and, iceWaterWarnSeconds later, health drains.
+    "iceWaterC": 2,
+    "iceWaterHealthPerSecond": 7,
+    "iceWaterWarnSeconds": 1.5
   },
 
   "tool": {
@@ -89,6 +93,10 @@
     // wireless block; GalHack's margin stands in for both.
     "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
   },
+
+  // The climate node: burning, it holds the air within radius metres inside lowC to highC. Each
+  // fuel in its hopper burns for so many seconds, the first found in this order.
+  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "fuels": { "energy-cell": 300, "biofuel": 200, "biomass": 60 } },
 
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 45, "angle": 32, "energy": 5.5 },

@@ -71,7 +71,9 @@
 
   "lava": {
     "damagePerSecond": 40,
-    "warnMetres": 12                  // the visor flashes this far from the edge of a lava pool
+    "warnMetres": 12,                 // the visor flashes this far from the edge of a lava pool
+    "besideMetres": 3,                // this close the heat alone burns
+    "besideDamagePerSecond": 12
   },
 
   "healing": {

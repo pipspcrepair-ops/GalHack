@@ -112,6 +112,7 @@ public sealed class SliceRules
     public PlanetRules Planet { get; set; } = new();
     public MaterialRules Materials { get; set; } = new();
     public ClimateRules Climate { get; set; } = new();
+    public ClimateNodeRules ClimateNode { get; set; } = new();
     public ToolRules Tool { get; set; } = new();
     public BuildRules Build { get; set; } = new();
     public WildlifeRules Wildlife { get; set; } = new();
@@ -167,6 +168,21 @@ public sealed class SliceRules
         public double StormWarnFrom { get; set; } = 0.5;
         public double StormHarmFrom { get; set; } = 1;
         public double StormHealthPerSecond { get; set; } = 3;
+
+        /// <summary>Water colder than this is ice water: past the warning it takes health at this rate, whatever the suit.</summary>
+        public double IceWaterC { get; set; } = 2;
+        public double IceWaterHealthPerSecond { get; set; } = 7;
+        public double IceWaterWarnSeconds { get; set; } = 1.5;
+    }
+
+    public sealed class ClimateNodeRules
+    {
+        public float Radius { get; set; } = 9f;
+        public double LowC { get; set; } = 12;
+        public double HighC { get; set; } = 26;
+
+        /// <summary>Seconds a unit of each fuel burns, tried in this order.</summary>
+        public Dictionary<string, double> Fuels { get; set; } = new();
     }
 
     public sealed class ToolRules

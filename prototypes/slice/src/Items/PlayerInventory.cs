@@ -234,7 +234,7 @@ public sealed class PlayerInventory
             if (id == "hover-bike") return HandKind.Vehicle;
             if (CoreItems.Contains(id)) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
-            if (_items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
+            if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
             if (item.Category == ItemCategory.Consumable || id == "meat") return HandKind.Consumable;
             return HandKind.Other;
         }

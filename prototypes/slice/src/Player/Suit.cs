@@ -93,7 +93,39 @@ public sealed class Suit : IDamageSink
         // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
         if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
         double radiation = _climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0;
-        return new Exposure(baseline + weather + day + height, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), double.PositiveInfinity);
+        double temperature = baseline + weather + day + height;
+        var rules = _zone.Data.Rules.ClimateNode;
+        var here = new Godot.Vector3((float)p.X, (float)p.Y, (float)p.Z);
+        foreach (Device d in _zone.Devices)
+            if (d.Burning && d.GlobalPosition.DistanceSquaredTo(here) <= rules.Radius * rules.Radius)
+            {
+                temperature = Math.Clamp(temperature, rules.LowC, rules.HighC);
+                break;
+            }
+        return new Exposure(temperature, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), LavaMetres(p));
+    }
+
+    static readonly float[] LavaRings = { 1f, 2f, 3f, 5f, 8f, 12f };
+    bool _riding;
+
+    /// <summary>
+    /// How far the nearest lava is, metres: 0 standing in it, the ring it first shows on, or nowhere
+    /// near. Someone in a seat or on a bike is carried over it, and only what lies around their
+    /// own height counts: not the lava at the foot of a cliff you stand on.
+    /// </summary>
+    double LavaMetres(Pos p)
+    {
+        PlanetWater liquid = _zone.Water;
+        if (liquid == null || !liquid.IsLava || _riding) return double.PositiveInfinity;
+        float x = (float)p.X, y = (float)p.Y, z = (float)p.Z;
+        if (liquid.LiquidAt(x, z, out float surface) && y <= surface + 0.6f) return 0;
+        foreach (float r in LavaRings)
+            for (int i = 0; i < 12; i++)
+            {
+                float a = i * MathF.Tau / 12f;
+                if (liquid.LiquidAt(x + MathF.Cos(a) * r, z + MathF.Sin(a) * r, out surface) && surface > y - 6f) return r;
+            }
+        return double.PositiveInfinity;
     }
 
     Structure _roomsOf;
@@ -128,6 +160,7 @@ public sealed class Suit : IDamageSink
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
         InSealedRoom = InRoom(survivor) || (Sheltered?.Invoke() ?? false);
+        _riding = survivor.Seated != null || survivor.OnBike != null;
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         int events = Sim.Events.Count;
@@ -137,6 +170,7 @@ public sealed class Suit : IDamageSink
         Outdoors(dt, survivor, report);
         foreach (Alert a in Enum.GetValues<Alert>())
             if (a != Alert.None && (report.Warnings & a) != 0 && (_warning & a) == 0) WarnedAt[a] = Sim.Time;
+        if ((report.Warnings & Alert.Lava) != 0 && (_warning & Alert.Lava) == 0) Said?.Invoke("LAVA CLOSE: keep clear, the heat burns");
         _warning = report.Warnings;
         for (int i = events; i < Sim.Events.Count; i++) Said?.Invoke(Sim.Events[i]);
         return report;
@@ -149,6 +183,7 @@ public sealed class Suit : IDamageSink
     void Outdoors(float dt, Survivor survivor, TickReport report)
     {
         if (Dead || _zone.Weather.Sim is not { } weather) return;
+        IceWater(dt, survivor, report);
         float exposure = weather.Current.Exposure;
         if (exposure < _climate.StormWarnFrom || InSealedRoom) return;
         if (_zone.Water?.Under(survivor.WorldEye(), out _) == true || (UnderCover?.Invoke() ?? false)) return;
@@ -159,6 +194,23 @@ public sealed class Suit : IDamageSink
         report.Harm |= alert;
         report.Damage += Hit(_climate.StormHealthPerSecond * exposure * dt, heat ? DamageKind.Heat : DamageKind.Cold);
     }
+
+    /// <summary>Ice water: the cold goes straight through the suit. The visor warns on going in, the health follows.</summary>
+    void IceWater(float dt, Survivor survivor, TickReport report)
+    {
+        if (_riding || survivor.Body.Water.Fraction < 0.35f || report.Exposure.Temperature > _climate.IceWaterC)
+        {
+            _inIce = 0f;
+            return;
+        }
+        _inIce += dt;
+        report.Warnings |= Alert.Cold;
+        if (_inIce < _climate.IceWaterWarnSeconds) return;
+        report.Harm |= Alert.Cold;
+        report.Damage += Hit(_climate.IceWaterHealthPerSecond * dt, DamageKind.Cold);
+    }
+
+    float _inIce;
 
     /// <summary>Working the tool: food drains faster for a moment (survival's mining rule).</summary>
     public void Worked() => _miningLeft = 0.6f;

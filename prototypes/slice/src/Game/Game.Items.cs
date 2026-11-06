@@ -311,6 +311,11 @@ public partial class Game
         Craft(Fabricator, t);
         foreach (Device d in Zone.Devices)
         {
+            if (d.Constructor == null)
+            {
+                d.Tick(dt); // a climate node burns in real time, whatever crafting's test scale
+                continue;
+            }
             Snapshot(d.Constructor);
             d.Tick(t);
             Finished(d.Constructor);

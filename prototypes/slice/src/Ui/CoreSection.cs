@@ -62,6 +62,7 @@ public sealed class CoreSection : IMenuSection
         }
         foreach (Device dev in _game.Zone.Devices)
         {
+            if (dev.Constructor == null) continue; // a climate node has a hopper, not a panel
             float d = dev.GlobalPosition.DistanceTo(feet);
             if (d <= DeviceReach) near.Add((dev, d));
         }

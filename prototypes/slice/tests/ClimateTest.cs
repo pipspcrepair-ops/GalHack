@@ -88,6 +88,109 @@ public partial class ClimateTest : Node
         Check(Zone.Weather.FallStopsOnContact, "rain, snow and dust die on what they hit: no cover check, a collision with whatever is there");
         foreach (int x in Swim()) yield return x;
         foreach (int x in Storms()) yield return x;
+        foreach (int x in Lava()) yield return x;
+        foreach (int x in Node()) yield return x;
+    }
+
+    /// <summary>The climate node: bench-made, in the hand it sets down like a device, and only burning does it hold the air.</summary>
+    IEnumerable<int> Node()
+    {
+        var items = Zone.Data.Items;
+        Check(items.TryGet(Slice.Vessels.Device.ClimateItem, out _), "a climate node is an item, made at the survival constructor");
+        _game.Pack.Add(Slice.Vessels.Device.ClimateItem, 1);
+        _game.Pack.Grid.Reconcile();
+        int slot = -1;
+        for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
+            if (_game.Pack.Grid[i].Item == Slice.Vessels.Device.ClimateItem) slot = i;
+        if (slot >= 0)
+        {
+            _game.Select(slot);
+            Check(_game.Pack.Hand == Slice.Items.HandKind.Device, "held, it is set down like a device");
+        }
+        var rules = Zone.Data.Rules.ClimateNode;
+        Vector3 at = Me.WorldFeet + Vector3.Right * 2f;
+        Slice.Vessels.Device node = Slice.Vessels.Device.PlaceClimate(Zone, at, 0f);
+        var here = new Pos(Me.WorldFeet.X, Me.WorldFeet.Y, Me.WorldFeet.Z);
+        double raw = _game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature;
+        (double low, double high) = (rules.LowC, rules.HighC);
+        // STAGING: a band away from whatever the air is here, so holding it shows.
+        rules.LowC = raw + 5;
+        rules.HighC = raw + 9;
+        foreach (int x in _drive.Wait(5)) yield return x;
+        Check(!node.Burning && Math.Abs(_game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature - raw) < 0.5, "with nothing in its burner the node does nothing");
+        node.Storage.Add("biomass", 1);
+        foreach (int x in _drive.Wait(5)) yield return x;
+        double held = _game.Suit.Exposure(here, _game.Suit.Sim.Time).Temperature;
+        Check(node.Burning && held == raw + 5 && node.Storage.Count("biomass") == 0, $"fed, it burns the fuel and steadies the air: {raw:F1} to {held:F1} Â°C");
+        var farOff = new Pos(here.X + rules.Radius + 3, here.Y, here.Z);
+        Check(_game.Suit.Exposure(farOff, _game.Suit.Sim.Time).Temperature < held, "a few metres outside its radius the air is the world's own");
+        node.Tick(rules.Fuels["biomass"] + 1);
+        Check(!node.Burning, "the fuel burns out");
+        (rules.LowC, rules.HighC) = (low, high);
+    }
+
+    /// <summary>Lava worlds only: pass --planet lava. The real distance reaches the visor, and beside it and in it health goes fast.</summary>
+    IEnumerable<int> Lava()
+    {
+        if (!Zone.Water.IsLava)
+        {
+            GD.Print("  (no lava on this world: run with -- --planet lava to try it)");
+            yield break;
+        }
+        Vector3 near = Me.WorldFeet, shore = default, inside = default;
+        bool found = false;
+        for (float r = 30f; r < 3000f && !found; r += 15f)
+        for (int i = 0; i < 64 && !found; i++)
+        {
+            float a = i * MathF.Tau / 64f, x = near.X + MathF.Cos(a) * r, z = near.Z + MathF.Sin(a) * r;
+            if (!Zone.Water.LiquidAt(x, z, out float surface)) continue;
+            Vector3 dir = new Vector3(near.X - x, 0f, near.Z - z).Normalized();
+            for (float out1 = 2f; out1 < 40f; out1 += 1f)
+            {
+                Vector3 p = new(x + dir.X * out1, 0f, z + dir.Z * out1);
+                if (Zone.Water.LiquidAt(p.X, p.Z, out _)) continue;
+                float g = Zone.GroundAt(p.X, p.Z).Y;
+                if (g > surface + 3f) break;
+                shore = new Vector3(p.X, g, p.Z);
+                inside = new Vector3(x, surface, z);
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            GD.Print("  (no lava shore within 3 km on this world: not tried)");
+            yield break;
+        }
+        Exposure far = _game.Suit.Exposure(new Pos(near.X, near.Y, near.Z), _game.Suit.Sim.Time);
+        Exposure at = _game.Suit.Exposure(new Pos(shore.X, shore.Y, shore.Z), _game.Suit.Sim.Time);
+        Check(at.LavaMetres <= 3, $"at the shore the suit reads lava {at.LavaMetres:F0} m off ({(double.IsInfinity(far.LavaMetres) ? "none" : far.LavaMetres.ToString("F0") + " m")} where the castaway stood)");
+        Check(_game.Suit.Exposure(new Pos(inside.X, inside.Y, inside.Z), _game.Suit.Sim.Time).LavaMetres == 0, "in it the distance is nothing");
+        // STAGING: the castaway set down on the shore, then in it.
+        Me.PlaceOutside((shore + Vector3.Up * 0.2f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
+        double before = _game.Suit.Vitals.Health;
+        foreach (int x in _drive.Wait(90)) yield return x;
+        Check(before - _game.Suit.Vitals.Health >= 8 && (_game.Suit.Last.Warnings & Alert.Lava) != 0, $"beside lava health drains fast: {before - _game.Suit.Vitals.Health:F0} in 1.5 s, the visor flashing");
+        before = _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
+        Me.PlaceOutside((inside + Vector3.Down * 0.3f).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Check(before - _game.Suit.Vitals.Health >= 15 && (_game.Suit.Last.Harm & Alert.Lava) != 0, $"in lava it goes faster still: {before - _game.Suit.Vitals.Health:F0} in 0.5 s");
+    }
+
+    /// <summary>STAGING: this planet's water is declared ice for a moment: a temperate world's water stands in.</summary>
+    IEnumerable<int> IceWater(Vector3 water)
+    {
+        var rules = Zone.Data.Rules.Climate;
+        double held = rules.IceWaterC;
+        rules.IceWaterC = 100;
+        double before = _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
+        foreach (int x in _drive.Wait(30)) yield return x;
+        bool warned = (_game.Suit.Last.Warnings & Alert.Cold) != 0 && _game.Suit.Vitals.Health >= before;
+        foreach (int x in _drive.Wait(240)) yield return x;
+        rules.IceWaterC = held;
+        Check(warned && before - _game.Suit.Vitals.Health >= 12, $"ice water: the visor warns first, then health goes fast: {before - _game.Suit.Vitals.Health:F0} in 4 s");
     }
 
     /// <summary>Back on dry open ground, whole and fed: each section starts as a castaway would.</summary>
@@ -135,6 +238,8 @@ public partial class ClimateTest : Node
         Vector3 top = Me.WorldFeet;
         var center = TerrainDigging.Terrain.Int3.Floor((top + Vector3.Down * 2f).ToNumerics());
         for (int d = 0; d < 6; d++) Zone.Edits.Dig(new TerrainDigging.Terrain.Int3(center.X, center.Y - d, center.Z), 2.4f);
+        // STAGING: set down in the shaft (whatever else stood on the spot stays where it stood).
+        Me.PlaceOutside((top + Vector3.Down * 5f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Wait(90)) yield return x;
         Vector3 bottom = Me.WorldFeet;
@@ -243,6 +348,8 @@ public partial class ClimateTest : Node
         for (int i = 0; i < 1200 && Me.Body.Water.Underwater; i++) yield return 0;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(!Me.Body.Water.Underwater && !Zone.Underwater.CameraUnder && _game.Camera.Environment == null, "let go, the body floats back up and the sky returns");
+
+        foreach (int x in IceWater(water)) yield return x;
 
         // A land animal driven out over the water floats on it at the most, never sinks.
         WildlifePatch patch = Zone.Wildlife;
