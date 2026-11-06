@@ -52,6 +52,10 @@ public sealed class LandformLayer
     readonly Fractal _borderWarp;
     readonly LandformRelief[] _recipes;
 
+    /// <summary>How many regions the world is divided into, each way: a bigger world has more of them (and bigger ones up to 4 km), never stretched ones.</summary>
+    public int RegionsX => _rnx;
+    public int RegionsY => _rny;
+
     /// <summary>The landform per region (index ry * regionsX + rx), for views and tests.</summary>
     public readonly Landform[] RegionLandform;
     /// <summary>The coastal landform per region, or 255 for none.</summary>
