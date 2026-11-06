@@ -96,7 +96,7 @@ public partial class CockpitConsole : Node3D
                 this.Header(w, Vessel.Name.ToUpperInvariant(), "BEACON", C.Accent2);
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "Distress beacon transmitting.", C.Text);
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "No engines: this pod came down once.", C.Dim);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "Locker: E at the yellow container.", C.Dim);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "Your locker: E where the lamp is green.", C.Dim);
                 return;
             }
             this.Header(w, Vessel.Name.ToUpperInvariant(), st.ClassLabel.ToUpperInvariant());

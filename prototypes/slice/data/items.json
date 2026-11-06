@@ -31,6 +31,16 @@
       "where": "Creatures", "uses": "Food" },
     { "id": "hide", "name": "Hide", "short": "HIDE", "category": "raw", "rarity": "common", "source": "harvest", "mass": 1.0, "volume": 1, "stack": 50,
       "where": "Creatures", "uses": "Polymer substitute (later)" },
+    // Keycards lie on the dead in places, where they fell: each opens the doors of its clearance
+    // and every lower one (staff, science, security, command). Found only, never made.
+    { "id": "keycard-staff", "name": "Staff keycard", "short": "KEY-STF", "category": "unique", "rarity": "uncommon", "source": "explore", "mass": 0.02, "volume": 0.02, "stack": 4,
+      "where": "Places: on their dead", "uses": "Opens staff doors" },
+    { "id": "keycard-science", "name": "Science keycard", "short": "KEY-SCI", "category": "unique", "rarity": "uncommon", "source": "explore", "mass": 0.02, "volume": 0.02, "stack": 4,
+      "where": "Places: on their dead", "uses": "Opens science and staff doors" },
+    { "id": "keycard-security", "name": "Security keycard", "short": "KEY-SEC", "category": "unique", "rarity": "rare", "source": "explore", "mass": 0.02, "volume": 0.02, "stack": 4,
+      "where": "Places: on their dead", "uses": "Opens security, science and staff doors" },
+    { "id": "keycard-command", "name": "Command keycard", "short": "KEY-CMD", "category": "unique", "rarity": "exotic", "source": "explore", "mass": 0.02, "volume": 0.02, "stack": 4,
+      "where": "Places: on their dead", "uses": "Opens every door" },
     { "id": "rare-tissue", "name": "Rare tissue", "short": "TISSUE", "category": "raw", "rarity": "uncommon", "source": "harvest", "mass": 0.2, "volume": 0.2, "stack": 50,
       "where": "Some creatures", "uses": "Research (later)" }
   ],

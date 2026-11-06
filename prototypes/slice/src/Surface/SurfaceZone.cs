@@ -114,6 +114,8 @@ public partial class SurfaceZone : Node3D
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
+        // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
+        PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
         AddChild(Pois);
         PlanetSpec spec = Spec;

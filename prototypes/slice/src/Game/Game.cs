@@ -229,7 +229,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Happened += OnWeather;
@@ -252,12 +252,14 @@ public partial class Game : Node3D
         AddChild(Audio);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Survivor.Node.AddChild(CharacterModel.Build());
-        _creatureBlockers = new CreatureBlockers { Name = "CreatureBlockers", Game = this };
-        Zone.AddChild(_creatureBlockers);
+        Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
+        Zone.AddChild(Bodies);
+        SetUpPlaces();
 
     }
 
-    CreatureBlockers _creatureBlockers;
+    /// <summary>Creatures' collision, from their own bodies.</summary>
+    public CreatureBodies Bodies { get; private set; }
 
 
     // ---- Each tick: input in, before the physics steps ------------------------------------------
@@ -309,6 +311,7 @@ public partial class Game : Node3D
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
+        Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
         // A number picks a slot; the same number again, or Y, switches between your own toolbar
@@ -464,7 +467,7 @@ public partial class Game : Node3D
         Suit.Tick(dt, Survivor);
         Target.Sync();
         Zone.Wildlife.Follow(Survivor.WorldFeet, onFoot: Survivor.Body.Frame == null);
-        _creatureBlockers.KeepOff();
+        Bodies.KeepOff();
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
@@ -495,7 +498,7 @@ public partial class Game : Node3D
         if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
-        Visor.Hurt(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Visor.Hurt(Zone.Wildlife.WorldOf(e.Creature));
         Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
     }
 
@@ -665,8 +668,11 @@ public sealed class PlayerTarget : ITarget
     public Vector3 Forward => _game.Survivor.WorldLook();
     public Health Health { get; } = new(100f);
 
-    /// <summary>On foot and alive; aboard a vessel nothing can bite you.</summary>
-    public bool Attackable => !_game.Suit.Dead && _game.Survivor.Body.Frame == null;
+    /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>
+    public bool Attackable => OnFoot && !_game.Sheltered();
+
+    /// <summary>On foot and alive: fair game for whatever lives where you are.</summary>
+    public bool OnFoot => !_game.Suit.Dead && _game.Survivor.Body.Frame == null;
     public float ThreatScale => _game.Survivor.Seated != null ? 2f : 1f;
 
     /// <summary>Wildlife keeps its own health scale (100); the suit's is the real one.</summary>

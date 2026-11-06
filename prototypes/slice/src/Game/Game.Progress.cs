@@ -49,6 +49,16 @@ public partial class Game
             if (c.Removed || c.Dead || (c.Position - local).Length() > 25f) continue;
             if (Progress.Discover($"species:{c.Species.Id}", xp.Species, $"met a {c.Species.CommonName}")) Stats.SpeciesMet++;
         }
+        // And what lives in places and caves, met where it lives.
+        foreach (DeepSite site in Zone.Wildlife.Sites)
+        {
+            Vector3 there = site.Local(feet);
+            foreach (Creature c in site.Sim.Creatures)
+            {
+                if (c.Removed || c.Dead || (c.Position - there).Length() > 15f) continue;
+                if (Progress.Discover($"species:{c.Species.Id}", xp.Species, $"met a {c.Species.CommonName}")) Stats.SpeciesMet++;
+            }
+        }
     }
 }
 
@@ -75,57 +85,5 @@ public sealed class GameStats
         }
         _last = at;
         if (game.Survivor.Seated is Vessel v) TopSpeed = MathF.Max(TopSpeed, v.Body.Velocity.Length());
-    }
-}
-
-/// <summary>
-/// Creatures are solid to the castaway: each creature near them gets a capsule on the props layer
-/// the character controller walks into, and a creature that ends up inside the castaway is eased
-/// back out (the wildlife sim moves on its own ground and knows nothing of the player's body).
-/// </summary>
-public partial class CreatureBlockers : Node3D
-{
-    public Game Game;
-    readonly List<StaticBody3D> _pool = new();
-    const float Range = 14f;
-
-    /// <summary>Keeps creatures and the castaway apart, and moves the blockers onto the creatures near them.</summary>
-    public void KeepOff()
-    {
-        WildlifePatch patch = Game.Zone.Wildlife;
-        if (patch.Sim == null) return;
-        Vector3 feet = Game.Survivor.WorldFeet;
-        Vector3 local = patch.PatchLocal(feet);
-        bool onFoot = Game.Survivor.Body.Frame == null && Game.Survivor.Seated == null;
-        int used = 0;
-        foreach (Creature c in patch.Sim.Creatures)
-        {
-            if (c.Removed || c.Dead || c.Species.Flies) continue;
-            Vector3 flat = new(c.Position.X - local.X, 0f, c.Position.Z - local.Z);
-            float d = flat.Length();
-            if (d > Range) continue;
-            float radius = Mathf.Clamp(c.Species.Stats.Radius, 0.2f, 2.5f);
-            float clear = radius + Slice.Player.Survivor.Radius;
-            if (onFoot && d < clear && d > 1e-3f && MathF.Abs(c.Position.Y - local.Y) < 2.5f)
-                c.Position += flat / d * (clear - d); // nudged out of the castaway
-            if (used == _pool.Count)
-            {
-                var body = new StaticBody3D { CollisionLayer = Layers.Props, CollisionMask = 0 };
-                body.AddChild(new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.5f, Height = 1.6f } });
-                AddChild(body);
-                _pool.Add(body);
-                WorldRay.Ignored.Add(body.GetRid());
-            }
-            StaticBody3D b = _pool[used++];
-            var shape = (CylinderShape3D)((CollisionShape3D)b.GetChild(0)).Shape;
-            float height = Mathf.Clamp(c.Species.Body.Size * 0.8f, 0.5f, 4f);
-            if (MathF.Abs(shape.Radius - radius * 0.8f) > 0.05f) shape.Radius = radius * 0.8f;
-            if (MathF.Abs(shape.Height - height) > 0.1f) shape.Height = height;
-            b.Visible = true;
-            b.ProcessMode = ProcessModeEnum.Inherit;
-            b.CollisionLayer = Layers.Props;
-            b.GlobalPosition = patch.FromPatch(c.Position) + Vector3.Up * height * 0.5f;
-        }
-        for (int i = used; i < _pool.Count; i++) _pool[i].CollisionLayer = 0;
     }
 }

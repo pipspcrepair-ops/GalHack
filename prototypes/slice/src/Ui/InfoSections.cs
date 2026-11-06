@@ -185,7 +185,8 @@ public sealed class MapSection : IMenuSection
                 if (!c.Removed && !c.Dead) Mark(_game.Zone.Wildlife.FromPatch(c.Position), null, new Color(C.Warn, 0.7f), 3f);
         foreach (var (kind, at) in _game.Visor.Deposits.Near(_game.Zone, me)) Mark(at, kind.ToUpperInvariant(), C.Holo);
         foreach (Lootable l in _game.Zone.Loot.All)
-            Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4);
+            if (l.Kind != LootKind.Cache) // a place's caches are found by going in, not from the map
+                Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4);
         foreach (Device d in _game.Zone.Devices) Mark(d.GlobalPosition, d.Label.ToUpperInvariant(), C.Accent2);
         foreach (Vessel v in _game.Zone.Vessels)
             if (v.IsRuin) Mark(_game.Start, "BUNKER", C.Accent, 7);
