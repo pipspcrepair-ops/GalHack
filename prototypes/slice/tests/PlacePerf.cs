@@ -104,7 +104,7 @@ public partial class PlacePerf : Node
         _times.Add(ms);
         _script.Add(_probe.LastMs);
         int gc = GC.CollectionCount(0), gc2 = GC.CollectionCount(2);
-        if (ms > 33.4 && _hitches.Count < 40) _hitches.Add($"{ms:F0}ms script {_probe.LastMs:F0} frame {_times.Count} gc0 +{gc - _gc0} gc2 +{gc2 - _gc2} at {_game.Survivor?.WorldFeet.X:F0},{_game.Survivor?.WorldFeet.Z:F0} objs {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
+        if (ms > 33.4 && _hitches.Count < 40) _hitches.Add($"{ms:F0}ms script {_probe.LastMs:F0} frame {_times.Count} gc0 +{gc - _gc0} gc2 +{gc2 - _gc2} pause {GC.GetGCMemoryInfo(GCKind.Ephemeral).PauseDurations[0].TotalMilliseconds:F0} promoted {GC.GetGCMemoryInfo(GCKind.Ephemeral).PromotedBytes / 1024 / 1024} MB heap {GC.GetGCMemoryInfo(GCKind.Ephemeral).HeapSizeBytes / 1024 / 1024} MB gen0 {GC.GetGCMemoryInfo(GCKind.Ephemeral).GenerationInfo[0].SizeBeforeBytes / 1024 / 1024} at {_game.Survivor?.WorldFeet.X:F0},{_game.Survivor?.WorldFeet.Z:F0} objs {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
         _gc0 = gc;
         _gc2 = gc2;
         Rid vp = GetViewport().GetViewportRid();

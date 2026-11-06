@@ -85,7 +85,7 @@ public partial class WildlifePatch : Node3D
         _planet = planet;
         var rules = Zone.Data.Rules.Wildlife;
         Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
-        View = new WildlifeView { Name = "Creatures" };
+        View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
@@ -130,6 +130,7 @@ public partial class WildlifePatch : Node3D
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         int carried = 0;
         var carriedNow = new List<Creature>();
+        var across = new Dictionary<Creature, Creature>();
         if (old != null)
         {
             sim.Time = old.Time;
@@ -139,7 +140,10 @@ public partial class WildlifePatch : Node3D
                 if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                carriedNow.Add(sim.Spawn(c.Species, local));
+                Creature next = sim.Spawn(c.Species, local);
+                next.Yaw = c.Yaw;
+                carriedNow.Add(next);
+                across[c] = next;
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
@@ -149,7 +153,7 @@ public partial class WildlifePatch : Node3D
         Position = origin;
         Audio.Origin = origin;
         if (Player != null) sim.Targets.Add(Player);
-        View.Bind(sim, null);
+        View.Bind(sim, null, across);
         Tells.Bind(sim);
         Swapped?.Invoke(old, oldOrigin, sim);
         Populate(keepClear - origin, clear, carriedOver: old != null);
