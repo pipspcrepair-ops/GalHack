@@ -31,8 +31,8 @@ public partial class InfraLayer
             var options = new MeshOptions
             {
                 Doors = true, Collision = true, Detail = true, Rock = true,
-                // An empty plug: faces against buried ground are culled; the terrain is the ground round it.
-                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = 3, Mottle = 0.2f,
+                // An empty plug: every outer face is drawn; the terrain is the ground round it.
+                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround, Mottle = 0.2f,
             };
             List<ChunkMesh> meshes = Mesher.Build(g, inst.Layout.Occupied, options);
             NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);

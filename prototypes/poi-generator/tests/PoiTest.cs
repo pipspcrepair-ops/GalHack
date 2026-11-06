@@ -1322,7 +1322,7 @@ public partial class PoiTest : Node
     /// The roadside ruins, on fresh seeds, turned every way, at every tech level: a house is house-sized
     /// against a person (10 to 16 m wide, 4 m a storey, doors 2 m), has a sloped roof and a door and
     /// never digs into the ground; decay leaves nothing hanging, no block trees, weeds only on
-    /// something solid; and every face that isn't against a block or deep ground is drawn, tops of broken
+    /// something solid; and every face that isn't against a block is drawn, buried or not, tops of broken
     /// walls included, on these and on the places proper.
     /// </summary>
     void PlainRuins()
@@ -1382,13 +1382,14 @@ public partial class PoiTest : Node
                             stands += Faces(g, layout.Occupied, ref faces, ref missing, ref faceFirst);
                         }
                     }
-        foreach (var f in Arch.Where(f => !f.Tags.Contains("flavour")).Take(6))
-        {
-            PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, PoiState.Ruined, (ulong)rand.NextInt64());
-            stands += Faces(p.Blocks, p.Layout.Occupied, ref faces, ref missing, ref faceFirst);
-        }
+        foreach (var f in Arch.Where(f => !f.Tags.Contains("flavour")).OrderBy(_ => rand.Next()).Take(12))
+            foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
+            {
+                PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, state, (ulong)rand.NextInt64());
+                stands += Faces(p.Blocks, p.Layout.Occupied, ref faces, ref missing, ref faceFirst);
+            }
         Check(floating == 0 && hovering == 0 && trees == 0 && spawns > 200, $"nothing floats in a plain ruin: {spawns} spawns, flattened or not; {floating} blocks off the ground, {hovering} weeds or rubble on nothing, {trees} block trees{first}");
-        Check(missing == 0 && faces > 10000, $"every face is drawn: {faces} open faces of {stands} structures, {missing} missing, against the ground's top 3 m as well{faceFirst}");
+        Check(missing == 0 && faces > 10000, $"every face is drawn: {faces} open faces of {stands} structures, {missing} missing, buried ones too{faceFirst}");
         Check(wrongSize == 0 && flatRoofs == 0 && noDoor == 0 && belowGround == 0, $"plain ruins are real size and built as a player builds: {wrongSize} wrong sizes, {flatRoofs} without a sloped roof, {noDoor} without a door, {belowGround} dug into the ground{first}");
         // Road paint stops short of whatever stands on the road.
         int paint = 0, onto = 0;
@@ -1408,11 +1409,11 @@ public partial class PoiTest : Node
         Check(onto == 0, $"road markings stop before a structure: {paint} painted cells, {onto} running on to a wall");
     }
 
-    /// <summary>Holds a structure's open faces against what the planet's mesher draws: each cube face not against a full block or deep ground must be there.</summary>
+    /// <summary>Holds a structure's open faces against what the planet's mesher draws: each cube face not against a full block must be there, buried or not (the ground can be dug off it).</summary>
     static int Faces(BlockGrid g, CellMask occ, ref int faces, ref int missing, ref string first)
     {
         var drawn = new HashSet<(int, int, int)>();
-        var options = new MeshOptions { Doors = true, Collision = false, Detail = true, Rock = true, RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = 3 };
+        var options = new MeshOptions { Doors = true, Collision = false, Detail = true, Rock = true, RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround };
         foreach (ChunkMesh chunk in Mesher.Build(g, occ, options))
             foreach (MeshBuffer s in chunk.Surfaces)
                 for (int i = 0; i + 2 < s.Indices.Count; i += 3)
@@ -1422,7 +1423,6 @@ public partial class PoiTest : Node
                     int Mid(int k) => (int)MathF.Round(MathF.Min(s.Positions[a + k], MathF.Min(s.Positions[b + k], s.Positions[c + k])) + MathF.Max(s.Positions[a + k], MathF.Max(s.Positions[b + k], s.Positions[c + k])));
                     drawn.Add((Mid(0), Mid(1), Mid(2)));
                 }
-        var nav = new NavGrid(g, occ);
         foreach (var (p, b) in g.Blocks())
         {
             if (!BlockInfo.IsFullCube(b.Type) || BlockInfo.IsTransparent(b.Material) || b.Material == Gen.Material.Glyph) continue;
@@ -1431,7 +1431,6 @@ public partial class PoiTest : Node
                 Int3 n = p + d.Vec();
                 var nb = g.Get(n);
                 if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material)) continue;
-                if (nav.IsRock(n) && n.Y <= Assembler.GroundY - 3) continue;
                 faces++;
                 Int3 v = d.Vec();
                 if (!drawn.Contains((p.X * 2 + 1 + v.X, p.Y * 2 + 1 + v.Y, p.Z * 2 + 1 + v.Z)))

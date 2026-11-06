@@ -12,9 +12,8 @@ namespace PlanetSurface.Poi;
 /// <summary>
 /// Draws the planet's POIs: the POI generator's own mesher builds each place's chunked block
 /// meshes (in its own grid, one unit a cell) on a worker; here they become meshes and collision.
-/// The mesher's buried ground is turned on with an empty plug, so faces deep against the ground are
-/// culled and the voxel terrain itself (cut and filled by the place's stamp) is the ground around
-/// and under it. Places sit at their canonical position, drawn at the copy nearest the camera.
+/// The mesher's buried ground is turned on with an empty plug and shows every face: the voxel terrain
+/// itself (cut and filled by the place's stamp) is the ground around and under it, and it can be dug away. Places sit at their canonical position, drawn at the copy nearest the camera.
 /// </summary>
 public partial class PoiLayer : Node3D
 {
@@ -60,11 +59,11 @@ public partial class PoiLayer : Node3D
             Collision = true,
             Detail = true,
             Rock = true,
-            // An empty plug: nothing is drawn for it, but faces against buried ground are culled.
+            // An empty plug: nothing is drawn for it, and every outer face stays, however deep: the ground can be dug off it.
             RockMin = new Int3(1, 0, 1),
             RockMax = new Int3(0, 0, 0),
             RockBottom = g.Min.Y,
-            GroundShow = 3,
+            GroundShow = MeshOptions.AllGround,
         };
         return Mesher.Build(g, site.Instance.Layout.Occupied, options);
     }

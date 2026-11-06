@@ -63,11 +63,15 @@ public sealed class MeshOptions
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
     public bool Detail = true;
     /// <summary>
-    /// How many cells of buried ground below ground level hide no faces. On a planet the ground only
-    /// nearly reaches a wall: it dips round a room carved under the pad, and a cut or a bank can leave it
-    /// short, so a wall's top few courses below ground are drawn rather than left open to the sky.
+    /// How many cells of buried ground below ground level hide no faces. On a planet nothing keeps the
+    /// ground where it was generated: it dips round a room carved under the pad, a cut or a bank leaves it
+    /// short, the player digs it away. A face left out there is a wall you see straight through from
+    /// outside and still walk into (its inner face is solid from behind), so the planet draws every
+    /// face however deep: <see cref="AllGround"/>.
     /// </summary>
     public int GroundShow;
+    /// <summary>For <see cref="GroundShow"/>: buried ground hides no face at any depth.</summary>
+    public const int AllGround = 1 << 20;
     /// <summary>How much each cell's shade wanders, as a share of the full wander: less on plain walls, where it reads as noise.</summary>
     public float Mottle = 1f;
 }
@@ -236,7 +240,7 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) : Hides(n))
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
                     continue;
                 Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
                 if (glyph) Glyph(chunk, p, f, b.Color);
@@ -471,7 +475,7 @@ public static class Mesher
                 TriFace(sBL, sLL, sHL, 0.78f);                    // sides
                 TriFace(sLR, sBR, sHR, 0.78f);
                 // The underside, for a ramp nothing stands under: an eave or a roof seen from inside.
-                if (!Occludes(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f);
+                if (!Hides(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f);
             }
             if (_o.Collision)
             {
@@ -679,7 +683,7 @@ public static class Shapes
                 break;
             }
             case BlockType.Plate:
-                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte, true));
+                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte));
                 break;
             case BlockType.Scorch:
                 l.Add(new ShapeBox(new V3(0.02f, 0, 0.02f), new V3(0.98f, 0.02f, 0.98f), c, Surface.Matte, true));
