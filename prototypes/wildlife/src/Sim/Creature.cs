@@ -53,6 +53,9 @@ public sealed class Creature
 
     // Motion. Position is the ground point under the body (or the body itself for fliers).
     public Vector3 Position, Velocity, Home;
+
+    /// <summary>Thrown by something bigger than itself (a tornado): in the air until it lands (<see cref="WildSim.Throw"/>).</summary>
+    public bool Thrown;
     public float Yaw;
     public float Age;
 

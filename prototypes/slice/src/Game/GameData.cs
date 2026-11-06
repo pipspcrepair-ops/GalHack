@@ -162,6 +162,11 @@ public sealed class SliceRules
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
         public double SealedRoomC { get; set; } = 20;
+
+        /// <summary>The weather's exposure (weather.json) at which the visor warns and at which an exposed body loses health, and how fast: health per second per exposure.</summary>
+        public double StormWarnFrom { get; set; } = 0.5;
+        public double StormHarmFrom { get; set; } = 1;
+        public double StormHealthPerSecond { get; set; } = 3;
     }
 
     public sealed class ToolRules

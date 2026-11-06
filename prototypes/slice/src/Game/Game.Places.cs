@@ -94,11 +94,25 @@ public partial class Game
     /// Out of reach of whatever walks the surface: down in the ground (a cave, a hole, a basement)
     /// or under a place's roof. The wildlife patch reads the planet's surface, not rooms.
     /// </summary>
-    public bool Sheltered()
+    public bool Sheltered() => Sheltered(Survivor.WorldFeet);
+
+    /// <summary>The same for any spot in the zone: wind and tornadoes can't touch what stands there.</summary>
+    public bool Sheltered(Vector3 feet)
     {
-        Vector3 feet = Survivor.WorldFeet;
         if (feet.Y < Zone.GroundAt(feet.X, feet.Z).Y - 2.5f) return true;
         return Places?.PlaceAt(feet) is Place p && p.Roofed(feet);
+    }
+
+    /// <summary>
+    /// Out of a storm's reach: in shelter, inside a vessel, or under something solid (a base's roof, an
+    /// overhang). Only from a physics step.
+    /// </summary>
+    public bool UnderCover()
+    {
+        if (Sheltered() || Survivor.Seated != null || (Survivor.Aboard != null && !Survivor.OnOuterHull)) return true;
+        Vector3 eye = Survivor.WorldEye();
+        var ray = PhysicsRayQueryParameters3D.Create(eye, eye + Vector3.Up * 20f, Layers.World | Layers.Hull);
+        return Zone.GetWorld3D().DirectSpaceState.IntersectRay(ray).Count > 0;
     }
 
     // ---- Climbing ---------------------------------------------------------------------------------

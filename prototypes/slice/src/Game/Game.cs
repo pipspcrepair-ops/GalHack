@@ -245,6 +245,8 @@ public partial class Game : Node3D
         Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
+        Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Suit.UnderCover = UnderCover;
         Zone.Weather.Happened += OnWeather;
 
         Console = new CockpitConsole { Name = "Console", Game = this };
@@ -642,7 +644,7 @@ public partial class Game : Node3D
                 float distance = feet.DistanceTo(e.Position);
                 Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Thunder, Camera.GlobalPosition + (e.Position - Camera.GlobalPosition).Normalized() * 20f,
                     1f, Mathf.Clamp(6f - distance / 60f, -12f, 6f));
-                if (Survivor.Seated == null && distance < e.DamageRadius)
+                if (Survivor.Seated == null && distance < e.DamageRadius && !Sheltered())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);
                     Say("STRUCK BY LIGHTNING: get low in a storm", Tones.Warning);

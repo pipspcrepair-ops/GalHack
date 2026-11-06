@@ -7,6 +7,8 @@ using PhysicsSandbox.Bridges;
 using PlanetSurface.Skies;
 using PlanetSurface.WeatherView;
 using PlanetSurface.World;
+using PlanetSurface.Terrain;
+using Slice.Player;
 using Weather.Model;
 using Archetype = Planets.Gen.Archetype;
 
@@ -239,6 +241,84 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             }
         }
         SyncTornadoes();
+        if ((_ravageTimer -= (float)delta) <= 0f)
+        {
+            _ravageTimer = 0.2f;
+            foreach (Tornado t in Sim.Tornadoes)
+                if (t.Touchdown && t.Strength > 0.25f) Ravage(t);
+        }
+    }
+
+    float _ravageTimer;
+    TreeFx _trees;
+    readonly List<FloraSolid> _torn = new();
+
+    /// <summary>Trees a tornado has torn up (tests).</summary>
+    public int TreesTorn { get; private set; }
+
+    /// <summary>The most trees one funnel tears up per pass: the ground's rebuild stays cheap.</summary>
+    const int TornPerPass = 3;
+
+    /// <summary>
+    /// What a funnel does as it passes: the trees it reaches go down for good (the felled list, the
+    /// stumps left behind) and creatures in it are flung, as players and vehicles are. Nothing
+    /// sheltered is touched: a place's creatures live in their own sims, out of its reach.
+    /// </summary>
+    void Ravage(Tornado t)
+    {
+        Vector3 at = _planet.NearestCopy(_planet.Canonical(t.Position), Observer());
+        float reach = t.Rules.CaptureRadius * 1.6f;
+        _torn.Clear();
+        foreach (var (solid, offset) in Zone.Streamer.SolidsNear(at, reach))
+        {
+            Vector3 c = solid.Center + offset;
+            if (!solid.Fellable || new Vector2(c.X - at.X, c.Z - at.Z).Length() > reach) continue;
+            _torn.Add(solid);
+            if (_torn.Count >= TornPerPass) break;
+        }
+        foreach (FloraSolid s in _torn) TearUp(s, at);
+        ThrowCreatures(t, at, reach);
+        Zone.Dust?.Puff(at + Vector3.Up * 0.6f, new Color(_planet.Look.Dust, 1f), 3f);
+    }
+
+    void TearUp(FloraSolid tree, Vector3 funnel)
+    {
+        if (!_planet.Felled.Add(tree.Id)) return;
+        Zone.Streamer.Fell(tree.Id);
+        TreesTorn++;
+        if (_trees == null)
+        {
+            _trees = new TreeFx();
+            Zone.AddChild(_trees);
+        }
+        Vector3 c = _planet.NearestCopy(_planet.Canonical(tree.Center), funnel);
+        Vector3 root = new(c.X, c.Y - tree.Extents.Y, c.Z);
+        Vector3 away = root - funnel;
+        away = new Vector3(-away.Z, 0f, away.X) + away * 0.4f; // round with the wind, and out
+        Color leaf = TreeFx.LeafColour(tree.Kind);
+        float height = MathF.Max(2f, tree.Extents.Y * 2f);
+        _trees.Fell(root, away.LengthSquared() > 0.01f ? away : Vector3.Right, height, tree.Extents.X, leaf, crown: true);
+        _trees.Leaves(root + Vector3.Up * height, leaf, 20, 2.2f);
+    }
+
+    void ThrowCreatures(Tornado t, Vector3 at, float reach)
+    {
+        WildlifePatch patch = Zone.Wildlife;
+        if (patch?.Sim == null) return;
+        Vector3 centre = patch.PatchLocal(at);
+        foreach (Wildlife.Creature c in patch.Sim.Creatures)
+        {
+            Vector3 d = c.Position - centre;
+            var flat = new Vector2(d.X, d.Z);
+            float r = flat.Length();
+            if (c.Thrown || r > reach) continue;
+            Vector2 radial = r > 0.01f ? flat / r : Vector2.Right;
+            // A body's share of the pull, as for vehicles: giants barely lift.
+            float share = MathF.Min(1f, 2.2f / MathF.Max(0.4f, c.Species.Body.Size)) * t.Strength;
+            var around = new Vector3(-radial.Y, 0f, radial.X);
+            var outward = new Vector3(radial.X, 0f, radial.Y);
+            patch.Sim.Throw(c, (around * t.Rules.OrbitSpeed + outward * t.Rules.FlingSpeed * 0.5f + Vector3.Up * t.Rules.LiftSpeed * 1.4f) * share + t.Velocity);
+        }
     }
 
     void SyncTornadoes()

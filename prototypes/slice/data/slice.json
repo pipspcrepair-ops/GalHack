@@ -42,7 +42,13 @@
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
     // A sealed room aboard a structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
-    "sealedRoomC": 20
+    "sealedRoomC": 20,
+    // Out in the weather: from stormWarnFrom of its exposure (weather.json) the visor warns, from
+    // stormHarmFrom health drains at stormHealthPerSecond x exposure. Only a blizzard or a fire storm
+    // reaches that (about 5 health a second). Any shelter or cover stops it at once.
+    "stormWarnFrom": 0.5,
+    "stormHarmFrom": 1,
+    "stormHealthPerSecond": 3
   },
 
   "tool": {

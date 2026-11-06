@@ -45,6 +45,9 @@ public sealed class Suit : IDamageSink
     /// <summary>Somewhere that counts as a sealed room without being a structure's: the cryo bunker, heated and with air of its own.</summary>
     public Func<bool> Sheltered;
 
+    /// <summary>Out of a storm's reach (the game's cover check, physics step only).</summary>
+    public Func<bool> UnderCover;
+
     /// <summary>Lines for the visor (helmet sealing, bottles, hard landings, deaths).</summary>
     public event Action<string> Said;
 
@@ -131,11 +134,30 @@ public sealed class Suit : IDamageSink
         double before = Vitals.Health;
         TickReport report = Sim.Tick(dt, activity);
         if (Vitals.Health < before) Count(DamageKindFor(report.Harm), before - Vitals.Health);
+        Outdoors(dt, survivor, report);
         foreach (Alert a in Enum.GetValues<Alert>())
             if (a != Alert.None && (report.Warnings & a) != 0 && (_warning & a) == 0) WarnedAt[a] = Sim.Time;
         _warning = report.Warnings;
         for (int i = events; i < Sim.Events.Count; i++) Said?.Invoke(Sim.Events[i]);
         return report;
+    }
+
+    /// <summary>
+    /// What the suit can't keep out, on top of survival's slow vitals, all warned on the visor as it
+    /// comes on. A blizzard or a fire storm, for anyone left out in it.
+    /// </summary>
+    void Outdoors(float dt, Survivor survivor, TickReport report)
+    {
+        if (Dead || _zone.Weather.Sim is not { } weather) return;
+        float exposure = weather.Current.Exposure;
+        if (exposure < _climate.StormWarnFrom || InSealedRoom) return;
+        if (_zone.Water?.Under(survivor.WorldEye(), out _) == true || (UnderCover?.Invoke() ?? false)) return;
+        bool heat = weather.Data.State(weather.Dominant).ExposureLabel == "heat";
+        Alert alert = heat ? Alert.Heat : Alert.Cold;
+        report.Warnings |= alert;
+        if (exposure < _climate.StormHarmFrom) return;
+        report.Harm |= alert;
+        report.Damage += Hit(_climate.StormHealthPerSecond * exposure * dt, heat ? DamageKind.Heat : DamageKind.Cold);
     }
 
     /// <summary>Working the tool: food drains faster for a moment (survival's mining rule).</summary>

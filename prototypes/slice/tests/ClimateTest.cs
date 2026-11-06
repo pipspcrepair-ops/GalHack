@@ -5,6 +5,7 @@ using GalHack.Physics.Engine;
 using Godot;
 using Slice.Game;
 using Slice.Surface;
+using Slice.Player;
 using SurvivalVitals.Model;
 using Weather.Model;
 using Wildlife;
@@ -86,6 +87,119 @@ public partial class ClimateTest : Node
     {
         Check(Zone.Weather.FallStopsOnContact, "rain, snow and dust die on what they hit: no cover check, a collision with whatever is there");
         foreach (int x in Swim()) yield return x;
+        foreach (int x in Storms()) yield return x;
+    }
+
+    /// <summary>Back on dry open ground, whole and fed: each section starts as a castaway would.</summary>
+    IEnumerable<int> OnOpenGround(Vector3 near)
+    {
+        Vector3 spot = Open(near);
+        Me.PlaceOutside((spot + Vector3.Up * 0.3f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
+        _game.Suit.Vitals.Normalise();
+    }
+
+    Vector3 Open(Vector3 near)
+    {
+        for (float r = 0f; r < 400f; r += 12f)
+        for (int i = 0; i < 16; i++)
+        {
+            Vector3 g = Zone.GroundAt(near.X + MathF.Cos(i * 0.39f) * r, near.Z + MathF.Sin(i * 0.39f) * r);
+            if (g.Y > 1.5f && !Zone.Water.LiquidAt(g.X, g.Z, out _) && _game.Places?.PlaceAt(g) == null) return g;
+        }
+        return Zone.GroundAt(near.X, near.Z);
+    }
+
+    IEnumerable<int> Storms()
+    {
+        foreach (int x in OnOpenGround(Me.WorldFeet)) yield return x;
+        Weather.Model.WeatherSim sky = Zone.Weather.Sim;
+        double max = _game.Suit.Sim.Data.Vitals.Health.Max;
+
+        foreach (var (kind, alert, name) in new[] { (WeatherKind.Blizzard, Alert.Cold, "blizzard"), (WeatherKind.FireStorm, Alert.Heat, "fire storm") })
+        {
+            _game.Suit.Vitals.Health = max;
+            _game.Suit.Vitals.Normalise();
+            sky.Snap(kind);
+            double at = _game.Suit.Vitals.Health;
+            foreach (int x in _drive.Wait(300)) yield return x;
+            double lost = at - _game.Suit.Vitals.Health;
+            Check(lost >= 15 && (_game.Suit.Last.Warnings & alert) != 0 && !_game.Suit.Dead,
+                $"out in a {name} health drains fast: {lost:F0} in 5 s, the visor warning {alert}");
+            sky.Snap(WeatherKind.Clear);
+            foreach (int x in _drive.Wait(5)) yield return x;
+        }
+
+        // A hole dug deep enough: a shaft down through the ground, by the planet's own edits.
+        Vector3 top = Me.WorldFeet;
+        var center = TerrainDigging.Terrain.Int3.Floor((top + Vector3.Down * 2f).ToNumerics());
+        for (int d = 0; d < 6; d++) Zone.Edits.Dig(new TerrainDigging.Terrain.Int3(center.X, center.Y - d, center.Z), 2.4f);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(90)) yield return x;
+        Vector3 bottom = Me.WorldFeet;
+        Check(_game.Sheltered(), $"down a hole {Zone.GroundAt(top.X, top.Z).Y - bottom.Y:F1} m deep counts as shelter");
+        _game.Suit.Vitals.Health = max;
+        _game.Suit.Vitals.Normalise();
+        sky.Snap(WeatherKind.Blizzard);
+        foreach (int x in _drive.Wait(240)) yield return x;
+        double kept = max - _game.Suit.Vitals.Health;
+        Check(kept < 1 && !_game.Suit.Lost.ContainsKey(DamageKind.Debug), $"in the hole a blizzard takes nothing: {kept:F1} health in 4 s");
+
+        // Wind can't reach down there, a hurricane or a funnel right on top.
+        sky.Snap(WeatherKind.Hurricane);
+        Zone.Weather.Bridge.Calm = false;
+        Tornado funnel = sky.SpawnTornado(bottom, bottom);
+        funnel.SkipFormation();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        N.Vector3 still = Me.Body.WorldPosition;
+        foreach (int x in _drive.Wait(150)) yield return x;
+        float moved = (Me.Body.WorldPosition - still).Length();
+        Check(moved < 0.3f, $"a hurricane and a funnel overhead don't touch anyone in shelter: moved {moved:F2} m in 2.5 s");
+        sky.ClearTornadoes();
+        Zone.Weather.Bridge.Calm = true;
+        sky.Snap(WeatherKind.Clear);
+        foreach (int x in Ravage()) yield return x;
+    }
+
+    /// <summary>A funnel set down among trees and an animal: the trees go, for good, and it is thrown.</summary>
+    IEnumerable<int> Ravage()
+    {
+        foreach (int x in OnOpenGround(Me.WorldFeet + new Vector3(30f, 0f, 30f))) yield return x;
+        Weather.Model.WeatherSim sky = Zone.Weather.Sim;
+        Vector3 stand = Me.WorldFeet;
+        long tree = 0;
+        Vector3 trunk = default;
+        foreach (var (solid, offset) in Zone.Streamer.SolidsNear(stand, 90f))
+        {
+            if (!solid.Fellable || (solid.Center + offset).DistanceTo(stand) < 30f) continue;
+            tree = solid.Id;
+            trunk = solid.Center + offset;
+            break;
+        }
+        if (tree == 0)
+        {
+            GD.Print("  (no tree within reach on this world: the tornado's trail is not tried)");
+            yield break;
+        }
+        WildlifePatch patch = Zone.Wildlife;
+        Species kind = patch.Fauna.Species.Find(s => s.Body.Size < 2f && s.Rig == RigKind.Legged) ?? patch.Fauna.Species[0];
+        Creature beast = patch.Sim.Spawn(kind, patch.PatchLocal(trunk + Vector3.Right * 2f));
+        Vector3 from = beast.Position;
+        int before = Zone.Weather.TreesTorn;
+        Tornado funnel = sky.SpawnTornado(trunk, trunk);
+        funnel.SkipFormation();
+        bool flew = false;
+        float highest = 0f;
+        for (int i = 0; i < 240; i++)
+        {
+            if (beast.Thrown) { flew = true; highest = MathF.Max(highest, beast.Position.Y - from.Y); }
+            yield return 0;
+        }
+        sky.ClearTornadoes();
+        Check(Zone.Planet.Felled.Contains(tree) && Zone.Weather.TreesTorn > before, $"the funnel tears trees up through the felled list: {Zone.Weather.TreesTorn - before} down around it");
+        Check(flew && highest > 1.5f, $"and flings a {kind.CommonName}: {highest:F1} m up");
+        beast.Removed = true;
     }
 
     /// <summary>The nearest deep water to the castaway, found in the generator's own columns; null on a dry world.</summary>
