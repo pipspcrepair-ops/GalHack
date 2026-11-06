@@ -94,7 +94,11 @@ public partial class StartTest : Node
         // The worlds: one pinned on the command line, or random ones.
         var worlds = new List<WorldChoice>();
         if (WorldChoice.FromArgs(args) is WorldChoice only) worlds.Add(only);
-        else for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
+        else
+        {
+            for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
+            worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
+        }
         foreach (WorldChoice pinned in worlds)
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
         int failedWorlds = _failedWorlds.Count;
@@ -150,6 +154,17 @@ public partial class StartTest : Node
                 yield return x;
             }
         }
+        // The cold of the world stays outside the chamber: the bunker is heated and has its own air.
+        foreach (int x in drive.Wait(2)) yield return x;
+        var at = new SurvivalVitals.Model.Pos(game.Bunker.Outside.X, game.Bunker.Outside.Y, game.Bunker.Outside.Z);
+        var chamber = game.Suit.Exposure(at, game.Suit.Sim.Time);
+        bool sealedIn = game.Suit.InSealedRoom;
+        game.Suit.InSealedRoom = false;
+        var outside = game.Suit.Exposure(at, game.Suit.Sim.Time);
+        game.Suit.InSealedRoom = sealedIn;
+        double roomC = game.Zone.Data.Rules.Climate.SealedRoomC;
+        Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
+            $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
         foreach (int x in Watched(play.WakeAndLeave(Check, $"{world.Name}, seed {world.Seed}: "))) yield return x;
         Check(rescues == 0 && worstStep < 1.5f, $"{world.Name}, seed {world.Seed}: no teleports (largest move in a tick {worstStep:F2} m), never rescued");
         Bunker b = game.Bunker;
