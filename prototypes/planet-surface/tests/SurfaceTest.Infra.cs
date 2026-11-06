@@ -104,7 +104,8 @@ public partial class SurfaceTest
                 }
             }
             // Scatter: a far chunk's worth at a time, in rough ground.
-            for (int k = 0; k < 24; k++)
+            int before = flora;
+            for (int k = 0; k < 120 && (k < 24 || flora - before < 400); k++)
             {
                 var job = new FarJob { Fx = rand.Next(FarBuilder.Count(w.Terrain.Width) - 1), Fz = rand.Next(FarBuilder.Count(w.Terrain.Height) - 1), Lod = 0 };
                 FarBuilder.Build(job, w.Source, w.Palette, null, null);
@@ -1095,8 +1096,9 @@ public partial class SurfaceTest
         void Flooded(PlanetWorld w)
         {
             PlanetTerrainSource source = w.Source;
-            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Flooded))
-                for (int k = st.First; k < st.Last; k++)
+            // Any tunnel may flood, and few on one world do: every tunnel of these throwaway worlds is judged as if it had.
+            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Kind == RoadSpan.Tunnel))
+                for (int k = st.First; st.Flooded = true && k < st.Last; k++)
                 {
                     if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
                     flood++;
@@ -1189,7 +1191,7 @@ public partial class SurfaceTest
             Flooded(w);
             await Frames(1);
         }
-        // A flooded tunnel is a matter of luck on any one world: fresh ones until there are some to judge.
+        // Tunnels are few: fresh worlds until there are some to judge.
         var fresh = new Random();
         for (int k = 0; k < 12 && flood == 0; k++)
         {
