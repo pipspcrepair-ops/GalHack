@@ -113,7 +113,7 @@ public sealed class ConstructorSection : IMenuSection
         y += 40;
 
         // ---- Queues -----------------------------------------------------------------------------
-        g.Caption("YOUR ORDERS · AUTO SUB-PARTS ADDED FOR YOU", new Vector2(o.X, y), area.Size.X, C.Accent2);
+        g.Caption("YOUR ORDERS · AUTO SUB-PARTS", new Vector2(o.X, y), area.Size.X, C.Accent2);
         y += 32;
         // Each order, with the sub-parts it planned indented under it. Cancelling an order cancels its parts.
         int shown = 0;

@@ -635,6 +635,11 @@ public partial class BuildTest : Node
         // Tooltips: hover over a stack through the game's mouse.
         foreach (int x in _play.OpenMenu(MenuTab.You)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        foreach (int x in _drive.Tap(Key.Slash)) yield return x;
+        foreach (int x in _drive.Wait(1)) yield return x;
+        Check(ItemViews.Focused == "bag", "the / key gives the page's first filter box the keyboard");
+        _game.Controls.Tap(Key.Escape);
+        foreach (int x in _drive.Wait(2)) yield return x;
         List<(string Text, Color Colour)> Tip() => _game.Menu.Root.Gui.LastTip;
         string All() => Tip() == null ? "" : string.Join(" / ", Tip().Select(t => t.Text));
         IEnumerable<int> Hover(string itemId)

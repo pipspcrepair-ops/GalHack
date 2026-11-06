@@ -26,11 +26,11 @@ Compile it in where it lives, never copy it:
 
 ## The catalogue
 
-81 items on the design's five-step rarity ladder, each with mass and volume (storage units, a litre):
+82 items on the design's five-step rarity ladder, each with mass and volume (storage units, a litre), plus 63 block items, one per block and grid:
 
 | Rarity | Colour | Items | |
 | --- | --- | --- | --- |
-| Common | grey `#9aa3ad` | 37 | 8 raw, 8 refined, 8 parts, 2 components, 7 consumables, 3 ammo, 1 tool |
+| Common | grey `#9aa3ad` | 38 | 8 raw, 8 refined, 8 parts, 2 components, 8 consumables, 3 ammo, 1 tool |
 | Uncommon | green `#3fcf5e` | 17 | 5 raw, 5 refined, 4 parts, 1 component, 2 ammo |
 | Rare | blue `#3d8bff` | 11 | 3 raw, 3 refined, 3 components, 1 consumable, 1 ammo |
 | Exotic | purple `#a64dff` | 9 | 3 raw, 3 refined, 3 components |
@@ -45,7 +45,7 @@ Compile it in where it lives, never copy it:
 
 Names: plain words and real metals for common goods, the design's crystal and star-metal names for rare ones, lost-technology names for finds. All GalHack's own; a test checks no item borrows another game's names.
 
-58 recipes, one per item, each with a time and the lowest constructor tier that knows it. The deepest chain is five steps (copper ore, bar, wire, circuit board, logic module, field emitter).
+59 recipes for those, one per item, each with a time and the lowest constructor tier that knows it, and one for each block item. The deepest chain is five steps (copper ore, bar, wire, circuit board, logic module, field emitter).
 
 ## Rules the tests hold (`ItemCatalogue.Validate` and the test scenes)
 
@@ -130,16 +130,16 @@ All of them take inputs from, and deliver to, the structure's one shared storage
 
 ## The starter small vessel
 
-`prototypes/manufacturing/data/blueprints/gadfly.gbp`: a one-seat shuttle of 249 small blocks (4.4 t, thrust to weight 3.5 g) with a glazed cabin, generator, fuel tank, gyro, container, 11 thrusters and three legs.
+`prototypes/manufacturing/data/blueprints/gadfly.gbp`: a one-seat shuttle of 249 small blocks (4.4 t, thrust to weight 3.5 g) with a glazed cabin round a command chair, generator, fuel tank, gyro, container, 11 thrusters and three legs.
 
 | | Ore | Crafting |
 | --- | --- | --- |
-| Gadfly | 717 (338 iron, 250 carbon, 69 silicon, 44 copper, 12 stone, 4 ice) | 527 runs, 19 min on a small constructor |
-| Foothold base (large core, generator, fuel tank, small constructor, container, 12 floor plates) | 392 | 21 min on the survival constructor |
+| Gadfly | 714 (338 iron, 250 carbon, 66 silicon, 44 copper, 12 stone, 4 ice) | 527 runs of parts, 19 min on a small constructor; its 249 block items add about 6 min |
+| Foothold base (large core, generator, fuel tank, small constructor, container, 12 floor plates) | 392 | 21 min of parts on the survival constructor; its block items add about 2 min |
 | Fuel (20 energy cells) | 40 | |
-| **Total from the crash** | **1,149 ore** | gather 26 min at 45 ore/min, craft 41 min, place 5 min |
+| **Total from the crash** | **1,146 ore** | gather 25 min at 45 ore/min, craft 49 min, place 5 min |
 
-That is **46 to 72 minutes** for an experienced player (the first if the constructor works while they gather, the second if nothing overlaps), leaving room for the rest of survival inside the design's one to two hours. The pacing reference (45 ore a minute with the survival tool, 12 ore per dug cell, 1.2 s to place a block) is data in `machines.json`. For comparison, the sandbox's walk-in Corsair 9 (556 blocks) is 1,378 ore and 36 minutes of crafting; the blueprint factory builds the Gadfly in 2:09 from 169 iron bars, 121 graphite, 33 glass panes, 22 copper bars, 11 ceramic tiles, 8 polymer and 6 wafers.
+That is **54 to 79 minutes** for an experienced player (the first if the constructor works while they gather, the second if nothing overlaps), leaving room for the rest of survival inside the design's one to two hours. The pacing reference (45 ore a minute with the survival tool, 12 ore per dug cell, 1.2 s to place a block) is data in `machines.json`. For comparison, the sandbox's walk-in Corsair 9 (556 blocks) is 1,375 ore and 36 minutes of parts; the blueprint factory, which works from materials and never touches block items, builds the Gadfly in 2:09 from 169 iron bars, 121 graphite, 31 glass panes, 22 copper bars, 11 ceramic tiles, 8 polymer and 6 wafers.
 
 ## Reference: Empyrion
 
