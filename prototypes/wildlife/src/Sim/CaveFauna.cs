@@ -12,7 +12,7 @@ namespace Wildlife;
 /// </summary>
 public static class CaveFauna
 {
-    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4)
+    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4, Func<Vector3, bool> allow = null)
     {
         var rng = Rng.For(seed, "cave-fauna");
         var made = new List<Creature>();
@@ -31,6 +31,12 @@ public static class CaveFauna
         Sort(floors);
         Sort(ceilings);
         Sort(walls);
+        // Filled with someone already near, nothing goes down beside them or where they are looking.
+        if (allow != null)
+        {
+            floors.RemoveAll(f => !allow(SpaceMath.Center(f)));
+            ceilings.RemoveAll(k => !allow(SpaceMath.Center(k)));
+        }
         if (floors.Count == 0) return made;
 
         // Cracks low in the walls (one network: they join up through the rock), moss on the floor.

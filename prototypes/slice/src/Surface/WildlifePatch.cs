@@ -143,7 +143,10 @@ public partial class WildlifePatch : Node3D
                 if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                carriedNow.Add(sim.Spawn(c.Species, local));
+                Creature across = sim.Spawn(c.Species, local);
+                across.Health = c.Health;
+                across.Yaw = c.Yaw;
+                carriedNow.Add(across);
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
@@ -175,17 +178,20 @@ public partial class WildlifePatch : Node3D
             int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density, rng);
             for (int g = 0; g < groups && Sim.Creatures.Count < most; g++)
             {
-                float min = s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe;
+                int count = Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable)));
+                float spread = Sim.GroupRadius(s, count);
+                float min = (s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe) + spread;
                 Vector3 at = default;
                 bool found = false;
                 for (int attempt = 0; attempt < 12 && !found; attempt++)
                 {
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min;
+                    // A patch taking over from another is seen arriving: only where nobody is near or looking.
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && (!carriedOver || Sim.ClearOfPlayers(at, spread));
                 }
                 if (!found) continue;
-                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable))));
+                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
             }
         }
     }

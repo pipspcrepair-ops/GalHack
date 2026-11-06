@@ -1117,13 +1117,34 @@ public partial class CreaturesTest : Node
         sim.Slipped += (c, k, entering) => { if (entering && c.Species.Role == DeepRole.Subsister) slipped++; };
         int watcherHits = 0;
         sim.Attacked += e => { if (e.Target == watcher && e.Hit) watcherHits++; };
-        for (float t = 0f; t < 420f; t += Dt) sim.Step(Dt);
-        int ate = sim.Creatures.Count(c => c.Species.HuntsPrey && c.Hunger < 0.3f);
+        int stillBeside = 5, ate, grazing = 0;
+        bool colonyShut = true;
+        int cameBack = 0;
+        sim.Spawned += c => { if (c.Species == grub) cameBack++; };
+        var fed = new HashSet<Creature>();
+        for (float t = 0f; t < 720f; t += Dt)
+        {
+            // Nothing comes out of a crack under a watcher's nose: it takes their going for the colony to come back.
+            if (t < 300f)
+            {
+                int now = sim.Creatures.Count(c => c.Alive && c.Species == grub);
+                colonyShut &= now <= stillBeside;
+                stillBeside = now;
+            }
+            else if (watcher.Position.X < 100f)
+            {
+                grazing = stillBeside;
+                watcher.Position = new Vector3(200f, 9f, 200f);
+            }
+            sim.Step(Dt);
+            foreach (Creature c in sim.Creatures) if (c.Species.HuntsPrey && c.State == CState.Eat) fed.Add(c);
+        }
+        ate = fed.Count;
         Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= 0.9f,
-            $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 7 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
-        Check(slipped >= 1 && sim.Creatures.Count(c => c.Alive && c.Species == grub) >= 2,
-            $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony keeps coming back ({sim.Creatures.Count(c => c.Alive && c.Species == grub)} grazing at the end)");
-        Check(watcherHits == 0 && ate >= 1, $"the hunters feed on their kills ({ate} fed) and leave the still watcher alone ({watcherHits} hits)");
+            $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
+        Check(slipped >= 1 && cameBack >= 2,
+            $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
+        Check(watcherHits == 0 && ate >= 1 && colonyShut, $"the hunters feed on their kills ({ate} fed) and leave the still watcher alone ({watcherHits} hits); nothing came out beside them meanwhile");
     }
 
     void WreckNesters()
@@ -1262,6 +1283,8 @@ public partial class CreaturesTest : Node
         var rng = new Rng(2);
         for (int i = 0; i < 60 * 60 * 15; i++)
         {
+            // Walking about: nothing comes back round someone who stays put.
+            player.Position = new Vector3(150f + MathF.Sin(i * Dt * 0.02f) * 80f, 0f, 150f);
             sim.Step(Dt);
             spawner.Step(Dt);
             if (i % 240 == 0)

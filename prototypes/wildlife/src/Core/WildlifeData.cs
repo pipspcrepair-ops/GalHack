@@ -200,6 +200,13 @@ public sealed class SpawnRules
     /// <summary>Respawns within this distance of a player must also be outside their view cone.</summary>
     public float ViewDistance { get; set; } = 220f;
     public float ViewConeDegrees { get; set; } = 65f;
+    /// <summary>Nobody within this of where they were this many seconds ago sees anything come back.</summary>
+    public float StayPutRadius { get; set; } = 30f;
+    public float StayPutSeconds { get; set; } = 60f;
+    /// <summary>Cracks don't let anything out within this of a player, or in their line of sight within <see cref="ViewDistance"/>.</summary>
+    public float ColonyClearance { get; set; } = 25f;
+    /// <summary>The nearest a cave's creatures are put to someone already there.</summary>
+    public float CaveClearance { get; set; } = 12f;
     /// <summary>Spots tried for one group before it waits for the next check.</summary>
     public int Attempts { get; set; } = 24;
 

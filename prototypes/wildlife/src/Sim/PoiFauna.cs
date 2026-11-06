@@ -95,7 +95,8 @@ public sealed class Colony
     public int Target;
     public Vector3 Home;
     public readonly List<Crack> Sources = new();
-    public float Timer, Wait = 40f;
+    public float Timer, Wait = RefillSeconds;
+    const float RefillSeconds = 90f;
 
     public static void StepAll(WildSim w, float dt)
     {
@@ -109,13 +110,15 @@ public sealed class Colony
                 if (c.Species == col.Species && c.Alive && !c.Removed && c.Space == col.Space) alive++;
             if (alive >= col.Target || col.Sources.Count == 0)
             {
-                col.Wait = 40f;
+                col.Wait = RefillSeconds;
                 continue;
             }
             col.Wait -= 5f;
             if (col.Wait > 0f) continue;
-            col.Wait = 40f;
+            // Nothing comes out under your nose: only by a crack nobody is near or looking down.
             Crack from = col.Sources[(int)(w.Frame % col.Sources.Count)];
+            if (Overlooked(w, col, from)) continue;
+            col.Wait = RefillSeconds;
             Creature n = w.SpawnIn(col.Species, col.Space, from.Position + from.Normal * 0.3f, from.Normal);
             n.Home = col.Home;
             // It comes out of the crack: in the walls a moment, then out.
@@ -124,6 +127,19 @@ public sealed class Colony
             n.WallLength = 1f;
             n.WallTime = 0f;
         }
+    }
+
+    static bool Overlooked(WildSim w, Colony col, Crack k)
+    {
+        SpawnRules r = w.Data.Spawning;
+        Vector3 mouth = k.Position + k.Normal * 0.3f;
+        foreach (ITarget t in w.Targets)
+        {
+            float d = (t.Position - k.Position).Length();
+            if (d < r.ColonyClearance) return true;
+            if (d < r.ViewDistance && SpaceMath.Clear(col.Space, t.Position + Vector3.Up * 1.4f, mouth, 0f)) return true;
+        }
+        return false;
     }
 }
 

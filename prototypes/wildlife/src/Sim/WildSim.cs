@@ -263,6 +263,22 @@ public sealed class WildSim
     public float GroupRadius(Species s, int count) => s.Behaviour == Behaviour.Herd ? HerdSpread(s, count)
         : s.Behaviour == Behaviour.PackHunter ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : s.Body.Size * 3f;
 
+    /// <summary>Far enough from every player, and not in front of anyone who could see it (see <see cref="SpawnRules"/>).</summary>
+    public bool ClearOfPlayers(Vector3 at, float margin)
+    {
+        SpawnRules rules = Data.Spawning;
+        float cone = MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees));
+        foreach (ITarget t in Targets)
+        {
+            Vector3 to = Flat(at - t.Position);
+            float d = to.Length();
+            if (d < rules.MinPlayerDistance + margin) return false;
+            Vector3 look = Flat(t.Forward);
+            if (d < rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > cone) return false;
+        }
+        return true;
+    }
+
     /// <summary>Nudges a spawn point off rocks and trunks.</summary>
     public Vector3 FreeSpot(Vector3 p, Rng rng)
     {

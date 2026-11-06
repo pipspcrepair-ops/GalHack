@@ -44,7 +44,7 @@ public partial class Game
         Zone.AddChild(Places);
         Caves = new Caves
         {
-            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Deep = Places.Fauna,
+            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
             Indoors = () => Places.PlaceAt(Survivor.WorldFeet) != null || Bunker.Inside(Survivor.WorldFeet, Zone),
         };

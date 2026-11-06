@@ -74,6 +74,10 @@
     "minPlayerDistance": 90,
     "viewDistance": 220,
     "viewConeDegrees": 65,
+    "stayPutRadius": 30,
+    "stayPutSeconds": 60,
+    "colonyClearance": 25,
+    "caveClearance": 12,
     "attempts": 24
   },
 
