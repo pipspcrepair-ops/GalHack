@@ -101,17 +101,43 @@ static class Shaders
         uniform float veins = 0.0;  // 1: glow runs in cracks (lava fields); 0: a soft even glow (moss, springs)
         uniform vec2 map_size = vec2(16000.0, 8000.0);
         uniform vec4 hole = vec4(0.0);
+        uniform vec3 rock_color : source_color = vec3(0.45, 0.42, 0.38);
         varying vec3 world_pos;
+        varying vec3 world_normal;
         {{Srgb}}
         {{Noise2D}}
         void vertex() {
             world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+            world_normal = mat3(MODEL_MATRIX) * NORMAL;
+        }
+        // Rock on a wall, read in the wall's own plane: u runs along it, v is height. Layers run
+        // level, broken into long lenses, so a face shows strata rather than streaks down its fall.
+        float wall_rock(float u, float v, float period) {
+            float bed = v + 7.0 * vnoise(vec2(u * 0.006, 3.5), vec2(period * 0.006, 4096.0));
+            float layers = vnoise(vec2(u * 0.012, bed * 0.16), vec2(period * 0.012, 65536.0));
+            float thin = vnoise(vec2(u * 0.03, bed * 0.55), vec2(period * 0.03, 65536.0));
+            float masses = vnoise(vec2(u * 0.024, bed * 0.03), vec2(period * 0.024, 65536.0));
+            return layers * 0.5 + thin * 0.2 + masses * 0.3;
         }
         void fragment() {
             {{(far ? "if (world_pos.x > hole.x && world_pos.x < hole.z && world_pos.z > hole.y && world_pos.z < hole.w) discard;" : "")}}
             vec2 m = UV; // map coordinates in metres, continuous across chunk borders
             float mottle = vnoise(m * 0.045, map_size * 0.045) * 0.6 + vnoise(m * 0.18, map_size * 0.18) * 0.4;
             vec3 c = srgb_to_linear(COLOR.rgb) * (0.88 + 0.24 * mottle);
+            // Steep faces are coloured here, per pixel: a wall spans a tall triangle or two, and
+            // anything worked out at its vertices would run down the whole face in stripes.
+            vec3 n = normalize(world_normal);
+            c *= 0.74 + 0.26 * smoothstep(0.82, 0.96, n.y); // slopes read as slopes: a slip face against the sand it falls to
+            float wall = 1.0 - smoothstep(0.55, 0.8, n.y);
+            if (wall > 0.0) {
+                float wx = n.x * n.x + 1e-4, wz = n.z * n.z + 1e-4;
+                float along_x = wall_rock(m.y, world_pos.y, map_size.y), along_z = wall_rock(m.x, world_pos.y, map_size.x);
+                float rock = (along_x * wx + along_z * wz) / (wx + wz);
+                c = mix(c, srgb_to_linear(rock_color) * (0.8 + 0.95 * rock), wall * 0.82);
+                // Ledges catch the light along the beds, across any shading the mesh runs down the face.
+                vec3 up_view = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+                NORMAL = normalize(NORMAL + up_view * (rock - 0.5) * 1.1 * wall);
+            }
             ALBEDO = c;
             ROUGHNESS = 0.92;
             SPECULAR = 0.25;
@@ -278,7 +304,9 @@ static class Shaders
             if (stars > 0.0 && h > 0.0) {
                 // About 0.0028 rad across, as before: 0.28 cells of a shell 100 cells out.
                 vec3 star = star_shell(d, 100.0, 0.073, 0.28, false);
-                col += star * stars * smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.9, 1.0, s));
+                // Daylight drowns them: only a sky dark enough shows any, however thin the air.
+                float daylight = smoothstep(0.004, 0.03, dot(col, vec3(0.2126, 0.7152, 0.0722)));
+                col += star * stars * smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.9, 1.0, s)) * (1.0 - daylight);
             }
 
             if (ring > 0.0) {

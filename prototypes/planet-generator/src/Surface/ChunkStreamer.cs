@@ -82,6 +82,7 @@ public partial class ChunkStreamer : Node3D
         Rgb glow = _palette.GlowColor;
         material.SetShaderParameter("glow_color", new Color(glow.R, glow.G, glow.B));
         material.SetShaderParameter("map_size", new Vector2((float)_width, (float)_height));
+        material.SetShaderParameter("rock_color", new Color(_palette.Cliff.R, _palette.Cliff.G, _palette.Cliff.B));
         material.SetShaderParameter("veins", _palette.Map.Def.Archetype == Archetype.Lava ? 1f : 0f);
         return material;
     }
