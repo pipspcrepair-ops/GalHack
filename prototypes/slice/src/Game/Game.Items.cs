@@ -103,6 +103,11 @@ public partial class Game
                 Say("F to take the command chair", Tones.Text);
                 return;
             }
+            if (type.IsLight && v.ToggleLight(look.Cell))
+            {
+                Say(v.Structure.Get(look.Cell).Off ? "Light off" : "Light on", Tones.Text);
+                return;
+            }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
             {
                 int at = 0, k = 0;
@@ -133,6 +138,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
             if (type.IsCommandChair) return "F  Take the command chair";
+            if (type.IsLight) return b.Off ? "E  Switch the light on" : "E  Switch the light off";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";

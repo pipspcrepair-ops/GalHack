@@ -320,7 +320,7 @@ public sealed class SurvivalTool
     }
 
     /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>
-    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle(), to);
+    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle, to);
 
     // ---- Shoot ---------------------------------------------------------------------------------
 

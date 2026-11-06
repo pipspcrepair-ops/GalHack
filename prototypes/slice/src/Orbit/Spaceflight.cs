@@ -174,6 +174,10 @@ public partial class Spaceflight : Node
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
+        // The place in view from the bunker's way out is known from the start; every other place waits to be come near.
+        if (g.Bunker?.Poi is { } seen && g.Bunker.Landmark != null)
+            for (int i = 0; i < planet.Pois.Count; i++)
+                if (planet.Pois[i] == seen) Charts.Find($"poi{i}", seen.Name, seen.Origin.X, seen.Origin.Z, "place");
         foreach (var (kind, d) in _deposits.Near(g.Surface, at))
             Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
     }

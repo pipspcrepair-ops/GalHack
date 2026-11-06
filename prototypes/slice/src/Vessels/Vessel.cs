@@ -77,7 +77,43 @@ public sealed partial class Vessel
     }
 
     /// <summary>Settings the Core tab changes: power to its devices, its lights, Home, auto-transmit.</summary>
-    public bool PowerOn = true, LightsOn = true, Home, AutoTransmit;
+    public bool PowerOn = true, Home, AutoTransmit;
+
+    bool _lightsOn = true;
+
+    /// <summary>
+    /// Are the lights on? True while any light block is lit; setting it switches every light block on
+    /// or off (a light's Off flag, so its glow and its real light follow), and a single light switched
+    /// by hand (<see cref="ToggleLight"/>) moves it with them.
+    /// </summary>
+    public bool LightsOn
+    {
+        get => _lightsOn;
+        set
+        {
+            _lightsOn = value;
+            bool changed = false;
+            foreach (var (cell, block) in Structure.Blocks().ToList())
+            {
+                Block b = block;
+                if (!Structure.TypeOf(b).IsLight || b.Off == !value) continue;
+                b.Flags ^= BlockFlags.Off;
+                Structure.Set(cell, b);
+                changed = true;
+            }
+            if (changed) ApplyEdits();
+        }
+    }
+
+    /// <summary>E on a light block: switches that one light. False if the cell is not a light.</summary>
+    public bool ToggleLight(Int3 cell)
+    {
+        if (!Structure.TryGet(cell, out Block b) || !Structure.TypeOf(b).IsLight) return false;
+        Building.Toggle(Structure, cell);
+        ApplyEdits();
+        _lightsOn = Structure.Blocks().Any(x => Structure.TypeOf(x.Item2).IsLight && !x.Item2.Off);
+        return true;
+    }
 
     public bool IsWreck => Body.Kind == BodyKind.Wreck;
 

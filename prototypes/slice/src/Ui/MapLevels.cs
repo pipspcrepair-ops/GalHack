@@ -65,6 +65,44 @@ public sealed class MapLevels
 
     // ---- The world --------------------------------------------------------------------------
 
+    /// <summary>How close, in pixels, a right click must be to take down one of your marks.</summary>
+    public const float MarkHit = 12f;
+
+    /// <summary>The generator's terrain colours behind the local map: <paramref name="halfMetres"/> each way from you. False while it is still being charted.</summary>
+    public bool Terrain(Gui g, Rect2 panel, float halfMetres)
+    {
+        Paint();
+        if (_chart == null || !g.Drawing) return false;
+        var (ux, uz) = You();
+        var planet = _game.Surface.Planet;
+        Tiles(g, panel, ux, uz, 2.0 * halfMetres / panel.Size.X, planet.Width, planet.Height);
+        return true;
+    }
+
+    /// <summary>The map point of a spot on the local map, and the other way: where a place is, as a point near you in world coordinates (the nearest copy on the torus).</summary>
+    public Vector3 NearYou(double x, double z)
+    {
+        Vector3 me = _game.Survivor.WorldFeet;
+        var planet = _game.Surface.Planet;
+        var (ux, uz) = You();
+        double dx = x - ux, dz = z - uz;
+        if (dx > planet.Width / 2) dx -= planet.Width; else if (dx < -planet.Width / 2) dx += planet.Width;
+        if (dz > planet.Height / 2) dz -= planet.Height; else if (dz < -planet.Height / 2) dz += planet.Height;
+        return new Vector3(me.X + (float)dx, me.Y, me.Z + (float)dz);
+    }
+
+    /// <summary>The local map's right click: on a mark of yours, take it down; anywhere else, make one there.</summary>
+    public void LocalRightClick(Vector2 mouse, Func<Vector3, Vector2> project, Func<Vector2, Vector3> unproject)
+    {
+        if (_game.InOrbit) return;
+        Charts charts = _game.Spaceflight.Charts;
+        ChartMark hit = charts.OfKind("mark").FirstOrDefault(m => project(NearYou(m.X, m.Z)).DistanceTo(mouse) <= MarkHit);
+        if (hit != null) { charts.Unmark(hit.Key); return; }
+        Vector3 at = unproject(mouse);
+        var planet = _game.Surface.Planet;
+        charts.Mark(Planets.Gen.Mathx.WrapX(at.X, planet.Width), Planets.Gen.Mathx.Wrap(at.Z, planet.Height));
+    }
+
     (double x, double z) You()
     {
         Vector3 p = _game.Survivor.WorldFeet;
@@ -76,7 +114,7 @@ public sealed class MapLevels
         var planet = _game.Surface.Planet;
         _painting ??= Task.Run(() =>
         {
-            ColorMap colors = ColorMap.Build(planet.Map, ArchetypeLook.For(planet.Spec), 1024);
+            ColorMap colors = ColorMap.Build(planet.Map, ArchetypeLook.For(planet.Spec), 2048);
             return Image.CreateFromData(colors.Width, colors.Height, false, Image.Format.Rgb8, colors.Composite());
         });
         if (_chart == null && _painting.IsCompletedSuccessfully) _chart = ImageTexture.CreateFromImage(_painting.Result);
@@ -107,33 +145,42 @@ public sealed class MapLevels
             if (g.Released) _dragFrom = null;
             if (g.RightClicked(panel))
             {
-                var (mx, mz) = View.FromView(g.Mouse.X - c.X, g.Mouse.Y - c.Y);
-                _game.Spaceflight.Charts.Mark(mx, mz);
+                // On one of your own marks: take it down. Anywhere else: make one.
+                Charts own = _game.Spaceflight.Charts;
+                ChartMark hit = own.OfKind("mark").FirstOrDefault(m => Screen(m.X, m.Z).DistanceTo(g.Mouse) <= MarkHit);
+                if (hit != null) own.Unmark(hit.Key);
+                else
+                {
+                    var (mx, mz) = View.FromView(g.Mouse.X - c.X, g.Mouse.Y - c.Y);
+                    own.Mark(mx, mz);
+                }
             }
         }
         if (g.Drawing)
         {
-            if (_chart != null) Tiles(g, panel);
+            if (_chart != null) Tiles(g, panel, View.CentreX, View.CentreZ, View.MetresPerPixel, View.Width, View.Height);
             else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
-            void Mark(double x, double z, string label, Color colour, float r)
+            var labels = new MapLabels();
+            void Mark(double x, double z, string label, Color colour, float r, int priority)
             {
                 Vector2 q = Screen(x, z);
                 if (!panel.HasPoint(q)) return;
                 g.Canvas.DrawCircle(q, r, colour);
-                if (label != null) g.Text(label, q + new Vector2(r + 3, -9), colour, 13);
+                labels.Add(q, r, label, colour, priority);
             }
             Charts charts = _game.Spaceflight.Charts;
             foreach (ChartMark m in charts.Marks)
-                Mark(m.X, m.Z, m.Kind == "deposit" ? m.Label.ToUpperInvariant() : m.Label, m.Kind switch { "mark" => C.Danger, "deposit" => C.Holo, _ => C.Accent2 }, m.Kind == "mark" ? 6f : 4f);
+                Mark(m.X, m.Z, m.Kind == "deposit" ? m.Label.ToUpperInvariant() : m.Label.ToUpperInvariant(), m.Kind switch { "mark" => C.Danger, "deposit" => C.Holo, _ => C.Accent2 }, m.Kind == "mark" ? 6f : 4f, m.Kind switch { "place" => 2, "mark" => 3, _ => 4 });
             foreach (Vessel v in _game.Surface.Vessels)
             {
                 Vector3 p = v.IsRuin ? _game.Start : v.Body.Position.ToGodot();
-                Mark(p.X, p.Z, v.IsRuin ? "BUNKER" : v.Name.ToUpperInvariant(), v.IsRuin ? C.Accent : v.IsBase ? C.Good : C.Text, 6f);
+                Mark(p.X, p.Z, v.IsRuin ? "BUNKER" : v.Name.ToUpperInvariant(), v.IsRuin ? C.Accent : v.IsBase ? C.Good : C.Text, 6f, 1);
             }
-            Mark(ux, uz, "YOU", C.Accent, 7f);
+            Mark(ux, uz, "YOU", C.Accent, 7f, 0);
+            labels.Flush(g, panel);
         }
         g.Caption("WORLD MAP", side.Position, side.Size.X);
-        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place", "it wraps both ways", "found places, deposits and", "your marks show here,", "shared with everyone" };
+        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place, or", "take down a mark of yours", "it wraps both ways", "found places and deposits", "show here, with your marks" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         g.Text($"{View.MetresPerPixel * panel.Size.X / 1000:F1} KM ACROSS", side.Position + new Vector2(0, 216), C.Text, 15, UiTheme.Mono);
         if (g.Button("map:home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2))
@@ -144,11 +191,11 @@ public sealed class MapLevels
     }
 
     /// <summary>The map's picture, as many wrapped copies as it takes to fill the panel.</summary>
-    void Tiles(Gui g, Rect2 panel)
+    void Tiles(Gui g, Rect2 panel, double centreX, double centreZ, double metresPerPixel, double width, double height)
     {
-        float w = (float)(View.Width / View.MetresPerPixel), h = (float)(View.Height / View.MetresPerPixel);
+        float w = (float)(width / metresPerPixel), h = (float)(height / metresPerPixel);
         Vector2 c = panel.GetCenter();
-        float ox = c.X - (float)(View.CentreX / View.MetresPerPixel), oy = c.Y - (float)(View.CentreZ / View.MetresPerPixel);
+        float ox = c.X - (float)(centreX / metresPerPixel), oy = c.Y - (float)(centreZ / metresPerPixel);
         for (int i = -2; i <= 2; i++)
             for (int j = -2; j <= 2; j++)
             {
