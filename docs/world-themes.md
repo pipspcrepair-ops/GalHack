@@ -781,7 +781,7 @@ Worlds where people left, or tried to. The evidence is paperwork, queues and hal
 - Fit: pre M > post L | ports D-E | C | S
 
 **82. Geothermal Deep** (`geothermal`) - Drilled for heat.
-- Happened: Power from the earth: wells tapped a whole province.
+- Happened: Power from the ground: wells tapped a whole province.
 - Land/sky: Volcanic uplands, steam plumes, mineral colours.
 - Regions/infra: Wellheads, pipe runs, turbine houses, hot roads.
 - POIs: top: fusion_plant, old_mine, substation. NEW: geothermal_plant. Inside: steam halls, turbine floors, a control room with a warm panel.
@@ -2016,3 +2016,170 @@ Counted from the NEW lines of each theme entry (themes only; apocalypse entries 
 | aid_station | 1 |
 | aero_club | 1 |
 | acid_pool_works | 1 |
+
+---
+
+## World types
+
+The first layer of the stack is the world type. This section reviews what exists, lists an expanded set of base types, says which apocalypses reshape the terrain itself, and picks the first 8 to build. Memorable worlds come from combinations (type + apocalypse + theme + features + occupancy), so the base list is a set of places to stand, not stories.
+
+### 1. Review: code against the design doc
+
+In code (`planet-generator`): 5 archetypes with 2 variants each, so 10 variants: temperate (meadow, rainforest), arid (dunes, canyon), ice (glacier, hot spring), lava (volcanic, lava ocean), alien (crystal, fungal). There are 24 landforms, each variant has a landform palette, and about 21% of worlds are one landform throughout. Four size classes (8x4 to 64x32 km) and a moon kind. Modifiers: terrain (archipelago, highlands, cratered, mesas and canyons) and look-only (ringed sky, perpetual storm, glowing nights). Start worlds are 16x8 km.
+
+In the doc's table but not in code: barren, barren metal, ocean, irradiated ice, dead world, graveyard world, gas giant (not landable, so a sky and a set of moons), nascent, and the moon variants (rock, ice, desert, lava, forest). The moon kind exists only as a size roll; there is no vacuum look.
+
+Gaps even in the doc:
+- No vacuum worlds: no suit-air play, no starfield-at-noon sky, no airless lighting. Cratered is only a scatter modifier.
+- No gravity as a world property in the generator (the doc has 3.8-4.3 g only on nascent).
+- No tidal lock, no atmosphere type beyond "toxic air" as a hazard, no sky objects beyond a ringed sky.
+- No underground-first, floating or broken-slab worlds.
+- Craters are a scatter, not stamps with a rim, ejecta and a floor, and cannot be placed.
+- No swamp, tundra, salt flat, bioluminescent or dead-forest base types.
+
+Most missing types can be a new variant of an existing archetype plus a profile record (gravity, air, light). The engine work is mostly three small systems: a world profile (gravity, air, light), a vacuum lighting and suit rule, and crater and scar stamps.
+
+### 2. Base world types
+
+Key. Life: none / low / mid / high. Start: Y yes, R rim only, N no. Rarity: C common, U uncommon, R rare. Effort: **reuse** (existing archetype and landforms, new weights or palette), **small** (new variant, a few landforms or a profile value), **new** (a real new system). Size uses the four classes: S 8x4, M 16x8, L 32x16, XL 64x32 km; moons are S or M.
+
+**Temperate and mild**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Meadow world | plains, hills, river valleys, lakes | blue day, one moon | grass, broadleaf, conifer | mid | storms, floods | titanium, resin | M-L | Y | C | reuse (exists) |
+| 2 | Rainforest world | hills, wetlands, karst, deltas | thick cloud, warm haze | jungle canopy, vines | high | disease, predators | resin, medicine plants | M-L | Y | C | reuse (exists) |
+| 3 | Swamp world | wetlands, deltas, braided channels, low islands | low fog, green-brown light | mangrove, reed, moss | high | boggy footing, insects, gas pockets | resin, carbon, peat | M-L | Y | U | small (wetlands exist; add bog footing and fog) |
+| 4 | Steppe world | endless steppe, plains, shallow valleys | wide sky, strong wind | grass, scrub, few trees | mid | wind, grass fires | iron, titanium | L-XL | Y | C | reuse (steppe exists) |
+| 5 | Archipelago world | islands, coastal cliffs, reefs | bright, fast weather | palms, dune grass, kelp | mid | storms, thin land | silicon, shells | M-XL | Y | U | reuse (a single-landform world already) |
+| 6 | Autumn-tilt world | hills, mixed forest; strong seasons | cool amber light | deciduous, fruit, leaf-fall | mid | cold nights, frost | wood, fruit | M-L | Y | U | small (palette cycle by season) |
+
+**Dry and hot**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 7 | Dune world | dune seas, rocky desert | dust haze, big moon | cactus, oasis palms | low | heat, sandstorms | titanium, gems | M-XL | Y | C | reuse (exists) |
+| 8 | Canyon world | canyonlands, mesas, badlands | red rock, clear air | scrub, cliff plants | low | heat, rockfall | titanium, gems | M-L | Y | C | reuse (exists) |
+| 9 | Salt flat world | dry lake beds, salt pans, small ridges | white glare, mirage | salt scrub only | low | glare, thirst, sudden floods | salt, lithium, sulfur | M-L | Y | U | small (one flat landform, white palette) |
+| 10 | Scorched world | cracked plains, ash badlands; close to its sun | white-orange sun, thin cloud | lichen in shade only | low | heat bursts, flares | metal, rare ore | M | R | U | small (heat profile, extra heat hazard) |
+
+**Cold**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 11 | Glacier world | ice plains, ranges, fjords | indigo and pink sky | ice shards, frost rock | low | cold, crevasses | cobalt, sulfur | M-L | Y | C | reuse (exists) |
+| 12 | Tundra world | steppe, hills, frozen lakes, patterned ground | pale low sun | moss, dwarf shrub, lichen | mid | cold, blizzards | iron, peat | L-XL | Y | C | small (new palette and flora on existing landforms) |
+| 13 | Hot-spring ice world | volcanic field on ice, geyser lakes | steam plumes | warm oases in the white | mid | scalding vents | sulfur, minerals | M | Y | U | reuse (exists) |
+| 14 | Deep-freeze world | flat frozen-gas plains, cracked sheets | black sky, stars, thin haze | none | none | extreme cold, thin air | frozen gases, ice | M-L | N | U | new (cold-air rule; reuses vacuum lighting) |
+
+**Wet**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 15 | Ocean world | island chains, trenches, floating mats | endless cloud decks | reef, kelp, mat forest | high (sea) | little dry land, big storms | fold crystal, deep ore | L-XL | R | U | new (sea-dominant terrain, boats, depth biomes; in the doc) |
+| 16 | Drowned world | flooded lowlands, hilltop islands, sunken cities | calm, bright | reeds, coral on ruins | mid | deep water, wrecks | salvage, metal | M-L | Y | U | small (high sea level, from an apocalypse; see section 3) |
+| 17 | Tide world | huge tidal flats, shifting sandbars, causeways | pale, giant close moon | salt grass, shellfish beds | mid | fast tides, quicksand | silicon, salt | M | Y | R | small (water-level cycle, then a tide rule) |
+
+**Volcanic and hot rock**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 18 | Volcanic world | volcanic fields, calderas, basalt plains | red sky, ash | lava rock, obsidian | low | heat, eruptions | thorium, titanium | M-L | R | C | reuse (exists) |
+| 19 | Lava ocean world | volcanic archipelago in magma seas | glowing sky | none | low | lava, heat | emberite, gold | M | N | U | reuse (exists) |
+| 20 | Ash-fall world | grey cinder plains, fumaroles, buried towns | ash cloud, dim sun | grey scrub | low | choking ash, collapses | sulfur, metal | M-L | Y | U | small (ash palette, ash-depth footing) |
+
+**Barren and vacuum** (all share one vacuum rule: suit air, starfield sky, hard shadows, no weather, no outside sound)
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 21 | Small cratered moon | crater fields, rilles, low rounded ridges | black, huge parent planet | none | none | vacuum, meteor showers | iron, cobalt, polar ice | S | N | C | new (vacuum rule; craters as stamps) |
+| 22 | Large barren world | craters plus old lava plains and rift ridges | black, starry, thin dust | none | none | vacuum, radiation | metals, rare ore | M-L | N | C | new (shares the vacuum rule) |
+| 23 | Low-gravity moon | wide smooth basins, tall soft ridges | black sky | none | none | long falls, slow stops | ice, volatiles | S | N | U | small (gravity profile; tune jumps, falls, vessels) |
+| 24 | Meteor-pelted world | young craters, ejecta rays, rubble | black, streaks overhead | none | none | meteor showers on a timer | iron-nickel, platinum | S-M | N | U | small (a shower hazard on the vacuum rule) |
+| 25 | Barren metal world | metallic plains, spires, vents | dull, dark | none | none (guarded deposits) | high gravity, vacuum | gravium, starsilver | S-M | N | R | small (palette plus profile) |
+| 26 | Ice moon | frozen plains, cracked sheets, geysers | black, bright ringed giant | none | none | cold, cracking ice | water ice, ammonia | S-M | N | C | small (vacuum rule plus ice landforms; geysers exist) |
+
+**Gravity, orbit and sky**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 27 | High-gravity world | squat ranges, short cliffs, dense forest | thick, heavy air | stubby trees, low plants | mid | hard falls, slow movement, hover fails | dense metals | M | R | U | small (gravity profile; tune movement and vessels) |
+| 28 | Nascent world | broken young crust, shaking ground | dark ash sky | little | low | 3.8-4.3 g, quakes | rich mixed ore | S-M | N | R | small (doc entry; high gravity plus fresh crust) |
+| 29 | Tidally locked world | day side scorched, night side frozen, a twilight ring of green | sun fixed on the horizon, never sets | life only in the ring | mid (ring) | two lethal faces | rare ore at both extremes | L | R (ring) | U | new (fixed light, latitude-to-face climate map) |
+| 30 | Ringed world | any base terrain; the ring is the show | huge ring arc across the sky | by base | by base | ring shadow bands cool the ground | ring ice (in orbit) | any | by base | U | small (ring look exists; add shadow bands, ring salvage) |
+| 31 | Gas-giant moon | rock or ice with a swollen planet overhead | giant filling a quarter of the sky | by base | low | radiation belts | volatiles | S-M | N | C | small (moons exist; add fixed giant overhead, radiation hazard) |
+
+**Chemical and strange**
+
+| # | Type | Terrain and landforms | Sky and air | Biomes and flora | Life | Hazards | Resources | Size | Start | Rar | Effort |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 32 | Toxic world | acid pools, sulfur flats, stained plains | yellow-green haze | tough lichen, bacterial mats | low | bad air (filter or mask), acid rain | sulfur, rare chemicals | M-L | R | U | small (an air-quality value and a mask item) |
+| 33 | Crystal world | shard fields, ringlands, crystal plains | violet sky, glints | giant crystals | low | radiation | crystal | M-L | R | U | reuse (exists) |
+| 34 | Fungal world | dome fields, spore marshes, karst | lime-cream sky, spore haze | giant mushrooms | mid | spores | resin | M-L | R | U | reuse (exists) |
+| 35 | Bioluminescent world | dark forest, cave mouths, glowing seas | night-dominant, dim sun | glowing plants and fauna | high | dark, predators | rare plants | M | R | R | small (glow palette on fungal and rainforest sets; night-first lighting) |
+| 36 | Shell world (hollow) | thin outer crust cut by sinkholes into a lit inner cavern world | surface normal; inside, a glowing roof | surface by base; caves of fungus and crystal | mid (inside) | collapse, dark | rich ore | M | N | R | new (a second terrain layer under the first; heavy) |
+| 37 | Shattered world | tilted slabs, deep gaps, a broken ring | splintered sky, debris | by base, on slabs | low | falls, debris | exposed core ore | S-M | N | R | new (voids in the height field; vessel travel between slabs) |
+| 38 | Graveyard world | wreck fields from old wars over barren ground | by base | scavenger camps | low | unstable wrecks | salvage, unique materials | M | R | U | small (wreck stamps on a barren base; in the doc) |
+| 39 | Terraced farm world | engineered terraces, canals, field grids | clear, orderly | crops, orchards | low | none, apart from whoever tended it | food, tools | M-L | Y | R | small (a human-shaped landform; pairs with abandonment themes) |
+| 40 | Storm world | permanent storm belts, wind-cut ridges | black cloud, lightning | wind-shaped trees, low scrub | low | lightning, gusts | rare gases, metal | M-L | R | U | reuse (perpetual storm modifier exists; promote to a base type) |
+
+That is 40 types. Rows 1, 2, 4, 5, 7, 8, 11, 13, 18, 19, 33, 34 and 40 need no new engine work.
+
+### 3. Apocalypses that change the terrain
+
+A decoration pass cannot do these. The apocalypse rolls before terrain is finished and writes into three places: **stamps** (shapes pressed into the height field and biome map), **biome overrides** (a region repainted), and **planner hints** (where regions, roads and POIs may go). A stamp is a record with a position, a radius, a depth curve, a rim, a material patch and tags. The same stamp system serves natural craters, so building it once also feeds the vacuum worlds.
+
+**Nuclear exchange (Z1).** The region planner already knows the target sites: ports, cities, silos, bunkers, plants, rail hubs. Run it first, then roll a ground zero for each site:
+- Stamp: a bowl (3-12 m deep on a 16x8 km world, much wider than deep) with a raised rim, a ring of flattened rubble outside it, and a thick glass patch on the floor and inner slope. Surface bursts dig; air bursts leave a flat scorched disc with no bowl.
+- Pattern: craters sit on the old targets, never random scatter. They cluster round the big cities, line up along coasts and rail corridors, and come in pairs and threes at big hubs. Bunker and silo sites get a deeper crater with a cracked-open lid.
+- Biome: a dead-grass disc 3-6 times the crater radius, dead forest out to ten times, and an ash plume downwind along the world's prevailing wind (the dune generator already has one).
+- Planner: roads and rail stop at the crater edge and resume past it; a ruin district fills the rubble ring; a fallout region is marked as a hazard.
+- Count: a handful to dozens, by world size and tech. A recovered world keeps one crater as a memorial.
+
+**Orbital bombardment (Z2).** Stamps in lines along old orbit tracks: small, evenly spaced craters with melted ground between, and a few big strikes at ports. The lines are visible from orbit.
+
+**Meteor and comet scars.** One huge old crater with a central peak (the ringland landform exists) and ejecta rays, many small pits, an iron-rich floor. Biome: bare rock inside, scorched forest a ring out. Planner: a rim town, a crater lake, a mining camp on the central peak.
+
+**Flooded lowlands.** Raise sea level 20-80 m: lowlands go under, hills become islands, rivers become inlets, old coastal cities become reefs of ruins. The planner runs after the water level, so live ports are re-sited to the new shore and old ones become drowned set pieces. Also covers melt and a breached bay.
+
+**Drained or dried world.** Remove the sea: old sea beds become salt flat and canyon, and old ports stand on a plain. This is the same dial run the other way and gives the "harbour dry on a plain" of Salt and Bone for free.
+
+**Mined-out planet.** Stepped open pits, spoil heaps, straight cuts, flooded pits as lakes. Stamps are deep terraced bowls and long trenches aligned to ore veins (the material layer knows where ore is). Biome: bare tailings and dead spoil. Planner: a pit-head town and haul roads running to the pit rim.
+
+**Terraformed or failed terraforming.** Green grids and dead strips side by side, canals, half a sea. A biome override in the shape of the engineered grid, with the rest left as the base.
+
+**Plague bloom (Hollow Bloom).** Mostly biome: a repainted bloom region with a root-mound height texture. Large scale, so it is a region kind, not a stamp.
+
+**Fire and burn.** Charred forest belts and blackened valleys, a biome override that follows wind and dry slope, with erosion gullies afterwards.
+
+**Quake and tectonic break.** A fault stamp: a long rift, offset ridges, collapsed valleys, cracked roads. Shares code with the shattered world.
+
+**Wreck fields.** Many wreck stamps (hull-shaped lumps and furrows where they ploughed in) along crash corridors. This builds the graveyard world.
+
+**Dust and winter.** No stamp: a palette and sky change, snow where it never fell, frozen seas. Cheap.
+
+**Machine takeover.** A grid stamp: flattened pads, straight roads, factory plates, valleys levelled in blocks.
+
+**Slow decline, social collapse, famine.** No terrain change, only overgrowth and abandoned field patterns. Biome shading.
+
+How it feeds the three systems:
+- **Terrain stamps** dig and heap. Order: base terrain, apocalypse stamps, then rivers and sea level, so water fills the pits.
+- **Biomes** get a stamp-aware overlay: each stamp carries a biome patch, so glass, ash, spoil and burn have one definition.
+- **Region planner** reads the stamp list as input: craters, drowned districts and pits count as regions with their own POI weights (blast_crater, drowned ruin, pit town), and roads route to rims and shores.
+
+### 4. The first 8 to build
+
+Chosen for the widest visible range for the least engine work.
+
+1. **Swamp world (3).** Reuses wetlands and rainforest flora; adds fog and boggy footing. A fresh start world.
+2. **Tundra world (12).** A palette and flora on existing landforms; a common start world unlike the current five.
+3. **Salt flat world (9).** One flat landform and a white palette; strange at once, and home of the dried-sea apocalypse.
+4. **Storm world (40).** Exists as a modifier; promoting it costs almost nothing.
+5. **Small cratered moon (21).** Adds the vacuum rule and the crater stamp, the pair of systems that also builds nuclear craters, meteor scars and mined pits. The large barren world (22) follows free.
+6. **Drowned world (16).** A sea-level shift after terrain; proves the apocalypse-writes-into-terrain pipeline with a simple dial.
+7. **High-gravity world (27).** A gravity value and tuning; also unlocks nascent (28) and barren metal (25).
+8. **Toxic world (32).** An air-quality value and a mask; the first place you cannot just walk out into, and it multiplies with every apocalypse.
+
+Shared work is only three things: the stamp system (5, 6), a world profile of gravity and air (7, 8), and palette and fog sets (1-4).
+
+Next after these: large barren (22), ocean (15), tidally locked (29), tide (17), bioluminescent (35); the heavy ones (shell world 36, shattered world 37) last.
