@@ -24,7 +24,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -49,6 +49,60 @@ public partial class PoiTest : Node
         // The walks run on physics ticks, so they go last; see _PhysicsProcess.
         if (only == null || only.Split(',').Contains("Walk")) NextWalk();
         else Finish();
+    }
+
+    // ---- the large places --------------------------------------------------------------------
+
+    IEnumerable<FamilyDef> Large => _lib.Families.Where(f => f.Tags.Contains("grand"));
+
+    /// <summary>
+    /// The large places on fresh seeds: a layout per tech variant passes the layout checks, each spawned
+    /// in every state passes validation, they keep to the 2 m lattice and are far bigger than the old
+    /// shoebox. Fewer seeds than the mass runs, because each is a whole works.
+    /// </summary>
+    void GrandPlaces()
+    {
+        var sw = Stopwatch.StartNew();
+        int built = 0, spawned = 0, bad = 0;
+        var problems = new List<string>();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        // What a large plan got wrong, all of it at once: a big place is too slow to fix one complaint at a time.
+        int told = 0;
+        Architect.Rejected = (layout, why) =>
+        {
+            if (told++ > 0) return;
+            foreach (string w in why) GD.Print("      rejected: " + w);
+            var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+            var reach = nav.Reachable(layout.EntranceCell);
+            foreach (var m in layout.Modules)
+                if (!m.Cells.Any(reach.Contains)) GD.Print($"      unreachable {m.Purpose} storey {m.Storey} {m.Min} to {m.Max}");
+        };
+        foreach (FamilyDef f in Large)
+            foreach (VariantDef v in f.Variants)
+            {
+                ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)v.Index);
+                Layout layout;
+                var t0 = sw.ElapsedMilliseconds;
+                try { layout = PoiFactory.BuildLayout(_lib, f, v.Index, f.Rarity, seed); }
+                catch (Exception e) { bad++; problems.Add($"{f.Id} {v.Name} seed {seed}: {e.Message}"); continue; }
+                built++;
+                Int3 size = layout.Blocks.Size;
+                long t1 = sw.ElapsedMilliseconds;
+                GD.Print($"      {f.Id} '{v.Name}' {size.X} x {size.Z} x {size.Y} m, {layout.Modules.Count} rooms, {layout.Blocks.CountBlocks()} cells, layout {t1 - t0} ms, {layout.Attempts} attempts");
+                if (size.X < 120 || size.Z < 120) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
+                foreach (PoiState s in Enum.GetValues<PoiState>())
+                {
+                    if (f.StateWeights[(int)s] <= 0f) continue;
+                    long t2 = sw.ElapsedMilliseconds;
+                    PoiInstance inst = PoiFactory.Spawn(_lib, layout, s, seed + (ulong)s);
+                    spawned++;
+                    foreach (string p in Validator.Check(inst).Take(3)) { bad++; problems.Add($"{f.Id} '{v.Name}' seed {seed} {s}: {p}"); }
+                    GD.Print($"        {s}: {sw.ElapsedMilliseconds - t2} ms, {inst.Enemies.Count} enemies, removed {inst.RemovedFraction:P0}");
+                }
+            }
+        Architect.Rejected = null;
+        foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
+        Check(bad == 0 && built > 0, $"large places: {built} layouts and {spawned} spawns pass the layout checks and validation, in {sw.ElapsedMilliseconds} ms");
     }
 
     void Finish()

@@ -367,7 +367,7 @@ public static class Fixtures
             byte state = locks.TryGetValue(i, out var lk) ? (lk.Blast ? DoorState.Blast : DoorState.Locked) : vaultDoor ? (byte)1 : (byte)0;
             if (vaultDoor && state == 1 && layout.Family.Generator != Generator.Kit) state = DoorState.Locked;
             var color = lk != null ? (lk.Blast ? new Rgb(0x5a, 0x5c, 0x58) : ClearanceColor(lk.Clearance)) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
-            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
+            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, layout.Extras.PlainDoorSteel ? Material.Steel : Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
             foreach (Int3 c in d.Cells) g.Set(c, b);
         }
         foreach (Int3 c in layout.ExitCells)

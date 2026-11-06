@@ -125,6 +125,9 @@ public static class PoiSiting
     public static int MaxSites = 14;
     /// <summary>Tests and screenshots: also place one of this family near the landing site.</summary>
     public static string ForceFamily;
+    /// <summary>Tests and screenshots: the state and layout of the forced family, when they matter.</summary>
+    public static PoiState? ForceState;
+    public static int? ForceVariant;
     /// <summary>
     /// Start worlds: no faction holds ground (faction places only as ruins, no cores, no defenders;
     /// wrecks, abandoned and infested places, the Bloom, wildlife and gang camps stay). The slice sets
@@ -166,7 +169,8 @@ public static class PoiSiting
         {
             // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
-            int forcedVariant = profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0;
+            state = ForceState ?? state;
+            int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
             PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
             for (int k = 0; k < 12 && sites.Count == 0; k++)
             {

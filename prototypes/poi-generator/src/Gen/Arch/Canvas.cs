@@ -113,6 +113,17 @@ public sealed class Canvas
         return m.Index;
     }
 
+    /// <summary>Gives a module its final cells (a big room, once what stands inside it is known).</summary>
+    public void Reshape(int module, IReadOnlyCollection<Int3> cells)
+    {
+        var m = Modules[module];
+        if (cells.Count == 0) throw new InvalidOperationException($"module {m.Purpose} has no cells");
+        Int3 min = cells.Aggregate(Int3.Min), max = cells.Aggregate(Int3.Max);
+        m.Offset = min;
+        m.Shape = new ModuleShape { W = max.X - min.X + 1, H = max.Y - min.Y + 1, D = max.Z - min.Z + 1, Occupied = cells.Select(c => c - min).ToList() };
+        foreach (Int3 c in cells) Occ.Add(c);
+    }
+
     public int AddDoorway(List<Int3> cells, Dir facing, int a, int b)
     {
         Doorways.Add(new Doorway { Cells = cells, Facing = facing, ModuleA = a, ModuleB = b });

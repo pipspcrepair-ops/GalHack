@@ -58,6 +58,7 @@ public enum BlockType : byte
     Statue,     // a carved figure (temples, plazas)
     Pump,       // a fuel pump on a forecourt
     Plate,      // a thin slab laid on the ground: boards, a path, a painted line; never blocks
+    Pipe,       // a round pipe along Facing's axis (Up: standing); Variant 1 is a 2 m main drawn from this cell across the next
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
@@ -178,25 +179,34 @@ public interface IBlockStructure
     int CountBlocks();
 }
 
-/// <summary>A dense block grid over a box. Out-of-bounds reads are air.</summary>
+/// <summary>
+/// A block grid over a box, kept in 16 m chunks made only where something stands: a 300 m works is
+/// mostly air and open yard, so it costs what's in it, not its box. Out-of-bounds reads are air.
+/// </summary>
 public sealed class BlockGrid : IBlockStructure
 {
+    const int Bits = 4, Side = 1 << Bits, Mask = Side - 1, ChunkCells = Side * Side * Side;
     public Int3 Min { get; }
     public Int3 Size { get; }
     public Int3 Max => Min + Size - new Int3(1, 1, 1);
-    readonly Block[] _cells;
+    readonly int _cx, _cy, _cz;
+    readonly Block[]?[] _chunks;
 
     public BlockGrid(Int3 min, Int3 size)
     {
         Min = min;
         Size = size;
-        _cells = new Block[size.X * size.Y * size.Z];
+        _cx = (size.X + Mask) >> Bits;
+        _cy = (size.Y + Mask) >> Bits;
+        _cz = (size.Z + Mask) >> Bits;
+        _chunks = new Block[]?[_cx * _cy * _cz];
     }
 
     public BlockGrid Clone()
     {
         var copy = new BlockGrid(Min, Size);
-        Array.Copy(_cells, copy._cells, _cells.Length);
+        for (int i = 0; i < _chunks.Length; i++)
+            if (_chunks[i] is { } c) copy._chunks[i] = (Block[])c.Clone();
         return copy;
     }
 
@@ -206,25 +216,42 @@ public sealed class BlockGrid : IBlockStructure
         return (uint)l.X < (uint)Size.X && (uint)l.Y < (uint)Size.Y && (uint)l.Z < (uint)Size.Z;
     }
 
-    int Index(Int3 p)
-    {
-        Int3 l = p - Min;
-        return (l.Y * Size.Z + l.Z) * Size.X + l.X;
-    }
+    int Chunk(Int3 l) => ((l.Y >> Bits) * _cz + (l.Z >> Bits)) * _cx + (l.X >> Bits);
+    static int Cell(Int3 l) => (l.Y & Mask) << (2 * Bits) | (l.Z & Mask) << Bits | l.X & Mask;
 
-    public Block Get(Int3 p) => InBounds(p) ? _cells[Index(p)] : Block.Air;
+    public Block Get(Int3 p)
+    {
+        if (!InBounds(p)) return Block.Air;
+        Int3 l = p - Min;
+        return _chunks[Chunk(l)] is { } c ? c[Cell(l)] : Block.Air;
+    }
 
     public void Set(Int3 p, Block b)
     {
-        if (InBounds(p)) _cells[Index(p)] = b;
+        if (!InBounds(p)) return;
+        Int3 l = p - Min;
+        int k = Chunk(l);
+        if (_chunks[k] == null)
+        {
+            if (b.IsAir) return;
+            _chunks[k] = new Block[ChunkCells];
+        }
+        _chunks[k]![Cell(l)] = b;
     }
 
-    public ref Block At(Int3 p) => ref _cells[Index(p)];
+    public ref Block At(Int3 p)
+    {
+        Int3 l = p - Min;
+        int k = Chunk(l);
+        return ref (_chunks[k] ??= new Block[ChunkCells])[Cell(l)];
+    }
 
     public int CountBlocks()
     {
         int n = 0;
-        foreach (var b in _cells) if (!b.IsAir) n++;
+        foreach (var c in _chunks)
+            if (c != null)
+                foreach (var b in c) if (!b.IsAir) n++;
         return n;
     }
 
@@ -233,11 +260,20 @@ public sealed class BlockGrid : IBlockStructure
     {
         for (int y = 0; y < Size.Y; y++)
             for (int z = 0; z < Size.Z; z++)
-                for (int x = 0; x < Size.X; x++)
+            {
+                int row = (y >> Bits) * _cz + (z >> Bits), at = (y & Mask) << (2 * Bits) | (z & Mask) << Bits;
+                for (int cx = 0; cx < _cx; cx++)
                 {
-                    var b = _cells[(y * Size.Z + z) * Size.X + x];
-                    if (!b.IsAir) yield return (Min + new Int3(x, y, z), b);
+                    var c = _chunks[row * _cx + cx];
+                    if (c == null) continue;
+                    int end = Math.Min(Side, Size.X - (cx << Bits));
+                    for (int x = 0; x < end; x++)
+                    {
+                        var b = c[at | x];
+                        if (!b.IsAir) yield return (Min + new Int3((cx << Bits) + x, y, z), b);
+                    }
                 }
+            }
     }
 
     /// <summary>Every cell position, in the same fixed order.</summary>
@@ -255,13 +291,13 @@ public sealed class CellMask
 {
     public Int3 Min { get; }
     public Int3 Size { get; }
-    readonly bool[] _bits;
+    readonly ulong[] _bits;
 
     public CellMask(Int3 min, Int3 size)
     {
         Min = min;
         Size = size;
-        _bits = new bool[size.X * size.Y * size.Z];
+        _bits = new ulong[(size.X * size.Y * size.Z + 63) / 64];
     }
 
     public CellMask Clone()
@@ -285,7 +321,12 @@ public sealed class CellMask
 
     public bool this[Int3 p]
     {
-        get => In(p, out int i) && _bits[i];
-        set { if (In(p, out int i)) _bits[i] = value; }
+        get => In(p, out int i) && (_bits[i >> 6] >> (i & 63) & 1) != 0;
+        set
+        {
+            if (!In(p, out int i)) return;
+            if (value) _bits[i >> 6] |= 1UL << (i & 63);
+            else _bits[i >> 6] &= ~(1UL << (i & 63));
+        }
     }
 }

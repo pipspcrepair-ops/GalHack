@@ -550,8 +550,37 @@ public static class Shapes
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
         BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
         BlockType.Pump => (new V3(0.2f, 0, 0.25f), new V3(0.8f, 1.7f, 0.75f)),
+        BlockType.Pipe when b.Variant == 1 => PipeBounds(b, 0.08f, 1.92f),
+        BlockType.Pipe => PipeBounds(b, 0.1f, 0.9f),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
+
+    static (V3 lo, V3 hi) PipeBounds(Block b, float lo, float hi) => b.Facing switch
+    {
+        Dir.Up or Dir.Down => (new V3(lo, 0, lo), new V3(hi, 1, hi)),
+        Dir.East or Dir.West => (new V3(0, lo, lo), new V3(1, hi, hi)),
+        _ => (new V3(lo, lo, 0), new V3(hi, hi, 1)),
+    };
+
+    /// <summary>A round pipe of eight flats along its axis, with a flange every few metres; a main (Variant 1) is 2 m across, drawn from its corner cell.</summary>
+    static void Pipe(List<ShapeBox> l, Block b, Int3 p, Rgb c)
+    {
+        float k = b.Variant == 1 ? 2f : 1f;
+        float a = 0.05f * k, d = 0.22f * k, e = 1f * k - a, f = 1f * k - d;
+        bool flange = (b.Facing is Dir.Up or Dir.Down ? p.Y : b.Facing is Dir.East or Dir.West ? p.X : p.Z) % (b.Variant == 1 ? 8 : 6) == 0;
+        void Add(float x0, float y0, float x1, float y1, float s0, float s1, Rgb col)
+        {
+            switch (b.Facing)
+            {
+                case Dir.Up or Dir.Down: l.Add(new ShapeBox(new V3(x0, s0, y0), new V3(x1, s1, y1), col, Surface.Metal)); break;
+                case Dir.East or Dir.West: l.Add(new ShapeBox(new V3(s0, y0, x0), new V3(s1, y1, x1), col, Surface.Metal)); break;
+                default: l.Add(new ShapeBox(new V3(x0, y0, s0), new V3(x1, y1, s1), col, Surface.Metal)); break;
+            }
+        }
+        Add(d, a, f, e, 0, 1, c);
+        Add(a, d, e, f, 0, 1, c);
+        if (flange) Add(0, 0, k, k, 0.35f, 0.65f, c.Scale(0.7f));
+    }
 
     public static List<ShapeBox> For(Block b, Int3 p, IBlockStructure g)
     {
@@ -859,6 +888,9 @@ public static class Shapes
                 l.Add(Box(0.8f, 0.45f, 0.45f, 0.85f, 1.1f, 0.5f, new Rgb(0x20, 0x20, 0x20), Surface.Matte, b.Facing));
                 break;
             }
+            case BlockType.Pipe:
+                Pipe(l, b, p, c);
+                break;
             case BlockType.Ramp:
             case BlockType.Spike:
                 break;
