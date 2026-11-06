@@ -572,6 +572,12 @@ public sealed class Playthrough
         float cell = v.Structure.Grid.CellSize;
         N.Vector3 centre = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
+        // Standing where the block would go: step back out of it, as a player would.
+        if (face.Vec().Y == 0 && InCell(v, target))
+        {
+            Log($"(stepping out of {target} on {v.Name}: feet {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame)");
+            foreach (int x in Drive.WalkTo(v.ToWorld(centre + face.Vec().ToVector3() * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
+        }
         // Where the ground stands against the face, aim at what shows of it, as a player would.
         var aims = new List<N.Vector3> { centre };
         if (face.Vec().Y == 0) aims.Add(centre + N.Vector3.UnitY * (cell * 0.4f));
@@ -593,8 +599,15 @@ public sealed class Playthrough
         if (OnFace()) foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
         bool ok = v.Structure.Has(target) && v.Structure.Count > before;
-        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict}; feet {Game.Survivor.WorldFeet}, ghost {Game.Builder.PlaceCell} on {Game.Builder.TargetVessel?.Name})");
+        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict}; feet {Game.Survivor.WorldFeet}, {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame, ghost {Game.Builder.PlaceCell} on {Game.Builder.TargetVessel?.Name}, aboard {Game.Survivor.Aboard?.Name}, frame {Game.Survivor.Body.Frame?.Id})");
         placed?.Invoke(ok);
+    }
+
+    bool InCell(Vessel v, Int3 cell)
+    {
+        N.Vector3 d = N.Vector3.Abs(v.Body.ToLocal(Game.Survivor.Body.WorldPosition) - StructureBridge.CellCenter(v.Structure, cell));
+        float reach = v.Structure.Grid.CellSize * 0.5f + 0.8f;
+        return d.X < reach && d.Z < reach;
     }
 
     /// <summary>Turns the block in hand with R and T until it faces a way (tapped like a player: the fewest taps that get there).</summary>
