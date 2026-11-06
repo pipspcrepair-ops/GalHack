@@ -64,6 +64,10 @@ public partial class PlaceTest : Node
 
     void Fail(string what) => Check(false, what);
 
+    static string WorstViews(Game.Game game) => game.Zone.Wildlife.Sites.OrderByDescending(s => s.WorstViewMs).FirstOrDefault()?.WorstViewNote ?? "no creatures";
+
+    static string WorstPause(Game.Game game) => game.Zone.Wildlife.Sites.OrderByDescending(s => s.WorstPauseMs).Select(s => $"{s.WorstPauseMs:F1} ms, {s.WorstPauseNote}").FirstOrDefault() ?? "none";
+
     IEnumerable<int> Scenario()
     {
         string[] args = OS.GetCmdlineUserArgs();
@@ -387,9 +391,11 @@ public partial class PlaceTest : Node
                 foreach (int x in Watched(walk.To(place, stand, r => ok = r))) yield return x;
                 Vector3 mid = piece.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, piece.Piece.Height * 0.5f);
                 int bag = game.Pack.Storage.Contents.Total;
+                double Carried() => place.Memory.SalvageCarry.Values.Sum(); // a small piece pays in fractions, carried in the place's memory until they make a whole item
+                double carried = Carried();
                 string label = "";
                 foreach (int x in Watched(drive.HoldPrimary(mid, 240, () => { label = game.Tool.TargetLabel.Length > 0 ? game.Tool.TargetLabel : label; return !piece.Node.Visible; }))) yield return x;
-                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total > bag, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag");
+                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
             }
             // A block of the wall beside you: gone for good, the wall meshed again round the hole.
             Vector3 eye = game.Survivor.WorldEye(), look = game.Survivor.WorldLook() with { Y = 0f };
@@ -437,7 +443,8 @@ public partial class PlaceTest : Node
         Check(rescues == 0 && worst < 1.5f, $"no teleports all the visit (largest move in a tick {worst:F2} m), never rescued");
 
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
-        Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame");
+        Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame ({WorstViews(game)})");
+        GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  (build log: {string.Join("; ", game.Places.BuildLog.Select(l => $"{l.Name} {l.Seconds:F2} s, {l.Chunks} chunks"))}; slow steps: {string.Join(", ", game.Places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (GC)" : "")}"))})");
         GD.Print($"  (shot down {_shotDown} creatures that came for you, {_healed} patch kits used)");
         GD.Print($"  (walk notes: {string.Join("; ", walk.Notes)}; worst move {worst:F2} m, rescues {rescues}; tells {game.Zone.Wildlife.Sites.Sum(s => s.TellsShown)})");
@@ -517,7 +524,7 @@ public partial class PlaceTest : Node
         Vector3 way = place.ToWorld(new Vector3(place.Inst.Layout.EntranceCell.X, place.Inst.Layout.EntranceCell.Y, place.Inst.Layout.EntranceCell.Z));
         foreach (Wildlife.Creature c in s.Sim.Creatures
                      .Where(c => !c.Dead && !c.Removed && c.Species.Tells.Length > 0 && c.Species.Role is Wildlife.DeepRole.Ambusher or Wildlife.DeepRole.Lurker or Wildlife.DeepRole.Prowler)
-                     .OrderBy(c => s.World(c.Position).DistanceTo(way) + Mathf.Abs(c.Position.Y - way.Y) * 3f))
+                     .OrderBy(c => s.World(c.Position).DistanceTo(way) + Mathf.Abs(c.Position.Y - way.Y) * 3f).Take(4).ToList())
         {
             var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(c.Position.X), Mathf.FloorToInt(c.Position.Y), Mathf.FloorToInt(c.Position.Z));
             PoiGenerator.Gen.Int3? near = null;
@@ -542,11 +549,13 @@ public partial class PlaceTest : Node
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;
             foreach (int x in walk.To(place, near.Value, r => ok = r)) yield return x;
-            break;
+            game.Zone.Wildlife.Frozen = false;
+            // A lurker can sit tight behind a wall and never know you are there: then on to the next one.
+            for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead && (t < 1500 || _aimedTells > 0); t++) yield return 0;
+            if (_aimedTells > 0 || _lastDown != null || game.Suit.Dead) yield break;
+            game.Zone.Wildlife.Frozen = true;
+            reach = nav.Reachable(walk.Here(place, nav));
         }
-        if (_hunter == null) yield break;
-        game.Zone.Wildlife.Frozen = false;
-        for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead; t++) yield return 0;
     }
 
 
@@ -631,10 +640,16 @@ public partial class PlaceTest : Node
         Check(game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q).Count > 0, $"solid across its torso at {chest:F1} m (a giant is solid where you see it, not just to 1.6 m)");
         // Walking at it: the feet stop short of its middle (a body at head height doesn't let you by).
         Vector3 start = game.Survivor.WorldFeet;
-        foreach (int x in drive.WalkTo(w.FromPatch(giant.Position) + toward * 3f, 0.5f, 6f, sprint: false, dig: false, hop: false)) yield return x;
+        float closest = float.MaxValue, torsoR = giant.Rig.Hits[0].W; // how near its torso's middle the feet ever came: round a body is no way through it
+        foreach (int x in drive.WalkTo(w.FromPatch(giant.Position) + toward * 3f, 0.5f, 6f, sprint: false, dig: false, hop: false))
+        {
+            Vector3 middle = w.FromPatch(new Vector3(giant.Rig.Hits[0].X, giant.Rig.Hits[0].Y, giant.Rig.Hits[0].Z)) - game.Survivor.WorldFeet;
+            closest = MathF.Min(closest, new Vector2(middle.X, middle.Z).Length());
+            yield return x;
+        }
         float got = (game.Survivor.WorldFeet - w.FromPatch(giant.Position)).Dot(toward);
         bool under = chest - giant.Rig.Hits[0].W > Slice.Player.Survivor.Height;
-        Check(under || got < 0.5f, under ? $"(its belly clears a person: {chest - giant.Rig.Hits[0].W:F1} m, you can walk under it)" : $"walking at it stops you {-got:F1} m short of its middle");
+        Check(under || got < 0.5f || closest >= torsoR * 0.9f, under ? $"(its belly clears a person: {chest - giant.Rig.Hits[0].W:F1} m, you can walk under it)" : $"walking at it stops you {-got:F1} m short of its middle, or takes you round it: never through its torso ({closest:F1} m from the middle, {torsoR:F1} m wide)");
         w.Sim.Remove(giant);
 
         // A flyer: shapes too, and a shot lands.
@@ -699,7 +714,8 @@ public partial class PlaceTest : Node
         Vector3? chamber = null;
         Vector3 c0 = game.Survivor.WorldFeet;
         var source = game.Zone.Planet.Source;
-        for (float r = 20f; r < 900f && chamber == null; r += 12f)
+        float searched = 20f;
+        for (float r = searched; r < 900f && chamber == null; searched = r += 12f)
             for (int a = 0; a < 24 && chamber == null; a++)
             {
                 float px = c0.X + MathF.Cos(a * MathF.Tau / 24f) * r, pz = c0.Z + MathF.Sin(a * MathF.Tau / 24f) * r;
@@ -717,6 +733,27 @@ public partial class PlaceTest : Node
             GD.Print("  (SYSTEMS: the castaway set down in the cave)");
             game.Survivor.PlaceOutside((cave + Vector3.Up * 0.4f).ToNumerics());
             for (int i = 0; i < 600 && game.Caves.Found == 0; i++) yield return 0;
+            // A chamber under a place or too shallow to count as underground: the next one out, as a player would try.
+            for (float r = searched + 60f; r < 900f && game.Caves.Found == 0; r += 60f)
+            {
+                Vector3 spot = game.Survivor.WorldFeet;
+                GD.Print($"  (no chamber round {spot}, ground {game.Zone.GroundAt(spot.X, spot.Z).Y:F1}, in a place {game.Places.PlaceAt(spot) != null}: on to the next)");
+                Vector3? next = null;
+                for (int a = 0; a < 24 && next == null; a++)
+                {
+                    float px = c0.X + MathF.Cos(a * MathF.Tau / 24f) * r, pz = c0.Z + MathF.Sin(a * MathF.Tau / 24f) * r;
+                    float h = game.Zone.GroundAt(px, pz).Y;
+                    for (float d = 6f; d < 34f && next == null; d += 1f)
+                    {
+                        int x = (int)MathF.Floor((float)Planets.Gen.Mathx.WrapX(px, game.Zone.Planet.Width)), y = (int)MathF.Floor(h - d), z = (int)MathF.Floor((float)Planets.Gen.Mathx.Wrap(pz, game.Zone.Planet.Height));
+                        if (source.CellDensity(x, y, z) < 0f && source.CellDensity(x, y + 1, z) < 0f && source.CellDensity(x, y + 2, z) < 0f && source.CellDensity(x, y + 3, z) < 0f && source.CellDensity(x, y - 1, z) > 0f)
+                            next = new Vector3(px, y, pz);
+                    }
+                }
+                if (next == null) continue;
+                game.Survivor.PlaceOutside((next.Value + Vector3.Up * 0.4f).ToNumerics());
+                for (int i = 0; i < 600 && game.Caves.Found == 0; i++) yield return 0;
+            }
             Check(game.Caves.Found > 0 && game.Zone.Wildlife.Sites.Any(s => s.Sim.Creatures.Count > 0), $"a chamber is found round you underground and something lives in it: {game.Zone.Wildlife.Sites.Sum(s => s.Sim.Creatures.Count)} creatures; the search took {game.Caves.WorstMs:F1} ms at worst, on a worker");
         }
         game.QueueFree();
@@ -770,7 +807,6 @@ public partial class PlaceTest : Node
         PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
         GD.Print($"-- scavengers in a large place, {world} --");
         game.Zone.Weather.Bridge.Calm = true;
-        foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works" && s.Instance.Occupancy?.Main == Occupant.Scavengers);
         if (site == null) { GD.Print("  (no works could be seated on this world: on to the next test)"); game.QueueFree(); yield return 0; yield break; }
         Vector3 Local(PoiGenerator.Gen.Int3 c) => game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + c.X + 0.5f, site.Origin.Y + c.Y, site.Origin.Z + c.Z + 0.5f), game.Survivor.WorldFeet);
@@ -948,7 +984,8 @@ public partial class PlaceTest : Node
         Check(places.WorstFrameMs < places.BudgetMs + 12.0, $"built over frames: {log.Chunks} chunks; worst frame {places.WorstFrameMs:F1} ms of building, worst single step {places.WorstStepMs:F1} ms (by stage {string.Join(", ", places.StageWorst.Select(kv => $"{kv.Key}: {kv.Value:F1}"))}) (budget {places.BudgetMs} ms a frame)");
         for (int i = 0; i < 240; i++) yield return 0; // the creatures and lairs go in over these frames
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
-        Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame");
+        Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame ({WorstViews(game)})");
+        GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  slow steps: {string.Join("; ", places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (a garbage collection)" : "")}"))}");
         // Up close the place is drawn in full, and the planet's merged cubes give way to it there and nowhere else.
         for (int i = 0; i < 180 && p.NearGroups == 0; i++)

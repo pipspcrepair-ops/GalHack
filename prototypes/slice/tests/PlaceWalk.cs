@@ -55,12 +55,40 @@ public sealed class PlaceWalk
         return best;
     }
 
+    /// <summary>What stands between the feet and a point, at knee height (for a stuck note).</summary>
+    string InTheWay(Vector3 to)
+    {
+        Vector3 from = _game.Survivor.WorldFeet + Vector3.Up * 0.5f;
+        var q = PhysicsRayQueryParameters3D.Create(from, to + Vector3.Up * 0.5f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Props);
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
+        return hit.Count == 0 ? "nothing" : $"{(hit["collider"].AsGodotObject() as Node)?.GetPath()} at {p3(hit["position"].AsVector3())}";
+        string p3(Vector3 v) => $"{v.X:F1},{v.Y:F1},{v.Z:F1}";
+    }
+
     /// <summary>Walks a place's route to a cell. False (with a note) if there is none or it gets stuck.</summary>
     public IEnumerable<int> To(Place p, Int3 goal, Action<bool> done, Func<bool> stop = null)
     {
         PNav nav = p.Nav();
         Int3 from = Here(p, nav);
         List<Int3> path = nav.FindPath(from, goal, 400_000);
+        if (path == null)
+        {
+            // Up on a piece of furniture (the walker's step takes a low one in its stride): the map has
+            // no way down from there, but a person just steps off, to the nearest floor with a route.
+            var floor = new List<Int3>();
+            for (int dy = -2; dy <= 0; dy++)
+            for (int dz = -3; dz <= 3; dz++)
+            for (int dx = -3; dx <= 3; dx++)
+                if (nav.Standable(from + new Int3(dx, dy, dz))) floor.Add(from + new Int3(dx, dy, dz));
+            foreach (Int3 off in floor.OrderBy(c => c.Manhattan(from)))
+            {
+                if (nav.FindPath(off, goal, 400_000) == null) continue;
+                foreach (int x in _drive.WalkTo(Feet(p, off), 0.5f, 6f, sprint: false, dig: false, hop: false)) yield return x;
+                from = Here(p, nav);
+                path = nav.FindPath(from, goal, 400_000);
+                break;
+            }
+        }
         if (path == null)
         {
             Notes.Add($"no route from {from} to {goal}");
@@ -150,18 +178,27 @@ public sealed class PlaceWalk
                 if (!climbed) { done(false); Release(); yield break; }
                 continue;
             }
+            // A lift's stops: straight up or down the shaft, Space or Ctrl.
+            if (a.X == b.X && a.Z == b.Z && a.Y != b.Y)
+            {
+                bool rode = true;
+                foreach (int x in Ride(p, b, r => rode = r)) yield return x;
+                if (!rode) { Stuck++; Notes.Add($"the lift didn't bring us to {b}"); done(false); Release(); yield break; }
+                continue;
+            }
             // Merge a straight run on the level.
             int j = i;
             while (j + 1 < path.Count && path[j + 1].Y == b.Y && path[j].Y == a.Y && Same(path[j + 1] - path[j], b - a)
                    && p.Inst.Blocks.Get(path[j + 1]).Type is not (BlockType.Stair or BlockType.Ladder)
                    && !p.Doors.Any(d => d.Cells.Contains(path[j + 1]) || d.Cells.Contains(path[j + 1] + Int3.Up))) j++;
+            int run = j - i; // a large place's halls are long: the time allowed goes by the length of the run
             i = j;
             bool reached = true;
-            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + (j - i) * 0.5f, r => reached = r)) yield return x;
+            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + run * 0.5f, r => reached = r)) yield return x;
             if (!reached)
             {
                 Stuck++;
-                Notes.Add($"stuck short of {path[j]} (feet {p.FromWorld(_game.Survivor.WorldFeet)})");
+                Notes.Add($"stuck short of {path[j]} (feet {p.FromWorld(_game.Survivor.WorldFeet)}; in the way: {InTheWay(Feet(p, path[j]))})");
                 // Once more, from where we are.
                 foreach (int x in Step(Feet(p, path[j]), 0.35f, 6f, r => reached = r)) yield return x;
                 if (!reached) { done(false); Release(); yield break; }
@@ -237,6 +274,21 @@ public sealed class PlaceWalk
         done(ok);
     }
 
+    /// <summary>Rides a lift's car to a stop; let go, it eases level with the stop.</summary>
+    IEnumerable<int> Ride(Place p, Int3 b, Action<bool> done)
+    {
+        float target = Feet(p, b).Y;
+        Key key = target > _game.Survivor.WorldFeet.Y ? Key.Space : Key.Ctrl;
+        for (int t = 0; t < 1800 && MathF.Abs(_game.Survivor.WorldFeet.Y - target) > 0.5f; t++)
+        {
+            Controls.Hold(key, true);
+            yield return 0;
+        }
+        Controls.Hold(key, false);
+        for (int t = 0; t < 120 && MathF.Abs(_game.Survivor.WorldFeet.Y - target) > 0.15f; t++) yield return 0;
+        done(MathF.Abs(_game.Survivor.WorldFeet.Y - target) < 0.4f);
+    }
+
     /// <summary>Up or down a ladder: walk into the rungs (W), or step off its top to the cell beside.</summary>
     IEnumerable<int> Climb(Place p, Int3 a, Int3 b, Action<bool> done)
     {
@@ -279,7 +331,8 @@ public sealed class PlaceWalk
     /// </summary>
     public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target) =>
         Overland(from, to, target, 160f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.85f, false)
-        ?? Overland(from, to, target, 420f, 0.85f, true); // and last, swimming a river
+        ?? Overland(from, to, target, 420f, 0.85f, true) // swimming a river
+        ?? Overland(from, to, target, 420f, 1.4f, true); // and last, up the banks on the jetpack (the walk hops them)
 
     List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim)
     {

@@ -113,7 +113,7 @@ public sealed class Decor
             {
                 if (kept.Contains(i) || !DecoLayout.Blocks(Forge, plan.Placements[i])) continue;
                 placeRoom.Solid.Add(i);
-                foreach (Int3 c in CentresOf(DecoLayout.Footprint(Forge, plan.Placements[i]), placeRoom.Corner)) placeRoom.Cells.Add(c);
+                foreach (Int3 c in Standing(DecoLayout.Footprint(Forge, plan.Placements[i]), placeRoom.Corner)) placeRoom.Cells.Add(c);
             }
             // The generator's generic props in this room go: the library's pieces stand there instead.
             foreach (Int3 c in m.Cells)
@@ -191,7 +191,7 @@ public sealed class Decor
             bool freed = false;
             foreach (PlaceRoom r in rooms.Values)
                 foreach (int i in r.Solid.ToList())
-                    if (CentresOf(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner).Any(way.Contains))
+                    if (Standing(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner).Any(way.Contains))
                     {
                         Drop(memory, r, i);
                         freed = true;
@@ -215,7 +215,7 @@ public sealed class Decor
         }
         r.Cells.Clear();
         foreach (int i in r.Solid)
-            foreach (Int3 c in CentresOf(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner)) r.Cells.Add(c);
+            foreach (Int3 c in Standing(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner)) r.Cells.Add(c);
     }
 
     /// <summary>
@@ -281,6 +281,9 @@ public sealed class Decor
         }
         return r;
     }
+
+    /// <summary>The floor cells a solid piece stands in: a body as wide as a person can't use them, even where the piece misses the cell's middle.</summary>
+    static IEnumerable<Int3> Standing(DecoRect rect, Int3 corner) => CellsOf(rect, corner, 0.05f);
 
     /// <summary>The floor cells whose middles a footprint covers: what a walking route (which runs through cell middles) must go round.</summary>
     public static IEnumerable<Int3> CentresOf(DecoRect rect, Int3 corner)

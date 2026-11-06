@@ -31,6 +31,14 @@ public partial class DeepSite : Node3D
     /// <summary>The most time one frame spent putting views in, ms (tests).</summary>
     public double WorstViewMs { get; private set; }
 
+    /// <summary>What that worst frame was made of (tests).</summary>
+    public string WorstViewNote => $"{WorstViewMs:F1} ms";
+
+    /// <summary>The longest the collector stopped the game between two frames while this site stood, ms, and what kind of collection it was (tests).</summary>
+    public double WorstPauseMs { get; private set; }
+    public string WorstPauseNote { get; private set; } = "";
+    TimeSpan _pausedAtLastFrame;
+
     public float FarDistance = 90f, NearDistance = 40f;
 
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
@@ -123,6 +131,15 @@ public partial class DeepSite : Node3D
     public override void _Process(double delta)
     {
         var clock = Stopwatch.StartNew();
+        TimeSpan paused = GC.GetTotalPauseDuration();
+        double pause = (paused - _pausedAtLastFrame).TotalMilliseconds;
+        if (_pausedAtLastFrame != default && pause > WorstPauseMs)
+        {
+            WorstPauseMs = pause;
+            GCMemoryInfo gc = GC.GetGCMemoryInfo(GCKind.Any);
+            WorstPauseNote = $"gen{gc.Generation} {(gc.Concurrent ? "background" : "blocking")}, {gc.PromotedBytes / 1e6:F0} MB promoted";
+        }
+        _pausedAtLastFrame = paused;
         if (Patch.Zone.Camera != null)
         {
             Vector3 eye = Local(Patch.Zone.Camera.GlobalPosition);
