@@ -115,7 +115,11 @@ public sealed partial class PlanetTerrainSource
             float roof = surface - (h + y) - 2.2f;
             // The first stretch comes out of the slope; past that it stays well under it.
             if (along >= 12f && roof < 2.5f) return null;
-            if (StampWeight(wx, wz) > 0f || WaterSurfaceAt(wx, wz, out _)) return null;
+            if (WaterSurfaceAt(wx, wz, out _)) return null;
+            // Nothing stamped anywhere over the passage, its width and the stretch back included: a stamped column stays shut.
+            for (float behind = 0f; behind < Step; behind += 2f)
+                for (float across = -3f; across <= 3f; across += 3f)
+                    if (StampWeight(wx - dx * behind - dz * across, wz - dz * behind + dx * across) > 0f) return null;
             path.Add((px, y, pz, MathF.Max(2f, 2.6f - k * 0.1f)));
             // Far enough in, and it meets a cave: it stops there, open into it.
             float depth = surface - (h + y);

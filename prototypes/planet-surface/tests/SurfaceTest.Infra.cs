@@ -1091,6 +1091,22 @@ public partial class SurfaceTest
             }
             return "natural";
         }
+        // A flooded tunnel's water: in the bore, with ground over it.
+        void Flooded(PlanetWorld w)
+        {
+            PlanetTerrainSource source = w.Source;
+            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Flooded))
+                for (int k = st.First; k < st.Last; k++)
+                {
+                    if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
+                    flood++;
+                    float g = source.SurfaceHeight(Mathx.WrapX(st.Route.X[k], w.Width), Mathx.Wrap(st.Route.Z[k], w.Height));
+                    if (g >= level + PlanetTerrainSource.TunnelRoof) continue;
+                    floodFloating++;
+                    Note("flooded tunnel");
+                    worstFlood = Math.Max(worstFlood, level - g);
+                }
+        }
         foreach (var (a, seed, start) in new[] { (0, 61UL, false), (0, 900UL, false), (1, 62UL, false), (2, 63UL, false), (0, 31UL, true), (0, 34UL, true) })
         {
             bool was = PlanetSurface.Poi.PoiSiting.StartWorld;
@@ -1170,18 +1186,14 @@ public partial class SurfaceTest
                     }
                 }
 
-            // A flooded tunnel's water: in the bore, with ground over it.
-            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Flooded))
-                for (int k = st.First; k < st.Last; k++)
-                {
-                    if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
-                    flood++;
-                    float g = source.SurfaceHeight(Mathx.WrapX(st.Route.X[k], w.Width), Mathx.Wrap(st.Route.Z[k], w.Height));
-                    if (g >= level + PlanetTerrainSource.TunnelRoof) continue;
-                    floodFloating++;
-                    Note("flooded tunnel");
-                    worstFlood = Math.Max(worstFlood, level - g);
-                }
+            Flooded(w);
+            await Frames(1);
+        }
+        // A flooded tunnel is a matter of luck on any one world: fresh ones until there are some to judge.
+        var fresh = new Random();
+        for (int k = 0; k < 12 && flood == 0; k++)
+        {
+            Flooded(PlanetWorld.Build(PlanetSpec.Roll((ulong)fresh.NextInt64(), Archetype.Temperate, 0), Main.Catalog));
             await Frames(1);
         }
         string kinds = string.Join(", ", tally.OrderByDescending(k => k.Value).Take(10).Select(k => $"{k.Key} {k.Value}"));
