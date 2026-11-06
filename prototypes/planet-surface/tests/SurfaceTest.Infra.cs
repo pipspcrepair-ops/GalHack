@@ -74,6 +74,8 @@ public partial class SurfaceTest
         string firstGround = "", firstBlocked = "";
         int wreckSites = 0, wreckPieces = 0, blockedLanes = 0, wreckOnPad = 0;
         var wreckKinds = new Dictionary<string, int>();
+        int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
+        var ruinKinds = new Dictionary<string, int>();
         int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
         double planBest = double.MaxValue, planWorst = 0;
         bool same = true;
@@ -256,6 +258,36 @@ public partial class SurfaceTest
                 wreckPieces += plan.Placements.Count;
                 if (!LaneOpen(plan, site)) { blockedLanes++; if (firstBlocked.Length == 0) firstBlocked = $" (first: a {site.Site} on {spec.Archetype})"; }
             }
+            // Flavour ruins: plenty of them, none on a road bed, a place's pad or another ruin; each spawns,
+            // and yields salvage.
+            ruinWorlds++;
+            if (net.Ruins.Count < 10) fewRuins++;
+            foreach (FlavourRuin ruin in net.Ruins)
+            {
+                ruins++;
+                ruinKinds[ruin.Family.Id] = ruinKinds.GetValueOrDefault(ruin.Family.Id) + 1;
+                if (ruin.Blast > 0.05f) blastedRuins++;
+                TerrainStamp t = ruin.Stamp;
+                for (double z = t.MinZ - 2; z <= t.MaxZ + 2; z += 3)
+                for (double x = t.MinX - 2; x <= t.MaxX + 2; x += 3)
+                {
+                    double cx = Mathx.WrapX(x, w.Width), cz = Mathx.Wrap(z, w.Height);
+                    var r = net.Nearest(cx, cz, 40, out int ri, out double rd);
+                    if (r != null && rd < r.HalfWidth + 1.5) { ruinOnRoad++; goto checkedRoad; }
+                }
+                checkedRoad:
+                foreach (PoiSite p in w.Pois)
+                    if (p.Stamp.Weight(t.CenterX, t.CenterZ) > 0f) { ruinOnPad++; break; }
+                foreach (FlavourRuin o in net.Ruins)
+                    if (o != ruin && o.Stamp.Weight(t.CenterX, t.CenterZ) >= 1f) { ruinsTouching++; break; }
+            }
+            foreach (FlavourRuin ruin in net.Ruins.Take(3))
+            {
+                PoiInstance inst = ruin.Spawn(w.Profile);
+                ruinsSpawned++;
+                var y = FlavourRuin.Yields(inst);
+                if (y.GetValueOrDefault("rubble") > 0 && y.Values.Sum() > 5) ruinsYielding++;
+            }
             if (a == 0)
             {
                 // The same planet plans the same network, point for point.
@@ -279,6 +311,8 @@ public partial class SurfaceTest
         Check(same, "the same planet plans the same network, point for point");
         Check(wreckSites > 10 && wreckPieces > 100 && blockedLanes == 0 && wreckOnPad == 0,
             $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
+        Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
+            $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");
         Check(offRoute == 0 && onBed == 0 && lowWorldLines == 0,

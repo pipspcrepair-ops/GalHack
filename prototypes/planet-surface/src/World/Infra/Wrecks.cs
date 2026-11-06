@@ -133,7 +133,7 @@ public static class Wrecks
             && Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - r.X[i], net.Width), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - r.Z[i], net.Height), 2)) < 1200);
 
     /// <summary>A site laid on the route from point i: straight and nearly level for its length, all on the ground, off every pad.</summary>
-    static bool TryOnRoute(InfraRoute r, int i, string site, PlanetTerrainSource source, InfraNetwork net, PoiGenerator.Gen.Rng rng, TechLevel tech, out WreckSite w)
+    static bool TryOnRoute(InfraRoute r, int i, string site, PlanetTerrainSource source, InfraNetwork net, PoiGenerator.Gen.Rng rng, TechLevel tech, out WreckSite w, float steep = 0.04f, bool town = false)
     {
         w = null;
         var (W, L, lane, laneX) = Size(site);
@@ -142,7 +142,7 @@ public static class Wrecks
         for (int k = i; k < i + n; k++) if (r.Span[k] != RoadSpan.Ground) return false;
         double dx = r.X[i + n] - r.X[i], dz = r.Z[i + n] - r.Z[i], len = Math.Sqrt(dx * dx + dz * dz);
         if (len < L * 0.97) return false;   // a bend
-        if (Math.Abs(r.Y[i + n] - r.Y[i]) > L * 0.04f) return false;
+        if (Math.Abs(r.Y[i + n] - r.Y[i]) > L * steep) return false;
         float ux = (float)(dx / len), uz = (float)(dz / len);
         // The lane on the road's centre line (a train's track on the line's): the site's corner is that far to the side of it.
         float ax = uz, az = -ux, align = WreckSite.AlignX(site);
@@ -151,7 +151,8 @@ public static class Wrecks
             Site = site, X = r.X[i] - ax * align, Z = r.Z[i] - az * align, Y = r.Y[i], DirX = ux, DirZ = uz,
             Width = W, Length = L, Lane = lane, LaneX = laneX, Tech = tech, Seed = rng.NextU64(), Route = r, First = i, Last = i + n,
         };
-        return OffPads(w, source, net);
+        // A town street runs between its houses' lots: the cars stay on it, the lots are the street's own.
+        return town || OffPads(w, source, net);
     }
 
     /// <summary>A site beside the route at point i (a car park off to one side, its lane parallel to the road).</summary>

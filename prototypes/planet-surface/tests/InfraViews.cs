@@ -41,6 +41,18 @@ public static class InfraViews
             float eye = w.GroundHeight(Mathx.WrapX(sx, w.Width), Mathx.Wrap(sz, w.Height)) + (what == "airliner-crash" ? 14f : 6f);
             return Look(w, sx, sz, eye, tx, tz, w.GroundHeight(Mathx.WrapX(tx, w.Width), Mathx.Wrap(tz, w.Height)) + 1f);
         }
+        // A flavour ruin: house, farmstead, shed or wayside, from 30 m off.
+        if (what is "house" or "farmstead" or "shed" or "wayside")
+        {
+            FlavourRuin ruin = net.Ruins.Where(r => r.Family.Tags.Contains(what)).OrderBy(r => Away(r.Center.X, r.Center.Z)).FirstOrDefault();
+            if (ruin != null)
+            {
+                var (rx, rz) = ruin.Center;
+                double back = Math.Max(ruin.Stamp.MaxX - ruin.Stamp.MinX, ruin.Stamp.MaxZ - ruin.Stamp.MinZ) * 1.1 + 14;
+                double vx = rx + back * 0.7, vz = rz + back * 0.7;
+                return Look(w, vx, vz, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 4f, rx, rz, ruin.OriginY + 3f);
+            }
+        }
         // A structure: the nearest of its kind.
         if (what is "bridge" or "viaduct" or "tunnel")
         {

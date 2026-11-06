@@ -168,8 +168,16 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 
 Each road site lies on a straight, nearly level stretch with its lane down the road's centre line, so the way stays open, and none stands on a place's pad. The vehicles are the library's pieces with collision. `WreckSite` and the dressed plan's placements are what the slice's survival tool can salvage.
 
+**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are lots of abandoned houses, farmsteads, sheds and wayside stops that aren't places of their own.
+- Most stand along the roads and tracks, set back from the verge; some are out in the countryside, more of them on farming worlds.
+- They come from four small architect families (`flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside`, data in the POI generator), at the world's pre-collapse tech level: timber, brick and concrete, or composite.
+- Each gets a small pad of its own, laid before the roads. None stands on a road bed, a place's pad or another ruin.
+- A ruin is spawned from its own seed when its tile comes near, with the POI generator's century of decay: timber fallen in unless sheltered, shells of concrete and stone, trees through.
+- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of.
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
+- `infra:<house|farmstead|shed|wayside>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind.
 - `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
 ### Integration (the slice)
@@ -182,6 +190,7 @@ Screenshot views:
 
   Until then, roads in the slice reach the edge of each river and ravine and stop there: their bridges are missing.
 - **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads. No change is needed.
+- **Flavour ruins** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
 
 ## How it fits together
 

@@ -40,7 +40,15 @@ public partial class InfraLayer : Node3D
         public int Ix, Iz;
         public Node3D Node;
         public Task<TileBuilder> Building;
+        /// <summary>What is still to be made of it on the main thread: its mesh, its collision, each extra (a wreck site, a ruin).</summary>
+        public Queue<Func<Node3D>> Steps;
+        public bool Done => Node != null && Steps != null && Steps.Count == 0;
     }
+
+    /// <summary>Main-thread time a frame may spend making tiles' nodes, ms (at least one step a frame).</summary>
+    public static double FrameBudgetMs = 1.5;
+    /// <summary>The slowest frame of this layer's own main-thread work, ms, and the most it made in one frame (tests).</summary>
+    public double WorstMainMs;
 
     PlanetWorld _world;
     Task<Dictionary<long, List<Piece>>> _planning;
@@ -54,7 +62,7 @@ public partial class InfraLayer : Node3D
     public bool Planned => _pieces != null;
     public int TileCount => _tiles.Count;
     public int PieceCount => _pieces?.Values.Sum(l => l.Count) ?? 0;
-    public bool Built => _pieces != null && _tiles.Values.All(t => t.Node != null);
+    public bool Built => _pieces != null && _tiles.Values.All(t => t.Done);
 
     public void Build(PlanetWorld world)
     {
@@ -124,25 +132,37 @@ public partial class InfraLayer : Node3D
             });
             _tiles[key] = tile;
         }
-        // One finished tile a frame becomes a node; tiles far out are freed.
-        bool made = false;
+        // Finished tiles become nodes a step at a time (the mesh, the collision, each wreck site or
+        // ruin), within a small budget a frame, nearest first; tiles far out are freed.
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var drop = new List<long>();
-        foreach (var (key, tile) in _tiles)
+        int steps = 0;
+        foreach (var (key, tile) in _tiles.OrderBy(t => TileDistance(t.Value.Ix, t.Value.Iz, cx, cz)))
         {
             if (TileDistance(tile.Ix, tile.Iz, cx, cz) > Radius + TileSize)
             {
                 drop.Add(key);
                 continue;
             }
-            if (tile.Node == null && !made && tile.Building.IsCompleted)
+            if (!tile.Done && tile.Building.IsCompleted && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
             {
-                tile.Node = tile.Building.Result.ToNode($"Infra {tile.Ix},{tile.Iz}");
-                AddChild(tile.Node);
-                made = true;
+                if (tile.Node == null)
+                {
+                    tile.Node = new Node3D { Name = $"Infra {tile.Ix},{tile.Iz}" };
+                    tile.Steps = tile.Building.Result.Steps();
+                    AddChild(tile.Node);
+                }
+                while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
+                {
+                    Node3D part = tile.Steps.Dequeue()();
+                    if (part != null) tile.Node.AddChild(part);
+                    steps++;
+                }
             }
             if (tile.Node != null)
                 tile.Node.Position = _world.NearestCopy(new Vector3((float)(tile.Ix * TileSize), 0f, (float)(tile.Iz * TileSize)), camera);
         }
+        WorstMainMs = Math.Max(WorstMainMs, watch.Elapsed.TotalMilliseconds);
         foreach (long key in drop)
         {
             _tiles[key].Node?.QueueFree();
@@ -189,6 +209,7 @@ public partial class InfraLayer : Node3D
             var (mx, mz) = w.World(w.Width / 2, w.Length / 2);
             yield return new WreckPiece { Site = w, X = mx, Z = mz };
         }
+        foreach (Piece p in RuinPieces(world)) yield return p;
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
             yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
@@ -506,7 +527,7 @@ public partial class InfraLayer : Node3D
 }
 
 /// <summary>A tile's mesh data and collision triangles, built on a worker, in the tile's own frame (its corner at the origin).</summary>
-public sealed class TileBuilder
+public sealed partial class TileBuilder
 {
     public readonly PlanetWorld World;
     public readonly double OriginX, OriginZ;
@@ -550,6 +571,21 @@ public sealed class TileBuilder
             DecoEmit.Part(Mesh, part, (_, _, _) => color, _ => DecoSurface.Matte);
     }
 
+    /// <summary>A box of collision only (its faces into the tile's collision, nothing drawn).</summary>
+    public void CollisionBox(NV centre, NV ax, NV ay, NV az)
+    {
+        Span<NV> v = stackalloc NV[8];
+        for (int i = 0; i < 8; i++)
+            v[i] = centre + ((i & 1) != 0 ? ax : -ax) + ((i & 2) != 0 ? ay : -ay) + ((i & 4) != 0 ? az : -az);
+        ReadOnlySpan<int> faces = stackalloc int[] { 0, 2, 6, 4, 1, 5, 7, 3, 0, 4, 5, 1, 2, 3, 7, 6, 0, 1, 3, 2, 4, 6, 7, 5 };
+        for (int f = 0; f < 6; f++)
+            foreach (int k in new[] { 0, 1, 2, 0, 2, 3 })
+            {
+                NV p = v[faces[f * 4 + k]];
+                Collision.Add(new Vector3(p.X, p.Y, p.Z));
+            }
+    }
+
     /// <summary>A thin square beam between two points.</summary>
     public void Beam(NV from, NV to, float half, DecoRgb color)
     {
@@ -575,20 +611,32 @@ public sealed class TileBuilder
         foreach (NV p in new[] { a, c, b, a, d, c }) Collision.Add(new Vector3(p.X, p.Y, p.Z));
     }
 
+    /// <summary>The tile's nodes as steps for the main thread: its mesh, its collision, then each extra.</summary>
+    public Queue<Func<Node3D>> Steps()
+    {
+        var steps = new Queue<Func<Node3D>>();
+        if (Mesh.Triangles > 0) steps.Enqueue(() => new MeshInstance3D { Mesh = DecoGodot.ToMesh(Mesh), Name = "Mesh" });
+        if (Collision.Count > 0)
+        {
+            Vector3[] faces = Collision.ToArray();
+            steps.Enqueue(() =>
+            {
+                var body = new StaticBody3D { Name = "Collision", CollisionLayer = Layers.Poi, CollisionMask = 0 };
+                var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
+                shape.SetFaces(faces);
+                body.AddChild(new CollisionShape3D { Shape = shape });
+                return body;
+            });
+        }
+        foreach (var make in Extra) steps.Enqueue(make);
+        return steps;
+    }
+
+    /// <summary>The whole tile as one node at once (screenshots and tests).</summary>
     public Node3D ToNode(string name)
     {
         var node = new Node3D { Name = name };
-        if (Mesh.Triangles > 0)
-            node.AddChild(new MeshInstance3D { Mesh = DecoGodot.ToMesh(Mesh), Name = "Mesh" });
-        if (Collision.Count > 0)
-        {
-            var body = new StaticBody3D { Name = "Collision", CollisionLayer = Layers.Poi, CollisionMask = 0 };
-            var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
-            shape.SetFaces(Collision.ToArray());
-            body.AddChild(new CollisionShape3D { Shape = shape });
-            node.AddChild(body);
-        }
-        foreach (var make in Extra) node.AddChild(make());
+        foreach (var make in Steps()) node.AddChild(make());
         return node;
     }
 }

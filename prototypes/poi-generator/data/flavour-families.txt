@@ -1,0 +1,119 @@
+# Flavour ruins: small places that are not POIs (design doc "Infrastructure"). Abandoned houses,
+# farmsteads, sheds and wayside stops along the roads and out in the countryside, built by the
+# planet surface's flavour pass (FlavourRuins), never placed as places of their own (tag flavour).
+# Same grammar as the other families; each has a layout per tech level where it differs.
+
+family flavour_house
+  tier site
+  siting flat
+  rise 6
+  name Abandoned House
+  pitch A family's home by the road, a century gone.
+  faction none
+  roster raiders
+  program cottage_brick
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 120
+  ominous 0.2
+  wrong 0
+  tags flavour house
+  states active 0 abandoned 2 infested 0 ruined 6
+  variant Timber House
+    seed 9701
+    program cottage_timber
+    tech low
+  variant Brick House
+    seed 9702
+    program cottage_brick
+    tech mid
+  variant Composite House
+    seed 9703
+    program cottage_composite
+    tech high
+
+family flavour_farmstead
+  tier site
+  siting flat
+  rise 8
+  name Ruined Farmstead
+  pitch A farmhouse, a barn with its roof in, a silo and a field gone to scrub.
+  faction none
+  roster raiders
+  site farmstead_ruin
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 160
+  ominous 0.2
+  wrong 0
+  tags flavour farmstead farm
+  states active 0 abandoned 2 infested 0 ruined 6
+  variant Homestead
+    seed 9711
+  variant Hill Farm
+    seed 9712
+  variant Bottom Farm
+    seed 9713
+
+family flavour_shed
+  tier site
+  siting flat
+  rise 4
+  name Roadside Shed
+  pitch A shed by the road, its door hanging, a rusted machine inside.
+  faction none
+  roster raiders
+  site shed_ruin
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 80
+  ominous 0.1
+  wrong 0
+  tags flavour shed
+  states active 0 abandoned 3 infested 0 ruined 5
+  variant Tool Shed
+    seed 9721
+  variant Machine Shed
+    seed 9722
+  variant Lean-to
+    seed 9723
+
+family flavour_wayside
+  tier site
+  siting flat
+  rise 6
+  name Wayside Stop
+  pitch A fuel stop on the old highway: pumps under a canopy, a kiosk, cars that never left.
+  tech mid high
+  faction none
+  roster raiders
+  site wayside_stop
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 160
+  ominous 0.2
+  wrong 0
+  tags flavour wayside
+  states active 0 abandoned 3 infested 0 ruined 5
+  variant Fuel Stop
+    seed 9731
+  variant Road House
+    seed 9732
+  variant Truck Stop
+    seed 9733

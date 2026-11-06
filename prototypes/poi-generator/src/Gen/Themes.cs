@@ -129,7 +129,8 @@ public static class WorldPlacement
 
         var themed = theme.Set.Where(s => lib.Families.Any(f => f.Id == s.Family)).ToList();
         var inSet = new HashSet<string>(themed.Select(s => s.Family));
-        var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
+        // Flavour ruins (houses, sheds by the road) are never places of their own.
+        var strangers = lib.Families.Where(f => !f.Space && !f.Tags.Contains("flavour") && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
         // The world's profile: only what fits its tech levels and its past, weighted by its trade.
         if (profile != null)
         {

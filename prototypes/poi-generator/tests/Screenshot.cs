@@ -99,7 +99,7 @@ public partial class Screenshot : Node
         {
             string[] a = view.Split(':');
             int k = int.Parse(a[1]), n = int.Parse(a[2]);
-            var families = lib.Families.Where(f => !f.Space).ToList();
+            var families = lib.Families.Where(f => !f.Space && !f.Tags.Contains("flavour")).ToList();
             int from = families.Count * (k - 1) / n, to = families.Count * k / n;
             for (int i = from; i < to; i++)
             {

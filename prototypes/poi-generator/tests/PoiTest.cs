@@ -318,10 +318,14 @@ public partial class PoiTest : Node
     /// by storey) may be shared by more than a quarter of them. Within a building, no two storeys
     /// may share a plan. Between types that should never walk alike (a prison and a hospital, a tower
     /// and a bunker...), their mixes of footprint and circulation overlap by less than half.
+    /// Flavour ruins (a house, a shed by the road) are filler, not places: they repeat by design, so
+    /// they're held only to a looser rule, no plan shared by more than half their seeds.
     /// </summary>
     void Variety()
     {
         int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0, fewestPatterns = int.MaxValue;
+        float worstFiller = 0f;
+        string worstFillerType = "";
         float worstPattern = 0f;
         string worstPatternType = "", fewestType = "";
         float worstShare = 0f;
@@ -349,6 +353,12 @@ public partial class PoiTest : Node
                     storeyRepeats += sigs.Count - sigs.Distinct().Count();
                 }
             }
+            if (f.Tags.Contains("flavour"))
+            {
+                float same = full.GroupBy(c => c).Max(g => g.Count()) / (float)full.Count;
+                if (same > worstFiller) { worstFiller = same; worstFillerType = f.Id; }
+                continue;
+            }
             repeats += full.Count - full.Distinct().Count();
             float share = coarse.GroupBy(c => c).Max(g => g.Count()) / (float)coarse.Count;
             if (share > worstShare && f.Generator == Generator.Building) { worstShare = share; worstType = f.Id; }
@@ -362,6 +372,8 @@ public partial class PoiTest : Node
         }
         Check(repeats == 0 && worstShare <= 0.15f,
             $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 15%)");
+        Check(worstFiller <= 0.5f,
+            $"flavour ruins (filler) still vary: the commonest exact plan covers {worstFiller:P0} of a kind's seeds ({worstFillerType}; at most 50%)");
         Check(worstPattern <= 0.45f && fewestPatterns >= 3,
             $"circulation varies within a type: no pattern walks more than {worstPattern:P0} of a type's storeys ({worstPatternType}; at most 45%), and every type with a broad grammar uses at least {fewestPatterns} of its patterns ({fewestType})");
         Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building");

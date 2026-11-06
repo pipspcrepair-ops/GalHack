@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using GalHack.Terrain;
 using Planets.Gen;
@@ -21,6 +22,7 @@ public sealed class GroundPalette
 {
     public readonly WorldMap Map;
     public readonly Rgb Rock, DeepRock, Bedrock, Seabed, RiverBed, Snow;
+
 
     /// <summary>How strongly rock faces show horizontal strata (0-1): canyons and mesas show them most.</summary>
     public readonly float Strata;
