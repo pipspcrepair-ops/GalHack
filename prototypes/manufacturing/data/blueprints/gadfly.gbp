@@ -36,7 +36,7 @@ block -2..2 2 -5 glass
 block -2..2 3 -5 glass slope
 
 # --- Cabin: the seat, a glass canopy, a steel roof over the bay -----------------------------
-block 0 1 -3 cockpit
+block 0 1 -3 chair
 block -2..2 3 -4..-1 glass
 block -2..2 3 0..5 steel paint=teal
 

@@ -31,7 +31,7 @@ block -3..3 0 1..4 steel paint=deck
 block -3..3 0 5 steel paint=edge
 
 # --- Pilot seat at the bow ----------------------------------------------------------------------
-block 0 1 -6 cockpit
+block 0 1 -6 chair
 
 # --- Keel (y -1): generator, gyros, lift jets at the corners ----------------------------------
 block -2 -1 -5 thruster rot=+z+y

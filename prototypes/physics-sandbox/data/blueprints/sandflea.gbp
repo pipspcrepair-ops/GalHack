@@ -45,7 +45,7 @@ block -2..2 1 4..5 steel paint=body
 block 3 1 -4..5 steel paint=body +x=pin
 
 # --- Open cockpit: the seat, a raked windscreen, a cargo deck behind ------------------------
-block 0 2 -1 cockpit
+block 0 2 -1 chair
 block -1..1 2 -3 glass slope
 block -3..3 2 2..5 steel paint=teal +z=check
 

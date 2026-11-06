@@ -165,7 +165,7 @@ public partial class PlayerTest : Node
     /// <summary>The toolbar slots the vessel's blocks go on.</summary>
     static readonly Dictionary<string, int> Slots = new()
     {
-        ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
+        ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
     };
 
     IEnumerable<int> Gathering()
@@ -219,7 +219,7 @@ public partial class PlayerTest : Node
         for (int k = 0; k < 12; k++)
         {
             float a = 0.64f + k * MathF.Tau / 12f;
-            Vector3 p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 5f;
+            Vector3 p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 4f;
             var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 6f, p + Vector3.Down * 6f, Layers.World));
             if (down.Count == 0) continue;
             Vector3 g = (Vector3)down["position"];
@@ -488,7 +488,7 @@ public partial class PlayerTest : Node
         }
         Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
         Mark("level 5");
-        foreach (string node in new[] { "vessel-core", "cockpit@small", "thruster@small", "gyro@small" })
+        foreach (string node in new[] { "vessel-core", "thruster@small", "gyro@small" })
         {
             foreach (int x in _play.Unlock(node)) yield return x;
             Check(_game.Progress.IsUnlocked(node), $"unlocked {_game.Progress.Node(node).Name} ({_game.Progress.Points} points left)");

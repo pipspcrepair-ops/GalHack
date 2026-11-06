@@ -609,7 +609,7 @@ public sealed class Playthrough
         // A retro at the nose, to brake.
         ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
         // On top, from hops: the seat, and a jet pushing down, to come down under control.
-        ("cockpit", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
+        ("chair", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
         // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
         ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
         ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),

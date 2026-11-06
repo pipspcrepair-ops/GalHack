@@ -159,7 +159,7 @@ public sealed class SliceRules
         public double LapsePerKm { get; set; } = 6.5;
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
-        public double CockpitC { get; set; } = 20;
+        public double SealedRoomC { get; set; } = 20;
     }
 
     public sealed class ToolRules

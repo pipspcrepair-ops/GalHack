@@ -104,7 +104,7 @@ public partial class ItemsTest : TestBase
         foreach (string id in new[] { "steel", "glass", "concrete", "container", "generator", "fueltank", "smallfab", "light", "ladder" })
             Check(survival.Knows(_items.BlockItem(id, false)), $"the survival constructor makes {_items.BlockItem(id, false).Name}");
         Check(survival.Knows(_items.BlockItem("core", false)), "the survival constructor makes the base core");
-        foreach (string id in new[] { "thruster", "cockpit", "gyro", "gear", "core" })
+        foreach (string id in new[] { "thruster", "chair", "gyro", "gear", "core" })
             Check(!survival.Knows(_items.BlockItem(id, true)) && smallFab.Knows(_items.BlockItem(id, true)), $"{_items.BlockItem(id, true).Name} needs the small constructor");
         foreach (string id in new[] { "hardened", "combat", "thruster" })
             Check(!smallFab.Knows(_items.BlockItem(id, false)) && large.Knows(_items.BlockItem(id, false)), $"{_items.BlockItem(id, false).Name} needs the large constructor");

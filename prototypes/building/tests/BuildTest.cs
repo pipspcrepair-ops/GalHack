@@ -546,7 +546,7 @@ public partial class BuildTest : Node
             foreach (var (item, count) in _cat.CostOf(Building.Make(scratch, _cat.Type(id), shape == null ? null : _cat.Shape(shape)), small))
                 bill[item] = (bill.TryGetValue(item, out int had) ? had : 0) + count * n;
         }
-        Add("core", 1); Add("cockpit", 1); Add("thruster", 4); Add("generator", 1); Add("fueltank", 1); Add("container", 1);
+        Add("core", 1); Add("chair", 1); Add("thruster", 4); Add("generator", 1); Add("fueltank", 1); Add("container", 1);
         Add("door", 1); Add("light", 2); Add("glass", 8); Add("glass", 4, "slope"); Add("steel", 70); Add("steel", 20, "slope");
         int total = bill.Values.Sum();
         Check(total <= 300, $"a 115-block starter small vessel costs {total} units of common materials: " +

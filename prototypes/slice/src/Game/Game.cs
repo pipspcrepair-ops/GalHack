@@ -413,7 +413,7 @@ public partial class Game : Node3D
         Say(Torch.Visible ? "Head torch on (L)" : "Head torch off", Tones.Text);
     }
 
-    /// <summary>F on foot: the nearest cockpit seat within reach.</summary>
+    /// <summary>F on foot: the nearest command chair within reach.</summary>
     void TrySit()
     {
         Vector3 eye = Survivor.WorldEye();

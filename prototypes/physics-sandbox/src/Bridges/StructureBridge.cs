@@ -206,11 +206,11 @@ public static class StructureBridge
         _ => StructureClass.Small,
     };
 
-    /// <summary>Where the cockpit seat is (structure frame, metres), or the origin if there is none.</summary>
+    /// <summary>Where the command chair is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {
         foreach (var (p, b) in s.Blocks())
-            if (s.TypeOf(b).IsCockpit) return CellCenter(s, p);
+            if (s.TypeOf(b).IsCommandChair) return CellCenter(s, p);
         return N.Vector3.Zero;
     }
 }
@@ -298,7 +298,7 @@ public sealed class StructureVessel : IVesselStructure
                 _hover.Add(new HoverEngineSpec(size, underside, part.Lift, part.RideHeight, 0f));
             }
             else if (t.Function == "gear") _gear.Add(new GearSpec(size, underside, _t.Parts.LandingGear[size].Length, 0f));
-            else if (t.IsCockpit) _cockpit = at + GVector3.Up * 0.8f;
+            else if (t.IsCommandChair) _cockpit = at + GVector3.Up * 0.8f;
         }
 
         _class = _hover.Count > 0 ? VesselClass.Hover : _s.Grid.Size == GridSize.Small ? VesselClass.Small : VesselClass.Capital;

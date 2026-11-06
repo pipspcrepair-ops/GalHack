@@ -82,7 +82,7 @@ block 4 2 -4 steel paint=hull +x=n0
 block 4 2 -3..11 steel paint=hull
 
 # --- Cabin (x -3..3, y 1..2, z -7..-1 is air): the seat at the windshield, two lights ----
-block 0 1 -7 cockpit
+block 0 1 -7 chair
 block -2 2 -4 light rot=+z-y
 block 2 2 -4 light rot=+z-y
 

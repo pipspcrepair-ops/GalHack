@@ -66,8 +66,10 @@
                              "large": { "id": "base-core", "name": "Base core", "short": "B-CORE", "stack": 4 } },
                    "unlock": { "small": { "level": 5, "cost": 2, "tab": "small" },
                                "large": { "level": 1, "cost": 0, "tab": "base" } } },
-    "cockpit":   { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "circuit-board": 2, "glass": 2, "polymer": 1 }, "large": { "hull-plate": 8, "control-unit": 2, "glass": 6, "polymer": 2 },
-                   "unlock": { "small": { "level": 5, "cost": 1, "parent": "vessel-core", "tab": "small" },
+    // The only block that gives control: every seat aboard is a command chair, and you build
+    // whatever enclosure you like round it. It gives no air: that takes a sealed room, or the suit.
+    "chair":     { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "circuit-board": 2, "polymer": 1 }, "large": { "hull-plate": 8, "control-unit": 2, "polymer": 2 },
+                   "unlock": { "small": { "level": 1, "cost": 0, "tab": "hover" },
                                "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
     "thruster":  { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "nozzle": 1, "winding": 1 },         "large": { "hull-plate": 10, "thrust-assembly": 2 },
                    "unlock": { "small": { "level": 5, "cost": 1, "parent": "vessel-core", "tab": "small" },
@@ -100,7 +102,7 @@
 
     // ---- Vessel parts (prototypes/physics-sandbox/data/vessel-parts.json) -----------------------
     "gyro":      { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "servo": 1, "circuit-board": 1 },    "large": { "hull-plate": 8, "servo": 2, "magnet": 4, "control-unit": 1 },
-                   "unlock": { "small": { "level": 5, "cost": 1, "parent": "cockpit@small", "tab": "small" },
+                   "unlock": { "small": { "level": 5, "cost": 1, "parent": "chair@small", "tab": "small" },
                                "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
     "hover":     { "places": { "small": ["hover"], "large": ["capital"] }, "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 8, "power-unit": 1, "nozzle": 2 },
                    "unlock": { "small": { "level": 1, "cost": 1, "tab": "hover" },

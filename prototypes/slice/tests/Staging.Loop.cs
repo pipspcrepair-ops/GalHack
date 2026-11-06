@@ -219,7 +219,7 @@ public sealed partial class Staging
         _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
         Hand(("vessel-core", 1));
         foreach (int x in Play.ToToolbar("vessel-core", 3)) yield return x;
-        var slots = new Dictionary<string, int> { ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
+        var slots = new Dictionary<string, int> { ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
         foreach (var (b, s) in slots) foreach (int x in Play.BlockToToolbar(b, true, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
         Vector3 pad = Play.FlatSpot(_game.Start, 20f, 2.0f, 0.3f);

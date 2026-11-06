@@ -44,7 +44,8 @@ public static class StructureArea
             if (c.Value is StructureClass.Base or StructureClass.Capital) return BuildingBridge.ClassOf(v.Structure);
             return c.Value;
         }
-        return v.IsBase ? StructureClass.Base : BuildingBridge.ClassOf(v.Structure);
+        // A fixed large grid is a base; the bunker's small grid stays a small-grid structure.
+        return v.IsBase && !BuildingBridge.IsSmall(v.Structure) ? StructureClass.Base : BuildingBridge.ClassOf(v.Structure);
     }
 
     /// <summary>The core item that founds (and, taken down last, gives back) a structure of a class.</summary>

@@ -85,7 +85,7 @@ public sealed class Vessel
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
 
-    /// <summary>The cockpit seat (structure frame, metres), or null if it has none.</summary>
+    /// <summary>The command chair (structure frame, metres), or null if it has none.</summary>
     public N.Vector3? Seat { get; private set; }
 
     string _legsKey = "";
@@ -331,7 +331,7 @@ public sealed class Vessel
     {
         Seat = null;
         foreach (var (p, b) in Structure.Blocks())
-            if (Structure.TypeOf(b).IsCockpit)
+            if (Structure.TypeOf(b).IsCommandChair)
             {
                 Seat = StructureBridge.CellCenter(Structure, p);
                 return;

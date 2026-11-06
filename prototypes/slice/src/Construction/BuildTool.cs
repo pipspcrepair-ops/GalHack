@@ -240,7 +240,9 @@ public sealed class BuildTool
         Structure s = TargetVessel.Structure;
         Block b = Make(s, type, AutoOrient(type, Rot));
         var copies = Copies(s, PlaceCell, b);
-        string why = Problem(TargetVessel, PlaceCell, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
+        // The family in hand must go on this grid and class of structure (Creative too).
+        string why = !item.PlacesOn(StructureArea.ClassOf(TargetVessel)) ? $"{item.Name}: {StructureClasses.Only(item.Places)}"
+            : Problem(TargetVessel, PlaceCell, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
         var tinted = copies.Select(c => (c.cell, c.block, Problem(TargetVessel, c.cell, c.block) == null ? GhostPreview.Valid : GhostPreview.Invalid)).ToList();
         if (why != null) tinted = tinted.Select(t => (t.cell, t.block, GhostPreview.Invalid)).ToList();
         Verdict = why ?? $"{item.Name}{(type.IsArmor ? $", {Shape.Name}" : "")} · {Available(TargetVessel, item, slotIndex)}";
@@ -254,8 +256,11 @@ public sealed class BuildTool
         if (remove) Remove(TargetVessel, TargetCell);
     }
 
-    /// <summary>The structure the structure toolbar is linked to may be built from only while you are in its area and building on it.</summary>
+    /// <summary>The structure toolbar is in use: blocks come from the linked structure's storage, never your bag.</summary>
     bool FromStructure => _pack.OnStructureBar;
+
+    /// <summary>Can a structure's storage be drawn on from a point: is it a linkable structure, and the point in its area?</summary>
+    public bool CanDrawFrom(Vessel v, Vector3 at) => StructureArea.Linkable(v) && StructureArea.Contains(v, at, _rules.Area);
 
     /// <summary>How many of the block item the chosen source holds: "12 in your stack", "340 in Base 1".</summary>
     public string Available(Vessel v, ItemDef item, int slotIndex)

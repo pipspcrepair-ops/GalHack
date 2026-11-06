@@ -81,9 +81,9 @@ public partial class Game
                 Open(new OpenContainer { Title = v == Bunker?.Ruin ? "Bunker locker" : $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
                 return;
             }
-            if (type.IsCockpit)
+            if (type.IsCommandChair)
             {
-                Say("F to take the seat", Tones.Text);
+                Say("F to take the command chair", Tones.Text);
                 return;
             }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
@@ -109,7 +109,7 @@ public partial class Game
         {
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
-            if (type.IsCockpit) return "F  Take the seat";
+            if (type.IsCommandChair) return "F  Take the command chair";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";
@@ -287,7 +287,10 @@ public partial class Game
         foreach (Device d in Zone.Devices) d.Grid.Reconcile();
         AutoTransmit(dt);
         Zone.Loot.Tick();
-        if (Opened != null && Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f) CloseContainer();
+        // A structure's storage stays open while you are in its area; anything else within a few steps.
+        if (Opened != null && (Opened.Vessel != null
+                ? !Slice.Construction.StructureArea.Contains(Opened.Vessel, Survivor.WorldFeet, Zone.Data.Rules.Build.Area)
+                : Opened.Where().DistanceTo(Survivor.WorldFeet) > 6f)) CloseContainer();
     }
 
     float _transmitTimer;

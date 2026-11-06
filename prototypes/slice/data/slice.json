@@ -40,8 +40,8 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
-    // A cockpit seat with its canopy shut is a sealed, heated volume.
-    "cockpitC": 20
+    // A sealed room aboard a structure is heated and has air; a command chair on its own has neither.
+    "sealedRoomC": 20
   },
 
   "tool": {

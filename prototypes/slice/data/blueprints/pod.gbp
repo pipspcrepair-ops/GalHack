@@ -42,6 +42,6 @@ block -3 5 -3..3 steel slope rot=+y-x paint=shell
 block 3 5 -3..3 steel slope rot=+y+x paint=shell
 
 # Inside: the seat facing the hatch, the locker, a light
-block 0 1 1 cockpit
+block 0 1 1 chair
 block -2 1 2 container
 block 0 4 2 light rot=+z-y
