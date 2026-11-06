@@ -84,7 +84,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
         foreach (TerrainStamp t in Stamps)
             stampHash = (stampHash ^ (ulong)(t.MinX * 73856093 ^ t.MinZ * 19349663 ^ t.PadY * 83492791 ^ t.MaxX * 2654435761)) * 1099511628211UL;
         // Saves record this and refuse to load against anything else: same planet, same stamps, same generator version.
-        GeneratorId = $"planet-surface/1 {spec.Archetype}/{spec.Variant} seed {spec.Seed} mods {(int)spec.Modifiers} {spec.WidthKm} km stamps {stampHash:X16}";
+        // Version 2: landforms (the same seed now gives different ground).
+        GeneratorId = $"planet-surface/2 {spec.Archetype}/{spec.Variant} seed {spec.Seed} mods {(int)spec.Modifiers} {spec.WidthKm} km stamps {stampHash:X16}";
 
         ulong salt = Hash.Of(spec.Seed, 0xCA7E);
         _caveA = new PeriodicNoise(salt + 1, Width, Height, 52);
