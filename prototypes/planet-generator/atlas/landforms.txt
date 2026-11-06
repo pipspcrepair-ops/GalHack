@@ -1,0 +1,68 @@
+Landform atlas: each row is one world, its landform map on the left and its colour map on the right.
+
+ 1  Temperate / meadow   seed 4100   16x8 km   modifiers: Archipelago, PerpetualStorm
+    mix: archipelago 43%, steppe 39%, plateau 18%
+    present: archipelago 94%, steppe 5%, plateau 1%
+    land 40%, 14 rivers, 0 deltas, 419 ms
+ 2  Temperate / rainforest   seed 4105   16x8 km   modifiers: PerpetualStorm
+    mix: river valleys 51%, wetlands 28%, hills 14%, mountains 6%
+    present: river valleys 41%, hills 29%, wetlands 23%, mountains 7%
+    land 43%, 337 rivers, 0 deltas, 435 ms
+ 3  Arid / dunes   seed 4117   16x8 km   modifiers: Archipelago, Highlands
+    mix: archipelago 48%, rocky desert 28%, mountains 14%, badlands 9%, hills 0%
+    present: archipelago 40%, rocky desert 31%, hills 16%, mountains 7%, badlands 6%
+    land 89%, 0 rivers, 0 deltas, 585 ms
+ 4  Arid / canyon   seed 4122   16x8 km   modifiers: RingedSky
+    mix: rocky desert 50%, mesas 50%
+    present: rocky desert 53%, mesas 47%
+    land 87%, 10 rivers, 0 deltas, 277 ms
+ 5  Ice / glacier   seed 4134   16x8 km   modifiers: Mesas, Canyons
+    mix: ice plain 50%, canyonlands 32%, mesas 18%
+    present: ice plain 57%, canyonlands 32%, mesas 12%
+    land 55%, 1 rivers, 0 deltas, 166 ms
+ 6  Ice / hot spring   seed 4139   16x8 km   modifiers: GlowingNights
+    mix: ice plain 100%
+    present: ice plain 100%
+    land 68%, 3 rivers, 0 deltas, 153 ms
+ 7  Lava / volcanic   seed 4151   16x8 km   modifiers: Cratered
+    mix: volcanic field 100%
+    present: volcanic field 100%
+    land 79%, 8 rivers, 0 deltas, 234 ms
+ 8  Lava / lava ocean   seed 4156   16x8 km   modifiers: Highlands, RingedSky
+    mix: basalt plains 52%, mountains 46%, hills 2%
+    present: basalt plains 57%, hills 30%, mountains 12%
+    land 38%, 1 rivers, 0 deltas, 167 ms
+ 9  Alien / crystal   seed 4168   16x8 km   modifiers: Cratered, PerpetualStorm
+    mix: plains 50%, shard fields 27%, mesas 16%, mountains 7%, hills 0%
+    present: plains 38%, hills 22%, shard fields 17%, mesas 14%, mountains 9%
+    land 53%, 33 rivers, 0 deltas, 183 ms
+10  Alien / fungal   seed 4173   16x8 km   modifiers: RingedSky
+    mix: plains 50%, dome fields 50%
+    present: plains 54%, dome fields 46%
+    land 48%, 148 rivers, 0 deltas, 124 ms
+
+Key colours:
+  plains          #8fd14f
+  steppe          #d8d36a
+  hills           #4f9a3c
+  mountains       #8a7f78
+  plateau         #b88a5a
+  mesas           #d9773a
+  canyonlands     #a8432a
+  river valleys   #2fb59a
+  dune sea        #f6c25a
+  rocky desert    #c9b296
+  badlands        #e0915c
+  wetlands        #3c7d6a
+  lake district   #4aa0d8
+  delta           #18d0d0
+  ice plain       #eef6ff
+  fjords          #5a7fb0
+  coastal cliffs  #f0f0c8
+  archipelago     #ffe08a
+  volcanic field  #d8322a
+  basalt plains   #4a3a40
+  karst           #a8d8a0
+  shard fields    #b45ee6
+  dome fields     #e8682c
+  ringlands       #7a5cd0

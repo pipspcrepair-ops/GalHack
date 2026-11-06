@@ -21,6 +21,8 @@ public static class Spots
         {
             if (map.LandformsAt(x, z).Weight(at) < 0.92f) continue;
             if (!coastal && map.Sample(map.Elevation, x, z) < 3f) continue;
+            // Fjords are seen from the water in a trough, looking up it.
+            if (at == Landform.Fjords && map.Sample(map.Elevation, x, z) > -2f) continue;
             // How far it holds: the first ring (of 8 directions) where it falls below 0.8.
             double depth = 0;
             for (double r = 250; r <= 2000; r += 250)
@@ -59,7 +61,8 @@ public static class Spots
                 for (int d = 0; d < 16; d++)
                 {
                     double a = d * Math.PI * 2 / 16, dx = Math.Sin(a), dz = -Math.Cos(a), r = 100;
-                    while (r < 6000 && map.LandformsAt(x + dx * r, z + dz * r).Weight(at) >= 0.7f) r += 100;
+                    while (r < 6000 && map.LandformsAt(x + dx * r, z + dz * r).Weight(at) >= 0.7f
+                        && (at != Landform.Fjords || map.Sample(map.Elevation, x + dx * r, z + dz * r) < 0f)) r += 50;
                     if (r > longest) { longest = r; heading = (float)a; }
                 }
                 score += longest * 0.3;

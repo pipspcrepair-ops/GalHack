@@ -84,7 +84,8 @@ static class BiomeRules
             case Landform.Steppe:
                 return a switch
                 {
-                    Archetype.Temperate => c.T < 0.25f ? Biome.Tundra : c.H > 0.62f ? Biome.Meadow : Biome.Grassland,
+                    // Golden open grass, few trees; scrub where it is driest, tundra where it is cold.
+                    Archetype.Temperate => c.T < 0.25f ? Biome.Tundra : c.H < 0.3f ? Biome.Scrub : Biome.Meadow,
                     Archetype.Arid => c.Slope > 0.5f ? Rock() : Biome.Scrub,
                     Archetype.Ice => Biome.IceTundra,
                     _ => null,
