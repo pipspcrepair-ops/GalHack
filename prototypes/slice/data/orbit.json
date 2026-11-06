@@ -6,9 +6,9 @@
     // The globe's radius against the map: the map's width is the length of its equator, so 1 is
     // true scale (radius = width / 2π, about 2.5 km for a 16 km world).
     "radiusScale": 1.0,
-    // The rim of air drawn round the globe, as a share of its radius (the height planet-generator's
-    // OrbitView draws its atmosphere at).
-    "atmosphere": 0.075,
+    // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
+    // away to nothing by there, and has to stay under the orbit's lowest height.
+    "atmosphere": 0.15,
     "segments": 192,
     "rings": 96,
     // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
@@ -17,6 +17,9 @@
     // Clouds sit this share of the radius over the ground, at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
     "cloudHeight": 0.012,
+    // The globe is painted once, from the sky's clouds as they stand, but a clear spell under you
+    // shouldn't leave the whole world bare: its share of cloud is at least this.
+    "cloudCoverAtLeast": 0.38,
     "cloudOpacity": 0.55
   },
 

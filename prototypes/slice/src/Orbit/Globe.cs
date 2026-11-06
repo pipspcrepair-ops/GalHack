@@ -19,6 +19,8 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
+    const float SeamBlend = 0.08f;
+
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
     public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null)
     {
@@ -31,7 +33,10 @@ public sealed class GlobePaint
             if (coverage != null)
             {
                 int pixel = i / 4;
-                float c = coverage((pixel % rules.CloudWidth + 0.5f) / rules.CloudWidth, (pixel / rules.CloudWidth + 0.5f) / cloudHeight);
+                float u = (pixel % rules.CloudWidth + 0.5f) / rules.CloudWidth, v = (pixel / rules.CloudWidth + 0.5f) / cloudHeight;
+                float c = coverage(u, v);
+                // The sky's noise doesn't wrap at the map's edge: the last stretch blends into the first.
+                if (u > 1f - SeamBlend) c += (coverage(u - 1f, v) - c) * (u - (1f - SeamBlend)) / SeamBlend;
                 alpha = Math.Clamp(c / 0.16f, 0f, 1f) * 0.9f;
             }
             clouds[i] = (byte)(alpha * 255f);
@@ -54,8 +59,8 @@ public sealed class GlobePaint
 }
 
 /// <summary>
-/// The world below, seen from its orbit: planet-generator's globe (its planet, atmosphere and ring
-/// shaders, as its OrbitView draws them) at the orbit zone's scale, centred on the zone's frame, so
+/// The world below, seen from its orbit: planet-generator's globe (its planet and ring shaders, as
+/// its OrbitView draws them, with air of its own) at the orbit zone's scale, centred on the zone's frame, so
 /// a direction from the centre is always the same place on the map. It has no collider: a descent
 /// crosses into the atmosphere well above the ground it shows.
 ///
@@ -111,10 +116,37 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// The air seen from outside, worked out from each eye ray rather than the shell's normal (the
+    /// generator's rim reads as a solid band from close to): over the limb the glow thins away with
+    /// the height of the ray's lowest point, and over the disc it thins toward the middle, meeting
+    /// at the ground's edge, so there is no line there and none at the top.
+    /// </summary>
+    const string AirSource = """
+        shader_type spatial;
+        render_mode unshaded, blend_add, depth_draw_never, cull_back;
+        uniform vec3 color : source_color;
+        uniform vec3 sun_dir = vec3(1.0, 0.0, 0.0);
+        uniform float strength = 1.0;
+        uniform float ground = 1.0;
+        uniform float top = 1.1;
+        void fragment() {
+            vec3 centre = MODEL_MATRIX[3].xyz;
+            vec3 point = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+            vec3 ray = normalize(point - CAMERA_POSITION_WORLD);
+            vec3 eye = CAMERA_POSITION_WORLD - centre;
+            float lowest = length(eye + ray * max(-dot(eye, ray), 0.0));
+            float h = (lowest - ground) / (top - ground);
+            float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : pow(lowest / ground, 10.0);
+            float day = smoothstep(-0.3, 0.35, dot(normalize(point - centre), sun_dir));
+            ALBEDO = color * thick * day * strength;
+        }
+        """;
+
     /// <summary>How far off the globe's nearest point is drawn while it overlaps the terrain, m.</summary>
     const float PulledTo = 450f;
 
-    const float AirStrength = 1.4f;
+    const float AirStrength = 1.1f;
 
     ShaderMaterial _ground, _clouds, _air, _ringMaterial;
     MeshInstance3D _ring;
@@ -139,8 +171,10 @@ public partial class Globe : Node3D
         _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
         AddChild(Sphere("Clouds", radius * (1f + (float)rules.CloudHeight), rules.Segments * 2 / 3, rules.Rings * 2 / 3, _clouds));
         yield return 0;
-        _air = new ShaderMaterial { Shader = Planets.Shaders.Atmosphere };
+        _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
         _air.SetShaderParameter("color", C(look.Atmosphere));
+        _air.SetShaderParameter("ground", radius);
+        _air.SetShaderParameter("top", atmosphereRadius);
         AddChild(Sphere("Atmosphere", atmosphereRadius, rules.Segments / 2, rules.Rings / 2, _air));
         _ringMaterial = new ShaderMaterial { Shader = Planets.Shaders.Ring };
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));

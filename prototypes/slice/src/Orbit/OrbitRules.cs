@@ -24,6 +24,7 @@ public sealed class OrbitRules
         public int CloudWidth { get; set; } = 1024;
         public double CloudHeight { get; set; } = 0.012;
         public double CloudOpacity { get; set; } = 0.55;
+        public double CloudCoverAtLeast { get; set; } = 0.38;
     }
 
     public sealed class CrossingRules

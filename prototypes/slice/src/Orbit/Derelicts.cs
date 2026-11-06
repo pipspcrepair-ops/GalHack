@@ -73,13 +73,13 @@ public static class Derelicts
                 "field" => Field(rng, poi, id, catalogue),
                 _ => Station(rng, poi, id, catalogue),
             };
+            // Pieces were laid out round the site's centre in its own frame: turn the whole site.
+            N.Quaternion siteTurn = RandomTurn(rng);
             foreach (DerelictPlan p in pieces)
             {
                 p.Site = poi.Site;
                 p.State = poi.State;
                 p.Zone = poi.Zone;
-                // Pieces were laid out round the site's centre in its own frame: turn the whole site.
-                N.Quaternion siteTurn = RandomTurn(rng);
                 p.Position = centre + N.Vector3.Transform(p.Position, siteTurn);
                 p.Rotation = N.Quaternion.Normalize(siteTurn * p.Rotation);
                 Stock(p, rng, poi.Site.Salvage, rules, items);

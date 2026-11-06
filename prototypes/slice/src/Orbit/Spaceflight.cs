@@ -185,7 +185,7 @@ public partial class Spaceflight : Node
         // The globe's clouds are the sky's: the same coverage over the map, as it stands now.
         SurfaceZone s = Game.Surface;
         PlanetSurface.Skies.CloudCoverage clouds = s.Sky.Clouds;
-        float cover = s.Sky.Air.CloudCover, w = (float)s.Planet.Width, h = (float)s.Planet.Height;
+        float cover = MathF.Max(s.Sky.Air.CloudCover, (float)Rules.Globe.CloudCoverAtLeast), w = (float)s.Planet.Width, h = (float)s.Planet.Height;
         Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
         Orbit = new OrbitZone(s.Planet, s.Data, Rules, SystemSeed(s.Spec), Ceiling, coverage)

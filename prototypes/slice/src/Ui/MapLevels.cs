@@ -42,7 +42,7 @@ public sealed class MapLevels
     {
         (string id, string label, MapLevel level)[] tabs = { ("map:local", "HERE", MapLevel.Local), ("map:world", "WORLD", MapLevel.World), ("map:system", "SYSTEM", MapLevel.System), ("map:stars", "STARS", MapLevel.Stars) };
         for (int i = 0; i < tabs.Length; i++)
-            if (g.Tab(tabs[i].id, new Rect2(at + new Vector2(i * 78, 0), new Vector2(74, 34)), tabs[i].label, Level == tabs[i].level, C.Accent2)) Level = tabs[i].level;
+            if (g.Tab(tabs[i].id, new Rect2(at + new Vector2(i % 2 * 156, i / 2 * 38), new Vector2(150, 34)), tabs[i].label, Level == tabs[i].level, C.Accent2)) Level = tabs[i].level;
     }
 
     /// <summary>Draws the level that isn't the local map. False for the local map (the section draws it).</summary>
@@ -166,8 +166,10 @@ public sealed class MapLevels
     {
         Charts charts = _game.Spaceflight.Charts;
         List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.Sky, "Your world");
-        Vector2 c = panel.GetCenter() + new Vector2(-panel.Size.X * 0.22f, 0f);
-        float unit = panel.Size.Y * 0.9f;
+        // The outermost orbit fits the panel; nothing is drawn past its edge.
+        Vector2 c = panel.GetCenter();
+        float far = bodies.Where(e => e.Kind != "moon").Select(e => e.Orbit).DefaultIfEmpty(0f).Max();
+        float unit = far > 0f ? panel.Size.Y * 0.47f / far : panel.Size.Y * 0.47f;
         var places = new Dictionary<string, Vector2>();
         Vector2 At(SystemEntry e, Vector2 about) => about + new Vector2(MathF.Cos(e.Bearing), MathF.Sin(e.Bearing)) * e.Orbit * unit;
         Vector2 world = c;

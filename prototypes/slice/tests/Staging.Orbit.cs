@@ -80,11 +80,13 @@ public sealed partial class Staging
         {
             foreach (int x in ToOrbit()) yield return x;
             Hurry(3);
-            Vector3 centre = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot();
-            Vector3 up = (Skiff.Body.Position.ToGodot() - centre).Normalized();
-            foreach (int x in _pilot.FlyTo(Skiff, () => centre + up * (_game.Orbit.ShellRadius + 2600f), 40f, 60f)) yield return x;
+            Vessel wreck = NearestWreck(_ => true);
+            Vector3 at = wreck.Body.Position.ToGodot();
+            Vector3 up = (at - _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized();
+            foreach (int x in FlyRound(Skiff, at + up * 200f, 200f, 90f)) yield return x;
             Hurry(1);
             for (int i = 0; i < 70; i++) yield return 0;
+            _game.Spaceflight.Charts.Destination = _game.Spaceflight.Charts.Wrecks.FirstOrDefault()?.Key;
         }
         else
         {
@@ -239,16 +241,39 @@ public sealed partial class Staging
         Vessel piece = NearestWreck(w => w.Derelict.Site.Kind == "field" && !w.Derelict.Site.Id.Contains("pod"));
         if (piece == null) yield break;
         Vector3 centre = piece.Body.Position.ToGodot();
-        foreach (Vessel w in _game.Orbit.Wrecks.Where(w => w.Derelict.Site == piece.Derelict.Site)) centre += w.Body.Position.ToGodot();
-        centre /= 1 + _game.Orbit.Wrecks.Count(w => w.Derelict.Site == piece.Derelict.Site);
-        Vector3 up = (centre - _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized();
+        // Its own pieces (a site's kind can stand in more than one place): "site3-debris-1" and so on.
+        string field = piece.Derelict.Id[..piece.Derelict.Id.LastIndexOf('-')];
+        foreach (Vessel w in _game.Orbit.Wrecks.Where(w => w.Derelict.Id.StartsWith(field + "-"))) centre += w.Body.Position.ToGodot();
+        centre /= 1 + _game.Orbit.Wrecks.Count(w => w.Derelict.Id.StartsWith(field + "-"));
+        Vector3 world = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot();
+        Vector3 up = (centre - world).Normalized();
         Hurry(3);
-        foreach (int x in _pilot.FlyTo(v, () => centre + up * 60f + (v.Body.Position.ToGodot() - centre).Normalized() * 120f, 30f, 120f)) yield return x;
+        foreach (int x in FlyRound(v, centre + up * 130f, 40f, 170f)) yield return x;
         Hurry(1);
         _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
-        Vector3 eye = v.Body.Position.ToGodot() + up * 6f;
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(centre - up * 40f - eye, up), eye);
+        // From the Skiff's bow, looking down over the field to the globe.
+        Vector3 at = v.Body.Position.ToGodot();
+        Vector3 eye = at + (centre - at).Normalized() * 14f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(centre - up * 30f - eye, up), eye);
         for (int i = 0; i < 12; i++) yield return 0;
+    }
+
+    /// <summary>
+    /// Flies round the globe to a point high over it: out and around as a pilot does, not along the
+    /// straight line, which dips back into the air (and a dip under the crossing is a descent).
+    /// </summary>
+    IEnumerable<int> FlyRound(Vessel v, Vector3 over, float within, float seconds)
+    {
+        Vector3 world = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot();
+        Vector3 there = (over - world).Normalized();
+        float radius = (over - world).Length();
+        Vector3 Along()
+        {
+            Vector3 here = (v.Body.Position.ToGodot() - world).Normalized();
+            float left = here.AngleTo(there);
+            return world + (left < 0.15f ? there : here.Slerp(there, 0.15f / left)) * radius;
+        }
+        foreach (int x in _pilot.FlyTo(v, Along, within, seconds)) yield return x;
     }
 
     /// <summary>The derelict ship nearest, and its hull door in the world.</summary>
@@ -277,15 +302,22 @@ public sealed partial class Staging
         for (int i = 0; i < 20; i++) yield return 0;
     }
 
+    /// <summary>Off the deck: a jump clear of the Skiff's gravity, then afloat.</summary>
+    IEnumerable<int> PushOff()
+    {
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 8; i++) yield return 0;
+        _game.Controls.ReleaseAll();
+        for (int i = 0; i < 40; i++) yield return 0;
+    }
+
     /// <summary>Floating across to a derelict's hull door, the Skiff behind.</summary>
     IEnumerable<int> EvaView()
     {
         foreach (int x in ToDerelict()) yield return x;
         var (ship, door, outward) = Derelict();
         if (ship == null) yield break;
-        _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 6; i++) yield return 0;
-        _game.Controls.ReleaseAll();
+        foreach (int x in PushOff()) yield return x;
         foreach (int x in _pilot.FloatTo(() => door + outward * 3.5f, 1.0f, 30f)) yield return x;
         _game.Visor.Visible = _args.GetValueOrDefault("hud") != "0";
         _game.ThirdPerson = true;
@@ -298,9 +330,7 @@ public sealed partial class Staging
         foreach (int x in ToDerelict()) yield return x;
         var (ship, door, outward) = Derelict();
         if (ship == null) yield break;
-        _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 6; i++) yield return 0;
-        _game.Controls.ReleaseAll();
+        foreach (int x in PushOff()) yield return x;
         foreach (int x in _pilot.FloatTo(() => door + outward * 2.2f, 0.8f, 30f)) yield return x;
         foreach (int x in _drive.LookAt(door, 4)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
