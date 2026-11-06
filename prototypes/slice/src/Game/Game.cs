@@ -228,7 +228,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Happened += OnWeather;
@@ -253,6 +253,7 @@ public partial class Game : Node3D
         Survivor.Node.AddChild(CharacterModel.Build());
         _creatureBlockers = new CreatureBlockers { Name = "CreatureBlockers", Game = this };
         Zone.AddChild(_creatureBlockers);
+        SetUpPlaces();
 
     }
 
@@ -302,6 +303,7 @@ public partial class Game : Node3D
         s.Legs.Jump = c.IsHeld(Key.Space);
         s.Legs.Jetpack = c.IsHeld(Key.Space);
         s.Legs.Vertical = c.Axis(Key.Space, Key.Ctrl);
+        Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
@@ -431,7 +433,7 @@ public partial class Game : Node3D
     {
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
-        Visor.Hurt(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Visor.Hurt(Zone.Wildlife.WorldOf(e.Creature));
         Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
     }
 

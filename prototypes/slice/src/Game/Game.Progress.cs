@@ -49,6 +49,16 @@ public partial class Game
             if (c.Removed || c.Dead || (c.Position - local).Length() > 25f) continue;
             if (Progress.Discover($"species:{c.Species.Id}", xp.Species, $"met a {c.Species.CommonName}")) Stats.SpeciesMet++;
         }
+        // And what lives in places and caves, met where it lives.
+        foreach (DeepSite site in Zone.Wildlife.Sites)
+        {
+            Vector3 there = site.Local(feet);
+            foreach (Creature c in site.Sim.Creatures)
+            {
+                if (c.Removed || c.Dead || (c.Position - there).Length() > 15f) continue;
+                if (Progress.Discover($"species:{c.Species.Id}", xp.Species, $"met a {c.Species.CommonName}")) Stats.SpeciesMet++;
+            }
+        }
     }
 }
 

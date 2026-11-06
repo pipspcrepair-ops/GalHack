@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Items;
 using GalHack.Physics.Engine;
 using GalHack.Terrain;
@@ -9,6 +10,7 @@ using PlanetSurface.Fx;
 using PlanetSurface.Terrain;
 using Slice.Game;
 using Slice.Items;
+using Slice.Places;
 using Slice.Surface;
 using TerrainDigging.Terrain;
 using Wildlife;
@@ -38,6 +40,8 @@ public sealed class SurvivalTool
     readonly SliceRules.MaterialRules _yields;
 
     public ToolMode Mode = ToolMode.Gather;
+    /// <summary>The planet's standing places: the tool salvages their blocks and dressing and breaks their hidden walls.</summary>
+    public PoiPlaces Places;
     public Debris Debris;
     public Sfx Sfx;
     public ShotFx Fx;
@@ -68,6 +72,16 @@ public sealed class SurvivalTool
     /// <summary>The crosshair is on a structure's block nearer than any ground (the tool can't dig it).</summary>
     public bool OnBlock { get; private set; }
 
+    /// <summary>The crosshair is on a place's block, a piece of its dressing or a registered wreck, nearer than the ground: the tool works that.</summary>
+    public bool OnPlace => _placeHit != null || _wreck != null;
+    public PoiPlaces.Hit? PlaceHit => _placeHit;
+    PoiPlaces.Hit? _placeHit;
+    SalvageSite _wreck;
+    Vector3 _placePoint;
+
+    /// <summary>A block or piece came away (experience by the piece).</summary>
+    public event Action Salvaged;
+
     float _cooldown;
 
     public SurvivalTool(SurfaceZone zone, Survivor survivor, Suit suit, PlayerInventory pack)
@@ -87,6 +101,7 @@ public sealed class SurvivalTool
         Aim();
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
+        else if (!OnBlock && OnPlace) WorkPlace();
         else if (!OnBlock && !CutPlant()) Dig();
         else if (OnBlock)
         {
@@ -108,6 +123,20 @@ public sealed class SurvivalTool
                   && (block.OnBlock || _zone.Devices.Exists(d => d.Collider == block.Collider))
                   && (!HasTarget || block.Distance < ground);
         TargetLabel = "";
+        _placeHit = null;
+        _wreck = null;
+        if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
+            && (!HasTarget || p.Distance < ground + 0.05f))
+        {
+            _placePoint = p.Point;
+            if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h)) _placeHit = h;
+            else _wreck = Places.SalvageOf(p.Collider);
+            if (OnPlace)
+            {
+                TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
+                return;
+            }
+        }
         if (OnBlock)
         {
             return; // a structure's block: nothing by the crosshair (where you are is on the CORE tab)
@@ -161,6 +190,24 @@ public sealed class SurvivalTool
         if (edit.Headline == Verdict.Bedrock) Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning);
         Sfx?.Play(Sfx.Sound.Clank, at);
         return edit;
+    }
+
+    /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>
+    void WorkPlace()
+    {
+        _cooldown = _rules.DigInterval;
+        _suit.Worked();
+        float damage = Places.Rules.Salvage.ToolDamage;
+        var (got, message) = _wreck != null ? Places.Work(_wreck, damage) : Places.Work(_placeHit.Value, damage);
+        Sfx?.Play(Sfx.Sound.Clank, _placePoint, 1.25f, -12f);
+        Debris?.Puff(_placePoint, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        if (got != null && !got.IsEmpty)
+        {
+            foreach (var (id, n) in got) Give(id, n);
+            Said?.Invoke(string.Join(", ", got.Select(kv => $"+{kv.Value} {_zone.Data.Items.Item(kv.Key).Name}")), Tones.Good);
+            Salvaged?.Invoke();
+        }
+        if (!string.IsNullOrEmpty(message)) Said?.Invoke(message, got != null || message.Contains("room") ? Tones.Good : Tones.Caution);
     }
 
     void Give(string id, int n)
@@ -236,14 +283,32 @@ public sealed class SurvivalTool
             kind = hit.OnBlock ? ImpactKind.Block : ImpactKind.Ground;
             onto = hit.Vessel?.Node;
         }
+        PoiPlaces.Hit? onPlace = null;
+        if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
+            && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph)) onPlace = ph;
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
+        // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
+        float personAt = 0f;
+        Town.Person person = Places == null ? null : Places.PersonAlong(eye, dir, struck ? distance : reach, out personAt);
+        if (person != null)
+        {
+            struck = false;
+            c = null;
+            kind = ImpactKind.Creature;
+            reach = personAt;
+            person.Town.Shoot(person, _rules.ShotDamage);
+            onPlace = null;
+        }
+        else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
+        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage))
+            Said?.Invoke("The cracked panel gives way: a room behind it", Tones.Good);
         Vector3 end = struck ? point : eye + dir * reach;
         if (struck)
         {
             kind = ImpactKind.Creature;
             onto = null;
-            _zone.Wildlife.Sim.Damage(c, _rules.ShotDamage, _zone.Wildlife.Player);
+            _zone.Wildlife.Damage(c, _rules.ShotDamage);
             CreatureHit?.Invoke(c);
         }
         Vector3 muzzle = Muzzle();

@@ -38,6 +38,16 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// <summary>Look pitch, radians, for steering while floating.</summary>
     public float Pitch;
 
+    /// <summary>
+    /// Held by something other than the feet: a ladder (forward climbs, back goes down, as does
+    /// <see cref="Vertical"/>) or a lift shaft (only <see cref="Vertical"/> rides it, the walk
+    /// carries on across). No falling either way: the climb holds against gravity and wind as far as
+    /// grip allows. The game sets it every tick from what is at the body's feet.
+    /// </summary>
+    public ClimbMode Climb;
+
+    public float ClimbSpeed = 2.6f, ShaftSpeed = 3.5f;
+
     public float WalkSpeed = 5.5f, SprintSpeed = 9f, GroundAccel = 45f, AirAccel = 10f, JumpSpeed = 4.8f;
     public float JetpackAccel = 18f, JetpackFuelMax = 3f, ZeroGSpeed = 5f, ZeroGAccel = 7f;
 
@@ -86,6 +96,20 @@ public sealed class WalkController : IBodyController, IForceReactor
             float swimSpeed = Sprint ? water.SwimSprintSpeed : water.SwimSpeed;
             Vector3 swum = Toward(v, swimWish * swimSpeed, water.SwimAccel * dt);
             world.AddForce(body, MathX.LimitLength(m * (swum - v) / dt - body.PendingTotalForce, m * water.SwimGrip), ForceKind.Walk);
+            return;
+        }
+
+        if (Climb != ClimbMode.None)
+        {
+            // On a ladder forward is up (so walking into it climbs it, and over its top); in a shaft
+            // only up and down ride it. Across, a climber moves at a climb on a ladder and at a walk
+            // in a shaft, so stepping off at the top or out of a shaft door is the ordinary walk.
+            Vector2 cm = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+            bool ladder = Climb == ClimbMode.Ladder;
+            float rise = ladder ? Math.Clamp(-cm.Y + Vertical, -1f, 1f) * ClimbSpeed : Math.Clamp(Vertical, -1f, 1f) * ShaftSpeed;
+            Vector3 across = MathX.Rotate(heading, new Vector3(cm.X, 0f, cm.Y)) * (ladder ? ClimbSpeed : Sprint ? SprintSpeed : WalkSpeed);
+            Vector3 climbed = Toward(v, across + up * rise, GroundAccel * dt);
+            world.AddForce(body, MathX.LimitLength(m * (climbed - v) / dt - body.PendingTotalForce, m * Grip), ForceKind.Walk);
             return;
         }
 
@@ -147,3 +171,6 @@ public sealed class WalkController : IBodyController, IForceReactor
         return l <= delta || l < 1e-9f ? to : from + d / l * delta;
     }
 }
+
+/// <summary>What holds a walking body up besides its feet (see <see cref="WalkController.Climb"/>).</summary>
+public enum ClimbMode { None, Ladder, Shaft }

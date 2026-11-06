@@ -1,0 +1,46 @@
+// The slice's numbers for the planet's places as real structures (src/Places). Placeholders,
+// tuned by play.
+{
+  // A place stands as a structure within this of the focus (to the nearest edge of its
+  // footprint), m; beyond the drop radius it goes back to planet-surface's far drawing. The
+  // far drawing is the same blocks, so the swap is invisible; the build finishes while you are
+  // still hundreds of metres off.
+  "buildRadius": 320,
+  "dropRadius": 460,
+  // Main-thread milliseconds a frame may spend standing a place up.
+  "budgetMs": 2.5,
+
+  // Salvage: the survival tool (gather mode) takes a place apart for materials. Each block has
+  // the POI generator's own hit points (BlockInfo.HitPoints: a breakable wall 60, glass 80,
+  // timber 120, most 600, concrete and rock 900, armour 3000); each dig pulse does this much.
+  "salvage": {
+    "toolDamage": 60,
+    // What a whole 1 m cube of each material gives back before the return rate (a steel cube is
+    // an eighth of a large steel block, shared/Items' 8 hull plates' worth of iron): raw and
+    // primary materials, the early game's other source besides mining. Smaller shapes give a
+    // share by their size (a pillar a quarter, a pane a sixth).
+    "returnRate": 0.5,
+    "materials": {
+      "steel":     { "iron-bar": 1.0 },
+      "alloy":     { "iron-bar": 0.6, "copper-bar": 0.2 },
+      "armour":    { "iron-bar": 1.6 },
+      "scrap":     { "iron-ore": 3, "copper-ore": 0.6 },
+      "rust":      { "iron-ore": 2.5 },
+      "bronze":    { "copper-bar": 1.0 },
+      "concrete":  { "stone": 2 },
+      "rock":      { "stone": 2 },
+      "basalt":    { "stone": 2 },
+      "fused":     { "stone": 1.5, "silicon-ore": 0.3 },
+      "ceramic":   { "ceramic": 0.8 },
+      "glass":     { "glass": 1.0 },
+      "timber":    { "biomass": 1.2 },
+      "lumen":     { "copper-wire": 1.0, "silicon-wafer": 0.25 },
+      "deadlumen": { "copper-wire": 1.0, "silicon-wafer": 0.25 },
+      "cloth":     { "biomass": 0.5 },
+      "plant":     { "biomass": 0.8 },
+      "resin":     { "biomass": 0.4 },
+      "chitin":    { "biomass": 0.4 },
+      "bone":      { "biomass": 0.3 }
+    }
+  }
+}

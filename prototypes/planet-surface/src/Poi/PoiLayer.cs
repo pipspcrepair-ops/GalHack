@@ -31,6 +31,12 @@ public partial class PoiLayer : Node3D
     PlanetWorld _world;
 
     public IReadOnlyList<PoiSite> Sites => _world?.Pois ?? new List<PoiSite>();
+
+    /// <summary>The physics layer the places' collision is on: planet-surface's own by default; a game puts it on its world layer.</summary>
+    public static uint PlaceLayer = Layers.Poi;
+
+    /// <summary>The node drawn for a place, once built (null before): a game that stands a near place up itself hides this one's blocks.</summary>
+    public Node3D NodeOf(PoiSite site) => _places.FirstOrDefault(p => p.Site == site)?.Node;
     public bool Built => _building.Count == 0 && _places.All(p => p.Node != null);
 
     public void Build(PlanetWorld world)
@@ -92,7 +98,7 @@ public partial class PoiLayer : Node3D
         float glow = inst.State switch { PoiState.Active => 2.4f, PoiState.Infested => 2.0f, _ => 1.6f };
         var materials = new BlockMaterials(glow);
         var node = new Node3D { Name = site.Family.Id };
-        var body = new StaticBody3D { Name = "Collision", CollisionLayer = Layers.Poi, CollisionMask = 0 };
+        var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlaceLayer, CollisionMask = 0 };
         node.AddChild(body);
         foreach (ChunkMesh chunk in meshes)
         {

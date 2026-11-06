@@ -35,6 +35,15 @@ public partial class WildlifePatch : Node3D
     /// <summary>Wildlife's own synthesised calls: every wind-up is heard before it lands.</summary>
     public ProceduralAudio Audio { get; private set; }
 
+    /// <summary>The tells of the patch's ambushers and hunters: grit, shadows, scratching, rattles.</summary>
+    public TellView Tells { get; private set; }
+
+    /// <summary>Creatures living inside places and caves, each in a sim of its own anchored where it is (never swapped).</summary>
+    public readonly List<DeepSite> Sites = new();
+
+    /// <summary>A new patch took over: settlements re-register their area and their animals (old sim, its origin, the new one).</summary>
+    public event Action<WildSim, Vector3, WildSim> Swapped;
+
     /// <summary>The patch's middle, in the zone's frame.</summary>
     public Vector3 Origin { get; private set; }
 
@@ -46,6 +55,9 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>A creature lunged at the player: hit or not, with its damage (wildlife's own scale, a share of 100).</summary>
     public event Action<AttackEvent> Attacked;
+
+    /// <summary>A creature went for someone other than the player (a townsperson out of town).</summary>
+    public event Action<AttackEvent> Bitten;
 
     /// <summary>A creature started winding up an attack on the player: the warning before any harm.</summary>
     public event Action<AttackEvent> Telegraphed;
@@ -77,6 +89,8 @@ public partial class WildlifePatch : Node3D
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
+        Tells = new TellView { Name = "Tells", Audio = Audio };
+        AddChild(Tells);
         var (terrain, nav, origin) = Bake(planet, Snapped(landing), rules.PatchHalfSize);
         Swap(terrain, nav, origin, keepClear: landing, clear: rules.SafeRadius);
     }
@@ -104,27 +118,31 @@ public partial class WildlifePatch : Node3D
     {
         WildSim old = Sim;
         Vector3 oldOrigin = Origin;
-        var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen };
+        // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
+        var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
             if (e.Target == Player) Telegraphed?.Invoke(e);
         };
         sim.Warned += c => Audio.Telegraph(c);
-        sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); };
+        sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         int carried = 0;
+        var carriedNow = new List<Creature>();
         if (old != null)
         {
             sim.Time = old.Time;
             foreach (Creature c in old.Creatures)
             {
-                if (c.Removed || c.Dead) continue;
+                // A town's own animals are its to bring across (Swapped), with their pens.
+                if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                sim.Spawn(c.Species, local);
+                carriedNow.Add(sim.Spawn(c.Species, local));
                 carried++;
             }
+            foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
         }
         Sim = sim;
         Origin = origin;
@@ -132,6 +150,8 @@ public partial class WildlifePatch : Node3D
         Audio.Origin = origin;
         if (Player != null) sim.Targets.Add(Player);
         View.Bind(sim, null);
+        Tells.Bind(sim);
+        Swapped?.Invoke(old, oldOrigin, sim);
         Populate(keepClear - origin, clear, carriedOver: old != null);
         Patches++;
     }
@@ -211,16 +231,64 @@ public partial class WildlifePatch : Node3D
 
     }
 
-    /// <summary>The first creature along a ray (zone frame), within reach.</summary>
+    /// <summary>The first creature along a ray (zone frame), within reach: the patch's, or one living in a place or a cave.</summary>
     public Creature Raycast(Vector3 from, Vector3 dir, float reach, out float distance, out Vector3 point)
     {
         point = default;
         distance = 0f;
         if (Sim == null) return null;
         Creature c = Sim.Raycast(PatchLocal(from), dir, reach, out distance, out Vector3 local);
-        point = FromPatch(local);
+        if (c != null) { reach = distance; point = FromPatch(local); }
+        foreach (DeepSite s in Sites)
+        {
+            Creature d = s.Sim.Raycast(s.Local(from), dir, reach, out float dd, out Vector3 dl);
+            if (d == null) continue;
+            c = d;
+            reach = distance = dd;
+            point = s.World(dl);
+        }
         return c;
     }
+
+    /// <summary>The sim a creature lives in (the patch's or a place's or cave's), and its frame's origin.</summary>
+    public WildSim SimOf(Creature c, out Vector3 origin, out ITarget player)
+    {
+        foreach (DeepSite s in Sites)
+            if (s.Sim.Creatures.Contains(c)) { origin = s.GlobalPosition; player = s.Player; return s.Sim; }
+        origin = Origin;
+        player = Player;
+        return Sim;
+    }
+
+    /// <summary>Where a creature is in the zone, whichever sim it lives in.</summary>
+    public Vector3 WorldOf(Creature c)
+    {
+        SimOf(c, out Vector3 origin, out _);
+        return c.Position + origin;
+    }
+
+    /// <summary>The survivor hurts a creature, in whichever sim it lives.</summary>
+    public void Damage(Creature c, float amount)
+    {
+        WildSim sim = SimOf(c, out _, out ITarget player);
+        sim?.Damage(c, amount, player);
+    }
+
+    /// <summary>The survivor's feet in the zone.</summary>
+    public Vector3 PlayerWorld() => Player == null ? Origin : FromPatch(Player.Position);
+
+    /// <summary>Plays one of wildlife's sounds for a sim whose frame starts at another origin.</summary>
+    public void Sound(Vector3 origin, Action<ProceduralAudio> play)
+    {
+        Vector3 own = Audio.Origin;
+        Audio.Origin = origin;
+        play(Audio);
+        Audio.Origin = own;
+    }
+
+    internal void RaiseTelegraphed(AttackEvent e) => Telegraphed?.Invoke(e);
+    internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
+    internal void RaiseDied(Creature c, ITarget killer) => Died?.Invoke(c, killer);
 
     public override void _PhysicsProcess(double delta)
     {

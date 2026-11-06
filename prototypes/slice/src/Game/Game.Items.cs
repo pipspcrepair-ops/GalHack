@@ -53,6 +53,7 @@ public partial class Game
             return;
         }
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
+        if (UseKeycard(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
         Lootable loot = Zone.Loot.Pick(eye, dir, reach + 0.3f, out _);
@@ -92,6 +93,7 @@ public partial class Game
                 return;
             }
         }
+        if (UsePlace(look)) return;
         Say("Nothing to use here", Tones.Caution);
     }
 
@@ -103,6 +105,7 @@ public partial class Game
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
+        if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
@@ -232,7 +235,7 @@ public partial class Game
         var rng = Wildlife.Rng.For(s.Seed, "drop", c.Id);
         if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.FromPatch(c.Position);
+        Vector3 at = Zone.Wildlife.WorldOf(c);
         Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
         body.Creature = c;
         body.Radius = MathF.Max(0.5f, s.Stats.Radius);
