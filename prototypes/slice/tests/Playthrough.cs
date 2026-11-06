@@ -240,6 +240,64 @@ public sealed class Playthrough
         check(Drive.StairJumps == jumps, $"{label}up and down the stairs and through the way out at a walk: no jump, no jetpack ({Drive.StairJumps - jumps} needed)");
     }
 
+    /// <summary>
+    /// Where a person can walk from a point: a flood over the ground on a 3 m grid, out to a radius,
+    /// over dry ground no steeper than 38 degrees and with no drop beside it. Each cell knows the
+    /// one it was reached from, so a way to any of them can be read back.
+    /// </summary>
+    public Dictionary<(int X, int Z), (int X, int Z)> WalkableFrom(Vector3 from, float radius = 300f)
+    {
+        const float Step = 3f, Climb = 2.3f;
+        SurfaceZone zone = Game.Zone;
+        Vector3 At((int X, int Z) c) => new(from.X + c.X * Step, 0f, from.Z + c.Z * Step);
+        bool Standable(Vector3 p, float h)
+        {
+            if (h < 1.5f || (Game.Bunker?.Over(p, 3f) ?? false)) return false;
+            if (zone.Planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, zone.Planet.Width), Planets.Gen.Mathx.Wrap(p.Z, zone.Planet.Height), out float surface) && surface - h > 0.5f) return false;
+            foreach (var (dx, dz) in new[] { (Step, 0f), (-Step, 0f), (0f, Step), (0f, -Step) })
+                if (MathF.Abs(zone.GroundAt(p.X + dx, p.Z + dz).Y - h) > Climb) return false;
+            return true;
+        }
+        var from0 = (0, 0);
+        var came = new Dictionary<(int X, int Z), (int X, int Z)> { [from0] = from0 };
+        var open = new Queue<(int X, int Z)>();
+        open.Enqueue(from0);
+        while (open.Count > 0)
+        {
+            var c = open.Dequeue();
+            float h = zone.GroundAt(At(c).X, At(c).Z).Y;
+            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1) })
+            {
+                var n = (X: c.X + dx, Z: c.Z + dz);
+                if (came.ContainsKey(n) || new Vector2(n.X, n.Z).Length() * Step > radius) continue;
+                Vector3 p = At(n);
+                float nh = zone.GroundAt(p.X, p.Z).Y;
+                if (MathF.Abs(nh - h) > Climb * (dx != 0 && dz != 0 ? 1.4f : 1f) || !Standable(p, nh)) continue;
+                came[n] = c;
+                open.Enqueue(n);
+            }
+        }
+        return came;
+    }
+
+    /// <summary>The way on foot from a flood's start to within a distance of a point: its waypoints on the ground, or null if it doesn't reach there.</summary>
+    public List<Vector3> WayTo(Dictionary<(int X, int Z), (int X, int Z)> came, Vector3 from, Vector3 to, float within)
+    {
+        const float Step = 3f;
+        (int X, int Z)? best = null;
+        float bestDistance = within;
+        foreach (var c in came.Keys)
+        {
+            float d = new Vector2(from.X + c.X * Step - to.X, from.Z + c.Z * Step - to.Z).Length();
+            if (d < bestDistance) { bestDistance = d; best = c; }
+        }
+        if (best is not (int X, int Z) cell) return null;
+        var way = new List<Vector3>();
+        for (var c = cell; c != came[c]; c = came[c]) way.Add(Game.Zone.GroundAt(from.X + c.X * Step, from.Z + c.Z * Step));
+        way.Reverse();
+        return way;
+    }
+
     /// <summary>A point a walk away over dry, gentle ground: the way you face first, then round from it.</summary>
     public Vector3 AwayFrom(Vector3 from, Vector3 facing, float distance)
     {
@@ -560,8 +618,15 @@ public sealed class Playthrough
         bool seen = WorldRay.Cast(Game.Zone, Game.Survivor, 20f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit look);
         if (!seen || look.Point.DistanceTo(at) > 1.5f)
             Log($"(placing on the ground at {at}: the look from {Game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} on {look.Vessel?.Name} at {look.Point}, {look.Distance:F1} m" : "meets nothing")}; aboard {Game.Survivor.Aboard?.Name}, menu {Game.Menu.IsOpen})");
+        string verdict = Game.Builder.Verdict;
+        int inHand = Game.Pack.Grid[slot].Count;
         foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(3)) yield return x;
+        if (Game.Pack.Grid[slot].Count == inHand)
+        {
+            Log($"(placing on the ground at {at} from {Game.Survivor.WorldEye()}: nothing went down; \"{verdict}\", look {look.Distance:F1} m: over it on the jetpack, as a player would)");
+            foreach (int x in Drive.HopToward(at, 8f, 2.5f, () => Game.Pack.Grid[slot].Count != inHand, () => { Controls.PrimaryPressed = true; Controls.Primary = true; })) yield return x;
+        }
     }
 
     /// <summary>
@@ -772,7 +837,7 @@ public sealed class Playthrough
     }
 
 /// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
-    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f)
+    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue)
     {
         SurfaceZone zone = Game.Zone;
         foreach (float allow in new[] { spread, spread * 2f, spread * 4f, 4f })
@@ -789,7 +854,7 @@ public sealed class Playthrough
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
                              && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
-                if (h0 > 1f && worst < allow && clear) return g;
+                if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
     }

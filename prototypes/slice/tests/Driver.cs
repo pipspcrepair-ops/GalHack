@@ -160,6 +160,31 @@ public sealed class Driver
         for (int i = 0; i < 20; i++) yield return 0;
     }
 
+    /// <summary>
+    /// Up to a point on ground too steep to stand on, where the walker slides off below it: over it
+    /// on the jetpack, looking at it, pressing whenever within reach, again when the tanks are full.
+    /// </summary>
+    public IEnumerable<int> HopToward(Vector3 aim, float reach, float over, Func<bool> done, Action press)
+    {
+        for (int hop = 0; hop < 6 && !done(); hop++)
+        {
+            for (int i = 0; i < 240 && !done(); i++)
+            {
+                Face(aim);
+                Vector3 eye = Game.Survivor.WorldEye();
+                Controls.Primary = false;
+                Controls.Hold(Key.W, new Vector2(aim.X - eye.X, aim.Z - eye.Z).Length() > 1.2f);
+                Controls.Hold(Key.Space, eye.Y < aim.Y + over);
+                if (i % 4 == 3 && eye.DistanceTo(aim) < reach) press();
+                yield return 0;
+            }
+            Controls.ReleaseAll();
+            if (done()) break;
+            for (int i = 0; i < 600 && !Game.Survivor.Body.OnFloor; i++) yield return 0;
+            for (int i = 0; i < 200; i++) yield return 0; // the jetpack fills again underfoot
+        }
+    }
+
     /// <summary>Presses a key for one tick.</summary>
     public IEnumerable<int> Tap(Key key)
     {

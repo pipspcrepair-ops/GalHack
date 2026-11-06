@@ -242,13 +242,35 @@ public partial class PlayerTest : Node
             return w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
                 .OrderBy(c => w.FromPatch(c.Position).DistanceTo(from)).FirstOrDefault();
         }
-        _prey = NextPrey();
+        // One you can walk to, by the way you can walk: straight at it, a hunter can go down a cliff
+        // and strand the rest of the test at the bottom. The nearest of all if there is no such one.
+        var ground = _play.WalkableFrom(feet);
+        List<Vector3> stalk = null;
+        foreach (Creature c in w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)))
+            if (_play.WayTo(ground, feet, w.FromPatch(c.Position), 2.5f) is List<Vector3> way) { _prey = c; stalk = way; break; }
+        _prey ??= NextPrey();
         if (_prey == null) { Fail("no creature near to hunt"); yield break; }
+        // Walking on brings a new wildlife patch, and the creatures in it are new objects: follow
+        // the prey across, or the hunt goes after the old one's stale position in the new patch.
+        Action<WildSim, Vector3, WildSim> carried = (old, oldOrigin, sim) =>
+        {
+            if (_prey.Dead) return;
+            Vector3 was = _prey.Position + oldOrigin;
+            _prey = sim.Creatures.Where(c => c.Species == _prey.Species && w.FromPatch(c.Position).DistanceTo(was) < 2f).FirstOrDefault() ?? _prey;
+        };
+        w.Swapped += carried;
         GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
         float health = _prey.Health;
         int xp = _game.Progress.Xp;
         int shots = 0, stalls = 0;
         float close = 25f;
+        GD.Print($"  (the way to it on foot: {(stalk == null ? "none found, straight at it" : $"{stalk.Count} steps over {ground.Count} cells of walkable ground")})");
+        if (stalk != null)
+            foreach (Vector3 step in stalk)
+            {
+                if (w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldFeet) < 8f) break;
+                foreach (int x in _drive.WalkTo(step, 1.5f, 8f, sprint: false, dig: false)) yield return x;
+            }
         for (int tries = 0; tries < 40 && !_prey.Dead; tries++)
         {
             Vector3 at = w.FromPatch(_prey.Position);
@@ -277,6 +299,7 @@ public partial class PlayerTest : Node
             if (shots == 3) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
                 $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
         }
+        w.Swapped -= carried;
         Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
         Mark("hunted");
     }
@@ -293,6 +316,10 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        // On a slope too steep to stand on the walker slides off below it: up on the jetpack and E
+        // from the air, as a player would.
+        if (_game.Opened?.Loot != body)
+            foreach (int x in _drive.HopToward(body.Position + Vector3.Up * 0.3f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == body, () => _game.Controls.Tap(Key.E))) yield return x;
         Check(_game.Opened?.Loot == body, "E on the body opens its loot beside the bag");
         // Drag the meat across, shift-click the hide, then take the rest.
         int meatSlot = body.Grid.IndexOf("meat"), free = Enumerable.Range(PlayerInventory.ToolbarSlots, _game.Pack.Grid.BagSlots).First(i => _game.Pack.Grid[i].IsEmpty);
@@ -347,15 +374,16 @@ public partial class PlayerTest : Node
         foreach (int x in _play.Order("fab", "survival-constructor", 1)) yield return x;
         Check(_game.Fabricator.Orders.Any(j => j.Item.Id == "survival-constructor"), "ordered a survival constructor in the suit fabricator");
         foreach (int x in _play.CloseMenu()) yield return x;
-        // It makes it while you walk to a flat spot near the pod.
-        Vector3 site = _play.FlatSpot(_game.Start, 22f);
+        // It makes it while you walk to a flat spot near by (at about your own height: the hunt
+        // may have ended at the foot of a cliff, with the pod up on top).
+        Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 22f, within: 12f);
         foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
         foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
         Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
         foreach (int x in _play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(_game.Pack.Grid[2].Item == "survival-constructor", "dragged onto toolbar slot 3");
-        Vector3 spot = _play.FlatSpot(_game.Survivor.WorldFeet, 4f);
+        Vector3 spot = _play.FlatSpot(_game.Survivor.WorldFeet, 4f, within: 6f);
         foreach (int x in _play.PlaceOnGround(2, spot)) yield return x;
         _fab = _game.Zone.Devices.FirstOrDefault();
         Check(_fab != null && _game.Pack["survival-constructor"] == 0, "3 and a click set it down on open ground");
@@ -688,6 +716,8 @@ public partial class PlayerTest : Node
         GD.Print("-- the jetpack: IMPACT only when falling --");
         bool warnedRising = false;
         float top = 0f;
+        // Full tanks first: the walk here may have burned them.
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor && _game.Survivor.Legs.JetpackFuel >= _game.Survivor.Legs.JetpackFuelMax, 12)) yield return x;
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 && !_game.Suit.Dead; i++)
         {
