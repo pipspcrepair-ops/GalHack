@@ -404,11 +404,12 @@ public sealed class Plot
         for (int k = k0 - 1; k <= k1 + 1; k++)
             for (int i = i0 - 1; i <= i1 + 1; i++)
             {
-                Line(i, j - 1, k, Role.Floor);
-                Line(i, j + h, k, Role.Roof);
+                // A lining is part of the ground it was cast in: the weather never gets to it.
+                Line(i, j - 1, k, Role.Rock);
+                Line(i, j + h, k, Role.Rock);
                 bool edge = i < i0 || i > i1 || k < k0 || k > k1;
                 for (int jj = j; jj < j + h; jj++)
-                    if (edge) Line(i, jj, k, Role.Wall);
+                    if (edge) Line(i, jj, k, Role.Rock);
             }
         Dig(i0, j, k0, i1, j + h - 1, k1);
         return Room(kind, purpose, storey, i0, j, k0, i1, j + h - 1, k1);

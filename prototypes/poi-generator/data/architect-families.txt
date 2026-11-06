@@ -909,7 +909,7 @@ family survivor_town
 family works_complex
   tier base
   siting flat
-  rise 96
+  rise 80
   name Industrial Complex
   pitch A walled precinct of concrete and pipework, its stack and tower seen from kilometres off, and nobody left to say what it made.
   faction none

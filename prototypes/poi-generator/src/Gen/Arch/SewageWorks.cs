@@ -272,6 +272,7 @@ public static class SewageWorks
         Fab f = p.F;
         p.Drum(ci, ck, r, -3, 0, f.Wall, j => j == 0 ? f.Wall : f.Plinth);
         p.Disc(ci, ck, r - 1, -3, Plot.Cube(f.Plinth, Role.Floor));
+        p.Weathers(ci - (int)r - 1, 0, ck - (int)r - 1, ci + (int)r, 2, ck + (int)r, 0);
         var basin = new List<(int, int, int)>();
         Rgb mud = new(0x4e, 0x48, 0x34), wet = new(0x3e, 0x44, 0x38);
         int rr = (int)r + 1;
@@ -358,6 +359,7 @@ public static class SewageWorks
         Fab f = p.F;
         const int Pitch = 5;
         int k1 = k0 + lanes * Pitch;
+        p.Weathers(i0, 0, k0, i1, 2, k1, 0);
         for (int k = k0; k <= k1; k++)
             for (int i = i0; i <= i1; i++)
             {
@@ -428,6 +430,7 @@ public static class SewageWorks
         p.Drum(ci, ck, r, 0, h - 1, f.Wall, j => j % 3 == 2 ? f.Panel : f.Wall);
         p.Cap(ci, ck, r - 1, h, f.Roof, high ? 0.8f : 1.2f);
         p.Disc(ci, ck, r - 1, h - 1, Plot.Cube(f.Roof, Role.Roof));
+        p.Weathers(ci - (int)r - 1, 0, ck - (int)r - 1, ci + (int)r, h + 7, ck + (int)r, h - 1);
         int top = ck + (int)r - 1;
         p.Stencil(number.ToString(), 2 * ci - 3, 6, number == 1 ? 2 * top + 1 : 2 * (ck - (int)r), true, f.Hazard, 2);
     }

@@ -78,16 +78,20 @@ public static class BrutalComplex
                 p.Fill(i + oi, 0, k + ok, i + oi, 3, k + ok, Plot.Cube(f.Plinth, Role.Wall));
             }
         }
-        p.Weathers(-2, 0, -4, W + 2, 6, D + 2, 4);
+        // Each run of wall weathers on its own: a box round the whole precinct would take the block with it.
+        p.Weathers(-2, 0, -2, W + 2, 6, 2, 4);
+        p.Weathers(-2, 0, D - 2, W + 2, 6, D + 2, 4);
+        p.Weathers(-2, 0, 3, 2, 6, D - 3, 4);
+        p.Weathers(W - 2, 0, 3, W + 2, 6, D - 3, 4);
         // The portal: two piers, a lintel 8 m deep.
         foreach (int i in new[] { GateI0 - 4, GateI1 + 1 }) p.Fill(i, 0, -2, i + 3, 9, 2, Plot.Cube(f.Wall, Role.Wall));
         p.Fill(GateI0, 6, -2, GateI1, 9, 2, Plot.Cube(f.Wall, Role.Wall));
-        p.Repaint(2 * (GateI0 - 4), 16, -4, 2 * (GateI1 + 5) - 1, 19, -4, (_, _, _) => f.Plinth.C);
+        p.Repaint(2 * GateI0, 13, -4, 2 * GateI1 + 1, 19, -4, (_, _, _) => f.Plinth.C);
         foreach (int u in new[] { 2 * GateI0 - 1, 2 * GateI1 + 2 })
             p.Stripes(u, 0, -4, u, 11, 5);
         p.Stripes(2 * GateI0, 12, -4, 2 * GateI1 + 1, 12, 5);
-        p.Stencil("07", 2 * GateI0 + 2, 13, -4, true, f.Hazard, 1, true);
-        p.Stencil("07", 2 * (GateI0 + 7), 13, -4, true, f.Hazard, 1, true);
+        p.Stencil("07", 2 * GateI0 + 2, 14, -4, true, f.Hazard, 1, true);
+        p.Stencil("07", 2 * (GateI0 + 7), 14, -4, true, f.Hazard, 1, true);
         // A guard's box each side, for a person, inside the wall.
         foreach (int i in new[] { GateI0 - 8, GateI1 + 4 })
         {

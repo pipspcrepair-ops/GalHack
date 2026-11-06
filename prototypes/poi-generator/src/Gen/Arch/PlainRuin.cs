@@ -26,9 +26,11 @@ public static partial class StateTransforms
         var order = boxes.OrderByDescending(b => (b.Max.X - b.Min.X) * (b.Max.Z - b.Min.Z)).ToList();
         foreach (PlainBox b in order) RoofHole(inst, b, rng, fallen);
         // A big works takes more collapses than a house, each a bigger one.
-        int collapses = Math.Max(24, (int)MathF.Sqrt(before) / 6);
-        for (int k = 0; before - PoiFactory.CountStructure(g) < target && k < collapses; k++)
+        int collapses = Math.Max(24, (int)MathF.Sqrt(before));
+        for (int k = 0; k < collapses; k++)
         {
+            // Counting a whole works is slow: a look every few falls is enough.
+            if (k % 8 == 0 && before - PoiFactory.CountStructure(g) >= target) break;
             PlainBox b = order[k % order.Count];
             if (walls && k % 2 == 0) Breach(inst, b, rng, fallen);
             else RoofHole(inst, b, rng, fallen);
@@ -71,7 +73,7 @@ public static partial class StateTransforms
         float cx = mx + toFront.X * out_ * halfFront + toSide.X * along * halfSide, cz = mz + toFront.Z * out_ * halfFront + toSide.Z * along * halfSide;
         // Upper storeys fall first; a ground floor keeps its sills.
         int low = b.Eave > 6 ? 5 : rng.Between(2, 3);
-        float big = MathF.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) * 0.06f;
+        float big = MathF.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) * 0.14f;
         Cut(inst, b, cx, cz, rng.Float(4f, 7f) + big, rng.Float(4f, 7f) + big, low, fallen);
     }
 

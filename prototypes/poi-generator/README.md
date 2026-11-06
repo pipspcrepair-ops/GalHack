@@ -135,6 +135,28 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - Families say which levels they belong to (`tech low mid high` before any variant; none means any). `WorldPlacement.Place(..., profile:)` then places a family only in a state whose level it fits, weights the set by the trade and the old population (farms on agricultural worlds, mines on mining worlds, labs on research worlds, more towns where many lived), puts no old-world place on a world never inhabited (wrecks, alien and Precursor sites still appear), and picks the layout built for that level.
   - The old starport sets the spaceport ruins: none below a field, then a landing field, the port, and a grand yard with two pads (`port` on a spaceport's variants).
 
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, a player's door in a 2 m opening. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, a player's door in a 2 m opening. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
 ## Authoring a kit module as data
 
 A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; several colours make a patchwork, picked per cell. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.

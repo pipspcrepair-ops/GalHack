@@ -142,6 +142,7 @@ public sealed class RegionPlan
                 }
             if (_open.Count == 0) return;
             var towns = Hubs();
+            if (_start) StartCountry();
             foreach (var t in towns) Serve(t);
             Ports();
             Wrecks();
@@ -205,6 +206,21 @@ public sealed class RegionPlan
                 if (score < bestScore) { bestScore = score; best = (x, z); }
             }
             return best;
+        }
+
+        /// <summary>
+        /// A start world's first sight: the ruined town by the landing site (the planet lays that out itself) is a
+        /// town too, and has what it lived on standing in view beyond it.
+        /// </summary>
+        void StartCountry()
+        {
+            Region home = AddRegion(RegionKind.Town, _landing.X, _landing.Z, 1300);
+            home.Town = home.Index;
+            var options = _roll.Industry.Concat(_roll.Farm).Concat(_roll.Poi)
+                .Where(kv => !_lib.Family(kv.Key).Tags.Contains("settlement")).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.First().Value);
+            for (int n = 0; n < 2; n++)
+                if (Choose(options) is { } id && Spot(_landing.X, _landing.Z, 800, 1500, id) is { } s)
+                    Add(id, s.X, s.Z, home, "landmark", "what the old town by the landing lived on");
         }
 
         /// <summary>The towns: picked far apart, on the widest level ground, the hub at each one's heart.</summary>
