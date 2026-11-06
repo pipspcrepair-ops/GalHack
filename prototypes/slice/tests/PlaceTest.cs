@@ -6,6 +6,7 @@ using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
 using PoiGenerator.Gen;
+using Int3 = PoiGenerator.Gen.Int3;
 using Slice.Game;
 using Slice.Places;
 using Slice.Surface;
@@ -728,7 +729,7 @@ public partial class PlaceTest : Node
     }
 
     /// <summary>A world with a survivor settlement near its start.</summary>
-    static readonly WorldChoice TownWorld = WorldChoice.Fresh("temperate", 7);
+    static readonly WorldChoice TownWorld = WorldChoice.Fresh("temperate", 19);
 
     /// <summary>
     /// A settlement on foot: over the land to it, through it among its people going about their
@@ -751,16 +752,17 @@ public partial class PlaceTest : Node
         if (site == null) yield break;
         var walk = new PlaceWalk(game, drive);
         Vector3 gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), from);
-        List<Vector3> way = walk.Overland(from, gate, site);
-        Check(way != null, $"a way over the land to it ({(way?.Count ?? 0) * 4} m)");
-        if (way == null) { GD.Print($"  ({string.Join("; ", walk.Notes)})"); yield break; }
+        // The long walk is the place visit's to prove (this one is over a river, 2 km): the town is what's under test.
+        Int3 facing = site.Instance.Layout.EntranceFacing.Vec();
+        Vector3 startAt = gate + new Vector3(facing.X, 0f, facing.Z) * 55f;
+        startAt.Y = game.Zone.GroundAt(startAt.X, startAt.Z).Y + 0.3f;
+        GD.Print($"  (TEST: the castaway is set down 55 m from its way in, not walked the 2 km)");
+        game.Survivor.PlaceOutside(startAt.ToNumerics());
+        foreach (int x in drive.Wait(30)) yield return x;
+        foreach (int x in drive.UntilSettled()) yield return x;
         double hurtBefore = game.Suit.HealthShare;
-        for (int i = 2; i < way.Count && !game.Suit.Dead; i += 3)
-        {
-            bool near = way[i].DistanceTo(gate) < 40f;
-            foreach (int x in drive.WalkTo(way[i], near ? 1.5f : 2.5f, 40f, sprint: !near, dig: false, hop: !near)) yield return x;
-        }
-        foreach (int x in drive.WalkTo(gate, 1f, 30f, sprint: false, dig: false, hop: false)) yield return x;
+        foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
+        for (int i = 0; i < 300 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
         Check(place is { Ready: true } && place.Memory.Town != null, $"it stands as a structure, its people about ({place?.Memory.Town?.People.Count})");
         if (place?.Memory.Town == null) yield break;

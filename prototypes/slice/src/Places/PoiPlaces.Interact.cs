@@ -75,8 +75,9 @@ public partial class PoiPlaces
         if (h.Piece != null) return h.Piece.Piece.Name.ToUpperInvariant();
         if (h.Door != null) return "";
         if (h.Place.SecretAt(h.Cell) != null) return "CRACKED PANEL";
+        // A plain wall says nothing (a clean crosshair) until you are working it.
         Block b = h.Place.Inst.Blocks.Get(h.Cell);
-        return Yield(b) != null ? b.Material.ToString().ToUpperInvariant() : "";
+        return h.Place.Memory.BlockDamage.ContainsKey(h.Cell) && Yield(b) != null ? b.Material.ToString().ToUpperInvariant() : "";
     }
 
     /// <summary>What one block gives back, before the return rate (null: the tool can't take it).</summary>

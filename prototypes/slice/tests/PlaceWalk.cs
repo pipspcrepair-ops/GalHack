@@ -277,13 +277,17 @@ public sealed class PlaceWalk
     /// mouths (the ground's own density, read straight from the generator) and round other places.
     /// Null if there is none within the search box.
     /// </summary>
-    public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target)
+    public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target) =>
+        Overland(from, to, target, 160f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.85f, false)
+        ?? Overland(from, to, target, 420f, 0.85f, true); // and last, swimming a river
+
+    List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim)
     {
         var zone = _game.Zone;
         var src = zone.Planet.Source;
         const float cell = 4f;
-        Vector3 lo = new(MathF.Min(from.X, to.X) - 160f, 0, MathF.Min(from.Z, to.Z) - 160f);
-        int nx = (int)((MathF.Max(from.X, to.X) + 160f - lo.X) / cell) + 1, nz = (int)((MathF.Max(from.Z, to.Z) + 160f - lo.Z) / cell) + 1;
+        Vector3 lo = new(MathF.Min(from.X, to.X) - margin, 0, MathF.Min(from.Z, to.Z) - margin);
+        int nx = (int)((MathF.Max(from.X, to.X) + margin - lo.X) / cell) + 1, nz = (int)((MathF.Max(from.Z, to.Z) + margin - lo.Z) / cell) + 1;
         var height = new Dictionary<int, float>();
         var others = zone.Planet.Pois.Where(s => s != target && _game.Places.DistanceTo(s, (from + to) / 2f) < from.DistanceTo(to)).ToList();
         float H(int i, int j)
@@ -294,14 +298,15 @@ public sealed class PlaceWalk
             h = zone.GroundAt(x, z).Y;
             bool ok = h >= 1.5f;
             double wx = Planets.Gen.Mathx.WrapX(x, zone.Planet.Width), wz = Planets.Gen.Mathx.Wrap(z, zone.Planet.Height);
-            if (ok && src.WaterSurfaceAt(wx, wz, out float w) && w - h > 0.4f) ok = false;
+            if (ok && !swim && src.WaterSurfaceAt(wx, wz, out float w) && w - h > 0.4f) ok = false;
             // A cave mouth: no ground under the surface the map says is there.
             bool near = new Vector2(x - to.X, z - to.Z).Length() <= 18f || new Vector2(x - from.X, z - from.Z).Length() <= 10f;
             if (ok && !near)
                 foreach (float down in new[] { 0.7f, 1.7f, 2.7f })
                     if (src.CellDensity((int)MathF.Floor((float)wx), (int)MathF.Floor(h - down), (int)MathF.Floor((float)wz)) < 0f) { ok = false; break; }
             if (ok && new Vector2(x - to.X, z - to.Z).Length() > 18f && others.Any(s => _game.Places.DistanceTo(s, new Vector3(x, 0, z)) < 4f)) ok = false;
-            if (ok && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
+            // Round the place you are walking to, to its way in (a town is walked into from any side).
+            if (ok && target?.Instance.Townsfolk == null && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
             return height[k] = ok ? h : float.NaN;
         }
         (int, int) Cell(Vector3 p) => ((int)MathF.Round((p.X - lo.X) / cell), (int)MathF.Round((p.Z - lo.Z) / cell));
@@ -332,7 +337,7 @@ public sealed class PlaceWalk
                 float h = H(i, j);
                 if (float.IsNaN(h)) continue;
                 float run = cell * (di != 0 && dj != 0 ? 1.414f : 1f);
-                if (MathF.Abs(h - hc) > run * 0.6f) continue;
+                if (MathF.Abs(h - hc) > run * slope) continue;
                 float c = cost[cur] + run + MathF.Abs(h - hc) * 3f;
                 var n = (i, j);
                 if (cost.TryGetValue(n, out float old) && old <= c) continue;

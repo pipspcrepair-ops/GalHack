@@ -56,7 +56,8 @@ public sealed partial class Staging
     /// <summary>A room's corner: pick the fullest dressed room above ground or near the way in, the camera in one corner at eye height.</summary>
     (PlaceRoom Room, Vector3 Eye, Vector3 Look) RoomView(Place p)
     {
-        PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (Decor.Shared != null ? r.Plan.Placements.Count : 0) - MathF.Abs(r.Corner.Y) * 0.2f + (Num("room", -1) == r.Module ? 1000 : 0)).First();
+        string want = _args.GetValueOrDefault("roomid", "mess");
+        PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.RoomId == want ? 1000 : 0) + r.Plan.Placements.Count - MathF.Abs(r.Corner.Y) * 2f).First();
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = p.ToWorld(new Vector3(room.Corner.X, room.Corner.Y, room.Corner.Z));
         return (room, corner + new Vector3(0.35f, 1.55f, 0.35f), corner + size * 0.75f + Vector3.Up * 0.6f);
@@ -98,13 +99,20 @@ public sealed partial class Staging
         foreach (int x in _drive.LookAt(deep.World(hunter.Position) + Vector3.Up * 0.8f, 20)) yield return x;
         Wildlife.TellEvent? told = null;
         deep.Told += e => { if (e.Target == deep.Player && e.Kind is Wildlife.TellKind.Dust or Wildlife.TellKind.Shadow or Wildlife.TellKind.Rattle or Wildlife.TellKind.Thump) told = e; };
+        // STAGING: only this hunter wakes; the rest of the place is taken out of the shot.
+        foreach (var c in deep.Sim.Creatures.Where(c => c != hunter)) deep.Sim.Remove(c);
         _game.Zone.Wildlife.Frozen = false;
         for (int i = 0; i < 1800 && told == null; i++)
         {
             _drive.Face(deep.World(hunter.Position) + Vector3.Up * 0.8f);
             yield return 0;
         }
-        if (told is Wildlife.TellEvent t) foreach (int x in _drive.LookAt(deep.World(t.Position), 10)) yield return x;
+        if (told is Wildlife.TellEvent t)
+            for (int i = 0; i < 16; i++)
+            {
+                _drive.Face(deep.World(t.Position));
+                yield return 0;
+            }
         _game.Zone.Wildlife.Frozen = true;
     }
 
