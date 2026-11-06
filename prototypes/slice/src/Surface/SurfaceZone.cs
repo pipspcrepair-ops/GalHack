@@ -116,6 +116,7 @@ public partial class SurfaceZone : Node3D
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
+        PlanetSurface.Infra.InfraLayer.OreTellsCollide = false;
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
         AddChild(Pois);
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };

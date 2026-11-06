@@ -11,6 +11,9 @@ namespace PlanetSurface.Infra;
 
 public partial class InfraLayer
 {
+    /// <summary>Whether a deposit's surface tell is solid. The slice turns this off: its rocks would stop the tool's ray short of the ore under them.</summary>
+    public static bool OreTellsCollide = true;
+
     /// <summary>
     /// The ground's tells of the ore under it (design doc "Deposit shapes"): every deposit of the
     /// planet shows itself in the rock over it, the way a prospector reads ground. A deposit that
@@ -48,7 +51,7 @@ public partial class InfraLayer
             float ground = b.Ground(d.X, d.Y);
             Vector3 at = b.Local(d.X, ground - 0.05f, d.Y);
             Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * Matrix4x4.CreateTranslation(at);
-            b.Merge(mesh, place, collide: true);
+            b.Merge(mesh, place, collide: OreTellsCollide);
         }
     }
 }
