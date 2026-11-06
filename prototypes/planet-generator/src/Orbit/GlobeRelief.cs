@@ -28,7 +28,7 @@ public static class GlobeRelief
 {
     public const int Segments = 720;          // vertices round the equator (the rings are half that)
     public const float MaxRise = 0.0125f;     // of the radius, approached by the highest peaks
-    public const float HalfRise = 450f;       // metres at which land has half of it
+    public const float HalfRise = 260f;       // metres at which land has half of it
     public const float ShadeSteepen = 3f;     // how much steeper the lit surface is than the drawn one
     const float PoleBlend = 0.11f;            // share of v at each end that relaxes to the pole
     const int SmoothPasses = 3;               // [1 2 1] passes over the map's cells before the heights are read

@@ -117,7 +117,7 @@ public static class Landforms
 
     static LandformRelief Base(Landform landform) => landform switch
     {
-        Landform.Plains => new() { Flatten = 0.97f, Compress = 0.85f, Swell = 5f, Hill = 0.04f, Roughness = 0.28f, RiverArea = 0.8f, Rain = 1f, Meander = 1.8f },
+        Landform.Plains => new() { Flatten = 0.97f, Compress = 0.85f, Swell = 3.5f, Hill = 0.04f, Roughness = 0.28f, RiverArea = 0.8f, Rain = 1f, Meander = 1.8f },
         Landform.Steppe => new() { Flatten = 0.97f, Compress = 0.85f, Lift = 35f, Swell = 9f, Hill = 0.04f, Roughness = 0.3f, RiverArea = 1.7f, Rain = 0.7f, Meander = 1.3f, Dry = 0.18f },
         Landform.Hills => new() { Flatten = 0.8f, Compress = 0.4f, Hill = 1f, Swell = 6f, ValleyFloor = 1f, Mountain = 0.04f, Roughness = 0.7f, RiverArea = 1f, Rain = 1.05f, Meander = 1f },
         Landform.Mountains => new() { Massif = 0.3f, Mountain = 1f, Hill = 0.35f, Roughness = 1.1f, RiverArea = 1.2f, Rain = 1.3f, Meander = 0.4f, Dry = -0.05f },
@@ -132,7 +132,7 @@ public static class Landforms
         Landform.LakeDistrict => new() { Flatten = 0.85f, Compress = 0.75f, Squash = 0.7f, Hill = 0.1f, Lake = 8f, LakeCover = 0.32f, Swell = 5f, Roughness = 0.7f, RiverArea = 0.6f, Rain = 1.2f, Meander = 1.4f, Dry = -0.2f },
         Landform.Delta => new() { Flatten = 1f, Squash = 1f, Delta = 1f, Lake = 1.4f, LakeCover = 0.2f, Roughness = 0.2f, RiverArea = 0.4f, Rain = 1.2f, Meander = 2.6f, Dry = -0.3f },
         Landform.IcePlain => new() { Flatten = 0.98f, Compress = 0.9f, Swell = 4f, Roughness = 0.15f, RiverArea = 3f, Rain = 0.6f, Meander = 1f },
-        Landform.Fjords => new() { Massif = 0.3f, Mountain = 0.8f, Fjord = 1f, Hill = 0.2f, Roughness = 1f, RiverArea = 1f, Rain = 1.3f, Meander = 0.5f, Dry = -0.1f },
+        Landform.Fjords => new() { Massif = 0.25f, Mountain = 0.68f, Fjord = 1f, Hill = 0.2f, Roughness = 1f, RiverArea = 1f, Rain = 1.3f, Meander = 0.5f, Dry = -0.1f },
         Landform.CoastalCliffs => new() { Flatten = 0.7f, Compress = 0.3f, Cliff = 42f, Swell = 6f, Hill = 0.18f, Roughness = 0.9f, RiverArea = 1f, Rain = 1f, Meander = 1f },
         Landform.Archipelago => new() { Flatten = 0.75f, Compress = 0.6f, Islands = 1f, Volcano = 0.6f, Hill = 0.12f, Swell = 3f, Roughness = 0.4f, RiverArea = 1f, Rain = 1.1f, Meander = 1f, Dry = -0.05f },
         Landform.VolcanicField => new() { Flatten = 0.75f, Compress = 0.4f, Cone = 1f, Volcano = 1f, Terrace = 0.3f, TerraceStep = 9f, Badland = 5f, Roughness = 1.4f, RiverArea = 1.15f, Rain = 0.8f, Meander = 0.8f, Dry = 0.1f },

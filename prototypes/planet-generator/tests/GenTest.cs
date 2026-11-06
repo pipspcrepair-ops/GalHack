@@ -49,6 +49,7 @@ public partial class GenTest : Node
         Run("Globe", GlobeChecks);
         Run("SizeClasses", SizeClasses);
         Run("SizedWorlds", SizedWorlds);
+        Run("TerrainCeiling", TerrainCeiling);
         GD.Print($"total test time {total.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
@@ -276,11 +277,11 @@ public partial class GenTest : Node
                         sampler ??= new SurfaceSampler(map);
                         double t = (seam - y0) / (y1 - y0);
                         double x = r.X[k] + (r.X[k + 1] - r.X[k]) * t;
-                        // The channel meanders up to a few tens of metres off the polyline, so look along the seam for it.
+                        // The channel meanders well off the polyline (70 m has been seen), so look along the seam for it.
                         for (int side = -1; side <= 1; side += 2)
                         {
                             probed++;
-                            for (double dx = -60; dx <= 60; dx += 1)
+                            for (double dx = -120; dx <= 120; dx += 1)
                             {
                                 GroundSample g = sampler.Sample(x + dx, seam + side * 0.5, 1);
                                 if (!g.InRiver || g.Height >= g.RiverLevel) continue;
@@ -429,11 +430,11 @@ public partial class GenTest : Node
     /// <summary>Minimum drama per variant, in Variants() order: the biggest range in a 2 km window, and the share of cliffs.</summary>
     static readonly ReliefFloor[] ReliefFloors =
     {
-        new(900, 0.07f), new(550, 0.05f),    // temperate meadow, rainforest
-        new(280, 0.02f), new(260, 0.05f),    // arid dunes, canyon
-        new(850, 0.08f), new(400, 0.04f),    // ice glacier, hot spring
-        new(350, 0.015f), new(170, 0.04f),   // lava volcanic, lava ocean
-        new(450, 0.015f), new(120, 0.012f),  // alien crystal, fungal
+        new(480, 0.065f), new(380, 0.05f),   // temperate meadow, rainforest
+        new(230, 0.02f), new(260, 0.05f),    // arid dunes, canyon
+        new(480, 0.08f), new(260, 0.04f),    // ice glacier, hot spring
+        new(280, 0.015f), new(170, 0.04f),   // lava volcanic, lava ocean
+        new(230, 0.015f), new(120, 0.012f),  // alien crystal, fungal
     };
 
     void Performance()

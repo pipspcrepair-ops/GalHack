@@ -101,7 +101,7 @@ static class BiomeRules
                     _ => crystal ? Biome.GlowMoss : Biome.SporeMarsh,
                 };
             case Landform.IcePlain:
-                if (a == Archetype.Ice) return c.E > 340f ? Biome.Glacier : Biome.Snowfield;
+                if (a == Archetype.Ice) return c.E > 230f ? Biome.Glacier : Biome.Snowfield;
                 return a == Archetype.Temperate ? Biome.Snow : null;
             case Landform.Mesas or Landform.Canyonlands:
                 if (c.Slope > (a == Archetype.Arid ? 0.42f : 0.6f)) return Rock();
@@ -152,7 +152,7 @@ static class BiomeRules
         if (c.Slope > 0.85f) return Biome.Cliff;
         if (c.E < 3.5f && c.Coast) return Biome.Beach;
         if (c.T < 0.24f) return c.H > 0.5f ? Biome.PineForest : Biome.Tundra;
-        if (c.E > 460f) return c.Slope > 0.45f ? Biome.Cliff : Biome.Tundra;
+        if (c.E > 300f) return c.Slope > 0.45f ? Biome.Cliff : Biome.Tundra;
         if (c.H > 0.66f) return c.T < 0.4f ? Biome.PineForest : Biome.Forest;
         if (c.Special > 0.6f) return Biome.Meadow;
         return Biome.Grassland;
@@ -164,7 +164,7 @@ static class BiomeRules
         if (c.Slope > 0.95f) return Biome.Cliff;
         if (c.E < 3f && c.Coast) return Biome.Beach;
         if (c.H > 0.86f && c.Slope < 0.08f && c.E < 60f) return Biome.Swamp;
-        if (c.E > 400f || c.T < 0.42f) return Biome.CloudForest;
+        if (c.E > 260f || c.T < 0.42f) return Biome.CloudForest;
         if (c.H < 0.5f) return Biome.Grassland;
         return c.Special > 0.55f ? Biome.Jungle : Biome.Rainforest;
     }
@@ -174,7 +174,7 @@ static class BiomeRules
         if (c.Slope > 0.55f) return Biome.RedRock;
         if (c.E < 5f && c.Coast) return Biome.SaltFlat;
         if (c.H > 0.5f) return Biome.Scrub;
-        if (c.E > 170f) return Biome.Badlands;
+        if (c.E > 150f) return Biome.Badlands;
         return c.Special > 0.6f ? Biome.Erg : Biome.Dunes;
     }
 
@@ -190,7 +190,7 @@ static class BiomeRules
     {
         if (c.Slope > 0.7f) return Biome.BlueIce;
         if (c.T > 0.2f && c.E < 90f) return Biome.IceTundra;
-        if (c.E > 340f || c.T < 0.06f) return Biome.Glacier;
+        if (c.E > 230f || c.T < 0.06f) return Biome.Glacier;
         return Biome.Snowfield;
     }
 
@@ -200,7 +200,7 @@ static class BiomeRules
         if (c.Special > 0.56f) return Biome.Sinter;
         if (c.Special > 0.4f || (c.T > 0.3f && c.E < 60f)) return Biome.IceTundra;
         if (c.Slope > 0.75f) return Biome.BlueIce;
-        if (c.E > 380f) return Biome.Glacier;
+        if (c.E > 250f) return Biome.Glacier;
         return Biome.Snowfield;
     }
 
@@ -227,14 +227,14 @@ static class BiomeRules
     {
         if (c.Slope > 0.65f) return Biome.CrystalSpires;
         if (c.H > 0.62f) return Biome.GlowMoss;
-        if (c.E > 300f) return Biome.Chalk;
+        if (c.E > 210f) return Biome.Chalk;
         return c.Special > 0.55f ? Biome.CrystalSpires : Biome.CrystalPlain;
     }
 
     static Biome Fungal(Cell c)
     {
         if (c.H > 0.88f && c.Slope < 0.12f && c.E < 50f) return Biome.SporeMarsh;
-        if (c.Slope > 0.7f || c.E > 260f) return Biome.Mycelium;
+        if (c.Slope > 0.7f || c.E > 190f) return Biome.Mycelium;
         if (c.Special > 0.5f || c.H > 0.62f) return Biome.FungalForest;
         return Biome.GlowMoss;
     }

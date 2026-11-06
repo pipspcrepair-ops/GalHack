@@ -316,7 +316,7 @@ public partial class GenTest
         {
             float want = LandformInfo.IsCoastal(l) ? 0.02f : 0.12f;
             PlanetSpec spec = l == Landform.Mountains
-                ? FindWorld(l, want, d => d.MountainHeight >= 500f)
+                ? FindWorld(l, want, d => d.MountainHeight >= 300f)
                 : FindWorld(l, want);
             WorldMap map = PlanetGenerator.Generate(spec);
             var sampler = new SurfaceSampler(map);

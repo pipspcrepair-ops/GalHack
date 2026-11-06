@@ -23,8 +23,10 @@ public sealed record ArchetypeDef
     // Large-scale shape
     public float ContinentScale { get; init; } = 0.45f;   // continent wavelength as a fraction of map width
     public float ContinentAmp { get; init; } = 240f;
-    public float MountainHeight { get; init; } = 500f;
-    public float MountainWavelength { get; init; } = 3000f;
+    public float TerrainCeiling { get; init; } = 900f;     // metres: nothing stands higher. Clouds lie at 600-1,000, orbit starts at 1,060
+    public float MountainHeight { get; init; } = 340f;     // most ranges top out about 500 m, base ground included
+    public float SummitHeight { get; init; }               // the great peaks: added to crests only in the core of the biggest ranges
+    public float MountainWavelength { get; init; } = 1600f; // short, so low ranges stay as steep as tall ones would be
     public float RidgeSharpness { get; init; } = 2f;
     public int MountainOctaves { get; init; } = 7;        // fewer octaves: massive faces instead of noisy bumps
     public float RangeCover { get; init; } = 0.5f;        // share of inland ground in mountain ranges; the rest is lowland
@@ -80,7 +82,7 @@ public sealed record ArchetypeDef
     {
         ArchetypeDef d = this;
         if ((mods & Modifier.Highlands) != 0)
-            d = d with { MountainHeight = d.MountainHeight * 1.5f, HillHeight = d.HillHeight * 1.5f, HighlandLift = 70f };
+            d = d with { MountainHeight = d.MountainHeight * 1.25f, HillHeight = d.HillHeight * 1.25f, HighlandLift = 40f };
         if ((mods & Modifier.Cratered) != 0 && d.CraterSpacing == 0)
             d = d with { CraterSpacing = 650f };
         if ((mods & Modifier.Mesas) != 0)
@@ -113,9 +115,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Temperate, Variant = 0, VariantName = "meadow",
             LandMin = 0.36f, LandMax = 0.52f,
-            ContinentScale = 0.5f, ContinentAmp = 260f, MountainHeight = 820f, MountainWavelength = 4200f, HillHeight = 70f,
+            ContinentScale = 0.5f, ContinentAmp = 260f, MountainHeight = 385f, SummitHeight = 350f, MountainWavelength = 1150f, RidgeSharpness = 1.1f, HillHeight = 70f,
             Roughness = 2.2f, RiverArea = 0.22f, Rain = 1f,
-            PlateauHeight = 45f, PlateauCover = 0.3f, CanyonDepth = 70f, CanyonWidth = 0.05f, CanyonWavelength = 2800f,
+            PlateauHeight = 58f, PlateauCover = 0.3f, CanyonDepth = 70f, CanyonWidth = 0.05f, CanyonWavelength = 2800f,
             BaseTemperature = 0.62f, LatitudeRange = 0.6f, BaseHumidity = 0.5f,
             Hazard = "mild: thunderstorms, predators", Resources = "timber, iron, copper, fresh water, titanium", Signature = DepositKind.Titanium,
             Landforms = Odds((Landform.Plains, 3.2f), (Landform.Hills, 1.8f), (Landform.Mountains, 2f), (Landform.Steppe, 1.6f),
@@ -128,7 +130,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Temperate, Variant = 1, VariantName = "rainforest",
             LandMin = 0.40f, LandMax = 0.56f,
-            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 560f, MountainWavelength = 3800f, RidgeSharpness = 1.6f,
+            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 330f, SummitHeight = 280f, MountainWavelength = 1700f, RidgeSharpness = 1.6f,
             HillHeight = 95f, HillWavelength = 650f, Billow = 0.45f, Roughness = 2.8f,
             PlateauHeight = 40f, PlateauCover = 0.2f, PlateauWavelength = 1700f, CanyonDepth = 60f, CanyonWidth = 0.05f,
             RiverArea = 0.12f, Rain = 1.6f,
@@ -143,7 +145,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Arid, Variant = 0, VariantName = "dunes",
             LandMin = 0.86f, LandMax = 0.95f,
-            ContinentScale = 0.38f, ContinentAmp = 150f, MountainHeight = 320f, RidgeSharpness = 2.6f,
+            ContinentScale = 0.38f, ContinentAmp = 150f, MountainHeight = 250f, SummitHeight = 200f, RidgeSharpness = 2.6f,
             HillHeight = 30f, Roughness = 1.2f,
             DuneHeight = 36f, DuneWavelength = 240f, TerraceStep = 28f, TerraceCover = 0.3f,
             PlateauHeight = 30f, PlateauCover = 0.2f, PlateauWavelength = 1800f,
@@ -159,7 +161,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Arid, Variant = 1, VariantName = "canyon",
             LandMin = 0.78f, LandMax = 0.90f,
-            ContinentScale = 0.42f, ContinentAmp = 210f, MountainHeight = 220f, HillHeight = 25f,
+            ContinentScale = 0.42f, ContinentAmp = 210f, MountainHeight = 210f, SummitHeight = 160f, HillHeight = 25f,
             Roughness = 1.8f, TerraceStep = 42f, TerraceCover = 0.85f,
             CanyonDepth = 220f, CanyonWavelength = 2400f, CanyonWidth = 0.07f, CanyonSteps = 3,
             PlateauHeight = 60f, PlateauCover = 0.4f,
@@ -175,7 +177,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Ice, Variant = 0, VariantName = "glacier",
             LandMin = 0.52f, LandMax = 0.68f,
-            ContinentScale = 0.45f, ContinentAmp = 240f, MountainHeight = 880f, MountainWavelength = 4200f, RidgeSharpness = 2.4f,
+            ContinentScale = 0.45f, ContinentAmp = 240f, MountainHeight = 425f, SummitHeight = 320f, MountainWavelength = 1250f, RidgeSharpness = 1.35f,
             HillHeight = 45f, Roughness = 0.9f, ShelfHeight = 32f,
             CanyonDepth = 110f, CanyonWidth = 0.11f, CanyonWavelength = 3200f, PlateauHeight = 40f, PlateauCover = 0.25f,
             RiverArea = 0.9f, Rain = 0.5f,
@@ -191,7 +193,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Ice, Variant = 1, VariantName = "hot spring",
             LandMin = 0.56f, LandMax = 0.72f,
-            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 540f, HillHeight = 80f,
+            ContinentScale = 0.4f, ContinentAmp = 220f, MountainHeight = 300f, SummitHeight = 270f, HillHeight = 80f,
             Billow = 0.35f, Roughness = 1.6f, TerraceStep = 5f, TerraceCover = 0.35f,
             PlateauHeight = 30f, PlateauCover = 0.3f, CanyonDepth = 60f, CanyonWidth = 0.06f,
             RiverArea = 0.4f, Rain = 0.8f,
@@ -207,9 +209,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Lava, Variant = 0, VariantName = "volcanic",
             LandMin = 0.68f, LandMax = 0.82f,
-            ContinentScale = 0.4f, ContinentAmp = 200f, MountainHeight = 300f, RidgeSharpness = 3f,
+            ContinentScale = 0.4f, ContinentAmp = 200f, MountainHeight = 250f, SummitHeight = 210f, RidgeSharpness = 3f,
             HillHeight = 45f, Roughness = 3f, TerraceStep = 22f, TerraceCover = 0.35f,
-            VolcanoSpacing = 3200f, VolcanoHeight = 900f,
+            VolcanoSpacing = 3200f, VolcanoHeight = 470f,
             PlateauHeight = 35f, PlateauCover = 0.3f, CanyonDepth = 50f, CanyonWidth = 0.04f, CanyonSteps = 2,
             RiverArea = 0.6f, Rain = 0.6f, SeaFreezes = false,
             BaseTemperature = 0.95f, LatitudeRange = 0.2f, BaseHumidity = 0.1f,
@@ -224,9 +226,9 @@ public static class Archetypes
         {
             Archetype = Archetype.Lava, Variant = 1, VariantName = "lava ocean",
             LandMin = 0.30f, LandMax = 0.45f,
-            ContinentScale = 0.28f, ContinentAmp = 180f, MountainHeight = 200f, RidgeSharpness = 3f,
+            ContinentScale = 0.28f, ContinentAmp = 180f, MountainHeight = 200f, SummitHeight = 140f, RidgeSharpness = 3f,
             HillHeight = 40f, Roughness = 2.6f,
-            VolcanoSpacing = 2300f, VolcanoHeight = 700f, PlateauHeight = 25f, PlateauCover = 0.25f,
+            VolcanoSpacing = 2300f, VolcanoHeight = 400f, PlateauHeight = 25f, PlateauCover = 0.25f,
             RiverArea = 0.5f, Rain = 0.5f, SeaFreezes = false,
             BaseTemperature = 0.98f, LatitudeRange = 0.15f, BaseHumidity = 0.08f,
             Liquid = Liquid.Lava, RiverbankBiome = Biome.Obsidian,
@@ -239,7 +241,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Alien, Variant = 0, VariantName = "crystal",
             LandMin = 0.50f, LandMax = 0.66f,
-            ContinentScale = 0.45f, ContinentAmp = 230f, MountainHeight = 520f, MountainWavelength = 3600f, RidgeSharpness = 4f,
+            ContinentScale = 0.45f, ContinentAmp = 230f, MountainHeight = 350f, SummitHeight = 290f, MountainWavelength = 1700f, RidgeSharpness = 4f,
             HillHeight = 40f, Roughness = 1.4f, SpireHeight = 130f, TerraceStep = 18f, TerraceCover = 0.4f,
             PlateauHeight = 50f, PlateauCover = 0.35f, CanyonDepth = 80f, CanyonWidth = 0.05f, CanyonSteps = 2,
             RiverArea = 0.4f, Rain = 0.7f, SeaFreezes = false,
@@ -255,7 +257,7 @@ public static class Archetypes
         {
             Archetype = Archetype.Alien, Variant = 1, VariantName = "fungal",
             LandMin = 0.45f, LandMax = 0.60f,
-            ContinentScale = 0.42f, ContinentAmp = 280f, MountainHeight = 280f, HillHeight = 65f,
+            ContinentScale = 0.42f, ContinentAmp = 280f, MountainHeight = 230f, SummitHeight = 200f, HillHeight = 65f,
             HillWavelength = 1100f, Billow = 0.85f, Roughness = 2f, TerraceStep = 9f, TerraceCover = 0.3f,
             PlateauHeight = 25f, PlateauCover = 0.25f, CanyonDepth = 45f, CanyonWidth = 0.06f,
             RiverArea = 0.18f, Rain = 1.3f, SeaFreezes = false,

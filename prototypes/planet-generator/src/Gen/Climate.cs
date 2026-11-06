@@ -13,6 +13,8 @@ namespace Planets.Gen;
 static class Climate
 {
     const float LapseRate = 0.5f;            // temperature lost per km of altitude
+    const float AlpineRate = 1.2f;           // and more per km over the high ground, so the tops of 500 m ranges carry ice
+    const float AlpineFrom = 200f;           // metres
     const float MoistureReach = 700f;        // metres over which water keeps the air damp
 
     /// <param name="dry">Per cell, how much drier (+) or wetter (-) than usual: dry belts, rain shadows and the landform's own air.</param>
@@ -38,7 +40,8 @@ static class Climate
 
                 map.Model.ClimateNoise(map.CellX(i), y, out float tn, out float hn);
                 map.Temperature[k] = Math.Clamp(
-                    def.BaseTemperature - def.LatitudeRange * lat * lat - Math.Max(e, 0f) * 0.001f * LapseRate + tn * 0.08f,
+                    def.BaseTemperature - def.LatitudeRange * lat * lat - Math.Max(e, 0f) * 0.001f * LapseRate
+                        - Math.Max(e - AlpineFrom, 0f) * 0.001f * AlpineRate + tn * 0.08f,
                     0f, 1f);
                 float damp = MathF.Exp(-distance[k] / MoistureReach);
                 float shift = dry != null ? dry[k] * 0.45f : 0f;

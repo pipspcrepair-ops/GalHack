@@ -49,7 +49,7 @@ public sealed class TerrainModel
     readonly Fractal _warpA, _warpB, _continent, _islands, _mountains, _hills, _selector;
     readonly Fractal _detail, _canyon, _canyonWarp, _dune, _spire, _special, _rain, _patches;
     readonly Fractal _ranges, _plateau, _plateauWarp, _jag, _region, _meander;
-    readonly Fractal _swell, _badland, _tower, _lakes, _fjord, _fjordWarp, _coast, _duneField, _duneWander;
+    readonly Fractal _swell, _badland, _tower, _lakes, _fjord, _fjordWarp, _coast, _duneField, _duneWander, _summits;
     readonly Noise _deltaNoise;
     readonly FeatureGrid _volcanoGrid, _craterGrid, _coneGrid, _ringGrid;
     readonly float[] _volcanoPresence, _conePresence, _ringHeight;
@@ -104,6 +104,7 @@ public sealed class TerrainModel
         _coast = new Fractal(Salt(30), 700, 4, 0.5f);
         _duneField = new Fractal(Salt(31), 1300, 2, 0.5f);
         _duneWander = new Fractal(Salt(33), 420, 2, 0.5f);
+        _summits = new Fractal(Salt(34), 2600, 2, 0.5f);
         _deltaNoise = new Noise(Salt(32));
         _volcanoGrid = new FeatureGrid(Width, Height, def.VolcanoSpacing, _seed, 21, 0.75f);
         _craterGrid = new FeatureGrid(Width, Height, def.CraterSpacing, _seed, 22, 0.7f);
@@ -335,7 +336,12 @@ public sealed class TerrainModel
                 // Heights grow with the square of how much the range holds, so its edges grade
                 // down into foothills instead of standing straight up out of the plain.
                 float hold = Math.Clamp(r.Mountain / Math.Max(1f, Def.MountainHeight), 0f, 1f);
-                e += (r.Massif + r.Mountain * ridges * ridges) * rise * Mathx.Lerp(0.15f, 1f, hold);
+                e += (r.Massif + r.Mountain * ridges * ridges) * rise * Mathx.Lerp(0.08f, 1f, hold);
+                // The great peaks: only well inside the biggest ranges, where a slow swell lifts
+                // the highest crests past the rest and up into the cloud. Narrow ranges have no such core.
+                float core = Mathx.Smooth(0.9f, 1f, hold);
+                if (core > 0f && Def.SummitHeight > 0f)
+                    e += Def.SummitHeight * core * Mathx.Smooth(0.2f, 0.55f, _summits.Fbm(p, spacing)) * ridges * ridges * ridges * rise;
             }
 
             if (r.Plateau > 0.5f && r.PlateauOn > 0.01f) e += Plateaus(p, spacing, e, r.Plateau, r.PlateauCover / r.PlateauOn);
@@ -407,7 +413,19 @@ public sealed class TerrainModel
         if (r.Delta > 0.01f) e = Delta(e, x, y, r.Delta);
 
         e += _detail.Fbm(p, spacing) * r.Roughness * (e > 0f ? 1f : 0.4f);
-        return e;
+        return Ceiling(e);
+    }
+
+    /// <summary>
+    /// The hard limit. Ranges are built to stop well short of it, so this only ever bends the very
+    /// highest peaks: the last fifth of the height rolls off smoothly towards the ceiling and never
+    /// reaches it, so a peak stays a peak, not a flat top.
+    /// </summary>
+    float Ceiling(float e)
+    {
+        float cap = Def.TerrainCeiling, knee = cap * 0.8f;
+        if (e <= knee) return e;
+        return knee + (cap - knee) * (1f - MathF.Exp(-(e - knee) / (cap - knee)));
     }
 
     /// <summary>The continent's broad shape alone (wavelengths over about 2 km), as raw height.</summary>
