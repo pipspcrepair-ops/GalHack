@@ -19,7 +19,9 @@ namespace Planets.Orbit;
 /// - <b>Poles.</b> The torus map pinches to a point at each pole, so heights relax to the polar
 ///   average over the last few degrees: no spike, no crack.
 /// - <b>Lighting.</b> Normals come from the same surface with its relief steepened, so the
-///   terminator shows ranges and escarpments in light and shade without a taller globe.
+///   terminator shows ranges and escarpments in light and shade without a taller globe. Heights
+///   are smoothed over a few map cells first: the globe shows nothing that fine, and a cliff one
+///   cell wide, steepened, would light as a stair of cells.
 /// Pure arrays, built off the main thread with the colour map.
 /// </summary>
 public static class GlobeRelief
@@ -29,6 +31,7 @@ public static class GlobeRelief
     public const float HalfRise = 450f;       // metres at which land has half of it
     public const float ShadeSteepen = 3f;     // how much steeper the lit surface is than the drawn one
     const float PoleBlend = 0.11f;            // share of v at each end that relaxes to the pole
+    const int SmoothPasses = 3;               // [1 2 1] passes over the map's cells before the heights are read
 
     public sealed class Data
     {
@@ -49,12 +52,17 @@ public static class GlobeRelief
         int stride = cols + 1;
         var rise = new float[stride * (rows + 1)];
 
-        // Heights, relaxed to each pole's average near it.
+        var cell = new float[map.Count];
+        for (int k = 0; k < cell.Length; k++) cell[k] = Rise(map.Elevation[k]);
+        cell = Look.ColorMap.Soften(map, cell, SmoothPasses);
+
+        // Heights, relaxed to each pole's average near it. Oceans stay flat, whatever the coast next to them.
+        float Height(double x, double y) => map.Sample(map.Elevation, x, y) <= 0f ? 0f : map.Sample(cell, x, y);
         float north = 0f, south = 0f;
         for (int i = 0; i < cols; i++)
         {
-            north += Rise(map.Sample(map.Elevation, (i + 0.5) * map.WidthMeters / cols, 0.5 * map.CellSize));
-            south += Rise(map.Sample(map.Elevation, (i + 0.5) * map.WidthMeters / cols, map.HeightMeters - 0.5 * map.CellSize));
+            north += Height((i + 0.5) * map.WidthMeters / cols, 0.5 * map.CellSize);
+            south += Height((i + 0.5) * map.WidthMeters / cols, map.HeightMeters - 0.5 * map.CellSize);
         }
         north /= cols;
         south /= cols;
@@ -66,8 +74,7 @@ public static class GlobeRelief
             for (int i = 0; i < cols; i++)
             {
                 double x = i * map.WidthMeters / cols, y = Math.Clamp(v * map.HeightMeters, 0.0, map.HeightMeters - 1e-3);
-                float r = Rise(map.Sample(map.Elevation, x, y));
-                rise[j * stride + i] = Mathx.Lerp(pole, r, keep);
+                rise[j * stride + i] = Mathx.Lerp(pole, Height(x, y), keep);
             }
             rise[j * stride + cols] = rise[j * stride]; // the seam column: the same points
         });
