@@ -324,7 +324,7 @@ public static class Crawl
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
         float d = SpaceMath.Distance(s, next, out Vector3 normal);
-        bool needFloor = c.Dead || !c.Species.Climbs;
+        bool needFloor = c.Dead || !c.Species.Climbs || c.Dropping;
         if (d > -clr && normal != Vector3.Zero)
         {
             if (needFloor && normal.Y < w.Data.Deep.Crawl.FloorUp)
@@ -340,6 +340,7 @@ public static class Crawl
                 SpaceMath.Project(s, ref next, clr, out Vector3 landed);
                 if (landed == Vector3.Zero) landed = normal;
                 c.Falling = false;
+                c.Dropping = false;
                 c.Velocity = Vector3.Zero;
                 c.CrawlSpeed = 0f;
                 c.Facing = SpaceMath.Frame(-c.Facing.Z, landed);
@@ -376,7 +377,9 @@ public static class Crawl
         bool prey = c.AttackTarget is CreatureTarget;
         Vector3 aim = c.AimPoint + Vector3.Up * (prey ? 0.15f : 0.8f);
         bool drop = a.Style == AttackStyle.Drop && n.Y < -0.3f;
-        Vector3 to = aim - from;
+        // It stops with its jaws at the skin of whoever stands there, from their front if it can.
+        float stop = prey ? c.Radius * 0.3f : Attacks.Jaws(c) + Attacks.Stretch(c) + Attacks.BodyRadius;
+        Vector3 to = aim + (drop ? Vector3.Zero : Attacks.Approach(c, c.AttackTarget, from, aim) * stop) - from;
         float d = to.Length();
         Vector3 dir = d > 0.01f ? to / d : -c.Facing.Z;
         float reach = c.Stats.AttackRange + (a.Reach > 0f ? a.Reach : r.LungeReach);
@@ -393,12 +396,14 @@ public static class Crawl
             }
             reach = 8f;
         }
-        float travel = Math.Clamp(d - c.Radius * 0.3f, 0f, reach);
+        float travel = Math.Clamp(drop ? d - stop : d, 0f, reach);
         // Keep the flight in the open: stop short of rock in the way.
         float free = SpaceMath.Ray(s, from + dir * 0.05f, dir, travel);
         travel = MathF.Min(travel, MathF.Max(0f, free - c.Clearance * 0.5f));
         c.LungeFrom = from;
         c.LungeTo = from + dir * travel;
+        Vector3 onto = aim - c.LungeTo;
+        c.StrikePoint = c.LungeTo + (onto.LengthSquared() > 1e-4f ? onto.Normalized() : dir) * MathF.Min(stop, onto.Length());
         c.Phase = AttackPhase.Lunge;
         c.PhaseTime = 0f;
         float fallHeight = MathF.Max(0.3f, from.Y - c.LungeTo.Y);

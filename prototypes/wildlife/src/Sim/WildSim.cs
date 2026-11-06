@@ -389,6 +389,7 @@ public sealed class WildSim
             }
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);
+            Locomotion.KeepOff(this, c);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.

@@ -86,6 +86,10 @@ public sealed class Creature
     public bool FirstAttack, Committed;
     public ITarget AttackTarget;
     public Vector3 AimPoint, LungeFrom, LungeTo;
+    /// <summary>From its middle to the tip of its jaws, standing (see <see cref="Attacks.Jaws"/>); 0 until measured.</summary>
+    public float JawsAtRest;
+    /// <summary>Where its jaws end up when the lunge lands.</summary>
+    public Vector3 StrikePoint;
     readonly Dictionary<ITarget, float> _lastAttack = new();
 
     // Pose intentions, 0..1, smoothed by the rig. Brace is a charge's wind-up: head down,
@@ -136,6 +140,8 @@ public sealed class Creature
     public float CrawlSpeed;
     /// <summary>Let go (or knocked off): falling until it lands on something.</summary>
     public bool Falling;
+    /// <summary>Coming down from a drop: it goes all the way to the floor, and catches no wall on the way.</summary>
+    public bool Dropping;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;

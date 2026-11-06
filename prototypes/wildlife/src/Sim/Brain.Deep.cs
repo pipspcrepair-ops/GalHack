@@ -452,7 +452,7 @@ public static partial class Brain
         }
         Creature prey = c.Prey;
         float d = Dist3(c, prey.Position);
-        if (d <= c.Stats.AttackRange + 0.2f)
+        if (d <= Attacks.Range(c) + 0.2f)
         {
             c.Desired = Vector3.Zero;
             c.FacePoint = prey.Position;
@@ -486,7 +486,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             return;
         }
-        if (d <= c.Stats.AttackRange + 0.3f)
+        if (d <= Attacks.Range(c) + 0.3f)
         {
             c.Desired = Vector3.Zero;
             StrikeAt(w, c, p, tell);

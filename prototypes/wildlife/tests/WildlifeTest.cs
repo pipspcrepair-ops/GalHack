@@ -489,7 +489,7 @@ public partial class WildlifeTest : Node
                             float err = MathF.Max(drawn.DistanceTo(target3), MathF.Abs(target3.Y - w.Terrain.Height(target3.X, target3.Z)));
                             footChecks++;
                             if (err / tol > worstFoot / MathF.Max(worstFootTol, 1e-4f) || worstFootTol == 0f) { worstFoot = err; worstFootTol = tol; }
-                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what}"; break; }
+                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what} {c.State} {c.Phase} v {c.Velocity.Length():F1} time {c.PhaseTime:F2}"; break; }
                         }
                     }
                     if (problem != null) break;

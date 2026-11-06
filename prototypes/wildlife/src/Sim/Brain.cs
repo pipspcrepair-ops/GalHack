@@ -513,14 +513,14 @@ public static partial class Brain
     /// <summary>The front member's job: hold its place, dart in snarling, back off. No bite.</summary>
     static void Feint(WildSim w, Creature c, Pack p, ITarget prey)
     {
-        float hold = c.Stats.AttackRange + 2.4f;
+        float hold = Attacks.Range(c) + 2.4f;
         float cycle = (c.Age + c.Id * 0.7f) % 2.6f;
         bool dart = cycle < 0.7f;
         if (dart && c.State != CState.Warn) w.RaiseWarned(c); // the snarl
         c.SetState(dart ? CState.Warn : CState.Chase);
         c.FacePoint = prey.Position;
         c.Rear = dart ? MathF.Sin(cycle / 0.7f * MathF.PI) * 0.8f : 0f;
-        float radius = dart ? c.Stats.AttackRange + 0.7f : hold;
+        float radius = dart ? Attacks.Range(c) + 0.7f : hold;
         CircleTo(w, c, prey.Position, SlotAngle(p, c), radius, dart ? c.Stats.RunSpeed : c.Stats.WalkSpeed * 1.5f);
     }
 
@@ -530,7 +530,7 @@ public static partial class Brain
         c.SetState(CState.Chase);
         c.FacePoint = prey.Position;
         float d = WildSim.Flat(prey.Position - c.Position).Length();
-        if (d <= c.Stats.AttackRange)
+        if (d <= Attacks.Range(c))
         {
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, prey); // waits its turn if another member is mid-attack
@@ -538,7 +538,7 @@ public static partial class Brain
         }
         float angle = SlotAngle(p, c);
         if (d > RingRadius(c, r) + 3f) CircleTo(w, c, prey.Position, angle, RingRadius(c, r), c.Stats.RunSpeed);
-        else Steer(w, c, prey.Position + AngleDir(angle) * c.Stats.AttackRange * 0.7f, c.Stats.RunSpeed);
+        else Steer(w, c, prey.Position + AngleDir(angle) * Attacks.Range(c) * 0.7f, c.Stats.RunSpeed);
         c.Desired += Separation(c, p, r.Spacing) * c.Stats.WalkSpeed;
     }
 
@@ -826,7 +826,7 @@ public static partial class Brain
         dist = WildSim.Flat(t.Position - c.Position).Length();
         if (c.State != CState.Chase) c.SetState(CState.Chase);
         c.FacePoint = t.Position;
-        if (dist <= c.Stats.AttackRange)
+        if (dist <= Attacks.Range(c))
         {
             c.Desired = Vector3.Zero;
             Attacks.Start(w, c, t);

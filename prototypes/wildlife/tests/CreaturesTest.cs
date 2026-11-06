@@ -76,6 +76,7 @@ public partial class CreaturesTest : Node
             DomesticAnimals();
             SensesAreReal();
             WeightShows();
+            NothingClipsThePlayer();
             DeepPerformance();
             CrowdedPlaceCost();
         }
@@ -1528,6 +1529,53 @@ public partial class CreaturesTest : Node
         p.Position = new Vector3(19f, 1f, 6f);
         Run(4f, c5, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
         Check(blind.Blind && heard && stillUnheard && c5.Noticed == null, $"something blind goes by ear alone: a walker in its room heard, nothing through a wall ({blind.NoticeRadius * Senses.BlindHearing:F1} m earshot)");
+    }
+
+    /// <summary>Heads, necks and bodies stop at a person's body, and bites land where they can see them.</summary>
+    void NothingClipsThePlayer()
+    {
+        PlanetFauna planet = _gen.Generate(4242, 0.3f, false);
+        var hunters = planet.Species.Where(s => s.Rig == RigKind.Legged && !s.Flies).Take(3).ToList();
+        float worst = 0f;
+        int hits = 0, front = 0, sized = 0;
+        string who = "";
+        foreach (float size in new[] { 0.8f, 2f, 5.5f })
+        foreach (Species model in hunters)
+        {
+            Species s = model.Copy();
+            s.Stats.Damage = 1f;
+            s.Stats.Hunts = true;
+            s.Behaviour = Behaviour.Predator;
+            float k = size / s.Body.Size;
+            s.Body.Size *= k; s.Body.Width *= k; s.Body.Height *= k; s.Body.LegLength *= k; s.Body.NeckLength *= k; s.Body.HeadSize *= k;
+            s.Stats.Radius *= k;
+            sized++;
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            var p = new DummyTarget { Name = "Person", Health = new Health(1e7f), Forward = Vector3.Forward };
+            sim.Targets.Add(p);
+            Creature c = sim.Spawn(s, new Vector3(1f, 0f, 14f)); // behind them
+            c.Yaw = 0f;
+            sim.Attacked += e =>
+            {
+                if (!e.Hit) return;
+                hits++;
+                if (WildSim.Flat(c.Position - p.Position).Normalized().Dot(p.Forward) > -0.3f) front++;
+            };
+            for (float t = 0f; t < 25f; t += Dt)
+            {
+                sim.Step(Dt);
+                if (c.Phase == AttackPhase.Lunge) continue; // still in flight; where it lands is checked below
+                for (int i = 0; i < c.Rig.HitCount; i++)
+                {
+                    Vector4 h = c.Rig.Hits[i];
+                    if (h.Y - h.W > Attacks.BodyHeight) continue;
+                    float into = h.W + Attacks.BodyRadius - WildSim.Flat(new Vector3(h.X, 0f, h.Z) - p.Position).Length();
+                    if (into > worst) { worst = into; who = $"{size:F1} m {s.CommonName}, part {i} of {c.Rig.HitCount}, state {c.State} phase {c.Phase}"; }
+                }
+            }
+        }
+        Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
+        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
     }
 
     /// <summary>A big body takes its time to get going, stop and turn; a small one doesn't.</summary>
