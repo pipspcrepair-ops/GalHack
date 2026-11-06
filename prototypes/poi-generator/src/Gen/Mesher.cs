@@ -62,6 +62,12 @@ public sealed class MeshOptions
     public Func<Int3, bool>? Only;
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
     public bool Detail = true;
+    /// <summary>
+    /// How many cells of buried ground below ground level hide no faces. On a planet the ground only
+    /// nearly reaches a wall: it dips round a room carved under the pad, and a cut or a bank can leave it
+    /// short, so a wall's top few courses below ground are drawn rather than left open to the sky.
+    /// </summary>
+    public int GroundShow;
 }
 
 /// <summary>
@@ -191,6 +197,9 @@ public static class Mesher
 
         bool CollidesFull(Int3 p) => (Flags(p) & FCollides) != 0;
 
+        /// <summary>Whether a neighbour hides a face: as <see cref="Occludes"/>, except the top of the buried ground where it may not really be (<see cref="MeshOptions.GroundShow"/>).</summary>
+        bool Hides(Int3 p) => Occludes(p) && !(_o.GroundShow > 0 && IsRock(p) && p.Y > Assembler.GroundY - _o.GroundShow);
+
         public void Block(Int3 p, Block b)
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
@@ -225,12 +234,12 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) : Occludes(n))
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) : Hides(n))
                     continue;
                 Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
                 if (glyph) Glyph(chunk, p, f, b.Color);
                 if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
-                if (_o.Collision && !CollidesFull(n)) CollideFace(chunk, p, f);
+                if (_o.Collision && (!CollidesFull(n) || IsRock(n))) CollideFace(chunk, p, f);
             }
         }
 
@@ -459,6 +468,8 @@ public static class Mesher
                 Quad(sBR, sBL, sHL, sHR, 0.82f);                  // the tall back
                 TriFace(sBL, sLL, sHL, 0.78f);                    // sides
                 TriFace(sLR, sBR, sHR, 0.78f);
+                // The underside, for a ramp nothing stands under: an eave or a roof seen from inside.
+                if (!Occludes(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f);
             }
             if (_o.Collision)
             {
@@ -532,6 +543,7 @@ public static class Shapes
         BlockType.Shelf or BlockType.Locker => (new V3(0.06f, 0, 0.1f), new V3(0.94f, 1f, 0.9f)),
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
         BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
+        BlockType.Pump => (new V3(0.2f, 0, 0.25f), new V3(0.8f, 1.7f, 0.75f)),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
 
@@ -580,8 +592,9 @@ public static class Shapes
             {
                 bool bottom = g.Get(p + Int3.Down).Type != BlockType.Door;
                 if (b.Variant == DoorState.Open || b.Variant == DoorState.Jammed && bottom) break;
-                l.Add(Box(0, 0, 0.4f, 1, 1, 0.6f, c, Surface.Metal, b.Facing));
-                if (bottom) l.Add(Box(0, 0.35f, 0.38f, 1, 0.5f, 0.62f, new Rgb(0xe0, 0xa8, 0x00), Surface.Metal, b.Facing));
+                bool plainDoor = b.Material == Material.Timber; // a house's door: a plain leaf, no hazard band
+                l.Add(Box(0, 0, 0.4f, 1, 1, 0.6f, c, plainDoor ? Surface.Matte : Surface.Metal, b.Facing));
+                if (bottom && !plainDoor) l.Add(Box(0, 0.35f, 0.38f, 1, 0.5f, 0.62f, new Rgb(0xe0, 0xa8, 0x00), Surface.Metal, b.Facing));
                 break;
             }
             case BlockType.SealedDoor:
@@ -663,6 +676,9 @@ public static class Shapes
                 l.Add(Box(0.36f, 0.12f, 0.97f, 0.64f, 0.26f, 0.99f, new Rgb(0x30, 0x48, 0x58), Surface.Glass, b.Facing));
                 break;
             }
+            case BlockType.Plate:
+                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte, true));
+                break;
             case BlockType.Scorch:
                 l.Add(new ShapeBox(new V3(0.02f, 0, 0.02f), new V3(0.98f, 0.02f, 0.98f), c, Surface.Matte, true));
                 break;
@@ -827,6 +843,16 @@ public static class Shapes
                 l.Add(Box(0.36f, 1.3f, 0.38f, 0.64f, 1.65f, 0.62f, c, Surface.Matte));
                 l.Add(Box(0.15f, 0.9f, 0.42f, 0.85f, 1.05f, 0.58f, c.Scale(0.9f), Surface.Matte));
                 break;
+            case BlockType.Pump:
+            {
+                // A fuel pump: a body on a plinth, a dead display, a hose hanging on its side.
+                l.Add(Box(0.15f, 0, 0.25f, 0.85f, 0.12f, 0.75f, c.Scale(0.6f), Surface.Metal, b.Facing));
+                l.Add(Box(0.22f, 0.12f, 0.3f, 0.78f, 1.25f, 0.7f, c, Surface.Metal, b.Facing));
+                l.Add(Box(0.26f, 1.25f, 0.34f, 0.74f, 1.7f, 0.66f, c.Scale(0.8f), Surface.Metal, b.Facing));
+                l.Add(Box(0.3f, 1.3f, 0.32f, 0.7f, 1.62f, 0.34f, new Rgb(0x1c, 0x20, 0x22), Surface.Matte, b.Facing));
+                l.Add(Box(0.8f, 0.45f, 0.45f, 0.85f, 1.1f, 0.5f, new Rgb(0x20, 0x20, 0x20), Surface.Matte, b.Facing));
+                break;
+            }
             case BlockType.Ramp:
             case BlockType.Spike:
                 break;

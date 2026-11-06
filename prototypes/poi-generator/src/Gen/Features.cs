@@ -145,6 +145,14 @@ public sealed class LayoutExtras
     public bool InSpace;
     /// <summary>Under water (sunken places): everything below WaterY is flooded unless sealed.</summary>
     public int? WaterY;
+    /// <summary>The plain buildings of a roadside ruin (see <see cref="Homes"/>): where each stands, for its believable decay. Empty on every other place.</summary>
+    public List<PlainBox> Plain = new();
+    /// <summary>Masonry that outlasts the rest of a plain building: its chimneys.</summary>
+    public HashSet<Int3> Lasting = new();
+    /// <summary>The colour of a plain building's doors (a plain timber leaf, not a steel door).</summary>
+    public Rgb? PlainDoor;
+    /// <summary>Where a plain lot meets the road: the cell its path or forecourt ends at, on the lot's front edge.</summary>
+    public Int3 Gate;
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
     public BlastZone? Blast;
 }

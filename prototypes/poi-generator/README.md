@@ -95,6 +95,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
 ### Places, states and loot
 
+- **Plain ruins** (`src/Gen/Arch/Homes.cs`, `PlainRuin.cs`; families `flavour_*`) are the small roadside buildings, drawn by hand rather than planned. They are real size against a 1.8 m person and built as a player builds: a 2 m lattice in plan and storey (POI cells are 1 m, the player's large block 2 m), walls and slabs as large half blocks, 45 degree slope roofs, thin plate floors, 2 m doors, panes in the windows. `LayoutHints` turns a lot to face its road and picks its materials by tech level. Nothing goes below ground, and their decay takes everything above smooth collapses, so walls end in broken tops. Overgrowth runs last. They have no block trees (the big places still grow them).
 - **Cores** appear only where a faction owns the place (`FamilyDef.HasCore(state)`). Wrecks, ruins, the old world's abandoned places and gang forts never have one.
 - **States**:
   - *Active*: power and guards.

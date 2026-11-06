@@ -1,7 +1,7 @@
-# Flavour ruins: small places that are not POIs (design doc "Infrastructure"). Abandoned houses,
-# farmsteads, sheds and wayside stops along the roads and out in the countryside, built by the
-# planet surface's flavour pass (FlavourRuins), never placed as places of their own (tag flavour).
-# Same grammar as the other families; each has a layout per tech level where it differs.
+# Flavour ruins: small places that are not POIs (design doc "Infrastructure"). Houses along a street
+# near a junction, a fuel station on a highway, a farmstead out in the fields, a shed, a row of shops:
+# set down by the planet surface's flavour pass (FlavourRuins), never placed as places of their own
+# (tag flavour). Each is drawn by hand (Homes.cs) at the world's tech level, turned to face its road.
 
 family flavour_house
   tier site
@@ -11,7 +11,7 @@ family flavour_house
   pitch A family's home by the road, a century gone.
   faction none
   roster raiders
-  program cottage_brick
+  site home_bungalow
   core none
   owner none
   rarity common
@@ -23,18 +23,21 @@ family flavour_house
   wrong 0
   tags flavour house
   states active 0 abandoned 2 infested 0 ruined 6
-  variant Timber House
+  variant Bungalow
     seed 9701
-    program cottage_timber
-    tech low
-  variant Brick House
+    site home_bungalow
+  variant Gabled Ell
     seed 9702
-    program cottage_brick
-    tech mid
-  variant Composite House
+    site home_ell
+  variant Two-Storey House
     seed 9703
-    program cottage_composite
-    tech high
+    site home_twostorey
+  variant Cottage
+    seed 9704
+    site home_cottage
+  variant Town House
+    seed 9705
+    site home_townhouse
 
 family flavour_farmstead
   tier site
@@ -44,7 +47,7 @@ family flavour_farmstead
   pitch A farmhouse, a barn with its roof in, a silo and a field gone to scrub.
   faction none
   roster raiders
-  site farmstead_ruin
+  site farm_homestead
   core none
   owner none
   rarity common
@@ -58,10 +61,13 @@ family flavour_farmstead
   states active 0 abandoned 2 infested 0 ruined 6
   variant Homestead
     seed 9711
+    site farm_homestead
   variant Hill Farm
     seed 9712
+    site farm_hill
   variant Bottom Farm
     seed 9713
+    site farm_bottom
 
 family flavour_shed
   tier site
@@ -71,7 +77,7 @@ family flavour_shed
   pitch A shed by the road, its door hanging, a rusted machine inside.
   faction none
   roster raiders
-  site shed_ruin
+  site shed_tool
   core none
   owner none
   rarity common
@@ -79,27 +85,30 @@ family flavour_shed
   territory any
   spacing 2
   reveal 80
-  ominous 0.1
+  ominous 0.2
   wrong 0
   tags flavour shed
-  states active 0 abandoned 3 infested 0 ruined 5
+  states active 0 abandoned 2 infested 0 ruined 6
   variant Tool Shed
     seed 9721
+    site shed_tool
   variant Machine Shed
     seed 9722
+    site shed_machine
   variant Lean-to
     seed 9723
+    site shed_lean
 
 family flavour_wayside
   tier site
   siting flat
   rise 6
-  name Wayside Stop
-  pitch A fuel stop on the old highway: pumps under a canopy, a kiosk, cars that never left.
+  name Fuel Station
+  pitch A fuel station on the old highway: pumps under a canopy, a shop, a slab over the tanks.
   tech mid high
   faction none
   roster raiders
-  site wayside_stop
+  site fuel_stop
   core none
   owner none
   rarity common
@@ -110,10 +119,44 @@ family flavour_wayside
   ominous 0.2
   wrong 0
   tags flavour wayside
-  states active 0 abandoned 3 infested 0 ruined 5
+  states active 0 abandoned 2 infested 0 ruined 6
   variant Fuel Stop
     seed 9731
+    site fuel_stop
   variant Road House
     seed 9732
+    site fuel_roadhouse
   variant Truck Stop
     seed 9733
+    site fuel_truck
+
+family flavour_shop
+  tier site
+  siting flat
+  rise 6
+  name Old Shop
+  pitch A shop on a main street, its glass gone, something left in the store room.
+  faction none
+  roster raiders
+  site shop_corner
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 120
+  ominous 0.2
+  wrong 0
+  tags flavour shop
+  states active 0 abandoned 2 infested 0 ruined 6
+  variant Corner Shop
+    seed 9741
+    site shop_corner
+  variant Row of Shops
+    seed 9742
+    site shop_row
+  variant Shop with a Flat Over
+    seed 9743
+    site shop_hall
+

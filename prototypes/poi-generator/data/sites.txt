@@ -349,33 +349,110 @@ site survivor_town
   part tower 78 14 h 8 size 4 every 4 crown hut
   part fence -8 20 len 92 h 2 axis x gate 44 breaches 0.1 type wall
 
-# ---- flavour: small ruins along the roads (planet surface FlavourRuins), not places of their own ------
+# ---- plain ruins: drawn by hand in Homes.cs on the player's 2 m lattice (planet surface FlavourRuins) ----
 
-site farmstead_ruin
-  name Ruined Farmstead
-  style miningtown
-  entrance -10 6 west
-  part building 0 0 program cottage_timber vault yes
-  part hangar 22 0 w 16 d 12 h 7
-  part tanks 42 2 count 1 r 3 h 10 gap 4 axis z
-  part fields 0 22 w 24 d 12
-  part fence 22 16 len 16 h 2 axis x gate 6 breaches 0.3
-
-site shed_ruin
-  name Roadside Shed
-  style miningtown
-  entrance -8 6 west
-  part building 0 0 program shed vault yes
-  part vehicles 2 20 count 1 gap 6 axis x
-
-site wayside_stop
-  name Wayside Stop
+site home_bungalow
+  name Bungalow
   style concrete
-  entrance -12 6 west
-  part building 0 0 program kiosk vault yes
-  part tanks 0 22 count 2 r 2 h 3 gap 6 axis x
-  part poles -8 -4 count 2 gap 10 h 6 axis z
-  part vehicles 18 20 count 2 gap 7 axis x
+  entrance 0 0 north
+  part plain 0 0 what bungalow
+
+site home_ell
+  name Gabled Ell
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what ell
+
+site home_twostorey
+  name Two-Storey House
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what twostorey
+
+site home_cottage
+  name Cottage
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what cottage
+
+site home_townhouse
+  name Town House
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what townhouse
+
+site farm_homestead
+  name Homestead
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what homestead
+
+site farm_hill
+  name Hill Farm
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what hillfarm
+
+site farm_bottom
+  name Bottom Farm
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what bottomfarm
+
+site shed_tool
+  name Tool Shed
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what toolshed
+
+site shed_machine
+  name Machine Shed
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what machineshed
+
+site shed_lean
+  name Lean-to
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what leanto
+
+site fuel_stop
+  name Fuel Stop
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what fuelstop
+
+site fuel_roadhouse
+  name Road House
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what roadhouse
+
+site fuel_truck
+  name Truck Stop
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what truckstop
+
+site shop_corner
+  name Corner Shop
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what cornershop
+
+site shop_row
+  name Row of Shops
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what shoprow
+
+site shop_hall
+  name Shop with a Flat Over
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what shophall
+
 
 # ---- the old utilities ----------------------------------------------------------------------------
 

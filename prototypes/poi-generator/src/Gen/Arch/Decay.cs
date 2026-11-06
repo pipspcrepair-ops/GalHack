@@ -77,7 +77,7 @@ public static class Decay
     {
         var layout = inst.Layout;
         var x = layout.Extras;
-        bool powered = inst.State == PoiState.Active;
+        bool powered = inst.State == PoiState.Active, plain = x.Plain.Count > 0;
         foreach (var spot in x.Lights)
         {
             var lvl = LevelAt(layout, spot.Cell.Y);
@@ -111,7 +111,7 @@ public static class Decay
             }
         }
         // One wrong detail from afar: in a dead place, a single window high up is still lit.
-        if (!powered && (rng.Chance(0.75f) || !inst.Lights.Any(l => l.Cell.Y >= 0)))
+        if (!powered && !plain && (rng.Chance(0.75f) || !inst.Lights.Any(l => l.Cell.Y >= 0)))
         {
             var windows = new List<Int3>();
             foreach (var (p, b) in inst.Blocks.Blocks())
@@ -133,7 +133,7 @@ public static class Decay
         {
             Int3 out1 = layout.EntranceFacing.Vec();
             Int3 door = layout.EntranceCell - out1 * 2;
-            bool done = false;
+            bool done = plain; // a house keeps no lamp in its walls: only the light itself, for a lived-in later
             for (int back = 0; back <= 2 && !done; back++)
                 for (int up = 1; up <= 5 && !done; up++)
                 {
@@ -146,7 +146,7 @@ public static class Decay
                     inst.Lights.Add(new LightSpot { Cell = c + out1, Color = lb.Color, Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
                     done = true;
                 }
-            if (!done)   // nothing over the door at all: a lamp left by it
+            if (!done || plain)   // nothing over the door at all: a lamp left by it
                 inst.Lights.Add(new LightSpot { Cell = layout.EntranceCell + Int3.Up * 2, Color = new Rgb(0xff, 0xa0, 0x50), Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
         }
         // A thin column of smoke where something still burns or vents.
