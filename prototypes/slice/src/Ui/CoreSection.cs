@@ -32,8 +32,11 @@ public sealed class CoreSection : IMenuSection
     int _storageScroll;
     readonly StructureSection _structure;
 
-    /// <summary>How near a structure's nearest block (or a device) must be to show here, m.</summary>
-    public const float Reach = 20f, DeviceReach = 6f;
+    /// <summary>How near a device must be to show here, m. A structure shows anywhere inside its own area (<see cref="Slice.Construction.StructureArea"/>), however large.</summary>
+    public const float DeviceReach = 6f;
+
+    /// <summary>The chooser's buttons a row, and rows.</summary>
+    const int PerRow = 6, MaxRows = 3;
 
     public CoreSection(Game.Game game)
     {
@@ -89,17 +92,20 @@ public sealed class CoreSection : IMenuSection
         if (_picked == null)
         {
             g.Caption("NO CORE NEARBY", o, area.Size.X);
-            g.Text("OUT OF RANGE: a structure's core, storage and constructors work only inside its area.", o + new Vector2(0, 40), C.Warn, 16);
+            g.Text("OUT OF RANGE: a structure's core, storage and constructors work anywhere inside its area; step into one.", o + new Vector2(0, 40), C.Warn, 16);
             g.Text("Craft a survival constructor in the suit fabricator (YOU), put it on the toolbar and set it down.", o + new Vector2(0, 66), C.Dim, 16);
             return;
         }
         // The chooser.
-        for (int i = 0; i < near.Count && i < 6; i++)
+        // Every core whose area you are in: pick which one to manage.
+        int shown = Math.Min(near.Count, PerRow * MaxRows), rows = (shown + PerRow - 1) / PerRow;
+        for (int i = 0; i < shown; i++)
         {
             string name = near[i] switch { Vessel v => v.Name, Device d => d.Label, _ => "?" };
-            if (g.Tab($"core:pick:{i}", new Rect2(o + new Vector2(i * 210, 0), new Vector2(200, 36)), name.ToUpperInvariant(), near[i] == _picked, C.Accent)) Pick(near[i]);
+            if (g.Tab($"core:pick:{i}", new Rect2(o + new Vector2(i % PerRow * 210, i / PerRow * 40), new Vector2(200, 36)), name.ToUpperInvariant(), near[i] == _picked, C.Accent)) Pick(near[i]);
         }
-        var body = new Rect2(o + new Vector2(0, 50), new Vector2(area.Size.X, area.Size.Y - 50));
+        float top = 50 + (rows - 1) * 40;
+        var body = new Rect2(o + new Vector2(0, top), new Vector2(area.Size.X, area.Size.Y - top));
         if (_picked is Device device)
         {
             _constructor.Build(g, new Rect2(body.Position, new Vector2(560, body.Size.Y)));
