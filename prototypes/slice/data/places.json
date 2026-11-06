@@ -12,8 +12,12 @@
   // A large place isn't dressed all at once: past dressAllUnder pieces, only rooms within
   // dressRadius of the survivor stand furnished, and rooms past undressRadius are cleared again.
   "dressAllUnder": 300,
-  "dressRadius": 64,
-  "undressRadius": 84,
+  "dressRadius": 52,
+  "undressRadius": 72,
+  // The 32 m cubes of a place within nearRadius of the eye are drawn in full; past nearDrop they
+  // go back to the planet's merged drawing, which is the same blocks.
+  "nearRadius": 64,
+  "nearDrop": 90,
 
   // Salvage: the survival tool (gather mode) takes a place apart for materials. Each block has
   // the POI generator's own hit points (BlockInfo.HitPoints: a breakable wall 60, glass 80,

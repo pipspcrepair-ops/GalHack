@@ -5,6 +5,7 @@ using Godot;
 using PlanetSurface.Poi;
 using PoiGenerator;
 using PoiGenerator.Gen;
+using System.Threading.Tasks;
 using Layers = GalHack.Physics.Layers;
 
 namespace Slice.Places;
@@ -21,8 +22,11 @@ namespace Slice.Places;
 /// </summary>
 public partial class Place : Node3D
 {
-    /// <summary>Small chunks: each is a millisecond or two to put in, and a broken wall remeshes only a little.</summary>
-    public const int ChunkSize = 8;
+    /// <summary>Chunks: each is a millisecond or two to put in, and a broken wall remeshes only one or two.</summary>
+    public const int ChunkSize = 16;
+
+    /// <summary>The cubes it stands in: each has its own body, and is drawn near or left to the planet's merged drawing as one.</summary>
+    public const int GroupSize = PoiLayer.GroupSize;
 
     public PlaceMemory Memory { get; private set; }
     public PoiSite Site => Memory.Site;
@@ -38,7 +42,21 @@ public partial class Place : Node3D
     /// <summary>Beyond the drop radius, kept only because its blocks changed: drawn, nothing more.</summary>
     public bool Dormant { get; private set; }
 
-    public StaticBody3D Blocks { get; private set; }
+    /// <summary>One of the cubes a place stands in.</summary>
+    sealed class Group
+    {
+        public Int3 Key;
+        public StaticBody3D Body;
+        /// <summary>Its full-detail meshes are in and the planet's merged cube is hidden.</summary>
+        public bool Near;
+        /// <summary>Its blocks changed: it keeps its own meshes, whatever the distance.</summary>
+        public bool Modified;
+        public Task<List<ChunkMesh>> Meshing;
+        public int Next;
+        public readonly List<Door> Doors = new();
+    }
+
+    readonly Dictionary<Int3, Group> _groups = new();
     readonly Dictionary<Int3, (MeshInstance3D Mesh, CollisionShape3D Shape)> _chunks = new();
     BlockMaterials _materials;
     float _glow;
@@ -48,8 +66,7 @@ public partial class Place : Node3D
         var p = new Place { Name = $"Place {memory.Site.Name}", Memory = memory, Places = places };
         p._glow = memory.Inst.State switch { PoiState.Active => 2.4f, PoiState.Infested => 2.0f, _ => 1.6f };
         p._materials = new BlockMaterials(p._glow);
-        p.Blocks = new StaticBody3D { Name = "Blocks", CollisionLayer = Layers.World, CollisionMask = 0 };
-        p.AddChild(p.Blocks);
+        p.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // it stands still; only its doors and lifts move, a tick at a time
         return p;
     }
 
@@ -81,11 +98,11 @@ public partial class Place : Node3D
     // ---- Blocks ---------------------------------------------------------------------------------
 
     /// <summary>The mesher's options for a near place: doors are the view's own; buried ground hides faces (an empty plug, as the planet's far drawing does).</summary>
-    public static MeshOptions Options(Int3 min) => new()
+    public static MeshOptions Options(Int3 min, bool collision = true) => new()
     {
         ChunkSize = ChunkSize,
         Doors = false,
-        Collision = true,
+        Collision = collision,
         Detail = true,
         Rock = true,
         RockMin = new Int3(min.X + 1, 0, min.Z + 1),
@@ -94,32 +111,75 @@ public partial class Place : Node3D
         RockBottom = min.Y,
     };
 
-    /// <summary>Puts one chunk's mesh and collision in (or replaces them).</summary>
-    public void SetChunk(ChunkMesh chunk)
+    /// <summary>The whole place's collision at stand-up: the same faces, merged, drawn nowhere.</summary>
+    public static MeshOptions Solid(Int3 min)
     {
-        DropChunk(chunk.Chunk);
-        var mesh = new MeshInstance3D { Name = $"Chunk {chunk.Chunk}", Mesh = MeshBuild.ToMesh(chunk, _materials.BySurface) };
-        AddChild(mesh);
-        CollisionShape3D shape = null;
-        if (chunk.Collision.Count > 0)
-        {
-            shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk) };
-            Blocks.AddChild(shape);
-        }
-        _chunks[chunk.Chunk] = (mesh, shape);
+        MeshOptions o = Options(min);
+        o.Merged = true;
+        o.Drawn = false;
+        return o;
     }
-
-    void DropChunk(Int3 c)
-    {
-        if (!_chunks.Remove(c, out var old)) return;
-        old.Mesh.QueueFree();
-        old.Shape?.QueueFree();
-    }
-
-    public int ChunkCount => _chunks.Count;
 
     static int FloorDiv(int a, int b) => a >= 0 ? a / b : (a - b + 1) / b;
     public static Int3 ChunkOf(Int3 cell) => new(FloorDiv(cell.X, ChunkSize), FloorDiv(cell.Y, ChunkSize), FloorDiv(cell.Z, ChunkSize));
+    static Int3 GroupOf(Int3 chunk) { int k = GroupSize / ChunkSize; return new(FloorDiv(chunk.X, k), FloorDiv(chunk.Y, k), FloorDiv(chunk.Z, k)); }
+
+    Group GroupAt(Int3 key)
+    {
+        if (_groups.TryGetValue(key, out Group g)) return g;
+        g = new Group { Key = key };
+        _groups[key] = g;
+        return g;
+    }
+
+    /// <summary>Puts one cube's collision in: its body is made whole before it joins the world, so the physics builds it once.</summary>
+    public void SetGroupShapes(Int3 key, IEnumerable<ChunkMesh> chunks)
+    {
+        Group g = GroupAt(key);
+        g.Body = new StaticBody3D { Name = $"Blocks {key}", CollisionLayer = Layers.World, CollisionMask = 0 };
+        foreach (ChunkMesh c in chunks)
+        {
+            if (c.Collision.Count == 0) continue;
+            var shape = new CollisionShape3D { Name = $"Chunk {c.Chunk}", Shape = MeshBuild.ToShape(c) };
+            g.Body.AddChild(shape);
+            _chunks[c.Chunk] = (_chunks.GetValueOrDefault(c.Chunk).Mesh, shape);
+        }
+        AddChild(g.Body);
+    }
+
+    void SetChunkMesh(ChunkMesh chunk)
+    {
+        var old = _chunks.GetValueOrDefault(chunk.Chunk);
+        old.Mesh?.QueueFree();
+        MeshInstance3D mesh = null;
+        if (chunk.Surfaces.Any(s => s.Indices.Count > 0))
+        {
+            mesh = new MeshInstance3D { Name = $"Chunk {chunk.Chunk}", Mesh = MeshBuild.ToMesh(chunk, _materials.BySurface) };
+            AddChild(mesh);
+        }
+        _chunks[chunk.Chunk] = (mesh, old.Shape);
+    }
+
+    void SetChunkShape(ChunkMesh chunk)
+    {
+        var old = _chunks.GetValueOrDefault(chunk.Chunk);
+        old.Shape?.QueueFree();
+        CollisionShape3D shape = null;
+        if (chunk.Collision.Count > 0)
+        {
+            Group g = GroupAt(GroupOf(chunk.Chunk));
+            if (g.Body == null)
+            {
+                g.Body = new StaticBody3D { Name = $"Blocks {g.Key}", CollisionLayer = Layers.World, CollisionMask = 0 };
+                AddChild(g.Body);
+            }
+            shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk) };
+            g.Body.AddChild(shape);
+        }
+        _chunks[chunk.Chunk] = (old.Mesh, shape);
+    }
+
+    public int ChunkCount => _chunks.Count;
 
     /// <summary>
     /// Some cells changed: the chunks they touch (and the ones whose faces and shading border them)
@@ -136,14 +196,131 @@ public partial class Place : Node3D
                 chunks.Add(ChunkOf(c + new Int3(dx, dy, dz)));
         foreach (Int3 ch in chunks)
         {
+            Group g = GroupAt(GroupOf(ch));
+            g.Modified = true;
             var window = new ChunkWindow(Inst.Blocks, ch * ChunkSize, ChunkSize);
             List<ChunkMesh> built = Mesher.Build(window, Inst.Layout.Occupied, Options(window.Min));
-            ChunkMesh mesh = built.FirstOrDefault(m => m.Chunk == ch);
-            if (mesh == null || mesh.Surfaces.All(s => s.Indices.Count == 0) && mesh.Collision.Count == 0) DropChunk(ch);
-            else SetChunk(mesh);
+            ChunkMesh mesh = built.FirstOrDefault(m => m.Chunk == ch) ?? new ChunkMesh { Chunk = ch };
+            if (g.Near) SetChunkMesh(mesh);
+            SetChunkShape(mesh);
         }
         Memory.Modified = true;
     }
+
+    // ---- Near and far -----------------------------------------------------------------------------
+
+    int _tierTimer, _meshing;
+
+    /// <summary>How far a point (local) is from a cube.</summary>
+    static float Away(Int3 key, Vector3 p)
+    {
+        float lox = key.X * GroupSize, loy = key.Y * GroupSize, loz = key.Z * GroupSize;
+        float dx = MathF.Max(0f, MathF.Max(lox - p.X, p.X - lox - GroupSize));
+        float dy = MathF.Max(0f, MathF.Max(loy - p.Y, p.Y - loy - GroupSize));
+        float dz = MathF.Max(0f, MathF.Max(loz - p.Z, p.Z - loz - GroupSize));
+        return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /// <summary>
+    /// The cubes round the eye drawn in full, from a worker, a few milliseconds' work a frame; the
+    /// planet's merged cube gives way in the frame the last of a cube's meshes is in, and comes back in
+    /// the frame they go, so there is never a hole or a double.
+    /// </summary>
+    void TickTiers()
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Meshing is not { IsCompleted: true }) continue;
+            if (g.Meshing.IsFaulted)
+            {
+                GD.PushError($"could not mesh {Site.Name} at {g.Key}: {g.Meshing.Exception?.GetBaseException()}");
+                g.Meshing = null;
+                g.Next = 0;
+                _meshing--;
+                continue;
+            }
+            List<ChunkMesh> built = g.Meshing.Result;
+            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < Places.BudgetMs) SetChunkMesh(built[g.Next++]);
+            if (g.Next < built.Count) break;
+            g.Meshing = null;
+            g.Next = 0;
+            _meshing--;
+            ShowNear(g, true);
+        }
+        if (--_tierTimer > 0) return;
+        _tierTimer = 8;
+        Vector3 eye = FromWorld(Places.EyeAt());
+        PlaceRules rules = Places.Rules;
+        foreach (Group g in _groups.Values)
+        {
+            if (g.Meshing != null || g.Modified) continue;
+            if (g.Near && (Dormant || Away(g.Key, eye) > rules.NearDrop)) DropNear(g);
+        }
+        if (Dormant) return;
+        while (_meshing < 4)
+        {
+            Group next = null;
+            float best = rules.NearRadius;
+            foreach (Group g in _groups.Values)
+            {
+                if (g.Near || g.Meshing != null) continue;
+                float d = g.Modified ? 0f : Away(g.Key, eye);
+                if (d < best) { best = d; next = g; }
+            }
+            if (next == null) break;
+            MeshNear(next);
+        }
+    }
+
+    void MeshNear(Group g)
+    {
+        BlockGrid blocks = Inst.Blocks;
+        CellMask occupied = Inst.Layout.Occupied;
+        Int3 min = g.Key * GroupSize;
+        _meshing++;
+        g.Meshing = Task.Run(() => Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false)));
+    }
+
+    /// <summary>Each cube's meshes, there and then (tests and the warm-up).</summary>
+    internal void MeshNearNow(Int3 key)
+    {
+        Group g = GroupAt(key);
+        if (g.Near) return;
+        var built = Mesher.Build(new ChunkWindow(Inst.Blocks, key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(key * GroupSize, collision: false));
+        foreach (ChunkMesh c in built) SetChunkMesh(c);
+        ShowNear(g, true);
+    }
+
+    void ShowNear(Group g, bool near)
+    {
+        g.Near = near;
+        Places.Zone.Pois.HideGroup(Site, g.Key, near);
+        foreach (Door d in g.Doors) d.Root.Visible = near;
+    }
+
+    void DropNear(Group g)
+    {
+        ShowNear(g, false);
+        int k = GroupSize / ChunkSize;
+        foreach (Int3 ch in _chunks.Keys.ToList())
+        {
+            if (GroupOf(ch) != g.Key) continue;
+            var c = _chunks[ch];
+            c.Mesh?.QueueFree();
+            _chunks[ch] = (null, c.Shape);
+        }
+    }
+
+    /// <summary>The place is going back to the planet's drawing: every cube of it shows there again.</summary>
+    internal void GiveBack()
+    {
+        foreach (Group g in _groups.Values) Places.Zone.Pois.HideGroup(Site, g.Key, false);
+    }
+
+    /// <summary>Cubes drawn in full now (tests).</summary>
+    public int NearGroups => _groups.Values.Count(g => g.Near);
+    public int Groups => _groups.Count;
 
     // ---- The rest of the place, once the blocks are in ----------------------------------------
 
@@ -180,7 +357,9 @@ public partial class Place : Node3D
 
     public override void _Process(double delta)
     {
-        if (!Ready || Dormant) return;
+        if (!Ready) return;
+        TickTiers();
+        if (Dormant) return;
         TickLights((float)delta);
         TickDress();
     }

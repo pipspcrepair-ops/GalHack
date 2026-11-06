@@ -37,6 +37,8 @@ public partial class PlacePerf : Node
     long _prims, _draws, _objs, _shadowPrims, _shadowDraws;
     PlanetSurface.FrameProbe _probe;
     readonly List<double> _script = new();
+    readonly List<string> _hitches = new();
+    int _gc0, _gc2;
 
     public override void _Ready()
     {
@@ -83,6 +85,10 @@ public partial class PlacePerf : Node
         if (_times == null) return;
         _times.Add(ms);
         _script.Add(_probe.LastMs);
+        int gc = GC.CollectionCount(0), gc2 = GC.CollectionCount(2);
+        if (ms > 33.4 && _hitches.Count < 40) _hitches.Add($"{ms:F0}ms script {_probe.LastMs:F0} frame {_times.Count} gc0 +{gc - _gc0} gc2 +{gc2 - _gc2} at {_game.Survivor?.WorldFeet.X:F0},{_game.Survivor?.WorldFeet.Z:F0} objs {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
+        _gc0 = gc;
+        _gc2 = gc2;
         Rid vp = GetViewport().GetViewportRid();
         _cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp));
         _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
@@ -114,6 +120,8 @@ public partial class PlacePerf : Node
         string line = string.Create(CultureInfo.InvariantCulture,
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000,6}k draws {_draws,5} objs {_objs,5} shadow {_shadowPrims / 1000,6}k/{_shadowDraws,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
+        foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
+        _hitches.Clear();
     }
 
     IEnumerable<int> Measure(string stage, int frames = Frames)
@@ -140,6 +148,23 @@ public partial class PlacePerf : Node
         var sites = zone.Planet.Pois.Where(s => family != null ? s.Family.Id == family : s.Family.Tags.Contains("grand")).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(int.Parse(_args.GetValueOrDefault("sites", "1")));
         foreach (PoiSite site in sites.ToList())
             foreach (int x in OnePlace(site)) yield return x;
+    }
+
+    /// <summary>What's in the tree, by the first levels it hangs from: where the nodes and meshes are.</summary>
+    void Census(Node root)
+    {
+        var nodes = new Dictionary<string, int>();
+        var meshes = new Dictionary<string, int>();
+        void Walk(Node n, string path, int depth)
+        {
+            string name = depth <= 5 ? new string(n.Name.ToString().TakeWhile(c => !char.IsDigit(c) && c != '(').ToArray()).Trim() : "";
+            if (depth <= 5) path = path + "/" + name;
+            nodes[path] = nodes.GetValueOrDefault(path) + 1;
+            if (n is MeshInstance3D { Visible: true }) meshes[path] = meshes.GetValueOrDefault(path) + 1;
+            foreach (Node c in n.GetChildren()) Walk(c, path, depth + 1);
+        }
+        Walk(root, "", 0);
+        foreach (var (k, v) in nodes.OrderByDescending(kv => kv.Value).Take(24)) GD.Print($"PERF census {v,6} nodes, {meshes.GetValueOrDefault(k),5} meshes {k}");
     }
 
     IEnumerable<int> OnePlace(PoiSite site)
@@ -230,7 +255,7 @@ public partial class PlacePerf : Node
 
         Place place = places.PlaceOf(site);
         if (place == null) { GD.Print("PERF place never stood"); yield break; }
-        GD.Print($"PERF built in {places.BuildLog.LastOrDefault().Seconds:F1} s, {place.ChunkCount} chunks; worst build step {places.WorstStepMs:F1} ms, worst build frame {places.WorstFrameMs:F1} ms");
+        GD.Print($"PERF built in {places.BuildLog.LastOrDefault().Seconds:F1} s, {place.ChunkCount} chunks, {place.Groups} cubes, {place.NearGroups} near, {place.Doors.Count} doors, {place.Memory.Fauna?.Sim?.Creatures.Count} creatures, {place.DecoPieces} pieces of {place.Memory.Rooms?.Values.Sum(r => r.Plan.Placements.Count)}; worst build step {places.WorstStepMs:F1} ms, worst build frame {places.WorstFrameMs:F1} ms");
         // A roofed spot well inside: the way a player would walk there.
         var reach = place.Nav().Reachable(site.Instance.Layout.EntranceCell);
         var inside = reach.Where(c => place.Roofed(place.WorldOf(c, 0.2f))).OrderBy(c => c.X + c.Z * 3).ToList();
@@ -253,5 +278,6 @@ public partial class PlacePerf : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.LookAt(Centre(), 6)) yield return x;
         foreach (int x in Measure("in the yard")) yield return x;
+        Census(_game);
     }
 }

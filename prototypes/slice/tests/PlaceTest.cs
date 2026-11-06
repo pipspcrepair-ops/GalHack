@@ -252,8 +252,12 @@ public partial class PlaceTest : Node
         // In through the way in, and a door opened with E on the way to a cache.
         // A cache a level or more down where the place has one you can get to (the stairs are walked on
         // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
+        // (Not one behind a locked door: the keycard comes further on.)
+        bool Locked(PoiGenerator.Gen.Int3 c) => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up)));
         var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
+            .Select(c => (Cache: c, Path: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)))
+            .Where(w => w.Path == null || !w.Path.Any(Locked))
+            .Select(w => (w.Cache, Steps: w.Path?.Count ?? 9999)).ToList();
         bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
         bool downstairs = ways.Any(Below);
         LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
@@ -516,12 +520,22 @@ public partial class PlaceTest : Node
             var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(c.Position.X), Mathf.FloorToInt(c.Position.Y), Mathf.FloorToInt(c.Position.Z));
             PoiGenerator.Gen.Int3? near = null;
             float best = float.MaxValue;
+            // Within its strike and in its room: a large place's next hunter along may be behind a wall.
+            float least = MathF.Min(5f, c.Species.Tells.Length > 0 && c.Species.Role == Wildlife.DeepRole.Lurker ? 3f : 5f);
+            bool Clear(PoiGenerator.Gen.Int3 q)
+            {
+                var from = new Vector3(q.X + 0.5f, q.Y + 1f, q.Z + 0.5f);
+                Vector3 step = (c.Position + Vector3.Up * 0.5f - from).Normalized() * 0.5f;
+                for (float t = 0f, len = from.DistanceTo(c.Position); t < len - 1f; t += 0.5f, from += step)
+                    if (PlaceFauna.Solid(place.Inst, Mathf.FloorToInt(from.X), Mathf.FloorToInt(from.Y), Mathf.FloorToInt(from.Z))) return false;
+                return true;
+            }
             foreach (var q in reach)
             {
                 float d = new Vector2(q.X - cell.X, q.Z - cell.Z).Length() + Mathf.Abs(q.Y - cell.Y) * 3f;
-                if (d >= 5f && d < best) { best = d; near = q; }
+                if (d >= least && d < best && d < 9f && Clear(q)) { best = d; near = q; }
             }
-            if (near == null || best > 9f) continue;
+            if (near == null) continue;
             _hunter = c;
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;
@@ -868,11 +882,10 @@ public partial class PlaceTest : Node
         game.Zone.Weather.Bridge.Calm = true;
         PoiPlaces places = game.Places;
         var site = game.Bunker.Poi;
-        // Far places are solid on the world layer.
+        // Far places are drawn only: what you can touch stands as a structure.
         Node3D far = null;
         for (int i = 0; i < 600 && (far = game.Zone.Pois.NodeOf(site)) == null; i++) yield return 0;
-        var farBody = far?.GetNodeOrNull<StaticBody3D>("Collision");
-        Check(farBody != null && farBody.CollisionLayer == Layers.World, $"the far drawing of {site.Name} collides on the world layer ({farBody?.CollisionLayer})");
+        Check(far != null && far.GetChildren().OfType<CollisionObject3D>().Any() == false, $"the far drawing of {site.Name} is only a drawing");
         GD.Print($"  (SYSTEMS: the focus is moved to the place by hand, not walked; the warm-up while loading took {places.WarmUpMs:F0} ms)");
         Vector3 centre = game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), game.Survivor.WorldFeet);
         places.Focus = () => centre + Vector3.Back * 250f;
@@ -888,8 +901,15 @@ public partial class PlaceTest : Node
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
         Check(views < 8.0, $"its creatures and lair marks go in a few a frame: worst {views:F1} ms a frame");
         GD.Print($"  slow steps: {string.Join("; ", places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (a garbage collection)" : "")}"))}");
-        bool farHidden = far.GetChildren().OfType<MeshInstance3D>().Where(m => m.Name.ToString().StartsWith("Chunk")).All(m => !m.Visible) && farBody.ProcessMode == ProcessModeEnum.Disabled;
-        Check(farHidden, "the far drawing's blocks give way to it in the same frame (hidden, its collision off); its lamps and smoke stay");
+        // Up close the place is drawn in full, and the planet's merged cubes give way to it there and nowhere else.
+        for (int i = 0; i < 180 && p.NearGroups == 0; i++)
+        {
+            Vector3 eye = centre + Vector3.Back * 12f;
+            places.Eye = () => eye;
+            yield return 0;
+        }
+        places.Eye = null;
+        Check(p.NearGroups > 0 && p.NearGroups < p.Groups || p.Groups <= 8, $"the cubes near the eye are drawn in full ({p.NearGroups} of {p.Groups}), the rest stay merged");
         GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Clearance != null)} locked, {p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
         game.QueueFree();
         yield return 0;

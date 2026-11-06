@@ -31,10 +31,10 @@ public partial class DeepSite : Node3D
     /// <summary>The most time one frame spent putting views in, ms (tests).</summary>
     public double WorstViewMs { get; private set; }
 
-    public float FarDistance = 120f, NearDistance = 40f;
+    public float FarDistance = 90f, NearDistance = 40f;
 
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
-    public float SleepDistance = 130f;
+    public float SleepDistance = 100f;
     const double BudgetMs = 1.2;
 
     readonly Dictionary<Creature, CreatureView> _views = new();
@@ -43,7 +43,11 @@ public partial class DeepSite : Node3D
     const int SightEvery = 6;
     int _sightFrame;
     Node3D _creatures, _lairs;
-    int _lairNext;
+    readonly Dictionary<int, LairView> _lairViews = new();
+    int _lairFrame;
+
+    /// <summary>Lair marks stand within this of the eye.</summary>
+    const float LairReach = 50f;
 
     public static DeepSite Create(WildlifePatch patch, WildSim sim, string name)
     {
@@ -119,27 +123,49 @@ public partial class DeepSite : Node3D
     public override void _Process(double delta)
     {
         var clock = Stopwatch.StartNew();
-        // The lair marks (cracks, moss and scraps, nests), a handful at a time: wildlife's own
-        // lair view, each drawing a share of them (they keep scaling with the nests and food).
-        int lairs = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
-        while (_lairNext < lairs && clock.Elapsed.TotalMilliseconds < BudgetMs) BuildLairs(2);
-        if (Patch.Zone.Camera != null) SyncViews(Local(Patch.Zone.Camera.GlobalPosition), clock);
+        if (Patch.Zone.Camera != null)
+        {
+            Vector3 eye = Local(Patch.Zone.Camera.GlobalPosition);
+            TickLairs(eye, clock);
+            SyncViews(eye, clock);
+        }
         WorstViewMs = Math.Max(WorstViewMs, clock.Elapsed.TotalMilliseconds);
     }
 
-    void BuildLairs(int count)
+    /// <summary>
+    /// The lair marks (cracks, moss and scraps, nests) round the eye, a few at a time: wildlife's own
+    /// lair view, each drawing one (they keep scaling with the nests and food). A large place has
+    /// thousands, so only those in reach stand.
+    /// </summary>
+    void TickLairs(Vector3 eye, Stopwatch clock)
+    {
+        if (++_lairFrame % 20 != 0) return;
+        int count = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
+        for (int k = 0; k < count && clock.Elapsed.TotalMilliseconds < BudgetMs; k++)
+        {
+            float d = (MarkAt(k) - eye).Length();
+            if (d < LairReach && !_lairViews.ContainsKey(k)) _lairViews[k] = BuildLair(k);
+            else if (d > LairReach * 1.4f && _lairViews.Remove(k, out LairView view)) view.QueueFree();
+        }
+    }
+
+    Vector3 MarkAt(int k)
+    {
+        if (k < Sim.Cracks.Count) return Sim.Cracks[k].Position;
+        if ((k -= Sim.Cracks.Count) < Sim.Food.Count) return Sim.Food[k].Position;
+        return Sim.Nests[k - Sim.Food.Count].Position;
+    }
+
+    LairView BuildLair(int k)
     {
         var part = new WildSim(Sim.Data, Sim.Terrain, Sim.Nav);
-        for (int i = 0; i < count && _lairNext < Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count; i++, _lairNext++)
-        {
-            int k = _lairNext;
-            if (k < Sim.Cracks.Count) part.Cracks.Add(Sim.Cracks[k]);
-            else if ((k -= Sim.Cracks.Count) < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
-            else part.Nests.Add(Sim.Nests[k - Sim.Food.Count]);
-        }
+        if (k < Sim.Cracks.Count) part.Cracks.Add(Sim.Cracks[k]);
+        else if ((k -= Sim.Cracks.Count) < Sim.Food.Count) part.Food.Add(Sim.Food[k]);
+        else part.Nests.Add(Sim.Nests[k - Sim.Food.Count]);
         var view = new LairView { Name = "Lair" };
         _lairs.AddChild(view);
         view.Build(part);
+        return view;
     }
 
     /// <summary>Wildlife's creature views for the creatures in sight range (new ones within the frame's budget), rigged as often as their distance warrants.</summary>
@@ -172,7 +198,8 @@ public partial class DeepSite : Node3D
                 view.Build(c);
                 _views[c] = view;
             }
-            bool visible = d < FarDistance;
+            // Behind a wall from the eye it isn't drawn at all (it is looked at again every few frames).
+            bool visible = d < FarDistance && (d < 8f || !_unseen.Contains(c));
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             else if (d > FarDistance * 1.5f) _gone.Add(c);

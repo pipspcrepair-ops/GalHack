@@ -97,12 +97,14 @@ public partial class CreatureView : Node3D
         {
             foreach (Piece piece in c.Rig.Layout.Pieces)
             {
+                Mesh mesh = MeshBuilder.For(piece);
                 var mi = new MeshInstance3D
                 {
-                    Mesh = MeshBuilder.For(piece),
+                    Mesh = mesh,
                     MaterialOverride = material,
                     CastShadow = piece.Shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                    VisibilityRangeEnd = range,
+                    // The small pieces go first: a body keeps its shape from afar and draws a fraction of the meshes.
+                    VisibilityRangeEnd = MathF.Min(range, 36f + 160f * mesh.GetAabb().GetLongestAxisSize()),
                 };
                 AddChild(mi);
                 _parts.Add(mi);

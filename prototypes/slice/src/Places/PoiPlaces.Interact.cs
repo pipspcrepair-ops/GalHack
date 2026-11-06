@@ -21,6 +21,9 @@ public sealed class PlaceRules
     public int DressAllUnder { get; set; } = 300;
     public float DressRadius { get; set; } = 64f;
     public float UndressRadius { get; set; } = 84f;
+    /// <summary>A cube of a place within this of the eye is drawn in full (past the far one it goes back to the merged drawing).</summary>
+    public float NearRadius { get; set; } = 64f;
+    public float NearDrop { get; set; } = 90f;
     public SalvageRules Salvage { get; set; } = new();
 
     public sealed class SalvageRules
