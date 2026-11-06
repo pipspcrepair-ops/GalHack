@@ -97,6 +97,10 @@ public sealed class SurvivalTool
 
     /// <summary>The crosshair is on an ore tell rock (an outcrop or scree over a deposit) that still has ore to give.</summary>
     public bool OnTell => _tell != null;
+    /// <summary>The deposit whose ore rock the tool is on, if any.</summary>
+    public Deposit? Tell => _tell;
+    /// <summary>The pulses a deposit's ore rock still has in it.</summary>
+    public int TellLeft(Deposit d) => TellPulses - _tellsWorked.GetValueOrDefault((d.X, d.Y));
     Deposit? _tell;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
@@ -474,6 +478,9 @@ public sealed class SurvivalTool
         return eye + dir * 0.55f + right * 0.17f - viewUp * 0.15f;
     }
 
+    /// <summary>How far past a voxel cube a shot looks for the drawn ground: ample for a shot along a slope, short of reaching through an unloaded hill to what stands behind it.</summary>
+    const float GrazePast = 24f;
+
     void Shoot()
     {
         _cooldown = _rules.ShotInterval;
@@ -495,10 +502,10 @@ public sealed class SurvivalTool
         }
         uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
         // The voxel cast counts whole cubes, and a cube's corner stands proud of the smooth ground that is
-        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and on a
-        // shallow slope the drawn ground lies further on, the flatter the shot the further. So the world's
-        // own ray runs on past the cube by what a cube's height is worth along this shot, and has the say.
-        float past = kind == ImpactKind.Ground ? Math.Clamp(1.2f / MathF.Max(MathF.Abs(dir.Y), 0.01f), 0.75f, 6f) : 0f;
+        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and down
+        // along a slope the drawn ground lies many metres further on, however steep the shot. So the world's
+        // own ray runs on past the cube and has the say; only with no collision there does the cube stand.
+        float past = kind == ImpactKind.Ground ? GrazePast : 0f;
         if (WorldRay.Cast(_zone, _survivor, reach + past, mask, out LookHit hit))
         {
             reach = hit.Distance;

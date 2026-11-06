@@ -480,6 +480,8 @@ public partial class PlaceTest : Node
                 if (c.Dead || c.Removed || c.Species.Role == Wildlife.DeepRole.Subsister) continue;
                 if (s.World(c.Position).DistanceTo(feet) > 7f || c.InWalls) continue;
                 if (c.Target != s.Player && c.AttackTarget != s.Player && c.Noticed != s.Player && c.TellTarget != s.Player) continue;
+                // Meeting a hunter to see its tell: hold fire till it has given one, or it would die before it warned anyone.
+                if (_awaitTell && _aimedTells == 0 && c.Species.Tells.Length > 0 && game.Suit.HealthShare > 0.5) continue;
                 // A clear shot only, and not the same one over and over: a player gives up on what they can't hit.
                 if (_shotAt.TryGetValue(c, out double when) && game.Stats.Seconds - when < 4.0) continue;
                 _shotAt[c] = game.Stats.Seconds;
@@ -511,7 +513,7 @@ public partial class PlaceTest : Node
 
     Wildlife.Creature _hunter, _lastDown;
     int _untold;
-    bool _nothingHere;
+    bool _nothingHere, _awaitTell;
     readonly HashSet<Wildlife.Creature> _warned = new(), _bitBy = new();
 
     /// <summary>Walks up to a hunter that gives tells (held still), wakes the creatures, and stays until it is dealt with.</summary>
@@ -548,9 +550,10 @@ public partial class PlaceTest : Node
             bool ok = false;
             foreach (int x in walk.To(place, near.Value, r => ok = r)) yield return x;
             game.Zone.Wildlife.Frozen = false;
+            _awaitTell = true;
             // A lurker can sit tight behind a wall and never know you are there: then on to the next one.
-            for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead && (t < 1500 || _aimedTells > 0); t++) yield return 0;
-            if (_aimedTells > 0 || _lastDown != null || game.Suit.Dead) yield break;
+            for (int t = 0; t < 3600 && (_lastDown == null || _aimedTells == 0) && !game.Suit.Dead && (t < 1500 || _aimedTells > 0); t++) yield return 0;
+            if (_aimedTells > 0 || game.Suit.Dead) yield break;
             game.Zone.Wildlife.Frozen = true;
             reach = nav.Reachable(walk.Here(place, nav));
         }
@@ -579,7 +582,8 @@ public partial class PlaceTest : Node
             yield break;
         }
         game.Zone.Wildlife.Frozen = false;
-        for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead; t++) yield return 0;
+        _awaitTell = true;
+        for (int t = 0; t < 3600 && (_lastDown == null || _aimedTells == 0) && !game.Suit.Dead; t++) yield return 0;
     }
 
 
@@ -893,7 +897,25 @@ public partial class PlaceTest : Node
         game.Zone.Wildlife.Frozen = true;
         foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         GD.Print("-- a door on a base (SYSTEMS: its wall is set down whole, not built by hand) --");
-        Vector3 ahead = game.Bunker.Ahead(14f);
+        // On level ground along the way through: where it rises past the gate, your head meets the lintel in the doorway.
+        Vector3 ahead = game.Bunker.Ahead(14f), start = game.Survivor.WorldFeet with { Y = 0f };
+        Vector3 forward = (ahead with { Y = 0f } - start).Normalized(), side = forward.Cross(Vector3.Up);
+        float gateHeading = game.Bunker.Heading, rise = float.MaxValue;
+        Vector3 through = new Vector3(-MathF.Sin(gateHeading), 0f, -MathF.Cos(gateHeading));
+        foreach (float d in new[] { 10f, 14f, 18f, 22f })
+            for (float o = -12f; o <= 12f; o += 4f)
+            {
+                Vector3 p = start + forward * d + side * o;
+                float low = float.MaxValue, high = float.MinValue;
+                for (float k = -7f; k <= 8f; k += 1f)
+                {
+                    float g = game.Zone.GroundAt(p.X + through.X * k, p.Z + through.Z * k).Y;
+                    low = MathF.Min(low, g);
+                    high = MathF.Max(high, g);
+                }
+                if (high - low < rise) { rise = high - low; ahead = p; }
+            }
+        GD.Print($"  (the gate stands where the ground rises {rise:F2} m along the way through)");
         ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
         string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
         var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
@@ -906,8 +928,9 @@ public partial class PlaceTest : Node
         Vector3 door = gate.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, new GalHack.Structures.Int3(0, 0, 0)));
         var cell = new GalHack.Structures.Int3(0, 0, 0);
         Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "the built door stands shut with nobody near");
-        Vector3 along = (door - game.Survivor.WorldFeet) with { Y = 0f };
+        Vector3 along = (gate.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, new GalHack.Structures.Int3(0, 0, 1))) - door) with { Y = 0f };
         along = along.Normalized();
+        if (along.Dot(door - game.Survivor.WorldFeet) < 0f) along = -along;
         Vector3 before = door - along * 6f, past = door + along * 7f;
         foreach (int x in drive.WalkTo(before, 1f, 20f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
@@ -916,7 +939,8 @@ public partial class PlaceTest : Node
         Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
         foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.Wait(90)) yield return x;
-        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "and it shuts behind you, solid again");
+        Vector3 walked = game.Survivor.WorldFeet;
+        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), $"and it shuts behind you, solid again ({(walked + Vector3.Up * 0.9f).DistanceTo(door):F1} m off it, walking to {past}, feet {walked}, {game.Doors.Opened} opened, {game.Doors.Shut} shut)");
         var ray = PhysicsRayQueryParameters3D.Create(door - along * 1.5f, door + along * 1.5f, Layers.Hull);
         Check(game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(ray).Count > 0, "the shut leaf collides");
         // E works it too, from reach: walk up, it opens; E shuts it; it stays shut while you stand there.

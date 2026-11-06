@@ -416,12 +416,15 @@ public partial class SliceTest : Node
                 if (_game.Tool.OnTell) { aim = look; break; }
             }
             if (aim == null) continue;
-            string ore = _game.Tool.OreOf(d.Kind).Id;
-            int before = _game.Tool.TellOre, pack = _game.Pack[ore], all = Slice.Player.SurvivalTool.TellPulses * Slice.Player.SurvivalTool.TellOrePerPulse;
+            // The rock the tool is really on: deposits overlap, and digging for ore may have worked it already.
+            Deposit rock = _game.Tool.Tell.Value;
+            string ore = _game.Tool.OreOf(rock.Kind).Id;
+            int left = _game.Tool.TellLeft(rock), before = _game.Tool.TellOre, pack = _game.Pack[ore], all = left * Slice.Player.SurvivalTool.TellOrePerPulse;
             foreach (int x in _drive.HoldPrimary(aim, 600, () => _game.Tool.TellOre - before >= all)) yield return x;
             foreach (int x in _drive.Wait(2)) yield return x;
-            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && !_game.Tool.OnTell,
-                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} {ore} over {Slice.Player.SurvivalTool.TellPulses} pulses, then it digs on through");
+            bool gone = _game.Tool.Tell is not Deposit still || still.X != rock.X || still.Y != rock.Y;
+            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && gone,
+                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} of {all} {ore} over the {left} of {Slice.Player.SurvivalTool.TellPulses} pulses it had left, then it digs on through (still on it: {!gone})");
             yield break;
         }
         GD.Print($"  (no ore rock to aim at among the {rocks.Count} nearest deposits)");
