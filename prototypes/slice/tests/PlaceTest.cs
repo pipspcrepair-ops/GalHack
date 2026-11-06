@@ -426,11 +426,15 @@ public partial class PlaceTest : Node
         // The creatures: up to one of the place's hunters, awake: its tell (grit, a shadow, a scratch,
         // a rattle) comes before it strikes, its wind-up is warned, and it can be shot down and looted.
         foreach (int x in Watched(MeetHunter(game, place, walk, drive))) yield return x;
-        Check(_aimedTells > 0 && _untold == 0,
-            $"met a {_hunter?.Species.CommonName} ({_hunter?.Species.Role}): {_aimedTells} tells aimed at you, the nearest {_nearestTell:F1} m off; {_bites} bites, every creature's first warned before it landed ({_untold} not), health {game.Suit.HealthShare * 100:F0}%");
-        Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
+        if (_hunter == null) GD.Print("  (nothing that hunts in reach here: an empty place, or people keep it clear)");
+        else
+        {
+            Check(_aimedTells > 0 && _untold == 0,
+                $"met a {_hunter?.Species.CommonName} ({_hunter?.Species.Role}): {_aimedTells} tells aimed at you, the nearest {_nearestTell:F1} m off; {_bites} bites, every creature's first warned before it landed ({_untold} not), health {game.Suit.HealthShare * 100:F0}%");
+            Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
+        }
         Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
-        Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+        if (_hunter != null) Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
         game.Zone.Wildlife.Frozen = true;
 
         // And out the way we came.
