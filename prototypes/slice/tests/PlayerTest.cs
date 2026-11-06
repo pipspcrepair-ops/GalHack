@@ -301,6 +301,25 @@ public partial class PlayerTest : Node
 
     // ==== 5 & 6. The survival constructor and the base core ======================================
 
+    /// <summary>Up to the constructor and E on it: at its front, or round another side if the ground stands in the way of the look, as a player would.</summary>
+    IEnumerable<int> OpenFab()
+    {
+        foreach (var (x0, z0) in new[] { (0f, -1.4f), (1.6f, 0f), (-1.6f, 0f), (0f, 1.4f) })
+        {
+            Vector3 stand = _fab.GlobalTransform * new Vector3(x0, 0f, z0);
+            foreach (int x in _play.WalkAround(_fab.GlobalPosition, stand, 2.6f)) yield return x;
+            foreach (int x in _drive.WalkTo(stand, 0.4f, 15f)) yield return x;
+            foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
+            foreach (Vector3 aim in new[] { _fab.Front, _fab.GlobalTransform * new Vector3(0f, 1.1f, 0f) })
+            {
+                foreach (int x in _drive.LookAt(aim, 6)) yield return x;
+                foreach (int x in _drive.Tap(Key.E)) yield return x;
+                foreach (int x in _drive.Wait(2)) yield return x;
+                if (_game.Opened?.Device == _fab) yield break;
+            }
+        }
+    }
+
     IEnumerable<int> SurvivalConstructor()
     {
         GD.Print("-- 5. the suit fabricator makes a survival constructor; set it down --");
@@ -325,13 +344,7 @@ public partial class PlayerTest : Node
 
         GD.Print("-- 6. the base core, made in the survival constructor --");
         // Up to its front, as you would to use it.
-        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
-        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
-        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
-        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
-        foreach (int x in _drive.Wait(2)) yield return x;
+        foreach (int x in OpenFab()) yield return x;
         if (_game.Opened?.Device != _fab)
         {
             bool seen = WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
@@ -346,7 +359,7 @@ public partial class PlayerTest : Node
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
         foreach (int x in _play.CloseMenu()) yield return x;
         // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
+        foreach (int x in _drive.WalkTo(_fab.GlobalTransform * new Vector3(0f, 0f, -1.4f), 0.4f, 15f)) yield return x;
         _game.MachineScreens.Sync();
         MachineScreens.Mounted screen = _game.MachineScreens.Screens.TryGetValue((_fab, Int3.Zero), out var m) ? m : null;
         if (screen != null) foreach (int x in _play.ScreenClick(screen, "order:screen:base-core:1", "screen:down")) yield return x;
@@ -393,12 +406,7 @@ public partial class PlayerTest : Node
         Check(_fab.Storage.Count(smallfab) == 1, "and the small constructor, a block item like the rest, came out of it");
         // Take what it made.
         // Up to its front, as you would to use it.
-        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
-        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
-        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
-        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in OpenFab()) yield return x;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
 
