@@ -1,0 +1,1 @@
+A visual mockup, not a pass/fail test: run windowed (no --position) with tools/godot.ps1-style env: godot --path prototypes/slice res://tests/CorridorMock.tscn -- --seed=91 --role=Prowler --out=DIR. --list prints the candidate creatures.
