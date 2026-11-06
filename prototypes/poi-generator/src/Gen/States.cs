@@ -10,7 +10,7 @@ namespace PoiGenerator.Gen;
 /// power off and leaves a mess, infested lets the Hollow Bloom grow through it, ruined knocks
 /// it apart. None of them touch the protected cells, so the way to the loot stays open.
 /// </summary>
-public static class StateTransforms
+public static partial class StateTransforms
 {
     public static readonly Rgb BloomFlesh = new(0xc8, 0x38, 0x7a);
     public static readonly Rgb BloomBruise = new(0x6a, 0x24, 0x70);
@@ -32,7 +32,8 @@ public static class StateTransforms
             case PoiState.Abandoned:
                 PowerOff(inst);
                 SetDoors(inst, rng, DoorState.Jammed, DoorState.Open);
-                Abandon(inst, rng);
+                if (inst.Extras.Plain.Count > 0) Weathered(inst, rng, 0.05f, walls: false);
+                else Abandon(inst, rng);
                 break;
             case PoiState.Infested:
                 PowerOff(inst);
@@ -41,6 +42,17 @@ public static class StateTransforms
                 break;
             case PoiState.Ruined:
                 PowerOff(inst);
+                if (inst.Extras.Plain.Count > 0)
+                {
+                    // Doors hang on or have gone, one by one.
+                    foreach (var d in inst.Layout.Doorways)
+                    {
+                        bool gone = rng.Chance(0.5f);
+                        foreach (Int3 c in d.Cells) { if (gone) inst.Blocks.Set(c, Block.Air); else inst.Blocks.At(c).Variant = DoorState.Jammed; }
+                    }
+                    Weathered(inst, rng, 0.22f, walls: true);
+                    break;
+                }
                 BlowDoors(inst);
                 Ruin(inst, rng, 0.3f);
                 break;
@@ -92,7 +104,7 @@ public static class StateTransforms
 
     /// <summary>Floor cells inside a module you could stand in right now.</summary>
     public static List<Int3> FloorCells(PoiInstance inst, PlacedModule m, NavGrid nav) =>
-        m.Cells.Where(c => inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LiftAt(c) && !nav.LadderAt(c)).ToList();
+        m.Cells.Where(c => (inst.Blocks.Get(c).IsAir || inst.Blocks.Get(c).Type == BlockType.Plate) && nav.Standable(c) && !nav.LiftAt(c) && !nav.LadderAt(c)).ToList();
 
     static bool NextToWall(PoiInstance inst, Int3 c)
     {
@@ -430,7 +442,8 @@ public static class StateTransforms
     {
         var g = inst.Blocks;
         var anchors = inst.Layout.Extras.InSpace ? LayoutCheck.StationAnchors(inst.Layout) : null;
-        var floating = Structure.Floating(g, inst.Layout.Occupied, anchors);
+        bool solid = inst.Extras.Plain.Count > 0;
+        var floating = Structure.Floating(g, inst.Layout.Occupied, anchors, solid);
         var nav = new NavGrid(g, inst.Layout.Occupied, null, inst.Layout.Extras.InSpace);
         foreach (Int3 p in floating) g.Set(p, Block.Air);
         foreach (Int3 p in floating)
@@ -438,11 +451,11 @@ public static class StateTransforms
             if (!rng.Chance(0.3f)) continue;
             Int3 c = p;
             while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
-            if (g.Get(c).IsAir && !inst.Protected[c] && inst.Layout.Occupied[c] && !g.Get(c + Int3.Down).IsAir)
+            if (g.Get(c).IsAir && !inst.Protected[c] && inst.Layout.Occupied[c] && !g.Get(c + Int3.Down).IsAir && (!solid || BlockInfo.Supports(g.Get(c + Int3.Down).Type)))
                 Put(inst, c, BlockType.Rubble, Material.Rock, g.Get(c + Int3.Down).Color.Scale(0.8f), Role.Debris);
         }
         // Rubble can't hang either.
-        foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied, anchors)) g.Set(p, Block.Air);
+        foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied, anchors, solid)) g.Set(p, Block.Air);
     }
 
     static bool OpenToSky(BlockGrid g, Int3 c)
@@ -462,7 +475,7 @@ public static class StateTransforms
     /// </summary>
     public static void Weather(PoiInstance inst, Rng rng)
     {
-        if (inst.Age != Age.OldWorld || inst.State == PoiState.Active) return;
+        if (inst.Age != Age.OldWorld || inst.State == PoiState.Active || inst.Extras.Plain.Count > 0) return; // a plain ruin has its own weather
         var g = inst.Blocks;
         // Timber rots unless something sturdier roofs it over.
         var rotten = new List<Int3>();
@@ -621,10 +634,30 @@ public static class Structure
     }
 
     /// <summary>
+    /// Whether the ground must be opened at a cell a place occupies. An outer wall is not, at any height:
+    /// open ground beside a carved cell slumps toward it, leaving a curved dip along the wall. Left solid
+    /// (<see cref="OuterWall"/>), the dip falls inside the wall and the ground runs flush up to it.
+    /// </summary>
+    public static bool Carved(BlockGrid g, CellMask occupied, Int3 c) => occupied[c] && !OuterWall(g, occupied, c);
+
+    /// <summary>A course of an outer wall with more wall above it: the ground it stands in comes right up to it, and into it.</summary>
+    public static bool OuterWall(BlockGrid g, CellMask occupied, Int3 c)
+    {
+        if (!occupied[c] || !BlockInfo.IsFullCube(g.Get(c).Type) || !BlockInfo.IsFullCube(g.Get(c + Int3.Up).Type)) return false;
+        foreach (Dir d in Dirs.Horizontal)
+            if (!occupied[c + d.Vec()]) return true;
+        return false;
+    }
+
+    /// <summary>
     /// Every block not joined (face to face, through other blocks) to the ground. Blocks below
     /// ground level that touch rock count as grounded.
     /// </summary>
-    public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null)
+    /// <summary>Building fabric, which holds up what joins it. Rubble, furniture and weeds only rest on what is under them.</summary>
+    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail;
+
+    /// <param name="solidOnly">Only fabric holds others up, and a thin thing (a floor plate, a weed) only rests on what is under it; a wall stub standing on a floor plate is still floating.</param>
+    public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null, bool solidOnly = false)
     {
         bool space = anchors != null;
         var nav = new NavGrid(g, occupied, null, space);
@@ -637,7 +670,7 @@ public static class Structure
             if (!anchor)
                 foreach (Dir d in Dirs.All)
                     if (nav.IsRock(p + d.Vec())) { anchor = true; break; }
-            if (!anchor) continue;
+            if (!anchor || solidOnly && !Holds(g.Get(p).Type)) continue;
             grounded[p] = true;
             queue.Enqueue(p);
         }
@@ -647,14 +680,19 @@ public static class Structure
             foreach (Dir d in Dirs.All)
             {
                 Int3 q = p + d.Vec();
-                if (!g.InBounds(q) || grounded[q] || g.Get(q).IsAir) continue;
+                if (!g.InBounds(q) || grounded[q] || g.Get(q).IsAir || solidOnly && !Holds(g.Get(q).Type)) continue;
                 grounded[q] = true;
                 queue.Enqueue(q);
             }
         }
         var floating = new List<Int3>();
-        foreach (var (p, _) in g.Blocks())
-            if (!grounded[p]) floating.Add(p);
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (grounded[p]) continue;
+            // A thin thing rests on what is under it, a door hangs in the wall beside it.
+            if (solidOnly && !Holds(b.Type) && (nav.IsRock(p + Int3.Down) || grounded[p + Int3.Down] || b.Type == BlockType.Door && Dirs.Horizontal.Any(d => grounded[p + d.Vec()]))) continue;
+            floating.Add(p);
+        }
         return floating;
     }
 }

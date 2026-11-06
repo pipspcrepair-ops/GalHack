@@ -49,7 +49,8 @@ public sealed partial class PlanetWorld
 
     /// <summary>
     /// Trees felled on this planet, by scatter id (<see cref="Terrain.FarBuilder.ScatterId"/>): gone
-    /// at every level of detail, through streaming, saves and loads, as terrain edits are.
+    /// at every level of detail, through streaming, saves and loads, as terrain edits are. Broken ore
+    /// tell rocks keep their (negative) ids here too.
     /// </summary>
     public readonly HashSet<long> Felled = new();
 
@@ -133,6 +134,9 @@ public sealed partial class PlanetWorld
         PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, ref around);
         var source = new PlanetTerrainSource(map, stamps, anchors);
         FinishAround(spec, source, pois, around);
+        // What stands off a place's footprint goes by the real ground, now that it's known.
+        foreach (PoiSite p in pois)
+            PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
         return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
     }
 

@@ -21,6 +21,7 @@ public partial class DecoPlanView : Node3D
         {
             var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
             DecoNode n = DecoNode.Create(cache, pl.Look, at, collide, lights);
+            n.Placement = pl;
             view.Nodes.Add(n);
             view.AddChild(n);
         }

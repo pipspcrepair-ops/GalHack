@@ -478,64 +478,6 @@ program cathedral
   rooms deepest vault! cryo-bay
   fill chapel archive
 
-# ---- flavour: small ruins along the roads, not places of their own (planet surface FlavourRuins) ------
-
-# A house by the road: kitchen and rooms below, bedrooms above, a cellar under it. One program per
-# tech level's materials (timber, brick and concrete, composite); the farmhouse's plan, smaller.
-program cottage_timber
-  name House
-  shapes rect
-  plans spine 2 enfilade 3 jog 1
-  basement same 1
-  style miningtown
-  width 16 18
-  depth 16
-  floors 1 2
-  levels 1 1
-  windows 0.5
-  secrets 0 0
-  rooms ground farm-kitchen! quarters storage
-  rooms upper quarters washroom
-  rooms basement cellar!
-  rooms deepest cellar
-  fill quarters storage
-
-program cottage_brick
-  name House
-  shapes rect
-  plans spine 2 enfilade 3 jog 1
-  basement same 1
-  style concrete
-  width 16 18
-  depth 16
-  floors 1 2
-  levels 1 1
-  windows 0.5
-  secrets 0 0
-  rooms ground farm-kitchen! quarters storage
-  rooms upper quarters washroom
-  rooms basement cellar!
-  rooms deepest cellar
-  fill quarters storage
-
-program cottage_composite
-  name House
-  shapes rect
-  plans spine 2 enfilade 3 jog 1
-  basement same 1
-  style meridian
-  width 16 18
-  depth 16
-  floors 1 2
-  levels 1 1
-  windows 0.6
-  secrets 0 0
-  rooms ground farm-kitchen! quarters storage
-  rooms upper quarters washroom
-  rooms basement cellar!
-  rooms deepest cellar
-  fill quarters storage
-
 # A shed: one long room, a workbench and whatever was left in it.
 program shed
   name Shed

@@ -13,6 +13,8 @@ namespace GalHack.Deco.Engine;
 public partial class DecoNode : Node3D
 {
     public DecoLook Look { get; private set; }
+    /// <summary>The placement it was made for, when a plan view made it.</summary>
+    public DecoPlacement Placement;
     public MeshInstance3D MeshInstance { get; private set; }
     public StaticBody3D Body { get; private set; }
     readonly List<OmniLight3D> _lights = new();

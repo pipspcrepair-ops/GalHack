@@ -56,6 +56,8 @@ public enum BlockType : byte
     Bench,      // a lab or work bench
     Tank,       // a vertical tank or drum
     Statue,     // a carved figure (temples, plazas)
+    Pump,       // a fuel pump on a forecourt
+    Plate,      // a thin slab laid on the ground: boards, a path, a painted line; never blocks
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
@@ -120,7 +122,7 @@ public static class BlockInfo
     {
         BlockType.Air or BlockType.Door or BlockType.Scorch or BlockType.Scatter or BlockType.Tendril
             or BlockType.Plant or BlockType.Vine or BlockType.Ash or BlockType.Remains
-            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable => false,
+            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable or BlockType.Plate => false,
         _ => true,
     };
 

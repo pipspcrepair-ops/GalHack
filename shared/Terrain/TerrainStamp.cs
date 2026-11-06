@@ -40,6 +40,15 @@ public sealed class TerrainStamp
     readonly int _carveX, _carveY, _carveZ, _carveW, _carveH, _carveD;
     readonly bool[] _carve;
 
+    /// <summary>
+    /// Same box as the carve: cells left solid inside a building's outer walls. The ground runs into them,
+    /// but only just (<see cref="WallDensity"/>), so its surface stays inside the wall, behind the room's own face.
+    /// </summary>
+    public bool[] Walls { get; init; }
+
+    /// <summary>The most a wall cell's density reaches: the surface toward an opened room lies well inside the wall, at any depth.</summary>
+    public const float WallDensity = 0.15f;
+
     public TerrainStamp(string name, int minX, int minZ, int maxX, int maxZ, int padY, float apron, float blend,
         double planetWidth, double planetHeight, int carveX = 0, int carveY = 0, int carveZ = 0, int carveW = 0, int carveH = 0, int carveD = 0, bool[] carve = null)
     {
@@ -114,6 +123,18 @@ public sealed class TerrainStamp
         int lz = (int)Math.Floor(Wrap(z - _carveZ + 0.5 - _carveD * 0.5, _height) + _carveD * 0.5);
         if ((uint)lx >= (uint)_carveW || (uint)lz >= (uint)_carveD) return false;
         return _carve[(ly * _carveD + lz) * _carveW + lx];
+    }
+
+    /// <summary>Whether a cell is ground inside a building's outer wall.</summary>
+    public bool IsWall(int x, int y, int z)
+    {
+        if (Walls == null) return false;
+        int ly = y - _carveY;
+        if ((uint)ly >= (uint)_carveH) return false;
+        int lx = (int)Math.Floor(Wrap(x - _carveX + 0.5 - _carveW * 0.5, _width) + _carveW * 0.5);
+        int lz = (int)Math.Floor(Wrap(z - _carveZ + 0.5 - _carveD * 0.5, _height) + _carveD * 0.5);
+        if ((uint)lx >= (uint)_carveW || (uint)lz >= (uint)_carveD) return false;
+        return Walls[(ly * _carveD + lz) * _carveW + lx];
     }
 
     /// <summary>Lowest world y any carved cell reaches, or <see cref="PadY"/> when nothing is carved.</summary>

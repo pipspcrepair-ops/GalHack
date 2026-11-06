@@ -118,34 +118,34 @@ public sealed class StartTown
         town.Under = UnderTown.Reserve(town, profile, PoiGenerator.Gen.Hash.Combine(seed, 0x5E3EUL));
         var reserved = town.Under?.Reserved ?? new List<(int A0, int A1, int U0, int U1)>();
 
-        // Houses along the streets, set back from the kerb, both sides, a shed now and then.
-        FamilyDef house = lib.Families.FirstOrDefault(f => f.Id == "flavour_house"), shed = lib.Families.FirstOrDefault(f => f.Id == "flavour_shed");
+        // Shops along the main street, houses along the rest, set back from the kerb, both sides, a shed now and then.
+        FamilyDef house = lib.Families.FirstOrDefault(f => f.Id == "flavour_house"), shed = lib.Families.FirstOrDefault(f => f.Id == "flavour_shed"), shop = lib.Families.FirstOrDefault(f => f.Id == "flavour_shop");
         if (house != null)
         {
-            string tag = WorldProfile.Tag(profile.Before);
-            int variant = (house.Variants.FirstOrDefault(v => v.Tech == tag) ?? house.Variants[0]).Index;
-            Layout layout = FlavourRuins.LayoutFor(lib, house, variant), shedLayout = shed != null ? FlavourRuins.LayoutFor(lib, shed, 0) : null;
+            InfraRoute main = town.Streets.FirstOrDefault();
             foreach (InfraRoute s in town.Streets)
-                for (int i = 3; i + 3 < s.Count; i += 6)
+                for (int i = 4; i + 4 < s.Count; i += 9)
                     foreach (int side in new[] { -1, 1 })
                     {
                         double dx = s.X[i + 1] - s.X[i - 1], dz = s.Z[i + 1] - s.Z[i - 1], len = Math.Sqrt(dx * dx + dz * dz);
                         if (len < 1e-6) continue;
-                        bool isShed = shedLayout != null && rng.Chance(0.12f);
-                        Layout lot = isShed ? shedLayout : layout;
+                        double nx = -dz / len * side, nz = dx / len * side;
+                        Dir front = FlavourRuins.Facing(-nx, -nz);
+                        FamilyDef type = s == main && shop != null && rng.Chance(0.75f) ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
+                        Layout lot = FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.Salts));
                         // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
                         double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;
                         double clear = s.HalfWidth + half + 2;
-                        double nx = -dz / len * side, nz = dx / len * side;
-                        double lotX = s.X[i] + nx * (clear + 1), lotZ = s.Z[i] + nz * (clear + 1);
+                        double lotX = s.X[i] + nx * (clear + 2), lotZ = s.Z[i] + nz * (clear + 2);
                         double la = Mathx.WrapDelta(lotX - bx, w) * ux + Mathx.WrapDelta(lotZ - bz, h) * uz, lu = Mathx.WrapDelta(lotX - bx, w) * sx + Mathx.WrapDelta(lotZ - bz, h) * sz;
                         double reach = Math.Max(lot.Occupied.Size.X, lot.Occupied.Size.Z) * 0.5 + 2;
                         if (reserved.Any(k => la + reach > k.A0 && la - reach < k.A1 && lu + reach > k.U0 && lu - reach < k.U1)) continue;
-                        FlavourRuin r = FlavourRuins.Try(lib, isShed ? shed : house, lot, lotX, lotZ, bare, net, pois, ruins, w, h, rng,
-                            spacing: 3, maxCut: 8f, clearance: clear);
+                        FlavourRuin r = FlavourRuins.Try(lib, type, lot, lotX, lotZ, bare, net, pois, ruins, w, h, rng,
+                            spacing: 0, maxCut: 8f, clearance: clear);
                         if (r == null) continue;
                         r.Route = s;
                         r.State = PoiState.Ruined;
+                        FlavourRuins.Connect(r, s, 1.6f, GalHack.Terrain.StampSurface.Gravel, bare, w, h);
                         ruins.Add(r);
                         town.Houses.Add(r);
                     }

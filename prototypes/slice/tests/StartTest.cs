@@ -130,6 +130,16 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
+        Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
+        // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
+        if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
+        {
+            int count = game.Places.SalvageSites.Count();
+            Godot.CollisionObject3D body = wreck.Body;
+            for (int k = 0; k < 40 && !wreck.Empty; k++) game.Places.Work(wreck, wreck.HitPoints);
+            yield return 0;
+            Check(wreck.Empty && game.Places.SalvageSites.Count() == count - 1 && !Godot.GodotObject.IsInstanceValid(body), $"{world}: a wreck comes apart under the tool ({count} to salvage round the start) and is gone");
+        }
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Wildlife.Frozen = true;
         var drive = new Driver(game);

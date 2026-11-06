@@ -27,8 +27,8 @@ public partial class InfraLayer
 
     /// <summary>
     /// A patch of the underground: its blocks meshed by the POI generator's mesher, with collision.
-    /// The patch's cells sit below the mesher's ground level in its own frame, so faces against
-    /// anything the network doesn't occupy are culled: the terrain is the rock round it.
+    /// The patch's cells sit below the mesher's ground level in its own frame; every face is drawn,
+    /// so digging in from the rock round it meets a wall you can see.
     /// </summary>
     sealed class UnderPiece : Piece
     {
@@ -69,7 +69,7 @@ public partial class InfraLayer
             MeshOptions Options(Func<PInt3, bool> only) => new()
             {
                 Doors = true, Collision = true, Detail = true, Rock = true, Only = only,
-                RockMin = new PInt3(1, 0, 1), RockMax = new PInt3(0, 0, 0), RockBottom = lo.Y,
+                RockMin = new PInt3(1, 0, 1), RockMax = new PInt3(0, 0, 0), RockBottom = lo.Y, GroundShow = MeshOptions.AllGround,
             };
             List<ChunkMesh> dark = Mesher.Build(grid, mask, Options(c => !Outdoors(c)));
             List<ChunkMesh> lit = Mesher.Build(grid, mask, Options(Outdoors));

@@ -168,12 +168,13 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 
 Each road site lies on a straight, nearly level stretch with its lane down the road's centre line, so the way stays open, and none stands on a place's pad. The vehicles are the library's pieces with collision. `WreckSite` and the dressed plan's placements are what the slice's survival tool can salvage.
 
-**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are lots of abandoned houses, farmsteads, sheds and wayside stops that aren't places of their own.
-- Most stand along the roads and tracks, set back from the verge; some are out in the countryside, more of them on farming worlds.
-- They come from four small architect families (`flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside`, data in the POI generator), at the world's pre-collapse tech level: timber, brick and concrete, or composite.
-- Each gets a small pad of its own, laid before the roads. None stands on a road bed, a place's pad or another ruin.
-- A ruin is spawned from its own seed when its tile comes near, with the POI generator's century of decay: timber fallen in unless sheltered, shells of concrete and stone, trees through.
-- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of.
+**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are small ruins that aren't places of their own, few enough to mean something: long empty stretches of road, then a reason to leave it.
+- Houses stand together along a street laid off a junction or on the way into a town, with shops at its road end. The stop on the road stands right on a highway or at a crossroads, open to it, and each age kept its own: a coaching inn or a cart stop on a low-tech world, a petrol station or truck stop on a mid-tech one, a charging and fuel-cell depot with grav vehicles in mind on a high-tech one, and now and then a waystone nobody here built. A farmstead lies out in the fields with a track to it. A shed or a lone house turns up now and then.
+- Each lot is turned to face its road and joined to it by `FlavourRuin.Drive`, a road stamp of its own (a gravel drive, a farm track, a concrete apron). No road marking runs on to a wall.
+- The buildings are drawn by hand (`Homes.cs` in the POI generator), at real size against a 1.8 m person, on the player's 2 m lattice and in the player's shapes, in `flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside` and `flavour_shop`, at the world's pre-collapse tech level.
+- Each gets a small pad of its own, laid before the roads, and no cell below it: the ground runs flush up to the walls. None stands on a road bed, a place's pad or another ruin.
+- A ruin is spawned from its own seed when its tile comes near, and decays believably (`PlainRuin.cs`): holes through the roof, a stretch of wall gone, rubble where it fell, nothing left hanging, chimneys and foundations standing, weeds last on what's left. No block trees.
+- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of. In the slice, `RuinLoot` opens its caches.
 
 **Ore tells.** Every deposit shows in the ground over it (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`):
 - a deposit breaking the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with the ore's colour in its veins);
@@ -218,7 +219,7 @@ Screenshot views:
 - `infra:<town|sewer|drain|metro|culvert>:<archetype>[:<seed>]` frames a start world's ruined town and what runs under it, with a torch at the eye underground.
 - `infra:<crossing|padwater|portal|portalfar>:<archetype>[:<seed>]`: a road over a river, a place beside water, a tunnel mouth from the road and from 300 m off.
 - `infra:at:<archetype>:<seed>:<x>:<z>:<back>:<up>[:<bearing>[:start]]` looks at a point on the map.
-- `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
+- `infra:<house|farmstead|shed|wayside|shop|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
 - `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
 ### Integration (the slice)

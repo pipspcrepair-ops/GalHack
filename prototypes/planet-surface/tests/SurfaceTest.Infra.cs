@@ -51,6 +51,403 @@ public partial class SurfaceTest
     // ---- the infrastructure -----------------------------------------------------------------
 
     /// <summary>Not part of the gate (--only=InfraScan): lists seeds' networks, to find views for screenshots.</summary>
+    /// <summary>
+    /// Nothing floats, on fresh worlds: what stands off a place's footprint sits on the real ground, ruins'
+    /// yards too; every ore tell has its rim in the ground; scattered rocks and stems keep their feet in it.
+    /// </summary>
+    async Task GroundedChecks()
+    {
+        int blocks = 0, hovering = 0, sunk = 0, tells = 0, tellsOff = 0, flora = 0, floraOff = 0;
+        string first = "";
+        void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
+        var rand = new Random();
+        var kinds = new[] { Archetype.Temperate, Archetype.Arid };
+        foreach (Archetype kind in kinds)
+        {
+            ulong seed = (ulong)rand.NextInt64();
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
+            float Ground(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            void Blocks(PoiInstance inst, double ox, int oy, double oz, string name)
+            {
+                foreach (var (c, b) in inst.Blocks.Blocks())
+                {
+                    if (inst.Layout.Occupied[c] || c.Y < -1 || !BlockInfo.Collides(b.Type) && b.Type != BlockType.Plant) continue;
+                    // A gantry's members are held by each other (Structure.Floating has those): here, what meets the ground.
+                    if (c.Y > 0 && b.Role is not (Role.Debris or Role.Prop)) continue;
+                    if (b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door or Role.Decor or Role.Growth) continue;
+                    if (inst.Blocks.Get(c + PoiGenerator.Gen.Int3.Down).Type != BlockType.Air) continue; // on what's below it
+                    if (inst.Layout.Occupied[c + PoiGenerator.Gen.Int3.Down]) continue;
+                    blocks++;
+                    float over = oy + c.Y - Ground(ox + c.X + 0.5, oz + c.Z + 0.5);
+                    if (over > 0.1f) { hovering++; Note($"{name}: {b} {over:F2} m over the ground at {c}"); }
+                    if (over < -2.2f) sunk++;
+                }
+            }
+            foreach (PoiSite p in w.Pois) Blocks(p.Instance, p.Origin.X, p.Origin.Y, p.Origin.Z, p.Name);
+            foreach (PlanetSurface.Infra.FlavourRuin r in (w.Infra?.Ruins ?? new List<PlanetSurface.Infra.FlavourRuin>()).Take(16))
+                Blocks(r.Spawn(w.Profile, w.Source), r.OriginX, r.OriginY, r.OriginZ, r.Family.Id);
+            // Ore tells: seated on the slope, no rim over the ground.
+            var b = new PlanetSurface.Infra.TileBuilder(w, 0, 0);
+            foreach (Deposit d in w.Map.Deposits.InRect(0, 0, w.Width, w.Height))
+            {
+                if (tells >= 800 * (Array.IndexOf(kinds, kind) + 1)) break;
+                if (w.Source.StampWeight(d.X, d.Y) > 0f || w.Source.WaterSurfaceAt(d.X, d.Y, out _)) continue;
+                float r = PlanetTerrainSource.OreRadius(d);
+                var seat = b.Seat(d.X, d.Y, r);
+                tells++;
+                for (int k = 0; k < 8; k++)
+                {
+                    var rim = new System.Numerics.Vector3(MathF.Cos(k * MathF.PI / 4f) * r, 0, MathF.Sin(k * MathF.PI / 4f) * r);
+                    var at = System.Numerics.Vector3.Transform(rim, seat);
+                    double wx = at.X + b.OriginX, wz = at.Z + b.OriginZ;
+                    if (at.Y > Ground(wx, wz) + 0.1f) { tellsOff++; Note($"an ore tell's rim {at.Y - Ground(wx, wz):F2} m over the ground at {wx:F0}, {wz:F0}"); break; }
+                }
+            }
+            // Scatter: a far chunk's worth at a time, in rough ground.
+            int before = flora;
+            for (int k = 0; k < 120 && (k < 24 || flora - before < 400); k++)
+            {
+                var job = new FarJob { Fx = rand.Next(FarBuilder.Count(w.Terrain.Width) - 1), Fz = rand.Next(FarBuilder.Count(w.Terrain.Height) - 1), Lod = 0 };
+                FarBuilder.Build(job, w.Source, w.Palette, null, null);
+                foreach (var (kindOf, buffer, count) in job.Flora)
+                    for (int i = 0; i < count; i++)
+                    {
+                        int o = i * 16;
+                        double x = job.Fx * (double)FarBuilder.Size + buffer[o + 3], z = job.Fz * (double)FarBuilder.Size + buffer[o + 11];
+                        float scale = new Vector3(buffer[o + 1], buffer[o + 5], buffer[o + 9]).Length(), y = buffer[o + 7];
+                        float foot = FarBuilder.FootRadius(kindOf) * scale * 0.7f, low = float.MaxValue;
+                        bool rock = kindOf is Planets.Look.Flora.Rock or Planets.Look.Flora.LavaRock;
+                        // A rock lies along the slope: its middle stays in the ground.
+                        if (rock) low = Ground(x, z) + 0.2f;
+                        else
+                            for (int a = 0; a < 4; a++) low = MathF.Min(low, Ground(x + MathF.Cos(a * MathF.PI / 2f) * foot, z + MathF.Sin(a * MathF.PI / 2f) * foot));
+                        flora++;
+                        if (y > low) { floraOff++; Note($"{kindOf} {y - low:F2} m over the ground at {x:F0}, {z:F0}"); }
+                    }
+            }
+            await Frames(1);
+        }
+        Check(hovering == 0 && blocks > 20, $"what stands off a place's footprint sits on the real ground: {blocks} blocks, {hovering} over it, {sunk} buried deep{first}");
+        Check(tellsOff == 0 && tells > 500, $"ore tells lie on the slope with no rim over the ground: {tells} tells, {tellsOff} off it{first}");
+        Check(floraOff == 0 && flora > 500, $"rocks and stems keep their feet in the ground on a slope: {flora} checked, {floraOff} off it{first}");
+    }
+
+    /// <summary>
+    /// Ground meets a wall flush: the surface a hand's width off a wall stands where it does a stride off,
+    /// on every wall that meets the ground (half-buried ruins' too). A dip along the foot of a wall is
+    /// the open ground slumping toward a cell carved out of it.
+    /// </summary>
+    async Task FlushChecks()
+    {
+        int walls = 0, dips = 0;
+        float worst = 0f;
+        string first = "";
+        var rand = new Random();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            TerrainDigging.Terrain.ChunkStore store = w.Terrain.Store;
+            float Top(float x, float z, float from)
+            {
+                for (float y = from + 4f; y > from - 6f; y -= 0.1f)
+                    if (store.SampleDensity(new System.Numerics.Vector3(x, y, z)) > 0f) return y;
+                return float.NegativeInfinity;
+            }
+            void Walls(PoiInstance inst, int ox, int oy, int oz, string name)
+            {
+                int taken = 0;
+                foreach (var (c, b) in inst.Layout.Blocks.Blocks())
+                {
+                    if (taken >= 60) break;
+                    if (!BlockInfo.IsFullCube(b.Type) || !BlockInfo.IsFullCube(inst.Layout.Blocks.Get(c + PoiGenerator.Gen.Int3.Up).Type) || c.Y != 0) continue;
+                    foreach (Dir d in Dirs.Horizontal)
+                    {
+                        var v = d.Vec();
+                        PoiGenerator.Gen.Int3 n = c + v;
+                        if (inst.Layout.Occupied[n] || !inst.Blocks.Get(n).IsAir || !inst.Blocks.Get(n + PoiGenerator.Gen.Int3.Down).IsAir) continue;
+                        if (inst.Layout.Occupied[c + PoiGenerator.Gen.Int3.Up * 2 + v] || Dirs.Horizontal.Any(e => n + e.Vec() != c && inst.Layout.Occupied[n + e.Vec()])) continue; // an inside corner
+                        float fx = ox + c.X + 0.5f + v.X * 0.5f, fz = oz + c.Z + 0.5f + v.Z * 0.5f;
+                        float near = Top(fx + v.X * 0.3f, fz + v.Z * 0.3f, oy), far = Top(fx + v.X * 1.5f, fz + v.Z * 1.5f, oy);
+                        if (float.IsInfinity(near) || float.IsInfinity(far)) continue;
+                        walls++;
+                        taken++;
+                        float dip = far - near;
+                        worst = MathF.Max(worst, dip);
+                        if (dip > 0.4f)
+                        {
+                            dips++;
+                            if (first.Length == 0) first = $" (first: {name} at {c}: {dip:F2} m)";
+                        }
+                        break;
+                    }
+                }
+            }
+            foreach (PoiSite p in w.Pois) Walls(p.Instance, p.Origin.X, p.Origin.Y, p.Origin.Z, p.Name);
+            foreach (PlanetSurface.Infra.FlavourRuin r in (w.Infra?.Ruins ?? new List<PlanetSurface.Infra.FlavourRuin>()).Take(16))
+                Walls(r.Spawn(w.Profile, w.Source), r.OriginX, r.OriginY, r.OriginZ, r.Family.Id);
+            await Frames(1);
+        }
+        Check(dips == 0 && walls > 200, $"ground meets walls flush: {walls} walls, {dips} with a dip along the foot, the worst {worst:F2} m{first}");
+    }
+
+    /// <summary>
+    /// Nothing underground breaks the surface by accident, on fresh worlds: the top of the ground is solid
+    /// over caves, sewers and tunnels everywhere but at a mouth; and mouths stand where the land calls
+    /// for them, open to the air, roofed, and leading somewhere you can walk.
+    /// </summary>
+    async Task CaveChecks()
+    {
+        int columns = 0, holes = 0, mouths = 0, shut = 0, unroofed = 0, open = 0;
+        var kinds = new Dictionary<string, int>();
+        string first = "";
+        var rand = new Random();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            PlanetTerrainSource s = w.Source;
+            foreach (CaveMouth m in s.CaveMouths(0, 0, w.Width, w.Height))
+            {
+                mouths++;
+                kinds[m.Kind] = kinds.GetValueOrDefault(m.Kind) + 1;
+                var inner = m.Path[^2];
+                double ix = m.X + inner.X, iz = m.Z + inner.Z;
+                if (s.CellDensity((int)Math.Floor(m.X + m.DirX * 3), (int)Math.Floor(m.Y + 1f), (int)Math.Floor(m.Z + m.DirZ * 3)) > 0f
+                    || s.CellDensity((int)Math.Floor(ix), (int)Math.Floor(m.Y + inner.Y), (int)Math.Floor(iz)) > 0f) { shut++; if (first.Length == 0) first = $" (first: a {m.Kind} mouth shut at {m.X:F0}, {m.Z:F0})"; }
+                if (s.SurfaceHeight(ix, iz) < m.Y + inner.Y + inner.R + 1f) unroofed++;
+            }
+            for (int k = 0; k < 6000; k++)
+            {
+                // A cell's middle: on a cliff the ground a metre away is metres off.
+                double x = Math.Floor(rand.NextDouble() * w.Width) + 0.5, z = Math.Floor(rand.NextDouble() * w.Height) + 0.5;
+                float h = s.SurfaceHeight(x, z);
+                if (h < 3f || s.StampWeight(x, z) > 0f || s.WaterSurfaceAt(x, z, out _)) continue;
+                int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z), y = (int)Math.Floor(h - 1.2f);
+                columns++;
+                if (s.CellDensity(cx, y, cz) > 0f) continue;
+                bool atMouth = false;
+                foreach (CaveMouth m in s.CaveMouths(x - 70, z - 70, x + 70, z + 70))
+                    foreach (var p in m.Path)
+                        atMouth |= Math.Abs(Mathx.WrapDelta(x - m.X - p.X, w.Width)) < p.R + 5 && Math.Abs(Mathx.WrapDelta(z - m.Z - p.Z, w.Height)) < p.R + 5;
+                if (atMouth) { open++; continue; }
+                holes++;
+                if (first.Length == 0) first = $" (first: an open hole at {x:F0}, {z:F0}, ground {h:F1})";
+            }
+            // What runs under a town is covered too, where it isn't meant to see the sky.
+            if (w.Infra?.Town?.Under?.Built is { } built)
+                foreach (PoiGenerator.Gen.Int3 c in built.Open)
+                {
+                    if (built.Daylight.Contains(c)) continue;
+                    columns++;
+                    if (s.SurfaceHeight(Mathx.WrapX(c.X + 0.5, w.Width), Mathx.Wrap(c.Z + 0.5, w.Height)) < c.Y + 1.5f)
+                    {
+                        holes++;
+                        if (first.Length == 0) first = $" (first: the underground breaks the surface at {c})";
+                    }
+                }
+            await Frames(1);
+        }
+        Check(holes == 0 && columns > 3000, $"nothing underground breaks the surface by accident: {columns} columns, {holes} holes, {open} at mouths{first}");
+        Check(shut == 0 && unroofed == 0 && mouths >= 12 && kinds.Count >= 2, $"cave mouths in sensible spots: {mouths} ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}), {shut} shut, {unroofed} without a roof{first}");
+    }
+
+    /// <summary>What stands on the land is built as far out as the land's far rings show its pads, corners included.</summary>
+    Task ReachChecks()
+    {
+        float rings = (TerrainStreamer.FarRadius + 1) * FarBuilder.Size * MathF.Sqrt(2f);
+        Check(PlanetSurface.Infra.InfraLayer.Radius + PlanetSurface.Infra.InfraLayer.TileSize >= rings, $"buildings load before their pads show: tiles reach {PlanetSurface.Infra.InfraLayer.Radius:F0} m, the far rings {rings:F0} m");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Railways on fresh worlds sweep: no curve tighter than the rule, no line over itself, a gentle grade,
+    /// straights the longest part of them, and each runs from a place to a place.
+    /// </summary>
+    async Task RailChecks()
+    {
+        int lines = 0, sharp = 0, crossed = 0, steep = 0, unended = 0, worlds = 0;
+        var drops = new Dictionary<string, int>();
+        double metres = 0, straight = 0, tightest = double.MaxValue;
+        string first = "";
+        var rand = new Random();
+        for (int k = 0; k < 8 && lines < 6; k++)
+        {
+            var kind = k % 2 == 0 ? Archetype.Temperate : Archetype.Arid;
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            worlds++;
+            if (w.Infra != null) foreach (string why in w.Infra.RailDrops) drops[why] = drops.GetValueOrDefault(why) + 1;
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind == RouteKind.Rail))
+            {
+                lines++;
+                if (r.From == null || r.To == null) unended++;
+                metres += r.Length;
+                for (int i = 10; i + 10 < r.Count; i++)
+                {
+                    // The circle through three points 40 m apart.
+                    double ax = r.X[i - 10], az = r.Z[i - 10], bx = r.X[i], bz = r.Z[i], cx = r.X[i + 10], cz = r.Z[i + 10];
+                    double area = Math.Abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) * 0.5;
+                    double ab = Math.Sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az)), bc = Math.Sqrt((cx - bx) * (cx - bx) + (cz - bz) * (cz - bz)), ca = Math.Sqrt((ax - cx) * (ax - cx) + (az - cz) * (az - cz));
+                    double radius = area < 1e-4 ? 1e9 : ab * bc * ca / (4 * area);
+                    tightest = Math.Min(tightest, radius);
+                    if (radius > 2000) straight += InfraNetwork.Spacing;
+                    if (radius < InfraNetwork.RailRadiusLeast * 0.9)
+                    {
+                        sharp++;
+                        if (first.Length == 0) first = $" (first: {radius:F0} m radius at {bx:F0}, {bz:F0})";
+                    }
+                }
+                for (int i = 0; i + 1 < r.Count; i++)
+                    if (Math.Abs(r.Y[i + 1] - r.Y[i]) > InfraNetwork.Spacing * 0.042f) steep++;
+                var cells = new Dictionary<(int, int), int>();
+                for (int i = 0; i < r.Count; i += 2)
+                {
+                    var key = ((int)Math.Floor(r.X[i] / 8), (int)Math.Floor(r.Z[i] / 8));
+                    if (cells.TryGetValue(key, out int seen) && i - seen > 16) { crossed++; break; }
+                    cells[key] = i;
+                }
+            }
+            await Frames(1);
+        }
+        Check(lines > 0 && sharp == 0 && crossed == 0 && steep == 0 && unended == 0 && straight > metres * 0.4,
+            $"railways sweep: {lines} lines on {worlds} worlds, {metres / 1000:F1} km, {straight / Math.Max(1, metres):P0} straight, tightest curve {Math.Min(tightest, 1e6):F0} m, {sharp} sharp points, {crossed} over themselves, {steep} steep stretches, {unended} not ending at a place; dropped: {string.Join(", ", drops.Select(d => $"{d.Value} {d.Key}"))}{first}");
+    }
+
+    /// <summary>Pylons on fresh worlds: 30 to 50 m tall, striding on their own straight legs rather than along a road, and pylons and poles alike solid.</summary>
+    async Task PylonChecks()
+    {
+        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0;
+        var rand = new Random();
+        for (int k = 0; k < 6 && pylons < 60; k++)
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+            PowerLines power = w.Infra?.Power;
+            if (power == null) continue;
+            foreach (PowerPole p in power.Poles)
+            {
+                if (!p.Pylon)
+                {
+                    poles++;
+                    continue;
+                }
+                pylons++;
+                if (p.Tall < 30f || p.Tall > 50f) wrongHeight++;
+                if (w.Infra.Nearest(p.X, p.Z, 40, out _, out _) != null) byRoad++;
+            }
+            foreach (var (first, last) in power.Legs)
+            {
+                legs++;
+                for (int i = first + 1; i < last; i++)
+                {
+                    PowerPole a = power.Poles[i - 1], b = power.Poles[i], c = power.Poles[i + 1];
+                    double ux = b.X - a.X, uz = b.Z - a.Z, vx = c.X - b.X, vz = c.Z - b.Z;
+                    double cos = (ux * vx + uz * vz) / Math.Max(1e-6, Math.Sqrt(ux * ux + uz * uz) * Math.Sqrt(vx * vx + vz * vz));
+                    stretches++;
+                    if (cos < Math.Cos(Mathf.DegToRad(20))) turns++;
+                }
+            }
+            spanned += power.Wires.Count(wire => wire.Spanned && power.Poles[wire.A].Pylon);
+            // Solid: each emits collision into its tile.
+            var pieces = PlanetSurface.Infra.InfraLayer.Plan(w);
+            int tested = 0;
+            foreach (var piece in pieces.Values.SelectMany(l => l).Where(p => p.GetType().Name == "PolePiece"))
+            {
+                if (tested++ >= 40) break;
+                var b = new PlanetSurface.Infra.TileBuilder(w, 0, 0);
+                piece.Emit(b);
+                if (b.Collision.Count == 0) hollow++;
+            }
+            await Frames(1);
+        }
+        Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
+            $"pylons stride on their own: {pylons} on {legs} lines, {wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
+    }
+
+    /// <summary>Every place people built and every ruin or cluster of them is on a road, on fresh worlds, and the network has its highways and bridges.</summary>
+    async Task ConnectedChecks()
+    {
+        int places = 0, cutOff = 0, ruins = 0, roadless = 0, bridges = 0, highways = 0, sea = 0;
+        double km = 0;
+        string first = "";
+        var rand = new Random();
+        for (int k = 0; k < 4; k++)
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), k % 2 == 0 ? Archetype.Temperate : Archetype.Arid, 0), Main.Catalog);
+            InfraNetwork net = w.Infra;
+            if (net?.Routes == null || net.Routes.Count == 0) continue;
+            foreach (PoiSite p in net.Places)
+            {
+                places++;
+                if (net.Isolated.Contains(p)) { sea++; continue; }
+                if (!net.Routes.Any(r => r.From == p || r.To == p))
+                {
+                    cutOff++;
+                    if (first.Length == 0) first = $" (first: {p.Name})";
+                }
+            }
+            foreach (PlanetSurface.Infra.FlavourRuin r in net.Ruins)
+            {
+                ruins++;
+                var (x, z) = r.Center;
+                if (r.Route != null || r.Drive != null || r.Tracked) continue;
+                if (net.Ruins.Any(o => o != r && (o.Route != null || o.Drive != null || o.Tracked) && Dist(w, o.Center.X, o.Center.Z, x, z) < 60)) continue;
+                // Over water from anything, or nothing near to reach: the sea keeps some corners of a world.
+                if (net.Nearest(x, z, 2400, out _, out _) == null) { sea++; continue; }
+                roadless++;
+                if (first.Length == 0) first = $" (first: {r.Family.Id} at {x:F0}, {z:F0})";
+            }
+            bridges += net.Structures.Count(s => s.Kind == RoadSpan.Bridge);
+            highways += net.Routes.Count(r => r.Kind == RouteKind.Highway);
+            km += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Length) / 1000;
+            await Frames(1);
+        }
+        Check(cutOff == 0 && roadless == 0 && places > 8 && ruins > 8, $"every place and ruin is on a road: {places} places ({cutOff} cut off), {ruins} ruins ({roadless} without), {sea} over the sea; {km:F0} km of road, {highways} highways, {bridges} bridges{first}");
+    }
+
+    /// <summary>
+    /// The deco audit: a car is a car against a 1.8 m person, a century keeps the main part of everything
+    /// but what really rots away (a mattress, hay, a rug), and a hulk still stands on its tyres. Every
+    /// shape's every triangle faces out, so no end of a wheel or a drum is open.
+    /// </summary>
+    Task DecoChecks()
+    {
+        var forge = PlanetSurface.Infra.InfraDeco.Poi.Forge;
+        int wrongSize = 0, lost = 0, bald = 0, hulks = 0, inward = 0, parts = 0;
+        string first = "";
+        void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
+        foreach (string id in new[] { "hatchback", "sedan", "pickup", "van" })
+        {
+            var size = forge.Mesh(id).Size;
+            if (size.X is < 1.5f or > 2.1f || size.Y is < 1.2f or > 2.6f || size.Z is < 3.4f or > 5.6f) { wrongSize++; Note($"{id} is {size}"); }
+        }
+        string[] rots = { "floor-rug", "floor-mattress", "hay-bales", "feed-sacks", "parasol", "pallet-stack", "office-partition", "privacy-curtain", "farm-trailer" };
+        foreach (var piece in forge.Catalogue.Pieces)
+        {
+            var fresh = forge.ShapeOf(piece.Id, GalHack.Items.DecoState.Intact, GalHack.Items.DecoFall.None);
+            var aged = forge.ShapeOf(piece.Id, GalHack.Items.DecoState.Intact, GalHack.Items.DecoFall.None, false, GalHack.Deco.DecoAge.OldWorld, true);
+            float was = fresh.Model.Parts.Sum(x => x.Volume), now = aged.Model.Parts.Sum(x => x.Volume);
+            if (now < was * 0.14f && !rots.Contains(piece.Id)) { lost++; Note($"{piece.Id} keeps {now / was:P0}"); }
+            if (fresh.Model.Parts.Any(x => x.Is(GalHack.Deco.PartFlags.Tyre)))
+            {
+                hulks++;
+                // On its rims: round, and wide enough to look like wheels.
+                if (!aged.Model.Parts.Any(x => x.Kind == GalHack.Deco.DecoPrim.Cylinder && x.Segments >= 12)) { bald++; Note($"{piece.Id} has no wheels left"); }
+            }
+            foreach (GalHack.Deco.DecoPart part in fresh.Model.Parts)
+            {
+                parts++;
+                var mesh = new GalHack.Deco.DecoMeshData();
+                GalHack.Deco.DecoEmit.Part(mesh, part, (_, _, _) => new GalHack.Deco.DecoRgb(1, 1, 1), _ => GalHack.Deco.DecoSurface.Matte);
+                System.Numerics.Vector3 centre = System.Numerics.Vector3.Zero;
+                int corners = 0;
+                foreach (var (a, b, c) in mesh.AllTriangles()) { centre += a + b + c; corners += 3; }
+                centre /= Math.Max(1, corners);
+                foreach (var (a, b, c) in mesh.AllTriangles())
+                    if (System.Numerics.Vector3.Cross(b - a, c - a).Length() > 1e-5f && System.Numerics.Vector3.Dot(System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(b - a, c - a)), (a + b + c) / 3f - centre) < -1e-3f) { inward++; Note($"{piece.Id}: a {part.Kind} faces in"); break; }
+            }
+        }
+        Check(wrongSize == 0 && lost == 0 && bald == 0 && inward == 0 && hulks > 8 && parts > 1000, $"deco audit: cars at real size, {wrongSize} wrong; {lost} pieces lost to the weather; {hulks} wheeled pieces, {bald} without wheels; {parts} parts, {inward} open or facing in{first}");
+        return Task.CompletedTask;
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })
@@ -75,6 +472,9 @@ public partial class SurfaceTest
         string firstGround = "", firstBlocked = "";
         int wreckSites = 0, wreckPieces = 0, blockedLanes = 0, wreckOnPad = 0;
         var wreckKinds = new Dictionary<string, int>();
+        var stopKinds = new Dictionary<string, int>();
+        double ruinRoadKm = 0;
+        int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
         int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
         var ruinKinds = new Dictionary<string, int>();
         int tells = 0, glowingTells = 0, tellsChecked = 0;
@@ -263,12 +663,28 @@ public partial class SurfaceTest
             // Flavour ruins: plenty of them, none on a road bed, a place's pad or another ruin; each spawns,
             // and yields salvage.
             ruinWorlds++;
+            ruinRoadKm += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Count * InfraNetwork.Spacing) / 1000.0;
             if (net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
             foreach (FlavourRuin ruin in net.Ruins)
             {
                 ruins++;
                 ruinKinds[ruin.Family.Id] = ruinKinds.GetValueOrDefault(ruin.Family.Id) + 1;
                 if (ruin.Blast > 0.05f) blastedRuins++;
+                // Every ruin by a road is joined to it, and a house stands with others; no fuel on a world that never had engines.
+                if (ruin.Route != null && ruin.Drive == null) ruinsUnjoined++;
+                else if (ruin.Route != null)
+                {
+                    var (dx, dz, _) = ruin.Drive.PathPoint(ruin.Drive.PathCount - 1);
+                    double ex = Mathx.WrapX(ruin.Drive.CenterX + dx, w.Width), ez = Mathx.Wrap(ruin.Drive.CenterZ + dz, w.Height);
+                    if (net.Nearest(ex, ez, 12, out _, out double off) == null || off > 6) ruinsUnjoined++;
+                }
+                if (ruin.Family.Tags.Contains("wayside") && ruin.Layout.Variant.Tech != PoiGenerator.Gen.WorldProfile.Tag(w.Profile.Before) && ruin.Layout.Variant.Tech != "unique") fuelOnLow++;
+                if (ruin.Family.Tags.Contains("wayside")) stopKinds[ruin.Layout.Variant.Name] = stopKinds.GetValueOrDefault(ruin.Layout.Variant.Name) + 1;
+                if (ruin.Family.Tags.Contains("house") && ruin.Blast < 0.05f)
+                {
+                    houses++;
+                    if (net.Ruins.Any(o => o != ruin && Math.Abs(Mathx.WrapDelta(o.Center.X - ruin.Center.X, w.Width)) + Math.Abs(Mathx.WrapDelta(o.Center.Z - ruin.Center.Z, w.Height)) < 90)) housesInStreets++;
+                }
                 TerrainStamp t = ruin.Stamp;
                 for (double z = t.MinZ - 2; z <= t.MaxZ + 2; z += 3)
                 for (double x = t.MinX - 2; x <= t.MaxX + 2; x += 3)
@@ -324,6 +740,8 @@ public partial class SurfaceTest
             $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
         Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
             $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
+        Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
+            $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} stops of the wrong age ({string.Join(", ", stopKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))})");
         Check(tells > 1000 && glowingTells == 0, $"ore tells: {tells} formations over the deposits, their veins matte ({glowingTells} of {tellsChecked} sampled glow)");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");
@@ -674,6 +1092,23 @@ public partial class SurfaceTest
             }
             return "natural";
         }
+        // A flooded tunnel's water: in the bore, with ground over it.
+        void Flooded(PlanetWorld w)
+        {
+            PlanetTerrainSource source = w.Source;
+            // Any tunnel may flood, and few on one world do: every tunnel of these throwaway worlds is judged as if it had.
+            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Kind == RoadSpan.Tunnel))
+                for (int k = st.First; st.Flooded = true && k < st.Last; k++)
+                {
+                    if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
+                    flood++;
+                    float g = source.SurfaceHeight(Mathx.WrapX(st.Route.X[k], w.Width), Mathx.Wrap(st.Route.Z[k], w.Height));
+                    if (g >= level + PlanetTerrainSource.TunnelRoof) continue;
+                    floodFloating++;
+                    Note("flooded tunnel");
+                    worstFlood = Math.Max(worstFlood, level - g);
+                }
+        }
         foreach (var (a, seed, start) in new[] { (0, 61UL, false), (0, 900UL, false), (1, 62UL, false), (2, 63UL, false), (0, 31UL, true), (0, 34UL, true) })
         {
             bool was = PlanetSurface.Poi.PoiSiting.StartWorld;
@@ -753,18 +1188,14 @@ public partial class SurfaceTest
                     }
                 }
 
-            // A flooded tunnel's water: in the bore, with ground over it.
-            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Flooded))
-                for (int k = st.First; k < st.Last; k++)
-                {
-                    if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
-                    flood++;
-                    float g = source.SurfaceHeight(Mathx.WrapX(st.Route.X[k], w.Width), Mathx.Wrap(st.Route.Z[k], w.Height));
-                    if (g >= level + PlanetTerrainSource.TunnelRoof) continue;
-                    floodFloating++;
-                    Note("flooded tunnel");
-                    worstFlood = Math.Max(worstFlood, level - g);
-                }
+            Flooded(w);
+            await Frames(1);
+        }
+        // Tunnels are few: fresh worlds until there are some to judge.
+        var fresh = new Random();
+        for (int k = 0; k < 12 && flood == 0; k++)
+        {
+            Flooded(PlanetWorld.Build(PlanetSpec.Roll((ulong)fresh.NextInt64(), Archetype.Temperate, 0), Main.Catalog));
             await Frames(1);
         }
         string kinds = string.Join(", ", tally.OrderByDescending(k => k.Value).Take(10).Select(k => $"{k.Key} {k.Value}"));

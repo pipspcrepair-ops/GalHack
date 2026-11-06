@@ -24,10 +24,13 @@ public static class Sites
         public int Yard = -1;
         public int VaultModule = -1, DeepestModule = -1;
         public List<int> Landmarks = new();
+        /// <summary>Painted road cells and the plain surface under each: paint stops short of anything standing on the road.</summary>
+        public List<(Int3 Cell, Rgb Plain, bool AlongX)> Paint = new();
     }
 
-    public static void Compose(PoiLibrary lib, Canvas c, SiteDef site, FamilyDef fam, Rarity rarity, Rng rng)
+    public static void Compose(PoiLibrary lib, Canvas c, SiteDef site, FamilyDef fam, Rarity rarity, Rng rng, LayoutHints? hints = null)
     {
+        if (site.Parts.Count > 0 && site.Parts[0].Kind == "plain") { Homes.Compose(c, site, fam, rng, hints); return; }
         var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site };
         c.X.InSpace = site.Space;
         // The approach: a patch of open ground at the site's way in.
@@ -83,6 +86,7 @@ public static class Sites
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
+        StopPaint(x);
         c.VaultModule = x.VaultModule >= 0 ? x.VaultModule : x.DeepestModule >= 0 ? x.DeepestModule : x.Yard;
         // Levels for the whole site: the union of every building's storeys.
         c.X.Levels = c.X.Levels.GroupBy(l => l.Storey).Select(g => g.First()).OrderBy(l => l.Storey).ToList();
@@ -147,7 +151,9 @@ public static class Sites
                 bool centre = j == width / 2 && i % 8 < 4;
                 bool threshold = runway && (i < 4 || i >= len - 4) && j % 3 == 1;
                 bool edge = runway && (j == 0 || j == width - 1);
+                Rgb plain = col;
                 if (centre || threshold || edge) col = (centre || edge) && !runway ? Hazard : Paint;
+                if (col != plain) x.Paint.Add((c, plain, alongX));
                 x.C.Set(c, new Block(BlockType.Cube, Material.Concrete, col, Role.Floor));
             }
         if (runway && p.Arg("lights") != "no")
@@ -156,6 +162,20 @@ public static class Sites
                 Int3 l = alongX ? new Int3(p.X + i, 0, p.Z - 1) : new Int3(p.X - 1, 0, p.Z + i);
                 x.C.Blocks[l] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Decor);
             }
+    }
+
+    /// <summary>A road's or a runway's painted line ends clear of whatever stands on it: no marking runs on to a wall.</summary>
+    static void StopPaint(Ctx x)
+    {
+        const int Clear = 4;
+        foreach (var (c, plain, alongX) in x.Paint)
+        {
+            Int3 run = alongX ? new Int3(1, 0, 0) : new Int3(0, 0, 1);
+            bool near = false;
+            for (int k = -Clear; k <= Clear && !near; k++)
+                near = x.C.Get(c + Int3.Up + run * k) is { IsAir: false } b && BlockInfo.Collides(b.Type);
+            if (near) { var b = x.C.Get(c); b.Color = plain; x.C.Blocks[c] = b; }
+        }
     }
 
     /// <summary>A concrete pad in the ground with a painted ring: landing and launch pads.</summary>

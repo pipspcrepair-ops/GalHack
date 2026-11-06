@@ -42,6 +42,8 @@ public partial class Game
             Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet),
         };
         Zone.AddChild(Places);
+        Zone.Infra.WreckStood += Places.WreckStood;
+        Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Caves = new Caves
         {
             Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Deep = Places.Fauna,

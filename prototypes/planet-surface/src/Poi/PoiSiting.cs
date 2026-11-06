@@ -56,6 +56,9 @@ public sealed class PoiSite
     /// <summary>Every stamp this place lays, pad first.</summary>
     public IEnumerable<TerrainStamp> Stamps => Extra.Prepend(Stamp);
 
+    /// <summary>Works its stamp's opened cells out again, after something took more of it down.</summary>
+    public Action Recarve;
+
     /// <summary>A ruin sunk into rising ground (its back walls are meant to be in the earth; its rooms stay open).</summary>
     public bool HalfBuried;
 
@@ -221,6 +224,7 @@ public static class PoiSiting
                 float d = (float)Math.Sqrt(dx * dx + dz * dz), strength = zone.Strength(d);
                 if (strength < 0.05f || d < 1f) continue;
                 StateTransforms.Blast(o.Instance, (float)(-dx / d), (float)(-dz / d), strength, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
+                o.Recarve?.Invoke();
             }
         }
     }
@@ -369,14 +373,26 @@ public static class PoiSiting
         int buryTop = ruin ? (int)Math.Ceiling(tilt * depthAlong) + 1 : 0;
         // Rooms below the pad (and the floor layer, which sits in the ground) stay open.
         int carveH = Math.Max(0, -occupied.Min.Y) + buryTop;
-        bool[] carve = null;
-        if (carveH > 0)
+        bool[] carve = null, walls = null;
+        // From the place as it stands, decay and all: where a wall has gone, so has the ground that ran into it.
+        void Recarve()
         {
-            carve = new bool[carveH * occupied.Size.Z * occupied.Size.X];
+            if (carve == null) return;
             for (int y = 0; y < carveH; y++)
             for (int z = 0; z < occupied.Size.Z; z++)
             for (int x = 0; x < occupied.Size.X; x++)
-                carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = occupied[new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z)];
+            {
+                var cell = new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z);
+                int i = (y * occupied.Size.Z + z) * occupied.Size.X + x;
+                carve[i] = PoiGenerator.Gen.Structure.Carved(inst.Blocks, occupied, cell);
+                walls[i] = PoiGenerator.Gen.Structure.OuterWall(inst.Blocks, occupied, cell);
+            }
+        }
+        if (carveH > 0)
+        {
+            carve = new bool[carveH * occupied.Size.Z * occupied.Size.X];
+            walls = new bool[carve.Length];
+            Recarve();
         }
         // Wide enough that cut and fill slopes stay walkable: the further the ground round the pad is
         // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.
@@ -400,7 +416,7 @@ public static class PoiSiting
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve)
         {
-            Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
+            Walls = walls, Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
         };
 
         // Grounding: shapes that sit the place in its land rather than on a flat pad.
@@ -476,7 +492,7 @@ public static class PoiSiting
         {
             Name = $"{family.Name}: {inst.Layout.Name} ({inst.State.ToString().ToLowerInvariant()})",
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
-            Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
+            Recarve = Recarve, Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
         };
     }
 

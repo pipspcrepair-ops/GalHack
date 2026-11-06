@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -30,7 +30,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -1316,6 +1316,158 @@ public partial class PoiTest : Node
         Check(fewest >= 8 && held == 0 && dangerous == 0 && wrecks > normalWrecks * 1.5f && normalHeld > 0,
             $"start systems: {systems} systems, every one with at least {fewest} wrecks in orbit and nearby ({wrecks} of {places} places, {near} close to home), " +
             $"none above danger 2, no live faction (other systems: {normalWrecks} wrecks, {normalHeld} faction-held)");
+    }
+
+    /// <summary>
+    /// The roadside ruins, on fresh seeds, turned every way, at every tech level: a house is house-sized
+    /// against a person (10 to 16 m wide, 4 m a storey, doors 2 m), has a sloped roof and a door and
+    /// never digs into the ground; decay leaves nothing hanging, no block trees, weeds only on
+    /// something solid; and every face that isn't against a block is drawn, buried or not, tops of broken
+    /// walls included, on these and on the places proper.
+    /// </summary>
+    void PlainRuins()
+    {
+        int spawns = 0, floating = 0, hovering = 0, trees = 0, missing = 0, faces = 0, wrongSize = 0, flatRoofs = 0, noDoor = 0, belowGround = 0, stands = 0;
+        string first = "", faceFirst = "";
+        void Note(string s) { if (first.Length == 0) first = " (first: " + s + ")"; }
+        var rand = new Random();
+        foreach (var f in _lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_")))
+            foreach (var v in f.Variants)
+                foreach (TechLevel tech in Enum.GetValues<TechLevel>())
+                    foreach (Dir front in Dirs.Horizontal)
+                    {
+                        var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, (ulong)rand.NextInt64(), new LayoutHints(front, tech));
+                        if (layout.Blocks.Blocks().Any(b => b.Cell.Y < 0)) { belowGround++; Note($"{v.Name} goes below ground"); }
+                        foreach (PlainBox b in layout.Extras.Plain.Where(_ => f.Id == "flavour_house"))
+                        {
+                            int across = Math.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3, along = Math.Max(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3;
+                            if (across < 10 || along > 20 || (b.Eave + 1) % 4 != 0) { wrongSize++; Note($"{v.Name}: {across} by {along} m, eaves {b.Eave}"); }
+                        }
+                        foreach (Doorway d in layout.Doorways)
+                        {
+                            Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
+                            if (hi.Y - lo.Y != 1) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
+                        }
+                        if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
+                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
+                        foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
+                        {
+                            PoiInstance p = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                            if (state == PoiState.Ruined && rand.Next(4) == 0) Gen.StateTransforms.Blast(p, 1f, 0f, 0.3f + (float)rand.NextDouble() * 0.6f, new Rng((ulong)rand.NextInt64()));
+                            spawns++;
+                            var g = p.Blocks;
+                            var nav = p.Nav();
+                            // Nothing joined to the ground only through weeds and litter: flood the solid blocks from the ground.
+                            var held = new HashSet<Int3>();
+                            var queue = new Queue<Int3>();
+                            foreach (var (c, b) in g.Blocks())
+                                if (BlockInfo.Collides(b.Type) && nav.IsRock(c + Int3.Down) && held.Add(c)) queue.Enqueue(c);
+                            while (queue.Count > 0)
+                            {
+                                Int3 c = queue.Dequeue();
+                                foreach (Dir d in Dirs.All)
+                                {
+                                    Int3 q = c + d.Vec();
+                                    if (BlockInfo.Collides(g.Get(q).Type) && held.Add(q)) queue.Enqueue(q);
+                                }
+                            }
+                            foreach (var (c, b) in g.Blocks())
+                            {
+                                bool solid = BlockInfo.Collides(b.Type);
+                                if (solid && !held.Contains(c)) { floating++; Note($"{v.Name} {state}: {b} floats at {c}"); }
+                                if (!solid && b.Type is BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Plate && !nav.IsRock(c + Int3.Down) && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: {b} hangs at {c}"); }
+                                if (b.Type == BlockType.Rubble && !nav.IsRock(c + Int3.Down) && !BlockInfo.Supports(g.Get(c + Int3.Down).Type)) { hovering++; Note($"{v.Name} {state}: rubble hangs at {c}"); }
+                                if (b.Type == BlockType.Pillar && b.Material == Gen.Material.Timber && b.Role == Role.Decor && b.Color == new Rgb(0x4a, 0x3a, 0x2a) && !nav.IsRock(c + Int3.Down) == false && g.Get(c + Int3.Up * 3).Type == BlockType.Pillar) { trees++; Note($"{v.Name}: a block tree"); }
+                            }
+                            stands += Faces(g, layout.Occupied, ref faces, ref missing, ref faceFirst);
+                        }
+                    }
+        foreach (var f in Arch.Where(f => !f.Tags.Contains("flavour")).OrderBy(_ => rand.Next()).Take(12))
+            foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
+            {
+                PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, state, (ulong)rand.NextInt64());
+                stands += Faces(p.Blocks, p.Layout.Occupied, ref faces, ref missing, ref faceFirst);
+            }
+        // The places proper: what lies loose rests on what is under it, whatever decay took away.
+        int loose = 0, unheld = 0;
+        foreach (var f in Arch.Where(f => !f.Tags.Contains("flavour")).OrderBy(_ => rand.Next()).Take(16))
+            foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned, PoiState.Infested })
+            {
+                PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, state, (ulong)rand.NextInt64());
+                var nav = p.Nav();
+                foreach (var (c, b) in p.Blocks.Blocks())
+                {
+                    if (p.Layout.Extras.InSpace || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Growth or Role.Decor) continue;
+                    if (b.Type is not (BlockType.Crate or BlockType.Tank or BlockType.Rubble or BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Barricade or BlockType.Bench)) continue;
+                    loose++;
+                    if (!nav.Solid(c + Int3.Down)) { unheld++; Note($"{f.Id} {state}: {b} hangs at {c}"); }
+                }
+            }
+        Check(unheld == 0 && loose > 500, $"drums, crates, rubble and weeds rest on something in the places proper: {loose} loose blocks, {unheld} hanging{first}");
+        Check(floating == 0 && hovering == 0 && trees == 0 && spawns > 200, $"nothing floats in a plain ruin: {spawns} spawns, flattened or not; {floating} blocks off the ground, {hovering} weeds or rubble on nothing, {trees} block trees{first}");
+        Check(missing == 0 && faces > 10000, $"every face is drawn: {faces} open faces of {stands} structures, {missing} missing, buried ones too{faceFirst}");
+        Check(wrongSize == 0 && flatRoofs == 0 && noDoor == 0 && belowGround == 0, $"plain ruins are real size and built as a player builds: {wrongSize} wrong sizes, {flatRoofs} without a sloped roof, {noDoor} without a door, {belowGround} dug into the ground{first}");
+        // Road paint stops short of whatever stands on the road.
+        int paint = 0, onto = 0;
+        var hazard = new Rgb(0xe0, 0xa8, 0x00);
+        foreach (var f in Arch.Where(f => f.Site != null && _lib.Sites[f.Site].Parts.Any(x => x.Kind == "road") && !_lib.Sites[f.Site].Parts.Any(x => x.Kind is "pad" or "runway" or "rocket" or "tanks")))
+        {
+            var g = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Common, (ulong)rand.NextInt64()).Blocks;
+            foreach (var (c, b) in g.Blocks())
+            {
+                if (b.Color != hazard || c.Y != -1 || b.Material != Gen.Material.Concrete) continue;
+                paint++;
+                for (int k = -3; k <= 3; k++)
+                    if (k != 0 && (BlockInfo.Collides(g.Get(c + Int3.Up + new Int3(k, 0, 0)).Type) && g.Get(c + new Int3(k > 0 ? 1 : -1, 0, 0)).Color == hazard
+                        || BlockInfo.Collides(g.Get(c + Int3.Up + new Int3(0, 0, k)).Type) && g.Get(c + new Int3(0, 0, k > 0 ? 1 : -1)).Color == hazard)) { onto++; break; }
+            }
+        }
+        var white = new Rgb(0xe8, 0xe4, 0xd8);
+        foreach (var f in Arch.Where(f => f.Site != null && _lib.Sites[f.Site].Parts.Any(x => x.Kind == "runway")))
+        {
+            var g = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Common, (ulong)rand.NextInt64()).Blocks;
+            foreach (var (c, b) in g.Blocks())
+            {
+                if (b.Color != white || c.Y != -1 || b.Material != Gen.Material.Concrete) continue;
+                paint++;
+                if (BlockInfo.Collides(g.Get(c + Int3.Up).Type)) onto++;
+            }
+        }
+        Check(onto == 0, $"road and runway markings stop before a structure: {paint} painted cells, {onto} running on to a wall");
+    }
+
+    /// <summary>Holds a structure's open faces against what the planet's mesher draws: each cube face not against a full block must be there, buried or not (the ground can be dug off it).</summary>
+    static int Faces(BlockGrid g, CellMask occ, ref int faces, ref int missing, ref string first)
+    {
+        var drawn = new HashSet<(int, int, int)>();
+        var options = new MeshOptions { Doors = true, Collision = false, Detail = true, Rock = true, RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround };
+        foreach (ChunkMesh chunk in Mesher.Build(g, occ, options))
+            foreach (MeshBuffer s in chunk.Surfaces)
+                for (int i = 0; i + 2 < s.Indices.Count; i += 3)
+                {
+                    // Half a unit quad spans the face: the middle of its box is the middle of the face (doubled, to stay whole).
+                    int a = s.Indices[i] * 3, b = s.Indices[i + 1] * 3, c = s.Indices[i + 2] * 3;
+                    int Mid(int k) => (int)MathF.Round(MathF.Min(s.Positions[a + k], MathF.Min(s.Positions[b + k], s.Positions[c + k])) + MathF.Max(s.Positions[a + k], MathF.Max(s.Positions[b + k], s.Positions[c + k])));
+                    drawn.Add((Mid(0), Mid(1), Mid(2)));
+                }
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (!BlockInfo.IsFullCube(b.Type) || BlockInfo.IsTransparent(b.Material) || b.Material == Gen.Material.Glyph) continue;
+            foreach (Dir d in Dirs.All)
+            {
+                Int3 n = p + d.Vec();
+                var nb = g.Get(n);
+                if (BlockInfo.IsFullCube(nb.Type) && !BlockInfo.IsTransparent(nb.Material)) continue;
+                faces++;
+                Int3 v = d.Vec();
+                if (!drawn.Contains((p.X * 2 + 1 + v.X, p.Y * 2 + 1 + v.Y, p.Z * 2 + 1 + v.Z)))
+                {
+                    missing++;
+                    if (first.Length == 0) first = $" (first: {b} at {p}, its {d} face)";
+                }
+            }
+        }
+        return 1;
     }
 
     /// <summary>From afar: each family's landmark stands as high as its purpose wants, and something lights it.</summary>
