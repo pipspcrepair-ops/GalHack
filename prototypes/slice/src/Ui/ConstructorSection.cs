@@ -39,9 +39,10 @@ public sealed class ConstructorSection : IMenuSection
 
     public Vector2 PreferredSize => new(520, 740);
 
-    /// <summary>What a constructor lists: everything it knows (cores, devices and blocks first, deco last), then what a bigger one would make, greyed.</summary>
-    static IEnumerable<ItemDef> Recipes(Constructor c) =>
-        c.Items.Items.Where(i => i.Recipe != null && i.Recipe.Tier <= c.Def.Tier + 1)
+    /// <summary>What a constructor lists: only what it knows and the player has unlocked (cores, devices and blocks first, deco last).</summary>
+    static IEnumerable<ItemDef> Recipes(Constructor c, Progress p) =>
+        c.Items.Items.Where(i => c.Knows(i) && p.ItemAllowed(i)
+                && !(c.Def.Tier <= 0 && ItemView.GroupOf(i) == ItemGroup.Deco)) // survival-tier machines and the suit fabricator never make deco
             .OrderBy(i => !c.Knows(i))
             .ThenBy(i => i.Recipe.Inputs.Count > 0) // anything free (the survival tool) first
             .ThenBy(i => Rank(i))
@@ -73,7 +74,7 @@ public sealed class ConstructorSection : IMenuSection
 
         // ---- What it can make -------------------------------------------------------------------
         ItemView view = FilterBar.Build(g, $"recipes:{_key}", new Rect2(o.X, o.Y + 74, area.Size.X, FilterBar.Height), readOnly: _key == "screen");
-        var list = view.Apply(Recipes(c), i => c.Storage.Count(i.Id));
+        var list = view.Apply(Recipes(c, p), i => c.Storage.Count(i.Id));
         if (view.Sort == ItemSort.Slot) list = list.OrderBy(i => !c.Knows(i)).ThenBy(i => !p.ItemAllowed(i)).ToList();
         int perPage = 7;
         _scroll = Math.Clamp(_scroll, 0, Math.Max(0, (list.Count - 1) / perPage));

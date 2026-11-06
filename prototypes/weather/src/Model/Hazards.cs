@@ -68,6 +68,9 @@ public sealed class Tornado
     /// <summary>Steers toward the observer until it has passed them, then keeps going.</summary>
     public bool Homing { get; set; }
 
+    /// <summary>A natural tornado does not hunt anyone: its heading drifts slowly at random (radians/s at most).</summary>
+    public float WanderRate { get; set; }
+
     float _lifetime;
     readonly float _wobblePhase;
 
@@ -81,6 +84,9 @@ public sealed class Tornado
         _lifetime = rules.Lifetime;
         _wobblePhase = wobblePhase;
     }
+
+    /// <summary>Turns it to a new heading (natural spawns, tests).</summary>
+    public void SetHeading(float radians) => Heading = radians;
 
     public bool Touchdown => Age >= Rules.FormSeconds;
 
@@ -140,6 +146,7 @@ public sealed class Tornado
                 float turn = Mathf.Wrap(want - Heading, -MathF.PI, MathF.PI);
                 Heading += Math.Clamp(turn, -Rules.TurnRate * dt, Rules.TurnRate * dt);
             }
+            if (WanderRate > 0f) Heading += WanderRate * dt * (0.6f * MathF.Sin(Age * 0.071f + _wobblePhase * 1.7f) + 0.4f * MathF.Sin(Age * 0.173f + _wobblePhase * 0.6f));
             Position += Velocity * dt;
         }
         Position = new Vector3(Position.X, groundHeight(Position.X, Position.Z), Position.Z);

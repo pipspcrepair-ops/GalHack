@@ -431,7 +431,11 @@ public sealed class WeatherSim
         {
             float angle = _hazardRng.Range(0f, MathF.Tau);
             var at = observer + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * rules.SpawnDistance;
-            SpawnTornado(at, observer);
+            // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
+            Tornado born = SpawnTornado(at, observer);
+            born.Homing = false;
+            born.SetHeading(_hazardRng.Range(0f, MathF.Tau));
+            born.WanderRate = 0.12f;
         }
 
         bool stormGone = Current.TornadoesPerMinute < 0.05f;

@@ -65,10 +65,10 @@ public sealed class CoreSection : IMenuSection
         return near.OrderBy(n => n.d).Select(n => n.thing).ToList();
     }
 
-    public void Pick(object thing)
+    public void Pick(object thing, int machine = 0)
     {
         _picked = thing;
-        _machine = 0;
+        _machine = machine;
     }
 
     Constructor CurrentMachine => _picked switch

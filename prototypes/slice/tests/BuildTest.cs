@@ -120,6 +120,7 @@ public partial class BuildTest : Node
         foreach (int x in BackIntoInventories()) yield return x;
         foreach (int x in Areas()) yield return x;
         foreach (int x in Machines()) yield return x;
+        foreach (int x in CpuExtender()) yield return x;
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in Creative()) yield return x;
     }
@@ -624,6 +625,45 @@ public partial class BuildTest : Node
         f.Cancel(r.Job);
         f.Lock = null;
         _game.CraftTimeScale = 40f;
+    }
+
+    /// <summary>In Survival: the CPU extender can be unlocked, crafted in the base's own constructor, placed, and it raises the structure's CPU tier.</summary>
+    IEnumerable<int> CpuExtender()
+    {
+        GD.Print("-- the CPU extender: unlock, craft, place, a higher CPU tier --");
+        Check(_game.Mode == GameMode.Survival && !_game.Progress.Creative, "in Survival");
+        TechNode node = _game.Progress.NodeOfBlock("cpuext", false);
+        Check(node != null, "the CPU extender is a node on the tech tree");
+        if (node == null) yield break;
+        // Level it up by playing (XP), then buy it and its parents with the points that brings.
+        _game.Progress.Earn(1_000_000, "test");
+        var chain = new List<TechNode>();
+        for (TechNode n = node; n != null; n = _game.Progress.Node(n.Unlock.Parent)) chain.Insert(0, n);
+        foreach (TechNode n in chain)
+            if (!_game.Progress.IsUnlocked(n.Id)) _game.Progress.Unlock(n.Id);
+        Check(_game.Progress.IsUnlocked(node.Id), $"unlocked on the tech tree through {string.Join(" > ", chain.Select(n => n.Id))}");
+        string ext = Item("cpuext", false);
+        ItemDef def = Items.Item(ext);
+        Constructor c = _base.Machines.Values.First();
+        Check(c.Knows(def) && _game.Progress.ItemAllowed(def), $"the base's {c.Def.Name} (tier {c.Def.Tier}) knows the recipe (tier {def.Recipe.Tier}) and it is allowed");
+        // Its parts come out of the constructor's own lane; stock them as the earlier steps would have made them.
+        foreach (var (id, n) in def.Recipe.Inputs) _base.Storage.Add(id.Id, n);
+        int before = _base.Storage.Count(ext);
+        Check(c.Order(ext, 1).Ok, "the constructor takes an order for the CPU extender");
+        foreach (int x in _play.WaitFor(() => !c.Busy, 60)) yield return x;
+        Check(_base.Storage.Count(ext) == before + 1, "and makes it into the base's storage");
+        int tier = _base.StructureStats.Tier, extenders = _base.StructureStats.Extenders;
+        Pack.SetStructureSlot(6, ext);
+        _base.Storage.Add(ext, 0);
+        foreach (int x in _drive.Tap(Key.Y)) yield return x;
+        bool on = false;
+        foreach (int x in StandByBase(7, 1)) yield return x;
+        foreach (int x in _play.PlaceBlock(6, _base, new Int3(1, 0, 0), Dir.PosX, p => on = p)) yield return x;
+        foreach (int x in _drive.Tap(Key.Y)) yield return x;
+        Check(on && _base.StructureStats.Extenders == extenders + 1, $"placed on the base: {_base.StructureStats.Extenders} extender(s)");
+        // The tiers climb with the count (one extender is the second tier); add the rest until it does.
+        Check(_base.StructureStats.Tier > tier || _base.StructureStats.Extenders < _base.Structure.Catalogue.ExtendersPerTier[Math.Min(tier, _base.Structure.Catalogue.ExtendersPerTier.Length - 1)],
+            $"CPU tier {tier} -> {_base.StructureStats.Tier}, limit {_base.StructureStats.CpuLimit}");
     }
 
     IEnumerable<int> MenuChecks()
