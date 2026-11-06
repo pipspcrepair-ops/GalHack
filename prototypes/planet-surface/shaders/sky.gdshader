@@ -311,6 +311,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float fade = exp(-t0 / (6500.0 * density)) * (1.0 - smoothstep(9000.0, 16000.0, t0));
 	// The low layer's far clouds would close to thin streaks along the horizon: they thin out first.
 	if (ro.y < base) fade *= smoothstep(0.015, 0.09, rd.y);
+	else fade *= 0.3 + 0.7 * smoothstep(0.0, 0.07, abs(rd.y)); // in or over the layer, its edge on the horizon stays soft
 	vec3 col = alpha > 0.001 ? light / alpha : sky;
 	col = mix(mix(sky, col, 0.5), col, fade);
 	alpha *= fade;

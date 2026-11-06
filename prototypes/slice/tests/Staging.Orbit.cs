@@ -217,9 +217,9 @@ public sealed partial class Staging
         Vector3 side = up.Cross(Vector3.Up).Normalized();
         if (side.LengthSquared() < 0.01f) side = Vector3.Right;
         Vector3 ahead = side.Cross(up);
-        // From behind and above the Skiff, looking down past it at the world.
-        Vector3 eye = at + up * 9f + ahead * 16f;
-        Vector3 look = at - up * 900f - ahead * 1400f;
+        // From over the Skiff, looking down past it at the whole world.
+        Vector3 eye = at + up * 15f + ahead * 7f + side * 5f;
+        Vector3 look = centre + ahead * 900f;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, up), eye);
         for (int i = 0; i < 12; i++) yield return 0;
     }
@@ -273,6 +273,7 @@ public sealed partial class Staging
         foreach (int x in _pilot.FlyTo(v, () => door + outward * 9f, 2.5f, 150f)) yield return x;
         Hurry(1);
         foreach (int x in _drive.Tap(Key.F)) yield return x; // up from the seat
+        foreach (int x in _drive.Tap(Key.Key1)) yield return x; // the tool in hand
         for (int i = 0; i < 20; i++) yield return 0;
     }
 

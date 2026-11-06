@@ -72,8 +72,11 @@ public partial class Spaceflight
         return Game.Surface.Planet.NearestCopy(new Vector3((float)x, o.SurfaceHeight(q.Length()), (float)z), _leftSurfaceAt);
     }
 
-    /// <summary>Height over the surface's sea level: aligned, the world's own; otherwise over the globe's ground.</summary>
-    float Height(Vector3 world) => _aligned ? world.Y : Orbit.SurfaceHeight(Orbit.ToGlobe(world.ToNumerics()).Length());
+    /// <summary>
+    /// Your height over the globe's ground, which is sea level. Right over the crossing point it is
+    /// the world's own Y, but the globe curves away: fly sideways off it and you are climbing.
+    /// </summary>
+    float Height(Vector3 world) => Orbit.SurfaceHeight(Orbit.ToGlobe(world.ToNumerics()).Length());
 
     public override void _Process(double delta)
     {
@@ -202,7 +205,8 @@ public partial class Spaceflight
         Vessel carrier = Carrier();
         Vector3 at = carrier != null ? carrier.DrawTransform.Origin : Game.Survivor.WorldFeet;
         OrbitZone o = Orbit;
-        if (!_aligned || at.Y >= BandTop)
+        float y = Height(at);
+        if (!_aligned || y >= BandTop)
         {
             AirGone = 1f;
             if (_band < 1f) AllSpace();
@@ -210,9 +214,9 @@ public partial class Spaceflight
             _aligned = false; // over the top: the sphere's own terms again
             return;
         }
-        float f = Mathf.Clamp((at.Y - Ceiling) / Rules.Crossing.Band, 0f, 1f);
+        float f = Mathf.Clamp((y - Ceiling) / Rules.Crossing.Band, 0f, 1f);
         _band = f;
-        AirGone = AirGoneAt(at.Y);
+        AirGone = AirGoneAt(y);
         SurfaceZone s = Game.Surface;
         ShowSurface(true);
         o.Space.Show(false, 0f);

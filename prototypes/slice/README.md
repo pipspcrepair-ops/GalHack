@@ -14,7 +14,14 @@ The first playable slice of GalHack's core loop, built from the proven prototype
 ![A base built by hand: core, container, generator, small constructor, steel; the survival constructor beside it](screenshots/base.png)
 ![A small vessel built by hand on its core, lifting off](screenshots/vessel.png)
 
-Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go; saves across everything are phase 3.
+Phase 1 is the ground loop; phase 2 (below) is orbit: flying up out of the atmosphere, the start system's wrecks to board, salvage and claim, and coming back down where you choose. Saves across everything are phase 3.
+
+![Climbing out](screenshots/orbit-climb.png)
+![The world as a globe from orbit](screenshots/orbit-globe.png)
+![A wreck field near the world](screenshots/orbit-wrecks.png)
+![Floating across to a derelict's hull door](screenshots/orbit-eva.png)
+![Inside a dead hull, by the head torch](screenshots/orbit-derelict.png)
+![Landing back on the surface](screenshots/orbit-landing.png)
 
 ## Play it
 
@@ -74,6 +81,63 @@ One full-screen menu, styled as the suit's own terminal (the diegetic UI's scree
 | **MAP** | 300 or 600 m round you: structures, devices, the bunker, your backpack, bodies and drops, the nearest deposits, creatures |
 
 The visor stays minimal: vitals, warnings, the compass with contacts, the toolbar, what is in hand and its keys, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play.
+
+## Phase 2: orbit
+
+Build a small vessel and fly up. There is no loading screen, fade or effect: only the atmosphere fading away as you climb. The sky darkens to space, the haze thins, the stars come out and the wind dies, and the world below becomes a globe. Space is Newtonian-ish: flight assist on, no auto-levelling, 130 m/s top speed for a small vessel. In an open hull the suit breathes its own oxygen (a chair gives no air; only a sealed room of a structure with a running core does).
+
+**The start system** comes from the POI generator's data (`OrbitPlacement`, `orbit.txt`): its `near` and `orbit` sites, brought in close. No live faction anywhere. Each kind is real blocks (`src/Orbit/Derelicts.cs`), so it can be boarded and taken apart: a derelict ship (bridge, crew deck, hold, a hull door, a breach), a drifting hulk broken in two, a broken station on truss tubes with a module torn off, a wreck field, an escape pod cluster. None has a core or power, so no field holds air in their doors and nothing holds you to a floor.
+
+**Boarding.** Stop near one, F to get up, Space to push off, and fly on the suit's thrusters (the look steers, W pushes, S brakes). Mag boots are off: you are held by a hull's gravity only if it has a running core. E forces a dead door open by hand, or go in through a breach. Inside it is dark: L for the head torch, afloat you right yourself with the hull's decks. E on a cargo box opens the wreck's hold beside your bag. The survival tool's gather mode, held on a block, cuts it free for about a third of its bill (the design's T1 return). A base core (or a small-vessel core on a small-grid wreck) set into a wreck claims it: it is yours, a station holding still, and its core's gravity holds you to its floor.
+
+**Back down.** Fly over a point on the globe and descend straight down: you come in over that point with your heading (north stays north). The design's rule: you come down where you crossed into the atmosphere, so fly over a place in orbit first.
+
+### How the seam works
+
+Orbit starts at **1,060 m** on Empyrion's scale (`data/orbit.json`, per kind of air, and clear of the world's highest ground), which is also the physics' one altitude switch: weight, air and the handling model's air rules end there. The clouds sit under it, 600 to 1,000 m.
+
+| What | How |
+| --- | --- |
+| Zones | Each its own physics world. `OrbitZone` derives from `SurfaceZone`, so the whole game layer (castaway, vessels, menu, visor) plays in both; `Game.Zone` is the one you're in. A zone you aren't in stays in the scene **parked**: `ProcessMode.Disabled` (which also takes its colliders out of the physics) and hidden, as it was left. So nothing reloads and nothing is lost: wrecks stay salvaged, bases stay put |
+| Ahead of time | Past half way to the crossing the orbit's data (globe paint, wreck layouts) is made on worker threads, then it enters the scene parked and is set up a piece a frame. On the way down the surface's streamer runs ahead of you, and the crossing waits until the ground under you is there |
+| The frame | The surface can't be moved or turned: its terrain and water are drawn from world coordinates. So the orbit is laid out to fit it (`OrbitZone.Align`): its bodies use the surface's own coordinates, with the globe set under the crossing point, tangent to sea level there, its local east, up and south along the world's axes. **A crossing changes no number at all**: position, rotation and velocity carry across to the last bit. Aligning elsewhere (on the way into the band, coming down) moves everything rigidly, the sky too, so nothing shows |
+| One mapping | `GlobeMap` (a direction from the globe's centre is a map point) and the globe's ground being sea level. Godot's own SphereMesh is checked against it (the globe test) |
+| The air | From 700 m up to 1,000 m over the crossing, by height alone, both ways. planet-surface's sky fades into space's own backdrop (the same stars, nebula and glare, its code copied into `sky.gdshader`), so when the orbit's sky takes over at the top nothing changes. Haze thins to nothing and the wind's sound with it |
+| The overlap band | The flat map and the small round globe can't match, so over the 1,000 m above the crossing one becomes the other: the surface stays on screen, frozen, while the globe, showing the same map at the same scale under you, fades in over it (drawn pulled in along each eye ray, so it is in front of the terrain and still behind your vessel) and the land fades out behind it. The star's light takes over from the planet's sun |
+| The record | `ZoneLedger`, on saves' persistence core: every holder's record brought up to date and the crosser's new zone committed on a worker thread (one atomic rename); only once that landed does anything move, in one tick (`Handover`: shared physics' `Release` and `Adopt`, so bodies keep their identity and riders stay aboard). The move is audited: counts before against counts after, and zones against the ledger |
+| Edges | A vessel nobody is in waits at a zone's edge rather than crossing alone |
+
+**The pilot role** (`src/Vessels/VesselRoles.cs`): every seat is a control seat; one player flies. A vessel's heading is set by the seat of whoever holds the role: `FlightState.Seat` is the control frame, and thrust, strafe, pitch, yaw, roll, cruise and the hover frame all work in it, with thrusters still pushing along their own facing. Alone, you hold it when you sit. It can go to anyone in a seat (`Roles.Assign`, or PILOT on Tab, CORE), which turns what counts as forward at once and nothing else.
+
+**The map** (Tab, MAP) has four levels: HERE (the old 300 and 600 m view), WORLD (the generator's map, wrapping both ways, drag to move, wheel to zoom, right click to mark), SYSTEM (the star's bodies, wrecks found, a destination with a route line; the warp drive isn't fitted) and STARS (home and its neighbours one hyperdrive jump away; not fitted). Each shows only what has been discovered (`Charts`): places within 500 m, deposits the compass finds, wrecks within 3 km.
+
+**Clouds** sit at 600 to 1,000 m and are flown through: a white-out from one sample of the sky's cloud at the eye (it applies on a peak in cloud too), a fog gathering up from the cloud base softens peaks standing into the layer, and from above a cloud deck draws what is under you from the same coverage. The globe's cloud layer is painted from that coverage too.
+
+![The atmosphere fading: just before the crossing](screenshots/seam-before.png)
+![The first frame after it](screenshots/seam-after.png)
+![At 1,600 m: the air nearly gone, the same world below](screenshots/seam-alt1600.png)
+![Clouds from the ground](screenshots/clouds-ground.png)
+![Through the layer](screenshots/clouds-alt800.png)
+![Just over the clouds, before the crossing](screenshots/clouds-alt1000.png)
+![The world map](screenshots/map-world.png)
+![The system map](screenshots/map-system.png)
+![The star map](screenshots/map-stars.png)
+
+### Test it
+
+```powershell
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/GlobeTest.tscn
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/ZoneTest.tscn
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/SeatTest.tscn
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/ChartTest.tscn
+```
+
+`OrbitTest.tscn` needs `--fixed-fps 60` (test-all reads its .args).
+
+- **OrbitTest**, the route played by the game's own controls (setup is the one shortcut, printed: the Skiff's parts and a base core handed over, the tech tree opened): build the Skiff, climb through the crossing, fly to a derelict, step out, float across, force its door, in (dark, no gravity), take its hold, salvage a block, out, claim it from outside, float back, fly over a chosen map point, turn to a chosen heading, descend, land. Every tick the castaway and the Skiff must be in exactly one zone, the one the game says. Then three hand-overs up and down for the frame cost.
+- **ZoneTest**: a crossing crashed at each of its commit's points and reloaded: the crosser is in exactly one zone on disk, the old one before the rename and the new one from it on, totals intact. The move audit catches a loss, a double and a wrong zone.
+- **GlobeTest**: the mapping's round trips, eight descents (both poles and the seam among them), and Godot's SphereMesh agreeing with it.
+- **SeatTest**: a two-chair hull flown by the handling model, the pilot role handed over with no jolt, hover frames level. **ChartTest**: marks appear when discovered and not before, a world-map point round-trips the wrap, the system and star listings.
 
 ## How it fits together
 
@@ -210,6 +274,9 @@ All additive; each prototype's own tests still pass.
 | `shared/Items/data` | `unlock` on every block (per grid) and on tools, consumables and ammo | The tree's nodes; materials and parts have none (always made) |
 | `planet-surface/shaders/sky.gdshader` | The sunset term's base clamped (and two other `pow` bases guarded) | Straight away from the sun the dot product rounded past -1 and `pow` of a negative returned NaN: a dotted dark line down the sky on the anti-solar azimuth at dawn and dusk |
 | `planet-surface/shaders/terrain.gdshader`, `src/Terrain/TerrainStreamer.cs` | The horizon mesh sinks inside the far rings' square (`hole_sink`) and is cut only well inside it | Where the coarse horizon stood above the far rings' outer edge, hard-edged notches of sky showed in hills about 1 km off |
+| `shared/Physics/Core/PhysicsWorld.cs` | `Release(body)`, `Adopt(bodies)` | A zone handover: bodies leave one world and join another as they are, riders aboard |
+| `ship-handling/src/Handling/FlightModel.cs` | `FlightState.Seat`, `Control`; turn, cruise and thrust in the seat's frame | A vessel's heading is set by the pilot's seat |
+| `planet-surface/shaders/sky.gdshader`, `src/Sky/Atmosphere.cs`, `SkyRig.cs`, new `CloudCoverage.cs`, `clouddeck.gdshader` | The cloud layer lowered to 600 to 1,000 m, its march scaled to it, `space_fade` into space's backdrop, a cloud deck from above, the cloud at the eye | Orbit at 1,060 m; the atmosphere fading away as the mask for the crossing |
 | `wildlife/src/Core` | `Stats.Xp`, set by the fauna generator from health, damage and hunting | Kill experience by species |
 | `planet-surface/src/WeatherView` | `IWeatherScene` (earlier) | |
 | `planet-surface/src/Terrain/TerrainStreamer.cs` | `FloraNear(point, radius)` with each plant's scatter id (earlier, now merged with main's solid flora) | Find and cut plants from data |
@@ -228,7 +295,13 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 
 ## Known limits
 
-- **Phase 1 only:** no orbit, boarding or saves yet. Progress lives in one `ProgressState` ready for phase 3's saves.
+- **Saves:** none yet beyond the zone ledger, which records where everything is at each crossing (phase 3 loads). Progress lives in one `ProgressState` ready for it.
+- **In orbit** nothing builds yet but a core into a wreck: block building waits for the block-items work. A claimed wreck is a station: it holds still and can't be flown. A wreck's blocks taken away don't split it into pieces.
+- **Machines stop in a parked zone:** a base's constructors wait while you are in orbit.
+- **No creatures in derelicts yet**, and shooting in space hurts nothing.
+- **The crossing's handling** is the physics' one altitude switch: weight goes and the top speed changes at 1,060 m; thrust doesn't yet thin on the way up.
+- **Lateral flight in the overlap band** is flat: you arrive over what you see under you, which drifts from the globe's point if you fly sideways through the band. A straight descent lands exactly on it.
+- **Loose containers** aren't carried with a vessel across a crossing (they never ride one).
 - **The escape pod and its descent are gone**; the bunker start lives in `Game.Start.cs` and `src/Start/Bunker.cs`, apart from the rest. The places the start faces are the POI generator's, drawn by planet-surface's layer; they can't be entered or looted from the slice yet.
 - **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
 - **Blocks are not items** (shared/Items' rule): the toolbar holds block shortcuts paid from storage at placement, not stacks of blocks as in Empyrion. Cores are the exception, made as items in the slice's own data.

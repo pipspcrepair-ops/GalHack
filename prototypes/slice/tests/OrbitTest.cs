@@ -203,11 +203,23 @@ public partial class OrbitTest : Node
         _game.Controls.Hold(Key.Space);
         bool preloaded = false;
         int ticks = 0;
+        float lastAir = 0f, airStep = 0f;
         while (!_game.InOrbit && ticks++ < 60 * 150)
         {
             preloaded |= _game.Orbit != null && v.Body.Position.Y < ceiling;
+            airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
+            lastAir = _game.Spaceflight.AirGone;
             yield return 0;
         }
+        float airAtCrossing = lastAir;
+        for (int i = 0; i < 10; i++)
+        {
+            airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
+            lastAir = _game.Spaceflight.AirGone;
+            yield return 0;
+        }
+        Check(airAtCrossing is > 0.05f and < 0.5f && airStep < 0.02f,
+            $"the atmosphere fades with height alone, through the crossing with no step: {airAtCrossing:P0} gone at the crossing, at most {airStep:P1} a tick");
         _game.Controls.ReleaseAll();
         Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s ({_game.Spaceflight.Crossings.Count} crossing)");
         if (!_game.InOrbit) yield break;
@@ -265,6 +277,7 @@ public partial class OrbitTest : Node
         float off = v.Body.Position.ToGodot().DistanceTo(Door + Outward * 11f);
         Check(off < 8f && v.Body.Velocity.Length() < 1.5f, $"the Skiff flew there and stopped {Door.DistanceTo(v.Body.Position.ToGodot()):F0} m off its door, {v.Body.Velocity.Length():F1} m/s");
         Check(v.Stats.TopSpeed > 100f, $"out here it flies by the space rules: top speed {v.Stats.TopSpeed:F0} m/s");
+        Check(_game.Spaceflight.Band >= 1f && !_game.Surface.Visible && _game.Spaceflight.AirGone >= 1f, "the surface has gone from the view out here, whichever way it flew: the globe and space are all there is");
         Check(_game.Suit.Vitals.Oxygen < oxygen, $"an open hull is vacuum: the suit's oxygen runs down ({oxygen:F0} to {_game.Suit.Vitals.Oxygen:F0})");
     }
 

@@ -261,7 +261,7 @@ public partial class Spaceflight : Node
             return;
         }
         // In the band world coordinates are the surface's: what is under you is what you land on.
-        StreamAhead(v.Y < 0f || y < Ceiling, at);
+        StreamAhead(v.Dot((at - orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized()) < 0f || y < Ceiling, at);
         if (y >= Ceiling - Rules.Crossing.Gap) return;
         if (Game.Surface.Streamer.ReadyAround(at, 1, needCollision: false))
         {
@@ -269,8 +269,9 @@ public partial class Spaceflight : Node
             return;
         }
         // The ground isn't there yet: the crossing waits at the edge until it is.
-        b.Position = b.Position with { Y = Ceiling - Rules.Crossing.Gap };
-        if (b.Velocity.Y < 0f) b.Velocity = b.Velocity with { Y = 0f };
+        Vector3 up = (at - orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized();
+        float inwards = v.Dot(up);
+        if (inwards < 0f) b.Velocity -= (up * inwards).ToNumerics();
         (carrier?.Binding as BodyBinding ?? Game.Survivor.Binding).Teleport();
     }
 
