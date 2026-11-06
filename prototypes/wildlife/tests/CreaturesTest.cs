@@ -75,6 +75,7 @@ public partial class CreaturesTest : Node
             Settlements();
             DomesticAnimals();
             SensesAreReal();
+            WeightShows();
             DeepPerformance();
             CrowdedPlaceCost();
         }
@@ -1527,6 +1528,52 @@ public partial class CreaturesTest : Node
         p.Position = new Vector3(19f, 1f, 6f);
         Run(4f, c5, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
         Check(blind.Blind && heard && stillUnheard && c5.Noticed == null, $"something blind goes by ear alone: a walker in its room heard, nothing through a wall ({blind.NoticeRadius * Senses.BlindHearing:F1} m earshot)");
+    }
+
+    /// <summary>A big body takes its time to get going, stop and turn; a small one doesn't.</summary>
+    void WeightShows()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 300f), new NavGrid(300f, 3f));
+        Species Body(float size)
+        {
+            Species s = _gen.Generate(4242, 0.3f, false).Species.Find(x => x.Rig == RigKind.Legged && !x.Flies).Copy();
+            s.Body.Size = size;
+            s.Stats.RunSpeed = 7f;
+            s.Stats.WalkSpeed = 2f;
+            return s;
+        }
+        (float start, float stop, float radius) Measure(float size)
+        {
+            Creature c = sim.Spawn(Body(size), Vector3.Zero);
+            c.Yaw = 0f;
+            float start = 0f, stop = 0f;
+            for (; c.Velocity.Length() < 6.3f && start < 10f; start += Dt)
+            {
+                c.Desired = c.Forward * 7f;
+                Locomotion.Move(sim, c, Dt);
+            }
+            // At speed it is told to go off at a right angle: how far sideways does it get before it is heading there?
+            Vector3 from = c.Position;
+            Vector3 right = c.Forward.Rotated(Vector3.Up, -MathF.PI / 2f), ahead = c.Forward;
+            float over = 0f;
+            for (float t = 0f; t < 8f && c.Forward.Dot(right) < 0.95f; t += Dt)
+            {
+                c.Desired = right * 7f;
+                Locomotion.Move(sim, c, Dt);
+                over = (c.Position - from).Dot(ahead);
+            }
+            for (; c.Velocity.Length() > 0.1f && stop < 10f; stop += Dt)
+            {
+                c.Desired = Vector3.Zero;
+                Locomotion.Move(sim, c, Dt);
+            }
+            sim.Remove(c);
+            return (start, stop, over);
+        }
+        var small = Measure(0.8f);
+        var big = Measure(5.5f);
+        Check(big.start > small.start * 2.5f && big.stop > small.stop * 2.5f && big.radius > small.radius * 3f,
+            $"weight shows: a 5.5 m body takes {big.start:F1} s to get going and {big.stop:F1} s to stop and swings {big.radius:F1} m wide of a right-angle turn; a 0.8 m one {small.start:F1} s, {small.stop:F1} s, {small.radius:F1} m");
     }
 
     /// <summary>An overrun place with someone walking its halls, timed by part: the crowded case the owner plays.</summary>

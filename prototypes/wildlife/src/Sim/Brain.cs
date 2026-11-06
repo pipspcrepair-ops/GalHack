@@ -839,14 +839,35 @@ public static partial class Brain
         if (c.State == CState.Graze || c.State == CState.Idle)
         {
             c.Desired = Vector3.Zero;
-            c.WantGraze = c.Species.Flies && c.Species.Rig != RigKind.Winged ? 0f : 1f;
-            if (c.StateTime > c.Rng.Range(3f, 8f)) c.SetState(CState.Wander);
+            if (c.IdleFor <= 0f)
+            {
+                // Seven times in ten it feeds; otherwise it stands and looks about, to one side.
+                c.IdleFor = c.Rng.Range(3f, 9f) * Math.Clamp(c.Species.Body.Size, 0.8f, 1.6f);
+                c.IdleLook = c.Rng.Chance(0.3f) ? c.Rng.Range(1f, 2f) * (c.Rng.Chance(0.5f) ? 1f : -1f) : 0f;
+            }
+            bool feeding = c.IdleLook == 0f && !(c.Species.Flies && c.Species.Rig != RigKind.Winged);
+            c.WantGraze = feeding && Mathf.PosMod(c.StateTime + c.Id, 5f) > 1f ? 1f : 0f; // head up now and then, chewing
+            if (c.IdleLook != 0f)
+            {
+                float a = c.Yaw + c.IdleLook;
+                c.LookAt ??= c.Position + new Vector3(-MathF.Sin(a), 0.2f, -MathF.Cos(a)) * 6f + Vector3.Up * c.Species.BodyHeight;
+            }
+            if (c.StateTime > c.IdleFor)
+            {
+                c.IdleFor = 0f;
+                c.SetState(CState.Wander);
+            }
             return;
         }
         if (c.State != CState.Wander) c.SetState(CState.Wander);
         if (!c.HasGoal)
         {
-            Vector3 g = c.Home + new Vector3(c.Rng.Range(-radius, radius), 0f, c.Rng.Range(-radius, radius));
+            // On the way it was going, give or take: a point on a circle ahead of it, drifting, and
+            // turned for home if that would take it out of its range.
+            c.WanderTurn = Math.Clamp(c.WanderTurn + c.Rng.Range(-0.5f, 0.5f), -0.9f, 0.9f);
+            float a = c.Yaw + c.WanderTurn, ahead = MathF.Min(radius, c.Rng.Range(5f, 11f) + c.Species.Body.Size);
+            Vector3 g = c.Position + new Vector3(-MathF.Sin(a), 0f, -MathF.Cos(a)) * ahead;
+            if (WildSim.Flat(g - c.Home).Length() > radius) g = c.Home + (WildSim.Flat(g - c.Home).Normalized() * radius * 0.5f).Rotated(Vector3.Up, c.Rng.Range(-1f, 1f));
             c.Goal = w.FreeSpot(g, c.Rng);
             c.HasGoal = true;
         }
@@ -865,7 +886,9 @@ public static partial class Brain
     {
         Vector3 dir = SteerDir(w, c, goal);
         float d = WildSim.Flat(goal - c.Position).Length();
-        c.Desired = dir * speed * Math.Clamp(d / 1.5f, 0.25f, 1f);
+        // Eases in from as far out as it takes this body to stop.
+        float ease = MathF.Max(1.5f, Heft.StoppingDistance(c, WildSim.Flat(c.Velocity).Length()) * 1.3f);
+        c.Desired = dir * speed * Math.Clamp(d / ease, 0.25f, 1f);
     }
 
     /// <summary>

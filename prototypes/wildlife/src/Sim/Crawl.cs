@@ -104,7 +104,7 @@ public static class Crawl
         // What the brain wants, laid flat on the surface.
         Vector3 want = c.Desired - n * c.Desired.Dot(n);
         float wantSpeed = want.Length();
-        float turn = Math.Clamp(6f / MathF.Max(0.6f, c.Species.Body.Size), 1.5f, 7f) * dt;
+        float turn = Heft.TurnRate(c, c.CrawlSpeed) * dt;
         // Wanting to go straight out from the surface (the next stretch of the way lies across an
         // inside corner): keep crawling the way it faces, into the corner and round onto the next face.
         float raw = c.Desired.Length();
@@ -124,7 +124,7 @@ public static class Crawl
         // Crawlers walk the way they face: slow while still turning to the way they want to go.
         float align = aimDir == Vector3.Zero ? 0f : MathF.Max(0f, f.Dot(aimDir));
         float target = wantSpeed * (0.25f + 0.75f * align);
-        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, target, (c.Stats.RunSpeed * 3f + 2f) * dt);
+        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, target, (target > c.CrawlSpeed ? Heft.Accel(c) : Heft.Brake(c)) * dt);
 
         float distance = c.CrawlSpeed * dt;
         int steps = Math.Max(1, (int)MathF.Ceiling(distance / r.Substep));
@@ -190,7 +190,7 @@ public static class Crawl
 
         Vector3 want = new(c.Desired.X, 0f, c.Desired.Z);
         float wantSpeed = want.Length();
-        float turn = Math.Clamp(6f / MathF.Max(0.6f, c.Species.Body.Size), 1.5f, 7f) * dt;
+        float turn = Heft.TurnRate(c, c.CrawlSpeed) * dt;
         Vector3 aimDir = wantSpeed > 0.05f ? want / wantSpeed : Vector3.Zero;
         if (aimDir == Vector3.Zero && c.FacePoint is { } face)
         {
@@ -200,7 +200,8 @@ public static class Crawl
         }
         if (aimDir != Vector3.Zero) f = TurnToward(f, aimDir, Vector3.Up, turn);
         float align = aimDir == Vector3.Zero ? 0f : MathF.Max(0f, f.Dot(aimDir));
-        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, wantSpeed * (0.25f + 0.75f * align), (c.Stats.RunSpeed * 3f + 2f) * dt);
+        float aimed = wantSpeed * (0.25f + 0.75f * align);
+        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, aimed, (aimed > c.CrawlSpeed ? Heft.Accel(c) : Heft.Brake(c)) * dt);
 
         float distance = c.CrawlSpeed * dt;
         int steps = Math.Max(1, (int)MathF.Ceiling(distance / r.Substep));

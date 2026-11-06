@@ -77,6 +77,8 @@ public sealed class Creature
     /// <summary>The horizontal velocity the brain asks for.</summary>
     public Vector3 Desired;
     public Vector3? FacePoint;
+    /// <summary>Idling: for how long, and how far round it is looking (0 if it is feeding). Wandering: how far its heading has drifted.</summary>
+    public float IdleFor, IdleLook, WanderTurn;
 
     // Attacks. The first attack on each target is telegraphed with the species' long wind-up.
     public AttackPhase Phase;

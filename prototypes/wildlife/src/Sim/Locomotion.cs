@@ -52,15 +52,26 @@ public static class Locomotion
     static void Ground(WildSim w, Creature c, float dt)
     {
         Vector3 v = WildSim.Flat(c.Velocity);
-        float accel = c.Stats.RunSpeed * 3f + 2f;
-        v = v.MoveToward(WildSim.Flat(c.Desired), accel * dt);
+        Vector3 want = WildSim.Flat(c.Desired);
+        if (c.Attacking) v = v.MoveToward(want, Heft.Brake(c) * 3f * dt); // an attack places the body itself
+        else
+        {
+            // It goes where it faces: it swings toward what it wants, easing off while it does, and
+            // speed comes and goes by its size. What it was already doing carries it wide of a turn.
+            float speed = v.Length(), wantSpeed = want.Length();
+            Turn(c, wantSpeed > 0.05f ? want : Vector3.Zero, dt, speed);
+            Vector3 f = c.Forward;
+            float align = wantSpeed > 0.05f ? MathF.Max(0f, f.Dot(want / wantSpeed)) : 0f;
+            float target = wantSpeed * (0.2f + 0.8f * align);
+            speed = Mathf.MoveToward(speed, target, (target > speed ? Heft.Accel(c) : Heft.Brake(c)) * dt);
+            v = v.MoveToward(f * speed, Heft.Accel(c) * 2f * dt);
+        }
         Vector3 p = c.Position + v * dt;
         Avoid(w, c, ref p, ref v);
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
         c.Velocity = v;
         c.Position = p;
-        Turn(c, v, dt);
     }
 
     /// <summary>Hoppers stand still on the ground and cover distance in ballistic hops.</summary>
@@ -158,7 +169,7 @@ public static class Locomotion
         Vector3 want = WildSim.Flat(c.Desired);
         if (want.Length() < c.Stats.WalkSpeed * 0.4f && c.Altitude > 0.5f)
             want = c.Forward * c.Stats.WalkSpeed * 0.6f + c.Forward.Cross(Vector3.Up) * 1.2f; // idle: lazy circles
-        flat = flat.MoveToward(want, 6f * dt);
+        flat = flat.MoveToward(want, MathF.Min(6f, Heft.Accel(c) * 1.2f) * dt);
         float targetY = ground + c.Altitude;
         float vy = Math.Clamp((targetY - c.Position.Y) * 1.2f, -5f, 3.5f);
         float vertical = Mathf.MoveToward(c.Velocity.Y, vy, 8f * dt);
@@ -268,9 +279,9 @@ public static class Locomotion
     }
 
     /// <summary>Turn towards the way it is moving, or towards what it faces when standing still.</summary>
-    static void Turn(Creature c, Vector3 v, float dt)
+    static void Turn(Creature c, Vector3 v, float dt, float speed = 0f)
     {
-        float rate = Math.Clamp(5f / MathF.Max(0.6f, c.Species.Body.Size), 0.5f, 6f);
+        float rate = Heft.TurnRate(c, speed);
         Vector3 dir = v;
         if (dir.Length() < 0.15f && c.FacePoint is { } face) dir = WildSim.Flat(face - c.Position);
         if (dir.Length() < 0.05f) return;

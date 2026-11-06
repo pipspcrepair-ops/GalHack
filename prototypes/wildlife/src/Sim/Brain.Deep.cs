@@ -160,7 +160,8 @@ public static partial class Brain
         {
             c.SpacePath.Clear();
             Vector3 straight = goal - center;
-            c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / 1.2f, 0.3f, 1f) : Vector3.Zero;
+            float ease = MathF.Max(1.2f, Heft.StoppingDistance(c, c.CrawlSpeed) * 1.3f);
+            c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / ease, 0.3f, 1f) : Vector3.Zero;
             return;
         }
         c.SpacePathAge += c.ThinkDt;
@@ -542,7 +543,10 @@ public static partial class Brain
     {
         if (!c.HasGoal || c.StateTime > 20f || Dist3(c, c.Goal) < 1.2f)
         {
-            Vector3 g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius));
+            // On the way it was going, drifting; back for home if that would take it too far.
+            c.WanderTurn = Math.Clamp(c.WanderTurn + c.Rng.Range(-0.6f, 0.6f), -1.2f, 1.2f);
+            Vector3 g = c.Position + (-c.Facing.Z).Rotated(c.Facing.Y, c.WanderTurn) * c.Rng.Range(3f, 7f);
+            if ((g - c.Home).Length() > radius) g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius)) * 0.5f;
             Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
             c.Goal = cell is { } k ? SpaceMath.Center(k) : c.Home;
             c.HasGoal = true;
