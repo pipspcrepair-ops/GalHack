@@ -72,6 +72,56 @@ public sealed class PlaceWalk
         done(ok);
     }
 
+    /// <summary>The place's blocks with the Hollow Bloom's growths taken away: the way there if they were cut.</summary>
+    sealed class Cut : IBlockStructure
+    {
+        readonly IBlockStructure _g;
+        public Cut(IBlockStructure g) => _g = g;
+        public Int3 Min => _g.Min;
+        public Int3 Size => _g.Size;
+        public bool InBounds(Int3 p) => _g.InBounds(p);
+        public Block Get(Int3 p) => _g.Get(p) is { Type: BlockType.Growth } ? Block.Air : _g.Get(p);
+        public void Set(Int3 p, Block b) => _g.Set(p, b);
+        public int CountBlocks() => _g.CountBlocks();
+    }
+
+    /// <summary>Growths cut out of the way so far.</summary>
+    public int GrowthsCut;
+
+    /// <summary>To a cell, cutting through whatever the Bloom has grown over the way with the survival tool.</summary>
+    public IEnumerable<int> CutWay(Place p, Int3 goal, Action<bool> done)
+    {
+        PNav nav = p.Nav();
+        if (nav.FindPath(Here(p, nav), goal, 400_000) is List<Int3>)
+        {
+            foreach (int x in To(p, goal, done)) yield return x;
+            yield break;
+        }
+        var open = new PNav(new Cut(Place.Routed(p.Memory)), p.Inst.Layout.Occupied, p.Inst.Extras.Lifts, false);
+        List<Int3> way = open.FindPath(Here(p, nav), goal, 400_000);
+        if (way == null)
+        {
+            Notes.Add($"no way to {goal} even through the Bloom");
+            done(false);
+            yield break;
+        }
+        for (int i = 1; i < way.Count; i++)
+        {
+            var growths = new[] { way[i], way[i] + Int3.Up, way[i] + Int3.Up * 2 }.Where(c => p.Inst.Blocks.Get(c).Type == BlockType.Growth).ToList();
+            if (growths.Count == 0) continue;
+            bool ok = true;
+            foreach (int x in To(p, way[i - 1], r => ok = r)) yield return x;
+            if (!ok) { done(false); yield break; }
+            foreach (Int3 g in growths)
+            {
+                foreach (int x in _drive.HoldPrimary(p.WorldOf(g), 300, () => p.Inst.Blocks.Get(g).IsAir)) yield return x;
+                if (p.Inst.Blocks.Get(g).IsAir) GrowthsCut++;
+                else Notes.Add($"couldn't cut the growth at {g}: the tool's on '{_game.Tool.TargetLabel}', on a place {_game.Tool.OnPlace}, cell {_game.Tool.PlaceHit?.Cell}");
+            }
+        }
+        foreach (int x in To(p, goal, done)) yield return x;
+    }
+
     /// <summary>Walks a route cell by cell (straight runs merged), opening shut doors on the way.</summary>
     public IEnumerable<int> Follow(Place p, List<Int3> path, Action<bool> done, Func<bool> stop = null)
     {

@@ -188,11 +188,12 @@ public partial class Place
     /// </summary>
     public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m) => NavOf(m, m.Rooms);
 
-    public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m, Dictionary<int, PlaceRoom> rooms)
-    {
-        var blocked = new HashSet<Int3>(rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>());
-        return new PoiGenerator.Gen.NavGrid(new Overlay(m.Inst.Blocks, blocked), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
-    }
+    public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m, Dictionary<int, PlaceRoom> rooms) =>
+        new(Routed(m, rooms), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
+
+    /// <summary>The place's blocks as a walking route sees them, the dressing's solid pieces standing in.</summary>
+    public static IBlockStructure Routed(PlaceMemory m, Dictionary<int, PlaceRoom> rooms = null) =>
+        new Overlay(m.Inst.Blocks, new HashSet<Int3>((rooms ?? m.Rooms)?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>()));
 
     public PoiGenerator.Gen.NavGrid Nav() => NavOf(Memory);
 
@@ -206,7 +207,11 @@ public partial class Place
         public Int3 Min => _g.Min;
         public Int3 Size => _g.Size;
         public bool InBounds(Int3 p) => _g.InBounds(p);
-        public Block Get(Int3 p) => _blocked.Contains(p) && _g.Get(p).IsAir ? Crate : _g.Get(p);
+        public Block Get(Int3 p)
+        {
+            Block b = _g.Get(p);
+            return _blocked.Contains(p) && (b.IsAir || b.Type == BlockType.Growth) ? Crate : b;
+        }
         public void Set(Int3 p, Block b) => _g.Set(p, b);
         public int CountBlocks() => _g.CountBlocks();
     }

@@ -150,11 +150,10 @@ public sealed class Decor
             if (bare.AccessCell(c.Cell, open) is Int3 a) Need(a);
         foreach (KeyCard k in inst.Extras.Keys) Need(k.Cell);
         foreach (SecretRoom s in inst.Extras.Secrets)
-            if (s.WallCells.Count > 0)
+            foreach (Int3 c in s.WallCells)
             {
-                Int3 low = s.WallCells.Aggregate((a, b) => a.Y < b.Y ? a : b);
-                Need(low + s.Facing.Vec());
-                Need(low - s.Facing.Vec());
+                Need(c + s.Facing.Vec());
+                Need(c - s.Facing.Vec());
             }
         for (int round = 0; round < 200; round++)
         {
@@ -247,7 +246,13 @@ public sealed class Decor
                     foreach (Dir h in Dirs.Horizontal) { r.Add(f with { Y = y }); r.Add((f + h.Vec()) with { Y = y }); }
         foreach (SecretRoom s in inst.Extras.Secrets)
         {
-            foreach (Int3 c in s.WallCells) r.Add(c);
+            Int3 front = s.WallCells.Count > 0 ? Place.FoundFrom(inst, s) : default;
+            foreach (Int3 c in s.WallCells)
+            {
+                r.Add(c);
+                r.Add(c + front); // the panel stays in view: nothing stands in front of it
+                r.Add(c + front * 2);
+            }
             foreach (Int3 c in s.TellCells) r.Add(c);
         }
         return r;

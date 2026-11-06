@@ -87,6 +87,17 @@ public partial class PlaceTest : Node
             var blockedCells = mem.Rooms.Values.SelectMany(r => r.Cells).ToHashSet();
             GD.Print($"rawpath {rawPath?.Count}: {string.Join(" ", rawPath?.Where(c => !over.Contains(c)).Select(c => $"{c}[{g.Get(c).Type} blocked {blockedCells.Contains(c)} standable {dressedNav.Standable(c)}]") ?? Array.Empty<string>())}");
             GD.Print($"rooms {mem.Rooms.Count}: {string.Join("; ", mem.Rooms.Values.Select(r => $"{inst.Layout.Modules[r.Module].Purpose}/{inst.Layout.Modules[r.Module].Kind}@{r.Corner} {r.Room.Width}x{r.Room.Depth} solid {r.Solid.Count} of {r.Plan.Placements.Count} cells {r.Cells.Count}"))}");
+            var blockedAll = mem.Rooms.Values.SelectMany(r => r.Cells).ToHashSet();
+            for (int z = 0; z <= 17; z++)
+            {
+                var row = new System.Text.StringBuilder();
+                for (int x = 0; x <= 28; x++)
+                {
+                    var c = new PoiGenerator.Gen.Int3(x, -16, z);
+                    row.Append(over.Contains(c) ? 'o' : raw.Contains(c) ? 'r' : blockedAll.Contains(c) ? 'B' : g.Get(c).IsAir ? ' ' : g.Get(c).Type == BlockType.Cube ? '#' : g.Get(c).Type == BlockType.Door ? 'D' : g.Get(c).Type == BlockType.Breakable ? 'X' : g.Get(c).Type == BlockType.Growth ? 'G' : '+');
+                }
+                GD.Print($"map{z,3} {row}");
+            }
             for (int y = 0; y >= -17; y--)
             {
                 GD.Print($"-- y {y} (x {g.Min.X}..{g.Max.X}, z {g.Min.Z}..{g.Max.Z})");
@@ -302,24 +313,25 @@ public partial class PlaceTest : Node
             }
             PoiGenerator.Gen.Int3 low = secret.WallCells.OrderBy(c => c.Y).First();
             PoiGenerator.Gen.Int3 front = low + place.FoundFrom(secret);
-            if (!nav.Standable(front) || nav.FindPath(walk.Here(place, nav), front, 400_000) == null)
-            {
-                // Something stands right at the wall (the Bloom, a crate): the nearest clear spot in reach of it.
-                var clear = nav.Reachable(walk.Here(place, nav));
-                PoiGenerator.Gen.Int3 wall = low;
-                front = clear.Where(c => c.Y == wall.Y).OrderBy(c => c.Manhattan(wall)).First();
-                GD.Print($"  (the panel's front is blocked: working it from {front})");
-            }
-            foreach (int x in Watched(walk.To(place, front, r => ok = r))) yield return x;
-            var wallMiddle = place.ToWorld(new Vector3((float)secret.WallCells.Average(c => c.X) + 0.5f, low.Y + 1.2f, (float)secret.WallCells.Average(c => c.Z) + 0.5f));
+            // The nearest clear spot in front of the panel; where the Bloom has grown over the way to
+            // it, the tool cuts a way through, as a player would (nothing in a place is uncuttable).
+            foreach (PoiGenerator.Gen.Int3 c in secret.WallCells.Where(c => c.Y == low.Y))
+                if (!inst.Blocks.Get(c + place.FoundFrom(secret)).IsAir && inst.Blocks.Get(c + place.FoundFrom(secret)).Type != BlockType.Scatter) continue;
+                else { low = c; front = c + place.FoundFrom(secret); break; }
+            foreach (int x in Watched(walk.CutWay(place, front, r => ok = r))) yield return x;
+            Vector3 wallMiddle = place.ToWorld(new Vector3(low.X + 0.5f, low.Y + 1.2f, low.Z + 0.5f));
             foreach (int x in Watched(drive.LookAt(wallMiddle, 8))) yield return x;
             string label = game.Tool.TargetLabel;
             foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 90, () => place.Memory.Broken.Contains(secret)))) yield return x;
             Check(ok && label == "CRACKED PANEL" && place.Memory.Broken.Contains(secret) && secret.WallCells.All(c => inst.Blocks.Get(c).IsAir),
                 $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the survival tool");
             LootCache stash = inst.Caches.FirstOrDefault(c => c.Secret && c.Module == secret.Module);
-            if (stash != null && place.Nav().AccessCell(stash.Cell) is PoiGenerator.Gen.Int3 at)
+            nav = place.Nav();
+            if (stash != null && nav.AccessCell(stash.Cell) is PoiGenerator.Gen.Int3 at && nav.FindPath(walk.Here(place, nav), at, 400_000) == null)
+                GD.Print("  (the Bloom has grown shut the way to the panel: the room behind is open, but it would take cutting a way through to walk in)");
+            else if (stash != null && nav.AccessCell(stash.Cell) is PoiGenerator.Gen.Int3 at2)
             {
+                at = at2;
                 foreach (int x in Watched(walk.To(place, at, r => ok = r))) yield return x;
                 foreach (int x in Watched(drive.LookAt(place.WorldOf(stash.Cell, 0.4f), 8))) yield return x;
                 foreach (int x in Watched(drive.Tap(Key.E))) yield return x;

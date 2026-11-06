@@ -40,7 +40,9 @@
       "plant":     { "biomass": 0.8 },
       "resin":     { "biomass": 0.4 },
       "chitin":    { "biomass": 0.4 },
-      "bone":      { "biomass": 0.3 }
+      "bone":      { "biomass": 0.3 },
+      "bloom":     { "biomass": 0.5 },
+      "flesh":     { "biomass": 0.5 }
     }
   }
 }
