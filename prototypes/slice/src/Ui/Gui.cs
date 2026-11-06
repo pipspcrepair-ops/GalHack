@@ -44,6 +44,8 @@ public sealed class Gui
     public void BeginInput(Vector2 mouse, bool pressed, bool released, bool held, bool right, bool shift)
     {
         Canvas = null;
+        Tip = null;
+        FirstBox = null;
         Mouse = mouse;
         Pressed = pressed;
         Released = released;
@@ -60,9 +62,15 @@ public sealed class Gui
         foreach (var (k, v) in _building) Rects[k] = v;
         if (Released && DragId != null && !_dropTaken) { DragId = null; DragPayload = null; }
         _dropTaken = false;
+        LastTip = Tip;
+        LastFirstBox = FirstBox;
     }
 
-    public void BeginDraw(CanvasItem canvas) => Canvas = canvas;
+    public void BeginDraw(CanvasItem canvas)
+    {
+        Canvas = canvas;
+        Tip = null;
+    }
 
     bool _dropTaken;
 
@@ -184,4 +192,87 @@ public sealed class Gui
 
     /// <summary>A right click on a widget's rectangle this pass.</summary>
     public bool RightClicked(Rect2 r) => !Drawing && RightPressed && Over(r);
+
+    // ---- Text boxes ---------------------------------------------------------------------------
+
+    /// <summary>The first text box laid out this pass (the "/" key focuses it), and the last pass's.</summary>
+    public string FirstBox, LastFirstBox;
+
+    /// <summary>
+    /// A one-line text box (a filter). Drawn with its text, or a dim placeholder, and a caret while
+    /// it has the keyboard. Returns true on the input pass when it was clicked (the caller gives it
+    /// the keyboard). A read-only box (an in-world screen: no keyboard) shows its text and ignores clicks.
+    /// </summary>
+    public bool TextBox(string id, Rect2 r, string text, string placeholder, bool focused, bool readOnly = false)
+    {
+        Register(id, r);
+        if (!readOnly) FirstBox ??= id;
+        if (Drawing)
+        {
+            Canvas.Block(r, new Color(C.Panel, 0.9f));
+            Canvas.Frame(r, focused ? C.Accent : new Color(C.Rule, 0.9f), focused ? 2.5f : 1.5f);
+            bool empty = string.IsNullOrEmpty(text);
+            string shown = empty ? placeholder : text;
+            Canvas.TextIn(UiTheme.Label, 14, r.Grow(-7), shown + (focused && ((int)(Time.GetTicksMsec() / 500) & 1) == 0 ? "_" : ""), empty ? C.Dim : C.Text, HorizontalAlignment.Left);
+            return false;
+        }
+        bool clicked = !readOnly && Pressed && Over(r) && DragId == null;
+        if (clicked) Sound = "click";
+        return clicked;
+    }
+
+    // ---- Tooltips -----------------------------------------------------------------------------
+
+    /// <summary>The tooltip asked for this pass (the last one under the pointer wins), and the last input pass's (tests read it).</summary>
+    public List<(string Text, Color Colour)> Tip, LastTip;
+    Rect2 _tipAnchor;
+
+    /// <summary>Shows a tooltip for a widget while the pointer is over it and nothing is being dragged.</summary>
+    public void SetTip(Rect2 anchor, Func<List<(string Text, Color Colour)>> lines)
+    {
+        if (!Over(anchor) || DragId != null) return;
+        Tip = lines();
+        _tipAnchor = anchor;
+    }
+
+    /// <summary>
+    /// Draws the tooltip last, beside its widget and inside <paramref name="bounds"/>: right of it if
+    /// there is room, else left; moved up so it never runs off the bottom. The first line is the title.
+    /// </summary>
+    public void DrawTip(Rect2 bounds)
+    {
+        if (!Drawing || Tip == null || Tip.Count == 0) return;
+        Rect2 box = TipBox(bounds, _tipAnchor, Tip);
+        Canvas.Block(box, new Color(C.Glass, 0.97f));
+        Canvas.Frame(box, Tip[0].Colour, 2f);
+        Canvas.Block(new Rect2(box.Position, new Vector2(box.Size.X, 4)), Tip[0].Colour);
+        float y = box.Position.Y + 8;
+        for (int i = 0; i < Tip.Count; i++)
+        {
+            int size = i == 0 ? TipTitle : TipLine;
+            Canvas.Text(i == 0 ? UiTheme.Display : UiTheme.Label, size, new Vector2(box.Position.X + 10, y), Tip[i].Text, Tip[i].Colour);
+            y += size + 7;
+        }
+    }
+
+    const int TipTitle = 15, TipLine = 13;
+
+    /// <summary>Where a tooltip goes: beside the anchor, wholly inside the bounds.</summary>
+    public static Rect2 TipBox(Rect2 bounds, Rect2 anchor, IReadOnlyList<(string Text, Color Colour)> lines)
+    {
+        float w = 0, h = 12;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            int size = i == 0 ? TipTitle : TipLine;
+            w = MathF.Max(w, Paint.TextWidth(i == 0 ? UiTheme.Display : UiTheme.Label, size, lines[i].Text));
+            h += size + 7;
+        }
+        w = MathF.Min(w + 22, bounds.Size.X);
+        h = MathF.Min(h, bounds.Size.Y);
+        float x = anchor.End.X + 8;
+        if (x + w > bounds.End.X) x = anchor.Position.X - 8 - w;
+        x = Math.Clamp(x, bounds.Position.X, bounds.End.X - w);
+        float y = Math.Clamp(anchor.Position.Y, bounds.Position.Y, bounds.End.Y - h);
+        return new Rect2(x, y, w, h);
+    }
 }

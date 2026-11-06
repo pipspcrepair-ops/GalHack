@@ -70,6 +70,8 @@ public sealed class ProgressState
 /// <summary>One node of the tech tree: an item or a block on a grid that has an unlock.</summary>
 public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId, bool? Small)
 {
+    /// <summary>A sub-group on its tab (a deco piece's theme set), or null.</summary>
+    public string Group { get; init; }
     public string Tab => Unlock.Tab;
     public int Level => Unlock.Level;
     public int Cost => Unlock.Cost;
@@ -106,7 +108,7 @@ public sealed class Progress
     /// <summary>A node was unlocked.</summary>
     public event Action<TechNode> Unlocked;
 
-    public static readonly string[] Tabs = { "base", "capital", "small", "hover", "tools", "weapons", "misc" };
+    public static readonly string[] Tabs = { "base", "capital", "small", "hover", "tools", "weapons", "deco", "misc" };
 
     public static string TabName(string tab) => tab switch
     {
@@ -116,6 +118,7 @@ public sealed class Progress
         "hover" => "HOVER VESSEL",
         "tools" => "TOOLS",
         "weapons" => "WEAPONS",
+        "deco" => "DECO",
         _ => "MISC",
     };
 
@@ -154,16 +157,11 @@ public sealed class Progress
 
     static List<TechNode> Build(ItemCatalogue items, GalHack.Structures.Catalogue blocks)
     {
+        // Blocks are items: a block family's node is its item's (steel@large), so crafting and the
+        // tree agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
         var nodes = new List<TechNode>();
         foreach (ItemDef i in items.Items)
-            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, null, null));
-        foreach (BlockBill b in items.Blocks.All)
-            foreach (bool small in new[] { true, false })
-            {
-                Unlock u = b.UnlockFor(small);
-                if (u == null || !blocks.TryGetType(b.BlockId, out var type)) continue;
-                nodes.Add(new TechNode(BlockBill.NodeId(b.BlockId, small), $"{type.Name} ({(small ? "small" : "large")})", u, null, b.BlockId, small));
-            }
+            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId, i.IsBlock ? i.SmallGrid : null) { Group = i.Group });
         return nodes.OrderBy(n => Array.IndexOf(Tabs, n.Tab)).ThenBy(n => n.Level).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
     }
 
@@ -245,7 +243,10 @@ public sealed class Progress
     /// <summary>Can this item be made? (Items without a node always can.)</summary>
     public bool ItemAllowed(ItemDef item) => item.Unlock == null || IsUnlocked(item.Id);
 
-    /// <summary>Can this block be placed on this grid? (Blocks without a node always can.)</summary>
+    /// <summary>
+    /// Is this block family unlocked on this grid? (Blocks without a node always are.) Unlocks gate
+    /// crafting, as in Empyrion: a block item you carry (looted, say) places whether or not it is.
+    /// </summary>
     public bool BlockAllowed(string blockId, bool small)
     {
         string id = BlockBill.NodeId(blockId, small);

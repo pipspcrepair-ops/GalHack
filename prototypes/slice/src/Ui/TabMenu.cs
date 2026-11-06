@@ -88,6 +88,13 @@ public partial class TabMenu : CanvasLayer
         Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.IsHeld(Godot.Key.Shift));
     }
 
+    /// <summary>The / key: the first filter box on the page takes the keyboard.</summary>
+    public void FocusFilter()
+    {
+        string box = Root.Gui.LastFirstBox;
+        if (box != null && box.EndsWith(":filter")) ItemViews.Focused = box[..^":filter".Length];
+    }
+
     /// <summary>A screen point to the menu's canvas.</summary>
     public Vector2 ToVirtual(Vector2 screen) => Root == null ? screen : Root.ToDesign(screen - Root.GlobalPosition);
 
@@ -105,7 +112,7 @@ public partial class MenuRoot : MenuPanel
 
     /// <summary>Redrawn when what it shows changes: the tab, the bag, an open container, progress, and a 4 Hz tick for live vitals and queues.</summary>
     protected override string Signature() => Game?.Pack == null ? "" :
-        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Selected}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}";
+        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Grid.Version}|{Game.Pack.Selected}|{Game.Pack.Bar}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{ItemViews.Focused}|{(ItemViews.Focused != null ? ItemViews.Get(ItemViews.Focused).Text : "")}";
 
     public YouSection You;
     public TechSection Tech;
@@ -164,5 +171,5 @@ public partial class MenuRoot : MenuPanel
 /// <summary>A slot being dragged: which grid and which slot.</summary>
 public sealed record SlotRef(ItemGrid Grid, int Index);
 
-/// <summary>A palette block being dragged onto the toolbar.</summary>
+/// <summary>A block family being dragged from the list onto a toolbar (its item id).</summary>
 public sealed record BlockRef(string BlockId);

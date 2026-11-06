@@ -61,7 +61,13 @@
     "starterBlueprint": "starter.gbp",
     // Small vessels turn no faster than this, °/s, however light they are (the handling model's
     // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
-    "smallVesselMaxTurn": 110
+    "smallVesselMaxTurn": 110,
+    // A structure's area: its blocks' bounding box grown by a margin, per class, plus a share of
+    // its own size (so a big base reaches further). Inside it you are linked to its one shared
+    // storage (its toolbar, the CORE tab, its containers and constructors); outside, only your
+    // own bag counts. Empyrion links you while you stand on a structure, or within 100 m of a
+    // wireless block; GalHack's margin stands in for both.
+    "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
   },
 
   // The head torch (L): a cone from the helmet.

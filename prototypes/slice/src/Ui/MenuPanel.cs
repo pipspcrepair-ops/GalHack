@@ -70,6 +70,7 @@ public abstract partial class MenuPanel : Control
         DrawSetTransformMatrix(Fit);
         Gui.BeginDraw(this);
         Build(Gui, new Rect2(Vector2.Zero, DesignSize));
+        Gui.DrawTip(new Rect2(Vector2.Zero, DesignSize));
         Gui.DrawDrag();
         Gui.Canvas = null;
         DrawSetTransformMatrix(Transform2D.Identity);

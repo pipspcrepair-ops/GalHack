@@ -37,6 +37,7 @@ public partial class ProductionTest : TestBase
         Run("Blueprint factory: exact bill and refusal", TestFactory);
         Run("Survival and creative placement", TestPlacementModes);
         Run("Craft a block, place it, take it down", TestCraftPlaceRemove);
+        Run("Auto sub-parts through block items", TestAutoSubParts);
         Run("Block families go on their classes of structure", TestClasses);
         Run("Full storage spills to a crate", TestSpill);
         Run("Upgrading in place conserves materials", TestUpgrade);
@@ -561,6 +562,75 @@ public partial class ProductionTest : TestBase
                 $"one steel family item places as a {shape}");
         }
         Check(storage[steel] == 2 && crates.Crates.Count == 0, "and every shape gave the same item back");
+    }
+
+    void TestAutoSubParts()
+    {
+        // A deep item: a small thruster block is hull plates, a nozzle and a winding, each made
+        // from refined materials made from ore.
+        ItemDef thruster = _items.BlockItem("thruster", true);
+        SharedStorage storage = Storage(contents: Ores(400));
+        Constructor fab = Fab("small", storage);
+        Check(_items.Graph.Level(thruster) >= 3, $"a small thruster is {_items.Graph.Level(thruster)} levels deep");
+        Check(fab.Order(thruster.Id, 1).Ok, "ordering a small thruster is accepted");
+        var lines = fab.SubParts.Select(j => j.Item.Id).ToList();
+        Check(lines.Contains("hull-plate") && lines.Contains("nozzle") && lines.Contains("winding") && lines.Contains("iron-bar"),
+            $"it plans every intermediate, all the way down: {string.Join(", ", lines)}");
+        Check(fab.SubParts.All(j => j.Feeds == fab.Orders[0]), "each auto sub-part says which order it feeds");
+        RunUntilIdle(fab);
+        Check(storage[thruster.Id] == 1, "and the block comes out");
+
+        // Stock is used first.
+        SharedStorage stocked = Storage(contents: Bill.Of(("hull-plate", 2), ("nozzle", 1), ("winding", 1)));
+        Constructor fab2 = Fab("small", stocked);
+        fab2.Order(thruster.Id, 1);
+        Check(fab2.SubParts.Count == 0 && fab2.Missing.IsEmpty, "with the parts in stock it queues no sub-parts");
+        RunUntilIdle(fab2);
+        Check(stocked.Contents.Equals(Bill.Of((thruster.Id, 1))), "it uses them, and only them");
+
+        // A raw material short: paused, with what and how much.
+        SharedStorage poor = Storage(contents: Bill.Of(("iron-ore", 1)));
+        Constructor fab3 = Fab("small", poor);
+        fab3.Order(_items.BlockItem("steel", false).Id, 1);
+        Check(!fab3.Missing.IsEmpty && fab3.Blockers.Any(b => b.Contains("Iron ore") && b.Contains("not in storage")), $"a missing raw material is reported with its amount: {string.Join("; ", fab3.Blockers)}");
+
+        // A sub-part this tier can't make: exactly which, and which constructor it needs.
+        Constructor fab4 = Fab("survival", Storage(contents: Ores(400)));
+        Check(!fab4.Order(thruster.Id, 1).Ok, "the survival constructor refuses a block it doesn't know");
+        ItemDef hardened = _items.BlockItem("hardened", false);
+        Constructor fab5 = new(_items, new MachineDef { Id = "t", Name = "Test", Tag = "T", Kind = MachineKind.Constructor, Tier = 2, Speed = 1 }, Storage(contents: Ores(400)), new WorldRules());
+        Check(fab5.Knows(hardened), "a large constructor knows hardened steel");
+        // A part only a higher tier makes, deep inside something this tier knows: the order says
+        // which part and which constructor it needs. Forced here by a block item whose recipe sits
+        // at a lower tier than its parts, as the data can do with an explicit "tier".
+        ItemDef over = _items.Items.FirstOrDefault(i => i.Recipe != null && _items.Graph.TierNeeded(i) > i.Recipe.Tier);
+        if (over != null)
+        {
+            Constructor gated = new(_items, new MachineDef { Id = "t2", Name = "Test", Tag = "T", Kind = MachineKind.Constructor, Tier = over.Recipe.Tier, Speed = 1 }, Storage(contents: Ores(400)), new WorldRules());
+            Check(gated.Order(over.Id, 1).Ok && gated.Blockers.Any(b => b.Contains("constructor")), $"{over.Name}: a sub-part beyond this tier is reported exactly: {string.Join("; ", gated.Blockers)}");
+        }
+        else
+        {
+            Constructor gated = Fab("small", Storage(contents: Ores(400)));
+            gated.Lock = i => i.Recipe != null && i.Recipe.Tier > 0 ? "needs a large constructor" : null;
+            gated.Order(thruster.Id, 1);
+            Check(gated.Blockers.Any(b => b.Contains("Nozzle") && b.Contains("constructor")), $"a sub-part this machine can't make is reported exactly: {string.Join("; ", gated.Blockers)}");
+        }
+        Constructor lowFab = Fab("small", Storage(contents: Ores(400)));
+        Check(lowFab.Order(_items.BlockItem("thruster", false).Id, 1).Status == OrderStatus.NeedsHigherTier, "a large thruster needs a large constructor: the order says so");
+        Constructor locked = Fab("small", Storage(contents: Ores(400)));
+        locked.Lock = i => i.Id == "nozzle" ? "locked: level 9" : null;
+        locked.Order(thruster.Id, 1);
+        Check(!locked.SubParts.Any(j => j.Item.Id == "nozzle") && locked.Blockers.Any(b => b.Contains("Nozzle") && b.Contains("locked: level 9")),
+            $"a locked sub-part is not queued, and the order says which and why: {string.Join("; ", locked.Blockers)}");
+
+        // Cancelling the parent cancels its unstarted auto-parts.
+        SharedStorage again = Storage(contents: Ores(400));
+        Constructor fab6 = Fab("small", again);
+        OrderResult r = fab6.Order(thruster.Id, 1);
+        Check(fab6.SubParts.Count > 0 && fab6.Cancel(r.Job) && fab6.SubParts.Count == 0 && fab6.Orders.Count == 0, "cancelling the parent cancels its auto sub-parts");
+        Check(again.Contents.Equals(Ores(400)), "and storage is untouched");
+
     }
 
     void TestClasses()

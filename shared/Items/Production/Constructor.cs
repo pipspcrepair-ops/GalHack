@@ -143,6 +143,15 @@ public sealed class Constructor
     /// <summary>True if this constructor knows how to make the item.</summary>
     public bool Knows(ItemDef item) => item.Recipe != null && item.Recipe.Tier <= Def.Tier;
 
+    /// <summary>
+    /// Why the tech tree keeps an item from being made here, or null if it doesn't (set by whoever
+    /// owns progress). A locked sub-part is reported in <see cref="Blockers"/>, never queued.
+    /// </summary>
+    public Func<ItemDef, string> Lock;
+
+    /// <summary>Can this constructor make the item now: it knows the recipe, and nothing locks it?</summary>
+    public bool CanMake(ItemDef item) => Knows(item) && (Rules.Creative || Lock?.Invoke(item) == null);
+
     /// <summary>Seconds one run takes here.</summary>
     public double RunSeconds(Recipe r) => r.Seconds / (Def.Speed * Math.Clamp(Efficiency, 0.05, 1));
 
@@ -195,9 +204,30 @@ public sealed class Constructor
             foreach (string id in _ledger.ReservedIds)
             {
                 int deficit = _ledger.Reserved(id) - Have(id) - _ledger.Incoming(id);
-                if (deficit > 0 && !Knows(Items.Item(id))) missing.Add(id, deficit);
+                if (deficit > 0 && !CanMake(Items.Item(id))) missing.Add(id, deficit);
             }
             return missing;
+        }
+    }
+
+    /// <summary>
+    /// What is stopping the queue, one readable line per thing, saying exactly what is needed:
+    /// "12 Iron ore: not in storage", "2 Servo: needs a small constructor", "1 Reactor: locked: level 9".
+    /// </summary>
+    public List<string> Blockers
+    {
+        get
+        {
+            var lines = new List<string>();
+            foreach (var (id, n) in Missing)
+            {
+                ItemDef item = Items.Item(id);
+                string why = item.Recipe == null ? "not in storage"
+                    : !Knows(item) ? $"needs a {Items.Machines.TierName(item.Recipe.Tier)} constructor"
+                    : Lock?.Invoke(item) ?? "not in storage";
+                lines.Add($"{n} {item.Name}: {why}");
+            }
+            return lines;
         }
     }
 
@@ -238,7 +268,7 @@ public sealed class Constructor
             int shortfall = n - Math.Max(0, projected);
             ledger.Reserve(item.Id, n);
             if (shortfall <= 0) continue;
-            if (!Knows(item))
+            if (!CanMake(item))
             {
                 missing?.Add(item.Id, shortfall);
                 continue;
@@ -280,7 +310,7 @@ public sealed class Constructor
     {
         if (Rules.Creative) return false;
         foreach (string id in _ledger.ReservedIds)
-            if (_ledger.Reserved(id) - Have(id) - _ledger.Incoming(id) > 0 && Knows(Items.Item(id))) return true;
+            if (_ledger.Reserved(id) - Have(id) - _ledger.Incoming(id) > 0 && CanMake(Items.Item(id))) return true;
         return false;
     }
 

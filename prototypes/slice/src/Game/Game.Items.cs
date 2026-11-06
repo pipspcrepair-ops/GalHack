@@ -324,6 +324,7 @@ public partial class Game
 
     void Snapshot(Constructor c)
     {
+        c.Lock ??= item => Progress.ItemAllowed(item) ? null : Progress.LockReason(item.Id)?.ToLowerInvariant();
         if (!c.Busy) { _watch.Remove(c); return; }
         _watch[c] = c.AllJobs.Select(j => (j, j.RunsDone)).ToList();
     }

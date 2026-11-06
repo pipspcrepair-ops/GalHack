@@ -305,24 +305,42 @@ public sealed class Playthrough
         foreach (int x in Drive.DragWidget($"bag:{from}", $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>Drags a block from the build palette onto a toolbar slot (YOU tab, build palette).</summary>
+    /// <summary>The block family item of a block on a grid.</summary>
+    public string BlockItem(string blockId, bool small) => Game.Zone.Data.Items.BlockItem(blockId, small).Id;
+
+    /// <summary>Drags a stack of a block's item from the bag onto a toolbar slot (blocks are items, carried in stacks).</summary>
     public IEnumerable<int> BlockToToolbar(string blockId, bool small, int slot)
     {
+        string item = BlockItem(blockId, small);
+        if (Game.Mode != GalHack.Items.GameMode.Creative)
+        {
+            foreach (int x in ToToolbar(item, slot)) yield return x;
+            yield break;
+        }
+        // Creative: the build palette's free shortcut.
         foreach (int x in OpenMenu(MenuTab.You)) yield return x;
-        if (Game.Menu.Root.You.ShowBlocks == false) foreach (int x in Drive.ClickWidget("you:blocks")) yield return x;
+        if (!Game.Menu.Root.You.ShowBlocks) foreach (int x in Drive.ClickWidget("you:blocks")) yield return x;
         foreach (int x in PageToStart("palette:up")) yield return x;
-        string id = $"palette:{blockId}@{(small ? "small" : "large")}";
+        string id = $"palette:{item}";
         for (int p = 0; p < 12 && Game.Menu.RectOf(id) == null; p++)
             foreach (int x in Drive.ClickWidget("palette:down")) yield return x;
         foreach (int x in Drive.DragWidget(id, $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>Orders items at a constructor's panel (the fabricator on YOU, or the CORE tab's), paging to the item's row.</summary>
+    /// <summary>Orders items at a constructor's panel (the fabricator on YOU, or the CORE tab's): its category toggle, then paging to the item's row.</summary>
     public IEnumerable<int> Order(string key, string itemId, int count)
     {
         string id = $"order:{key}:{itemId}:{count}";
+        ItemView view = ItemViews.Get($"recipes:{key}");
+        ItemGroup group = ItemView.GroupOf(Game.Zone.Data.Items.Item(itemId));
+        if (view.Show != group)
+        {
+            foreach (int x in Drive.Wait(1)) yield return x;
+            foreach (int x in Drive.ClickWidget($"recipes:{key}:cat:all")) yield return x;
+            foreach (int x in Drive.ClickWidget($"recipes:{key}:cat:{group.ToString().ToLowerInvariant()}")) yield return x;
+        }
         foreach (int x in PageToStart($"{key}:up")) yield return x;
-        foreach (int x in ClickPaged(id, $"{key}:down")) yield return x;
+        foreach (int x in ClickPaged(id, $"{key}:down", 30)) yield return x;
     }
 
     /// <summary>Orders any number by clicking +10, +5 and +1 as a player would.</summary>
@@ -377,7 +395,7 @@ public sealed class Playthrough
     {
         int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "survival-tool");
         foreach (int x in Select(slot)) yield return x;
-        if (Game.Tool.Mode != mode) foreach (int x in Drive.Tap(Key.Q)) yield return x;
+        for (int i = 0; i < 3 && Game.Tool.Mode != mode; i++) foreach (int x in Drive.Tap(Key.Q)) yield return x;
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 

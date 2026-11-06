@@ -444,11 +444,10 @@ public partial class SliceTest : Node
         Structure plan = _game.StarterPlan;
         GalHack.Items.Bill cost = _game.Builder.TotalCost(plan);
         GalHack.Items.Bill packBefore = _game.Pack.Storage.Contents;
-        _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
+        _game.Builder.Project();
         Vector3 pad = FlatSpot(_game.Start, 16f);
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
@@ -503,7 +502,7 @@ public partial class SliceTest : Node
             Vector3 pad = FlatSpot(_game.Start, 30f + attempt * 15f, 2.5f + attempt * 1.3f);
             Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
             foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-            foreach (int x in _drive.Tap(Key.Key4)) yield return x;
+            _game.Builder.Project(); // the CORE tab's projector: blueprints are never on the toolbar
             foreach (int x in _drive.LookAt(pad, 6)) yield return x;
             foreach (int x in _drive.Click()) yield return x;
             twin = _game.Builder.Underway;

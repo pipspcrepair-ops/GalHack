@@ -113,12 +113,11 @@ public sealed partial class Staging
         // Staging shortcut: the Skiff's parts in the bag and the tech open (the screenshots show building, not gathering).
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
         _game.Progress.Creative = true;
-        _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
+        _game.Builder.Project();
         Vector3 pod = _game.Start;
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
         foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel v = _game.Builder.Underway;
