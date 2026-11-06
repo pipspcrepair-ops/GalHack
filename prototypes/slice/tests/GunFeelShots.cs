@@ -82,7 +82,12 @@ public partial class GunFeelShots : Node
         _game.Hands.Recoil(feel);
         yield return 0; // the hand has kicked: the flash goes on its barrel tip as it is now
         Vector3 muzzle = _game.Tool.Muzzle();
-        _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());
+        if (feel == GunFeel.Tool)
+        {
+            _game.Shots.Fire(muzzle, target, default, null, feel.Id, _game.Tool.HeldMuzzle);
+            yield return 0; // a tick on, the beam is out of the barrel and the flash still up
+        }
+        else _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());
         _game.Shots.SetProcess(false); // in this very tick, before any frame has counted the flash down
         _game.Hands.SetProcess(false);
         foreach (int x in drive.Wait(_where == "outside" ? 10 : 8)) yield return x;

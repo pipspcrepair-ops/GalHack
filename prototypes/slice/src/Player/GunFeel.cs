@@ -12,8 +12,6 @@ public enum FlashStyle
     Bloom,
     /// <summary>A backblast cone and a lingering smoke trail: rockets.</summary>
     Rocket,
-    /// <summary>A small flare: the survival tool.</summary>
-    Flare,
 }
 
 /// <summary>
@@ -29,18 +27,17 @@ public sealed record GunFeel(
     /// <summary>A shot soon after another (within this many seconds) flashes at <see cref="RepeatDim"/> of the strength, so held fire doesn't strobe.</summary>
     public const float RepeatWindow = 0.25f, RepeatDim = 0.45f;
 
-    // Small on purpose: the flash accents the shot, well under the size of the held tool, off the view centre.
-    /// <summary>One multiplier for every flash's size (the owner's choice; 1 is the original).</summary>
+    /// <summary>One multiplier for every flash's size (for size samples; the sizes below are the ones the owner chose).</summary>
     public static float FlashScale = 1f;
 
-    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Flare, new Color(1f, 0.55f, 0.2f), 0.022f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
+    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Star, new Color(0.3f, 0.6f, 1f), 0.084f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
 
     static readonly Dictionary<string, GunFeel> Table = Build(
         Tool,
-        new("bullet", FlashStyle.Star, new Color(1f, 0.93f, 0.62f), 0.028f, 1.1f, 4f, 2, 0.4f, 0.45f, 0.9f, 0.25f),
-        new("plasma", FlashStyle.Bloom, new Color(0.35f, 1f, 0.6f), 0.03f, 0.9f, 4f, 3, 0f, 0f, 0.5f, 0.1f),
-        new("laser", FlashStyle.Bloom, new Color(1f, 0.25f, 0.2f), 0.02f, 0.7f, 3.5f, 2, 0f, 0f, 0.25f, 0.05f),
-        new("rocket", FlashStyle.Rocket, new Color(1f, 0.72f, 0.3f), 0.05f, 1.6f, 6f, 3, 1f, 1.4f, 1.5f, 0.45f),
+        new("bullet", FlashStyle.Star, new Color(1f, 0.93f, 0.62f), 0.084f, 1.1f, 4f, 2, 0.4f, 0.45f, 0.9f, 0.25f),
+        new("plasma", FlashStyle.Bloom, new Color(0.35f, 1f, 0.6f), 0.09f, 0.9f, 4f, 3, 0f, 0f, 0.5f, 0.1f),
+        new("laser", FlashStyle.Bloom, new Color(1f, 0.25f, 0.2f), 0.06f, 0.7f, 3.5f, 2, 0f, 0f, 0.25f, 0.05f),
+        new("rocket", FlashStyle.Rocket, new Color(1f, 0.72f, 0.3f), 0.15f, 1.6f, 6f, 3, 1f, 1.4f, 1.5f, 0.45f),
         new("vessel_gun", FlashStyle.Star, new Color(1f, 0.9f, 0.6f), 0.2f, 3f, 12f, 3, 0.7f, 0.8f, 0f, 0f, 0.3f));
 
     /// <summary>The feel for an id; the survival tool's if unknown.</summary>

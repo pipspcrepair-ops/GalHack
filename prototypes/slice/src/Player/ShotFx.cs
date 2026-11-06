@@ -8,22 +8,23 @@ namespace Slice.Player;
 public enum ImpactKind { Ground, Block, Creature, Nothing }
 
 /// <summary>
-/// What a shot looks like: a bolt of light from the tool's muzzle that flies to where the shot
+/// What a shot looks like: a beam of light from the tool's muzzle that reaches to where the shot
 /// lands, then sparks, a flash and a scorch on ground and blocks, or a spray on a creature. All
 /// procedural (no textures or models). The scorch fades over half a minute. Effects on a
 /// structure ride on its node, so they stay on its wall however it moves.
 /// </summary>
 public partial class ShotFx : Node3D
 {
-    const float BoltSpeed = 240f, BoltLength = 1.6f, ScorchLife = 30f;
+    const float BoltSpeed = 240f, BeamHold = 0.07f, ScorchLife = 30f;
 
     sealed class Bolt
     {
         public MeshInstance3D Mesh;
         public OmniLight3D Light;
         public Vector3 From, To;
-        public float Travelled, Length;
+        public float Travelled;
         public Action Arrived;
+        public Func<Vector3?> Follow;
     }
 
     readonly List<Bolt> _bolts = new();
@@ -43,10 +44,10 @@ public partial class ShotFx : Node3D
     {
         _boltMaterial = new StandardMaterial3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(1f, 0.55f, 0.2f),
-            EmissionEnabled = true, Emission = new Color(1f, 0.5f, 0.15f), EmissionEnergyMultiplier = 4f,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = GunFeel.Tool.Colour,
+            EmissionEnabled = true, Emission = GunFeel.Tool.Colour, EmissionEnergyMultiplier = 4f,
         };
-        _boltMesh = new BoxMesh { Size = new Vector3(0.05f, 0.05f, BoltLength) };
+        _boltMesh = new BoxMesh { Size = new Vector3(0.035f, 0.035f, 1f) };
         _scorchTexture = ScorchTexture();
         _starTexture = FlashTexture(true);
         _bloomTexture = FlashTexture(false);
@@ -100,7 +101,7 @@ public partial class ShotFx : Node3D
         s.StarMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            BlendMode = BaseMaterial3D.BlendModeEnum.Add, BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true, NoDepthTest = true,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add, BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true,
         };
         s.ConeMaterial = new StandardMaterial3D
         {
@@ -152,7 +153,7 @@ public partial class ShotFx : Node3D
         double now = Time.GetTicksMsec() / 1000.0;
         float dim = now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
         _lastFlash = now;
-        Color col = colour != default && f.Style is FlashStyle.Bloom or FlashStyle.Flare ? colour : f.Colour;
+        Color col = colour != default && f.Style is FlashStyle.Bloom ? colour : f.Colour;
         float size = f.Size * scale * GunFeel.FlashScale;
         s.Root.Visible = true;
         s.Root.GlobalTransform = new Transform3D(Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up), at);
@@ -259,24 +260,27 @@ public partial class ShotFx : Node3D
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = colour,
                 EmissionEnabled = true, Emission = colour, EmissionEnergyMultiplier = 4f,
             };
-        var light = new OmniLight3D { LightColor = colour == default ? new Color(1f, 0.55f, 0.2f) : colour, LightEnergy = 1.6f, OmniRange = 4f };
+        var light = new OmniLight3D { LightColor = colour == default ? GunFeel.Tool.Colour : colour, LightEnergy = 1.6f, OmniRange = 4f };
         AddChild(mesh);
         AddChild(light);
         Vector3 aim = end - muzzle;
         Muzzle(feel, muzzle, aim.LengthSquared() < 1e-6f ? Vector3.Forward : aim.Normalized(), colour, 1f, follow);
-        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Length = muzzle.DistanceTo(end), Arrived = arrived };
+        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Arrived = arrived, Follow = follow };
         _bolts.Add(bolt);
         Place(bolt);
     }
 
+    /// <summary>The beam, from the barrel (it rides the hand, like the flash) out to its head.</summary>
     void Place(Bolt b)
     {
-        Vector3 dir = (b.To - b.From).Normalized();
-        float head = Mathf.Min(b.Travelled, b.Length);
-        Vector3 at = b.From + dir * Mathf.Max(0f, head - BoltLength * 0.5f);
-        var basis = Basis.LookingAt(dir.IsZeroApprox() ? Vector3.Forward : dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
-        b.Mesh.GlobalTransform = new Transform3D(basis, at);
-        b.Light.GlobalPosition = at;
+        if (b.Follow?.Invoke() is Vector3 tip) b.From = tip;
+        Vector3 line = b.To - b.From;
+        float full = line.Length();
+        Vector3 dir = full > 1e-4f ? line / full : Vector3.Forward;
+        float length = Mathf.Max(0.05f, Mathf.Min(b.Travelled, full));
+        var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
+        b.Mesh.GlobalTransform = new Transform3D(basis * Basis.FromScale(new Vector3(1f, 1f, length)), b.From + dir * length * 0.5f);
+        b.Light.GlobalPosition = b.From + dir * length;
     }
 
     /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node).</summary>
@@ -335,12 +339,17 @@ public partial class ShotFx : Node3D
         {
             Bolt b = _bolts[i];
             b.Travelled += BoltSpeed * dt;
-            if (b.Travelled >= b.Length + BoltLength * 0.5f)
+            float full = b.From.DistanceTo(b.To);
+            if (b.Arrived != null && b.Travelled >= full)
+            {
+                b.Arrived();
+                b.Arrived = null;
+            }
+            if (b.Travelled >= full + BoltSpeed * BeamHold) // held a moment, so a close shot still shows
             {
                 b.Mesh.QueueFree();
                 b.Light.QueueFree();
                 _bolts.RemoveAt(i);
-                b.Arrived?.Invoke();
                 continue;
             }
             Place(b);
