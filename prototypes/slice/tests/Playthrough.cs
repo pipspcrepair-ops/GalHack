@@ -134,7 +134,7 @@ public sealed class Playthrough
         {
             int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
             float health = b.Ruin.Structure.Blocks().Sum(x => x.block.Hp);
-            Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.0f));
+            Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.75f)); // past the lockers on the side wall
             foreach (int x in ShootAt(() => wall)) yield return x;
             foreach (int x in Drive.Wait(20)) yield return x;
             check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
@@ -570,16 +570,30 @@ public sealed class Playthrough
         foreach (int x in Select(slot)) yield return x;
         Int3 target = on + face.Vec();
         float cell = v.Structure.Grid.CellSize;
-        N.Vector3 local = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
+        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
-        foreach (int x in Drive.LookAt(v.ToWorld(local), 6)) yield return x;
+        // Where the ground stands against the face, aim at what shows of it, as a player would.
+        var aims = new List<N.Vector3> { centre };
+        if (face.Vec().Y == 0) aims.Add(centre + N.Vector3.UnitY * (cell * 0.4f));
         // Click only with the ghost on that face, as a player would: a walker settling on a slope
         // drifts the crosshair, and a click on anything else spends the block somewhere unwanted.
-        if (Game.Builder.TargetVessel == v && Game.Builder.PlaceCell == target)
-            foreach (int x in Drive.Click()) yield return x;
+        bool OnFace() => Game.Builder.TargetVessel == v && Game.Builder.PlaceCell == target;
+        for (int round = 0; round < 2 && !OnFace(); round++)
+        {
+            foreach (N.Vector3 aim in aims)
+            {
+                foreach (int x in Drive.LookAt(v.ToWorld(aim), 6)) yield return x;
+                if (OnFace()) break;
+            }
+            if (OnFace() || face.Vec().Y != 0) break;
+            // The face can't be seen from here: a step up to it, clear of the cell it wants.
+            N.Vector3 close = centre + face.Vec().ToVector3() * (cell + 1f);
+            foreach (int x in Drive.WalkTo(v.ToWorld(close), 0.5f, 6f)) yield return x;
+        }
+        if (OnFace()) foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
         bool ok = v.Structure.Has(target) && v.Structure.Count > before;
-        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict})");
+        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict}; feet {Game.Survivor.WorldFeet}, ghost {Game.Builder.PlaceCell} on {Game.Builder.TargetVessel?.Name})");
         placed?.Invoke(ok);
     }
 
