@@ -203,7 +203,7 @@ public static class Placement
 
                 var variant = ChooseVariant(free, knowledge, rng);
                 var (x, y) = rng.Pick(spots);
-                int state = rng.PickWeighted(family.StateWeights);
+                int state = rng.PickWeighted(ThemeDef.Thinned(family.StateWeights, false));
                 placed.Add(new PlacedPoi
                 {
                     Family = family, Variant = variant, State = (PoiState)Math.Max(0, state), SpawnSeed = rng.NextU64(),

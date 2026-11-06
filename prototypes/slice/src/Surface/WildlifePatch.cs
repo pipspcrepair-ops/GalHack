@@ -76,6 +76,9 @@ public partial class WildlifePatch : Node3D
         }
     }
 
+    /// <summary>How livable this world is, 0..1.</summary>
+    public float Livable { get; private set; } = 1f;
+
     PlanetWorld _planet;
     Task<(Terrain terrain, NavGrid nav, Vector3 origin)> _baking;
     Vector3 _bakingFrom;
@@ -84,6 +87,7 @@ public partial class WildlifePatch : Node3D
     {
         _planet = planet;
         var rules = Zone.Data.Rules.Wildlife;
+        Livable = rules.LivableOn(planet.Spec);
         Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
         View = new WildlifeView { Name = "Creatures" };
         AddChild(View);
@@ -163,10 +167,13 @@ public partial class WildlifePatch : Node3D
         float edge = Sim.Terrain.HalfSize - 30f;
         // A patch that took creatures over from the last one only fills its far side.
         float inner = carriedOver ? Sim.Terrain.HalfSize * 0.55f : 0f;
+        // Half what a species could hold, less on a harsher world; and a far side is only part of a patch.
+        float density = Sim.Data.Spawning.Density * Livable * (carriedOver ? 0.6f : 1f);
+        int most = (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
         foreach (Species s in Fauna.Species)
         {
-            int groups = s.Plan == BodyPlan.Giant ? 1 : 2;
-            for (int g = 0; g < groups; g++)
+            int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density, rng);
+            for (int g = 0; g < groups && Sim.Creatures.Count < most; g++)
             {
                 float min = s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe;
                 Vector3 at = default;
@@ -178,7 +185,7 @@ public partial class WildlifePatch : Node3D
                     found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min;
                 }
                 if (!found) continue;
-                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, rng.Int(s.GroupMin, s.GroupMax)));
+                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable))));
             }
         }
     }

@@ -187,6 +187,8 @@ public sealed class HarvestRules
 /// </summary>
 public sealed class SpawnRules
 {
+    /// <summary>The share of a species' natural groups a world holds at its most livable (the world's livability scales it down).</summary>
+    public float Density { get; set; } = 0.5f;
     /// <summary>Metres from a base's footprint edge inside which nothing spawns or respawns.</summary>
     public float BaseClearance { get; set; } = 80f;
     /// <summary>How long a species that has fallen short waits before a group comes back.</summary>
@@ -200,6 +202,13 @@ public sealed class SpawnRules
     public float ViewConeDegrees { get; set; } = 65f;
     /// <summary>Spots tried for one group before it waits for the next check.</summary>
     public int Attempts { get; set; } = 24;
+
+    /// <summary>Whole groups for a wanted number of them: the fraction left over is a roll.</summary>
+    public static int Groups(float wanted, Rng rng)
+    {
+        int n = (int)wanted;
+        return n + (rng.Chance(wanted - n) ? 1 : 0);
+    }
 }
 
 public sealed class WorldRules

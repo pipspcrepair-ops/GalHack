@@ -49,6 +49,9 @@ public sealed class Spawner
     /// <summary>Candidate spots turned down because they were not the species' home ground.</summary>
     public int RejectedForLandform { get; private set; }
 
+    /// <summary>How livable the world is, 0..1: it scales how many groups a species has.</summary>
+    public float Livable { get; set; } = 1f;
+
     public Spawner(WildSim sim, PlanetFauna fauna, IReadOnlyList<Vector3> groves, ulong seed)
     {
         _sim = sim;
@@ -63,7 +66,8 @@ public sealed class Spawner
     {
         foreach (Species s in _fauna.Species)
         {
-            int groups = s.Plan == BodyPlan.Giant ? 2 : s.Behaviour == Behaviour.Herd || s.Rig == RigKind.Swarm ? 2 : 3;
+            float natural = s.Plan == BodyPlan.Giant ? 2 : s.Behaviour == Behaviour.Herd || s.Rig == RigKind.Swarm ? 2 : 3;
+            int groups = SpawnRules.Groups(natural * _rules.Density * Livable, _rng);
             int total = 0;
             for (int g = 0; g < groups; g++)
             {

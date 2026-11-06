@@ -32,11 +32,14 @@ public sealed class PlaceFauna
         public readonly WildlifeData Data;
         public readonly object Lock = new();
         public readonly PlanetSurface.World.PlanetWorld Planet;
+        /// <summary>How livable the world is, 0..1.</summary>
+        public readonly float Livable;
 
-        public Deep(WildlifeData data, PlanetFauna surface, PlanetSurface.World.PlanetWorld planet)
+        public Deep(WildlifeData data, PlanetFauna surface, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
         {
             Data = data;
             Planet = planet;
+            Livable = livable;
             Fauna = new DeepFauna(data, surface);
         }
     }
@@ -58,6 +61,7 @@ public sealed class PlaceFauna
             State = (PlaceState)(int)inst.State,
             Theme = ship ? PoiTheme.Derelict : ThemeOf(inst.Kit?.Faction ?? Faction.None, inst.Family),
             Derelict = ship,
+            Livable = deep.Livable,
         };
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
@@ -302,7 +306,7 @@ public partial class Caves : Node3D
         cave.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = time };
         ulong seed = (ulong)(key.Item1 * 73856093L ^ key.Item2 * 19349663L ^ key.Item3 * 83492791L) ^ planet.Spec.Seed;
         int depth = Math.Max(1, (int)((surface - (anchor.Y + floor.Y)) / 12f) + 1);
-        lock (Deep.Lock) CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth);
+        lock (Deep.Lock) CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth, crawlers: 1, subsisters: (int)MathF.Round(3f * Deep.Livable));
         return (cave, key);
     }
 

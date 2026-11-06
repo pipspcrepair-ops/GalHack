@@ -75,6 +75,7 @@ public partial class CreaturesTest : Node
             Settlements();
             DomesticAnimals();
             DeepPerformance();
+            CrowdedPlaceCost();
         }
         catch (Exception e)
         {
@@ -699,6 +700,8 @@ public partial class CreaturesTest : Node
         var creatures = new Dictionary<PlaceState, int>();
         int nestsOk = 0, nestsAll = 0, chains = 0, chainsPossible = 0, derelictOk = 0, derelictAll = 0, roles = 0;
         var seenRoles = new HashSet<DeepRole>();
+        int worstPlace = 0, worstRoom = 0;
+        int Most = _data.Deep.Population.PlaceCap["Infested"] * 2, RoomMost = 12; // the biggest hall RandomPlan rolls
         for (int i = 0; i < 400; i++)
         {
             PlaceState state = (PlaceState)(i % 4);
@@ -708,6 +711,8 @@ public partial class CreaturesTest : Node
             total[state] = total.GetValueOrDefault(state) + 1;
             if (pop.Silent) silent[state] = silent.GetValueOrDefault(state) + 1;
             creatures[state] = creatures.GetValueOrDefault(state) + pop.Spawns.Count;
+            worstPlace = Math.Max(worstPlace, pop.Spawns.Count);
+            foreach (var room in pop.Spawns.GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
             int maxDepth = plan.Rooms.Max(r => r.Depth);
             foreach (PoiSpawn s in pop.Spawns)
             {
@@ -735,6 +740,7 @@ public partial class CreaturesTest : Node
             $"some places are empty and silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
         Check(Per(PlaceState.Infested) > Per(PlaceState.Abandoned) * 1.6f && Per(PlaceState.Active) < Per(PlaceState.Abandoned) * 0.5f,
             $"infested places are overrun ({Per(PlaceState.Infested):F1} creatures a place against {Per(PlaceState.Abandoned):F1} in abandoned ones, {Per(PlaceState.Active):F1} in active ones)");
+        Check(worstPlace <= Most && worstRoom <= Math.Max(_data.Deep.Population.NestCap, RoomMost), $"places keep to their caps: at most {worstPlace} creatures in a place (cap {Most}), {worstRoom} in a room");
         Check(nestsAll > 20 && nestsOk == nestsAll, $"nests are in the deepest levels (or a wreck's holds, or an infested place's lower levels): {nestsOk} of {nestsAll}");
         Check(chainsPossible > 20 && chains == chainsPossible, $"every place with hunters and subsisters has a food chain ({chains} of {chainsPossible})");
         Check(derelictAll > 5 && derelictOk == derelictAll, $"derelict ships have their own nesters in holds, ducts and engine rooms ({derelictOk} of {derelictAll})");
@@ -982,13 +988,33 @@ public partial class CreaturesTest : Node
         Check(allDodged, "and every one can be escaped: run when you hear or see an ambush's tell and it never lands; step back when a hunter commits and its lunge misses");
     }
 
+    /// <summary>
+    /// The population rules with their caps off, so a test can watch every role at once in one small
+    /// place: what the behaviours are tested on, not what a place is really allowed to hold.
+    /// </summary>
+    public static DeepTables Packed(WildlifeData data)
+    {
+        DeepTables d = data.Deep;
+        PopulationRules p = d.Population;
+        return new DeepTables
+        {
+            Roles = d.Roles, Themes = d.Themes, Depth = d.Depth, Crawl = d.Crawl,
+            Population = new PopulationRules
+            {
+                Silent = p.Silent, Lurker = p.Lurker, Ambusher = p.Ambusher, Prowler = p.Prowler, Subsister = p.Subsister, Food = p.Food, Cracks = p.Cracks,
+                Density = new() { ["Active"] = 0.25f, ["Abandoned"] = 1f, ["Ruined"] = 0.8f, ["Infested"] = 2.2f },
+                RoomCap = 99, NestCap = 99, PlaceCap = new() { ["Active"] = 999, ["Abandoned"] = 999, ["Ruined"] = 999, ["Infested"] = 999 },
+            },
+        };
+    }
+
     /// <summary>The rich showroom population of the outpost: a seed that gives it everything.</summary>
     public static ulong RichSeed(WildlifeData data, DeepFauna fauna)
     {
         for (ulong s = 41; s < 400; s++)
         {
             BlockPlace p = BlockPlace.Outpost(s);
-            PoiPopulation pop = PoiFauna.Populate(p.Plan, fauna, data.Deep);
+            PoiPopulation pop = PoiFauna.Populate(p.Plan, fauna, Packed(data));
             if (pop.Silent) continue;
             if (pop.Count(DeepRole.Lurker) >= 1 && pop.Count(DeepRole.Ambusher) >= 2 && pop.Count(DeepRole.Subsister) >= 4 && pop.Count(DeepRole.Prowler) >= 1 && pop.Nests.Count >= 1) return s;
         }
@@ -1000,7 +1026,7 @@ public partial class CreaturesTest : Node
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         ulong seed = RichSeed(_data, fauna);
         BlockPlace place = BlockPlace.Outpost(seed);
-        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, _data.Deep);
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, Packed(_data));
         WildSim sim = PlaceSim(place);
         List<Creature> made = PoiFauna.Spawn(sim, pop, place.Space);
         var walker = new DummyTarget { Name = "Explorer", Health = new Health(1e7f) };
@@ -1097,7 +1123,7 @@ public partial class CreaturesTest : Node
         for (; seed < 200; seed++)
         {
             hold = BlockPlace.Hold(seed);
-            pop = PoiFauna.Populate(hold.Plan, fauna, _data.Deep);
+            pop = PoiFauna.Populate(hold.Plan, fauna, Packed(_data));
             if (!pop.Silent && pop.Nests.Count >= 2) break;
         }
         WildSim sim = PlaceSim(hold);
@@ -1359,7 +1385,7 @@ public partial class CreaturesTest : Node
     {
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         BlockPlace place = BlockPlace.Outpost(RichSeed(_data, fauna));
-        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, _data.Deep);
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, Packed(_data));
         WildSim sim = PlaceSim(place);
         PoiFauna.Spawn(sim, pop, place.Space);
         TD.ChunkStore store = NewStore();
@@ -1379,6 +1405,35 @@ public partial class CreaturesTest : Node
         }
         double best = windows.Min();
         Check(best < 2.0, $"{n} cave and place creatures, every one posed every frame, cost {best:F2} ms/frame (budget 2 ms, best of three windows: {string.Join(", ", windows.Select(x => x.ToString("F2")))})");
+    }
+
+    /// <summary>An overrun place with someone walking its halls, timed by part: the crowded case the owner plays.</summary>
+    void CrowdedPlaceCost()
+    {
+        CrowdedPlaceCost("as allowed", _data.Deep);
+        CrowdedPlaceCost("packed, uncapped", Packed(_data));
+    }
+
+    void CrowdedPlaceCost(string label, DeepTables rules)
+    {
+        var fauna = new DeepFauna(_data, 2024, 0.5f);
+        BlockPlace place = BlockPlace.Outpost(RichSeed(_data, fauna));
+        place.Plan.State = PlaceState.Infested;
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, rules);
+        WildSim sim = PlaceSim(place);
+        PoiFauna.Spawn(sim, pop, place.Space);
+        var walker = new DummyTarget { Name = "Explorer", Position = new Vector3(20f, 9f, 6f), Health = new Health(1e7f) };
+        sim.Targets.Add(walker);
+        for (int i = 0; i < 600; i++) sim.Step(Dt);
+        sim.Profile = true;
+        double best = double.MaxValue;
+        for (int w = 0; w < 3; w++)
+        {
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < 300; i++) sim.Step(Dt);
+            best = Math.Min(best, sw.Elapsed.TotalMilliseconds / 300.0);
+        }
+        GD.Print($"PERF  crowded place, {label}: {sim.Creatures.Count(c => !c.Removed)} creatures, {best:F2} ms/frame; brains {sim.ThinkMs / 900:F2}, moving {sim.MoveMs / 900:F2}, rigs {sim.RigMs / 900:F2}");
     }
 
     // ---- Plumbing -----------------------------------------------------------------------

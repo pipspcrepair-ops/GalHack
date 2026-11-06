@@ -40,6 +40,8 @@ public sealed class PoiPlan
     public PlaceState State = PlaceState.Abandoned;
     /// <summary>A wrecked ship (crashed or drifting): its holds, ducts and engine rooms get nesters.</summary>
     public bool Derelict;
+    /// <summary>How livable its world is, 0..1: a harsh world's places hold less (an overrun place holds what the Bloom brought).</summary>
+    public float Livable = 1f;
     public readonly List<PoiRoom> Rooms = new();
 }
 
@@ -150,8 +152,8 @@ public static class PoiFauna
             pop.Note = "empty and silent";
             return pop;
         }
-        float density = pr.Density.GetValueOrDefault(state, 1f);
         bool infested = poi.State == PlaceState.Infested, active = poi.State == PlaceState.Active;
+        float density = pr.Density.GetValueOrDefault(state, 1f) * (infested ? 1f : Mathf.Lerp(0.4f, 1f, poi.Livable));
         PoiTheme theme = poi.Derelict ? PoiTheme.Derelict : poi.Theme;
         int maxDepth = 0;
         foreach (PoiRoom r in poi.Rooms) maxDepth = Math.Max(maxDepth, r.Depth);
@@ -210,7 +212,7 @@ public static class PoiFauna
                     bool dark = room.Dark || d >= 1;
                     if (deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, poi.Derelict ? DeepRole.DerelictNester : DeepRole.Nester, poi.Derelict);
-                    else if (infested && d >= 1 && rng.Chance(0.6f))
+                    else if (infested && d >= 1 && rng.Chance(0.3f))
                         NestIn(pop, fauna, theme, room, rng, true, density, rules, DeepRole.Nester, false);
                     if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density))) Lurker(pop, fauna, theme, room, rng, infested);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
@@ -235,6 +237,8 @@ public static class PoiFauna
             }
         }
 
+        Cap(poi, pop, rng, pr, state);
+
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
         var prey = new HashSet<Species>();
@@ -252,6 +256,50 @@ public static class PoiFauna
         }
         else pop.Note = $"{pop.Spawns.Count} creatures, {pop.Nests.Count} nests, {pop.FoodChain.Count} links in its food chain";
         return pop;
+    }
+
+    /// <summary>
+    /// Keeps a place to a few creatures: first each room to its cap, then the place to its own,
+    /// taking from whichever role has most and from the shallowest rooms, so what is left is a
+    /// mix of things, further in. A nest always keeps a guard.
+    /// </summary>
+    static void Cap(PoiPlan poi, PoiPopulation pop, Rng rng, PopulationRules pr, string state)
+    {
+        bool Spare(PoiSpawn s) => s.Nest < 0 || pop.Spawns.Exists(o => o != s && o.Nest == s.Nest);
+        foreach (PoiRoom room in poi.Rooms)
+        {
+            bool nest = pop.Spawns.Exists(s => s.Room == room.Index && s.Nest >= 0);
+            int cap = nest ? pr.NestCap : pr.RoomCap + (int)(room.Size.X * room.Size.Z / MathF.Max(1f, pr.RoomArea));
+            List<PoiSpawn> here = pop.Spawns.FindAll(s => s.Room == room.Index);
+            while (here.Count > cap)
+            {
+                // Grazers go first: the hunters are what a room is about.
+                List<PoiSpawn> from = here.FindAll(s => s.Nest < 0 && s.Role == DeepRole.Subsister);
+                if (from.Count == 0) from = here.FindAll(Spare);
+                if (from.Count == 0) break;
+                PoiSpawn drop = from[rng.Int(0, from.Count - 1)];
+                here.Remove(drop);
+                pop.Spawns.Remove(drop);
+            }
+        }
+        int baseCap = pr.PlaceCap.GetValueOrDefault(state, 5);
+        int most = Math.Min(baseCap * 2, baseCap + poi.Rooms.Count / Math.Max(1, pr.CapRooms));
+        int Depth(PoiSpawn s) => poi.Rooms.Find(r => r.Index == s.Room)?.Depth ?? 0;
+        while (pop.Spawns.Count > most)
+        {
+            var roles = new Dictionary<DeepRole, int>();
+            foreach (PoiSpawn s in pop.Spawns) if (Spare(s)) roles[s.Role] = roles.GetValueOrDefault(s.Role) + 1;
+            if (roles.Count == 0) break;
+            DeepRole busiest = default;
+            int count = -1;
+            foreach (var (role, n) in roles)
+                if (n > count || n == count && role < busiest) { busiest = role; count = n; }
+            List<PoiSpawn> from = pop.Spawns.FindAll(s => s.Role == busiest && Spare(s));
+            int shallowest = int.MaxValue;
+            foreach (PoiSpawn s in from) shallowest = Math.Min(shallowest, Depth(s));
+            from = from.FindAll(s => Depth(s) == shallowest);
+            pop.Spawns.Remove(from[rng.Int(0, from.Count - 1)]);
+        }
     }
 
     // ---- Roles into rooms -----------------------------------------------------------------

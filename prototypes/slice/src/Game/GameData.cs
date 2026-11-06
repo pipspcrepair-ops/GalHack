@@ -219,5 +219,17 @@ public sealed class SliceRules
         public float PatchHalfSize { get; set; } = 300f;
         public float SafeRadius { get; set; } = 60f;
         public float Alienness { get; set; } = 0.25f;
+
+        /// <summary>The most wild creatures a patch holds on the most livable world.</summary>
+        public int MostPerPatch { get; set; } = 40;
+
+        /// <summary>How livable a world of each archetype is, 0..1: lush worlds busiest, lava all but dead.</summary>
+        public Dictionary<string, float> Livable { get; set; } = new() { ["Temperate"] = 1f, ["Alien"] = 0.6f, ["Arid"] = 0.35f, ["Ice"] = 0.3f, ["Lava"] = 0.08f };
+
+        /// <summary>A cratered world, airless rock for the most part, holds this share of that.</summary>
+        public float Cratered { get; set; } = 0.4f;
+
+        public float LivableOn(Planets.Gen.PlanetSpec spec) =>
+            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Has(Planets.Gen.Modifier.Cratered) ? Cratered : 1f);
     }
 }
