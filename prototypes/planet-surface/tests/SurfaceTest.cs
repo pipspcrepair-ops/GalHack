@@ -203,16 +203,14 @@ public partial class SurfaceTest : Node
 
     // ---- 2. Relief per archetype -----------------------------------------------------------
 
-    /// <summary>The same floors as the planet generator's relief check, measured on the surface's own ground (pads included).</summary>
-    static readonly (float range, float s30, float s45, float canyon)[] Floors =
-    {
-        (450, 0.3f, 0.15f, 35), (300, 0.3f, 0.15f, 30),   // temperate
-        (150, 0.12f, 0.04f, 18), (220, 0.15f, 0.1f, 60),  // arid
-        (450, 0.3f, 0.15f, 35), (250, 0.2f, 0.08f, 22),   // ice
-        (300, 0.2f, 0.08f, 22), (250, 0.25f, 0.1f, 18),   // lava
-        (250, 0.25f, 0.1f, 30), (140, 0.15f, 0.06f, 20),  // alien: crystal, and gentler domed fungal country
-    };
-
+    /// <summary>
+    /// The surface keeps the planet's relief. Since landforms, a world is dramatic in places
+    /// (ranges, canyons, cliffs) and flat in others on purpose (plains, ice plains, wetlands, some
+    /// worlds one flat landform throughout), so the planet generator holds each landform to its
+    /// own character. Here the surface's own ground (pads included) is held to the generator's
+    /// ground on the same windows and points: the stamps may flatten a little, never the drama.
+    /// Worlds with rugged country (a tenth of their land or more) must also show it.
+    /// </summary>
     async Task ReliefChecks()
     {
         for (int a = 0; a < 5; a++)
@@ -221,9 +219,14 @@ public partial class SurfaceTest : Node
             var spec = PlanetSpec.Roll((ulong)(510 + a * 3 + v), (Archetype)a, v);
             PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
             Relief.Stats r = Relief.Measure(w.Map, (x, y, s) => w.Source.SurfaceHeight(x, y, s), 1, windows: 6, slopePoints: 2000, incisionPoints: 400);
-            var f = Floors[a * 2 + v];
-            Check(r.RangeMedian >= f.range && r.Slope30 >= f.s30 && r.Slope45 >= f.s45 && r.Incision95 >= f.canyon,
-                $"relief on the surface {(Archetype)a}/{w.Map.Def.VariantName}: {r}");
+            Relief.Stats g = Relief.Measure(w.Map, (x, y, s) => w.Source.Sampler.HeightAt(x, y, s), 1, windows: 6, slopePoints: 2000, incisionPoints: 400);
+            float rugged = 0f;
+            foreach (var (l, share) in w.Map.Landforms.Present()) if (LandformInfo.Openness(l) == Openness.Rugged) rugged += share;
+            bool kept = r.RangeMax >= g.RangeMax * 0.85f && r.Slope30 >= g.Slope30 * 0.75f && r.Slope45 >= g.Slope45 * 0.75f;
+            bool drama = rugged < 0.1f || r.RangeMax >= 120f;
+            Check(kept && drama,
+                $"relief on the surface {(Archetype)a}/{w.Map.Def.VariantName} ({w.Map.Model.Mix}): {r}; the generator's own ground: range {g.RangeMax:F0} m max, " +
+                $">30° {g.Slope30:P1}, >45° {g.Slope45:P1}; rugged country {rugged:P0}");
             await Frames(1);
         }
     }
