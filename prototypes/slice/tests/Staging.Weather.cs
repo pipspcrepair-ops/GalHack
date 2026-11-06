@@ -31,6 +31,65 @@ public partial class Staging
         GD.Print($"monsoon frame: {cost}");
     }
 
+    /// <summary>Rain seen from just above the nearest water, or (--indoors=1) from the bunker's room, looking at its stairwell's open top.</summary>
+    IEnumerable<int> RainShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(Num("heavy", 1) != 0 ? WeatherKind.Monsoon : WeatherKind.Rain);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        if (Num("indoors", 0) != 0)
+        {
+            Vector3 room = _game.Bunker.RoomCentre + Vector3.Up * 1.5f, way = _game.Bunker.Outside + Vector3.Up * 2f;
+            _game.Survivor.PlaceOutside(_game.Bunker.RoomCentre.ToNumerics());
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(way - room, Vector3.Up), room);
+        }
+        else if (ClimateTest.DeepWater(_game.Zone, _game.Survivor.WorldFeet, 2f, 4000f) is Vector3 water)
+        {
+            Vector3 stand = water + new Vector3(0f, 1.1f, 0f);
+            _game.Survivor.PlaceOutside((stand + Vector3.Up * 3f).ToNumerics());
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            Vector3 eye = water + Vector3.Up * 2.4f + Vector3.Right * 3f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(0.8f, -0.22f, 0.5f).Normalized(), Vector3.Up), eye);
+        }
+        foreach (int x in _drive.Wait(150)) yield return x;
+    }
+
+    /// <summary>Desert wind: a dust storm from a hilltop.</summary>
+    IEnumerable<int> DustShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.DustStorm);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 eye = _game.Survivor.WorldEye() + Vector3.Up * 2f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(1f, -0.08f, 0.2f).Normalized(), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(150)) yield return x;
+    }
+
+    /// <summary>A dig's dust: a handful of puffs, seen a moment after.</summary>
+    IEnumerable<int> PuffShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 at = _game.Zone.GroundAt(_game.Survivor.WorldFeet.X + 5f, _game.Survivor.WorldFeet.Z);
+        Vector3 eye = at + new Vector3(-4f, 1.6f, 1.5f);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 0.5f - eye, Vector3.Up), eye);
+        for (int i = 0; i < 12; i++)
+        {
+            _game.Zone.Dust.Puff(at + Vector3.Up * 0.3f, new Color(0.55f, 0.5f, 0.42f, 1f), 0.9f);
+            foreach (int x in _drive.Wait(4)) yield return x;
+        }
+    }
+
     /// <summary>Under the nearest deep water, a few metres down, looking up at the surface (--up=0 looks across).</summary>
     IEnumerable<int> UnderwaterShot()
     {
@@ -78,7 +137,7 @@ public partial class Staging
         Vector3 sun = sky.ToSun;
         var along = new Vector3(sun.X, 0f, sun.Z).Normalized();
         bool into = !(_args.TryGetValue("facing", out string f) && f == "away");
-        Vector3 eye = hill + Vector3.Up * 1.7f;
+        Vector3 eye = hill + Vector3.Up * (float)Num("rise", 14);
         Vector3 dir = (into ? along : -along) + Vector3.Up * (float)Num("pitch", 0.05);
         _game.FixedCamera = new Transform3D(Basis.LookingAt(dir.Normalized(), Vector3.Up), eye);
         int drawn = Engine.GetFramesDrawn();

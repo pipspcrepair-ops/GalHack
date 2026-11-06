@@ -50,6 +50,9 @@ public partial class SurfaceZone : Node3D
     /// <summary>The seas and rivers as a volume: what bodies swim in, and what the view sinks into.</summary>
     public PlanetWater Water { get; private set; }
 
+    /// <summary>The dust and flying debris (set by the game once it has them): puffs from digging, landing and thrusters.</summary>
+    public PlanetSurface.Fx.Debris Dust;
+
     /// <summary>What the camera sees under the surface.</summary>
     public UnderwaterView Underwater { get; protected set; }
 
@@ -268,6 +271,8 @@ public partial class SurfaceZone : Node3D
         float day = 0.15f + 0.85f * Sky.Daylight;
         _seaMaterial.SetShaderParameter("daylight", day);
         _riverMaterial.SetShaderParameter("daylight", day);
+        _seaMaterial.SetShaderParameter("rain", Weather.RainHere);
+        _riverMaterial.SetShaderParameter("rain", Weather.RainHere);
     }
 
     public override void _PhysicsProcess(double delta)

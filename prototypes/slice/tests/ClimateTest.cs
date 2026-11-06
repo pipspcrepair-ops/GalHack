@@ -84,6 +84,7 @@ public partial class ClimateTest : Node
 
     IEnumerable<int> Sections()
     {
+        Check(Zone.Weather.FallStopsOnContact, "rain, snow and dust die on what they hit: no cover check, a collision with whatever is there");
         foreach (int x in Swim()) yield return x;
     }
 

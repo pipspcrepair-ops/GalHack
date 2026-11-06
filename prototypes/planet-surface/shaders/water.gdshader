@@ -17,8 +17,31 @@ uniform vec3 deep : source_color = vec3(0.02, 0.12, 0.2);
 uniform bool lava = false;
 uniform float glow = 0.0;
 uniform float daylight = 1.0;   // how lit the underside is from above
+uniform float rain = 0.0;       // what's falling where the camera is
 
 varying vec3 wpos;
+
+// Rain rings: a drop lands in each cell of a grid at its own moment, and a ring runs out from it.
+// Only close to the camera (the fine rain roughening takes over further off).
+vec2 rain_rings(vec2 p, float t, float amount) {
+	const float CELL = 1.5;
+	vec2 cell = floor(p / CELL);
+	vec2 g = vec2(0.0);
+	for (int j = -1; j <= 1; j++)
+	for (int i = -1; i <= 1; i++) {
+		vec2 c = cell + vec2(float(i), float(j));
+		vec2 m = mod(c, 257.0);
+		float h = fract(sin(dot(m, vec2(127.1, 311.7))) * 43758.5453);
+		if (h > 0.25 + 0.75 * amount) continue; // lighter rain, fewer drops
+		vec2 centre = (c + 0.5 + 0.38 * vec2(sin(h * 57.0), cos(h * 91.0))) * CELL;
+		float age = fract(t * (0.8 + 0.5 * h) + h * 7.0);
+		vec2 d = p - centre;
+		float r = length(d);
+		float off = (r - age * 1.5) * 10.0;
+		g += d / max(r, 0.001) * exp(-off * off) * (1.0 - age) * (1.0 - age);
+	}
+	return g;
+}
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -68,6 +91,10 @@ void fragment() {
 		g += vec2(-0.9, 0.3) * cos(dot(p, vec2(-0.9, 0.3)) * 0.21 + t * 1.3) * 0.035;
 		g += wind * cos(dot(p, normalize(weather_wind.xy + 0.001)) * 0.5 - t * 2.1) * 0.03;
 		g += (vec2(pnoise(vec3(p.x * 4.0, t * 6.0, p.y * 4.0), planet_size * 4.0), pnoise(vec3(p.y * 4.0, t * 6.0 + 3.0, p.x * 4.0), planet_size.yx * 4.0)) - 0.5) * weather_ground.x * 0.15;
+		if (rain > 0.01) {
+			float near = 1.0 - smoothstep(14.0, 34.0, length(p - CAMERA_POSITION_WORLD.xz));
+			if (near > 0.0) g += rain_rings(p, t, rain) * near * 0.18;
+		}
 		vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
 		NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 		ALBEDO = mix(shallow, deep, smoothstep(0.0, 0.6, depth));

@@ -223,6 +223,7 @@ public partial class Game : Node3D
         Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
         var debris = new PlanetSurface.Fx.Debris { Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f };
         Zone.AddChild(debris);
+        Zone.Dust = debris;
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
         Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);

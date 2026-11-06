@@ -12,14 +12,38 @@ namespace PlanetSurface.Fx;
 /// </summary>
 public partial class Debris : Node3D
 {
-    const int MaxChunks = 700, MaxDust = 160;
+    const int MaxChunks = 700, MaxDust = 220;
 
     struct Piece
     {
         public Vector3 Position, Velocity, Axis;
         public float Angle, Spin, Age, Life, Size;
         public Color Color;
-        public bool Homing, Alive;
+        public bool Homing, Alive, Mote;
+    }
+
+    static Texture2D _haze;
+
+    /// <summary>A soft, torn-edged bank of haze: billowing noise under a round falloff (also the weather's blowing dust).</summary>
+    public static Texture2D Haze
+    {
+        get
+        {
+            if (_haze != null) return _haze;
+            const int Size = 96;
+            var noise = new FastNoiseLite { Seed = 17, Frequency = 0.035f, FractalOctaves = 4, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin };
+            Image image = Image.CreateEmpty(Size, Size, true, Image.Format.Rgba8);
+            for (int y = 0; y < Size; y++)
+            for (int x = 0; x < Size; x++)
+            {
+                float dx = (x + 0.5f) / Size * 2f - 1f, dy = (y + 0.5f) / Size * 2f - 1f;
+                float round = Mathf.Clamp(1f - MathF.Sqrt(dx * dx + dy * dy), 0f, 1f);
+                float n = Mathf.Clamp(0.55f + noise.GetNoise2D(x, y) * 1.3f, 0f, 1f);
+                image.SetPixel(x, y, new Color(1f, 1f, 1f, round * round * (3f - 2f * round) * n));
+            }
+            image.GenerateMipmaps();
+            return _haze = ImageTexture.CreateFromImage(image);
+        }
     }
 
     public ChunkStore Store;
@@ -49,12 +73,19 @@ public partial class Debris : Node3D
             Roughness = 0.9f,
         }, shadows: true);
 
-        _dustMesh = MakeMultiMesh(MaxDust, new SphereMesh { Radius = 0.5f, Height = 1f, RadialSegments = 8, Rings = 4 }, new StandardMaterial3D
+        _dustMesh = MakeMultiMesh(MaxDust, new QuadMesh { Size = Vector2.One }, new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
+            AlbedoTexture = Haze,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             DisableReceiveShadows = true,
+            BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled,
+            BillboardKeepScale = true,
+            DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
+            DistanceFadeMode = BaseMaterial3D.DistanceFadeModeEnum.PixelAlpha,
+            DistanceFadeMinDistance = 0.2f,
+            DistanceFadeMaxDistance = 1.4f,
         }, shadows: false);
     }
 
@@ -112,17 +143,34 @@ public partial class Debris : Node3D
 
     public void Puff(Vector3 at, Color color, float size)
     {
+        // A soft bank that spreads and thins as it drifts...
         ref Piece p = ref _dust[_nextDust];
         _nextDust = (_nextDust + 1) % MaxDust;
         p = new Piece
         {
             Alive = true,
-            Position = at,
-            Velocity = new Vector3(_rng.RandfRange(-0.6f, 0.6f), _rng.RandfRange(0.5f, 1.4f), _rng.RandfRange(-0.6f, 0.6f)),
-            Life = _rng.RandfRange(0.7f, 1.2f),
-            Size = size,
+            Position = at + new Vector3(_rng.RandfRange(-0.2f, 0.2f), 0f, _rng.RandfRange(-0.2f, 0.2f)) * size,
+            Velocity = new Vector3(_rng.RandfRange(-0.5f, 0.5f), _rng.RandfRange(0.15f, 0.6f), _rng.RandfRange(-0.5f, 0.5f)),
+            Life = _rng.RandfRange(1.4f, 2.6f),
+            Size = size * 1.5f,
             Color = color,
         };
+        // ...and a couple of motes that hang in it and settle.
+        for (int i = 0; i < 2; i++)
+        {
+            ref Piece m = ref _dust[_nextDust];
+            _nextDust = (_nextDust + 1) % MaxDust;
+            m = new Piece
+            {
+                Alive = true,
+                Mote = true,
+                Position = at + new Vector3(_rng.RandfRange(-0.5f, 0.5f), _rng.RandfRange(-0.1f, 0.4f), _rng.RandfRange(-0.5f, 0.5f)) * size,
+                Velocity = new Vector3(_rng.RandfRange(-0.9f, 0.9f), _rng.RandfRange(0.1f, 1.1f), _rng.RandfRange(-0.9f, 0.9f)),
+                Life = _rng.RandfRange(1.2f, 2.4f),
+                Size = _rng.RandfRange(0.05f, 0.09f),
+                Color = color,
+            };
+        }
     }
 
     void Spawn(Vector3 at, Vector3 velocity, Color color, float size, bool homing, float life = -1f)
@@ -217,8 +265,16 @@ public partial class Debris : Node3D
             p.Position += p.Velocity * dt;
             p.Velocity *= 1f - dt * 1.5f;
             Color c = p.Color;
-            c.A = 0.45f * (1f - t) * (1f - t);
-            Write(_dustBuffer, i, Basis.Identity.Scaled(Vector3.One * p.Size * (0.6f + t * 1.6f)), p.Position, c);
+            if (p.Mote)
+            {
+                p.Velocity.Y -= 0.5f * dt;
+                c.A = 0.7f * (1f - t);
+                Write(_dustBuffer, i, Basis.Identity.Scaled(Vector3.One * p.Size), p.Position, c);
+                continue;
+            }
+            // In quickly, then a long thinning out as it spreads.
+            c.A = 0.3f * Mathf.Min(1f, t * 7f) * (1f - t) * (1f - t);
+            Write(_dustBuffer, i, Basis.Identity.Scaled(Vector3.One * p.Size * (0.8f + t * 2.6f)), p.Position, c);
         }
 
         _chunkMesh.Multimesh.Buffer = _chunkBuffer;
