@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Godot;
 using Slice.Items;
 
@@ -14,10 +14,13 @@ public partial class Hands : Node3D
 {
     public Game.Game Game;
 
-    Node3D _rig;
+    Node3D _rig, _tip;
     StandardMaterial3D _glow;
     int _shotsSeen;
     float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
+
+    /// <summary>Where the barrel's tip is now, in the world, or null when the hands aren't showing: flashes and bolts begin here, riding the hand and its recoil.</summary>
+    public Vector3? BarrelTip => Visible && _tip != null ? _tip.GlobalPosition : null;
 
     /// <summary>The camera's tilt now, in radians (zero at rest): for tests.</summary>
     public float CameraTilt { get; private set; }
@@ -61,6 +64,9 @@ public partial class Hands : Node3D
         Add(new CylinderMesh { TopRadius = 0.022f, BottomRadius = 0.026f, Height = 0.14f }, dark, new Vector3(0.17f, -0.145f, -0.55f + 0.07f), new Vector3(90, 0, 0));
         Add(new TorusMesh { InnerRadius = 0.022f, OuterRadius = 0.036f, Rings = 16, RingSegments = 6 }, _glow, new Vector3(0.17f, -0.145f, -0.545f), new Vector3(90, 0, 0));
         Add(new BoxMesh { Size = new Vector3(0.03f, 0.02f, 0.1f) }, _glow, new Vector3(0.17f, -0.1f, -0.38f), Vector3.Zero);
+        // The barrel's tip (the barrel is 0.14 long, centred at z -0.48): where flashes and bolts begin.
+        _tip = new Node3D { Name = "BarrelTip", Position = new Vector3(0.17f, -0.145f, -0.64f) };
+        _rig.AddChild(_tip);
         foreach (Node n in _rig.GetChildren())
             if (n is MeshInstance3D m) m.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         Visible = false;
@@ -73,6 +79,7 @@ public partial class Hands : Node3D
     {
         float dt = (float)delta;
         var g = Game;
+        if (g?.Tool != null && g.Tool.HeldMuzzle == null) g.Tool.HeldMuzzle = () => BarrelTip;
         if (g?.Tool != null && g.Tool.Shots != _shotsSeen)
         {
             _shotsSeen = g.Tool.Shots;

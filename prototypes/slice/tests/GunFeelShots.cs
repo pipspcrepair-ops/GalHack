@@ -16,7 +16,7 @@ public partial class GunFeelShots : Node
     Game.Game _game;
     Playthrough _play;
     IEnumerator<int> _run;
-    string _feel = "bullet", _where = "outside", _out = "gunfeel.png";
+    string _shape, _feel = "bullet", _where = "outside", _out = "gunfeel.png";
     bool _capturing;
 
     public override void _Ready()
@@ -31,6 +31,7 @@ public partial class GunFeelShots : Node
                 case "feel": _feel = v; break;
                 case "where": _where = v; break;
                 case "out": _out = v; break;
+                case "shape": _shape = v; break;
             }
         }
         ProcessPhysicsPriority = 100;
@@ -79,7 +80,7 @@ public partial class GunFeelShots : Node
         // The flash and the kick, then freeze them where they stand and let the smoke come out.
         GunFeel feel = GunFeel.Get(_feel);
         Vector3 muzzle = _game.Tool.Muzzle();
-        _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());
+        _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook(), default, 1f, null, _shape);
         _game.Shots.SetProcess(false); // in this very tick, before any frame has counted the flash down
         _game.Hands.Recoil(feel);
         yield return 0;
