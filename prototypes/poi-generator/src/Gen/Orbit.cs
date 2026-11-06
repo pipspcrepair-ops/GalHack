@@ -147,7 +147,7 @@ public static class OrbitPlacement
             int k = rng.PickWeighted(from.Select(Weight).ToList());
             if (k < 0) return;
             var site = from[k].Site;
-            PoiState state = site.IsWreck ? (rng.Chance(0.3f) ? PoiState.Infested : PoiState.Abandoned)
+            PoiState state = site.IsWreck ? (rng.Chance(0.1f) ? PoiState.Infested : PoiState.Abandoned)
                 : site.Held && !theme.NoFactions && rng.Chance(0.7f) ? PoiState.Active
                 : rng.Chance(0.5f) ? PoiState.Abandoned : PoiState.Ruined;
             if (theme.NoFactions && site.Held && state == PoiState.Active) state = PoiState.Ruined;

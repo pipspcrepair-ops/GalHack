@@ -21,7 +21,9 @@ public struct AttackEvent
 /// The whole wildlife simulation of one planet surface, in plain C#: creatures, herds, the
 /// clock, and the players they react to. The game drives it from _PhysicsProcess and draws
 /// it with CreatureView; the tests drive it directly, thousands of steps a second.
-/// Each step runs brain, then locomotion, then the rig, for every creature.
+/// Each step moves every creature and poses it; each creature's brain, with its look round for
+/// targets, runs on its own staggered timer of 0.2 to 0.5 s (<see cref="Brain.Interval"/>), which
+/// is also what gives it a natural moment before it reacts.
 /// </summary>
 public sealed class WildSim
 {
@@ -104,6 +106,39 @@ public sealed class WildSim
     public event Action<Creature> Spawned;
 
     public CombatRules Combat => Data.Combat;
+
+    /// <summary>
+    /// A line through the world's own collision, sim frame: true when nothing solid is on it. The game
+    /// sets this to a physics ray (buildings, doors, voxel rock); unset, creatures go by the terrain,
+    /// the solid cells of their space and the nav grid.
+    /// </summary>
+    public Func<Vector3, Vector3, bool> SightLine;
+
+    /// <summary>Loud sounds of the last moment.</summary>
+    public readonly List<WorldNoise> Noises = new();
+
+    /// <summary>A loud sound: everything within the radius turns to look.</summary>
+    public void Noise(Vector3 at, float radius) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time });
+
+    readonly Dictionary<ITarget, (Vector3 at, float speed)> _moved = new();
+
+    /// <summary>How much noise a target is making: a share of its threat by how fast it is going.</summary>
+    public float NoiseOf(ITarget t)
+    {
+        float speed = _moved.TryGetValue(t, out var m) ? m.speed : 2f;
+        return speed < 0.4f ? 0.45f : speed > 4.5f ? 1.3f : 1f;
+    }
+
+    void WatchTargets(float dt)
+    {
+        foreach (ITarget t in Targets)
+        {
+            Vector3 p = t.Position;
+            float speed = _moved.TryGetValue(t, out var m) ? Mathf.Lerp(m.speed, (p - m.at).Length() / MathF.Max(dt, 1e-3f), 0.15f) : 2f;
+            _moved[t] = (p, speed);
+        }
+        if (Noises.Count > 0) Noises.RemoveAll(n => Time - n.Time > 1f);
+    }
 
     public WildSim(WildlifeData data, Terrain terrain, NavGrid nav)
     {
@@ -200,6 +235,7 @@ public sealed class WildSim
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
+        c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
         {
             c.Altitude = species.Rig == RigKind.Swarm ? c.Rng.Range(1.2f, 2.5f) : species.Rig == RigKind.GasBag ? c.Rng.Range(5f, 11f) : c.Rng.Range(8f, 15f);
@@ -263,6 +299,22 @@ public sealed class WildSim
     public float GroupRadius(Species s, int count) => s.Behaviour == Behaviour.Herd ? HerdSpread(s, count)
         : s.Behaviour == Behaviour.PackHunter ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : s.Body.Size * 3f;
 
+    /// <summary>Far enough from every player, and not in front of anyone who could see it (see <see cref="SpawnRules"/>).</summary>
+    public bool ClearOfPlayers(Vector3 at, float margin)
+    {
+        SpawnRules rules = Data.Spawning;
+        float cone = MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees));
+        foreach (ITarget t in Targets)
+        {
+            Vector3 to = Flat(at - t.Position);
+            float d = to.Length();
+            if (d < rules.MinPlayerDistance + margin) return false;
+            Vector3 look = Flat(t.Forward);
+            if (d < rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > cone) return false;
+        }
+        return true;
+    }
+
     /// <summary>Nudges a spawn point off rocks and trunks.</summary>
     public Vector3 FreeSpot(Vector3 p, Rng rng)
     {
@@ -307,6 +359,7 @@ public sealed class WildSim
         Frame++;
         Clock.Advance(dt);
         _pathBudget = PathBudgetPerStep;
+        WatchTargets(dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
         for (int i = 0; i < Creatures.Count; i++)
@@ -323,11 +376,20 @@ public sealed class WildSim
             }
             else
             {
-                Brain.Update(this, c, dt);
+                c.ThinkClock += dt;
+                if (c.Attacking || c.ThinkClock >= c.ThinkEvery)
+                {
+                    c.ThinkDt = c.ThinkClock;
+                    c.ThinkClock = 0f;
+                    Brain.Update(this, c, c.ThinkDt);
+                    c.ThinkEvery = Brain.Interval(c);
+                }
+                else Brain.Follow(c);
                 Attacks.Update(this, c, dt);
             }
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);
+            Locomotion.KeepOff(this, c);
             if (Profile) { long t = Stopwatch.GetTimestamp(); moveTicks += t - t0; t0 = t; }
 
             // Far creatures re-pose less often; the rig catches up with the summed time.
@@ -394,6 +456,15 @@ public sealed class WildSim
         if (c.Dead || amount <= 0f) return;
         c.Health -= amount;
         c.HurtFlash = 1f;
+        // It flinches: rocks back and loses its stride, the bigger the less.
+        if (!c.Attacking)
+        {
+            float heft = 1f - 0.7f * Heft.Bulk(c.Species);
+            c.Rear = MathF.Max(c.Rear, 0.5f * heft);
+            c.Velocity *= 1f - 0.7f * heft;
+            c.CrawlSpeed *= 1f - 0.7f * heft;
+            c.ThinkEvery = 0f;
+        }
         if (source != null)
         {
             c.ProvokedBy = source;

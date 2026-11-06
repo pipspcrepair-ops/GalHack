@@ -12,7 +12,7 @@ namespace Wildlife;
 /// </summary>
 public static class CaveFauna
 {
-    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4)
+    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4, Func<Vector3, bool> allow = null)
     {
         var rng = Rng.For(seed, "cave-fauna");
         var made = new List<Creature>();
@@ -31,6 +31,12 @@ public static class CaveFauna
         Sort(floors);
         Sort(ceilings);
         Sort(walls);
+        // Filled with someone already near, nothing goes down beside them or where they are looking.
+        if (allow != null)
+        {
+            floors.RemoveAll(f => !allow(SpaceMath.Center(f)));
+            ceilings.RemoveAll(k => !allow(SpaceMath.Center(k)));
+        }
         if (floors.Count == 0) return made;
 
         // Cracks low in the walls (one network: they join up through the rock), moss on the floor.
@@ -45,6 +51,8 @@ public static class CaveFauna
             sim.Cracks.Add(new Crack { Id = sim.Cracks.Count, Kind = CrackKind.Crack, Position = at, Normal = n, Network = 10 + (int)(seed % 1000), Size = rng.Range(0.18f, 0.3f) });
         }
         Species grazer = fauna.For(DeepRole.Subsister, PoiTheme.Natural, depth);
+        floors.RemoveAll(f => !Roomy(space, SpaceMath.Center(f), grazer));
+        if (floors.Count == 0) return made;
         int patches = Math.Min(floors.Count, 3);
         var food = new List<FoodPatch>();
         for (int i = 0; i < patches; i++)
@@ -67,6 +75,7 @@ public static class CaveFauna
         }
         sim.Colonies.Add(colony);
         Species crawler = fauna.For(DeepRole.Crawler, PoiTheme.Natural, depth);
+        ceilings.RemoveAll(k => !Roomy(space, SpaceMath.Center(k) + Vector3.Down, crawler));
         var taken = new List<Vector3>();
         for (int i = 0; i < crawlers && ceilings.Count > 0; i++)
         {
@@ -80,6 +89,19 @@ public static class CaveFauna
             made.Add(c);
         }
         return made;
+    }
+
+    /// <summary>Whether a body can stand and turn at a spot in open rock: clear all round by half its turning circle, and over its back.</summary>
+    public static bool Roomy(ISolidSpace space, Vector3 at, Species s)
+    {
+        float reach = s.TurnCircle * 0.5f;
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * MathF.Tau / 8f;
+            var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
+            if (SpaceMath.Ray(space, at, dir, reach) < reach) return false;
+        }
+        return SpaceMath.Ray(space, at, Vector3.Up, s.BodyHeight) >= s.BodyHeight - 0.5f;
     }
 
     /// <summary>

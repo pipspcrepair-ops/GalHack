@@ -6,9 +6,9 @@ namespace Wildlife;
 
 /// <summary>
 /// The creatures of caves and places (POIs), by role. They live on a solid space's surfaces and
-/// move with <see cref="Crawl"/>; they notice players by sight (or by sound, if blind) within
-/// their notice radius, which crouching shrinks; and until they do, the place's hunters go after
-/// its subsisters: a small food chain a careful player can watch.
+/// move with <see cref="Crawl"/>; they notice players gradually, by sight along a real line or by
+/// sound (<see cref="Senses"/>), and until they do, the place's hunters go after its subsisters: a
+/// small food chain a careful player can watch.
 ///
 /// Fairness: nothing here may start an attack on a player until it has given itself away
 /// with a tell (<see cref="TellKind"/>: a rattle, dust, scratching, breathing, a hiss) that has
@@ -22,6 +22,12 @@ public static partial class Brain
         Species s = c.Species;
         c.Wake = Mathf.MoveToward(c.Wake, 0f, dt * 0.4f);
         c.Hunger = MathF.Min(1f, c.Hunger + dt / 150f);
+        // What it can see and hear of a player.
+        if (c.Space != null && !c.Falling)
+        {
+            ITarget player = NearestIn3D(w, c, out float pd);
+            Senses.Inside(w, c, player, pd, dt);
+        }
         if (c.InWalls)
         {
             InWalls(w, c, dt);
@@ -32,21 +38,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             return;
         }
-
-        // Who it has noticed. Checked a few times a second: sight lines aren't free.
-        ITarget player = NearestIn3D(w, c, out float pd);
-        if (c.Think <= 0f)
-        {
-            c.Think = 0.25f;
-            if (player != null && Notices(w, c, player, pd))
-            {
-                c.Noticed = player;
-                c.NoticedAt = w.Time;
-            }
-        }
-        if (c.Noticed != null && (!c.Noticed.Attackable || w.Time - c.NoticedAt > 8f)) c.Noticed = null;
-        c.Alert = c.Noticed != null ? 1f : 0f;
-        if (c.Noticed != null) c.LookAt = c.Noticed.Position + Vector3.Up * 1.2f;
+        if (c.Noticed != null) c.LookAt = c.LastSeen + Vector3.Up * 1.2f;
 
         // Shot by a player: it knows exactly where they are.
         if (c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable)
@@ -83,20 +75,6 @@ public static partial class Brain
             }
         }
         return best;
-    }
-
-    /// <summary>
-    /// Within its notice radius (shrunk by crouching, grown by sprinting, and by already having
-    /// seen you) and in sight; or, for something blind, within earshot.
-    /// </summary>
-    static bool Notices(WildSim w, Creature c, ITarget p, float d)
-    {
-        if (p == null || !p.Attackable) return false;
-        float radius = c.Species.NoticeRadius * p.ThreatScale * (c.Noticed == p ? 1.6f : 1f);
-        if (d > radius) return false;
-        if (c.Species.Blind) return true;
-        Vector3 eye = Crawl.Center(c) + c.Facing.Y * 0.2f;
-        return SpaceMath.Clear(c.Space, eye, p.Position + Vector3.Up * 1.4f, 0.05f);
     }
 
     // ---- The tell, then the strike --------------------------------------------------------
@@ -177,39 +155,47 @@ public static partial class Brain
         Vector3 center = Crawl.Center(c);
         float d = (goal - center).Length();
         bool climbs = c.Species.Climbs;
-        int headroom = Math.Max(1, (int)MathF.Ceiling(c.Species.Body.LegLength + c.Species.Body.Height));
+        int headroom = SpaceNav.Headroom(c.Species);
         if (d < 2.5f && SpaceMath.Clear(c.Space, center, goal, 0f))
         {
             c.SpacePath.Clear();
             Vector3 straight = goal - center;
-            c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / 1.2f, 0.3f, 1f) : Vector3.Zero;
+            float ease = MathF.Max(1.2f, Heft.StoppingDistance(c, c.CrawlSpeed) * 1.3f);
+            c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / ease, 0.3f, 1f) : Vector3.Zero;
             return;
         }
-        c.SpacePathAge += 1f / 60f;
+        c.SpacePathAge += c.ThinkDt;
         bool stale = c.SpacePath.Count == 0 || c.SpacePathIndex >= c.SpacePath.Count || c.SpacePathGoal.DistanceTo(goal) > 1.5f || c.SpacePathAge > 4f;
         if (stale && w.TakePathBudget())
         {
-            SpaceNav.FindPath(c.Space, center, goal, climbs, headroom, c.SpacePath, 2500);
+            SpaceNav.FindPath(c.Space, center, goal, climbs, headroom, c.SpacePath, 2500, SpaceNav.Shoulders(c.Species));
             c.SpacePathIndex = 0;
             c.SpacePathGoal = goal;
             c.SpacePathAge = 0f;
         }
-        // A waypoint is passed once it is close, or (for a climber) once it lies straight out from
-        // the surface it holds: in a corner the next cell can sit along the normal, with nothing
-        // left to walk towards on this face.
+        WaypointsPassed(c, center);
+        // Stuck (no headway for a while): look for another way.
+        if (c.Velocity.LengthSquared() < 0.0025f && speed > 0.1f) c.SpacePathAge += c.ThinkDt * 2f;
+        Vector3 next = c.SpacePathIndex < c.SpacePath.Count ? c.SpacePath[c.SpacePathIndex] : goal;
+        Vector3 dir = next - center;
+        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
+    }
+
+    /// <summary>
+    /// A waypoint is passed once it is close, or (for a climber) once it lies straight out from
+    /// the surface it holds: in a corner the next cell can sit along the normal, with nothing
+    /// left to walk towards on this face.
+    /// </summary>
+    static void WaypointsPassed(Creature c, Vector3 center)
+    {
         Vector3 up = c.Facing.Y;
         while (c.SpacePathIndex < c.SpacePath.Count - 1)
         {
             Vector3 to = c.SpacePath[c.SpacePathIndex] - center;
             float along = (to - up * to.Dot(up)).Length();
-            if (to.Length() < 0.9f || (climbs && along < 0.4f && to.Length() < 1.8f)) c.SpacePathIndex++;
+            if (to.Length() < 0.9f || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)) c.SpacePathIndex++;
             else break;
         }
-        // Stuck (no headway for a while): look for another way.
-        if (c.Velocity.LengthSquared() < 0.0025f && speed > 0.1f) c.SpacePathAge += 1f / 30f;
-        Vector3 next = c.SpacePathIndex < c.SpacePath.Count ? c.SpacePath[c.SpacePathIndex] : goal;
-        Vector3 dir = next - center;
-        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
     }
 
     static float Dist3(Creature c, Vector3 p) => (p - c.Position).Length();
@@ -458,14 +444,15 @@ public static partial class Brain
         if (c.Prey == null || c.Prey.Removed || c.Prey.InWalls || c.StateTime > 40f && c.State == CState.Stalk)
         {
             c.Prey = null;
-            if (c.Hunger < 0.35f || (w.Frame + c.Id) % 15 != 0) return false;
+            if (c.Hunger < 0.35f || w.Time < c.PreyLookAt) return false;
+            c.PreyLookAt = w.Time + 0.45f;
             c.Prey = FindPrey(w, c, MathF.Max(10f, c.Species.NoticeRadius * 1.4f));
             if (c.Prey == null) return false;
             c.SetState(CState.Stalk);
         }
         Creature prey = c.Prey;
         float d = Dist3(c, prey.Position);
-        if (d <= c.Stats.AttackRange + 0.2f)
+        if (d <= Attacks.Range(c) + 0.2f)
         {
             c.Desired = Vector3.Zero;
             c.FacePoint = prey.Position;
@@ -499,7 +486,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             return;
         }
-        if (d <= c.Stats.AttackRange + 0.3f)
+        if (d <= Attacks.Range(c) + 0.3f)
         {
             c.Desired = Vector3.Zero;
             StrikeAt(w, c, p, tell);
@@ -507,7 +494,7 @@ public static partial class Brain
             return;
         }
         c.SetState(CState.Chase);
-        GoTo(w, c, p.Position, c.Stats.RunSpeed);
+        GoTo(w, c, Senses.Aim(c, p), c.Stats.RunSpeed);
     }
 
     // ---- Prowlers: a beat through the corridors ------------------------------------------
@@ -517,6 +504,15 @@ public static partial class Brain
         if (c.Noticed is { } p)
         {
             HuntPlayer(w, c, p, TellFor(c, HideKind.None));
+            return;
+        }
+        // Something not yet placed: it stops and turns to it. A loud noise brings it over to look.
+        if (c.Awareness >= Senses.Curious)
+        {
+            c.SetState(CState.Idle);
+            c.FacePoint = c.LastSeen;
+            if (w.Time - c.HeardAt < 8f && Dist3(c, c.LastSeen) > 2.5f) GoTo(w, c, c.LastSeen, c.Stats.WalkSpeed);
+            else c.Desired = Vector3.Zero;
             return;
         }
         if (HuntPrey(w, c, dt)) return;
@@ -547,8 +543,11 @@ public static partial class Brain
     {
         if (!c.HasGoal || c.StateTime > 20f || Dist3(c, c.Goal) < 1.2f)
         {
-            Vector3 g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius));
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, 2, 2);
+            // On the way it was going, drifting; back for home if that would take it too far.
+            c.WanderTurn = Math.Clamp(c.WanderTurn + c.Rng.Range(-0.6f, 0.6f), -1.2f, 1.2f);
+            Vector3 g = c.Position + (-c.Facing.Z).Rotated(c.Facing.Y, c.WanderTurn) * c.Rng.Range(3f, 7f);
+            if ((g - c.Home).Length() > radius) g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius)) * 0.5f;
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
             c.Goal = cell is { } k ? SpaceMath.Center(k) : c.Home;
             c.HasGoal = true;
             c.SetState(CState.Wander);
@@ -563,8 +562,8 @@ public static partial class Brain
         Species s = c.Species;
         ITarget p = NearestIn3D(w, c, out float d);
         float strike = s.StrikeRadius * (p?.ThreatScale ?? 1f);
-        bool chasing = c.State == CState.Chase && c.StateTime < 6f;
-        if (p != null && p.Attackable && (d < strike || chasing || c.State == CState.Tell && d < strike * 1.8f))
+        bool chasing = c.State == CState.Chase && c.StateTime < 6f && c.Noticed != null;
+        if (p != null && p.Attackable && (c.Sensing && d < strike || chasing || c.Sensing && c.State == CState.Tell && d < strike * 1.8f))
         {
             c.Wake = 1f;
             HuntPlayer(w, c, p, TellKind.Breath);
@@ -614,7 +613,7 @@ public static partial class Brain
         bool high = !c.InWalls && c.Facing.Y.Y < -0.5f;
         // Under a ceiling it drops from (up to a fall of 7.5 m); in front of a vent, door or crack.
         float rise = p != null ? watch.Y - p.Position.Y : 0f;
-        bool inZone = p != null && p.Attackable && WildSim.Flat(p.Position - watch).Length() < strike && (high ? rise > 0.5f && rise < 7.5f : MathF.Abs(rise) < 3f);
+        bool inZone = p != null && p.Attackable && c.Sensing && WildSim.Flat(p.Position - watch).Length() < strike && (high ? rise > 0.5f && rise < 7.5f : MathF.Abs(rise) < 3f);
 
         if (c.InWalls)
         {
@@ -645,7 +644,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             return;
         }
-        if (inZone || c.State == CState.Tell || (c.State == CState.Chase && c.StateTime < 6f && p != null && p.Attackable))
+        if (inZone || c.State == CState.Tell || (c.State == CState.Chase && c.StateTime < 6f && p != null && p.Attackable && c.Noticed != null))
         {
             // On the ceiling it drops, onto what is still under it; anywhere else it lunges.
             if (inZone && c.State != CState.Chase)
@@ -712,7 +711,7 @@ public static partial class Brain
         Vector3 at = nest?.Position ?? c.Home;
         ITarget p = NearestIn3D(w, c, out _);
         float fromNest = p != null ? (p.Position - at).Length() : float.MaxValue;
-        bool intruder = p != null && p.Attackable && fromNest < s.WarnRadius;
+        bool intruder = p != null && p.Attackable && fromNest < s.WarnRadius && (c.Sensing || c.Noticed == p);
         if (intruder)
         {
             c.FacePoint = p.Position;
@@ -783,7 +782,7 @@ public static partial class Brain
         {
             float ang = c.Rng.Range(0f, MathF.Tau);
             Vector3 g = at + new Vector3(MathF.Cos(ang) * r, 0.5f, MathF.Sin(ang) * r);
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, 2, 2);
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
             c.Goal = cell is { } k ? SpaceMath.Center(k) : at;
             c.HasGoal = true;
             c.SetState(c.Rng.Chance(0.5f) ? CState.Guard : CState.Wander);

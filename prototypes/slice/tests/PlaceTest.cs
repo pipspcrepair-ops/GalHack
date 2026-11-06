@@ -420,11 +420,17 @@ public partial class PlaceTest : Node
         // The creatures: up to one of the place's hunters, awake: its tell (grit, a shadow, a scratch,
         // a rattle) comes before it strikes, its wind-up is warned, and it can be shot down and looted.
         foreach (int x in Watched(MeetHunter(game, place, walk, drive))) yield return x;
-        Check(_aimedTells > 0 && _untold == 0,
+        if (_nothingHere) GD.Print("  (nothing to meet in this place: tells and shooting not exercised on this world)");
+        else Check(_aimedTells > 0 && _untold == 0,
             $"met a {_hunter?.Species.CommonName} ({_hunter?.Species.Role}): {_aimedTells} tells aimed at you, the nearest {_nearestTell:F1} m off; {_bites} bites, every creature's first warned before it landed ({_untold} not), health {game.Suit.HealthShare * 100:F0}%");
-        Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
-        Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
-        Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+        if (!_nothingHere)
+        {
+            Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
+            Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
+            Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood and {game.Zone.Blood.Splats} splats on the surfaces round it");
+            if (_bites > 0) Check(game.Hands.PeakJolt > 0f, $"a bite knocks the view: {game.Hands.PeakJolt:F2}");
+        }
         game.Zone.Wildlife.Frozen = true;
 
         // And out the way we came.
@@ -505,13 +511,19 @@ public partial class PlaceTest : Node
 
     Wildlife.Creature _hunter, _lastDown;
     int _untold;
+    bool _nothingHere;
     readonly HashSet<Wildlife.Creature> _warned = new(), _bitBy = new();
 
     /// <summary>Walks up to a hunter that gives tells (held still), wakes the creatures, and stays until it is dealt with.</summary>
     IEnumerable<int> MeetHunter(Game.Game game, Place place, PlaceWalk walk, Driver drive)
     {
         DeepSite s = game.Zone.Wildlife.Sites.FirstOrDefault(q => q.Sim == place.Memory.Fauna?.Sim);
-        if (s == null) yield break;
+        if (s == null)
+        {
+            GD.Print("  (nothing lives here: a place can be empty and silent)");
+            _nothingHere = true;
+            yield break;
+        }
         var nav = place.Nav();
         var reach = nav.Reachable(walk.Here(place, nav));
         // The hunter nearest the way in that has tells, on a level with a reachable floor near it.
@@ -521,14 +533,16 @@ public partial class PlaceTest : Node
                      .OrderBy(c => s.World(c.Position).DistanceTo(way) + Mathf.Abs(c.Position.Y - way.Y) * 3f).Take(4).ToList())
         {
             var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(c.Position.X), Mathf.FloorToInt(c.Position.Y), Mathf.FloorToInt(c.Position.Z));
+            // Close enough that it can tell you are there: it won't give itself away for nothing.
+            float keep = MathF.Max(2f, c.Species.StrikeRadius * 0.7f);
             PoiGenerator.Gen.Int3? near = null;
             float best = float.MaxValue;
             foreach (var q in reach)
             {
                 float d = new Vector2(q.X - cell.X, q.Z - cell.Z).Length() + Mathf.Abs(q.Y - cell.Y) * 3f;
-                if (d >= 5f && d < best) { best = d; near = q; }
+                if (d >= keep && d < best) { best = d; near = q; }
             }
-            if (near == null || best > 9f) continue;
+            if (near == null || best > keep + 2f) continue;
             _hunter = c;
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;
@@ -540,6 +554,32 @@ public partial class PlaceTest : Node
             game.Zone.Wildlife.Frozen = true;
             reach = nav.Reachable(walk.Here(place, nav));
         }
+        // Everyone in reach sat tight, or nobody was in reach.
+        _hunter = null;
+        if (s.Sim.Creatures.FirstOrDefault()?.Space is { } rooms)
+        {
+            // A place holds few hunters now, and none may be in reach: one comes down the hall, staged.
+            var here = walk.Here(place, nav);
+            var cells = reach.Where(q => q.Y == here.Y && new Vector2(q.X - here.X, q.Z - here.Z).Length() is > 5f and < 10f).ToList();
+            if (cells.Count > 0)
+            {
+                var cell = cells[0];
+                Wildlife.Species prowler = game.Places.Fauna.Fauna.For(Wildlife.DeepRole.Prowler, Wildlife.PoiTheme.Industrial, 0);
+                prowler = game.Places.Fauna.Fauna.Fitted(prowler, 1.5f, 3f) ?? prowler;
+                var near = new Vector3(cell.X + 0.5f, cell.Y + 0.3f, cell.Z + 0.5f);
+                _hunter = s.Sim.SpawnIn(prowler, rooms, near);
+                Vector3 toward = new Vector3(here.X + 0.5f, cell.Y, here.Z + 0.5f) - _hunter.Position;
+                _hunter.Facing = Wildlife.SpaceMath.Frame(toward, Vector3.Up);
+                GD.Print($"  (SYSTEMS: a {prowler.CommonName} staged at {cell}, no hunter in reach of here)");
+            }
+        }
+        if (_hunter == null)
+        {
+            _nothingHere = true;
+            yield break;
+        }
+        game.Zone.Wildlife.Frozen = false;
+        for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead; t++) yield return 0;
     }
 
 
@@ -646,6 +686,7 @@ public partial class PlaceTest : Node
             float hp = flyer.Health;
             foreach (int x in play.ShootAt(() => w.FromPatch(flyer.Rig.BoundsCenter), 3)) yield return x;
             Check(flyer.Health < hp || flyer.Dead, $"a {wing.CommonName} in the air: a shot lands ({hp:F0} to {flyer.Health:F0} health)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood where it landed, {game.Zone.Blood.Splats} splats on the ground under it");
             w.Sim.Remove(flyer);
             foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         }

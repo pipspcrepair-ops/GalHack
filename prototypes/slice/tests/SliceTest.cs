@@ -188,9 +188,11 @@ public partial class SliceTest : Node
             $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
-            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} Â°C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
-        Check(zone.Wildlife.Sim.Creatures.Count > 20 && zone.Wildlife.Fauna.Species.Count >= 6,
-            $"the planet's own wildlife lives around the start: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
+            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
+        // Few by design, and fewer on a harsher world: from half a species' natural groups down by how livable it is.
+        int most = (int)MathF.Ceiling(zone.Data.Rules.Wildlife.MostPerPatch * zone.Wildlife.Livable);
+        Check((zone.Wildlife.Sim.Creatures.Count > 0 || zone.Wildlife.Livable < 0.5f) && zone.Wildlife.Sim.Creatures.Count <= most + 8 && zone.Wildlife.Fauna.Species.Count >= 6,
+            $"the planet's own wildlife lives around the start, thinly: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species, at most {most} on a world {zone.Wildlife.Livable:P0} livable");
     }
 
     IEnumerable<int> Locker()
@@ -792,7 +794,7 @@ public partial class SliceTest : Node
         for (int i = 0; i < 600 && Away() > w.Sim.Terrain.HalfSize * 0.5f; i++) yield return 0;
         w.FinishFollowing();
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f && w.Sim.Creatures.Count > 10,
+        Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f,
             $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
         // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,

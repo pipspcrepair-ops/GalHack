@@ -104,7 +104,7 @@ public static class Crawl
         // What the brain wants, laid flat on the surface.
         Vector3 want = c.Desired - n * c.Desired.Dot(n);
         float wantSpeed = want.Length();
-        float turn = Math.Clamp(6f / MathF.Max(0.6f, c.Species.Body.Size), 1.5f, 7f) * dt;
+        float turn = Heft.TurnRate(c, c.CrawlSpeed) * dt;
         // Wanting to go straight out from the surface (the next stretch of the way lies across an
         // inside corner): keep crawling the way it faces, into the corner and round onto the next face.
         float raw = c.Desired.Length();
@@ -124,7 +124,7 @@ public static class Crawl
         // Crawlers walk the way they face: slow while still turning to the way they want to go.
         float align = aimDir == Vector3.Zero ? 0f : MathF.Max(0f, f.Dot(aimDir));
         float target = wantSpeed * (0.25f + 0.75f * align);
-        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, target, (c.Stats.RunSpeed * 3f + 2f) * dt);
+        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, target, (target > c.CrawlSpeed ? Heft.Accel(c) : Heft.Brake(c)) * dt);
 
         float distance = c.CrawlSpeed * dt;
         int steps = Math.Max(1, (int)MathF.Ceiling(distance / r.Substep));
@@ -190,7 +190,7 @@ public static class Crawl
 
         Vector3 want = new(c.Desired.X, 0f, c.Desired.Z);
         float wantSpeed = want.Length();
-        float turn = Math.Clamp(6f / MathF.Max(0.6f, c.Species.Body.Size), 1.5f, 7f) * dt;
+        float turn = Heft.TurnRate(c, c.CrawlSpeed) * dt;
         Vector3 aimDir = wantSpeed > 0.05f ? want / wantSpeed : Vector3.Zero;
         if (aimDir == Vector3.Zero && c.FacePoint is { } face)
         {
@@ -200,7 +200,8 @@ public static class Crawl
         }
         if (aimDir != Vector3.Zero) f = TurnToward(f, aimDir, Vector3.Up, turn);
         float align = aimDir == Vector3.Zero ? 0f : MathF.Max(0f, f.Dot(aimDir));
-        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, wantSpeed * (0.25f + 0.75f * align), (c.Stats.RunSpeed * 3f + 2f) * dt);
+        float aimed = wantSpeed * (0.25f + 0.75f * align);
+        c.CrawlSpeed = Mathf.MoveToward(c.CrawlSpeed, aimed, (aimed > c.CrawlSpeed ? Heft.Accel(c) : Heft.Brake(c)) * dt);
 
         float distance = c.CrawlSpeed * dt;
         int steps = Math.Max(1, (int)MathF.Ceiling(distance / r.Substep));
@@ -323,7 +324,7 @@ public static class Crawl
         // Turn right way up while falling, like a cat.
         Vector3 up = SpaceMath.TurnToward(n, Vector3.Up, MathF.Min(1f, dt * 8f));
         float d = SpaceMath.Distance(s, next, out Vector3 normal);
-        bool needFloor = c.Dead || !c.Species.Climbs;
+        bool needFloor = c.Dead || !c.Species.Climbs || c.Dropping;
         if (d > -clr && normal != Vector3.Zero)
         {
             if (needFloor && normal.Y < w.Data.Deep.Crawl.FloorUp)
@@ -339,6 +340,7 @@ public static class Crawl
                 SpaceMath.Project(s, ref next, clr, out Vector3 landed);
                 if (landed == Vector3.Zero) landed = normal;
                 c.Falling = false;
+                c.Dropping = false;
                 c.Velocity = Vector3.Zero;
                 c.CrawlSpeed = 0f;
                 c.Facing = SpaceMath.Frame(-c.Facing.Z, landed);
@@ -375,7 +377,9 @@ public static class Crawl
         bool prey = c.AttackTarget is CreatureTarget;
         Vector3 aim = c.AimPoint + Vector3.Up * (prey ? 0.15f : 0.8f);
         bool drop = a.Style == AttackStyle.Drop && n.Y < -0.3f;
-        Vector3 to = aim - from;
+        // It stops with its jaws at the skin of whoever stands there, from their front if it can.
+        float stop = prey ? c.Radius * 0.3f : Attacks.Jaws(c) + Attacks.Stretch(c) + Attacks.BodyRadius;
+        Vector3 to = aim + (drop ? Vector3.Zero : Attacks.Approach(c, c.AttackTarget, from, aim) * stop) - from;
         float d = to.Length();
         Vector3 dir = d > 0.01f ? to / d : -c.Facing.Z;
         float reach = c.Stats.AttackRange + (a.Reach > 0f ? a.Reach : r.LungeReach);
@@ -392,12 +396,14 @@ public static class Crawl
             }
             reach = 8f;
         }
-        float travel = Math.Clamp(d - c.Radius * 0.3f, 0f, reach);
+        float travel = Math.Clamp(drop ? d - stop : d, 0f, reach);
         // Keep the flight in the open: stop short of rock in the way.
         float free = SpaceMath.Ray(s, from + dir * 0.05f, dir, travel);
         travel = MathF.Min(travel, MathF.Max(0f, free - c.Clearance * 0.5f));
         c.LungeFrom = from;
         c.LungeTo = from + dir * travel;
+        Vector3 onto = aim - c.LungeTo;
+        c.StrikePoint = c.LungeTo + (onto.LengthSquared() > 1e-4f ? onto.Normalized() : dir) * MathF.Min(stop, onto.Length());
         c.Phase = AttackPhase.Lunge;
         c.PhaseTime = 0f;
         float fallHeight = MathF.Max(0.3f, from.Y - c.LungeTo.Y);
@@ -414,6 +420,9 @@ public static class Crawl
         bool drop = c.Species.Attack.Style == AttackStyle.Drop && c.LungeFrom.Y - c.LungeTo.Y > 0.3f;
         float eased = drop ? t * t : 1f - (1f - t) * (1f - t);
         Vector3 center = c.LungeFrom.Lerp(c.LungeTo, eased);
+        // A straight flight can skim a bulge in the rock: it rides over it.
+        float into = c.Space.Density(center) + 0.03f;
+        if (into > 0f) center += SpaceMath.Normal(c.Space, center) * into;
         Vector3 travel = c.LungeTo - c.LungeFrom;
         // In flight it turns to face where it is going, feet towards the ground.
         Vector3 up = SpaceMath.TurnToward(c.Facing.Y, Vector3.Up, MathF.Min(1f, t * 1.5f));

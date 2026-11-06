@@ -82,6 +82,11 @@
     "patchHalfSize": 300,
     // Nothing spawns this close to the pod.
     "safeRadius": 60,
-    "alienness": 0.25
+    "alienness": 0.25,
+    // The most wild creatures a patch holds on the most livable world.
+    "mostPerPatch": 40,
+    // How much life a world of each archetype carries: lush worlds busiest, lava all but dead.
+    "livable": { "Temperate": 1.0, "Alien": 0.6, "Arid": 0.35, "Ice": 0.3, "Lava": 0.08 },
+    "cratered": 0.4
   }
 }

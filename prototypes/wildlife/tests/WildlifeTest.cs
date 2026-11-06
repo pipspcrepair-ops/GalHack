@@ -489,7 +489,7 @@ public partial class WildlifeTest : Node
                             float err = MathF.Max(drawn.DistanceTo(target3), MathF.Abs(target3.Y - w.Terrain.Height(target3.X, target3.Z)));
                             footChecks++;
                             if (err / tol > worstFoot / MathF.Max(worstFootTol, 1e-4f) || worstFootTol == 0f) { worstFoot = err; worstFootTol = tol; }
-                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what}"; break; }
+                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what} {c.State} {c.Phase} v {c.Velocity.Length():F1} time {c.PhaseTime:F2}"; break; }
                         }
                     }
                     if (problem != null) break;
@@ -822,6 +822,10 @@ public partial class WildlifeTest : Node
         Creature h = w2.Spawn(hunter, Vector3.Zero);
         var prey = new DummyTarget { Name = "Prey", Position = Ground(w2, new Vector3(0f, 0f, -12f)), Health = new Health(1e9f) };
         w2.Targets.Add(prey);
+        h.Noticed = prey; // it saw where they went, before the trunk came between them
+        h.Awareness = 1f;
+        h.NoticedAt = w2.Time;
+        h.LastSeen = prey.Position;
         float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
         bool reached = false;
         w2.Attacked += e => reached = true;

@@ -31,6 +31,20 @@ public sealed class ThemeDef
     /// <summary>The same theme for a start world.</summary>
     public ThemeDef AsStart() => new() { Id = Id + "+start", Match = Match, OutlierMin = OutlierMin, OutlierMax = OutlierMax, Set = Set, Density = Density, Tech = Tech, Start = true };
 
+    /// <summary>
+    /// How much of its share of infested sites a family keeps. The Hollow grows toward the core and
+    /// the rim is merely ominous: a start world, out on the rim, sees almost none.
+    /// </summary>
+    public const float InfestedShare = 0.3f, InfestedShareStart = 0.05f;
+
+    /// <summary>A family's state weights with the infested share cut for where it stands.</summary>
+    public static float[] Thinned(float[] weights, bool start)
+    {
+        var w = (float[])weights.Clone();
+        w[(int)PoiState.Infested] *= start ? InfestedShareStart : InfestedShare;
+        return w;
+    }
+
     /// <summary>Whether a family belongs to a faction (its people, its core): on a start world it may only lie in ruins.</summary>
     public static bool FactionOwned(FamilyDef f) => f.Core == CoreRule.Owned || f.Faction != Faction.None;
 }
@@ -146,7 +160,7 @@ public static class WorldPlacement
             var w = profile != null ? profile.StateWeights(f) : (float[])f.StateWeights.Clone();
             if (theme.Start && ThemeDef.FactionOwned(f))
                 for (int s = 0; s < w.Length; s++) if (s != (int)PoiState.Ruined) w[s] = 0f;
-            return w;
+            return ThemeDef.Thinned(w, theme.Start);
         }
         // A start world: faction places only as ruins (no core, no one home), and less often.
         static bool CanRuin(FamilyDef f) => !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f;
@@ -243,7 +257,7 @@ public static class WorldPlacement
                 var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
                 if (fitting.Count == 0) fitting = fam.Variants;
                 variant = fitting[rng.Range(0, fitting.Count)];
-                state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
+                state = Math.Max(0, rng.PickWeighted(ThemeDef.Thinned(fam.StateWeights, theme.Start)));
                 if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
             }
             result.Pois.Add(new PlacedPoi

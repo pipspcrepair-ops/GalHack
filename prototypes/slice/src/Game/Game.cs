@@ -225,6 +225,7 @@ public partial class Game : Node3D
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
         Tool.CreatureHit += c => Visor.Hit();
+        Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
         Builder.Said += Say;
         Builder.Finished += v => Say($"Fly it: F at the {v.Name}'s seat", Tones.Good);
@@ -542,8 +543,23 @@ public partial class Game : Node3D
         if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
-        Visor.Hurt(Zone.Wildlife.WorldOf(e.Creature));
+        Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
+        Visor.Hurt(from);
+        Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
+        Zone.Wildlife.Audio.PlayUi("hurt", -6f);
         Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
+    }
+
+    /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
+    void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)
+    {
+        Species s = c.Species;
+        bool swarm = s.Rig == RigKind.Swarm;
+        Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+        float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
+        Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
+        if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
+        else Zone.Blood.Hit(point, dir, s.Blood, s.Body.Size);
     }
 
     void OnWeather(WeatherEvent e)

@@ -39,14 +39,14 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus, Holds = HoldsClearance,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs,
-            Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet),
+            Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet, Zone.Wildlife.Livable),
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
         Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Caves = new Caves
         {
-            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Deep = Places.Fauna,
+            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
             Indoors = () => Places.PlaceAt(Survivor.WorldFeet) != null || Bunker.Inside(Survivor.WorldFeet, Zone),
         };

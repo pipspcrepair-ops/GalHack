@@ -40,6 +40,10 @@ public partial class ProceduralAudio : Node3D
         _clips["shot"] = Make(0.35f, (t, n) => MathF.Exp(-t * 18f) * (n * 0.7f + MathF.Sin(MathF.Tau * (90f - 120f * t) * t) * 0.6f), rng);
         _clips["thud"] = Make(0.3f, (t, n) => MathF.Exp(-t * 14f) * (MathF.Sin(MathF.Tau * 55f * t) * 0.8f + n * 0.2f), rng);
         _clips["chop"] = Make(0.22f, (t, n) => MathF.Exp(-t * 20f) * (n * 0.9f + Square(t * 70f) * 0.3f), rng);
+        // Wounds. A wet smack on a creature, a soft pop for a swarm critter, a blow taken in the suit.
+        _clips["hit"] = Make(0.2f, (t, n) => MathF.Exp(-t * 26f) * (n * 0.65f + MathF.Sin(MathF.Tau * (150f - 300f * t) * t) * 0.6f), rng);
+        _clips["pop"] = Make(0.12f, (t, n) => MathF.Exp(-t * 45f) * (MathF.Sin(MathF.Tau * (620f - 2600f * t) * t) * 0.7f + n * 0.25f), rng);
+        _clips["hurt"] = Make(0.32f, (t, n) => MathF.Exp(-t * 13f) * (MathF.Sin(MathF.Tau * 62f * t) * 0.8f + n * 0.45f), rng);
         // The discovery chime: two soft glassy bell notes a fifth apart, rising, under a second
         // long. Nothing like any creature's wind-up, so it never reads as a threat.
         _clips["discover"] = Make(0.75f, (t, n) => 0.3f * (Bell(t, 659.3f) + 0.85f * Bell(t - 0.11f, 987.8f)) * Math.Clamp((0.75f - t) * 16f, 0f, 1f), rng);

@@ -150,6 +150,7 @@ public partial class Visor : CanvasLayer
         if (survivor == null) return;
         if (Game.Menu.IsOpen) return; // the Tab menu covers the view: the visor waits behind it
         DrawTracers();
+        DrawHurtEdge();
         DrawCompass(survivor);
         DrawLines();
         DrawWarnings();
@@ -227,6 +228,32 @@ public partial class Visor : CanvasLayer
             string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
             _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
         }
+    }
+
+    /// <summary>A blow landed: the edge of the view reddens on the side it came from, in soft bands, and fades.</summary>
+    void DrawHurtEdge()
+    {
+        if (_time >= _hurtUntil) return;
+        float strength = (float)((_hurtUntil - _time) / 0.6);
+        Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
+        var dir = new Vector2(local.X, local.Z); // on screen: right is right, ahead is the top edge
+        dir = dir.LengthSquared() > 1e-4f ? dir.Normalized() : new Vector2(0f, -1f);
+        Vector2 size = _hud.Size;
+        float depth = size.Y * 0.16f;
+        const int Bands = 7;
+        void Edge(float share, Func<float, float, Rect2> band)
+        {
+            if (share <= 0.05f) return;
+            for (int i = 0; i < Bands; i++)
+            {
+                float from = depth * i / Bands, across = depth / Bands;
+                _hud.Block(band(from, across), new Color(C.Danger, 0.5f * strength * share * (1f - i / (float)Bands)));
+            }
+        }
+        Edge(dir.Dot(Vector2.Right), (f, w) => new Rect2(size.X - f - w, 0, w, size.Y));
+        Edge(dir.Dot(Vector2.Left), (f, w) => new Rect2(f, 0, w, size.Y));
+        Edge(dir.Dot(Vector2.Up), (f, w) => new Rect2(0, f, size.X, w));
+        Edge(dir.Dot(Vector2.Down), (f, w) => new Rect2(0, size.Y - f - w, size.X, w));
     }
 
     // ---- Compass ---------------------------------------------------------------------------------

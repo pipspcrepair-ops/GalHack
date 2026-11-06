@@ -76,6 +76,9 @@ public partial class WildlifePatch : Node3D
         }
     }
 
+    /// <summary>How livable this world is, 0..1.</summary>
+    public float Livable { get; private set; } = 1f;
+
     PlanetWorld _planet;
     Task<(Terrain terrain, NavGrid nav, Vector3 origin)> _baking;
     Vector3 _bakingFrom;
@@ -84,6 +87,7 @@ public partial class WildlifePatch : Node3D
     {
         _planet = planet;
         var rules = Zone.Data.Rules.Wildlife;
+        Livable = rules.LivableOn(planet.Spec);
         Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
         View = new WildlifeView { Name = "Creatures" };
         AddChild(View);
@@ -120,6 +124,7 @@ public partial class WildlifePatch : Node3D
         Vector3 oldOrigin = Origin;
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
+        sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
@@ -139,7 +144,10 @@ public partial class WildlifePatch : Node3D
                 if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                carriedNow.Add(sim.Spawn(c.Species, local));
+                Creature across = sim.Spawn(c.Species, local);
+                across.Health = c.Health;
+                across.Yaw = c.Yaw;
+                carriedNow.Add(across);
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
@@ -163,22 +171,28 @@ public partial class WildlifePatch : Node3D
         float edge = Sim.Terrain.HalfSize - 30f;
         // A patch that took creatures over from the last one only fills its far side.
         float inner = carriedOver ? Sim.Terrain.HalfSize * 0.55f : 0f;
+        // Half what a species could hold, less on a harsher world; and a far side is only part of a patch.
+        float density = Sim.Data.Spawning.Density * Livable * (carriedOver ? 0.6f : 1f);
+        int most = (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
         foreach (Species s in Fauna.Species)
         {
-            int groups = s.Plan == BodyPlan.Giant ? 1 : 2;
-            for (int g = 0; g < groups; g++)
+            int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density, rng);
+            for (int g = 0; g < groups && Sim.Creatures.Count < most; g++)
             {
-                float min = s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe;
+                int count = Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable)));
+                float spread = Sim.GroupRadius(s, count);
+                float min = (s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe) + spread;
                 Vector3 at = default;
                 bool found = false;
                 for (int attempt = 0; attempt < 12 && !found; attempt++)
                 {
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min;
+                    // A patch taking over from another is seen arriving: only where nobody is near or looking.
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && (!carriedOver || Sim.ClearOfPlayers(at, spread));
                 }
                 if (!found) continue;
-                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), Math.Max(1, rng.Int(s.GroupMin, s.GroupMax)));
+                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
             }
         }
     }
@@ -216,6 +230,20 @@ public partial class WildlifePatch : Node3D
         if (_baking == null) return;
         _baking.Wait();
         Follow(Vector3.Zero, false);
+    }
+
+    /// <summary>A line through what stands in the world: ground, walls, closed doors, hulls. For creatures' eyes; only from a physics step.</summary>
+    public bool SightClear(Vector3 from, Vector3 to)
+    {
+        var ray = PhysicsRayQueryParameters3D.Create(from, to, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
+        return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
+    }
+
+    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it.</summary>
+    public void Noise(Vector3 at, float radius)
+    {
+        Sim?.Noise(PatchLocal(at), radius);
+        foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
     }
 
     /// <summary>Zone frame to patch frame and back.</summary>

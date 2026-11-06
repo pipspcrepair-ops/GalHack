@@ -66,12 +66,18 @@
   // capital-mode structures block nothing. Respawns also keep minPlayerDistance from every
   // player and out of the view cone of anyone within viewDistance.
   "spawning": {
+    // The share of a species' natural groups a world holds at its most livable.
+    "density": 0.5,
     "baseClearance": 80,
     "respawnSeconds": 90,
     "checkSeconds": 5,
     "minPlayerDistance": 90,
     "viewDistance": 220,
     "viewConeDegrees": 65,
+    "stayPutRadius": 30,
+    "stayPutSeconds": 60,
+    "colonyClearance": 25,
+    "caveClearance": 12,
     "attempts": 24
   },
 
@@ -460,12 +466,17 @@
       "Alien": { "alienness": 0.85, "hue": [165, 300], "saturation": [0.45, 0.8], "value": [0.32, 0.58], "glow": 0.75, "backs": ["bubbles", "crystals", "vents", "spines"] },
       "Derelict": { "alienness": 0.5, "hue": [10, 32], "saturation": [0.22, 0.42], "value": [0.16, 0.3], "glow": 0.3, "backs": ["plates", "shell"], "warning": "#9c5a2e" }
     },
-    "depth": { "paleFrom": 2, "blindFrom": 3, "paleness": 0.35, "nestScale": 0.1, "nesters": [2, 0.75], "toughness": 0.1, "maxLevel": 6 },
+    "depth": { "paleFrom": 2, "blindFrom": 3, "paleness": 0.35, "nestScale": 0.1, "nesters": [2, 1.25], "toughness": 0.1, "maxLevel": 6 },
     "population": {
-      "silent": { "Active": 0.9, "Abandoned": 0.25, "Ruined": 0.3, "Infested": 0.0 },
-      "density": { "Active": 0.25, "Abandoned": 1.0, "Ruined": 0.8, "Infested": 2.2 },
+      // A place holds a few things you hear before you see, not a dozen on show. "roomCap" is the most
+      // in a room (one more per "roomArea" square metres of floor); "nestCap" the most in a room with a
+      // nest; "placeCap" the most in a place by its state, one more per "capRooms" rooms up to double.
+      "silent": { "Active": 0.9, "Abandoned": 0.35, "Ruined": 0.4, "Infested": 0.0 },
+      "density": { "Active": 0.15, "Abandoned": 0.55, "Ruined": 0.45, "Infested": 1.1 },
       "lurker": 0.55, "ambusher": 0.35, "prowler": 0.34, "subsister": 0.6,
-      "food": [1, 3], "cracks": [1, 3]
+      "food": [1, 3], "cracks": [1, 3],
+      "roomCap": 2, "roomArea": 60, "nestCap": 5, "capRooms": 10,
+      "placeCap": { "Active": 3, "Abandoned": 5, "Ruined": 5, "Infested": 9 }
     },
     "crawl": { "gravity": 12, "turnRate": 9, "substep": 0.08, "floorUp": 0.6, "wallSpeed": 0.6, "scratchEvery": 0.6 }
   }

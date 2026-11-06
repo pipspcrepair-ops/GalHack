@@ -67,12 +67,18 @@ public sealed class Creature
     // Brain.
     public CState State = CState.Wander;
     public float StateTime, Think;
+    /// <summary>The brain runs on its own timer: time since it last thought, how long until it next does, and how long its last think covered.</summary>
+    public float ThinkClock, ThinkEvery, ThinkDt = 1f / 60f;
+    /// <summary>When a hunter next looks round for something to eat.</summary>
+    public float PreyLookAt;
     public Vector3 Goal;
     public bool HasGoal;
     public ITarget Target;
     /// <summary>The horizontal velocity the brain asks for.</summary>
     public Vector3 Desired;
     public Vector3? FacePoint;
+    /// <summary>Idling: for how long, and how far round it is looking (0 if it is feeding). Wandering: how far its heading has drifted.</summary>
+    public float IdleFor, IdleLook, WanderTurn;
 
     // Attacks. The first attack on each target is telegraphed with the species' long wind-up.
     public AttackPhase Phase;
@@ -80,6 +86,10 @@ public sealed class Creature
     public bool FirstAttack, Committed;
     public ITarget AttackTarget;
     public Vector3 AimPoint, LungeFrom, LungeTo;
+    /// <summary>From its middle to the tip of its jaws, standing (see <see cref="Attacks.Jaws"/>); 0 until measured.</summary>
+    public float JawsAtRest;
+    /// <summary>Where its jaws end up when the lunge lands.</summary>
+    public Vector3 StrikePoint;
     readonly Dictionary<ITarget, float> _lastAttack = new();
 
     // Pose intentions, 0..1, smoothed by the rig. Brace is a charge's wind-up: head down,
@@ -130,6 +140,8 @@ public sealed class Creature
     public float CrawlSpeed;
     /// <summary>Let go (or knocked off): falling until it lands on something.</summary>
     public bool Falling;
+    /// <summary>Coming down from a drop: it goes all the way to the floor, and catches no wall on the way.</summary>
+    public bool Dropping;
     /// <summary>Last place it stood firmly, for the stuck-safety.</summary>
     public Vector3 LastFirm;
     public Vector3 LastFirmNormal = Vector3.Up;
@@ -158,6 +170,13 @@ public sealed class Creature
     /// <summary>The player it has noticed, and when.</summary>
     public ITarget Noticed;
     public float NoticedAt = -999f;
+    /// <summary>0..1: how far it has got to noticing a player (see <see cref="Senses"/>); at 1 it has.</summary>
+    public float Awareness;
+    /// <summary>Whether it could see or hear a player at its last think.</summary>
+    public bool Sensing;
+    /// <summary>Where it last knew a player, or a loud noise, to be.</summary>
+    public Vector3 LastSeen;
+    public float HeardAt = -999f;
     /// <summary>0..1: eyes opening, a lurker waking (the view brightens its eyes).</summary>
     public float Wake;
     // Domestic animals: the pen or town area they keep to, and (pets) who they follow.
@@ -203,7 +222,8 @@ public sealed class Herd
     public float AlarmedAt;
     public Vector3 ThreatPos;
     public ITarget Hunting;
-    public int UpdatedFrame = -1;
+    public int UpdatedFrame = -1; // space shoals
+    public float UpdatedAt = -999f;
     public float Spread;
 
     public int AliveCount
@@ -253,7 +273,7 @@ public sealed class Pack
 
     /// <summary>The earliest moment the next member may commit to a lunge.</summary>
     public float NextCommitAt = -999f;
-    public int UpdatedFrame = -1;
+    public float UpdatedAt = -999f;
 
     public void SetPhase(PackPhase phase)
     {

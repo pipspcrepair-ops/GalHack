@@ -126,7 +126,7 @@ public sealed class DepthRules
     /// <summary>Nesters grow by this share of their size per level of depth.</summary>
     public float NestScale { get; set; } = 0.1f;
     /// <summary>Nesters at a nest: base count plus this many per level.</summary>
-    public float[] Nesters { get; set; } = { 2f, 0.75f };
+    public float[] Nesters { get; set; } = { 2f, 1.25f };
     /// <summary>Damage and health grow by this share per level.</summary>
     public float Toughness { get; set; } = 0.1f;
     public int MaxLevel { get; set; } = 6;
@@ -136,9 +136,9 @@ public sealed class DepthRules
 public sealed class PopulationRules
 {
     /// <summary>State name to the chance a place is empty and silent.</summary>
-    public Dictionary<string, float> Silent { get; set; } = new() { ["Active"] = 0.9f, ["Abandoned"] = 0.25f, ["Ruined"] = 0.3f, ["Infested"] = 0f };
+    public Dictionary<string, float> Silent { get; set; } = new() { ["Active"] = 0.9f, ["Abandoned"] = 0.35f, ["Ruined"] = 0.4f, ["Infested"] = 0f };
     /// <summary>State name to how thickly it is populated (1 = an abandoned place).</summary>
-    public Dictionary<string, float> Density { get; set; } = new() { ["Active"] = 0.25f, ["Abandoned"] = 1f, ["Ruined"] = 0.8f, ["Infested"] = 2.2f };
+    public Dictionary<string, float> Density { get; set; } = new() { ["Active"] = 0.15f, ["Abandoned"] = 0.55f, ["Ruined"] = 0.45f, ["Infested"] = 1.1f };
     /// <summary>Chance a dark room holds a lurker.</summary>
     public float Lurker { get; set; } = 0.55f;
     /// <summary>Chance a corridor, vent or door hides an ambusher.</summary>
@@ -151,6 +151,13 @@ public sealed class PopulationRules
     public int[] Food { get; set; } = { 1, 3 };
     /// <summary>Cracks per room, where the small things go.</summary>
     public int[] Cracks { get; set; } = { 1, 3 };
+    /// <summary>The most creatures in a room, one more per this many square metres of floor; and the most round a nest.</summary>
+    public int RoomCap { get; set; } = 2;
+    public float RoomArea { get; set; } = 60f;
+    public int NestCap { get; set; } = 5;
+    /// <summary>The most creatures in a place, by its state; one more per this many rooms, up to double.</summary>
+    public Dictionary<string, int> PlaceCap { get; set; } = new() { ["Active"] = 3, ["Abandoned"] = 5, ["Ruined"] = 5, ["Infested"] = 9 };
+    public int CapRooms { get; set; } = 10;
 }
 
 /// <summary>How things move on surfaces.</summary>

@@ -94,6 +94,37 @@ public sealed class Species
     }
 
     /// <summary>
+    /// The colour of its blood, the same every time: red in anything warm-blooded, from rust to
+    /// crimson; a yellow-green ichor in crawlers and swarms; what lives by glow bleeds its glow;
+    /// and what the Bloom has taken bleeds a sick dark violet.
+    /// </summary>
+    public Color Blood
+    {
+        get
+        {
+            var rng = Rng.For(Seed, "blood");
+            if (Corrupted) return Color.FromHsv(rng.Range(0.78f, 0.86f), 0.7f, rng.Range(0.22f, 0.34f));
+            if (Colors.GlowStrength > 0.4f) return Colors.Glow.Darkened(0.2f);
+            if (Plan is BodyPlan.Crawler or BodyPlan.Swarm || Rig == RigKind.Crawler) return Color.FromHsv(rng.Range(0.16f, 0.26f), 0.75f, rng.Range(0.5f, 0.65f));
+            return Color.FromHsv(Mathf.PosMod(rng.Range(-0.02f, 0.03f), 1f), 0.85f, rng.Range(0.34f, 0.48f));
+        }
+    }
+
+    /// <summary>Nose to rump, m.</summary>
+    public float BodyLength => Body.Size + Body.NeckLength * 0.5f + Body.HeadSize * 0.5f;
+    /// <summary>Across the body and its splayed legs, m.</summary>
+    public float BodyWidth => Body.Width + Body.LegLength * 0.2f;
+    /// <summary>Feet to the top of its back, m.</summary>
+    public float BodyHeight => Body.LegLength + Body.Height;
+    /// <summary>
+    /// The clear width it needs to turn round in, m: its own diagonal and a little. A chain bends and
+    /// a climber goes round by the walls, so they need less; a swarm is a cloud and needs none.
+    /// </summary>
+    public float TurnCircle => Rig == RigKind.Swarm ? 0.5f
+        : MathF.Sqrt(BodyLength * BodyLength + BodyWidth * BodyWidth) * (Rig == RigKind.Chain || Climbs ? 0.6f : 1f) + TurnMargin;
+    public const float TurnMargin = 0.7f;
+
+    /// <summary>
     /// A copy to change (a variant: deeper, mutated): every field, with its body, palette, stats
     /// and parts copied too, so changing the copy never touches the original.
     /// </summary>

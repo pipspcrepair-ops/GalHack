@@ -15,11 +15,63 @@ namespace Wildlife;
 /// - Each species attacks in its behaviour's signature style: a pounce crouches low, a charge
 ///   lowers its head and paws, a giant rears. The style changes the look and sound only; the
 ///   timing rules are the same for all.
+/// - It bites with its head, not from inside you: the body stops so the jaws meet yours at your
+///   skin (<see cref="BodyRadius"/>), however long its neck, and nothing passes through you
+///   (<see cref="Locomotion.KeepOff"/>). A lunge from your blind side swings round, as far as it can,
+///   to land in front of you, so you see what bit you.
 /// - Pack members take turns: one may wind up at a time, and each commit comes at least a
 ///   telegraph after the last, so a pack never lands several lunges at once.
 /// </summary>
 public static class Attacks
 {
+    /// <summary>A person's body, as far as jaws and limbs go: how wide from the middle, how tall.</summary>
+    public const float BodyRadius = 0.35f, BodyHeight = 1.9f;
+    /// <summary>How fast a lunge covers ground at most, m/s; short legs throw a body less far.</summary>
+    const float MostLungeSpeed = 8f;
+    /// <summary>The most a bite from behind slides round the victim, and within what angle of their front it needn't.</summary>
+    static readonly float Swing = Mathf.DegToRad(55f), Front = Mathf.DegToRad(75f);
+
+    /// <summary>From its middle to the tip of its jaws, along the way it faces, by its rig's own head and neck.</summary>
+    public static float Jaws(Creature c)
+    {
+        float best = c.Radius * 0.5f;
+        Rig rig = c.Rig;
+        if (rig == null) return best;
+        if (c.JawsAtRest > 0f) return c.JawsAtRest;
+        Vector3 f = c.Space != null ? WildSim.Flat(-c.Facing.Z) : c.Forward;
+        Vector3 from = c.Space != null ? Crawl.Center(c) : c.Position;
+        for (int i = 0; i < rig.HitCount; i++)
+        {
+            Vector4 s = rig.Hits[i];
+            best = MathF.Max(best, WildSim.Flat(new Vector3(s.X, s.Y, s.Z) - from).Dot(f) + s.W);
+        }
+        // Once, standing: reared for a bite its head is drawn back, and that isn't how far it reaches.
+        if (!c.Attacking && c.Rear < 0.05f && c.Age > 0.1f) c.JawsAtRest = best;
+        return best;
+    }
+
+    /// <summary>How close it has to be to start a bite that will reach: no nearer than its jaws let it.</summary>
+    public static float Range(Creature c) => MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
+
+    /// <summary>How far a lunge's pose throws its head forward, on top of its jaws at rest.</summary>
+    public static float Stretch(Creature c) => c.Species.Rig == RigKind.Legged ? c.Species.Body.Size * 0.3f : c.Species.Body.Size * 0.08f;
+
+    /// <summary>
+    /// Which way from its aim point a lunge ends: back the way it came, unless that is behind the
+    /// victim, when it swings round toward their front.
+    /// </summary>
+    public static Vector3 Approach(Creature c, ITarget t, Vector3 from, Vector3 aim)
+    {
+        Vector3 side = WildSim.Flat(from - aim);
+        side = side.LengthSquared() > 1e-4f ? side.Normalized() : -c.Forward;
+        Vector3 front = WildSim.Flat(t.Forward);
+        if (t is CreatureTarget || front.LengthSquared() < 1e-4f) return side;
+        front = front.Normalized();
+        float angle = MathF.Atan2(front.Cross(side).Y, front.Dot(side));
+        if (MathF.Abs(angle) <= Front) return side;
+        return side.Rotated(Vector3.Up, -MathF.Sign(angle) * MathF.Min(MathF.Abs(angle) - Front, Swing));
+    }
+
     /// <summary>Begins an attack on a target in reach. Returns false if it can't attack now.</summary>
     public static bool Start(WildSim w, Creature c, ITarget target)
     {
@@ -49,6 +101,7 @@ public static class Attacks
     public static void Cancel(Creature c)
     {
         c.Phase = AttackPhase.None;
+        c.ThinkEvery = 0f;
         c.Rear = 0f;
         c.Brace = 0f;
     }
@@ -96,7 +149,11 @@ public static class Attacks
             case AttackPhase.Recover:
                 c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * 3f);
                 c.Desired = c.PhaseTime < 0.5f ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero;
-                if (c.PhaseTime >= c.PhaseLength) c.Phase = AttackPhase.None;
+                if (c.PhaseTime >= c.PhaseLength)
+                {
+                    c.Phase = AttackPhase.None;
+                    c.ThinkEvery = 0f; // back to its own mind at once
+                }
                 break;
         }
     }
@@ -138,17 +195,23 @@ public static class Attacks
             return;
         }
         CombatRules r = w.Combat;
-        Vector3 to = WildSim.Flat(c.AimPoint - c.Position);
-        float d = to.Length();
-        Vector3 dir = d > 0.01f ? to / d : c.Forward;
         AttackDef a = c.Species.Attack;
-        float travel = Math.Clamp(d - c.Radius * 0.5f, 0f, c.Stats.AttackRange + (a.Reach > 0f ? a.Reach : r.LungeReach));
+        Vector3 aim = c.AimPoint;
+        // It stops with its jaws on the aim point, at the skin of whoever stands there.
+        float stop = Jaws(c) + Stretch(c) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius);
+        Vector3 go = WildSim.Flat(aim + Approach(c, c.AttackTarget, c.Position, aim) * stop - c.Position);
+        float d = go.Length();
+        Vector3 along = d > 0.01f ? go / d : c.Forward;
+        float travel = MathF.Min(d, c.Stats.AttackRange + (a.Reach > 0f ? a.Reach : r.LungeReach));
         c.LungeFrom = c.Position;
-        c.LungeTo = c.Position + dir * travel;
+        c.LungeTo = c.Position + along * travel;
+        Vector3 at = WildSim.Flat(aim - c.LungeTo);
+        Vector3 dir = at.LengthSquared() > 1e-4f ? at.Normalized() : c.Forward;
+        c.StrikePoint = c.LungeTo + dir * MathF.Min(stop, at.Length()); // someone already inside its reach is bitten where they stand
         c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
         c.Phase = AttackPhase.Lunge;
         c.PhaseTime = 0f;
-        c.PhaseLength = a.Lunge > 0f ? a.Lunge : r.LungeSeconds;
+        c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f));
         c.Rear = 0f;
         c.Brace = 0f;
     }
@@ -160,9 +223,7 @@ public static class Attacks
         if (c.Space != null)
         {
             // In a cave or a place the lunge is a flight through the open: judged where it ends.
-            Vector3 d3 = c.LungeTo - c.LungeFrom;
-            Vector3 along = d3.LengthSquared() > 1e-4f ? d3.Normalized() : -c.Facing.Z;
-            Vector3 end = c.LungeTo + along * c.Radius * 0.3f;
+            Vector3 end = c.StrikePoint;
             float rise = end.Y - t.Position.Y;
             hit = t.Attackable
                   && WildSim.Flat(t.Position - end).Length() <= r.ContactRadius + c.Radius * 0.4f
@@ -170,9 +231,7 @@ public static class Attacks
         }
         else
         {
-            Vector3 dir = WildSim.Flat(c.LungeTo - c.LungeFrom);
-            dir = dir.LengthSquared() > 1e-4f ? dir.Normalized() : c.Forward;
-            Vector3 strike = c.LungeTo + dir * c.Radius * 0.5f;
+            Vector3 strike = c.StrikePoint;
             float groundAtStrike = w.Terrain.Height(strike.X, strike.Z);
             Vector3 off = t.Position - strike;
             hit = t.Attackable
@@ -191,7 +250,16 @@ public static class Attacks
             }
             else dealt = t.Health.Apply(c.Stats.Damage);
         }
-        if (c.Space != null) Crawl.Release(w, c);
+        if (c.Space != null)
+        {
+            Crawl.Release(w, c);
+            // A drop has spent itself on what it hit: it falls the rest of the way straight.
+            if (c.Species.Attack.Style == AttackStyle.Drop)
+            {
+                c.Velocity = new Vector3(0f, c.Velocity.Y, 0f);
+                c.Dropping = true;
+            }
+        }
         c.RememberAttack(t, w.Time);
         w.RaiseAttacked(new AttackEvent
         {

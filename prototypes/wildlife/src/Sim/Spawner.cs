@@ -15,7 +15,8 @@ namespace Wildlife;
 /// - Nothing spawns or respawns inside a base's zone: within the clearance of any base-mode
 ///   structure's footprint edge, with room for the whole group's spread. Capital-mode
 ///   structures block nothing. Creatures already outside may wander in; nothing pushes them out.
-/// - Respawns also land away from every player and out of their view, so nothing appears in sight.
+/// - Respawns also land away from every player and out of their view, so nothing appears in sight,
+///   and nothing comes back at all round someone who has stayed put: only moving on brings it.
 /// A group with nowhere it may go waits for the next check. Pure C#: the tests run hours of it.
 /// </summary>
 public sealed class Spawner
@@ -49,6 +50,9 @@ public sealed class Spawner
     /// <summary>Candidate spots turned down because they were not the species' home ground.</summary>
     public int RejectedForLandform { get; private set; }
 
+    /// <summary>How livable the world is, 0..1: it scales how many groups a species has.</summary>
+    public float Livable { get; set; } = 1f;
+
     public Spawner(WildSim sim, PlanetFauna fauna, IReadOnlyList<Vector3> groves, ulong seed)
     {
         _sim = sim;
@@ -63,7 +67,8 @@ public sealed class Spawner
     {
         foreach (Species s in _fauna.Species)
         {
-            int groups = s.Plan == BodyPlan.Giant ? 2 : s.Behaviour == Behaviour.Herd || s.Rig == RigKind.Swarm ? 2 : 3;
+            float natural = s.Plan == BodyPlan.Giant ? 2 : s.Behaviour == Behaviour.Herd || s.Rig == RigKind.Swarm ? 2 : 3;
+            int groups = SpawnRules.Groups(natural * _rules.Density * Livable, _rng);
             int total = 0;
             for (int g = 0; g < groups; g++)
             {
@@ -83,6 +88,8 @@ public sealed class Spawner
         if (_check > 0f) return;
         float elapsed = _rules.CheckSeconds - _check;
         _check = _rules.CheckSeconds;
+        _clock += elapsed;
+        bool stayed = StayedPut();
 
         var alive = new Dictionary<Species, int>();
         foreach (Creature c in _sim.Creatures)
@@ -98,6 +105,7 @@ public sealed class Spawner
             }
             _wait[s] = _wait.GetValueOrDefault(s, _rules.RespawnSeconds) - elapsed;
             if (_wait[s] > 0f) continue;
+            if (stayed) continue;
             int count = s.Rig == RigKind.Swarm ? 1 : Math.Clamp(_rng.Int(s.GroupMin, s.GroupMax), 1, missing);
             int placed = Place(s, Habitat(s, 1), count, respawn: true);
             if (placed == 0) continue; // nowhere it may go right now: try again next check
@@ -140,19 +148,21 @@ public sealed class Spawner
         return 0;
     }
 
-    /// <summary>Far enough from every player, and not in front of anyone who could see it.</summary>
-    bool OutOfPlayersWay(Vector3 at, float margin)
+    bool OutOfPlayersWay(Vector3 at, float margin) => _sim.ClearOfPlayers(at, margin);
+
+    readonly Dictionary<ITarget, (Vector3 at, float since)> _settled = new();
+    float _clock;
+
+    /// <summary>Whether anyone has stayed in one spot long enough that nothing should come back round them.</summary>
+    bool StayedPut()
     {
-        float cone = MathF.Cos(Mathf.DegToRad(_rules.ViewConeDegrees));
+        bool any = false;
         foreach (ITarget t in _sim.Targets)
         {
-            Vector3 to = WildSim.Flat(at - t.Position);
-            float d = to.Length();
-            if (d < _rules.MinPlayerDistance + margin) return false;
-            Vector3 look = WildSim.Flat(t.Forward);
-            if (d < _rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > cone) return false;
+            if (!_settled.TryGetValue(t, out var spot) || WildSim.Flat(t.Position - spot.at).Length() > _rules.StayPutRadius) _settled[t] = (t.Position, _clock);
+            else if (_clock - spot.since > _rules.StayPutSeconds) any = true;
         }
-        return true;
+        return any;
     }
 
     /// <summary>Whether a spot is a species' home ground: always without landforms, else as much as its homes hold there.</summary>

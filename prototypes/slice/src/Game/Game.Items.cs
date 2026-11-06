@@ -259,6 +259,20 @@ public partial class Game
     void OnCreatureDied(Creature c, ITarget killer)
     {
         Species s = c.Species;
+        if (s.Rig == RigKind.Swarm)
+        {
+            // A swarm doesn't lie down and leave a body: the last of it goes in a burst.
+            Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+            Zone.Blood.Pop(c.Position + origin + Vector3.Up * c.Altitude, s.Blood, 40);
+            Zone.Wildlife.Sound(origin, a => a.Play("pop", c.Position + Vector3.Up, 0.7f, 2f));
+            c.Removed = true;
+            if (killer == Target)
+            {
+                Stats.Kills++;
+                Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
+            }
+            return;
+        }
         var drops = new Bill();
         if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
         drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));

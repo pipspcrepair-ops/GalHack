@@ -30,6 +30,9 @@ public sealed class PoiRoom
     public Vector3 Center => (Min + Max) * 0.5f;
     public Vector3 FloorCenter => new((Min.X + Max.X) * 0.5f, Min.Y, (Min.Z + Max.Z) * 0.5f);
     public Vector3 Size => Max - Min;
+
+    /// <summary>The width a body can turn round in here, m.</summary>
+    public float Width => MathF.Min(Size.X, Size.Z);
 }
 
 /// <summary>Everything the population function needs to know about a place.</summary>
@@ -40,6 +43,8 @@ public sealed class PoiPlan
     public PlaceState State = PlaceState.Abandoned;
     /// <summary>A wrecked ship (crashed or drifting): its holds, ducts and engine rooms get nesters.</summary>
     public bool Derelict;
+    /// <summary>How livable its world is, 0..1: a harsh world's places hold less (an overrun place holds what the Bloom brought).</summary>
+    public float Livable = 1f;
     public readonly List<PoiRoom> Rooms = new();
 }
 
@@ -90,7 +95,8 @@ public sealed class Colony
     public int Target;
     public Vector3 Home;
     public readonly List<Crack> Sources = new();
-    public float Timer, Wait = 40f;
+    public float Timer, Wait = RefillSeconds;
+    const float RefillSeconds = 90f;
 
     public static void StepAll(WildSim w, float dt)
     {
@@ -104,13 +110,15 @@ public sealed class Colony
                 if (c.Species == col.Species && c.Alive && !c.Removed && c.Space == col.Space) alive++;
             if (alive >= col.Target || col.Sources.Count == 0)
             {
-                col.Wait = 40f;
+                col.Wait = RefillSeconds;
                 continue;
             }
             col.Wait -= 5f;
             if (col.Wait > 0f) continue;
-            col.Wait = 40f;
+            // Nothing comes out under your nose: only by a crack nobody is near or looking down.
             Crack from = col.Sources[(int)(w.Frame % col.Sources.Count)];
+            if (Overlooked(w, col, from)) continue;
+            col.Wait = RefillSeconds;
             Creature n = w.SpawnIn(col.Species, col.Space, from.Position + from.Normal * 0.3f, from.Normal);
             n.Home = col.Home;
             // It comes out of the crack: in the walls a moment, then out.
@@ -119,6 +127,19 @@ public sealed class Colony
             n.WallLength = 1f;
             n.WallTime = 0f;
         }
+    }
+
+    static bool Overlooked(WildSim w, Colony col, Crack k)
+    {
+        SpawnRules r = w.Data.Spawning;
+        Vector3 mouth = k.Position + k.Normal * 0.3f;
+        foreach (ITarget t in w.Targets)
+        {
+            float d = (t.Position - k.Position).Length();
+            if (d < r.ColonyClearance) return true;
+            if (d < r.ViewDistance && SpaceMath.Clear(col.Space, t.Position + Vector3.Up * 1.4f, mouth, 0f)) return true;
+        }
+        return false;
     }
 }
 
@@ -150,8 +171,8 @@ public static class PoiFauna
             pop.Note = "empty and silent";
             return pop;
         }
-        float density = pr.Density.GetValueOrDefault(state, 1f);
         bool infested = poi.State == PlaceState.Infested, active = poi.State == PlaceState.Active;
+        float density = pr.Density.GetValueOrDefault(state, 1f) * (infested ? 1f : Mathf.Lerp(0.4f, 1f, poi.Livable));
         PoiTheme theme = poi.Derelict ? PoiTheme.Derelict : poi.Theme;
         int maxDepth = 0;
         foreach (PoiRoom r in poi.Rooms) maxDepth = Math.Max(maxDepth, r.Depth);
@@ -210,7 +231,7 @@ public static class PoiFauna
                     bool dark = room.Dark || d >= 1;
                     if (deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, poi.Derelict ? DeepRole.DerelictNester : DeepRole.Nester, poi.Derelict);
-                    else if (infested && d >= 1 && rng.Chance(0.6f))
+                    else if (infested && d >= 1 && rng.Chance(0.3f))
                         NestIn(pop, fauna, theme, room, rng, true, density, rules, DeepRole.Nester, false);
                     if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density))) Lurker(pop, fauna, theme, room, rng, infested);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
@@ -229,11 +250,14 @@ public static class PoiFauna
             for (int i = 0; i < prowlers; i++)
             {
                 PoiRoom start = corridors[rng.Int(0, corridors.Count - 1)];
-                List<Vector3> route = Beat(poi, start, rng);
-                Species sp = fauna.For(DeepRole.Prowler, theme, start.Depth, infested);
+                List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
+                Species sp = fauna.Fitted(fauna.For(DeepRole.Prowler, theme, start.Depth, infested), width, height);
+                if (sp == null) continue; // the way is too tight for its kind
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
             }
         }
+
+        Cap(poi, pop, rng, pr, state);
 
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
@@ -254,11 +278,59 @@ public static class PoiFauna
         return pop;
     }
 
+    /// <summary>
+    /// Keeps a place to a few creatures: first each room to its cap, then the place to its own,
+    /// taking from whichever role has most and from the shallowest rooms, so what is left is a
+    /// mix of things, further in. A nest always keeps a guard.
+    /// </summary>
+    static void Cap(PoiPlan poi, PoiPopulation pop, Rng rng, PopulationRules pr, string state)
+    {
+        bool Spare(PoiSpawn s) => s.Nest < 0 || pop.Spawns.Exists(o => o != s && o.Nest == s.Nest);
+        foreach (PoiRoom room in poi.Rooms)
+        {
+            bool nest = pop.Spawns.Exists(s => s.Room == room.Index && s.Nest >= 0);
+            int cap = nest ? pr.NestCap : pr.RoomCap + (int)(room.Size.X * room.Size.Z / MathF.Max(1f, pr.RoomArea));
+            List<PoiSpawn> here = pop.Spawns.FindAll(s => s.Room == room.Index);
+            while (here.Count > cap)
+            {
+                // Grazers go first: the hunters are what a room is about.
+                List<PoiSpawn> from = here.FindAll(s => s.Nest < 0 && s.Role == DeepRole.Subsister);
+                if (from.Count == 0) from = here.FindAll(Spare);
+                if (from.Count == 0) break;
+                PoiSpawn drop = from[rng.Int(0, from.Count - 1)];
+                here.Remove(drop);
+                pop.Spawns.Remove(drop);
+            }
+        }
+        int baseCap = pr.PlaceCap.GetValueOrDefault(state, 5);
+        int most = Math.Min(baseCap * 2, baseCap + poi.Rooms.Count / Math.Max(1, pr.CapRooms));
+        int Depth(PoiSpawn s) => poi.Rooms.Find(r => r.Index == s.Room)?.Depth ?? 0;
+        while (pop.Spawns.Count > most)
+        {
+            var roles = new Dictionary<DeepRole, int>();
+            foreach (PoiSpawn s in pop.Spawns) if (Spare(s)) roles[s.Role] = roles.GetValueOrDefault(s.Role) + 1;
+            if (roles.Count == 0) break;
+            DeepRole busiest = default;
+            int count = -1;
+            foreach (var (role, n) in roles)
+                if (n > count || n == count && role < busiest) { busiest = role; count = n; }
+            List<PoiSpawn> from = pop.Spawns.FindAll(s => s.Role == busiest && Spare(s));
+            int shallowest = int.MaxValue;
+            foreach (PoiSpawn s in from) shallowest = Math.Min(shallowest, Depth(s));
+            from = from.FindAll(s => Depth(s) == shallowest);
+            pop.Spawns.Remove(from[rng.Int(0, from.Count - 1)]);
+        }
+    }
+
     // ---- Roles into rooms -----------------------------------------------------------------
+
+    /// <summary>What fills a role in a room, as it fits there; nothing if that kind can't turn round in it.</summary>
+    static Species Fits(DeepFauna fauna, DeepRole role, PoiTheme theme, PoiRoom room, bool infested) =>
+        fauna.Fitted(fauna.For(role, theme, room.Depth, infested), room.Width, room.Size.Y);
 
     static void Ceiling(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, DeepRole role)
     {
-        Species sp = fauna.For(role, theme, room.Depth, infested);
+        if (Fits(fauna, role, theme, room, infested) is not { } sp) return;
         Vector3 p = FloorPoint(room, rng, 0.9f);
         p.Y = room.Max.Y - 0.05f;
         pop.Spawns.Add(new PoiSpawn { Role = role, Species = sp, Position = p, Up = Vector3.Down, Room = room.Index, Hide = HideKind.Ceiling });
@@ -266,14 +338,14 @@ public static class PoiFauna
 
     static void Lurker(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested)
     {
-        Species sp = fauna.For(DeepRole.Lurker, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Lurker, theme, room, infested) is not { } sp) return;
         // The far corner from the way in, where the light doesn't reach.
         Vector3 door = room.Doors.Count > 0 ? room.Doors[0].at : room.Min;
         Vector3 best = room.FloorCenter;
         float bestD = -1f;
         for (int i = 0; i < 8; i++)
         {
-            Vector3 q = FloorPoint(room, rng, 1.2f);
+            Vector3 q = FloorPoint(room, rng, MathF.Max(1.2f, sp.TurnCircle * 0.5f));
             float d = (q - door).Length();
             if (d > bestD) { bestD = d; best = q; }
         }
@@ -283,7 +355,7 @@ public static class PoiFauna
     static void Subsisters(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, float density, PopulationRules pr)
     {
         if (!rng.Chance(MathF.Min(0.95f, pr.Subsister * density))) return;
-        Species sp = fauna.For(DeepRole.Subsister, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Subsister, theme, room, infested) is not { } sp) return;
         int n = Math.Max(1, (int)MathF.Round(rng.Int(sp.GroupMin, sp.GroupMax) * MathF.Min(1.5f, density)));
         FoodPatch patch = pop.Food.Find(f => InRoom(room, f.Position));
         Vector3 around = patch?.Position ?? room.FloorCenter;
@@ -297,7 +369,7 @@ public static class PoiFauna
 
     static void Hidden(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, HideKind hide, Vector3? at = null, Vector3? normal = null)
     {
-        Species sp = fauna.For(DeepRole.Ambusher, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Ambusher, theme, room, infested) is not { } sp) return;
         Vector3 p = at ?? new Vector3((room.Min.X + room.Max.X) * 0.5f, room.Max.Y - 0.3f, (room.Min.Z + room.Max.Z) * 0.5f);
         Vector3 n = normal ?? Vector3.Down;
         var hole = new Crack
@@ -324,7 +396,7 @@ public static class PoiFauna
     {
         DepthRules dr = rules.Depth;
         int depth = Math.Max(room.Depth, derelict ? 1 : 0);
-        Species sp = fauna.For(role, derelict ? PoiTheme.Derelict : theme, depth, infested);
+        if (fauna.Fitted(fauna.For(role, derelict ? PoiTheme.Derelict : theme, depth, infested), room.Width, room.Size.Y) is not { } sp) return;
         var nest = new Nest
         {
             Position = FloorPoint(room, rng, MathF.Min(1.6f, MathF.Min(room.Size.X, room.Size.Z) * 0.3f)),
@@ -335,7 +407,7 @@ public static class PoiFauna
         };
         pop.Nests.Add(nest);
         int guards = (int)MathF.Round((dr.Nesters[0] + dr.Nesters[1] * depth) * MathF.Min(1.6f, MathF.Max(0.6f, density)));
-        guards = Math.Clamp(guards, 1, 8);
+        guards = Math.Clamp(guards, 1, rules.Population.NestCap);
         for (int i = 0; i < guards; i++)
         {
             float a = i * MathF.Tau / guards + rng.Range(-0.3f, 0.3f);
@@ -345,8 +417,10 @@ public static class PoiFauna
     }
 
     /// <summary>A prowler's beat: from a corridor through linked corridors and rooms, a few stops long.</summary>
-    static List<Vector3> Beat(PoiPlan poi, PoiRoom start, Rng rng)
+    static List<Vector3> Beat(PoiPlan poi, PoiRoom start, Rng rng, out float width, out float height)
     {
+        width = start.Width;
+        height = start.Size.Y;
         var route = new List<Vector3> { start.FloorCenter };
         var seen = new HashSet<int> { start.Index };
         PoiRoom at = start;
@@ -362,6 +436,8 @@ public static class PoiFauna
             at = next[rng.Int(0, next.Count - 1)];
             seen.Add(at.Index);
             route.Add(at.FloorCenter);
+            width = MathF.Min(width, at.Width);
+            height = MathF.Min(height, at.Size.Y);
         }
         if (route.Count == 1)
         {

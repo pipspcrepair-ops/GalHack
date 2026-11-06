@@ -32,18 +32,28 @@ public static class SpaceNav
     /// <summary>Searches made, and nodes expanded in all of them (for the cost checks).</summary>
     public static int Searches, Expanded;
 
-    public static bool Walkable(ISolidSpace s, Vector3I c, bool climbs, int headroom)
+    /// <summary><paramref name="shoulders"/>: whole cells of clear space it needs either side (a wide body doesn't go through a door it can't fit).</summary>
+    public static bool Walkable(ISolidSpace s, Vector3I c, bool climbs, int headroom, int shoulders = 0)
     {
         if (s.SolidCell(c.X, c.Y, c.Z)) return false;
         if (climbs) return SpaceMath.SurfaceCell(s, c.X, c.Y, c.Z);
         if (!s.SolidCell(c.X, c.Y - 1, c.Z)) return false;
         for (int h = 1; h < headroom; h++)
             if (s.SolidCell(c.X, c.Y + h, c.Z)) return false;
+        int y = c.Y + 1;
+        for (int r = 1; r <= shoulders; r++)
+            if ((s.SolidCell(c.X - r, y, c.Z) || s.SolidCell(c.X + r, y, c.Z)) && (s.SolidCell(c.X, y, c.Z - r) || s.SolidCell(c.X, y, c.Z + r))) return false;
         return true;
     }
 
+    /// <summary>The headroom a walker needs, in cells.</summary>
+    public static int Headroom(Species s) => Math.Max(1, (int)MathF.Ceiling(s.BodyHeight));
+
+    /// <summary>The clear cells a body needs either side: none until it is two metres across.</summary>
+    public static int Shoulders(Species s) => s.Climbs ? 0 : (int)(s.BodyWidth * 0.5f);
+
     /// <summary>The walkable cell nearest a point (searching a few cells round it), if any.</summary>
-    public static Vector3I? Nearest(ISolidSpace s, Vector3 p, bool climbs, int headroom, int reach = 2)
+    public static Vector3I? Nearest(ISolidSpace s, Vector3 p, bool climbs, int headroom, int reach = 2, int shoulders = 0)
     {
         Vector3I c0 = SpaceMath.Cell(p);
         Vector3I? best = null;
@@ -53,7 +63,7 @@ public static class SpaceNav
         for (int dx = -reach; dx <= reach; dx++)
         {
             var c = new Vector3I(c0.X + dx, c0.Y + dy, c0.Z + dz);
-            if (!Walkable(s, c, climbs, headroom)) continue;
+            if (!Walkable(s, c, climbs, headroom, shoulders)) continue;
             float d = (SpaceMath.Center(c) - p).LengthSquared();
             if (d < bestD) { bestD = d; best = c; }
         }
@@ -65,11 +75,11 @@ public static class SpaceNav
     /// Returns false if the goal wasn't reached within the budget; the path then leads to the
     /// closest cell found, so a creature still heads the right way.
     /// </summary>
-    public static bool FindPath(ISolidSpace s, Vector3 from, Vector3 to, bool climbs, int headroom, List<Vector3> path, int budget = 2500)
+    public static bool FindPath(ISolidSpace s, Vector3 from, Vector3 to, bool climbs, int headroom, List<Vector3> path, int budget = 2500, int shoulders = 0)
     {
         path.Clear();
         Searches++;
-        Vector3I? a = Nearest(s, from, climbs, headroom), b = Nearest(s, to, climbs, headroom, 3);
+        Vector3I? a = Nearest(s, from, climbs, headroom, 2, shoulders) ?? Nearest(s, from, climbs, headroom), b = Nearest(s, to, climbs, headroom, 3, shoulders);
         if (a == null || b == null) return false;
         Vector3I start = a.Value, goal = b.Value;
         if (start == goal)
@@ -105,7 +115,7 @@ public static class SpaceNav
                 var n = new Vector3I(cur.X + d.X, cur.Y + d.Y, cur.Z + d.Z);
                 if (!walk.TryGetValue(n, out bool ok))
                 {
-                    ok = Walkable(s, n, climbs, headroom);
+                    ok = Walkable(s, n, climbs, headroom, shoulders);
                     walk[n] = ok;
                 }
                 if (!ok) continue;
