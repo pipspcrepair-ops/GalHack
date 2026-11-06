@@ -108,13 +108,14 @@ public sealed class Vitals
         Food = Math.Max(0, Food - FoodDrainPerSecond(pace, act.Mining, m) * dt);
 
         // Body temperature settles toward a point set by how much felt cold or heat the suit
-        // can't handle, at a slow capped rate, and recovers quickly once that is gone.
+        // can't handle, slowly, faster the further past comfort, and recovers quickly once that is gone.
         TemperatureRules t = _r.Temperature;
         double cold = Math.Max(0, t.AmbientComfort.Low - env.Temperature - m.ColdProtection);
         double heat = Math.Max(0, env.Temperature - t.AmbientComfort.High - m.HeatProtection);
         double target = Math.Clamp(t.Normal + (heat - cold) * t.BodyDegreesPerDegree, t.Normal - 8, t.Normal + 8);
         bool worsening = target != t.Normal && Math.Sign(target - BodyTemperature) == Math.Sign(target - t.Normal);
-        BodyTemperature = MoveToward(BodyTemperature, target, (worsening ? t.DriftPerSecond : t.RecoverPerSecond) * dt);
+        double drift = t.DriftPerSecond * (1 + Math.Max(cold, heat) / 20); // the harsher the air, the sooner it tells
+        BodyTemperature = MoveToward(BodyTemperature, target, (worsening ? drift : t.RecoverPerSecond) * dt);
 
         // Stamina: running costs it, resting restores it (fastest standing still), heat saps it.
         StaminaRules s = _r.Stamina;

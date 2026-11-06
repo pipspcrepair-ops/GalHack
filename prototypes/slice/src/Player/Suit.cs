@@ -42,6 +42,9 @@ public sealed class Suit : IDamageSink
     /// </summary>
     public bool InSealedRoom;
 
+    /// <summary>Somewhere that counts as a sealed room without being a structure's: the cryo bunker, heated and with air of its own.</summary>
+    public Func<bool> Sheltered;
+
     /// <summary>Lines for the visor (helmet sealing, bottles, hard landings, deaths).</summary>
     public event Action<string> Said;
 
@@ -119,7 +122,7 @@ public sealed class Suit : IDamageSink
     {
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
-        InSealedRoom = InRoom(survivor);
+        InSealedRoom = InRoom(survivor) || (Sheltered?.Invoke() ?? false);
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         int events = Sim.Events.Count;
