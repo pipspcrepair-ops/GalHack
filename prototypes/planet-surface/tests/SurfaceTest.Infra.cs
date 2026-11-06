@@ -189,6 +189,66 @@ public partial class SurfaceTest
         Check(dips == 0 && walls > 200, $"ground meets walls flush: {walls} walls, {dips} with a dip along the foot, the worst {worst:F2} m{first}");
     }
 
+    /// <summary>
+    /// Nothing underground breaks the surface by accident, on fresh worlds: the top of the ground is solid
+    /// over caves, sewers and tunnels everywhere but at a mouth; and mouths stand where the land calls
+    /// for them, open to the air, roofed, and leading somewhere you can walk.
+    /// </summary>
+    async Task CaveChecks()
+    {
+        int columns = 0, holes = 0, mouths = 0, shut = 0, unroofed = 0, open = 0;
+        var kinds = new Dictionary<string, int>();
+        string first = "";
+        var rand = new Random();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            PlanetTerrainSource s = w.Source;
+            foreach (CaveMouth m in s.CaveMouths(0, 0, w.Width, w.Height))
+            {
+                mouths++;
+                kinds[m.Kind] = kinds.GetValueOrDefault(m.Kind) + 1;
+                var inner = m.Path[^2];
+                double ix = m.X + inner.X, iz = m.Z + inner.Z;
+                if (s.CellDensity((int)Math.Floor(m.X + m.DirX * 3), (int)Math.Floor(m.Y + 1f), (int)Math.Floor(m.Z + m.DirZ * 3)) > 0f
+                    || s.CellDensity((int)Math.Floor(ix), (int)Math.Floor(m.Y + inner.Y), (int)Math.Floor(iz)) > 0f) { shut++; if (first.Length == 0) first = $" (first: a {m.Kind} mouth shut at {m.X:F0}, {m.Z:F0})"; }
+                if (s.SurfaceHeight(ix, iz) < m.Y + inner.Y + inner.R + 1f) unroofed++;
+            }
+            for (int k = 0; k < 6000; k++)
+            {
+                // A cell's middle: on a cliff the ground a metre away is metres off.
+                double x = Math.Floor(rand.NextDouble() * w.Width) + 0.5, z = Math.Floor(rand.NextDouble() * w.Height) + 0.5;
+                float h = s.SurfaceHeight(x, z);
+                if (h < 3f || s.StampWeight(x, z) > 0f || s.WaterSurfaceAt(x, z, out _)) continue;
+                int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z), y = (int)Math.Floor(h - 1.2f);
+                columns++;
+                if (s.CellDensity(cx, y, cz) > 0f) continue;
+                bool atMouth = false;
+                foreach (CaveMouth m in s.CaveMouths(x - 70, z - 70, x + 70, z + 70))
+                    foreach (var p in m.Path)
+                        atMouth |= Math.Abs(Mathx.WrapDelta(x - m.X - p.X, w.Width)) < p.R + 5 && Math.Abs(Mathx.WrapDelta(z - m.Z - p.Z, w.Height)) < p.R + 5;
+                if (atMouth) { open++; continue; }
+                holes++;
+                if (first.Length == 0) first = $" (first: an open hole at {x:F0}, {z:F0}, ground {h:F1})";
+            }
+            // What runs under a town is covered too, where it isn't meant to see the sky.
+            if (w.Infra?.Town?.Under?.Built is { } built)
+                foreach (PoiGenerator.Gen.Int3 c in built.Open)
+                {
+                    if (built.Daylight.Contains(c)) continue;
+                    columns++;
+                    if (s.SurfaceHeight(Mathx.WrapX(c.X + 0.5, w.Width), Mathx.Wrap(c.Z + 0.5, w.Height)) < c.Y + 1.5f)
+                    {
+                        holes++;
+                        if (first.Length == 0) first = $" (first: the underground breaks the surface at {c})";
+                    }
+                }
+            await Frames(1);
+        }
+        Check(holes == 0 && columns > 3000, $"nothing underground breaks the surface by accident: {columns} columns, {holes} holes, {open} at mouths{first}");
+        Check(shut == 0 && unroofed == 0 && mouths >= 12 && kinds.Count >= 2, $"cave mouths in sensible spots: {mouths} ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}), {shut} shut, {unroofed} without a roof{first}");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })

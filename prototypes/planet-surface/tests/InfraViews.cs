@@ -58,6 +58,17 @@ public static class InfraViews
         InfraNetwork net = w.Infra;
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
+        // A cave mouth, from out in front of it.
+        if (what is "cave" or "cliff" or "gully" or "flank")
+        {
+            var mouths = w.Source.CaveMouths(lx - 1500, lz - 1500, lx + 1500, lz + 1500).Where(c => what == "cave" || c.Kind == what).OrderBy(c => Away(c.X, c.Z)).ToList();
+            if (mouths.Count > 0)
+            {
+                GalHack.Terrain.CaveMouth c = mouths[0];
+                double vx = c.X - c.DirX * 28 + c.DirZ * 9, vz = c.Z - c.DirZ * 28 - c.DirX * 9;
+                return Look(w, vx, vz, Math.Max(c.Y + 7f, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 3f), c.X + c.DirX * 3, c.Z + c.DirZ * 3, c.Y + 1f);
+            }
+        }
         // A wreck site: evacuation-jam, pile-up, roadblock, car-park, derelict-train, derailed-train, airliner-crash.
         if (net.Wrecks.Any(wk => wk.Site == what))
         {
