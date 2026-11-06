@@ -245,6 +245,14 @@ public sealed class StructureSection : IMenuSection
             if (!capitalOk && s.Mode == CoreMode.Base) g.Text("capital mode: " + _game.Progress.LockReason("thruster@large"), new Vector2(o.X + 8, y + 34), C.Warn, 11);
             y += 50;
         }
+        // The pilot role: whoever holds it flies, and their seat is forward. It can go to anyone in a seat.
+        if (v.Flight != null && v.Roles.Seated.Count > 0)
+        {
+            var seated = v.Roles.Seated.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            string next = seated[(seated.IndexOf(v.Roles.Pilot ?? seated[0]) + 1) % seated.Count];
+            if (g.Button("core:pilot", new Rect2(o.X, y, area.Size.X, 32), $"PILOT: {(v.Roles.Pilot ?? "nobody").ToUpperInvariant()}{(seated.Count > 1 ? " (HAND OVER)" : "")}", C.Accent2, enabled: seated.Count > 1, size: 15)) v.Roles.Assign(next);
+            y += 38;
+        }
         if (Toggle("core:gravity", "CORE GRAVITY", s.GravityOn))
         {
             s.GravityOn = !s.GravityOn;

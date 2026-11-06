@@ -49,12 +49,14 @@ public static class Atmosphere
         float valley = Math.Clamp(Math.Max(c.GroundFog, dawn * damp * (1f - c.Dust)), 0f, 1f);
 
         float solar = Math.Clamp(c.Solar, 0f, 1f);
-        float baseHeight = 1700f - 900f * cover * (0.4f + 0.6f * dark);
+        // The cloud layer sits between the peaks and the top of the atmosphere (about 1,060 m, on
+        // Empyrion's scale): its base at 600 to 650 m, its top at about 1,000 m at the most.
+        float baseHeight = 650f - 50f * cover * (0.4f + 0.6f * dark);
         return new AtmosphereState(
             CloudCover: cover,
             CloudDarkness: dark,
             CloudBase: baseHeight,
-            CloudThickness: 700f + 900f * cover,
+            CloudThickness: 200f + 150f * cover,
             Overcast: overcast,
             FogDensity: fog,
             FogSkyAffect: skyAffect,

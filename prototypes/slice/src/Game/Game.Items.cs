@@ -46,6 +46,7 @@ public partial class Game
     /// </summary>
     void Use()
     {
+        if (Spaceflight.Use()) return; // in space: a wreck's doors
         Replicator rep = Suit.Sim.NearestReplicator(FeetPos(), 2.5);
         if (rep != null)
         {
@@ -111,6 +112,7 @@ public partial class Game
     public string UsePrompt()
     {
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
+        if (Spaceflight.UsePrompt() is string door) return door;
         if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
@@ -188,7 +190,8 @@ public partial class Game
         from.Reconcile();
         Vector3 look = Survivor.WorldLook();
         Vector3 ahead = Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
-        Zone.Loot.Spill(bill, Zone.GroundAt(ahead.X, ahead.Z));
+        Vector3 ground = Zone.GroundAt(ahead.X, ahead.Z);
+        Zone.Loot.Spill(bill, float.IsFinite(ground.Y) ? ground : ahead + Vector3.Up * 0.6f); // in space it floats where it was let go
         Say($"Dropped {Zone.Data.Items.Describe(bill)}", Tones.Text);
     }
 

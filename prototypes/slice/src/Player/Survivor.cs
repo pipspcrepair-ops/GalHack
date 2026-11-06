@@ -20,7 +20,8 @@ public sealed class Survivor
 {
     public const float Mass = 100f, Radius = 0.35f, Height = 1.8f, EyeHeight = 1.6f;
 
-    public readonly SurfaceZone Zone;
+    /// <summary>The zone the castaway is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    public SurfaceZone Zone { get; internal set; }
     public readonly Body Body;
     public readonly CharacterBinding Binding;
     public readonly WalkController Legs = new();
@@ -92,7 +93,7 @@ public sealed class Survivor
     {
         PhysicsRules.RidingData rules = Zone.Physics.Rules.Riding;
         _rejoinBlocked -= dt;
-        if (Body.OnFloor) Zone.Weather.Bridge.Landed(Body); // a fling's protection ends on touching down
+        if (Body.OnFloor) Zone.Weather.Bridge?.Landed(Body); // a fling's protection ends on touching down
 
         if (Seated != null)
         {
@@ -200,6 +201,8 @@ public sealed class Survivor
         if (Aboard != vessel) PlaceAboard(vessel, vessel.Seat.Value);
         Seated = vessel;
         vessel.SeatLost += StandUp;
+        if (vessel.Chair == null) vessel.TakeChair(FirstChair(vessel));
+        vessel.Roles.Sat(Vessel.Player, vessel.Chair.Value);
         Body.Asleep = true;
         Node.CollisionLayer = 0;
         Node.CollisionMask = 0;
@@ -209,6 +212,8 @@ public sealed class Survivor
         return true;
     }
 
+    static GalHack.Structures.Int3 FirstChair(Vessel vessel) => System.Linq.Enumerable.First(vessel.Chairs);
+
     /// <summary>Gets up from the seat, a step behind it.</summary>
     public void StandUp()
     {
@@ -216,6 +221,7 @@ public sealed class Survivor
         if (vessel == null) return;
         Seated = null;
         vessel.SeatLost -= StandUp;
+        vessel.Roles.Stood(Vessel.Player);
         if (vessel.Flight != null) vessel.Flight.Input = ShipHandling.Handling.PilotInput.Autopilot; // nobody at the controls: it holds course
         Body.Asleep = false;
         MoveNodeTo(vessel.Cabin, inCabin: true);
@@ -278,7 +284,7 @@ public sealed class Survivor
     {
         var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
         if (Seated is Vessel seat)
-            return seat.DrawTransform * new Transform3D(look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
+            return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
         Basis frame = ViewFrame.ToBasis();
         var local = new Transform3D(frame * look, feet + frame.Y * EyeHeight);
@@ -293,7 +299,7 @@ public sealed class Survivor
     public Vector3 WorldLook()
     {
         N.Quaternion look = MathX.ThenLocal(MathX.ThenLocal(WorldView(), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
-        if (Seated is Vessel seat) look = MathX.ThenLocal(MathX.ThenLocal(seat.Body.Rotation, MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
+        if (Seated is Vessel seat) look = MathX.ThenLocal(MathX.ThenLocal(MathX.ThenLocal(seat.Body.Rotation, seat.ChairBasis.ToNumerics()), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
         return MathX.Forward(look).ToGodot();
     }
 

@@ -125,6 +125,48 @@ public sealed class PhysicsWorld
         Unregistered?.Invoke(body);
     }
 
+    /// <summary>
+    /// A zone handover, leaving: takes a body out of this world exactly as it is, with everything
+    /// riding in its cabin (riders keep their place aboard; nothing is let go), for another zone's
+    /// world to <see cref="Adopt"/> in the same tick. Anything parked on it is unparked and stays.
+    /// Returns what left: the body first, then its riders.
+    /// </summary>
+    public List<Body> Release(Body body)
+    {
+        var leaving = new List<Body>();
+        if (!_bodies.Contains(body)) return leaving;
+        leaving.Add(body);
+        foreach (Body b in _bodies)
+            if (b.Frame == body) leaving.Add(b);
+        foreach (Body b in leaving)
+        {
+            _bodies.Remove(b);
+            Stuck.Forget(b);
+            Unpark(b);
+        }
+        foreach (Body b in _bodies)
+            if (b.ParkedOn != null && leaving.Contains(b.ParkedOn)) Unpark(b);
+        foreach (Body b in leaving) Unregistered?.Invoke(b);
+        return leaving;
+    }
+
+    /// <summary>
+    /// A zone handover, arriving: takes in bodies another world released, as they are (riders stay
+    /// aboard). Each gets this world's next id, so the world still steps in id order.
+    /// </summary>
+    public void Adopt(IEnumerable<Body> bodies)
+    {
+        foreach (Body b in bodies)
+        {
+            if (_bodies.Contains(b)) continue;
+            b.Id = _nextId++;
+            b.Underfoot = null;
+            b.Water = WaterState.Dry;
+            _bodies.Add(b);
+            Registered?.Invoke(b);
+        }
+    }
+
     public Body Find(int id)
     {
         foreach (Body b in _bodies) if (b.Id == id) return b;

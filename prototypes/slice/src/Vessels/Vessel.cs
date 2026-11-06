@@ -24,9 +24,10 @@ namespace Slice.Vessels;
 /// anyone aboard. Blocks change through <see cref="ApplyEdits"/>, which rebuilds only dirty chunks
 /// and keeps mass, centre of mass, landing legs and the four numbers in step with the blocks.
 /// </summary>
-public sealed class Vessel
+public sealed partial class Vessel
 {
-    public readonly SurfaceZone Zone;
+    /// <summary>The zone it is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    public SurfaceZone Zone { get; internal set; }
     public readonly Structure Structure;
     public readonly Body Body;
     public readonly InteriorMap Interior;
@@ -112,6 +113,7 @@ public sealed class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
     }
@@ -344,8 +346,13 @@ public sealed class Vessel
 
     void RefreshSeat()
     {
+        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        {
+            Seat = StructureBridge.CellCenter(Structure, taken);
+            return;
+        }
         foreach (var (p, b) in Structure.Blocks())
-            if (Structure.TypeOf(b).IsCommandChair)
+            if (IsChair(Structure.TypeOf(b)))
             {
                 Seat = StructureBridge.CellCenter(Structure, p);
                 return;

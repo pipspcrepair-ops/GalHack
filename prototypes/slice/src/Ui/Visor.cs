@@ -231,7 +231,7 @@ public partial class Visor : CanvasLayer
     {
         float s = S;
         Vector2 size = _hud.Size;
-        Vector3 look = survivor.WorldLook();
+        Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
@@ -251,7 +251,7 @@ public partial class Visor : CanvasLayer
         var labels = new List<(float x, int row)>();
         void Mark(Vector3 at, string tag, Color colour)
         {
-            Vector3 to = at - feet;
+            Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
             float x = cx + off / 60f * width / 2;
@@ -455,7 +455,8 @@ public partial class Visor : CanvasLayer
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
-        string line = $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
+        string line = Game.InOrbit ? Game.Spaceflight.FlightLine(v)
+            : $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
         // Under the compass, clear of the cockpit console.
         var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
         _hud.Block(band, new Color(C.Glass, 0.6f));

@@ -85,6 +85,7 @@ public partial class SliceAudio : Node
         // Weather on the surface: planet-surface's wind and rain, muffled inside a structure.
         var w = g.Zone.Weather;
         float shelter = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull ? 0.8f : g.Survivor.Seated != null ? 0.6f : 0f;
+        shelter = Mathf.Max(shelter, g.Spaceflight.AirGone); // the wind thins away with the air
         g.Zone.Sfx.SetWeather(w.Wind2D.Length(), w.Sim?.Current.Rain ?? 0f, shelter);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.

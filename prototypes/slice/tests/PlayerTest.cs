@@ -223,6 +223,7 @@ public partial class PlayerTest : Node
             var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 6f, p + Vector3.Down * 6f, Layers.World));
             if (down.Count == 0) continue;
             Vector3 g = (Vector3)down["position"];
+            if (eye.Y - g.Y < 0.7f) continue; // ground at eye level would only be grazed
             var seen = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, g + (g - eye).Normalized() * 0.5f, Layers.World | Layers.Hull | Layers.Props));
             if (seen.Count > 0 && ((Vector3)seen["position"]).DistanceTo(g) < 0.3f) { ahead = g; break; }
         }

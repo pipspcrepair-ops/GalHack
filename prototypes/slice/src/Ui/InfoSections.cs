@@ -156,11 +156,18 @@ public sealed class MapSection : IMenuSection
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
     public float Range = 600f;
-    public MapSection(Game.Game game) => _game = game;
+    /// <summary>The world, system and star levels (and which is showing).</summary>
+    public readonly MapLevels Levels;
+    public MapSection(Game.Game game)
+    {
+        _game = game;
+        Levels = new MapLevels(game);
+    }
     public Vector2 PreferredSize => new(1560, 790);
 
     public void Build(Gui g, Rect2 area)
     {
+        if (Levels.Build(g, area)) return;
         float size = Math.Min(area.Size.X - 360, area.Size.Y);
         var map = new Rect2(area.Position, new Vector2(size, size));
         g.Fill(map, new Color(C.Panel, 0.8f));
@@ -204,5 +211,6 @@ public sealed class MapSection : IMenuSection
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 240), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) Range = 300f;
         if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 240), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) Range = 600f;
+        Levels.Tabs(g, legend.Position + new Vector2(0, 330));
     }
 }
