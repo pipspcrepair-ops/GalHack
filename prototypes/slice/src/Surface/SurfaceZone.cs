@@ -118,6 +118,8 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
         AddChild(Pois);
+        Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
+        AddChild(Infra);
         PlanetSpec spec = Spec;
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
@@ -148,6 +150,7 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
 
         Pois.Build(Planet);
+        Infra.Build(Planet);
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
         Sea.MaterialOverride = WaterMaterial(sea: true);
@@ -166,6 +169,7 @@ public partial class SurfaceZone : Node3D
 
     /// <summary>The places on the planet (ruins, wrecks, abandoned works), drawn by planet-surface's POI layer.</summary>
     public PlanetSurface.Poi.PoiLayer Pois { get; private set; }
+    public PlanetSurface.Infra.InfraLayer Infra { get; private set; }
 
     static PlanetSurface.Poi.PoiCatalog _poiCatalog;
     /// <summary>The POI generator's families and pieces, read once.</summary>

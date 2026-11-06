@@ -41,7 +41,7 @@ public partial class InfraLayer
             {
                 var node = new Node3D { Name = name, Position = new Vector3(at.X, at.Y, at.Z) };
                 var materials = Materials;
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = Layers.Poi, CollisionMask = 0 };
+                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
                 node.AddChild(body);
                 foreach (ChunkMesh chunk in meshes)
                 {
