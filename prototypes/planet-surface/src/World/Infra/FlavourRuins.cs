@@ -172,7 +172,7 @@ public static class FlavourRuins
         {
             if (built.Count >= streets) break;
             double px = r.X[i], pz = r.Z[i];
-            if (built.Any(b => Dist(b.X, b.Z, px, pz) < (plan != null ? 260 : 1100))) continue;
+            if (built.Any(b => Dist(b.X, b.Z, px, pz) < (plan != null ? 420 : 1100))) continue;
             if (r.Span[Math.Min(i, r.Span.Length - 1)] != RoadSpan.Ground) continue;
             int length = 3 + rng.Range(0, 4);
             if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
