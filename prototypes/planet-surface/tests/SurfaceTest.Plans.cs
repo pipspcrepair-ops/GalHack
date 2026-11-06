@@ -22,6 +22,7 @@ public partial class SurfaceTest
         var rand = new Random();
         int worlds = 0, planned = 0, sited = 0, sewageWorks = 0, unserved = 0, rails = 0, loose = 0, plants = 0, unfed = 0, inWild = 0, ruinsTotal = 0, breaks = 0;
         double emptyShare = 0, slowest = 0;
+        int worstStar = 0, junctions = 0, served = 0;
         var themes = new Dictionary<string, int>();
         string first = "";
         void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
@@ -61,6 +62,13 @@ public partial class SurfaceTest
                 bool joined = net.PlannedRoutes.Any(r => r.A == s && r.B == town || r.A == town && r.B == s);
                 if (d > 2000 || !joined) { unserved++; Note($"a sewage works {d:F0} m from its town, joined {joined}"); }
             }
+            // A network, not a star: most places come off a road at a junction, and no town's gate gathers them all.
+            var roads = net.Routes.Where(r => r.Kind != RouteKind.Rail).ToList();
+            int leastGates = net.Places.Count == 0 ? 0 : net.Places.Max(p => roads.Count(r => r.From == p || r.To == p));
+            worstStar = Math.Max(worstStar, leastGates);
+            junctions += net.Junctions;
+            served += net.Places.Count;
+            GD.Print($"      roads: {roads.Count(r => r.Kind == RouteKind.Highway)} highway, {roads.Count(r => r.Kind == RouteKind.Road)} road, {roads.Count(r => r.Kind == RouteKind.Track)} track stretches; {net.Junctions} junctions, busiest gate {leastGates}, {net.Isolated.Count} alone, {net.SeaSeparated} over the sea, {net.Unrouted} unrouted");
             foreach (InfraRoute r in net.Routes.Where(r => r.Kind == RouteKind.Rail))
             {
                 rails++;
@@ -92,6 +100,7 @@ public partial class SurfaceTest
         Check(unserved == 0 && sewageWorks > 0, $"every one of {sited} places has its reason, and each of {sewageWorks} sewage works serves a town it stands near and is joined to ({unserved} not){first}");
         Check(loose == 0, $"every one of {rails} railway stretches ends at a depot, a works or a port ({loose} not){first}");
         Check(unfed == 0, $"{plants} plants feed their towns ({unfed} not)");
+        Check(planned == 0 || junctions >= served / 3 && worstStar <= 6, $"roads form a network: {junctions} junctions for {served} places, the busiest place has {worstStar} roads out of it (no stars)");
         Check(planned == 0 || emptyShare / planned > 0.3, $"empty land between places: {emptyShare / Math.Max(1, planned):P0} of dry land is in no region");
         Check(inWild <= ruinsTotal / 8, $"small ruins stand in the regions, not scattered: {inWild} of {ruinsTotal} out in the wilds");
 

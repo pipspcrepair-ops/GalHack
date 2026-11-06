@@ -210,6 +210,7 @@ public sealed class InfraNetwork
         int Find(int i) => parent[i] == i ? i : parent[i] = Find(parent[i]);
         // The plan's own links come first and join what they join; anything still alone is reached by the plain tree below.
         var wanted = new List<(int A, int B, RouteKind Kind, string Why)>();
+        var spine = new HashSet<(int A, int B)>();
         if (net.RegionPlan != null)
             foreach (PlannedLink l in net.RegionPlan.Links.Where(l => l.Kind is "highway" or "road" or "track"))
             {
@@ -221,6 +222,8 @@ public sealed class InfraNetwork
                 wanted.Add((a, b, kind, l.Why));
                 parent[Find(a)] = Find(b);
                 net.PlannedRoutes.Add((sa, sb, l.Why));
+                if (net.RegionPlan.Places[l.A].Role is "hub" or "port" && net.RegionPlan.Places[l.B].Role is "hub" or "port" || kind == RouteKind.Highway)
+                    spine.Add((a, b));
             }
         foreach (var l in links.OrderBy(l => l.D / (1 + 0.25 * Math.Min(Rank(places[l.A]), Rank(places[l.B])))))
         {
@@ -238,13 +241,23 @@ public sealed class InfraNetwork
             .Select(l => (l.A, l.B, l.D, Kind: net.RegionPlan != null ? RouteKind.Track : KindFor(places[l.A], places[l.B], profile.Before)))
             .Concat(wanted.Select(l => (l.A, l.B, D: net.Dist(places[l.A].Center, places[l.B].Center), l.Kind)))
             .OrderBy(l => l.Kind).ThenBy(l => l.D).ToList();
+        // On a planned world only the spine goes place to place; everything else comes off what's laid (below).
+        var branches = new List<(int A, int B, double D, RouteKind Kind)>();
         foreach (var l in all)
+        {
+            if (net.RegionPlan != null && !spine.Contains((l.A, l.B)))
+            {
+                branches.Add(l);
+                continue;
+            }
             if (!net.Link(router, places[l.A], places[l.B], l.Kind, rng))
             {
                 // Over land, or across a sea its builders never bridged?
                 if (router.SeaBetween(places[l.A].Center, places[l.B].Center)) net.SeaSeparated++;
                 else net.Unrouted++;
             }
+        }
+        if (net.RegionPlan != null) net.Branches(router, branches, rng);
         foreach (PoiSite p in places)
             if (!net.Routes.Any(r => r.From == p || r.To == p)) net.Isolated.Add(p);
 
@@ -405,6 +418,104 @@ public sealed class InfraNetwork
         }
         return any;
     }
+
+    /// <summary>
+    /// The network below the spine. Each place the plan wants joined comes off the nearest road of its
+    /// own rank or better, and the nearest of them first, so the next one finds that road already there:
+    /// roads off the highway, tracks off the roads, at junctions, instead of a star of lanes back to a
+    /// town's gate. A place no road reaches goes the whole way to whatever it served.
+    /// </summary>
+    void Branches(Router router, List<(int A, int B, double D, RouteKind Kind)> wanted, PoiGenerator.Gen.Rng rng)
+    {
+        bool Joined(PoiSite p) => Routes.Any(r => r.From == p || r.To == p);
+        var waiting = wanted.OrderBy(l => l.Kind).ToList();
+        while (waiting.Count > 0)
+        {
+            RouteKind rank = waiting[0].Kind;
+            int pick = 0;
+            double best = double.MaxValue;
+            for (int i = 0; i < waiting.Count && waiting[i].Kind == rank; i++)
+            {
+                double d = Math.Min(NearestRoad(Places[waiting[i].A].Center, rank, out _, out _), waiting[i].D);
+                if (d < best) { best = d; pick = i; }
+            }
+            var l = waiting[pick];
+            waiting.RemoveAt(pick);
+            // The end that needs a way out: the plan's links run from a place to what it served.
+            PoiSite p = Places[l.A], served = Places[l.B];
+            if (Joined(p)) p = served;
+            if (Joined(p)) continue;
+            if (Branch(router, p, l.Kind, rng) || Link(router, Places[l.A], served, l.Kind, rng)) continue;
+            if (router.SeaBetween(Places[l.A].Center, served.Center)) SeaSeparated++;
+            else Unrouted++;
+        }
+        // Whatever the rest went past still gets its way out.
+        foreach (PoiSite p in Places)
+            if (!Joined(p)) Branch(router, p, RouteKind.Track, rng);
+    }
+
+    /// <summary>How far a point is from the nearest road of this rank or better, and where that is.</summary>
+    double NearestRoad((double X, double Z) from, RouteKind rank, out InfraRoute route, out int index)
+    {
+        double best = double.MaxValue;
+        route = null;
+        index = -1;
+        foreach (InfraRoute r in Routes)
+        {
+            if (r.Kind == RouteKind.Rail || r.Kind > rank) continue;
+            for (int i = 0; i < r.Count; i += 3)
+            {
+                double dx = Mathx.WrapDelta(r.X[i] - from.X, _w), dz = Mathx.WrapDelta(r.Z[i] - from.Z, _h), d = dx * dx + dz * dz;
+                if (d < best) { best = d; route = r; index = i; }
+            }
+        }
+        return route == null ? double.MaxValue : Math.Sqrt(best);
+    }
+
+    /// <summary>A way out of a place's gate to the nearest road it may join, ending in a junction on it (or on the first such road it meets). False if there's none, or no way there.</summary>
+    bool Branch(Router router, PoiSite p, RouteKind kind, PoiGenerator.Gen.Rng rng)
+    {
+        NearestRoad(p.Center, kind, out InfraRoute near, out int at);
+        if (near == null) return false;
+        (double X, double Z) target = (near.X[at], near.Z[at]);
+        var g = GateToward(p, target);
+        var search = Stopwatch.StartNew();
+        List<int> cells = router.Find((g.X + g.OutX * 14, g.Z + g.OutZ * 14), target, kind, Profile.Before);
+        SearchMs += search.Elapsed.TotalMilliseconds;
+        if (cells == null || cells.Count < 2) return false;
+        int end = cells.Count - 1;
+        for (int i = 1; i < cells.Count; i++)
+        {
+            int id = router.RouteAt(cells[i], kind);
+            if (id < 0 || Routes[id].Kind > kind) continue;
+            near = Routes[id];
+            end = i;
+            break;
+        }
+        var pts = new List<(double X, double Z)> { (g.X, g.Z), (g.X + g.OutX * 6, g.Z + g.OutZ * 6) };
+        for (int k = 0; k <= end; k++) pts.Add(router.CellCentre(cells[k]));
+        Unwrap(pts);
+        List<(double X, double Z)> path = Resample(Smooth(pts, 2, 0), Spacing);
+        if (path.Count < 2) return false;
+        var pins = new List<(int Index, float Y)>();
+        if (Snap(near, path[^1], out var p1, out float y1))
+        {
+            path[^1] = p1;
+            ClearEnd(path);
+            pins.Add((path.Count - 1, y1));
+        }
+        pins.Add((0, g.Y));
+        InfraRoute route = Build(router, path, pins, kind, p, null, g.Index, -1, rng);
+        if (route == null) return false;
+        route.From = p;
+        route.To = null;
+        router.Mark(route);
+        Junctions++;
+        return true;
+    }
+
+    /// <summary>Roads that end on another road (tests).</summary>
+    public int Junctions;
 
     // ---- railways ------------------------------------------------------------------------------------
 

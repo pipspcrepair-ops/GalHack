@@ -143,6 +143,8 @@ public static class FlavourRuins
         RegionPlan plan = net.RegionPlan;
         bool farmland = plan != null ? plan.Regions.Any(r => r.Kind == RegionKind.Farmland) : profile.Trade == Trade.Agricultural;
         bool Lived(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) != null;
+        // A street of houses runs a good way off its junction: its junction lies well inside the region.
+        bool Heart(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) is { } home && plan.Dist(home.X, home.Z, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) < home.Radius * 0.7;
         bool Farmed(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters))?.Kind == RegionKind.Farmland;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
         Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
@@ -154,8 +156,8 @@ public static class FlavourRuins
         var hubs = new List<(InfraRoute R, int I, bool Junction)>();
         foreach (InfraRoute r in net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road && r.Count > 12))
         {
-            if (r.From == null && Lived(r.X[0], r.Z[0])) hubs.Add((r, 0, true));
-            if (r.To == null && Lived(r.X[^1], r.Z[^1])) hubs.Add((r, r.Count - 1, true));
+            if (r.From == null && Heart(r.X[0], r.Z[0])) hubs.Add((r, 0, true));
+            if (r.To == null && Heart(r.X[^1], r.Z[^1])) hubs.Add((r, r.Count - 1, true));
             foreach (var (place, end, step) in new[] { (r.From, 0, 1), (r.To, r.Count - 1, -1) })
                 if (place != null && (place.Tier is PoiTier.Town or PoiTier.City || place.Planned?.Role == "hub"))
                 {
