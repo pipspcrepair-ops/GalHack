@@ -262,7 +262,7 @@ public sealed class TechSection : IMenuSection
         {
             var (level, sub) = lay.Columns[ci];
             if (sub == 0) g.TextIn($"LEVEL {level}", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
-            else g.TextIn("...", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
+            else g.TextIn($"LEVEL {level} ›", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono); // a step on, for what a node of this level opens
         }
 
         // Wires: out of a parent's right side, along the gutter, then into the child along its own row.
@@ -327,7 +327,7 @@ public sealed class TechSection : IMenuSection
             g.Outline(r, F(c == hover ? C.Accent : tone), c == hover ? 3.5f : state == UnlockState.Affordable ? 3f : 1.5f);
             var (nt, ns) = Fit(name, 14, 11, BoxW - 18 - tagW, UiTheme.Label);
             g.Text(nt, r.Position + new Vector2(12, 4 + (14 - ns) / 2f), F(state == UnlockState.Unlocked ? C.Text : C.Dim), ns);
-            string status = state == UnlockState.Unlocked ? $"UNLOCKED · {n.Cost} PT" : p.Needs(n);
+            string status = state == UnlockState.Unlocked ? $"UNLOCKED · {n.Cost} PT" : Regex.Replace(p.Needs(n), @"\s*\((large|small)\)", "", RegexOptions.IgnoreCase);
             var (st, ss) = Fit(status, 12, 9, BoxW - 18, UiTheme.Label);
             g.Text(st, r.Position + new Vector2(12, 27 + (12 - ss) / 2f), F(state == UnlockState.Affordable ? C.Accent : state == UnlockState.Unlocked ? C.Good : C.Warn), ss);
             if (tag != null)
