@@ -177,15 +177,15 @@ public static partial class PoiSiting
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
-            // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
+            // A screenshot's subject: the first spot round the landing site, from 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             state = ForceState ?? state;
             int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
             PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
-            for (int k = 0; k < 12 && sites.Count == 0; k++)
+            for (int k = 0; k < 60 && sites.Count == 0; k++)
             {
-                double a = k * Math.PI / 6;
-                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 700, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 700, map.HeightMeters), landing, sites);
+                double a = k * Math.PI / 6, r = 700 + k / 12 * 240;
+                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
                 if (site != null) sites.Add(site);
             }
         }

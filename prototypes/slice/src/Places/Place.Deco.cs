@@ -327,67 +327,126 @@ public partial class Place
     readonly Dictionary<ulong, (PlaceRoom Room, int Index)> _pieceOf = new();
 
     /// <summary>
-    /// Dresses every room, a few pieces a step (the meshes were worked out on the worker). Pieces
-    /// that block walking collide on the world layer; the rest (litter, things on tables, ceiling
-    /// lamps) are scenery on an aim-only layer, there to look at and salvage. Salvaged pieces stay gone.
+    /// Dresses the place, a few pieces a step (the meshes were worked out on the worker). Pieces that
+    /// block walking collide on the world layer; the rest (litter, things on tables, ceiling lamps)
+    /// are scenery on an aim-only layer, there to look at and salvage. Salvaged pieces stay gone.
+    /// A small place is dressed whole; a large one room by room as you near each room (<see cref="TickDress"/>).
     /// </summary>
     internal IEnumerable<int> Dress()
     {
-        Decor decor = Decor.Shared;
-        if (decor == null || Memory.Rooms == null) yield break;
+        if (Decor.Shared == null || Memory.Rooms == null) yield break;
+        PlaceRules rules = Places.Rules;
+        _dressByRoom = Memory.Rooms.Values.Sum(r => r.Plan.Placements.Count) > rules.DressAllUnder;
+        Vector3 at = FromWorld(Places.Focus());
         foreach (PlaceRoom room in Memory.Rooms.Values)
         {
-            if (_dressed.ContainsKey(room.Module)) continue;
-            // A hair off the floor: nothing the dressing lays flat is ever coplanar with the blocks.
-            var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y + 0.008f, room.Corner.Z) } };
-            AddChild(d.Node);
-            _dressed[room.Module] = d;
-            HashSet<int> taken = Memory.DecoTaken.GetValueOrDefault(room.Module);
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            for (int i = 0; i < room.Plan.Placements.Count; i++)
-            {
-                if (taken != null && taken.Contains(i)) { d.Pieces.Add(null); continue; }
-                DecoPlacement pl = room.Plan.Placements[i];
-                var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
-                DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
-                DecoNode n;
-                try { n = DecoNode.Create(decor.Meshes, pl.Look, at, collide: true, lights: false); }
-                catch (Exception e)
-                {
-                    GD.PushWarning($"could not dress {room.Room.RoomId} with {pl.Piece}: {e.Message}");
-                    d.Pieces.Add(null);
-                    continue;
-                }
-                d.Node.AddChild(n);
-                d.Pieces.Add(n);
-                if (n.Body != null) _pieceOf[n.Body.GetInstanceId()] = (room, i);
-                if (clock.Elapsed.TotalMilliseconds > 1.2)
-                {
-                    yield return 0;
-                    clock.Restart();
-                }
-            }
-            DecoNode.CollisionLayer = Layers.World;
-            if (room.Plan.Cables.Count > 0)
-            {
-                // The wires strung between pieces, hung by the library's cable helper (anchored at both ends).
-                var mesh = new DecoMeshData();
-                foreach (DecoPlanCable c in room.Plan.Cables)
-                {
-                    if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
-                    DecoCable cable = c.AsCable();
-                    foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
-                        DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
-                }
-                d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
-            }
-            DecoRooms++;
-            yield return 0;
+            if (_dressByRoom && Away(room, at) > rules.DressRadius) continue;
+            foreach (int x in DressRoom(room)) yield return x;
         }
     }
 
-    /// <summary>Rooms dressed so far, and pieces standing in them (tests).</summary>
-    public int DecoRooms { get; private set; }
+    bool _dressByRoom;
+    IEnumerator<int> _dressing;
+    int _dressTimer;
+
+    /// <summary>How far a point is from a room (a storey counts for its height).</summary>
+    static float Away(PlaceRoom r, Vector3 local)
+    {
+        float dx = MathF.Max(0f, MathF.Max(r.Corner.X - local.X, local.X - (r.Corner.X + r.Room.Width)));
+        float dz = MathF.Max(0f, MathF.Max(r.Corner.Z - local.Z, local.Z - (r.Corner.Z + r.Room.Depth)));
+        float dy = MathF.Max(0f, MathF.Abs(local.Y - r.Corner.Y) - r.Room.Height);
+        return MathF.Sqrt(dx * dx + dz * dz + dy * dy);
+    }
+
+    /// <summary>A large place's rooms furnished as you come near them and cleared behind you, within a frame's budget.</summary>
+    void TickDress()
+    {
+        if (!_dressByRoom) return;
+        if (_dressing != null)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (clock.Elapsed.TotalMilliseconds < 1.5)
+                if (!_dressing.MoveNext()) { _dressing = null; break; }
+            return;
+        }
+        if (--_dressTimer > 0) return;
+        _dressTimer = 10;
+        PlaceRules rules = Places.Rules;
+        Vector3 at = FromWorld(Places.Focus());
+        foreach (int module in _dressed.Keys.ToList())
+            if (Away(Memory.Rooms[module], at) > rules.UndressRadius) Undress(module);
+        PlaceRoom next = null;
+        float best = rules.DressRadius;
+        foreach (PlaceRoom room in Memory.Rooms.Values)
+        {
+            if (_dressed.ContainsKey(room.Module)) continue;
+            float d = Away(room, at);
+            if (d < best) { best = d; next = room; }
+        }
+        if (next != null) _dressing = DressRoom(next).GetEnumerator();
+    }
+
+    void Undress(int module)
+    {
+        Dressed d = _dressed[module];
+        foreach (DecoNode n in d.Pieces)
+            if (n?.Body != null) _pieceOf.Remove(n.Body.GetInstanceId());
+        d.Node.QueueFree();
+        _dressed.Remove(module);
+    }
+
+    IEnumerable<int> DressRoom(PlaceRoom room)
+    {
+        Decor decor = Decor.Shared;
+        if (_dressed.ContainsKey(room.Module)) yield break;
+        // A hair off the floor: nothing the dressing lays flat is ever coplanar with the blocks.
+        var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y + 0.008f, room.Corner.Z) } };
+        AddChild(d.Node);
+        _dressed[room.Module] = d;
+        HashSet<int> taken = Memory.DecoTaken.GetValueOrDefault(room.Module);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < room.Plan.Placements.Count; i++)
+        {
+            if (taken != null && taken.Contains(i)) { d.Pieces.Add(null); continue; }
+            DecoPlacement pl = room.Plan.Placements[i];
+            var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
+            DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
+            DecoNode n;
+            try { n = DecoNode.Create(decor.Meshes, pl.Look, at, collide: true, lights: false); }
+            catch (Exception e)
+            {
+                GD.PushWarning($"could not dress {room.Room.RoomId} with {pl.Piece}: {e.Message}");
+                d.Pieces.Add(null);
+                continue;
+            }
+            d.Node.AddChild(n);
+            d.Pieces.Add(n);
+            if (n.Body != null) _pieceOf[n.Body.GetInstanceId()] = (room, i);
+            if (clock.Elapsed.TotalMilliseconds > 1.2)
+            {
+                yield return 0;
+                clock.Restart();
+            }
+        }
+        DecoNode.CollisionLayer = Layers.World;
+        if (room.Plan.Cables.Count > 0)
+        {
+            // The wires strung between pieces, hung by the library's cable helper (anchored at both ends).
+            var mesh = new DecoMeshData();
+            foreach (DecoPlanCable c in room.Plan.Cables)
+            {
+                if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
+                DecoCable cable = c.AsCable();
+                foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
+                    DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
+            }
+            d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
+        }
+        yield return 0;
+    }
+
+    /// <summary>Rooms dressed now, and pieces standing in them (tests).</summary>
+    public int DecoRooms => _dressed.Count;
     public int DecoPieces => _dressed.Values.Sum(d => d.Pieces.Count(n => n != null && n.Visible));
 
     /// <summary>Every dressed piece standing, with its room and placement (tests, screenshots).</summary>

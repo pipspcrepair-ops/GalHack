@@ -235,6 +235,14 @@ public static class PoiFauna
             }
         }
 
+        // However many rooms it has, a place holds so many: the grazers thin out first, then the rest evenly.
+        while (pr.Cap > 0 && pop.Spawns.Count > pr.Cap)
+        {
+            var thin = pop.Spawns.FindAll(s => s.Role == DeepRole.Subsister);
+            if (thin.Count == 0) thin = pop.Spawns;
+            pop.Spawns.Remove(thin[rng.Int(0, thin.Count - 1)]);
+        }
+
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
         var prey = new HashSet<Species>();

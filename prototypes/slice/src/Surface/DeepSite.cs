@@ -32,6 +32,9 @@ public partial class DeepSite : Node3D
     public double WorstViewMs { get; private set; }
 
     public float FarDistance = 120f, NearDistance = 40f;
+
+    /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
+    public float SleepDistance = 130f;
     const double BudgetMs = 1.2;
 
     readonly Dictionary<Creature, CreatureView> _views = new();
@@ -143,6 +146,7 @@ public partial class DeepSite : Node3D
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        _gone.Clear();
         foreach (Creature c in Sim.Creatures)
         {
             if (c.Removed) continue;
@@ -150,6 +154,8 @@ public partial class DeepSite : Node3D
             // Set for every creature, drawn or not: a place holds hundreds, and one left at the default
             // re-posed its body every tick though nobody could see it (the patch's own views go to 12 too).
             c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : d < FarDistance ? 4 : 12;
+            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing.
+            c.Dormant = d > SleepDistance && Sim.Time - c.ProvokedAt > 10f;
             // Behind a wall from the eye it needs no more than the far rate: a full place is hundreds of
             // bodies within a few rooms. (Looked at again every few frames, so turning a corner shows it moving.)
             if ((_sightFrame + c.Id) % SightEvery == 0 && d < FarDistance)
@@ -169,6 +175,14 @@ public partial class DeepSite : Node3D
             bool visible = d < FarDistance;
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
+            else if (d > FarDistance * 1.5f) _gone.Add(c);
+        }
+        // Well out of sight, its body goes too (it is made again when you come back).
+        foreach (Creature c in _gone)
+        {
+            _views[c].QueueFree();
+            _views.Remove(c);
+            _unseen.Remove(c);
         }
         _gone.Clear();
         foreach (var (c, v) in _views)

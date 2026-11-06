@@ -17,6 +17,10 @@ public sealed class PlaceRules
     public float BuildRadius { get; set; } = 320f;
     public float DropRadius { get; set; } = 460f;
     public double BudgetMs { get; set; } = 2.5;
+    /// <summary>A place with more decorations than this is dressed room by room as you near each room: rooms within the radius stand, past the far one they go.</summary>
+    public int DressAllUnder { get; set; } = 300;
+    public float DressRadius { get; set; } = 64f;
+    public float UndressRadius { get; set; } = 84f;
     public SalvageRules Salvage { get; set; } = new();
 
     public sealed class SalvageRules

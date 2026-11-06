@@ -182,6 +182,7 @@ public partial class Place : Node3D
     {
         if (!Ready || Dormant) return;
         TickLights((float)delta);
+        TickDress();
     }
 }
 

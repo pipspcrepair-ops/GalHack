@@ -115,6 +115,8 @@ public sealed class Creature
 
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
+    /// <summary>Asleep where it is: too far from anyone to matter, so it isn't stepped at all (a large place's far rooms).</summary>
+    public bool Dormant;
     public float RigPending;
 
     // Day and night: where it rests outside its hours, and when it was last woken.

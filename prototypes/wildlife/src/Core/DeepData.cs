@@ -147,6 +147,8 @@ public sealed class PopulationRules
     public float Prowler { get; set; } = 0.34f;
     /// <summary>Subsisters per room (they come in groups).</summary>
     public float Subsister { get; set; } = 0.6f;
+    /// <summary>The most creatures one place holds, however many rooms it has (0: no limit).</summary>
+    public int Cap { get; set; }
     /// <summary>Food patches (moss, fungus, scraps) per room.</summary>
     public int[] Food { get; set; } = { 1, 3 };
     /// <summary>Cracks per room, where the small things go.</summary>
