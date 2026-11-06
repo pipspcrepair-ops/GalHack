@@ -163,7 +163,10 @@ public partial class Game
     /// <summary>Uses one of a consumable from a toolbar or bag slot: eats, heals or refills air.</summary>
     public bool Consume(int slot)
     {
-        Slot s = Pack.Grid[slot];
+        // On the remote toolbar the food stays in its core's storage until it is eaten.
+        bool remote = Pack.OnRemoteBar && slot == Pack.Selected;
+        Slot s = remote ? Pack.InHand : Pack.Grid[slot];
+        if (remote && !Pack.HandUsable) return false;
         if (s.Item == null || !Zone.Data.Consumables.TryGetValue(s.Item, out ConsumableEffect e)) return false;
         Vitals v = Suit.Vitals;
         VitalsRules r = Suit.Sim.Data.Vitals;
@@ -173,7 +176,7 @@ public partial class Game
             return false;
         }
         string name = Zone.Data.Items.Item(s.Item).Name;
-        if (!Pack.Grid.TakeOne(slot)) return false;
+        if (remote ? Pack.HandSource.Remove(s.Item, 1) != 1 : !Pack.Grid.TakeOne(slot)) return false;
         if (e.Food > 0) v.Food = Math.Min(r.Food.Max, v.Food + e.Food * r.Food.Max);
         if (e.Health > 0) v.Heal(e.Health);
         if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen * Suit.Sim.OxygenCapacity);

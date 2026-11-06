@@ -443,17 +443,17 @@ public partial class BuildTest : Node
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_base.Structure.Count == count && _base.Storage.Count(steel) == 5, "an empty stack can't place, and nothing silently comes from the base's storage");
 
-        // The structure toolbar: set a slot by dragging the stack from the base's storage.
+        // The remote toolbar: set a slot by dragging the stack from the base's storage tab.
         Check(Pack.Linked == _base.Storage && _game.LinkedStructure == _base, "standing in its area, you are linked to the base");
         _game.Open(new OpenContainer { Title = "Base storage", Grid = _base.StorageGrid, Vessel = _base, Where = () => _base.Body.Position.ToGodot() });
         foreach (int x in _drive.Wait(2)) yield return x;
         int stack = _base.StorageGrid.IndexOf(steel);
-        foreach (int x in _drive.DragWidget($"box:{stack}", "sbar:2")) yield return x;
-        Check(Pack.StructureBar[2] == steel && _base.Storage.Count(steel) == 5, "dragging a stack onto the structure toolbar sets the slot: nothing moves");
+        foreach (int x in _drive.DragWidget($"box:{stack}", "rbar:2")) yield return x;
+        Check(Pack.Remote[2]?.ItemId == steel && Pack.Remote[2].Source == _base.Storage && _base.Storage.Count(steel) == 5, "dragging a stack onto the remote toolbar puts a reference there: nothing moves out of the storage");
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
         foreach (int x in _drive.Wait(1)) yield return x;
-        Check(Pack.OnStructureBar && Pack.Hand == HandKind.Block && Pack.HandSource == _base.Storage, "Y switches to the structure toolbar: the source is the base's storage");
+        Check(Pack.OnRemoteBar && Pack.Hand == HandKind.Block && Pack.HandSource == _base.Storage, "Y switches to the remote toolbar: the source is the base's storage");
         foreach (int x in _play.PlaceBlock(2, _base, new Int3(0, 0, 2), Dir.PosZ, p => on = p)) yield return x;
         Check(on && _base.Storage.Count(steel) == 4 && Pack[steel] == 0, "placed from the structure toolbar: one from the base's storage, your bag untouched");
 
@@ -476,25 +476,162 @@ public partial class BuildTest : Node
         Check(Pack.Bar == BarSource.Personal, "the selected number tapped once stays on your toolbar");
         foreach (int x in _drive.Tap(Key.Key3)) yield return x;
         foreach (int x in _drive.Wait(1)) yield return x;
-        Check(Pack.OnStructureBar, "the selected number tapped twice switches toolbars too");
+        Check(Pack.OnRemoteBar, "the selected number tapped twice switches toolbars too");
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
         foreach (int x in _drive.Wait(1)) yield return x;
 
-        // A core goes down from your own stack only: off a structure, its storage doesn't count.
-        Pack.Bar = BarSource.Structure;
-        _base.Storage.Add("vessel-core", 1);
-        Pack.SetStructureSlot(6, "vessel-core");
+        // A remote core goes down only while its origin is in reach: a slot from a core you are not near is out of range.
+        var far = new SharedStorage(Items, "Far core", 200);
+        far.Add("vessel-core", 1);
+        Pack.Bar = BarSource.Remote;
+        Pack.SetRemote(6, far, "Far core", "vessel-core");
+        Check(!Pack.RemoteReady(6), "a slot whose core you are not in the area of is out of range");
         foreach (int x in _drive.Tap(Key.Key7)) yield return x;
         foreach (int x in StandByBase(0, 13)) yield return x;
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(4, -1f, 16)), 6)) yield return x;
         int all = _game.Zone.Vessels.Count;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_game.Zone.Vessels.Count == all && _base.Storage.Count("vessel-core") == 1, $"a block or core away from any structure can't draw on the base's storage: \"{_game.Builder.Verdict}\"");
+        Check(_game.Zone.Vessels.Count == all && far.Count("vessel-core") == 1, $"a core from a storage out of reach can't be set down: \"{_game.Builder.Verdict}\"");
         Pack.Bar = BarSource.Personal;
-        _base.Storage.Remove("vessel-core", 1);
+        Pack.ClearRemote(6);
+        foreach (int x in RemoteRules()) yield return x;
+        foreach (int x in StorageMenu()) yield return x;
     }
 
+
+    /// <summary>The remote toolbar's own rules: empty it can't be opened, it closes with its last item, one slot per item and core, live counts, range, ammo order.</summary>
+    IEnumerable<int> RemoteRules()
+    {
+        GD.Print("-- the remote toolbar's rules --");
+        string steel = Item("steel", false), rounds = "pistol-rounds";
+        for (int i = 0; i < PlayerInventory.ToolbarSlots; i++) Pack.ClearRemote(i);
+        Pack.Bar = BarSource.Personal;
+        string refused = Pack.ToggleBar();
+        Check(refused != null && Pack.Bar == BarSource.Personal, $"an empty remote toolbar can't be opened: \"{refused}\"");
+        var other = new SharedStorage(Items, "Other core", 400);
+        Pack.SetRemote(0, _base.Storage, _base.Name, steel);
+        Pack.SetRemote(1, other, "Other core", steel);
+        Pack.SetRemote(2, _base.Storage, _base.Name, steel);
+        Check(Pack.Remote[0] == null && Pack.Remote[1].Source == other && Pack.Remote[2].Source == _base.Storage, "the same item from two cores takes two slots; from one core only one");
+        Check(Pack.ColourOf(_base.Storage) != Pack.ColourOf(other), "each core has its own pip colour");
+        int had = Pack.Remote[2].Count;
+        _base.Storage.Add(steel, 3);
+        Check(Pack.Remote[2].Count == had + 3, "a remote slot shows the storage's live count and refills with it");
+        _base.Storage.Remove(steel, Pack.Remote[2].Count);
+        Check(Pack.Remote[2].Count == 0 && Pack.Remote[2].ItemId == steel, "and falls to zero without losing its place");
+        Check(Pack.ToggleBar() == null && Pack.OnRemoteBar, "with items on it the remote toolbar opens");
+        Pack.Selected = 1;
+        Pack.InRange = s => s == _base.Storage;
+        Check(!Pack.HandUsable && !Pack.RemoteReady(1) && Pack.RemoteReady(2), "a slot whose core is out of the area greys out and can't be used");
+        Pack.InRange = s => true;
+        Pack.ClearRemote(1);
+        Pack.ClearRemote(2);
+        Check(Pack.Tick() && Pack.Bar == BarSource.Personal, "the remote toolbar closes by itself when its last item goes");
+        // Ammo comes from the player first, then the gun's origin, then the nearest container in range.
+        Pack.Remove(rounds, Pack[rounds]);
+        Pack.Add(rounds, 2);
+        _base.Storage.Remove(rounds, _base.Storage.Count(rounds));
+        _base.Storage.Add(rounds, 5);
+        other.Add(rounds, 5);
+        Pack.SetRemote(3, _base.Storage, _base.Name, "survival-tool");
+        Pack.Bar = BarSource.Remote;
+        Pack.Selected = 3;
+        int got = Pack.TakeAmmo(rounds, 6, new[] { other });
+        Check(got == 6 && Pack[rounds] == 0 && _base.Storage.Count(rounds) == 1 && other.Count(rounds) == 5, "ammo: the player's two first, then four from the gun's origin");
+        got = Pack.TakeAmmo(rounds, 4, new[] { other });
+        Check(got == 4 && _base.Storage.Count(rounds) == 0 && other.Count(rounds) == 2, "then the rest from the nearest container in range");
+        Pack.ClearRemote(3);
+        Pack.Tick();
+        Pack.Bar = BarSource.Personal;
+        yield return 0;
+    }
+
+    /// <summary>The storage menu: a tab per container, drag or hover to send, partial moves say so, selection, double-click, right-drag amounts.</summary>
+    IEnumerable<int> StorageMenu()
+    {
+        GD.Print("-- the storage menu --");
+        string steel = Item("steel", false), conc = Item("concrete", false);
+        string tab = $"stab:{YouSection.TabKey(_base)}";
+        string said = "";
+        void Hear(string t, Godot.Color c) => said = t;
+        _game.Said += Hear;
+        foreach (int x in StandByBase(0, 11)) yield return x;
+        Pack.Remove(steel, Pack[steel]);
+        Pack.Remove(conc, Pack[conc]);
+        _base.Storage.Remove(steel, _base.Storage.Count(steel));
+        _base.Storage.Remove(conc, _base.Storage.Count(conc));
+        Pack.Add(steel, 20);
+        Pack.Add(conc, 6);
+        Selection.Clear();
+        ItemViews.Get("bag").Clear();
+        _game.Menu.Open(MenuTab.You);
+        foreach (int x in _drive.ClickWidget("you:fab")) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Menu.RectOf(tab) != null, "the base's storage has a tab in the menu");
+        int steelAt = Pack.Grid.IndexOf(steel), concAt = Pack.Grid.IndexOf(conc);
+
+        // Hold something over a tab and it opens; let go on a slot to place it there.
+        _base.StorageGrid.Reconcile();
+        int free = Enumerable.Range(0, _base.StorageGrid.Count).First(i => _base.StorageGrid[i].IsEmpty);
+        foreach (int x in _drive.DragWidgetVia($"bag:{steelAt}", tab, 40, $"box:{free}")) yield return x;
+        Check(_game.Menu.Root.You.CurrentTab == YouSection.TabKey(_base), "hovering a held stack over a storage tab opens it");
+        Check(_base.Storage.Count(steel) == 20 && Pack[steel] == 0, "and letting go on its slot places the stack in the base's storage");
+
+        // Drop straight on a tab; right-drag takes half, Ctrl one, the wheel changes the amount.
+        steelAt = Pack.Grid.IndexOf(steel);
+        foreach (int x in _drive.DragWidget($"bag:{concAt}", tab)) yield return x;
+        Check(_base.Storage.Count(conc) == 6 && Pack[conc] == 0, "dropping a stack on a tab sends it there");
+        _base.Storage.Remove(steel, 20);
+        Pack.Add(steel, 20);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        steelAt = Pack.Grid.IndexOf(steel);
+        foreach (int x in _drive.RightDragWidget($"bag:{steelAt}", tab)) yield return x;
+        Check(_base.Storage.Count(steel) == 10 && Pack[steel] == 10, "right-drag takes half a stack");
+        foreach (int x in _drive.RightDragWidget($"bag:{Pack.Grid.IndexOf(steel)}", tab, ctrl: true)) yield return x;
+        Check(_base.Storage.Count(steel) == 11 && Pack[steel] == 9, "Ctrl + right-drag takes one");
+        foreach (int x in _drive.RightDragWidget($"bag:{Pack.Grid.IndexOf(steel)}", tab, wheel: -3)) yield return x;
+        Check(_base.Storage.Count(steel) == 11 + 2 && Pack[steel] == 7, $"the wheel changes the amount while holding it (half of 9 is 5, wheel -3 leaves 2; base has {_base.Storage.Count(steel)})");
+
+        // A container that fills takes what fits and says so.
+        var tinyStorage = new SharedStorage(Items, "Tiny", 2);
+        var tiny = new ItemGrid(tinyStorage, 4, 1, 0, growable: false);
+        Pack.Add(steel, 30);
+        said = "";
+        int moved = Slots.SendStacks(_game, Pack.Grid, new[] { Pack.Grid.IndexOf(steel) }, tiny, int.MaxValue);
+        Check(moved < 37 && moved == tinyStorage.Count(steel) && Pack[steel] == 37 - moved && said.Contains("full"), $"a full container takes what fits, the rest stays, and a message says so: moved {moved}, \"{said}\"");
+
+        // Selection: Ctrl+click adds, Shift+click ranges, Ctrl+A takes all that the filter shows.
+        Pack.Add(conc, 4);
+        Pack.Add("iron-bar", 5);
+        Pack.Add("copper-bar", 5);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        var order = new[] { steel, conc, "iron-bar", "copper-bar" }.Select(i => Pack.Grid.IndexOf(i)).OrderBy(i => i).ToList();
+        foreach (int x in _drive.ClickWidgetWith($"bag:{order[0]}")) yield return x;
+        foreach (int x in _drive.ClickWidgetWith($"bag:{order[2]}", ctrl: true)) yield return x;
+        Check(Selection.Slots.SetEquals(new[] { order[0], order[2] }), "Ctrl+click adds a stack to the selection");
+        foreach (int x in _drive.ClickWidgetWith($"bag:{order[1]}", shift: true)) yield return x;
+        Check(Selection.Slots.Contains(order[1]) && Selection.Slots.Contains(order[0]), "Shift+click selects the range from the last click");
+        ItemViews.Get("bag").Text = "bar";
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Selection.Clear();
+        Check(Slots.SelectAll() && Selection.Slots.Count == 2 && Selection.Slots.All(i => Pack.Grid[i].Item is "iron-bar" or "copper-bar"), $"Ctrl+A selects everything the text filter shows ({Selection.Slots.Count})");
+        foreach (int x in _drive.DragWidget($"bag:{Selection.Slots.Min()}", tab)) yield return x;
+        Check(_base.Storage.Count("iron-bar") >= 5 && _base.Storage.Count("copper-bar") >= 5 && Pack["iron-bar"] == 0 && Pack["copper-bar"] == 0, "dragging one selected stack sends them all");
+        ItemViews.Get("bag").Clear();
+
+        // Double-click sends a stack across to the open container.
+        foreach (int x in _drive.ClickWidget(tab)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        int before = _base.Storage.Count(conc), carried = Pack[conc];
+        foreach (int x in _drive.DoubleClickWidget($"bag:{Pack.Grid.IndexOf(conc)}")) yield return x;
+        Check(carried > 0 && Pack[conc] == 0 && _base.Storage.Count(conc) == before + carried, $"double-click sends the stack across ({carried} moved, {Pack[conc]} left)");
+        _game.Said -= Hear;
+        Selection.Clear();
+        foreach (int x in _play.CloseMenu()) yield return x;
+        _base.Storage.Remove(steel, _base.Storage.Count(steel));
+        Pack.Remove(steel, Pack[steel]);
+    }
     IEnumerable<int> BackIntoInventories()
     {
         GD.Print("-- taking down: nothing is lost --");
@@ -588,8 +725,8 @@ public partial class BuildTest : Node
         _game.Progress.Creative = true;
         _base.Storage.Add(fab, 1);
         _base.Storage.Add(gen, 1);
-        Pack.SetStructureSlot(4, fab);
-        Pack.SetStructureSlot(5, gen);
+        Pack.SetRemote(4, _base.Storage, _base.Name, fab);
+        Pack.SetRemote(5, _base.Storage, _base.Name, gen);
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
         bool on = false;
         foreach (int x in _play.PlaceBlock(4, _base, new Int3(0, 0, 1), Dir.PosZ, p => on = p)) yield return x;
@@ -653,7 +790,7 @@ public partial class BuildTest : Node
         foreach (int x in _play.WaitFor(() => !c.Busy, 60)) yield return x;
         Check(_base.Storage.Count(ext) == before + 1, "and makes it into the base's storage");
         int tier = _base.StructureStats.Tier, extenders = _base.StructureStats.Extenders;
-        Pack.SetStructureSlot(6, ext);
+        Pack.SetRemote(6, _base.Storage, _base.Name, ext);
         _base.Storage.Add(ext, 0);
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
         bool on = false;

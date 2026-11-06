@@ -209,6 +209,10 @@ public partial class Game : Node3D
         }
         Pack.Grid.Reconcile();
         Slice.Items.ItemViews.Reset();
+        Icons = new Slice.Ui.ItemIcons { Name = "Icons" };
+        AddChild(Icons);
+        Icons.Setup(data.Items, data.Catalogue);
+        Slice.Ui.ItemIcons.Shared = Icons;
         Progress = new Progress(data.Progress, data.Items, data.Catalogue) { Creative = Mode == GameMode.Creative };
         Fabricator = new GalHack.Items.Production.Constructor(data.Items, data.Items.Machines.Get("suit"), Pack.Storage, Zone.WorldRules);
 
@@ -259,6 +263,9 @@ public partial class Game : Node3D
 
     }
 
+    /// <summary>Small 3D icons of items, each rendered once.</summary>
+    public Slice.Ui.ItemIcons Icons { get; private set; }
+
     /// <summary>Creatures' collision, from their own bodies.</summary>
     public CreatureBodies Bodies { get; private set; }
 
@@ -288,6 +295,7 @@ public partial class Game : Node3D
         }
         if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
         if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
+        if (Menu.IsOpen && c.WasPressed(Key.A) && c.IsHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
@@ -380,31 +388,42 @@ public partial class Game : Node3D
         Slot s = Pack.InHand;
         string id = Pack.HandItem;
         string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
-        Say($"{slot + 1}{(Pack.OnStructureBar ? $" ({Pack.LinkedName})" : "")}: {what}", Tones.Text);
+        string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
+        Say($"{slot + 1}{origin}: {what}{(Pack.OnRemoteBar && !Pack.HandUsable && Pack.HandRemote != null ? " · out of range" : "")}", Tones.Text);
     }
 
-    /// <summary>Switches between your own toolbar and the linked structure's (only with a structure linked).</summary>
+    /// <summary>Switches between your own toolbar and the remote one (an empty remote bar can't be opened).</summary>
     public void SwitchBar()
     {
-        if (Pack.Bar == BarSource.Personal && Pack.Linked == null)
+        string refused = Pack.ToggleBar();
+        if (refused != null)
         {
-            Say("No structure in range: its toolbar works inside its area", Tones.Caution);
+            Say(refused, Tones.Caution);
             return;
         }
-        Pack.ToggleBar();
         Builder.Hide();
-        Say(Pack.Bar == BarSource.Structure ? $"{Pack.LinkedName.ToUpperInvariant()} TOOLBAR: blocks come from its storage" : "YOUR TOOLBAR: blocks come from your own stacks", Tones.Text);
+        Say(Pack.OnRemoteBar ? "REMOTE TOOLBAR: items stay in their core's storage" : "YOUR TOOLBAR: items come from your own stacks", Tones.Text);
     }
 
     /// <summary>The structure you are linked to (its area holds you), or null.</summary>
     public Vessel LinkedStructure { get; private set; }
 
-    /// <summary>Links the structure toolbar to the structure whose area you are in (the one you build on first).</summary>
+    /// <summary>The cores whose area holds you, nearest first (the remote toolbar's reach).</summary>
+    public IReadOnlyList<Vessel> CoresInReach { get; private set; } = Array.Empty<Vessel>();
+
+    /// <summary>Links to the structure whose area you are in (the one you build on first), and works out which cores are in reach.</summary>
     public void LinkStructure()
     {
-        Vessel v = Slice.Construction.StructureArea.Linked(Zone, Survivor.WorldFeet, Zone.Data.Rules.Build.Area, Builder.TargetVessel, Survivor.Seated, Survivor.Aboard);
+        var rules = Zone.Data.Rules.Build.Area;
+        Vessel v = Slice.Construction.StructureArea.Linked(Zone, Survivor.WorldFeet, rules, Builder.TargetVessel, Survivor.Seated, Survivor.Aboard);
         LinkedStructure = v;
         Pack.Link(v?.Storage, v?.Name);
+        var reach = Slice.Construction.StructureArea.Around(Zone, Survivor.WorldFeet, rules);
+        // A structure you are aboard or seated in counts even when its area test misses (a hull far from its blocks' box).
+        foreach (Vessel p in new[] { Survivor.Seated as Vessel, Survivor.Aboard })
+            if (p != null && Slice.Construction.StructureArea.Linkable(p) && !reach.Contains(p)) reach.Add(p);
+        CoresInReach = reach;
+        Pack.InRange = s => reach.Any(r => r.Storage == s);
     }
 
     void Fly(Vessel vessel, Controls c)
@@ -480,7 +499,9 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
-        bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen;
+        if (Pack.Tick()) Say("The remote toolbar emptied: back on your own", Tones.Text);
+        // A remote slot out of its origin's range stays in the hand, greyed, and does nothing.
+        bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen && Pack.HandUsable;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;

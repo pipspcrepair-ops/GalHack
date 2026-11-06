@@ -256,8 +256,8 @@ public sealed class BuildTool
         if (remove) Remove(TargetVessel, TargetCell);
     }
 
-    /// <summary>The structure toolbar is in use: blocks come from the linked structure's storage, never your bag.</summary>
-    bool FromStructure => _pack.OnStructureBar;
+    /// <summary>The remote toolbar is in use: blocks come from the origin core's storage, never your bag.</summary>
+    bool FromStructure => _pack.OnRemoteBar;
 
     /// <summary>Can a structure's storage be drawn on from a point: is it a linkable structure, and the point in its area?</summary>
     public bool CanDrawFrom(Vessel v, Vector3 at) => StructureArea.Linkable(v) && StructureArea.Contains(v, at, _rules.Area);
@@ -266,7 +266,7 @@ public sealed class BuildTool
     public string Available(Vessel v, ItemDef item, int slotIndex)
     {
         if (Creative) return "free";
-        if (FromStructure) return $"{_pack.Linked.Count(item.Id)} in {_pack.LinkedName}";
+        if (FromStructure) return $"{_pack.HandSource.Count(item.Id)} in {_pack.HandRemote?.Origin}";
         Slot slot = _pack.Grid[slotIndex];
         return $"{(slot.Item == item.Id ? slot.Count : 0)} in your stack";
     }
@@ -277,9 +277,10 @@ public sealed class BuildTool
         if (Creative) return null;
         if (FromStructure)
         {
-            if (_pack.Linked != v.Storage) return $"The structure toolbar draws on {_pack.LinkedName}: build on it, or use your own toolbar (Y)";
-            if (!StructureArea.Contains(v, _survivor.WorldFeet, _rules.Area)) return $"Out of {v.Name}'s area: its storage is out of reach";
-            return _pack.Linked.Count(item.Id) > 0 ? null : $"No {item.Name} in {v.Name}'s storage: craft some there";
+            RemoteSlot slotRef = _pack.HandRemote;
+            if (slotRef == null || slotRef.ItemId != item.Id) return $"No {item.Name} on the remote toolbar slot";
+            if (!_pack.HandUsable) return $"Out of {slotRef.Origin}'s area: its storage is out of reach";
+            return slotRef.Count > 0 ? null : $"No {item.Name} left in {slotRef.Origin}'s storage: craft some there";
         }
         Slot slot = _pack.Grid[slotIndex];
         if (slot.Block != null) return $"{item.Name}: a Creative shortcut, not a stack";
@@ -290,10 +291,13 @@ public sealed class BuildTool
     bool TakeOne(Vessel v, ItemDef item, int slotIndex)
     {
         if (Creative) return true;
-        if (FromStructure) return _pack.Linked == v.Storage && _pack.Linked.Remove(item.Id, 1) == 1;
+        if (FromStructure) return _pack.HandUsable && _pack.HandSource.Remove(item.Id, 1) == 1;
         Slot slot = _pack.Grid[slotIndex];
         return slot.Item == item.Id && _pack.Grid.TakeOne(slotIndex);
     }
+
+    /// <summary>Uses one of the item in hand: from your stack, or from the remote slot's storage.</summary>
+    bool TakeHand(string itemId, int slotIndex) => FromStructure ? _pack.HandUsable && _pack.HandSource.Remove(itemId, 1) == 1 : _pack.Grid.TakeOne(slotIndex);
 
     /// <summary>What the crosshair is on, in the world you are in: a structure's block face, or open ground.</summary>
     void Aim()
@@ -333,8 +337,8 @@ public sealed class BuildTool
             Verdict = "Look at open ground to set it down";
             return;
         }
-        // A core or a device founds something new off any structure: only your own stack counts.
-        string from = FromStructure ? $"Set it down from your own toolbar (Y): {_pack.LinkedName}'s storage only builds onto {_pack.LinkedName}" : null;
+        // A core or a device is set down from your own stack, or from the remote slot's storage while its core is in reach.
+        string from = FromStructure && !_pack.HandUsable ? $"Out of {_pack.HandRemote?.Origin}'s area: its storage is out of reach" : FromStructure && _pack.HandSource.Count(itemId) == 0 ? $"No {Items.Item(itemId).Name} left in {_pack.HandRemote?.Origin}'s storage" : null;
         if (what == NewThing.Device)
         {
             _ghosts.HideGhosts();
@@ -342,7 +346,7 @@ public sealed class BuildTool
             _deviceGhost.GlobalTransform = at.TranslatedLocal(Vector3.Up * 0.6f);
             _deviceGhost.Visible = true;
             Verdict = from ?? $"{Items.Item(itemId).Name}: click to set it down";
-            if (place && from == null && _pack.Grid.TakeOne(slotIndex))
+            if (place && from == null && TakeHand(itemId, slotIndex))
             {
                 MachineDef machine = Items.Machines.All.First(m => m.ItemId == itemId);
                 Device d = Device.Place(_zone, machine, machine.ItemId, at.Origin, _survivor.Yaw + YawOfFrame());
@@ -375,9 +379,9 @@ public sealed class BuildTool
             Said?.Invoke(from, Tones.Caution);
             return;
         }
-        if (!Creative && !_pack.Grid.TakeOne(slotIndex)) return;
+        if (!Creative && !TakeHand(itemId, slotIndex)) return;
         Vessel v = StartStructure(frame, what, itemId);
-        if (v == null && !Creative) _pack.Add(itemId, 1);
+        if (v == null && !Creative) { if (FromStructure) _pack.HandSource.Add(itemId, 1); else _pack.Add(itemId, 1); }
     }
 
     /// <summary>A new structure of the core's class where a core item was set down. The item is its price.</summary>
@@ -775,7 +779,7 @@ public sealed class BuildTool
         if (bill.IsEmpty) return;
         bool inArea = v != null && StructureArea.Contains(v, _survivor.WorldFeet, _rules.Area);
         Bill left;
-        if (v != null && FromStructure && _pack.Linked == v.Storage && inArea) left = v.Storage.AddAll(bill);
+        if (v != null && FromStructure && _pack.HandSource == v.Storage && inArea) left = v.Storage.AddAll(bill);
         else
         {
             left = _pack.Storage.AddAll(bill);

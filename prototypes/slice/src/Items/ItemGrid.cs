@@ -253,22 +253,22 @@ public sealed class ItemGrid
         return n;
     }
 
-    /// <summary>Shift-click: the whole stack in a slot to the other grid (or, within one grid, between toolbar and bag). Returns how many moved.</summary>
-    public static int QuickMove(ItemGrid from, int fromSlot, ItemGrid to)
+    /// <summary>Sends a stack (or <paramref name="count"/> of it) in a slot to the other grid, as much as fits (or, within one grid, between toolbar and bag). Returns how many moved.</summary>
+    public static int QuickMove(ItemGrid from, int fromSlot, ItemGrid to, int count = int.MaxValue)
     {
         from.Reconcile();
         Slot a = from.Slots[fromSlot];
         if (a.Item == null) return 0;
         string id = a.Item;
-        int n = a.Count;
+        int n = Math.Min(a.Count, count);
         if (to == from)
         {
             // Toolbar to bag, or bag to toolbar.
             bool toToolbar = fromSlot >= from.Toolbar;
             int start = toToolbar ? 0 : from.Toolbar, end = toToolbar ? from.Toolbar : from.Slots.Count;
             int moved = 0;
-            for (int i = start; i < end && a.Count > 0; i++)
-                if (from.Slots[i].Item == id || from.Slots[i].IsEmpty) moved += Move(from, fromSlot, from, i, a.Count);
+            for (int i = start; i < end && a.Count > 0 && moved < n; i++)
+                if (from.Slots[i].Item == id || from.Slots[i].IsEmpty) moved += Move(from, fromSlot, from, i, n - moved);
             return moved;
         }
         int put = to.Storage.Add(id, n);

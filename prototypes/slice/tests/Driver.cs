@@ -247,6 +247,90 @@ public sealed class Driver
         yield return 0;
     }
 
+    /// <summary>Clicks a menu widget with Ctrl and/or Shift held (selection).</summary>
+    public IEnumerable<int> ClickWidgetWith(string id, bool ctrl = false, bool shift = false)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        Controls.Hold(Key.Ctrl, ctrl);
+        Controls.Hold(Key.Shift, shift);
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Ctrl, false);
+        Controls.Hold(Key.Shift, false);
+        yield return 0;
+    }
+
+    /// <summary>Two quick clicks on a menu widget (a double-click).</summary>
+    public IEnumerable<int> DoubleClickWidget(string id)
+    {
+        foreach (int x in ClickWidget(id)) yield return x;
+        foreach (int x in ClickWidget(id)) yield return x;
+    }
+
+    /// <summary>Drags from one widget to another with the right button held (half a stack; Ctrl: one); the wheel ticks change the amount on the way.</summary>
+    public IEnumerable<int> RightDragWidget(string from, string to, bool ctrl = false, int wheel = 0)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(to)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), b = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Mouse = a;
+        Controls.Hold(Key.Ctrl, ctrl);
+        yield return 0;
+        Controls.SecondaryPressed = true;
+        Controls.Secondary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Secondary = true;
+            Controls.Mouse = a.Lerp(b, i / 4f);
+            if (i == 2) Controls.Wheel = wheel;
+            yield return 0;
+        }
+        Controls.Secondary = false;
+        Controls.SecondaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Ctrl, false);
+        yield return 0;
+    }
+
+    /// <summary>Holds the mouse over a widget with the left button held for a while (a drag in progress), then lets go over another.</summary>
+    public IEnumerable<int> DragWidgetVia(string from, string via, int hoverTicks, string to)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(via)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), v = Game.Menu.RectOf(via).Value.GetCenter();
+        Controls.Mouse = a;
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Primary = true;
+            Controls.Mouse = a.Lerp(v, i / 4f);
+            yield return 0;
+        }
+        for (int i = 0; i < hoverTicks; i++)
+        {
+            Controls.Primary = true;
+            yield return 0;
+        }
+        foreach (int x in UntilWidget(to)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        yield return 0;
+    }
+
     /// <summary>Right-clicks a menu widget (splits a stack).</summary>
     public IEnumerable<int> RightClickWidget(string id)
     {
@@ -254,6 +338,10 @@ public sealed class Driver
         Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
         yield return 0;
         Controls.SecondaryPressed = true;
+        Controls.Secondary = true;
+        yield return 0;
+        Controls.Secondary = false;
+        Controls.SecondaryReleased = true;
         yield return 0;
     }
 

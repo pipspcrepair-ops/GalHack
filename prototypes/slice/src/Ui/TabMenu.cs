@@ -48,6 +48,7 @@ public partial class TabMenu : CanvasLayer
         Root = new MenuRoot { Name = "Root", Game = Game, Visible = false };
         AddChild(Root);
         Root.Sounded += s => Sounded?.Invoke(s);
+        Root.Gui.Clock = () => Game.Stats.Seconds;
     }
 
     public void Toggle()
@@ -92,7 +93,7 @@ public partial class TabMenu : CanvasLayer
     public void Input(Controls c)
     {
         if (Game.Interactive) return; // real mouse input reaches the panel itself
-        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.IsHeld(Godot.Key.Shift));
+        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.IsHeld(Godot.Key.Shift), c.IsHeld(Godot.Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
     }
 
     /// <summary>The / key: the first filter box on the page takes the keyboard.</summary>
@@ -175,8 +176,42 @@ public partial class MenuRoot : MenuPanel
     }
 }
 
-/// <summary>A slot being dragged: which grid and which slot.</summary>
-public sealed record SlotRef(ItemGrid Grid, int Index);
 
 /// <summary>A block family being dragged from the list onto a toolbar (its item id).</summary>
 public sealed record BlockRef(string BlockId);
+/// <summary>
+/// A slot being dragged: which grid and which slot, how many of its stack (all by default; the
+/// right button takes half, Ctrl + right one, the wheel changes it), and, when the slot was part of
+/// a selection, the other selected slots that go with it.
+/// </summary>
+public sealed class SlotRef : IDragAmount
+{
+    public readonly ItemGrid Grid;
+    public readonly int Index;
+    public int Max { get; }
+    int _amount = int.MaxValue;
+
+    /// <summary>The selected slots dragged together (this one included), or null for a single stack.</summary>
+    public IReadOnlyList<int> Group;
+
+    public SlotRef(ItemGrid grid, int index, int max = int.MaxValue)
+    {
+        Grid = grid;
+        Index = index;
+        Max = max;
+    }
+
+    public int Amount { get => _amount; set => _amount = value; }
+
+    public void Begin(bool ctrl) => _amount = ctrl ? 1 : Math.Max(1, (Max == int.MaxValue ? 2 : Max) / 2 + (Max % 2));
+
+    public void Step(int by)
+    {
+        int cur = _amount == int.MaxValue ? Max : _amount;
+        _amount = Math.Clamp(cur + by, 1, Math.Max(1, Max));
+        if (_amount == Max) _amount = int.MaxValue;
+    }
+
+    public string Shown => Group != null && Group.Count > 1 ? $"x{Group.Count}" : _amount == int.MaxValue ? null : $"{_amount}";
+}
+

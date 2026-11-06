@@ -356,14 +356,14 @@ public partial class PlayerTest : Node
         if (_game.Opened?.Loot != body)
             foreach (int x in _drive.HopToward(body.Position + Vector3.Up * 0.3f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == body, () => _game.Controls.Tap(Key.E))) yield return x;
         Check(_game.Opened?.Loot == body, "E on the body opens its loot beside the bag");
-        // Drag the meat across, shift-click the hide, then take the rest.
+        // Drag the meat across, double-click the hide, then take the rest.
         int meatSlot = body.Grid.IndexOf("meat"), free = Enumerable.Range(PlayerInventory.ToolbarSlots, _game.Pack.Grid.BagSlots).First(i => _game.Pack.Grid[i].IsEmpty);
         int meat = body.Storage.Count("meat");
         foreach (int x in _drive.DragWidget($"box:{meatSlot}", $"bag:{free}")) yield return x;
         Check(_game.Pack.Grid[free].Item == "meat" && _game.Pack["meat"] == meat && body.Storage.Count("meat") == 0, $"dragging the meat onto a bag slot moves the stack there ({meat})");
         int hide = body.Storage.Count("hide");
-        foreach (int x in _drive.ClickWidget($"box:{body.Grid.IndexOf("hide")}", shift: true)) yield return x;
-        Check(_game.Pack["hide"] == hide && body.Storage.Count("hide") == 0, "shift-click sends the hide across");
+        foreach (int x in _drive.DoubleClickWidget($"box:{body.Grid.IndexOf("hide")}")) yield return x;
+        Check(_game.Pack["hide"] == hide && body.Storage.Count("hide") == 0, "double-click sends the hide across (it was shift-click before shift-click became range selection)");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(body.Storage.IsEmpty, "take all empties the body");
