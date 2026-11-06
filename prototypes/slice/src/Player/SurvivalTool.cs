@@ -46,6 +46,12 @@ public sealed class SurvivalTool
     public Sfx Sfx;
     public ShotFx Fx;
 
+    /// <summary>What firing feels like (<see cref="GunFeel"/> id): the flash at the muzzle and the kick.</summary>
+    public string Feel = GunFeel.Tool.Id;
+
+    /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
+    public Func<Vector3?> HeldMuzzle;
+
     /// <summary>What the tool did, for the visor ("+12 Iron ore", "BEDROCK").</summary>
     public event Action<string, Color> Said;
 
@@ -206,6 +212,7 @@ public sealed class SurvivalTool
     /// <summary>Where the bolt leaves the tool: low and to the right of the eye, out along the look (the first-person tool's muzzle).</summary>
     public Vector3 Muzzle()
     {
+        if (HeldMuzzle?.Invoke() is Vector3 tip) return tip;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         Vector3 right = dir.Cross(_survivor.WorldUp());
         right = right.LengthSquared() < 1e-6f ? Vector3.Right : right.Normalized();
@@ -254,7 +261,7 @@ public sealed class SurvivalTool
         Vector3 at = end, face = normal;
         Node3D on = onto;
         ImpactKind landed = kind;
-        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on));
+        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on), Feel, HeldMuzzle);
         Sfx?.Play(Sfx.Sound.Ping, muzzle, struck ? 0.8f : 1.2f, -8f);
         if (kind != ImpactKind.Nothing) Sfx?.Play(Sfx.Sound.Clank, end, 1.6f, -14f);
     }
