@@ -68,6 +68,8 @@ public sealed class PoiInstance
     /// <summary>Out in the weather: a yard, or a room open to the sky (a collapse breach, a ruin that lost its roof).</summary>
     /// <summary>A lived-in place's temper (settlements roll it; faction civilian places are peaceful until provoked).</summary>
     public Mood Mood;
+    /// <summary>Who's in it, where the world's theme decided (null: whoever its state left there).</summary>
+    public OccupancyRoll? Occupancy;
     /// <summary>Not hostile by default: its guards keep order and turn on you only if you start shooting (the standing system).</summary>
     public bool Friendly;
     /// <summary>Townsfolk as data for the ambient routine to come; null where nobody lives.</summary>
@@ -156,13 +158,13 @@ public static class PoiFactory
     /// vault or the core (it shouldn't: those paths are protected), the spawn is rolled again from a
     /// new sub-seed, up to three times.
     /// </summary>
-    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null)
+    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null, OccupancyRoll? occupancy = null)
     {
-        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world);
+        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world, occupancy);
         for (int attempt = 1; attempt <= 3 && !Reaches(inst); attempt++)
         {
             System.Threading.Interlocked.Increment(ref Respawns);
-            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world);
+            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world, occupancy);
         }
         return inst;
     }
@@ -254,7 +256,7 @@ public static class PoiFactory
         return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
     }
 
-    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world)
+    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
     {
         var inst = new PoiInstance
         {
@@ -288,6 +290,8 @@ public static class PoiFactory
         // A plain ruin's weeds and moss come last, on what's left.
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
+        // Who's in it comes last, on the place as the years left it: the layout is whoever's.
+        if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
         return inst;
     }
 

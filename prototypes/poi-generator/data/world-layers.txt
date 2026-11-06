@@ -1,0 +1,194 @@
+# World layers: a world rolls one world type, one theme, some features and maybe a presence, and
+# they combine. Memorable worlds come from combinations, not bespoke entries: a swamp world, plus a
+# crash-site feature, plus a pirate presence overhead gives a swamp of crashed ships under a patrolling
+# pirate ship, without anyone writing that world by hand. Every table here adds to the others.
+#
+#   type|theme|feature|presence <id>
+#     name      the player-facing words for it
+#     weight    how often it is rolled, among its kind that fit (rarity)
+#     chance    feature and presence: the chance a world has it at all
+#     worlds    planet archetypes it can sit on (temperate arid ice lava alien), or any
+#     start     yes: it can be a start world
+#     pre, post tech bands it fits, before and after the collapse (L M H)
+#     ports     starport classes it fits (A B C D E 0)
+#     region    what the region planner lays down: town N, port_hub N, farmland N, industry N, hamlet N,
+#               camp N, scrappy_pad N, wreck_field N (N a count, per world)
+#     style     road <jammed|haul|quiet|track>, rail <none|derelict|trunk>, power <none|port_only|intact|pylons>
+#     hub       what stands at the heart of a town, weighted
+#     needs     what every town had to have, in the order it's built (sewage_works water_works ...)
+#     industry  what a town lived on, weighted
+#     plant     what fed a town's lines, weighted
+#     depot     where a town's railway ended
+#     farm      what stood on its farmland, weighted
+#     poi       more places on the theme, weighted, set down in its regions
+#     break     the share of a world's places that break from the theme
+#     state     active abandoned infested ruined: replaces the families' own odds
+#     occ       who's in a place (docs/world-themes.md, Occupancy): shares by code; A/B is a mixed place
+#     streets   how many streets of houses a town gets
+#     tags      what decorations and loot can key on
+#
+# Unknown family names are skipped with a warning, so new families can be added a theme at a time.
+
+# ---- world types: the land it is ------------------------------------------------------------------
+
+type green
+  name Green country
+  worlds temperate
+  occ NST 5
+  poi old_farm 2
+
+type dry
+  name Dry country
+  worlds arid
+  poi old_mine 2 refinery 1
+  occ MUT 3
+
+type cold
+  name Cold country
+  worlds ice
+  poi ice_outpost 3 cryo_vault 1
+  occ EMP 8
+
+type hard
+  name Hard country
+  worlds lava
+  poi old_mine 3 steelworks 1
+  occ MCH 4
+
+type strange
+  name Strange country
+  worlds alien
+  poi research_base 2 biolab 1
+  occ HOL 8
+
+# ---- themes: what happened to it ------------------------------------------------------------------
+
+theme long_queue
+  name The Long Queue
+  weight 3
+  worlds any
+  start yes
+  pre M H
+  post L
+  ports A B C
+  region port_hub 1 | town 2 | camp 3 | scrappy_pad 4 | farmland 1
+  style road jammed | rail derelict | power port_only
+  hub meridian_apartments 2 hospital 1 survivor_hamlet 1
+  needs sewage_works water_works
+  industry rail_yard 1 refinery 1
+  plant coal_plant 1 nuclear_plant 1
+  depot rail_yard
+  farm old_farm 3 grain_elevator 1
+  poi evacuation_camp 3 crashed_freighter 2 abandoned_spaceport 1
+  break 0.12
+  state active 1 abandoned 6 infested 1 ruined 2
+  occ EMP 35 SCV 25 GNG 15 SQT 15 HOL 5 MUT 5
+  streets 3
+  tags queue exodus luggage
+
+theme hush_suburbs
+  name Hush Suburbs
+  weight 3
+  worlds temperate arid
+  start yes
+  pre M H
+  post L
+  ports C D E 0
+  region town 3 | farmland 2
+  style road quiet | rail none | power intact
+  hub meridian_apartments 3 hospital 2 water_works 1
+  needs sewage_works water_works substation
+  industry abandoned_factory 1 telecom_exchange 1
+  plant wind_farm 1 solar_farm 1 coal_plant 1
+  farm old_farm 3
+  poi hospital 1 meridian_apartments 1
+  break 0.1
+  state active 0 abandoned 8 infested 0 ruined 2
+  occ EMP 60 HOL 15 SQT 10 SCV 10 NST 5
+  streets 6
+  tags hush dinner absence
+
+theme moon_lakes
+  name Moon Lakes
+  weight 2
+  worlds temperate ice
+  start yes
+  pre L M
+  post L
+  ports D E 0
+  region hamlet 3 | farmland 2
+  style road track | rail none | power none
+  hub survivor_hamlet 3
+  needs
+  farm old_farm 2 freeholder_farm 2
+  poi landing_clearing 1 crashed_freighter 1
+  break 0.15
+  state active 2 abandoned 6 infested 0 ruined 3
+  occ EMP 75 SQT 20 SCV 5
+  streets 1
+  tags quiet lakes guestbook
+
+theme foundry_belt
+  name Foundry Belt
+  weight 3
+  worlds any
+  start yes
+  pre M H
+  post L
+  ports C D E 0
+  region town 2 | industry 3 | farmland 1
+  style road haul | rail trunk | power pylons
+  hub survivor_town 1 meridian_apartments 2
+  needs sewage_works substation
+  industry works_complex 4 steelworks 3 refinery 2 old_mine 2 coal_plant 2
+  plant coal_plant 2 nuclear_plant 1 fusion_plant 1
+  depot rail_yard
+  farm old_farm 1
+  poi abandoned_factory 2 rail_yard 1
+  break 0.1
+  state active 0 abandoned 6 infested 1 ruined 3
+  occ EMP 30 SCV 30 GNG 20 MCH 10 SQT 10
+  streets 2
+  tags foundry shifts slag
+
+# ---- features: what else is on it -----------------------------------------------------------------
+
+feature crash_sites
+  name Ships came down here
+  chance 0.2
+  region wreck_field 2
+  poi crashed_freighter 4
+  tags wreck
+
+feature nest_country
+  name The burrowers have spread
+  chance 0.15
+  occ NST 20 MUT 6
+  tags nests
+
+feature old_war
+  name An old war left its marks
+  chance 0.12
+  poi blast_crater 1 command_bunker 2 deep_bunker 1
+  occ GNG 6
+  tags war
+
+# ---- presences: who is here now -------------------------------------------------------------------
+
+presence raiders
+  name Raiders work the roads
+  chance 0.2
+  occ GNG 24 SCV 8
+  tags gangs
+
+presence machines
+  name The old machines still run
+  chance 0.12
+  occ MCH 24
+  tags machines
+
+presence hollow
+  name Something is listening
+  chance 0.08
+  occ HOL 16
+  tags hollow

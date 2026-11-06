@@ -609,6 +609,5 @@ public static class BrutalComplex
                 p.Pipe(2 * i, 2 * J, v, Dir.East, 12, f.Pipe);
         // Risers: up the block's wall to its roof, up to the stack's flank.
         foreach (int i in new[] { 70, 118 }) { p.Main(i, 0, ShellK1 + 5, Dir.Up, 3, f.Pipe); }
-        for (int j = J; j < J + 2; j++) p.Main(170, j, 77, Dir.Up, 1, f.PipeHot);
     }
 }

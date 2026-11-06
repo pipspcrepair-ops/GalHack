@@ -83,7 +83,8 @@ public partial class PoiTest : Node
                 ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)v.Index);
                 Layout layout;
                 var t0 = sw.ElapsedMilliseconds;
-                try { layout = PoiFactory.BuildLayout(_lib, f, v.Index, f.Rarity, seed); }
+                // Every way round: a place is turned to face what it served.
+                try { layout = PoiFactory.BuildLayout(_lib, f, v.Index, f.Rarity, seed, new LayoutHints(Dirs.Horizontal[Random.Shared.Next(4)])); }
                 catch (Exception e) { bad++; problems.Add($"{f.Id} {v.Name} seed {seed}: {e.Message}"); continue; }
                 built++;
                 Int3 size = layout.Blocks.Size;

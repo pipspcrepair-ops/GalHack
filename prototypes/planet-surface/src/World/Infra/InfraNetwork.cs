@@ -107,6 +107,10 @@ public sealed class InfraNetwork
     public StartTown Town;
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
+    /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>
+    public RegionPlan RegionPlan;
+    /// <summary>Links the plan asked for, kept with why, for tests: (from, to, why).</summary>
+    public readonly List<(PoiSite A, PoiSite B, string Why)> PlannedRoutes = new();
 
     /// <summary>The places the network joins (built by people: not wrecks, alien or Precursor sites).</summary>
     public readonly List<PoiSite> Places = new();
@@ -189,6 +193,7 @@ public sealed class InfraNetwork
             return net;
         }
         net.Places.AddRange(pois.Where(Served));
+        net.RegionPlan = pois.FirstOrDefault(p => p.Plan != null)?.Plan;
         var router = new Router(map, bare, pois);
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x1AF7AUL));
         net._router = router;
@@ -203,6 +208,20 @@ public sealed class InfraNetwork
         var tree = new List<(int A, int B, double D)>();
         var parent = Enumerable.Range(0, places.Count).ToArray();
         int Find(int i) => parent[i] == i ? i : parent[i] = Find(parent[i]);
+        // The plan's own links come first and join what they join; anything still alone is reached by the plain tree below.
+        var wanted = new List<(int A, int B, RouteKind Kind, string Why)>();
+        if (net.RegionPlan != null)
+            foreach (PlannedLink l in net.RegionPlan.Links.Where(l => l.Kind is "highway" or "road" or "track"))
+            {
+                if (net.RegionPlan.Places[l.A].Seated is not PoiSite sa || net.RegionPlan.Places[l.B].Seated is not PoiSite sb) continue;
+                int a = places.IndexOf(sa), b = places.IndexOf(sb);
+                if (a < 0 || b < 0) continue;
+                RouteKind kind = l.Kind switch { "highway" => RouteKind.Highway, "road" => RouteKind.Road, _ => RouteKind.Track };
+                if (profile.Before == TechLevel.Low && kind == RouteKind.Highway) kind = RouteKind.Road;
+                wanted.Add((a, b, kind, l.Why));
+                parent[Find(a)] = Find(b);
+                net.PlannedRoutes.Add((sa, sb, l.Why));
+            }
         foreach (var l in links.OrderBy(l => l.D / (1 + 0.25 * Math.Min(Rank(places[l.A]), Rank(places[l.B])))))
         {
             int ra = Find(l.A), rb = Find(l.B);
@@ -211,12 +230,13 @@ public sealed class InfraNetwork
             tree.Add(l);
         }
         double longest = tree.Count > 0 ? tree.Max(l => l.D) : 0;
-        int loops = places.Count >= 4 ? Math.Max(2, (int)Math.Round(places.Count * 0.22)) : 0;
+        int loops = net.RegionPlan != null ? 0 : places.Count >= 4 ? Math.Max(2, (int)Math.Round(places.Count * 0.22)) : 0;
         var extra = links.Where(l => !tree.Contains(l) && l.D < longest * 1.2).OrderBy(l => l.D).Take(loops).ToList();
 
         // The most important links first, so the lesser ones merge into them at junctions.
         var all = tree.Concat(extra)
-            .Select(l => (l.A, l.B, l.D, Kind: KindFor(places[l.A], places[l.B], profile.Before)))
+            .Select(l => (l.A, l.B, l.D, Kind: net.RegionPlan != null ? RouteKind.Track : KindFor(places[l.A], places[l.B], profile.Before)))
+            .Concat(wanted.Select(l => (l.A, l.B, D: net.Dist(places[l.A].Center, places[l.B].Center), l.Kind)))
             .OrderBy(l => l.Kind).ThenBy(l => l.D).ToList();
         foreach (var l in all)
             if (!net.Link(router, places[l.A], places[l.B], l.Kind, rng))
@@ -229,6 +249,15 @@ public sealed class InfraNetwork
             if (!net.Routes.Any(r => r.From == p || r.To == p)) net.Isolated.Add(p);
 
         // Railways where the old world ran them: a line through the places that mattered most.
+        // On a planned world every line is one the plan asked for, and ends at a depot built for it.
+        if (net.RegionPlan != null)
+        {
+            foreach (PlannedLink l in net.RegionPlan.Links.Where(l => l.Kind == "rail"))
+                if (net.RegionPlan.Places[l.A].Seated is PoiSite sa && net.RegionPlan.Places[l.B].Seated is PoiSite sb && net.LinkRail(router, sa, sb, rng))
+                    net.PlannedRoutes.Add((sa, sb, l.Why));
+            net.PlanMs = watch.Elapsed.TotalMilliseconds;
+            return net;
+        }
         var railNodes = places.Where(p => Rank(p) >= 2).OrderByDescending(Rank).ThenBy(p => net.Dist(p.Center, places[0].Center)).Take(5).ToList();
         if (railNodes.Count >= 2 && profile.Population >= 3)
         {
