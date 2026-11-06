@@ -186,12 +186,20 @@ public sealed class Bunker
         // what a person walks up).
         _climb = 1.6f;
         site = Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+        if (site != null) { _climb = 1.2f; return site; }
+        // Knife-edge country: better ways along steep sides than no start at all.
+        _alongSides = true;
+        site = Search(zone, near, maxRings, strict: false) ?? AroundPlaces(zone, near);
+        _alongSides = false;
         _climb = 1.2f;
         return site;
     }
 
     /// <summary>The steepest rise or fall a walkable way may have over 2 m, m (31 degrees; 38 on rough worlds).</summary>
     [ThreadStatic] static float _climb;
+
+    /// <summary>The last resort: a way may run along a slope too steep to stand on.</summary>
+    [ThreadStatic] static bool _alongSides;
 
     /// <summary>
     /// The last resort, for a world whose places are all out of sight from round the landing
@@ -289,7 +297,8 @@ public sealed class Bunker
     /// <summary>
     /// In how many of eight directions a person can walk 60 m out from a site's way out: over
     /// ground that is really there (no cave mouth), no slope or step too steep to walk up and no
-    /// drop to fall down (31 degrees over 2 m), no sea or lava, no water deeper than wading, and
+    /// drop to fall down (31 degrees over 2 m, along the way and to either side of it: a line
+    /// level along a cliff's face is no path), no sea or lava, no water deeper than wading, and
     /// not back over the bunker. Also whether one of them heads within 50 degrees of the place in view.
     /// </summary>
     public static int WalkableWays(SurfaceZone zone, Site site, out bool towardPlace) => WalkableWays(zone, site, out towardPlace, null);
@@ -322,12 +331,14 @@ public sealed class Bunker
     static bool Walkable(SurfaceZone zone, Site site, Vector3 exit, Vector3 dir)
     {
         var store = zone.Planet.Terrain.Store;
-        float last = exit.Y;
+        float last = exit.Y, climb = _climb > 0f ? _climb : 1.2f;
+        var side = new Vector3(-dir.Z, 0f, dir.X) * 2f;
         for (float d = 2f; d <= WalkOut; d += 2f)
         {
             Vector3 p = exit + dir * d;
             float h = zone.GroundAt(p.X, p.Z).Y;
-            if (h < 1.5f || MathF.Abs(h - last) > (_climb > 0f ? _climb : 1.2f)) return false;
+            if (h < 1.5f || MathF.Abs(h - last) > climb) return false;
+            if (!_alongSides && (MathF.Abs(zone.GroundAt(p.X + side.X, p.Z + side.Z).Y - h) > climb || MathF.Abs(zone.GroundAt(p.X - side.X, p.Z - side.Z).Y - h) > climb)) return false;
             if (zone.Planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, zone.Planet.Width), Planets.Gen.Mathx.Wrap(p.Z, zone.Planet.Height), out float surface) && surface - h > 0.5f) return false;
             var under = new TInt3((int)MathF.Floor(p.X), (int)MathF.Floor(h - 0.6f), (int)MathF.Floor(p.Z));
             if (store.MaterialAt(under) == CellMaterial.Air) return false; // the ground isn't really there

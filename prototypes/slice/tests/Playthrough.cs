@@ -164,7 +164,10 @@ public sealed class Playthrough
             Vector3 toward = b.Landmark is Vector3 lm ? lm - b.Outside : b.Outside - b.StairTop;
             toward.Y = 0f;
             Vector3 way = b.Ways.OrderByDescending(w => w.Dot(toward.Normalized())).First();
-            foreach (int x in Drive.WalkTo(b.Outside + way * 56f, 2f, 60f, sprint: false, dig: false))
+            // To the ground out there, not a point in the air level with the way out: the walker
+            // jets up toward a target well above it.
+            Vector3 end = b.Outside + way * 56f;
+            foreach (int x in Drive.WalkTo(Game.Zone.GroundAt(end.X, end.Z), 2f, 60f, sprint: false, dig: false))
             {
                 if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
                 yield return x;
