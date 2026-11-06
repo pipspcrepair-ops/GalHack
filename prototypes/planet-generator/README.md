@@ -295,7 +295,11 @@ Changes for files other prototypes own, to apply after merging. The generator's 
 
      All three use the deep pine forest nearest the landing site of seed 4242 (temperate meadow). With landforms, pine forest sits in cold country, now often on steeper ground or in a different place. Trunk colliders exist (the near-rings and felling checks pass). Worth checking whether trunks on that ground stand where the walker meets them.
    - *POIs seated:* 70 places on 5 worlds, 2 with a blocked way in. POI siting meets new ground: more flat land, but also deltas, lakes and fjord walls.
-4. **slice `tests/SliceTest.cs`:** "Space lifts it off: 15.8 m up after 1.5 s" fails, but not on height: either the lift-off event fired other than once or the controller was frozen. Likely the starter vessel sits differently on the new start-site ground. The slice's other test results are in the report.
+4. **slice `tests/SliceTest.cs`.** One flight check fails per run on the new start world, a different one each time; StartTest and PlayerTest pass:
+   - *Run one:* "Space lifts it off: 15.8 m up after 1.5 s". The height is fine, so either the lift-off event fired other than once or the controller was frozen.
+   - *Run two (the full gate):* "determinism: the same inputs fly the same 4 s hop twice" differed by 1.9e-6 m. Its hops take off from and land on the start site's ground.
+
+   Both depend on how the starter vessel sits on the start site, whose ground changed; likely the start site needs re-picking or settling.
 5. **Landforms for POI siting** (`planet-surface/src/Poi`). `map.LandformsAt(x, y)` (blend) and `map.Landform[cell]` (dominant) are cheap. Towns, bases and landing pads could prefer open landforms (plains, steppe, ice and basalt plains) and keep big pads off deltas, wetlands and fjord walls.
 6. **Wildlife in the slice** (`slice/src/Surface/WildlifePatch.cs`). Roll the planet's wildlife for its landforms and spawn by home ground:
    ```csharp
