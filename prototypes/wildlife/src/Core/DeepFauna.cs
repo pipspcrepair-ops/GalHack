@@ -25,6 +25,7 @@ public sealed class DeepFauna
     readonly NameGen _names;
     readonly HashSet<string> _taken = new();
     readonly Dictionary<string, Species> _cache = new();
+    readonly Dictionary<string, Species> _fitted = new();
 
     public string PlanetName { get; }
     public IEnumerable<Species> Rolled => _cache.Values;
@@ -139,6 +140,28 @@ public sealed class DeepFauna
         s.Seed = Rng.Mix(b.Seed, (ulong)depth);
         return s;
     }
+
+    /// <summary>
+    /// The species as it fits a space of this width and height, or nothing if it can't: as it is if
+    /// there's room, else a young one (the same animal, smaller and weaker), down to a limit.
+    /// </summary>
+    public Species Fitted(Species s, float width, float height)
+    {
+        if (s.TurnCircle <= width && s.BodyHeight + HeadClearance <= height) return s;
+        float k = MathF.Min((width - Species.TurnMargin) / MathF.Max(0.1f, s.TurnCircle - Species.TurnMargin), (height - HeadClearance) / MathF.Max(0.1f, s.BodyHeight));
+        k = MathF.Floor(k * 20f) / 20f;
+        if (k < YoungestScale) return null;
+        string key = $"{s.Id}/{s.Depth}/{s.Corrupted}/{k:F2}";
+        if (_fitted.TryGetValue(key, out Species young)) return young;
+        young = s.Copy();
+        Size(young, k);
+        young.Stats.Damage = MathF.Round(s.Stats.Damage * k, 1);
+        _fitted[key] = young;
+        return young;
+    }
+
+    /// <summary>Clear air over its back, m; and how small a young one can be and still read as its kind.</summary>
+    public const float HeadClearance = 0.2f, YoungestScale = 0.6f;
 
     /// <summary>Armour in a wreck, blisters in an alien place: a back part the place favours, if it fits the body and the job.</summary>
     void ThemeBack(Species s, ThemeDef td, Rng rng)

@@ -30,6 +30,9 @@ public sealed class PoiRoom
     public Vector3 Center => (Min + Max) * 0.5f;
     public Vector3 FloorCenter => new((Min.X + Max.X) * 0.5f, Min.Y, (Min.Z + Max.Z) * 0.5f);
     public Vector3 Size => Max - Min;
+
+    /// <summary>The width a body can turn round in here, m.</summary>
+    public float Width => MathF.Min(Size.X, Size.Z);
 }
 
 /// <summary>Everything the population function needs to know about a place.</summary>
@@ -231,8 +234,9 @@ public static class PoiFauna
             for (int i = 0; i < prowlers; i++)
             {
                 PoiRoom start = corridors[rng.Int(0, corridors.Count - 1)];
-                List<Vector3> route = Beat(poi, start, rng);
-                Species sp = fauna.For(DeepRole.Prowler, theme, start.Depth, infested);
+                List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
+                Species sp = fauna.Fitted(fauna.For(DeepRole.Prowler, theme, start.Depth, infested), width, height);
+                if (sp == null) continue; // the way is too tight for its kind
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
             }
         }
@@ -304,9 +308,13 @@ public static class PoiFauna
 
     // ---- Roles into rooms -----------------------------------------------------------------
 
+    /// <summary>What fills a role in a room, as it fits there; nothing if that kind can't turn round in it.</summary>
+    static Species Fits(DeepFauna fauna, DeepRole role, PoiTheme theme, PoiRoom room, bool infested) =>
+        fauna.Fitted(fauna.For(role, theme, room.Depth, infested), room.Width, room.Size.Y);
+
     static void Ceiling(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, DeepRole role)
     {
-        Species sp = fauna.For(role, theme, room.Depth, infested);
+        if (Fits(fauna, role, theme, room, infested) is not { } sp) return;
         Vector3 p = FloorPoint(room, rng, 0.9f);
         p.Y = room.Max.Y - 0.05f;
         pop.Spawns.Add(new PoiSpawn { Role = role, Species = sp, Position = p, Up = Vector3.Down, Room = room.Index, Hide = HideKind.Ceiling });
@@ -314,14 +322,14 @@ public static class PoiFauna
 
     static void Lurker(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested)
     {
-        Species sp = fauna.For(DeepRole.Lurker, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Lurker, theme, room, infested) is not { } sp) return;
         // The far corner from the way in, where the light doesn't reach.
         Vector3 door = room.Doors.Count > 0 ? room.Doors[0].at : room.Min;
         Vector3 best = room.FloorCenter;
         float bestD = -1f;
         for (int i = 0; i < 8; i++)
         {
-            Vector3 q = FloorPoint(room, rng, 1.2f);
+            Vector3 q = FloorPoint(room, rng, MathF.Max(1.2f, sp.TurnCircle * 0.5f));
             float d = (q - door).Length();
             if (d > bestD) { bestD = d; best = q; }
         }
@@ -331,7 +339,7 @@ public static class PoiFauna
     static void Subsisters(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, float density, PopulationRules pr)
     {
         if (!rng.Chance(MathF.Min(0.95f, pr.Subsister * density))) return;
-        Species sp = fauna.For(DeepRole.Subsister, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Subsister, theme, room, infested) is not { } sp) return;
         int n = Math.Max(1, (int)MathF.Round(rng.Int(sp.GroupMin, sp.GroupMax) * MathF.Min(1.5f, density)));
         FoodPatch patch = pop.Food.Find(f => InRoom(room, f.Position));
         Vector3 around = patch?.Position ?? room.FloorCenter;
@@ -345,7 +353,7 @@ public static class PoiFauna
 
     static void Hidden(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, HideKind hide, Vector3? at = null, Vector3? normal = null)
     {
-        Species sp = fauna.For(DeepRole.Ambusher, theme, room.Depth, infested);
+        if (Fits(fauna, DeepRole.Ambusher, theme, room, infested) is not { } sp) return;
         Vector3 p = at ?? new Vector3((room.Min.X + room.Max.X) * 0.5f, room.Max.Y - 0.3f, (room.Min.Z + room.Max.Z) * 0.5f);
         Vector3 n = normal ?? Vector3.Down;
         var hole = new Crack
@@ -372,7 +380,7 @@ public static class PoiFauna
     {
         DepthRules dr = rules.Depth;
         int depth = Math.Max(room.Depth, derelict ? 1 : 0);
-        Species sp = fauna.For(role, derelict ? PoiTheme.Derelict : theme, depth, infested);
+        if (fauna.Fitted(fauna.For(role, derelict ? PoiTheme.Derelict : theme, depth, infested), room.Width, room.Size.Y) is not { } sp) return;
         var nest = new Nest
         {
             Position = FloorPoint(room, rng, MathF.Min(1.6f, MathF.Min(room.Size.X, room.Size.Z) * 0.3f)),
@@ -383,7 +391,7 @@ public static class PoiFauna
         };
         pop.Nests.Add(nest);
         int guards = (int)MathF.Round((dr.Nesters[0] + dr.Nesters[1] * depth) * MathF.Min(1.6f, MathF.Max(0.6f, density)));
-        guards = Math.Clamp(guards, 1, 8);
+        guards = Math.Clamp(guards, 1, rules.Population.NestCap);
         for (int i = 0; i < guards; i++)
         {
             float a = i * MathF.Tau / guards + rng.Range(-0.3f, 0.3f);
@@ -393,8 +401,10 @@ public static class PoiFauna
     }
 
     /// <summary>A prowler's beat: from a corridor through linked corridors and rooms, a few stops long.</summary>
-    static List<Vector3> Beat(PoiPlan poi, PoiRoom start, Rng rng)
+    static List<Vector3> Beat(PoiPlan poi, PoiRoom start, Rng rng, out float width, out float height)
     {
+        width = start.Width;
+        height = start.Size.Y;
         var route = new List<Vector3> { start.FloorCenter };
         var seen = new HashSet<int> { start.Index };
         PoiRoom at = start;
@@ -410,6 +420,8 @@ public static class PoiFauna
             at = next[rng.Int(0, next.Count - 1)];
             seen.Add(at.Index);
             route.Add(at.FloorCenter);
+            width = MathF.Min(width, at.Width);
+            height = MathF.Min(height, at.Size.Y);
         }
         if (route.Count == 1)
         {

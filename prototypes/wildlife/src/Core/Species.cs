@@ -93,6 +93,20 @@ public sealed class Species
         return Math.Min(1f, w);
     }
 
+    /// <summary>Nose to rump, m.</summary>
+    public float BodyLength => Body.Size + Body.NeckLength * 0.5f + Body.HeadSize * 0.5f;
+    /// <summary>Across the body and its splayed legs, m.</summary>
+    public float BodyWidth => Body.Width + Body.LegLength * 0.2f;
+    /// <summary>Feet to the top of its back, m.</summary>
+    public float BodyHeight => Body.LegLength + Body.Height;
+    /// <summary>
+    /// The clear width it needs to turn round in, m: its own diagonal and a little. A chain bends and
+    /// a climber goes round by the walls, so they need less; a swarm is a cloud and needs none.
+    /// </summary>
+    public float TurnCircle => Rig == RigKind.Swarm ? 0.5f
+        : MathF.Sqrt(BodyLength * BodyLength + BodyWidth * BodyWidth) * (Rig == RigKind.Chain || Climbs ? 0.6f : 1f) + TurnMargin;
+    public const float TurnMargin = 0.7f;
+
     /// <summary>
     /// A copy to change (a variant: deeper, mutated): every field, with its body, palette, stats
     /// and parts copied too, so changing the copy never touches the original.

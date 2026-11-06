@@ -177,7 +177,7 @@ public static partial class Brain
         Vector3 center = Crawl.Center(c);
         float d = (goal - center).Length();
         bool climbs = c.Species.Climbs;
-        int headroom = Math.Max(1, (int)MathF.Ceiling(c.Species.Body.LegLength + c.Species.Body.Height));
+        int headroom = SpaceNav.Headroom(c.Species);
         if (d < 2.5f && SpaceMath.Clear(c.Space, center, goal, 0f))
         {
             c.SpacePath.Clear();
@@ -189,7 +189,7 @@ public static partial class Brain
         bool stale = c.SpacePath.Count == 0 || c.SpacePathIndex >= c.SpacePath.Count || c.SpacePathGoal.DistanceTo(goal) > 1.5f || c.SpacePathAge > 4f;
         if (stale && w.TakePathBudget())
         {
-            SpaceNav.FindPath(c.Space, center, goal, climbs, headroom, c.SpacePath, 2500);
+            SpaceNav.FindPath(c.Space, center, goal, climbs, headroom, c.SpacePath, 2500, SpaceNav.Shoulders(c.Species));
             c.SpacePathIndex = 0;
             c.SpacePathGoal = goal;
             c.SpacePathAge = 0f;
@@ -548,7 +548,7 @@ public static partial class Brain
         if (!c.HasGoal || c.StateTime > 20f || Dist3(c, c.Goal) < 1.2f)
         {
             Vector3 g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius));
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, 2, 2);
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
             c.Goal = cell is { } k ? SpaceMath.Center(k) : c.Home;
             c.HasGoal = true;
             c.SetState(CState.Wander);
@@ -783,7 +783,7 @@ public static partial class Brain
         {
             float ang = c.Rng.Range(0f, MathF.Tau);
             Vector3 g = at + new Vector3(MathF.Cos(ang) * r, 0.5f, MathF.Sin(ang) * r);
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, 2, 2);
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
             c.Goal = cell is { } k ? SpaceMath.Center(k) : at;
             c.HasGoal = true;
             c.SetState(c.Rng.Chance(0.5f) ? CState.Guard : CState.Wander);

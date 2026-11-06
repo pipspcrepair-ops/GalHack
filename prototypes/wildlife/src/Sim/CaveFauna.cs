@@ -45,6 +45,8 @@ public static class CaveFauna
             sim.Cracks.Add(new Crack { Id = sim.Cracks.Count, Kind = CrackKind.Crack, Position = at, Normal = n, Network = 10 + (int)(seed % 1000), Size = rng.Range(0.18f, 0.3f) });
         }
         Species grazer = fauna.For(DeepRole.Subsister, PoiTheme.Natural, depth);
+        floors.RemoveAll(f => !Roomy(space, SpaceMath.Center(f), grazer));
+        if (floors.Count == 0) return made;
         int patches = Math.Min(floors.Count, 3);
         var food = new List<FoodPatch>();
         for (int i = 0; i < patches; i++)
@@ -67,6 +69,7 @@ public static class CaveFauna
         }
         sim.Colonies.Add(colony);
         Species crawler = fauna.For(DeepRole.Crawler, PoiTheme.Natural, depth);
+        ceilings.RemoveAll(k => !Roomy(space, SpaceMath.Center(k) + Vector3.Down, crawler));
         var taken = new List<Vector3>();
         for (int i = 0; i < crawlers && ceilings.Count > 0; i++)
         {
@@ -80,6 +83,19 @@ public static class CaveFauna
             made.Add(c);
         }
         return made;
+    }
+
+    /// <summary>Whether a body can stand and turn at a spot in open rock: clear all round by half its turning circle, and over its back.</summary>
+    public static bool Roomy(ISolidSpace space, Vector3 at, Species s)
+    {
+        float reach = s.TurnCircle * 0.5f;
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * MathF.Tau / 8f;
+            var dir = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
+            if (SpaceMath.Ray(space, at, dir, reach) < reach) return false;
+        }
+        return SpaceMath.Ray(space, at, Vector3.Up, s.BodyHeight) >= s.BodyHeight - 0.5f;
     }
 
     /// <summary>

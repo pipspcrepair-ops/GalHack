@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -700,7 +700,8 @@ public partial class CreaturesTest : Node
         var creatures = new Dictionary<PlaceState, int>();
         int nestsOk = 0, nestsAll = 0, chains = 0, chainsPossible = 0, derelictOk = 0, derelictAll = 0, roles = 0;
         var seenRoles = new HashSet<DeepRole>();
-        int worstPlace = 0, worstRoom = 0;
+        int worstPlace = 0, worstRoom = 0, unfit = 0, placedBig = 0;
+        string tight = "";
         int Most = _data.Deep.Population.PlaceCap["Infested"] * 2, RoomMost = 12; // the biggest hall RandomPlan rolls
         for (int i = 0; i < 400; i++)
         {
@@ -717,7 +718,13 @@ public partial class CreaturesTest : Node
             foreach (PoiSpawn s in pop.Spawns)
             {
                 seenRoles.Add(s.Role);
-                if (s.Nest < 0) continue;
+                PoiRoom home = plan.Rooms.Find(r => r.Index == s.Room);
+                if (s.Species.TurnCircle > home.Width + 0.01f || s.Species.BodyHeight + DeepFauna.HeadClearance > home.Size.Y + 0.01f)
+                {
+                    unfit++;
+                    tight = $"{s.Species.CommonName} ({s.Species.TurnCircle:F1} m circle, {s.Species.BodyHeight:F1} m tall) in a {home.Kind} {home.Width:F1} m wide, {home.Size.Y:F1} m high";
+                }
+                else if (s.Species.TurnCircle > 2.5f) placedBig++;
             }
             foreach (Nest n in pop.Nests)
             {
@@ -741,6 +748,11 @@ public partial class CreaturesTest : Node
         Check(Per(PlaceState.Infested) > Per(PlaceState.Abandoned) * 1.6f && Per(PlaceState.Active) < Per(PlaceState.Abandoned) * 0.5f,
             $"infested places are overrun ({Per(PlaceState.Infested):F1} creatures a place against {Per(PlaceState.Abandoned):F1} in abandoned ones, {Per(PlaceState.Active):F1} in active ones)");
         Check(worstPlace <= Most && worstRoom <= Math.Max(_data.Deep.Population.NestCap, RoomMost), $"places keep to their caps: at most {worstPlace} creatures in a place (cap {Most}), {worstRoom} in a room");
+        Check(unfit == 0 && placedBig > 0, unfit == 0 ? $"every creature fits where it is put and can turn there ({placedBig} of the bigger ones placed)" : $"{unfit} creatures put where they don't fit: {tight}");
+        var strider = new Species { Rig = RigKind.Legged, Body = new Proportions { Size = 5.5f, Width = 1.6f, LegLength = 2.2f, Height = 1.5f } };
+        var roster = new DeepFauna(_data, 1, 0.5f);
+        Check(MathF.Abs(strider.TurnCircle - 6.5f) < 0.3f && roster.Fitted(strider, 2f, 3f) == null && roster.Fitted(strider, 7f, 4f) == strider,
+            $"a 5.5 m strider needs a {strider.TurnCircle:F1} m turning circle: not in a 2 m corridor under a 3 m ceiling, at home in a 7 by 4 m hall");
         Check(nestsAll > 20 && nestsOk == nestsAll, $"nests are in the deepest levels (or a wreck's holds, or an infested place's lower levels): {nestsOk} of {nestsAll}");
         Check(chainsPossible > 20 && chains == chainsPossible, $"every place with hunters and subsisters has a food chain ({chains} of {chainsPossible})");
         Check(derelictAll > 5 && derelictOk == derelictAll, $"derelict ships have their own nesters in holds, ducts and engine rooms ({derelictOk} of {derelictAll})");
