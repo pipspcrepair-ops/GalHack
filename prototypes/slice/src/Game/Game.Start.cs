@@ -30,7 +30,7 @@ public partial class Game
     /// <summary>Before any ground streams in: the bunker's site on this world, near the generator's landing site. Its way out is where the world centres.</summary>
     Vector3? PickStart()
     {
-        _site = Bunker.FindSite(Zone, Zone.LandingSite);
+        _site = Bunker.FindSite(Zone, Bunker.TemperateNear(Zone, Zone.LandingSite));
         if (_site is not Bunker.Site site) return null;
         GD.Print($"start site: {World}; {site.FromLanding:F0} m from the landing site, {site.Steps} steps up{(site.Landmark is Vector3 l ? $", facing {site.Poi?.Name} {l.DistanceTo(Bunker.ExitOf(site)):F0} m off" : "")}");
         return Bunker.ExitOf(site);

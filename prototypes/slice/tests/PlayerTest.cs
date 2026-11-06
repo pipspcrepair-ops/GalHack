@@ -253,6 +253,7 @@ public partial class PlayerTest : Node
             }
             float before = _prey.Health;
             foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Rig.BoundsCenter))) yield return x;
+            if (tries < 12) GD.Print($"  (shot {shots + 1}: prey at {w.FromPatch(_prey.Rig.BoundsCenter)}, health {_prey.Health:F0}, {w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldEye()):F1} m off; the bolt landed {_game.Shots.LastImpact.Kind} at {_game.Shots.LastImpact.At}; dead {_game.Suit.Dead}, hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, menu {_game.Menu.IsOpen})");
             shots++;
             if (_prey.Health >= before) close = MathF.Max(6f, close * 0.6f); // something in the way: closer
             if (shots == 3) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
@@ -543,6 +544,7 @@ public partial class PlayerTest : Node
             foreach (int x in _play.BlockToToolbar(block, true, slot)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 pad = _play.FlatSpot(_base.Body.Position.ToGodot(), 26f, 2.4f, 0.3f);
+        GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the castaway at {_game.Survivor.WorldFeet})");
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
         _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && v.Structure.Grid.Size == GridSize.Small);

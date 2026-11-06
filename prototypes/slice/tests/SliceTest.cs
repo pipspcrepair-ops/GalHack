@@ -224,7 +224,7 @@ public partial class SliceTest : Node
         {
             if (_game.Tool.OreOf(kind) is not GalHack.Items.ItemDef oreItem || !need.ContainsKey(oreItem.Id)) continue;
             string material = oreItem.Id;
-            for (int deposit = 0; deposit < 2 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
+            for (int deposit = 0; deposit < 4 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
             {
                 Vector3? found = NearestUntried(kind, tried);
                 if (found is not Vector3 ore) break;

@@ -142,6 +142,36 @@ public sealed class Bunker
     public readonly record struct Site(N.Vector3 Origin, float Heading, int Steps, Vector3? Landmark, float FromLanding, PlanetSurface.Poi.PoiSite Poi = null);
 
     /// <summary>
+    /// Where a start belongs: the nearest temperate country to a point, with plants and trees
+    /// about (a planet has tundra and desert too). The point itself on a world without any.
+    /// </summary>
+    public static Vector3 TemperateNear(SurfaceZone zone, Vector3 near)
+    {
+        PlanetSurface.World.PlanetWorld planet = zone.Planet;
+        bool Green(float x, float z)
+        {
+            double wx = Planets.Gen.Mathx.WrapX(x, planet.Width), wz = Planets.Gen.Mathx.Wrap(z, planet.Height);
+            return Planets.Look.BiomeLook.FloraOf(planet.Palette.BiomeAt(wx, wz)).Any(r => r.Density >= 0.25f && r.Kind is Planets.Look.Flora.Broadleaf or Planets.Look.Flora.JungleTree);
+        }
+        for (int ring = 0; ring <= 100; ring++)
+        {
+            float r = ring * 40f;
+            int around = ring == 0 ? 1 : 8 + ring * 2;
+            for (int i = 0; i < around; i++)
+            {
+                float a = i * MathF.Tau / around;
+                float x = near.X + MathF.Cos(a) * r, z = near.Z + MathF.Sin(a) * r;
+                if (!Green(x, z)) continue;
+                int green = 0;
+                for (int k = 0; k < 8; k++)
+                    if (Green(x + MathF.Cos(k * MathF.Tau / 8f) * 90f, z + MathF.Sin(k * MathF.Tau / 8f) * 90f)) green++;
+                if (green >= 6) return new Vector3(x, near.Y, z);
+            }
+        }
+        return near;
+    }
+
+    /// <summary>
     /// Searches outward from a point (the generator's landing site) for a place to dig the
     /// bunker: the first ring that has one wins, and on it the stairs that face a place in view best.
     /// </summary>
