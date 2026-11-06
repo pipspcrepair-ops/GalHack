@@ -159,8 +159,18 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 - Every wire is anchored. It is strung with its sag between two standing poles, or, where a pole has fallen or a wire snapped on a neglected line, it hangs from the pole that still holds it and lies on the ground toward where it went (`PowerLines.Path`).
 - Poles never stand on a road bed, a bridge or a place's pad.
 
+**Abandoned vehicles** (`src/World/Infra/Wrecks.cs`, `PlanetWorld.Infra.Wrecks`) come from the deco library's sites (`InfraDeco`), set on the ground piece by piece:
+- evacuation jams and rusted pile-ups on highways and roads;
+- roadblocks within a short drive of places soldiers held;
+- car parks beside towns;
+- derelict and derailed trains on straight stretches of line, on the line's own track;
+- an airliner down in a field on worlds that flew them.
+
+Each road site lies on a straight, nearly level stretch with its lane down the road's centre line, so the way stays open, and none stands on a place's pad. The vehicles are the library's pieces with collision. `WreckSite` and the dressed plan's placements are what the slice's survival tool can salvage.
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
+- `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
 ### Integration (the slice)
 

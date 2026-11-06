@@ -184,16 +184,27 @@ public partial class InfraLayer : Node3D
                         yield return new FloodStretch { Structure = s, K = k, X = s.Route.X[k], Z = s.Route.Z[k] };
             }
         }
+        foreach (WreckSite w in net.Wrecks)
+        {
+            var (mx, mz) = w.World(w.Width / 2, w.Length / 2);
+            yield return new WreckPiece { Site = w, X = mx, Z = mz };
+        }
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
             yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
         foreach (PowerWire wire in power.Wires)
             yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        // A train standing on the line brings its own track: the line's is left out under it.
+        var underTrains = new HashSet<(int, int)>();
+        foreach (WreckSite w in net.Wrecks)
+            if (w.Route != null && w.Route.Kind == RouteKind.Rail && w.First >= 0)
+                for (int k = w.First; k <= w.Last; k++) underTrains.Add((w.Route.Id, k));
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind != RouteKind.Rail) continue;
             for (int k = 0; k + 1 < r.Count; k++)
             {
+                if (underTrains.Contains((r.Id, k))) continue;
                 if (r.Maglev) yield return new Guideway { Route = r, K = k, X = r.X[k], Z = r.Z[k] };
                 else yield return new Track { Route = r, K = k, X = r.X[k], Z = r.Z[k] };
             }

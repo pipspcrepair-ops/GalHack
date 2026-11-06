@@ -24,7 +24,8 @@ public sealed partial class PlanetWorld
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around)
     {
         if (around is not InfraNetwork infra) return;
-        // Power lines stand on the finished ground, beside the roads.
+        // Power lines and wrecked traffic stand on the finished ground, beside the roads.
         infra.Power = PowerLines.Plan(infra, source, Hash.Of(spec.Seed, 0x90E7));
+        infra.Wrecks = Wrecks.Plan(infra, source, pois, Hash.Of(spec.Seed, 0x3EC5));
     }
 }

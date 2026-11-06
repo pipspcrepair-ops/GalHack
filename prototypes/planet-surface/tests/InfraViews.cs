@@ -32,6 +32,15 @@ public static class InfraViews
         InfraNetwork net = w.Infra;
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
+        // A wreck site: evacuation-jam, pile-up, roadblock, car-park, derelict-train, derailed-train, airliner-crash.
+        if (net.Wrecks.Any(wk => wk.Site == what))
+        {
+            WreckSite site = net.Wrecks.Where(wk => wk.Site == what).OrderBy(wk => Away(wk.X, wk.Z)).First();
+            var (sx, sz) = site.World(site.LaneX - 2f, -18f);
+            var (tx, tz) = site.World(site.Width / 2, site.Length * 0.55f);
+            float eye = w.GroundHeight(Mathx.WrapX(sx, w.Width), Mathx.Wrap(sz, w.Height)) + (what == "airliner-crash" ? 14f : 6f);
+            return Look(w, sx, sz, eye, tx, tz, w.GroundHeight(Mathx.WrapX(tx, w.Width), Mathx.Wrap(tz, w.Height)) + 1f);
+        }
         // A structure: the nearest of its kind.
         if (what is "bridge" or "viaduct" or "tunnel")
         {

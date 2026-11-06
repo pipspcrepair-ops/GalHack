@@ -71,7 +71,9 @@ public partial class SurfaceTest
         int worlds = 0, places = 0, joined = 0, routes = 0, unrouted = 0, separated = 0, never = 0, neverRoutes = 0;
         int stretches = 0, withinGrade = 0, unwalkable = 0, bridges = 0, longViaducts = 0, lowOverWater = 0, tunnels = 0, longTunnels = 0;
         int deckSamples = 0, offDeck = 0, seamSamples = 0, seamMismatch = 0, tilted = 0;
-        string firstGround = "";
+        string firstGround = "", firstBlocked = "";
+        int wreckSites = 0, wreckPieces = 0, blockedLanes = 0, wreckOnPad = 0;
+        var wreckKinds = new Dictionary<string, int>();
         int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
         double planBest = double.MaxValue, planWorst = 0;
         bool same = true;
@@ -234,6 +236,26 @@ public partial class SurfaceTest
                     }
                 }
             }
+            // Abandoned vehicles: each site dressed by the library keeps its lane open end to end (a walker
+            // or driver of the lane's width gets through), and none stands on a place's pad.
+            foreach (WreckSite site in net.Wrecks)
+            {
+                wreckSites++;
+                wreckKinds[site.Site] = wreckKinds.GetValueOrDefault(site.Site) + 1;
+                for (float sz = 0; sz <= site.Length; sz += 4)
+                for (float sx = 0; sx <= site.Width; sx += 4)
+                {
+                    var (px, pz) = site.World(sx, sz);
+                    double cx = Mathx.WrapX(px, w.Width), cz = Mathx.Wrap(pz, w.Height);
+                    if (TerrainStamp.OnPad(w.Source.Stamps, w.Source.StampsAt(cx, cz), cx, cz)) { wreckOnPad++; goto nextCheck; }
+                }
+                nextCheck:
+                if (wreckSites > 40) continue;   // dressing every site is slow: the first forty are enough
+                GalHack.Deco.DecoPlan plan = InfraDeco.DressSite(site.Site, site.Seed, site.Tech);
+                if (plan == null) continue;
+                wreckPieces += plan.Placements.Count;
+                if (!LaneOpen(plan, site)) { blockedLanes++; if (firstBlocked.Length == 0) firstBlocked = $" (first: a {site.Site} on {spec.Archetype})"; }
+            }
             if (a == 0)
             {
                 // The same planet plans the same network, point for point.
@@ -255,11 +277,99 @@ public partial class SurfaceTest
             $"roads are walkable decks: the ground is at the deck on {deckSamples - offDeck} of {deckSamples} centre-line samples and level across on {2 * deckSamples - tilted} of {2 * deckSamples} edge samples");
         Check(seamMismatch == 0 && seamSamples > 100, $"roads are seam-safe: {seamSamples} road samples read the same from another copy of the planet ({seamMismatch} differ)");
         Check(same, "the same planet plans the same network, point for point");
+        Check(wreckSites > 10 && wreckPieces > 100 && blockedLanes == 0 && wreckOnPad == 0,
+            $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");
         Check(offRoute == 0 && onBed == 0 && lowWorldLines == 0,
             $"power lines only where they make sense: every pole beside the road or highway it follows ({offRoute} not), none on a road bed or a pad ({onBed}), and on frontier worlds only out to mines and works ({lowWorldLines} elsewhere)");
         GD.Print($"INFO  planning took {planBest:F0} to {planWorst:F0} ms a world");
+    }
+
+    /// <summary>
+    /// Whether a dressed site's lane runs open end to end: every piece's footprint (its mesh's box,
+    /// turned and placed) marked on a half-metre raster, grown by half the lane, and a way found from
+    /// the north opening to the south one. Pieces you walk over (rails, scars, litter) don't count.
+    /// </summary>
+    static bool LaneOpen(GalHack.Deco.DecoPlan plan, WreckSite site)
+    {
+        const float Cell = 0.5f;
+        int nx = (int)Math.Ceiling(site.Width / Cell), nz = (int)Math.Ceiling(site.Length / Cell);
+        var blocked = new bool[nx * nz];
+        var forge = InfraDeco.Poi.Forge;
+        foreach (var pl in plan.Placements)
+        {
+            var piece = forge.Catalogue.Piece(pl.Piece);
+            if (piece.WalkOver) continue;
+            var mesh = forge.Mesh(pl.Look);
+            if (mesh.Max.Y - mesh.Min.Y < 0.35f) continue;
+            var t = pl.Transform;
+            var c = new[] { new System.Numerics.Vector2(mesh.Min.X, mesh.Min.Z), new(mesh.Max.X, mesh.Min.Z), new(mesh.Max.X, mesh.Max.Z), new(mesh.Min.X, mesh.Max.Z) }
+                .Select(v => { var p = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(v.X, 0, v.Y), t); return new System.Numerics.Vector2(p.X, p.Z); }).ToArray();
+            for (int j = 0; j < nz; j++)
+            for (int i = 0; i < nx; i++)
+            {
+                var q = new System.Numerics.Vector2((i + 0.5f) * Cell, (j + 0.5f) * Cell);
+                bool inside = true;
+                for (int e = 0; e < 4 && inside; e++)
+                {
+                    var a0 = c[e];
+                    var a1 = c[(e + 1) % 4];
+                    float cross = (a1.X - a0.X) * (q.Y - a0.Y) - (a1.Y - a0.Y) * (q.X - a0.X);
+                    inside = cross >= 0;
+                }
+                if (!inside)
+                {
+                    inside = true;
+                    for (int e = 0; e < 4 && inside; e++)
+                    {
+                        var a0 = c[e];
+                        var a1 = c[(e + 1) % 4];
+                        float cross = (a1.X - a0.X) * (q.Y - a0.Y) - (a1.Y - a0.Y) * (q.X - a0.X);
+                        inside = cross <= 0;
+                    }
+                }
+                if (inside) blocked[j * nx + i] = true;
+            }
+        }
+        // Grow by half the lane: the walker's centre must keep that far from anything.
+        int grow = (int)Math.Ceiling(site.Lane / 2 / Cell - 0.01f);
+        var open = new bool[nx * nz];
+        for (int j = 0; j < nz; j++)
+        for (int i = 0; i < nx; i++)
+        {
+            bool ok = i >= grow - 1 && i < nx - grow + 1;
+            for (int dj = -grow + 1; dj < grow && ok; dj++)
+            for (int di = -grow + 1; di < grow && ok; di++)
+            {
+                int x = i + di, z = j + dj;
+                if (x < 0 || x >= nx) { ok = false; break; }
+                if (z < 0 || z >= nz) continue;
+                ok = !blocked[z * nx + x];
+            }
+            open[j * nx + i] = ok;
+        }
+        var queue = new Queue<int>();
+        var seen = new bool[nx * nz];
+        int laneCell = (int)(site.LaneX / Cell);
+        for (int i = Math.Max(0, laneCell - 2); i <= Math.Min(nx - 1, laneCell + 2); i++)
+            if (open[i]) { queue.Enqueue(i); seen[i] = true; }
+        while (queue.Count > 0)
+        {
+            int k = queue.Dequeue();
+            int i = k % nx, j = k / nx;
+            if (j == nz - 1) return true;
+            foreach (var (di, dj) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+            {
+                int x = i + di, z = j + dj;
+                if (x < 0 || x >= nx || z < 0 || z >= nz) continue;
+                int m = z * nx + x;
+                if (seen[m] || !open[m]) continue;
+                seen[m] = true;
+                queue.Enqueue(m);
+            }
+        }
+        return false;
     }
 
     static double Dist(PlanetWorld w, double ax, double az, double bx, double bz)

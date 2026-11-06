@@ -89,6 +89,8 @@ public sealed class InfraNetwork
     public readonly List<PoiSite> Isolated = new();
     /// <summary>Power lines along the network (planned once the terrain is final: <see cref="PowerLines.Plan"/>).</summary>
     public PowerLines Power = new();
+    /// <summary>Sites of abandoned vehicles along the network and in the fields (planned once the terrain is final: <see cref="Wrecks.Plan"/>).</summary>
+    public List<WreckSite> Wrecks = new();
 
     /// <summary>The places the network joins (built by people: not wrecks, alien or Precursor sites).</summary>
     public readonly List<PoiSite> Places = new();
