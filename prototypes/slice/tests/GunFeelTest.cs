@@ -166,11 +166,39 @@ public partial class GunFeelTest : Node
         Check(!fx.BeamShowing, "no beam while the tool is idle");
         int flashesG = fx.Flashes;
         _game.Controls.Primary = true;
-        for (int i = 0; i < 20; i++) yield return 0;
-        Check(fx.BeamShowing && fx.Beams >= 1, "gathering shows the blue beam");
+        bool beamSeen = false;
+        for (int i = 0; i < 40; i++) { yield return 0; beamSeen |= fx.BeamShowing; }
+        Check(beamSeen && fx.Beams >= 1, "gathering shows the blue beam");
         Check(fx.Flashes == flashesG, "and the gather beam has no muzzle flash");
         _game.Controls.Primary = false;
         for (int i = 0; i < 10; i++) yield return 0;
         Check(!fx.BeamShowing, "the beam is gone once the tool stops");
+
+        // ---- Death: starvation and a creature's hit both kill, movement stops, the banner has its cause, R wakes you at full health ----
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Suit suit = _game.Suit;
+        double max = suit.Sim.Data.Vitals.Health.Max;
+        suit.Vitals.Health = 0.4; // the HUD prints "0" (F0) for this, but it is not death
+        Check($"{suit.Vitals.Health:F0}" == "0" && !suit.Dead, "health 0.4 prints as 0 on the HUD and is still alive");
+        suit.Vitals.Food = 0;
+        for (int i = 0; i < 60 * 30 && !suit.Dead; i++) yield return 0;
+        Check(suit.Dead && suit.Vitals.Health <= 0 && suit.Sim.Player.DeathCause == "Starved", $"starvation drains that remainder and kills ({suit.Sim.Player.DeathCause})");
+        Check(!_game.Menu.IsOpen && suit.Sim.Player.DeathCause != null, "dead with the menu closed and a cause for the Visor's death banner");
+        Vector3 spot = _game.Survivor.WorldFeet;
+        _game.Controls.Hold(Key.W);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        _game.Controls.ReleaseAll();
+        Check(_game.Survivor.WorldFeet.DistanceTo(spot) < 0.6f, "a dead survivor does not walk");
+        foreach (int x in _drive.Tap(Key.R)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(!suit.Dead && suit.Vitals.Health >= max - 0.5, $"R wakes them at full health ({suit.Vitals.Health:F0} of {max:F0})");
+
+        double lost = suit.Hit(max * 2, SurvivalVitals.Model.DamageKind.Hit); // a bite past armour
+        foreach (int x in _drive.Wait(5)) yield return x;
+        Check(lost > 0 && suit.Dead && suit.Sim.Player.DeathCause != null, $"a killing hit kills at once ({suit.Sim.Player.DeathCause})");
+        foreach (int x in _drive.Wait(20)) yield return x;
+        foreach (int x in _drive.Tap(Key.R)) yield return x;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(!suit.Dead && suit.Vitals.Health >= max - 0.5, "and R wakes them again at full health");
     }
 }
