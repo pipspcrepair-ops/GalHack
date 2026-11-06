@@ -257,6 +257,13 @@ public partial class InfraLayer : Node3D
             yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
         foreach (PowerWire wire in power.Wires)
             yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
+        foreach (InfraRoute r in net.Routes)
+        {
+            if (r.Kind != RouteKind.Rail || r.Count < 16) continue;
+            if (r.From != null) yield return new Station { Route = r, AtStart = true, X = r.X[0], Z = r.Z[0] };
+            if (r.To != null) yield return new Station { Route = r, AtStart = false, X = r.X[^1], Z = r.Z[^1] };
+        }
         // A train standing on the line brings its own track: the line's is left out under it.
         var underTrains = new HashSet<(int, int)>();
         foreach (WreckSite w in net.Wrecks)
@@ -575,6 +582,43 @@ public partial class InfraLayer : Node3D
             {
                 NV off = side * (s * 0.72f) + NV.UnitY * 0.28f;
                 b.Box((a + c) * 0.5f + off, dir * (len * 0.5f + 0.02f), NV.UnitY * 0.08f, side * 0.04f, Rail, DecoSurface.Metal, collide: false);
+            }
+        }
+    }
+
+    /// <summary>The end of a line: the track stops at a buffer, beside a platform with a roof over part of it. All of it stands in the ground.</summary>
+    sealed class Station : Piece
+    {
+        public InfraRoute Route;
+        public bool AtStart;
+
+        public override void Emit(TileBuilder b)
+        {
+            InfraRoute r = Route;
+            int k = AtStart ? 0 : r.Count - 1, step = AtStart ? 1 : -1, far = Math.Clamp(k + step * 12, 0, r.Count - 1);
+            NV a = b.Local(r.X[k], r.Y[k], r.Z[k]), c = b.Local(r.X[far], r.Y[far], r.Z[far]);
+            NV along = new(c.X - a.X, 0, c.Z - a.Z);
+            float length = along.Length();
+            if (length < 1f) return;
+            NV dir = along / length, side = new(-dir.Z, 0, dir.X);
+            DecoRgb body = r.Tech == TechLevel.Low ? Timber : r.Tech == TechLevel.Mid ? Concrete : Composite, dark = r.Tech == TechLevel.Low ? TimberDark : ConcreteDark;
+            float deck = (r.Y[k] + r.Y[far]) * 0.5f;
+            // Buffers across the end of the track.
+            b.Box(a + NV.UnitY * 0.45f, dir * 0.3f, NV.UnitY * 1.2f, side * 1.5f, dark, DecoSurface.Matte, collide: true);
+            foreach (int s in new[] { -1, 1 })
+            {
+                // The platform beside the track on the one side, its back wall on the other way.
+                if (s < 0) continue;
+                NV mid = a + dir * (length * 0.5f) + side * (r.HalfWidth + 2.2f);
+                float low = MathF.Min(deck, b.Ground(b.OriginX + mid.X, b.OriginZ + mid.Z)) - 1.5f, top = deck + 0.9f;
+                mid.Y = (low + top) * 0.5f;
+                b.Box(mid, dir * (length * 0.5f), NV.UnitY * ((top - low) * 0.5f), side * 2.2f, body, DecoSurface.Matte, collide: true);
+                // The shelter: posts on the platform, and a roof on them.
+                NV foot = new(mid.X, top, mid.Z);
+                foreach (float along2 in new[] { -9f, -3f, 3f, 9f })
+                    foreach (float across in new[] { -1.6f, 1.6f })
+                        b.Box(foot + dir * along2 + side * across + NV.UnitY * 1.5f, dir * 0.12f, NV.UnitY * 1.5f, side * 0.12f, dark, DecoSurface.Matte, collide: true);
+                b.Box(foot + NV.UnitY * 3.1f, dir * 10.5f, NV.UnitY * 0.12f, side * 2.3f, body, DecoSurface.Matte, collide: true);
             }
         }
     }

@@ -56,6 +56,7 @@ public partial class SurfaceTest : Node
             await Run("Grounded", GroundedChecks);
             await Run("Flush", FlushChecks);
             await Run("Reach", ReachChecks);
+            await Run("Rail", RailChecks);
             await Run("CaveMouths", CaveChecks);
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);

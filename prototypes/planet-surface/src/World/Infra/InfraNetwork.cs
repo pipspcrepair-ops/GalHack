@@ -84,6 +84,13 @@ public sealed class InfraNetwork
     public double PlanMs, SearchMs;
     /// <summary>Railway links dropped because the land would have made them mostly viaduct and tunnel (tests).</summary>
     public int RailDropped;
+    /// <summary>Why each was dropped (tests).</summary>
+    public readonly List<string> RailDrops = new();
+    void Drop(string why)
+    {
+        RailDropped++;
+        RailDrops.Add(why);
+    }
     /// <summary>Links the spanning tree and loops asked for that no route could be found for (tests).</summary>
     public int Unrouted;
     /// <summary>Links between places on land the sea separates, which a world of this tech level never bridged (tests).</summary>
@@ -113,13 +120,15 @@ public sealed class InfraNetwork
     // ---- per kind ---------------------------------------------------------------------------
 
     /// <summary>The steepest a kind's deck climbs, metres per metre.</summary>
-    public static float MaxGrade(RouteKind k) => k switch { RouteKind.Highway => 0.06f, RouteKind.Road => 0.09f, RouteKind.Track => 0.15f, _ => 0.03f };
+    public static float MaxGrade(RouteKind k) => k switch { RouteKind.Highway => 0.06f, RouteKind.Road => 0.09f, RouteKind.Track => 0.15f, _ => 0.025f };
+    /// <summary>The tightest curve a railway takes, metres: a train doesn't turn on a coin, so a line sweeps.</summary>
+    public const double RailRadius = 260, RailRadiusLeast = 170;
     /// <summary>How far a deck may stand over the ground before it becomes a bridge.</summary>
     static float BridgeFill(RouteKind k) => k switch { RouteKind.Highway => 8f, RouteKind.Road => 7f, RouteKind.Track => 5f, _ => 8f };
     /// <summary>How deep a deck may cut before it becomes a tunnel (tracks never tunnel: they climb and wind).</summary>
     static float TunnelCut(RouteKind k) => k switch { RouteKind.Highway => 14f, RouteKind.Road => 13f, RouteKind.Track => float.MaxValue, _ => 11f };
     /// <summary>How far along the deck heights are averaged before the grade is held: highways and railways sweep, tracks follow the land.</summary>
-    static float SmoothRun(RouteKind k) => k switch { RouteKind.Highway => 60f, RouteKind.Road => 32f, RouteKind.Track => 14f, _ => 100f };
+    static float SmoothRun(RouteKind k) => k switch { RouteKind.Highway => 60f, RouteKind.Road => 32f, RouteKind.Track => 14f, _ => 320f };
 
     /// <summary>
     /// The longest dry bridge (a viaduct over a valley) a kind of route built at a tech level runs to:
@@ -234,7 +243,7 @@ public sealed class InfraNetwork
                 int ra = Find(l.A), rb = Find(l.B);
                 if (ra == rb || laid >= 3) continue;
                 parent[ra] = rb;
-                if (net.Link(router, railNodes[l.A], railNodes[l.B], RouteKind.Rail, rng)) laid++;
+                if (net.LinkRail(router, railNodes[l.A], railNodes[l.B], rng)) laid++;
             }
         }
         net.PlanMs = watch.Elapsed.TotalMilliseconds;
@@ -356,7 +365,7 @@ public sealed class InfraNetwork
             {
                 Structures.RemoveAll(st => st.Route == route);
                 Routes.RemoveAt(Routes.Count - 1);
-                RailDropped++;
+                Drop("mostly in the air or the ground");
                 continue;
             }
             route.From = run.From == 0 ? a : null;
@@ -365,6 +374,197 @@ public sealed class InfraNetwork
             any = true;
         }
         return any;
+    }
+
+    // ---- railways ------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Lays a railway between two places, a station at each end. It doesn't wind up a hill as a road does:
+    /// the land's cheapest way is drawn out into long straights, joined by sweeping curves, on a deck that
+    /// keeps its gentle grade whatever the land does, through cuttings and over embankments, and where
+    /// that won't do on bridges and through tunnels. A line the land won't take was never built.
+    /// </summary>
+    bool LinkRail(Router router, PoiSite a, PoiSite b, PoiGenerator.Gen.Rng rng)
+    {
+        var ga = GateToward(a, b.Center);
+        var gb = GateToward(b, a.Center);
+        // The stations stand a little way out from each place's gate; the platform lies along the line, whichever way that goes.
+        const double Platform = 34;
+        (double X, double Z) oa = (ga.X + ga.OutX * Platform, ga.Z + ga.OutZ * Platform), ob = (gb.X + gb.OutX * Platform, gb.Z + gb.OutZ * Platform);
+        var search = Stopwatch.StartNew();
+        List<int> cells = router.Find(oa, ob, RouteKind.Rail, Profile.Before);
+        SearchMs += search.Elapsed.TotalMilliseconds;
+        if (cells == null || cells.Count < 4) { Drop("no way"); return false; }
+        var land = new List<(double X, double Z)> { oa };
+        foreach (int c in cells) land.Add(router.CellCentre(c));
+        land.Add(ob);
+        Unwrap(land);
+        List<(double X, double Z)> corners = Straights(router, land);
+        // A corner too sharp for the room it has goes, if the straight past it stays clear of every place.
+        List<(double X, double Z)> sweep = Sweep(corners, out int sharp);
+        for (int tries = 0; sweep == null && tries < 24; tries++)
+        {
+            int cut = -1;
+            foreach (int i in new[] { sharp, sharp - 1, sharp + 1 })
+                if (i > 0 && i + 1 < corners.Count && Clear(router, corners[i - 1], corners[i + 1])) { cut = i; break; }
+            if (cut < 0) break;
+            corners.RemoveAt(cut);
+            sweep = Sweep(corners, out sharp);
+        }
+        if (sweep == null) { Drop("a corner too sharp"); return false; }
+        List<(double X, double Z)> path = Resample(sweep, Spacing);
+        if (CrossesItself(path)) { Drop("crosses itself"); return false; }
+        foreach (var (x, z) in path.Skip(14).Take(Math.Max(0, path.Count - 28)))
+            if (router.Blocked(x, z)) { Drop("through a place"); return false; }
+        var pins = new List<(int Index, float Y)> { (0, ga.Y), (path.Count - 1, gb.Y) };
+        for (int k = 8; k < path.Count - 8; k++)
+        {
+            int road = router.RouteAtPoint(path[k].X, path[k].Z, RouteKind.Road);
+            if (road < 0 || !Snap(Routes[road], path[k], out _, out float yr) || pins.Any(p => Math.Abs(p.Index - k) < 20)) continue;
+            if (Math.Abs(yr - router.Ground(Mathx.WrapX(path[k].X, _w), Mathx.Wrap(path[k].Z, _h), 2, out _, out _)) < 1.5f) pins.Add((k, yr));
+        }
+        InfraRoute route = Build(router, path, pins, RouteKind.Rail, a, b, ga.Index, gb.Index, rng);
+        if (route == null) { Drop("no deck"); return false; }
+        // Too much in the air or under the ground, or a run longer than its builders could manage, or too steep for a train: never built.
+        string bad2 = !route.Maglev && route.Span.Count(sp => sp != RoadSpan.Ground) > route.Span.Length * 0.4 ? "mostly in the air or the ground"
+            : !route.Maglev && Structures.Any(s => s.Route == route && s.Length > (s.Kind == RoadSpan.Bridge ? MaxViaduct(RouteKind.Rail, Profile.Before) : MaxTunnel(RouteKind.Rail, Profile.Before))) ? "a run too long to build" : null;
+        for (int i = 0; i + 1 < route.Count && bad2 == null; i++) if (Math.Abs(route.Y[i + 1] - route.Y[i]) > Spacing * 0.04f) bad2 = "too steep";
+        // Level crossings that pull the deck about give way first: the line crosses those roads on its own bank or in its own cutting.
+        if (bad2 == "too steep" && pins.Count > 2)
+        {
+            Structures.RemoveAll(st => st.Route == route);
+            Routes.RemoveAt(Routes.Count - 1);
+            route = Build(router, path, pins.Where(p => p.Index == 0 || p.Index == path.Count - 1).ToList(), RouteKind.Rail, a, b, ga.Index, gb.Index, rng);
+            bad2 = route.Span.Count(sp => sp != RoadSpan.Ground) > route.Span.Length * 0.4 && !route.Maglev ? "mostly in the air or the ground" : null;
+            for (int i = 0; i + 1 < route.Count && bad2 == null; i++) if (Math.Abs(route.Y[i + 1] - route.Y[i]) > Spacing * 0.04f) bad2 = "too steep";
+        }
+        if (bad2 != null)
+        {
+            Structures.RemoveAll(st => st.Route == route);
+            Routes.RemoveAt(Routes.Count - 1);
+            Drop(bad2);
+            return false;
+        }
+        route.From = a;
+        route.To = b;
+        router.Mark(route);
+        return true;
+    }
+
+    /// <summary>The land's way between two points as long straights: as few corners as stay within a fair distance of it and clear of every place.</summary>
+    List<(double X, double Z)> Straights(Router router, List<(double X, double Z)> pts)
+    {
+        const double Tolerance = 70, Shortest = 260;
+        var keep = new SortedSet<int> { 0, pts.Count - 1 };
+        void Fit(int lo, int hi)
+        {
+            if (hi - lo < 2) return;
+            var (ax, az) = pts[lo];
+            var (bx, bz) = pts[hi];
+            double ex = bx - ax, ez = bz - az, len = Math.Max(1e-6, Math.Sqrt(ex * ex + ez * ez));
+            int worst = -1;
+            double most = 0;
+            for (int i = lo + 1; i < hi; i++)
+            {
+                double d = Math.Abs((pts[i].X - ax) * ez - (pts[i].Z - az) * ex) / len;
+                if (d > most) { most = d; worst = i; }
+            }
+            if (most <= Tolerance && Clear(router, pts[lo], pts[hi])) return;
+            if (worst < 0) worst = (lo + hi) / 2;
+            keep.Add(worst);
+            Fit(lo, worst);
+            Fit(worst, hi);
+        }
+        Fit(0, pts.Count - 1);
+        var corners = keep.ToList();
+        // No short stretches between corners, where the land allows: each is a pair of curves with no straight between.
+        for (bool merged = true; merged;)
+        {
+            merged = false;
+            for (int i = 1; i + 1 < corners.Count; i++)
+            {
+                var (x0, z0) = pts[corners[i - 1]];
+                var (x1, z1) = pts[corners[i]];
+                if (Math.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) >= Shortest && i + 2 < corners.Count) continue;
+                if (!Clear(router, pts[corners[i - 1]], pts[corners[i + 1]])) continue;
+                corners.RemoveAt(i);
+                merged = true;
+                break;
+            }
+        }
+        return corners.Select(i => pts[i]).ToList();
+    }
+
+    /// <summary>Whether a straight line keeps off every place.</summary>
+    static bool Clear(Router router, (double X, double Z) a, (double X, double Z) b)
+    {
+        double len = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Z - a.Z) * (b.Z - a.Z));
+        // Stations stand by their places: a line's ends may be close to one.
+        for (double t = 40; t <= len - 40; t += 8)
+            if (router.Blocked(a.X + (b.X - a.X) * t / len, a.Z + (b.Z - a.Z) * t / len)) return false;
+        return true;
+    }
+
+    /// <summary>Joins straights with arcs of a railway's radius; null if a corner (<paramref name="sharp"/>) is too sharp for the room it has.</summary>
+    static List<(double X, double Z)> Sweep(List<(double X, double Z)> c, out int sharp)
+    {
+        int n = c.Count;
+        sharp = -1;
+        var tangent = new double[n];
+        var turn = new double[n];
+        for (int i = 1; i + 1 < n; i++)
+        {
+            double ax = c[i].X - c[i - 1].X, az = c[i].Z - c[i - 1].Z, bx = c[i + 1].X - c[i].X, bz = c[i + 1].Z - c[i].Z;
+            turn[i] = Math.Abs(Math.Atan2(ax * bz - az * bx, ax * bx + az * bz));
+            tangent[i] = RailRadius * Math.Tan(turn[i] / 2);
+        }
+        // Where two curves want more than the straight between them, each gives way, down to the least radius.
+        double Len(int i) => Math.Sqrt(Math.Pow(c[i + 1].X - c[i].X, 2) + Math.Pow(c[i + 1].Z - c[i].Z, 2));
+        for (int i = 0; i + 1 < n; i++)
+        {
+            double need = tangent[i] + tangent[i + 1], have = Len(i) * (i == 0 || i + 2 == n ? 0.95 : 0.98);
+            if (need <= have) continue;
+            tangent[i] *= have / need;
+            tangent[i + 1] *= have / need;
+        }
+        var path = new List<(double X, double Z)> { c[0] };
+        for (int i = 1; i + 1 < n; i++)
+        {
+            if (turn[i] < 1e-4) continue;
+            if (turn[i] > Math.PI * 0.55 || tangent[i] / Math.Tan(turn[i] / 2) < RailRadiusLeast)
+            {
+                sharp = i;
+                return null;
+            }
+            double l0 = Len(i - 1), l1 = Len(i);
+            double ux = (c[i].X - c[i - 1].X) / l0, uz = (c[i].Z - c[i - 1].Z) / l0, vx = (c[i + 1].X - c[i].X) / l1, vz = (c[i + 1].Z - c[i].Z) / l1;
+            double t = tangent[i], r = t / Math.Tan(turn[i] / 2);
+            double sign = Math.Sign(ux * vz - uz * vx);
+            var (sx, sz) = (c[i].X - ux * t, c[i].Z - uz * t);
+            double cx = sx - uz * r * sign, cz = sz + ux * r * sign;
+            int steps = Math.Max(2, (int)(r * turn[i] / 6));
+            for (int k = 0; k <= steps; k++)
+            {
+                double ang = turn[i] * k / steps * sign, rx = sx - cx, rz = sz - cz;
+                path.Add((cx + rx * Math.Cos(ang) - rz * Math.Sin(ang), cz + rx * Math.Sin(ang) + rz * Math.Cos(ang)));
+            }
+        }
+        path.Add(c[^1]);
+        return path;
+    }
+
+    /// <summary>Whether a path runs over itself.</summary>
+    static bool CrossesItself(List<(double X, double Z)> p)
+    {
+        for (int i = 0; i + 1 < p.Count; i += 4)
+            for (int j = i + 12; j + 1 < p.Count; j += 4)
+            {
+                var (a, b, c, d) = (p[i], p[Math.Min(i + 4, p.Count - 1)], p[j], p[Math.Min(j + 4, p.Count - 1)]);
+                double d1 = (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X), d2 = (b.X - a.X) * (d.Z - a.Z) - (b.Z - a.Z) * (d.X - a.X);
+                double d3 = (d.X - c.X) * (a.Z - c.Z) - (d.Z - c.Z) * (a.X - c.X), d4 = (d.X - c.X) * (b.Z - c.Z) - (d.Z - c.Z) * (b.X - c.X);
+                if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+            }
+        return false;
     }
 
     // ---- streets and spurs for other planners (the start town) ----------------------------------------
@@ -561,7 +761,7 @@ public sealed class InfraNetwork
         // Past what its builders could span or bore, a route follows the land instead: down into the
         // valley and up the far side, over the ridge, steep where it must be (its deck eases onto the
         // ground over a few stretches at each end of the run).
-        if (!maglev)
+        if (!maglev && kind != RouteKind.Rail) // a train can't follow the land: a line that long in the air is dropped
         {
             FollowLand(spans, deck, ground, water, fixedAt, RoadSpan.Bridge, MaxViaduct(kind, Profile.Before));
             FollowLand(spans, deck, ground, water, fixedAt, RoadSpan.Tunnel, MaxTunnel(kind, Profile.Before));
@@ -571,7 +771,7 @@ public sealed class InfraNetwork
         TrimMouths(spans, path, deck, router, HalfWidthOf(kind));
         Clean(spans, RoadSpan.Tunnel, 3);
         // Wherever the land was followed, the deck may be steep but always walkable: never more than 0.45 a stretch.
-        HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 3);
+        if (kind != RouteKind.Rail) HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 3);
         // Never a bridge or tunnel at a gate: the first and last stretches lie on the ground.
         if (gateA >= 0 && spans.Length > 1) spans[0] = RoadSpan.Ground;
         if (gateB >= 0 && spans.Length > 1) spans[^1] = RoadSpan.Ground;
@@ -897,6 +1097,9 @@ public sealed class InfraNetwork
             return _water[k];
         }
 
+        /// <summary>Whether a point lies on a place's footprint or apron.</summary>
+        public bool Blocked(double x, double z) => _blocked[Index(x, z)];
+
         public int RouteAt(int k, RouteKind kind) => (kind == RouteKind.Rail ? _rail[k] : _road[k]) - 1;
         public int RouteAtPoint(double x, double z, RouteKind kind) => RouteAt(Index(x, z), kind);
 
@@ -926,7 +1129,8 @@ public sealed class InfraNetwork
             _touched.Add(start);
             open.Enqueue(start, 0);
             int gx = goal % _nx, gz = goal / _nx;
-            float grade = MaxGrade(kind);
+            // A railway's deck holds its own grade whatever the land does: it isn't asked to wind round every rise, only to go the easiest way.
+            float grade = kind == RouteKind.Rail ? 0.09f : MaxGrade(kind);
             float bridge = kind switch { RouteKind.Highway => 5f, RouteKind.Road => 7f, RouteKind.Track => 10f, _ => 7f };
             // Crossing open sea: a long causeway only where the old world had the means, never on a frontier world.
             float sea = tech == TechLevel.Low ? float.PositiveInfinity : tech == TechLevel.Mid ? 120f : 60f;

@@ -257,6 +257,59 @@ public partial class SurfaceTest
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Railways on fresh worlds sweep: no curve tighter than the rule, no line over itself, a gentle grade,
+    /// straights the longest part of them, and each runs from a place to a place.
+    /// </summary>
+    async Task RailChecks()
+    {
+        int lines = 0, sharp = 0, crossed = 0, steep = 0, unended = 0, worlds = 0;
+        var drops = new Dictionary<string, int>();
+        double metres = 0, straight = 0, tightest = double.MaxValue;
+        string first = "";
+        var rand = new Random();
+        for (int k = 0; k < 8 && lines < 6; k++)
+        {
+            var kind = k % 2 == 0 ? Archetype.Temperate : Archetype.Arid;
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            worlds++;
+            if (w.Infra != null) foreach (string why in w.Infra.RailDrops) drops[why] = drops.GetValueOrDefault(why) + 1;
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind == RouteKind.Rail))
+            {
+                lines++;
+                if (r.From == null || r.To == null) unended++;
+                metres += r.Length;
+                for (int i = 10; i + 10 < r.Count; i++)
+                {
+                    // The circle through three points 40 m apart.
+                    double ax = r.X[i - 10], az = r.Z[i - 10], bx = r.X[i], bz = r.Z[i], cx = r.X[i + 10], cz = r.Z[i + 10];
+                    double area = Math.Abs((bx - ax) * (cz - az) - (bz - az) * (cx - ax)) * 0.5;
+                    double ab = Math.Sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az)), bc = Math.Sqrt((cx - bx) * (cx - bx) + (cz - bz) * (cz - bz)), ca = Math.Sqrt((ax - cx) * (ax - cx) + (az - cz) * (az - cz));
+                    double radius = area < 1e-4 ? 1e9 : ab * bc * ca / (4 * area);
+                    tightest = Math.Min(tightest, radius);
+                    if (radius > 2000) straight += InfraNetwork.Spacing;
+                    if (radius < InfraNetwork.RailRadiusLeast * 0.9)
+                    {
+                        sharp++;
+                        if (first.Length == 0) first = $" (first: {radius:F0} m radius at {bx:F0}, {bz:F0})";
+                    }
+                }
+                for (int i = 0; i + 1 < r.Count; i++)
+                    if (Math.Abs(r.Y[i + 1] - r.Y[i]) > InfraNetwork.Spacing * 0.042f) steep++;
+                var cells = new Dictionary<(int, int), int>();
+                for (int i = 0; i < r.Count; i += 2)
+                {
+                    var key = ((int)Math.Floor(r.X[i] / 8), (int)Math.Floor(r.Z[i] / 8));
+                    if (cells.TryGetValue(key, out int seen) && i - seen > 16) { crossed++; break; }
+                    cells[key] = i;
+                }
+            }
+            await Frames(1);
+        }
+        Check(lines > 0 && sharp == 0 && crossed == 0 && steep == 0 && unended == 0 && straight > metres * 0.4,
+            $"railways sweep: {lines} lines on {worlds} worlds, {metres / 1000:F1} km, {straight / Math.Max(1, metres):P0} straight, tightest curve {Math.Min(tightest, 1e6):F0} m, {sharp} sharp points, {crossed} over themselves, {steep} steep stretches, {unended} not ending at a place; dropped: {string.Join(", ", drops.Select(d => $"{d.Value} {d.Key}"))}{first}");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })
