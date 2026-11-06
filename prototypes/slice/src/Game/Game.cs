@@ -265,6 +265,8 @@ public partial class Game : Node3D
         Paperdoll.Attach(this);
         Audio = new SliceAudio { Name = "Audio", Game = this };
         AddChild(Audio);
+        Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
+        Zone.AddChild(Howl);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Survivor.Node.AddChild(CharacterModel.Build());
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
@@ -272,6 +274,9 @@ public partial class Game : Node3D
         SetUpPlaces();
 
     }
+
+    /// <summary>Wind moaning in the openings around you.</summary>
+    public WindHowl Howl { get; private set; }
 
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }

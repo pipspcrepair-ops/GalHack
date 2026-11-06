@@ -263,7 +263,22 @@ public partial class ClimateTest : Node
         Check(moved < 0.3f, $"a hurricane and a funnel overhead don't touch anyone in shelter: moved {moved:F2} m in 2.5 s");
         sky.ClearTornadoes();
         Zone.Weather.Bridge.Calm = true;
+
+        // A tunnel off the bottom of the shaft: with a gale over it, its mouth moans.
+        var walls = new float[16];
+        Array.Fill(walls, 3f);
+        walls[4] = 25f;
+        Check(WindHowl.FindGap(walls, out _) == 4 && WindHowl.FindGap(new float[16], out _) < 0 && WindHowl.FindGap(new[] { 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f, 28f }, out _) < 0,
+            "an opening is a long line with walls both sides of it: not a closed room, not open ground");
+        var floor = TerrainDigging.Terrain.Int3.Floor((bottom + Vector3.Up * 1.2f).ToNumerics());
+        for (int k = 0; k < 19; k++) Zone.Edits.Dig(new TerrainDigging.Terrain.Int3(floor.X + k, floor.Y, floor.Z), 1.5f);
+        Me.PlaceOutside((bottom + new Vector3(17.5f, 0.5f, 0f)).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(120)) yield return x;
+        Check(_game.Howl.Opening != null && _game.Howl.Level > 0.1f, $"at the end of a tunnel in a gale the wind howls at its mouth: level {_game.Howl.Level:F2}");
         sky.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.Wait(150)) yield return x;
+        Check(_game.Howl.Level < 0.05f, "and the howl dies with the wind");
         foreach (int x in Ravage()) yield return x;
     }
 
