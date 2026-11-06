@@ -1087,6 +1087,8 @@ Occupancy is a layer separate from layout. The same hospital layout is built onc
 | GNG | Gang-held | Fortified: welded barricades, spikes, trophy walls, loot piles, a boss room, hostages or cages. Always hostile. |
 | FAC | Faction-held | A core, patrols, sandbags, flags, supply crates, a working generator. Owned places only. |
 | MCH | Machine-held | Sentries, cleaners and maintenance drones still running routines; lights on in some rooms; spotless floors beside decay. |
+| CYB | Cyborgs | Half-machine survivors or converted staff: operating theatres turned into refit bays, spare limbs on racks, cables grown into walls, cold patrols that talk in fragments. |
+| BOT | Robots gone feral | Old machines with broken orders, unlike MCH's tidy routines: scrap nests, dismantled furniture sorted into piles, machines stripping each other for parts. |
 | HOL | Hollow-touched | Wrong geometry, extra doors, objects set out in patterns, whispers, stained walls, shadows that arrive late; creatures that mimic the place's old staff. |
 | CLT | Cultists / pilgrims | Shrines, offerings, pilgrim cots, chalk or paint marks, robed figures who chant; rarely hostile unless a shrine is touched. |
 | MUT | Mutated predators | Roaming rather than nesting: big prowlers, claw marks, torn mattresses, blood trails to a den. |
