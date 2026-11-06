@@ -92,7 +92,7 @@ public partial class SliceTest : Node
         foreach (int x in _drive.UntilPlaying()) yield return x;
         SurfaceZone zone = _game.Zone;
         var severe = zone.Weather.Sim.Timeline.Where(seg => seg.Start < SurfaceWeather.CalmOpening && zone.Data.Weather.State(seg.Kind).Severe).ToList();
-        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} …)");
+        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} â€¦)");
         // The planet's weather is held calm and its creatures still for the scripted run, so it
         // can't be blown off course; each gets its own check below.
         zone.Weather.Bridge.Calm = true;
@@ -119,6 +119,7 @@ public partial class SliceTest : Node
         {
             foreach (int x in Gather()) yield return x;
             foreach (int x in CutPlant()) yield return x;
+            foreach (int x in OreRock()) yield return x;
         }
         // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
         // the parts the Skiff's bill needs and opens the tech tree. The real-player test
@@ -159,9 +160,9 @@ public partial class SliceTest : Node
         Check(sa.Mass == sb.Mass && sa.LiftMargin == sb.LiftMargin && sa.TurnRate == sb.TurnRate,
             "determinism: the starter blueprint's four numbers come out the same twice");
         Check(sa.CanLiftOff && sa.LiftMargin > 0f && MathF.Abs(sa.LiftMargin - (sa.UpwardThrust - sa.Weight)) < 1e-3f,
-            $"the starter vessel can lift off: lift margin {sa.LiftMargin:F1} kN = {sa.UpwardThrust:F1} up − {sa.Weight:F1} weight ({sa.SpareLift:F1} t spare)");
-        GD.Print($"  starter: {plan.Count} blocks, {sa.Mass:F2} t, accel f/b/up/side {sa.Accel(Direction.Forward):F1}/{sa.Accel(Direction.Back):F1}/{sa.Accel(Direction.Up):F1}/{sa.Accel(Direction.Right):F1} m/s², " +
-                 $"turn {sa.TurnRate:F0}°/s, top {sa.TopSpeed:F0} m/s, lift margin {sa.LiftMargin:F0} kN");
+            $"the starter vessel can lift off: lift margin {sa.LiftMargin:F1} kN = {sa.UpwardThrust:F1} up âˆ’ {sa.Weight:F1} weight ({sa.SpareLift:F1} t spare)");
+        GD.Print($"  starter: {plan.Count} blocks, {sa.Mass:F2} t, accel f/b/up/side {sa.Accel(Direction.Forward):F1}/{sa.Accel(Direction.Back):F1}/{sa.Accel(Direction.Up):F1}/{sa.Accel(Direction.Right):F1} m/sÂ², " +
+                 $"turn {sa.TurnRate:F0}Â°/s, top {sa.TopSpeed:F0} m/s, lift margin {sa.LiftMargin:F0} kN");
     }
 
     static HandlingStats Stats(Structure s)
@@ -187,7 +188,7 @@ public partial class SliceTest : Node
             $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
-            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
+            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} Â°C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
         Check(zone.Wildlife.Sim.Creatures.Count > 20 && zone.Wildlife.Fauna.Species.Count >= 6,
             $"the planet's own wildlife lives around the start: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
     }
@@ -256,6 +257,50 @@ public partial class SliceTest : Node
             GD.Print($"  (the bag: {_game.Pack.Storage.UsedSu:F0} SU used: {_game.Zone.Data.Items.Describe(_game.Pack.Storage.Contents, 8)}; gathered {string.Join(", ", _game.Tool.Gathered.Select(kv => $"{kv.Value} {kv.Key}"))}; feet {_game.Survivor.WorldFeet}, {_game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y - _game.Survivor.WorldFeet.Y:F1} m under the ground)");
         Check(shortOf.Count == 0,
             $"the nearest deposits give every common ore: {string.Join(", ", need.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
+    }
+
+    /// <summary>A rock over a deposit stops the ray and the walker, and the tool breaks it down: a little ore a pulse, then it digs on through.</summary>
+    IEnumerable<int> OreRock()
+    {
+        GD.Print("-- an ore rock --");
+        SurfaceZone zone = _game.Zone;
+        Vector3 from = _game.Survivor.WorldFeet;
+        var source = zone.Planet.Source;
+        var rocks = zone.Planet.Map.Deposits.InRect(from.X - 400, from.Z - 400, from.X + 400, from.Z + 400)
+            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null
+                && source.StampWeight(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height)) <= 0f
+                && !source.WaterSurfaceAt(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height), out _))
+            .Select(d => (d, at: zone.Planet.NearestCopy(new Vector3((float)d.X, from.Y, (float)d.Y), from)))
+            .OrderBy(r => r.at.DistanceTo(from)).Take(6).ToList();
+        if (_game.Pack.Selected != 0) foreach (int x in _drive.Tap(Key.Key1)) yield return x;
+        if (_game.Tool.Mode != Slice.Player.ToolMode.Gather) foreach (int x in _drive.Tap(Key.Q)) yield return x;
+        foreach (var (d, at) in rocks)
+        {
+            foreach (int x in _drive.WalkTo(at, 2.4f, 40f)) yield return x;
+            // The rock's solid boulders lie round the deposit's middle: look over it till the tool is on one (a small pile has none).
+            float radius = GalHack.Terrain.PlanetTerrainSource.OreRadius(d);
+            Vector3? aim = null;
+            var spots = new List<Vector2> { Vector2.Zero };
+            for (int a = 0; a < 8; a++)
+                foreach (float r in new[] { 0.5f, 1f })
+                    spots.Add(Vector2.FromAngle(a * MathF.PI / 4f) * radius * r);
+            foreach (Vector2 spot in spots)
+            {
+                Vector3 look = zone.GroundAt(at.X + spot.X, at.Z + spot.Y) + Vector3.Up * 0.35f;
+                foreach (int x in _drive.LookAt(look, 3)) yield return x;
+                foreach (int x in _drive.Wait(1)) yield return x;
+                if (_game.Tool.OnTell) { aim = look; break; }
+            }
+            if (aim == null) continue;
+            string ore = _game.Tool.OreOf(d.Kind).Id;
+            int before = _game.Tool.TellOre, pack = _game.Pack[ore], all = Slice.Player.SurvivalTool.TellPulses * Slice.Player.SurvivalTool.TellOrePerPulse;
+            foreach (int x in _drive.HoldPrimary(aim, 600, () => _game.Tool.TellOre - before >= all)) yield return x;
+            foreach (int x in _drive.Wait(2)) yield return x;
+            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && !_game.Tool.OnTell,
+                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} {ore} over {Slice.Player.SurvivalTool.TellPulses} pulses, then it digs on through");
+            yield break;
+        }
+        GD.Print($"  (no ore rock to aim at among the {rocks.Count} nearest deposits)");
     }
 
     Vector3? NearestUntried(DepositKind kind, HashSet<Vector3> tried)
@@ -514,7 +559,7 @@ public partial class SliceTest : Node
             $"the vessel's body weighs what its blocks do: {skiff.Body.Mass:F0} kg");
         Check(MathF.Abs(built.LiftMargin - expected.LiftMargin) < 1e-2f && built.CanLiftOff
               && MathF.Abs(built.Accel(Direction.Forward) - expected.Accel(Direction.Forward)) < 1e-3f && built.TurnRate == expected.TurnRate,
-            $"its four numbers are the blueprint's: {built.Accel(Direction.Forward):F1} m/s² forward, {built.TurnRate:F0}°/s, {built.TopSpeed:F0} m/s, lift margin {built.LiftMargin:+0} kN");
+            $"its four numbers are the blueprint's: {built.Accel(Direction.Forward):F1} m/sÂ² forward, {built.TurnRate:F0}Â°/s, {built.TopSpeed:F0} m/s, lift margin {built.LiftMargin:+0} kN");
         Check(skiff.Controller.Gear != null && skiff.Controller.Gear.Count == 3, "its three landing legs are its controller's");
         Check(!_rescues.Any(r => r.Body == skiff.Body), "building never pushed the vessel out of the ground");
     }
@@ -646,7 +691,7 @@ public partial class SliceTest : Node
         Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,
             $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
-        Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
+        Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}Â° of tilt), not in the ground");
         Check(BodyHarm() <= harmBefore, "the pilot came through unhurt");
         if (windows.Count > 0)
         {
@@ -778,7 +823,7 @@ public partial class SliceTest : Node
         }
         w.Frozen = true;
         Check(threatAt >= 0 && (hurtAt < 0 || threatAt < hurtAt),
-            hurtAt < 0 ? $"a {hunter.CommonName} wound up to attack and the visor warned (THREAT) {(threatAt >= 0 ? "" : "NOT ")}— it never landed a bite"
+            hurtAt < 0 ? $"a {hunter.CommonName} wound up to attack and the visor warned (THREAT) {(threatAt >= 0 ? "" : "NOT ")}â€” it never landed a bite"
                        : $"a {hunter.CommonName}'s attack: THREAT on the visor {(hurtAt - threatAt) / 60.0:F1} s before its bite cost {health - _game.Suit.Vitals.Health:F0} health");
         foreach (Creature g in group) if (!g.Dead) w.Sim.Kill(g, w.Player);
     }

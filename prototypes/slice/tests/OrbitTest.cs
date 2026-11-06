@@ -118,9 +118,30 @@ public partial class OrbitTest : Node
         }
     }
 
+    /// <summary>
+    /// This scenario boards a derelict ship (door, bulkhead, hold), and a start system may hold no
+    /// ship among its fields, pods, hulks and stations (a pick of its weighted sites, none promised).
+    /// So a run takes the next fresh world that has one; never a kept list. A seed given on the
+    /// command line stays, and fails below if it has no ship.
+    /// </summary>
+    static WorldChoice WorldWithAShip()
+    {
+        string[] args = OS.GetCmdlineUserArgs();
+        WorldChoice world = WorldChoice.FromArgs(args, WorldChoice.Tested);
+        if (WorldChoice.FromArgs(args) != null) return world;
+        static bool HasAShip(WorldChoice w) => PoiGenerator.Gen.OrbitPlacement.Place(SurfaceZone.PoiCatalog.Library, Spaceflight.SystemSeed(w.Spec()), start: true)
+            .Any(p => p.Zone is "near" or "orbit" && p.Site.Kind == "wreck");
+        for (int i = 0; i < 64 && !HasAShip(world); i++)
+        {
+            GD.Print($"  (no derelict ship in the system of {world}: on to a fresh world)");
+            world = WorldChoice.Fresh();
+        }
+        return world;
+    }
+
     IEnumerable<int> Scenario()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldWithAShip() };
         AddChild(_game);
         _game.Spaceflight.LedgerFolder = System.IO.Path.Combine(OS.GetUserDataDir(), "orbit-test-zones");
         _drive = new Driver(_game);
@@ -277,12 +298,33 @@ public partial class OrbitTest : Node
         _door = _wreck.Derelict.Door.Value;
         GD.Print($"  flying to {_wreck.Name} ({_wreck.Derelict.Id}, {_wreck.Structure.Count} blocks, {from.DistanceTo(_wreck.Body.Position.ToGodot()):F0} m off)");
         double oxygen = _game.Suit.Vitals.Oxygen;
+        foreach (Vector3 way in RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Door + Outward * 11f))
+            foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
         foreach (int x in _pilot.FlyTo(v, () => Door + Outward * 11f, 4f, 150f)) yield return x;
         float off = v.Body.Position.ToGodot().DistanceTo(Door + Outward * 11f);
         Check(off < 8f && v.Body.Velocity.Length() < 1.5f, $"the Skiff flew there and stopped {Door.DistanceTo(v.Body.Position.ToGodot()):F0} m off its door, {v.Body.Velocity.Length():F1} m/s");
         Check(v.Stats.TopSpeed > 100f, $"out here it flies by the space rules: top speed {v.Stats.TopSpeed:F0} m/s");
         Check(_game.Spaceflight.Band >= 1f && !_game.Surface.Visible && _game.Spaceflight.AirGone >= 1f, "the surface has gone from the view out here, whichever way it flew: the globe and space are all there is");
         Check(_game.Suit.Vitals.Oxygen < oxygen, $"an open hull is vacuum: the suit's oxygen runs down ({oxygen:F0} to {_game.Suit.Vitals.Oxygen:F0})");
+    }
+
+    /// <summary>Points to fly by when a straight line to a wreck would go through the globe (the far side of it): an arc over the limb at the height of the higher end. None if the line is clear.</summary>
+    static List<Vector3> RoundTheGlobe(OrbitZone orbit, Vector3 from, Vector3 to)
+    {
+        N.Vector3 a = orbit.ToGlobe(from.ToNumerics()), b = orbit.ToGlobe(to.ToNumerics());
+        float along = Math.Clamp(N.Vector3.Dot(-a, b - a) / (b - a).LengthSquared(), 0f, 1f);
+        var ways = new List<Vector3>();
+        if ((a + (b - a) * along).Length() > orbit.ShellRadius + 100f) return ways;
+        float angle = MathF.Acos(Math.Clamp(N.Vector3.Dot(N.Vector3.Normalize(a), N.Vector3.Normalize(b)), -1f, 1f));
+        float height = MathF.Max(MathF.Max(a.Length(), b.Length()), orbit.ShellRadius + 400f);
+        int legs = (int)MathF.Ceiling(angle / (20f * MathF.PI / 180f)) + 1;
+        N.Vector3 side = N.Vector3.Normalize(N.Vector3.Normalize(b) - N.Vector3.Normalize(a) * MathF.Cos(angle)), start = N.Vector3.Normalize(a);
+        for (int k = 1; k < legs; k++)
+        {
+            float t = angle * k / legs;
+            ways.Add(orbit.ToWorld((start * MathF.Cos(t) + side * MathF.Sin(t)) * height).ToGodot());
+        }
+        return ways;
     }
 
     IEnumerable<int> Boarding()

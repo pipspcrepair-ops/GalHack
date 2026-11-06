@@ -63,6 +63,24 @@ public sealed class PlaceWalk
         List<Int3> path = nav.FindPath(from, goal, 400_000);
         if (path == null)
         {
+            // Up on a piece of furniture (the walker's step takes a low one in its stride): the map has
+            // no way down from there, but a person just steps off, to the nearest floor with a route.
+            var floor = new List<Int3>();
+            for (int dy = -2; dy <= 0; dy++)
+            for (int dz = -3; dz <= 3; dz++)
+            for (int dx = -3; dx <= 3; dx++)
+                if (nav.Standable(from + new Int3(dx, dy, dz))) floor.Add(from + new Int3(dx, dy, dz));
+            foreach (Int3 off in floor.OrderBy(c => c.Manhattan(from)))
+            {
+                if (nav.FindPath(off, goal, 400_000) == null) continue;
+                foreach (int x in _drive.WalkTo(Feet(p, off), 0.5f, 6f, sprint: false, dig: false, hop: false)) yield return x;
+                from = Here(p, nav);
+                path = nav.FindPath(from, goal, 400_000);
+                break;
+            }
+        }
+        if (path == null)
+        {
             Notes.Add($"no route from {from} to {goal}");
             done(false);
             yield break;

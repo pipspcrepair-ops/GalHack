@@ -385,9 +385,11 @@ public partial class PlaceTest : Node
                 foreach (int x in Watched(walk.To(place, stand, r => ok = r))) yield return x;
                 Vector3 mid = piece.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, piece.Piece.Height * 0.5f);
                 int bag = game.Pack.Storage.Contents.Total;
+                double Carried() => place.Memory.SalvageCarry.Values.Sum(); // a small piece pays in fractions, carried in the place's memory until they make a whole item
+                double carried = Carried();
                 string label = "";
                 foreach (int x in Watched(drive.HoldPrimary(mid, 240, () => { label = game.Tool.TargetLabel.Length > 0 ? game.Tool.TargetLabel : label; return !piece.Node.Visible; }))) yield return x;
-                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total > bag, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag");
+                Check(!piece.Node.Visible && game.Pack.Storage.Contents.Total + Carried() > bag + carried, $"the survival tool salvages a {piece.Piece.Name} ('{label}' by the crosshair): gone from the room, {game.Pack.Storage.Contents.Total - bag} items in the bag, {Carried() - carried:+0.##;-0.##;0} carried to the next piece");
             }
             // A block of the wall beside you: gone for good, the wall meshed again round the hole.
             Vector3 eye = game.Survivor.WorldEye(), look = game.Survivor.WorldLook() with { Y = 0f };

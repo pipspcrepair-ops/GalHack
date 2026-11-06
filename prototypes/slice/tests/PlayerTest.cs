@@ -492,6 +492,7 @@ public partial class PlayerTest : Node
         // Take what it made.
         // Up to its front, as you would to use it.
         foreach (int x in OpenFab()) yield return x;
+        foreach (int x in _drive.ClickWidget("storage:open")) yield return x; // beside the bag, for the lot
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
 
