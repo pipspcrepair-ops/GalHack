@@ -13,6 +13,16 @@ public static class Spots
     /// <param name="from">Stand about this far from it, metres (if given).</param>
     public static (double x, double z, float heading) Find(WorldMap map, Landform at, Landform? face, float from)
     {
+        // Ringlands are seen from the air, from just south of the tallest ring on dry land, looking north across it.
+        if (at == Landform.Ringlands)
+        {
+            double ringX = 0, ringZ = 0;
+            float tallest = -1f;
+            foreach (var (x, y, height) in map.Model.RingStructures())
+                if (height > tallest && map.Sample(map.Elevation, x, y) > 5f && map.LandformsAt(x, y).Weight(at) > 0.8f)
+                    (ringX, ringZ, tallest) = (x, y, height);
+            if (tallest > 0f) return (ringX, Mathx.Wrap(ringZ + 620, map.HeightMeters), 0f);
+        }
         bool coastal = LandformInfo.IsCoastal(at);
         double bestScore = double.MinValue, bx = 0, bz = 0;
         float bestHeading = 0f;

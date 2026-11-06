@@ -37,7 +37,7 @@ public sealed record ArchetypeDef
     public float TerraceStep { get; init; }                // mesas, basalt steps, crystal plates
     public float TerraceCover { get; init; }               // how much of the land is terraced, 0-1
     public float DuneHeight { get; init; }
-    public float DuneWavelength { get; init; } = 140f;
+    public float DuneWavelength { get; init; } = 230f;
     public float CanyonDepth { get; init; }
     public float CanyonWavelength { get; init; } = 2600f;
     public float CanyonWidth { get; init; } = 0.075f;      // noise units: wider gives broad U valleys
@@ -145,7 +145,7 @@ public static class Archetypes
             LandMin = 0.86f, LandMax = 0.95f,
             ContinentScale = 0.38f, ContinentAmp = 150f, MountainHeight = 320f, RidgeSharpness = 2.6f,
             HillHeight = 30f, Roughness = 1.2f,
-            DuneHeight = 22f, DuneWavelength = 170f, TerraceStep = 28f, TerraceCover = 0.3f,
+            DuneHeight = 36f, DuneWavelength = 240f, TerraceStep = 28f, TerraceCover = 0.3f,
             PlateauHeight = 30f, PlateauCover = 0.2f, PlateauWavelength = 1800f,
             RiverArea = 1.2f, Rain = 0.3f, SeaFreezes = false,
             BaseTemperature = 0.88f, LatitudeRange = 0.35f, BaseHumidity = 0.1f, RiverbankBiome = Biome.Oasis,

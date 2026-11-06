@@ -49,16 +49,20 @@ public sealed class TerrainModel
     readonly Fractal _warpA, _warpB, _continent, _islands, _mountains, _hills, _selector;
     readonly Fractal _detail, _canyon, _canyonWarp, _dune, _spire, _special, _rain, _patches;
     readonly Fractal _ranges, _plateau, _plateauWarp, _jag, _region, _meander;
-    readonly Fractal _swell, _badland, _tower, _lakes, _fjord, _fjordWarp, _coast, _duneField;
+    readonly Fractal _swell, _badland, _tower, _lakes, _fjord, _fjordWarp, _coast, _duneField, _duneWander;
     readonly Noise _deltaNoise;
     readonly FeatureGrid _volcanoGrid, _craterGrid, _coneGrid, _ringGrid;
     readonly float[] _volcanoPresence, _conePresence, _ringHeight;
     readonly int _duneA, _duneB;
     readonly double _duneWave;
-    readonly Channel[][] _deltaChannels;
+    readonly ChannelMap[] _deltaChannels;
 
     /// <summary>One straight piece of a delta's distributary, in the fan's own frame (metres along its axis and across it).</summary>
     readonly record struct Channel(float A0, float C0, float A1, float C1, float Width);
+
+    /// <summary>A delta's channels and, per square of a grid over its fan, which of them pass near it: a fan has thousands of short pieces.</summary>
+    readonly record struct ChannelMap(Channel[] Channels, int[][] Near, int Size, float Extent);
+    const float ChannelCell = 48f, ChannelReach = 22f; // the grid's squares, and how far from a channel's edge its banks and their wobble can reach
 
     public TerrainModel(PlanetSpec spec, ArchetypeDef def)
     {
@@ -99,6 +103,7 @@ public sealed class TerrainModel
         _fjordWarp = new Fractal(Salt(29), 1500, 2, 0.5f);
         _coast = new Fractal(Salt(30), 700, 4, 0.5f);
         _duneField = new Fractal(Salt(31), 1300, 2, 0.5f);
+        _duneWander = new Fractal(Salt(33), 420, 2, 0.5f);
         _deltaNoise = new Noise(Salt(32));
         _volcanoGrid = new FeatureGrid(Width, Height, def.VolcanoSpacing, _seed, 21, 0.75f);
         _craterGrid = new FeatureGrid(Width, Height, def.CraterSpacing, _seed, 22, 0.7f);
@@ -123,43 +128,68 @@ public sealed class TerrainModel
         _duneB = (int)Math.Round(Landforms.WindY * Height / _duneWave);
         if (_duneA == 0 && _duneB == 0) _duneA = 1;
 
-        _deltaChannels = new Channel[Landforms.Deltas.Count][];
+        _deltaChannels = new ChannelMap[Landforms.Deltas.Count];
         for (int d = 0; d < _deltaChannels.Length; d++) _deltaChannels[d] = Distributaries(Landforms.Deltas[d]);
     }
 
     /// <summary>
-    /// A delta's channels: the river comes in at the apex and splits, again and again, as it runs
-    /// out across the fan to the sea; each branch narrower than the one it left, wandering a little.
+    /// A delta's channels. The river comes in at the apex and runs out to the sea, shedding a side
+    /// channel every so often, off one bank or the other at no set angle: each takes a share of the
+    /// water and sheds its own, and some die out in the marsh before they reach the sea. Each
+    /// heads away from a point behind the apex, so neighbours draw apart and the fan opens as it
+    /// goes, and swings in bends that grow downstream, flaring where it meets the sea.
     /// </summary>
-    Channel[] Distributaries(DeltaFan f)
+    ChannelMap Distributaries(DeltaFan f)
     {
+        const float Step = 16f;
         var list = new System.Collections.Generic.List<Channel>();
         var rng = new Rng(Hash.Of(_seed, f.Id, 0x44454C54));
-        float reach = f.Radius * 1.3f;
-        void Grow(float a, float c, float angle, float width, int depth)
+        float reach = f.Radius * 1.3f, behind = f.Radius * 0.35f;
+        void Grow(float a, float c, float heading, float width, int depth, float life)
         {
-            float run = f.Radius * rng.Range(0.18f, 0.32f) * (depth == 0 ? 1.3f : 1f), walked = 0f;
-            while (true)
+            float wave = rng.Range(200f, 340f), phase = rng.Range(0f, MathF.Tau), next = f.Radius * rng.Range(0.12f, 0.28f), walked = 0f;
+            while (walked < life)
             {
-                float step = 45f;
-                angle += rng.Range(-0.16f, 0.16f) - angle * 0.06f; // wander, but keep heading out
-                float na = a + MathF.Cos(angle) * step, nc = c + MathF.Sin(angle) * step;
-                list.Add(new Channel(a, c, na, nc, width));
+                float r = MathF.Sqrt(a * a + c * c) / f.Radius;
+                heading += (MathF.Atan2(c, a + behind) - heading) * 0.05f + rng.Range(-0.05f, 0.05f);
+                float swing = walked / wave * MathF.Tau + phase;
+                float bend = Mathx.Lerp(0.3f, 1.05f, Math.Clamp(r, 0f, 1f)) * (MathF.Sin(swing) + 0.3f * MathF.Sin(swing * 2.3f + phase));
+                float angle = heading + bend;
+                float na = a + MathF.Cos(angle) * Step, nc = c + MathF.Sin(angle) * Step;
+                list.Add(new Channel(a, c, na, nc, width * (1f + 0.9f * Mathx.Smooth(0.85f, 1.25f, r))));
                 a = na;
                 c = nc;
-                walked += step;
+                walked += Step;
                 if (a * a + c * c > reach * reach) return;
-                if (walked >= run && depth < 4 && width > 9f)
+                if (walked >= next && depth < 4 && width > 8f)
                 {
-                    float spread = rng.Range(0.28f, 0.5f);
-                    Grow(a, c, angle - spread, width * rng.Range(0.62f, 0.8f), depth + 1);
-                    Grow(a, c, angle + spread, width * rng.Range(0.62f, 0.8f), depth + 1);
-                    return;
+                    float side = rng.NextFloat() < 0.5f ? -1f : 1f;
+                    bool dies = rng.NextFloat() < 0.3f;
+                    Grow(a, c, angle + side * rng.Range(0.5f, 1.1f), width * rng.Range(0.42f, 0.68f), depth + 1, dies ? f.Radius * rng.Range(0.2f, 0.45f) : float.MaxValue);
+                    width *= rng.Range(0.76f, 0.92f);
+                    heading -= side * rng.Range(0.08f, 0.28f); // the main channel leans the other way
+                    next = walked + f.Radius * rng.Range(0.12f, 0.28f);
                 }
             }
         }
-        Grow(-f.Radius * 0.1f, 0f, 0f, Math.Clamp(f.Radius * 0.028f, 30f, 70f), 0);
-        return list.ToArray();
+        Grow(-f.Radius * 0.1f, 0f, 0f, Math.Clamp(f.Radius * 0.028f, 30f, 70f), 0, float.MaxValue);
+
+        float extent = reach + 2f * Step + 200f;
+        int size = (int)Math.Ceiling(2f * extent / ChannelCell);
+        var near = new System.Collections.Generic.List<int>[size * size];
+        for (int k = 0; k < list.Count; k++)
+        {
+            Channel c = list[k];
+            float margin = c.Width * 0.5f + ChannelReach;
+            int a0 = (int)((Math.Min(c.A0, c.A1) - margin + extent) / ChannelCell), a1 = (int)((Math.Max(c.A0, c.A1) + margin + extent) / ChannelCell);
+            int c0 = (int)((Math.Min(c.C0, c.C1) - margin + extent) / ChannelCell), c1 = (int)((Math.Max(c.C0, c.C1) + margin + extent) / ChannelCell);
+            for (int j = Math.Max(c0, 0); j <= Math.Min(c1, size - 1); j++)
+            for (int i = Math.Max(a0, 0); i <= Math.Min(a1, size - 1); i++)
+                (near[j * size + i] ??= new()).Add(k);
+        }
+        var cells = new int[size * size][];
+        for (int k = 0; k < cells.Length; k++) cells[k] = near[k]?.ToArray() ?? Array.Empty<int>();
+        return new ChannelMap(list.ToArray(), cells, size, extent);
     }
 
     ulong Salt(int layer) => Hash.Of(_seed, layer, (long)Spec.Archetype, Spec.Variant);
@@ -444,21 +474,33 @@ public sealed class TerrainModel
     }
 
     /// <summary>
-    /// A dune field: transverse dunes square to the prevailing wind, each with a long gentle
-    /// windward slope and a steep slip face on the lee side. The crests wander and link, and
-    /// the dunes swell and shrink across the field. Too fine to show at coarse spacings, where
-    /// they fade to their mean height.
+    /// A dune field: transverse dunes square to the prevailing wind, each a long gentle climb
+    /// (about 18 degrees at its steepest) to a sharp brink, then a slip face falling straight at the
+    /// sand's angle of rest (about 35 degrees) and easing out at its toe. The crests wander and link,
+    /// rising and dipping along their length, and the dunes swell and shrink across the field. Too
+    /// fine to show at coarse spacings, where they fade to their mean height.
     /// </summary>
     float Dunes(in P4 p, double x, double y, double spacing, float height)
     {
+        const float Brink = 0.7f, Mean = 0.39f;
         float field = 0.55f + 0.45f * Mathx.Smooth(-0.6f, 0.6f, _duneField.Fbm(p, spacing));
         float visible = Mathx.Smooth((float)(_duneWave * 0.5), (float)(_duneWave * 0.22), (float)spacing);
-        if (visible <= 0f) return height * field * 0.42f;
-        double phase = _duneA * x / Width + _duneB * y / Height + _dune.Fbm(p, spacing) * 0.75;
+        if (visible <= 0f) return height * field * Mean;
+        field *= 0.78f + 0.22f * Mathx.Smooth(-0.5f, 0.5f, _duneWander.Fbm(p.Swap, spacing));
+        double phase = _duneA * x / Width + _duneB * y / Height + _dune.Fbm(p, spacing) * 0.6 + _duneWander.Fbm(p, spacing) * 0.12;
         float t = (float)(phase - Math.Floor(phase));
-        // Windward 0..0.74 rises gently; the slip face drops over the rest.
-        float shape = t < 0.74f ? Mathx.Smooth(0f, 1f, t / 0.74f) : 1f - Mathx.Smooth(0f, 1f, (t - 0.74f) / 0.26f);
-        return height * field * Mathx.Lerp(0.42f, shape, visible);
+        float shape;
+        if (t < Brink)
+        {
+            float s = t / Brink;
+            shape = s * s * (1.6f - 0.6f * s);
+        }
+        else
+        {
+            float u = (t - Brink) / (1f - Brink);
+            shape = 1f - u * (1.4f - 0.4f * u * u);
+        }
+        return height * field * Mathx.Lerp(Mean, shape, visible);
     }
 
     /// <summary>Cinder cones with summit craters, on a wrapping grid, where the landform calls for them.</summary>
@@ -481,6 +523,16 @@ public sealed class TerrainModel
             result = Math.Max(result, cone);
         }
         return result;
+    }
+
+    /// <summary>Where the ring structures stand (grid features the landform has raised), for views and tests.</summary>
+    public System.Collections.Generic.IEnumerable<(double X, double Y, float Height)> RingStructures()
+    {
+        for (int k = 0; k < _ringGrid.Cells; k++)
+        {
+            if (_ringHeight[k] < 0.5f || !_ringGrid.Feature(k % _ringGrid.Nx, k / _ringGrid.Nx, out double fx, out double fy, out _)) continue;
+            yield return (Mathx.WrapX(fx, Width), Mathx.Wrap(fy, Height), _ringHeight[k]);
+        }
     }
 
     /// <summary>Ring structures: concentric ridges round a low dome, on a wrapping grid, where the landform calls for them.</summary>
@@ -522,18 +574,24 @@ public sealed class TerrainModel
             float r = (float)Math.Sqrt(r2);
             float along = (float)(dx * f.AxisX + dy * f.AxisY), across = (float)(-dx * f.AxisY + dy * f.AxisX);
             // Distributaries: the nearest piece of the channel tree, by distance to its bank.
+            ChannelMap map = _deltaChannels[d];
             float channel = 0f;
-            foreach (Channel c in _deltaChannels[d])
+            int ga = (int)((along + map.Extent) / ChannelCell), gc = (int)((across + map.Extent) / ChannelCell);
+            if (ga >= 0 && gc >= 0 && ga < map.Size && gc < map.Size && map.Near[gc * map.Size + ga].Length > 0)
             {
-                float va = c.A1 - c.A0, vc = c.C1 - c.C0;
-                float t = Math.Clamp(((along - c.A0) * va + (across - c.C0) * vc) / (va * va + vc * vc), 0f, 1f);
-                float pa = along - (c.A0 + va * t), pc = across - (c.C0 + vc * t);
-                float half = c.Width * 0.5f;
-                float dist2 = pa * pa + pc * pc;
-                if (dist2 > (half + 12f) * (half + 12f)) continue;
-                channel = Math.Max(channel, 1f - Mathx.Smooth(half - 3f, half + 10f, MathF.Sqrt(dist2)));
+                float wobble = _deltaNoise.Sample(dx / 46.0, dy / 46.0, f.Id * 3.17 + 2.3); // no bank is a ruled line
+                foreach (int k in map.Near[gc * map.Size + ga])
+                {
+                    Channel c = map.Channels[k];
+                    float va = c.A1 - c.A0, vc = c.C1 - c.C0;
+                    float t = Math.Clamp(((along - c.A0) * va + (across - c.C0) * vc) / (va * va + vc * vc), 0f, 1f);
+                    float pa = along - (c.A0 + va * t), pc = across - (c.C0 + vc * t);
+                    float half = c.Width * 0.5f;
+                    float dist = MathF.Sqrt(pa * pa + pc * pc) + wobble * (2f + half * 0.28f);
+                    if (dist < half + 12f) channel = Math.Max(channel, 1f - Mathx.Smooth(half - 3f, half + 10f, dist));
+                }
             }
-            float pools = Mathx.Smooth(0.3f, 0.42f, _deltaNoise.Sample(dx / 210.0, dy / 210.0, f.Id * 7.31 + 9.7));
+            float pools = Mathx.Smooth(0.3f, 0.42f, _deltaNoise.Sample(dx / 210.0, dy / 210.0, f.Id * 7.31 + 9.7) + 0.2f * _deltaNoise.Sample(dx / 63.0, dy / 63.0, f.Id * 5.13 + 4.1));
             float ground = 1.7f + 1.3f * Mathx.Smooth(f.Radius, 0f, r);
             float target = Mathx.Lerp(ground, -0.6f, pools * 0.8f);
             target = Mathx.Lerp(target, -2.4f, channel);
