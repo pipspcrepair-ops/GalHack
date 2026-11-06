@@ -1073,6 +1073,573 @@ Worlds where people left, or tried to. The evidence is paperwork, queues and hal
 
 ---
 
+## Apocalypses: how this world fell
+
+The apocalypse is its own layer. A theme says what the world is now (its identity, land, people and places). An apocalypse says how it fell: the nature of the collapse on this particular world. The setting is fixed: the collapse was fast and galaxy-wide and began a century or two ago; an apocalypse is how that played out locally, so every one below fits inside it, and none is ever explained as the one true cause.
+
+World stack, rolled in this order: **world type** (archetype and landforms) + **apocalypse** + **theme** + **features** (modifiers, landmarks, regions) + **occupancy** (per place). Tech level sits across all of them.
+
+Rules:
+
+- Every inhabited world rolls one primary apocalypse; about a third roll a second, smaller one that struck a region ("scar"), such as a blast crater on a plague world. Never-inhabited worlds roll none.
+- High-tech and well-recovered worlds roll apocalypses too. They show it as spotted evidence (a sealed district, a scorched wing, a plaque, a roped-off crater) not as ruin everywhere. This is the "recovered" column in every entry, and it is also the hook to reclaim: a recovered world has places waiting to be reopened.
+- Each entry gives: how long ago and how fast, what it leaves (land, buildings, interiors as placeable things), which POIs and hazards it favours, what it means for survivors and creatures, and what remains on a recovered high-tech world.
+- Time scale: "years ago" is real years since the fall, always 100 to 200; "speed" is how fast the fall itself was: instant (hours), quick (days), season (months), slow (decades).
+
+### War and weapons
+
+**Z1. Nuclear exchange** (`nuclear_war`) - The sky lit twice, and cities stopped.
+- What and when: Mass strikes on cities and ports; instant, then months of fallout. Ground zeros dot the world.
+- Leaves: glassy craters ringed by flattened rubble, dead grey forests, ash skies; shadows burnt onto surviving walls, cracked shelters, sealed doors with tally marks.
+- Favours: blast_crater, deep_bunker, command_bunker, missile_silo, nuclear_plant, fallout_shelter. Hazards: radiation zones (warned), dust storms.
+- Survivors and life: shelter descendants, gangs, mutated wildlife at the edges.
+- Recovered world: a single memorial crater, a plaque and a roped-off ring, a bunker kept open as a museum.
+
+**Z2. Orbital bombardment** (`orbital_bombardment`) - Fire from above, in lines.
+- What and when: Ships in orbit struck infrastructure in a pattern; quick, over a week.
+- Leaves: dotted crater lines along old orbit tracks, melted pylons, fused rail, wreck debris on the ground.
+- Favours: crashed_freighter, abandoned_spaceport, blast_crater, debris_camp. Hazards: unstable wreck, falling remnants.
+- Survivors and life: debris diggers, Reaver crews, Vharn remnant patrols in orbit.
+- Recovered world: planetary-defence sites rebuilt, one line of craters kept as a heritage trail.
+
+**Z3. Invasion and occupation** (`invasion`) - Someone arrived, and stayed.
+- What and when: A foreign force seized the world; quick, then a decade of occupation that ended or still holds.
+- Leaves: shot-up gates, burnt barracks, landing zones, fortified hills, collaborators' houses marked; interiors with ransacked offices and orders left in a foreign script.
+- Favours: military_base, vharn_outpost, vharn_sam_site, prison_block, scrap_fort. Hazards: patrol zones, mines.
+- Survivors and life: resistance cells, occupiers' leftovers, hostage settlements.
+- Recovered world: a liberated quarter kept as a war memorial, occupiers' relics in a museum.
+
+**Z4. Civil war** (`civil_war`) - Neighbours became the front line.
+- What and when: Two governments split the world; season-long, then ten years of stalemate.
+- Leaves: barricades across streets, burnt district lines, two sets of flags on the same ruins, field hospitals, shattered bridges at the front.
+- Favours: military_base, command_bunker, hospital, evacuation_camp, trench_line. Hazards: mines, snipers' nests.
+- Survivors and life: militias, orphan camps, deserters.
+- Recovered world: a green line of memorial gardens across the capital.
+
+**Z5. Machine uprising** (`machine_uprising`) - The servants stopped asking.
+- What and when: Labour and war machines turned on their makers; quick, then a slow cold war of independence.
+- Leaves: locked-down factories, dead human quarters with doors welded shut from outside, spotless machine zones beside rot; stacked tool racks.
+- Favours: kessari_works, kessari_spire, abandoned_factory, sentry_line. Hazards: turrets, hunter machines.
+- Survivors and life: Kessari clans, human holdouts, scavenging drones.
+- Recovered world: a negotiated machine district, a joint charter in the hall.
+
+**Z6. Chemical war** (`chemical_war`) - Air that stays dangerous.
+- What and when: Nerve and blister agents used on cities; quick, with a lingering decade.
+- Leaves: yellow-stained streets, gas masks in rows, sealed shelters with stuffed door gaps, discoloured vegetation in patches.
+- Favours: mask_depot, deep_bunker, refinery, hospital. Hazards: gas pockets (warned), corroded gear.
+- Survivors and life: masked caravans, hermits, mutated insects.
+- Recovered world: decontamination rings, warning signs on a closed quarter.
+
+**Z7. Kinetic strikes** (`kinetic_strikes`) - Rocks dropped from space.
+- What and when: Heavy slugs from orbit; instant, scattered across the world.
+- Leaves: deep round pits, shock-scoured plains, tilted towers, ejecta fans of rock, throats of fused glass.
+- Favours: blast_crater, old_mine, precursor_vault. Hazards: unstable crater walls, aftershocks.
+- Survivors and life: crater-wall hamlets, miners, ash-nesting fliers.
+- Recovered world: crater lakes turned into parks, a survey station on a rim.
+
+**Z8. Siege and blockade** (`blockade`) - Starved from outside.
+- What and when: A fleet cut all supply; season-long, ending in surrender or ruin.
+- Leaves: ration posts, boarded shops, trenches round the port, empty cargo yards, wall chalk with hunger tallies.
+- Favours: ration_depot, abandoned_spaceport, scrappy_port, command_bunker. Hazards: desperate gangs, mines on the approach.
+- Survivors and life: smugglers, gutted fleet crews, black-market towns.
+- Recovered world: a dock museum, a plaque for the "hungry winter".
+
+**Z9. Drone wars** (`drone_wars`) - Machines fought instead of men.
+- What and when: Fleets of autonomous weapons fought themselves out; quick, with decades of dormant hunters.
+- Leaves: wrecked drones in drifts, scorched pylons, hangars of spare airframes, craters from collisions.
+- Favours: drone_factory, sentry_line, military_base, motor_pool. Hazards: sleeping hunters that wake on approach.
+- Survivors and life: salvage crews, Kessari clans, wary herds.
+- Recovered world: a drone graveyard under glass, cleared airfields.
+
+**Z10. Mercenary seizure** (`mercenary_seizure`) - Hired guns took the city.
+- What and when: Security contractors turned on their employers; quick, with a long rule of fear.
+- Leaves: private compounds, gilded forts with bullet-scarred gates, stolen goods rooms, trophy walls, bought police stations.
+- Favours: scrap_fort, military_base, casino_resort, exchange_depot. Hazards: toll gates, ambush roads.
+- Survivors and life: bandit lords, subjects, rival companies.
+- Recovered world: a pardoned company's headquarters, a plaque for the "dark spring".
+
+### Disease
+
+**Z11. Plague** (`plague`) - A sickness that spread by breath and by trade.
+- What and when: Quick global outbreak, a year of collapse; decades of grim recovery.
+- Leaves: sealed houses with painted marks, burial pits outside every town, empty wards, rows of cots in halls, paper notices on doors.
+- Favours: hospital, evacuation_camp, burial_pits, biolab. Hazards: infection corridors in sealed zones (never ailments; warned airborne contamination).
+- Survivors and life: immune bloodlines, isolated hamlets, scavenging dogs.
+- Recovered world: a vaccine memorial, an old isolation hospital kept as a clinic.
+
+**Z12. Biohazard release** (`biohazard`) - A lab agent loose.
+- What and when: An engineered agent escaped; quick, with a spreading zone.
+- Leaves: overgrown labs, tape-sealed corridors, specimen jars, quarantine rooms with scorch marks, staff logs ending the same night.
+- Favours: biolab, research_base, cryo_vault, hospital. Hazards: spore zones, mutagen (warned).
+- Survivors and life: hermit researchers, mutated fauna.
+- Recovered world: a locked lab district, a "stable" strain archive.
+
+**Z13. Sleep sickness** (`sleep_sickness`) - People lay down and did not rise.
+- What and when: A condition that put whole towns to sleep; season-long.
+- Leaves: beds and floors full of sleepers, carers' notes, neat streets, power still on in some rooms.
+- Favours: hospital, hospice_ward, cryo_vault. Hazards: sleeper-wake events, quiet traps.
+- Survivors and life: carers, a few wakers, wary herds.
+- Recovered world: a care ward still tended by robots.
+
+**Z14. Frenzy contagion** (`frenzy`) - Minds turned to rage.
+- What and when: Quick, a few weeks to ruin a world; the frenzied died off or wander still.
+- Leaves: broken barricades, bloodied shelters, locked-in rooms, gouged doors, mass graves.
+- Favours: hospital, prison_block, evacuation_camp. Hazards: frenzy packs (hostile), ambush corridors.
+- Survivors and life: shelter groups, hunters, raiders.
+- Recovered world: shuttered wards, a weapons shelf in every school.
+
+**Z15. The slow dead** (`turned`) - The dead rise at night.
+- What and when: Hollow-touched bodies walk after dusk; quick onset, still present.
+- Leaves: churchyard walls, barricaded vestries, tally marks on doors, graveyards with dug-out graves.
+- Favours: cemetery_vault, church_chapel, hospital. Hazards: night swarms, rising crowds.
+- Survivors and life: day-folk who sleep in daylight, hunters, relic traders.
+- Recovered world: churchyards with new locks, a lamp-lit watch.
+
+**Z16. Fungal takeover** (`fungal_takeover`) - The mould that ate the cities.
+- What and when: Spores spread through buildings; season-long, then slow.
+- Leaves: mat-covered streets, fruiting bodies in halls, glowing rot in basements, fused furniture.
+- Favours: fruiting_hall, sewage_works, hospital, old_mine. Hazards: spore bursts, soft floors.
+- Survivors and life: forager hermits, fungal grazers, blind crawlers.
+- Recovered world: sealed fungal quarters, culture farms for medicine.
+
+**Z17. Sterility** (`sterility`) - No more births.
+- What and when: Slow; two generations.
+- Leaves: empty nurseries, shuttered schools, ageing towns, painted-over playgrounds, cribs under tarps.
+- Favours: school_campus, hospice_ward, survivor_town. Hazards: none; desolation.
+- Survivors and life: the old, a few children treasured, thinned herds.
+- Recovered world: a clinic for restarting births, a children's memorial.
+
+**Z18. Parasite swarm** (`parasite_swarm`) - Things in the blood.
+- What and when: A swarm species colonised cities; season-long.
+- Leaves: webbed lifts, egg cases in vents, hollowed furniture, bone-white corridors.
+- Favours: sewage_works, hospital, apartments. Hazards: ambush swarms, nest rooms.
+- Survivors and life: exterminators, hermits, nest-wardens.
+- Recovered world: sealed districts, pest-control stations.
+
+### Environmental
+
+**Z19. Famine** (`famine`) - The harvests failed and kept failing.
+- What and when: Season-long, becoming decades.
+- Leaves: empty silos, ration depots, fields of weed, ledgers of the dead, soup kitchens.
+- Favours: grain_elevator, ration_depot, old_farm, evacuation_camp. Hazards: starving gangs.
+- Survivors and life: seed-keepers, scavengers, smugglers.
+- Recovered world: seed vault memorials, a restored granary.
+
+**Z20. Drought** (`drought`) - The rivers ran thin and stopped.
+- What and when: Slow, a decade or two.
+- Leaves: dry reservoirs, cracked lakebeds, stranded boats, empty canals, a fort around every well.
+- Favours: water_works, water_tower_keep, drowned_cistern, caravan_stop. Hazards: dust storms, thirst.
+- Survivors and life: water lords, caravaners, burrowers.
+- Recovered world: desalination plants, water-ration plaques.
+
+**Z21. Rising seas** (`rising_seas`) - The coast came inland.
+- What and when: Slow, with surges.
+- Leaves: waterlines on walls, flooded streets, stranded bridges, upper floors lived in, boats tied to balconies.
+- Favours: docks, sewage_works, barge_town, hospital. Hazards: storm surges.
+- Survivors and life: fisher-folk, eels, gulls.
+- Recovered world: sea walls and flood gates, pumped districts.
+
+**Z22. Long winter** (`long_winter`) - The sun failed to warm.
+- What and when: Season-long, lasting decades.
+- Leaves: snow-buried cars, frozen rivers, boarded windows, stove rooms with wood stacks, diaries of cold days.
+- Favours: ice_outpost, coal_plant, old_mine, ski_lodge. Hazards: cold, blizzards.
+- Survivors and life: fur-clad hamlets, ice beasts, coal traders.
+- Recovered world: heated districts, snow tunnels between buildings.
+
+**Z23. Runaway heat** (`runaway_heat`) - The air baked.
+- What and when: Slow; a few decades.
+- Leaves: melted tarmac, cooked orchards, cooling towers dead, shaded streets, survivors' cellars.
+- Favours: water_works, deep_bunker, solar_farm. Hazards: heat, fire storms.
+- Survivors and life: night-livers, cellar towns, heat-hardy fauna.
+- Recovered world: shaded arcades, cooled districts.
+
+**Z24. Ash year** (`ash_year`) - A great eruption closed the sky.
+- What and when: Instant eruption, a decade of dark.
+- Leaves: ash drifts on roofs, collapsed roofs, grey rivers, dead forests, buried streets.
+- Favours: coal_plant, old_mine, deep_bunker. Hazards: ash fall, mud flows.
+- Survivors and life: ash-diggers, cave dwellers.
+- Recovered world: a cleared and restored district; a volcano observatory.
+
+**Z25. Great quake** (`great_quake`) - The ground itself moved.
+- What and when: Instant, with aftershocks for years.
+- Leaves: tilted towers, split roads, collapsed bridges, offset rails, rifts through towns.
+- Favours: highway_interchange, rail_yard, hospital. Hazards: unstable ground, sinkholes.
+- Survivors and life: rescue groups, scavengers.
+- Recovered world: seismic monitoring stations, a memorial rift.
+
+**Z26. Air loss** (`air_loss`) - The atmosphere thinned.
+- What and when: Slow; a century.
+- Leaves: sealed districts, oxygen stations, breathing masks everywhere, domed greenhouses.
+- Favours: habitat_dome, greenhouse_dome, research_lab. Hazards: thin air.
+- Survivors and life: dome dwellers, sparse life.
+- Recovered world: recovered domes, air plants running.
+
+**Z27. Poisoned air** (`poison_air`) - Toxic haze from a thousand chimneys.
+- What and when: Slow, becoming worse after the fall.
+- Leaves: stained walls, dead trees, masks and filters in stacks.
+- Favours: refinery, steelworks, abandoned_factory. Hazards: toxic zones.
+- Survivors and life: filter-folk, mutated lichens.
+- Recovered world: scrubber towers, clean-air districts.
+
+**Z28. Stellar flare** (`stellar_flare`) - The star burst.
+- What and when: Instant; years of damaged skies.
+- Leaves: scorched sunward faces, melted antennas, cracked solar panels, shadow-side towns.
+- Favours: solar_farm, telecom_exchange, observatory. Hazards: radiation storms.
+- Survivors and life: shadow-side hamlets, flare-tolerant life.
+- Recovered world: shielded cities, flare shelters.
+
+**Z29. Meteor swarm** (`meteor_swarm`) - A dust cloud, years of strikes.
+- What and when: Quick, repeated.
+- Leaves: scattered small craters, pitted roofs, holed domes, splintered forests.
+- Favours: blast_crater, observatory, habitat_dome. Hazards: strikes.
+- Survivors and life: crater farmers, storm watchers.
+- Recovered world: defence batteries, a sky-watch tower.
+
+**Z30. Industrial collapse** (`industrial_collapse`) - Factories ate the land.
+- What and when: Slow; poison from a century of mills.
+- Leaves: slag fields, black rivers, dead orchards, mill ruins.
+- Favours: steelworks, refinery, coal_plant. Hazards: toxic runoff.
+- Survivors and life: scrap-pickers, hardy weeds.
+- Recovered world: a green belt around old mills.
+
+**Z31. Pollination failure** (`pollinator_loss`) - The bees stopped.
+- What and when: Slow; two decades.
+- Leaves: bare orchards, hives empty, hand-pollination ladders.
+- Favours: orchard, old_farm, greenhouse_dome. Hazards: none; hunger.
+- Survivors and life: hand-pollinators, new swarms.
+- Recovered world: apiary domes.
+
+### Technological
+
+**Z32. Grey goo** (`grey_goo`) - Small machines ate the world.
+- What and when: Self-copying builders escaped a lab; the outbreak was instant, the spread slow over years, and it stopped at the edge of the metal it could use. About 150 years ago.
+- Leaves: smooth grey ground with a sharp boundary line, buildings dissolved to clean-cut stumps, glassy dust drifts, steel frames eaten to lace, roads that end at the grey and resume beyond it.
+- Favours: research_lab, kessari_works, data_centre, abandoned_factory. Hazards: an advancing or frozen grey front (warned), eaten ground that will not bear weight.
+- Survivors and life: border towns that watch the line, salvagers who work its edge, metal-eating crawlers that look like beetles.
+- Recovered world: a contained plot under glass, a sealed lab, warning bollards on every road into one district.
+
+**Z33. Reactor failures** (`reactor_failures`) - Every plant failed at once.
+- What and when: A control fault tripped every nuclear and fusion plant within one night; instant, with a month of fallout and evacuation.
+- Leaves: breached containment halls, cooling towers stained and leaning, evacuation roads packed one way, warm rubble yards, abandoned control rooms with alarms still lit.
+- Favours: nuclear_plant, fusion_plant, substation, evacuation_camp. Hazards: radiation hot-spots (warned), steam vents.
+- Survivors and life: plant-town hermits, crews cutting copper from hot lines, mutated wildlife near the towers.
+- Recovered world: entombed plants under concrete caps, one reactor hall kept as a museum with a cleaned control room.
+
+**Z34. Grid cascade** (`grid_cascade`) - The lights went out together.
+- What and when: A cascading failure took down every grid in an hour; instant, with years of dark afterwards.
+- Leaves: dead lifts with doors forced, trains stopped between stations, dark hospitals with hand-written charts, candle stubs on every desk, forced doors in shops, pylon lines sagging.
+- Favours: substation, coal_plant, nuclear_plant, rail_yard, hospital. Hazards: arc flash at live switchgear, pitch-dark interiors.
+- Survivors and life: candle towns, scavengers stripping cable, nesters in transformer halls.
+- Recovered world: backup generators in every public building, a stopped clock on a station wall kept as a plaque.
+
+**Z35. The great silence** (`ai_silence`) - Every mind-machine stopped answering.
+- What and when: The systems that ran logistics, traffic and records froze together; instant, with a year of chaos.
+- Leaves: cars stopped at crossings, auto-doors locked, dead terminals with the same error, drones hanging in mid-air on tethers, half-done work orders on every screen.
+- Favours: data_centre, ministry_hall, abandoned_factory, telecom_exchange. Hazards: locked systems, stranded elevators.
+- Survivors and life: manual crews, wary Kessari clans, tinkerers who talk to the old terminals.
+- Recovered world: retired assistants in the lobby that answer one question, memorial terminals showing the last message.
+
+**Z36. Terraform failure** (`terraform_failure`) - The world-fixer broke.
+- What and when: Climate engines stalled halfway through remaking the world; quick over a year, with half-made results.
+- Leaves: stunted forests beside bare plains, seas the wrong colour, rows of dead climate towers, patches of rich soil among sterile ground, survey stakes in a line to the horizon.
+- Favours: weather_engine, research_lab, solar_farm, observatory. Hazards: unstable weather, odd chemistry.
+- Survivors and life: planters who finish the job by hand, odd half-adapted fauna.
+- Recovered world: half-restored towers, a visitor centre at the largest.
+
+**Z37. Weather engine failure** (`weather_failure`) - The sky is stuck.
+- What and when: The planetary weather control broke; instant, and it never reset.
+- Leaves: scoured plains, ruined lightning rods in fields, sandblasted towers, shelter halls dug into hills, half-buried roads on the windward side.
+- Favours: weather_engine, telecom_exchange, wind_farm. Hazards: perpetual storm, or its opposite, a dead calm.
+- Survivors and life: shelter dwellers, storm-adapted fliers.
+- Recovered world: repaired rods, a weather chart on every wall.
+
+**Z38. Transit accident** (`teleport_accident`) - Gates sent people nowhere.
+- What and when: A gate network misfired during rush hour; instant, with aftershocks of failed jumps for years.
+- Leaves: arches in squares, scorch rings, lost luggage lined in rows, empty waiting halls with boards frozen on one destination, queue rails with abandoned bags.
+- Favours: gate_ruin, abandoned_spaceport, research_lab. Hazards: unstable gate fields, misplaced items that reappear.
+- Survivors and life: gate tenders, scavengers who return things.
+- Recovered world: a closed gate hall, an inquiry plaque, a lost-property office.
+
+**Z39. Drive disaster** (`drive_disaster`) - A ship's drive broke a port.
+- What and when: A starship's drive failed on its pad; instant, the port was gone in a flash.
+- Leaves: a bowl-shaped crater where the port stood, melted ships on pads, shock lines in the concrete, a town beside it flattened on one side only.
+- Favours: abandoned_spaceport, crashed_freighter, blast_crater. Hazards: radiation, unstable wreck rings.
+- Survivors and life: wreck-pickers, a rebuilt smaller port next to the crater.
+- Recovered world: a smaller new port, a memorial in the old crater.
+
+**Z40. Duplicates** (`cloning_mishap`) - Too many of everyone.
+- What and when: A cloning failure made copies of the living; quick, with years of hostility.
+- Leaves: clone vats in rows, name tags that repeat, double graves, overfull dormitories, doors with two sets of handprints.
+- Favours: clone_farm, hospital, cryo_vault, apartments. Hazards: hostile duplicates, vat rooms.
+- Survivors and life: originals, copies, ex-vat children.
+- Recovered world: a registry of the doubled, a monument to both.
+
+**Z41. Memory rot** (`memory_rot`) - The records decayed.
+- What and when: Data storage failed silently over decades; slow, with the loss noticed late.
+- Leaves: blank archives, corrupted street signs, missing names on memorials, records offices with shelves of cracked tape.
+- Favours: data_centre, public_library, archive_vault, ministry_hall. Hazards: lost routes, lost maps.
+- Survivors and life: scholars, oral historians who remember what the machines forgot.
+- Recovered world: a rebuilt archive, a wall of names rewritten by hand.
+
+**Z42. Debris cascade** (`debris_cascade`) - The orbit filled with wreckage.
+- What and when: A collision chain filled low orbit; quick, with years of fall.
+- Leaves: long wreck streaks across the ground, scorched landings, holed domes, fallen satellites in fields, trails of small craters.
+- Favours: crashed_freighter, debris_camp, observatory, abandoned_spaceport. Hazards: falling debris.
+- Survivors and life: debris diggers, Reaver crews, sky-watchers.
+- Recovered world: sweeper depots, a debris museum.
+
+**Z43. Engineered harvest failure** (`monoculture_failure`) - One crop, one blight.
+- What and when: A single engineered crop covered the world and a single disease killed it; quick, within a year.
+- Leaves: vast fields of one dead plant, giant silos, ruined mills, seed packets with the same label, rows of sprayers rusted in place.
+- Favours: grain_elevator, old_farm, ration_depot. Hazards: hunger.
+- Survivors and life: gardeners with varied plots, scavenging herds.
+- Recovered world: mixed crops, a seed bank at every town.
+
+### Social
+
+**Z44. Mass exodus** (`exodus`) - Everyone left.
+- What and when: A season of departure; as many people as could tried to leave through one port.
+- Leaves: jammed highways with vehicles nose to tail for kilometres, evacuation camps, improvised launch fields, abandoned luggage piles, makeshift pads and half-loaded ships.
+- Favours: abandoned_spaceport, scrappy_port, evacuation_camp, processing_hall, luggage_field. Hazards: unstable wrecks.
+- Survivors and life: the ones who stayed, scavengers, a few hermits living in the queue.
+- Recovered world: a rebuilt main port with a memorial wall of names, one preserved stretch of the jam.
+
+**Z45. Lockdown** (`lockdown`) - Walls went up.
+- What and when: A government sealed districts in a day; quick, with years of enforced separation.
+- Leaves: walls, gates, checkpoint lines, empty sealed districts with the last-day newspapers still on stands, queue barriers, signs with colour codes.
+- Favours: quarantine_wall, sorting_gate, front_checkpoint, prison_block. Hazards: sentries, locked zones.
+- Survivors and life: walled cells that developed apart, smugglers over the wall.
+- Recovered world: open gates, a stretch of wall kept as a museum.
+
+**Z46. Economic collapse** (`economic_collapse`) - Money meant nothing.
+- What and when: Quick; markets and banks failed in a week.
+- Leaves: looted shops, shuttered banks with drifts of worthless notes, stalls bartering in car parks, vault doors forced, ledger piles in the street.
+- Favours: exchange_market, casino_resort, shopping_mall, exchange_depot. Hazards: gangs, protection rackets.
+- Survivors and life: barter towns, protection gangs.
+- Recovered world: restored banks, a museum of notes.
+
+**Z47. Faith takeover** (`faith_takeover`) - Prophets filled the gap.
+- What and when: Season-long; religions grew to run towns.
+- Leaves: converted halls with shrines in offices, banners on towers, painted symbols on walls, processions' routes, bell towers rung at set hours.
+- Favours: church_chapel, monastery, hollow_shrine, alien_cathedral. Hazards: zealots, ritual traps.
+- Survivors and life: devout towns, outcasts.
+- Recovered world: ordinary shrines, a pilgrim road.
+
+**Z48. Decree of abandonment** (`decreed_exodus`) - A government ordered all to leave.
+- What and when: Quick; a formal evacuation order for the whole world.
+- Leaves: orderly evacuated towns, tidy shut-up houses with signed notices on doors, stripped shelves, bus queues in lines, stamped travel passes.
+- Favours: evacuation_camp, ministry_hall, abandoned_spaceport. Hazards: automated guards who still enforce the order.
+- Survivors and life: refusers who hid, enforcement machines.
+- Recovered world: resettled districts with a plaque of the order.
+
+**Z49. General stoppage** (`general_stoppage`) - Everyone put tools down.
+- What and when: A planet-wide strike that nobody ended; quick, and the quiet lasted.
+- Leaves: half-done work, unlit furnaces, tool lockers still locked, strike banners, picket lines of chairs, unfinished buildings.
+- Favours: steelworks, rail_yard, abandoned_factory, company_town. Hazards: none.
+- Survivors and life: union halls, makers.
+- Recovered world: restart ceremonies, a banner in every foyer.
+
+**Z50. Walled enclaves** (`enclave_wars`) - Gated estates fought.
+- What and when: Season-long; wealthy estates sealed themselves and fought neighbours.
+- Leaves: fortified compounds, burnt gates, no-man's streets, private water towers, trophy walls, stripped lawns.
+- Favours: wall_city, scrap_fort, meridian_apartments, estate_house. Hazards: crossfire, snipers.
+- Survivors and life: house guards, servants' hamlets.
+- Recovered world: walls kept as parks.
+
+**Z51. Workers' mutiny** (`mutiny`) - The labour class rose.
+- What and when: Quick; company towns seized by their workers.
+- Leaves: seized offices, burnt managers' towers, red banners, wrecked company stores, mass meeting halls.
+- Favours: company_town, ministry_hall, abandoned_factory, old_mine. Hazards: gangs, barricades.
+- Survivors and life: co-ops, ex-guards.
+- Recovered world: memorial towers, cooperative halls.
+
+**Z52. Great migration** (`great_migration`) - A whole people walked.
+- What and when: Season-long; a people left on foot and cart.
+- Leaves: long road camps, empty villages with doors open, carts abandoned at fords, hand-painted route signs.
+- Favours: evacuation_camp, caravan_stop, pilgrim_hostel. Hazards: weather, lost trails.
+- Survivors and life: late stayers, camp followers.
+- Recovered world: waystations, a monument at the road's end.
+
+### Cosmic
+
+**Z53. Dark patch** (`dark_patch`) - The light dimmed.
+- What and when: A dust lane drifted across the star; slow, over decades, and it persists.
+- Leaves: lamp-lit towns, dim fields, glowing mosses grown on walls, huge lamp arrays, cold-weather crops under lights.
+- Favours: observatory, solar_farm, greenhouse_dome. Hazards: dark, cold.
+- Survivors and life: lamp folk, night-adapted fauna.
+- Recovered world: bright halls, a sun-lamp district.
+
+**Z54. Gravity shift** (`gravity_shift`) - The pull changed.
+- What and when: A local change in gravity; instant, and it stayed wrong in patches.
+- Leaves: toppled towers on one side, stretched bridges, floating debris pockets, trees at odd angles.
+- Favours: research_lab, wreck sites, space_elevator_base. Hazards: gravity anomalies.
+- Survivors and life: low-weight fauna, marker-post crews.
+- Recovered world: marker posts, a surveyed safe corridor.
+
+**Z55. Rogue body pass** (`rogue_body`) - A wandering world passed close.
+- What and when: A dark planet swept by; quick, with a tidal year.
+- Leaves: tidal ruin, flooded coasts, broken cliffs, stranded ships inland, drowned harbours.
+- Favours: docks, observatory, lighthouse. Hazards: tides.
+- Survivors and life: coast refugees, tide-watchers.
+- Recovered world: tide gauges, flood gates.
+
+**Z56. Time stutter** (`time_stutter`) - Hours repeat.
+- What and when: Time stuttered locally; quick, lasting in patches.
+- Leaves: duplicate scenes, loops of identical rooms, clocks that disagree, the same meal on two tables.
+- Favours: time_pocket, wrong_house, observatory. Hazards: loops, lost minutes.
+- Survivors and life: loopers, chroniclers.
+- Recovered world: a locked loop chamber.
+
+**Z57. Dimensional tear** (`dimensional_tear`) - A seam in the sky.
+- What and when: A seam opened overhead; instant, and it stays.
+- Leaves: a scar in the air, bent light, impossible objects on the ground, a quiet zone around it.
+- Favours: bloom_scar, alien_cathedral, observatory. Hazards: tear zones.
+- Survivors and life: seam watchers, strange fliers.
+- Recovered world: a sealed zone with a viewing platform.
+
+**Z58. Wormhole tides** (`wormhole_tides`) - Holes opened and closed.
+- What and when: Quick; passages opened at random over a year.
+- Leaves: scattered stranded vehicles from elsewhere, odd cargo, items from other worlds, wrecks in impossible places.
+- Favours: crashed_freighter, gate_ruin, abandoned_spaceport. Hazards: pulse zones.
+- Survivors and life: finders, collectors.
+- Recovered world: an orderly gate and a customs shed.
+
+### Slow decline
+
+**Z59. Slow fade** (`slow_fade`) - Nothing ended; everything thinned.
+- What and when: Many decades; the fall was a shrinking.
+- Leaves: quiet shops, patched roads, shuttered upper floors, towns with a single open street, faded signs.
+- Favours: survivor_town, hospital, school_campus. Hazards: none.
+- Survivors and life: old towns, a few children.
+- Recovered world: half-lit districts, a patched main street.
+
+**Z60. Emigration drain** (`emigration`) - The young left.
+- What and when: Slow; two generations.
+- Leaves: empty schools, ageing streets, bus stops with no buses, for-sale signs in every window.
+- Favours: school_campus, hospice_ward, survivor_town. Hazards: none.
+- Survivors and life: elders, returnees.
+- Recovered world: apprentices returning, a reopened school.
+
+**Z61. Neglect** (`neglect`) - No one maintained it.
+- What and when: Slow; decades of deferred repair.
+- Leaves: sagging roofs, rust, failed pumps, cracked dams, collapsed bridge decks, propped-up stairs.
+- Favours: water_works, rail_yard, dam_hydro. Hazards: collapses.
+- Survivors and life: caretakers, scavengers.
+- Recovered world: repaired systems, a maintenance register.
+
+**Z62. Supply cutoff** (`supply_cutoff`) - The ships stopped coming.
+- What and when: Quick; deliveries ended and never resumed.
+- Leaves: empty depots, last-tin shelves, ration cards, hand-rationed clinics, abandoned unloading cranes.
+- Favours: exchange_depot, scrappy_port, ration_depot. Hazards: scarcity.
+- Survivors and life: self-reliant colonies.
+- Recovered world: restored trade, a plaque for the lean years.
+
+**Z63. Ageing colony** (`ageing_colony`) - Machines wore out first.
+- What and when: Slow; a colony outlived its parts.
+- Leaves: patched machines, rebuilt parts, hand-forged replacements, mismatched pipes.
+- Favours: kessari_works, old_farm, habitat_dome. Hazards: failing life support.
+- Survivors and life: tinkerers.
+- Recovered world: new parts and a spare-parts hall.
+
+### Mysterious
+
+**Z64. Vanishing** (`vanishing`) - Everyone gone, nothing broken.
+- What and when: Instant; the whole population vanished with no violence.
+- Leaves: tables set, doors open, lights on, kettles cold, clothes on lines, no bodies.
+- Favours: survivor_hamlet, meridian_apartments, hospital. Hazards: unease.
+- Survivors and life: none.
+- Recovered world: a preserved street kept as a set-piece.
+
+**Z65. Walked out** (`walked_out_apoc`) - Everyone left at once, calmly.
+- What and when: Quick; a whole population left in good order.
+- Leaves: orderly rooms, packed bags left behind, notes on doors, locked shops, keys left in a box.
+- Favours: military_base, apartments, survivor_town. Hazards: none.
+- Survivors and life: a few returnees.
+- Recovered world: a shut-up quarter kept as a record.
+
+**Z66. Silence** (`silence`) - Sound failed.
+- What and when: Instant; all sound failed in a region.
+- Leaves: dead speakers, written notes everywhere, signs in chalk, soft-soled boots, bells with clappers removed.
+- Favours: radio_mast_site, telecom_exchange, hospital. Hazards: ambush by quiet.
+- Survivors and life: sign-speakers.
+- Recovered world: sign boards and a hand-sign school.
+
+**Z67. Bloom front** (`bloom_front`) - The Hollow Bloom arrived.
+- What and when: Season-long; still moving across the world.
+- Leaves: violet growth, stained walls, shrines, evacuations half done, a line of colour on the sky.
+- Favours: bloom_scar, alien_hive_ruin, hollow_shrine, military_base. Hazards: mutagen zones.
+- Survivors and life: pilgrims, refugees, military cordons.
+- Recovered world: a bloom-marked exhibit behind a seal.
+
+**Z68. Folding** (`folding`) - A place folded onto itself.
+- What and when: Instant; a district folded.
+- Leaves: loops, doubled streets, repeated rooms, mirrored staircases, a street that ends where it starts.
+- Favours: wrong_house, mirror_hall, time_pocket. Hazards: disorientation.
+- Survivors and life: none.
+- Recovered world: a cordoned district.
+
+**Z69. Replacement** (`replacement`) - The people were swapped for copies.
+- What and when: Quick; copies took the place of the originals.
+- Leaves: perfect houses, nobody's own, one object slightly wrong in every room, meals with no crumbs.
+- Favours: wrong_house, hospital, apartments. Hazards: mimics.
+- Survivors and life: mimics.
+- Recovered world: sealed.
+
+**Z70. Long sleep** (`long_sleep`) - Everyone entered cryo, and the vaults failed.
+- What and when: Quick to enter; vault failure was slow, over a century.
+- Leaves: rows of pods, mass sleeper halls, fogged glass, wall plaques of registration numbers, hushed lifts.
+- Favours: cryo_vault, sleeper_barracks, hospice_ward. Hazards: wake events.
+- Survivors and life: wakers, keepers.
+- Recovered world: a working vault museum.
+
+---
+
+## Moving apocalypses out of the themes
+
+These entries from the theme list describe how a world fell, not what it is now. They stop being separate themes: the generator rolls the apocalypse in the Z list instead and a plain theme provides identity (the theme's layout hints stay as optional "dressing tags" of that apocalypse).
+
+| Old theme | Becomes apocalypse | Identity theme that remains |
+| --- | --- | --- |
+| 1 Long Queue, 2 Lifeboat | Z44 Mass exodus | (any port-rich theme; 1 stays as the "jam" dressing) |
+| 11 Quarantine | Z45 Lockdown / Z11 Plague | Blank (terrain only) |
+| 12 Fever Jungle | Z12 Biohazard release | Teeth in the Trees (41) as identity |
+| 13 Sleepwalkers | Z13 Sleep sickness | Hush Suburbs (5) |
+| 14 Pollen Wars | Z31 Pollination failure / Z43 | Terraced Valleys (65) |
+| 15 Blightland, 40 Hunger Roads | Z19 Famine | Amber Steppe (70) |
+| 17 Coughing Hills | Z27 Poisoned air | Foundry Belt (73) |
+| 19 Flesh Gardens | Z12 Biohazard release | Zoo World (86) |
+| 21 Glass Plains, 103 Waste World | Z1 Nuclear exchange | Road Warrens (31) |
+| 22 Rust Armies, 25 Trench Moon | Z4 Civil war / Z5 | Wall Cities (23) |
+| 24 Missile Fields, 30 Big Gun | Z1 Nuclear exchange | (feature modifiers) |
+| 27 Siege Orbitals | Z2 Orbital bombardment | Salt and Bone (33) |
+| 35 Ember World | Z24 Ash year | Geothermal Deep (82) |
+| 38 Floodlines | Z21 Rising seas | Kelp Sea (50) |
+| 34 Long Winter | Z22 Long winter | Aurora Shelf (67) |
+| 59 Eye of the Bloom | Z67 Bloom front | Blank |
+| 75 Power Down | Z34 Grid cascade | Maglev Spine (80) |
+| 104 Mutant World | Z12 Biohazard release | Teeth in the Trees (41) |
+| 58 Slow Dead | Z15 The slow dead | Barrow Downs (95) |
+| 52 Folded Town | Z68 Folding | Souvenir World (83) |
+| 8 Deserted Capital | Z35 The great silence | Bureaucracy Moon (84) |
+
+The remaining themes (identity worlds like Fire and Ice, Overgrown Metropolis, Ocean World, Castle Worlds, Artist Colony) stay as they are. Any theme's "Happened" line is only the default apocalypse; the rolled apocalypse overrides it.
+
+---
+
+## How apocalypse, theme and tech level combine
+
+The rolls are chained. World type sets terrain; the profile sets pre and post tech and port class; the apocalypse is chosen from those that suit the pre-collapse tech band; the theme is chosen for identity and may be filtered by the apocalypse (a famine apocalypse cannot sit on a farming theme without drought feel); features come last; occupancy is per place.
+
+Tech shapes the apocalypse's look. A low-tech world's famine is a village famine; a high-tech world's is a famine of automated farms. An apocalypse on a recovered high-tech world shows only as spots.
+
+Three examples:
+
+1. **Temperate world + nuclear exchange + Amber Steppe, pre M > post L, port C.** Grassy steppe under ash-grey sky. A ring of dead farms around a glassed ground zero; highways still lead to it. POIs: blast_crater, deep_bunker, survivor_hamlet. Shelter descendants (SQT) and gang convoys (GNG) share the rest; many places EMP.
+2. **Ice world + plague + Aurora Shelf, pre H > post H (recovered), port B.** Research cities kept alive by machines. Sealed isolation wards and a burial field behind glass. Mostly MCH and EMP with a clinic of SQT; evidence is spot-only.
+3. **Overgrown city + grey goo + Overgrown Metropolis, pre H > post L.** A smooth grey scar cutting the green canopy across the metropolis; clean-edged dissolved buildings at its rim; kessari_works; a sealed lab. Occupancy NST and MUT in the forest, MCH near the lab, EMP elsewhere.
+
+---
+
 ## Occupancy
 
 Occupancy is a layer separate from layout. The same hospital layout is built once; a per-spawn occupancy roll decides who or what is in it, and the dressing follows. A theme gives a mix of shares (percent, summing to 100) for its places. "Empty" is a real result: nobody, nothing, no sound, only the dressing of the collapse. Shares apply per place; a few POI families override them (a nuclear plant leans machine or empty, a farm leans squatters).
@@ -1267,11 +1834,34 @@ theme long_queue
   hollow 0.1
 ```
 
+Apocalypses are a second record type, and the world stack picks one before the theme:
+
+```
+apocalypse nuclear_war
+  name Nuclear exchange
+  group war
+  ago 100 200 | speed instant
+  needs pre M H            # pre-collapse bands it can hit
+  land scar_craters 6 | dead_forest 0.5 | ash_sky 0.7
+  place shadow_wall 3 | glass_floor 2 | sealed_door 5 | tally_marks 4
+  poi blast_crater 3 | deep_bunker 3 | command_bunker 2 | nuclear_plant 1
+  hazard radiation | dust_storm
+  occ_shift SQT +10 GNG +10 MUT +10 EMP -5
+  life shelter_descendants gangs mutated_wildlife
+  recovered memorial_crater 1 | roped_ring 1 | open_bunker_museum 1   # shown when post tech is M or H
+  allow_theme amber_steppe road_warrens long_winter
+  scar_odds 0.15           # chance it appears as a regional scar on another apocalypse's world
+```
+
+Roll order: world type, profile (pre and post tech, port), apocalypse (filtered by `needs`), theme (filtered by `allow_theme` when present), features, then per-place occupancy. Theme `occ` tables are shifted by the apocalypse's `occ_shift`, then normalised. Theme POI weights are multiplied by the apocalypse's `poi` weights; a family with weight zero in either is dropped. On a world whose post tech is M or H, `recovered` entries replace most of the `place` list, so the fall shows as spots.
+
 Blocks are read at startup; unknown POI names are skipped with a warning, so new families can be added a theme at a time. A "mixed" world takes a second theme block for one region and blends its tables at region borders.
 
 ---
 
 ## The 10 themes to build first, and why
+
+Note: with apocalypses split out, build the apocalypse layer first for Z1 nuclear exchange, Z44 mass exodus, Z11 plague, Z12 biohazard release and Z19 famine. The list below then supplies the identity themes (and the old entries marked as moved are built as dressing for those apocalypses).
 
 Chosen for three things: they reuse the most existing families, they look and play unlike each other in the first minute, and together they cover every occupancy type.
 
@@ -1288,11 +1878,11 @@ Chosen for three things: they reuse the most existing families, they look and pl
 
 Close behind: Water Tax (32), The Slow Dead (58), Clinic at the Edge (20), Empty Ark (4).
 
-## New POI families, by number of themes that want them
+## New POI families, by number of entries that want them
 
-Counted from the NEW lines of each theme entry. Build the top of the list first.
+Counted from the NEW lines of each theme entry (themes only; apocalypse entries reuse these names). Build the top of the list first.
 
-| New family | Themes |
+| New family | Entries |
 | --- | --- |
 | bloom_garden | 4 |
 | observatory | 3 |
