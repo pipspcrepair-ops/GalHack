@@ -414,6 +414,9 @@ public static class Crawl
         bool drop = c.Species.Attack.Style == AttackStyle.Drop && c.LungeFrom.Y - c.LungeTo.Y > 0.3f;
         float eased = drop ? t * t : 1f - (1f - t) * (1f - t);
         Vector3 center = c.LungeFrom.Lerp(c.LungeTo, eased);
+        // A straight flight can skim a bulge in the rock: it rides over it.
+        float into = c.Space.Density(center) + 0.03f;
+        if (into > 0f) center += SpaceMath.Normal(c.Space, center) * into;
         Vector3 travel = c.LungeTo - c.LungeFrom;
         // In flight it turns to face where it is going, feet towards the ground.
         Vector3 up = SpaceMath.TurnToward(c.Facing.Y, Vector3.Up, MathF.Min(1f, t * 1.5f));

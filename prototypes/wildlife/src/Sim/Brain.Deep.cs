@@ -22,12 +22,11 @@ public static partial class Brain
         Species s = c.Species;
         c.Wake = Mathf.MoveToward(c.Wake, 0f, dt * 0.4f);
         c.Hunger = MathF.Min(1f, c.Hunger + dt / 150f);
-        // What it can see and hear of a player. Checked a few times a second: sight lines aren't free.
-        if (c.Space != null && !c.Falling && c.Think <= 0f)
+        // What it can see and hear of a player.
+        if (c.Space != null && !c.Falling)
         {
-            c.Think = 0.25f;
             ITarget player = NearestIn3D(w, c, out float pd);
-            Senses.Inside(w, c, player, pd, 0.25f);
+            Senses.Inside(w, c, player, pd, dt);
         }
         if (c.InWalls)
         {
@@ -164,7 +163,7 @@ public static partial class Brain
             c.Desired = straight.LengthSquared() > 1e-4f ? straight.Normalized() * speed * Math.Clamp(d / 1.2f, 0.3f, 1f) : Vector3.Zero;
             return;
         }
-        c.SpacePathAge += 1f / 60f;
+        c.SpacePathAge += c.ThinkDt;
         bool stale = c.SpacePath.Count == 0 || c.SpacePathIndex >= c.SpacePath.Count || c.SpacePathGoal.DistanceTo(goal) > 1.5f || c.SpacePathAge > 4f;
         if (stale && w.TakePathBudget())
         {
@@ -173,22 +172,29 @@ public static partial class Brain
             c.SpacePathGoal = goal;
             c.SpacePathAge = 0f;
         }
-        // A waypoint is passed once it is close, or (for a climber) once it lies straight out from
-        // the surface it holds: in a corner the next cell can sit along the normal, with nothing
-        // left to walk towards on this face.
+        WaypointsPassed(c, center);
+        // Stuck (no headway for a while): look for another way.
+        if (c.Velocity.LengthSquared() < 0.0025f && speed > 0.1f) c.SpacePathAge += c.ThinkDt * 2f;
+        Vector3 next = c.SpacePathIndex < c.SpacePath.Count ? c.SpacePath[c.SpacePathIndex] : goal;
+        Vector3 dir = next - center;
+        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
+    }
+
+    /// <summary>
+    /// A waypoint is passed once it is close, or (for a climber) once it lies straight out from
+    /// the surface it holds: in a corner the next cell can sit along the normal, with nothing
+    /// left to walk towards on this face.
+    /// </summary>
+    static void WaypointsPassed(Creature c, Vector3 center)
+    {
         Vector3 up = c.Facing.Y;
         while (c.SpacePathIndex < c.SpacePath.Count - 1)
         {
             Vector3 to = c.SpacePath[c.SpacePathIndex] - center;
             float along = (to - up * to.Dot(up)).Length();
-            if (to.Length() < 0.9f || (climbs && along < 0.4f && to.Length() < 1.8f)) c.SpacePathIndex++;
+            if (to.Length() < 0.9f || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)) c.SpacePathIndex++;
             else break;
         }
-        // Stuck (no headway for a while): look for another way.
-        if (c.Velocity.LengthSquared() < 0.0025f && speed > 0.1f) c.SpacePathAge += 1f / 30f;
-        Vector3 next = c.SpacePathIndex < c.SpacePath.Count ? c.SpacePath[c.SpacePathIndex] : goal;
-        Vector3 dir = next - center;
-        c.Desired = dir.LengthSquared() > 1e-4f ? dir.Normalized() * speed : Vector3.Zero;
     }
 
     static float Dist3(Creature c, Vector3 p) => (p - c.Position).Length();
@@ -437,7 +443,8 @@ public static partial class Brain
         if (c.Prey == null || c.Prey.Removed || c.Prey.InWalls || c.StateTime > 40f && c.State == CState.Stalk)
         {
             c.Prey = null;
-            if (c.Hunger < 0.35f || (w.Frame + c.Id) % 15 != 0) return false;
+            if (c.Hunger < 0.35f || w.Time < c.PreyLookAt) return false;
+            c.PreyLookAt = w.Time + 0.45f;
             c.Prey = FindPrey(w, c, MathF.Max(10f, c.Species.NoticeRadius * 1.4f));
             if (c.Prey == null) return false;
             c.SetState(CState.Stalk);

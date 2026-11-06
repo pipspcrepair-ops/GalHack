@@ -67,6 +67,10 @@ public sealed class Creature
     // Brain.
     public CState State = CState.Wander;
     public float StateTime, Think;
+    /// <summary>The brain runs on its own timer: time since it last thought, how long until it next does, and how long its last think covered.</summary>
+    public float ThinkClock, ThinkEvery, ThinkDt = 1f / 60f;
+    /// <summary>When a hunter next looks round for something to eat.</summary>
+    public float PreyLookAt;
     public Vector3 Goal;
     public bool HasGoal;
     public ITarget Target;
@@ -210,7 +214,8 @@ public sealed class Herd
     public float AlarmedAt;
     public Vector3 ThreatPos;
     public ITarget Hunting;
-    public int UpdatedFrame = -1;
+    public int UpdatedFrame = -1; // space shoals
+    public float UpdatedAt = -999f;
     public float Spread;
 
     public int AliveCount
@@ -260,7 +265,7 @@ public sealed class Pack
 
     /// <summary>The earliest moment the next member may commit to a lunge.</summary>
     public float NextCommitAt = -999f;
-    public int UpdatedFrame = -1;
+    public float UpdatedAt = -999f;
 
     public void SetPhase(PackPhase phase)
     {

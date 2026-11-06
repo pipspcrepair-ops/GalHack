@@ -21,7 +21,9 @@ public struct AttackEvent
 /// The whole wildlife simulation of one planet surface, in plain C#: creatures, herds, the
 /// clock, and the players they react to. The game drives it from _PhysicsProcess and draws
 /// it with CreatureView; the tests drive it directly, thousands of steps a second.
-/// Each step runs brain, then locomotion, then the rig, for every creature.
+/// Each step moves every creature and poses it; each creature's brain, with its look round for
+/// targets, runs on its own staggered timer of 0.2 to 0.5 s (<see cref="Brain.Interval"/>), which
+/// is also what gives it a natural moment before it reacts.
 /// </summary>
 public sealed class WildSim
 {
@@ -233,6 +235,7 @@ public sealed class WildSim
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
+        c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
         {
             c.Altitude = species.Rig == RigKind.Swarm ? c.Rng.Range(1.2f, 2.5f) : species.Rig == RigKind.GasBag ? c.Rng.Range(5f, 11f) : c.Rng.Range(8f, 15f);
@@ -373,7 +376,15 @@ public sealed class WildSim
             }
             else
             {
-                Brain.Update(this, c, dt);
+                c.ThinkClock += dt;
+                if (c.Attacking || c.ThinkClock >= c.ThinkEvery)
+                {
+                    c.ThinkDt = c.ThinkClock;
+                    c.ThinkClock = 0f;
+                    Brain.Update(this, c, c.ThinkDt);
+                    c.ThinkEvery = Brain.Interval(c);
+                }
+                else Brain.Follow(c);
                 Attacks.Update(this, c, dt);
             }
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }

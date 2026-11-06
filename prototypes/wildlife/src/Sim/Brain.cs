@@ -13,6 +13,37 @@ namespace Wildlife;
 /// </summary>
 public static partial class Brain
 {
+    /// <summary>Seconds until a creature next thinks: quickly with something to deal with, slowly otherwise, a little different for each.</summary>
+    public static float Interval(Creature c)
+    {
+        bool busy = c.Alert > 0f || c.State is CState.Chase or CState.Flee or CState.Stalk or CState.Tell or CState.Warn;
+        float jitter = 0.01f * (c.Id % 6);
+        return busy ? 0.2f + jitter : 0.44f + jitter;
+    }
+
+    /// <summary>
+    /// Between thinks: keeps to the path the brain chose, round its corners, at the speed it chose.
+    /// Nothing is looked for here, so it costs next to nothing.
+    /// </summary>
+    public static void Follow(Creature c)
+    {
+        float speed = c.Desired.Length();
+        if (speed < 0.01f) return;
+        if (c.Space != null)
+        {
+            if (c.SpacePathIndex >= c.SpacePath.Count) return;
+            Vector3 center = Crawl.Center(c);
+            WaypointsPassed(c, center);
+            Vector3 dir = c.SpacePath[c.SpacePathIndex] - center;
+            if (dir.LengthSquared() > 1e-4f) c.Desired = dir.Normalized() * speed;
+            return;
+        }
+        if (c.PathIndex >= c.Path.Count) return;
+        while (c.PathIndex < c.Path.Count - 1 && WildSim.Flat(c.Path[c.PathIndex] - c.Position).Length() < 1.6f) c.PathIndex++;
+        Vector3 to = WildSim.Flat(c.Path[c.PathIndex] - c.Position);
+        if (to.LengthSquared() > 1e-4f) c.Desired = to.Normalized() * speed;
+    }
+
     public static void Update(WildSim w, Creature c, float dt)
     {
         c.StateTime += dt;
@@ -152,8 +183,9 @@ public static partial class Brain
     /// <summary>Herd-wide state, updated once per step by whichever member gets there first.</summary>
     static void UpdateHerd(WildSim w, Herd h, float dt)
     {
-        if (h.UpdatedFrame == w.Frame) return;
-        h.UpdatedFrame = w.Frame;
+        dt = w.Time - h.UpdatedAt;
+        if (dt < 0.1f) return;
+        h.UpdatedAt = w.Time;
         Vector3 sum = Vector3.Zero, vel = Vector3.Zero;
         int alive = 0;
         foreach (Creature m in h.Members)
@@ -295,8 +327,9 @@ public static partial class Brain
     /// <summary>Pack-wide decisions, made once per step by whichever member gets there first.</summary>
     static void UpdatePack(WildSim w, Pack p, PackRules r, float dt)
     {
-        if (p.UpdatedFrame == w.Frame) return;
-        p.UpdatedFrame = w.Frame;
+        dt = MathF.Min(w.Time - p.UpdatedAt, 1f);
+        if (dt < 0.1f) return;
+        p.UpdatedAt = w.Time;
         p.PhaseTime += dt;
 
         Vector3 sum = Vector3.Zero;
@@ -483,7 +516,7 @@ public static partial class Brain
         float hold = c.Stats.AttackRange + 2.4f;
         float cycle = (c.Age + c.Id * 0.7f) % 2.6f;
         bool dart = cycle < 0.7f;
-        if (dart && cycle < 0.05f) w.RaiseWarned(c); // the snarl
+        if (dart && c.State != CState.Warn) w.RaiseWarned(c); // the snarl
         c.SetState(dart ? CState.Warn : CState.Chase);
         c.FacePoint = prey.Position;
         c.Rear = dart ? MathF.Sin(cycle / 0.7f * MathF.PI) * 0.8f : 0f;

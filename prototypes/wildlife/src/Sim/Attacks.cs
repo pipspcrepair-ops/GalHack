@@ -49,6 +49,7 @@ public static class Attacks
     public static void Cancel(Creature c)
     {
         c.Phase = AttackPhase.None;
+        c.ThinkEvery = 0f;
         c.Rear = 0f;
         c.Brace = 0f;
     }
@@ -96,7 +97,11 @@ public static class Attacks
             case AttackPhase.Recover:
                 c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * 3f);
                 c.Desired = c.PhaseTime < 0.5f ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero;
-                if (c.PhaseTime >= c.PhaseLength) c.Phase = AttackPhase.None;
+                if (c.PhaseTime >= c.PhaseLength)
+                {
+                    c.Phase = AttackPhase.None;
+                    c.ThinkEvery = 0f; // back to its own mind at once
+                }
                 break;
         }
     }

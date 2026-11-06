@@ -332,7 +332,7 @@ public partial class CreaturesTest : Node
             {
                 _recent.Enqueue($"pos {c.Position} centre {center} n {c.Facing.Y} falling {c.Falling} phase {c.Phase} state {c.State} vel {c.Velocity} desired {c.Desired}");
                 if (_recent.Count > 8) _recent.Dequeue();
-                if (inside > 0.05f && !_told)
+                if (inside > 0f && !_told)
                 {
                     _told = true;
                     Trace($"{c.Species.CommonName} body inside ({inside:F2}); last frames:");
@@ -605,7 +605,7 @@ public partial class CreaturesTest : Node
         sim.Targets.Add(walker);
         HashSet<Vector3I> reach = SpaceNav.Reach(space, floor + Vector3.Up * 0.5f, false, 2, 8000);
         var stops = reach.Where(c => (SpaceMath.Center(c) - floor).Length() < 14f).OrderBy(c => c.X * 7919 + c.Z * 31 + c.Y).Where((_, i) => i % 37 == 0).Select(c => new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f)).Take(8).ToList();
-        var watches = made.ToDictionary(c => c, _ => new Watch());
+        var watches = made.ToDictionary(c => c, _ => new Watch { Trace = _trace ? Trace : null });
         int stop = 0, hits = 0, told = 0;
         var firstTell = new Dictionary<Creature, float>();
         float worstLead = float.MaxValue;
