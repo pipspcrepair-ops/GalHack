@@ -174,7 +174,10 @@ public static class PoiSiting
             {
                 // A start world: any blast site lies far from the bunker, and the settlements near it are never hostile.
                 if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) continue;
-                if (p.Family.Tags.Contains("settlement") && Away(p) < 1500)
+                // No living settlement near the start: the bunker sits at the edge of a ruined town by the
+                // landing site, and survivors live further out (never hostile in the near country).
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
             PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);

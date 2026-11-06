@@ -180,6 +180,13 @@ Each road site lies on a straight, nearly level stretch with its lane down the r
 - a shallow one shows as scree, a deep one as a fracture.
 - The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.
 
+**The start: the edge of a ruined town** (`src/World/Infra/StartTown.cs`, `PlanetWorld.StartTown`). A start world is built with `PoiSiting.StartWorld` set, and it always has a ruined town:
+- It sits on a flat, dry spot 200 m to 1.2 km from the landing site, with a ruin or wreck that nobody holds 420 m to 1.15 km beyond it.
+- Its streets are a grid on the map's axes, joined to the old network by a spur: a main street toward that place, three cross streets, a back street along their ends. (The sewers run under them.)
+- Abandoned houses line the streets, a stalled jam of rusted cars stands on the main street, and grass and shrubs are taking it all back.
+- No living settlement stands within 3 km of the landing site, so none is within 1.5 km of the town's edge (`StartTown.NoSettlement`).
+- `StartTown.EdgeX`/`EdgeZ` is a point on the town's edge, toward the place in view, that a person can walk out from: open 60 m in at least three of eight directions. `StartTown.Heading` faces the place.
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
 - `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
@@ -194,7 +201,9 @@ Screenshot views:
   3. Call `Infra.Clear()` where it clears the POI layer.
 
   Until then, roads in the slice reach the edge of each river and ravine and stop there: their bridges are missing.
-- **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads. No change is needed.
+- **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads.
+  - To start at the edge of the ruined town, search from the town's edge instead of the landing site: `Bunker.FindSite(zone, new Vector3((float)town.EdgeX, 0, (float)town.EdgeZ))` with `town = zone.Planet.StartTown` (fall back to `Zone.LandingSite` when it is null).
+  - The search's own rules still apply (a place in view, walkable ways). The town's edge is chosen to pass them, with `StartTown.Landmark` the place in view.
 - **Flavour ruins and ore tells** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
 
 ## How it fits together

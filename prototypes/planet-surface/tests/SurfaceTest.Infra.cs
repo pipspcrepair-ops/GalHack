@@ -430,4 +430,63 @@ public partial class SurfaceTest
             if (Dist(w, o.X[k], o.Z[k], x, z) < within) return true;
         return false;
     }
+
+    // ---- the start: the edge of a ruined town -----------------------------------------------------
+
+    async Task StartTownChecks()
+    {
+        bool was = PlanetSurface.Poi.PoiSiting.StartWorld;
+        PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        int worlds = 0, towns = 0, houses = 0, streets = 0, jams = 0, settlementsNear = 0, landmarks = 0, walkable = 0;
+        var notes = new List<string>();
+        try
+        {
+            foreach (var (a, seed) in new[] { (0, 31UL), (1, 32UL), (2, 33UL), (0, 34UL) })
+            {
+                var spec = PlanetSpec.Roll(seed, (Archetype)a, 0);
+                PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
+                worlds++;
+                StartTown town = w.StartTown;
+                if (town == null) { notes.Add($"no town on {spec.Archetype} {seed}"); continue; }
+                towns++;
+                houses += town.Houses.Count;
+                streets += town.Streets.Count;
+                if (w.Infra.Wrecks.Any(k => town.Streets.Contains(k.Route))) jams++;
+                // No living settlement within 1.5 km of the town's edge (where the bunker goes).
+                foreach (PoiSite p in w.Pois)
+                    if (p.Family.Tags.Contains("settlement") && Dist(w, p.Center.X, p.Center.Z, town.EdgeX, town.EdgeZ) < StartTown.NoSettlement) settlementsNear++;
+                // A place on the horizon, nobody's, 300 to 1,200 m from the edge.
+                double ld = Dist(w, town.Landmark.Center.X, town.Landmark.Center.Z, town.EdgeX, town.EdgeZ);
+                if (town.Landmark.Instance.State != PoiState.Active && ld >= 300 && ld <= 1200) landmarks++;
+                else notes.Add($"the landmark on {spec.Archetype} {seed} is {ld:F0} m off");
+                // Walkable 60 m out from the edge in at least three of eight directions (the slice's rule: dry, no rise over 1.2 m in 2 m).
+                int ways = 0;
+                for (int d = 0; d < 8; d++)
+                {
+                    double ang = d * Math.PI / 4;
+                    bool ok = true;
+                    float prev = w.GroundHeight(town.EdgeX, town.EdgeZ);
+                    for (double s = 2; s <= 60 && ok; s += 2)
+                    {
+                        double x = Mathx.WrapX(town.EdgeX + Math.Cos(ang) * s, w.Width), z = Mathx.Wrap(town.EdgeZ + Math.Sin(ang) * s, w.Height);
+                        float g = w.GroundHeight(x, z);
+                        ok = Math.Abs(g - prev) <= 1.2f && g > 1.5f && !w.Source.WaterSurfaceAt(x, z, out _);
+                        prev = g;
+                    }
+                    if (ok) ways++;
+                }
+                if (ways >= 3) walkable++;
+                else notes.Add($"only {ways} walkable ways from the edge on {spec.Archetype} {seed}");
+                await Frames(1);
+            }
+        }
+        finally
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = was;
+        }
+        Check(towns == worlds && houses >= towns * 6 && streets >= towns * 2 && jams == towns,
+            $"start worlds begin at a ruined town by the landing site: {towns} of {worlds} worlds, {houses} abandoned houses on {streets} streets, rusted cars on the main street of {jams}{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
+        Check(settlementsNear == 0 && landmarks == towns && walkable == towns,
+            $"the town's edge keeps the start's rules: no living settlement within {StartTown.NoSettlement:F0} m ({settlementsNear}), a place nobody holds in view 300 to 1,200 m off ({landmarks} of {towns}), walkable 60 m in three of eight directions ({walkable} of {towns})");
+    }
 }

@@ -76,6 +76,14 @@ public static class Wrecks
         WorldProfile profile = net.Profile;
         if (profile == null || !profile.Inhabited) return sites;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x3EC5UL));
+        // A start town's main street: a stalled jam of rusted cars down it.
+        if (net.Town?.Streets.FirstOrDefault() is InfraRoute main)
+        {
+            bool laid = false;
+            foreach (string kind in new[] { "evacuation-jam", "pile-up", "roadblock" })
+                for (int i = 4; i + 8 < main.Count && !laid; i += 2)
+                    if (TryOnRoute(main, i, kind, source, net, rng, profile.Before, out WreckSite jam, steep: 0.12f, town: true)) { sites.Add(jam); laid = true; }
+        }
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind == RouteKind.Track) continue;

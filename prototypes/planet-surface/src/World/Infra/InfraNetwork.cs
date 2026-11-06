@@ -91,6 +91,8 @@ public sealed class InfraNetwork
     public PowerLines Power = new();
     /// <summary>Sites of abandoned vehicles along the network and in the fields (planned once the terrain is final: <see cref="Wrecks.Plan"/>).</summary>
     public List<WreckSite> Wrecks = new();
+    /// <summary>A start world's ruined town by the landing site, where the start begins (null elsewhere).</summary>
+    public StartTown Town;
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
 
@@ -100,6 +102,8 @@ public sealed class InfraNetwork
     public const float Spacing = 4f;
 
     double _w, _h;
+    Router _router;
+    PoiGenerator.Gen.Rng _rng;
 
     // ---- per kind ---------------------------------------------------------------------------
 
@@ -173,6 +177,8 @@ public sealed class InfraNetwork
         net.Places.AddRange(pois.Where(Served));
         var router = new Router(map, bare, pois);
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x1AF7AUL));
+        net._router = router;
+        net._rng = rng;
 
         // The links: a spanning tree by importance, then about one in ten added back as loops.
         var places = net.Places;
@@ -351,6 +357,49 @@ public sealed class InfraNetwork
             any = true;
         }
         return any;
+    }
+
+    // ---- streets and spurs for other planners (the start town) ----------------------------------------
+
+    /// <summary>
+    /// A street laid along given points (continuous, the short way round the seams): smoothed and
+    /// resampled, its deck held to the kind's grade over the ground, joined at its ends to any route
+    /// already laid there. Null on a world with no network.
+    /// </summary>
+    public InfraRoute Street(List<(double X, double Z)> points, RouteKind kind)
+    {
+        if (_router == null || points.Count < 2) return null;
+        var pts = new List<(double X, double Z)>(points);
+        Unwrap(pts);
+        List<(double X, double Z)> path = Resample(pts, Spacing);
+        var pins = new List<(int Index, float Y)>();
+        int a = _router.RouteAtPoint(path[0].X, path[0].Z, kind), b = _router.RouteAtPoint(path[^1].X, path[^1].Z, kind);
+        if (a >= 0 && Snap(Routes[a], path[0], out var p0, out float y0)) { path[0] = p0; pins.Add((0, y0)); }
+        if (b >= 0 && Snap(Routes[b], path[^1], out var p1, out float y1)) { path[^1] = p1; pins.Add((path.Count - 1, y1)); }
+        InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
+        if (route != null) _router.Mark(route);
+        return route;
+    }
+
+    /// <summary>A spur from a point to the nearest route already laid (within a reach), found by the path engine. False if none.</summary>
+    public bool Spur((double X, double Z) from, RouteKind kind, double reach)
+    {
+        if (_router == null) return false;
+        InfraRoute near = Nearest(from.X, from.Z, reach, out int at, out _);
+        if (near == null) return false;
+        List<int> cells = _router.Find(from, (near.X[at], near.Z[at]), kind, Profile.Before);
+        if (cells == null || cells.Count < 2) return false;
+        var pts = new List<(double X, double Z)> { from };
+        foreach (int c in cells.Skip(1)) pts.Add(_router.CellCentre(c));
+        pts.Add((near.X[at], near.Z[at]));
+        Unwrap(pts);
+        List<(double X, double Z)> path = Resample(Smooth(pts, 1, 0), Spacing);
+        var pins = new List<(int Index, float Y)>();
+        if (Snap(near, path[^1], out var p1, out float y1)) { path[^1] = p1; pins.Add((path.Count - 1, y1)); }
+        InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
+        if (route == null) return false;
+        _router.Mark(route);
+        return true;
     }
 
     /// <summary>The nearest point of a route to a point (the short way round the seams), moved to the copy nearest it, and the deck height there.</summary>

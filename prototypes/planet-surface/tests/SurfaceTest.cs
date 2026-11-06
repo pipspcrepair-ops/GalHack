@@ -55,6 +55,7 @@ public partial class SurfaceTest : Node
             await Run("Pois", PoiChecks);
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
+            await Run("StartTown", StartTownChecks);
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);

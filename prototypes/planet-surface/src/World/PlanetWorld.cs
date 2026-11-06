@@ -126,13 +126,13 @@ public sealed partial class PlanetWorld
         // The world round the places: planned on the bare land, its stamps laid after the places' own,
         // then finished on the final ground (see PlanetWorld.Infra.cs; nothing when that isn't compiled in).
         object around = null;
-        PlanAround(spec, catalog, map, bare, pois, profile, stamps, ref around);
+        PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, ref around);
         var source = new PlanetTerrainSource(map, stamps, anchors);
         FinishAround(spec, source, pois, around);
         return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
     }
 
-    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, List<TerrainStamp> stamps, ref object around);
+    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
 
     /// <summary>

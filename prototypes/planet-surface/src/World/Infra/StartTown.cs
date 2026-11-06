@@ -1,0 +1,179 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using GalHack.Terrain;
+using Planets.Gen;
+using PoiGenerator.Gen;
+using PoiSite = PlanetSurface.Poi.PoiSite;
+
+namespace PlanetSurface.Infra;
+
+/// <summary>
+/// Where a start begins (design doc start rule, the owner's correction): at the edge of an old
+/// world's ruined town, near the landing site and away from any living settlement. Abandoned houses
+/// line a few streets, a broken main street carries rusted cars, grass and shrubs are taking it all
+/// back, and a place stands on the horizon. The slice's start-site search starts from
+/// <see cref="Edge"/>, the town's outer edge facing the place in view.
+/// </summary>
+public sealed class StartTown
+{
+    public double CenterX, CenterZ;
+    /// <summary>The main street's direction, a unit vector on a map axis, toward the place in view.</summary>
+    public double AlongX, AlongZ;
+    /// <summary>Which side of the main street (+1 or -1 across) the back street runs on.</summary>
+    public int BackSide = 1;
+    /// <summary>A point on open ground just past the town's last houses, on the side facing <see cref="Landmark"/>.</summary>
+    public double EdgeX, EdgeZ;
+    /// <summary>Which way from the edge the place in view lies (radians: the slice's heading convention, atan2(-dx, -dz)).</summary>
+    public float Heading;
+    /// <summary>The place on the horizon (a ruin, a wreck: nothing anyone holds), 300 to 1,200 m from the edge.</summary>
+    public PoiSite Landmark;
+    public readonly List<InfraRoute> Streets = new();
+    public readonly List<FlavourRuin> Houses = new();
+
+    /// <summary>How far the town keeps from any living settlement, metres (the bunker sits at its edge).</summary>
+    public const double NoSettlement = 1500;
+    /// <summary>The grid: the main street's half-length, the spacing of its cross streets and their reach to each side, metres.</summary>
+    public const double MainHalf = 130, Block = 65, Arm = 85;
+
+    /// <summary>
+    /// Plans a ruined town near the landing site on a start world: a flat, dry spot 200 m to 1.2 km out
+    /// with a ruin or wreck 420 m to 1.15 km beyond it, a grid of streets on the map's axes (joined to
+    /// the network by a spur), houses along them, a stalled jam on the main street. Null if no spot fits.
+    /// </summary>
+    public static StartTown Plan(InfraNetwork net, PoiLibrary lib, WorldMap map, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, WorldProfile profile,
+        LandingSite landing, ulong seed, List<FlavourRuin> ruins)
+    {
+        if (profile == null || !profile.Inhabited || lib == null) return null;
+        double w = map.WidthMeters, h = map.HeightMeters;
+        var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x57A27UL));
+        double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
+        // The spot: flat, dry, clear of places, with a place in view beyond it and no settlement near.
+        double bestScore = double.MaxValue, bx = 0, bz = 0;
+        PoiSite bestMark = null;
+        for (double r = 200; r <= 1200; r += 50)
+        for (int k = 0; k < 16; k++)
+        {
+            double a = k * Math.PI / 8 + r * 0.01;
+            double cx = Mathx.WrapX(landing.X + Math.Cos(a) * r, w), cz = Mathx.Wrap(landing.Y + Math.Sin(a) * r, h);
+            if (pois.Any(p => p.Family.Tags.Contains("settlement") && Dist(p.Center.X, p.Center.Z, cx, cz) < NoSettlement + 300)) continue;
+            if (pois.Any(p => Dist(p.Center.X, p.Center.Z, cx, cz) < Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 150)) continue;
+            PoiSite mark = pois.Where(p => p.Instance.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
+                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => t.d).Select(t => t.p).FirstOrDefault();
+            if (mark == null) continue;
+            float lo = float.MaxValue, hi = float.MinValue;
+            bool wet = false;
+            for (double dz = -130; dz <= 130; dz += 26)
+            for (double dx = -130; dx <= 130; dx += 26)
+            {
+                GroundSample g = bare.Sampler.Sample(cx + dx, cz + dz, 8);
+                if (g.InRiver || g.Height < 2f) wet = true;
+                lo = Math.Min(lo, g.Height);
+                hi = Math.Max(hi, g.Height);
+            }
+            if (wet) continue;
+            double score = (hi - lo) + r * 0.004;
+            if (score < bestScore) { bestScore = score; bx = cx; bz = cz; bestMark = mark; }
+        }
+        if (bestMark == null || bestScore > 85) return null;
+        var town = new StartTown { Landmark = bestMark };
+
+        // The streets: a grid on the map's axes, as a town is surveyed and its sewers laid: a main street
+        // toward the place in view, three cross streets, a back street along their ends on one side.
+        double mx = Mathx.WrapDelta(bestMark.Center.X - bx, w), mz = Mathx.WrapDelta(bestMark.Center.Z - bz, h);
+        bool alongX = Math.Abs(mx) >= Math.Abs(mz);
+        double ux = alongX ? Math.Sign(mx) : 0, uz = alongX ? 0 : Math.Sign(mz), sx = -uz, sz = ux;
+        bx = Math.Floor(bx) + 0.5;
+        bz = Math.Floor(bz) + 0.5;
+        (town.CenterX, town.CenterZ, town.AlongX, town.AlongZ) = (bx, bz, ux, uz);
+        RouteKind kind = RouteKind.Road;
+        (double X, double Z) At(double along, double across) => (bx + ux * along + sx * across, bz + uz * along + sz * across);
+        void Lay(params (double X, double Z)[] points)
+        {
+            InfraRoute s = net.Street(points.ToList(), kind);
+            if (s != null) town.Streets.Add(s);
+        }
+        Lay(At(-MainHalf, 0), At(MainHalf, 0));
+        for (int c = -1; c <= 1; c++)
+            foreach (int side in new[] { -1, 1 })
+                Lay(At(c * Block, 0), At(c * Block, side * Arm));
+        int backSide = rng.Chance(0.5f) ? 1 : -1;
+        Lay(At(-Block, backSide * Arm), At(Block, backSide * Arm));
+        town.BackSide = backSide;
+        // Joined to the old network: a spur from the town's far end to the nearest road.
+        net.Spur(At(-MainHalf, 0), kind, 2500);
+        // A century on: the streets uncared for.
+        foreach (InfraRoute s in town.Streets) { s.Kept = false; s.Wear = 0.92f; }
+
+        // Houses along the streets, set back from the kerb, both sides, a shed now and then.
+        FamilyDef house = lib.Families.FirstOrDefault(f => f.Id == "flavour_house"), shed = lib.Families.FirstOrDefault(f => f.Id == "flavour_shed");
+        if (house != null)
+        {
+            string tag = WorldProfile.Tag(profile.Before);
+            int variant = (house.Variants.FirstOrDefault(v => v.Tech == tag) ?? house.Variants[0]).Index;
+            Layout layout = FlavourRuins.LayoutFor(lib, house, variant), shedLayout = shed != null ? FlavourRuins.LayoutFor(lib, shed, 0) : null;
+            foreach (InfraRoute s in town.Streets)
+                for (int i = 3; i + 3 < s.Count; i += 6)
+                    foreach (int side in new[] { -1, 1 })
+                    {
+                        double dx = s.X[i + 1] - s.X[i - 1], dz = s.Z[i + 1] - s.Z[i - 1], len = Math.Sqrt(dx * dx + dz * dz);
+                        if (len < 1e-6) continue;
+                        bool isShed = shedLayout != null && rng.Chance(0.12f);
+                        Layout lot = isShed ? shedLayout : layout;
+                        // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
+                        double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;
+                        double clear = s.HalfWidth + half + 2;
+                        double nx = -dz / len * side, nz = dx / len * side;
+                        FlavourRuin r = FlavourRuins.Try(lib, isShed ? shed : house, lot, s.X[i] + nx * (clear + 1), s.Z[i] + nz * (clear + 1), bare, net, pois, ruins, w, h, rng,
+                            spacing: 3, maxCut: 8f, clearance: clear);
+                        if (r == null) continue;
+                        r.Route = s;
+                        r.State = PoiState.Ruined;
+                        ruins.Add(r);
+                        town.Houses.Add(r);
+                    }
+        }
+        // The edge: past the last houses on the side toward the place in view, on open ground a person
+        // can walk out from (the slice's rule: three of eight ways open for 60 m, no rise over 1.2 m in 2 m).
+        double ex = bx + ux * 170, ez = bz + uz * 170;
+        bool Walkable(double px, double pz)
+        {
+            int ways = 0;
+            for (int d = 0; d < 8; d++)
+            {
+                double ang = d * Math.PI / 4;
+                float prev = bare.NaturalHeight(px, pz);
+                bool ok = prev > 1.5f;
+                for (double t = 2; t <= 60 && ok; t += 2)
+                {
+                    GroundSample g = bare.Sampler.Sample(px + Math.Cos(ang) * t, pz + Math.Sin(ang) * t, 1);
+                    ok = Math.Abs(g.Height - prev) <= 1.0f && g.Height > 1.5f && !g.InRiver;
+                    prev = g.Height;
+                }
+                if (ok) ways++;
+            }
+            return ways >= 3;
+        }
+        bool found = false;
+        // Toward the place in view first, then anywhere round the town's edge.
+        for (double along = 160; along <= 320 && !found; along += 20)
+            foreach (double across in new[] { 0.0, 30.0, -30.0, 60.0, -60.0, 100.0, -100.0 })
+            {
+                double tx = bx + ux * along + sx * across, tz = bz + uz * along + sz * across;
+                if (!Walkable(tx, tz)) continue;
+                (ex, ez, found) = (tx, tz, true);
+                break;
+            }
+        for (int k = 0; k < 24 && !found; k++)
+        {
+            double a = k * Math.PI / 12, tx = bx + Math.Cos(a) * 190, tz = bz + Math.Sin(a) * 190;
+            if (Walkable(tx, tz)) (ex, ez, found) = (tx, tz, true);
+        }
+        town.EdgeX = Mathx.WrapX(ex, w);
+        town.EdgeZ = Mathx.Wrap(ez, h);
+        // Faces the place in view from the edge, wherever on the town's rim that turned out.
+        double fx = Mathx.WrapDelta(bestMark.Center.X - town.EdgeX, w), fz = Mathx.WrapDelta(bestMark.Center.Z - town.EdgeZ, h);
+        town.Heading = MathF.Atan2((float)-fx, (float)-fz);
+        return town;
+    }
+}
