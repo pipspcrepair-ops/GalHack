@@ -456,6 +456,7 @@ public sealed class Playthrough
     {
         TechNode node = Game.Progress.Node(nodeId);
         foreach (int x in OpenMenu(MenuTab.Tech)) yield return x;
+        Game.Menu.Root.Tech.Reveal(nodeId); // the tree scrolls: bring the node into the window
         foreach (int x in Drive.ClickWidget($"tech:tab:{node.Tab}")) yield return x;
         foreach (int x in Drive.ClickWidget($"tech:{nodeId}")) yield return x;
     }
