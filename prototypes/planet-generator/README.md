@@ -14,6 +14,10 @@ Worlds are divided into regions of real landforms: plains, steppe, mountain rang
 | ![Mesa country](screenshots/landform_mesas.png) | ![A fjord](screenshots/landform_fjords.png) |
 | ![Steppe](screenshots/landform_steppe.png) | ![A dune world: one landform throughout](screenshots/globe_dune_world.png) |
 | ![A mountain world from orbit](screenshots/globe_mountains.png) | ![A range on the terminator, at the limb](screenshots/globe_limb.png) |
+| ![A volcanic field: cones over a glowing lava field](screenshots/landform_volcanic_field.png) | ![Basalt plains beside a lava sea](screenshots/landform_basalt_plains.png) |
+| ![Crystal shard fields from the air](screenshots/landform_shard_fields.png) | ![Dome fields under giant fungi](screenshots/landform_dome_fields.png) |
+| ![A ring structure in the ringlands](screenshots/landform_ringlands.png) | ![A volcanic world from orbit](screenshots/globe_volcanic.png) |
+| ![An alien crystal world from orbit](screenshots/globe_alien.png) | |
 
 [atlas/landforms.png](atlas/landforms.png) shows one world per variant: its landform map beside its colour map.
 
@@ -125,6 +129,30 @@ Signature details:
 
 **How Empyrion does it.** Empyrion (the local install's `Content/Playfields/*/playfield_dynamic.yaml` and `playfield_static.yaml`, read only, nothing copied) has one heightmap per planet type. It picks biomes per point by height, slope, humidity, temperature and latitude criteria, some forced by stamps, and its creature spawns list the biomes they spawn in. GalHack's doc asks for more: landform regions with their own relief, placed by climate and drainage and blended at their borders. Species' home landforms play the role of Empyrion's per-spawn biome lists.
 
+## Planet sizes
+
+Worlds come in four sizes, on Empyrion's planet classes 2-5 and their odds (the map widths are community figures, and the design doc's rev 456):
+
+| Size | Planets | Moons |
+| --- | --- | --- |
+| 8x4 km | 5% | 1 in 9 |
+| 16x8 km | 40% | 8 in 9 |
+| 32x16 km | 50% | never |
+| 64x32 km | 5% | never |
+
+Start worlds are always 16x8 km. `PlanetSpec.RollWidthKm(seed, kind)` rolls the width from the seed, and `PlanetSpec.RollSized(seed, archetype, variant, kind)` makes the whole spec, with `kind` one of `WorldKind.Planet`, `Moon` or `Start`. `PlanetSpec.Roll` and its explicit width are unchanged, so nothing downstream moves until it asks for a roll. The moon odds are the planet odds of the two small classes, renormalised: the brief named the classes, not the odds.
+
+A bigger world has bigger or more regions, never stretched ones, because a region's size is set in metres and clamped to 1.6-4 km:
+
+| Size | Regions | Each | Map | Colour map | Globe |
+| --- | --- | --- | --- | --- | --- |
+| 8x4 km | 10 | 1.6-2 km | 52 ms | 167 ms | 46 ms |
+| 16x8 km | 32 | 2 km | 141 ms | 131 ms | 49 ms |
+| 32x16 km | 32 | 4 km | 490 ms | 429 ms | 55 ms |
+| 64x32 km | 128 | 4 km | 2.0 s | 0.9 s | 0.1 s |
+
+Timings are one run on the development machine, off the main thread.
+
 ## Relief
 
 `Relief.Measure` puts numbers on how dramatic the land is, on dry ground:
@@ -226,8 +254,10 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 .\tools\test.ps1 -Project prototypes/planet-generator -Scene res://tests/ViewTest.tscn
 ```
 
-`tests/GenTest.tscn` runs headless in about 55 s and checks (`-- --only=Relief,Distinctness` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
+`tests/GenTest.tscn` runs headless in about 95 s and checks (`-- --only=Relief,Distinctness` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
 - **Determinism:** identical map hash and identical fine terrain from the same spec.
+- **Size classes:** the roll keeps to its odds over 200,000 seeds, moons stay small, start worlds are 16x8 km, and `Roll` without a width is still 16 km.
+- **Sized worlds:** at all four sizes regions stay square and 1.6-4 km across, and about a fifth of worlds are one landform. At 8x4 and 64x32 km, landform patches run as far across as down, and plains, mountains and dune seas keep their character. The colour map and globe build at every size with no seam, and a whole 64x32 km world costs under 16 s.
 - **Seamless wrap, both ways:** the step across each seam falls within the range of every other column (or row) pair. The fine terrain is continuous across both seams and at all four corners at once: height and normal differences shrink tenfold when the gap does.
 - **Poles:** no wall. The polar band's steepest ground (95th percentile) is no steeper than the steepest other latitude band's, by 25%. Landform regions make some latitudes more rugged than others. The polar band is colder than the equator, and its temperature carries across the north-south seam.
 - **Land fraction:** inside each variant's band over 20 seeds.
@@ -271,7 +301,10 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 ## Known limits
 
 - **Lakes:** at sea level only. Lake districts, wetland pools and delta channels are basins cut below sea level, which fill with sea (or lava) at sea level. Elsewhere, pits drain through gorges.
-- **Landform sizes:** regions are about 2 km across on a 16 km world. Small worlds have small countries.
+- **Landform sizes:** regions are 1.6-4 km across, by world size (see [Planet sizes](#planet-sizes)). Small worlds have small countries.
+- **Downstream sizes:** the size roll is tested here, in the generator. planet-surface, the slice and capital-base still build 16x8 km worlds and have not been run at the other sizes.
+- **Volcanoes don't smoke:** this viewer has no particles, so the volcanic field shot shows cones and glowing lava but no plume.
+- **Fine detail from orbit:** the globe and colour map smooth relief over a few 32 m cells, so very steep worlds (shard fields) look soft from orbit, not stepped.
 - **Collision:** none. The camera only clamps to the ground. The heightfield is on a regular grid (1 m cells conceptually) and ready for a HeightMapShape3D and A*.
 - **Time of day:** the surface is always day; glowing nights only show on the globe's night side.
 - **Gameplay:** hazards and resources are labels and deposits.
@@ -283,25 +316,26 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 
 ## Integration
 
-Changes for files other prototypes own, to apply after merging. The generator's public API only grew. Nothing was renamed or removed, and downstream builds unchanged: planet-surface, slice and capital-base all compile.
+The generator's public API only grew. Nothing was renamed or removed, and downstream builds unchanged: planet-surface, slice and capital-base all compile.
 
-1. **Saves** (`shared/Terrain/PlanetTerrainSource.cs`). The same seed now gives different terrain, so saved digs would land on new ground. Bump the version in `GeneratorId` from `planet-surface/1` to `planet-surface/2`, so old saves refuse to load.
-2. **planet-surface `tests/SurfaceTest.cs`, relief floors.** `Floors` is the generator's old floors, set when every world was dramatic everywhere. On landform worlds all ten fail: medians land far under them (meadow seed 510: 182 m against 450) and some worlds are one flat landform. Hold each variant to drama somewhere, as `GenTest.ReliefFloors` now does: the biggest range in a 2 km window and the share over 45°. Six windows give a noisier maximum than eight, so about 70% of those floors.
-3. **planet-surface `tests/SurfaceTest.cs`, other checks failing on the new worlds** (they passed on main; not investigated inside planet-surface's code):
-   - *Solids:*
-     - "walking into a Conifer trunk stops the player" (the player walks 9.4-9.6 m straight through)
-     - "no big boulder with open ground before it"
-     - "a hover-vessel-sized hull can't pass through a grove" (no boulder)
+**Already on this branch**, each in its own commit, to reconcile at merge:
 
-     All three use the deep pine forest nearest the landing site of seed 4242 (temperate meadow). With landforms, pine forest sits in cold country, now often on steeper ground or in a different place. Trunk colliders exist (the near-rings and felling checks pass). Worth checking whether trunks on that ground stand where the walker meets them.
-   - *POIs seated:* 70 places on 5 worlds, 2 with a blocked way in. POI siting meets new ground: more flat land, but also deltas, lakes and fjord walls.
-4. **slice `tests/SliceTest.cs`.** One flight check fails per run on the new start world, a different one each time; StartTest and PlayerTest pass:
-   - *Run one:* "Space lifts it off: 15.8 m up after 1.5 s". The height is fine, so either the lift-off event fired other than once or the controller was frozen.
-   - *Run two (the full gate):* "determinism: the same inputs fly the same 4 s hop twice" differed by 1.9e-6 m. Its hops take off from and land on the start site's ground.
+| File | Change | Why |
+| --- | --- | --- |
+| `shared/Terrain/PlanetTerrainSource.cs` | `GeneratorId` is `planet-surface/2` | The same seed gives different ground, so old saves must refuse to load |
+| planet-surface `tests/SurfaceTest.cs`, relief | The surface must keep the generator's own relief, and worlds with rugged country must show it | The old floors assumed every world was dramatic everywhere |
+| planet-surface `src/Player/Walker.cs` | Horizontal acceleration is one vector, not per axis | Setting off at any heading but an axis ran at 45 degrees until one axis saturated: a 5.5 cm sidestep at 30 degrees, enough to glance off a trunk and slide round it. The collider was fine |
+| planet-surface `tests/SurfaceTest.cs`, solids | The big boulder is sought over 150 m, then on the nearest rocky ground | Big rocks are a third of a pine forest's few rocks: none within 60 m of this forest stood a metre tall |
+| planet-surface `src/Poi/PoiSiting.cs` | A half-buried ruin's tilt hinges on its way in | It hinged on the footprint's front edge, 4-6 m ahead of the door, so the ground stood 0.7 m over the sill. Both blocked ways in were this |
+| planet-surface `src/Terrain/GroundPalette.cs` | Soil colours soften as the generator's do | The same square biome edges, on the voxel ground and the far rings |
+| slice `tests/Driver.cs` | Walking to a seat never digs | The stuck rescue dug beside the hull, the dig woke the landed vessel, and Space on an awake vessel raises no `LiftedOff` |
+| slice `src/Game/Game.cs` | The flight stick snaps to zero under 1e-4 | Its decay never reached zero, so two hops started on different inputs; the difference showed as 1 ULP of height. The check stays exact |
+| slice `tests/SliceTest.cs` | The hunter spawns on dry ground | On a low shore it could spawn in the water creatures keep out of, and stand there |
 
-   Both depend on how the starter vessel sits on the start site, whose ground changed; likely the start site needs re-picking or settling.
-5. **Landforms for POI siting** (`planet-surface/src/Poi`). `map.LandformsAt(x, y)` (blend) and `map.Landform[cell]` (dominant) are cheap. Towns, bases and landing pads could prefer open landforms (plains, steppe, ice and basalt plains) and keep big pads off deltas, wetlands and fjord walls.
-6. **Wildlife in the slice** (`slice/src/Surface/WildlifePatch.cs`). Roll the planet's wildlife for its landforms and spawn by home ground:
+**Still to do:**
+
+1. **Landforms for POI siting** (`planet-surface/src/Poi`). `map.LandformsAt(x, y)` (blend) and `map.Landform[cell]` (dominant) are cheap. Towns, bases and landing pads could prefer open landforms (plains, steppe, ice and basalt plains) and keep big pads off deltas, wetlands and fjord walls.
+2. **Wildlife in the slice** (`slice/src/Surface/WildlifePatch.cs`). Roll the planet's wildlife for its landforms and spawn by home ground:
    ```csharp
    // SetWorld: species built for the planet's landforms, coloured like their ground.
    WorldMap map = planet.Map;
@@ -328,5 +362,9 @@ Changes for files other prototypes own, to apply after merging. The generator's 
    - **Spawner.** A `Spawner` built for the patch takes `LandformAt = p => map.LandformsAt(...)` and does the same.
    - **Species counts.** The slice's checks on species counts will move: a planet now has two or three species per landform.
    - **Kept.** The discovery card, base and town no-spawn zones, day and night, cave and POI fauna and domestic animals are untouched. No new popups.
-7. **Far rings.** planet-surface's far rings use the source's heights directly, which is right. Any far mesh lowered to sit under detailed chunks must sink low ground less: deltas, wetlands and coastal plains sit at 1.7-3 m and would show under the sea, as the generator's own far ring did (fixed here).
-8. **Biomes.** Unchanged: landform hints use existing biomes only, so `GroundPalette`, `PoiSiting` and `BiomeLook` need nothing.
+3. **Far rings.** planet-surface's far rings use the source's heights directly, which is right. Any far mesh lowered to sit under detailed chunks must sink low ground less: deltas, wetlands and coastal plains sit at 1.7-3 m and would show under the sea, as the generator's own far ring did (fixed here).
+4. **Biomes.** Landform hints use existing biomes only, so `PoiSiting` and `BiomeLook` need nothing.
+5. **Size classes.** To use them, call `PlanetSpec.RollSized(seed, archetype, variant, kind)` where a world is rolled. The slice's start worlds pass `WorldKind.Start`. Worlds of 8x4, 32x16 and 64x32 km have not been run through planet-surface, the slice or capital-base: check streaming, POI placement (`PoiSiting.MaxSites` is fixed at 14 whatever the size) and landing first.
+6. **The shared walker** (`shared/Physics/Core/WalkController.cs`, line 115). It accelerates per axis, as planet-surface's walker did. The fix is the same if the sidestep matters there. Not changed here: it is shared with every prototype.
+7. **Lift-off after a wake** (`shared/Physics/Core/VesselController.cs`). A landed vessel woken by a dig or a ram, then flown, raises no `LiftedOff` and stays `Parked` in flight, because `TryWake` only runs while it is frozen or settling. Harmless today: `Parked` only matters with nobody at the controls.
+8. **Fjord walls in planet-surface.** The streak fix here is in this viewer's terrain shader. planet-surface has its own, with strata already. Worth a look at its walls in the same light.
