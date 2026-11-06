@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using Godot;
 using Planets.Gen;
+using Planets.Orbit;
 
 namespace Planets;
 
@@ -26,7 +27,7 @@ public partial class Screenshot : Node
     float? _heading, _pitch, _up;
     double? _x, _z;
     double _frameTime, _worstFrame, _elapsed;
-    bool _hud = true, _landforms;
+    bool _hud = true, _landforms, _limb;
     Landform? _at, _face;
     float _from = -1f;
 
@@ -52,6 +53,7 @@ public partial class Screenshot : Node
                 case "z": _z = double.Parse(v, CultureInfo.InvariantCulture); break;
                 case "hud": _hud = v != "0"; break;
                 case "landforms": _landforms = v != "0"; break;
+                case "limb": _limb = v != "0"; break;
                 case "landform": _at = Enum.Parse<Landform>(v); break;
                 case "face": _face = Enum.Parse<Landform>(v); break;
                 case "from": _from = float.Parse(v, CultureInfo.InvariantCulture); break;
@@ -63,6 +65,8 @@ public partial class Screenshot : Node
         AddChild(_main);
         if (!_hud) _main.HideLabel();
         var spec = PlanetSpec.Roll(_seed, (Archetype)_archetype, _variant);
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--width=")) spec = spec with { WidthKm = int.Parse(arg["--width=".Length..]) };
         if (_mods is Modifier mods) spec = spec with { Modifiers = mods };
         _main.SetSpec(spec);
     }
@@ -83,6 +87,7 @@ public partial class Screenshot : Node
             case 0: // planet ready
                 if (_landforms) _main.ShowLandforms = true;
                 if (_view is "orbit") _main.Orbit.Face(_main.Map, _x ?? LandiestLongitude(_main.Map));
+                if (_view is "orbit" && _limb) Limb();
                 if (_view == "flat") Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Tab, Pressed = true });
                 if (_view is "surface" or "pole") _main.Land();
                 _stage = 1;
@@ -131,6 +136,47 @@ public partial class Screenshot : Node
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// A close view along the terminator at the planet's longest mountain range, standing on the
+    /// limb: half its faces in sunlight, its peaks breaking the planet's edge.
+    /// </summary>
+    void Limb()
+    {
+        WorldMap map = _main.Map;
+        OrbitView orbit = _main.Orbit;
+        orbit.Still = true;
+        // The middle of the longest range.
+        (double x, double y) at = (map.WidthMeters / 2, map.HeightMeters / 2);
+        int longest = 0;
+        foreach (var spine in map.Landforms.Ranges)
+            if (spine.Count > longest) { longest = spine.Count; at = spine[spine.Count / 2]; }
+        at = (Mathx.WrapX(at.x, map.WidthMeters), Mathx.Wrap(at.y, map.HeightMeters));
+        orbit.Face(map, at.x);
+        // Turn it onto the terminator.
+        Vector3 sun = OrbitView.SunDirection;
+        for (int k = 0; k < 40; k++)
+        {
+            float d = orbit.WorldPoint(map, at.x, at.y).Dot(sun) - 0.14f; // just on the day side: low sun across the range
+            if (MathF.Abs(d) < 1e-3f) break;
+            orbit.SpinBy(d * 0.8f);
+        }
+        Vector3 p = orbit.WorldPoint(map, at.x, at.y);
+        Vector3 along = sun.Cross(p).Normalized();
+        if (along.Y < 0f) along = -along;
+        orbit.CloudsVisible = false;
+        // Stand back along the terminator at a height whose horizon is the range itself, so the
+        // line of sight just grazes it and its peaks stand on the planet's edge.
+        const float Height = 0.022f;
+        float back = MathF.Acos(1f / (1f + Height));
+        Vector3 ground = p * MathF.Cos(back) - along * MathF.Sin(back);
+        Vector3 eye = ground * (1f + Height);
+        Camera3D cam = orbit.Camera;
+        cam.Fov = 30f;
+        cam.Near = 0.002f;
+        cam.LookAtFromPosition(eye, p * 1.004f, ground.Normalized());
+        GD.Print($"limb: range of {longest} points at {at.x:F0}, {at.y:F0}");
     }
 
     /// <summary>The map x with the most land within a quarter of the planet either side: where a globe shot looks.</summary>

@@ -19,6 +19,7 @@ public partial class OrbitView : Node3D
     static readonly Vector3 SunTravel = new Vector3(0.92f, -0.16f, -0.2f).Normalized(); // from the left: a dramatic terminator
 
     Node3D _tilt, _spin, _cloudSpin;
+    MeshInstance3D _globe;
     MeshInstance3D _ring;
     ShaderMaterial _planet, _clouds, _atmosphere, _ringMaterial, _space;
     public Camera3D Camera { get; private set; }
@@ -61,7 +62,8 @@ public partial class OrbitView : Node3D
 
         _planet = new ShaderMaterial { Shader = Shaders.Planet };
         _planet.SetShaderParameter("sun_dir", -SunTravel);
-        _spin.AddChild(Sphere(1f, 192, 96, _planet));
+        _globe = Sphere(1f, 192, 96, _planet);
+        _spin.AddChild(_globe);
 
         _clouds = new ShaderMaterial { Shader = Shaders.Cloud };
         _cloudSpin.AddChild(Sphere(1.012f, 128, 64, _clouds));
@@ -77,6 +79,7 @@ public partial class OrbitView : Node3D
 
     public override void _Process(double delta)
     {
+        if (Still) return;
         _spin.RotateY((float)delta * SpinSpeed);
         _cloudSpin.RotateY((float)delta * SpinSpeed * 1.25f);
     }
@@ -96,6 +99,9 @@ public partial class OrbitView : Node3D
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
     }
 
+    /// <summary>The globe's surface, displaced by the planet's relief (see <see cref="GlobeRelief"/>).</summary>
+    public void ShowRelief(Mesh mesh) => _globe.Mesh = mesh;
+
     /// <summary>Turns the globe so the given map x (metres east) faces the camera.</summary>
     public void Face(WorldMap map, double x)
     {
@@ -104,6 +110,34 @@ public partial class OrbitView : Node3D
         // Spinning the globe by an angle turns what faces the camera back by the same angle.
         _spin.RotateY((float)(-du * Math.Tau));
         _cloudSpin.RotateY((float)(-du * Math.Tau));
+    }
+
+    /// <summary>Where a map point (metres) is on the undisplaced globe, in world space.</summary>
+    public Vector3 WorldPoint(WorldMap map, double x, double y)
+    {
+        float phi = (float)(x / map.WidthMeters * Math.Tau), theta = (float)(y / map.HeightMeters * Math.PI);
+        var local = new Vector3(MathF.Sin(theta) * MathF.Sin(phi), MathF.Cos(theta), MathF.Sin(theta) * MathF.Cos(phi));
+        return _spin.GlobalBasis * local;
+    }
+
+    /// <summary>Spins the globe (and its clouds) about its axis.</summary>
+    public void SpinBy(float radians)
+    {
+        _spin.RotateY(radians);
+        _cloudSpin.RotateY(radians);
+    }
+
+    /// <summary>The direction sunlight comes from (unit, world space).</summary>
+    public static Vector3 SunDirection => -SunTravel;
+
+    /// <summary>Stops the slow spin (for staged shots).</summary>
+    public bool Still;
+
+    /// <summary>Shows or hides the cloud layer (for staged shots of the ground).</summary>
+    public bool CloudsVisible
+    {
+        get => _cloudSpin.Visible;
+        set => _cloudSpin.Visible = value;
     }
 
     /// <summary>The map point (metres) currently facing the camera: where Enter lands you.</summary>

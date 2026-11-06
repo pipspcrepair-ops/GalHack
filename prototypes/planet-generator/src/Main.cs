@@ -16,7 +16,7 @@ namespace Planets;
 /// </summary>
 public partial class Main : Node3D
 {
-    sealed record Built(PlanetSpec Spec, WorldMap Map, ArchetypeLook Look, ColorMap Colors, byte[] Clouds, byte[] Landforms, double Ms);
+    sealed record Built(PlanetSpec Spec, WorldMap Map, ArchetypeLook Look, ColorMap Colors, byte[] Clouds, byte[] Landforms, GlobeRelief.Data Globe, double Ms);
 
     const int CloudWidth = 1024;
 
@@ -71,7 +71,8 @@ public partial class Main : Node3D
             var colors = ColorMap.Build(map, look, Math.Clamp(map.Width * 4, 2048, 4096));
             byte[] clouds = CloudMap.Build(spec, look, CloudWidth, out _);
             byte[] landforms = LandformLook.Albedo(map, colors.Width);
-            return new Built(spec, map, look, colors, clouds, landforms, watch.Elapsed.TotalMilliseconds);
+            GlobeRelief.Data globe = GlobeRelief.Build(map);
+            return new Built(spec, map, look, colors, clouds, landforms, globe, watch.Elapsed.TotalMilliseconds);
         });
     }
 
@@ -95,6 +96,7 @@ public partial class Main : Node3D
         Look = built.Look;
         _buildMs = built.Ms;
         _built = built;
+        Orbit.ShowRelief(GlobeRelief.Mesh(built.Globe));
         ShowMaps();
         _uploadMs = watch.Elapsed.TotalMilliseconds;
     }
