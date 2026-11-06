@@ -24,31 +24,24 @@ public enum FlashStyle
 /// </summary>
 public sealed record GunFeel(
     string Id, FlashStyle Style, Color Colour, float Size, float LightEnergy, float LightRange, int Frames,
-    float Smoke, float SmokeLife, float Recoil, float CameraKick, float Shake = 0f, string Shape = null)
+    float Smoke, float SmokeLife, float Recoil, float CameraKick, float Shake = 0f)
 {
     /// <summary>A shot soon after another (within this many seconds) flashes at <see cref="RepeatDim"/> of the strength, so held fire doesn't strobe.</summary>
     public const float RepeatWindow = 0.25f, RepeatDim = 0.45f;
 
-    // Sizes are the flame's length in metres at the muzzle (a bloom's diameter): about 110-130 px for a bullet on a 1600 px screen.
-    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Flare, new Color(0.4f, 0.88f, 1f), 0.1f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f, 0f, "tool4");
+    // Small on purpose: the flash accents the shot, well under the size of the held tool, off the view centre.
+    /// <summary>One multiplier for every flash's size (the owner's choice; 1 is the original).</summary>
+    public static float FlashScale = 1f;
+
+    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Flare, new Color(1f, 0.55f, 0.2f), 0.022f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
 
     static readonly Dictionary<string, GunFeel> Table = Build(
         Tool,
-        new("bullet", FlashStyle.Star, new Color(1f, 0.66f, 0.16f), 0.15f, 1.1f, 4f, 2, 0f, 0f, 0.9f, 0.25f, 0f, "cone5"),
-        new("plasma", FlashStyle.Bloom, new Color(0.35f, 1f, 0.6f), 0.13f, 0.9f, 4f, 3, 0f, 0f, 0.5f, 0.1f),
-        new("laser", FlashStyle.Bloom, new Color(1f, 0.25f, 0.2f), 0.09f, 0.7f, 3.5f, 2, 0f, 0f, 0.25f, 0.05f),
-        new("rocket", FlashStyle.Rocket, new Color(1f, 0.7f, 0.25f), 0.24f, 1.6f, 6f, 3, 1f, 1.4f, 1.5f, 0.45f, 0f, "chunk6"),
-        new("vessel_gun", FlashStyle.Star, new Color(1f, 0.7f, 0.25f), 0.6f, 3f, 12f, 3, 0f, 0f, 0f, 0f, 0.3f, "cone5"));
-
-    /// <summary>The petal burst shapes: a long centre petal and a ring of shorter ones in a cone.</summary>
-    public static readonly (string Id, BurstShape Shape)[] Shapes =
-    {
-        ("cone5", new BurstShape(5, 28f, 0.62f, 0.2f, 0.26f)),
-        ("chunk6", new BurstShape(6, 38f, 0.5f, 0.28f, 0.34f)),
-        ("narrow4", new BurstShape(4, 20f, 0.75f, 0.16f, 0.2f)),
-        ("spiky8", new BurstShape(8, 45f, 0.45f, 0.14f, 0.18f)),
-        ("tool4", new BurstShape(4, 30f, 0.6f, 0.22f, 0.26f)),
-    };
+        new("bullet", FlashStyle.Star, new Color(1f, 0.93f, 0.62f), 0.028f, 1.1f, 4f, 2, 0.4f, 0.45f, 0.9f, 0.25f),
+        new("plasma", FlashStyle.Bloom, new Color(0.35f, 1f, 0.6f), 0.03f, 0.9f, 4f, 3, 0f, 0f, 0.5f, 0.1f),
+        new("laser", FlashStyle.Bloom, new Color(1f, 0.25f, 0.2f), 0.02f, 0.7f, 3.5f, 2, 0f, 0f, 0.25f, 0.05f),
+        new("rocket", FlashStyle.Rocket, new Color(1f, 0.72f, 0.3f), 0.05f, 1.6f, 6f, 3, 1f, 1.4f, 1.5f, 0.45f),
+        new("vessel_gun", FlashStyle.Star, new Color(1f, 0.9f, 0.6f), 0.2f, 3f, 12f, 3, 0.7f, 0.8f, 0f, 0f, 0.3f));
 
     /// <summary>The feel for an id; the survival tool's if unknown.</summary>
     public static GunFeel Get(string id) => id != null && Table.TryGetValue(id, out GunFeel f) ? f : Tool;
@@ -62,6 +55,3 @@ public sealed record GunFeel(
         return d;
     }
 }
-
-/// <summary>A petal burst: how many petals round the centre, their spread from the barrel axis (degrees), their length against the centre petal's, and the widths.</summary>
-public sealed record BurstShape(int Petals, float Spread, float SideLength, float Width, float CentreWidth);

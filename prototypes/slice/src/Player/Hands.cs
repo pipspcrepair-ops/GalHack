@@ -65,7 +65,7 @@ public partial class Hands : Node3D
         Add(new TorusMesh { InnerRadius = 0.022f, OuterRadius = 0.036f, Rings = 16, RingSegments = 6 }, _glow, new Vector3(0.17f, -0.145f, -0.545f), new Vector3(90, 0, 0));
         Add(new BoxMesh { Size = new Vector3(0.03f, 0.02f, 0.1f) }, _glow, new Vector3(0.17f, -0.1f, -0.38f), Vector3.Zero);
         // The barrel's tip (the barrel is 0.14 long, centred at z -0.48): where flashes and bolts begin.
-        _tip = new Node3D { Name = "BarrelTip", Position = new Vector3(0.17f, -0.145f, -0.64f) };
+        _tip = new Node3D { Name = "BarrelTip", Position = new Vector3(0.17f, -0.145f, -0.56f) };
         _rig.AddChild(_tip);
         foreach (Node n in _rig.GetChildren())
             if (n is MeshInstance3D m) m.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;

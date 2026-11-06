@@ -48,12 +48,14 @@ public partial class ShotFx : Node3D
         };
         _boltMesh = new BoxMesh { Size = new Vector3(0.05f, 0.05f, BoltLength) };
         _scorchTexture = ScorchTexture();
-        BuildFlashMeshes();
-        _smokeRamp = new Gradient { Colors = new[] { new Color(0.8f, 0.78f, 0.74f, 0.3f), new Color(0.5f, 0.5f, 0.5f, 0f) } };
+        _starTexture = FlashTexture(true);
+        _bloomTexture = FlashTexture(false);
+        _smokeRamp = new Gradient { Colors = new[] { new Color(0.8f, 0.78f, 0.74f, 0.35f), new Color(0.5f, 0.5f, 0.5f, 0f) } };
         _smokeGrow = new Curve();
         _smokeGrow.AddPoint(new Vector2(0f, 0.4f));
         _smokeGrow.AddPoint(new Vector2(1f, 1.6f));
-        _coneMesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.22f, Height = 1f, RadialSegments = 6, Rings = 1 };
+        _coneMesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.22f, Height = 1f, RadialSegments = 10, Rings = 1 };
+        _quad = new QuadMesh { Size = Vector2.One };
         for (int i = 0; i < PoolSize; i++) _slots.Add(MakeSlot(i));
     }
 
@@ -61,14 +63,14 @@ public partial class ShotFx : Node3D
 
     const int PoolSize = 16;
 
-    /// <summary>One pooled muzzle flash: a chunky petal burst (or a round bloom), a hot core, a backblast cone, a light and a smoke emitter, all kept for good.</summary>
+    /// <summary>One pooled muzzle flash: a billboard, a backblast cone, a light and a smoke emitter, all kept for good.</summary>
     sealed class Slot
     {
         public Node3D Root;
-        public MeshInstance3D Burst, Core, Orb, Cone;
+        public MeshInstance3D Star, Cone;
         public OmniLight3D Light;
         public CpuParticles3D Smoke;
-        public StandardMaterial3D BurstMaterial, OrbMaterial, ConeMaterial;
+        public StandardMaterial3D StarMaterial, ConeMaterial;
         public int FramesLeft, TotalFrames;
         public float SmokeLeft, LightEnergy;
         public ulong Age;
@@ -77,13 +79,11 @@ public partial class ShotFx : Node3D
     }
 
     readonly List<Slot> _slots = new();
-    readonly Dictionary<string, ArrayMesh> _burstMeshes = new();
-    ArrayMesh _coreBurst;
-    SphereMesh _orbMesh, _orbCore;
-    StandardMaterial3D _coreMaterial;
+    ImageTexture _starTexture, _bloomTexture;
     Gradient _smokeRamp;
     Curve _smokeGrow;
     CylinderMesh _coneMesh;
+    QuadMesh _quad;
     ulong _fired;
     double _lastFlash = -10;
 
@@ -94,90 +94,21 @@ public partial class ShotFx : Node3D
     public int FlashPool => _slots.Count;
     public string LastFeel { get; private set; } = "";
 
-    void BuildFlashMeshes()
-    {
-        foreach (var (id, shape) in GunFeel.Shapes) _burstMeshes[id] = BuildBurst(shape);
-        _coreBurst = BuildOctahedron();
-        _orbMesh = new SphereMesh { Radius = 0.5f, Height = 1f, RadialSegments = 14, Rings = 7 };
-        _orbCore = new SphereMesh { Radius = 0.5f, Height = 1f, RadialSegments = 10, Rings = 5 };
-        _coreMaterial = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(1f, 0.97f, 0.85f), CullMode = BaseMaterial3D.CullModeEnum.Disabled, VertexColorUseAsAlbedo = true };
-    }
-
-    // One petal: a four-sided spike from the barrel tip out along dir, flat-shaded by its facets.
-    static void Petal(SurfaceTool st, Vector3 dir, float len, float width, float shade)
-    {
-        dir = dir.Normalized();
-        Vector3 side = dir.Cross(Vector3.Up);
-        if (side.LengthSquared() < 1e-4f) side = dir.Cross(Vector3.Right);
-        side = side.Normalized();
-        Vector3 up = side.Cross(dir).Normalized();
-        Vector3 tip = dir * len;
-        Vector3[] b = { side * width, up * width, -side * width, -up * width };
-        for (int k = 0; k < 4; k++)
-        {
-            float face = shade * (k % 2 == 0 ? 1f : 0.8f); // alternating facets read as flat-shaded
-            st.SetColor(new Color(face * 0.75f, face * 0.75f, face * 0.75f));
-            st.AddVertex(b[k]);
-            st.AddVertex(b[(k + 1) % 4]);
-            st.SetColor(new Color(face, face, face));
-            st.AddVertex(tip);
-        }
-    }
-
-    /// <summary>A forward burst: a long centre petal and a ring of shorter ones in a cone, pointing along -Z, one unit long.</summary>
-    static ArrayMesh BuildBurst(BurstShape s)
-    {
-        var st = new SurfaceTool();
-        st.Begin(Mesh.PrimitiveType.Triangles);
-        Petal(st, Vector3.Forward, 1f, s.CentreWidth, 1f);
-        float theta = Mathf.DegToRad(s.Spread);
-        for (int i = 0; i < s.Petals; i++)
-        {
-            float phi = 0.4f + i * Mathf.Tau / s.Petals;
-            var dir = new Vector3(MathF.Sin(theta) * MathF.Cos(phi), MathF.Sin(theta) * MathF.Sin(phi), -MathF.Cos(theta));
-            Petal(st, dir, s.SideLength, s.Width, 0.9f);
-        }
-        return st.Commit();
-    }
-
-    static ArrayMesh BuildOctahedron()
-    {
-        var st = new SurfaceTool();
-        st.Begin(Mesh.PrimitiveType.Triangles);
-        Vector3[] p = { Vector3.Right, Vector3.Up, Vector3.Left, Vector3.Down };
-        for (int k = 0; k < 4; k++)
-            foreach (Vector3 apex in new[] { Vector3.Forward, Vector3.Back })
-            {
-                float face = 0.85f + 0.15f * (k % 2);
-                st.SetColor(new Color(face, face, face));
-                st.AddVertex(p[k]);
-                st.AddVertex(p[(k + 1) % 4]);
-                st.AddVertex(apex);
-            }
-        return st.Commit();
-    }
-
     Slot MakeSlot(int i)
     {
         var s = new Slot { Root = new Node3D { Name = $"Flash{i}", Visible = false } };
-        s.BurstMaterial = new StandardMaterial3D
+        s.StarMaterial = new StandardMaterial3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, VertexColorUseAsAlbedo = true, CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-        };
-        s.OrbMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add, BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true, NoDepthTest = true,
         };
         s.ConeMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            BlendMode = BaseMaterial3D.BlendModeEnum.Add, AlbedoColor = new Color(1f, 0.6f, 0.2f, 0.7f),
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add, AlbedoColor = new Color(1f, 0.6f, 0.2f, 0.8f),
         };
-        const GeometryInstance3D.ShadowCastingSetting off = GeometryInstance3D.ShadowCastingSetting.Off;
-        s.Burst = new MeshInstance3D { MaterialOverride = s.BurstMaterial, CastShadow = off, Visible = false };
-        s.Core = new MeshInstance3D { MaterialOverride = _coreMaterial, CastShadow = off, Visible = false };
-        s.Orb = new MeshInstance3D { Mesh = _orbMesh, MaterialOverride = s.OrbMaterial, CastShadow = off, Visible = false };
-        s.Cone = new MeshInstance3D { Mesh = _coneMesh, MaterialOverride = s.ConeMaterial, CastShadow = off, Visible = false };
+        s.Star = new MeshInstance3D { Mesh = _quad, MaterialOverride = s.StarMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        s.Cone = new MeshInstance3D { Mesh = _coneMesh, MaterialOverride = s.ConeMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };
         s.Light = new OmniLight3D { Visible = false, ShadowEnabled = false };
         s.Smoke = new CpuParticles3D
         {
@@ -189,9 +120,7 @@ public partial class ShotFx : Node3D
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, VertexColorUseAsAlbedo = true,
             },
         };
-        s.Root.AddChild(s.Burst);
-        s.Root.AddChild(s.Core);
-        s.Root.AddChild(s.Orb);
+        s.Root.AddChild(s.Star);
         s.Root.AddChild(s.Cone);
         s.Root.AddChild(s.Light);
         s.Root.AddChild(s.Smoke);
@@ -200,13 +129,11 @@ public partial class ShotFx : Node3D
     }
 
     /// <summary>
-    /// A muzzle flash at the barrel tip for a kind of fire (<see cref="GunFeel"/>), a few frames long
-    /// with a short light: a chunky low-poly petal burst for bullets and the tool, a round bloom
-    /// for energy, a backblast for rockets. <paramref name="follow"/> keeps it on the tip while it lasts
-    /// (the hand's recoil); a vessel gun passes a larger <paramref name="scale"/> for its calibre.
-    /// Nodes come from a fixed pool, so nothing is allocated.
+    /// A muzzle flash at the muzzle for a kind of fire (<see cref="GunFeel"/>): a flash that lasts a few
+    /// frames with a short light, and smoke if the kind has it. A vessel gun passes a larger
+    /// <paramref name="scale"/> for its calibre. Nodes come from a fixed pool, so nothing is allocated.
     /// </summary>
-    public void Muzzle(string feel, Vector3 at, Vector3 dir, Color colour = default, float scale = 1f, Func<Vector3?> follow = null, string shape = null)
+    public void Muzzle(string feel, Vector3 at, Vector3 dir, Color colour = default, float scale = 1f, Func<Vector3?> follow = null)
     {
         GunFeel f = GunFeel.Get(feel);
         Flashes++;
@@ -225,42 +152,26 @@ public partial class ShotFx : Node3D
         double now = Time.GetTicksMsec() / 1000.0;
         float dim = now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
         _lastFlash = now;
-        Color col = colour != default && f.Style == FlashStyle.Bloom ? colour : f.Colour;
-        float size = f.Size * scale;
-        // A little different each shot: a random roll and size.
-        uint hash = (uint)(_fired * 2654435761UL);
-        float roll = (hash % 1000) / 1000f * Mathf.Tau, jitter = 0.88f + 0.24f * ((hash >> 10) % 1000 / 1000f);
+        Color col = colour != default && f.Style is FlashStyle.Bloom or FlashStyle.Flare ? colour : f.Colour;
+        float size = f.Size * scale * GunFeel.FlashScale;
         s.Root.Visible = true;
         s.Root.GlobalTransform = new Transform3D(Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up), at);
 
-        bool bloom = f.Style == FlashStyle.Bloom, rocket = f.Style == FlashStyle.Rocket;
-        s.Burst.Visible = !bloom;
-        s.Core.Visible = true;
-        s.Orb.Visible = bloom;
-        Basis spin = new Basis(Vector3.Forward, roll);
-        if (bloom)
-        {
-            s.OrbMaterial.AlbedoColor = new Color(col.R * dim, col.G * dim, col.B * dim, 0.75f);
-            s.Orb.Scale = Vector3.One * size * jitter;
-            s.Core.Mesh = _orbCore;
-            s.Core.Scale = Vector3.One * size * jitter * 0.4f;
-            s.Core.Position = Vector3.Zero;
-        }
-        else
-        {
-            s.Burst.Mesh = _burstMeshes[shape ?? f.Shape ?? "cone5"];
-            s.BurstMaterial.AlbedoColor = new Color(col.R * dim, col.G * dim, col.B * dim);
-            s.Burst.Basis = spin.Scaled(Vector3.One * size * jitter);
-            s.Core.Mesh = _coreBurst;
-            s.Core.Basis = spin.Scaled(new Vector3(0.2f, 0.2f, 0.32f) * size * jitter);
-            s.Core.Position = Vector3.Forward * size * 0.12f;
-        }
+        s.StarMaterial.AlbedoTexture = f.Style == FlashStyle.Star ? _starTexture : _bloomTexture;
+        s.StarMaterial.AlbedoColor = new Color(col.R * dim, col.G * dim, col.B * dim);
+        float flicker = 0.85f + 0.3f * (float)(_fired * 2654435761UL % 1000UL / 1000.0);
+        float wide = f.Style == FlashStyle.Star ? 2.4f : f.Style == FlashStyle.Bloom ? 2.0f : 1.5f;
+        s.Star.Scale = Vector3.One * size * wide * flicker;
+        s.Star.Position = Vector3.Forward * size * 0.15f;
+        s.Star.Visible = true;
+
+        bool rocket = f.Style == FlashStyle.Rocket;
         s.Cone.Visible = rocket;
         if (rocket)
         {
             // The backblast cone points back along the barrel (the cone's Y turned to the root's +Z).
-            s.Cone.Basis = new Basis(Vector3.Right, Mathf.Pi / 2f).Scaled(new Vector3(size * 0.7f, size * 1.6f, size * 0.7f));
-            s.Cone.Position = Vector3.Back * size * 0.8f;
+            s.Cone.Basis = new Basis(Vector3.Right, Mathf.Pi / 2f).Scaled(new Vector3(size * 1.3f, size * 2.6f, size * 1.3f));
+            s.Cone.Position = Vector3.Back * size * 1.3f;
         }
 
         s.Light.LightColor = col;
@@ -295,13 +206,46 @@ public partial class ShotFx : Node3D
                 s.Light.LightEnergy = s.LightEnergy * s.FramesLeft / s.TotalFrames;
                 if (--s.FramesLeft == 0)
                 {
-                    s.Burst.Visible = s.Core.Visible = s.Orb.Visible = s.Cone.Visible = false;
+                    s.Star.Visible = false;
+                    s.Cone.Visible = false;
                     s.Light.Visible = false;
                 }
             }
             if (s.SmokeLeft > 0f) s.SmokeLeft -= dt;
             if (!s.Busy && s.Root.Visible) s.Root.Visible = false;
         }
+    }
+
+    /// <summary>A four-point star with small diagonal spikes (or a soft round bloom), white-hot in the middle, drawn into a texture.</summary>
+    static ImageTexture FlashTexture(bool star)
+    {
+        const int n = 96;
+        var image = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+            float r = MathF.Sqrt(dx * dx + dy * dy);
+            float a;
+            if (star)
+            {
+                float ax = MathF.Abs(dx), ay = MathF.Abs(dy);
+                float u = MathF.Abs(dx + dy) * 0.7071f, v = MathF.Abs(dx - dy) * 0.7071f;
+                float cross = MathF.Max(Spike(ax, ay, 0.09f), Spike(ay, ax, 0.09f));
+                float diag = MathF.Max(Spike(u, v, 0.07f), Spike(v, u, 0.07f)) * 0.5f;
+                a = MathF.Max(MathF.Max(cross, diag), Mathf.Clamp(1f - r * 3.2f, 0f, 1f));
+            }
+            else a = MathF.Pow(Mathf.Clamp(1f - r, 0f, 1f), 1.8f);
+            image.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp(a, 0f, 1f)));
+        }
+        return ImageTexture.CreateFromImage(image);
+    }
+
+    // A spike along one axis: bright near the centre, tapering to a point at the edge.
+    static float Spike(float along, float across, float width)
+    {
+        float t = Mathf.Clamp(1f - along, 0f, 1f);
+        return t * Mathf.Clamp(1f - across / (width * (0.25f + t)), 0f, 1f);
     }
 
     /// <summary>Fires a bolt from the muzzle to where the shot lands; the impact shows when it gets there.</summary>
