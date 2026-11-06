@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Landform = Planets.Gen.Landform;
+using LandformBlend = Planets.Gen.LandformBlend;
 
 namespace Wildlife;
 
@@ -75,6 +77,23 @@ public sealed class Species
     public DomesticKind Domestic;
 
     /// <summary>
+    /// The landforms it lives in: it spawns only where they hold (and near their borders, as
+    /// much as they hold there). Empty for species rolled without landforms: those live anywhere.
+    /// </summary>
+    public Landform[] Homes = Array.Empty<Landform>();
+    /// <summary>How its body is built for its home ground: a wader's stilts, a climber's grip, a sand-swimmer's sleek body.</summary>
+    public Adaptation Adaptation;
+
+    /// <summary>How much of a spot with this landform blend is its home ground, 0 to 1 (1 everywhere if it has no homes).</summary>
+    public float HomeWeight(LandformBlend blend)
+    {
+        if (Homes.Length == 0) return 1f;
+        float w = 0f;
+        foreach (Landform l in Homes) w += blend.Weight(l);
+        return Math.Min(1f, w);
+    }
+
+    /// <summary>
     /// A copy to change (a variant: deeper, mutated): every field, with its body, palette, stats
     /// and parts copied too, so changing the copy never touches the original.
     /// </summary>
@@ -82,6 +101,7 @@ public sealed class Species
     {
         var s = (Species)MemberwiseClone();
         s.Parts = new Dictionary<string, string>(Parts);
+        s.Homes = (Landform[])Homes.Clone();
         s.Body = Shallow(Body);
         s.Colors = Shallow(Colors);
         s.Stats = Shallow(Stats);

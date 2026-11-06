@@ -177,14 +177,14 @@ public sealed record WorldLook
         ArchetypeDef def = map.Def;
         return (def.Archetype, def.Variant) switch
         {
-            (Archetype.Temperate, 0) => new() { SnowAltitude = 620f, Shallow = new("2e7a80"), Deep = new("0c2c40") },
-            (Archetype.Temperate, _) => new() { SnowAltitude = 900f, Shallow = new("2f7c6c"), Deep = new("0c3236") },
-            (Archetype.Arid, _) => new() { Dust = new("b98a56"), Shallow = new("3a8c8a"), Deep = new("12384a") },
+            (Archetype.Temperate, 0) => new() { SnowAltitude = 380f, Shallow = new("2e7a80"), Deep = new("0c2c40") },
+            (Archetype.Temperate, _) => new() { SnowAltitude = 500f, Shallow = new("2f7c6c"), Deep = new("0c3236") },
+            (Archetype.Arid, _) => new() { SnowAltitude = 640f, Dust = new("b98a56"), Shallow = new("3a8c8a"), Deep = new("12384a") },
             (Archetype.Ice, 0) => new() { BaseSnow = 0.55f, SnowAltitude = 60f, Dust = new("c8ccd0"), Shallow = new("2c5a78"), Deep = new("0a1c34") },
             (Archetype.Ice, _) => new() { BaseSnow = 0.35f, SnowAltitude = 150f, Dust = new("c0c4c8"), Shallow = new("2a6a7c"), Deep = new("0a2236"), Glow = new("40fff0") },
             (Archetype.Lava, _) => new() { Dust = new("4a4442"), Shallow = new("8a1a0a"), Deep = new("ff6a18"), Lava = true, LiquidGlow = 2.2f },
-            (Archetype.Alien, 0) => new() { SnowAltitude = 800f, Dust = new("a898b8"), Shallow = new("2a8a86"), Deep = new("0c2a3a"), Glow = new("c070ff"), LiquidGlow = 0.25f },
-            _ => new() { SnowAltitude = 800f, Dust = new("8a8a5a"), Shallow = new("5a3a7a"), Deep = new("1a0c30"), Glow = new("30ffc0"), LiquidGlow = 0.25f },
+            (Archetype.Alien, 0) => new() { SnowAltitude = 500f, Dust = new("a898b8"), Shallow = new("2a8a86"), Deep = new("0c2a3a"), Glow = new("c070ff"), LiquidGlow = 0.25f },
+            _ => new() { SnowAltitude = 500f, Dust = new("8a8a5a"), Shallow = new("5a3a7a"), Deep = new("1a0c30"), Glow = new("30ffc0"), LiquidGlow = 0.25f },
         };
     }
 }

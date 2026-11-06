@@ -29,7 +29,7 @@ sealed class SurfacePalette
         _cells = ColorMap.CellColors(map, look, out Rgb[] glow);
         _glow = new float[map.Count];
         for (int k = 0; k < map.Count; k++) _glow[k] = Math.Max(glow[k].R, Math.Max(glow[k].G, glow[k].B));
-        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), 160, 4);
+        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), ColorMap.BorderWave, 4);
         _clump = new Fractal(Hash.Of(map.Spec.Seed, 0x636C756D), 70, 3);
 
         (Cliff, GlowColor) = (map.Def.Archetype, map.Def.Variant) switch
@@ -49,6 +49,14 @@ sealed class SurfacePalette
     public Rgb ColorAt(double x, double y, out float glow)
     {
         Jitter(x, y, out double gx, out double gy);
+        // By the shore a border can wander right out over water: the colour here, then.
+        if (Land(gx, gy, out Rgb c, out glow) || Land(x / Map.CellSize - 0.5, y / Map.CellSize - 0.5, out c, out glow)) return c;
+        return Seabed;
+    }
+
+    /// <summary>The land colours round a grid position, blended; false if there is only water there.</summary>
+    bool Land(double gx, double gy, out Rgb color, out float glow)
+    {
         int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gy);
         float tx = (float)(gx - i0), ty = (float)(gy - j0);
         Rgb c = default;
@@ -57,13 +65,9 @@ sealed class SurfacePalette
         Add(i0 + 1, j0, tx * (1 - ty), ref c, ref g, ref total);
         Add(i0, j0 + 1, (1 - tx) * ty, ref c, ref g, ref total);
         Add(i0 + 1, j0 + 1, tx * ty, ref c, ref g, ref total);
-        if (total <= 0f)
-        {
-            glow = 0f;
-            return Seabed;
-        }
-        glow = g / total;
-        return c * (1f / total);
+        color = total > 0f ? c * (1f / total) : default;
+        glow = total > 0f ? g / total : 0f;
+        return total > 0f;
     }
 
     /// <summary>The biome at a point, with the same wandering borders as the colours.</summary>
@@ -81,8 +85,8 @@ sealed class SurfacePalette
     void Jitter(double x, double y, out double gx, out double gy)
     {
         P4 p = Map.Model.Torus.At(x, y);
-        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * 0.9;
-        gy = y / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * 0.9;
+        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * ColorMap.BorderWander;
+        gy = y / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * ColorMap.BorderWander;
     }
 
     void Add(int i, int j, float w, ref Rgb c, ref float g, ref float total)

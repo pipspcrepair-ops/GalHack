@@ -50,8 +50,8 @@ public sealed class SurfaceSampler
     {
         x = Mathx.WrapX(x, _width);
         y = Mathx.Wrap(y, _height);
-        float e = _model.Elevation(x, y, spacing);
-        _model.Meander(x, y, out double mx, out double my);
+        float e = _model.Elevation(x, y, spacing, out float meander);
+        _model.Meander(x, y, meander, out double mx, out double my);
         if (!NearestRiver(Mathx.WrapX(x + mx, _width), Mathx.Wrap(y + my, _height), out float d, out float level, out float width))
             return new GroundSample(e, 0f, false);
 
@@ -66,7 +66,9 @@ public sealed class SurfaceSampler
             // term keeps them from running as straight and even as the river's polyline.
             float out_ = d - half;
             out_ = Math.Max(0f, out_ + _model.Jag(x, y, spacing) * Math.Min(out_, 24f) * 0.7f);
-            target = level + 0.35f + 0.18f * out_ + 0.03f * out_ * out_;
+            // Where rivers meander (plains, wetlands, deltas) their banks are low and gentle;
+            // where they cut through high ground the banks become gorge walls.
+            target = level + 0.35f + (0.18f * out_ + 0.03f * out_ * out_) / Math.Clamp(meander, 1f, 2.6f);
         }
         float keep = Mathx.Smooth(half + Reach, half + Reach * 0.75f, d);
         float h = Mathx.Lerp(e, Math.Min(e, target), keep);
@@ -74,6 +76,9 @@ public sealed class SurfaceSampler
     }
 
     public float HeightAt(double x, double y, double spacing = 2) => Sample(x, y, spacing).Height;
+
+    /// <summary>The landforms at a point (both axes wrap), strongest first: cheap, and the same on every machine.</summary>
+    public LandformBlend LandformsAt(double x, double y) => Map.LandformsAt(x, y);
 
     bool NearestRiver(double x, double y, out float distance, out float level, out float width)
     {

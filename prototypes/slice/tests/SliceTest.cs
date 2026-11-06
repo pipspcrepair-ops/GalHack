@@ -348,9 +348,11 @@ public partial class SliceTest : Node
             tried.Add(plant);
             (p, id) = (root, plant);
             foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) > reach)
+            // In reach, and not up a bank over the castaway's head, where the tool can't be aimed at it.
+            bool InReach() => _game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach && p.Y < _game.Survivor.WorldEye().Y;
+            if (!InReach())
                 foreach (int x in _drive.WalkTo(p, 0.9f, 15f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach) break;
+            if (InReach()) break;
         }
         if (id == 0)
         {
@@ -538,6 +540,7 @@ public partial class SliceTest : Node
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
         double healthBefore = _game.Suit.Vitals.Health;
+        float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
         Vector3 target = FlatSpot(start, 2150f, 0.8f);
         int lifts = _liftedOff, lands = _landed;
@@ -596,8 +599,10 @@ public partial class SliceTest : Node
             // Creep on toward the flat spot while coming down.
             float ground = new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length();
             _game.Controls.Hold(Key.W, flat > 12f && ground < 6f && agl > 4f);
-            _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, vy < wanted - 0.5f);
+            // Feet down: let go, and it settles. Pushing on would only skid it along a slope.
+            bool down = v.Controller.Gear.Contact;
+            _game.Controls.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
+            _game.Controls.Hold(Key.Space, !down && vy < wanted - 0.5f);
             yield return 0;
         }
         _game.Controls.ReleaseAll();
@@ -607,7 +612,7 @@ public partial class SliceTest : Node
         float flown = new Vector2(end.X - start.X, end.Z - start.Z).Length();
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
-        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == 0f && worst < 8f,
+        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,
             $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
         Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
@@ -709,7 +714,18 @@ public partial class SliceTest : Node
         Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f && w.Sim.Creatures.Count > 10,
             $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
-        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + new Vector3(14f, 0f, 0f)), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
+        // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,
+        // and the flight can end on a low shore. The way whose lowest ground is highest, out past where it can land.
+        Vector3 local = w.PatchLocal(feet), toward = Vector3.Right;
+        float driest = float.MinValue;
+        for (int d = 0; d < 16; d++)
+        {
+            var dir = new Vector3(MathF.Cos(d * MathF.Tau / 16), 0f, MathF.Sin(d * MathF.Tau / 16));
+            float lowest = float.MaxValue;
+            for (float r = 2f; r <= 26f; r += 2f) lowest = MathF.Min(lowest, w.Sim.Terrain.Height(local.X + dir.X * r, local.Z + dir.Z * r));
+            if (lowest > driest) (driest, toward) = (lowest, dir);
+        }
+        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + toward * 14f), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
         foreach (Creature g in group)
         {
             g.ProvokedBy = w.Player;

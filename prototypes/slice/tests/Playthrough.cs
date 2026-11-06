@@ -572,7 +572,10 @@ public sealed class Playthrough
         N.Vector3 local = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
         foreach (int x in Drive.LookAt(v.ToWorld(local), 6)) yield return x;
-        foreach (int x in Drive.Click()) yield return x;
+        // Click only with the ghost on that face, as a player would: a walker settling on a slope
+        // drifts the crosshair, and a click on anything else spends the block somewhere unwanted.
+        if (Game.Builder.TargetVessel == v && Game.Builder.PlaceCell == target)
+            foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
         bool ok = v.Structure.Has(target) && v.Structure.Count > before;
         if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict})");

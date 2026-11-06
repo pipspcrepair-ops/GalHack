@@ -324,7 +324,8 @@ public sealed class Driver
     public IEnumerable<int> Board(Vessel v)
     {
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
-        foreach (int x in WalkTo(seat, 1.6f, 30f)) yield return x;
+        // Never digging: the hull in the way isn't a bank to dig through, and a hole beside a landed vessel wakes it.
+        foreach (int x in WalkTo(seat, 1.6f, 30f, dig: false)) yield return x;
         foreach (int x in LookAt(seat, 4)) yield return x;
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;

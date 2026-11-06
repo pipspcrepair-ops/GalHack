@@ -387,8 +387,15 @@ public static class PoiSiting
         var extra = new List<TerrainStamp>();
         double fx0 = ox + lx0, fz0 = oz + lz0, fx1 = ox + lx1, fz1 = oz + lz1;
         if (ruin)
-            extra.Add(new TerrainStamp(family.Name + " (half-buried)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, Apron, blend, width, height)
+        {
+            // The tilt hinges on the way in, not on the footprint's front edge: a wing can stand
+            // forward of the door, and by the door the ground would already have risen over its sill.
+            PInt3 door = inst.Layout.EntranceCell;
+            int tx0 = outward.X < 0 ? Math.Max((int)fx0, ox + door.X + 1) : (int)fx0, tx1 = outward.X > 0 ? Math.Min((int)fx1, ox + door.X) : (int)fx1;
+            int tz0 = outward.Z < 0 ? Math.Max((int)fz0, oz + door.Z + 1) : (int)fz0, tz1 = outward.Z > 0 ? Math.Min((int)fz1, oz + door.Z) : (int)fz1;
+            extra.Add(new TerrainStamp(family.Name + " (half-buried)", tx0, tz0, tx1, tz1, bestPad, Apron, blend, width, height)
                 { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt });
+        }
         // A crater's bowl, so it shows in the far rings too (its rim is the place's own rubble).
         if (inst.Layout.Extras.Blast is { } blast)
         {

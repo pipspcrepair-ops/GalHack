@@ -58,6 +58,9 @@ public sealed class DepositField
         }
     }
 
+    /// <summary>Deposits go on ground at least this high where the cell has any (metres above sea level).</summary>
+    const float SafeElevation = 3f;
+
     /// <summary>Usable ground: dry land, out of river channels, gentle enough to stand on.</summary>
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
@@ -68,24 +71,35 @@ public sealed class DepositField
         float amount = Mathx.Lerp(0.6f, 1.6f, Hash.Unit(h, 40));
         float depth = Hash.Unit(h, 41) < 0.6f ? 0f : Mathx.Lerp(0.5f, MaxShallowDepth, Hash.Unit(h, 42));
 
-        // Try jittered spots, near the middle of the cell first so neighbouring cells stay close.
+        // Try jittered spots, near the middle of the cell first so neighbouring cells stay close,
+        // on ground a little above the waterline first (the fine terrain's last metre or so of
+        // detail can dip a spot right at the shore under water).
+        for (int pass = 0; pass < 2; pass++)
         for (int attempt = 0; attempt < 16; attempt++)
         {
             double spread = attempt < 8 ? 0.5 : 0.9;
             double x = (ci + 0.5 + (Hash.Unit(h, attempt * 2) - 0.5) * spread) * _cw;
             double y = (cj + 0.5 + (Hash.Unit(h, attempt * 2 + 1) - 0.5) * spread) * _ch;
-            if (!Usable(_map, _map.CellAt(x, y))) continue;
+            int cell = _map.CellAt(x, y);
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
             deposit = new Deposit(x, y, kind, amount, depth);
             return true;
         }
 
         // Small islands and narrow valleys: take the usable map cell nearest the middle, if any.
+        // Every map cell that overlaps this deposit cell counts, at the nearest point of it inside.
         double best = double.MaxValue, bx = 0, by = 0;
         double cx = (ci + 0.5) * _cw, cy = (cj + 0.5) * _ch;
-        for (double y = cj * _ch + _map.CellSize / 2; y < (cj + 1) * _ch; y += _map.CellSize)
-        for (double x = ci * _cw + _map.CellSize / 2; x < (ci + 1) * _cw; x += _map.CellSize)
+        double x0 = ci * _cw, x1 = (ci + 1) * _cw, y0 = cj * _ch, y1 = (cj + 1) * _ch;
+        int mi0 = (int)Math.Floor(x0 / _map.CellSize), mi1 = (int)Math.Floor((x1 - 1e-6) / _map.CellSize);
+        int mj0 = (int)Math.Floor(y0 / _map.CellSize), mj1 = (int)Math.Floor((y1 - 1e-6) / _map.CellSize);
+        for (int pass = 0; pass < 2 && best == double.MaxValue; pass++)
+        for (int mj = mj0; mj <= mj1; mj++)
+        for (int mi = mi0; mi <= mi1; mi++)
         {
-            if (!Usable(_map, _map.CellAt(x, y))) continue;
+            int cell = _map.Index(mi, mj);
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
+            double x = Math.Clamp(_map.CellX(mi), x0 + 0.5, x1 - 0.5), y = Math.Clamp(_map.CellY(mj), y0 + 0.5, y1 - 0.5);
             double d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
             if (d < best)
             {
