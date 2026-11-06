@@ -215,18 +215,18 @@ public sealed partial class Staging
         for (int i = 0; i < 12; i++) yield return 0;
     }
 
-    /// <summary>The derelict ship nearest, and its airlock's outer door in the world.</summary>
+    /// <summary>The derelict ship nearest, and its hull door in the world.</summary>
     (Vessel ship, Vector3 door, Vector3 outward) Derelict()
     {
-        Vessel ship = NearestWreck(w => w.Derelict.Site.Kind == "wreck" && w.Derelict.Airlock != null);
+        Vessel ship = NearestWreck(w => w.Derelict.Site.Kind == "wreck" && w.Derelict.Door != null);
         if (ship == null) return default;
-        Int3 cell = ship.Derelict.Airlock.Value;
+        Int3 cell = ship.Derelict.Door.Value;
         Vector3 door = ship.ToWorld(StructureBridge.CellCenter(ship.Structure, cell));
         Vector3 outward = MathX.Rotate(ship.Body.Rotation, N.Vector3.UnitX * Math.Sign(cell.X)).ToGodot();
         return (ship, door, outward);
     }
 
-    /// <summary>Flies the Skiff to a stop off a derelict's airlock, and steps out onto its deck.</summary>
+    /// <summary>Flies the Skiff to a stop off a derelict's hull door, and steps out onto its deck.</summary>
     IEnumerable<int> ToDerelict()
     {
         foreach (int x in ToOrbit()) yield return x;
@@ -240,7 +240,7 @@ public sealed partial class Staging
         for (int i = 0; i < 20; i++) yield return 0;
     }
 
-    /// <summary>Floating across to a derelict's airlock, the Skiff behind.</summary>
+    /// <summary>Floating across to a derelict's hull door, the Skiff behind.</summary>
     IEnumerable<int> EvaView()
     {
         foreach (int x in ToDerelict()) yield return x;
@@ -267,13 +267,10 @@ public sealed partial class Staging
         foreach (int x in _pilot.FloatTo(() => door + outward * 2.2f, 0.8f, 30f)) yield return x;
         foreach (int x in _drive.LookAt(door, 4)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
-        Int3 c = ship.Derelict.Airlock.Value;
+        Int3 c = ship.Derelict.Door.Value;
         int s = Math.Sign(c.X);
         Vector3 Cell(int x, int y, int z) => ship.ToWorld(StructureBridge.CellCenter(ship.Structure, new Int3(x, y, z)));
-        foreach (int x in _pilot.FloatTo(() => Cell(c.X - s, 1, c.Z), 0.6f, 20f)) yield return x;
-        foreach (int x in _drive.LookAt(Cell(c.X - 2 * s, 1, c.Z), 4)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => Cell(c.X - 3 * s, 1, c.Z), 0.6f, 20f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => Cell(c.X - 2 * s, 1, c.Z), 0.6f, 20f)) yield return x;
         foreach (int x in _drive.Tap(Key.L)) yield return x; // the head torch
         _game.Visor.Visible = _args.GetValueOrDefault("hud") != "0";
         var (min, max) = ship.Structure.Bounds();

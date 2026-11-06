@@ -359,6 +359,8 @@ public partial class Game : Node3D
         float cap = vessel.Structure.Grid.Size == GridSize.Small && vessel.Stats is HandlingStats st && st.TurnRate > 0f
             ? Mathf.Min(1f, Zone.Data.Rules.Build.SmallVesselMaxTurn / st.TurnRate) : 1f;
         var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E)) * cap;
+        // Anyone in a seat can reach the ship's systems; only the pilot role's holder flies it.
+        if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.G)) vessel.Controller?.ToggleGear();
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
@@ -379,12 +381,12 @@ public partial class Game : Node3D
         float bestDistance = 3.2f;
         foreach (Vessel v in Zone.Vessels)
         {
-            if (v.Seat == null || v.IsWreck) continue;
-            float d = v.ToWorld(v.Seat.Value).DistanceTo(eye);
+            if (v.IsWreck) continue;
+            float d = v.NearestChair(eye, out _);
             if (d < bestDistance) { best = v; bestDistance = d; }
         }
         if (best == null) Say("No seat within reach", Tones.Caution);
-        else if (Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
+        else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
     }
 
     void Report(Outcome o) => Say(o.Message, o.Ok ? Tones.Good : Tones.Caution);

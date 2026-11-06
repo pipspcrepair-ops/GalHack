@@ -1,6 +1,7 @@
 using Godot;
 using Slice.Orbit;
 using Slice.Surface;
+using Slice.Vessels;
 
 namespace Slice.Game;
 
@@ -26,6 +27,14 @@ public partial class Game
         Spaceflight = new Spaceflight { Name = "Spaceflight", Game = this };
         AddChild(Spaceflight);
         Zone.Built += Spaceflight.PlanetBuilt;
+    }
+
+    /// <summary>Sets the chair within reach as the one to sit in.</summary>
+    static bool TakeNearestChair(Vessel vessel, Vector3 eye)
+    {
+        vessel.NearestChair(eye, out GalHack.Structures.Int3 chair);
+        vessel.TakeChair(chair);
+        return true;
     }
 
     /// <summary>

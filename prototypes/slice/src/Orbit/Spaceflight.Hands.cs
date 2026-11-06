@@ -25,7 +25,7 @@ public partial class Spaceflight
     /// <summary>A wreck was claimed by setting a core in it.</summary>
     public event Action<Vessel> Claimed;
 
-    /// <summary>A wreck's door was cranked open or shut.</summary>
+    /// <summary>A wreck's door was forced open or shut.</summary>
     public event Action<Vessel, Int3, bool> DoorCycled;
 
     Vessel _salvaging;
@@ -250,7 +250,7 @@ public partial class Spaceflight
     // ---- E: doors ------------------------------------------------------------------------------
 
     /// <summary>
-    /// E in space on a wreck's door or airlock: with no power it is cranked open (or shut) by hand.
+    /// E in space on a wreck's door: with no power it is forced open (or shut) by hand.
     /// The game asks this before its own E. False if there is no door under the crosshair.
     /// </summary>
     public bool Use()
@@ -260,13 +260,13 @@ public partial class Spaceflight
         v.ApplyEdits();
         bool open = v.Structure.Get(cell).Open;
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), open ? 0.6f : 0.5f, -3f);
-        Game.Say(open ? "Cranked the door open by hand: no power to cycle it" : "Cranked the door shut", Tones.Text);
+        Game.Say(open ? "Forced the door open by hand: the wreck has no power" : "Forced the door shut", Tones.Text);
         DoorCycled?.Invoke(v, cell, open);
         return true;
     }
 
     /// <summary>The prompt by the crosshair for a door in reach, or null.</summary>
-    public string UsePrompt() => Game.InOrbit && DoorInReach(out _, out _) ? "E  Crank the door" : null;
+    public string UsePrompt() => Game.InOrbit && DoorInReach(out _, out _) ? "E  Force the door" : null;
 
     bool DoorInReach(out Vessel v, out Int3 cell)
     {

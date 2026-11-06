@@ -271,6 +271,7 @@ public partial class Spaceflight
         while (budget-- > 0 && _walk.Count > 0)
         {
             Node n = _walk.Pop();
+            if (!IsInstanceValid(n)) continue; // gone since this pass began (a chunk streamed away)
             if (n is GeometryInstance3D g && n != s.Sea && n != s.Sky.CloudDeck) g.Transparency = _landFade;
             int children = n.GetChildCount();
             for (int i = 0; i < children; i++) _walk.Push(n.GetChild(i));

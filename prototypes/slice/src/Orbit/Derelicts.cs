@@ -26,8 +26,8 @@ public sealed class DerelictPlan
     public N.Quaternion Rotation;
     /// <summary>What its container blocks hold (its hold, shared storage).</summary>
     public Bill Loot = new();
-    /// <summary>Where its airlock's outer door is, if it has one (structure cells).</summary>
-    public Int3? Airlock;
+    /// <summary>Its way in from outside: a hull door, dead and shut, forced by hand (structure cells), if it has one.</summary>
+    public Int3? Door;
 }
 
 /// <summary>
@@ -37,13 +37,14 @@ public sealed class DerelictPlan
 /// structure model, large grid) so it can be boarded, looted, salvaged block by block and claimed
 /// with a core:
 /// <list type="bullet">
-/// <item>a derelict ship (wreck): a hull with a bridge, a crew deck and a hold behind bulkheads, an airlock amidships, a breach in its back, engines dead</item>
+/// <item>a derelict ship (wreck): a hull with a bridge, a crew deck and a hold behind bulkheads, a hull door amidships, a breach in its back, engines dead</item>
 /// <item>a drifting hulk (hulk): a long liner broken in two at its spine, open where it parted</item>
-/// <item>a broken station (broken, and any dead station or outpost: a start system holds no live faction): modules on truss tubes, one torn off and drifting</item>
+/// <item>a broken station (broken, and any dead station or outpost: a start system holds no live faction): modules on truss tubes, a hull door, one module torn off and drifting</item>
 /// <item>a wreck field (field): hull fragments and loose cargo boxes tumbling apart</item>
 /// <item>an escape pod cluster (field): pods that launched and were never picked up</item>
 /// </list>
-/// None has a core: nothing runs, nothing holds you to a floor, and any of them can be claimed.
+/// None has a core or power: no field holds any air in their doors, so their insides are vacuum,
+/// nothing holds you to a floor, and any of them can be claimed.
 /// Everything is seeded from the system's seed, so the same world always has the same wrecks.
 /// </summary>
 public static class Derelicts
@@ -123,7 +124,7 @@ public static class Derelicts
 
     // ---- Kinds ---------------------------------------------------------------------------------
 
-    /// <summary>A derelict ship: a boxy hull, bridge forward, crew deck, hold aft behind bulkheads, an airlock amidships to starboard, a breach in the hold's roof.</summary>
+    /// <summary>A derelict ship: a boxy hull, bridge forward, crew deck, hold aft behind bulkheads, a hull door amidships to starboard, a breach in the hold's roof.</summary>
     static List<DerelictPlan> Ship(Random rng, OrbitPoi poi, string id, Catalogue catalogue)
     {
         bool military = poi.Site.Salvage == "military";
@@ -139,7 +140,7 @@ public static class Derelicts
             b.Box(-w, 1, z, w, h, z, "wall");
             b.Set(0, 1, z, "door", open: true);
         }
-        b.Airlock(w + 1, 0);
+        b.HullDoor(w + 1, 0);
         // The hold: cargo boxes along both walls.
         for (int z = l - 3; z <= l - 1; z++)
         {
@@ -167,7 +168,7 @@ public static class Derelicts
         for (int x = -w; x <= w; x++) fore.Set(x, h, -l - 1, "glass");
         fore.Box(-w, 2, -l + 4, w, 2, -2, "deck");
         fore.Clear(-1, 2, -6, 1, 2, -5);
-        fore.Airlock(w + 1, -l + 6);
+        fore.HullDoor(w + 1, -l + 6);
         foreach (int z in new[] { -l + 2, -8, -4 }) fore.Set(-w, 1, z, "container", paint: "cargo");
         fore.Scars(8);
         var aft = new Cells(rng, colour);
@@ -192,7 +193,7 @@ public static class Derelicts
         hub.Box(-3, 0, -3, 3, 4, 3, "hull", hollow: true);
         hub.Box(-2, 2, -2, 2, 2, 2, "deck");
         hub.Clear(-1, 2, -1, 0, 2, 0);
-        hub.Airlock(3, 1);
+        hub.HullDoor(3, 1);
         foreach (var (x, z) in new[] { (-2, -2), (2, -2), (-2, 2) }) hub.Set(x, 1, z, "container", paint: "cargo");
         // Truss tubes out along -z and +x, a module on the -z one.
         hub.Tube(0, 2, -4, 0, 0, -1, 5);
@@ -253,7 +254,7 @@ public static class Derelicts
             p.Set(0, 1, 1, "container", paint: "cargo");
             p.Scars(1);
             DerelictPlan plan = p.Plan($"{id}-{i + 1}", $"Escape pod {i + 1}", catalogue);
-            plan.Airlock = new Int3(0, 1, -2);
+            plan.Door = new Int3(0, 1, -2);
             double a = i * Math.Tau / n;
             plan.Position = new N.Vector3((float)(Math.Cos(a) * 22), (float)((rng.NextDouble() - 0.5) * 8), (float)(Math.Sin(a) * 22));
             plan.Rotation = RandomTurn(rng);
@@ -272,7 +273,7 @@ public static class Derelicts
         readonly Random _rng;
         readonly SortedDictionary<(int y, int z, int x), string> _cells = new();
         readonly string _hull, _accent;
-        Int3? _airlock;
+        Int3? _door;
 
         public Cells(Random rng, string hull, string accent = "2b2d42")
         {
@@ -313,18 +314,11 @@ public static class Derelicts
                     }
         }
 
-        /// <summary>An airlock through a side wall at x = <paramref name="wallX"/>: the outer door, a one-cell chamber walled round, the inner door.</summary>
-        public void Airlock(int wallX, int z)
+        /// <summary>A way in through a side wall: a hull door at floor height (dead, shut until it is forced).</summary>
+        public void HullDoor(int wallX, int z)
         {
-            int s = Math.Sign(wallX), inner = wallX - 2 * s, chamber = wallX - s;
             Set(wallX, 1, z, "door", paint: "hazard");
-            Set(chamber, 1, z - 1, "steel", "wall");
-            Set(chamber, 1, z + 1, "steel", "wall");
-            Set(chamber, 2, z, "steel", "wall");
-            Set(inner, 1, z, "door", paint: "hazard");
-            Set(inner, 2, z, "steel", "wall");
-            _cells.Remove((1, z, chamber));
-            _airlock = new Int3(wallX, 1, z);
+            _door = new Int3(wallX, 1, z);
         }
 
         /// <summary>A square tube (3 by 3, a 1-cell passage) from a cell along an axis.</summary>
@@ -407,7 +401,7 @@ public static class Derelicts
             if (errors.Count > 0) throw new InvalidOperationException($"wreck '{name}': " + string.Join("; ", errors.Take(5)));
             Structure s = Blueprint.Build(data, catalogue);
             s.DirtyChunks.Clear();
-            return new DerelictPlan { Id = id, Name = name, Structure = s, Rotation = N.Quaternion.Identity, Airlock = _airlock };
+            return new DerelictPlan { Id = id, Name = name, Structure = s, Rotation = N.Quaternion.Identity, Door = _door };
         }
     }
 }

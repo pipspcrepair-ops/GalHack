@@ -200,6 +200,8 @@ public sealed class Survivor
         if (vessel.Seat == null || vessel.IsWreck) return false;
         if (Aboard != vessel) PlaceAboard(vessel, vessel.Seat.Value);
         Seated = vessel;
+        if (vessel.Chair == null) vessel.TakeChair(FirstChair(vessel));
+        vessel.Roles.Sat(Vessel.Player, vessel.Chair.Value);
         Body.Asleep = true;
         Node.CollisionLayer = 0;
         Node.CollisionMask = 0;
@@ -209,12 +211,15 @@ public sealed class Survivor
         return true;
     }
 
+    static GalHack.Structures.Int3 FirstChair(Vessel vessel) => System.Linq.Enumerable.First(vessel.Chairs);
+
     /// <summary>Gets up from the seat, a step behind it.</summary>
     public void StandUp()
     {
         Vessel vessel = Seated;
         if (vessel == null) return;
         Seated = null;
+        vessel.Roles.Stood(Vessel.Player);
         if (vessel.Flight != null) vessel.Flight.Input = ShipHandling.Handling.PilotInput.Autopilot; // nobody at the controls: it holds course
         Body.Asleep = false;
         MoveNodeTo(vessel.Cabin, inCabin: true);
@@ -277,7 +282,7 @@ public sealed class Survivor
     {
         var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
         if (Seated is Vessel seat)
-            return seat.DrawTransform * new Transform3D(look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
+            return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
         Basis frame = ViewFrame.ToBasis();
         var local = new Transform3D(frame * look, feet + frame.Y * EyeHeight);

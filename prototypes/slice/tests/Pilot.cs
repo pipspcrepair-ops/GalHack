@@ -136,6 +136,17 @@ public sealed class Pilot
         yield return 0;
     }
 
+    /// <summary>Sideslips gently toward a point on the way down, on the thrusters, keeping the heading.</summary>
+    public void Creep(Vessel v, Vector3 over, bool on)
+    {
+        Vector3 to = MathX.Unrotate(v.Body.Rotation, (over - v.Body.Position.ToGodot()).ToNumerics()).ToGodot();
+        Vector3 speed = MathX.Unrotate(v.Body.Rotation, v.Body.Velocity).ToGodot();
+        C.Hold(Key.W, on && to.Z < -1.5f && speed.Z > -MathF.Min(8f, -to.Z * 0.3f));
+        C.Hold(Key.S, on && to.Z > 1.5f && speed.Z < MathF.Min(8f, to.Z * 0.3f));
+        C.Hold(Key.D, on && to.X > 1.5f && speed.X < MathF.Min(8f, to.X * 0.3f));
+        C.Hold(Key.A, on && to.X < -1.5f && speed.X > -MathF.Min(8f, -to.X * 0.3f));
+    }
+
     // ---- Floating ------------------------------------------------------------------------------
 
     /// <summary>

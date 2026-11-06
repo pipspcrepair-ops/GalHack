@@ -105,6 +105,7 @@ public sealed partial class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
     }
@@ -331,8 +332,13 @@ public sealed partial class Vessel
     void RefreshSeat()
     {
         Seat = null;
+        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        {
+            Seat = StructureBridge.CellCenter(Structure, taken);
+            return;
+        }
         foreach (var (p, b) in Structure.Blocks())
-            if (Structure.TypeOf(b).IsCockpit)
+            if (IsChair(Structure.TypeOf(b)))
             {
                 Seat = StructureBridge.CellCenter(Structure, p);
                 return;
