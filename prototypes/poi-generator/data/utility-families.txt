@@ -1,0 +1,398 @@
+# The old utilities (design doc "Infrastructure"): power, water, sewage and the works a world ran on.
+# Places in their own right, gated by the world's pre-collapse tech level, and wired into the network
+# by their tags: power lines from a place tagged power, rail into one tagged rail.
+
+# ---- the old utilities: places too, matched to the world's old tech level --------------------------
+
+family coal_plant
+  tier base
+  siting flat
+  rise 52
+  tech low mid
+  name Coal Power Station
+  pitch Two stacks over a dead turbine hall, the coal still heaped in the yard.
+  faction none
+  roster raiders
+  site coal_plant
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 20
+  reveal 900
+  ominous 0.4
+  wrong 0.05
+  tags industry power utility fallen
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant Black Ridge Station
+    seed 9801
+  variant Mill Hollow Power
+    seed 9802
+  variant Station Four
+    seed 9803
+
+family nuclear_plant
+  tier base
+  siting flat
+  rise 58
+  tech mid high
+  name Nuclear Power Station
+  pitch Cooling towers you see from everywhere, and a reactor hall nobody went back into.
+  faction none
+  roster oldworld
+  site nuclear_plant
+  core none
+  owner none
+  landmark
+  rarity rare
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 40
+  reveal landmark
+  ominous 0.8
+  wrong 0.05
+  tags industry power utility radiation fallen
+  states active 0 abandoned 5 infested 3 ruined 2
+  variant Greywater Point
+    seed 9811
+  variant Halden Reach
+    seed 9812
+  variant Unit Three
+    seed 9813
+
+family water_works
+  tier site
+  siting flat
+  rise 10
+  tech mid high
+  name Water Treatment Works
+  pitch Settling tanks gone green, the pump hall below still dripping.
+  faction none
+  roster raiders
+  site water_works
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 14
+  reveal 400
+  ominous 0.3
+  wrong 0.05
+  tags utility water industry
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Clearwater Works
+    seed 9821
+  variant Reservoir Station
+    seed 9822
+  variant Filtration Plant Two
+    seed 9823
+
+family sewage_works
+  tier site
+  siting flat
+  rise 10
+  name Sewage Works
+  pitch Foul basins and digesters, and the pumps that kept the town clean.
+  faction none
+  roster raiders
+  site sewage_works
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 14
+  reveal 300
+  ominous 0.4
+  wrong 0.05
+  tags utility industry
+  states active 0 abandoned 6 infested 3 ruined 1
+  variant Outfall Works
+    seed 9831
+  variant Low Lane Treatment
+    seed 9832
+  variant Pumping Station Nine
+    seed 9833
+
+family fusion_plant
+  tier base
+  siting flat
+  rise 30
+  tech high
+  name Fusion Power Station
+  pitch A dome the size of a hill and a hall full of dead magnets.
+  faction none
+  roster raiders
+  site fusion_plant
+  core none
+  owner none
+  landmark
+  rarity exotic
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 50
+  reveal landmark
+  ominous 0.8
+  wrong 0.05
+  tags industry power utility fallen
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Halcyon One
+    seed 9841
+  variant The Bright Works
+    seed 9842
+  variant Sunwell Station
+    seed 9843
+
+family substation
+  tier site
+  siting flat
+  rise 14
+  tech mid high
+  name Substation
+  pitch Transformers in a yard, the lines still strung to nowhere.
+  faction none
+  roster raiders
+  site substation
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 12
+  reveal 300
+  ominous 0.2
+  wrong 0.05
+  tags industry power utility
+  states active 0 abandoned 6 infested 1 ruined 3
+  variant Grid Point East
+    seed 9844
+  variant Junction Nine
+    seed 9845
+  variant Cross Lanes Substation
+    seed 9846
+
+family refinery
+  tier base
+  siting flat
+  rise 38
+  tech mid high
+  name Refinery
+  pitch Tanks and flare stacks, the ground still black round them.
+  faction none
+  roster raiders
+  site refinery
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 24
+  reveal 800
+  ominous 0.4
+  wrong 0.05
+  tags industry utility fallen
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant Tarmouth Refinery
+    seed 9847
+  variant Blackwater Cracking Plant
+    seed 9848
+  variant Number Two Works
+    seed 9849
+
+family steelworks
+  tier base
+  siting flat
+  rise 46
+  tech low mid
+  name Steelworks
+  pitch A rolling shed long enough to lose a street in, and a crane nobody parked.
+  faction none
+  roster raiders
+  site steelworks
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 24
+  reveal 800
+  ominous 0.4
+  wrong 0.05
+  tags industry utility fallen
+  states active 0 abandoned 5 infested 2 ruined 3
+  variant Redstone Mill
+    seed 9850
+  variant Harrow Steel
+    seed 9851
+  variant The Long Shed
+    seed 9852
+
+family grain_elevator
+  tier site
+  siting flat
+  rise 28
+  tech low mid
+  name Grain Elevator
+  pitch Silos in a row, tall as anything for a hundred kilometres.
+  faction none
+  roster raiders
+  site grain_elevator
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 14
+  reveal 500
+  ominous 0.2
+  wrong 0.05
+  tags farm industry
+  states active 0 abandoned 6 infested 1 ruined 3
+  variant Prairie Pool Four
+    seed 9853
+  variant Harvest Co-op
+    seed 9854
+  variant Halt Road Silos
+    seed 9855
+
+family rail_yard
+  tier base
+  siting flat
+  rise 16
+  tech low mid high
+  name Rail Yard
+  pitch Sidings, a shed and containers left where the last shift dropped them.
+  faction none
+  roster raiders
+  site rail_yard
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 18
+  reveal 500
+  ominous 0.3
+  wrong 0.05
+  tags industry rail
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Junction Yard
+    seed 9856
+  variant Number Six Sidings
+    seed 9857
+  variant Marshalling Yard East
+    seed 9858
+
+family docks
+  tier base
+  siting flat
+  rise 30
+  tech low mid high
+  name Old Docks
+  pitch Cranes over a basin that went to mud, containers stacked on the quay.
+  faction none
+  roster raiders
+  site docks
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 20
+  reveal 700
+  ominous 0.3
+  wrong 0.05
+  tags industry port
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Kingsquay
+    seed 9859
+  variant Basin Three
+    seed 9860
+  variant Saltmarket Docks
+    seed 9861
+
+family telecom_exchange
+  tier site
+  siting flat
+  rise 40
+  tech mid high
+  name Telecom Exchange
+  pitch Racks floor over floor, and a mast that still catches the wind.
+  faction none
+  roster raiders
+  site telecom_site
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 16
+  reveal 500
+  ominous 0.4
+  wrong 0.05
+  tags utility comms
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Central Exchange
+    seed 9862
+  variant Trunk Hall
+    seed 9863
+  variant Exchange Building Four
+    seed 9864
+
+family wind_farm
+  tier site
+  siting flat
+  rise 46
+  tech mid high
+  name Wind Farm
+  pitch Turbines in rows, one blade in the dirt, the rest still turning a little.
+  faction none
+  roster raiders
+  site wind_farm
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 18
+  reveal 700
+  ominous 0.2
+  wrong 0.05
+  tags power utility
+  states active 0 abandoned 7 infested 0 ruined 3
+  variant Ridge Array
+    seed 9865
+  variant Gale Hill
+    seed 9866
+  variant Windrow
+    seed 9867
+
+family solar_farm
+  tier site
+  siting flat
+  rise 8
+  tech high
+  name Solar Farm
+  pitch Panels by the thousand under a century of dust.
+  faction none
+  roster raiders
+  site solar_farm
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 18
+  reveal 300
+  ominous 0.2
+  wrong 0.05
+  tags power utility
+  states active 0 abandoned 7 infested 0 ruined 3
+  variant Sunfield
+    seed 9868
+  variant Array Twelve
+    seed 9869
+  variant The Glass Acres
+    seed 9870

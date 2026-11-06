@@ -72,6 +72,12 @@ public static class Sites
                 case "shacks": Shacks(x, part); break;
                 case "stalls": Stalls(x, part); break;
                 case "greenhouse": Greenhouse(x, part); break;
+                case "basins": Basins(x, part); break;
+                case "heaps": Heaps(x, part); break;
+                case "conveyor": Conveyor(x, part); break;
+                case "dome": Dome(x, part); break;
+                case "turbines": Turbines(x, part); break;
+                case "panels": Panels(x, part); break;
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
@@ -1141,6 +1147,225 @@ public static class Sites
             }
         if (p.Arg("implement", "yes") == "yes")
             x.C.Set(new Int3(p.X + w / 2, 0, p.Z + d / 2), new Block(BlockType.Machine, Material.Rust, new Rgb(0x8a, 0x4a, 0x2a), Role.Prop));
+    }
+
+    // ---- the old utilities' yards -----------------------------------------------------------
+
+    /// <summary>
+    /// Open round basins in a row: settling tanks and clarifiers at a water or sewage works. A low
+    /// concrete ring, standing water inside (clean, or foul and scummed), a walkway bridge across each
+    /// with its rails. water: clean or foul.
+    /// </summary>
+    static void Basins(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), r = p.Int("r", 7), h = p.Int("h", 2), gap = p.Int("gap", 4);
+        bool alongX = p.Arg("axis", "x") == "x";
+        bool foul = p.Arg("water", "clean") == "foul";
+        var water = foul ? new Rgb(0x4a, 0x48, 0x2a) : new Rgb(0x3a, 0x5a, 0x62);
+        var rim = new Rgb(0x8a, 0x88, 0x82);
+        for (int i = 0; i < n; i++)
+        {
+            int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
+            for (int dz = -r; dz <= r; dz++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    float d = MathF.Sqrt(dx * dx + dz * dz);
+                    if (d > r + 0.4f) continue;
+                    Int3 floor = new(cx + dx, -1, cz + dz);
+                    x.C.Set(floor, new Block(BlockType.Cube, Material.Concrete, rim.Scale(0.7f), Role.Floor));
+                    if (d > r - 0.6f)
+                        for (int y = 0; y < h; y++) x.C.Set(floor + Int3.Up * (y + 1), new Block(BlockType.Cube, Material.Concrete, rim.Scale(y == h - 1 ? 1f : 0.9f), Role.Wall));
+                    else
+                    {
+                        // Standing water, and on a foul one a crust of scum in patches.
+                        uint hsh = Hash.Cell(floor, 91);
+                        x.C.Set(floor + Int3.Up, new Block(BlockType.Puddle, Material.Water, foul && hsh % 5 == 0 ? water.Scale(1.25f) : water, Role.Decor));
+                    }
+                }
+            // The clarifier's walkway bridge across the middle, rails both sides, a gearbox at its centre.
+            for (int t = -r; t <= r; t++)
+            {
+                Int3 deck = alongX ? new Int3(cx, h, cz + t) : new Int3(cx + t, h, cz);
+                x.C.Set(deck, new Block(BlockType.Cube, Material.Steel, new Rgb(0x6a, 0x6c, 0x6e), Role.Floor));
+                foreach (int side in new[] { -1, 1 })
+                {
+                    Int3 rail = deck + (alongX ? new Int3(side, 1, 0) : new Int3(0, 1, side));
+                    if (Math.Abs(t) < r) x.C.Blocks[rail] = new Block(BlockType.Rail, Material.Steel, Hazard, Role.Decor);
+                }
+            }
+            x.C.Set(new Int3(cx, h + 1, cz), new Block(BlockType.Machine, Material.Rust, new Rgb(0x7a, 0x4a, 0x2a), Role.Prop));
+        }
+    }
+
+    /// <summary>Heaps of coal or spoil in a yard: low cones of dark rubble, a little loose stuff round each.</summary>
+    static void Heaps(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), r = p.Int("r", 6), h = p.Int("h", 5), gap = p.Int("gap", 4);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var coal = p.Arg("type", "coal") == "coal" ? new Rgb(0x2a, 0x28, 0x2a) : new Rgb(0x6a, 0x5a, 0x4a);
+        for (int i = 0; i < n; i++)
+        {
+            int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
+            for (int dz = -r; dz <= r; dz++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    float d = MathF.Sqrt(dx * dx + dz * dz);
+                    if (d > r) continue;
+                    int top = (int)MathF.Round(h * (1f - d / r) * (0.85f + 0.3f * (Hash.Cell(new Int3(cx + dx, 0, cz + dz), 93) % 100) / 100f));
+                    for (int y = 0; y < top; y++)
+                        x.C.Set(new Int3(cx + dx, y, cz + dz), new Block(BlockType.Cube, Material.Basalt, coal.Scale(0.85f + 0.06f * ((dx + dz + y) & 3)), Role.Debris));
+                    if (top == 0 && Hash.Cell(new Int3(cx + dx, 1, cz + dz), 95) % 4 == 0)
+                        x.C.Set(new Int3(cx + dx, 0, cz + dz), new Block(BlockType.Rubble, Material.Basalt, coal, Role.Debris));
+                }
+        }
+    }
+
+    /// <summary>
+    /// A conveyor gantry from a yard up to a building: a belt on a steel deck rising along its length
+    /// on trestle legs, rails both sides. len, axis, from h0 to h (metres up at its far end).
+    /// </summary>
+    static void Conveyor(Ctx x, SitePart p)
+    {
+        int len = p.Int("len", 30), h0 = p.Int("h0", 2), h = p.Int("h", 12);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var steel = new Rgb(0x5a, 0x5c, 0x5e);
+        var belt = new Rgb(0x26, 0x24, 0x24);
+        for (int t = 0; t < len; t++)
+        {
+            int y = h0 + (int)MathF.Round((h - h0) * t / (float)Math.Max(1, len - 1));
+            Int3 at = alongX ? new Int3(p.X + t, y, p.Z) : new Int3(p.X, y, p.Z + t);
+            Int3 side = alongX ? new Int3(0, 0, 1) : new Int3(1, 0, 0);
+            x.C.Set(at, new Block(BlockType.Cube, Material.Steel, belt, Role.Floor));
+            x.C.Set(at + side, new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+            x.C.Set(at - side, new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+            x.C.Blocks[at + side + Int3.Up] = new Block(BlockType.Rail, Material.Steel, Hazard, Role.Decor);
+            x.C.Blocks[at - side + Int3.Up] = new Block(BlockType.Rail, Material.Steel, Hazard, Role.Decor);
+            // A trestle every six metres, down to the ground.
+            if (t % 6 == 0)
+                for (int yy = 0; yy < y; yy++)
+                {
+                    x.C.Set(new Int3(at.X, yy, at.Z) + side, new Block(BlockType.Pillar, Material.Steel, steel, Role.Wall));
+                    x.C.Set(new Int3(at.X, yy, at.Z) - side, new Block(BlockType.Pillar, Material.Steel, steel, Role.Wall));
+                }
+        }
+    }
+
+    /// <summary>
+    /// A containment dome: a ring wall and a hemisphere of thick concrete, hollow, with a door at the
+    /// foot of its west side. breach: how many wedges of it have fallen in.
+    /// </summary>
+    static void Dome(Ctx x, SitePart p)
+    {
+        int r = p.Int("r", 14), wall = p.Int("wall", 6), breaches = p.Int("breach", 0);
+        var col = new Rgb(0xa8, 0xa4, 0x9a);
+        var wedges = new List<float>();
+        for (int i = 0; i < breaches; i++) wedges.Add(x.Rng.Float(0.3f, MathF.Tau - 0.3f));
+        bool Breached(int dx, int dz, int y)
+        {
+            float a = MathF.Atan2(dz, dx);
+            if (a < 0) a += MathF.Tau;
+            foreach (float w in wedges)
+            {
+                float d = MathF.Abs(a - w);
+                if (MathF.Min(d, MathF.Tau - d) < 0.3f + 0.5f * (y / (float)(wall + r))) return y > 3;
+            }
+            return false;
+        }
+        // The shell is measured from the sphere's centre, so it stays one thickness all the way over.
+        for (int y = 0; y < wall + r; y++)
+            for (int dz = -r; dz <= r; dz++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    float d = MathF.Sqrt(dx * dx + dz * dz);
+                    float from = y < wall ? d : MathF.Sqrt(d * d + (y - wall) * (y - wall));
+                    if (from > r || from <= r - 1.8f) continue;
+                    if (Breached(dx, dz, y)) continue;
+                    // The door: an opening through the ring wall on the west side.
+                    if (dx < 0 && Math.Abs(dz) <= 2 && y < 4) continue;
+                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
+                }
+        // A floor of rubble under each wedge that fell in.
+        foreach (float w in wedges)
+            for (int t = 3; t < r - 2; t++)
+            {
+                Int3 c = new(p.X + (int)(MathF.Cos(w) * t), 0, p.Z + (int)(MathF.Sin(w) * t));
+                x.C.Set(c, new Block(BlockType.Rubble, Material.Concrete, col.Scale(0.7f), Role.Debris));
+            }
+    }
+
+    /// <summary>
+    /// Wind turbines in a row: a two-metre tower, a nacelle and three long blades in the plane across
+    /// the row. One in four has come down, its tower across the ground with a stump left standing.
+    /// </summary>
+    static void Turbines(Ctx x, SitePart p)
+    {
+        int n = p.Int("count", 3), h = p.Int("h", 30), blade = p.Int("blade", 12), gap = p.Int("gap", 30);
+        bool alongX = p.Arg("axis", "x") == "x";
+        var white = new Rgb(0xc8, 0xc8, 0xc2);
+        for (int i = 0; i < n; i++)
+        {
+            int cx = p.X + (alongX ? i * gap : 0), cz = p.Z + (alongX ? 0 : i * gap);
+            bool down = x.Rng.Chance(0.25f);
+            int standing = down ? 5 : h;
+            for (int y = 0; y < standing; y++)
+                for (int dz = 0; dz < 2; dz++)
+                    for (int dx = 0; dx < 2; dx++)
+                        x.C.Set(new Int3(cx + dx, y, cz + dz), new Block(BlockType.Cube, Material.Alloy, white.Scale(y % 8 == 7 ? 0.85f : 0.95f), Role.Wall));
+            if (down)
+            {
+                // The rest of the tower lies across the ground where it fell.
+                for (int t = 4; t < h - 6; t++)
+                    if (Hash.Cell(new Int3(cx, t, cz), 97) % 11 != 0)
+                        x.C.Set(new Int3(cx, 0, cz + t), new Block(BlockType.Cube, Material.Alloy, white.Scale(0.8f), Role.Debris));
+                continue;
+            }
+            for (int dx = -1; dx <= 2; dx++)
+                for (int dz = -1; dz <= 2; dz++)
+                    for (int y = h; y < h + 2; y++)
+                        x.C.Set(new Int3(cx + dx, y, cz + dz), new Block(BlockType.Cube, Material.Alloy, white.Scale(0.85f), Role.Wall));
+            float a0 = x.Rng.Float(0f, 2.1f);
+            for (int k = 0; k < 3; k++)
+            {
+                float a = a0 + k * MathF.Tau / 3f;
+                int lastU = 0, lastV = 0;
+                void Cell(int u, int v) => x.C.Set(new Int3(cx + (alongX ? u : 3), h + 1 + v, cz + (alongX ? 3 : u)), new Block(BlockType.Cube, Material.Alloy, white, Role.Wall));
+                Cell(0, 0);
+                for (int t = 1; t <= blade; t++)
+                {
+                    int u = (int)MathF.Round(MathF.Cos(a) * t), v = (int)MathF.Round(MathF.Sin(a) * t);
+                    // Face to face along the blade: a corner step gets its own block, so it holds together.
+                    if (u != lastU && v != lastV) Cell(u, lastV);
+                    Cell(u, v);
+                    (lastU, lastV) = (u, v);
+                }
+            }
+        }
+    }
+
+    /// <summary>Rows of solar panels on steel posts, tilted to the sun: dark glass in wedges, one in six shattered off its frame.</summary>
+    static void Panels(Ctx x, SitePart p)
+    {
+        int rows = p.Int("rows", 6), len = p.Int("len", 40), gap = p.Int("gap", 3);
+        var glass = new Rgb(0x1e, 0x2a, 0x3e);
+        var steel = new Rgb(0x6a, 0x6c, 0x6e);
+        for (int r = 0; r < rows; r++)
+        {
+            int z = p.Z + r * (2 + gap);
+            for (int t = 0; t < len; t++)
+            {
+                int cx = p.X + t;
+                // The frame: a low steel rail under the front edge, a higher one under the back.
+                x.C.Set(new Int3(cx, 0, z), new Block(BlockType.Cube, Material.Steel, steel, Role.Wall));
+                for (int y = 0; y < 2; y++) x.C.Set(new Int3(cx, y, z + 1), new Block(BlockType.Cube, Material.Steel, steel.Scale(0.9f), Role.Wall));
+                if (Hash.Cell(new Int3(cx / 4, r, 3), 99) % 6 == 0)
+                {
+                    if (t % 4 == 1) x.C.Set(new Int3(cx, 0, z + 2), new Block(BlockType.Rubble, Material.Glass, glass, Role.Debris));
+                    continue;
+                }
+                x.C.Set(new Int3(cx, 1, z), new Block(BlockType.Ramp, Material.Glass, glass, Role.Decor, Dir.North));
+                x.C.Set(new Int3(cx, 2, z + 1), new Block(BlockType.Ramp, Material.Glass, glass.Scale(1.15f), Role.Decor, Dir.North));
+            }
+        }
     }
 
     /// <summary>A greenhouse or hydroponic shed: a glass house on a low wall, planting tables inside gone to seed.</summary>

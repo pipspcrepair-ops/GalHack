@@ -14,6 +14,8 @@
 #       tower     h size every crown(lamp|wheel|hut) loot;  crater  r depth radiation
 #       aircraft  len;  rocket  decks r;  trench  len axis;  vehicles  count gap axis
 #       camp      gang(yes|no);  obelisks  count h spread
+#       basins    count r h gap axis water(clean|foul);  heaps  count r h gap type(coal|spoil)
+#       conveyor  len h0 h axis;  dome  r wall breach;  turbines  count h blade gap axis;  panels  rows len gap
 
 site old_airfield
   name Old Airfield
@@ -342,3 +344,159 @@ site wayside_stop
   part tanks 0 22 count 2 r 2 h 3 gap 6 axis x
   part poles -8 -4 count 2 gap 10 h 6 axis z
   part vehicles 18 20 count 2 gap 7 axis x
+
+# ---- the old utilities ----------------------------------------------------------------------------
+
+site coal_plant
+  name Coal Power Station
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.3
+  part building 0 0 program boiler_house vault yes
+  part hangar 32 0 w 36 d 20 h 14
+  part stacks 6 30 count 2 r 3 h 52 gap 8
+  part heaps 24 44 count 3 r 7 h 6 gap 3 type coal
+  part conveyor 14 44 len 18 h0 2 h 12 axis z
+  part tanks 76 4 count 2 r 4 h 10 gap 4 axis z
+  part poles 72 30 count 3 gap 12 h 9 axis z
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.1
+
+site nuclear_plant
+  name Nuclear Power Station
+  style concrete
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.2
+  part building 0 0 program reactor_hall vault yes
+  part hangar 36 0 w 40 d 22 h 16
+  part stacks 20 50 count 2 r 15 h 58 gap 12 type cooling
+  part tanks 84 4 count 2 r 4 h 12 gap 4 axis z
+  part poles 82 34 count 3 gap 14 h 10 axis z
+  part fence -10 -10 len 110 h 3 axis x gate 16 breaches 0.08 type wall
+
+site water_works
+  name Water Treatment Works
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.3
+  part building 0 0 program pump_station vault yes
+  part basins 40 6 count 3 r 7 h 2 gap 4 water clean
+  part basins 40 26 count 4 r 4 h 1 gap 3 water clean
+  part tanks 6 34 count 2 r 5 h 9 gap 5 axis x
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.15
+
+site sewage_works
+  name Sewage Works
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.4
+  part building 0 0 program pump_station vault yes
+  part basins 40 6 count 3 r 8 h 2 gap 4 water foul
+  part tanks 6 34 count 2 r 6 h 10 gap 5 axis x
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.2
+
+site fusion_plant
+  name Fusion Power Station
+  style meridian
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.15
+  part building 0 0 program fusion_hall vault yes
+  part dome 62 20 r 20 wall 8 breach 2
+  part tanks 90 4 count 2 r 3 h 12 gap 4 axis z
+  part poles 90 34 count 3 gap 14 h 10 axis z
+  part fence -10 -10 len 112 h 3 axis x gate 16 breaches 0.08 type wall
+
+site substation
+  name Substation
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 30 2 count 3 r 2 h 4 gap 5 axis x
+  part tanks 30 16 count 3 r 2 h 4 gap 5 axis x
+  part poles 58 2 count 3 gap 10 h 12 axis z
+  part fence -6 -6 len 74 h 3 axis x gate 12 breaches 0.2
+
+site refinery
+  name Refinery
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 34 2 count 4 r 6 h 12 gap 4 axis x
+  part stacks 36 26 count 3 r 2 h 36 gap 8
+  part conveyor 28 40 len 40 h0 4 h 4 axis x
+  part tower 76 28 h 28 size 5 crown lamp
+  part tanks 34 48 count 3 r 4 h 8 gap 4 axis x
+  part fence -8 -8 len 100 h 2 axis x gate 14 breaches 0.2
+
+site steelworks
+  name Steelworks
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 44 d 22 h 18
+  part stacks 40 30 count 2 r 3 h 44 gap 10
+  part heaps 34 44 count 3 r 6 h 5 gap 3 type spoil
+  part conveyor 18 28 len 22 h0 2 h 14 axis z
+  part crane 84 34 h 26 jib 18 back 6 axis x
+  part fence -8 -8 len 110 h 2 axis x gate 14 breaches 0.2
+
+site grain_elevator
+  name Grain Elevator
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 28 2 count 4 r 4 h 26 gap 1 axis x
+  part conveyor 28 14 len 34 h0 3 h 3 axis x
+  part vehicles 28 22 count 2 gap 8 axis x
+
+site rail_yard
+  name Rail Yard
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 40 d 20 h 12
+  part containers 30 28 rows 3 cols 6
+  part poles 76 2 count 4 gap 12 h 8 axis z
+  part tower 84 28 h 16 size 4 crown lamp
+
+site docks
+  name Old Docks
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 36 d 20 h 12
+  part containers 30 30 rows 3 cols 5
+  part crane 78 18 h 30 jib 22 back 8 axis x
+  part tanks 76 44 count 2 r 3 h 8 gap 4 axis x
+
+site telecom_site
+  name Telecom Exchange
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.25
+  part building 0 0 program telecom_exchange vault yes
+  part tower 34 6 h 40 size 5 crown lamp
+  part fence -6 -6 len 60 h 2 axis x gate 12 breaches 0.2
+
+site wind_farm
+  name Wind Farm
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part turbines 32 8 count 3 h 34 blade 13 gap 34 axis x
+  part turbines 32 46 count 3 h 34 blade 13 gap 34 axis x
+
+site solar_farm
+  name Solar Farm
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part panels 28 0 rows 8 len 60 gap 3
+  part fence -6 -6 len 96 h 2 axis x gate 12 breaches 0.3
