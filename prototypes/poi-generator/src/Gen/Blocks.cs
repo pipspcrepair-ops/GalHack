@@ -191,6 +191,7 @@ public sealed class BlockGrid : IBlockStructure
     public Int3 Max => Min + Size - new Int3(1, 1, 1);
     readonly int _cx, _cy, _cz;
     readonly Block[]?[] _chunks;
+    Block _outside;
 
     public BlockGrid(Int3 min, Int3 size)
     {
@@ -241,6 +242,7 @@ public sealed class BlockGrid : IBlockStructure
 
     public ref Block At(Int3 p)
     {
+        if (!InBounds(p)) return ref _outside;
         Int3 l = p - Min;
         int k = Chunk(l);
         return ref (_chunks[k] ??= new Block[ChunkCells])[Cell(l)];

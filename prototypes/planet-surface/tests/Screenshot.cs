@@ -81,6 +81,18 @@ public partial class Screenshot : Node
                 if (_args.TryGetValue("figure", out string figure)) _figure = Local(figure);
                 return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
             }
+            // A region from the air: what its plan set down, listed, with the camera over its first town.
+            if (_args.ContainsKey("region") && m.World.Infra.RegionPlan is { } plan)
+            {
+                GD.Print($"{plan.Roll}: {plan.Regions.Count} regions");
+                foreach (var pp in plan.Places) GD.Print($"  {pp.Role} {pp.Family} at {pp.X:F0},{pp.Z:F0}: {pp.Why}");
+                foreach (var l in plan.Links) GD.Print($"  {l.Kind}: {plan.Places[l.A].Family} to {plan.Places[l.B].Family}: {l.Why}");
+                var hub = plan.Places.First(p => p.Role == "hub" && p.Seated != null);
+                float cx = (float)hub.X, cz = (float)hub.Z, g0 = m.World.GroundHeight(hub.X, hub.Z);
+                float back = (float)Num("back", 1400), up = (float)Num("up", 900), turn = (float)Num("heading", 0);
+                var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
+                return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
+            }
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));

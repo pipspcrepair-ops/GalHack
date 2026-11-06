@@ -515,11 +515,12 @@ public sealed class Plot
 
     /// <summary>
     /// Stencils a number on a wall's face, 3 by 5 paint blocks a digit: from cell (u, y, v), reading along +u
-    /// or +v, each paint block scale cells square, on the wall's face layer.
+    /// or +v, each paint block scale cells square, on the wall's face layer. mirror: for a face read from the
+    /// other side of the plan (a wall facing north reads along -u).
     /// </summary>
-    public void Stencil(string text, int u, int y, int v, bool alongU, Rgb ink, int scale = 2)
+    public void Stencil(string text, int u, int y, int v, bool alongU, Rgb ink, int scale = 2, bool mirror = false)
     {
-        int at = 0;
+        int at = 0, wide = text.Length * 4 * scale - scale;
         foreach (char ch in text)
         {
             if (ch >= '0' && ch <= '9')
@@ -533,7 +534,8 @@ public sealed class Plot
                         for (int sy = 0; sy < scale; sy++)
                             for (int sa = 0; sa < scale; sa++)
                             {
-                                Int3 c = alongU ? Cell(u + a + sa, top + sy, v) : Cell(u, top + sy, v + a + sa);
+                                int along = mirror ? wide - 1 - (a + sa) : a + sa;
+                                Int3 c = alongU ? Cell(u + along, top + sy, v) : Cell(u, top + sy, v + along);
                                 if (C.Blocks.TryGetValue(c, out var b)) { b.Color = ink; C.Blocks[c] = b; }
                             }
                     }

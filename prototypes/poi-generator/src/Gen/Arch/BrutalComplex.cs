@@ -86,8 +86,8 @@ public static class BrutalComplex
         foreach (int u in new[] { 2 * GateI0 - 1, 2 * GateI1 + 2 })
             p.Stripes(u, 0, -4, u, 11, 5);
         p.Stripes(2 * GateI0, 12, -4, 2 * GateI1 + 1, 12, 5);
-        p.Stencil("07", 2 * GateI0 + 2, 13, -4, true, f.Hazard, 1);
-        p.Stencil("07", 2 * (GateI0 + 7), 13, -4, true, f.Hazard, 1);
+        p.Stencil("07", 2 * GateI0 + 2, 13, -4, true, f.Hazard, 1, true);
+        p.Stencil("07", 2 * (GateI0 + 7), 13, -4, true, f.Hazard, 1, true);
         // A guard's box each side, for a person, inside the wall.
         foreach (int i in new[] { GateI0 - 8, GateI1 + 4 })
         {
@@ -485,7 +485,7 @@ public static class BrutalComplex
         for (int y = 2 * (j + 6); y < 2 * (j + 6) + 24; y++) p.Put(2 * mi, y, 2 * mk, new Block(BlockType.Pillar, f.Steel.M, f.Steel.C, Role.Decor));
         Beacon(p, 2 * mi, 2 * (j + 6) + 24, 2 * mk);
         // The number, as tall as a house, facing the block.
-        p.Stencil("07", 2 * i0 + 6, 2 * 20, 2 * k0, true, f.Hazard, 3);
+        p.Stencil("07", 2 * i0 + 6, 2 * 20, 2 * k0, true, f.Hazard, 3, true);
         // Inside: a flight up the wall from the lobby to the bridge level, the bridge over to the block's roof.
         int f1 = p.Flight(i0 + 3, k0 + 3, Dir.East, 0, 6, 2, "stair");
         p.C.Link(lobby, f1);
@@ -570,7 +570,7 @@ public static class BrutalComplex
                 int ci = i0 + 8 + a * 15, ck = k0 + 8 + b * 15;
                 p.Drum(ci, ck, 6, 0, 8, skin, j => j == 6 ? new Stuff2(skin.M, f.Hazard) : skin);
                 p.Disc(ci, ck, 5, 8, Plot.Cube(skin.Scale(0.85f), Role.Roof));
-                p.Stencil(n.ToString(), 2 * ci - 2, 4, 2 * (ck - 6), true, f.Black, 1);
+                p.Stencil(n.ToString(), 2 * ci - 2, 4, 2 * (ck - 6), true, f.Black, 1, true);
             }
         // The bund wall.
         foreach (var (i, k) in Ring(i0, k0, i0 + 30, k0 + 30))

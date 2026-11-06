@@ -48,5 +48,6 @@
     <Compile Include="..\planet-surface\src\Terrain\GroundPalette.cs" />
     <Compile Include="..\planet-surface\src\Sky\SkySystem.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiSiting.Plan.cs" />
   </ItemGroup>
 </Project>

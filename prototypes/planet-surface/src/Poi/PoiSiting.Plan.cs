@@ -81,7 +81,7 @@ public static partial class PoiSiting
             ulong spawn = rng.NextU64();
             if (start && f.Tags.Contains("settlement") && Away(p) < 4000)
                 for (ulong k = 1; k < 32 && Dressing.MoodFor(spawn) == Mood.Hostile; k++) spawn = PoiGenerator.Gen.Hash.Combine(spawn, k);
-            OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, spawn) : null;
+            OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, spawn) with { Tags = roll.Tags } : null;
             jobs.Add((p, f, state, variant, spawn, occ));
         }
         // Whole works take a moment each: they're built side by side, then seated in order.

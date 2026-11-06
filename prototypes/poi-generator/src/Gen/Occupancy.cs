@@ -17,6 +17,9 @@ public enum Sharing : byte { Alone, Floors, FrontLine, Layers }
 /// </summary>
 public sealed record OccupancyRoll(Occupant Main, Occupant? Second = null, Sharing How = Sharing.Alone, Occupant? Trace = null)
 {
+    /// <summary>The world theme's tags: what its people left behind, whoever is in the place now.</summary>
+    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+
     public override string ToString() => Second is { } s ? $"{Main} and {s} ({How})" : Trace is { } t ? $"{Main}, with traces of {t}" : Main.ToString();
 }
 
@@ -115,6 +118,26 @@ public static class OccupancyLayer
         Fill(x, occ.Main, mine, full: true);
         if (occ.Second is { } s) Fill(x, s, theirs, full: true);
         if (occ.Trace is { } t) Fill(x, t, rooms, full: false);
+        Left(x, occ.Tags, rooms);
+    }
+
+    /// <summary>What a world's last days left in its rooms, keyed on its theme's tags: luggage on a queue world, dinner still on the tables in the hush, shift boards at the works.</summary>
+    static void Left(Ctx x, IReadOnlyList<string> tags, List<PlacedModule> rooms)
+    {
+        if (tags.Contains("luggage"))
+            foreach (PlacedModule m in Settled(x, rooms, 4))
+                if (Patch(x, m, 4f) is { } p)
+                    foreach (Int3 c in p.Near.Where(_ => x.R.Chance(0.35f)))
+                        x.Put(c, BlockType.Crate, Material.Cloth, x.R.Pick(new[] { new Rgb(0x6a, 0x4a, 0x38), new Rgb(0x3e, 0x4a, 0x5a), new Rgb(0x7a, 0x70, 0x52), new Rgb(0x5c, 0x3a, 0x3a) }));
+        if (tags.Contains("dinner"))
+            foreach (PlacedModule m in Settled(x, rooms, 4))
+                if (Patch(x, m, 3f) is { } p)
+                    foreach (Int3 c in p.Near.Where(c => (c.X + c.Z) % 3 == 0 && x.R.Chance(0.5f)))
+                        x.Put(c, BlockType.Meal, Material.Ceramic, new Rgb(0xb4, 0xac, 0x98));
+        if (tags.Contains("shifts"))
+            foreach (PlacedModule m in Settled(x, rooms, 3))
+                foreach (Int3 c in Floor(x, m).Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type))).Take(10))
+                    x.Put(c, BlockType.Locker, Material.Steel, new Rgb(0x4e, 0x5a, 0x5e));
     }
 
     static void Fill(Ctx x, Occupant who, List<PlacedModule> rooms, bool full)
@@ -249,7 +272,7 @@ public static class OccupancyLayer
             var floor = Floor(x, m);
             if (floor.Count < 12) continue;
             // Along whatever wall the room has, tidily.
-            var wall = floor.Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type))).OrderBy(c => c.X).ThenBy(c => c.Z).ToList();
+            var wall = floor.Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type))).OrderBy(c => c.X).ThenBy(c => c.Z).Take(32).ToList();
             int t = 0;
             foreach (Int3 c in wall)
             {
