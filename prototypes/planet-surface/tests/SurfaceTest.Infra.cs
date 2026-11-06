@@ -768,8 +768,8 @@ public partial class SurfaceTest
             await Frames(1);
         }
         string kinds = string.Join(", ", tally.OrderByDescending(k => k.Value).Take(10).Select(k => $"{k.Key} {k.Value}"));
-        // The volume is what you swim in, not what you see: two rivers' banks meeting can leave a step, so a little leeway there.
-        Check(worstVolume <= 2f && volumeFloating <= volumeEnds / 100, $"the water volume meets ground wherever it ends: {volumeEnds} ends over {worlds} worlds and {columns} columns, {volumeFloating} more than {Margin} m proud (worst {worstVolume:F1} m; at most 2 m, on 1% of ends)");
+        // The volume is what you swim in, not what you see: water on a rapid falls a metre in seven, so two columns 3 m apart can differ by half a metre, and no more.
+        Check(worstVolume <= 1f && volumeFloating <= volumeEnds / 100, $"the water volume meets ground wherever it ends: {volumeEnds} ends over {worlds} worlds and {columns} columns, {volumeFloating} more than {Margin} m proud (worst {worstVolume:F1} m; at most 1 m, on 1% of ends){(notes.Count > 0 ? "; " + string.Join("; ", notes.Where(n => n.Contains(" volume ")).TakeLast(4)) : "")}; {string.Join(", ", tally.Where(k => k.Key.Contains(" volume ")).OrderByDescending(k => k.Value).Take(8).Select(k => $"{k.Key} {k.Value}"))}");
         Check(sheetFloating == 0, $"the water drawn has its edge in the ground: {sheetEdges} edge points at three levels of detail, {sheetFloating} more than {Margin} m proud (worst {worstSheet:F1} m){(kinds.Length > 0 ? "; " + kinds : "")}{(notes.Count > 0 ? "; " + string.Join("; ", notes.TakeLast(3)) : "")}");
         Check(floodFloating == 0 && flood > 0, $"flooded tunnels hold their water in the bore: {flood} stretches, {floodFloating} out in the air");
     }

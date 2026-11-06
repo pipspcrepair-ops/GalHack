@@ -20,6 +20,8 @@ public static class RiverFit
     const float Below = 0.8f;       // the surface stays this far under the lowest land beside it
     const float JoinReach = 48f;    // a river ending this near another's line runs into it
     const float JoinGrade = 0.08f;  // how fast a tributary falls to meet it, a metre in twelve or so
+    const float TouchGap = 12f;     // rivers whose channels come this near have met
+    const float TouchStep = 1f;     // and a difference in level worth bringing down there: less is a rapid's
     const float MaxFall = 0.14f;    // the steepest a river runs: rapids, a metre in seven, never a sheet of water on end
 
     static readonly ConditionalWeakTable<WorldMap, float[][]> Cache = new();
@@ -88,23 +90,60 @@ public static class RiverFit
                 for (int k = at; k < rivers[main].Count; k++)
                     if (levels[main][k] > join) { levels[main][k] = join; moved = true; }
                 // The tributary falls to it over its last stretch.
-                float back = 0f;
-                for (int k = end; k >= 0; k--)
+                moved |= FallTo(river, levels[r], end, join);
+            }
+            // Rivers that touch before any end (a tributary running in alongside its main river, say):
+            // the higher comes down to the lower where their channels meet, so no wall of water stands between.
+            for (int r = 0; r < rivers.Count; r++)
+            {
+                River river = rivers[r];
+                for (int k = 0; k < river.Count; k += 2)
                 {
-                    if (k < end)
-                    {
-                        float sx = river.X[k + 1] - river.X[k], sy = river.Y[k + 1] - river.Y[k];
-                        back += MathF.Sqrt(sx * sx + sy * sy);
-                    }
-                    float cap = join + back * JoinGrade;
-                    if (levels[r][k] <= cap) break;
-                    levels[r][k] = cap;
+                    var (cx, cy) = Key(river.X[k], river.Y[k]);
+                    float nearest = float.MaxValue, touch = float.MaxValue;
+                    for (int j = cy - 1; j <= cy + 1; j++)
+                        for (int i = cx - 1; i <= cx + 1; i++)
+                        {
+                            if (!points.TryGetValue((i, j), out var list)) continue;
+                            foreach (var (o, at) in list)
+                            {
+                                if (o == r) continue;
+                                float dx = (float)Mathx.WrapDelta(rivers[o].X[at] - river.X[k], w), dy = (float)Mathx.WrapDelta(rivers[o].Y[at] - river.Y[k], h);
+                                float reach = (river.Width[k] + rivers[o].Width[at]) * 0.5f + TouchGap, d = dx * dx + dy * dy;
+                                if (d < reach * reach && d < nearest) { nearest = d; touch = levels[o][at]; }
+                            }
+                        }
+                    if (touch >= levels[r][k] - TouchStep) continue;
+                    for (int j = k; j < river.Count; j++)
+                        if (levels[r][j] > touch) levels[r][j] = touch;
+                    FallTo(river, levels[r], k, touch);
                     moved = true;
+                    break;
                 }
             }
             if (!moved) break;
         }
         return levels;
+    }
+
+    /// <summary>Brings a river down to a level at a point, falling to it over the stretch above. True if anything moved.</summary>
+    static bool FallTo(River river, float[] level, int at, float to)
+    {
+        bool moved = false;
+        float back = 0f;
+        for (int k = at; k >= 0; k--)
+        {
+            if (k < at)
+            {
+                float sx = river.X[k + 1] - river.X[k], sy = river.Y[k + 1] - river.Y[k];
+                back += MathF.Sqrt(sx * sx + sy * sy);
+            }
+            float cap = to + back * JoinGrade;
+            if (level[k] <= cap) break;
+            level[k] = cap;
+            moved = true;
+        }
+        return moved;
     }
 
     /// <summary>Spreads every drop back up the river, so it falls as rapids down a cut it has made rather than over a cliff of its own.</summary>
