@@ -634,17 +634,19 @@ public static class Structure
     }
 
     /// <summary>
-    /// Whether the ground must be opened at a cell a place occupies below its pad. A wall's own foot
-    /// at ground level is not: open ground beside a carved cell slumps toward it, leaving a curved
-    /// dip along the wall. Left solid, the dip falls inside the wall and the ground runs flush up to it.
+    /// Whether the ground must be opened at a cell a place occupies. An outer wall is not, at any height:
+    /// open ground beside a carved cell slumps toward it, leaving a curved dip along the wall. Left solid
+    /// (<see cref="OuterWall"/>), the dip falls inside the wall and the ground runs flush up to it.
     /// </summary>
-    public static bool Carved(BlockGrid g, CellMask occupied, Int3 c)
+    public static bool Carved(BlockGrid g, CellMask occupied, Int3 c) => occupied[c] && !OuterWall(g, occupied, c);
+
+    /// <summary>A course of an outer wall with more wall above it: the ground it stands in comes right up to it, and into it.</summary>
+    public static bool OuterWall(BlockGrid g, CellMask occupied, Int3 c)
     {
-        if (!occupied[c]) return false;
-        if (c.Y != Assembler.GroundY || !BlockInfo.IsFullCube(g.Get(c).Type) || !BlockInfo.IsFullCube(g.Get(c + Int3.Up).Type)) return true;
+        if (!occupied[c] || !BlockInfo.IsFullCube(g.Get(c).Type) || !BlockInfo.IsFullCube(g.Get(c + Int3.Up).Type)) return false;
         foreach (Dir d in Dirs.Horizontal)
-            if (!occupied[c + d.Vec()]) return false;
-        return true;
+            if (!occupied[c + d.Vec()]) return true;
+        return false;
     }
 
     /// <summary>

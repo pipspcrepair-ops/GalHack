@@ -507,21 +507,26 @@ public static class FlavourRuins
                 if (near != null && off < near.HalfWidth + 2) return null;
             }
         int carveH = Math.Max(0, -occ.Min.Y);
-        bool[] carve = null;
+        bool[] carve = null, walls = null;
         if (carveH > 0)
         {
             carve = new bool[carveH * occ.Size.Z * occ.Size.X];
+            walls = new bool[carve.Length];
             for (int y = 0; y < carveH; y++)
             for (int z = 0; z < occ.Size.Z; z++)
             for (int x = 0; x < occ.Size.X; x++)
-                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(layout.Blocks, occ, new PInt3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z));
-            if (!carve.Contains(true)) (carve, carveH) = (null, 0);
+            {
+                var cell = new PInt3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z);
+                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(layout.Blocks, occ, cell);
+                walls[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.OuterWall(layout.Blocks, occ, cell);
+            }
+            if (!carve.Contains(true)) (carve, walls, carveH) = (null, null, 0);
         }
         float blend = Math.Clamp(cut * 2.4f + 6f, 6f, 24f);
         var stamp = new TerrainStamp(f.Name, ox + occ.Min.X, oz + occ.Min.Z, ox + occ.Min.X + occ.Size.X, oz + occ.Min.Z + occ.Size.Z, pad, Apron, blend, w, h,
             ox + occ.Min.X, pad + occ.Min.Y, oz + occ.Min.Z, occ.Size.X, carveH, occ.Size.Z, carve)
         {
-            Surface = f.Tags.Contains("wayside") ? (layout.Variant?.Tech switch { "low" => StampSurface.Dirt, "unique" => StampSurface.Natural, _ => StampSurface.Concrete }) : f.Tags.Contains("shop") ? StampSurface.Concrete : f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
+            Walls = walls, Surface = f.Tags.Contains("wayside") ? (layout.Variant?.Tech switch { "low" => StampSurface.Dirt, "unique" => StampSurface.Natural, _ => StampSurface.Concrete }) : f.Tags.Contains("shop") ? StampSurface.Concrete : f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
         };
         return new FlavourRuin
         {

@@ -131,6 +131,64 @@ public partial class SurfaceTest
         Check(floraOff == 0 && flora > 500, $"rocks and stems keep their feet in the ground on a slope: {flora} checked, {floraOff} off it{first}");
     }
 
+    /// <summary>
+    /// Ground meets a wall flush: the surface a hand's width off a wall stands where it does a stride off,
+    /// on every wall that meets the ground (half-buried ruins' too). A dip along the foot of a wall is
+    /// the open ground slumping toward a cell carved out of it.
+    /// </summary>
+    async Task FlushChecks()
+    {
+        int walls = 0, dips = 0;
+        float worst = 0f;
+        string first = "";
+        var rand = new Random();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            TerrainDigging.Terrain.ChunkStore store = w.Terrain.Store;
+            float Top(float x, float z, float from)
+            {
+                for (float y = from + 4f; y > from - 6f; y -= 0.1f)
+                    if (store.SampleDensity(new System.Numerics.Vector3(x, y, z)) > 0f) return y;
+                return float.NegativeInfinity;
+            }
+            void Walls(PoiInstance inst, int ox, int oy, int oz, string name)
+            {
+                int taken = 0;
+                foreach (var (c, b) in inst.Layout.Blocks.Blocks())
+                {
+                    if (taken >= 60) break;
+                    if (!BlockInfo.IsFullCube(b.Type) || !BlockInfo.IsFullCube(inst.Layout.Blocks.Get(c + PoiGenerator.Gen.Int3.Up).Type) || c.Y != 0) continue;
+                    foreach (Dir d in Dirs.Horizontal)
+                    {
+                        var v = d.Vec();
+                        PoiGenerator.Gen.Int3 n = c + v;
+                        if (inst.Layout.Occupied[n] || !inst.Blocks.Get(n).IsAir || !inst.Blocks.Get(n + PoiGenerator.Gen.Int3.Down).IsAir) continue;
+                        if (inst.Layout.Occupied[c + PoiGenerator.Gen.Int3.Up * 2 + v] || Dirs.Horizontal.Any(e => n + e.Vec() != c && inst.Layout.Occupied[n + e.Vec()])) continue; // an inside corner
+                        float fx = ox + c.X + 0.5f + v.X * 0.5f, fz = oz + c.Z + 0.5f + v.Z * 0.5f;
+                        float near = Top(fx + v.X * 0.3f, fz + v.Z * 0.3f, oy), far = Top(fx + v.X * 1.5f, fz + v.Z * 1.5f, oy);
+                        if (float.IsInfinity(near) || float.IsInfinity(far)) continue;
+                        walls++;
+                        taken++;
+                        float dip = far - near;
+                        worst = MathF.Max(worst, dip);
+                        if (dip > 0.4f)
+                        {
+                            dips++;
+                            if (first.Length == 0) first = $" (first: {name} at {c}: {dip:F2} m)";
+                        }
+                        break;
+                    }
+                }
+            }
+            foreach (PoiSite p in w.Pois) Walls(p.Instance, p.Origin.X, p.Origin.Y, p.Origin.Z, p.Name);
+            foreach (PlanetSurface.Infra.FlavourRuin r in (w.Infra?.Ruins ?? new List<PlanetSurface.Infra.FlavourRuin>()).Take(16))
+                Walls(r.Spawn(w.Profile, w.Source), r.OriginX, r.OriginY, r.OriginZ, r.Family.Id);
+            await Frames(1);
+        }
+        Check(dips == 0 && walls > 200, $"ground meets walls flush: {walls} walls, {dips} with a dip along the foot, the worst {worst:F2} m{first}");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })

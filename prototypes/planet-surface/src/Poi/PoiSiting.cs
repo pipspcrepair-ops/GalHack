@@ -369,14 +369,20 @@ public static class PoiSiting
         int buryTop = ruin ? (int)Math.Ceiling(tilt * depthAlong) + 1 : 0;
         // Rooms below the pad (and the floor layer, which sits in the ground) stay open.
         int carveH = Math.Max(0, -occupied.Min.Y) + buryTop;
-        bool[] carve = null;
+        bool[] carve = null, walls = null;
         if (carveH > 0)
         {
             carve = new bool[carveH * occupied.Size.Z * occupied.Size.X];
+            walls = new bool[carve.Length];
             for (int y = 0; y < carveH; y++)
             for (int z = 0; z < occupied.Size.Z; z++)
             for (int x = 0; x < occupied.Size.X; x++)
-                carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = PoiGenerator.Gen.Structure.Carved(inst.Layout.Blocks, occupied, new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z));
+            {
+                var cell = new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z);
+                int i = (y * occupied.Size.Z + z) * occupied.Size.X + x;
+                carve[i] = PoiGenerator.Gen.Structure.Carved(inst.Layout.Blocks, occupied, cell);
+                walls[i] = PoiGenerator.Gen.Structure.OuterWall(inst.Layout.Blocks, occupied, cell);
+            }
         }
         // Wide enough that cut and fill slopes stay walkable: the further the ground round the pad is
         // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.
@@ -400,7 +406,7 @@ public static class PoiSiting
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve)
         {
-            Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
+            Walls = walls, Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
         };
 
         // Grounding: shapes that sit the place in its land rather than on a flat pad.

@@ -35,6 +35,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
     /// <summary>The ground a tunnel's bore always leaves over it, metres: its mouth is a face in the slope, never a hole from above.</summary>
     public const float TunnelRoof = 1.2f;
     public const float CaveTop = 3f, CaveBottom = 36f;
+    /// <summary>The least a carved cell's density is below zero: a wall cell's surface stays well back from it.</summary>
+    const float CarvedLeast = 0.4f;
     const int S = ChunkStore.Size, P = S + 2;
     const float Limit = ChunkStore.DensityLimit;
 
@@ -500,13 +502,18 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
                 // Rooms a place digs below its pad stay open, however deep they go; a tunnel's bore
                 // keeps a metre of roof under the surface, so it never opens a hole in the ground.
-                bool carved = false;
+                bool carved = false, wall = false;
                 if (padded)
                     foreach (TerrainStamp t in stamps)
+                    {
                         carved |= t.IsCarved(x, y, z) && (t.Shape != StampShape.Road || depth > TunnelRoof);
+                        wall |= t.IsWall(x, y, z);
+                    }
                 if (carved)
                 {
-                    density[i] = -Limit;
+                    // As far under zero as the ground beside it is over: the surface between them lies on
+                    // the cell's face. A flat -limit drew it back into the ground near the top, in a dip.
+                    density[i] = dist > 0f ? -MathF.Min(MathF.Max(dist, CarvedLeast), Limit) : MathF.Max(MathF.Min(dist, -CarvedLeast), -Limit);
                     material[i] = CellMaterial.Air;
                     continue;
                 }
@@ -520,6 +527,7 @@ public sealed class PlanetTerrainSource : ITerrainSource
                 float d = dist;
                 if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
                 d = Math.Clamp(d, -Limit, Limit);
+                if (wall) d = MathF.Min(d, TerrainStamp.WallDensity);
                 density[i] = d;
 
                 if (d <= 0f)
