@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DiegeticUi.Theme;
 using GalHack.Physics.Engine;
 using Godot;
@@ -269,8 +270,12 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
-        // The place seen from the bunker's way out, on the compass until you have been there.
-        if (Game.Bunker?.Landmark is Vector3 seen && Game.Bunker.Poi != null && survivor.WorldFeet.DistanceTo(seen) > 60f) Mark(seen, Game.Bunker.Poi.Name.ToUpperInvariant(), C.Accent);
+        // Places you have found (coming near one finds it for good; the one seen from the bunker's way out starts found): the nearest few.
+        if (!Game.InOrbit)
+            foreach (var (label, at) in Game.Spaceflight.Charts.OfKind("place")
+                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
+                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(NearestPlaces).ToList())
+                Mark(at, label.ToUpperInvariant(), C.Accent);
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
         if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
@@ -293,6 +298,9 @@ public partial class Visor : CanvasLayer
             y += 26 * s;
         }
     }
+
+    /// <summary>How many found places the compass shows (the nearest).</summary>
+    public const int NearestPlaces = 3;
 
     float _compassBottom;
 
