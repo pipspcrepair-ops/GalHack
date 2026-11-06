@@ -346,6 +346,7 @@ public partial class Game : Node3D
     {
         // The mouse moves a virtual stick that recentres by itself (as in ship-handling).
         if (!Menu.IsOpen) _stick = (_stick * 0.85f + c.Look * 0.012f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
+        if (_stick.LengthSquared() < 1e-8f) _stick = Vector2.Zero; // recentred means centred: the decay alone never reaches zero
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             Survivor.StandUp();
