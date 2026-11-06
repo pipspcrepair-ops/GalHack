@@ -87,6 +87,8 @@ public sealed class InfraNetwork
     public int SeaSeparated;
     /// <summary>Places the sea cuts off from every other: no route reaches them.</summary>
     public readonly List<PoiSite> Isolated = new();
+    /// <summary>Power lines along the network (planned once the terrain is final: <see cref="PowerLines.Plan"/>).</summary>
+    public PowerLines Power = new();
 
     /// <summary>The places the network joins (built by people: not wrecks, alien or Precursor sites).</summary>
     public readonly List<PoiSite> Places = new();

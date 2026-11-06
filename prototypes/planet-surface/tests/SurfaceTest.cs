@@ -563,9 +563,10 @@ public partial class SurfaceTest : Node
                     lo = MathF.Min(lo, h);
                     hi = MathF.Max(hi, h);
                 }
-                // Open ground, or an old road's level deck.
+                // Open ground, or an old road's level deck (clear of its poles).
                 bool ground = w.Source.StampWeight(p.X, p.Z) <= 0f
-                              || w.Source.OnRoad(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height), out _) && w.Source.OnRoad(Mathx.WrapX(p.X + 8f, w.Width), Mathx.Wrap(p.Z, w.Height), out _);
+                              || w.Source.OnRoad(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height), out _) && w.Source.OnRoad(Mathx.WrapX(p.X + 8f, w.Width), Mathx.Wrap(p.Z, w.Height), out _)
+                                 && !w.Infra.Power.Poles.Any(pp => Math.Abs(Mathx.WrapDelta(pp.X - p.X - 4, w.Width)) < 7 && Math.Abs(Mathx.WrapDelta(pp.Z - p.Z, w.Height)) < 4);
                 bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && ground
                             && !_main.Streamer.SolidsNear(p + new Vector3(4f, 0f, 0f), 7f).Any();
                 if (open) found = new Vector3(p.X, hi, p.Z);

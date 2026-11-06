@@ -184,6 +184,11 @@ public partial class InfraLayer : Node3D
                         yield return new FloodStretch { Structure = s, K = k, X = s.Route.X[k], Z = s.Route.Z[k] };
             }
         }
+        PowerLines power = net.Power;
+        for (int i = 0; i < power.Poles.Count; i++)
+            yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
+        foreach (PowerWire wire in power.Wires)
+            yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind != RouteKind.Rail) continue;
@@ -347,6 +352,89 @@ public partial class InfraLayer : Node3D
         }
     }
 
+    // ---- power lines -------------------------------------------------------------------------------
+
+    internal static readonly DecoRgb PoleWood = DecoRgb.Hex("4f3d2c"), PylonSteel = DecoRgb.Hex("6e7072"), Insulator = DecoRgb.Hex("a8b4b8"), WireDark = DecoRgb.Hex("1e2024");
+
+    /// <summary>A pole or pylon, standing, or fallen flat along the line.</summary>
+    sealed class PolePiece : Piece
+    {
+        public PowerLines Lines;
+        public int Index;
+
+        public override void Emit(TileBuilder b)
+        {
+            PowerPole p = Lines.Poles[Index];
+            NV foot = b.Local(p.X, p.Ground, p.Z), side = new(p.SideX, 0, p.SideZ), along = new(-p.SideZ, 0, p.SideX);
+            float h = p.Height;
+            if (p.Fallen)
+            {
+                // Lying along the line, its foot snapped off at the stump.
+                b.Box(foot + NV.UnitY * 0.4f, NV.UnitX * 0.14f, NV.UnitY * 0.4f, NV.UnitZ * 0.14f, p.Pylon ? PylonSteel : PoleWood, DecoSurface.Matte, collide: true);
+                NV lieDir = NV.Normalize(along + side * 0.25f);
+                NV mid = foot + lieDir * (h * 0.5f) + NV.UnitY * 0.2f;
+                if (p.Pylon) b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.9f, side * 1.4f, PylonSteel, DecoSurface.Metal, collide: true);
+                else
+                {
+                    b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.13f, side * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
+                    b.Box(foot + lieDir * (h - 0.4f) + NV.UnitY * 0.3f, lieDir * 0.07f, NV.UnitY * 0.07f, side * 1.25f, PoleWood, DecoSurface.Matte, collide: false);
+                }
+                return;
+            }
+            if (!p.Pylon)
+            {
+                b.Box(foot + NV.UnitY * (h * 0.5f - 0.6f), NV.UnitX * 0.13f, NV.UnitY * (h * 0.5f + 0.6f), NV.UnitZ * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
+                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: false);
+                for (int k = 0; k < Lines.WiresOn(p); k++)
+                {
+                    var a = p.Anchor(k, Lines.WiresOn(p));
+                    b.Box(b.Local(a.X, a.Y - 0.1f, a.Z), NV.UnitX * 0.05f, NV.UnitY * 0.1f, NV.UnitZ * 0.05f, Insulator, DecoSurface.Matte, collide: false);
+                }
+                return;
+            }
+            // A lattice pylon: four legs tapering up, braced in tiers, and two crossarms.
+            float baseHalf = 3.2f, topHalf = 0.8f;
+            NV[] bottom = { foot + (side + along) * baseHalf, foot + (side - along) * baseHalf, foot + (-side - along) * baseHalf, foot + (-side + along) * baseHalf };
+            NV TopOf(NV c) => foot + (c - foot) * (topHalf / baseHalf) + NV.UnitY * h;
+            for (int i = 0; i < 4; i++)
+            {
+                b.Beam(bottom[i] - NV.UnitY * 1f, TopOf(bottom[i]), 0.12f, PylonSteel);
+                NV n0 = bottom[i], n1 = bottom[(i + 1) % 4];
+                for (int tier = 0; tier < 4; tier++)
+                {
+                    float t0 = tier / 4f, t1 = (tier + 1) / 4f;
+                    NV a0 = NV.Lerp(n0, TopOf(n0), t0), b1 = NV.Lerp(n1, TopOf(n1), t1);
+                    b.Beam(a0, b1, 0.05f, PylonSteel);
+                    b.Beam(NV.Lerp(n0, TopOf(n0), t1), NV.Lerp(n1, TopOf(n1), t1), 0.05f, PylonSteel);
+                }
+            }
+            for (int arm = 0; arm < 2; arm++)
+            {
+                NV at = foot + NV.UnitY * (h - 2f - arm * 4f);
+                b.Box(at, along * 0.25f, NV.UnitY * 0.25f, side * (Lines.WiresOn(p) / 2 * 4.2f + 0.6f), PylonSteel, DecoSurface.Metal, collide: false);
+            }
+            for (int k = 0; k < Lines.WiresOn(p); k++)
+            {
+                var a = p.Anchor(k, Lines.WiresOn(p));
+                b.Box(b.Local(a.X, a.Y + 0.6f, a.Z), NV.UnitX * 0.08f, NV.UnitY * 0.6f, NV.UnitZ * 0.08f, Insulator, DecoSurface.Matte, collide: false);
+            }
+        }
+    }
+
+    /// <summary>A wire: strung with its sag between two standing poles, or hanging from the one that holds it down to the ground.</summary>
+    sealed class WirePiece : Piece
+    {
+        public PowerLines Lines;
+        public PowerWire Wire;
+
+        public override void Emit(TileBuilder b)
+        {
+            float radius = Lines.Poles[Wire.A].Pylon ? 0.04f : 0.022f;
+            var pts = Lines.Path(Wire, b.Ground).Select(p => b.Local(p.X, p.Y, p.Z)).ToList();
+            b.Cable(pts, radius, WireDark);
+        }
+    }
+
     // ---- railways ----------------------------------------------------------------------------------
 
     /// <summary>One 4 m stretch of railway: sleepers on the ballast and two rails (a few sleepers gone on a long-neglected line).</summary>
@@ -442,6 +530,13 @@ public sealed class TileBuilder
             NV p0 = v[faces[f * 4]], p1 = v[faces[f * 4 + 1]], p2 = v[faces[f * 4 + 2]], p3 = v[faces[f * 4 + 3]];
             Quad(p0, p1, p2, p3, color, surface, 1f, centre, collide);
         }
+    }
+
+    /// <summary>A cable along a polyline (drawn as thin tubes), in the tile's frame.</summary>
+    public void Cable(List<NV> pts, float radius, DecoRgb color)
+    {
+        foreach (DecoPart part in DecoCables.Tubes(pts, radius, DecoSlot.Dark))
+            DecoEmit.Part(Mesh, part, (_, _, _) => color, _ => DecoSurface.Matte);
     }
 
     /// <summary>A thin square beam between two points.</summary>

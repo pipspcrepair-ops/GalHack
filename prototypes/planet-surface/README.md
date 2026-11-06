@@ -153,6 +153,12 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
    - `PlanetTerrainSource` indexes stamps in 64 m buckets, so a height query composes only the few near it.
 7. **Drawn.** `src/Infra/InfraLayer.cs` streams 256 m tiles within 900 m of the camera. It draws bridges (deck, parapets, piers, abutments, fallen spans lying broken below), tunnel portals and their flooded water, railway sleepers and rails, and maglev guideways on pylons, all with collision. Other systems add their own pieces through `InfraLayer.Sources`.
 
+**Power lines** (`src/World/Infra/PowerLines.cs`, `PlanetWorld.Infra.Power`) run only where they made sense. They follow roads and highways out of the places that needed power: on frontier worlds only out to mines and works, never across open country.
+- Wooden poles stand beside roads, steel lattice pylons beside highways on modern and high-tech worlds.
+- Each pole goes as far on from the last as its spacing allows while every wire still clears the ground, so a hump in the land brings the next pole closer.
+- Every wire is anchored. It is strung with its sag between two standing poles, or, where a pole has fallen or a wire snapped on a neglected line, it hangs from the pole that still holds it and lies on the ground toward where it went (`PowerLines.Path`).
+- Poles never stand on a road bed, a bridge or a place's pad.
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
 

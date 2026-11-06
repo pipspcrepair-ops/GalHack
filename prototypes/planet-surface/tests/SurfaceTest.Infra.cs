@@ -71,7 +71,8 @@ public partial class SurfaceTest
         int worlds = 0, places = 0, joined = 0, routes = 0, unrouted = 0, separated = 0, never = 0, neverRoutes = 0;
         int stretches = 0, withinGrade = 0, unwalkable = 0, bridges = 0, longViaducts = 0, lowOverWater = 0, tunnels = 0, longTunnels = 0;
         int deckSamples = 0, offDeck = 0, seamSamples = 0, seamMismatch = 0, tilted = 0;
-
+        string firstGround = "";
+        int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
         double planBest = double.MaxValue, planWorst = 0;
         bool same = true;
         var notes = new List<string>();
@@ -184,6 +185,55 @@ public partial class SurfaceTest
                     if (st.Length > InfraNetwork.MaxTunnel(r.Kind, r.Tech) + 64) longTunnels++;
                 }
             }
+            // Power lines: every wire anchored (strung between two standing poles, or hanging from the one
+            // that holds it), never through the ground; poles only beside the roads they follow, never on a
+            // road bed or a place's pad; on a frontier world only out to mines and works.
+            PowerLines power = net.Power;
+            foreach (PowerPole pole in power.Poles)
+            {
+                poles++;
+                if (pole.Fallen) fallen++;
+                double px = Mathx.WrapX(pole.X, w.Width), pz = Mathx.Wrap(pole.Z, w.Height);
+                if (w.Source.StampWeight(px, pz) > 0.05f) onBed++;
+            }
+            foreach (var (route, firstPole, lastPole) in power.Runs)
+            {
+                if (route.Kind is RouteKind.Track or RouteKind.Rail) offRoute++;
+                if (w.Profile.Before == TechLevel.Low && !new[] { route.From, route.To }.Any(e => e != null && (e.Family.Tags.Contains("mine") || e.Family.Tags.Contains("industry")))) lowWorldLines++;
+                for (int k = firstPole; k <= lastPole; k++)
+                {
+                    PowerPole pole = power.Poles[k];
+                    double best = double.MaxValue;
+                    for (int i = 0; i < route.Count; i++) best = Math.Min(best, Dist(w, route.X[i], route.Z[i], pole.X, pole.Z));
+                    if (best > route.HalfWidth + (pole.Pylon ? 18f : 3.5f) + InfraNetwork.Spacing) offRoute++;
+                }
+            }
+            foreach (PowerWire wire in power.Wires)
+            {
+                PowerPole pa = power.Poles[wire.A], pb = power.Poles[wire.B];
+                int n = power.WiresOn(pa);
+                var anchor = pa.Anchor(wire.K, n);
+                if (pa.Fallen || wire.Spanned && pb.Fallen) unanchored++;
+                List<System.Numerics.Vector3> pts = power.Path(wire, (x, z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height)));
+                if (System.Numerics.Vector3.Distance(pts[0], anchor) > 1e-3f) unanchored++;
+                if (wire.Spanned)
+                {
+                    spans++;
+                    if (System.Numerics.Vector3.Distance(pts[^1], pb.Anchor(wire.K, n)) > 1e-3f) unanchored++;
+                }
+                else hanging++;
+                // Clear of the ground all along (a hanging wire lies on it at the pole's foot).
+                foreach (var q in pts.Skip(1).SkipLast(1))
+                {
+                    float g = w.Source.SurfaceHeight(Mathx.WrapX(q.X, w.Width), Mathx.Wrap(q.Z, w.Height));
+                    if (q.Y < g - 0.01f || !wire.Spanned && q.Y > g + 0.2f && q != pts[1])
+                    {
+                        throughGround++;
+                        if (firstGround.Length == 0) firstGround = $" (first: a {(wire.Spanned ? "strung" : "hanging")} wire at {q.X:F0}, {q.Y:F1}, {q.Z:F0} over ground at {g:F1})";
+                        break;
+                    }
+                }
+            }
             if (a == 0)
             {
                 // The same planet plans the same network, point for point.
@@ -205,6 +255,10 @@ public partial class SurfaceTest
             $"roads are walkable decks: the ground is at the deck on {deckSamples - offDeck} of {deckSamples} centre-line samples and level across on {2 * deckSamples - tilted} of {2 * deckSamples} edge samples");
         Check(seamMismatch == 0 && seamSamples > 100, $"roads are seam-safe: {seamSamples} road samples read the same from another copy of the planet ({seamMismatch} differ)");
         Check(same, "the same planet plans the same network, point for point");
+        Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
+            $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");
+        Check(offRoute == 0 && onBed == 0 && lowWorldLines == 0,
+            $"power lines only where they make sense: every pole beside the road or highway it follows ({offRoute} not), none on a road bed or a pad ({onBed}), and on frontier worlds only out to mines and works ({lowWorldLines} elsewhere)");
         GD.Print($"INFO  planning took {planBest:F0} to {planWorst:F0} ms a world");
     }
 
