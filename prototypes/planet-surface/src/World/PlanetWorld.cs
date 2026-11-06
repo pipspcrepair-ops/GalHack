@@ -10,6 +10,7 @@ using PlanetSurface.Skies;
 using PlanetSurface.Terrain;
 using TerrainDigging.Terrain;
 using PoiSite = PlanetSurface.Poi.PoiSite;
+using WorldProfile = PoiGenerator.Gen.WorldProfile;
 
 namespace PlanetSurface.World;
 
@@ -29,6 +30,13 @@ public sealed class PlanetWorld
     public readonly IReadOnlyList<PoiSite> Pois;
     public readonly SkySystem Sky;
     public readonly WorldLook Look;
+    /// <summary>
+    /// The world's profile, rolled first from its seed: whether it was ever inhabited, its old
+    /// population, starport and trade, and two tech levels (low, mid or high): before the collapse
+    /// (the old world: ruins, POI families, infrastructure, wrecked traffic, decorations) and now
+    /// (the living: settlements and faction places, their gear, defences and animals).
+    /// </summary>
+    public readonly WorldProfile Profile;
     public readonly double BuildMs;
 
     public double Width => Map.WidthMeters;
@@ -78,9 +86,10 @@ public sealed class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
     {
         Spec = spec;
+        Profile = profile;
         Map = map;
         Landing = landing;
         Pois = pois;
@@ -96,10 +105,11 @@ public sealed class PlanetWorld
     public static PlanetWorld Build(PlanetSpec spec, PoiCatalog catalog)
     {
         var watch = Stopwatch.StartNew();
+        WorldProfile profile = ProfileFor(spec, PoiSiting.StartWorld);
         WorldMap map = PlanetGenerator.Generate(spec);
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
-        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing);
+        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
@@ -108,8 +118,16 @@ public sealed class PlanetWorld
             anchors.Add(new TerrainDigging.Terrain.PoiSite(p.Name, p.Footprint));
         }
         var source = new PlanetTerrainSource(map, stamps, anchors);
-        return new PlanetWorld(spec, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
+        return new PlanetWorld(spec, profile, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
     }
+
+    /// <summary>
+    /// A planet's world profile: rolled from its seed and kind, the first thing generated. Start
+    /// worlds were always inhabited (their survivors live among the old world's ruins). The same
+    /// spec always rolls the same profile.
+    /// </summary>
+    public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false) =>
+        WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld);
 
     /// <summary>
     /// The folder planets' saves go in. Tests give each run a folder of its own: user:// is shared

@@ -54,6 +54,8 @@ public sealed class VariantDef
     public int BranchMin, BranchMax;
     public List<List<KindRef>> BranchChains = new();
     public List<KindRef> Grow = new();
+    /// <summary>Spaceports: the old starport size this layout is built for (data: port field|port|major|grand); the world's starport picks it.</summary>
+    public Starport? Port;
     /// <summary>Architect families: a site plan or program for this layout only (else the family's).</summary>
     public string? Site, Program;
     /// <summary>The world tech level this layout belongs to (low, mid, high; empty fits any).</summary>
@@ -231,6 +233,7 @@ public static class FamilyParser
                     F().Variants.Add(v);
                     break;
                 case "seed": V().Seed = ulong.Parse(p[1], CultureInfo.InvariantCulture); break;
+                case "port": V().Port = Enum<Starport>(p[1], Error); break;
                 case "tech":
                     if (v != null) V().Tech = p[1];
                     else F().Techs = p.Skip(1).ToList();

@@ -131,7 +131,7 @@ public static class PoiSiting
     const double SearchRadius = 140;
     const double SeamMargin = 320;           // keeps POIs clear of the ghost band either side of a seam
 
-    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null)
+    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
     {
         bool start = startWorld ?? StartWorld;
         PoiLibrary lib = catalog.Library;
@@ -140,7 +140,7 @@ public static class PoiSiting
         int cellsX = Math.Max(8, (int)(map.WidthMeters / WorldCell)), cellsZ = Math.Max(4, (int)(map.HeightMeters / WorldCell));
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
-        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143));
+        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
         var placed = world.Pois.Where(p => !p.Family.Space).ToList();
         // Spread over the whole planet, but the landing site's country gets its share first.
         double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
@@ -156,7 +156,8 @@ public static class PoiSiting
         {
             // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned ? PoiState.Active : PoiState.Abandoned;
-            PoiInstance inst = PoiFactory.Generate(lib, forced, 0, forced.Rarity, state, 7);
+            int forcedVariant = profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0;
+            PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
             for (int k = 0; k < 12 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6;
@@ -176,7 +177,7 @@ public static class PoiSiting
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 1500)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed);
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             if (site != null) sites.Add(site);
         }
@@ -387,8 +388,14 @@ public static class PoiSiting
         var extra = new List<TerrainStamp>();
         double fx0 = ox + lx0, fz0 = oz + lz0, fx1 = ox + lx1, fz1 = oz + lz1;
         if (ruin)
+        {
+            // The rise starts past the way in, wherever on the footprint it is, so the way in stays open.
+            PInt3 ec = inst.Layout.EntranceCell;
+            double along = (ox + ec.X + 0.5 - (fx0 + fx1) * 0.5) * -outward.X + (oz + ec.Z + 0.5 - (fz0 + fz1) * 0.5) * -outward.Z;
+            double halfAlong = Math.Abs(outward.X) * (fx1 - fx0) * 0.5 + Math.Abs(outward.Z) * (fz1 - fz0) * 0.5;
             extra.Add(new TerrainStamp(family.Name + " (half-buried)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, Apron, blend, width, height)
-                { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt });
+                { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt, Shift = (float)Math.Max(0, along + halfAlong + 2.5) });
+        }
         // A crater's bowl, so it shows in the far rings too (its rim is the place's own rubble).
         if (inst.Layout.Extras.Blast is { } blast)
         {

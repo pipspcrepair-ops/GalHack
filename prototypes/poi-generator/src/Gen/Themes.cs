@@ -102,7 +102,14 @@ public static class WorldPlacement
         public int Outliers => Pois.Count(p => p.Outlier);
     }
 
-    public static Result Place(PoiLibrary lib, PlanetMap map, ThemeDef theme, ulong seed, int? count = null)
+    /// <param name="profile">
+    /// The world's profile, when it has one: families stand only where their tech level fits the
+    /// level they are built at (the old world at the pre-collapse level, the living at the
+    /// post-collapse one), never-inhabited worlds have no old-world places, the trade and old
+    /// population weight the set, and each place's layout and state follow it. Without one, the
+    /// theme's own tech level picks layouts, as before.
+    /// </param>
+    public static Result Place(PoiLibrary lib, PlanetMap map, ThemeDef theme, ulong seed, int? count = null, WorldProfile? profile = null)
     {
         var rng = new Rng(Hash.Combine(seed, 0x0A71D5UL));
         float km2 = map.Width * map.CellSize * map.Height * map.CellSize / 1e6f;
@@ -123,6 +130,21 @@ public static class WorldPlacement
         var themed = theme.Set.Where(s => lib.Families.Any(f => f.Id == s.Family)).ToList();
         var inSet = new HashSet<string>(themed.Select(s => s.Family));
         var strangers = lib.Families.Where(f => !f.Space && !inSet.Contains(f.Id)).Where(f => !theme.Start || CanRuin(f)).ToList();
+        // The world's profile: only what fits its tech levels and its past, weighted by its trade.
+        if (profile != null)
+        {
+            themed = themed.Where(t => Stands(lib.Family(t.Family))).Select(t => (t.Family, t.Weight * profile.Weight(lib.Family(t.Family)))).ToList();
+            strangers = strangers.Where(Stands).ToList();
+        }
+        bool Stands(FamilyDef f) => StatesFor(f).Any(w => w > 0f);
+        // The states a family can take here: a start world's faction places only as ruins, and only states the profile allows.
+        float[] StatesFor(FamilyDef f)
+        {
+            var w = profile != null ? profile.StateWeights(f) : (float[])f.StateWeights.Clone();
+            if (theme.Start && ThemeDef.FactionOwned(f))
+                for (int s = 0; s < w.Length; s++) if (s != (int)PoiState.Ruined) w[s] = 0f;
+            return w;
+        }
         // A start world: faction places only as ruins (no core, no one home), and less often.
         static bool CanRuin(FamilyDef f) => !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f;
         // Blast sites are rare on a start world (PoiSiting also keeps them far from the bunker).
@@ -157,12 +179,23 @@ public static class WorldPlacement
             }
             if (fam == null) continue;
             if (fam.Rarity >= Rarity.Exotic) uniqueUsed.Add(fam.Id);
-            // A layout for the world's tech level, where the family has them.
-            var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
-            if (fitting.Count == 0) fitting = fam.Variants;
-            var variant = fitting[rng.Range(0, fitting.Count)];
-            int state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
-            if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
+            VariantDef variant;
+            int state;
+            if (profile != null)
+            {
+                // The state first (it decides whether the place is old or living), then the layout for that level.
+                state = Math.Max(0, rng.PickWeighted(StatesFor(fam).ToList()));
+                variant = fam.Variants[profile.Variant(fam, (PoiState)state, rng)];
+            }
+            else
+            {
+                // A layout for the world's tech level, where the family has them.
+                var fitting = fam.Variants.Where(v => v.Tech.Length == 0 || v.Tech == theme.Tech).ToList();
+                if (fitting.Count == 0) fitting = fam.Variants;
+                variant = fitting[rng.Range(0, fitting.Count)];
+                state = Math.Max(0, rng.PickWeighted(fam.StateWeights));
+                if (theme.Start && ThemeDef.FactionOwned(fam)) state = (int)PoiState.Ruined;
+            }
             result.Pois.Add(new PlacedPoi
             {
                 Family = fam, Variant = variant, State = (PoiState)state, SpawnSeed = rng.NextU64(),

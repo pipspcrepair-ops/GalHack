@@ -53,6 +53,7 @@ public partial class SurfaceTest : Node
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
+            await Run("Profile", ProfileChecks);
             _main = new Main { Interactive = false };
             AddChild(_main);
             await Run("Heights", Heights);
@@ -242,6 +243,7 @@ public partial class SurfaceTest : Node
         var byKind = new Dictionary<string, int>();
         var families = new HashSet<string>();
         var notes = new List<string>();
+        var blockedWays = new List<string>();
         for (int a = 0; a < 5; a++)
         {
             var spec = PlanetSpec.Roll((ulong)(800 + a * 7), (Archetype)a, 0);
@@ -326,7 +328,20 @@ public partial class SurfaceTest : Node
                 TInt3 e = site.Entrance;
                 bool open = !store.IsSolid(e) && !store.IsSolid(e + TInt3.Up) && !store.IsSolid(e + TInt3.Up + TInt3.Up);
                 bool footing = store.IsSolid(e - TInt3.Up) || !inst.Blocks.Get(inst.Layout.EntranceCell + PInt3.Down).IsAir;
-                if (!open || !footing) doors++;
+                if (!open || !footing) { doors++; if (blockedWays.Count < 4)
+                    {
+                        double ex = e.X + 0.5, ez = e.Z + 0.5;
+                        float hh = w.Source.NaturalHeight(ex, ez);
+                        var steps = new List<string> { $"natural {hh:F2}" };
+                        foreach (TerrainStamp st in w.Source.Stamps)
+                        {
+                            float before = hh;
+                            hh = st.Apply(hh, ex, ez);
+                            if (hh != before) steps.Add($"{st.Name}/{st.Shape} {hh:F2}");
+                        }
+                        blockedWays.Add($"{site.Name} way in {(open ? "has no footing" : "is not open")} at {e} (solid {store.IsSolid(e)} {store.IsSolid(e + TInt3.Up)} {store.IsSolid(e + TInt3.Up + TInt3.Up)}; {string.Join(", ", steps)}; surface {w.Source.SurfaceHeight(ex, ez):F2})");
+                    }
+                }
                 // Every way in can be walked up to from outside: straight out from it, past the apron
                 // and the blend, the ground never climbs or drops more than a body can walk (45 degrees)
                 // except where the natural ground beyond the stamp is that steep anyway.
@@ -378,7 +393,7 @@ public partial class SurfaceTest : Node
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +
-            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in");
+            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in{(blockedWays.Count > 0 ? ": " + string.Join("; ", blockedWays) : "")}");
         Check(gates >= sites && steep == 0,
             $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a walk on foot out past everything the place stamped, no step steeper than 45 degrees");
         Check(same, "the same planet seats the same places at the same cells with the same ways in");

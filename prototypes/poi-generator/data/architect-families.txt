@@ -342,10 +342,18 @@ family abandoned_spaceport
   states active 0 abandoned 6 infested 2 ruined 2
   variant Port Meridian
     seed 9201
+    port port
   variant Launch Complex Four
     seed 9202
+    port major
   variant Ascension Yard
     seed 9203
+    site spaceport_grand
+    port grand
+  variant Landing Field Nine
+    seed 9204
+    site spaceport_field
+    port field
 
 family military_base
   tier base

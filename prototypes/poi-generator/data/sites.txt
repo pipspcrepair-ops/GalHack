@@ -51,6 +51,41 @@ site spaceport
   part vehicles -30 20 count 3 gap 8 axis x
   part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
 
+# The old starport's size sets the spaceport: a landing field on a world with a small one, the
+# full port, and a grand yard with two launch pads where the old port was among the biggest.
+site spaceport_field
+  name Landing Field
+  style meridian
+  entrance -64 4 west
+  part rocket 0 0 decks 8 r 4
+  part pad 0 0 r 11
+  part road -58 2 len 46 width 6 axis x cracks 0.12
+  part building 26 -34 program terminal vault yes
+  part tanks -30 26 count 2 r 3 h 8 gap 4 axis x
+  part poles -44 -6 count 3 gap 12 h 8 axis x
+  part vehicles -24 16 count 2 gap 8 axis x
+
+site spaceport_grand
+  name Grand Spaceport
+  style meridian
+  entrance -96 4 west
+  part rocket 0 0 decks 12 r 5
+  part pad 0 0 r 15
+  part rocket 0 64 decks 14 r 5
+  part pad 0 64 r 15
+  part road -90 2 len 74 width 6 axis x cracks 0.1
+  part road -16 14 len 40 width 6 axis z cracks 0.1
+  part building 34 -46 program terminal vault yes
+  part building -56 -46 program control_tower floors 6
+  part hangar 40 30 w 30 d 20 h 10
+  part hangar 44 78 w 30 d 20 h 12
+  part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part tanks -48 84 count 3 r 4 h 10 gap 4 axis x
+  part containers 84 -6 rows 3 cols 4
+  part poles -60 -6 count 6 gap 12 h 8 axis x
+  part vehicles -30 20 count 3 gap 8 axis x
+  part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
+
 site military_base
   name Abandoned Military Base
   style concrete

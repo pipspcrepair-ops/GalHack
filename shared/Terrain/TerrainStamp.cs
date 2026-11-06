@@ -224,7 +224,8 @@ public sealed class TerrainStamp
                 Offset(x, z, out double dx, out double dz);
                 double along = dx * DirX + dz * DirZ;
                 double half = Math.Abs(DirX) * _halfX + Math.Abs(DirZ) * _halfZ;
-                float target = PadY + Grade * (float)Math.Clamp(along + half, 0, 2 * half);
+                // Shift: how far in from the low edge the rise starts (the way in stays at the pad's height).
+                float target = PadY + Grade * (float)Math.Clamp(along + half - Shift, 0, 2 * half);
                 return height + (target - height) * w;
             }
             case StampShape.Furrow:
