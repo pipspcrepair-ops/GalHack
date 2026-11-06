@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using GalHack.Physics;
+using GalHack.Physics.Engine;
 using Godot;
 using PoiGenerator.Gen;
 using Slice.Game;
@@ -126,7 +127,11 @@ public partial class PlaceTest : Node
             yield break;
         }
         if (Array.IndexOf(args, "--walk-only") < 0)
+        {
             foreach (int x in Systems(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
+            foreach (int x in BuiltDoors(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
+        }
+        if (Array.IndexOf(args, "--doors-only") >= 0) yield break;
         foreach (int x in RealPlayer(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
     }
 
@@ -538,6 +543,57 @@ public partial class PlaceTest : Node
             }
         if (bestLen == int.MaxValue) GD.Print($"  (no side of door {d.Index} ({string.Join(" ", d.Cells)}) from {from}: {string.Join("; ", seen)})");
         return best;
+    }
+
+    /// <summary>A door block on a base (set down whole for the test, printed): it opens as you come up, lets you through, shuts behind you; E works it too.</summary>
+    IEnumerable<int> BuiltDoors(WorldChoice world)
+    {
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        game.Zone.Weather.Bridge.Calm = true;
+        game.Zone.Wildlife.Frozen = true;
+        foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
+        GD.Print("-- a door on a base (SYSTEMS: its wall is set down whole, not built by hand) --");
+        Vector3 ahead = game.Bunker.Ahead(14f);
+        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
+        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
+        var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
+        Check(s != null && errors.Count == 0, $"the gate's blueprint loads {string.Join("; ", errors)}");
+        if (s == null) yield break;
+        s.DirtyChunks.Clear();
+        float heading = game.Bunker.Heading;
+        var gate = Slice.Vessels.Vessel.SpawnBase(game.Zone, s, ahead.ToNumerics(), heading);
+        foreach (int x in drive.Wait(20)) yield return x;
+        Vector3 door = gate.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, new GalHack.Structures.Int3(0, 0, 0)));
+        var cell = new GalHack.Structures.Int3(0, 0, 0);
+        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "the built door stands shut with nobody near");
+        Vector3 along = (door - game.Survivor.WorldFeet) with { Y = 0f };
+        along = along.Normalized();
+        Vector3 before = door - along * 6f, past = door + along * 7f;
+        foreach (int x in drive.WalkTo(before, 1f, 20f, sprint: false, dig: false, hop: false)) yield return x;
+        foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
+        Vector3 f = game.Survivor.WorldFeet;
+        Check((f - door).Dot(along) > 0.5f && game.Doors.Opened >= 1, $"it opens as you walk up (your own structure), and you walk through ({(f - door).Dot(along):F1} m past it)");
+        Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
+        foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
+        foreach (int x in drive.Wait(90)) yield return x;
+        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "and it shuts behind you, solid again");
+        var ray = PhysicsRayQueryParameters3D.Create(door - along * 1.5f, door + along * 1.5f, Layers.Hull);
+        Check(game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(ray).Count > 0, "the shut leaf collides");
+        // E works it too, from reach: walk up, it opens; E shuts it; it stays shut while you stand there.
+        foreach (int x in drive.WalkTo(door + along * 2.2f, 0.5f, 12f, sprint: false, dig: false, hop: false)) yield return x;
+        foreach (int x in drive.LookAt(door, 8)) yield return x;
+        string prompt = game.UsePrompt();
+        foreach (int x in drive.Tap(Key.E)) yield return x;
+        foreach (int x in drive.Wait(60)) yield return x;
+        Check(prompt == "E  Shut the door" && !Slice.Vessels.BlockDoors.IsOpen(gate, cell), $"'{prompt}': E shuts it, with the same sliding leaves, and it stays shut beside you");
+        foreach (int x in drive.Tap(Key.E)) yield return x;
+        foreach (int x in drive.Wait(30)) yield return x;
+        Check(Slice.Vessels.BlockDoors.IsOpen(gate, cell), "E opens it again");
+        game.QueueFree();
+        yield return 0;
     }
 
     /// <summary>

@@ -7,6 +7,7 @@ using Godot;
 using PoiGenerator.Gen;
 using Slice.Places;
 using Slice.Ui;
+using Slice.Vessels;
 using Layers = GalHack.Physics.Layers;
 using Survivor = Slice.Player.Survivor;
 
@@ -22,6 +23,9 @@ public partial class Game
 {
     public PoiPlaces Places { get; private set; }
     public Caves Caves { get; private set; }
+
+    /// <summary>Door blocks on bases and vessels: the same doors, E and sliding leaves, opening for you on your own.</summary>
+    public BlockDoors Doors { get; private set; }
 
     /// <summary>The keycards, lowest clearance first: a card opens its own doors and every lower one's.</summary>
     public static readonly string[] Clearances = { "staff", "science", "security", "command" };
@@ -44,6 +48,8 @@ public partial class Game
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
         };
         Zone.AddChild(Caves);
+        Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
+        Zone.AddChild(Doors);
         Tool.Places = Places;
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
@@ -108,10 +114,11 @@ public partial class Game
 
     // ---- E ------------------------------------------------------------------------------------------
 
-    /// <summary>E on a keycard lying in reach: it goes in the bag.</summary>
+    /// <summary>E on a keycard lying in reach: it goes in the bag. On a built door: it opens or shuts.</summary>
     bool UseKeycard(Vector3 eye, Vector3 dir)
     {
         if (Places == null) return false;
+        if (Doors.Along(eye, dir, UseReach) is var (vessel, cell, _) && Doors.Use(vessel, cell)) return true;
         foreach (Place p in Places.Standing)
         {
             KeyCard k = p.KeyAlong(eye, dir, UseReach);
@@ -164,6 +171,7 @@ public partial class Game
     string PlacePrompt(Vector3 eye, Vector3 dir, bool hit, LookHit look)
     {
         if (Places == null) return "";
+        if (Doors.Along(eye, dir, UseReach) is var (_, _, open)) return open ? "E  Shut the door" : "E  Open the door";
         foreach (Place p in Places.Standing)
             if (p.KeyAlong(eye, dir, UseReach) is KeyCard k) return $"E  Take the {k.Clearance} keycard";
         if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return "";
