@@ -26,7 +26,7 @@ GalHack's own code and data are licensed under the [PolyForm Noncommercial Licen
 
 ## Design
 
-The full game design document is [docs/DESIGN.md](docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes.
+The full game design document is [docs/DESIGN.md](docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes. [docs/world-themes.md](docs/world-themes.md) lists the world themes the generator will draw on.
 
 Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or stores ever disappears.
 
