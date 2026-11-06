@@ -13,7 +13,7 @@ namespace Slice.Player;
 /// the shared <see cref="WalkController"/> (legs, jump, the suit's jetpack) and moved by a
 /// character controller. It is the physics sandbox's player, on a planet: landing on (or, in
 /// the air, touching) a hull puts it in that structure's cabin world; it lets go by the shared
-/// rules (a jump, or out of contact), sits in a cockpit seat to fly, and takes every impact in
+/// rules (a jump, or out of contact), sits in a command chair to fly, and takes every impact in
 /// full through the survival suit (<see cref="Suit"/>).
 /// </summary>
 public sealed class Survivor
@@ -193,7 +193,7 @@ public sealed class Survivor
     /// <summary>The frame the view's yaw and pitch turn in, in the world (the eased walk frame, and the ship's turn aboard).</summary>
     public N.Quaternion WorldViewFrame => Seated is Vessel seat ? seat.Body.Rotation : WorldView();
 
-    /// <summary>Sits in a cockpit seat: the body stops simulating and the controls fly the vessel.</summary>
+    /// <summary>Sits in a command chair: the body stops simulating and the controls fly the vessel.</summary>
     public bool Sit(Vessel vessel)
     {
         if (vessel.Seat == null || vessel.IsWreck) return false;

@@ -207,6 +207,7 @@ public partial class Game : Node3D
             Pack.Grid[i].Count = 1;
         }
         Pack.Grid.Reconcile();
+        Slice.Items.ItemViews.Reset();
         Progress = new Progress(data.Progress, data.Items, data.Catalogue) { Creative = Mode == GameMode.Creative };
         Fabricator = new GalHack.Items.Production.Constructor(data.Items, data.Items.Machines.Get("suit"), Pack.Storage, Zone.WorldRules);
 
@@ -272,8 +273,12 @@ public partial class Game : Node3D
         }
         Controls c = Controls;
         if (c.WasPressed(Key.F3)) Debug.Visible = !Debug.Visible;
-        if (c.WasPressed(Key.Tab)) Menu.Toggle();
-        if (c.WasPressed(Key.Escape) && Menu.IsOpen) Menu.Close();
+        // A filter box with the keyboard takes the typing; Escape clears it, then lets go, then closes the menu.
+        if (Menu.IsOpen && Slice.Items.ItemViews.Focused != null && (c.Typed.Length > 0 || c.Backspaces > 0))
+            Slice.Items.ItemViews.Type(c.Typed, c.Backspaces);
+        if (c.WasPressed(Key.Tab)) { Slice.Items.ItemViews.Focused = null; Menu.Toggle(); }
+        if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
+        if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
@@ -297,15 +302,26 @@ public partial class Game : Node3D
             s.Yaw -= c.Look.X * 0.0025f;
             s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
         }
-        s.Legs.Move = new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
+        // Typing into a filter box doesn't move you.
+        bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
+        s.Legs.Move = typing ? N.Vector2.Zero : new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
         s.Legs.Sprint = c.IsHeld(Key.Shift) && !Menu.IsOpen;
-        s.Legs.Jump = c.IsHeld(Key.Space);
-        s.Legs.Jetpack = c.IsHeld(Key.Space);
-        s.Legs.Vertical = c.Axis(Key.Space, Key.Ctrl);
+        s.Legs.Jump = !typing && c.IsHeld(Key.Space);
+        s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
+        s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
         if (Menu.IsOpen) return;
 
+        // A number picks a slot; the same number again, or Y, switches between your own toolbar
+        // and the linked structure's (Empyrion's virtual toolbar).
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
-            if (c.WasPressed(Key.Key1 + i)) Select(i);
+            if (c.WasPressed(Key.Key1 + i))
+            {
+                bool twice = i == Pack.Selected && Stats.Seconds - _numberAt < DoubleTap;
+                _numberAt = Stats.Seconds;
+                if (twice) SwitchBar();
+                else Select(i);
+            }
+        if (c.WasPressed(Key.Y)) SwitchBar();
         if (c.WasPressed(Key.F) && !OpenCryopod()) TrySit();
         if (c.WasPressed(Key.E)) Use();
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
@@ -313,8 +329,13 @@ public partial class Game : Node3D
         HandKind hand = Pack.Hand;
         if (hand == HandKind.Tool && c.WasPressed(Key.Q))
         {
-            Tool.Mode = Tool.Mode == ToolMode.Gather ? ToolMode.Shoot : ToolMode.Gather;
-            Say(Tool.Mode == ToolMode.Shoot ? "Survival tool: SHOOT (Q to gather)" : "Survival tool: GATHER (Q to shoot)", Tones.Text);
+            Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, _ => ToolMode.Gather };
+            Say(Tool.Mode switch
+            {
+                ToolMode.Shoot => "Survival tool: SHOOT (Q: deconstruct)",
+                ToolMode.Deconstruct => "Survival tool: DECONSTRUCT: take blocks down, their items back (Q: gather)",
+                _ => "Survival tool: GATHER (Q: shoot)",
+            }, Tones.Text);
         }
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
@@ -330,6 +351,16 @@ public partial class Game : Node3D
         else if (c.Wheel != 0) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
     }
 
+    /// <summary>How soon a number pressed again counts as a double tap, seconds.</summary>
+    const double DoubleTap = 0.4;
+    double _numberAt = -1;
+
+    /// <summary>The survival tool has been in your hands. Until then the visor says how to make it.</summary>
+    public bool ToolEquipped { get; private set; }
+
+    /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
+    public string ToolHint => ToolEquipped ? null : "Press Tab: make your survival tool in the suit fabricator";
+
     /// <summary>Puts a toolbar slot in your hands.</summary>
     public void Select(int slot)
     {
@@ -337,9 +368,33 @@ public partial class Game : Node3D
         Pack.Selected = slot;
         Builder.Hide();
         Slot s = Pack.InHand;
-        string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : s.Block != null
-            ? Zone.Data.Catalogue.Type(s.Block).Name : s.Item != null ? Zone.Data.Items.Item(s.Item).Name : "empty hands";
-        Say($"{slot + 1}: {what}", Tones.Text);
+        string id = Pack.HandItem;
+        string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
+        Say($"{slot + 1}{(Pack.OnStructureBar ? $" ({Pack.LinkedName})" : "")}: {what}", Tones.Text);
+    }
+
+    /// <summary>Switches between your own toolbar and the linked structure's (only with a structure linked).</summary>
+    public void SwitchBar()
+    {
+        if (Pack.Bar == BarSource.Personal && Pack.Linked == null)
+        {
+            Say("No structure in range: its toolbar works inside its area", Tones.Caution);
+            return;
+        }
+        Pack.ToggleBar();
+        Builder.Hide();
+        Say(Pack.Bar == BarSource.Structure ? $"{Pack.LinkedName.ToUpperInvariant()} TOOLBAR: blocks come from its storage" : "YOUR TOOLBAR: blocks come from your own stacks", Tones.Text);
+    }
+
+    /// <summary>The structure you are linked to (its area holds you), or null.</summary>
+    public Vessel LinkedStructure { get; private set; }
+
+    /// <summary>Links the structure toolbar to the structure whose area you are in (the one you build on first).</summary>
+    public void LinkStructure()
+    {
+        Vessel v = Slice.Construction.StructureArea.Linked(Zone, Survivor.WorldFeet, Zone.Data.Rules.Build.Area, Builder.TargetVessel, Survivor.Seated, Survivor.Aboard);
+        LinkedStructure = v;
+        Pack.Link(v?.Storage, v?.Name);
     }
 
     void Fly(Vessel vessel, Controls c)
@@ -370,7 +425,7 @@ public partial class Game : Node3D
         Say(Torch.Visible ? "Head torch on (L)" : "Head torch off", Tones.Text);
     }
 
-    /// <summary>F on foot: the nearest cockpit seat within reach.</summary>
+    /// <summary>F on foot: the nearest command chair within reach.</summary>
     void TrySit()
     {
         Vector3 eye = Survivor.WorldEye();
@@ -410,16 +465,22 @@ public partial class Game : Node3D
         Zone.Wildlife.Follow(Survivor.WorldFeet, onFoot: Survivor.Body.Frame == null);
         _creatureBlockers.KeepOff();
         Pack.Grid.Reconcile();
+        LinkStructure();
         HandKind hand = Pack.Hand;
         bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
-        if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
-        else if (hands && hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint)
+        if (hand == HandKind.Tool) ToolEquipped = true;
+        bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
+        bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
+        if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
+        else if (hands && deconstruct) Builder.TickDeconstruct(pressed);
+        else if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
+        else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
-        if (!hands || hand is not (HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint)) Builder.Hide();
+        if (!hands || !(building || deconstruct)) Builder.Hide();
         TickMachines(dt);
         CheckDeath();
         Stats.Tick(this, dt);
@@ -503,7 +564,15 @@ public partial class Game : Node3D
                 if (release.ButtonIndex == MouseButton.Left) Controls.PrimaryReleased = true;
                 else if (release.ButtonIndex == MouseButton.Right) Controls.SecondaryReleased = true;
                 break;
-            case InputEventKey { Pressed: true, Echo: false } key:
+            case InputEventKey { Pressed: true } key:
+                // A focused filter box on the menu takes printable keys and backspace (repeats too).
+                if (Menu.IsOpen && Slice.Items.ItemViews.Focused != null && key.PhysicalKeycode is not (Key.Escape or Key.Tab))
+                {
+                    if (key.PhysicalKeycode == Key.Backspace) Controls.Backspaces++;
+                    else if (key.Unicode > 31) Controls.Type(char.ConvertFromUtf32((int)key.Unicode));
+                    break;
+                }
+                if (key.Echo) break;
                 if (key.PhysicalKeycode == Key.Escape && !Menu.IsOpen) Input.MouseMode = Input.MouseModeEnum.Visible;
                 else Controls.Tap(key.PhysicalKeycode);
                 break;

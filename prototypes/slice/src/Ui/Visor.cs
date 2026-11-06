@@ -129,7 +129,11 @@ public partial class Visor : CanvasLayer
         _hud.QueueRedraw();
     }
 
-    float S => _hud.Size.Y / 900f;
+    /// <summary>The player's UI scale (1 is the default).</summary>
+    public float UiScale = 1f;
+
+    HudLayout Layout => HudLayout.Compute(_hud.Size, UiScale);
+    float S => Layout.Scale;
 
     void Draw()
     {
@@ -191,16 +195,15 @@ public partial class Visor : CanvasLayer
             ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
         };
-        float s = S;
+        HudLayout layout = Layout;
+        float s = layout.Scale;
         Vector2 size = _hud.Size;
-        float w = 150 * s, h = 54 * s, gap = 14 * s;
-        float total = items.Length * w + (items.Length - 1) * gap;
+        float w = HudLayout.VitalW * s, h = HudLayout.VitalH * s, gap = HudLayout.VitalGap * s;
         for (int i = 0; i < items.Length; i++)
         {
             var (label, value, share, alert) = items[i];
             bool warned = (warn & alert) != 0, harmed = (harm & alert) != 0 || (alert == Alert.Health && harm != Alert.None);
-            float off = (i - (items.Length - 1) / 2f) / items.Length;
-            var at = new Vector2(size.X / 2 - total / 2 + i * (w + gap), size.Y - 96 * s + off * off * 120 * s);
+            var at = layout.Vitals.Position + new Vector2(i * (w + gap), 0);
             bool lit = harmed ? Mathf.PosMod((float)_time * 4.5f, 1f) < 0.55f : warned && Mathf.PosMod((float)_time * 2.2f, 1f) < 0.6f;
             Color tone = harmed ? C.Danger : warned ? C.Warn : C.Good;
             float a = warned || harmed ? 1f : _vitalsAlpha;
@@ -275,13 +278,13 @@ public partial class Visor : CanvasLayer
 
     void DrawLines()
     {
-        float s = S;
-        Vector2 size = _hud.Size;
-        float y = size.Y - 150 * s - _lines.Count * 26 * s;
+        HudLayout layout = Layout;
+        float s = layout.Scale;
+        float y = layout.Lines.End.Y - _lines.Count * 26 * s;
         foreach (var (text, colour, until) in _lines)
         {
             float a = (float)Math.Clamp(until - _time, 0, 1);
-            _hud.Text(UiTheme.Label, (int)(19 * s), new Vector2(40 * s, y), text, new Color(colour, a));
+            _hud.Text(UiTheme.Label, (int)(19 * s), new Vector2(layout.Lines.Position.X, y), HudLayout.Fit(UiTheme.Label, (int)(19 * s), text, layout.Lines.Size.X), new Color(colour, a));
             y += 26 * s;
         }
     }
@@ -330,9 +333,9 @@ public partial class Visor : CanvasLayer
         // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
         // build tool's verdict: never where you are.
         string label = Game.UsePrompt();
-        if (string.IsNullOrEmpty(label)) label = Game.Pack.Hand switch
+        if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
             _ => "",
@@ -341,40 +344,106 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, c.Y + 18 * s, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
     }
 
-    /// <summary>The toolbar (1 to 9) at the lower right, what is in hand and its keys, and the head torch.</summary>
-    void DrawHand()
+    /// <summary>What the toolbar's slot shows: a label, a count and the item's tone.</summary>
+    (string label, string count, bool empty) SlotText(int i)
     {
-        float s = S;
-        Vector2 size = _hud.Size;
-        float cell = 52 * s, x = size.X - 9 * (cell + 4 * s) - 30 * s, y = size.Y - 150 * s;
         var items = Game.Zone.Data.Items;
-        for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
+        Slice.Items.PlayerInventory pack = Game.Pack;
+        if (pack.OnStructureBar)
         {
-            Slice.Items.Slot slot = Game.Pack.Grid[i];
-            bool on = Game.Pack.Selected == i;
-            var box = new Rect2(x + i * (cell + 4 * s), y, cell, cell);
-            _hud.Block(box, new Color(on ? C.Accent : C.Glass, on ? 0.9f : 0.55f));
-            string label = slot.Block == Slice.Items.PlayerInventory.BlueprintBlock ? "SKIFF" : slot.Block != null ? Slice.Ui.Slots.Short(Game.Zone.Data.Catalogue.Type(slot.Block).Name)
-                : slot.Item != null ? items.Item(slot.Item).ShortName : "";
-            _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, on ? C.Glass : C.Text, HorizontalAlignment.Center);
-            if (slot.Count > 1) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), $"{slot.Count}", on ? C.Glass : C.Accent2, HorizontalAlignment.Right);
-            _hud.Text(UiTheme.Mono, (int)(11 * s), box.Position + new Vector2(3, 1), $"{i + 1}", on ? C.Glass : C.Dim);
+            string id = pack.StructureBar[i];
+            if (id == null) return ("", "", true);
+            int n = pack.Linked.Count(id);
+            return (items.Item(id).ShortName, $"{n}", n == 0);
         }
-        HandKind hand = Game.Pack.Hand;
-        string detail = hand switch
+        Slice.Items.Slot slot = pack.Grid[i];
+        if (slot.Block == Slice.Items.PlayerInventory.BlueprintBlock) return ("SKIFF", "", false);
+        if (slot.Block != null) return (items.TryGet(slot.Block, out var d) ? d.ShortName : slot.Block, "FREE", false);
+        if (slot.Item == null) return ("", "", true);
+        return (items.Item(slot.Item).ShortName, slot.Count > 1 ? $"{slot.Count}" : "", false);
+    }
+
+    /// <summary>The selected item's line: name, mode or shape, count and source.</summary>
+    public string ItemLine()
+    {
+        Slice.Items.PlayerInventory pack = Game.Pack;
+        if (Game.ToolHint is string hint) return hint;
+        var items = Game.Zone.Data.Items;
+        string bar = pack.OnStructureBar ? $"{pack.LinkedName.ToUpperInvariant()} TOOLBAR · " : "";
+        HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
+        switch (hand)
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Shoot ? "SURVIVAL TOOL · SHOOT   [Q] GATHER" : "SURVIVAL TOOL · GATHER   [Q] SHOOT",
-            HandKind.Block => $"{Game.Zone.Data.Catalogue.Type(Game.Pack.InHand.Block).Name} {(Game.Zone.Data.Catalogue.Type(Game.Pack.InHand.Block).IsArmor ? Game.Builder.Shape.Name : "")}  [WHEEL] SHAPE [R/T] TURN [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")} [RMB] TAKE DOWN",
-            HandKind.Core => "CORE: set it down on open ground",
-            HandKind.Device => "DEVICE: set it down on open ground",
-            HandKind.Blueprint => Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down",
-            HandKind.Consumable => "click to use",
+            case HandKind.Tool:
+                return Game.Tool.Mode switch
+                {
+                    ToolMode.Shoot => "SURVIVAL TOOL · SHOOT",
+                    ToolMode.Deconstruct => "SURVIVAL TOOL · DECONSTRUCT",
+                    _ => "SURVIVAL TOOL · GATHER",
+                };
+            case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : "";
+                string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
+                    : pack.OnStructureBar ? $"{pack.Linked.Count(id)} in {pack.LinkedName}"
+                    : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
+                return $"{bar}{item.Name}{shape} · {where}";
+            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
+            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down";
+            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}: click to use";
+            default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
+        }
+    }
+
+    /// <summary>The key hints, all on one quiet line.</summary>
+    public string HintLine()
+    {
+        HandKind hand = Game.Pack.Hand;
+        string keys = hand switch
+        {
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
+            HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
-        _hud.Text(UiTheme.Label, (int)(15 * s), new Vector2(x, y + cell + 8 * s), detail, C.Text);
-        string status = $"[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}";
-        _hud.Text(UiTheme.Label, (int)(15 * s), new Vector2(x, y - 22 * s), status, Game.Torch.Visible ? C.Accent2 : C.Dim);
-        if (Game.Mode == GalHack.Items.GameMode.Creative) _hud.Text(UiTheme.Label, (int)(16 * s), new Vector2(x, y - 44 * s), "CREATIVE: building is free", C.Accent2);
+        string bar = Game.Pack.Linked != null ? "[Y] TOOLBAR   " : "";
+        string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
+        return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
+    }
+
+    /// <summary>The toolbar, the selected item's line, the key hints and, with a block family in hand, the shape strip.</summary>
+    void DrawHand()
+    {
+        HudLayout layout = Layout;
+        float s = layout.Scale;
+        float cell = HudLayout.Cell * s, gap = HudLayout.CellGap * s;
+        Slice.Items.PlayerInventory pack = Game.Pack;
+        bool structure = pack.OnStructureBar;
+        for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
+        {
+            bool on = pack.Selected == i;
+            var box = new Rect2(layout.Toolbar.Position + new Vector2(i * (cell + gap), 0), new Vector2(cell, cell));
+            var (label, count, empty) = SlotText(i);
+            _hud.Block(box, new Color(on ? (structure ? C.Holo : C.Accent) : C.Glass, on ? 0.9f : 0.55f));
+            if (structure && !on) _hud.Frame(box, new Color(C.Holo, 0.6f), 1.5f * s);
+            _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, on ? C.Glass : empty ? C.Dim : C.Text, HorizontalAlignment.Center);
+            if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : C.Accent2, HorizontalAlignment.Right);
+            _hud.Text(UiTheme.Mono, (int)(11 * s), box.Position + new Vector2(3, 1), $"{i + 1}", on ? C.Glass : C.Dim);
+        }
+        int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
+        _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
+        // The shape picker: the family's shapes, the current one lit (the wheel steps through them).
+        if (pack.Hand == HandKind.Block && pack.HandItem is string id && Game.Zone.Data.Items.TryGet(id, out var item) && item.Family == GalHack.Items.BlockFamily.Armour)
+        {
+            var shapes = Game.Builder.Shapes;
+            float w = layout.Shapes.Size.X / shapes.Count;
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, 0), new Vector2(w - 2 * s, layout.Shapes.Size.Y));
+                bool on = shapes[i] == Game.Builder.Shape;
+                _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.9f : 0.5f));
+                _hud.TextIn(UiTheme.Label, (int)(11 * s), box, HudLayout.Fit(UiTheme.Label, (int)(11 * s), shapes[i].Name.ToUpperInvariant(), box.Size.X - 4), on ? C.Glass : C.Dim, HorizontalAlignment.Center);
+            }
+        }
     }
 
     // ---- Flying --------------------------------------------------------------------------------

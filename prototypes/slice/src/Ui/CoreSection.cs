@@ -29,6 +29,7 @@ public sealed class CoreSection : IMenuSection
     object _picked;
     int _machine;
     readonly ConstructorSection _constructor;
+    int _storageScroll;
     readonly StructureSection _structure;
 
     /// <summary>How near a structure's nearest block (or a device) must be to show here, m.</summary>
@@ -48,11 +49,13 @@ public sealed class CoreSection : IMenuSection
     {
         var near = new List<(object thing, float d)>();
         Vector3 feet = _game.Survivor.WorldFeet;
+        // A structure's panels work inside its area (bases, capital, small and hover vessels alike).
+        var rules = _game.Zone.Data.Rules.Build.Area;
         foreach (Vessel v in _game.Zone.Vessels)
         {
             if (v.IsWreck || v.Structure.Core == null) continue;
-            float d = _game.Survivor.Aboard == v || _game.Survivor.Seated == v ? -1f : v.DistanceFromHull(v.Body.ToLocal(feet.ToNumerics()), Reach + 1f);
-            if (d <= Reach) near.Add((v, d));
+            bool aboard = _game.Survivor.Aboard == v || _game.Survivor.Seated == v;
+            if (aboard || Slice.Construction.StructureArea.Contains(v, feet, rules)) near.Add((v, aboard ? -1f : Slice.Construction.StructureArea.Distance(v, feet)));
         }
         foreach (Device dev in _game.Zone.Devices)
         {
@@ -83,7 +86,7 @@ public sealed class CoreSection : IMenuSection
         if (_picked == null)
         {
             g.Caption("NO CORE NEARBY", o, area.Size.X);
-            g.Text("Stand in or next to a base, a vessel or a placed device to run its systems here.", o + new Vector2(0, 40), C.Dim, 16);
+            g.Text("OUT OF RANGE: a structure's core, storage and constructors work only inside its area.", o + new Vector2(0, 40), C.Warn, 16);
             g.Text("Craft a survival constructor in the suit fabricator (YOU), put it on the toolbar and set it down.", o + new Vector2(0, 66), C.Dim, 16);
             return;
         }
@@ -106,7 +109,7 @@ public sealed class CoreSection : IMenuSection
         if (v2.Machines.Count == 0)
         {
             g.Caption("MANUFACTURING", machines.Position, machines.Size.X);
-            g.Text(v2.IsBase ? "No constructor on this base yet: place one from the build palette (Small constructor, large)." : "No constructor aboard.", machines.Position + new Vector2(0, 40), C.Dim, 15);
+            g.Text(v2.IsBase ? "No constructor on this base yet: craft a Small constructor (large) and place it." : "No constructor aboard.", machines.Position + new Vector2(0, 40), C.Dim, 15);
         }
         else
         {
@@ -118,31 +121,51 @@ public sealed class CoreSection : IMenuSection
             if (!v2.Powered) g.Text(v2.PowerOn ? "NO POWER: build a generator onto it" : "POWER OFF", machines.Position + new Vector2(300, 6), C.Danger, 15);
             _constructor.Build(g, new Rect2(machines.Position + new Vector2(0, 40), new Vector2(machines.Size.X, machines.Size.Y - 40)));
         }
-        StorageColumn(g, new Rect2(body.Position + new Vector2(1100, 0), new Vector2(area.End.X - body.Position.X - 1100, body.Size.Y)), v2.StorageGrid, v2.Name, () => _game.Open(new OpenContainer
+        var column = new Rect2(body.Position + new Vector2(1100, 0), new Vector2(area.End.X - body.Position.X - 1100, body.Size.Y));
+        StorageColumn(g, column, v2.StorageGrid, v2.Name, () => _game.Open(new OpenContainer
         {
             Title = $"{v2.Name} storage", Grid = v2.StorageGrid, Vessel = v2, Where = () => v2.Body.Position.ToGodot(),
         }));
+        // Blueprints live here in the menu, never on the toolbar: building by hand is the game.
+        if (g.Button("core:blueprint", new Rect2(column.Position.X, column.End.Y - 40, column.Size.X, 30), "BLUEPRINTS: PROJECT THE SKIFF", C.Holo, size: 13))
+        {
+            _game.Builder.Project();
+            _game.Menu.Close();
+        }
     }
 
     void DeviceStorage(Gui g, Rect2 r, Device d) =>
         StorageColumn(g, r, d.Grid, $"{d.Label} hopper", () => _game.Open(new OpenContainer { Title = $"{d.Label} hopper", Grid = d.Grid, Device = d, Where = () => d.GlobalPosition }));
 
-    /// <summary>A storage's stacks, with quick moves to and from your bag and a button to open it beside your bag.</summary>
+    /// <summary>
+    /// A storage's stacks through the shared filter bar (text, categories, sort), each draggable
+    /// onto your bag or the structure toolbar, with quick moves to and from your bag (acting on
+    /// what is shown while a filter is on) and a button to open it beside your bag.
+    /// </summary>
     void StorageColumn(Gui g, Rect2 r, ItemGrid grid, string name, Action open)
     {
         g.Caption("STORAGE", r.Position, r.Size.X);
         grid.Reconcile();
         SharedStorage s = grid.Storage;
-        g.Text($"{s.UsedSu:F0} / {s.CapacitySu:F0} SU · {s.MassKg:F0} kg", r.Position + new Vector2(0, 32), C.Text, 14, UiTheme.Mono);
-        g.Bar(new Rect2(r.Position + new Vector2(0, 54), new Vector2(r.Size.X, 10)), s.UsedSu, Math.Max(1, s.CapacitySu), C.Accent2, 16);
-        float y = r.Position.Y + 74;
-        foreach (var (item, count) in s.Stacks.Take(14))
+        g.Text($"{s.UsedSu:F0} / {s.CapacitySu:F0} SU · {s.MassKg:F0} kg", r.Position + new Vector2(0, 30), C.Text, 13, UiTheme.Mono);
+        g.Bar(new Rect2(r.Position + new Vector2(0, 50), new Vector2(r.Size.X, 8)), s.UsedSu, Math.Max(1, s.CapacitySu), C.Accent2, 16);
+        ItemView view = FilterBar.Build(g, "storage", new Rect2(r.Position + new Vector2(0, 64), new Vector2(r.Size.X, FilterBar.Height)));
+        int columns = Math.Max(1, (int)((r.Size.X + 6) / 56));
+        var cells = new Rect2(r.Position + new Vector2(0, 66 + FilterBar.Height), new Vector2(r.Size.X, 4 * 56 - 6));
+        IReadOnlyList<int> shownSlots = view.Visible(grid);
+        int rows = Math.Max(1, (shownSlots.Count + columns - 1) / columns);
+        _storageScroll = Math.Clamp(_storageScroll, 0, Math.Max(0, rows - 4));
+        Slots.Grid(g, _game, "store", grid, 0, grid.Count, columns, cells, 50, _game.Pack.Grid, _storageScroll, view);
+        float y = cells.End.Y + 6;
+        if (s.IsEmpty) g.Text("empty", new Vector2(r.Position.X, y), C.Dim, 13);
+        g.Text($"{s.Stacks.Count()} kinds{(view.Filtering ? $" · {shownSlots.Count} stacks shown" : "")}", new Vector2(r.Position.X + 60, y), C.Dim, 13);
+        if (rows > 4)
         {
-            g.Text($"{count,5}  {item.Name}", new Vector2(r.Position.X, y), C.Text, 14, UiTheme.Mono);
-            y += 22;
+            if (g.Button("store:up", new Rect2(r.End.X - 130, y - 2, 60, 24), "UP", C.Accent2, _storageScroll > 0, size: 12)) _storageScroll--;
+            if (g.Button("store:down", new Rect2(r.End.X - 64, y - 2, 60, 24), "DOWN", C.Accent2, _storageScroll + 4 < rows, size: 12)) _storageScroll++;
         }
-        if (s.IsEmpty) { g.Text("empty", new Vector2(r.Position.X, y), C.Dim, 14); y += 22; }
-        y += 10;
+        y += 26;
+        var only = view.Filtering ? new HashSet<int>(shownSlots) : null;
         if (g.Button($"storage:store-raw", new Rect2(r.Position.X, y, r.Size.X, 34), "STORE MY ORE AND MATERIALS", C.Accent2))
         {
             var moved = new Bill();
@@ -159,20 +182,20 @@ public sealed class CoreSection : IMenuSection
             }
             _game.Say(moved.IsEmpty ? "No ore or materials in your bag (or no room)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
         }
-        if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE CORES, DEVICES AND SUPPLIES", C.Good))
+        if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE BLOCKS, CORES, DEVICES AND SUPPLIES", C.Good, size: 14))
         {
             var moved = new Bill();
             for (int i = 0; i < grid.Count; i++)
             {
                 Slot slot = grid[i];
-                if (slot.Item == null) continue;
+                if (slot.Item == null || (only != null && !only.Contains(i))) continue;
                 ItemDef item = s.Catalogue.Item(slot.Item);
                 if (item.Category is ItemCategory.Raw or ItemCategory.Refined or ItemCategory.Part) continue;
                 string id = slot.Item;
                 int n = ItemGrid.QuickMove(grid, i, _game.Pack.Grid);
                 if (n > 0) moved.Add(id, n);
             }
-            _game.Say(moved.IsEmpty ? "Nothing made here to take yet" : $"Took {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            _game.Say(moved.IsEmpty ? "Nothing made here to take yet" : $"Took {s.Catalogue.Describe(moved, 4)}{FilterBar.Shown(view, only?.Count ?? 0)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
         }
         if (g.Button($"storage:open", new Rect2(r.Position.X, y + 84, r.Size.X, 34), "OPEN BESIDE MY BAG", C.Accent)) open();
     }

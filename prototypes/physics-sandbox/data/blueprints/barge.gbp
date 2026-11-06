@@ -56,6 +56,6 @@ block -4..3 7 9..15 steel paint=house
 block -3..2 1 12 steel paint=lip
 
 # --- A seat at the bow, two engines at the stern ----------------------------------------------
-block 0 1 -7 cockpit
+block 0 1 -7 chair
 block -5 -1 16 thruster
 block 4 -1 16 thruster

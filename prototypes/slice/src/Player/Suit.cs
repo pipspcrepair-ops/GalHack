@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using GalHack.Physics;
+using GalHack.Structures;
 using GalHack.Terrain;
 using Godot;
+using PhysicsSandbox.Bridges;
 using Planets.Gen;
 using PlanetSurface.World;
 using Slice.Game;
 using Slice.Surface;
+using Slice.Vessels;
 using SurvivalVitals.Model;
 using N = System.Numerics;
 
@@ -33,8 +36,11 @@ public sealed class Suit : IDamageSink
     public double OxygenShare => Sim.OxygenCapacity > 0 ? Vitals.Oxygen / Sim.OxygenCapacity : 0;
     public bool Dead => Sim.Player.Dead;
 
-    /// <summary>Seated in a cockpit with its canopy shut: a sealed, heated volume.</summary>
-    public bool InCockpit;
+    /// <summary>
+    /// In a sealed room aboard a structure: heated, with air to breathe. A command chair gives no
+    /// air of its own: in the open, or in a leaking hull, the suit is all you have.
+    /// </summary>
+    public bool InSealedRoom;
 
     /// <summary>Lines for the visor (helmet sealing, bottles, hard landings, deaths).</summary>
     public event Action<string> Said;
@@ -63,7 +69,7 @@ public sealed class Suit : IDamageSink
     /// </summary>
     public Exposure Exposure(Pos p, double time)
     {
-        if (InCockpit) return new Exposure(_climate.CockpitC, 21, 0, VolumeKind.Cockpit, "Cockpit", double.PositiveInfinity);
+        if (InSealedRoom) return new Exposure(_climate.SealedRoomC, 21, 0, VolumeKind.Room, "Sealed room", double.PositiveInfinity);
         PlanetWorld planet = _zone.Planet;
         if (planet == null) return SurvivalVitals.Model.Exposure.Mild;
         double x = Mathx.WrapX(p.X, planet.Width), z = Mathx.Wrap(p.Z, planet.Height);
@@ -81,6 +87,30 @@ public sealed class Suit : IDamageSink
         return new Exposure(baseline + weather + day + height, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), double.PositiveInfinity);
     }
 
+    Structure _roomsOf;
+    int _roomsVersion = -1;
+    readonly HashSet<Int3> _sealed = new();
+
+    /// <summary>Is the survivor in a sealed room of the structure they sit in or stand aboard? (Building's room check, cached per structure version.)</summary>
+    bool InRoom(Survivor survivor)
+    {
+        Vessel v = survivor.Seated ?? survivor.Aboard;
+        if (v == null) return false;
+        Structure s = v.Structure;
+        if (s != _roomsOf || s.Version != _roomsVersion)
+        {
+            _roomsOf = s;
+            _roomsVersion = s.Version;
+            _sealed.Clear();
+            foreach (Room room in Rooms.Detect(s).Sealed)
+                foreach (Int3 cell in room.Cells) _sealed.Add(cell);
+        }
+        if (_sealed.Count == 0) return false;
+        N.Vector3 chest = v.Body.ToLocal(survivor.Body.WorldPosition + survivor.Body.Up * 1f);
+        if (survivor.Seated != null && v.Seat is N.Vector3 seat) chest = seat;
+        return _sealed.Contains(StructureBridge.CellAt(s, chest));
+    }
+
     // ---- Each tick ------------------------------------------------------------------------------
 
     /// <summary>Advances the suit by a tick of the survivor's work: walking, running, digging, falling.</summary>
@@ -88,7 +118,7 @@ public sealed class Suit : IDamageSink
     {
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
-        InCockpit = survivor.Seated != null;
+        InSealedRoom = InRoom(survivor);
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         int events = Sim.Events.Count;

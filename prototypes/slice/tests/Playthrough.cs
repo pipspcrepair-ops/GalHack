@@ -85,10 +85,23 @@ public sealed class Playthrough
         }
     }
 
+    /// <summary>The first thing anyone does: Tab, the suit fabricator's free survival tool, dragged onto toolbar slot 1 and in hand.</summary>
+    public IEnumerable<int> MakeTool()
+    {
+        foreach (int x in OpenMenu(MenuTab.You)) yield return x;
+        foreach (int x in Order("fab", "survival-tool", 1)) yield return x;
+        foreach (int x in WaitFor(() => Pack["survival-tool"] > 0, 15)) yield return x;
+        foreach (int x in ToToolbar("survival-tool", 0)) yield return x;
+        foreach (int x in CloseMenu()) yield return x;
+        foreach (int x in Select(0)) yield return x;
+        foreach (int x in Drive.Wait(2)) yield return x;
+    }
+
     /// <summary>
-    /// The start, as a player plays it: wake in the cryopod, F opens it, step out, E on the
-    /// locker and TAKE ALL, (a shot at the wall and the tool on the floor, harmless,) up the
-    /// stairwell to the surface, 50 m away, back down into the bunker, and out again.
+    /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
+    /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
+    /// wall and the tool on the floor, harmless,) up the stairwell to the surface, 50 m away, back
+    /// down into the bunker, and out again.
     /// </summary>
     public IEnumerable<int> WakeAndLeave(Action<bool, string> check, string label = "", bool shoot = false)
     {
@@ -97,6 +110,9 @@ public sealed class Playthrough
         float under = Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y;
         check(Game.Phase == Phase.Playing && !b.Mine.Open && feet.DistanceTo(b.CryoStand) < 0.6f,
             $"{label}wakes in the cryopod, its lid shut, {under:F1} m under the ground");
+        check(Pack.Storage.IsEmpty && Pack.Hand == HandKind.Empty && Game.ToolHint != null, $"{label}empty-handed, the visor saying: {Game.ToolHint}");
+        foreach (int x in MakeTool()) yield return x;
+        check(Pack.Grid[0].Item == "survival-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the survival tool, free; dragged to the toolbar, it is in hand and the hint is gone");
         foreach (int x in Drive.Tap(Key.F)) yield return x;
         foreach (int x in Drive.Wait(40)) yield return x;
         check(b.Mine.Open, $"{label}F opens the cryopod");
@@ -305,24 +321,42 @@ public sealed class Playthrough
         foreach (int x in Drive.DragWidget($"bag:{from}", $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>Drags a block from the build palette onto a toolbar slot (YOU tab, build palette).</summary>
+    /// <summary>The block family item of a block on a grid.</summary>
+    public string BlockItem(string blockId, bool small) => Game.Zone.Data.Items.BlockItem(blockId, small).Id;
+
+    /// <summary>Drags a stack of a block's item from the bag onto a toolbar slot (blocks are items, carried in stacks).</summary>
     public IEnumerable<int> BlockToToolbar(string blockId, bool small, int slot)
     {
+        string item = BlockItem(blockId, small);
+        if (Game.Mode != GalHack.Items.GameMode.Creative)
+        {
+            foreach (int x in ToToolbar(item, slot)) yield return x;
+            yield break;
+        }
+        // Creative: the build palette's free shortcut.
         foreach (int x in OpenMenu(MenuTab.You)) yield return x;
-        if (Game.Menu.Root.You.ShowBlocks == false) foreach (int x in Drive.ClickWidget("you:blocks")) yield return x;
+        if (!Game.Menu.Root.You.ShowBlocks) foreach (int x in Drive.ClickWidget("you:blocks")) yield return x;
         foreach (int x in PageToStart("palette:up")) yield return x;
-        string id = $"palette:{blockId}@{(small ? "small" : "large")}";
+        string id = $"palette:{item}";
         for (int p = 0; p < 12 && Game.Menu.RectOf(id) == null; p++)
             foreach (int x in Drive.ClickWidget("palette:down")) yield return x;
         foreach (int x in Drive.DragWidget(id, $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>Orders items at a constructor's panel (the fabricator on YOU, or the CORE tab's), paging to the item's row.</summary>
+    /// <summary>Orders items at a constructor's panel (the fabricator on YOU, or the CORE tab's): its category toggle, then paging to the item's row.</summary>
     public IEnumerable<int> Order(string key, string itemId, int count)
     {
         string id = $"order:{key}:{itemId}:{count}";
+        ItemView view = ItemViews.Get($"recipes:{key}");
+        ItemGroup group = ItemView.GroupOf(Game.Zone.Data.Items.Item(itemId));
+        if (view.Show != group)
+        {
+            foreach (int x in Drive.Wait(1)) yield return x;
+            foreach (int x in Drive.ClickWidget($"recipes:{key}:cat:all")) yield return x;
+            foreach (int x in Drive.ClickWidget($"recipes:{key}:cat:{group.ToString().ToLowerInvariant()}")) yield return x;
+        }
         foreach (int x in PageToStart($"{key}:up")) yield return x;
-        foreach (int x in ClickPaged(id, $"{key}:down")) yield return x;
+        foreach (int x in ClickPaged(id, $"{key}:down", 30)) yield return x;
     }
 
     /// <summary>Orders any number by clicking +10, +5 and +1 as a player would.</summary>
@@ -377,7 +411,7 @@ public sealed class Playthrough
     {
         int slot = Enumerable.Range(0, PlayerInventory.ToolbarSlots).First(i => Pack.Grid[i].Item == "survival-tool");
         foreach (int x in Select(slot)) yield return x;
-        if (Game.Tool.Mode != mode) foreach (int x in Drive.Tap(Key.Q)) yield return x;
+        for (int i = 0; i < 3 && Game.Tool.Mode != mode; i++) foreach (int x in Drive.Tap(Key.Q)) yield return x;
         foreach (int x in Drive.Wait(1)) yield return x;
     }
 
@@ -591,7 +625,7 @@ public sealed class Playthrough
         // A retro at the nose, to brake.
         ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
         // On top, from hops: the seat, and a jet pushing down, to come down under control.
-        ("cockpit", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
+        ("chair", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
         // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
         ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
         ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),

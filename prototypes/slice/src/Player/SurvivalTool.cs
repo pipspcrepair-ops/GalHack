@@ -17,7 +17,11 @@ using Layers = GalHack.Physics.Layers;
 namespace Slice.Player;
 
 /// <summary>The survival tool's two modes, switched with a key the visor shows.</summary>
-public enum ToolMode { Gather, Shoot }
+/// <summary>
+/// The tool's modes (Q steps through them): gather, shoot, and deconstruct, which takes a block
+/// down and gives its item back (the build tool does that part: <c>BuildTool.TickDeconstruct</c>).
+/// </summary>
+public enum ToolMode { Gather, Shoot, Deconstruct }
 
 /// <summary>
 /// The survival tool, an item on the toolbar: in Gather mode it digs a small ball of ground under

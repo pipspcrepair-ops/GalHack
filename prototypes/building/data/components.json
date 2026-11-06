@@ -30,7 +30,7 @@
       ]
     },
     {
-      "id": "cockpit", "name": "Cockpit seat", "function": "cockpit",
+      "id": "chair", "name": "Command chair", "function": "chair",
       "hp": 400, "armor": 5, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
       "mass": 1.5, "cpu": 1500, "power": -0.05, "color": "c1121f", "glow": "6ff2e0",
       "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",

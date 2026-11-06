@@ -63,7 +63,7 @@ block -3..-2 1..4 6 steel paint=hazard
 block 2..3 1..4 6 steel paint=hazard
 
 # --- The pilot's seat at the windscreen -----------------------------------------------------
-block 0 1 -8 cockpit
+block 0 1 -8 chair
 
 # --- Roof (y 5): a red stripe down the middle, bevelled edges, a small dorsal fin ----------
 block -3..-1 5 -9..6 steel paint=hull

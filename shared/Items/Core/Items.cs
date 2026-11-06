@@ -29,8 +29,54 @@ public static class Rarities
     public static Rarity Max(Rarity a, Rarity b) => a > b ? a : b;
 }
 
-/// <summary>What kind of thing an item is. Raw and unique items have no recipe; everything else has exactly one.</summary>
-public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Ammo, Tool }
+/// <summary>
+/// What kind of thing an item is. Raw and unique items have no recipe; everything else has exactly
+/// one. <see cref="Block"/> items are block families (Empyrion's way): one item per block and grid,
+/// carried in stacks and placed as any of the family's shapes.
+/// </summary>
+public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Ammo, Tool, Block }
+
+/// <summary>
+/// What sort of block family a block item is: building material (placed in any shape), a device
+/// (a functional block: cores, machines, containers, lights, engines...), or a decoration.
+/// </summary>
+public enum BlockFamily { None, Armour, Device, Deco }
+
+/// <summary>
+/// The four classes of structure, as in Empyrion: bases and capital vessels are large-grid, small
+/// and hover vessels small-grid. Every block family says which it can be placed on.
+/// </summary>
+public enum StructureClass { Base, Capital, Small, Hover }
+
+public static class StructureClasses
+{
+    public static readonly StructureClass[] All = { StructureClass.Base, StructureClass.Capital, StructureClass.Small, StructureClass.Hover };
+    public static bool IsSmallGrid(StructureClass c) => c is StructureClass.Small or StructureClass.Hover;
+    public static IReadOnlyList<StructureClass> OfGrid(bool small) =>
+        small ? new[] { StructureClass.Small, StructureClass.Hover } : new[] { StructureClass.Base, StructureClass.Capital };
+    public static string Name(StructureClass c) => c switch
+    {
+        StructureClass.Base => "base",
+        StructureClass.Capital => "capital vessel",
+        StructureClass.Small => "small vessel",
+        _ => "hover vessel",
+    };
+    public static bool TryParse(string s, out StructureClass c)
+    {
+        switch (s)
+        {
+            case "base": c = StructureClass.Base; return true;
+            case "capital": c = StructureClass.Capital; return true;
+            case "small": c = StructureClass.Small; return true;
+            case "hover": c = StructureClass.Hover; return true;
+            default: c = default; return false;
+        }
+    }
+
+    /// <summary>"base and capital vessel blocks only", for a refusal.</summary>
+    public static string Only(IReadOnlyList<StructureClass> places) =>
+        $"{string.Join(" and ", System.Linq.Enumerable.Select(places, Name))} blocks only";
+}
 
 /// <summary>Where a raw or unique item comes from. Crafted items are <see cref="Crafted"/>.</summary>
 public enum ItemSource
@@ -50,9 +96,10 @@ public enum ItemSource
 public sealed class ItemDef
 {
     public string Id { get; init; }
-    public string Name { get; init; }
+    /// <summary>Its display name (block items are named from building's catalogue once it is loaded: <see cref="ItemCatalogue.NameBlockItems"/>).</summary>
+    public string Name { get; internal set; }
     /// <summary>Seven letters or so, for tiles and tight rows.</summary>
-    public string Short { get; init; }
+    public string Short { get; internal set; }
     public ItemCategory Category { get; init; }
     public Rarity Rarity { get; init; }
     public ItemSource Source { get; init; }
@@ -72,6 +119,18 @@ public sealed class ItemDef
     public int StackSize { get; init; } = 1;
     /// <summary>Its tech-tree node (data: <c>unlock</c>), or null if it is always available (materials and parts).</summary>
     public Unlock Unlock { get; init; }
+    /// <summary>Block items: building's block id this item places (any of its shapes, for armour).</summary>
+    public string BlockId { get; init; }
+    /// <summary>Block items: true for the small grid, false for the large. The two grids are separate families.</summary>
+    public bool SmallGrid { get; init; }
+    public BlockFamily Family { get; init; }
+    /// <summary>Block items: the structure classes it can be placed on (Empyrion's base, capital, small and hover vessels).</summary>
+    public IReadOnlyList<StructureClass> Places { get; init; } = Array.Empty<StructureClass>();
+    public bool PlacesOn(StructureClass c) => System.Linq.Enumerable.Contains(Places, c);
+    /// <summary>A sub-group for long lists and the tech tree: a deco piece's theme set.</summary>
+    public string Group { get; init; }
+    /// <summary>True once the item was given its name explicitly (data), so building's names don't replace it.</summary>
+    internal bool Named { get; init; }
     public int Index { get; internal set; }
 
     /// <summary>How it is made, or null for raw and unique items.</summary>
@@ -82,6 +141,8 @@ public sealed class ItemDef
     /// <summary>Gathered from the world (mined, dug or harvested), as opposed to found or crafted.</summary>
     public bool IsGathered => Source is ItemSource.Mined or ItemSource.Dug or ItemSource.Harvested;
     public bool IsAmmo => Category == ItemCategory.Ammo;
+    /// <summary>A block family item: placed as a block (survival uses one per placement, taking it down gives it back).</summary>
+    public bool IsBlock => BlockId != null;
     public string ShortName => Short ?? Name;
 
     public override string ToString() => Id;
@@ -104,7 +165,7 @@ public sealed class Recipe
     /// <summary>Seconds for one run on a speed-1 machine.</summary>
     public double Seconds { get; init; }
     /// <summary>The lowest constructor tier that knows it (0 survival .. 3 advanced).</summary>
-    public int Tier { get; init; }
+    public int Tier { get; internal set; }
 
     /// <summary>Runs needed for at least <paramref name="units"/> of the output.</summary>
     public int RunsFor(int units) => units <= 0 ? 0 : (units + Count - 1) / Count;

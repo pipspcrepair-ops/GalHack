@@ -93,7 +93,10 @@ public sealed class BlockType
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
     public bool IsCpuExtender => Function == "cpu-extender";
-    public bool IsCockpit => Function == "cockpit";
+    /// <summary>The one block that gives control: a seat with a small console. There are no cockpit components.</summary>
+    public bool IsCommandChair => Function == "chair";
+    /// <summary>Old name for <see cref="IsCommandChair"/>, kept for branches that still use it.</summary>
+    public bool IsCockpit => IsCommandChair;
 
     public static bool Has(int mask, Dir d) => (mask & (1 << (int)d)) != 0;
 }
@@ -146,6 +149,8 @@ public sealed class Catalogue
         foreach (BlockType t in c._types.Skip(1))
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
         c.CoreType = c._types.Skip(1).FirstOrDefault(t => t.IsCore) ?? throw new InvalidDataException("no core component in components.json");
+        // Old blueprints name the command chair by its old id.
+        if (c._typeById.TryGetValue("chair", out BlockType chair)) c._typeById["cockpit"] = chair;
         c.BuildFaceTables();
         return c;
     }

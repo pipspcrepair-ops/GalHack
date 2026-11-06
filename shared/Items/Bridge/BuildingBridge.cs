@@ -47,6 +47,21 @@ public static class BuildingBridge
             .Select(g => new BlockCount(g.Key, IsSmall(s), g.Count()))
             .OrderBy(b => b.BlockId, StringComparer.Ordinal).ToList();
 
+    /// <summary>The block family item a placed block is made from (any shape of an armour material is its family's item), or null.</summary>
+    public static ItemDef ItemOf(ItemCatalogue items, Structure s, in Block b) => items.BlockItem(s.TypeOf(b).Id, IsSmall(s));
+
+    /// <summary>
+    /// A structure's class as building's model can tell it: a large grid in base mode is a base,
+    /// any other large grid a capital vessel, a small grid a small vessel (a hover vessel looks the
+    /// same to it: the caller says so).
+    /// </summary>
+    public static StructureClass ClassOf(Structure s) =>
+        !IsSmall(s) ? (s.Mode == CoreMode.Base ? StructureClass.Base : StructureClass.Capital) : StructureClass.Small;
+
+    /// <summary>Names the block items after building's blocks: "Steel block (large)", "Thruster (small)".</summary>
+    public static void NameBlockItems(ItemCatalogue items, Catalogue blocks) =>
+        items.NameBlockItems(id => blocks.TryGetType(id, out BlockType t) ? (t.IsArmor ? $"{t.Name} block" : t.Name) : null);
+
     /// <summary>The bill of one placed block. Every shape of a material shares its cube's bill.</summary>
     public static Bill BillOf(ItemCatalogue items, Structure s, in Block b) => items.Blocks.For(s.TypeOf(b).Id, IsSmall(s));
 

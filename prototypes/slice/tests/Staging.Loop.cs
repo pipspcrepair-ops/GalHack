@@ -157,16 +157,19 @@ public sealed partial class Staging
         Vector3 dir = face is Dir.NegY or Dir.PosY ? v.ToWorld(new N.Vector3(on.X, 0, on.Z)) - centre : v.ToWorld(new N.Vector3(face.Vec().X, 0, face.Vec().Z)) - centre;
         dir.Y = 0;
         Vector3 stand = at + (dir.LengthSquared() > 0.01f ? dir.Normalized() : Vector3.Back) * back;
-        foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 0.6f, 20f)) yield return x;
+        // STAGING: straight there, on the ground beside the face.
+        _game.Survivor.PlaceOutside(_game.Zone.GroundAt(stand.X, stand.Z).ToNumerics() + N.Vector3.UnitY * 0.1f);
+        foreach (int x in _drive.Wait(25)) yield return x;
         foreach (int x in Play.PlaceBlock(slot, v, on, face)) yield return x;
     }
 
-    /// <summary>A base built by hand: its core, a container, a generator, a small constructor, steel and glass, the survival constructor beside it.</summary>
-    IEnumerable<int> BaseView()
+    /// <summary>A base built by hand: its core, a container, a generator, a small constructor, steel and glass, the survival constructor beside it. With survival, from carried block stacks.</summary>
+    IEnumerable<int> BaseView(bool survival = false)
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
+        if (!survival) _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
+        else Hand((Play.BlockItem("container", false), 3), (Play.BlockItem("generator", false), 2), (Play.BlockItem("smallfab", false), 2), (Play.BlockItem("steel", false), 40), (Play.BlockItem("glass", false), 12));
         Hand(("base-core", 1), ("survival-constructor", 1));
         foreach (int x in Play.ToToolbar("base-core", 3)) yield return x;
         foreach (int x in Play.ToToolbar("survival-constructor", 2)) yield return x;
@@ -181,7 +184,7 @@ public sealed partial class Staging
         var steps = new (int slot, Int3 on, Dir face)[]
         {
             (7, Int3.Zero, Dir.NegX), (7, Int3.Zero, Dir.PosX), (7, new Int3(-1, 0, 0), Dir.NegX), (4, new Int3(1, 0, 0), Dir.PosX),
-            (5, Int3.Zero, Dir.PosZ), (6, new Int3(-1, 0, 0), Dir.PosZ), (8, Int3.Zero, Dir.PosY), (7, new Int3(-2, 0, 0), Dir.PosY),
+            (5, Int3.Zero, Dir.PosZ), (6, new Int3(-1, 0, 0), Dir.PosZ), (8, new Int3(1, 0, 0), Dir.PosZ), (8, new Int3(-2, 0, 0), Dir.PosZ),
         };
         foreach (var (slot, on, face) in steps)
             foreach (int x in PlaceFrom(b0, slot, on, face, 5f)) yield return x;
@@ -219,7 +222,7 @@ public sealed partial class Staging
         _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
         Hand(("vessel-core", 1));
         foreach (int x in Play.ToToolbar("vessel-core", 3)) yield return x;
-        var slots = new Dictionary<string, int> { ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
+        var slots = new Dictionary<string, int> { ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
         foreach (var (b, s) in slots) foreach (int x in Play.BlockToToolbar(b, true, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
         Vector3 pad = Play.FlatSpot(_game.Start, 20f, 2.0f, 0.3f);

@@ -66,7 +66,7 @@ block 4 2 3 steel paint=hull +x=n4
 block 4 2 4..8 steel paint=hull
 
 # --- Bridge (air x -3..3, y 1..2, z -8..-3): the seat at the windscreen, two lights -------
-block 0 1 -8 cockpit
+block 0 1 -8 chair
 block -2 2 -4 light rot=+z-y
 block 2 2 -4 light rot=+z-y
 block -3..3 1..2 -2 steel paint=hull

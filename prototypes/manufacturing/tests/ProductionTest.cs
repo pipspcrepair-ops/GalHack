@@ -36,6 +36,9 @@ public partial class ProductionTest : TestBase
         Run("Build then deconstruct never creates material", TestRoundTrip);
         Run("Blueprint factory: exact bill and refusal", TestFactory);
         Run("Survival and creative placement", TestPlacementModes);
+        Run("Craft a block, place it, take it down", TestCraftPlaceRemove);
+        Run("Auto sub-parts through block items", TestAutoSubParts);
+        Run("Block families go on their classes of structure", TestClasses);
         Run("Full storage spills to a crate", TestSpill);
         Run("Upgrading in place conserves materials", TestUpgrade);
         Run("Creative machines", TestCreativeMachines);
@@ -471,9 +474,12 @@ public partial class ProductionTest : TestBase
         return s;
     }
 
+    string ItemOf(string block, bool small = false) => _items.BlockItem(block, small).Id;
+
     void TestPlacementModes()
     {
-        Bill start = Bill.Of(("hull-plate", 60), ("glass", 10), ("nozzle", 4), ("thrust-assembly", 4), ("gravium-ingot", 8), ("ceramic", 4));
+        // Blocks are items: the source holds block items, and placing one uses one.
+        Bill start = Bill.Of((ItemOf("steel"), 4), (ItemOf("glass"), 1), (ItemOf("thruster"), 1), (ItemOf("container"), 1), ("hull-plate", 60));
         var steps = new List<string>();
         foreach (GameMode mode in new[] { GameMode.Survival, GameMode.Creative })
         {
@@ -497,28 +503,29 @@ public partial class ProductionTest : TestBase
             Place(-1, 0, 0, "glass");
             Place(0, 0, 1, "thruster");
             Place(1, 1, 0, "container");
-            Place(-1, 1, 0, "turret"); // on the glass block; nobody has gun barrels or servos
+            Place(-1, 1, 0, "turret"); // on the glass block; nobody made a turret
             TakeDownResult down1 = placer.Remove(s, new Int3(2, 0, 0), storage);
             TakeDownResult down2 = placer.Remove(s, new Int3(1, 1, 0), storage);
             Place(2, 0, 0, "steel");
 
             if (mode == GameMode.Survival)
             {
-                Check(log.Take(5).All(l => l.status == PlaceStatus.Placed), "survival: the blocks with their parts in storage are placed");
-                Check(log[0].paid.Equals(Bill.Of(("hull-plate", 8))) && log[1].paid.Equals(Bill.Of(("hull-plate", 8))), "survival: a large steel cube or slope costs 8 hull plates (shapes cost the same)");
-                Check(log[3].paid.Equals(Bill.Of(("hull-plate", 10), ("thrust-assembly", 2))), "survival: a thruster takes its bill from storage");
-                Check(log[5].status == PlaceStatus.NotEnoughMaterials, "survival: a turret with no gun barrels in storage is refused");
+                Check(log.Take(5).All(l => l.status == PlaceStatus.Placed), "survival: the blocks whose items are in storage are placed");
+                Check(log[0].paid.Equals(Bill.Of((ItemOf("steel"), 1))) && log[1].paid.Equals(Bill.Of((ItemOf("steel"), 1))) && log[6].paid.Equals(Bill.Of((ItemOf("steel"), 1))),
+                    "survival: a cube and a slope of steel each use one large steel block item (one family, any shape)");
+                Check(log[3].paid.Equals(Bill.Of((ItemOf("thruster"), 1))), "survival: a thruster uses one thruster item");
+                Check(log[5].status == PlaceStatus.NotEnoughMaterials, "survival: a turret with no turret item in storage is refused");
                 Check(!s.Has(new Int3(-1, 1, 0)), "survival: and isn't placed");
-                Check(down1.Refunded.Equals(Bill.Of(("hull-plate", 8))) && down2.Refunded.Equals(_items.Blocks.For("container", false)), "survival: taking a block down refunds its whole bill");
-                // Still built from the sequence: steel at 1,0,0 and 2,0,0, the glass and the thruster.
-                Bill placedNow = _items.Blocks.For("steel", false).Times(2).Add(_items.Blocks.For("glass", false)).Add(_items.Blocks.For("thruster", false));
+                Check(down1.Refunded.Equals(Bill.Of((ItemOf("steel"), 1))) && down2.Refunded.Equals(Bill.Of((ItemOf("container"), 1))), "survival: taking a block down gives its item back");
+                Bill placedNow = Bill.Of((ItemOf("steel"), 2), (ItemOf("glass"), 1), (ItemOf("thruster"), 1));
                 Check(storage.Contents.Equals(start.Minus(placedNow)), $"survival: storage holds exactly the start less what is still built ({storage.Contents})");
+                Check(storage["hull-plate"] == 60, "survival: placing never touches raw parts: only block items");
                 Check(crates.Crates.Count == 0, "survival: with room in storage nothing spills");
             }
             else
             {
                 Check(log.All(l => l.status == PlaceStatus.Placed), "creative: every placement succeeds, the turret too");
-                Check(log.All(l => l.paid.IsEmpty) && down1.Refunded.IsEmpty && down2.Refunded.IsEmpty, "creative: nothing is paid and nothing refunded");
+                Check(log.All(l => l.paid.IsEmpty) && down1.Refunded.IsEmpty && down2.Refunded.IsEmpty, "creative: nothing is used and nothing given back");
                 Check(storage.Contents.Equals(start), "creative: storage is untouched");
                 var empty = new SharedStorage(_items, "empty", 0);
                 Check(placer.Place(s, new Int3(3, 0, 0), Building.Make(s, _blocks.Type("precursor")), empty).Ok, "creative: even unique-only blocks place with an empty storage");
@@ -526,6 +533,132 @@ public partial class ProductionTest : TestBase
             steps.Add($"{mode}: {string.Join(", ", log.Select(l => $"{l.what} {l.status}"))}");
         }
         foreach (string line in steps) Note(line);
+    }
+
+    void TestCraftPlaceRemove()
+    {
+        // Craft a block item in a constructor, place it, take it down: the item is back.
+        var rules = new WorldRules();
+        var crates = new CrateYard(_items);
+        var placer = new BlockPlacer(_items, rules, crates);
+        Structure s = Base(out _);
+        SharedStorage storage = new(_items, "base", BuildingBridge.StorageCapacity(s));
+        storage.TryAdd(Bill.Of(("iron-ore", 200), ("carbon-ore", 100)));
+        Constructor fab = Fab("survival", storage, rules);
+        string steel = ItemOf("steel");
+        Check(fab.Order(steel, 2).Ok && fab.SubParts.Count > 0, $"the survival constructor takes an order for 2 large steel blocks and plans their parts ({fab.SubParts.Count} lines)");
+        RunUntilIdle(fab);
+        Check(storage[steel] == 2, "two large steel block items come out into the structure's storage");
+        Block slope = Building.Make(s, _blocks.Type("steel"), _blocks.Shape("slope"));
+        Check(placer.Place(s, new Int3(1, 0, 0), slope, storage).Ok && storage[steel] == 1, "placed as a slope, one item used");
+        Check(placer.Remove(s, new Int3(1, 0, 0), storage).Ok && storage[steel] == 2, "taken down: the item is back");
+        var empty = new SharedStorage(_items, "empty stack", 100);
+        PlaceResult none = placer.Place(s, new Int3(1, 0, 0), slope, empty);
+        Check(none.Status == PlaceStatus.NotEnoughMaterials && none.Missing.Equals(Bill.Of((steel, 1))) && !s.Has(new Int3(1, 0, 0)), "an empty stack can't place: the block isn't built");
+        foreach (string shape in new[] { "cube", "slope", "corner", "invcorner", "wedge", "half", "plate" })
+        {
+            if (!_blocks.TryGetShape(shape, out ShapeDef sh)) continue;
+            Check(placer.Place(s, new Int3(1, 0, 0), Building.Make(s, _blocks.Type("steel"), sh), storage).Ok && placer.Remove(s, new Int3(1, 0, 0), storage).Ok,
+                $"one steel family item places as a {shape}");
+        }
+        Check(storage[steel] == 2 && crates.Crates.Count == 0, "and every shape gave the same item back");
+    }
+
+    void TestAutoSubParts()
+    {
+        // A deep item: a small thruster block is hull plates, a nozzle and a winding, each made
+        // from refined materials made from ore.
+        ItemDef thruster = _items.BlockItem("thruster", true);
+        SharedStorage storage = Storage(contents: Ores(400));
+        Constructor fab = Fab("small", storage);
+        Check(_items.Graph.Level(thruster) >= 3, $"a small thruster is {_items.Graph.Level(thruster)} levels deep");
+        Check(fab.Order(thruster.Id, 1).Ok, "ordering a small thruster is accepted");
+        var lines = fab.SubParts.Select(j => j.Item.Id).ToList();
+        Check(lines.Contains("hull-plate") && lines.Contains("nozzle") && lines.Contains("winding") && lines.Contains("iron-bar"),
+            $"it plans every intermediate, all the way down: {string.Join(", ", lines)}");
+        Check(fab.SubParts.All(j => j.Feeds == fab.Orders[0]), "each auto sub-part says which order it feeds");
+        RunUntilIdle(fab);
+        Check(storage[thruster.Id] == 1, "and the block comes out");
+
+        // Stock is used first.
+        SharedStorage stocked = Storage(contents: Bill.Of(("hull-plate", 2), ("nozzle", 1), ("winding", 1)));
+        Constructor fab2 = Fab("small", stocked);
+        fab2.Order(thruster.Id, 1);
+        Check(fab2.SubParts.Count == 0 && fab2.Missing.IsEmpty, "with the parts in stock it queues no sub-parts");
+        RunUntilIdle(fab2);
+        Check(stocked.Contents.Equals(Bill.Of((thruster.Id, 1))), "it uses them, and only them");
+
+        // A raw material short: paused, with what and how much.
+        SharedStorage poor = Storage(contents: Bill.Of(("iron-ore", 1)));
+        Constructor fab3 = Fab("small", poor);
+        fab3.Order(_items.BlockItem("steel", false).Id, 1);
+        Check(!fab3.Missing.IsEmpty && fab3.Blockers.Any(b => b.Contains("Iron ore") && b.Contains("not in storage")), $"a missing raw material is reported with its amount: {string.Join("; ", fab3.Blockers)}");
+
+        // A sub-part this tier can't make: exactly which, and which constructor it needs.
+        Constructor fab4 = Fab("survival", Storage(contents: Ores(400)));
+        Check(!fab4.Order(thruster.Id, 1).Ok, "the survival constructor refuses a block it doesn't know");
+        ItemDef hardened = _items.BlockItem("hardened", false);
+        Constructor fab5 = new(_items, new MachineDef { Id = "t", Name = "Test", Tag = "T", Kind = MachineKind.Constructor, Tier = 2, Speed = 1 }, Storage(contents: Ores(400)), new WorldRules());
+        Check(fab5.Knows(hardened), "a large constructor knows hardened steel");
+        // A part only a higher tier makes, deep inside something this tier knows: the order says
+        // which part and which constructor it needs. Forced here by a block item whose recipe sits
+        // at a lower tier than its parts, as the data can do with an explicit "tier".
+        ItemDef over = _items.Items.FirstOrDefault(i => i.Recipe != null && _items.Graph.TierNeeded(i) > i.Recipe.Tier);
+        if (over != null)
+        {
+            Constructor gated = new(_items, new MachineDef { Id = "t2", Name = "Test", Tag = "T", Kind = MachineKind.Constructor, Tier = over.Recipe.Tier, Speed = 1 }, Storage(contents: Ores(400)), new WorldRules());
+            Check(gated.Order(over.Id, 1).Ok && gated.Blockers.Any(b => b.Contains("constructor")), $"{over.Name}: a sub-part beyond this tier is reported exactly: {string.Join("; ", gated.Blockers)}");
+        }
+        else
+        {
+            Constructor gated = Fab("small", Storage(contents: Ores(400)));
+            gated.Lock = i => i.Recipe != null && i.Recipe.Tier > 0 ? "needs a large constructor" : null;
+            gated.Order(thruster.Id, 1);
+            Check(gated.Blockers.Any(b => b.Contains("nozzle") && b.Contains("constructor")), $"a sub-part this machine can't make is reported exactly: {string.Join("; ", gated.Blockers)}");
+        }
+        Constructor lowFab = Fab("small", Storage(contents: Ores(400)));
+        Check(lowFab.Order(_items.BlockItem("thruster", false).Id, 1).Status == OrderStatus.NeedsHigherTier, "a large thruster needs a large constructor: the order says so");
+        Constructor locked = Fab("small", Storage(contents: Ores(400)));
+        locked.Lock = i => i.Id == "nozzle" ? "locked: level 9" : null;
+        locked.Order(thruster.Id, 1);
+        Check(!locked.SubParts.Any(j => j.Item.Id == "nozzle") && locked.Blockers.Any(b => b.Contains("nozzle") && b.Contains("locked: level 9")),
+            $"a locked sub-part is not queued, and the order says which and why: {string.Join("; ", locked.Blockers)}");
+
+        // Cancelling the parent cancels its unstarted auto-parts.
+        SharedStorage again = Storage(contents: Ores(400));
+        Constructor fab6 = Fab("small", again);
+        OrderResult r = fab6.Order(thruster.Id, 1);
+        Check(fab6.SubParts.Count > 0 && fab6.Cancel(r.Job) && fab6.SubParts.Count == 0 && fab6.Orders.Count == 0, "cancelling the parent cancels its auto sub-parts");
+        Check(again.Contents.Equals(Ores(400)), "and storage is untouched");
+
+    }
+
+    void TestClasses()
+    {
+        var rules = new WorldRules();
+        var placer = new BlockPlacer(_items, rules, new CrateYard(_items));
+        SharedStorage storage = Storage();
+        storage.TryAdd(Bill.Of((ItemOf("steel", true), 4), (ItemOf("decon"), 1), (ItemOf("concrete"), 2), (ItemOf("thruster"), 1), (ItemOf("steel"), 2)));
+        Structure baseS = Base(out _);
+        baseS.Mode = CoreMode.Base;
+        Check(BuildingBridge.ClassOf(baseS) == StructureClass.Base, "a large grid in base mode is a base");
+        Check(placer.Place(baseS, new Int3(1, 0, 0), Building.Make(baseS, _blocks.Type("concrete")), storage).Ok, "concrete goes on a base");
+        Check(placer.Place(baseS, new Int3(-1, 0, 0), Building.Make(baseS, _blocks.Type("decon")), storage).Ok, "a deconstructor goes on a base");
+        PlaceResult thr = placer.Place(baseS, new Int3(0, 0, 1), Building.Make(baseS, _blocks.Type("thruster")), storage);
+        Check(thr.Status == PlaceStatus.WrongClass, $"a large thruster is refused on a base: {placer.ClassProblem(baseS, Building.Make(baseS, _blocks.Type("thruster")))}");
+        Structure capital = Base(out _);
+        Check(BuildingBridge.ClassOf(capital) == StructureClass.Capital, "a large grid in capital mode is a capital vessel");
+        Check(placer.Place(capital, new Int3(0, 0, 1), Building.Make(capital, _blocks.Type("thruster")), storage).Ok, "the thruster goes on a capital vessel");
+        Check(placer.Place(capital, new Int3(1, 0, 0), Building.Make(capital, _blocks.Type("concrete")), storage).Status == PlaceStatus.WrongClass, "concrete is base-only, as in Empyrion");
+        var small = new Structure(_blocks, _blocks.Grid(GridSize.Small));
+        Building.Place(small, Int3.Zero, Building.Make(small, _blocks.CoreType));
+        Check(BuildingBridge.ClassOf(small) == StructureClass.Small, "a small grid is a small vessel");
+        Check(placer.Place(small, new Int3(1, 0, 0), Building.Make(small, _blocks.Type("steel")), storage).Ok, "small steel goes on a small vessel");
+        Check(_items.BlockItem("steel", true).PlacesOn(StructureClass.Hover) && !_items.BlockItem("steel", true).PlacesOn(StructureClass.Base), "small-grid families go on small and hover vessels, not on a base");
+        Check(_items.BlockItem("hover", true).PlacesOn(StructureClass.Hover) && !_items.BlockItem("hover", true).PlacesOn(StructureClass.Small), "hover pads only go on hover vessels");
+        Check(placer.ClassProblem(small, Building.Make(small, _blocks.Type("hover")), StructureClass.Small) is string why && why.Contains("hover vessel blocks only"),
+            "a hover pad is refused on a small vessel: \"hover vessel blocks only\"");
+        Check(_items.BlockItem("decon", true).PlacesOn(StructureClass.Small) && !_items.BlockItem("decon", false).PlacesOn(StructureClass.Capital), "the large deconstructor is base-only");
     }
 
     void TestSpill()
@@ -536,8 +669,9 @@ public partial class ProductionTest : TestBase
         Structure s = Base(out Int3 firstContainer);
         SharedStorage storage = new(_items, "base", 0);
         placer.Sync(s, storage, 0, 0, 0);
-        storage.TryAdd(Bill.Of(("hull-plate", 100)));
+        storage.TryAdd(Bill.Of((ItemOf("container"), 1), (ItemOf("steel"), 1)));
         Check(placer.Place(s, new Int3(1, 0, 0), Building.Make(s, _blocks.Type("container")), storage).Ok, "a second container goes on");
+        placer.Sync(s, storage, 0, 0, 0);
         Check(Math.Abs(storage.CapacitySu - 16000) < 1e-6, "two large containers make 16,000 SU of shared storage");
         Check(placer.Place(s, new Int3(2, 0, 0), Building.Make(s, _blocks.Type("steel")), storage).Ok, "a steel block goes on");
         storage.TryAdd(Bill.Of(("stone", (int)storage.FreeSu)));
@@ -545,15 +679,16 @@ public partial class ProductionTest : TestBase
         Check(storage.FreeSu < 1, "storage is full");
 
         TakeDownResult r = placer.Remove(s, new Int3(2, 0, 0), storage, 4, 0, 0);
-        Check(r.Ok && r.Spilled.Equals(Bill.Of(("hull-plate", 8))) && r.Crate != null, "taking a block down into a full storage spills its parts to a crate");
-        Check(Same(Sum(Raw(storage.Contents), Raw(crates.Total)), Sum(total, Raw(Bill.Of(("hull-plate", 8))))), "nothing is lost: storage plus crate hold everything");
+        Check(r.Ok && r.Spilled.Equals(Bill.Of((ItemOf("steel"), 1))) && r.Crate != null, "taking a block down into a full storage spills its item to a crate");
+        Check(Same(Sum(Raw(storage.Contents), Raw(crates.Total)), Sum(total, Raw(Bill.Of((ItemOf("steel"), 1))))), "nothing is lost: storage plus crate hold everything");
 
         var beforeContainer = Sum(Raw(storage.Contents), Raw(crates.Total));
         TakeDownResult c = placer.Remove(s, new Int3(1, 0, 0), storage, 2, 0, 0);
+        placer.Sync(s, storage, 2, 0, 0);
         Check(c.Ok && Math.Abs(storage.CapacitySu - 8000) < 1e-6 && !storage.OverCapacity, "taking a container away shrinks storage, and it is never over-full");
         Check(crates.Crates.Count == 1, "what no longer fits joins the nearby crate rather than littering");
-        Check(Same(Sum(Raw(storage.Contents), Raw(crates.Total)), Sum(beforeContainer, Raw(_items.Blocks.For("container", false)))),
-            "storage plus crate still hold everything, the container's own parts too");
+        Check(Same(Sum(Raw(storage.Contents), Raw(crates.Total)), Sum(beforeContainer, Raw(Bill.Of((ItemOf("container"), 1))))),
+            "storage plus crate still hold everything, the container's own item too");
 
         SpillCrate crate = crates.Crates[0];
         storage.Remove("stone", 4000);
@@ -570,11 +705,12 @@ public partial class ProductionTest : TestBase
         var placer = new BlockPlacer(_items, new WorldRules(), crates);
         Structure s = Base(out _);
         SharedStorage storage = new(_items, "base", BuildingBridge.StorageCapacity(s));
-        Bill start = Bill.Of(("hull-plate", 20), ("gravium-ingot", 20), ("ceramic", 10));
+        Bill start = Bill.Of((ItemOf("steel"), 1), (ItemOf("hardened"), 1), (ItemOf("combat"), 1));
         storage.TryAdd(start);
         placer.Place(s, new Int3(1, 0, 0), Building.Make(s, _blocks.Type("steel"), _blocks.Shape("slope")), storage);
         PlaceResult up = placer.Upgrade(s, new Int3(1, 0, 0), storage);
-        Check(up.Ok && up.Paid.Equals(Bill.Of(("gravium-ingot", 4))), "steel to hardened takes only the difference: 4 gravium ingots");
+        Check(up.Ok && up.Paid.Equals(Bill.Of((ItemOf("hardened"), 1))) && storage[ItemOf("steel")] == 1,
+            "steel to hardened uses one hardened block item and gives the steel one back (Empyrion's upgrade)");
         Check(s.TypeOf(s.Get(new Int3(1, 0, 0))).Id == "hardened" && s.ShapeOf(s.Get(new Int3(1, 0, 0))).Id == "slope", "the block is hardened and keeps its shape");
         placer.Upgrade(s, new Int3(1, 0, 0), storage);
         placer.Remove(s, new Int3(1, 0, 0), storage);

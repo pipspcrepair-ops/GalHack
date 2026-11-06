@@ -8,6 +8,56 @@
   "version": 1,
   "components": [
     {
+      "id": "warpdrive", "name": "Warp drive", "function": "warp-drive",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 8, "cpu": 6000, "power": -4, "color": "3d5a80", "glow": "8ecae6",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow" }
+      ]
+    },
+    {
+      "id": "warptank", "name": "Warp cell tank", "function": "warp-tank",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 2, "cpu": 500, "power": 0, "color": "3d5a80", "glow": "ffb400",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow" }
+      ]
+    },
+    {
+      "id": "hyperdrive1", "name": "Hyperdrive T1", "function": "hyperdrive",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 16, "cpu": 12000, "power": -10, "color": "5a189a", "glow": "c77dff",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow" }
+      ]
+    },
+    {
+      "id": "hyperdrive2", "name": "Hyperdrive T2", "function": "hyperdrive",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 20, "cpu": 18000, "power": -14, "color": "3c096c", "glow": "e0aaff",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow" }
+      ]
+    },
+    {
+      "id": "foldtank", "name": "Fold crystal tank", "function": "fold-tank",
+      "hp": 700, "armor": 15, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
+      "mass": 3, "cpu": 800, "power": 0, "color": "5a189a", "glow": "ffb400",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.3, -0.3, -0.51, 0.3, 0.3, -0.5], "style": "glow" }
+      ]
+    },
+    {
       "id": "portfab", "name": "Portable constructor", "function": "constructor",
       "hp": 500, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
       "mass": 3, "cpu": 1200, "power": -0.3, "color": "3a3f47", "glow": "ffb400",

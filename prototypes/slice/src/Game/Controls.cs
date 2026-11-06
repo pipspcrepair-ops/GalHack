@@ -22,6 +22,13 @@ public sealed class Controls
     /// <summary>The mouse pointer over the Tab menu, in the menu's own 1600 x 900 canvas.</summary>
     public Vector2 Mouse;
 
+    /// <summary>Text typed this tick (for a focused text box on the menu), and backspaces.</summary>
+    public string Typed = "";
+    public int Backspaces;
+
+    /// <summary>Scripts: type text into whatever has the keyboard.</summary>
+    public void Type(string text) => Typed += text;
+
     public bool IsHeld(Key k) => Held.Contains(k);
     public bool WasPressed(Key k) => Pressed.Contains(k);
     public float Axis(Key positive, Key negative) => (IsHeld(positive) ? 1f : 0f) - (IsHeld(negative) ? 1f : 0f);
@@ -49,5 +56,7 @@ public sealed class Controls
         Look = Vector2.Zero;
         Wheel = 0;
         PrimaryPressed = SecondaryPressed = PrimaryReleased = SecondaryReleased = false;
+        Typed = "";
+        Backspaces = 0;
     }
 }

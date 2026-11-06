@@ -165,7 +165,7 @@ public partial class PlayerTest : Node
     /// <summary>The toolbar slots the vessel's blocks go on.</summary>
     static readonly Dictionary<string, int> Slots = new()
     {
-        ["cockpit"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
+        ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2,
     };
 
     IEnumerable<int> Gathering()
@@ -219,7 +219,7 @@ public partial class PlayerTest : Node
         for (int k = 0; k < 12; k++)
         {
             float a = 0.64f + k * MathF.Tau / 12f;
-            Vector3 p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 5f;
+            Vector3 p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 4f;
             var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 6f, p + Vector3.Down * 6f, Layers.World));
             if (down.Count == 0) continue;
             Vector3 g = (Vector3)down["position"];
@@ -370,14 +370,26 @@ public partial class PlayerTest : Node
     IEnumerable<int> Base()
     {
         GD.Print("-- 7. found a base and build it up --");
-        // The parts for the base's blocks, in the constructor's own lane.
+        // The base's blocks, crafted as items in the constructor's own lane. What's unlocked first;
+        // the small constructor once level 2 and its node are in.
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         Bill blocks = new();
-        foreach (var (b, small, n) in BaseBlocks) blocks.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
+        foreach (var (b, small, n) in BaseBlocks)
+            if (b != "smallfab") blocks.Add(_play.BlockItem(b, small), n);
         foreach (int x in _play.MakeAll("core", _fab.Constructor, _fab.Storage, blocks, 240)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(!_fab.Constructor.Busy && blocks.All(kv => _fab.Storage.Count(kv.Key) + _game.Pack[kv.Key] >= kv.Value),
-            $"the survival constructor made the base's parts: {_game.Zone.Data.Items.Describe(blocks, 5)}");
+            $"the survival constructor crafted the base's blocks as items: {_game.Zone.Data.Items.Describe(blocks, 5)}");
+        // Unlock the small constructor (level 2) when the points allow, and craft it too.
+        foreach (int x in _play.WaitFor(() => _game.Progress.Level >= 2, 30)) yield return x;
+        Check(_game.Progress.Level >= 2, $"level {_game.Progress.Level} from playing ({_game.Progress.Xp} XP)");
+        foreach (int x in _play.Unlock("smallfab@large")) yield return x;
+        Check(_game.Progress.IsUnlocked("smallfab@large"), "the small constructor unlocked on the TECH tab");
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        string smallfab = _play.BlockItem("smallfab", false);
+        foreach (int x in _play.MakeAll("core", _fab.Constructor, _fab.Storage, Bill.Of((smallfab, 1)), 240)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(_fab.Storage.Count(smallfab) == 1, "and the small constructor, a block item like the rest, came out of it");
         // Take what it made.
         // Up to its front, as you would to use it.
         Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
@@ -399,20 +411,13 @@ public partial class PlayerTest : Node
             "the base core set down founds a base: large grid, base mode, a fixed body where it stands");
         if (_base == null) yield break;
 
-        // Unlock the small constructor (level 2) when the points allow.
-        foreach (int x in _play.WaitFor(() => _game.Progress.Level >= 2, 30)) yield return x;
-        Check(_game.Progress.Level >= 2, $"level {_game.Progress.Level} from playing ({_game.Progress.Xp} XP)");
-        foreach (int x in _play.Unlock("smallfab@large")) yield return x;
-        Check(_game.Progress.IsUnlocked("smallfab@large"), "the small constructor unlocked on the TECH tab");
-        foreach (int x in _play.CloseMenu()) yield return x;
-
-        // The palette onto the toolbar, then onto the core.
+        // The crafted stacks onto the toolbar, then onto the core.
         foreach (int x in _play.BlockToToolbar("container", false, 4)) yield return x;
         foreach (int x in _play.BlockToToolbar("generator", false, 5)) yield return x;
         foreach (int x in _play.BlockToToolbar("smallfab", false, 6)) yield return x;
         foreach (int x in _play.BlockToToolbar("steel", false, 8)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack.Grid[4].Block == "container" && _game.Pack.Grid[6].Block == "smallfab", "blocks dragged from the build palette onto the toolbar");
+        Check(_game.Pack.Grid[4].Item == _play.BlockItem("container", false) && _game.Pack.Grid[6].Item == smallfab && _game.Pack.Grid[8].Count == 2, "block stacks dragged from the bag onto the toolbar");
         Vector3 core = _base.Body.Position.ToGodot();
         int placed = _game.Builder.Placed;
         var steps = new (int slot, Int3 on, Dir face)[]
@@ -427,18 +432,24 @@ public partial class PlayerTest : Node
             foreach (int x in _play.PlaceBlock(slot, _base, on, face)) yield return x;
         }
         int built = _game.Builder.Placed - placed;
-        Check(built == steps.Length, $"{built} large blocks built onto the base by looking and clicking, each paid from the bag");
+        Check(built == steps.Length, $"{built} large blocks built onto the base by looking and clicking, each using one from its stack");
+        Check(_game.Pack.Grid[8].IsEmpty, "the steel stack is used up: its toolbar slot is empty, and an empty stack can't place");
         Check(_base.Machines.Count == 1 && _base.Powered && _base.Storage.CapacitySu > 0,
             $"the base has a constructor, power and storage ({_base.Storage.CapacitySu:F0} SU)");
-        // Take one down again: the whole bill comes back.
-        int steel = _game.Pack["hull-plate"];
-        foreach (int x in _play.Select(8)) yield return x;
+        // Take one down with the tool's deconstruct mode: the block item comes back.
+        string steel = _play.BlockItem("steel", false);
+        int stock = _game.Pack[steel];
+        foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
         Vector3 far = _base.ToWorld(StructureBridge.CellCenter(_base.Structure, new Int3(0, 0, -2)) + new N.Vector3(0, 0, -1f));
         foreach (int x in _drive.LookAt(far, 6)) yield return x;
-        _game.Controls.SecondaryPressed = true;
+        foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(!_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack["hull-plate"] == steel + 8, "right click takes a block down and refunds its whole bill (8 hull plates)");
+        Check(!_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack[steel] == stock + 1, "the tool's deconstruct mode takes a block down and gives its item back to the bag");
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        foreach (int x in _play.BlockToToolbar("steel", false, 8)) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _play.PlaceBlock(8, _base, new Int3(0, 0, -1), Dir.NegZ)) yield return x;
+        Check(_base.Structure.Has(new Int3(0, 0, -2)) && _game.Pack[steel] == stock, "and it goes back on");
         Mark("base");
     }
 
@@ -464,6 +475,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.MakeAll("core", c, _base.Storage, parts, 300)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(!c.Busy && c.Missing.IsEmpty, $"the base's small constructor made the vessel's parts: {_game.Zone.Data.Items.Describe(parts, 6)}");
+        _ = blockParts;
         GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP, {_game.Progress.Points} points after {_game.Stats.Seconds / 60:F1} min of play");
         // Level 5 by playing: a deposit or two more to dig if it isn't there yet.
         for (int round = 0; round < 6 && _game.Progress.Level < 5; round++)
@@ -476,7 +488,7 @@ public partial class PlayerTest : Node
         }
         Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
         Mark("level 5");
-        foreach (string node in new[] { "vessel-core", "cockpit@small", "thruster@small", "gyro@small" })
+        foreach (string node in new[] { "vessel-core", "thruster@small", "gyro@small" })
         {
             foreach (int x in _play.Unlock(node)) yield return x;
             Check(_game.Progress.IsUnlocked(node), $"unlocked {_game.Progress.Node(node).Name} ({_game.Progress.Points} points left)");
@@ -490,12 +502,18 @@ public partial class PlayerTest : Node
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _play.WaitFor(() => _base.Storage.Count("vessel-core") > 0, 120)) yield return x;
         Check(_base.Storage.Count("vessel-core") == 1, "the base's constructor made the small-vessel core");
+        // The vessel's blocks, crafted as items from the parts already made, into the base's one storage.
+        Bill vesselItems = new();
+        foreach (var (b, small, n) in VesselBlocks) vesselItems.Add(_play.BlockItem(b, small), n);
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in Pick(_base)) yield return x;
+        foreach (int x in _play.MakeAll("core", c, _base.Storage, vesselItems, 300)) yield return x;
+        Check(!c.Busy && vesselItems.All(kv => _base.Storage.Count(kv.Key) >= kv.Value), $"the base's constructor crafted the vessel's blocks into the base's storage: {_game.Zone.Data.Items.Describe(vesselItems, 6)}");
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _drive.ClickWidget("storage:open")) yield return x;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack["vessel-core"] == 1 && blockParts.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and parts taken from the base's storage into the bag");
+        Check(_game.Pack["vessel-core"] == 1 && vesselItems.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and block stacks taken from the base's storage into the bag");
         Mark("vessel core");
     }
 
@@ -543,10 +561,11 @@ public partial class PlayerTest : Node
         GD.Print("-- 9. fly it 500 m and land --");
         if (v.Seat == null) { Fail("the vessel has no seat to fly it from"); yield break; }
         foreach (int x in _drive.Board(v)) yield return x;
-        Check(_game.Survivor.Seated == v, "F at its seat");
+        Check(_game.Survivor.Seated == v, "F at its command chair");
         if (_game.Survivor.Seated != v) yield break;
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         Check(_game.Menu.RectOf("core:power") != null, "the CORE tab shows the vessel: its four numbers and lift margin");
+        Check(!_game.Suit.InSealedRoom, "a command chair in the open gives no air: only a sealed room does");
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 start = v.Body.Position.ToGodot();
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);

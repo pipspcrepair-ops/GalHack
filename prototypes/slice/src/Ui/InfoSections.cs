@@ -12,15 +12,18 @@ namespace Slice.Ui;
 
 /// <summary>
 /// TECH: the tech tree, one tab per kind of thing (base, capital vessel, small vessel, hover
-/// vessel, tools, weapons, misc), built from the unlock on every item and block. Nodes stand in
-/// columns by the level they open at, each joined to its parent. Unlocked nodes are lit; locked
+/// vessel, tools, weapons, deco, misc), built from the unlock on every item and block. Nodes stand
+/// in columns by the level they open at, each joined to its parent. Unlocked nodes are lit; locked
 /// ones say what they need (a level, points, their parent); one you can afford unlocks on a click.
+/// The deco tab holds a family per theme set: pick a set, then its pieces show.
 /// </summary>
 public sealed class TechSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
     public string Tab = "base";
+    /// <summary>The deco set shown on a tab with groups.</summary>
+    public string Group;
 
     public TechSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
@@ -32,11 +35,26 @@ public sealed class TechSection : IMenuSection
         for (int i = 0; i < Progress.Tabs.Length; i++)
         {
             string t = Progress.Tabs[i];
-            if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * 216, 0), new Vector2(206, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
+            if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * 189, 0), new Vector2(182, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
         }
         g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
         var nodes = p.Nodes.Where(n => n.Tab == Tab).ToList();
         if (nodes.Count == 0) return;
+        // Tabs with groups (deco): a row of sets, then one set's pieces. Up to 12 sets a row, two rows.
+        var groups = nodes.Select(n => n.Group).Where(x => x != null).Distinct().ToList();
+        float top = 0;
+        if (groups.Count > 0)
+        {
+            if (Group == null || !groups.Contains(Group)) Group = groups[0];
+            float gw = (area.Size.X - 10) / 12;
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var r = new Rect2(o.X + i % 12 * gw, o.Y + 76 + i / 12 * 30, gw - 4, 26);
+                if (g.Button($"tech:group:{groups[i]}", r, groups[i].ToUpperInvariant(), C.Holo, lit: groups[i] == Group, size: 11)) Group = groups[i];
+            }
+            top = (groups.Count + 11) / 12 * 30 + 4;
+            nodes = nodes.Where(n => n.Group == Group).ToList();
+        }
         // Columns by level, rows in order within a column.
         var levels = nodes.Select(n => n.Level).Distinct().OrderBy(l => l).ToList();
         float colW = Math.Min(230f, (area.Size.X - 10) / Math.Max(1, levels.Count)), boxW = colW - 22, boxH = 54;
@@ -45,9 +63,11 @@ public sealed class TechSection : IMenuSection
         {
             int col = levels.IndexOf(level);
             var inCol = nodes.Where(n => n.Level == level).ToList();
-            g.TextIn($"LEVEL {level}", new Rect2(o.X + col * colW, o.Y + 80, boxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
+            g.TextIn($"LEVEL {level}", new Rect2(o.X + col * colW, o.Y + 80 + top, boxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
+            // Long columns wrap into a second and third column's width by shrinking the rows.
+            float rowH = Math.Min(boxH + 12, (area.Size.Y - 110 - top) / Math.Max(1, inCol.Count));
             for (int i = 0; i < inCol.Count; i++)
-                at[inCol[i].Id] = new Rect2(o.X + col * colW, o.Y + 106 + i * (boxH + 12), boxW, boxH);
+                at[inCol[i].Id] = new Rect2(o.X + col * colW, o.Y + 106 + top + i * rowH, boxW, Math.Min(boxH, rowH - 4));
         }
         // Lines from each node to its parent (same tab only).
         foreach (TechNode n in nodes)

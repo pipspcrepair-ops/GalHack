@@ -25,8 +25,9 @@
     "organicsPerPlant": 1.5,
     // The starting kit in the bunker's locker: a few days' food and air, not a ship.
     "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
-    // What the castaway has on the toolbar from the start, slot 1 first.
-    "toolbar": [ "survival-tool" ]
+    // What the castaway has on the toolbar from the start, slot 1 first: nothing. They wake
+    // empty-handed and make the survival tool, free, in the suit fabricator.
+    "toolbar": [ ]
   },
 
   // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to
@@ -40,8 +41,8 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
-    // A cockpit seat with its canopy shut is a sealed, heated volume.
-    "cockpitC": 20
+    // A sealed room aboard a structure is heated and has air; a command chair on its own has neither.
+    "sealedRoomC": 20
   },
 
   "tool": {
@@ -61,7 +62,13 @@
     "starterBlueprint": "starter.gbp",
     // Small vessels turn no faster than this, °/s, however light they are (the handling model's
     // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
-    "smallVesselMaxTurn": 110
+    "smallVesselMaxTurn": 110,
+    // A structure's area: its blocks' bounding box grown by a margin, per class, plus a share of
+    // its own size (so a big base reaches further). Inside it you are linked to its one shared
+    // storage (its toolbar, the CORE tab, its containers and constructors); outside, only your
+    // own bag counts. Empyrion links you while you stand on a structure, or within 100 m of a
+    // wireless block; GalHack's margin stands in for both.
+    "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
   },
 
   // The head torch (L): a cone from the helmet.

@@ -387,15 +387,26 @@ public sealed class DecoCatalogue
     }
 
     /// <summary>
-    /// Integration: adds a bill for every intact deco piece to the shared block bills, keyed by the
-    /// piece's id. Damaged and knocked-over states are Creative and POI blocks with no bill.
+    /// Integration: adds every intact deco piece to the shared catalogue as a block (its bill, on the
+    /// grids it goes on) and as craftable block items, one per grid, with the piece's tech-tree node
+    /// on the deco tab (mapped to the shared <see cref="Unlock"/>) and its theme set as the item's
+    /// group. Damaged and knocked-over states are Creative and POI blocks: they get no bill and no item.
     /// </summary>
     public void AddBillsTo(ItemCatalogue items)
     {
         foreach (DecoPiece p in _pieces)
         {
             if (items.Blocks.TryGet(p.Id, out _)) throw new InvalidDataException($"deco piece '{p.Id}' clashes with a block id");
-            items.Blocks.Add(new BlockBill { BlockId = p.Id, Small = p.Bill.Clone(), Large = p.Bill.Clone(), UniqueOnly = p.UniqueOnly });
+            var bill = new BlockBill
+            {
+                BlockId = p.Id, Small = p.Bill.Clone(), Large = p.Bill.Clone(), UniqueOnly = p.UniqueOnly,
+                OnSmall = p.OnSmall, OnLarge = p.OnLarge, Family = BlockFamily.Deco,
+                UnlockSmall = ToUnlock(p.UnlockSmall), UnlockLarge = ToUnlock(p.UnlockLarge),
+            };
+            items.AddBlock(bill, small => new ItemCatalogue.BlockItemSpec(Name: $"{p.Name}{(p.OnSmall && p.OnLarge ? (small ? " (small)" : " (large)") : "")}", Group: p.Set));
         }
+        items.Rebuild();
     }
+
+    static Unlock ToUnlock(DecoUnlock u) => u == null ? null : ItemCatalogue.ToUnlock(u.Level, u.Cost, u.Parent, u.Tab);
 }

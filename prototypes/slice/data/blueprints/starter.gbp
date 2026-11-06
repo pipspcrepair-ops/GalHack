@@ -47,7 +47,7 @@ block 3 2 -4 steel slope paint=hull
 block -2..2 2 -4 glass slope
 
 # --- The pilot's seat ------------------------------------------------------------------------
-block 0 1 -3 cockpit
+block 0 1 -3 chair
 
 # --- Engine hump (y 1..2, z 4..6): generator, gyro and container inside, mains in the tail ---
 block -3..3 1 4 steel paint=chev

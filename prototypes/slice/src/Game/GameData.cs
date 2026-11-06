@@ -59,6 +59,13 @@ public sealed class GameData
             File.ReadAllText(Own("data/survival.json")),
         };
         var items = Slice.Items.SliceItems.Load(SharedPath("Items", "data"), Own("data/items.json"), out var consumables);
+        // Deco pieces are craftable block items too, unlocked on the tech tree's deco tab.
+        GalHack.Items.DecoCatalogue.LoadDirectory(SharedPath("Items", "data")).AddBillsTo(items);
+        var catalogue = GalHack.Items.Bridge.BuildingBridge.LoadCatalogue(Proto("building", "data"),
+            new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
+            new[] { SharedPath("Items", "data", "building-materials.json") });
+        // Block items are named after building's blocks: "Steel block (large)".
+        GalHack.Items.Bridge.BuildingBridge.NameBlockItems(items, catalogue);
         return new GameData(survival)
         {
             Physics = PhysicsRules.FromJson(File.ReadAllText(SharedPath("Physics", "physics.json"))),
@@ -66,9 +73,7 @@ public sealed class GameData
             // Building's catalogue with the vessel parts (gyros, hover pads, landing legs) the
             // physics sandbox appends to it, and shared/Items' production machines, guns and
             // extra armour, all read in place.
-            Catalogue = GalHack.Items.Bridge.BuildingBridge.LoadCatalogue(Proto("building", "data"),
-                new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
-                new[] { SharedPath("Items", "data", "building-materials.json") }),
+            Catalogue = catalogue,
             Items = items,
             Consumables = consumables,
             Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
@@ -154,7 +159,7 @@ public sealed class SliceRules
         public double LapsePerKm { get; set; } = 6.5;
         public Dictionary<string, double> OxygenByAir { get; set; } = new();
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
-        public double CockpitC { get; set; } = 20;
+        public double SealedRoomC { get; set; } = 20;
     }
 
     public sealed class ToolRules
@@ -174,6 +179,25 @@ public sealed class SliceRules
         public float BlueprintPlacesPerSecond { get; set; } = 8f;
         public string StarterBlueprint { get; set; } = "starter.gbp";
         public float SmallVesselMaxTurn { get; set; } = 110f;
+        public AreaRules Area { get; set; } = new();
+    }
+
+    /// <summary>A structure's area: its bounding box plus a margin per class and a share of its size, m.</summary>
+    public sealed class AreaRules
+    {
+        public float Base { get; set; } = 30f;
+        public float Capital { get; set; } = 30f;
+        public float Small { get; set; } = 12f;
+        public float Hover { get; set; } = 12f;
+        public float SizeShare { get; set; } = 0.5f;
+
+        public float Margin(GalHack.Items.StructureClass c) => c switch
+        {
+            GalHack.Items.StructureClass.Base => Base,
+            GalHack.Items.StructureClass.Capital => Capital,
+            GalHack.Items.StructureClass.Small => Small,
+            _ => Hover,
+        };
     }
 
     public sealed class TorchRules

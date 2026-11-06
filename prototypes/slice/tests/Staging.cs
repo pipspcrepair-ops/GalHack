@@ -37,6 +37,7 @@ public sealed partial class Staging
         foreach (int x in _drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = view != "dig";
+        foreach (int x in Play.MakeTool()) yield return x;
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
         if (view is not ("bunker" or "climb" or "bunkershot"))
             foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
@@ -56,6 +57,10 @@ public sealed partial class Staging
             "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
+            "blockbase" => BaseView(survival: true),
+            "constructor" => ConstructorBlocks(),
+            "hand" => HandView(),
+            "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
@@ -113,12 +118,11 @@ public sealed partial class Staging
         // Staging shortcut: the Skiff's parts in the bag and the tech open (the screenshots show building, not gathering).
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
         _game.Progress.Creative = true;
-        _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
+        _game.Builder.Project();
         Vector3 pod = _game.Start;
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
         foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel v = _game.Builder.Underway;
