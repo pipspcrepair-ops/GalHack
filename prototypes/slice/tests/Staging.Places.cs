@@ -60,7 +60,7 @@ public sealed partial class Staging
         PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.RoomId == want ? 1000 : 0) + r.Plan.Placements.Count - MathF.Abs(r.Corner.Y) * 2f).First();
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = p.ToWorld(new Vector3(room.Corner.X, room.Corner.Y, room.Corner.Z));
-        return (room, corner + new Vector3(0.35f, 1.55f, 0.35f), corner + size * 0.75f + Vector3.Up * 0.6f);
+        return (room, corner + size + new Vector3(-0.5f, 1.55f, -0.5f), corner + size * 0.25f + Vector3.Up * 0.6f);
     }
 
     /// <summary>A dressed room, its age and state on it.</summary>
@@ -90,15 +90,24 @@ public sealed partial class Staging
         DeepSite deep = _game.Zone.Wildlife.Sites.First(s => s.Sim == p.Memory.Fauna.Sim);
         var nav = p.Nav();
         var open = nav.Reachable(p.Inst.Layout.EntranceCell);
-        var hunter = deep.Sim.Creatures.Where(c => !c.Dead && c.Species.Role == Wildlife.DeepRole.Ambusher && c.Species.Tells.Length > 0).OrderBy(c => c.Position.Y < -6f ? 1 : 0).First();
+        var hunter = deep.Sim.Creatures.Where(c => !c.Dead && c.Species.Role == Wildlife.DeepRole.Ambusher && c.Species.Tells.Length > 0)
+            .OrderBy(c => c.Position.DistanceTo(new Vector3(p.Inst.Layout.EntranceCell.X, p.Inst.Layout.EntranceCell.Y, p.Inst.Layout.EntranceCell.Z)) + Mathf.Abs(c.Position.Y) * 3f).First();
         var cell = new Int3(Mathf.FloorToInt(hunter.Position.X), Mathf.FloorToInt(hunter.Position.Y), Mathf.FloorToInt(hunter.Position.Z));
-        Int3 stand = open.Where(c => new Vector2(c.X - cell.X, c.Z - cell.Z).Length() is > 3f and < 7f && Mathf.Abs(c.Y - cell.Y) <= 3).OrderBy(c => Mathf.Abs(new Vector2(c.X - cell.X, c.Z - cell.Z).Length() - 4.5f)).First();
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        bool Sees(Int3 c)
+        {
+            Vector3 eye = PlaceWalk.Feet(p, c) + Vector3.Up * 1.6f, at = deep.World(hunter.Position) + Vector3.Up * 0.3f;
+            return space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, at, GalHack.Physics.Layers.World)).Count == 0;
+        }
+        Int3 stand = open.Where(c => new Vector2(c.X - cell.X, c.Z - cell.Z).Length() is > 2f and < 8f && Mathf.Abs(c.Y - cell.Y) <= 3)
+            .OrderBy(c => Sees(c) ? 0 : 1).ThenBy(c => Mathf.Abs(new Vector2(c.X - cell.X, c.Z - cell.Z).Length() - 3f)).First();
+        GD.Print($"hunter: a {hunter.Species.CommonName}, tells {string.Join(" ", hunter.Species.Tells)}, notice {hunter.Species.NoticeRadius:F0} m, at {cell}; standing at {stand}, sees it {Sees(stand)}");
         _game.Survivor.PlaceOutside(PlaceWalk.Feet(p, stand).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
         _game.Torch.Visible = true;
         foreach (int x in _drive.LookAt(deep.World(hunter.Position) + Vector3.Up * 0.8f, 20)) yield return x;
         Wildlife.TellEvent? told = null;
-        deep.Told += e => { if (e.Target == deep.Player && e.Kind is Wildlife.TellKind.Dust or Wildlife.TellKind.Shadow or Wildlife.TellKind.Rattle or Wildlife.TellKind.Thump) told = e; };
+        deep.Told += e => { if (e.Target == deep.Player) told ??= e; };
         // STAGING: only this hunter wakes; the rest of the place is taken out of the shot.
         foreach (var c in deep.Sim.Creatures.Where(c => c != hunter)) deep.Sim.Remove(c);
         _game.Zone.Wildlife.Frozen = false;
@@ -108,11 +117,16 @@ public sealed partial class Staging
             yield return 0;
         }
         if (told is Wildlife.TellEvent t)
-            for (int i = 0; i < 16; i++)
+        {
+            GD.Print($"tell: {t.Kind} from a {t.Creature?.Species.CommonName}, {deep.World(t.Position).DistanceTo(_game.Survivor.WorldFeet):F1} m off");
+            Vector3 aim = t.Below.LengthSquared() > 0.01f ? (t.Position + t.Below) * 0.5f : t.Position;
+            for (int i = 0; i < 14; i++)
             {
-                _drive.Face(deep.World(t.Position));
+                _drive.Face(deep.World(aim));
                 yield return 0;
             }
+        }
+        else GD.Print("no tell came");
         _game.Zone.Wildlife.Frozen = true;
     }
 
@@ -143,8 +157,26 @@ public sealed partial class Staging
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         foreach (int x in _drive.Wait(600)) yield return x;
-        Vector3 middle = p.ToWorld(new Vector3(p.Memory.Town.Data.AreaCenter.X, 1.2f, p.Memory.Town.Data.AreaCenter.Z));
-        foreach (int x in _drive.LookAt(middle, 20)) yield return x;
+        // A street with people on it: the one with most others near, seen from a few metres off along the way they stand.
+        var people = p.Memory.Town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
+        var busy = people.Where(q => p.Inst.Layout.Modules.Any(m => m.Kind == ModuleKind.Outdoor) || true).OrderByDescending(q => people.Count(o => o.Pos.DistanceTo(q.Pos) < 12f)).First();
+        Vector3 at = p.ToWorld(busy.Pos);
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        int Seen(Vector3 eye) => people.Count(o => space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, p.ToWorld(o.Pos) + Vector3.Up * 1.2f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull)).Count == 0 && p.ToWorld(o.Pos).DistanceTo(eye) < 30f);
+        Vector3 best = at + Vector3.Back * 6f;
+        int most = -1;
+        for (float r = 5f; r <= 15f; r += 2.5f)
+            for (int a = 0; a < 16; a++)
+            {
+                Vector3 c = at + new Vector3(MathF.Cos(a * MathF.Tau / 16f), 0f, MathF.Sin(a * MathF.Tau / 16f)) * r;
+                c.Y = _game.Zone.GroundAt(c.X, c.Z).Y + 1.65f;
+                int n = Seen(c);
+                if (n > most) { most = n; best = c; }
+            }
+        _game.Visor.Visible = false;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 1.1f - best, Vector3.Up), best);
+        GD.Print($"seeing {most} of {people.Count} people");
+        foreach (int x in _drive.Wait(30)) yield return x;
     }
 
     /// <summary>Salvaging a wreck: the tool at work on its hull, a piece coming away.</summary>
@@ -153,7 +185,7 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         Vector3 from = _game.Survivor.WorldFeet;
-        PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Family.Tier == PoiTier.Wreck).OrderBy(s => _game.Places.DistanceTo(s, from)).First();
+        PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Family.Tier == PoiTier.Wreck || s.Family.Tags.Contains("wreck") || s.Family.Tags.Contains("ship") || s.Family.Id == "abandoned_spaceport").OrderBy(s => _game.Places.DistanceTo(s, from)).First();
         GD.Print($"salvaging {site.Name}");
         Vector3 gate = Gate(site);
         foreach (int x in GoTo(site, gate + Vector3.Up * 0.2f)) yield return x;

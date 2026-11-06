@@ -524,38 +524,6 @@ public partial class PlaceTest : Node
         for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead; t++) yield return 0;
     }
 
-    /// <summary>Goes looking for the place's hunters: to the nearest ambusher or lurker's lair, a few times, until one gives itself away.</summary>
-    IEnumerable<int> SeekTell(Game.Game game, Place place, PlaceWalk walk)
-    {
-        DeepSite s = game.Zone.Wildlife.Sites.FirstOrDefault(q => q.Sim == place.Memory.Fauna?.Sim);
-        if (s == null) yield break;
-        var nav = place.Nav();
-        var tried = new HashSet<Wildlife.Creature>();
-        for (int tries = 0; tries < 6 && _aimedTells == 0 && !game.Suit.Dead; tries++)
-        {
-            Vector3 feet = game.Survivor.WorldFeet;
-            int here = walk.Here(place, nav).Y;
-            Wildlife.Creature hunter = s.Sim.Creatures
-                .Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && c.Species.Role is Wildlife.DeepRole.Ambusher or Wildlife.DeepRole.Lurker && Mathf.Abs(c.Position.Y - here) < 5f)
-                .OrderBy(c => s.World(c.Position).DistanceTo(feet)).FirstOrDefault();
-            if (hunter == null) yield break;
-            tried.Add(hunter);
-            var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(hunter.Position.X), Mathf.FloorToInt(hunter.Position.Y), Mathf.FloorToInt(hunter.Position.Z));
-            PoiGenerator.Gen.Int3? near = null;
-            float best = float.MaxValue;
-            var reach = nav.Reachable(walk.Here(place, nav));
-            foreach (var c in reach)
-            {
-                float d = new Vector2(c.X - cell.X, c.Z - cell.Z).Length() + Mathf.Abs(c.Y - cell.Y) * 2f;
-                if (d < best && d > 2.5f) { best = d; near = c; }
-            }
-            if (near == null) continue;
-            GD.Print($"  (looking for it: a {hunter.Species.CommonName} ({hunter.Species.Role}) near {cell}, going to {near})");
-            bool ok = false;
-            foreach (int x in walk.To(place, near.Value, r => ok = r, () => _aimedTells > 0)) yield return x;
-            for (int t = 0; t < 600 && _aimedTells == 0 && !game.Suit.Dead; t++) yield return 0;
-        }
-    }
 
     float _nearestTell = float.MaxValue;
     readonly HashSet<DeepSite> _watchedSites = new();

@@ -13,6 +13,13 @@ The first playable slice of GalHack's core loop, built from the proven prototype
 ![Night, the head torch on](screenshots/torch.png)
 ![A base built by hand: core, container, generator, small constructor, steel; the survival constructor beside it](screenshots/base.png)
 ![A small vessel built by hand on its core, lifting off](screenshots/vessel.png)
+![Walking up to the place in view](screenshots/poi-place.png)
+![A canteen dressed from the decorations library, the Bloom in the corner](screenshots/poi-interior.png)
+![The loot view on a vault cache](screenshots/poi-cache.png)
+![A creature's tell in a place](screenshots/poi-tell.png)
+![A hamlet's people about their day](screenshots/poi-town.png)
+![Salvaging a derelict's hull](screenshots/poi-salvage.png)
+![The chamber's numbered lockers](screenshots/bunker-lockers.png)
 
 Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go; saves across everything are phase 3.
 
@@ -182,7 +189,11 @@ Latest run: **ALL PASSED, 43 checks** in 38 s. Two fresh games roll different se
 
 ### The place test (`tests/PlaceTest.tscn`)
 
-PLACE_RESULTS
+With `--fixed-fps 60`. `-- --walk-only` runs just the visit, `-- --town-only` the settlement, `-- --survey` lists a world's places.
+
+- **Systems** (focus moved by hand, printed): a place stands up within the frame budget (47 chunks, worst frame about 4 ms of building, about 5 ms for its creature views), the far drawing gives way in the same frame; door blocks open as you come up, shut behind you, and E works them; creature capsules from the rig (a giant solid at chest height, a flyer shot, a head worth half as much again, a vessel knocking a small creature aside, worst tick 1.2 ms); the salvage hook; a cave found and filled, on a worker.
+- **The real-player visit** on seed 7 (no teleports, largest move in a tick 0.2 to 0.6 m, never rescued): out of the bunker with the kit, 900 m over the land round cave mouths to the deep bunker in view, down its stairs, a cache looted, a locked door refused, its keycard taken from its dead owner, the door opened, the Bloom cut through, the hidden panel broken, its stash looted, a dressing piece and a wall block salvaged, a hunter's tell met and the hunter shot, out again. Creatures are held still while the place is walked (printed), as PlayerTest does, and wake for the meeting: a nest on the lowest level would otherwise decide the run.
+- **A settlement** on seed 19: its people going about their day, walked through in peace, indoors at night, a shot turning it hostile, guards taking aim before they fire. The castaway is set down 55 m from its way in (printed): the 2 km land route there crosses a river and wasn't walked.
 
 ### The start test (`tests/StartTest.tscn`)
 
