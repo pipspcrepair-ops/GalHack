@@ -456,6 +456,15 @@ public sealed class WildSim
         if (c.Dead || amount <= 0f) return;
         c.Health -= amount;
         c.HurtFlash = 1f;
+        // It flinches: rocks back and loses its stride, the bigger the less.
+        if (!c.Attacking)
+        {
+            float heft = 1f - 0.7f * Heft.Bulk(c.Species);
+            c.Rear = MathF.Max(c.Rear, 0.5f * heft);
+            c.Velocity *= 1f - 0.7f * heft;
+            c.CrawlSpeed *= 1f - 0.7f * heft;
+            c.ThinkEvery = 0f;
+        }
         if (source != null)
         {
             c.ProvokedBy = source;

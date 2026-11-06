@@ -43,6 +43,23 @@ public partial class Hands : Node3D
         if (feel.Shake > 0f) Shake(feel.Shake);
     }
 
+    /// <summary>A blow from somewhere (world frame): the view is knocked away from it, and rights itself.</summary>
+    public void Jolt(Vector3 from, float strength)
+    {
+        Camera3D cam = Game?.Camera;
+        if (cam == null) return;
+        Vector3 local = cam.GlobalBasis.Inverse() * (from - cam.GlobalPosition);
+        _joltRoll = local.X < 0f ? -1f : 1f;
+        _joltPitch = local.Z < 0f ? 1f : -0.6f; // from ahead the head goes back; from behind, forward
+        _jolt = MathF.Max(_jolt, Math.Clamp(strength, 0.4f, 1f));
+        PeakJolt = MathF.Max(PeakJolt, _jolt);
+    }
+
+    float _jolt, _joltRoll, _joltPitch;
+
+    /// <summary>The hardest blow felt so far (tests).</summary>
+    public float PeakJolt { get; private set; }
+
     /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SurvivalTool.Muzzle"/>).</summary>
     public static readonly Vector3 MuzzleOffset = new(0.17f, -0.15f, -0.55f);
 
@@ -87,6 +104,7 @@ public partial class Hands : Node3D
         }
         _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
         _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);
+        _jolt = Mathf.MoveToward(_jolt, 0f, dt * 3.5f);
         _shakeTime += dt * 55f;
         TiltCamera();
         HandKind hand = g?.Pack?.Hand ?? HandKind.Empty;
@@ -117,9 +135,10 @@ public partial class Hands : Node3D
         CameraTilt = up + MathF.Abs(sx) + MathF.Abs(sy);
         PeakKick = MathF.Max(PeakKick, _kick);
         PeakTilt = MathF.Max(PeakTilt, CameraTilt);
-        if (_kick <= 0f && _shake <= 0f) return;
+        if (_kick <= 0f && _shake <= 0f && _jolt <= 0f) return;
         Transform3D t = cam.GlobalTransform;
-        t.Basis = t.Basis * new Basis(Vector3.Right, up + sx) * new Basis(Vector3.Up, sy);
+        float blow = _jolt * _jolt;
+        t.Basis = t.Basis * new Basis(Vector3.Right, up + sx + blow * _joltPitch * 0.07f) * new Basis(Vector3.Up, sy) * new Basis(Vector3.Forward, blow * _joltRoll * 0.09f);
         cam.GlobalTransform = t;
     }
 }

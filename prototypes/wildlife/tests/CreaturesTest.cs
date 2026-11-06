@@ -77,6 +77,7 @@ public partial class CreaturesTest : Node
             SensesAreReal();
             WeightShows();
             NothingClipsThePlayer();
+            WoundsShow();
             DeepPerformance();
             CrowdedPlaceCost();
         }
@@ -1576,6 +1577,21 @@ public partial class CreaturesTest : Node
         }
         Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
         Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
+    }
+
+    /// <summary>A hit shows: it flinches, the small ones more; blood is the species' own and stays so.</summary>
+    void WoundsShow()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        PlanetFauna planet = _gen.Generate(4242, 0.3f, false);
+        Species sp = planet.Species.Find(s => s.Rig == RigKind.Legged && s.Stats.MaxHealth > 10f);
+        Creature c = sim.Spawn(sp, Vector3.Zero);
+        c.Velocity = c.Forward * 4f;
+        sim.Damage(c, 1f, null);
+        bool flinched = c.Rear > 0.1f && c.Velocity.Length() < 3f;
+        var colours = new HashSet<string>();
+        foreach (Species s in planet.Species.Concat(_gen.Generate(99, 0.8f, true).Species)) colours.Add(s.Blood.ToHtml());
+        Check(flinched && sp.Blood == sp.Blood && colours.Count >= 4, $"a hit flinches a creature, and blood goes by species ({colours.Count} colours on two worlds)");
     }
 
     /// <summary>A big body takes its time to get going, stop and turn; a small one doesn't.</summary>

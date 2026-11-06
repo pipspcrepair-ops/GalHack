@@ -64,6 +64,9 @@ public sealed class SurvivalTool
     public event Action PlantCut;
     public event Action<Creature> CreatureHit;
 
+    /// <summary>The same hit, with where it landed and which way it was going.</summary>
+    public event Action<Creature, Vector3, Vector3> CreatureStruck;
+
     /// <summary>How far a shot carries, m: what lives round here turns to look.</summary>
     const float ShotHeard = 45f;
 
@@ -229,6 +232,7 @@ public sealed class SurvivalTool
         _suit.Worked();
         _zone.Wildlife.Damage(c, _rules.ShotDamage * 0.5f * _zone.Wildlife.HitScale(c, point));
         CreatureHit?.Invoke(c);
+        CreatureStruck?.Invoke(c, point, dir);
         Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
         return true;
     }
@@ -394,6 +398,7 @@ public sealed class SurvivalTool
             onto = null;
             _zone.Wildlife.Damage(c, _rules.ShotDamage * _zone.Wildlife.HitScale(c, point));
             CreatureHit?.Invoke(c);
+            CreatureStruck?.Invoke(c, point, dir);
         }
         else if (kind == ImpactKind.Block && hit.OnBlock)
             hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage, GalHack.Structures.DamageType.Energy);

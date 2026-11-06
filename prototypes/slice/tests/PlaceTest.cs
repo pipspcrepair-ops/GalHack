@@ -426,6 +426,8 @@ public partial class PlaceTest : Node
             Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
             Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
             Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood and {game.Zone.Blood.Splats} splats on the surfaces round it");
+            if (_bites > 0) Check(game.Hands.PeakJolt > 0f, $"a bite knocks the view: {game.Hands.PeakJolt:F2}");
         }
         game.Zone.Wildlife.Frozen = true;
 
@@ -669,6 +671,7 @@ public partial class PlaceTest : Node
             float hp = flyer.Health;
             foreach (int x in play.ShootAt(() => w.FromPatch(flyer.Rig.BoundsCenter), 3)) yield return x;
             Check(flyer.Health < hp || flyer.Dead, $"a {wing.CommonName} in the air: a shot lands ({hp:F0} to {flyer.Health:F0} health)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood where it landed, {game.Zone.Blood.Splats} splats on the ground under it");
             w.Sim.Remove(flyer);
             foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         }

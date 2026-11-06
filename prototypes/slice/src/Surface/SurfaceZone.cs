@@ -40,6 +40,7 @@ public partial class SurfaceZone : Node3D
     public SkyRig Sky { get; private set; }
     public SurfaceWeather Weather { get; protected set; }
     public WildlifePatch Wildlife { get; protected set; }
+    public BloodFx Blood { get; protected set; }
     public PhysicsWorld Physics { get; protected set; }
     public PhysicsHost Host { get; protected set; }
     public PlanetEdits Edits { get; private set; }
@@ -111,6 +112,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Weather);
         Wildlife = new WildlifePatch { Name = "Wildlife", Zone = this };
         AddChild(Wildlife);
+        Blood = new BloodFx { Name = "Blood" };
+        AddChild(Blood);
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
@@ -305,6 +308,7 @@ public partial class SurfaceZone : Node3D
         Streamer.ShiftFrame(dx * Planet.Terrain.ChunksX, dz * Planet.Terrain.ChunksZ);
         Streamer.SetFocus(Focus());
         Wildlife.Shift(shift);
+        Blood.Shift(shift);
         Loot.Shift(shift);
         foreach (Device d in Devices) d.GlobalPosition += shift;
         FrameShifts++;

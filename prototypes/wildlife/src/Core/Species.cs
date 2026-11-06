@@ -93,6 +93,23 @@ public sealed class Species
         return Math.Min(1f, w);
     }
 
+    /// <summary>
+    /// The colour of its blood, the same every time: red in anything warm-blooded, from rust to
+    /// crimson; a yellow-green ichor in crawlers and swarms; what lives by glow bleeds its glow;
+    /// and what the Bloom has taken bleeds a sick dark violet.
+    /// </summary>
+    public Color Blood
+    {
+        get
+        {
+            var rng = Rng.For(Seed, "blood");
+            if (Corrupted) return Color.FromHsv(rng.Range(0.78f, 0.86f), 0.7f, rng.Range(0.22f, 0.34f));
+            if (Colors.GlowStrength > 0.4f) return Colors.Glow.Darkened(0.2f);
+            if (Plan is BodyPlan.Crawler or BodyPlan.Swarm || Rig == RigKind.Crawler) return Color.FromHsv(rng.Range(0.16f, 0.26f), 0.75f, rng.Range(0.5f, 0.65f));
+            return Color.FromHsv(Mathf.PosMod(rng.Range(-0.02f, 0.03f), 1f), 0.85f, rng.Range(0.34f, 0.48f));
+        }
+    }
+
     /// <summary>Nose to rump, m.</summary>
     public float BodyLength => Body.Size + Body.NeckLength * 0.5f + Body.HeadSize * 0.5f;
     /// <summary>Across the body and its splayed legs, m.</summary>
