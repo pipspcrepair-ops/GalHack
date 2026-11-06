@@ -8,14 +8,14 @@ namespace Slice.Player;
 public enum ImpactKind { Ground, Block, Creature, Nothing }
 
 /// <summary>
-/// What a shot looks like: a beam of light from the tool's muzzle that reaches to where the shot
+/// What a shot looks like: a bolt of light from the tool's muzzle that flies to where the shot
 /// lands, then sparks, a flash and a scorch on ground and blocks, or a spray on a creature. All
 /// procedural (no textures or models). The scorch fades over half a minute. Effects on a
 /// structure ride on its node, so they stay on its wall however it moves.
 /// </summary>
 public partial class ShotFx : Node3D
 {
-    const float BoltSpeed = 240f, BeamHold = 0.07f, ScorchLife = 30f;
+    const float BoltSpeed = 240f, BoltLength = 1.6f, ScorchLife = 30f;
 
     sealed class Bolt
     {
@@ -24,7 +24,6 @@ public partial class ShotFx : Node3D
         public Vector3 From, To;
         public float Travelled;
         public Action Arrived;
-        public Func<Vector3?> Follow;
     }
 
     readonly List<Bolt> _bolts = new();
@@ -265,23 +264,65 @@ public partial class ShotFx : Node3D
         AddChild(light);
         Vector3 aim = end - muzzle;
         Muzzle(feel, muzzle, aim.LengthSquared() < 1e-6f ? Vector3.Forward : aim.Normalized(), colour, 1f, follow);
-        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Arrived = arrived, Follow = follow };
+        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Arrived = arrived };
         _bolts.Add(bolt);
         Place(bolt);
     }
 
-    /// <summary>The beam, from the barrel (it rides the hand, like the flash) out to its head.</summary>
+    /// <summary>The bolt: a short streak whose head flies from the muzzle to the end, then its tail catches up.</summary>
     void Place(Bolt b)
     {
-        if (b.Follow?.Invoke() is Vector3 tip) b.From = tip;
         Vector3 line = b.To - b.From;
         float full = line.Length();
         Vector3 dir = full > 1e-4f ? line / full : Vector3.Forward;
-        float length = Mathf.Max(0.05f, Mathf.Min(b.Travelled, full));
+        float head = Mathf.Min(b.Travelled, full), tail = Mathf.Max(0f, b.Travelled - BoltLength);
+        float length = Mathf.Max(0.05f, head - tail);
         var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
-        b.Mesh.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), b.From + dir * length * 0.5f); // the cylinder's axis laid along the beam
-        b.Light.GlobalPosition = b.From + dir * length;
+        b.Mesh.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), b.From + dir * (tail + length * 0.5f)); // the cylinder's axis laid along the bolt
+        b.Light.GlobalPosition = b.From + dir * head;
     }
+
+    // ---- The working beam ----------------------------------------------------------------------
+
+    MeshInstance3D _beam;
+    ulong _beamFrame;
+
+    /// <summary>For tests: whether the working beam is showing, and how many times it has been drawn.</summary>
+    public bool BeamShowing => _beam != null && _beam.Visible;
+    public int Beams { get; private set; }
+
+    /// <summary>
+    /// The survival tool's gather and deconstruct beam, from the barrel tip to the point being worked:
+    /// one pooled cylinder, called every frame the tool works, and it goes out a frame or two after the
+    /// last call. No flash, no smoke.
+    /// </summary>
+    public void Beam(Vector3 from, Vector3 to)
+    {
+        if (_beam == null)
+        {
+            _beam = new MeshInstance3D
+            {
+                Mesh = _boltMesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false, Name = "WorkBeam",
+                MaterialOverride = new StandardMaterial3D
+                {
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = BeamColour,
+                    EmissionEnabled = true, Emission = BeamColour, EmissionEnergyMultiplier = 4f,
+                },
+            };
+            AddChild(_beam);
+        }
+        Vector3 line = to - from;
+        float length = line.Length();
+        if (length < 1e-3f) return;
+        Vector3 dir = line / length;
+        var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
+        _beam.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), from + dir * length * 0.5f);
+        if (!_beam.Visible) Beams++;
+        _beam.Visible = true;
+        _beamFrame = Engine.GetProcessFrames();
+    }
+
+    public static readonly Color BeamColour = new(0.3f, 0.6f, 1f);
 
     /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node).</summary>
     public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null)
@@ -345,7 +386,7 @@ public partial class ShotFx : Node3D
                 b.Arrived();
                 b.Arrived = null;
             }
-            if (b.Travelled >= full + BoltSpeed * BeamHold) // held a moment, so a close shot still shows
+            if (b.Travelled >= full + BoltLength) // the tail has reached the end
             {
                 b.Mesh.QueueFree();
                 b.Light.QueueFree();
@@ -355,6 +396,7 @@ public partial class ShotFx : Node3D
             Place(b);
         }
         TickFlashes(dt);
+        if (_beam != null && _beam.Visible && Engine.GetProcessFrames() > _beamFrame + 2) _beam.Visible = false;
         for (int i = _flashes.Count - 1; i >= 0; i--)
         {
             var (light, left) = _flashes[i];

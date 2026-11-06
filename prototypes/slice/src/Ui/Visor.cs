@@ -259,9 +259,9 @@ public partial class Visor : CanvasLayer
             _hud.Block(new Rect2(x - 5 * s, y + 4 * s, 10 * s, 10 * s), colour);
             // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
-            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 110 * s)) row++;
+            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
             labels.Add((x, row));
-            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
         // The place seen from the bunker's way out, on the compass until you have been there.
