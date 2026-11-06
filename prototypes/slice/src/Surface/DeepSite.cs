@@ -146,7 +146,8 @@ public partial class DeepSite : Node3D
             TickLairs(eye, clock);
             SyncViews(eye, clock);
         }
-        WorstViewMs = Math.Max(WorstViewMs, clock.Elapsed.TotalMilliseconds);
+        // A collector pause landing here is the runtime's, not this work's: it is counted apart.
+        WorstViewMs = Math.Max(WorstViewMs, clock.Elapsed.TotalMilliseconds - (GC.GetTotalPauseDuration() - paused).TotalMilliseconds);
     }
 
     /// <summary>

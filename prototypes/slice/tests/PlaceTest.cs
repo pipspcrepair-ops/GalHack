@@ -787,7 +787,7 @@ public partial class PlaceTest : Node
         foreach (int x in Settlement(game, drive, found)) yield return x;
     }
 
-    static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile;
+    static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.State == PoiState.Active && s.Instance.Mood != Mood.Hostile; // not a camp in a ruin: Neutrals has those
 
     /// <summary>
     /// Scavengers camped in a large place: they watch you and leave you be, nothing that hunts lives
