@@ -363,12 +363,14 @@ public partial class SliceTest : Node
         int before = store.RemovedCount;
         foreach (int x in _drive.HoldPrimary(a, 2)) yield return x;
         Check(store.RemovedCount == before && _game.Tool.ChippedCells > 0, $"one pulse of the beam chips the ground without taking a cell ({store.RemovedCount - before} cells gone, {_game.Tool.ChippedCells} worn)");
-        int mid = 0;
-        foreach (int x in _drive.HoldPrimary(a, 60)) yield return x;
-        mid = store.RemovedCount - before;
+        // Soil goes in a second, bare rock takes a few: how long depends on what this world has underfoot.
+        long held = 0;
+        for (int i = 0; i < 6 && store.RemovedCount == before; i++, held++)
+            foreach (int x in _drive.HoldPrimary(a, 60)) yield return x;
+        int mid = store.RemovedCount - before;
         foreach (int x in _drive.HoldPrimary(a, 200)) yield return x;
         int late = store.RemovedCount - before;
-        Check(mid > 0 && late > mid, $"sustained work sinks the ground a cell at a time: {mid} cells in a second, {late} after four more (the store holds whole cells, so it steps in stages)");
+        Check(mid > 0 && late > mid, $"sustained work sinks the ground a cell at a time: {mid} cells after {held} s, {late} after four more (the store holds whole cells, so it steps in stages)");
 
         // The better drill, on the other spot, in the same time.
         _game.Pack.Storage.Add("plasma-drill", 1);
@@ -655,7 +657,7 @@ public partial class SliceTest : Node
         GalHack.Items.Bill cost = _game.Builder.TotalCost(plan);
         GalHack.Items.Bill packBefore = _game.Pack.Storage.Contents;
         _game.Builder.Project();
-        Vector3 pad = FlatSpot(_game.Start, 16f);
+        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 16f, span: 10f); // room for you to stand off it and see it
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;

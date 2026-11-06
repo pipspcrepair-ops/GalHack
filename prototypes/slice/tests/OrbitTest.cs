@@ -183,7 +183,7 @@ public partial class OrbitTest : Node
         _game.Progress.Creative = true;
         GD.Print($"  (setup: handed over the Skiff's parts and a base core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vector3 pad = FlatSpot(_game.Start, 18f);
+        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f, span: 10f); // room for you to stand off it and see it
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.Tap(Key.Key4)) yield return x;
@@ -195,7 +195,7 @@ public partial class OrbitTest : Node
         Vessel skiff = _game.Builder.Underway;
         if (skiff == null)
         {
-            Fail("the blueprint projector set nothing down");
+            Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict}; shown {_game.Builder.PlanShown}, plan {_game.Builder.Plan != null}; pad {pad}, feet {_game.Survivor.WorldFeet}, slot {_game.Pack.Selected}, in hand {_game.Pack.InHand}, wish yaw {_game.Survivor.Yaw:F2})");
             yield break;
         }
         int stalls = 0;
@@ -354,11 +354,13 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         Check(shut && ship.Get(_door).Open, "E forces its dead door open by hand");
         int sx = Math.Sign(_door.X);
-        foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z) + Lift, 0.8f, 25f)) yield return x;
+        // Lined up square on the opening first: a suit has a tenth of a metre to spare in a hull door, and thrusters only push it where it looks.
+        foreach (int x in _pilot.FloatTo(() => BodyAt(_door.X + 2 * sx, _door.Y, _door.Z), 0.25f, 15f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => BodyAt(_door.X - 2 * sx, _door.Y, _door.Z), 0.5f, 25f)) yield return x;
         Vector3 inside = _wreck.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()).ToGodot();
         var (min, max) = ship.Bounds();
         Check(inside.X / 2f > min.X && inside.X / 2f < max.X && _game.Survivor.Binding.Floating && _game.Surface.Physics != null,
-            $"in through the door and floating: no core, no gravity in a dead hull (at cell {inside / 2f})");
+            $"in through the door and floating: no core, no gravity in a dead hull (at cell {inside / 2f}, hull x {min.X}..{max.X}, door {_door}, floating {_game.Survivor.Binding.Floating}, in space {_game.Surface.Physics != null})");
         foreach (int x in _drive.Tap(Key.L)) yield return x;
         Check(_game.Torch.Visible, "dark in there: the head torch on");
 
