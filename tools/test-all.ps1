@@ -48,12 +48,16 @@ foreach ($proto in Get-ChildItem -Path (Join-Path $root "prototypes") -Directory
         $code = $LASTEXITCODE
         $ran++
         $summary = ($out | Select-String -Pattern 'ALL PASSED|FAIL' | Select-Object -Last 1)
+        # Random-world tests print "world: seed N, type"; show them so a run can be replayed with --seed.
+        $worlds = ($out | Select-String -Pattern '^world: ' | ForEach-Object { $_.Line -replace '^world: ', '' } | Select-Object -Unique) -join '; '
         if ($code) {
             Write-Host "FAIL  $($proto.Name) $res (exit $code)"
             $out | Select-String -Pattern 'FAIL' | Select-Object -First 10 | ForEach-Object { Write-Host "      $_" }
+            if ($worlds) { Write-Host "      on: $worlds" }
             $failed += "$($proto.Name) $res"
         } else {
             Write-Host "PASS  $($proto.Name) $res  $summary"
+            if ($worlds) { Write-Host "      on: $worlds" }
         }
     }
 }

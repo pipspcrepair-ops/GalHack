@@ -8,7 +8,7 @@ namespace Slice.Game;
 /// <summary>
 /// Which world a game is played on: its seed and its planet type. A new game rolls a fresh seed
 /// (and, if asked, a random type); a saved game keeps the choice it was started with (this record
-/// is what a save stores); tests and screenshots pin both (<c>--seed N</c>, <c>--planet type</c>).
+/// is what a save stores); tests roll a fresh one every run, as a new game does, and anything can pin both (<c>--seed N</c>, <c>--planet type</c>).
 /// </summary>
 public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant)
 {
@@ -22,11 +22,11 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant)
         ("lava", "Lava", Archetype.Lava, 0),
     };
 
-    /// <summary>The world the slice's tests were tuned on: pinned by every test and screenshot unless told otherwise.</summary>
-    public static readonly WorldChoice Tested = new(7, Archetype.Temperate, 0);
+    /// <summary>The world a test run plays: rolled fresh once per run, like a new game, so no two runs prove the same world. The run prints it; <c>--seed N</c> replays it.</summary>
+    public static readonly WorldChoice Tested = Fresh();
 
-    /// <summary>A fresh seed: different for every new game (short enough to read out and type back).</summary>
-    public static ulong FreshSeed() => (ulong)Random.Shared.NextInt64(1, 1_000_000_000);
+    /// <summary>A fresh seed: one of about 9 quintillion, different for every new game (stays positive as a long, so saves can hold it).</summary>
+    public static ulong FreshSeed() => (ulong)Random.Shared.NextInt64(1, long.MaxValue);
 
     /// <summary>A new game on a planet type (by its key; "random" or null rolls one of the types).</summary>
     public static WorldChoice Fresh(string type = "temperate", ulong? seed = null)
@@ -83,6 +83,6 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant)
         if (ulong.TryParse(text, out ulong n)) return n;
         ulong h = 1469598103934665603UL;
         foreach (char c in text) h = (h ^ c) * 1099511628211UL;
-        return h % 1_000_000_000UL;
+        return h & long.MaxValue;
     }
 }
