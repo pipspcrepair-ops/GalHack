@@ -53,6 +53,7 @@ public partial class SurfaceTest : Node
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
+            await Run("Grounded", GroundedChecks);
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);

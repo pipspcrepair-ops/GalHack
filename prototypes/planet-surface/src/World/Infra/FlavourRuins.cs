@@ -36,10 +36,12 @@ public sealed class FlavourRuin
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
-    public PoiInstance Spawn(WorldProfile world)
+    public PoiInstance Spawn(WorldProfile world, PlanetTerrainSource ground = null)
     {
         PoiInstance inst = PoiFactory.Spawn(Library, Layout, State, SpawnSeed, world);
         if (Blast > 0.02f) StateTransforms.Blast(inst, BlastX, BlastZ, Blast, new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(SpawnSeed, 0xB1A57UL)));
+        if (ground != null)
+            StateTransforms.Settle(inst, (x, z) => ground.SurfaceHeight(Mathx.WrapX(OriginX + x + 0.5, ground.Width), Mathx.Wrap(OriginZ + z + 0.5, ground.Height)) - OriginY, 0);
         return inst;
     }
 

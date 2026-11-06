@@ -311,18 +311,41 @@ public static class FarBuilder
                 : rule.Kind == Flora.Mushroom && biome is Biome.GlowMoss or Biome.SporeMarsh ? 0.3f : 0f;
 
             if (!buffers.TryGetValue(rule.Kind, out List<float> list)) buffers[rule.Kind] = list = new List<float>();
+            // On a slope nothing hangs over the low side: a stem is sunk by the drop across its foot, and a
+            // rock lies along the ground (it would slide if it stood level), sunk by what's left of the slope.
+            bool rock = rule.Kind is Flora.Rock or Flora.LavaRock;
+            float foot = FootRadius(rule.Kind) * scale;
+            float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
+            float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
+            float rootY = h - FloraSolidRules.Sink - (slope - lean) * foot;
+            var basis = new Basis(Vector3.Up, -angle).Scaled(new Vector3(scale, scale, scale));
+            if (lean > 0.01f && slope > 0f)
+                basis = new Basis(new Vector3(-gz, 0f, gx) / slope, -MathF.Atan(lean)) * basis;
+
             // MultiMesh layout: a 3x4 row-major transform, then four custom floats (tint and glow).
-            list.Add(cos); list.Add(0f); list.Add(sin); list.Add(lx);
-            list.Add(0f); list.Add(scale); list.Add(0f); list.Add(h - 0.25f);
-            list.Add(-sin); list.Add(0f); list.Add(cos); list.Add(lz);
+            list.Add(basis.X.X); list.Add(basis.Y.X); list.Add(basis.Z.X); list.Add(lx);
+            list.Add(basis.X.Y); list.Add(basis.Y.Y); list.Add(basis.Z.Y); list.Add(rootY);
+            list.Add(basis.X.Z); list.Add(basis.Y.Z); list.Add(basis.Z.Z); list.Add(lz);
             list.Add(tint.R); list.Add(tint.G); list.Add(tint.B); list.Add(glow);
 
             // Trunks and boulders are solid: their colliders, in planet coordinates.
-            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, h - FloraSolidRules.Sink, (float)z), scale, angle, out FloraSolid solid))
+            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
                 job.Solids.Add(solid);
         }
         foreach (var (kind, list) in buffers) job.Flora.Add((kind, list.ToArray(), list.Count / 16));
     }
+
+    const float MaxRockLean = 0.8f;
+
+    /// <summary>How far a kind's foot reaches from its root, at scale 1: what must stay in the ground on a slope.</summary>
+    public static float FootRadius(Flora kind) => kind switch
+    {
+        Flora.Rock or Flora.LavaRock => 0.9f,
+        Flora.Crystal or Flora.IceShard => 0.5f,
+        Flora.Shrub => 0.6f,
+        _ when FloraMeshes.IsLarge(kind) => 0.4f,
+        _ => 0.2f,
+    };
 
     /// <summary>A canonical column (x, z in metres) as a set key.</summary>
     public static long Key(int x, int z) => (long)x << 32 | (uint)z;

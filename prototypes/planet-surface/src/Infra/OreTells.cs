@@ -103,9 +103,8 @@ public partial class InfraLayer
             ulong seed = Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind);
             float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.7f : 1f);
             DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B));
-            float ground = b.Ground(d.X, d.Y);
-            Vector3 at = b.Local(d.X, ground - 0.05f, d.Y);
-            Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * Matrix4x4.CreateTranslation(at);
+            // Laid along the slope and sunk in by whatever the ground still falls away under its rim.
+            Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * b.Seat(d.X, d.Y, radius);
             b.Merge(mesh, place, collide: OreTellsCollide);
         }
     }
@@ -113,6 +112,39 @@ public partial class InfraLayer
 
 public sealed partial class TileBuilder
 {
+    /// <summary>
+    /// The transform that seats something <paramref name="radius"/> round on the ground at a point: tilted
+    /// with the slope (<paramref name="steepest"/> rise per metre at most), and down by the most the ground
+    /// falls short of its base anywhere round its rim, so no edge hangs over the ground.
+    /// </summary>
+    public Matrix4x4 Seat(double x, double z, float radius, float steepest = 0.6f)
+    {
+        Vector3 Up(double px, double pz, out float y, out float sx, out float sz)
+        {
+            y = Ground(px, pz);
+            sx = (Ground(px + radius, pz) - Ground(px - radius, pz)) / (2f * radius);
+            sz = (Ground(px, pz + radius) - Ground(px, pz - radius)) / (2f * radius);
+            float slope = MathF.Sqrt(sx * sx + sz * sz);
+            if (slope > steepest)
+            {
+                sx *= steepest / slope;
+                sz *= steepest / slope;
+            }
+            return Vector3.Normalize(new Vector3(-sx, 1f, -sz));
+        }
+        Vector3 n = Up(x, z, out float y, out float gx, out float gz);
+        float low = 0f;
+        for (int k = 0; k < 16; k++)
+        {
+            // A little past the rim: the slope carries a tilted rim out over the ground beyond it.
+            float a = k * MathF.PI / 8f, dx = MathF.Cos(a) * radius * 1.25f, dz = MathF.Sin(a) * radius * 1.25f;
+            low = MathF.Min(low, Ground(x + dx, z + dz) - (y + gx * dx + gz * dz));
+        }
+        Vector3 axis = Vector3.Cross(Vector3.UnitY, n);
+        Matrix4x4 tilt = axis.LengthSquared() < 1e-8f ? Matrix4x4.Identity : Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), MathF.Acos(Math.Clamp(n.Y, -1f, 1f)));
+        return tilt * Matrix4x4.CreateTranslation(Local(x, y + low - 0.12f, z));
+    }
+
     /// <summary>Copies a deco mesh into the tile under a transform; its collision boxes become collision.</summary>
     public void Merge(DecoMeshData data, Matrix4x4 place, bool collide)
     {

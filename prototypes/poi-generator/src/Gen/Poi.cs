@@ -287,6 +287,7 @@ public static class PoiFactory
         Structure.DropUntethered(inst.Blocks);
         // A plain ruin's weeds and moss come last, on what's left.
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
+        if (state != PoiState.Active) StateTransforms.Rest(inst);
         return inst;
     }
 

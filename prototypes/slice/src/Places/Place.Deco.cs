@@ -101,6 +101,7 @@ public sealed class Decor
                 if (pl.Support >= 0 && dropped.Contains(pl.Support)) { dropped.Add(i); continue; }
                 foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, pl), placeRoom.Corner, 0.05f))
                     if (reserved.Contains(c) || reserved.Contains(c + Int3.Up)) { dropped.Add(i); break; }
+                if (!dropped.Contains(i) && pl.Support < 0 && !Held(inst, pl, DecoLayout.Footprint(Forge, pl), placeRoom.Corner)) dropped.Add(i);
             }
             var kept = memory.DecoTaken.GetValueOrDefault(m.Index) ?? new HashSet<int>();
             foreach (int i in dropped) kept.Add(i);
@@ -126,6 +127,29 @@ public sealed class Decor
         }
         KeepWaysOpen(memory, rooms);
         return rooms;
+    }
+
+    /// <summary>
+    /// Whether a piece has something to hold it: one on the floor needs floor under all of it (decay leaves
+    /// holes), one up a wall or under a ceiling needs that wall or ceiling still there.
+    /// </summary>
+    static bool Held(PoiInstance inst, DecoPlacement pl, DecoRect foot, Int3 corner)
+    {
+        var nav = inst.Nav();
+        if (pl.Y < 0.2f)
+        {
+            foreach (Int3 c in CellsOf(foot, corner, 0.2f))
+                if (!nav.Solid(c + Int3.Down)) return false;
+            return true;
+        }
+        int up = (int)MathF.Floor(pl.Y);
+        foreach (Int3 c in CellsOf(foot, corner, 0f))
+        {
+            Int3 at = c + Int3.Up * up;
+            foreach (Dir d in Dirs.All)
+                if (nav.Solid(at + d.Vec())) return true;
+        }
+        return false;
     }
 
     /// <summary>

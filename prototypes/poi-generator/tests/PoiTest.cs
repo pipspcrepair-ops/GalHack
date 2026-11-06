@@ -1388,6 +1388,22 @@ public partial class PoiTest : Node
                 PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, state, (ulong)rand.NextInt64());
                 stands += Faces(p.Blocks, p.Layout.Occupied, ref faces, ref missing, ref faceFirst);
             }
+        // The places proper: what lies loose rests on what is under it, whatever decay took away.
+        int loose = 0, unheld = 0;
+        foreach (var f in Arch.Where(f => !f.Tags.Contains("flavour")).OrderBy(_ => rand.Next()).Take(16))
+            foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned, PoiState.Infested })
+            {
+                PoiInstance p = PoiFactory.Generate(_lib, f, 0, Rarity.Common, state, (ulong)rand.NextInt64());
+                var nav = p.Nav();
+                foreach (var (c, b) in p.Blocks.Blocks())
+                {
+                    if (p.Layout.Extras.InSpace || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Growth or Role.Decor) continue;
+                    if (b.Type is not (BlockType.Crate or BlockType.Tank or BlockType.Rubble or BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Barricade or BlockType.Bench)) continue;
+                    loose++;
+                    if (!nav.Solid(c + Int3.Down)) { unheld++; Note($"{f.Id} {state}: {b} hangs at {c}"); }
+                }
+            }
+        Check(unheld == 0 && loose > 500, $"drums, crates, rubble and weeds rest on something in the places proper: {loose} loose blocks, {unheld} hanging{first}");
         Check(floating == 0 && hovering == 0 && trees == 0 && spawns > 200, $"nothing floats in a plain ruin: {spawns} spawns, flattened or not; {floating} blocks off the ground, {hovering} weeds or rubble on nothing, {trees} block trees{first}");
         Check(missing == 0 && faces > 10000, $"every face is drawn: {faces} open faces of {stands} structures, {missing} missing, buried ones too{faceFirst}");
         Check(wrongSize == 0 && flatRoofs == 0 && noDoor == 0 && belowGround == 0, $"plain ruins are real size and built as a player builds: {wrongSize} wrong sizes, {flatRoofs} without a sloped roof, {noDoor} without a door, {belowGround} dug into the ground{first}");

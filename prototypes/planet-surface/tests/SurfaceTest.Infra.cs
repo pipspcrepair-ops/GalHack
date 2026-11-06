@@ -51,6 +51,84 @@ public partial class SurfaceTest
     // ---- the infrastructure -----------------------------------------------------------------
 
     /// <summary>Not part of the gate (--only=InfraScan): lists seeds' networks, to find views for screenshots.</summary>
+    /// <summary>
+    /// Nothing floats, on fresh worlds: what stands off a place's footprint sits on the real ground, ruins'
+    /// yards too; every ore tell has its rim in the ground; scattered rocks and stems keep their feet in it.
+    /// </summary>
+    async Task GroundedChecks()
+    {
+        int blocks = 0, hovering = 0, sunk = 0, tells = 0, tellsOff = 0, flora = 0, floraOff = 0;
+        string first = "";
+        void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
+        var rand = new Random();
+        var kinds = new[] { Archetype.Temperate, Archetype.Arid };
+        foreach (Archetype kind in kinds)
+        {
+            ulong seed = (ulong)rand.NextInt64();
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
+            float Ground(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            void Blocks(PoiInstance inst, double ox, int oy, double oz, string name)
+            {
+                foreach (var (c, b) in inst.Blocks.Blocks())
+                {
+                    if (inst.Layout.Occupied[c] || c.Y < -1 || !BlockInfo.Collides(b.Type) && b.Type != BlockType.Plant) continue;
+                    if (b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door or Role.Decor or Role.Growth) continue;
+                    if (inst.Blocks.Get(c + PoiGenerator.Gen.Int3.Down).Type != BlockType.Air) continue; // on what's below it
+                    if (inst.Layout.Occupied[c + PoiGenerator.Gen.Int3.Down]) continue;
+                    blocks++;
+                    float over = oy + c.Y - Ground(ox + c.X + 0.5, oz + c.Z + 0.5);
+                    if (over > 0.1f) { hovering++; Note($"{name}: {b} {over:F2} m over the ground at {c}"); }
+                    if (over < -2.2f) sunk++;
+                }
+            }
+            foreach (PoiSite p in w.Pois) Blocks(p.Instance, p.Origin.X, p.Origin.Y, p.Origin.Z, p.Name);
+            foreach (PlanetSurface.Infra.FlavourRuin r in (w.Infra?.Ruins ?? new List<PlanetSurface.Infra.FlavourRuin>()).Take(16))
+                Blocks(r.Spawn(w.Profile, w.Source), r.OriginX, r.OriginY, r.OriginZ, r.Family.Id);
+            // Ore tells: seated on the slope, no rim over the ground.
+            var b = new PlanetSurface.Infra.TileBuilder(w, 0, 0);
+            foreach (Deposit d in w.Map.Deposits.InRect(0, 0, w.Width, w.Height))
+            {
+                if (tells >= 800 * (Array.IndexOf(kinds, kind) + 1)) break;
+                if (w.Source.StampWeight(d.X, d.Y) > 0f || w.Source.WaterSurfaceAt(d.X, d.Y, out _)) continue;
+                float r = PlanetTerrainSource.OreRadius(d);
+                var seat = b.Seat(d.X, d.Y, r);
+                tells++;
+                for (int k = 0; k < 8; k++)
+                {
+                    var rim = new System.Numerics.Vector3(MathF.Cos(k * MathF.PI / 4f) * r, 0, MathF.Sin(k * MathF.PI / 4f) * r);
+                    var at = System.Numerics.Vector3.Transform(rim, seat);
+                    double wx = at.X + b.OriginX, wz = at.Z + b.OriginZ;
+                    if (at.Y > Ground(wx, wz) + 0.1f) { tellsOff++; Note($"an ore tell's rim {at.Y - Ground(wx, wz):F2} m over the ground at {wx:F0}, {wz:F0}"); break; }
+                }
+            }
+            // Scatter: a far chunk's worth at a time, in rough ground.
+            for (int k = 0; k < 24; k++)
+            {
+                var job = new FarJob { Fx = rand.Next(FarBuilder.Count(w.Terrain.Width) - 1), Fz = rand.Next(FarBuilder.Count(w.Terrain.Height) - 1), Lod = 0 };
+                FarBuilder.Build(job, w.Source, w.Palette, null, null);
+                foreach (var (kindOf, buffer, count) in job.Flora)
+                    for (int i = 0; i < count; i++)
+                    {
+                        int o = i * 16;
+                        double x = job.Fx * (double)FarBuilder.Size + buffer[o + 3], z = job.Fz * (double)FarBuilder.Size + buffer[o + 11];
+                        float scale = new Vector3(buffer[o + 1], buffer[o + 5], buffer[o + 9]).Length(), y = buffer[o + 7];
+                        float foot = FarBuilder.FootRadius(kindOf) * scale * 0.7f, low = float.MaxValue;
+                        bool rock = kindOf is Planets.Look.Flora.Rock or Planets.Look.Flora.LavaRock;
+                        // A rock lies along the slope: its middle stays in the ground.
+                        if (rock) low = Ground(x, z) + 0.2f;
+                        else
+                            for (int a = 0; a < 4; a++) low = MathF.Min(low, Ground(x + MathF.Cos(a * MathF.PI / 2f) * foot, z + MathF.Sin(a * MathF.PI / 2f) * foot));
+                        flora++;
+                        if (y > low) { floraOff++; Note($"{kindOf} {y - low:F2} m over the ground at {x:F0}, {z:F0}"); }
+                    }
+            }
+            await Frames(1);
+        }
+        Check(hovering == 0 && blocks > 20, $"what stands off a place's footprint sits on the real ground: {blocks} blocks, {hovering} over it, {sunk} buried deep{first}");
+        Check(tellsOff == 0 && tells > 500, $"ore tells lie on the slope with no rim over the ground: {tells} tells, {tellsOff} off it{first}");
+        Check(floraOff == 0 && flora > 500, $"rocks and stems keep their feet in the ground on a slope: {flora} checked, {floraOff} off it{first}");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })

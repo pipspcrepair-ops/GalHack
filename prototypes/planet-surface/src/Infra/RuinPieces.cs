@@ -26,7 +26,7 @@ public partial class InfraLayer
 
         public override void Emit(TileBuilder b)
         {
-            PoiInstance inst = Ruin.Spawn(b.World.Profile);
+            PoiInstance inst = Ruin.Spawn(b.World.Profile, b.World.Source);
             BlockGrid g = inst.Blocks;
             var options = new MeshOptions
             {

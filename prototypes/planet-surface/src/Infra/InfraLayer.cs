@@ -314,14 +314,8 @@ public partial class InfraLayer : Node3D
             }
             else
             {
-                // The fallen deck lies broken on the ground below, two slabs tilted against each other.
-                float g0 = b.Ground(r.X[K], r.Z[K]), g1 = b.Ground(r.X[K + 1], r.Z[K + 1]);
-                NV p0 = new(a.X, g0 + thick * 0.5f + 0.1f, a.Z), p1 = new(c.X, g1 + thick * 0.5f + 0.1f, c.Z);
-                NV m = (p0 + p1) * 0.5f;
-                NV tilt = NV.Normalize(dir + up * 0.25f);
-                NV tUp = NV.Normalize(NV.Cross(side, tilt));
-                if (tUp.Y < 0) tUp = -tUp;
-                b.Box(m + up * 0.6f, tilt * (len * 0.45f), tUp * (thick * 0.5f), side * (half * 0.9f), deck, surface, collide: true);
+                // The fallen deck lies broken on the ground below, draped over whatever it came down on.
+                b.Drape((a + c) * 0.5f, new NV(dir.X, 0, dir.Z) * (len * 0.46f), side * (half * 0.9f), thick, deck, surface);
             }
             // A pier every fifth point (20 m), standing on the ground below (under a fallen span too).
             if ((K - Structure.First) % 5 == 0 && K > Structure.First)
@@ -638,6 +632,31 @@ public sealed partial class TileBuilder
             NV p0 = v[faces[f * 4]], p1 = v[faces[f * 4 + 1]], p2 = v[faces[f * 4 + 2]], p3 = v[faces[f * 4 + 3]];
             Quad(p0, p1, p2, p3, color, surface, 1f, centre, collide);
         }
+    }
+
+    /// <summary>
+    /// A flat slab laid on the ground, bending with it: a grid of points each on the ground under it, its
+    /// top a thickness above and its edges down into the ground, solid on top.
+    /// </summary>
+    public void Drape(NV centre, NV along, NV across, float thick, DecoRgb color, DecoSurface surface)
+    {
+        int nx = Math.Clamp((int)MathF.Ceiling(along.Length()), 1, 8), nz = Math.Clamp((int)MathF.Ceiling(across.Length()), 1, 8);
+        NV Top(int i, int j)
+        {
+            NV p = centre + along * (2f * i / nx - 1f) + across * (2f * j / nz - 1f);
+            p.Y = Ground(OriginX + p.X, OriginZ + p.Z) + thick * 0.5f;
+            return p;
+        }
+        for (int j = 0; j < nz; j++)
+        for (int i = 0; i < nx; i++)
+            Quad(Top(i, j), Top(i + 1, j), Top(i + 1, j + 1), Top(i, j + 1), color, surface, collide: true);
+        void Edge(NV p, NV q)
+        {
+            NV m = (p + q) * 0.5f;
+            Quad(p, q, q - NV.UnitY * (thick + 0.3f), p - NV.UnitY * (thick + 0.3f), color, surface, 1f, new NV(centre.X, m.Y, centre.Z));
+        }
+        for (int i = 0; i < nx; i++) { Edge(Top(i, 0), Top(i + 1, 0)); Edge(Top(i, nz), Top(i + 1, nz)); }
+        for (int j = 0; j < nz; j++) { Edge(Top(0, j), Top(0, j + 1)); Edge(Top(nx, j), Top(nx, j + 1)); }
     }
 
     /// <summary>A cable along a polyline (drawn as thin tubes), in the tile's frame.</summary>

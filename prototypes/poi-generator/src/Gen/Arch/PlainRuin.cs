@@ -93,6 +93,71 @@ public static partial class StateTransforms
             }
     }
 
+    /// <summary>What lies or stands loose: it rests on what is under it, and nothing else holds it up.</summary>
+    static bool Loose(Block b) => b.Role is not (Role.Loot or Role.Core or Role.Terminal or Role.Growth or Role.Decor) && b.Type is
+        BlockType.Crate or BlockType.Tank or BlockType.Rubble or BlockType.Plant or BlockType.Ash or BlockType.Scatter or BlockType.Scorch or BlockType.Puddle
+        or BlockType.Remains or BlockType.Barricade or BlockType.Bench or BlockType.Table or BlockType.Meal or BlockType.Bunk or BlockType.Bed or BlockType.Statue;
+
+    /// <summary>
+    /// The last word on what decay left hanging: drums, crates, rubble and weeds rest on what is under
+    /// them, however well they touch a wall beside them. Whatever lost its floor drops to the next one
+    /// down, or goes if something already stands there.
+    /// </summary>
+    public static void Rest(PoiInstance inst)
+    {
+        if (inst.Layout.Extras.InSpace) return;
+        var g = inst.Blocks;
+        var nav = inst.Nav();
+        foreach (var (p, b) in g.Blocks().ToList())
+        {
+            if (!Loose(b) || nav.Solid(p + Int3.Down)) continue;
+            Int3 c = p;
+            while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
+            g.Set(p, Block.Air);
+            if (g.Get(c).IsAir && nav.Solid(c + Int3.Down) && !inst.Protected[c]) g.Set(c, b);
+        }
+    }
+
+    /// <summary>
+    /// A place's outside on the real ground: a pad is level only out to its apron, and past that the land
+    /// goes its own way. What stands off the place's footprint (litter, thrown plates, a fence, a yard's
+    /// paving) follows the ground under it, column by column, sunk in rather than hanging over it, so a slab
+    /// bends with the land a metre at a time. <paramref name="ground"/> is the height above the pad at a
+    /// cell's middle. Returns how many blocks moved.
+    /// </summary>
+    public static int Settle(PoiInstance inst, Func<int, int, float> ground, int apron)
+    {
+        var g = inst.Blocks;
+        CellMask occ = inst.Layout.Occupied;
+        Int3 lo = occ.Min, hi = occ.Min + occ.Size;
+        var columns = new Dictionary<(int X, int Z), List<(Int3 Cell, Block Block)>>();
+        var held = new HashSet<(int, int)>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (p.Y < Assembler.GroundY) continue;
+            var key = (p.X, p.Z);
+            if (occ[p] || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door) held.Add(key);
+            // On the pad and its apron the ground is the pad.
+            if (p.X >= lo.X - apron && p.X < hi.X + apron && p.Z >= lo.Z - apron && p.Z < hi.Z + apron) continue;
+            if (!columns.TryGetValue(key, out var list)) columns[key] = list = new List<(Int3, Block)>();
+            list.Add((p, b));
+        }
+        int moved = 0;
+        foreach (var (key, list) in columns)
+        {
+            if (held.Contains(key)) continue;
+            int dy = (int)MathF.Floor(ground(key.X, key.Z) + 0.02f);
+            if (dy == 0) continue;
+            foreach (var (p, _) in list) g.Set(p, Block.Air);
+            foreach (var (p, b) in list)
+            {
+                moved++;
+                if (g.InBounds(p + Int3.Up * dy)) g.Set(p + Int3.Up * dy, b);
+            }
+        }
+        return moved;
+    }
+
     /// <summary>
     /// The land coming back, after everything else, on what is left: weeds on floors open to the sky and
     /// along the foot of the walls, moss in patches on what faces up. Every weed stands on something solid.

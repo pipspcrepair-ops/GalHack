@@ -76,11 +76,15 @@ public partial class InfraLayer
         {
             DecoPlan plan = InfraDeco.DressSite(Site.Site, Site.Seed, Site.Tech);
             if (plan == null) return;
-            // Each piece stands on the ground under it (a pile-up keeps its stacking).
-            var ground = plan.Placements.Select(pl =>
+            // Each piece seats on the ground under it (a pile-up keeps its stacking; a train's cars stay on their line).
+            var seats = plan.Placements.Select(pl =>
             {
                 var (x, z) = Site.World(pl.X, pl.Z);
-                return b.Ground(x, z);
+                if (pl.Assembly >= 0 || pl.Support >= 0) return (Local: b.Local(x, b.Ground(x, z), z), Tilt: System.Numerics.Matrix4x4.Identity);
+                GalHack.Deco.DecoRect foot = GalHack.Deco.DecoLayout.Footprint(InfraDeco.Poi.Forge, pl);
+                float reach = MathF.Max(0.6f, MathF.Min(foot.U.Length(), foot.V.Length()));
+                System.Numerics.Matrix4x4 seat = b.Seat(x, z, reach, 0.3f);
+                return (Local: seat.Translation, Tilt: seat with { Translation = NV.Zero });
             }).ToArray();
             NV corner = b.Local(Site.X, Site.Y, Site.Z);
             float yaw = Mathf.DegToRad(Site.Yaw), siteY = Site.Y;
@@ -92,10 +96,15 @@ public partial class InfraLayer
                 view.Name = Site.Site;
                 view.Position = new Vector3(corner.X, siteY, corner.Z);
                 view.Rotation = new Vector3(0, yaw, 0);
+                Basis toSite = new Basis(Vector3.Up, yaw).Inverse();
                 for (int i = 0; i < view.Nodes.Count && i < plan.Placements.Count; i++)
                 {
+                    var (local, t) = seats[i];
                     Vector3 at = view.Nodes[i].Position;
-                    view.Nodes[i].Position = at with { Y = ground[i] - siteY + plan.Placements[i].Y };
+                    view.Nodes[i].Position = at with { Y = local.Y - siteY + plan.Placements[i].Y };
+                    // The slope, in the site's frame, under the piece's own turn.
+                    var slope = new Basis(new Vector3(t.M11, t.M12, t.M13), new Vector3(t.M21, t.M22, t.M23), new Vector3(t.M31, t.M32, t.M33));
+                    view.Nodes[i].Basis = toSite * slope * toSite.Inverse() * view.Nodes[i].Basis;
                 }
                 return view;
             });
