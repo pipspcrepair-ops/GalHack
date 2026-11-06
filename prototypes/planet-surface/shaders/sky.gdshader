@@ -95,7 +95,10 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	// (sun_through): the wide halo dims with it, so a low sun is a contained glow, not a white sky.
 	float sd = dot(dir, sun);
 	float sun_through = sun_air(sun_h);
-	col += star_color * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5) * day * density;
+	// Low down both halos thin with the same path and take the sunset's colour, so a setting sun
+	// sits in a warm contained glow you can look at, never a white blaze.
+	vec3 halo = mix(sunset, star_color, smoothstep(0.03, 0.38, sun_h));
+	col += halo * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5 * sun_through * sun_through) * day * density;
 
 	// Below the horizon: the haze, darker downward.
 	if (up < 0.0) col = mix(col, haze * bright * day * 0.55 + zenith_night, clamp(-up * 6.0, 0.0, 1.0));
@@ -407,7 +410,9 @@ void sky() {
 		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd);
 		float through = sun_air(sun.y);
 		vec3 disc_color = mix(sunset, star_color, smoothstep(0.0, 0.3, sun.y)) * through * through;
-		col += disc_color * disc * sun_energy * 18.0 * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
+		// Well under the glow threshold near the horizon: there it's a coloured disc, it doesn't bloom.
+		float disc_energy = mix(1.5, 18.0, smoothstep(0.02, 0.4, sun.y));
+		col += disc_color * disc * sun_energy * disc_energy * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
 
 		float cover;
 		if (AT_CUBEMAP_PASS) {

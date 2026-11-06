@@ -323,7 +323,11 @@ public partial class SkyRig : Node3D
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;
         Environment.FogSkyAffect = air.FogSkyAffect;
-        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast);
+        // The scatter toward the sun and the glitter off water are the sun's own light: a low sun has
+        // little left to give them, or the haze and the sea go white under it.
+        float climbed = Smooth(0.02f, 0.38f, toSun.Y);
+        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast) * (0.25f + 0.75f * climbed);
+        Sun.LightSpecular = 0.2f + 0.8f * climbed;
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
