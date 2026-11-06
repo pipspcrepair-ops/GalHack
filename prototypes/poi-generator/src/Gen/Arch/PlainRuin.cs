@@ -108,13 +108,31 @@ public static partial class StateTransforms
         if (inst.Layout.Extras.InSpace) return;
         var g = inst.Blocks;
         var nav = inst.Nav();
-        foreach (var (p, b) in g.Blocks().ToList())
+        for (int pass = 0; pass < 3; pass++)
         {
-            if (!Loose(b) || nav.Solid(p + Int3.Down)) continue;
-            Int3 c = p;
-            while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
-            g.Set(p, Block.Air);
-            if (g.Get(c).IsAir && nav.Solid(c + Int3.Down) && !inst.Protected[c]) g.Set(c, b);
+            bool moved = false;
+            foreach (var (p, b) in g.Blocks().ToList())
+            {
+                if (!Loose(b) || nav.Solid(p + Int3.Down) || g.Get(p + Int3.Up).Role is Role.Loot or Role.Core or Role.Terminal) continue;
+                Int3 c = p;
+                while (c.Y > g.Min.Y && g.Get(c + Int3.Down).IsAir && !nav.IsRock(c + Int3.Down)) c += Int3.Down;
+                g.Set(p, Block.Air);
+                if (g.Get(c).IsAir && nav.Solid(c + Int3.Down) && !inst.Protected[c]) g.Set(c, b);
+                moved = true;
+            }
+            // A heap that came away may have been all that joined a bit of wall to the rest: that comes down too.
+            foreach (Int3 p in Structure.Floating(g, inst.Layout.Occupied, null, inst.Extras.Plain.Count > 0))
+            {
+                if (g.Get(p).Role is not (Role.Loot or Role.Core or Role.Terminal))
+                {
+                    g.Set(p, Block.Air);
+                    continue;
+                }
+                // A cache is never lost to it: it sits on the heap that came down under it.
+                for (Int3 c = p + Int3.Down; c.Y >= g.Min.Y && g.Get(c).IsAir && !nav.IsRock(c); c += Int3.Down)
+                    g.Set(c, new Block(BlockType.Cube, Material.Rock, new Rgb(0x6a, 0x60, 0x58), Role.Debris));
+            }
+            if (!moved) break;
         }
     }
 
