@@ -51,7 +51,11 @@ public partial class InfraLayer
             float ground = b.Ground(d.X, d.Y);
             Vector3 at = b.Local(d.X, ground - 0.05f, d.Y);
             Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * Matrix4x4.CreateTranslation(at);
-            b.Merge(mesh, place, collide: OreTellsCollide);
+            // A rock's edge can reach a place's pad, where nothing solid may stand in a way in: there it stays scenery.
+            bool clear = true;
+            for (int a = 0; a < 8 && clear; a++)
+                clear = b.World.Source.StampWeight(Mathx.WrapX(d.X + MathF.Cos(a * MathF.PI / 4f) * (radius + 2f), b.World.Width), Mathx.Wrap(d.Y + MathF.Sin(a * MathF.PI / 4f) * (radius + 2f), b.World.Height)) <= 0f;
+            b.Merge(mesh, place, collide: OreTellsCollide && clear);
         }
     }
 }

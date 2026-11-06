@@ -280,6 +280,8 @@ public partial class OrbitTest : Node
     Vector3 Door => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, _door));
     Vector3 Outward => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitX * Math.Sign(_door.X)).ToGodot();
     Vector3 CellAt(int x, int y, int z) => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, new Int3(x, y, z)));
+    /// <summary>Half a metre up the hull's own axis: the suit's eye over a door's middle, so the legs clear its sill.</summary>
+    Vector3 Lift => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitY * 0.5f).ToGodot();
 
     IEnumerable<int> ToTheDerelict()
     {
@@ -342,7 +344,7 @@ public partial class OrbitTest : Node
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(40)) yield return x;
         Check(_game.Survivor.Body.Frame == null && _game.Survivor.Binding.Floating, "off the deck and floating: mag boots off, nothing holds you");
-        foreach (int x in _pilot.FloatTo(() => Door + Outward * 2.4f, 1.1f, 40f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => Door + Outward * 2.4f + Lift, 0.7f, 40f)) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 4f, $"floated across on the suit's thrusters to its hull door ({_game.Survivor.WorldEye().DistanceTo(Door):F1} m off)");
         bool shut = !ship.Get(_door).Open;
         foreach (int x in _drive.LookAt(Door, 6)) yield return x;
@@ -350,7 +352,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         Check(shut && ship.Get(_door).Open, "E forces its dead door open by hand");
         int sx = Math.Sign(_door.X);
-        foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z), 0.8f, 25f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z) + Lift, 0.8f, 25f)) yield return x;
         Vector3 inside = _wreck.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()).ToGodot();
         var (min, max) = ship.Bounds();
         Check(inside.X / 2f > min.X && inside.X / 2f < max.X && _game.Survivor.Binding.Floating && _game.Surface.Physics != null,

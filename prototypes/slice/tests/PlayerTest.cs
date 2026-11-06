@@ -559,7 +559,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
-        Check(_base.Storage.Count("iron-ore") > 0, $"STORE MY ORE AND MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
+        Check(_base.Storage.Count("iron-ore") > 0, $"STORE ORE, MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
         Bill parts = new();
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
         Bill blockParts = parts.Clone();
