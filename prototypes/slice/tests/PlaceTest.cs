@@ -348,6 +348,14 @@ public partial class PlaceTest : Node
             Vector3 wallMiddle = place.ToWorld(new Vector3(low.X + 0.5f, low.Y + 1.2f, low.Z + 0.5f));
             foreach (int x in Watched(drive.LookAt(wallMiddle, 8))) yield return x;
             string label = game.Tool.TargetLabel;
+            // Furniture can stand before the panel: a player takes it away first.
+            for (int i = 0; i < 4 && label != "CRACKED PANEL" && label != ""; i++)
+            {
+                string piece = label;
+                foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 300, () => game.Tool.TargetLabel != piece))) yield return x;
+                foreach (int x in Watched(drive.Wait(2))) yield return x;
+                label = game.Tool.TargetLabel;
+            }
             foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 90, () => place.Memory.Broken.Contains(secret)))) yield return x;
             Check(ok && label == "CRACKED PANEL" && place.Memory.Broken.Contains(secret) && secret.WallCells.All(c => inst.Blocks.Get(c).IsAir),
                 $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the survival tool");

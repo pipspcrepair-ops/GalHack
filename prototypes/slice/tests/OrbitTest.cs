@@ -280,6 +280,8 @@ public partial class OrbitTest : Node
     Vector3 Door => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, _door));
     Vector3 Outward => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitX * Math.Sign(_door.X)).ToGodot();
     Vector3 CellAt(int x, int y, int z) => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, new Int3(x, y, z)));
+    /// <summary>Where the eye goes to bring the middle of the body to a cell: a suit floats at any tilt to a drifting hull, and only its middle fits a door's.</summary>
+    Vector3 BodyAt(int x, int y, int z) => CellAt(x, y, z) + (_game.Survivor.WorldEye() - _game.Survivor.WorldFeet) * 0.5f;
     /// <summary>Half a metre up the hull's own axis: the suit's eye over a door's middle, so the legs clear its sill.</summary>
     Vector3 Lift => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitY * 0.5f).ToGodot();
 
@@ -364,8 +366,11 @@ public partial class OrbitTest : Node
         Int3 box = ship.Blocks().Where(b => ship.TypeOf(b.block).IsContainer).Select(b => b.pos).OrderBy(p => p.Z).First();
         Int3 bulkhead = ship.Blocks().Where(b => ship.TypeOf(b.block).IsDoor && b.block.Open && b.pos.Z > 0).Select(b => b.pos).First();
         foreach (int x in _pilot.FloatTo(() => CellAt(0, 1, _door.Z), 0.9f, 25f)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.9f, 25f)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
+
+        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.4f, 25f)) yield return x;
+
+        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
+
         Vector3 BoxAt() => CellAt(box.X, box.Y, box.Z); // read live: a dead hull drifts
         // Up off the deck first: the suit's thrusters don't slide along a floor they press into, and a wide hold's box is out of arm's reach from the middle.
         foreach (int x in _pilot.FloatTo(() => CellAt(box.X - Math.Sign(box.X), 2, box.Z), 1.0f, 15f)) yield return x;
@@ -373,9 +378,10 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.Stop()) yield return x;
         foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
         Bill hold = _wreck.Storage.Contents;
+        string boxPrompt = _game.UsePrompt();
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(_game.Opened?.Vessel == _wreck && !hold.IsEmpty, $"E on a cargo box opens the wreck's hold beside the bag: {_game.Zone.Data.Items.Describe(hold, 5)}");
+        Check(_game.Opened?.Vessel == _wreck && !hold.IsEmpty, $"E on a cargo box ('{boxPrompt}', {_game.Survivor.WorldEye().DistanceTo(BoxAt()):F1} m off) opens the wreck's hold beside the bag: {_game.Zone.Data.Items.Describe(hold, 5)}");
         Bill before = _game.Pack.Storage.Contents;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;

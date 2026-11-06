@@ -268,8 +268,14 @@ public sealed class PlaceWalk
             }
             DoorsOpened++;
         }
-        foreach (int x in Step(far, 0.3f, 8f, r => ok = r)) yield return x;
-        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2})");
+        // A jammed door's gap has little to spare: line up on it, and back off and line up again if a leaf catches you.
+        for (int tries = 0; tries < 3; tries++)
+        {
+            if (tries > 0 || d.Jammed) foreach (int x in Step(near, 0.1f, 3f, _ => { })) yield return x;
+            foreach (int x in Step(far, 0.3f, tries == 0 ? 8f : 5f, r => ok = r)) yield return x;
+            if (ok) break;
+        }
+        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2}, {d.Width:F1} m wide, feet {_game.Survivor.WorldFeet}, from {near} to {far})");
         done(ok);
     }
 

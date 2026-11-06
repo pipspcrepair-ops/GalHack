@@ -446,6 +446,17 @@ public sealed class Driver
     public bool OnSurface => Game.Survivor.WorldFeet.Y > Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y - 1.0f;
 
     /// <summary>Walks up to a vessel's seat and takes it.</summary>
+    /// <summary>What stands in the way of the feet, ankle and chest high, along the look.</summary>
+    IEnumerable<string> Blockers()
+    {
+        Vector3 feet = Game.Survivor.WorldFeet, look = Game.Survivor.WorldLook() with { Y = 0f };
+        foreach (float up in new[] { 0.3f, 1.2f })
+        {
+            var r = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(feet + Vector3.Up * up, feet + Vector3.Up * up + look.Normalized() * 2f));
+            yield return r.Count == 0 ? "clear" : $"{r["collider"]} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
+        }
+    }
+
     public IEnumerable<int> Board(Vessel v)
     {
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
@@ -463,7 +474,7 @@ public sealed class Driver
         Controls.Hold(Key.W, false);
         Controls.Hold(Key.Space, false);
         foreach (int x in LookAt(seat, 4)) yield return x;
-        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat})");
+        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat}; feet {Game.Survivor.WorldFeet}, ground {Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y:F2}, on the floor {Game.Survivor.Body.OnFloor}, bike {Game.Survivor.OnBike != null}, seated {Game.Survivor.Seated?.Name}, menu {Game.Menu.IsOpen}, dead {Game.Suit.Dead}, hit {string.Join(" / ", Blockers())})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
     }
