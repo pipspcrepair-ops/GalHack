@@ -708,3 +708,33 @@ site works_sewage_high
   style concrete
   entrance 0 0 north
   part grand 0 0 what sewage tech high
+
+site estate_farm_low
+  name Old Farm
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech low
+
+site estate_farm_mid
+  name Old Farm
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech mid
+
+site estate_farm_high
+  name Agri-Station
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech high
+
+site complex_mid
+  name Industrial Complex
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what complex tech mid
+
+site complex_high
+  name Industrial Complex
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what complex tech high

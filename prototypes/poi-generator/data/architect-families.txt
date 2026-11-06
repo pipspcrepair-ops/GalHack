@@ -594,37 +594,35 @@ family abandoned_factory
 family old_farm
   tier site
   siting flat
-  rise 10
+  rise 32
   name Old Farm
-  pitch Fields gone wild, empty pens, silos against the sky, and a cellar nobody opened.
+  pitch A great barn across the yard, silos against the sky, fields gone wild to the fence line.
   faction none
   roster raiders
-  site farm_mid
+  site estate_farm_mid
   core none
   owner none
   rarity common
   biomes steppe desert fungal rock
   territory any
   spacing 14
-  reveal 400
-  ominous 0.4
+  reveal 900
+  ominous 0.3
   wrong 0.05
-  tags farm fuel
-  states active 1 abandoned 6 infested 2 ruined 2
+  tags farm fuel grand
+  states active 1 abandoned 6 infested 1 ruined 3
   variant Old Homestead
     seed 9501
-    site farm_low
+    site estate_farm_low
     tech low
-  variant Harlow Farmstead
+  variant Mixed Farm
     seed 9502
+    site estate_farm_mid
     tech mid
-  variant Greenline Agri-Complex
+  variant Agri-Station
     seed 9503
-    site agri_complex
+    site estate_farm_high
     tech high
-
-# ---- Faction working sites: most of what a faction holds is working ground, with defenders and
-# a core. Old-world versions turn up abandoned or ruined anywhere.
 
 family vharn_sam_site
   tier base
@@ -907,3 +905,36 @@ family survivor_town
     seed 9692
   variant Town West
     seed 9693
+
+family works_complex
+  tier base
+  siting flat
+  rise 96
+  name Industrial Complex
+  pitch A walled precinct of concrete and pipework, its stack and tower seen from kilometres off, and nobody left to say what it made.
+  faction none
+  roster oldworld
+  site complex_mid
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 40
+  reveal 2600
+  ominous 0.55
+  wrong 0.1
+  tags industry grand
+  states active 0 abandoned 6 infested 1 ruined 3
+  variant Consolidated Works Seven
+    seed 9901
+    site complex_mid
+    tech mid
+  variant Processing Complex Four
+    seed 9902
+    site complex_mid
+    tech mid
+  variant Tessel Heavy Materials
+    seed 9903
+    site complex_high
+    tech high
