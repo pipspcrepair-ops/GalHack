@@ -183,8 +183,8 @@ public partial class DamageTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(armour.Structure.Get(new Int3(1, 1, 0)).Hp == armour.Structure.MaxHp(armour.Structure.Get(new Int3(1, 1, 0))), "the tool's small bolt doesn't get through hardened armour");
 
-        foreach (int x in _drive.Wait(60 * 6)) yield return x;
-        Check(v.View.Fx.Chips == 0, "six seconds on, every chip has settled and faded: nothing is left floating");
+        foreach (int x in _drive.Wait(60 * 8)) yield return x; // a chip lives up to 3 s in the air, 3 s at rest and 1.2 s fading
+        Check(v.View.Fx.Chips == 0, "eight seconds on, every chip has settled and faded: nothing is left floating");
     }
 
     IEnumerable<int> Crash()

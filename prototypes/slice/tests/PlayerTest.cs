@@ -870,6 +870,9 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.LookAt(pack.Position + Vector3.Up * 0.25f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        // On a bank over a walker's head: up on the jetpack and E from the air, as for the creature's body.
+        if (_game.Opened?.Loot != pack)
+            foreach (int x in _drive.HopToward(pack.Position + Vector3.Up * 0.25f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == pack, () => _game.Controls.Tap(Key.E))) yield return x;
         if (_game.Opened?.Loot != pack)
             GD.Print($"  (E at the backpack: \"{_said}\"; feet {_game.Survivor.WorldFeet}, the backpack at {pack.Position}, {_game.Survivor.WorldFeet.DistanceTo(pack.Position):F1} m; menu {_game.Menu.IsOpen})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;

@@ -720,8 +720,8 @@ public partial class PlaceTest : Node
             // A chamber under a place or too shallow to count as underground: the next one out, as a player would try.
             for (float r = searched + 60f; r < 900f && game.Caves.Found == 0; r += 60f)
             {
-                Vector3 was = game.Survivor.WorldFeet;
-                GD.Print($"  (no chamber round {was}, ground {game.Zone.GroundAt(was.X, was.Z).Y:F1}, in a place {game.Places.PlaceAt(was) != null}: on to the next)");
+                Vector3 spot = game.Survivor.WorldFeet;
+                GD.Print($"  (no chamber round {spot}, ground {game.Zone.GroundAt(spot.X, spot.Z).Y:F1}, in a place {game.Places.PlaceAt(spot) != null}: on to the next)");
                 Vector3? next = null;
                 for (int a = 0; a < 24 && next == null; a++)
                 {
