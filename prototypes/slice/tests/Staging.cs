@@ -74,6 +74,7 @@ public sealed partial class Staging
             "cache" => PlaceCache(),
             "town" => TownView(),
             "salvage" => Salvage(),
+            "hoverbike" => HoverBikeView(),
             "bunkerclose" => BunkerClose(),
             _ => OrbitViews(view),
         };

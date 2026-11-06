@@ -353,6 +353,7 @@ public partial class Visor : CanvasLayer
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
+            HandKind.Vehicle => "click to set it down",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
@@ -395,6 +396,8 @@ public partial class Visor : CanvasLayer
                     ToolMode.Deconstruct => "SURVIVAL TOOL · DECONSTRUCT",
                     _ => "SURVIVAL TOOL · GATHER",
                 };
+            case HandKind.Vehicle:
+                return "HOVER BIKE · click to set it down";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"

@@ -3,6 +3,7 @@ using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
 using Slice.Surface;
+using Slice.Vehicles;
 using Slice.Vessels;
 using N = System.Numerics;
 
@@ -36,6 +37,12 @@ public sealed class Survivor
 
     /// <summary>The vessel whose seat the survivor sits in, or null.</summary>
     public Vessel Seated { get; private set; }
+
+    /// <summary>The zone's hover bikes (set by the game).</summary>
+    public HoverBikes Bikes;
+
+    /// <summary>The hover bike being ridden, or null.</summary>
+    public HoverBike OnBike { get; private set; }
 
     /// <summary>The structure whose cabin world the survivor is in (inside or on its hull), or null.</summary>
     public Vessel Aboard => Body.Frame == null ? null : Zone.VesselOf(Body.Frame);
@@ -94,6 +101,14 @@ public sealed class Survivor
         PhysicsRules.RidingData rules = Zone.Physics.Rules.Riding;
         _rejoinBlocked -= dt;
         if (Body.OnFloor) Zone.Weather.Bridge?.Landed(Body); // a fling's protection ends on touching down
+
+        if (OnBike != null)
+        {
+            Body.Position = (OnBike.Position + new Vector3(0f, HoverBike.EyeAt.Y - EyeHeight, 0f)).ToNumerics();
+            Body.Velocity = N.Vector3.Zero;
+            Binding.Teleport();
+            return;
+        }
 
         if (Seated != null)
         {
@@ -212,6 +227,42 @@ public sealed class Survivor
         return true;
     }
 
+    /// <summary>Gets on a hover bike: the body sleeps and the bike carries it (the camera rides the bike's seat).</summary>
+    public bool Mount(HoverBike bike)
+    {
+        if (OnBike != null || Seated != null || Body.Frame != null) return false;
+        OnBike = bike;
+        bike.Ridden = true;
+        Body.Asleep = true;
+        Node.CollisionLayer = 0;
+        Node.CollisionMask = 0;
+        Yaw = bike.Yaw;
+        Pitch = -0.05f;
+        return true;
+    }
+
+    /// <summary>Gets off beside the bike, on its right, on its own height of ground.</summary>
+    public void Dismount()
+    {
+        HoverBike bike = OnBike;
+        if (bike == null) return;
+        OnBike = null;
+        bike.Ridden = false;
+        bike.Throttle = bike.Steer = 0f;
+        bike.Boost = bike.Hop = false;
+        Body.Asleep = false;
+        Node.CollisionLayer = Layers.Player;
+        Node.CollisionMask = Layers.PlayerMask;
+        Vector3 beside = bike.Position + bike.Right * 1.3f;
+        float ground = Bikes != null ? Bikes.SurfaceAt(beside.X, beside.Z, bike.Position.Y + 3f, out _) : bike.Position.Y - HoverBike.Hover;
+        Body.Position = new N.Vector3(beside.X, ground + 0.15f, beside.Z);
+        Body.Velocity = N.Vector3.Zero;
+        Body.Rotation = N.Quaternion.Identity;
+        Body.Up = N.Vector3.UnitY;
+        ViewFrame = N.Quaternion.Identity;
+        Binding.Teleport();
+    }
+
     static GalHack.Structures.Int3 FirstChair(Vessel vessel) => System.Linq.Enumerable.First(vessel.Chairs);
 
     /// <summary>Gets up from the seat, a step behind it.</summary>
@@ -266,6 +317,7 @@ public sealed class Survivor
     public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default)
     {
         if (Seated != null) StandUp();
+        if (OnBike != null) Dismount();
         if (Body.Frame != null) Leave();
         Body.Position = feet;
         Body.Velocity = velocity;
@@ -286,6 +338,8 @@ public sealed class Survivor
         if (Seated is Vessel seat)
             return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
+        if (OnBike != null)
+            return new Transform3D(look, OnBike.Node.GetGlobalTransformInterpolated() * HoverBike.EyeAt);
         Basis frame = ViewFrame.ToBasis();
         var local = new Transform3D(frame * look, feet + frame.Y * EyeHeight);
         Vessel aboard = Aboard;

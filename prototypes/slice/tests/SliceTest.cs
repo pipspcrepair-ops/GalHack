@@ -120,6 +120,7 @@ public partial class SliceTest : Node
             foreach (int x in Gather()) yield return x;
             foreach (int x in CutPlant()) yield return x;
             foreach (int x in OreRock()) yield return x;
+            foreach (int x in HoverBike()) yield return x;
         }
         // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
         // the parts the Skiff's bill needs and opens the tech tree. The real-player test
@@ -260,6 +261,86 @@ public partial class SliceTest : Node
     }
 
     /// <summary>A rock over a deposit stops the ray and the walker, and the tool breaks it down: a little ore a pulse, then it digs on through.</summary>
+    /// <summary>The hover bike: set down from the toolbar, F to ride, fast and hovering above the ground, over water as if it were ground, F to get off, E to pick it up.</summary>
+    IEnumerable<int> HoverBike()
+    {
+        GD.Print("-- the hover bike --");
+        var surf = _game.Zone;
+        Vector3 spot = default;
+        for (int i = 0; i < 80; i++)
+        {
+            float a = i * 0.7f, r = 14f + i * 2.5f;
+            var p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
+            float h = surf.GroundAt(p.X, p.Z).Y, spread = 0f;
+            for (int k = 0; k < 8; k++)
+                spread = MathF.Max(spread, MathF.Abs(surf.GroundAt(p.X + MathF.Cos(k * 0.785f) * 12f, p.Z + MathF.Sin(k * 0.785f) * 12f).Y - h));
+            if (h > 1f && spread < 0.5f) { spot = surf.GroundAt(p.X, p.Z); break; }
+        }
+        if (spot == default) spot = surf.GroundAt(_game.Survivor.WorldFeet.X + 20f, _game.Survivor.WorldFeet.Z);
+        _game.Survivor.PlaceOutside((spot + Vector3.Up * 0.2f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        _game.Pack.Storage.Add("hover-bike", 1);
+        _game.Pack.Grid[1].Item = "hover-bike";
+        _game.Pack.Grid[1].Count = 1;
+        _game.Pack.Grid.Reconcile();
+        foreach (int x in new Playthrough(_game).Select(1)) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Vehicle, "the hover bike on the toolbar is in hand as a vehicle");
+        foreach (int x in _drive.LookAt(_game.Survivor.WorldFeet + new Vector3(0f, -1f, 0f) + new Vector3(0f, 0f, -2.5f).Rotated(Vector3.Up, _game.Survivor.Yaw), 6)) yield return x;
+        foreach (int x in _drive.Click()) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Check(_game.Bikes.All.Count == 1 && _game.Pack["hover-bike"] == 0, "clicking sets the hover bike down and takes it from the pack");
+        Slice.Vehicles.HoverBike bike = _game.Bikes.All.Count > 0 ? _game.Bikes.All[0] : null;
+        if (bike == null) yield break;
+        float ground = surf.GroundAt(bike.Position.X, bike.Position.Z).Y;
+        Check(MathF.Abs(bike.Position.Y - ground - Slice.Vehicles.HoverBike.Hover) < 0.3f, $"it hovers above the ground ({bike.Position.Y - ground:F2} m up)");
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        Check(_game.Survivor.OnBike == bike, "F gets on the hover bike");
+        Vector3 from = bike.Position;
+        float top = 0f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 100; i++) { yield return 0; top = MathF.Max(top, bike.Speed); }
+        _game.Controls.Hold(Key.W, false);
+        float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
+        Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
+        Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
+        foreach (int x in _drive.Wait(90)) yield return x;
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        Check(_game.Survivor.OnBike == null && _game.Survivor.WorldFeet.DistanceTo(bike.Position) < 4f && _game.Survivor.Body.Asleep == false, "F again gets off, beside the bike");
+        foreach (int x in _drive.LookAt(bike.Seat, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        Check(_game.Bikes.All.Count == 0 && _game.Pack["hover-bike"] == 1, "E at the bike picks it up again");
+
+        // Over water: any lake or sea within reach, found in the terrain's own height field.
+        var source = _game.Zone.Planet.Source;
+        Vector3? lake = null;
+        for (int ring = 1; ring <= 30 && lake == null; ring++)
+            for (int k = 0; k < 24 && lake == null; k++)
+            {
+                float a = k * MathF.Tau / 24f, r = ring * 25f;
+                float wx = _game.Survivor.WorldFeet.X + MathF.Cos(a) * r, wz = _game.Survivor.WorldFeet.Z + MathF.Sin(a) * r;
+                bool deep = true;
+                for (int d = 0; d < 8 && deep; d++)
+                    deep = source.SurfaceHeight(wx + MathF.Cos(d * 0.785f) * 40f, wz + MathF.Sin(d * 0.785f) * 40f) < source.WaterLevel - 1f;
+                if (deep) lake = new Vector3(wx, source.WaterLevel, wz);
+            }
+        if (lake is not Vector3 water) { GD.Print("  (no lake within 750 m of the castaway on this world: the water ride is not tried)"); yield break; }
+        Slice.Vehicles.HoverBike boat = _game.Bikes.Place(water, 0f);
+        boat.Ridden = true;
+        boat.Throttle = 1f;
+        float lowest = float.MaxValue, highest = float.MinValue;
+        Vector3 start = boat.Position;
+        for (int i = 0; i < 150; i++)
+        {
+            yield return 0;
+            lowest = MathF.Min(lowest, boat.Position.Y);
+            highest = MathF.Max(highest, boat.Position.Y);
+        }
+        float skimmed = new Vector2(boat.Position.X - start.X, boat.Position.Z - start.Z).Length();
+        Check(boat.OnWater && lowest > source.WaterLevel + 0.4f && highest < source.WaterLevel + 1.6f && skimmed > 15f,
+            $"over a lake the hover bike skims it as ground: {skimmed:F0} m, riding {lowest - source.WaterLevel:F2} to {highest - source.WaterLevel:F2} m above the water");
+        _game.Bikes.Remove(boat);
+    }
+
     IEnumerable<int> OreRock()
     {
         GD.Print("-- an ore rock --");

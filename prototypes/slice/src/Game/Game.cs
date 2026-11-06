@@ -13,6 +13,7 @@ using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Ui;
+using Slice.Vehicles;
 using Slice.Vessels;
 using SurvivalVitals.Model;
 using Progress = Slice.Items.Progress;
@@ -180,6 +181,7 @@ public partial class Game : Node3D
     Vector3 Focus()
     {
         if (Survivor == null) return Zone.IsBuilt ? Start : Vector3.Zero;
+        if (Survivor.OnBike is HoverBike bike) return bike.Position + new Vector3(bike.Velocity.X, 0f, bike.Velocity.Z).LimitLength(48f) * 0.5f;
         if (Survivor.Seated is Vessel v)
         {
             // Streaming leads a flying vessel a little, so the ground ahead has collision when it gets there.
@@ -218,6 +220,10 @@ public partial class Game : Node3D
         var debris = new PlanetSurface.Fx.Debris { Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f };
         Zone.AddChild(debris);
         Tool.Debris = debris;
+        Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
+        Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
+        Zone.AddChild(Bikes);
+        Survivor.Bikes = Bikes;
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
         Tool.CreatureHit += c => Visor.Hit();
@@ -259,6 +265,9 @@ public partial class Game : Node3D
 
     }
 
+    /// <summary>The hover bikes standing in the world.</summary>
+    public HoverBikes Bikes { get; private set; }
+
     /// <summary>Creatures' collision, from their own bodies.</summary>
     public CreatureBodies Bodies { get; private set; }
 
@@ -293,13 +302,65 @@ public partial class Game : Node3D
         if (c.WasPressed(Key.L)) ToggleTorch();
         if (Suit.Dead)
         {
+            Survivor.Dismount();
             if (c.WasPressed(Key.R)) Respawn();
             Survivor.Legs.Move = default;
             Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
             return;
         }
-        if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
+        if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
+        else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
+    }
+
+    /// <summary>On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The mouse looks.</summary>
+    void Ride(HoverBike bike, Controls c)
+    {
+        Survivor s = Survivor;
+        s.Legs.Move = default;
+        s.Legs.Jump = s.Legs.Jetpack = false;
+        s.Legs.Vertical = 0f;
+        bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
+        if (!Menu.IsOpen)
+        {
+            s.Yaw -= c.Look.X * 0.0025f;
+            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
+        }
+        if (c.WasPressed(Key.F) && !Menu.IsOpen)
+        {
+            s.Dismount();
+            Say("Off the hover bike", Tones.Text);
+            return;
+        }
+        bike.Throttle = typing ? 0f : c.Axis(Key.W, Key.S);
+        bike.Steer = typing ? 0f : c.Axis(Key.D, Key.A);
+        bike.Boost = !typing && c.IsHeld(Key.Shift);
+        bike.Hop = !typing && c.IsHeld(Key.Space);
+    }
+
+    /// <summary>Sets the hover bike in hand down on the ground in front of you.</summary>
+    void PlaceBike()
+    {
+        if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
+        {
+            Say("Look at open ground to set the hover bike down", Tones.Caution);
+            return;
+        }
+        if (Pack.Remove("hover-bike", 1) < 1) return;
+        Pack.Grid.Reconcile();
+        Bikes.Place(look.Point, Survivor.Yaw);
+        Say("Hover bike set down: F to ride, E to pick it up", Tones.Good);
+    }
+
+    /// <summary>E at a standing hover bike: it goes back in the pack.</summary>
+    bool PickUpBike(Vector3 eye, Vector3 dir)
+    {
+        if (Bikes.Aimed(eye, dir, UseReach) is not HoverBike bike) return false;
+        Bill left = Pack.Add("hover-bike", 1);
+        if (!left.IsEmpty) SetDown(left, bike.Position);
+        Bikes.Remove(bike);
+        Say("Hover bike packed away", Tones.Text);
+        return true;
     }
 
     void Walk(Controls c)
@@ -450,7 +511,13 @@ public partial class Game : Node3D
             float d = v.NearestChair(eye, out _);
             if (d < bestDistance) { best = v; bestDistance = d; }
         }
-        if (best == null) Say("No seat within reach", Tones.Caution);
+        HoverBike bike = Bikes.Nearest(eye, bestDistance, out _);
+        if (bike != null && Survivor.Mount(bike))
+        {
+            Say("On the hover bike: W/S throttle, A/D steer, Shift boost, Space hop, F get off", Tones.Text);
+            return;
+        }
+        if (best == null) Say("No seat or hover bike within reach", Tones.Caution);
         else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
     }
 
@@ -472,6 +539,8 @@ public partial class Game : Node3D
             Controls.EndTick();
             return;
         }
+        Bikes.Tick(dt);
+        if (Survivor.OnBike is HoverBike ridden) Survivor.Yaw += ridden.LastTurn;
         Survivor.AfterPhysics(dt);
         Suit.Tick(dt, Survivor);
         Target.Sync();
@@ -480,7 +549,7 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
-        bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen;
+        bool hands = !Suit.Dead && Survivor.Seated == null && Survivor.OnBike == null && !Menu.IsOpen;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
@@ -499,6 +568,7 @@ public partial class Game : Node3D
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
+        else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
         if (!hands || !(building || deconstruct)) Builder.Hide();
         TickMachines(dt);
         CheckDeath();
@@ -615,7 +685,7 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
-        if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false ? 3 : 2;
+        if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
