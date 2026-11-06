@@ -75,7 +75,7 @@ public partial class PlacePerf : Node
         }
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
-        if (_args.TryGetValue("family", out string family)) PoiSiting.ForceFamily = family;
+        if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
         ProcessPhysicsPriority = 100;

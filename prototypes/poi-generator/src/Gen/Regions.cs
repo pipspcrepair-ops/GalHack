@@ -224,6 +224,11 @@ public sealed class RegionPlan
             foreach (string id in large.OrderBy(_ => _r.Float()))
                 if (!seated && Spot(_landing.X, _landing.Z, 700, 1300, id) is { } near)
                     seated = Add(id, near.X, near.Z, home, "landmark", "the works the old town by the landing lived on") != null;
+            // Rough country round the landing: the nearest level ground that will take one.
+            if (!seated)
+                foreach (string id in large)
+                    if (!seated && Spot(_landing.X, _landing.Z, 1300, 2600, id) is { } further)
+                        seated = Add(id, further.X, further.Z, home, "landmark", "the works the old town by the landing lived on") != null;
             for (int n = seated ? 1 : 0; n < 2; n++)
                 if (Choose(options) is { } id && Spot(_landing.X, _landing.Z, 800, 1500, id) is { } s)
                     Add(id, s.X, s.Z, home, "landmark", "what the old town by the landing lived on");
