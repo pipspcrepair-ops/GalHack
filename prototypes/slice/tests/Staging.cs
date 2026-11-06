@@ -61,6 +61,8 @@ public sealed partial class Staging
             "damage-gunfire" => DamageGunfire(),
             "damage-wall" => DamageWall(),
             "damage-repair" => DamageRepair(),
+            "thruster-hull" => ThrusterHull(inside: false),
+            "thruster-interior" => ThrusterHull(inside: true),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
         foreach (int x in script) yield return x;

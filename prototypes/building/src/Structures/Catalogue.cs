@@ -198,7 +198,7 @@ public sealed class Catalogue
                             if (cover == Coverage.Full) _full[i] |= bit;
                             bool occludes = t.IsArmor
                                 ? !t.Transparent && cover == Coverage.Full
-                                : BlockType.Has(open == 1 ? t.CoverFacesOpen : t.CoverFaces, local);
+                                : BlockType.Has(open == 1 ? t.CoverFacesOpen : t.CoverFaces, local) && PartsCover(t, local, open == 1);
                             if (occludes) _occlude[i] |= bit;
                             bool seals = t.IsArmor
                                 ? t.Airtight && cover == Coverage.Full
@@ -207,6 +207,23 @@ public sealed class Catalogue
                         }
                     }
         }
+    }
+
+    /// <summary>
+    /// True if an opaque part really lays a whole cell face here, measured as armour's shapes
+    /// are: <c>covers</c> in the data can only narrow this. A thruster's body stops short of its
+    /// nozzle end, so its sides cover 70% of the cell, and hiding the face behind them would leave
+    /// a hole through the construct.
+    /// </summary>
+    static bool PartsCover(BlockType t, Dir local, bool open)
+    {
+        foreach (Part part in t.Parts)
+        {
+            if (part.Style == PartStyle.Glass || (open && part.ClosedOnly)) continue;
+            foreach (Polygon poly in part.Polygons)
+                if (poly.Boundary == local && poly.Area() > 0.999f) return true;
+        }
+        return false;
     }
 
     /// <summary>Full hit points of a placed block: the type's, scaled by the grid and the shape's volume.</summary>

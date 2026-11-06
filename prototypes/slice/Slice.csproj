@@ -76,5 +76,6 @@
 
     <!-- Test helpers, used where they live: planet-surface's per-frame timing probe. -->
     <Compile Include="..\planet-surface\tests\FrameProbe.cs" />
+    <Compile Include="..\building\tests\OcclusionCheck.cs" />
   </ItemGroup>
 </Project>

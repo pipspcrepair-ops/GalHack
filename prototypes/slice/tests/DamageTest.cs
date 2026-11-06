@@ -85,6 +85,14 @@ public partial class DamageTest : Node
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
 
+        // The slice's catalogue has blocks building's own doesn't: constructors, guns, precursor alloy.
+        foreach (GridDef grid in Cat.Grids)
+        {
+            BlockBuilding.OcclusionCheck.Result r = BlockBuilding.OcclusionCheck.Run(Cat, grid);
+            foreach (string w in r.Worst) GD.Print($"      {grid.Id}: {w}");
+            Check(r.Holes == 0, $"no block leaves a hole: {grid.Id} grid, {r.Cases} cases, {r.Culled} cube faces hidden, {r.Holes} holes");
+        }
+
         foreach (int x in Shots()) yield return x;
         foreach (int x in Crash()) yield return x;
         foreach (int x in Ram()) yield return x;

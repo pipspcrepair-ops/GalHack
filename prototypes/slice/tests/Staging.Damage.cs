@@ -114,6 +114,36 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(4)) yield return x;
     }
 
+    /// <summary>
+    /// Thrusters set into a hull box, from the side that used to show a hole, or from inside it.
+    /// Large grid, so the 30% of each side the thruster doesn't cover is plain to see.
+    /// </summary>
+    IEnumerable<int> ThrusterHull(bool inside)
+    {
+        foreach (int x in DamageSetting()) yield return x;
+        var cat = _game.Zone.Data.Catalogue;
+        var s = new Structure(cat, cat.Grid(GridSize.Large)) { Name = "Thrust" };
+        // A hollow box with an open back, three thrusters in a row along its top edge, nozzles out.
+        for (int x = 0; x < 5; x++)
+            for (int y = 0; y < 4; y++)
+                for (int z = 0; z < 5; z++)
+                {
+                    bool shell = x == 0 || x == 4 || y == 0 || y == 3 || z == 0;
+                    bool open = z == 4 && y > 0 && y < 3 && x > 0 && x < 4;
+                    if (shell && !open) s.Set(new Int3(x, y, z), Building.Make(s, cat.Type("steel")));
+                }
+        s.Set(new Int3(0, 4, 3), Building.Make(s, cat.Type("thruster")));
+        s.Set(new Int3(2, 2, 4), Building.Make(s, cat.Type("thruster")));
+        s.Set(new Int3(3, 1, 3), Building.Make(s, cat.Type("thruster")));
+        s.DirtyChunks.Clear();
+        Vessel v = Vessel.SpawnBase(_game.Zone, s, DamageSite() + new N.Vector3(0f, 1.5f, 0f), 0f);
+        foreach (int x in _drive.Wait(4)) yield return x;
+        Vector3 local(float x, float y, float z) => v.ToWorld(new N.Vector3(x, y, z));
+        if (inside) Aim(local(1.2f, 2.6f, 2.2f), local(6f, 3.2f, 7.5f));
+        else Aim(local(-5.5f, 11.5f, 11f), local(0f, 8f, 6f));
+        foreach (int x in _drive.Wait(4)) yield return x;
+    }
+
     /// <summary>A damaged block and the same block repaired beside it, paid for from the structure's storage.</summary>
     IEnumerable<int> DamageRepair()
     {
