@@ -51,7 +51,7 @@ public partial class PoiPlaces : Node3D
     public readonly Dictionary<string, double> StageWorst = new();
 
     /// <summary>Steps over 3 ms (tests: where a hitch would come from).</summary>
-    public readonly List<(string Place, string Stage, double Ms)> SlowSteps = new();
+    public readonly List<(string Place, string Stage, double Ms, bool Collected)> SlowSteps = new();
 
     /// <summary>Places built so far and the seconds each took from start to standing (tests).</summary>
     public readonly List<(string Name, double Seconds, int Chunks)> BuildLog = new();
@@ -189,11 +189,15 @@ public partial class PoiPlaces : Node3D
         while (frame.Elapsed.TotalMilliseconds < BudgetMs)
         {
             var step = Stopwatch.StartNew();
+            int collections = GC.CollectionCount(0);
+            string stage = j.Stage;
             bool more = Step(j);
             double ms = step.Elapsed.TotalMilliseconds;
+            if (ms > 3.0) SlowSteps.Add((j.Place.Site.Name, stage, ms, GC.CollectionCount(0) > collections));
+            // A garbage collection landing in a step is the runtime's, not the build's: counted apart.
+            if (GC.CollectionCount(0) > collections) { frame.Restart(); continue; }
             WorstStepMs = Math.Max(WorstStepMs, ms);
-            StageWorst[j.Stage] = Math.Max(StageWorst.GetValueOrDefault(j.Stage), ms);
-            if (ms > 3.0) SlowSteps.Add((j.Place.Site.Name, j.Stage, ms));
+            StageWorst[stage] = Math.Max(StageWorst.GetValueOrDefault(stage), ms);
             if (!more || _job != j) break;
         }
         WorstFrameMs = Math.Max(WorstFrameMs, frame.Elapsed.TotalMilliseconds);

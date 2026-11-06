@@ -185,6 +185,7 @@ public sealed class FrameTarget : ITarget
     public Vector3 Position => _world() - _origin();
     public Vector3 Forward => _inner.Forward;
     public Health Health => _inner.Health;
-    public bool Attackable => _inner.Attackable;
+    /// <summary>What lives in a place or a cave can reach you there, under its roof: only on foot and alive.</summary>
+    public bool Attackable => _inner is Slice.Game.PlayerTarget p ? p.OnFoot : _inner.Attackable;
     public float ThreatScale => _inner.ThreatScale;
 }

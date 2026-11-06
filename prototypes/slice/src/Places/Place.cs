@@ -59,6 +59,16 @@ public partial class Place : Node3D
         return new Int3(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z));
     }
 
+    /// <summary>In the place's rooms, under a roof.</summary>
+    public bool Roofed(Vector3 world)
+    {
+        Int3 c = CellAt(world) + Int3.Up;
+        if (!Inst.Layout.Occupied[c]) return false;
+        for (int y = c.Y + 1; y <= Inst.Blocks.Max.Y; y++)
+            if (!Inst.Blocks.Get(c with { Y = y }).IsAir) return true;
+        return false;
+    }
+
     /// <summary>A cell's middle in the world.</summary>
     public Vector3 WorldOf(Int3 c, float up = 0.5f) => GlobalPosition + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
 
@@ -167,6 +177,38 @@ public partial class Place : Node3D
     {
         if (!Ready || Dormant) return;
         TickLights((float)delta);
+    }
+}
+
+public partial class Place
+{
+    /// <summary>
+    /// Walking routes in a place (the generator's own A* over its cells), with the dressing's
+    /// solid pieces standing in as obstacles, so a route goes round a desk rather than into it.
+    /// </summary>
+    public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m) => NavOf(m, m.Rooms);
+
+    public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m, Dictionary<int, PlaceRoom> rooms)
+    {
+        var blocked = new HashSet<Int3>(rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>());
+        return new PoiGenerator.Gen.NavGrid(new Overlay(m.Inst.Blocks, blocked), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
+    }
+
+    public PoiGenerator.Gen.NavGrid Nav() => NavOf(Memory);
+
+    /// <summary>The blocks with the dressing's solid pieces standing in.</summary>
+    sealed class Overlay : IBlockStructure
+    {
+        readonly BlockGrid _g;
+        readonly HashSet<Int3> _blocked;
+        static readonly Block Crate = new(BlockType.Crate, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
+        public Overlay(BlockGrid g, HashSet<Int3> blocked) { _g = g; _blocked = blocked; }
+        public Int3 Min => _g.Min;
+        public Int3 Size => _g.Size;
+        public bool InBounds(Int3 p) => _g.InBounds(p);
+        public Block Get(Int3 p) => _blocked.Contains(p) && _g.Get(p).IsAir ? Crate : _g.Get(p);
+        public void Set(Int3 p, Block b) => _g.Set(p, b);
+        public int CountBlocks() => _g.CountBlocks();
     }
 }
 

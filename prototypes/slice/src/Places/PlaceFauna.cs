@@ -62,16 +62,16 @@ public sealed class PlaceFauna
         foreach (PlacedModule m in layout.Modules)
         {
             if (m.Kind == ModuleKind.Outdoor) continue;
+            if (Decor.Interior(inst, m) is not { } inside || inside.Height < 2) continue;
             var room = new PoiRoom
             {
                 Index = m.Index,
                 Kind = KindOf(m, ship),
-                Min = new Vector3(m.Min.X + 1, m.Min.Y + 1, m.Min.Z + 1),
-                Max = new Vector3(m.Max.X, m.Max.Y, m.Max.Z),
+                Min = new Vector3(inside.X0, inside.Y, inside.Z0),
+                Max = new Vector3(inside.X1 + 1, inside.Y + inside.Height, inside.Z1 + 1),
                 Depth = Math.Max(0, -m.Storey),
                 Dark = inst.State != PoiState.Active || m.Underground,
             };
-            if (room.Max.X <= room.Min.X || room.Max.Z <= room.Min.Z || room.Max.Y <= room.Min.Y) continue;
             byIndex[m.Index] = room;
             plan.Rooms.Add(room);
         }

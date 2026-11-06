@@ -30,7 +30,6 @@ public sealed partial class Town
     /// <summary>Paths between linked spots (worked out once), in local cells' walk points.</summary>
     readonly Dictionary<(int, int), List<Vector3>> _paths = new();
     PNav _nav;
-    HashSet<PInt3> _blocked;
     int[] _homes;
     string _tech;
 
@@ -84,26 +83,10 @@ public sealed partial class Town
         if (data == null || data.People.Count == 0 || data.Spots.Count < 2) return null;
         var town = new Town(m, data);
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
-        town._blocked = new HashSet<PInt3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<PInt3>());
-        town._nav = new PNav(new Overlay(m.Inst.Blocks, town._blocked), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
+        town._nav = Place.NavOf(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = data.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
         return town;
-    }
-
-    /// <summary>The blocks with the dressing's solid pieces standing in, so routes go round them.</summary>
-    sealed class Overlay : IBlockStructure
-    {
-        readonly BlockGrid _g;
-        readonly HashSet<PInt3> _blocked;
-        static readonly Block Crate = new(BlockType.Crate, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
-        public Overlay(BlockGrid g, HashSet<PInt3> blocked) { _g = g; _blocked = blocked; }
-        public PInt3 Min => _g.Min;
-        public PInt3 Size => _g.Size;
-        public bool InBounds(PInt3 p) => _g.InBounds(p);
-        public Block Get(PInt3 p) => _blocked.Contains(p) && _g.Get(p).IsAir ? Crate : _g.Get(p);
-        public void Set(PInt3 p, Block b) => _g.Set(p, b);
-        public int CountBlocks() => _g.CountBlocks();
     }
 
     static Vector3 Walk(PInt3 c) => new(c.X + 0.5f, c.Y, c.Z + 0.5f);

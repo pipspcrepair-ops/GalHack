@@ -101,6 +101,7 @@ public sealed class SurvivalTool
         Aim();
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
+        else if (StrikeCreature()) { }
         else if (!OnBlock && OnPlace) WorkPlace();
         else if (!OnBlock && !CutPlant()) Dig();
         else if (OnBlock)
@@ -190,6 +191,21 @@ public sealed class SurvivalTool
         if (edit.Headline == Verdict.Bedrock) Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning);
         Sfx?.Play(Sfx.Sound.Clank, at);
         return edit;
+    }
+
+    /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
+    bool StrikeCreature()
+    {
+        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
+        Creature c = _zone.Wildlife.Raycast(eye, dir, _rules.CutReach, out float distance, out Vector3 point);
+        if (c == null || c.Dead) return false;
+        if (OnPlace && _placePoint.DistanceTo(eye) < distance) return false;
+        _cooldown = 0.4f;
+        _suit.Worked();
+        _zone.Wildlife.Damage(c, _rules.ShotDamage * 0.5f * _zone.Wildlife.HitScale(c, point));
+        CreatureHit?.Invoke(c);
+        Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
+        return true;
     }
 
     /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>
@@ -308,7 +324,7 @@ public sealed class SurvivalTool
         {
             kind = ImpactKind.Creature;
             onto = null;
-            _zone.Wildlife.Damage(c, _rules.ShotDamage);
+            _zone.Wildlife.Damage(c, _rules.ShotDamage * _zone.Wildlife.HitScale(c, point));
             CreatureHit?.Invoke(c);
         }
         Vector3 muzzle = Muzzle();

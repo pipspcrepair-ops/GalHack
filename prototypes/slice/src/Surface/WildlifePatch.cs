@@ -267,6 +267,21 @@ public partial class WildlifePatch : Node3D
         return c.Position + origin;
     }
 
+    /// <summary>What a hit is worth by where it landed (zone frame): on a head half as much again, on the body as it is.</summary>
+    public float HitScale(Creature c, Vector3 point)
+    {
+        if (c.Rig == null) return 1f;
+        SimOf(c, out Vector3 origin, out _);
+        Vector3 p = point - origin;
+        float head = c.Species.Body.HeadSize * 0.6f;
+        for (int i = 0; i < c.Rig.HitCount; i++)
+        {
+            Vector4 s = c.Rig.Hits[i];
+            if (MathF.Abs(s.W - head) < 1e-3f && new Vector3(s.X, s.Y, s.Z).DistanceTo(p) < s.W * 1.1f) return 1.5f;
+        }
+        return 1f;
+    }
+
     /// <summary>The survivor hurts a creature, in whichever sim it lives.</summary>
     public void Damage(Creature c, float amount)
     {

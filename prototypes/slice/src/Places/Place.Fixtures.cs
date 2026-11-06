@@ -353,7 +353,7 @@ public partial class Place
         {
             if (Memory.Broken.Contains(s) || s.WallCells.Count == 0) continue;
             Int3 min = s.WallCells.Aggregate(Int3.Min), max = s.WallCells.Aggregate(Int3.Max);
-            Int3 f = s.Facing.Vec();
+            Int3 f = FoundFrom(s);
             var outward = new Vector3(f.X, f.Y, f.Z);
             var centre = new Vector3((min.X + max.X + 1) / 2f, min.Y + 1.2f, (min.Z + max.Z + 1) / 2f);
             var size = new Vector3(max.X - min.X + 1, max.Y - min.Y + 1, max.Z - min.Z + 1);
@@ -378,6 +378,16 @@ public partial class Place
             AddChild(draft);
             _drafts[s] = draft;
         }
+    }
+
+    /// <summary>The way out of a hidden room's wall onto the side it is found from (the side that isn't the hidden room).</summary>
+    public Int3 FoundFrom(SecretRoom s)
+    {
+        Int3 f = s.Facing.Vec(), wall = s.WallCells[0];
+        PlacedModule hidden = Inst.Layout.Modules[s.Module];
+        Int3 a = wall + f;
+        bool intoHidden = a.X >= hidden.Min.X && a.X <= hidden.Max.X && a.Z >= hidden.Min.Z && a.Z <= hidden.Max.Z;
+        return intoHidden ? f * -1 : f;
     }
 
     /// <summary>The hidden room whose breakable wall holds this cell, if any.</summary>

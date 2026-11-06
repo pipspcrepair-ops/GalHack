@@ -56,6 +56,8 @@ public partial class Game
         if (UseKeycard(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
+        // A living creature in the way stops the reach (its body is solid to E as well).
+        if (Zone.Wildlife.Raycast(eye, dir, reach, out float creatureAt, out _) is Creature { Dead: false }) reach = creatureAt;
         Lootable loot = Zone.Loot.Pick(eye, dir, reach + 0.3f, out _);
         if (loot != null)
         {

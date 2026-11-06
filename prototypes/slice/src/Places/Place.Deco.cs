@@ -64,15 +64,10 @@ public sealed class Decor
         {
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault)) continue;
             if (inst.Extras.Secrets.Any(s => s.Module == m.Index)) continue; // a hidden room keeps what the generator left
-            int y = m.Min.Y + 1;
-            var inside = m.Cells.Where(c => c.Y == y && Open(inst.Blocks.Get(c))).ToList();
-            if (inside.Count < 9) continue;
-            int x0 = inside.Min(c => c.X), x1 = inside.Max(c => c.X), z0 = inside.Min(c => c.Z), z1 = inside.Max(c => c.Z);
+            if (Interior(inst, m) is not { } room0) continue;
+            var (y, x0, x1, z0, z1, height, open) = room0;
             int w = x1 - x0 + 1, d = z1 - z0 + 1;
-            if (inside.Count < w * d * 0.85f) continue; // not a rectangle: the generator's props stay
-            int height = 0;
-            for (int h = 0; h < 8 && Open(inst.Blocks.Get(new Int3((x0 + x1) / 2, y + h, (z0 + z1) / 2))); h++) height++;
-            if (height < 2) continue;
+            if (open < 9 || open < w * d * 0.85f || height < 2) continue; // not a rectangle: the generator's props stay
             var room = new DecoRoom
             {
                 Width = w, Depth = d, Height = height, RoomId = m.Purpose, State = state,
@@ -117,7 +112,7 @@ public sealed class Decor
             {
                 if (kept.Contains(i) || !DecoLayout.Blocks(Forge, plan.Placements[i])) continue;
                 placeRoom.Solid.Add(i);
-                foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, plan.Placements[i]), placeRoom.Corner, 0.15f)) placeRoom.Cells.Add(c);
+                foreach (Int3 c in CentresOf(DecoLayout.Footprint(Forge, plan.Placements[i]), placeRoom.Corner)) placeRoom.Cells.Add(c);
             }
             // The generator's generic props in this room go: the library's pieces stand there instead.
             foreach (Int3 c in m.Cells)
@@ -129,7 +124,93 @@ public sealed class Decor
             }
             rooms[m.Index] = placeRoom;
         }
+        KeepWaysOpen(memory, rooms);
         return rooms;
+    }
+
+    /// <summary>
+    /// The dressing never closes a way the architect checked: every doorway, stair, cache, keycard
+    /// and hidden wall reachable on the bare blocks stays reachable round the solid pieces. A piece
+    /// standing on the bare route to one that was cut off goes (and what stood on it).
+    /// </summary>
+    void KeepWaysOpen(PlaceMemory memory, Dictionary<int, PlaceRoom> rooms)
+    {
+        PoiInstance inst = memory.Inst;
+        var bare = inst.Nav();
+        Int3 entry = inst.Layout.EntranceCell;
+        var open = bare.Reachable(entry);
+        var need = new HashSet<Int3>();
+        void Need(Int3 c) { if (open.Contains(c)) need.Add(c); }
+        foreach (Doorway d in inst.Layout.Doorways)
+            foreach (Int3 c in d.Cells)
+                foreach (Dir h in Dirs.Horizontal) Need(c + h.Vec());
+        foreach (var (p, b) in inst.Blocks.Blocks())
+            if (b.Type is BlockType.Stair or BlockType.Ladder) Need(p);
+        foreach (LootCache c in inst.Caches)
+            if (bare.AccessCell(c.Cell, open) is Int3 a) Need(a);
+        foreach (KeyCard k in inst.Extras.Keys) Need(k.Cell);
+        foreach (SecretRoom s in inst.Extras.Secrets)
+            if (s.WallCells.Count > 0)
+            {
+                Int3 low = s.WallCells.Aggregate((a, b) => a.Y < b.Y ? a : b);
+                Need(low + s.Facing.Vec());
+                Need(low - s.Facing.Vec());
+            }
+        for (int round = 0; round < 200; round++)
+        {
+            var reach = Place.NavOf(memory, rooms).Reachable(entry);
+            Int3? cut = null;
+            foreach (Int3 c in need)
+                if (!reach.Contains(c)) { cut = c; break; }
+            if (cut is not Int3 lost) return;
+            List<Int3> way = bare.FindPath(entry, lost);
+            if (way == null) { need.Remove(lost); continue; }
+            bool freed = false;
+            foreach (PlaceRoom r in rooms.Values)
+                foreach (int i in r.Solid.ToList())
+                    if (CentresOf(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner).Any(way.Contains))
+                    {
+                        Drop(memory, r, i);
+                        freed = true;
+                    }
+            if (!freed) need.Remove(lost); // nothing of ours stands in the way
+        }
+    }
+
+    /// <summary>A piece left out of a room, with whatever stood on it.</summary>
+    void Drop(PlaceMemory memory, PlaceRoom r, int index)
+    {
+        if (!memory.DecoTaken.TryGetValue(r.Module, out HashSet<int> taken)) memory.DecoTaken[r.Module] = taken = new HashSet<int>();
+        var gone = new List<int> { index };
+        for (int k = 0; k < gone.Count; k++)
+            for (int i = 0; i < r.Plan.Placements.Count; i++)
+                if (r.Plan.Placements[i].Support == gone[k] && !gone.Contains(i)) gone.Add(i);
+        foreach (int i in gone)
+        {
+            taken.Add(i);
+            r.Solid.Remove(i);
+        }
+        r.Cells.Clear();
+        foreach (int i in r.Solid)
+            foreach (Int3 c in CentresOf(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner)) r.Cells.Add(c);
+    }
+
+    /// <summary>
+    /// A module's open interior: the level you walk on (the lowest with open floor: the architect's
+    /// modules start at it, a kit's a layer of floor below), its box and clear height, its open cells.
+    /// </summary>
+    public static (int Y, int X0, int X1, int Z0, int Z1, int Height, int Cells)? Interior(PoiInstance inst, PlacedModule m)
+    {
+        foreach (int y in new[] { m.Min.Y, m.Min.Y + 1 })
+        {
+            var inside = m.Cells.Where(c => c.Y == y && Open(inst.Blocks.Get(c)) && !inst.Blocks.Get(c + Int3.Down).IsAir).ToList();
+            if (inside.Count == 0) continue;
+            int x0 = inside.Min(c => c.X), x1 = inside.Max(c => c.X), z0 = inside.Min(c => c.Z), z1 = inside.Max(c => c.Z);
+            int height = 0;
+            for (int h = 0; h < 12 && Open(inst.Blocks.Get(new Int3((x0 + x1) / 2, y + h, (z0 + z1) / 2))); h++) height++;
+            return (y, x0, x1, z0, z1, height, inside.Count);
+        }
+        return null;
     }
 
     /// <summary>A cell a room's interior may have: air, or something the generator set down in it.</summary>
@@ -170,6 +251,17 @@ public sealed class Decor
             foreach (Int3 c in s.TellCells) r.Add(c);
         }
         return r;
+    }
+
+    /// <summary>The floor cells whose middles a footprint covers: what a walking route (which runs through cell middles) must go round.</summary>
+    public static IEnumerable<Int3> CentresOf(DecoRect rect, Int3 corner)
+    {
+        foreach (Int3 c in CellsOf(rect, corner, 0f))
+        {
+            var p = new NV2(c.X - corner.X + 0.5f, c.Z - corner.Z + 0.5f) - rect.Centre;
+            float u = rect.U.LengthSquared(), v = rect.V.LengthSquared();
+            if (u > 0f && v > 0f && MathF.Abs(NV2.Dot(p, rect.U)) <= u && MathF.Abs(NV2.Dot(p, rect.V)) <= v) yield return c;
+        }
     }
 
     /// <summary>The floor cells a footprint covers (room metres from a corner cell), shrunk by a margin.</summary>

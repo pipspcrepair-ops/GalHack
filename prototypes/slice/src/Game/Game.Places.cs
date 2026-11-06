@@ -80,6 +80,17 @@ public partial class Game
         return false;
     }
 
+    /// <summary>
+    /// Out of reach of whatever walks the surface: down in the ground (a cave, a hole, a basement)
+    /// or under a place's roof. The wildlife patch reads the planet's surface, not rooms.
+    /// </summary>
+    public bool Sheltered()
+    {
+        Vector3 feet = Survivor.WorldFeet;
+        if (feet.Y < Zone.GroundAt(feet.X, feet.Z).Y - 2.5f) return true;
+        return Places?.PlaceAt(feet) is Place p && p.Roofed(feet);
+    }
+
     // ---- Climbing ---------------------------------------------------------------------------------
 
     /// <summary>What holds the survivor up this tick: a ladder (W climbs), a lift shaft (Space and Ctrl ride it, easing level with a stop when let go).</summary>
@@ -127,6 +138,12 @@ public partial class Game
             return true;
         }
         Block b = h.Place.Inst.Blocks.Get(h.Cell);
+        if (CacheAt(h) is Slice.Items.Lootable loot)
+        {
+            Open(new OpenContainer { Title = loot.Name, Grid = loot.Grid, Loot = loot, Where = () => loot.Position });
+            h.Place.Memory.Entered = true;
+            return true;
+        }
         if (b.Type == BlockType.Terminal)
         {
             Say(h.Place.Inst.State == PoiState.Active ? "The terminal hums; its screen shows the doors on this level" : "The terminal is dead", Tones.Text);
@@ -135,13 +152,23 @@ public partial class Game
         return false;
     }
 
+    /// <summary>The cache a hit is on, if it was one.</summary>
+    static Slice.Items.Lootable CacheAt(PoiPlaces.Hit h)
+    {
+        foreach (var (c, loot) in h.Place.Memory.Caches)
+            if (c.Cell == h.Cell) return loot;
+        return null;
+    }
+
     /// <summary>What E would do on a place under the crosshair, for the prompt.</summary>
     string PlacePrompt(Vector3 eye, Vector3 dir, bool hit, LookHit look)
     {
         if (Places == null) return "";
         foreach (Place p in Places.Standing)
             if (p.KeyAlong(eye, dir, UseReach) is KeyCard k) return $"E  Take the {k.Clearance} keycard";
-        if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h) || h.Door == null) return "";
+        if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return "";
+        if (CacheAt(h) is Slice.Items.Lootable cache) return $"E  Open the {cache.Name.ToLowerInvariant()}";
+        if (h.Door == null) return "";
         Place.Door d = h.Door;
         if (d.Jammed) return "Jammed";
         if (d.Clearance != null && !Places.HasClearance(d.Clearance)) return $"LOCKED  {d.Clearance.ToUpperInvariant()} keycard";

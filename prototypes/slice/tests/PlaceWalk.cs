@@ -1,0 +1,303 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Godot;
+using PlanetSurface.Poi;
+using PoiGenerator.Gen;
+using Slice.Game;
+using Slice.Places;
+using N = System.Numerics;
+using PNav = PoiGenerator.Gen.NavGrid;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// A player's way round a place, with the game's own inputs only: routes are the place's own
+/// walking routes (the generator's A* over its cells, round the dressing), walked a cell at a time
+/// by looking and holding W; a shut door on the way is looked at and opened with E (a jammed one is
+/// squeezed through at its gap); ladders are climbed by walking into them. Nothing is moved by hand.
+/// </summary>
+public sealed class PlaceWalk
+{
+    readonly Game.Game _game;
+    readonly Driver _drive;
+    Controls Controls => _game.Controls;
+
+    /// <summary>Doors opened with E, stair and ladder cells walked, on the way so far.</summary>
+    public int DoorsOpened, StairCells, LadderCells, Stuck;
+    public readonly List<string> Notes = new();
+
+    public PlaceWalk(Game.Game game, Driver drive)
+    {
+        _game = game;
+        _drive = drive;
+    }
+
+    public static Vector3 Feet(Place p, Int3 c) => p.ToWorld(new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f));
+
+    /// <summary>The standable cell the survivor is in (or the nearest one round their feet).</summary>
+    public Int3 Here(Place p, PNav nav)
+    {
+        Vector3 l = p.FromWorld(_game.Survivor.WorldFeet);
+        var c = new Int3(Mathf.FloorToInt(l.X), Mathf.FloorToInt(l.Y + 0.3f), Mathf.FloorToInt(l.Z));
+        if (nav.Standable(c)) return c;
+        Int3 best = c;
+        float bestD = float.MaxValue;
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            var q = c + new Int3(dx, dy, dz);
+            if (!nav.Standable(q)) continue;
+            float d = new Vector3(q.X + 0.5f - l.X, (q.Y - l.Y) * 2f, q.Z + 0.5f - l.Z).Length();
+            if (d < bestD) { bestD = d; best = q; }
+        }
+        return best;
+    }
+
+    /// <summary>Walks a place's route to a cell. False (with a note) if there is none or it gets stuck.</summary>
+    public IEnumerable<int> To(Place p, Int3 goal, Action<bool> done, Func<bool> stop = null)
+    {
+        PNav nav = p.Nav();
+        Int3 from = Here(p, nav);
+        List<Int3> path = nav.FindPath(from, goal, 400_000);
+        if (path == null)
+        {
+            Notes.Add($"no route from {from} to {goal}");
+            done(false);
+            yield break;
+        }
+        bool ok = true;
+        foreach (int x in Follow(p, path, r => ok = r, stop)) yield return x;
+        done(ok);
+    }
+
+    /// <summary>Walks a route cell by cell (straight runs merged), opening shut doors on the way.</summary>
+    public IEnumerable<int> Follow(Place p, List<Int3> path, Action<bool> done, Func<bool> stop = null)
+    {
+        if (_game.Menu.IsOpen) { Controls.Tap(Key.Tab); yield return 0; }
+        for (int i = 1; i < path.Count; i++)
+        {
+            if (stop?.Invoke() == true) break;
+            Int3 a = path[i - 1], b = path[i];
+            Block bb = p.Inst.Blocks.Get(b);
+            if (bb.Type == BlockType.Stair || p.Inst.Blocks.Get(a).Type == BlockType.Stair) StairCells++;
+            // A door in the way: open it with E if it is shut; squeeze through a jammed one at its gap.
+            Place.Door door = p.Doors.FirstOrDefault(d => d.Cells.Contains(b) || d.Cells.Contains(b + Int3.Up));
+            if (door != null)
+            {
+                bool opened = true;
+                foreach (int x in Through(p, door, a, r => opened = r)) yield return x;
+                if (!opened) { done(false); Release(); yield break; }
+                continue;
+            }
+            // Ladders: up or down the shaft, walking into the rungs.
+            if (bb.Type == BlockType.Ladder || p.Inst.Blocks.Get(a).Type == BlockType.Ladder && b.Y != a.Y)
+            {
+                LadderCells++;
+                bool climbed = true;
+                foreach (int x in Climb(p, a, b, r => climbed = r)) yield return x;
+                if (!climbed) { done(false); Release(); yield break; }
+                continue;
+            }
+            // Merge a straight run on the level.
+            int j = i;
+            while (j + 1 < path.Count && path[j + 1].Y == b.Y && path[j].Y == a.Y && Same(path[j + 1] - path[j], b - a)
+                   && p.Inst.Blocks.Get(path[j + 1]).Type is not (BlockType.Stair or BlockType.Ladder)
+                   && !p.Doors.Any(d => d.Cells.Contains(path[j + 1]) || d.Cells.Contains(path[j + 1] + Int3.Up))) j++;
+            i = j;
+            bool reached = true;
+            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + (j - i) * 0.5f, r => reached = r)) yield return x;
+            if (!reached)
+            {
+                Stuck++;
+                Notes.Add($"stuck short of {path[j]} (feet {p.FromWorld(_game.Survivor.WorldFeet)})");
+                // Once more, from where we are.
+                foreach (int x in Step(Feet(p, path[j]), 0.35f, 6f, r => reached = r)) yield return x;
+                if (!reached) { done(false); Release(); yield break; }
+            }
+        }
+        Release();
+        done(true);
+    }
+
+    static bool Same(Int3 u, Int3 v) => u.X == v.X && u.Z == v.Z;
+
+    void Release()
+    {
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Space, false);
+        Controls.Hold(Key.Ctrl, false);
+    }
+
+    /// <summary>Walks toward a point (feet) until within a distance on the flat (and near its height), or gives up.</summary>
+    public IEnumerable<int> Step(Vector3 to, float within, float seconds, Action<bool> done)
+    {
+        int ticks = (int)(seconds * 60);
+        float best = float.MaxValue, still = 0f;
+        for (int t = 0; t < ticks; t++)
+        {
+            Vector3 feet = _game.Survivor.WorldFeet;
+            float flat = new Vector2(to.X - feet.X, to.Z - feet.Z).Length();
+            if (flat <= within && MathF.Abs(to.Y - feet.Y) < 1.2f) { done(true); yield break; }
+            _drive.Face(new Vector3(to.X, _game.Survivor.WorldEye().Y, to.Z));
+            // Easing off short of the mark, as a person does at a corner, so a turn doesn't carry you past it.
+            N.Vector3 v = _game.Survivor.Body.Velocity;
+            float speed = new Vector2(v.X, v.Z).Length();
+            Controls.Hold(Key.W, flat > within + speed * speed / 90f || speed < 1.5f);
+            Controls.Hold(Key.Shift, false);
+            if (flat < best - 0.05f) { best = flat; still = 0f; }
+            else still += 1f / 60f;
+            // Caught on a lip: a small hop, as a person would step up.
+            Controls.Hold(Key.Space, still > 0.8f && still < 0.95f);
+            yield return 0;
+        }
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Space, false);
+        done(false);
+    }
+
+    /// <summary>Through a doorway: up to it, E if it is shut (and allowed), then through at its middle.</summary>
+    IEnumerable<int> Through(Place p, Place.Door d, Int3 before, Action<bool> done)
+    {
+        Vector3 centre = p.ToWorld(d.Centre);
+        float floorY = p.ToWorld(new Vector3(0, d.Cells.Min(c => c.Y), 0)).Y;
+        Vector3 here = Feet(p, before);
+        Vector3 across = (centre - here) with { Y = 0f };
+        Vector3 n = d.Along.Cross(Vector3.Up).Normalized();
+        if (n.Dot(across) < 0f) n = -n;
+        Vector3 near = new Vector3(centre.X, floorY, centre.Z) - n * 1.2f, far = new Vector3(centre.X, floorY, centre.Z) + n * 1.1f;
+        bool ok = true;
+        foreach (int x in Step(near, 0.3f, 8f, r => ok = r)) yield return x;
+        if (!d.Jammed && d.IsShut)
+        {
+            foreach (int x in _drive.LookAt(centre, 6)) yield return x;
+            foreach (int x in _drive.Tap(Key.E)) yield return x;
+            for (int t = 0; t < 120 && d.Open < 0.9f; t++) yield return 0;
+            if (d.Open < 0.9f)
+            {
+                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")})");
+                done(false);
+                yield break;
+            }
+            DoorsOpened++;
+        }
+        foreach (int x in Step(far, 0.3f, 8f, r => ok = r)) yield return x;
+        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2})");
+        done(ok);
+    }
+
+    /// <summary>Up or down a ladder: walk into the rungs (W), or step off its top to the cell beside.</summary>
+    IEnumerable<int> Climb(Place p, Int3 a, Int3 b, Action<bool> done)
+    {
+        Vector3 target = Feet(p, b);
+        int ticks = 0;
+        Block ladder = p.Inst.Blocks.Get(p.Inst.Blocks.Get(b).Type == BlockType.Ladder ? b : a);
+        Vector3 wall = p.ToWorld(new Vector3(a.X + 0.5f, a.Y + 1.2f, a.Z + 0.5f)) - Look(ladder.Facing) * 1.0f;
+        while (ticks++ < 600)
+        {
+            Vector3 feet = _game.Survivor.WorldFeet;
+            if (MathF.Abs(feet.Y - target.Y) < 0.25f && new Vector2(feet.X - target.X, feet.Z - target.Z).Length() < 0.45f) break;
+            bool up = target.Y > feet.Y + 0.1f, down = target.Y < feet.Y - 0.1f;
+            if (up || down)
+            {
+                // Face the rungs and climb (W up, S down).
+                _drive.Face(new Vector3(wall.X, _game.Survivor.WorldEye().Y, wall.Z));
+                Controls.Hold(Key.W, up);
+                Controls.Hold(Key.S, down);
+            }
+            else
+            {
+                _drive.Face(new Vector3(target.X, _game.Survivor.WorldEye().Y, target.Z));
+                Controls.Hold(Key.W, true);
+                Controls.Hold(Key.S, false);
+            }
+            yield return 0;
+        }
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.S, false);
+        done(ticks < 600);
+    }
+
+    // ---- Over the land -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A way over the land a person would walk, worked out as a player picks one by eye: on a 4 m
+    /// grid, no step steeper than about 31 degrees, no sea, no water deeper than wading, round cave
+    /// mouths (the ground's own density, read straight from the generator) and round other places.
+    /// Null if there is none within the search box.
+    /// </summary>
+    public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target)
+    {
+        var zone = _game.Zone;
+        var src = zone.Planet.Source;
+        const float cell = 4f;
+        Vector3 lo = new(MathF.Min(from.X, to.X) - 160f, 0, MathF.Min(from.Z, to.Z) - 160f);
+        int nx = (int)((MathF.Max(from.X, to.X) + 160f - lo.X) / cell) + 1, nz = (int)((MathF.Max(from.Z, to.Z) + 160f - lo.Z) / cell) + 1;
+        var height = new Dictionary<int, float>();
+        var others = zone.Planet.Pois.Where(s => s != target && _game.Places.DistanceTo(s, (from + to) / 2f) < from.DistanceTo(to)).ToList();
+        float H(int i, int j)
+        {
+            int k = j * nx + i;
+            if (height.TryGetValue(k, out float h)) return h;
+            float x = lo.X + i * cell, z = lo.Z + j * cell;
+            h = zone.GroundAt(x, z).Y;
+            bool ok = h >= 1.5f;
+            double wx = Planets.Gen.Mathx.WrapX(x, zone.Planet.Width), wz = Planets.Gen.Mathx.Wrap(z, zone.Planet.Height);
+            if (ok && src.WaterSurfaceAt(wx, wz, out float w) && w - h > 0.4f) ok = false;
+            // A cave mouth: no ground under the surface the map says is there.
+            bool near = new Vector2(x - to.X, z - to.Z).Length() <= 18f || new Vector2(x - from.X, z - from.Z).Length() <= 10f;
+            if (ok && !near)
+                foreach (float down in new[] { 0.7f, 1.7f, 2.7f })
+                    if (src.CellDensity((int)MathF.Floor((float)wx), (int)MathF.Floor(h - down), (int)MathF.Floor((float)wz)) < 0f) { ok = false; break; }
+            if (ok && new Vector2(x - to.X, z - to.Z).Length() > 18f && others.Any(s => _game.Places.DistanceTo(s, new Vector3(x, 0, z)) < 4f)) ok = false;
+            if (ok && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
+            return height[k] = ok ? h : float.NaN;
+        }
+        (int, int) Cell(Vector3 p) => ((int)MathF.Round((p.X - lo.X) / cell), (int)MathF.Round((p.Z - lo.Z) / cell));
+        var start = Cell(from);
+        var goal = Cell(to);
+        var open = new PriorityQueue<(int, int), float>();
+        var cost = new Dictionary<(int, int), float> { [start] = 0f };
+        var came = new Dictionary<(int, int), (int, int)>();
+        open.Enqueue(start, 0f);
+        int expanded = 0;
+        while (open.TryDequeue(out var cur, out _))
+        {
+            if (Math.Abs(cur.Item1 - goal.Item1) <= 1 && Math.Abs(cur.Item2 - goal.Item2) <= 1)
+            {
+                var path = new List<Vector3> { to };
+                for (var c = cur; came.ContainsKey(c); c = came[c]) path.Add(new Vector3(lo.X + c.Item1 * cell, H(c.Item1, c.Item2), lo.Z + c.Item2 * cell));
+                path.Reverse();
+                return path;
+            }
+            if (++expanded > 200_000) break;
+            float hc = cur == start ? from.Y : H(cur.Item1, cur.Item2);
+            for (int dj = -1; dj <= 1; dj++)
+            for (int di = -1; di <= 1; di++)
+            {
+                if (di == 0 && dj == 0) continue;
+                int i = cur.Item1 + di, j = cur.Item2 + dj;
+                if (i < 0 || j < 0 || i >= nx || j >= nz) continue;
+                float h = H(i, j);
+                if (float.IsNaN(h)) continue;
+                float run = cell * (di != 0 && dj != 0 ? 1.414f : 1f);
+                if (MathF.Abs(h - hc) > run * 0.6f) continue;
+                float c = cost[cur] + run + MathF.Abs(h - hc) * 3f;
+                var n = (i, j);
+                if (cost.TryGetValue(n, out float old) && old <= c) continue;
+                cost[n] = c;
+                came[n] = cur;
+                open.Enqueue(n, c + new Vector2(i - goal.Item1, j - goal.Item2).Length() * cell);
+            }
+        }
+        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1})");
+        return null;
+    }
+
+    static Vector3 Look(Dir d)
+    {
+        Int3 v = d.Vec();
+        return new Vector3(v.X, v.Y, v.Z);
+    }
+}
