@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -124,7 +125,7 @@ public partial class PlaceTest : Node
         }
         if (Array.IndexOf(args, "--town-only") >= 0)
         {
-            foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? TownWorld)) yield return x;
+            foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
             yield break;
         }
         if (Array.IndexOf(args, "--find-town") >= 0)
@@ -140,7 +141,7 @@ public partial class PlaceTest : Node
         }
         if (Array.IndexOf(args, "--doors-only") >= 0) yield break;
         foreach (int x in RealPlayer(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
-        if (Array.IndexOf(args, "--walk-only") < 0) foreach (int x in Settlement(TownWorld)) yield return x;
+        if (Array.IndexOf(args, "--walk-only") < 0) foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
     }
 
     /// <summary>
@@ -199,7 +200,8 @@ public partial class PlaceTest : Node
         Slice.Start.Bunker b = game.Bunker;
         PlanetSurface.Poi.PoiSite site = b.Poi;
 
-        // Out of the bunker with the locker's kit.
+        // You wake empty-handed: the tool first, then out of the bunker with the locker's kit.
+        foreach (int x in Watched(play.MakeTool())) yield return x;
         foreach (int x in Watched(drive.WalkTo(b.LockerFront, 0.4f, 15f))) yield return x;
         foreach (int x in Watched(drive.LookAt(b.Locker, 8))) yield return x;
         foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
@@ -248,8 +250,13 @@ public partial class PlaceTest : Node
         game.Zone.Wildlife.Frozen = true;
 
         // In through the way in, and a door opened with E on the way to a cache.
-        LootCache cache = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .OrderBy(c => nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999).First();
+        // A cache a level or more down where the place has one you can get to (the stairs are walked on
+        // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
+        var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
+            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
+        bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
+        bool downstairs = ways.Any(Below);
+        LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
         bool ok = false;
         foreach (int x in Watched(walk.To(place, nav.AccessCell(cache.Cell).Value, r => ok = r))) yield return x;
         Check(ok, $"in through the way in and to a cache, {walk.DoorsOpened} door{(walk.DoorsOpened == 1 ? "" : "s")} opened with E on the way {(walk.Notes.Count > 0 ? $"({string.Join("; ", walk.Notes)})" : "")}");
@@ -267,8 +274,9 @@ public partial class PlaceTest : Node
         foreach (int x in Watched(play.CloseMenu())) yield return x;
         Check(game.Zone.Loot.All.Contains(loot), "the emptied cache stays where it stands (a place's containers never go)");
         float entryY = place.ToWorld(new Vector3(0, entry.Y, 0)).Y;
-        Check(walk.StairCells > 0 && game.Survivor.WorldFeet.Y < entryY - 3.5f,
+        if (downstairs) Check(walk.StairCells > 0 && game.Survivor.WorldFeet.Y < entryY - 3.5f,
             $"down a level by the stairs to get there ({walk.StairCells} stair cells walked, {entryY - game.Survivor.WorldFeet.Y:F1} m below the way in)");
+        else GD.Print($"  ({inst.Caches.Count} caches, none below the way in here: no stairs to walk down to one)");
 
 
         // A locked door: refused without its card; the card, lying where its owner fell, taken with E; then it opens.
@@ -582,6 +590,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.UntilPlaying()) yield return x;
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Wildlife.Frozen = true;
+        foreach (int x in play.MakeTool()) yield return x; // you wake empty-handed, and a flyer gets shot at
         foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         GD.Print("-- creature bodies (SYSTEMS: creatures set down by hand, held still) --");
         Slice.Surface.WildlifePatch w = game.Zone.Wildlife;
@@ -642,7 +651,8 @@ public partial class PlaceTest : Node
         Slice.Vessels.Vessel skiff = Slice.Vessels.Vessel.Spawn(game.Zone, game.Zone.Data.Blueprint(game.Zone.Data.Rules.Build.StarterBlueprint), (was - toward * 9f + Vector3.Up * 0.8f).ToNumerics(), 0f, landed: false);
         for (int t = 0; t < 90 && game.Bodies.VesselHits == 0; t++)
         {
-            skiff.Body.Velocity = (toward * 18f).ToNumerics();
+            // At the creature itself: on a slope the ground lifts a vessel held to a level course clean over it.
+            skiff.Body.Velocity = ((w.FromPatch(critter.Position) - skiff.Body.Position.ToGodot()).Normalized() * 18f).ToNumerics();
             yield return 0;
         }
         foreach (int x in drive.Wait(5)) yield return x;
@@ -696,28 +706,50 @@ public partial class PlaceTest : Node
         yield return 0;
     }
 
-    /// <summary>A world with a survivor settlement near its start.</summary>
-    static readonly WorldChoice TownWorld = WorldChoice.Fresh("temperate", 19);
+    /// <summary>
+    /// A world with a settlement on it, however far from the start: few start worlds have one, so
+    /// the worlds rolled on from this one's seed are built bare until one does, and the game goes
+    /// there (a failing run replays by the same --seed).
+    /// </summary>
+    IEnumerable<int> Settlement(WorldChoice first)
+    {
+        const int Worlds = 40;
+        PlanetSurface.Poi.PoiCatalog catalog = SurfaceZone.PoiCatalog;
+        WorldChoice found = null;
+        PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        for (int i = 0; i < Worlds && found == null; i++)
+        {
+            WorldChoice world = first with { Seed = first.Seed + (ulong)i * 0x9E3779B97F4A7C15UL };
+            var building = Task.Run(() => PlanetSurface.World.PlanetWorld.Build(world.Spec(), catalog));
+            while (!building.IsCompleted) yield return 0;
+            if (building.Result.Pois.Any(LivingTown)) found = world;
+            else GD.Print($"  (no living settlement on {world}: on to the next)");
+        }
+        if (found == null) { Fail($"no living settlement on any of {Worlds} worlds from {first}"); yield break; }
+        var game = new Game.Game { Interactive = false, World = found, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        foreach (int x in Settlement(game, drive, found)) yield return x;
+    }
+
+    static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile;
 
     /// <summary>
     /// A settlement on foot: over the land to it, through it among its people going about their
     /// day, at peace; night sends them indoors and morning brings them out; a shot turns the place
     /// hostile, its people run for cover and its guards take aim where you can see it before they fire.
     /// </summary>
-    IEnumerable<int> Settlement(WorldChoice world)
+    IEnumerable<int> Settlement(Game.Game game, Driver drive, WorldChoice world)
     {
-        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
-        AddChild(game);
-        var drive = new Driver(game);
         var play = new Playthrough(game);
-        foreach (int x in drive.UntilPlaying()) yield return x;
         game.Zone.Weather.Bridge.Calm = true;
         GD.Print($"-- a settlement, {world} --");
+        foreach (int x in play.MakeTool()) yield return x; // you wake empty-handed, and the shot in the town wants it
         foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         Vector3 from = game.Survivor.WorldFeet;
-        var site = game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile).OrderBy(s => game.Places.DistanceTo(s, from)).FirstOrDefault();
-        Check(site != null, $"a settlement on this world: {site?.Name}, {site?.Instance.Mood}, {site?.Instance.Townsfolk.People.Count} people, {game.Places.DistanceTo(site, from):F0} m off");
-        if (site == null) yield break;
+        var site = game.Zone.Planet.Pois.Where(LivingTown).OrderBy(s => game.Places.DistanceTo(s, from)).First();
+        GD.Print($"  a settlement on this world: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people, {game.Places.DistanceTo(site, from):F0} m off");
         var walk = new PlaceWalk(game, drive);
         Vector3 gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), from);
         // The long walk is the place visit's to prove (this one is over a river, 2 km): the town is what's under test.
