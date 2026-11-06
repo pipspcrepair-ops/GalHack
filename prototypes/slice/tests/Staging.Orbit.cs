@@ -32,6 +32,7 @@ public sealed partial class Staging
         "eva" => EvaView(),
         "derelict" => DerelictView(),
         "landing" => LandingView(),
+        "seam" => SeamView(),
         _ => throw new ArgumentException($"no view '{view}'"),
     };
 
@@ -61,18 +62,87 @@ public sealed partial class Staging
         foreach (int x in Seated()) yield return x;
         Hurry(4);
         _game.Controls.Hold(Key.Space);
-        for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++)
-        {
-            if (i % 300 == 0) GD.Print($"(climbing: seated {_game.Survivor.Seated?.Name}, the Skiff at {Skiff?.Body.Position.ToGodot()}, tunnel {_game.Spaceflight.Tunnel:F2})");
-            yield return 0;
-        }
+        for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++) yield return 0;
         _game.Controls.ReleaseAll();
         Hurry(1);
         GD.Print($"(screenshot: {(_game.InOrbit ? "in orbit" : "still on the surface")}, the Skiff at {Skiff.Body.Position.ToGodot()})");
         if (!_game.InOrbit) yield break;
-        _game.Orbit.SpawnAll();
-        // Out of the tunnel.
-        for (int i = 0; i < 90; i++) yield return 0;
+        for (int i = 0; i < 30; i++) yield return 0;
+    }
+
+    /// <summary>Saves what was last drawn, beside the screenshot: --out=a.png, tag "x" gives a-x.png.</summary>
+    void Snap(string tag)
+    {
+        string o = _args.GetValueOrDefault("out", "seam.png");
+        string path = System.IO.Path.ChangeExtension(o, null) + "-" + tag + ".png";
+        Error e = _game.GetViewport().GetTexture().GetImage().SavePng(path);
+        GD.Print($"(screenshot: {tag}, band {_game.Spaceflight.Band:F2}, air gone {_game.Spaceflight.AirGone:F2}, {(_game.InOrbit ? "orbit" : "surface")}: {e})");
+    }
+
+    /// <summary>
+    /// The seam: a climb through the crossing, a frame just before it and the first frame after it
+    /// (a pair to lay side by side), and frames up the overlap band.
+    /// </summary>
+    IEnumerable<int> SeamView()
+    {
+        foreach (int x in Seated()) yield return x;
+        Vessel v = Skiff;
+        float ceiling = _game.Surface.Physics.Zone.Ceiling;
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
+        _game.Survivor.Pitch = (float)Num("pitch", -0.3);
+        bool down = _args.GetValueOrDefault("look") == "down"; // from under the Skiff, straight down past it
+        void Follow()
+        {
+            if (!down) return;
+            Vector3 at = v.Body.Position.ToGodot();
+            Vector3 eye = at + new Vector3(0f, -3f, 12f);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(at.X, at.Y - 1000f, at.Z - 700f) - eye, Vector3.Forward), eye);
+        }
+        Hurry(3);
+        _game.Controls.Hold(Key.Space);
+        foreach (float height in new[] { 400f, 650f, 800f, 900f, 1000f })
+        {
+            for (int i = 0; i < 60 * 60 && v.Body.Position.Y < height; i++)
+            {
+                Follow();
+                yield return 0;
+            }
+            Hurry(1);
+            yield return 0;
+            yield return 0;
+            Snap($"alt{height:0}");
+            Hurry(3);
+        }
+        Hurry(1);
+        while (v.Body.Position.Y < ceiling - 3f)
+        {
+            Follow();
+            yield return 0;
+        }
+        yield return 0;
+        Snap("before");
+        for (int i = 0; i < 300 && !_game.InOrbit; i++)
+        {
+            Follow();
+            yield return 0;
+        }
+        yield return 0;
+        Snap("after");
+        foreach (float height in new[] { 1200f, 1400f, 1600f, 1800f, 2000f, 2200f })
+        {
+            for (int i = 0; i < 60 * 40 && v.Body.Position.Y < height; i++)
+            {
+                Follow();
+                yield return 0;
+            }
+            yield return 0;
+            Snap($"alt{height:0}");
+        }
+        for (int i = 0; i < 60; i++)
+        {
+            Follow();
+            yield return 0;
+        }
     }
 
     /// <summary>The Skiff climbing, the land far below.</summary>
@@ -102,9 +172,10 @@ public sealed partial class Staging
         OrbitZone orbit = _game.Orbit;
         _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
         // Out a way, to see the globe whole: fly straight out from it.
-        Vector3 up = v.Body.Position.ToGodot().Normalized();
+        Vector3 centre = orbit.ToWorld(N.Vector3.Zero).ToGodot();
+        Vector3 up = (v.Body.Position.ToGodot() - centre).Normalized();
         Hurry(3);
-        foreach (int x in _pilot.FlyTo(v, () => up * (orbit.AtmosphereRadius + (float)Num("away", 2600)), 40f, 90f)) yield return x;
+        foreach (int x in _pilot.FlyTo(v, () => centre + up * (orbit.ShellRadius + (float)Num("away", 3000)), 40f, 90f)) yield return x;
         Hurry(1);
         Vector3 at = v.Body.Position.ToGodot();
         Vector3 side = up.Cross(Vector3.Up).Normalized();
@@ -134,7 +205,7 @@ public sealed partial class Staging
         Vector3 centre = piece.Body.Position.ToGodot();
         foreach (Vessel w in _game.Orbit.Wrecks.Where(w => w.Derelict.Site == piece.Derelict.Site)) centre += w.Body.Position.ToGodot();
         centre /= 1 + _game.Orbit.Wrecks.Count(w => w.Derelict.Site == piece.Derelict.Site);
-        Vector3 up = centre.Normalized();
+        Vector3 up = (centre - _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized();
         Hurry(3);
         foreach (int x in _pilot.FlyTo(v, () => centre + up * 60f + (v.Body.Position.ToGodot() - centre).Normalized() * 120f, 30f, 120f)) yield return x;
         Hurry(1);

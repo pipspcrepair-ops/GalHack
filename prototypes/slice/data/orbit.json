@@ -6,13 +6,13 @@
     // The globe's radius against the map: the map's width is the length of its equator, so 1 is
     // true scale (radius = width / 2π, about 2.5 km for a 16 km world).
     "radiusScale": 1.0,
-    // The top of the atmosphere above the globe's ground, as a share of its radius (the height
-    // planet-generator's OrbitView draws its atmosphere at). Crossing it is the descent.
+    // The rim of air drawn round the globe, as a share of its radius (the height planet-generator's
+    // OrbitView draws its atmosphere at).
     "atmosphere": 0.075,
     "segments": 192,
     "rings": 96,
     // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
-    "textureWidth": 4096,
+    "textureWidth": 2048,
     "cloudWidth": 1024,
     // Clouds sit this share of the radius over the ground, at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
@@ -20,28 +20,38 @@
     "cloudOpacity": 0.55
   },
 
+  // Crossing between the surface and orbit is seamless: nothing shows. Orbit is made ahead of a
+  // climb, the surface streamed in ahead of a descent, position, heading and velocity carried
+  // straight across, and just over the edge the surface is still what you see (the overlap band):
+  // a flat map and a small round globe can't match, so over the band one becomes the other.
   "crossing": {
-    // Orbit starts loading once a climb passes this share of the ceiling (the seam is hidden: the
-    // destination loads as soon as a crossing is likely).
-    "preloadAt": 0.55,
-    // A climb out arrives this far above the atmosphere's top (m), a descent this far under the
-    // ceiling: apart, so a crossing never bounces straight back.
-    "arriveAbove": 60,
-    "arriveBelow": 150,
-    // The tunnel over the seam: it fades in over the last metres before the edge, holds at least
-    // this long (s) while the other side gets ready, and fades out.
-    "tunnelFrom": 220,
-    "tunnelHold": 0.45,
-    "tunnelOut": 0.7
+    // Where orbit starts on a world, m: low, on Empyrion's scale, just over the clouds (their tops
+    // are about 1,000 m), by the kind of air. It also stands clear of the world's highest ground.
+    "altitude": { "default": 1060 },
+    "clearOfGround": 150,
+    // Orbit starts being made once a climb passes this share of that height.
+    "preloadAt": 0.5,
+    // The gap between the two edges, m: a climb crosses at the ceiling and a descent this far
+    // under it, so a crossing never bounces straight back.
+    "gap": 80,
+    // The air fades away with height from here (m): the sky darkens into space's own backdrop,
+    // the haze thins and the stars come out, over this and the overlap band.
+    "fadeFrom": 700,
+    // The overlap band, m over the crossing: at its foot the surface fills the view; by its top
+    // it has faded out and the globe and space are all there is.
+    "band": 1000,
+    // A descent starts streaming the ground under it this many bands over the ceiling.
+    "streamAhead": 1.5
   },
 
   "wrecks": {
     // The POI generator's start-system sites (poi-generator/data/orbit.txt, OrbitPlacement) are
     // placed by its bearing and its distance, brought in close: its "near" band (200 to 2,000 km
-    // from the world) maps to these metres above the atmosphere, and its "orbit" band (1,000 to
-    // 30,000 km) to the next. Moon, belt and deep sites belong to other zones.
-    "near": [ 260, 1500 ],
-    "orbit": [ 1500, 4200 ],
+    // from the world) maps to these metres above the crossing, and its "orbit" band (1,000 to
+    // 30,000 km) to the next, all clear of the overlap band. Moon, belt and deep sites belong to
+    // other zones.
+    "near": [ 1300, 2600 ],
+    "orbit": [ 2600, 5400 ],
     // Sites keep within this latitude of the globe's equator, degrees.
     "maxLatitude": 55,
     // What the survival tool's gather mode gets back from a wreck's block (design: about 33 %),

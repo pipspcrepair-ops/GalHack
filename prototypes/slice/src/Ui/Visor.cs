@@ -228,7 +228,7 @@ public partial class Visor : CanvasLayer
     {
         float s = S;
         Vector2 size = _hud.Size;
-        Vector3 look = survivor.WorldLook();
+        Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
@@ -248,7 +248,7 @@ public partial class Visor : CanvasLayer
         var labels = new List<(float x, int row)>();
         void Mark(Vector3 at, string tag, Color colour)
         {
-            Vector3 to = at - feet;
+            Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
             float x = cx + off / 60f * width / 2;

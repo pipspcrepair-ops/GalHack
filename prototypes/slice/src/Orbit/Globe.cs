@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using Planets.Gen;
 using Planets.Look;
@@ -42,49 +43,136 @@ public sealed class GlobePaint
 }
 
 /// <summary>
-/// The world below, seen from its orbit: planet-generator's globe (its planet, cloud, atmosphere
-/// and ring shaders, as its OrbitView draws them) at the orbit zone's scale, centred on the zone's
-/// origin and fixed there, so a direction from the centre is always the same place on the map.
-/// It has no collider: a descent starts at the atmosphere's top, above the ground it shows.
+/// The world below, seen from its orbit: planet-generator's globe (its planet, atmosphere and ring
+/// shaders, as its OrbitView draws them) at the orbit zone's scale, centred on the zone's frame, so
+/// a direction from the centre is always the same place on the map. It has no collider: a descent
+/// crosses into the atmosphere well above the ground it shows.
+///
+/// Over the overlap band it fades in over the surface's terrain (<see cref="Fade"/>). The ground
+/// and clouds use planet-generator's shaders with two additions: a fade, and a pull toward the
+/// camera. The surface's terrain stands between you and the globe, so while they overlap the globe
+/// is drawn pulled in along each eye ray to a few hundred metres: the same on screen, in front of
+/// the terrain, still behind your vessel.
 /// </summary>
 public partial class Globe : Node3D
 {
+    const string PullVertex = """
+        uniform float pull = 1.0;
+        void vertex() {
+            vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+            world = CAMERA_POSITION_WORLD + (world - CAMERA_POSITION_WORLD) * pull;
+            VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
+        }
+        """;
+
+    const string GroundSource = $$"""
+        shader_type spatial;
+        render_mode blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx;
+        uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform sampler2D glow_map : source_color, filter_linear_mipmap, repeat_enable;
+        uniform vec3 sun_dir = vec3(1.0, 0.0, 0.0);
+        uniform float day_glow = 0.6;
+        uniform float night_glow = 1.6;
+        uniform float fade = 1.0;
+        {{PullVertex}}
+        void fragment() {
+            vec4 a = texture(albedo_map, UV);
+            ALBEDO = a.rgb;
+            ROUGHNESS = mix(0.9, 0.42, a.a);
+            SPECULAR = mix(0.1, 0.45, a.a);
+            vec3 n = normalize(mat3(transpose(MODEL_MATRIX)) * (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+            float night = smoothstep(0.15, -0.25, dot(n, sun_dir));
+            EMISSION = texture(glow_map, UV).rgb * (day_glow + night * night_glow);
+            ALPHA = fade;
+        }
+        """;
+
+    const string CloudSource = $$"""
+        shader_type spatial;
+        render_mode blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled;
+        uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
+        uniform float fade = 1.0;
+        {{PullVertex}}
+        void fragment() {
+            vec4 c = texture(cloud_map, UV);
+            ALBEDO = c.rgb;
+            ALPHA = c.a * fade;
+        }
+        """;
+
+    /// <summary>How far off the globe's nearest point is drawn while it overlaps the terrain, m.</summary>
+    const float PulledTo = 450f;
+
+    const float AirStrength = 1.4f;
+
     ShaderMaterial _ground, _clouds, _air, _ringMaterial;
     MeshInstance3D _ring;
+    bool _hasRing;
 
     public float Radius { get; private set; }
 
-    public void Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules)
+    /// <summary>Sets the globe up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
+    public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules)
     {
         Radius = radius;
         ArchetypeLook look = paint.Look;
-        _ground = new ShaderMaterial { Shader = Planets.Shaders.Planet };
+        _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource }, RenderPriority = 0 };
         _ground.SetShaderParameter("albedo_map", ImageTexture.CreateFromImage(paint.Albedo));
+        yield return 0;
         _ground.SetShaderParameter("glow_map", ImageTexture.CreateFromImage(paint.Glow));
         _ground.SetShaderParameter("day_glow", look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter("night_glow", look.GlowingNights ? 2.5f : 1.4f);
         AddChild(Sphere("Ground", radius, rules.Segments, rules.Rings, _ground));
-
-        _clouds = new ShaderMaterial { Shader = Planets.Shaders.Cloud };
+        yield return 0;
+        _clouds = new ShaderMaterial { Shader = new Shader { Code = CloudSource }, RenderPriority = 1 };
         _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
         AddChild(Sphere("Clouds", radius * (1f + (float)rules.CloudHeight), rules.Segments * 2 / 3, rules.Rings * 2 / 3, _clouds));
-
+        yield return 0;
         _air = new ShaderMaterial { Shader = Planets.Shaders.Atmosphere };
         _air.SetShaderParameter("color", C(look.Atmosphere));
         AddChild(Sphere("Atmosphere", atmosphereRadius, rules.Segments / 2, rules.Rings / 2, _air));
-
         _ringMaterial = new ShaderMaterial { Shader = Planets.Shaders.Ring };
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
-        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * 1.45f, radius * 2.3f, 160), MaterialOverride = _ringMaterial, Visible = look.Ring };
+        _hasRing = look.Ring;
+        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * 1.45f, radius * 2.3f, 160), MaterialOverride = _ringMaterial, Visible = false };
         AddChild(_ring);
+        Fade(0f, 0f);
     }
 
-    /// <summary>Where the sun is (a unit direction toward it): the night side glows, the rim of air lights on the day side.</summary>
-    public void SetSun(Vector3 toSun)
+    /// <summary>Where the sun is, toward it: in the globe's frame for the night side's glow, in the world for the rim of air's day side.</summary>
+    public void SetSun(Vector3 inGlobe, Vector3 inWorld)
     {
-        _ground?.SetShaderParameter("sun_dir", toSun);
-        _air?.SetShaderParameter("sun_dir", toSun);
+        _ground?.SetShaderParameter("sun_dir", inGlobe);
+        _air?.SetShaderParameter("sun_dir", inWorld);
     }
+
+    /// <summary>The globe's fade over the band: the ground and clouds (0 to 1), and the rim of air and ring, which stand clear of the ground and come in later.</summary>
+    public void Fade(float ground, float rim)
+    {
+        if (_clouds == null || _air == null) return;
+        _ground.SetShaderParameter("fade", ground);
+        _clouds.SetShaderParameter("fade", ground);
+        _air.SetShaderParameter("strength", AirStrength * rim);
+        _ring.Visible = _hasRing && rim > 0.95f;
+        Visible = ground > 0.002f;
+    }
+
+    /// <summary>Draws the globe pulled in along each eye ray, in front of the terrain (eye: where the camera is), or where it really is (null).</summary>
+    public void Pull(Vector3? eye)
+    {
+        float pull = 1f;
+        if (eye is Vector3 e)
+        {
+            float near = MathF.Max(1f, e.DistanceTo(GlobalPosition) - Radius);
+            pull = MathF.Min(1f, PulledTo / near);
+        }
+        if (Mathf.IsEqualApprox(pull, _pull)) return;
+        _pull = pull;
+        _ground.SetShaderParameter("pull", pull);
+        _clouds.SetShaderParameter("pull", pull);
+    }
+
+    float _pull = 1f;
 
     static MeshInstance3D Sphere(string name, float radius, int segments, int rings, Material material) => new()
     {

@@ -38,8 +38,42 @@ public partial class SkyRig : Node3D
     float _latitude;
     PlanetWorld _world;
 
+    /// <summary>The cloud layer from above: the sky draws clouds behind the ground, so from over them this mesh draws what is under you.</summary>
+    public MeshInstance3D CloudDeck { get; private set; }
+    ShaderMaterial _deck;
+
+    /// <summary>How much of the cloud deck shows, on top of what the eye's height over it allows, 0 to 1 (the air thinning away).</summary>
+    public float CloudDeckFade = 1f;
+
+    /// <summary>
+    /// Keeps the cloud deck under an eye: it sits in the layer, shows once the eye is climbing
+    /// through it, and is lit as the sky's clouds are.
+    /// </summary>
+    public void PlaceCloudDeck(Vector3 eye)
+    {
+        AtmosphereState air = Air;
+        float seen = Smooth(air.CloudBase, air.CloudBase + air.CloudThickness * 0.7f, eye.Y) * CloudDeckFade;
+        CloudDeck.Visible = seen > 0.002f && air.CloudCover > 0.02f;
+        if (!CloudDeck.Visible) return;
+        CloudDeck.GlobalPosition = new Vector3(eye.X, air.CloudBase + air.CloudThickness * 0.45f, eye.Z);
+        _deck.SetShaderParameter("seen", seen);
+        _deck.SetShaderParameter("cover", air.CloudCover);
+        _deck.SetShaderParameter("dark", air.CloudDarkness);
+        _deck.SetShaderParameter("drift", _cloudDrift);
+        _deck.SetShaderParameter("scale", (Vector2)_sky.GetShaderParameter("cloud_scale"));
+        _deck.SetShaderParameter("noise", _noise);
+        _deck.SetShaderParameter("light", Daylight * (0.35f + 0.65f * Smooth(0f, 0.3f, ToSun.Y)));
+    }
+
     public override void _Ready()
     {
+        _deck = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/clouddeck.gdshader") };
+        CloudDeck = new MeshInstance3D
+        {
+            Name = "CloudDeck", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) }, MaterialOverride = _deck, Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
+        };
+        AddChild(CloudDeck);
         _noise = new NoiseTexture2D
         {
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,

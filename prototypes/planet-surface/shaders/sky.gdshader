@@ -284,10 +284,12 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 		vec3 p = ro + rd * t;
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
-			float ext = d * dt * 0.016;
+			// A thinner slab packs the same cloud into less path: as solid, seen through.
+			float ext = d * dt * 0.016 * clamp(900.0 / cloud_thick, 1.0, 3.0);
 			if (lit) {
 				// Light reaching this point from the sun, through two cheaper samples of cloud.
-				float toward = cloud_density(p + sun * 80.0, true) + cloud_density(p + sun * 240.0, true) * 0.8;
+				float reach = clamp(cloud_thick / 900.0, 0.3, 1.0);
+				float toward = cloud_density(p + sun * 80.0 * reach, true) + cloud_density(p + sun * 240.0 * reach, true) * 0.8;
 				float beer = exp(-toward * 1.6);
 				float powder = 1.0 - exp(-d * 3.0);
 				float hgt = clamp((p.y - cloud_base) / cloud_thick, 0.0, 1.0);
@@ -310,6 +312,66 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	col = mix(mix(sky, col, 0.5), col, fade);
 	alpha *= fade;
 	return vec4(mix(sky, col, alpha), alpha);
+}
+
+// ---- The way out ---------------------------------------------------------------------------
+// As the air thins with height the sky fades into space's own backdrop: the same stars, nebula
+// and glare the orbit's sky draws (planet-generator's space shader, copied here because a sky
+// shader can't include another's), so when the orbit's sky takes over nothing changes.
+
+uniform float space_fade = 0.0;        // 0 the planet's sky, 1 space
+uniform mat3 space_turn = mat3(1.0);   // the world's directions into the backdrop's
+uniform vec3 space_sun = vec3(0.0, 1.0, 0.0);
+uniform vec3 space_nebula : source_color = vec3(0.16, 0.1, 0.35);
+uniform vec3 space_nebula_b : source_color = vec3(0.1, 0.2, 0.3);
+
+float hash3(vec3 p) {
+	uvec3 q = uvec3(ivec3(floor(p))) * uvec3(1597334673u, 3812015801u, 2798796415u);
+	return float((q.x ^ q.y ^ q.z) * 1597334673u) * 2.3283064e-10;
+}
+
+float vnoise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	vec3 u = f * f * (3.0 - 2.0 * f);
+	float a = mix(hash3(i), hash3(i + vec3(1, 0, 0)), u.x);
+	float b = mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), u.x);
+	float c = mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), u.x);
+	float d = mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), u.x);
+	return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
+}
+
+float fbm3(vec3 p) {
+	float s = 0.0, a = 0.5;
+	for (int i = 0; i < 4; i++) { s += a * vnoise3(p); p *= 2.03; a *= 0.5; }
+	return s / 0.9375;
+}
+
+vec3 star_shell(vec3 d, float shell, float chance, float radius) {
+	vec3 p = d * shell;
+	vec3 base = floor(p + 0.28) - 1.0;
+	vec3 col = vec3(0.0);
+	for (int i = 0; i < 8; i++) {
+		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
+		if (hash3(cell) < 1.0 - chance) continue;
+		vec3 star = cell + 0.2 + 0.6 * vec3(hash3(cell + 3.0), hash3(cell + 7.0), hash3(cell + 11.0));
+		if (abs(length(star) - shell) > 0.35) continue;
+		float off = length(star - d * dot(star, d));
+		float lit = smoothstep(radius, 0.0, off);
+		col += lit * (0.4 + 0.6 * hash3(cell + 9.0)) * mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), hash3(cell + 2.0));
+	}
+	return col;
+}
+
+vec3 space_backdrop(vec3 d) {
+	vec3 col = vec3(0.012, 0.012, 0.03);
+	float n = fbm3(d * 2.2 + vec3(fbm3(d * 3.0) * 1.2));
+	float neb = smoothstep(0.42, 0.85, n);
+	col += space_nebula * neb * 0.55 + space_nebula_b * smoothstep(0.6, 0.95, fbm3(d * 4.5 + 3.0)) * neb * 0.35;
+	col += star_shell(d, 150.0, 0.16, 0.27) * 1.6;
+	float s = max(dot(d, space_sun), 0.0);
+	col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
+	return col;
 }
 
 void sky() {
@@ -360,6 +422,7 @@ void sky() {
 		if (debug_view == 3) col = night_sky(dir, sun) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
 		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
+		if (space_fade > 0.0) col = mix(col, space_backdrop(space_turn * dir), space_fade);
 		COLOR = col;
 	}
 }

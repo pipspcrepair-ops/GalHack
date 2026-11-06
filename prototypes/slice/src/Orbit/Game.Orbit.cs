@@ -25,6 +25,7 @@ public partial class Game
         Surface = Zone;
         Spaceflight = new Spaceflight { Name = "Spaceflight", Game = this };
         AddChild(Spaceflight);
+        Zone.Built += Spaceflight.PlanetBuilt;
     }
 
     /// <summary>
@@ -34,8 +35,9 @@ public partial class Game
     /// </summary>
     internal void EnterZone(SurfaceZone zone)
     {
+        // Camera and shots go with you; the console follows only if it isn't riding a hull with you.
         foreach (Node n in new Node[] { Camera, Console, Shots })
-            if (n != null && n.GetParent() != zone) n.Reparent(zone, false);
+            if (n != null && n.GetParent() is SurfaceZone && n.GetParent() != zone) n.Reparent(zone, false);
         zone.Camera = Camera;
         zone.Focus = Focus;
         zone.WorldRules.Mode = Mode;

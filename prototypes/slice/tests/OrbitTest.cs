@@ -201,22 +201,25 @@ public partial class OrbitTest : Node
         Crossing up = _game.Spaceflight.Crossings[0];
         OrbitZone orbit = _game.Orbit;
         GD.Print($"  crossed at map ({up.MapX:F0}, {up.MapZ:F0}) heading {up.HeadingDegrees:F1}°, in {up.Ms:F1} ms; orbit was made in {orbit.PrepareMs:F0} ms off the main thread");
-        // The point over the globe is the map point under the Skiff, at its height over the top of the atmosphere.
-        N.Vector3 p = v.Body.Position;
-        var (mx, mz) = orbit.Map.MapPoint(p);
+        // Nothing about the Skiff changes at the crossing: the orbit is laid out over the point under it.
+        Check(up.PositionBefore == up.PositionAfter && up.RotationBefore == up.RotationAfter && up.VelocityBefore == up.VelocityAfter,
+            $"position, rotation and velocity carried straight across, to the last bit: at {up.PositionAfter}, {up.VelocityAfter.Length():F1} m/s");
+        // And the globe agrees: the place under the Skiff there is the map point it left from.
+        var (mx, mz) = orbit.Under(up.PositionAfter.ToGodot());
         double dx = Math.Abs(mx - up.MapX);
         dx = Math.Min(dx, orbit.Map.Width - dx);
         double off = Math.Sqrt(dx * dx + (mz - up.MapZ) * (mz - up.MapZ));
         Check(off < 2.0 && v.Zone == orbit && _game.Survivor.Seated == v,
-            $"the Skiff came out over the map point it left from ({off:F2} m off), with the castaway still in its seat");
-        var (_, local) = orbit.Map.ToSurface(p, v.Body.Rotation);
+            $"the globe has the Skiff over the map point it left from ({off:F2} m off), with the castaway still in its seat");
+        N.Quaternion inGlobe = N.Quaternion.Normalize(N.Quaternion.Conjugate(orbit.Turn) * up.RotationAfter);
+        var (_, local) = orbit.Map.ToSurface(orbit.ToGlobe(up.PositionAfter), inGlobe);
         double after = GlobeMap.HeadingDegrees(local);
         Check(HeadingError(after, heading) < 1.0, $"its heading over the globe is the heading it climbed with: {after:F1}° (was {heading:F1}°; north stays north)");
         Check(up.Audit.Count == 0, $"the crossing lost and doubled nothing: the ledger's totals and zones match the game's ({string.Join("; ", up.Audit)})");
         Check(_game.Spaceflight.Ledger.ZoneOf("castaway")?.StartsWith("cabin/") == true && _game.Spaceflight.Ledger.ZoneOf(IdOf(v)) == ZoneLedger.Orbit,
             $"on disk the Skiff is in orbit and the castaway in its cabin (crossing committed before anything moved: {_game.Spaceflight.Ledger.LastCommit?.Written} record written)");
-        Check(!_game.Surface.IsInsideTree() && _game.Surface.Vessels.Contains(_game.Bunker.Ruin),
-            "the surface waits out of the scene, everything on it as it was left (the bunker among it)");
+        Check(_game.Surface.ProcessMode == ProcessModeEnum.Disabled && _game.Surface.Vessels.Contains(_game.Bunker.Ruin),
+            "the surface waits, frozen, everything on it as it was left (the bunker among it)");
     }
 
     string IdOf(Vessel v) => _game.Spaceflight.Holders().First(h => h.Name == v.Name && h.Type == "structure").Id;

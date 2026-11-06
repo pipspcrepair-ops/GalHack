@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -27,12 +28,13 @@ public sealed class OrbitRules
 
     public sealed class CrossingRules
     {
-        public float PreloadAt { get; set; } = 0.55f;
-        public float ArriveAbove { get; set; } = 60f;
-        public float ArriveBelow { get; set; } = 150f;
-        public float TunnelFrom { get; set; } = 220f;
-        public float TunnelHold { get; set; } = 0.45f;
-        public float TunnelOut { get; set; } = 0.7f;
+        public Dictionary<string, float> Altitude { get; set; } = new() { ["default"] = 1060f };
+        public float ClearOfGround { get; set; } = 150f;
+        public float PreloadAt { get; set; } = 0.5f;
+        public float Gap { get; set; } = 80f;
+        public float FadeFrom { get; set; } = 700f;
+        public float Band { get; set; } = 1000f;
+        public float StreamAhead { get; set; } = 1.5f;
     }
 
     public sealed class WreckRules
@@ -72,6 +74,13 @@ public sealed class OrbitRules
     static OrbitRules _shared;
     /// <summary>data/orbit.json, read once.</summary>
     public static OrbitRules Shared => _shared ??= Parse(File.ReadAllText(GameData.Own("data/orbit.json")));
+
+    /// <summary>Where orbit starts on a world, m: low, over its clouds, and clear of its highest ground.</summary>
+    public float OrbitAltitude(string airKind, float highestGround)
+    {
+        float altitude = Crossing.Altitude.TryGetValue(airKind, out float a) ? a : Crossing.Altitude["default"];
+        return Math.Max(altitude, highestGround + Crossing.ClearOfGround);
+    }
 
     /// <summary>The loot rolls for a salvage grade (scrap if the grade has none).</summary>
     public IEnumerable<(string item, int least, int most)> LootFor(string grade)

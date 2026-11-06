@@ -238,6 +238,7 @@ public partial class SurfaceZone : Node3D
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
+        Sky.PlaceCloudDeck(eye);
     }
 
     public override void _PhysicsProcess(double delta)

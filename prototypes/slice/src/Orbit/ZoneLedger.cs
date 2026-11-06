@@ -88,11 +88,10 @@ public sealed class ZoneLedger
     }
 
     /// <summary>
-    /// Brings every holder's record up to date and commits: what play has changed since the last
-    /// commit (things dug, made, eaten, salvaged) is declared, so the ledger's totals are the game's.
-    /// Returns false (and keeps the last good commit) if the disk refused it.
+    /// Brings every holder's record up to date: what play has changed since the last commit (things
+    /// dug, made, eaten, salvaged) is declared, so the ledger's totals are the game's.
     /// </summary>
-    public bool Snapshot(IEnumerable<Holder> holders)
+    void Refresh(IEnumerable<Holder> holders)
     {
         var seen = new HashSet<string>();
         int items = 0, blocks = 0;
@@ -114,8 +113,63 @@ public sealed class ZoneLedger
         }
         var (expectItems, expectBlocks) = Table.ExpectedTotals;
         Table.Declare(items - expectItems, blocks - expectBlocks);
+    }
+
+    /// <summary>Brings every record up to date and commits now. False (the last good commit kept) if the disk refused.</summary>
+    public bool Snapshot(IEnumerable<Holder> holders)
+    {
+        Refresh(holders);
         return Commit("snapshot");
     }
+
+    /// <summary>
+    /// A crossing in play: every record brought up to date and the crosser's new zone, committed on
+    /// a worker thread so no frame waits on the disk. Nothing moves until <see cref="Finish"/> says
+    /// it landed. False if the ledger refused outright.
+    /// </summary>
+    public bool Begin(IEnumerable<Holder> holders, string id, string zone)
+    {
+        Refresh(holders);
+        _before = Table.Get(id);
+        Table.Put(_before with { ZoneId = zone, ShipId = null });
+        try { _plan = Table.PrepareCommit(); }
+        catch (SaveRefusedException e)
+        {
+            Trouble = $"crossing: {e.Message}";
+            Table.Put(_before);
+            return false;
+        }
+        CommitPlan plan = _plan;
+        _commit = System.Threading.Tasks.Task.Run(() => Store.Commit(plan));
+        return true;
+    }
+
+    /// <summary>A crossing's commit is still on its way to the disk.</summary>
+    public bool Committing => _commit != null && !_commit.IsCompleted;
+
+    /// <summary>The crossing's commit is done: true if it landed (the crosser may move now); false, and the record is put back, if not.</summary>
+    public bool Finish()
+    {
+        try
+        {
+            LastCommit = _commit.Result;
+            Table.CompleteCommit(_plan);
+            Commits++;
+            Trouble = null;
+            return true;
+        }
+        catch (AggregateException e)
+        {
+            Trouble = $"crossing: {e.InnerException?.Message}";
+            Table.Put(_before);
+            return false;
+        }
+        finally { _commit = null; }
+    }
+
+    System.Threading.Tasks.Task<CommitResult> _commit;
+    CommitPlan _plan;
+    SaveRecord _before;
 
     /// <summary>
     /// The crossing's record: the crosser is now in another zone (and anything riding it stays in
@@ -156,25 +210,36 @@ public sealed class ZoneLedger
     /// <summary>Where the ledger says a record is.</summary>
     public string ZoneOf(string id) => Table.TryGet(id, out SaveRecord r) ? r.ZoneId : null;
 
-    /// <summary>
-    /// The game's own counts against the committed totals and zones, right after a move: every
-    /// difference is something the move lost, doubled or put in the wrong zone. Empty when all is well.
-    /// </summary>
-    public List<string> Audit(IEnumerable<Holder> holders)
+    /// <summary>The totals of what is held (items, blocks).</summary>
+    public static (int Items, int Blocks) Totals(IEnumerable<Holder> holders)
     {
-        var problems = new List<string>();
         int items = 0, blocks = 0;
         foreach (Holder h in holders)
         {
             items += h.Items.Total;
             blocks += h.Blocks;
+        }
+        return (items, blocks);
+    }
+
+    /// <summary>
+    /// The game's own counts and zones right after a move, against the counts just before it and
+    /// the zones on disk: every difference is something the move lost, doubled or put in the wrong
+    /// zone. Empty when all is well.
+    /// </summary>
+    public List<string> Audit(IEnumerable<Holder> holders, (int Items, int Blocks) before)
+    {
+        var problems = new List<string>();
+        var list = holders.ToList();
+        foreach (Holder h in list)
+        {
             if (!Table.TryGet(h.Id, out SaveRecord r)) problems.Add($"{h.Id} has no record");
             else if (r.ZoneId != h.Zone && !(h.Zone.StartsWith("cabin/") && r.ZoneId.StartsWith("cabin/")))
                 problems.Add($"{h.Id} is in {h.Zone} but its record says {r.ZoneId}");
         }
-        var (ci, cb) = Committed;
-        if (items != ci) problems.Add($"{items} items where {ci} were committed");
-        if (blocks != cb) problems.Add($"{blocks} blocks where {cb} were committed");
+        var (items, blocks) = Totals(list);
+        if (items != before.Items) problems.Add($"{items} items where there were {before.Items}");
+        if (blocks != before.Blocks) problems.Add($"{blocks} blocks where there were {before.Blocks}");
         return problems;
     }
 }
