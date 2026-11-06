@@ -22,6 +22,8 @@ public enum RemoveStatus { Removed, Empty, CoreHoldsStructure }
 
 public enum UpgradeStatus { Upgraded, NotArmor, AlreadyBest, NotEnoughMaterials, Empty }
 
+public enum RepairStatus { Repaired, NotDamaged, NotEnoughMaterials }
+
 public sealed record RemoveResult(RemoveStatus Status, Block Block, List<Structure> Wrecks);
 
 /// <summary>
@@ -241,14 +243,44 @@ public static class Building
     }
 
     /// <summary>Brings a damaged block back to full health. Returns false if there was nothing to fix.</summary>
-    public static bool Repair(Structure s, Int3 p)
+    public static bool Repair(Structure s, Int3 p) => Repair(s, p, 1f);
+
+    /// <summary>
+    /// Gives a damaged block back a share of its full health (the look steps back with it, one
+    /// damage stage at a time). Returns false if there was nothing to fix.
+    /// </summary>
+    public static bool Repair(Structure s, Int3 p, float share)
     {
         if (!s.TryGet(p, out Block b)) return false;
         float max = s.StatsOf(b).MaxHp;
         if (b.Hp >= max - 0.01f) return false;
-        b.Hp = max;
-        s.Set(p, b);
+        s.SetHp(p, MathF.Min(max, b.Hp + max * share));
         return true;
+    }
+
+    /// <summary>The share of its bill a repair of this much of a block's health costs: repairs consume materials.</summary>
+    public static float RepairShare(Structure s, Int3 p, float share = 1f)
+    {
+        if (!s.TryGet(p, out Block b)) return 0f;
+        float max = s.StatsOf(b).MaxHp;
+        return MathF.Min(share, MathF.Max(0f, (max - b.Hp) / max));
+    }
+
+    /// <summary>What repairing this much of the block costs: that share of its recipe, rounded up, so no repair is free.</summary>
+    public static Dictionary<string, int> RepairCost(Structure s, Int3 p, float share = 1f)
+    {
+        float paid = RepairShare(s, p, share);
+        if (paid <= 0f) return new Dictionary<string, int>();
+        return s.Catalogue.CostOf(s.Get(p), s.Grid).ToDictionary(kv => kv.Key, kv => (int)MathF.Ceiling(kv.Value * paid));
+    }
+
+    /// <summary>A repair paid for from an inventory (a structure's shared storage, the player's bag). Nothing is restored unless it can pay.</summary>
+    public static RepairStatus Repair(Structure s, Int3 p, Inventory inventory, float share = 1f)
+    {
+        if (!IsDamaged(s, p)) return RepairStatus.NotDamaged;
+        if (inventory != null && !inventory.TryTake(RepairCost(s, p, share))) return RepairStatus.NotEnoughMaterials;
+        Repair(s, p, share);
+        return RepairStatus.Repaired;
     }
 
     public static bool IsDamaged(Structure s, Int3 p) =>

@@ -593,7 +593,13 @@ public partial class BuildController : Node
 
         if (Building.IsDamaged(s, Aim.Cell))
         {
-            foreach (Int3 c in cells) Building.Repair(s, c);
+            // Repairs consume materials: a share of the block's recipe, for the health it gets back.
+            if (Building.Repair(s, Aim.Cell, Inventory) == RepairStatus.NotEnoughMaterials)
+            {
+                Refuse("Not enough materials to repair that");
+                return;
+            }
+            foreach (Int3 c in cells.Skip(1)) Building.Repair(s, c, Inventory);
             view.Sync();
             foreach (Int3 c in cells) Feedback(view, c, "upgrade", 0.8f);
             Hud.Toast("Repaired", Hud.Good);

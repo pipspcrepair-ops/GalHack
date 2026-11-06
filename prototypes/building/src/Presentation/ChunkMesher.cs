@@ -53,29 +53,43 @@ public sealed class MeshBuffers
     public void AddPolygon(ReadOnlySpan<Vector3> points, Vector3 normal, Dir slot, float cellSize, in FaceLook look,
         ReadOnlySpan<Vector3> vertexNormals = default)
     {
-        int start = Vertices.Count;
+        int start = Vertices.Count, count = points.Length;
         Vector3 right = Rights[(int)slot], up = Ups[(int)slot];
         Vector2 uv2 = new(look.Accent, look.Flags);
         float inv = 1f / cellSize;
         var half = new Vector3(0.5f, 0.5f, 0.5f);
         bool smooth = vertexNormals.Length > 0;
-        for (int i = 0; i < points.Length; i++)
+        // Room for the whole polygon at once, then plain writes: a holed face is a lot of small polygons.
+        Span<Vector3> vertices = Grow(Vertices, count), normals = Grow(Normals, count);
+        Span<Color> colors = Grow(Colors, count);
+        Span<Vector2> uvs = Grow(UVs, count), uv2s = Grow(UV2s, count);
+        for (int i = 0; i < count; i++)
         {
             Vector3 p = points[i];
-            Vertices.Add(p);
-            Normals.Add(smooth ? vertexNormals[i] : normal);
-            Colors.Add(look.Base);
+            vertices[i] = p;
+            normals[i] = smooth ? vertexNormals[i] : normal;
+            colors[i] = look.Base;
             Vector3 c = p * inv + half;
-            UVs.Add(new Vector2(c.Dot(right), c.Dot(up)));
-            UV2s.Add(uv2);
+            uvs[i] = new Vector2(c.Dot(right), c.Dot(up));
+            uv2s[i] = uv2;
         }
         bool ccw = (points[1] - points[0]).Cross(points[2] - points[0]).Dot(normal) > 0;
-        for (int i = 1; i + 1 < points.Length; i++)
+        Span<int> indices = Grow(Indices, (count - 2) * 3);
+        for (int i = 1, n = 0; i + 1 < count; i++)
         {
-            Indices.Add(start);
-            Indices.Add(start + (ccw ? i + 1 : i));
-            Indices.Add(start + (ccw ? i : i + 1));
+            indices[n++] = start;
+            indices[n++] = start + (ccw ? i + 1 : i);
+            indices[n++] = start + (ccw ? i : i + 1);
         }
+    }
+
+    /// <summary>Lengthens a list by <paramref name="count"/> and hands back the new items to fill in.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static Span<T> Grow<T>(List<T> list, int count)
+    {
+        int start = list.Count;
+        CollectionsMarshal.SetCount(list, start + count);
+        return CollectionsMarshal.AsSpan(list).Slice(start, count);
     }
 
     public Godot.Collections.Array ToArrays()
@@ -104,12 +118,16 @@ public sealed class ChunkMeshData
     public readonly List<(Vector3 center, Vector3 size)> Boxes = new();
     public readonly List<Vector3[]> Hulls = new();
 
+    /// <summary>Devices in this chunk so badly damaged they smoke and spark.</summary>
+    public readonly List<Int3> Smoking = new();
+
     public void Clear()
     {
         Opaque.Clear();
         Glass.Clear();
         Boxes.Clear();
         Hulls.Clear();
+        Smoking.Clear();
     }
 }
 
@@ -121,12 +139,22 @@ public sealed class ChunkMeshData
 ///
 /// The chunk is first copied with a one-cell border into flat arrays, along with each block's
 /// face masks from the catalogue, so the hot loops are plain array reads.
+///
+/// Damage is drawn from each block's health (<see cref="Damage.Bucket"/>). Scuffed cubes still
+/// merge, and the shader marks them block by block. Dented and holed cube faces leave the greedy
+/// pass and get real geometry of their own: a pushed-in pyramid, or a buckled ring around a hole
+/// with the frame behind it. Each block's look comes from a hash of its cell and face, never from
+/// how the faces happened to merge, so a remesh can't change it. The shader does the rest, for
+/// every material and shape.
 /// </summary>
 public static class ChunkMesher
 {
     const int S = Chunk.Size, P = S + 2;
     const int StrideY = P, StrideZ = P * P;
-    const uint DarkColor = 0x23252e;
+    const uint DarkColor = 0x23252e, FrameColor = 0x30333c, StrutColor = 0x565b66;
+
+    /// <summary>How deep the frame sits behind a holed face, in cells.</summary>
+    public const float FrameDepth = 0.34f;
 
     static readonly int[] Stride = { 1, StrideY, StrideZ };
     static readonly Basis[] Bases = new Basis[Orientations.Count];
@@ -150,7 +178,7 @@ public static class ChunkMesher
     static int Pad(int x, int y, int z) => (x + 1) + P * ((y + 1) + P * (z + 1));
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static ChunkMeshData Build(Structure s, Int3 chunk, ChunkMeshData data = null)
+    public static ChunkMeshData Build(Structure s, Int3 chunk, ChunkMeshData data = null, bool colliders = true)
     {
         data ??= new ChunkMeshData();
         data.Clear();
@@ -195,13 +223,13 @@ public static class ChunkMesher
                     _full[i] = cat.FullMask(b);
                     _glass[i] = t.Transparent ? b.Type : (ushort)0;
                     _cube[i] = t.IsArmor && cat.Shapes[b.Shape].IsCube;
-                    _damage[i] = inside ? (byte)DamageBucket(b.Hp / cat.MaxHp(b, s.Grid)) : (byte)0;
+                    _damage[i] = inside ? (byte)Damage.Bucket(b.Hp, cat.MaxHp(b, s.Grid)) : (byte)0;
                 }
 
         float size = s.Grid.CellSize;
         GreedyCubes(s, origin, size, data);
         Parts(s, origin, size, data);
-        Colliders(s, origin, size, data);
+        if (colliders) Colliders(s, origin, size, data);
         return data;
     }
 
@@ -251,6 +279,12 @@ public static class ChunkMesher
                         if (_cube[c] && !Hidden(c, d, c + toNeighbour))
                         {
                             ref Block b = ref _pad[c];
+                            if (_damage[c] >= 2 && _glass[c] == 0)
+                            {
+                                DamagedFace(s, data, origin, c, d, a, u, v, i, j, k, size, normal);
+                                _mask[i + j * S] = 0;
+                                continue;
+                            }
                             key = 1 + b.Type + ((long)b.Paint[d] << 16) + ((long)_damage[c] << 32);
                             anyFace = true;
                         }
@@ -292,6 +326,140 @@ public static class ChunkMesher
         }
     }
 
+    // ---- Damaged faces --------------------------------------------------------------------
+
+    /// <summary>A hash of one block's face: the same for that face however its neighbours mesh.</summary>
+    public static uint FaceSeed(Int3 cell, Dir d)
+    {
+        uint h = unchecked((uint)cell.X * 73856093u ^ (uint)cell.Y * 19349663u ^ (uint)cell.Z * 83492791u ^ ((uint)d + 1u) * 2654435761u);
+        h ^= h >> 15;
+        h = unchecked(h * 2246822519u);
+        return h ^ (h >> 13);
+    }
+
+    static float Next(ref uint h)
+    {
+        h = unchecked(h * 1664525u + 1013904223u);
+        return ((h >> 8) & 0xffff) / 65536f;
+    }
+
+    /// <summary>The shader's per-block seed, in the colour's alpha. Under 1, which means "work it out from the position" (merged faces).</summary>
+    static Color WithSeed(Color c, uint h) => new(c.R, c.G, c.B, (h & 0x7f) / 128f);
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    static void DamagedFace(Structure s, ChunkMeshData data, Int3 origin, int c, Dir d, int a, int u, int v, int i, int j, int k, float size, Vector3 normal)
+    {
+        Int3 step = Int3.Zero.With(a, k).With(u, i).With(v, j);
+        uint h = FaceSeed(origin + step, d);
+        var f = new FaceFrame(a, u, v, origin[a] + k + d.Sign() * 0.5f, origin[u] + i - 0.5f, origin[v] + j - 0.5f, d.Sign(), size);
+        if (_damage[c] == 2) DentedFace(s, data.Opaque, f, c, d, h, normal);
+        else HoledFace(s, data.Opaque, f, c, d, h, normal);
+    }
+
+    /// <summary>A cell face's own coordinates: across it 0 to 1 each way, and depth into the block.</summary>
+    readonly record struct FaceFrame(int A, int U, int V, float Plane, float U0, float V0, int Sign, float Size)
+    {
+        public Vector3 At(float s, float t, float depth) => Corner(A, U, V, Plane - Sign * depth, U0 + s, V0 + t) * Size;
+    }
+
+    /// <summary>Cracked and dented: the rim stays flush with its neighbours, and the middle is pushed in off-centre.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    static void DentedFace(Structure s, MeshBuffers m, in FaceFrame f, int c, Dir d, uint h, Vector3 normal)
+    {
+        FaceLook look = Look(s, _pad[c], d, PartStyle.Body, 2);
+        look = look with { Base = WithSeed(look.Base, h) };
+        Vector3 p0 = f.At(0, 0, 0), p1 = f.At(1, 0, 0), p2 = f.At(1, 1, 0), p3 = f.At(0, 1, 0);
+        float across = Next(ref h), along = Next(ref h), depth = 0.07f + 0.09f * Next(ref h);
+        Vector3 dent = f.At(0.3f + 0.4f * across, 0.3f + 0.4f * along, depth);
+        Tri(m, p0, p1, dent, normal, d, f.Size, look);
+        Tri(m, p1, p2, dent, normal, d, f.Size, look);
+        Tri(m, p2, p3, dent, normal, d, f.Size, look);
+        Tri(m, p3, p0, dent, normal, d, f.Size, look);
+    }
+
+    /// <summary>
+    /// Holed: the plate is torn open and bent inwards round the tear, and the block's frame shows
+    /// behind it, recessed, with a strut across. The outer edge stays where it was, so nothing
+    /// opens up against the neighbouring faces; only the look changes, never the collider.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    static void HoledFace(Structure s, MeshBuffers m, in FaceFrame f, int c, Dir d, uint h, Vector3 normal)
+    {
+        FaceLook plate = Look(s, _pad[c], d, PartStyle.Body, 3, holed: true);
+        plate = plate with { Base = WithSeed(plate.Base, h) };
+        FaceLook torn = new(WithSeed(Rgb(DarkColor), h), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 3, false, 1, 0, false, DamageLook.Metal, true));
+        var frame = new FaceLook(Rgb(FrameColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Plates, 0, false, 2, 0, false, DamageLook.Metal, false));
+        var strut = new FaceLook(Rgb(StrutColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 0, false, 2, 0, false, DamageLook.Metal, false));
+
+        // The tear: a lopsided four-sided hole, each corner its own way off a rough rectangle.
+        float s0 = 0.14f + 0.14f * Next(ref h), s1 = 0.72f + 0.14f * Next(ref h);
+        float t0 = 0.14f + 0.14f * Next(ref h), t1 = 0.72f + 0.14f * Next(ref h);
+        Span<Vector2> hole = stackalloc Vector2[4];
+        hole[0] = new Vector2(s0 + 0.08f * Next(ref h), t0 + 0.08f * Next(ref h));
+        hole[1] = new Vector2(s1 - 0.08f * Next(ref h), t0 + 0.08f * Next(ref h));
+        hole[2] = new Vector2(s1 - 0.08f * Next(ref h), t1 - 0.08f * Next(ref h));
+        hole[3] = new Vector2(s0 + 0.08f * Next(ref h), t1 - 0.08f * Next(ref h));
+
+        Span<Vector3> outer = stackalloc Vector3[4], rim = stackalloc Vector3[4], back = stackalloc Vector3[4];
+        outer[0] = f.At(0, 0, 0);
+        outer[1] = f.At(1, 0, 0);
+        outer[2] = f.At(1, 1, 0);
+        outer[3] = f.At(0, 1, 0);
+        for (int n = 0; n < 4; n++)
+        {
+            rim[n] = f.At(hole[n].X, hole[n].Y, 0.05f + 0.13f * Next(ref h));
+            back[n] = f.At(hole[n].X, hole[n].Y, FrameDepth);
+        }
+
+        Vector3 middle = (back[0] + back[1] + back[2] + back[3]) * 0.25f;
+        Span<Vector3> quad = stackalloc Vector3[4];
+        for (int n = 0; n < 4; n++)
+        {
+            int m1 = (n + 1) & 3;
+            // The bent plate, two facets to a side: it creases as it folds in.
+            Tri(m, outer[n], outer[m1], rim[m1], normal, d, f.Size, plate);
+            Tri(m, outer[n], rim[m1], rim[n], normal, d, f.Size, plate);
+            // The torn edge of the plate, down to the frame, facing into the hole.
+            Vector3 inwards = (middle - (back[n] + back[m1]) * 0.5f).Normalized();
+            quad[0] = rim[n];
+            quad[1] = rim[m1];
+            quad[2] = back[m1];
+            quad[3] = back[n];
+            m.AddPolygon(quad, inwards, d, f.Size, torn);
+        }
+
+        m.AddPolygon(back, normal, d, f.Size, frame);
+
+        // The struts: one each way across the hole, standing proud of the frame.
+        float sa = MathF.Max(hole[0].X, hole[3].X), sb = MathF.Min(hole[1].X, hole[2].X);
+        float ta = MathF.Max(hole[0].Y, hole[1].Y), tb = MathF.Min(hole[2].Y, hole[3].Y);
+        float sm = (sa + sb) * 0.5f, tm = (ta + tb) * 0.5f, depth = FrameDepth - 0.07f;
+        const float W = 0.035f;
+        quad[0] = f.At(sa, tm - W, depth);
+        quad[1] = f.At(sb, tm - W, depth);
+        quad[2] = f.At(sb, tm + W, depth);
+        quad[3] = f.At(sa, tm + W, depth);
+        m.AddPolygon(quad, normal, d, f.Size, strut);
+        quad[0] = f.At(sm - W, ta, depth);
+        quad[1] = f.At(sm + W, ta, depth);
+        quad[2] = f.At(sm + W, tb, depth);
+        quad[3] = f.At(sm - W, tb, depth);
+        m.AddPolygon(quad, normal, d, f.Size, strut);
+    }
+
+    /// <summary>One flat-shaded triangle, facing the way of <paramref name="towards"/>: bent plates catch the light facet by facet.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    static void Tri(MeshBuffers m, Vector3 a, Vector3 b, Vector3 c, Vector3 towards, Dir slot, float size, in FaceLook look)
+    {
+        Span<Vector3> points = stackalloc Vector3[3];
+        points[0] = a;
+        points[1] = b;
+        points[2] = c;
+        Vector3 n = (b - a).Cross(c - a).Normalized();
+        if (n.Dot(towards) < 0f) n = -n;
+        m.AddPolygon(points, n, slot, size, look);
+    }
+
     static Vector3 Corner(int a, int u, int v, float pa, float pu, float pv)
     {
         var p = new Vector3();
@@ -324,6 +492,7 @@ public static class ChunkMesher
                     }
                     else
                     {
+                        if (_damage[c] == 3) data.Smoking.Add(origin + new Int3(x, y, z));
                         foreach (Part part in t.Parts)
                         {
                             if (part.ClosedOnly && b.Open) continue;
@@ -362,8 +531,11 @@ public static class ChunkMesher
                 _normals[i] = (basis * ToG(NVec.Normalize(radial))).Normalized();
             }
         }
-        target.AddPolygon(_poly.AsSpan(0, points.Length), basis * ToG(poly.Normal), slot, size,
-            Look(s, b, slot, style, _damage[c]), poly.SmoothAxis >= 0 ? _normals.AsSpan(0, points.Length) : default);
+        FaceLook look = Look(s, b, slot, style, _damage[c]);
+        // Every polygon of a shaped or component block carries its own seed: these faces never merge.
+        if (_damage[c] > 0) look = look with { Base = WithSeed(look.Base, FaceSeed(Int3.Round(ToN(centre)), slot)) };
+        target.AddPolygon(_poly.AsSpan(0, points.Length), basis * ToG(poly.Normal), slot, size, look,
+            poly.SmoothAxis >= 0 ? _normals.AsSpan(0, points.Length) : default);
     }
 
     static Vector3 ToG(NVec v) => new(v.X, v.Y, v.Z);
@@ -371,34 +543,32 @@ public static class ChunkMesher
 
     // ---- Appearance ----------------------------------------------------------------------
 
-    /// <summary>0 healthy, 1-3 increasingly scorched. Part of the greedy key so damaged blocks stand out.</summary>
-    static int DamageBucket(float healthFraction) =>
-        healthFraction > 0.75f ? 0 : healthFraction > 0.5f ? 1 : healthFraction > 0.25f ? 2 : 3;
-
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage)
+    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage, bool holed = false)
     {
         BlockType t = s.Catalogue.Types[b.Type];
+        DamageLook wear = t.DamageLook;
         switch (style)
         {
             case PartStyle.Dark:
-                return new FaceLook(Rgb(DarkColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 2, 0, false));
+                return new FaceLook(Rgb(DarkColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 2, 0, false, wear, holed));
             case PartStyle.Accent:
-                return new FaceLook(Rgb(t.Accent), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 1, 0, false));
+                return new FaceLook(Rgb(t.Accent), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, false, 1, 0, false, wear, holed));
             case PartStyle.Glow:
-                bool lit = !(t.IsLight && b.Off);
-                return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 0, lit, 0, 0, false));
+                // Smashed badly enough, a light goes out.
+                bool lit = !(t.IsLight && b.Off) && damage < 3;
+                return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, lit, 0, 0, false, wear, holed));
         }
 
         ushort slotPaint = b.Paint[slot];
         if (slotPaint == 0)
-            return new FaceLook(Rgb(t.Color), t.Accent, Flags(Pattern.None, 0, t.Texture, damage, false, t.Metal, 0, false));
+            return new FaceLook(Rgb(t.Color), t.Accent, Flags(Pattern.None, 0, t.Texture, damage, false, t.Metal, 0, false, wear, holed));
         Paint p = s.Palette[slotPaint];
         int stencil = p.Stencil >= '0' && p.Stencil <= '9' ? p.Stencil - '0' + 1 : 0;
-        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, p.Texture, damage, false, t.Metal, p.Grime, true));
+        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, p.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
     }
 
-    static int Flags(Pattern pattern, int stencil, FaceTexture texture, int damage, bool glow, int metal, int grime, bool painted) =>
+    static int Flags(Pattern pattern, int stencil, FaceTexture texture, int damage, bool glow, int metal, int grime, bool painted, DamageLook wear, bool holed) =>
         ((int)pattern << BlockMaterials.PatternShift)
         | (stencil << BlockMaterials.StencilShift)
         | ((int)texture << BlockMaterials.TextureShift)
@@ -406,7 +576,9 @@ public static class ChunkMesher
         | ((glow ? 1 : 0) << BlockMaterials.GlowShift)
         | (metal << BlockMaterials.MetalShift)
         | (grime << BlockMaterials.GrimeShift)
-        | ((painted ? 1 : 0) << BlockMaterials.PaintedShift);
+        | ((painted ? 1 : 0) << BlockMaterials.PaintedShift)
+        | ((wear == DamageLook.Glass ? 0 : (int)wear) << BlockMaterials.WearShift)
+        | ((holed ? 1 : 0) << BlockMaterials.HoledShift);
 
     public static Color Rgb(uint c) => new(((c >> 16) & 255) / 255f, ((c >> 8) & 255) / 255f, (c & 255) / 255f);
 

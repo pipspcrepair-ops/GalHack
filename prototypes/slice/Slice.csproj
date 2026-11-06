@@ -63,6 +63,7 @@
     <Compile Include="..\planet-surface\src\WeatherView\TornadoFx.cs" />
     <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="..\building\src\Presentation\DamageFx.cs" />
     <Compile Include="..\building\src\Presentation\GhostPreview.cs" />
     <Compile Include="..\wildlife\src\View\**\*.cs" />
     <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />

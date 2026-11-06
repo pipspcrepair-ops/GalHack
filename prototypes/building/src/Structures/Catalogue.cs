@@ -20,6 +20,9 @@ public enum Collide { Cell, Parts, None }
 /// <summary>How a component part is drawn. Body faces take the block's paint; the rest are fixed.</summary>
 public enum PartStyle { Body, Dark, Accent, Glow, Glass }
 
+/// <summary>How a block's material shows damage: metal dents and scorches, concrete chips, alien alloy bruises and bleeds light, glass cracks and shatters.</summary>
+public enum DamageLook { Metal, Concrete, Alien, Glass }
+
 /// <summary>Resistance to each damage type, 0 (none) to 1 (immune).</summary>
 public readonly record struct Resist(float Kinetic, float Explosive, float Energy)
 {
@@ -68,6 +71,7 @@ public sealed class BlockType
     public uint Color, Accent = 0xe85d04, GlowColor = 0xffc46b;
     public FaceTexture Texture = FaceTexture.Panel;
     public byte Metal;
+    public DamageLook DamageLook;
     public string UpgradesTo;
     public BlockType Upgrade;
     public Dictionary<string, int> Cost = new();
@@ -346,6 +350,7 @@ public sealed class Catalogue
             Metal = (byte)Int(e, "metal", 0),
         };
         t.Name = Str(e, "name", t.Id);
+        t.DamageLook = e.TryGetProperty("damageLook", out JsonElement look) ? Enum.Parse<DamageLook>(look.GetString(), ignoreCase: true) : DamageLook.Metal;
         if (e.TryGetProperty("resist", out JsonElement r))
             t.Resist = new Resist(Num(r, "kinetic", 0), Num(r, "explosive", 0), Num(r, "energy", 0));
         t.Color = Color(e, "color", 0xc9c3b4);

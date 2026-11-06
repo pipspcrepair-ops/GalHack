@@ -23,9 +23,9 @@ public enum ToolMode { Gather, Shoot }
 /// The survival tool, an item on the toolbar: in Gather mode it digs a small ball of ground under
 /// the crosshair (terrain-digging's rules: bedrock and anchored ground refuse) and cuts plants;
 /// in Shoot mode it is a short blaster whose bolt you can see fly from the muzzle and land, with
-/// sparks and a scorch where it strikes. Shots only hurt creatures. Every ray asks the world the
-/// survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets the vessel's own
-/// walls: it digs nothing through a floor, and a shot scorches the wall it hits, harmlessly.
+/// sparks and a scorch where it strikes. Shots hurt creatures and the blocks they hit. Every ray
+/// asks the world the survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets
+/// the vessel's own walls: it digs nothing through a floor, and a shot damages the wall it hits.
 /// Dug ore and cut plants go into the pack as shared/Items' raw items.
 /// </summary>
 public sealed class SurvivalTool
@@ -246,6 +246,8 @@ public sealed class SurvivalTool
             _zone.Wildlife.Sim.Damage(c, _rules.ShotDamage, _zone.Wildlife.Player);
             CreatureHit?.Invoke(c);
         }
+        else if (kind == ImpactKind.Block && hit.OnBlock)
+            hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage, GalHack.Structures.DamageType.Energy);
         Vector3 muzzle = Muzzle();
         Vector3 at = end, face = normal;
         Node3D on = onto;

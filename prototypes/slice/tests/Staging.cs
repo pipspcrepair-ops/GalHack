@@ -57,6 +57,10 @@ public sealed partial class Staging
             "torch" => Torch(),
             "base" => BaseView(),
             "vessel" => VesselTakeoff(),
+            "damage-crash" => DamageCrash(),
+            "damage-gunfire" => DamageGunfire(),
+            "damage-wall" => DamageWall(),
+            "damage-repair" => DamageRepair(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };
         foreach (int x in script) yield return x;
