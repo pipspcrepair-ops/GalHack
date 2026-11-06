@@ -297,7 +297,8 @@ public sealed class PlaceWalk
     /// </summary>
     public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target) =>
         Overland(from, to, target, 160f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.85f, false)
-        ?? Overland(from, to, target, 420f, 0.85f, true); // and last, swimming a river
+        ?? Overland(from, to, target, 420f, 0.85f, true) // swimming a river
+        ?? Overland(from, to, target, 420f, 1.4f, true); // and last, up the banks on the jetpack (the walk hops them)
 
     List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim)
     {

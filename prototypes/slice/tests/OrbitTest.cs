@@ -364,10 +364,12 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.FloatTo(() => CellAt(0, 1, _door.Z), 0.9f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.9f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
-        Vector3 boxAt = CellAt(box.X, box.Y, box.Z);
-        foreach (int x in _pilot.FloatTo(() => boxAt, 2.6f, 15f)) yield return x;
+        Vector3 BoxAt() => CellAt(box.X, box.Y, box.Z); // read live: a dead hull drifts
+        // Up off the deck first: the suit's thrusters don't slide along a floor they press into, and a wide hold's box is out of arm's reach from the middle.
+        foreach (int x in _pilot.FloatTo(() => CellAt(box.X - Math.Sign(box.X), 2, box.Z), 1.0f, 15f)) yield return x;
+        foreach (int x in _pilot.FloatTo(BoxAt, 2.6f, 15f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
-        foreach (int x in _drive.LookAt(boxAt, 8)) yield return x;
+        foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
         Bill hold = _wreck.Storage.Contents;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
@@ -442,6 +444,8 @@ public partial class OrbitTest : Node
         const double heading = 45;
         float over = surface.Physics.Zone.Ceiling + orbit.Rules.Crossing.Band + 500f;
         Vector3 Above() => orbit.ToWorld(orbit.Map.Direction(tx, tz) * orbit.RadiusFor(over)).ToGodot();
+        foreach (Vector3 way in RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Above()))
+            foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
         foreach (int x in _pilot.FlyTo(v, Above, 6f, 150f)) yield return x;
         Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 12f, $"the Skiff flew to a point over the map's ({tx:F0}, {tz:F0}), {orbit.Under(v.Body.Position.ToGodot()).x:F0} by the globe");
         // Nose north-east over that point, top to the sky.
