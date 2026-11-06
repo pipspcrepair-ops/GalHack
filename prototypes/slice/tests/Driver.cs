@@ -138,11 +138,14 @@ public sealed class Driver
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
-            digging = dig && noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            // Under the ground with the way on above it (a cave fallen into, a shaft dug): a ramp up out of
+            // it, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
+            bool buried = target.Y - feet.Y > 2.5f && Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y > 2.5f;
+            digging = dig && (noProgress > 2f || buried) && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
             if (digging)
             {
                 var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
-                Face(feet + ahead * 1.6f + Vector3.Up * 0.7f);
+                Face(feet + ahead * 1.6f + Vector3.Up * (buried ? 3.2f : 0.7f));
             }
             Controls.Primary = digging;
             // Over an edge: the jetpack brakes the fall, as a careful player would.

@@ -430,14 +430,15 @@ public partial class SliceTest : Node
     Vector3 MildSpot(Vector3 from, float distance)
     {
         Suit suit = _game.Suit;
-        Band mild = suit.Sim.Data.Vitals.Temperature.AmbientComfort;
+        Band mild = suit.Sim.Data.Vitals.Temperature.AmbientComfort; // the air the body feels, so counting what the suit handles
+        double low = mild.Low - suit.Sim.Mods.ColdProtection, high = mild.High + suit.Sim.Mods.HeatProtection;
         Vector3 best = from;
         double bestOff = double.MaxValue;
         for (int i = 0; i < 10 && bestOff > 0; i++)
         {
             Vector3 p = FlatSpot(from, distance, 0.8f + i * 0.63f);
             double t = suit.Exposure(new Pos(p.X, p.Y, p.Z), suit.Sim.Time).Temperature;
-            double off = Math.Max(0, Math.Max(mild.Low - t, t - mild.High));
+            double off = Math.Max(0, Math.Max(low - t, t - high));
             if (off < bestOff) (best, bestOff) = (p, off);
         }
         return best;
@@ -473,10 +474,13 @@ public partial class SliceTest : Node
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+        // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
+        for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+            foreach (int x in _drive.LookAt(pad, 1)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
         Check(skiff != null && skiff.Structure.Count == 1 && skiff.Structure.Core != null && skiff.Controller.Frozen,
-            "a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground");
+            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict})");
         if (skiff == null) yield break;
         _skiff = skiff;
         int placed = 0, stalls = 0;
