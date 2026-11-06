@@ -25,8 +25,9 @@
     "organicsPerPlant": 1.5,
     // The starting kit in the bunker's locker: a few days' food and air, not a ship.
     "startKit": { "trail-ration": 4, "patch-kit": 2, "air-cell": 2, "biomass": 6 },
-    // What the castaway has on the toolbar from the start, slot 1 first.
-    "toolbar": [ "survival-tool" ]
+    // What the castaway has on the toolbar from the start, slot 1 first: nothing. They wake
+    // empty-handed and make the survival tool, free, in the suit fabricator.
+    "toolbar": [ ]
   },
 
   // The planet's climate as the suit feels it: the generator's temperature field (0 frozen to

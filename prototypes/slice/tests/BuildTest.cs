@@ -105,6 +105,16 @@ public partial class BuildTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         GD.Print("  (systems test: items are handed over and the castaway teleported where a playthrough would spend minutes)");
+        Check(Pack.Hand == HandKind.Empty && _game.ToolHint != null && Items.Item("survival-tool").Recipe.Inputs.Count == 0, "empty-handed, and the survival tool's recipe is free");
+        Check(_game.Controls.Primary == false && Pack.Storage.IsEmpty, "nothing carried at the start");
+        foreach (int x in _play.MakeTool()) yield return x;
+        Check(Pack.Hand == HandKind.Tool && _game.ToolHint == null, "made in the suit fabricator and put in hand: the hint goes");
+        // Lost: the free recipe stays.
+        Pack.Remove("survival-tool", 1);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(Pack.Hand == HandKind.Empty, "a lost tool leaves your hands empty");
+        foreach (int x in _play.MakeTool()) yield return x;
+        Check(Pack.Hand == HandKind.Tool, "and the free recipe replaces it");
         foreach (int x in Founding()) yield return x;
         foreach (int x in Sources()) yield return x;
         foreach (int x in BackIntoInventories()) yield return x;
@@ -433,10 +443,13 @@ public partial class BuildTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(Pack.Bar == BarSource.Personal, "Y again: back on your own toolbar");
         // A number tapped twice switches too.
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (int x in _drive.Tap(Key.Key3)) yield return x;
+        Check(Pack.Bar == BarSource.Personal, "the selected number tapped once stays on your toolbar");
         foreach (int x in _drive.Tap(Key.Key3)) yield return x;
         foreach (int x in _drive.Wait(1)) yield return x;
-        Check(Pack.OnStructureBar, "the selected number tapped again switches toolbars too");
-        foreach (int x in _drive.Tap(Key.Key3)) yield return x;
+        Check(Pack.OnStructureBar, "the selected number tapped twice switches toolbars too");
+        foreach (int x in _drive.Tap(Key.Y)) yield return x;
         foreach (int x in _drive.Wait(1)) yield return x;
 
         // A core goes down from your own stack only: off a structure, its storage doesn't count.

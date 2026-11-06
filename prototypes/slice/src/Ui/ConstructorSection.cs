@@ -43,6 +43,7 @@ public sealed class ConstructorSection : IMenuSection
     static IEnumerable<ItemDef> Recipes(Constructor c) =>
         c.Items.Items.Where(i => i.Recipe != null && i.Recipe.Tier <= c.Def.Tier + 1)
             .OrderBy(i => !c.Knows(i))
+            .ThenBy(i => i.Recipe.Inputs.Count > 0) // anything free (the survival tool) first
             .ThenBy(i => Rank(i))
             .ThenBy(i => i.Recipe.Tier)
             .ThenBy(i => i.Name, StringComparer.Ordinal);

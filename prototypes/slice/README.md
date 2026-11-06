@@ -6,12 +6,15 @@ The first playable slice of GalHack's core loop, built from the proven prototype
 ![Climbing the bunker's stairwell, its fallen-in top open to the morning sky](screenshots/climb.png)
 ![The Tab menu, YOU: the bag and toolbar, the paperdoll with its equipment and vitals, the suit fabricator](screenshots/menu-you.png)
 ![The Tab menu, CORE: a placed survival constructor making a base core](screenshots/menu-core.png)
+![A constructor crafting blocks: the list on BLK, two orders with their sub-parts under them, a tooltip](screenshots/constructor.png)
+![A big base storage on the CORE tab, filtered by text, a stack's tooltip up](screenshots/storage.png)
 ![The Tab menu, TECH: the base tree](screenshots/menu-tech.png)
 ![A creature's body opened beside the bag](screenshots/loot.png)
 ![A bolt in flight from the tool's muzzle, the sparks and scorches of the shots before it](screenshots/bolt.png)
 ![Inside the bunker: a shot scorches its wall, harmlessly](screenshots/bunkershot.png)
 ![Night, the head torch on](screenshots/torch.png)
-![A base built by hand: core, container, generator, small constructor, steel; the survival constructor beside it](screenshots/base.png)
+![A base under construction from carried block stacks, the toolbar counting what is left](screenshots/blockbase.png)
+![A block family in hand: its name, shape and count from each source, the shape picker above the toolbar](screenshots/hand.png)
 ![A small vessel built by hand on its core, lifting off](screenshots/vessel.png)
 
 Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go; saves across everything are phase 3.
@@ -22,37 +25,38 @@ Phase 1 is the ground loop. Orbit and boarding (phase 2) wait for the owner's go
 .\tools\godot.ps1 -Project prototypes/slice -Play
 ```
 
-A new game opens on the start screen: **Survival** or **Creative**, the planet type (**temperate** is the easy one; ice, alien swamp, barren, lava, or random) and a seed (leave it empty for a fresh world, or type one to replay it). Then you wake at dawn in a cryopod. **F** opens it. **E** on the orange locker opens it beside your bag: **TAKE ALL**. Climb the stairs to the surface. The compass shows the nearest deposit of each common ore and drops one once it is dug out.
+A new game opens on the start screen: **Survival** or **Creative**, the planet type (**temperate** is the easy one; ice, alien swamp, barren, lava, or random) and a seed (leave it empty for a fresh world, or type one to replay it). Then you wake at dawn in a cryopod, empty-handed. **Tab**: the suit fabricator makes the survival tool, free, in a few seconds; drag it onto the toolbar. Nothing works until you do: no gathering, shooting or building. **F** opens the pod. **E** on the orange locker opens it beside your bag: **TAKE ALL**. Climb the stairs to the surface. The compass shows the nearest deposit of each common ore and drops one once it is dug out.
 
 ### The loop (Survival)
 
 1. **The bunker.** Get out of the cryopod and empty the locker (food, patch kits, air cells); the stairwell climbs to the surface. Come back down whenever you like: it is your respawn point, but too small and broken to build on.
-2. **Gather.** The survival tool is on toolbar slot 1 (and in your hands). Hold the left button on ore to dig it (12 raw ore a cell), on a plant to cut it (biomass). **Q** switches it to shooting: a bolt you can see, sparks and a scorch where it lands. Shots only hurt creatures.
-3. **The suit fabricator** (Tab, YOU) makes the bare minimum from raw finds: the survival tool, rations, patch kits, air cells and a **placeable survival constructor**. It works while you play.
-4. **The survival constructor.** Drag it onto the toolbar, select it and click open ground. **E** on it opens its hopper beside your bag (STORE ALL); its panel is on Tab, **CORE**, when you stand by it. It refines ore into parts and makes the **base core**, the first blocks' parts and the next constructor up.
-5. **Found a base.** The base core on the toolbar, a click on open ground: a base (large grid, base mode, anchored). Drag blocks from the **build palette** (Tab, YOU) onto the toolbar and build onto it: each block's bill is paid from your bag, then the base's storage; right click takes a block down and refunds the whole bill.
-6. **Machines.** A container (storage), a generator (power) and a **small constructor** on the base, run from Tab, **CORE**, pulling from the base's storage. Level 2 unlocks the small constructor in the tech tree.
-7. **Level 5** unlocks the small vessel (Tab, **TECH**). The small constructor makes the **small-vessel core**.
-8. **Build your vessel.** Set the core down: it stands on a build stand 2 m up, so you can build under it as well as round it. A seat, a generator, a fuel tank, a gyro, thrusters (R / T turn them: a lift jet pushes up), three legs. Tab, CORE shows its four numbers and lift margin. **F** at the seat, **Space** to lift off.
+2. **Gather.** The survival tool is on the toolbar (and in your hands). Hold the left button on ore to dig it (12 raw ore a cell), on a plant to cut it (biomass). **Q** switches it to shooting: a bolt you can see, sparks and a scorch where it lands. Shots only hurt creatures.
+3. **The suit fabricator** (Tab, YOU) makes the bare minimum from raw finds, out of your own bag: the survival tool, rations, patch kits, air cells and a **placeable survival constructor**. It makes no blocks. It works while you play.
+4. **The survival constructor.** Drag it onto the toolbar, select it and click open ground. **E** on it opens its hopper beside your bag (STORE ALL); its panel is on Tab, **CORE**, when you stand by it. Blocks are items: it refines ore into parts, and crafts the **base core**, steel, containers, generators, fuel tanks, lights and the small constructor. Order what you want and the parts plan themselves. **TAKE ALL** moves them to your bag.
+5. **Found a base.** The base core on the toolbar, a click on open ground: a base (large grid, base mode, anchored). Every structure starts with its core: no other block stands alone. Drag block stacks onto the toolbar and build onto it, each placement using one from the stack in your hand. **Q** to DECONSTRUCT on the survival tool (or right click with a block in hand) takes a block down and gives its item back.
+6. **Machines.** A container (the base's one shared storage), a generator (power) and a **small constructor** on the base, run from Tab, **CORE**, in and out of that storage. Inside the base's area, its **structure toolbar** (**Y**, or a number tapped twice) builds straight from that storage. Level 2 unlocks the small constructor in the tech tree.
+7. **Level 5** unlocks the small vessel (Tab, **TECH**). The small constructor makes the **small-vessel core** and the vessel's blocks.
+8. **Build your vessel.** Set the core down: it stands on a build stand 2 m up, so you can build under it as well as round it. A vessel needs thrusters, a **command chair** and enough thrust to lift its mass; add a generator, a fuel tank, a gyro and three legs. Thrusters turn with R / T (a lift jet pushes up); nothing else cares which way it faces. Tab, CORE shows its four numbers and lift margin. **F** at the chair, **Space** to lift off. A chair gives no air: that takes a sealed room, or your suit.
 
-The Skiff blueprint is still there as a shortcut: drag **BLUEPRINT PROJECTOR** from the build palette onto the toolbar, click open ground and hold the button. Every block is paid for as it goes.
+Building by hand, block by block, is the game. Blueprints are in the menu, nowhere else: on a structure's CORE tab, **BLUEPRINTS** projects the Skiff, each block one item from your bag.
 
-**Creative** (`-- --creative` at launch) places everything free, unlocks the whole tech tree and runs every machine without material checks.
+**Creative** (`-- --creative` at launch) places everything free and unlimited from the build palette (Tab, YOU), unlocks the whole tech tree and runs every machine without material checks. Structures still start with a core, and blocks still go only on their classes.
 
 ### Controls
 
-| Key | On foot | In a seat |
+| Key | On foot | In a command chair |
 | --- | --- | --- |
 | WASD, mouse | Walk and look | Thrust; the mouse moves a stick that recentres |
 | Shift | Sprint | Boost |
 | Space / Ctrl | Jump, hold in the air for the jetpack | Up / down |
-| 1 to 9, wheel | The toolbar slot in your hands | |
-| Left button | Use what is in hand: dig, cut, shoot, place, eat | |
-| Right button | Take a block down (refunded) | |
-| Q | Survival tool: gather / shoot | Roll |
-| R / T, X, wheel | A block in hand: turn it, mirror, its shape | |
+| 1 to 9, wheel | The toolbar slot in your hands (a number again: switch toolbar) | |
+| Y | Your toolbar / the linked structure's | |
+| Left button | Use what is in hand: dig, cut, shoot, place, eat, deconstruct | |
+| Right button | A block in hand: take the block aimed at down | |
+| Q | Survival tool: gather / shoot / deconstruct | Roll |
+| R / T, X, wheel | A block in hand: turn it, mirror, its shape (the visor shows the shape picker) | |
 | E | Open a container, a body, a backpack, a locker, a device's hopper | Roll |
-| F | Sit in the seat within reach | Get up |
+| F | Sit in the command chair within reach | Get up |
 | G / C | | Landing gear / cruise |
 | L | Head torch | |
 | Tab | The menu (the game doesn't pause; you can still walk) | |
@@ -67,20 +71,22 @@ One full-screen menu, styled as the suit's own terminal (the diegetic UI's scree
 
 | Tab | What |
 | --- | --- |
-| **YOU** | Your **bag** (8 x 6 slots) and **toolbar** (1 to 9), stacks to each item's stack size, mass and volume. Drag to move, **Shift-click** to send a stack across, **right-click** to split, drag out of the panels (or onto SET DOWN) to drop it on the ground in a container that never despawns. Equipment slots round a **paperdoll** of your own character model, your vitals, armour, resistances and level beside it. On the right, the **suit fabricator** and the **build palette** (drag blocks onto the toolbar; locked ones greyed with what they need). **E** on a container opens it here beside the bag, with **TAKE ALL** and **STORE ALL** |
-| **TECH** | The tech tree: Base, Capital Vessel, Small Vessel, Hover Vessel, Tools, Weapons, Misc. Nodes in columns by level, joined to their parents; locked nodes say what they need (level, points, parent); click one you can afford |
+| **YOU** | Your **bag** (8 x 6 slots) and **toolbar** (1 to 9), stacks to each item's stack size, mass and volume, and the linked structure's **toolbar** under it. Drag to move, **Shift-click** to send a stack across, **right-click** to split, drag out of the panels (or onto SET DOWN) to drop it on the ground in a container that never despawns. Drag a stack from a structure's storage onto its toolbar to set a slot: nothing moves. Equipment slots round a **paperdoll** of your own character model, your vitals, armour, resistances and level beside it. On the right, the **suit fabricator** and **BLOCKS**: what each is made of, and how many you and the linked structure hold (in Creative, the **build palette**: drag one to the toolbar). **E** on a container opens it here beside the bag, with **TAKE ALL** and **STORE ALL** |
+| **TECH** | The tech tree: Base, Capital Vessel, Small Vessel, Hover Vessel, Tools, Weapons, Deco (a family per theme set), Misc. Nodes in columns by level, joined to their parents; locked nodes say what they need (level, points, parent); click one you can afford |
 | **STATS** | What you have done since the crash, and the master volume |
-| **CORE** | The structure you are in or next to (or a device you stand by), the nearest picked, a button to switch: its manufacturing (each constructor's orders above, its own sub-parts below, missing materials, ammo restock), its storage, its settings (core mode, gravity, power, lights, Home, auto-transmit) and its numbers (mass, power, CPU, storage; a vessel's four numbers, turn cap and lift margin) |
+| **CORE** | The structures whose **area** you are in (or a device you stand by), the nearest picked, a button to switch; outside every area it says OUT OF RANGE. Its manufacturing (each constructor's orders with their sub-parts under them, exactly what is missing, ammo restock), its storage, its settings (core mode, gravity, power, lights, Home, auto-transmit) and its numbers (mass, power, CPU, storage; a vessel's four numbers, turn cap and lift margin) |
 | **MAP** | 300 or 600 m round you: structures, devices, the bunker, your backpack, bodies and drops, the nearest deposits, creatures |
 
-The visor stays minimal: vitals, warnings, the compass with contacts, the toolbar, what is in hand and its keys, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play.
+Every grid and recipe list is the same component. A **text box** filters live, on names and category words, case-insensitive (click it or press **/**; typing doesn't move you; **Escape** clears it, then lets go, then closes the menu; in-world screens have no keyboard and show it read-only). **Toggles** pick categories (ores, materials, parts, blocks, devices, ammo, food and medical, deco, other). **SORT** steps through as arranged, name, category, quantity, mass, rarity and recent, and each view keeps its own. Filtering and sorting change nothing stored. Take-all and store-all act on what is shown while a filter is on, and say so. Every item has a **tooltip**: rarity colour, mass and volume each and for the stack, its recipe and constructor or where it is found, its stack, a block's grid and classes, whether it is locked and at what level.
+
+The visor stays minimal: vitals, warnings, the compass with contacts, what is in hand, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play. Along the bottom, centred and never overlapping at any size or UI scale (`HudLayout`, tested): the vitals, the toolbar, the selected item's line (name, shape, count, source), one quiet line of keys, and the shape picker with a block family in hand.
 
 ## How it fits together
 
 | Piece | From | What the slice does with it |
 | --- | --- | --- |
 | Physics | `shared/Physics` | One physics world for the zone: the survivor on the shared walk controller, riding hulls in cabin worlds and stepping off them onto the ground (`Riding.StepsOntoGround`), bases as fixed bodies walked on in the zone's world, every vessel one body flown by the handling model through the physics sandbox's bridges |
-| Items | `shared/Items` | The catalogue with the slice's additions (`data/items.json`, appended as it loads), `SharedStorage` under every bag, container and structure, `Constructor` for the suit fabricator, the survival constructor and every constructor block, `BlockPlacer` prices and refunds, `WorldRules` for Survival and Creative, the unlock and stack fields |
+| Items | `shared/Items` | The catalogue with the slice's additions (`data/items.json`, appended as it loads), `SharedStorage` under every bag, container and structure, `Constructor` for the suit fabricator, the survival constructor and every constructor block, block family items and their classes, `WorldRules` for Survival and Creative, the unlock and stack fields |
 | Terrain | `shared/Terrain`, `terrain-digging` | The planet as diggable voxels. `PlanetEdits` is the physics module's terrain editor; a base's blocks cut the ground they reach into |
 | Planet | `planet-generator`, `planet-surface` | A fresh world every game (the tests pin seed 7, temperate), streamed by planet-surface's `TerrainStreamer` with its sky, sea, fog and flora; trees are solid and felled for good |
 | Weather | `weather`, `planet-surface` | The weather model pushes bodies; planet-surface's effects and its wind and rain sounds |
@@ -95,11 +101,10 @@ The visor stays minimal: vitals, warnings, the compass with contacts, the toolba
 
 | Item | Made in | From | Why |
 | --- | --- | --- | --- |
-| Survival tool | suit fabricator | 6 iron ore, 2 copper ore | The tool is an item on the toolbar |
+| Survival tool | suit fabricator | nothing: a free recipe, 3 s, listed first | You wake without it and make it first; a lost tool can always be replaced |
 | Trail ration, patch kit, air cell | suit fabricator | biomass (and silicon ore) | The suit's bare minimum: food, a simple heal (GalHack has no ailments), air |
 | Survival constructor (recipe replaced) | suit fabricator | 16 iron ore, 8 copper ore, 4 silicon ore | It is placeable here, so the suit makes it from ore |
-| Base core | survival constructor (tier 0) | the large core block's bill | A placed core founds a structure (Empyrion's way); the catalogue prices blocks only |
-| Small-vessel core, hover core | small constructor (tier 1) | the small core block's bill | |
+| Hover core, capital core | small constructor (tier 1) | plates, boards or control units, windings | The base core and small-vessel core are the core block's own items in shared/Items; these two found the other classes |
 | Raw meat, hide, rare tissue | creatures' bodies | | wildlife's drop table: meat by size, a hide per three meat, a rare part by chance |
 
 The suit fabricator is a constructor at tier −1, below shared/Items' survival tier: it knows only the recipes above and works from raw finds.
@@ -108,28 +113,34 @@ The suit fabricator is a constructor at tier −1, below shared/Items' survival 
 
 Experience comes from playing: 3 XP per ore cell dug, 2 per plant, a point per 2 recipe seconds of every finished craft (sub-parts too), 3 per large block and 1 per small block placed, 15 the first time you come within 30 m of a deposit, 10 the first time you meet a species, and each species' own kill value. Levels run to 25; each grants unlock points (2 to 6), and past the cap a point every 1,500 XP. All of it is in `data/progress.json`.
 
-The tree is built from the unlock fields on every item and block (shared/Items' `items.json` and `blocks.json`, and the slice's `items.json`): level, point cost, parent node, tab. There is no tree file. The starting essentials cost nothing at level 1: the suit fabricator's minimum, the survival constructor, the base core, steel, glass, concrete, ladders, containers, generators, fuel tanks and lights on the large grid. The design's gates: **hover vessel at level 1, portable constructor at 3, small vessel at 5, capital vessel at 7** (the large thruster, which also opens a base's capital mode). A locked recipe can't be ordered in any constructor and a locked block can't be placed; both show greyed with the reason. Creative unlocks everything. Level, XP, points and unlocks live in one serialisable `ProgressState` for phase 3's saves.
+The tree is built from the unlock fields on every item, block family and deco piece (shared/Items' `items.json`, `blocks.json` and `deco.json`, and the slice's `items.json`): level, point cost, parent node, tab. There is no tree file. The starting essentials cost nothing at level 1: the suit fabricator's minimum, the survival constructor, the base core, the small command chair, steel, glass, concrete, ladders, containers, generators, fuel tanks and lights on the large grid. The design's gates: **hover vessel at level 1, portable constructor at 3, small vessel at 5, capital vessel at 7** (the large thruster, which also opens a base's capital mode). A locked recipe can't be ordered in any constructor, and shows greyed with the reason; a locked part an order needs is listed with what it needs. Unlocks gate crafting, as in Empyrion: a block you carry places whether its node is open or not. Creative unlocks everything. Level, XP, points and unlocks live in one serialisable `ProgressState` for phase 3's saves.
 
 Expected time to each gate for an experienced player (from the real-player test's XP and the pacing reference in shared/Items: 45 ore a minute, 1.2 s a block): see **Pacing** below.
 
 ### Rules the slice adds
 
 - **Warned before any harm.** Impacts use the physics module's one formula in full; the visor flashes IMPACT only while the body is airborne **and coming down** faster than the safe speed, never while lifting off on the jetpack. A creature's wind-up is heard and shown (THREAT) before its lunge.
-- **Nothing a player owns disappears.** A full bag sets things down in a container on the ground; a refund with nowhere to go likewise; a dead player's whole inventory is a backpack where they fell, marked on the compass and the map; bodies and drops stay until emptied.
+- **Nothing a player owns disappears.** A full bag sets things down in a container on the ground; a block taken down with nowhere to go likewise; a dead player's whole inventory is a backpack where they fell, marked on the compass and the map; bodies and drops stay until emptied.
 - **Every interaction asks the world you are in.** Aboard a structure, E, the tool and the build tool ray through its cabin world (a still copy of its blocks) as well as the zone's world beyond, so a locker answers from inside, a shot inside a structure scorches its wall (harmlessly) and the tool never digs through a floor.
 - **Walking out of a door hands you back to the planet at once.** A rider out of the interior with no block under its feet and the zone's ground within a step or two below leaves the cabin world there, onto the ground (`Riding.StepsOntoGround`).
 - **The sky check.** `--view=skysweep` (Screenshot.tscn, windowed) looks round the horizon, 8 headings by 3 pitches and once straight away from the sun, from the bunker's way out and a hilltop at dawn under broken cloud. It counts dark specks in open sky (a pixel far darker than its neighbours, in smooth sky two pixels out, not perched on a far crest): there must be none. It also flags possible holes in the ground for a look (`--all=1` saves every frame, `--places=exit` sweeps only the way out, `--hidepois=1` hides the places). It found the dotted line down the sky away from the sun: 79 specks in 25 frames before planet-surface's sky shader was fixed, 0 after, and 0 in 50 frames on main 32ed8de with the places' signed glyph strokes.
 - **A fresh world every game.** A new game rolls a fresh seed (`WorldChoice`); the start screen picks the planet type and can take a seed to replay one, and STATS shows the world and its seed. `-- --seed N --planet temperate|ice|swamp|barren|lava` pins both (tests and screenshots pin the tested world, seed 7 temperate, unless told otherwise). A save will keep its world's choice; the slice has no saves yet.
-- **Every game starts in a cryo bunker** (`src/Start/Bunker.cs`, `Game.Start.cs`), sealed since the fall a century or two ago. Its site is searched near the generator's landing site on any seed: dry and above the sea, 1.75 m of earth over its roof, even ground over it, no bedrock in the way, its stairs coming up level with the ground beyond, and **a place in clear view from its way out**, 300 to 1,200 m off: a ruin, a wreck or an abandoned works (no faction holds anything on a start world). The stairs face it and the compass marks it until you get there. The bunker is a fixed small-grid structure of the slice's ordinary blocks (a 6.5 x 3 x 4.5 m chamber, a locker, a stairwell of half-metre steps whose top end has fallen open to the sky) set into rooms dug through the terrain's edit API before any ground streams in, dug tight round its own volume so its floor, walls and stairs are always solid and no gap is left to fall into. Its stairs are walked, never climbed: every half-metre riser is a short ramp, a ramp off the top step sinks into the ground outside, and the top tread stands on a whole metre so the ground dug level outside meets it flush (the start test asserts the way out and back needs no jump and no jetpack). Four cryopods stand along its back wall, three failed with their sleepers dead inside, dust on the floor and motes in the lamplight; yours opens with F. Being ordinary blocks, it is yours to use: build onto it, make it part of your first base, or take it apart for materials (each block refunds its bill).
+- **Every game starts in a cryo bunker** (`src/Start/Bunker.cs`, `Game.Start.cs`), sealed since the fall a century or two ago. Its site is searched near the generator's landing site on any seed: dry and above the sea, 1.75 m of earth over its roof, even ground over it, no bedrock in the way, its stairs coming up level with the ground beyond, and **a place in clear view from its way out**, 300 to 1,200 m off: a ruin, a wreck or an abandoned works (no faction holds anything on a start world). The stairs face it and the compass marks it until you get there. The bunker is a fixed small-grid structure of the slice's ordinary blocks (a 6.5 x 3 x 4.5 m chamber, a locker, a stairwell of half-metre steps whose top end has fallen open to the sky) set into rooms dug through the terrain's edit API before any ground streams in, dug tight round its own volume so its floor, walls and stairs are always solid and no gap is left to fall into. Its stairs are walked, never climbed: every half-metre riser is a short ramp, a ramp off the top step sinks into the ground outside, and the top tread stands on a whole metre so the ground dug level outside meets it flush (the start test asserts the way out and back needs no jump and no jetpack). Four cryopods stand along its back wall, three failed with their sleepers dead inside, dust on the floor and motes in the lamplight; yours opens with F. Being ordinary blocks, it is yours to use: build onto it with small blocks, or take it apart (each block comes back as its item).
 - **Places on the planet.** The slice generates and draws the POI generator's places over the whole planet (planet-surface's siting and POI layer) as a start world (`PoiSiting.StartWorld`): no faction holds ground, so faction places stand as ruins; wrecks, abandoned and infested places, settlements and camps stay.
 - **Walkable start sites.** Besides a place in view, a start site must be walkable: from the way out a person can walk 60 m in at least three of eight directions over ground that is really there (no cave mouth), no slope or drop steeper than 31 degrees over 2 m (38 on a last pass for rough worlds), no sea or lava and no water deeper than wading, not back over the bunker. A walkable way toward the place in view is preferred. If nothing near the landing site qualifies, the search goes round each place on the planet in turn.
 - **Blocks meet the ground flush.** A base's blocks reaching into the ground clear their cells and register their volumes with the terrain (terrain-digging's `ClearForStructure`), so the ground is drawn and collides flush against their faces; a block taken down lets go of its volume.
-- **A clean crosshair.** Text by the crosshair is only a prompt for something usable in reach (E open locker, F take the seat, F open the pod, E open the survival constructor), the ore the tool is on, or the build tool's verdict; where you are is on the CORE tab, never under the crosshair.
+- **A clean crosshair.** Text by the crosshair is only a prompt for something usable in reach (E open locker, F take the command chair, F open the pod, E open the survival constructor), the ore the tool is on, or the build tool's verdict; where you are is on the CORE tab, never under the crosshair.
 - **A new vessel is built on a stand.** Its core holds 2 m above the ground where you set it, so its underside can be built; it holds there until first flown, then lands on its own legs. A blueprint's vessel instead stands on the ground as it grows (its lowest block on the highest ground under it), so no part of it hangs in the air.
 - **Small vessels turn no faster than 110 °/s** (`build.smallVesselMaxTurn`): the stick asks for a share of the handling model's turn rate.
 - **Machines have their own screens.** A placed survival constructor carries a screen on a mast at its front; every constructor block on a base, and the base's core, has one on a free face. They are diegetic-ui's world screens hung at standing eye height (`ScreenMount`), each showing the same panel as the CORE tab (`MachineScreens`). Look at one within 3 m: a cursor sits where you aim (`ScreenPointer`), and the left button clicks there instead of firing the tool. The Tab menu stays the main way in.
-- **E answers only containers, bodies, backpacks, lockers and devices.** A cockpit says F; a machine block opens its CORE panel.
-- **Gamey cockpits, a calm opening, streaming ahead of a vessel**: unchanged from before.
+- **E answers only containers, bodies, backpacks, lockers and devices.** A command chair says F; a machine block opens its CORE panel.
+- **Two inventories that never merge** (and one deliberate difference from Empyrion: **one shared storage per core**, across all its containers). Your bag and toolbar are yours and go everywhere. A structure's storage is one inventory, usable only inside its area. Constructors work only from their structure's storage, the suit fabricator only from your bag; you move things by hand. **You choose the source of a block:** your own toolbar draws on the selected stack; the structure toolbar (Empyrion's virtual toolbar) draws on the storage of the structure you are building on, while you are in its area. Neither falls back on the other. A core or a device set down off a structure comes from your own stack.
+- **A structure's area** is its blocks' bounding box plus a margin for its class and a share of its size (`build.area`: 30 m for bases and capital vessels, 12 m for small and hover vessels, plus half the longest half-extent). Inside several (a vessel parked by a base), the structure you are building on or aboard wins, and the CORE tab lets you pick. Containers stay open while you are inside.
+- **Nothing is lost taking a block down.** The item goes to your bag (to the structure's storage when building from its toolbar), then the structure's storage if you are in its area, then a container on the ground that never despawns.
+- **Every structure starts with its core**, founded by a core item: base, small vessel, hover vessel or capital vessel. The last block taken down comes back as that core. A block goes only on the grid and classes its family allows, with a clear refusal ("base blocks only").
+- **A command chair gives no air.** Oxygen and warmth come from a sealed room (building's room check), or from your suit.
+- **Blueprints are never forward-facing**: no tool on the toolbar, nothing steers you to one; the first vessel is free-built from blocks.
+- **Gamey flight controls, a calm opening, streaming ahead of a vessel**: unchanged from before.
 
 ## Test it
 
@@ -140,7 +151,7 @@ Expected time to each gate for an experienced player (from the real-player test'
 
 ### The real-player test (`tests/PlayerTest.tscn`)
 
-The loop played the way a person plays it, headless with `--fixed-fps 60`, on the tested world (seed 7, temperate; `-- --seed N --planet type` for another): the castaway wakes in the cryopod, and from then on only the game's own inputs are used (look, walk, keys, the mouse on the Tab menu and on in-world screens: every click and drag lands on a widget the panel laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
+The loop played the way a person plays it, crafting and carrying blocks, headless with `--fixed-fps 60`, on the tested world (seed 7, temperate; `-- --seed N --planet type` for another): the castaway wakes in the cryopod, and from then on only the game's own inputs are used (look, walk, keys, the mouse on the Tab menu and on in-world screens: every click and drag lands on a widget the panel laid out). No teleports, no grants, no skipped steps. The one help is a clearly printed **TEST TIME-SCALE** on crafting (40x), so an hour of fabricating fits in a run. Creatures are held still and the weather calm, so a predator can't decide the run.
 
 Latest run (on main 32ed8de): **ALL PASSED, 76 checks** in 98 s of wall time (8.9 min of game time). The start site is 42 m from the landing site, 8 steps up, facing an abandoned deep bunker 860 m off. The route and its numbers:
 
@@ -162,6 +173,10 @@ Game time at each step (min): out 0.8, gathered 2.2, hunted 2.3, looted 2.3, bas
 Fresh seeds, determinism, the bunker, gathering, cutting a tree (its collider gone the frame it falls), the Skiff blueprint built block by block and paid for, the same in Creative for nothing, a 2 km flight and landing, a hop flown twice to the tick, creatures warned before they bite, and nothing stuck in the ground. It starts with the cryopod already open (the real-player test wakes in it shut) and, as a systems test, hands over the Skiff's parts and opens the tech tree: printed when it does.
 
 Latest run: **ALL PASSED, 43 checks** in 38 s. Two fresh games roll different seeds, and `--seed`/`--planet` pin both; the planet, its fauna and the starter blueprint generate identically twice; the weather opens calm for 12 minutes. The cryo bunker is dug in at the start site, 6.5 m under the ground and above the sea, 91 m from the generator's landing site, 19 steps up; the castaway wakes in their cryopod with 3 dead sleepers beside it; the start site is survivable with the planet's own wildlife around it. The locker emptied by TAKE ALL and up the stairwell on foot, never rescued. Ore dug as real terrain from the nearest shallow deposits the bunker wasn't dug through; a tree cut (its collider gone the frame it falls). The Skiff blueprint built block by block (174 of 174, each paid for, never pushed out of the ground), the same in Creative for nothing; flown over 2 km and landed on its gear undamaged; a short hop flown twice identically to the tick; a creature's attack warned (THREAT) before it bites; nothing stuck in the ground.
+
+### The build test (`tests/BuildTest.tscn`)
+
+Blocks as items and the storage model round them. Pure checks: the HUD at six window sizes and four UI scales, nothing overlapping or leaving the window and the longest item line fitting its box; text and category filters, every sort, moves under a filter, and a storage of thousands of stacks reconciling, filtering and redrawing inside a frame; every device in all 24 orientations on both grids, a thruster changing only its axis; a chair in a sealed shell, and the same shell holed. Then in a world, handing items over and teleporting (printed when it does): no block in the open, each core founding its class, small blocks refused on a base, a base-only block refused on a small vessel; your toolbar drawing only on your stack, the structure toolbar only on the structure's storage, neither falling back; deconstruct into the bag, a full bag into the structure, both full into a container on the ground; the area for all four classes, 0.25 m inside and outside; a vessel parked by a base; constructors and the suit fabricator each keeping to their own storage; the filter box taking typing without moving you, Escape's three steps; tooltips for a block, an ore, a part and something locked; Creative free under the same rules.
 
 ### The start test (`tests/StartTest.tscn`)
 
@@ -231,7 +246,9 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 - **Phase 1 only:** no orbit, boarding or saves yet. Progress lives in one `ProgressState` ready for phase 3's saves.
 - **The escape pod and its descent are gone**; the bunker start lives in `Game.Start.cs` and `src/Start/Bunker.cs`, apart from the rest. The places the start faces are the POI generator's, drawn by planet-surface's layer; they can't be entered or looted from the slice yet.
 - **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
-- **Blocks are not items** (shared/Items' rule): the toolbar holds block shortcuts paid from storage at placement, not stacks of blocks as in Empyrion. Cores are the exception, made as items in the slice's own data.
+- **Deco items** craft and unlock but can't be placed by hand yet: the slice's build tool places building's blocks, and deco pieces aren't among them.
+- **Capital vessels** found from a capital core and hold on their stand; flying one isn't tuned. Warp and hyperdrive blocks craft and place and do nothing yet.
+- **Blueprints:** the menu's one entry projects the Skiff; there is no save or library here yet.
 - **Equipment is read-only**: the paperdoll's armour and booster slots show the survival suit's; there are no armour items to drag in yet.
 - **Power is a switch**: a generator on a structure powers its machines; fuel isn't burned yet, and the lights toggle doesn't switch light blocks yet.
 - **Capital mode** can be set on a base once the capital vessel tech is unlocked, but the base stays anchored: lift-off belongs to capital-base and isn't wired here.

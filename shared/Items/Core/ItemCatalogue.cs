@@ -155,7 +155,8 @@ public sealed class ItemCatalogue
                 if (n <= 0) throw new InvalidDataException($"recipe for '{output.Id}': input counts must be positive");
                 inputs.Add((Known(p.Name, $"recipe for '{output.Id}'"), n));
             }
-            if (inputs.Count == 0) throw new InvalidDataException($"recipe for '{output.Id}' has no inputs");
+            // A recipe with no inputs must say so ("free": true), so a forgotten list is still caught.
+            if (inputs.Count == 0 && !DataJson.Bool(e, "free", false)) throw new InvalidDataException($"recipe for '{output.Id}' has no inputs");
             var recipe = new Recipe
             {
                 Output = output,

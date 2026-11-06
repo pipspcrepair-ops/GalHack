@@ -110,6 +110,8 @@ public partial class SliceTest : Node
         zone.Physics.LiftedOff += _ => _liftedOff++;
         _lastHealth = _game.Suit.Vitals.Health;
 
+        foreach (int x in new Playthrough(_game).MakeTool()) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Tool, "the survival tool, made free in the suit fabricator, is in hand");
         foreach (int x in Arrival()) yield return x;
         foreach (int x in Locker()) yield return x;
         if (OS.GetCmdlineUserArgs().Contains("--locker-only")) yield break;

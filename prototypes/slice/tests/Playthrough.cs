@@ -85,10 +85,23 @@ public sealed class Playthrough
         }
     }
 
+    /// <summary>The first thing anyone does: Tab, the suit fabricator's free survival tool, dragged onto toolbar slot 1 and in hand.</summary>
+    public IEnumerable<int> MakeTool()
+    {
+        foreach (int x in OpenMenu(MenuTab.You)) yield return x;
+        foreach (int x in Order("fab", "survival-tool", 1)) yield return x;
+        foreach (int x in WaitFor(() => Pack["survival-tool"] > 0, 15)) yield return x;
+        foreach (int x in ToToolbar("survival-tool", 0)) yield return x;
+        foreach (int x in CloseMenu()) yield return x;
+        foreach (int x in Select(0)) yield return x;
+        foreach (int x in Drive.Wait(2)) yield return x;
+    }
+
     /// <summary>
-    /// The start, as a player plays it: wake in the cryopod, F opens it, step out, E on the
-    /// locker and TAKE ALL, (a shot at the wall and the tool on the floor, harmless,) up the
-    /// stairwell to the surface, 50 m away, back down into the bunker, and out again.
+    /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
+    /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
+    /// wall and the tool on the floor, harmless,) up the stairwell to the surface, 50 m away, back
+    /// down into the bunker, and out again.
     /// </summary>
     public IEnumerable<int> WakeAndLeave(Action<bool, string> check, string label = "", bool shoot = false)
     {
@@ -97,6 +110,9 @@ public sealed class Playthrough
         float under = Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y;
         check(Game.Phase == Phase.Playing && !b.Mine.Open && feet.DistanceTo(b.CryoStand) < 0.6f,
             $"{label}wakes in the cryopod, its lid shut, {under:F1} m under the ground");
+        check(Pack.Storage.IsEmpty && Pack.Hand == HandKind.Empty && Game.ToolHint != null, $"{label}empty-handed, the visor saying: {Game.ToolHint}");
+        foreach (int x in MakeTool()) yield return x;
+        check(Pack.Grid[0].Item == "survival-tool" && Pack.Hand == HandKind.Tool && Game.ToolHint == null, $"{label}Tab: the suit fabricator makes the survival tool, free; dragged to the toolbar, it is in hand and the hint is gone");
         foreach (int x in Drive.Tap(Key.F)) yield return x;
         foreach (int x in Drive.Wait(40)) yield return x;
         check(b.Mine.Open, $"{label}F opens the cryopod");

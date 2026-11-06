@@ -37,6 +37,7 @@ public sealed partial class Staging
         foreach (int x in _drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Wildlife.Frozen = view != "dig";
+        foreach (int x in Play.MakeTool()) yield return x;
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
         if (view is not ("bunker" or "climb" or "bunkershot"))
             foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;

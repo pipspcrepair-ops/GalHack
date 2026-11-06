@@ -333,9 +333,9 @@ public partial class Visor : CanvasLayer
         // Only a prompt for what is in reach and usable (E or F), the ore the tool is on, or the
         // build tool's verdict: never where you are.
         string label = Game.UsePrompt();
-        if (string.IsNullOrEmpty(label)) label = Game.Pack.Hand switch
+        if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
             _ => "",
@@ -367,9 +367,10 @@ public partial class Visor : CanvasLayer
     public string ItemLine()
     {
         Slice.Items.PlayerInventory pack = Game.Pack;
+        if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
         string bar = pack.OnStructureBar ? $"{pack.LinkedName.ToUpperInvariant()} TOOLBAR · " : "";
-        HandKind hand = pack.Hand;
+        HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
             case HandKind.Tool:

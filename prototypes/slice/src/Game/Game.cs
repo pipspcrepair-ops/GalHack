@@ -316,7 +316,9 @@ public partial class Game : Node3D
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
             if (c.WasPressed(Key.Key1 + i))
             {
-                if (i == Pack.Selected) SwitchBar();
+                bool twice = i == Pack.Selected && Stats.Seconds - _numberAt < DoubleTap;
+                _numberAt = Stats.Seconds;
+                if (twice) SwitchBar();
                 else Select(i);
             }
         if (c.WasPressed(Key.Y)) SwitchBar();
@@ -348,6 +350,16 @@ public partial class Game : Node3D
         }
         else if (c.Wheel != 0) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
     }
+
+    /// <summary>How soon a number pressed again counts as a double tap, seconds.</summary>
+    const double DoubleTap = 0.4;
+    double _numberAt = -1;
+
+    /// <summary>The survival tool has been in your hands. Until then the visor says how to make it.</summary>
+    public bool ToolEquipped { get; private set; }
+
+    /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
+    public string ToolHint => ToolEquipped ? null : "Press Tab: make your survival tool in the suit fabricator";
 
     /// <summary>Puts a toolbar slot in your hands.</summary>
     public void Select(int slot)
@@ -459,6 +471,7 @@ public partial class Game : Node3D
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
+        if (hand == HandKind.Tool) ToolEquipped = true;
         bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);

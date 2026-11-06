@@ -35,7 +35,8 @@
       "where": "Some creatures", "uses": "Research (later)" }
   ],
   "recipes": [
-    { "make": "survival-tool", "count": 1, "from": { "iron-ore": 6, "copper-ore": 2 },                   "seconds": 6,  "tier": -1 },
+    // Free, always: you wake empty-handed and make it first, and a lost tool can always be replaced.
+    { "make": "survival-tool", "count": 1, "from": {}, "free": true,                                     "seconds": 3,  "tier": -1 },
     { "make": "trail-ration",  "count": 1, "from": { "biomass": 2 },                                     "seconds": 3,  "tier": -1 },
     { "make": "patch-kit",     "count": 1, "from": { "biomass": 2, "silicon-ore": 1 },                   "seconds": 4,  "tier": -1 },
     { "make": "air-cell",      "count": 1, "from": { "biomass": 3 },                                     "seconds": 4,  "tier": -1 },
