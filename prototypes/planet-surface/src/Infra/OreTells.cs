@@ -134,15 +134,24 @@ public sealed partial class TileBuilder
         }
         Vector3 n = Up(x, z, out float y, out float gx, out float gz);
         float low = 0f;
-        for (int k = 0; k < 16; k++)
+        for (int k = 0; k < 24; k++)
         {
-            // A little past the rim: the slope carries a tilted rim out over the ground beyond it.
-            float a = k * MathF.PI / 8f, dx = MathF.Cos(a) * radius * 1.25f, dz = MathF.Sin(a) * radius * 1.25f;
+            // The rim and a little past it: the slope carries a tilted rim out over the ground beyond it.
+            float a = k * MathF.PI / 12f, r = radius * (k % 2 == 0 ? 0.8f : 1.2f), dx = MathF.Cos(a) * r, dz = MathF.Sin(a) * r;
             low = MathF.Min(low, Ground(x + dx, z + dz) - (y + gx * dx + gz * dz));
         }
         Vector3 axis = Vector3.Cross(Vector3.UnitY, n);
         Matrix4x4 tilt = axis.LengthSquared() < 1e-8f ? Matrix4x4.Identity : Matrix4x4.CreateFromAxisAngle(Vector3.Normalize(axis), MathF.Acos(Math.Clamp(n.Y, -1f, 1f)));
-        return tilt * Matrix4x4.CreateTranslation(Local(x, y + low - 0.12f, z));
+        Vector3 at = Local(x, y + low - 0.05f, z);
+        // The rim as it ends up, tilted: down by whatever of it still stands over the ground.
+        float over = 0f;
+        for (int k = 0; k < 24; k++)
+        {
+            float a = k * MathF.PI / 12f;
+            Vector3 rim = Vector3.TransformNormal(new Vector3(MathF.Cos(a) * radius, 0f, MathF.Sin(a) * radius), tilt) + at;
+            over = MathF.Max(over, rim.Y - Ground(OriginX + rim.X, OriginZ + rim.Z));
+        }
+        return tilt * Matrix4x4.CreateTranslation(at - Vector3.UnitY * over);
     }
 
     /// <summary>Copies a deco mesh into the tile under a transform; its collision boxes become collision.</summary>

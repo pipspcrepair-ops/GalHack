@@ -72,6 +72,8 @@ public partial class SurfaceTest
                 foreach (var (c, b) in inst.Blocks.Blocks())
                 {
                     if (inst.Layout.Occupied[c] || c.Y < -1 || !BlockInfo.Collides(b.Type) && b.Type != BlockType.Plant) continue;
+                    // A gantry's members are held by each other (Structure.Floating has those): here, what meets the ground.
+                    if (c.Y > 0 && b.Role is not (Role.Debris or Role.Prop)) continue;
                     if (b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door or Role.Decor or Role.Growth) continue;
                     if (inst.Blocks.Get(c + PoiGenerator.Gen.Int3.Down).Type != BlockType.Air) continue; // on what's below it
                     if (inst.Layout.Occupied[c + PoiGenerator.Gen.Int3.Down]) continue;

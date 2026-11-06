@@ -123,7 +123,8 @@ public static partial class StateTransforms
     /// goes its own way. What stands off the place's footprint (litter, thrown plates, a fence, a yard's
     /// paving) follows the ground under it, column by column, sunk in rather than hanging over it, so a slab
     /// bends with the land a metre at a time. <paramref name="ground"/> is the height above the pad at a
-    /// cell's middle. Returns how many blocks moved.
+    /// cell's middle; <paramref name="apron"/> how far round the footprint it can be left out, or negative
+    /// where a neighbour's pad may blend over this one. Returns how many blocks moved.
     /// </summary>
     public static int Settle(PoiInstance inst, Func<int, int, float> ground, int apron)
     {
@@ -131,21 +132,23 @@ public static partial class StateTransforms
         CellMask occ = inst.Layout.Occupied;
         Int3 lo = occ.Min, hi = occ.Min + occ.Size;
         var columns = new Dictionary<(int X, int Z), List<(Int3 Cell, Block Block)>>();
-        var held = new HashSet<(int, int)>();
         foreach (var (p, b) in g.Blocks())
         {
             if (p.Y < Assembler.GroundY) continue;
-            var key = (p.X, p.Z);
-            if (occ[p] || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door) held.Add(key);
             // On the pad and its apron the ground is the pad.
-            if (p.X >= lo.X - apron && p.X < hi.X + apron && p.Z >= lo.Z - apron && p.Z < hi.Z + apron) continue;
-            if (!columns.TryGetValue(key, out var list)) columns[key] = list = new List<(Int3, Block)>();
+            if (apron >= 0 && p.X >= lo.X - apron && p.X < hi.X + apron && p.Z >= lo.Z - apron && p.Z < hi.Z + apron) continue;
+            if (!columns.TryGetValue((p.X, p.Z), out var list)) columns[(p.X, p.Z)] = list = new List<(Int3, Block)>();
             list.Add((p, b));
         }
         int moved = 0;
-        foreach (var (key, list) in columns)
+        foreach (var (key, cells) in columns)
         {
-            if (held.Contains(key)) continue;
+            // Only the stack that meets the ground: an eave overhead keeps to its building.
+            if (cells[0].Cell.Y > 0) continue;
+            int count = 1;
+            while (count < cells.Count && cells[count].Cell.Y == cells[0].Cell.Y + count) count++;
+            var list = cells.GetRange(0, count);
+            if (list.Any(c => occ[c.Cell] || c.Block.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door)) continue;
             int dy = (int)MathF.Floor(ground(key.X, key.Z) + 0.02f);
             if (dy == 0) continue;
             foreach (var (p, _) in list) g.Set(p, Block.Air);

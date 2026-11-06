@@ -41,7 +41,7 @@ public sealed class FlavourRuin
         PoiInstance inst = PoiFactory.Spawn(Library, Layout, State, SpawnSeed, world);
         if (Blast > 0.02f) StateTransforms.Blast(inst, BlastX, BlastZ, Blast, new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(SpawnSeed, 0xB1A57UL)));
         if (ground != null)
-            StateTransforms.Settle(inst, (x, z) => ground.SurfaceHeight(Mathx.WrapX(OriginX + x + 0.5, ground.Width), Mathx.Wrap(OriginZ + z + 0.5, ground.Height)) - OriginY, 0);
+            StateTransforms.Settle(inst, (x, z) => ground.SurfaceHeight(Mathx.WrapX(OriginX + x + 0.5, ground.Width), Mathx.Wrap(OriginZ + z + 0.5, ground.Height)) - OriginY, -1);
         return inst;
     }
 
