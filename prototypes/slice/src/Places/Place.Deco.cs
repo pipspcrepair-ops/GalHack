@@ -282,14 +282,19 @@ public sealed class Decor
         return r;
     }
 
-    /// <summary>The floor cells whose middles a footprint covers: what a walking route (which runs through cell middles) must go round.</summary>
+    /// <summary>
+    /// The floor cells a body can't stand in the middle of for a footprint: what a walking route (which runs
+    /// through cell middles) must go round. The footprint is grown by the body's radius, so a piece reaching
+    /// nearly to a cell's middle takes that cell too, and one narrowing a corridor below a body's width closes it.
+    /// </summary>
     public static IEnumerable<Int3> CentresOf(DecoRect rect, Int3 corner)
     {
-        foreach (Int3 c in CellsOf(rect, corner, 0f))
+        DecoRect grown = rect.Shrink(-(Slice.Player.Survivor.Radius + 0.02f));
+        foreach (Int3 c in CellsOf(grown, corner, 0f))
         {
-            var p = new NV2(c.X - corner.X + 0.5f, c.Z - corner.Z + 0.5f) - rect.Centre;
-            float u = rect.U.LengthSquared(), v = rect.V.LengthSquared();
-            if (u > 0f && v > 0f && MathF.Abs(NV2.Dot(p, rect.U)) <= u && MathF.Abs(NV2.Dot(p, rect.V)) <= v) yield return c;
+            var p = new NV2(c.X - corner.X + 0.5f, c.Z - corner.Z + 0.5f) - grown.Centre;
+            float u = grown.U.LengthSquared(), v = grown.V.LengthSquared();
+            if (u > 0f && v > 0f && MathF.Abs(NV2.Dot(p, grown.U)) <= u && MathF.Abs(NV2.Dot(p, grown.V)) <= v) yield return c;
         }
     }
 

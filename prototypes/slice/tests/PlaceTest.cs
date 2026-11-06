@@ -313,7 +313,7 @@ public partial class PlaceTest : Node
             string refusedPrompt = game.UsePrompt();
             foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
             foreach (int x in Watched(drive.Wait(60))) yield return x;
-            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut");
+            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut (walked there {ok}, to {side}, feet {place.FromWorld(game.Survivor.WorldFeet)}, door {locked.Index} at {locked.Centre}, {game.Survivor.WorldEye().DistanceTo(place.ToWorld(locked.Centre)):F1} m off, lift {locked.Lift}, seen {DoorSight(game, place)}{(walk.Notes.Count > 0 ? $"; {walk.Notes[^1]}" : "")})");
             // The card.
             foreach (int x in Watched(walk.To(place, nav.AccessCell(key.Cell) ?? key.Cell, r => ok = r))) yield return x;
             foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(key.Cell.X + 0.55f, key.Cell.Y + 0.08f, key.Cell.Z + 0.42f)), 8))) yield return x;
@@ -620,6 +620,13 @@ public partial class PlaceTest : Node
     }
 
     /// <summary>A standable cell a step or two from a door, on the side reachable from here without passing it.</summary>
+    /// <summary>What the crosshair lands on, for a door the aim didn't find.</summary>
+    static string DoorSight(Game.Game game, Place p)
+    {
+        if (!WorldRay.Cast(game.Zone, game.Survivor, Game.Game.UseReach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props, out LookHit look)) return "nothing in reach";
+        return $"{(look.Collider as Node)?.GetParent()?.Name}/{(look.Collider as Node)?.Name} on layer {(look.Collider as CollisionObject3D)?.CollisionLayer} at {look.Distance:F1} m, cell {p.FromWorld(look.Point)}, door {p.DoorOf(look.Collider)?.Index}, piece {p.PieceOf(look.Collider as GodotObject)?.Piece.Id}";
+    }
+
     static PoiGenerator.Gen.Int3 DoorSide(Place p, PoiGenerator.Gen.NavGrid nav, Place.Door d, PoiGenerator.Gen.Int3 from)
     {
         int y = d.Cells.Min(c => c.Y);
