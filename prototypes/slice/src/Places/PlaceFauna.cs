@@ -124,6 +124,51 @@ public sealed class PlaceFauna
         };
     }
 
+    /// <summary>
+    /// <see cref="Solid"/> remembered cell by cell. A creature's body reads 27 cells for every density
+    /// sample and takes many samples a tick, so a full place re-asked the block grid millions of times
+    /// a second. A block that goes tells the place's <see cref="Forget"/>.
+    /// </summary>
+    sealed class SolidCells
+    {
+        readonly PoiInstance _inst;
+        readonly PInt3 _min, _size;
+        readonly byte[] _known; // 0 not read yet, 1 open, 2 solid
+
+        public SolidCells(PoiInstance inst)
+        {
+            _inst = inst;
+            _min = inst.Blocks.Min;
+            _size = inst.Blocks.Size;
+            _known = new byte[_size.X * _size.Y * _size.Z];
+        }
+
+        int Index(int x, int y, int z) => ((z - _min.Z) * _size.Y + y - _min.Y) * _size.X + x - _min.X;
+
+        /// <summary>Only for cells in the place's grid (the block space's bounds see to that).</summary>
+        public bool Get(int x, int y, int z)
+        {
+            int i = Index(x, y, z);
+            byte k = _known[i];
+            if (k == 0) _known[i] = k = Solid(_inst, x, y, z) ? (byte)2 : (byte)1;
+            return k == 2;
+        }
+
+        public void Forget(PInt3 c)
+        {
+            if (_inst.Blocks.InBounds(c)) _known[Index(c.X, c.Y, c.Z)] = 0;
+        }
+    }
+
+    SolidCells _cells;
+
+    /// <summary>Blocks of the place changed: its creatures read them afresh.</summary>
+    public void Forget(IEnumerable<PInt3> cells)
+    {
+        if (_cells == null) return;
+        foreach (PInt3 c in cells) _cells.Forget(c);
+    }
+
     /// <summary>Solid to a creature: the place's walls, floors and roofs and its heavy fittings; not air, doors, glass or what it can walk under. Below ground, rock outside the rooms.</summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
     {
@@ -147,7 +192,8 @@ public sealed class PlaceFauna
         PlanetSurface.World.PlanetWorld planet = deep.Planet;
         var terrain = new WTerrain((x, z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(o.X + x, planet.Width), Planets.Gen.Mathx.Wrap(o.Z + z, planet.Height)) - o.Y, half);
         var sim = new WildSim(deep.Data, terrain, new WNav(terrain.HalfSize, 3f));
-        var space = new BlockSpace((x, y, z) => Solid(inst, x, y, z),
+        _cells = new SolidCells(inst);
+        var space = new BlockSpace(_cells.Get,
             new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z));
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
         Sim = sim;

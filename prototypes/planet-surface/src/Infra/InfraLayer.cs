@@ -160,7 +160,11 @@ public partial class InfraLayer : Node3D
                 }
             }
             if (tile.Node != null)
-                tile.Node.Position = _world.NearestCopy(new Vector3((float)(tile.Ix * TileSize), 0f, (float)(tile.Iz * TileSize)), camera);
+            {
+                // Written only when it changes: a same-spot write still tells every body and mesh under the node.
+                Vector3 at = _world.NearestCopy(new Vector3((float)(tile.Ix * TileSize), 0f, (float)(tile.Iz * TileSize)), camera);
+                if (tile.Node.Position != at) tile.Node.Position = at;
+            }
         }
         WorstMainMs = Math.Max(WorstMainMs, watch.Elapsed.TotalMilliseconds);
         foreach (long key in drop)
@@ -667,7 +671,7 @@ public sealed partial class TileBuilder
             Vector3[] faces = Collision.ToArray();
             steps.Enqueue(() =>
             {
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = Layers.Poi, CollisionMask = 0 };
+                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
                 var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
                 shape.SetFaces(faces);
                 body.AddChild(new CollisionShape3D { Shape = shape });

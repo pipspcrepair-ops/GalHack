@@ -126,6 +126,7 @@ public partial class Place : Node3D
     /// </summary>
     public void Remesh(IEnumerable<Int3> cells)
     {
+        Memory.Fauna?.Forget(cells);
         var chunks = new HashSet<Int3>();
         foreach (Int3 c in cells)
             for (int dz = -1; dz <= 1; dz++)

@@ -110,8 +110,18 @@ public partial class PoiPlaces : Node3D
     {
         if (Zone?.Planet == null) return;
         Vector3 focus = Focus();
-        foreach (Place p in Standing) p.Position = Zone.Planet.NearestCopy(p.Origin, focus);
-        if (_job != null) _job.Place.Position = Zone.Planet.NearestCopy(_job.Place.Origin, focus);
+        foreach (Place p in Standing) Keep(p, focus);
+        if (_job != null) Keep(_job.Place, focus);
+    }
+
+    /// <summary>
+    /// A place on the copy of the planet nearest the focus. Written only when that changes: setting a
+    /// position tells every collider and mesh under the node it moved, even to the same spot.
+    /// </summary>
+    void Keep(Place p, Vector3 focus)
+    {
+        Vector3 at = Zone.Planet.NearestCopy(p.Origin, focus);
+        if (p.Position != at) p.Position = at;
     }
 
     public override void _Process(double delta)

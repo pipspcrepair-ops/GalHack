@@ -36,6 +36,9 @@ public partial class DeepSite : Node3D
 
     readonly Dictionary<Creature, CreatureView> _views = new();
     readonly List<Creature> _gone = new();
+    readonly HashSet<Creature> _unseen = new();
+    const int SightEvery = 6;
+    int _sightFrame;
     Node3D _creatures, _lairs;
     int _lairNext;
 
@@ -139,10 +142,22 @@ public partial class DeepSite : Node3D
     /// <summary>Wildlife's creature views for the creatures in sight range (new ones within the frame's budget), rigged as often as their distance warrants.</summary>
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
+        _sightFrame++;
         foreach (Creature c in Sim.Creatures)
         {
             if (c.Removed) continue;
             float d = WildSim.Flat(c.Position - camera).Length() + MathF.Abs(c.Position.Y - camera.Y) * 0.5f;
+            // Set for every creature, drawn or not: a place holds hundreds, and one left at the default
+            // re-posed its body every tick though nobody could see it (the patch's own views go to 12 too).
+            c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : d < FarDistance ? 4 : 12;
+            // Behind a wall from the eye it needs no more than the far rate: a full place is hundreds of
+            // bodies within a few rooms. (Looked at again every few frames, so turning a corner shows it moving.)
+            if ((_sightFrame + c.Id) % SightEvery == 0 && d < FarDistance)
+            {
+                if (Sees(c, camera)) _unseen.Remove(c);
+                else _unseen.Add(c);
+            }
+            if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
                 if (d > FarDistance || clock.Elapsed.TotalMilliseconds > BudgetMs) continue;
@@ -151,7 +166,6 @@ public partial class DeepSite : Node3D
                 view.Build(c);
                 _views[c] = view;
             }
-            c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : 4;
             bool visible = d < FarDistance;
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
@@ -163,7 +177,23 @@ public partial class DeepSite : Node3D
                 v.QueueFree();
                 _gone.Add(c);
             }
-        foreach (Creature c in _gone) _views.Remove(c);
+        foreach (Creature c in _gone)
+        {
+            _views.Remove(c);
+            _unseen.Remove(c);
+        }
+    }
+
+    /// <summary>Whether a line from the eye reaches a creature living in solid space: cell by cell, half a metre at a time, up to a metre short of it (it lies against a wall).</summary>
+    static bool Sees(Creature c, Vector3 eye)
+    {
+        if (c.Space == null) return true;
+        Vector3 to = c.Position - eye;
+        float len = to.Length();
+        Vector3 step = to / MathF.Max(len, 0.01f) * 0.5f, p = eye;
+        for (float t = 0f; t < len - 1f; t += 0.5f, p += step)
+            if (c.Space.SolidCell(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z))) return false;
+        return true;
     }
 }
 
