@@ -22,7 +22,8 @@ public partial class SurfaceTest
         var rand = new Random();
         int worlds = 0, planned = 0, sited = 0, sewageWorks = 0, unserved = 0, rails = 0, loose = 0, plants = 0, unfed = 0, inWild = 0, ruinsTotal = 0, breaks = 0;
         double emptyShare = 0, slowest = 0;
-        int worstStar = 0, junctions = 0, served = 0;
+        int worstStar = 0, junctions = 0, served = 0, wobbles = 0, streets = 0;
+        double roadKm = 0;
         var themes = new Dictionary<string, int>();
         string first = "";
         void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
@@ -66,9 +67,25 @@ public partial class SurfaceTest
             var roads = net.Routes.Where(r => r.Kind != RouteKind.Rail).ToList();
             int leastGates = net.Places.Count == 0 ? 0 : net.Places.Max(p => roads.Count(r => r.From == p || r.To == p));
             worstStar = Math.Max(worstStar, leastGates);
+            // Roads are straight: over each 40 m the heading holds or turns one way; back and forth is a wobble.
+            foreach (InfraRoute r in roads.Where(r => r.Kind != RouteKind.Track && r.Count > 40))
+            {
+                const int Stride = 10;
+                double last = 0;
+                for (int i = Stride; i + Stride < r.Count; i += Stride)
+                {
+                    double a0 = Math.Atan2(r.Z[i] - r.Z[i - Stride], r.X[i] - r.X[i - Stride]), a1 = Math.Atan2(r.Z[i + Stride] - r.Z[i], r.X[i + Stride] - r.X[i]);
+                    double turn = Math.IEEERemainder(a1 - a0, Math.PI * 2);
+                    if (Math.Abs(turn) < 0.05) continue;
+                    if (last != 0 && Math.Sign(turn) != Math.Sign(last)) wobbles++;
+                    last = turn;
+                }
+                roadKm += r.Count * InfraNetwork.Spacing / 1000.0;
+            }
+            streets += net.TownStreets;
             junctions += net.Junctions;
             served += net.Places.Count;
-            GD.Print($"      roads: {roads.Count(r => r.Kind == RouteKind.Highway)} highway, {roads.Count(r => r.Kind == RouteKind.Road)} road, {roads.Count(r => r.Kind == RouteKind.Track)} track stretches; {net.Junctions} junctions, busiest gate {leastGates}, {net.Isolated.Count} alone, {net.SeaSeparated} over the sea, {net.Unrouted} unrouted");
+            GD.Print($"      roads: {roads.Count(r => r.Kind == RouteKind.Highway)} highway, {roads.Count(r => r.Kind == RouteKind.Road)} road, {roads.Count(r => r.Kind == RouteKind.Track)} track stretches; {net.Junctions} junctions, {net.TownStreets} town streets, {net.Surveyed} straight runs, {net.Wandered} wandered, busiest gate {leastGates}, {net.Isolated.Count} alone, {net.SeaSeparated} over the sea, {net.Unrouted} unrouted");
             foreach (InfraRoute r in net.Routes.Where(r => r.Kind == RouteKind.Rail))
             {
                 rails++;
@@ -100,6 +117,8 @@ public partial class SurfaceTest
         Check(unserved == 0 && sewageWorks > 0, $"every one of {sited} places has its reason, and each of {sewageWorks} sewage works serves a town it stands near and is joined to ({unserved} not){first}");
         Check(loose == 0, $"every one of {rails} railway stretches ends at a depot, a works or a port ({loose} not){first}");
         Check(unfed == 0, $"{plants} plants feed their towns ({unfed} not)");
+        Check(planned == 0 || wobbles <= roadKm * 1.5, $"roads run straight: {wobbles} back-and-forth bends in {roadKm:F0} km of highway and road");
+        Check(planned == 0 || streets > 0, $"towns have grids of streets: {streets} laid");
         Check(planned == 0 || junctions >= served / 3 && worstStar <= 6, $"roads form a network: {junctions} junctions for {served} places, the busiest place has {worstStar} roads out of it (no stars)");
         Check(planned == 0 || emptyShare / planned > 0.3, $"empty land between places: {emptyShare / Math.Max(1, planned):P0} of dry land is in no region");
         Check(inWild <= ruinsTotal / 8, $"small ruins stand in the regions, not scattered: {inWild} of {ruinsTotal} out in the wilds");

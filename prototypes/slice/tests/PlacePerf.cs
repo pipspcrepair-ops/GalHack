@@ -61,6 +61,14 @@ public partial class PlacePerf : Node
                     return (s.Family.Id, Off: Math.Sqrt(dx * dx + dz * dz), s.Instance.State, s.Instance.Occupancy);
                 }).OrderBy(g => g.Off).ToList();
                 GD.Print($"PERF survey seed {w.Seed}: {string.Join("; ", grand.Take(4).Select(g => $"{g.Id} {g.Off:F0} m {g.State} {g.Occupancy}"))}");
+                if (_args.TryGetValue("routes", out string path))
+                {
+                    var o = new System.Text.StringBuilder();
+                    foreach (var r in world.Infra.Routes) o.AppendLine($"R {r.Kind} {r.HalfWidth} " + string.Join(" ", Enumerable.Range(0, r.Count).Where(q => q % 3 == 0 || q == r.Count - 1).Select(q => FormattableString.Invariant($"{r.X[q]:F0},{r.Z[q]:F0}"))));
+                    foreach (var q in world.Pois) o.AppendLine(FormattableString.Invariant($"P {q.Family.Id} {q.Center.X:F0} {q.Center.Z:F0}"));
+                    o.AppendLine(FormattableString.Invariant($"L {world.Landing.X:F0} {world.Landing.Y:F0} {world.Width} {world.Height}"));
+                    System.IO.File.WriteAllText(path + i + ".txt", o.ToString());
+                }
             }
             Wildlife.Shutdown.Quit(this, 0);
             return;
@@ -238,8 +246,35 @@ public partial class PlacePerf : Node
         foreach (int x in _drive.UntilSettled(30)) yield return x;
         foreach (int x in _drive.LookAt(Gate() + Vector3.Up * 3f, 6)) yield return x;
         foreach (int x in Measure("gate")) yield return x;
+        Place place = places.PlaceOf(site);
+        if (place == null) { GD.Print("PERF place never stood"); yield break; }
+        GD.Print($"PERF built in {places.BuildLog.LastOrDefault().Seconds:F1} s, {place.ChunkCount} chunks, {place.Groups} cubes, {place.NearGroups} near, {place.Doors.Count} doors, {place.Memory.Fauna?.Sim?.Creatures.Count} creatures, {place.DecoPieces} pieces of {place.Memory.Rooms?.Values.Sum(r => r.Plan.Placements.Count)}; worst build step {places.WorstStepMs:F1} ms, worst build frame {places.WorstFrameMs:F1} ms");
+        // A roofed spot well inside: the way a player would walk there.
+        var reach = place.Nav().Reachable(site.Instance.Layout.EntranceCell);
+        var inside = reach.Where(c => place.Roofed(place.WorldOf(c, 0.2f))).OrderBy(c => c.X + c.Z * 3).ToList();
+        GD.Print($"PERF reachable {reach.Count}, roofed {inside.Count}");
+        if (inside.Count > 0)
+        {
+            Int3 cell = inside[inside.Count / 2];
+            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Begin();
+            for (int i = 0; i < 360; i++)
+            {
+                _game.Controls.Look = new Vector2(40f, 0f);
+                yield return 0;
+            }
+            _game.Controls.Look = Vector2.Zero;
+            End("inside");
+        }
+        _game.Survivor.PlaceOutside(Out(-40f).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.LookAt(Centre(), 6)) yield return x;
+        foreach (int x in Measure("in the yard")) yield return x;
+        Census(_game);
         if (_args.ContainsKey("toggles"))
         {
+            GD.Print($"PERF sim {place.Memory.Fauna?.Sim?.Creatures.Count(c => !c.Dormant)} awake of {place.Memory.Fauna?.Sim?.Creatures.Count}, patch {zone.Wildlife.Sim?.Creatures.Count}");
             Node creatures = places.PlaceOf(site)?.GetNodeOrNull("Creatures");
             if (creatures != null) creatures.ProcessMode = ProcessModeEnum.Disabled;
             GD.Print($"PERF creatures node {creatures != null}");
@@ -271,31 +306,5 @@ public partial class PlacePerf : Node
             yield break;
         }
 
-        Place place = places.PlaceOf(site);
-        if (place == null) { GD.Print("PERF place never stood"); yield break; }
-        GD.Print($"PERF built in {places.BuildLog.LastOrDefault().Seconds:F1} s, {place.ChunkCount} chunks, {place.Groups} cubes, {place.NearGroups} near, {place.Doors.Count} doors, {place.Memory.Fauna?.Sim?.Creatures.Count} creatures, {place.DecoPieces} pieces of {place.Memory.Rooms?.Values.Sum(r => r.Plan.Placements.Count)}; worst build step {places.WorstStepMs:F1} ms, worst build frame {places.WorstFrameMs:F1} ms");
-        // A roofed spot well inside: the way a player would walk there.
-        var reach = place.Nav().Reachable(site.Instance.Layout.EntranceCell);
-        var inside = reach.Where(c => place.Roofed(place.WorldOf(c, 0.2f))).OrderBy(c => c.X + c.Z * 3).ToList();
-        GD.Print($"PERF reachable {reach.Count}, roofed {inside.Count}");
-        if (inside.Count > 0)
-        {
-            Int3 cell = inside[inside.Count / 2];
-            _game.Survivor.PlaceOutside(place.WorldOf(cell, 0.1f).ToNumerics());
-            foreach (int x in _drive.Wait(30)) yield return x;
-            Begin();
-            for (int i = 0; i < 360; i++)
-            {
-                _game.Controls.Look = new Vector2(40f, 0f);
-                yield return 0;
-            }
-            _game.Controls.Look = Vector2.Zero;
-            End("inside");
-        }
-        _game.Survivor.PlaceOutside(Out(-40f).ToNumerics());
-        foreach (int x in _drive.Wait(30)) yield return x;
-        foreach (int x in _drive.LookAt(Centre(), 6)) yield return x;
-        foreach (int x in Measure("in the yard")) yield return x;
-        Census(_game);
     }
 }

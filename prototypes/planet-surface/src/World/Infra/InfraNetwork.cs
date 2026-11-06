@@ -241,6 +241,11 @@ public sealed class InfraNetwork
             .Select(l => (l.A, l.B, l.D, Kind: net.RegionPlan != null ? RouteKind.Track : KindFor(places[l.A], places[l.B], profile.Before)))
             .Concat(wanted.Select(l => (l.A, l.B, D: net.Dist(places[l.A].Center, places[l.B].Center), l.Kind)))
             .OrderBy(l => l.Kind).ThenBy(l => l.D).ToList();
+        // A town has its streets before any road comes to it.
+        if (net.RegionPlan != null)
+            foreach (PoiSite hub in places.Where(p => p.Planned?.Role == "hub").ToList())
+                if (hub.Planned.Region >= 0 && net.RegionPlan.Regions[hub.Planned.Region].Kind is RegionKind.Town or RegionKind.Hamlet)
+                    net.TownGrid(router, hub, net.RegionPlan.Regions[hub.Planned.Region].Kind == RegionKind.Town);
         // On a planned world only the spine goes place to place; everything else comes off what's laid (below).
         var branches = new List<(int A, int B, double D, RouteKind Kind)>();
         foreach (var l in all)
@@ -340,11 +345,83 @@ public sealed class InfraNetwork
         return (best, gx, gz, gate.Cell.Y, ox, oz);
     }
 
+    /// <summary>The way a road leaves a place: a town's by the end of its main street, carrying straight on; anywhere else by a gate.</summary>
+    (int Index, double X, double Z, float Y, double OutX, double OutZ) WayOut(PoiSite p, (double X, double Z) toward)
+    {
+        if (!_mainStreets.TryGetValue(p, out InfraRoute main)) return GateToward(p, toward);
+        int n = main.Count - 1;
+        bool far = Dist((main.X[n], main.Z[n]), toward) < Dist((main.X[0], main.Z[0]), toward);
+        int end = far ? n : 0, back = far ? n - 1 : 1;
+        double ox = main.X[end] - main.X[back], oz = main.Z[end] - main.Z[back], l = Math.Max(1e-6, Math.Sqrt(ox * ox + oz * oz));
+        return (-1, main.X[end], main.Z[end], main.Y[end], ox / l, oz / l);
+    }
+
+    readonly Dictionary<PoiSite, InfraRoute> _mainStreets = new();
+
+    /// <summary>Streets laid in the grids of the plan's towns (tests).</summary>
+    public int TownStreets;
+
+    /// <summary>
+    /// A town's streets, surveyed on the map's axes before any road reaches it: a main street across the
+    /// front of its heart, with the roads from outside running into its ends, side streets off it every
+    /// block, and a back street closing them. Narrower than the main street, as a side street is. Where the
+    /// ground won't take a street, it wasn't built.
+    /// </summary>
+    void TownGrid(Router router, PoiSite hub, bool town)
+    {
+        var g = GateToward(hub, hub.Center);
+        bool outX = Math.Abs(g.OutX) >= Math.Abs(g.OutZ);
+        double vx = outX ? Math.Sign(g.OutX) : 0, vz = outX ? 0 : Math.Sign(g.OutZ), ux = -vz, uz = vx;
+        double ox = Math.Floor(g.X + vx * 34) + 0.5, oz = Math.Floor(g.Z + vz * 34) + 0.5;
+        const double Block = 110;
+        int blocks = town ? 3 : 1;
+        double arm = town ? 220 : 110, half = blocks * Block;
+        (double X, double Z) At(double a, double b) => (ox + ux * a + vx * b, oz + uz * a + vz * b);
+        bool Free((double X, double Z) a, (double X, double Z) b)
+        {
+            double len = Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Z - a.Z, 2)), lo = double.MaxValue, hi = double.MinValue;
+            for (double t = 0; t <= len; t += 8)
+            {
+                double x = a.X + (b.X - a.X) * t / Math.Max(len, 1), z = a.Z + (b.Z - a.Z) * t / Math.Max(len, 1);
+                if (router.Blocked(x, z) || router.Wet(x, z)) return false;
+                float y = router.Ground(Mathx.WrapX(x, _w), Mathx.Wrap(z, _h), 2, out _, out _);
+                lo = Math.Min(lo, y);
+                hi = Math.Max(hi, y);
+            }
+            return hi - lo <= len * 0.09 + 3;
+        }
+        if (!Free(At(-half, 0), At(half, 0))) return;
+        InfraRoute main = Street(new List<(double X, double Z)> { At(-half, 0), At(half, 0) }, RouteKind.Road);
+        if (main == null) return;
+        _mainStreets[hub] = main;
+        TownStreets++;
+        const float SideWidth = 2.6f;
+        if (Free(At(-half, arm), At(half, arm)) && Street(new List<(double X, double Z)> { At(-half, arm), At(half, arm) }, RouteKind.Road) is { } back)
+        {
+            back.HalfWidth = SideWidth;
+            TownStreets++;
+        }
+        for (int c = -blocks; c <= blocks; c++)
+            if (Free(At(c * Block, 0), At(c * Block, arm)) && Street(new List<(double X, double Z)> { At(c * Block, 0), At(c * Block, arm) }, RouteKind.Road) is { } side)
+            {
+                side.HalfWidth = SideWidth;
+                TownStreets++;
+            }
+        // Its way in, straight off the main street to its gate.
+        if (Street(new List<(double X, double Z)> { At(0, 0), (g.X, g.Z) }, RouteKind.Road, (g.Index, g.Y)) is { } drive)
+        {
+            drive.HalfWidth = SideWidth;
+            drive.To = hub;
+            drive.ToGate = g.Index;
+        }
+        else _mainStreets.Remove(hub);
+    }
+
     /// <summary>Routes one link: from a gate of one place to a gate of the other, merging into roads already laid.</summary>
     bool Link(Router router, PoiSite a, PoiSite b, RouteKind kind, PoiGenerator.Gen.Rng rng)
     {
-        var ga = GateToward(a, b.Center);
-        var gb = GateToward(b, a.Center);
+        var ga = WayOut(a, b.Center);
+        var gb = WayOut(b, a.Center);
         // Leave each gate straight out for a few metres before the path engine takes over.
         (double X, double Z) outA = (ga.X + ga.OutX * 14, ga.Z + ga.OutZ * 14), outB = (gb.X + gb.OutX * 14, gb.Z + gb.OutZ * 14);
         var search = Stopwatch.StartNew();
@@ -384,7 +461,7 @@ public sealed class InfraNetwork
                 pts.Add((gb.X, gb.Z));
             }
             Unwrap(pts);
-            List<(double X, double Z)> path = Resample(Smooth(pts, run.From == 0 ? 2 : 0, run.To == cells.Count - 1 ? 2 : 0), Spacing);
+            List<(double X, double Z)> path = Lay(router, pts, kind, run.From == 0 ? 2 : 0, run.To == cells.Count - 1 ? 2 : 0);
             if (path.Count < 2) continue;
             // Junction ends land exactly on the route they join, at its deck height.
             if (run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out var p0, out float y0)) { path[0] = p0; ClearStart(path); pins.Add((0, y0)); }
@@ -495,7 +572,7 @@ public sealed class InfraNetwork
         var pts = new List<(double X, double Z)> { (g.X, g.Z), (g.X + g.OutX * 6, g.Z + g.OutZ * 6) };
         for (int k = 0; k <= end; k++) pts.Add(router.CellCentre(cells[k]));
         Unwrap(pts);
-        List<(double X, double Z)> path = Resample(Smooth(pts, 2, 0), Spacing);
+        List<(double X, double Z)> path = Lay(router, pts, kind, 2, 0);
         if (path.Count < 2) return false;
         var pins = new List<(int Index, float Y)>();
         if (Snap(near, path[^1], out var p1, out float y1))
@@ -540,9 +617,9 @@ public sealed class InfraNetwork
         foreach (int c in cells) land.Add(router.CellCentre(c));
         land.Add(ob);
         Unwrap(land);
-        List<(double X, double Z)> corners = Straights(router, land);
+        List<(double X, double Z)> corners = Straights(router, land, 70, 260);
         // A corner too sharp for the room it has goes, if the straight past it stays clear of every place.
-        List<(double X, double Z)> sweep = Sweep(corners, out int sharp);
+        List<(double X, double Z)> sweep = Sweep(corners, RailRadius, RailRadiusLeast, Math.PI * 0.55, out int sharp);
         for (int tries = 0; sweep == null && tries < 24; tries++)
         {
             int cut = -1;
@@ -550,7 +627,7 @@ public sealed class InfraNetwork
                 if (i > 0 && i + 1 < corners.Count && Clear(router, corners[i - 1], corners[i + 1])) { cut = i; break; }
             if (cut < 0) break;
             corners.RemoveAt(cut);
-            sweep = Sweep(corners, out sharp);
+            sweep = Sweep(corners, RailRadius, RailRadiusLeast, Math.PI * 0.55, out sharp);
         }
         if (sweep == null) { Drop("a corner too sharp"); return false; }
         List<(double X, double Z)> path = Resample(sweep, Spacing);
@@ -593,10 +670,11 @@ public sealed class InfraNetwork
     }
 
     /// <summary>The land's way between two points as long straights: as few corners as stay within a fair distance of it and clear of every place.</summary>
-    List<(double X, double Z)> Straights(Router router, List<(double X, double Z)> pts)
+    List<(double X, double Z)> Straights(Router router, List<(double X, double Z)> pts, double Tolerance, double Shortest, int keepStart = 0, int keepEnd = 0, double margin = 40)
     {
-        const double Tolerance = 70, Shortest = 260;
         var keep = new SortedSet<int> { 0, pts.Count - 1 };
+        for (int i = 1; i <= keepStart && i < pts.Count; i++) keep.Add(i);
+        for (int i = 1; i <= keepEnd && pts.Count - 1 - i >= 0; i++) keep.Add(pts.Count - 1 - i);
         void Fit(int lo, int hi)
         {
             if (hi - lo < 2) return;
@@ -610,13 +688,14 @@ public sealed class InfraNetwork
                 double d = Math.Abs((pts[i].X - ax) * ez - (pts[i].Z - az) * ex) / len;
                 if (d > most) { most = d; worst = i; }
             }
-            if (most <= Tolerance && Clear(router, pts[lo], pts[hi])) return;
+            if (most <= Tolerance && Clear(router, pts[lo], pts[hi], margin)) return;
             if (worst < 0) worst = (lo + hi) / 2;
             keep.Add(worst);
             Fit(lo, worst);
             Fit(worst, hi);
         }
-        Fit(0, pts.Count - 1);
+        var fixedCorners = keep.ToList();
+        for (int i = 0; i + 1 < fixedCorners.Count; i++) Fit(fixedCorners[i], fixedCorners[i + 1]);
         var corners = keep.ToList();
         // No short stretches between corners, where the land allows: each is a pair of curves with no straight between.
         for (bool merged = true; merged;)
@@ -624,10 +703,11 @@ public sealed class InfraNetwork
             merged = false;
             for (int i = 1; i + 1 < corners.Count; i++)
             {
+                if (fixedCorners.Contains(corners[i])) continue;
                 var (x0, z0) = pts[corners[i - 1]];
                 var (x1, z1) = pts[corners[i]];
                 if (Math.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) >= Shortest && i + 2 < corners.Count) continue;
-                if (!Clear(router, pts[corners[i - 1]], pts[corners[i + 1]])) continue;
+                if (!Clear(router, pts[corners[i - 1]], pts[corners[i + 1]], margin)) continue;
                 corners.RemoveAt(i);
                 merged = true;
                 break;
@@ -637,17 +717,20 @@ public sealed class InfraNetwork
     }
 
     /// <summary>Whether a straight line keeps off every place.</summary>
-    static bool Clear(Router router, (double X, double Z) a, (double X, double Z) b)
+    static bool Clear(Router router, (double X, double Z) a, (double X, double Z) b, double margin = 40)
     {
         double len = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Z - a.Z) * (b.Z - a.Z));
         // Stations stand by their places: a line's ends may be close to one.
-        for (double t = 40; t <= len - 40; t += 8)
-            if (router.Blocked(a.X + (b.X - a.X) * t / len, a.Z + (b.Z - a.Z) * t / len)) return false;
+        for (double t = margin; t <= len - margin; t += 8)
+        {
+            double x = a.X + (b.X - a.X) * t / len, z = a.Z + (b.Z - a.Z) * t / len;
+            if (router.Blocked(x, z) || router.Sea(x, z)) return false;
+        }
         return true;
     }
 
-    /// <summary>Joins straights with arcs of a railway's radius; null if a corner (<paramref name="sharp"/>) is too sharp for the room it has.</summary>
-    static List<(double X, double Z)> Sweep(List<(double X, double Z)> c, out int sharp)
+    /// <summary>Joins straights with arcs of a radius, down to the least where corners crowd; null if a corner (<paramref name="sharp"/>) is too sharp for the room it has.</summary>
+    static List<(double X, double Z)> Sweep(List<(double X, double Z)> c, double radius, double least, double sharpest, out int sharp)
     {
         int n = c.Count;
         sharp = -1;
@@ -657,7 +740,7 @@ public sealed class InfraNetwork
         {
             double ax = c[i].X - c[i - 1].X, az = c[i].Z - c[i - 1].Z, bx = c[i + 1].X - c[i].X, bz = c[i + 1].Z - c[i].Z;
             turn[i] = Math.Abs(Math.Atan2(ax * bz - az * bx, ax * bx + az * bz));
-            tangent[i] = RailRadius * Math.Tan(turn[i] / 2);
+            tangent[i] = radius * Math.Tan(turn[i] / 2);
         }
         // Where two curves want more than the straight between them, each gives way, down to the least radius.
         double Len(int i) => Math.Sqrt(Math.Pow(c[i + 1].X - c[i].X, 2) + Math.Pow(c[i + 1].Z - c[i].Z, 2));
@@ -672,7 +755,7 @@ public sealed class InfraNetwork
         for (int i = 1; i + 1 < n; i++)
         {
             if (turn[i] < 1e-4) continue;
-            if (turn[i] > Math.PI * 0.55 || tangent[i] / Math.Tan(turn[i] / 2) < RailRadiusLeast)
+            if (turn[i] > sharpest || tangent[i] / Math.Tan(turn[i] / 2) < least)
             {
                 sharp = i;
                 return null;
@@ -693,6 +776,44 @@ public sealed class InfraNetwork
         path.Add(c[^1]);
         return path;
     }
+
+    /// <summary>
+    /// The line a run takes, from the land's way. Roads are surveyed: long straights, corners only where
+    /// the land or a place wants one, each a clean arc. A highway sweeps, a road turns tighter. A track
+    /// wanders as tracks do. The fixed points at each end (the way out of a gate) stay.
+    /// </summary>
+    List<(double X, double Z)> Lay(Router router, List<(double X, double Z)> pts, RouteKind kind, int keepStart, int keepEnd)
+    {
+        List<(double X, double Z)> smooth = Resample(Smooth(pts, keepStart, keepEnd), Spacing);
+        if (kind is not (RouteKind.Highway or RouteKind.Road) || pts.Count < 4) return smooth;
+        bool highway = kind == RouteKind.Highway;
+        double radius = highway ? 150 : 60, least = 2;
+        // The straightest the land allows: closer to its way only where the long straights ran into something.
+        foreach (double fit in new[] { 1.0, 0.5, 0.25 })
+        {
+            List<(double X, double Z)> corners = Straights(router, pts, (highway ? 90 : 60) * fit, (highway ? 320 : 200) * fit, Math.Max(0, keepStart - 1), Math.Max(0, keepEnd - 1), 14);
+            List<(double X, double Z)> sweep = Sweep(corners, radius, least, Math.PI * 0.97, out int sharp);
+            for (int tries = 0; sweep == null && tries < 16; tries++)
+            {
+                int cut = -1;
+                foreach (int i in new[] { sharp, sharp - 1, sharp + 1 })
+                    if (i > keepStart - 1 && i + keepEnd < corners.Count && i > 0 && i + 1 < corners.Count && Clear(router, corners[i - 1], corners[i + 1])) { cut = i; break; }
+                if (cut < 0) break;
+                corners.RemoveAt(cut);
+                sweep = Sweep(corners, radius, least, Math.PI * 0.97, out sharp);
+            }
+            if (sweep == null) continue;
+            List<(double X, double Z)> path = Resample(sweep, Spacing);
+            if (path.Count < 2 || CrossesItself(path) || path.Skip(12).Take(Math.Max(0, path.Count - 24)).Any(q => router.Blocked(q.X, q.Z))) continue;
+            Surveyed++;
+            return path;
+        }
+        Wandered++;
+        return smooth;
+    }
+
+    /// <summary>Roads laid out in straights, and those that had to follow the land's way as it is (tests).</summary>
+    public int Surveyed, Wandered;
 
     /// <summary>Whether a path runs over itself.</summary>
     static bool CrossesItself(List<(double X, double Z)> p)
@@ -715,7 +836,7 @@ public sealed class InfraNetwork
     /// resampled, its deck held to the kind's grade over the ground, joined at its ends to any route
     /// already laid there. Null on a world with no network.
     /// </summary>
-    public InfraRoute Street(List<(double X, double Z)> points, RouteKind kind)
+    public InfraRoute Street(List<(double X, double Z)> points, RouteKind kind, (int Gate, float Y)? gate = null)
     {
         if (_router == null || points.Count < 2) return null;
         var pts = new List<(double X, double Z)>(points);
@@ -724,7 +845,8 @@ public sealed class InfraNetwork
         var pins = new List<(int Index, float Y)>();
         int a = _router.RouteAtPoint(path[0].X, path[0].Z, kind), b = _router.RouteAtPoint(path[^1].X, path[^1].Z, kind);
         if (a >= 0 && Snap(Routes[a], path[0], out var p0, out float y0)) { path[0] = p0; ClearStart(path); pins.Add((0, y0)); }
-        if (b >= 0 && Snap(Routes[b], path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
+        if (b >= 0 && gate == null && Snap(Routes[b], path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
+        if (gate is { } g) pins.Add((path.Count - 1, g.Y));
         InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
         if (route != null) _router.Mark(route);
         return route;
@@ -1247,6 +1369,10 @@ public sealed class InfraNetwork
 
         public int RouteAt(int k, RouteKind kind) => (kind == RouteKind.Rail ? _rail[k] : _road[k]) - 1;
         public int RouteAtPoint(double x, double z, RouteKind kind) => RouteAt(Index(x, z), kind);
+        /// <summary>Open sea at a point.</summary>
+        public bool Sea(double x, double z) => WaterAt(Index(x, z)) == 3;
+        /// <summary>Any water at a point.</summary>
+        public bool Wet(double x, double z) => WaterAt(Index(x, z)) >= 2;
 
         /// <summary>Marks the cells a laid route runs through, so later routes join it.</summary>
         public void Mark(InfraRoute r)
@@ -1305,7 +1431,8 @@ public sealed class InfraNetwork
                     float len = Cell * MathF.Sqrt(dx * dx + dz * dz);
                     float hm = HeightAt(m);
                     float g = MathF.Abs(hm - hk) / len, r = g / grade;
-                    float c = r <= 1f ? len * (1f + 1.5f * r * r) : len * (2.5f + 30f * (r - 1f));
+                    // Within its grade a road or highway doesn't care about the slope, or it would wander round every rise; past it, it does.
+                    float c = r <= 1f ? len * (1f + (kind is RouteKind.Highway or RouteKind.Road ? 0.25f : 1.5f) * r * r) : len * (kind is RouteKind.Highway or RouteKind.Road ? 1.25f + 30f * (r - 1f) : 2.5f + 30f * (r - 1f));
                     byte wtr = WaterAt(m);
                     if (wtr == 2) c += len * bridge;
                     else if (wtr == 3) c += len * sea;
@@ -1320,6 +1447,7 @@ public sealed class InfraNetwork
                     double ddx = Math.Abs(mx - gx), ddz = Math.Abs(mz - gz);
                     ddx = Math.Min(ddx, _nx - ddx);
                     ddz = Math.Min(ddz, _nz - ddz);
+                    // Headed for the goal: of two ways as good, the straighter.
                     open.Enqueue(m, nc + (float)(Math.Sqrt(ddx * ddx + ddz * ddz) * Cell * 1.5));
                 }
             }
