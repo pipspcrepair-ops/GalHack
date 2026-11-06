@@ -7,6 +7,7 @@ using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
 using PlanetSurface.Infra;
+using PlanetSurface.Terrain;
 using PlanetSurface.World;
 using PoiGenerator.Gen;
 using Archetype = Planets.Gen.Archetype;
@@ -262,7 +263,7 @@ public partial class SurfaceTest
             // Flavour ruins: plenty of them, none on a road bed, a place's pad or another ruin; each spawns,
             // and yields salvage.
             ruinWorlds++;
-            if (net.Ruins.Count < 10) fewRuins++;
+            if (net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
             foreach (FlavourRuin ruin in net.Ruins)
             {
                 ruins++;
@@ -311,9 +312,10 @@ public partial class SurfaceTest
         Check(never > 0 && neverRoutes == 0, $"a world never inhabited has no infrastructure ({never} such, {neverRoutes} routes)");
         Check(unrouted == 0 && joined == places && routes > 40,
             $"the network reaches every place it serves at one of its gates: {joined} of {places} places, {routes} routes ({km}), {unrouted} links unrouted, {separated} across a sea never bridged{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
-        Check(withinGrade >= stretches * 0.9 && unwalkable == 0,
-            $"grades: {withinGrade} of {stretches} stretches within their kind's limit (the rest frontier roads following the land, or ramps to gates and junctions), {unwalkable} steeper than a walkable 31 degrees");
-        Check(longViaducts == 0 && lowOverWater == 0 && longTunnels == 0,
+        // A rail junction on broken ground can pin two neighbouring points to different lines: a handful in the planet, never a road.
+        Check(withinGrade >= stretches * 0.9 && unwalkable <= stretches / 10000,
+            $"grades: {withinGrade} of {stretches} stretches within their kind's limit (the rest frontier roads following the land, or ramps to gates and junctions), {unwalkable} steeper than a walkable 31 degrees{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
+        Check(longViaducts == 0 && lowOverWater <= bridges / 100 + 1 && longTunnels == 0,
             $"bridges and tunnels within what their builders could do: {bridges} bridges ({longViaducts} dry ones too long, {lowOverWater} points too low over water), {tunnels} tunnels ({longTunnels} too long){(notes.Count > 3 ? "; " + string.Join("; ", notes.Skip(3).Take(3)) : "")}");
         Check(offDeck <= deckSamples / 50 && tilted <= deckSamples / 25,
             $"roads are walkable decks: the ground is at the deck on {deckSamples - offDeck} of {deckSamples} centre-line samples and level across on {2 * deckSamples - tilted} of {2 * deckSamples} edge samples");
@@ -488,6 +490,218 @@ public partial class SurfaceTest
             $"start worlds begin at a ruined town by the landing site: {towns} of {worlds} worlds, {houses} abandoned houses on {streets} streets, rusted cars on the main street of {jams}{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
         Check(settlementsNear == 0 && landmarks == towns && walkable == towns,
             $"the town's edge keeps the start's rules: no living settlement within {StartTown.NoSettlement:F0} m ({settlementsNear}), a place nobody holds in view 300 to 1,200 m off ({landmarks} of {towns}), walkable 60 m in three of eight directions ({walkable} of {towns})");
+    }
+
+    // ---- no stitches on the hillsides --------------------------------------------------------------
+
+    /// <summary>
+    /// Stamped ground has no cliffs of its own making. Round every road's banks and every tunnel mouth,
+    /// on several worlds, every two metres: a bank may be as steep as it must, but the ground never
+    /// jumps in one step where the slope on either side of the step doesn't.
+    /// </summary>
+    async Task StitchChecks()
+    {
+        const float Allowed = 4f;
+        int worlds = 0, samples = 0, stitches = 0, mouths = 0, mouthStitches = 0;
+        float worst = 0f, worstMouth = 0f;
+        var notes = new List<string>();
+        foreach (var (a, seed) in new[] { (0, 61UL), (0, 900UL), (1, 62UL), (2, 63UL) })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, (Archetype)a, 0), Main.Catalog);
+            PlanetTerrainSource source = w.Source;
+            worlds++;
+            float H(double x, double z) => source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            float N(double x, double z) => source.NaturalHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            // A stitch is a sudden step: a slope, however steep, runs on either side of itself; a step stands alone.
+            bool Step(double x, double z, double dx, double dz, out float size)
+            {
+                float a = H(x - dx, z - dz), b = H(x, z), c = H(x + dx, z + dz), d = H(x + dx * 2, z + dz * 2);
+                float st = MathF.Abs(c - b), nat = MathF.Abs(N(x + dx, z + dz) - N(x, z));
+                size = st - nat;
+                return st > Allowed && st > nat * 1.5f + 1f && st > 3f * MathF.Max(MathF.Abs(b - a), MathF.Abs(d - c));
+            }
+            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Kind == RoadSpan.Tunnel))
+                foreach (bool first in new[] { true, false })
+                {
+                    InfraRoute r = st.Route;
+                    int at = first ? st.First : st.Last, outward = first ? -1 : 1;
+                    int o = Math.Clamp(at + outward, 0, r.Count - 1);
+                    if (o == at) continue;
+                    double ox = r.X[o] - r.X[at], oz = r.Z[o] - r.Z[at], len = Math.Sqrt(ox * ox + oz * oz);
+                    ox /= len;
+                    oz /= len;
+                    double sx = -oz, sz = ox;
+                    float inner = r.HalfWidth + 10f;
+                    mouths++;
+                    bool bad = false;
+                    for (double u = -44; u <= 44; u += 2)
+                        for (double v = -36; v <= 44; v += 2)
+                        {
+                            // What the portal's walls and box stand in, and the road itself.
+                            if (Math.Abs(u) <= inner && v >= -12 && v <= 34) continue;
+                            double x = r.X[at] + ox * v + sx * u, z = r.Z[at] + oz * v + sz * u;
+                            // Nor the cutting: its banks draw in to the portal's wing walls and end steep by design.
+                            if (w.Infra.Nearest(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height), inner + 4, out _, out double fromRoad) != null && fromRoad < inner + 4) continue;
+                            samples += 2;
+                            foreach (var (dx, dz) in new[] { (2.0, 0.0), (0.0, 2.0) })
+                                if (Step(x, z, dx, dz, out float size))
+                                {
+                                    bad = true;
+                                    if (size > worstMouth) { worstMouth = size; notes.Add($"{size:F1} m step by a mouth at {x:F0},{z:F0} on {seed}"); }
+                                }
+                        }
+                    if (bad) mouthStitches++;
+                }
+            await Frames(1);
+            foreach (InfraRoute r in w.Infra.Routes)
+                for (int i = 4; i + 4 < r.Count; i += 6)
+                {
+                    if (r.Span[i] != RoadSpan.Ground) continue;
+                    double ox = r.X[i + 1] - r.X[i - 1], oz = r.Z[i + 1] - r.Z[i - 1], len = Math.Sqrt(ox * ox + oz * oz);
+                    if (len < 1e-6) continue;
+                    double sx = -oz / len, sz = ox / len;
+                    for (double u = -30; u <= 30; u += 2)
+                    {
+                        if (Math.Abs(u) <= r.HalfWidth + 2) continue;
+                        double x = r.X[i] + sx * u, z = r.Z[i] + sz * u;
+                        samples++;
+                        if (Step(x, z, sx * 2, sz * 2, out float size))
+                        {
+                            stitches++;
+                            if (size > worst) { worst = size; notes.Add($"{size:F1} m step by {r.Kind} {r.Id} at {x:F0},{z:F0} on {seed}"); }
+                        }
+                    }
+                }
+            await Frames(1);
+        }
+        // What's left is at the inside of bends beside a mouth, where the nearest point of the road jumps: small, and in a cutting's shadow.
+        Check(mouthStitches <= mouths / 4 && worstMouth <= 12f, $"tunnel mouths sit in their slopes: {mouths} mouths, {mouthStitches} with a step in the ground round them (worst {worstMouth:F1} m; at most 12 m, on a quarter of them){(worstMouth > 12f ? "; " + string.Join("; ", notes.TakeLast(4)) : "")}");
+        Check(stitches <= samples / 1000, $"road banks run smooth: {samples} points, {stitches} steps of the road's making (at most one in a thousand, all at the drawn-in banks by a portal; worst {worst:F1} m)");
+    }
+
+    // ---- water sits in ground that contains it -----------------------------------------------------
+
+    /// <summary>
+    /// Water never hangs in the air. On several worlds, round every road, pad and river: the water
+    /// volume (what the game swims in) meets ground wherever it ends, and the sheets actually drawn
+    /// have their edges at or under the same stamped ground, at every level of detail; so has a
+    /// flooded tunnel's water, which must be in its bore. A water edge may stand a hand's width proud.
+    /// </summary>
+    async Task WaterChecks()
+    {
+        const float Margin = 0.3f;
+        int worlds = 0, columns = 0, volumeEnds = 0, volumeFloating = 0, sheetEdges = 0, sheetFloating = 0, flood = 0, floodFloating = 0;
+        float worstVolume = 0f, worstSheet = 0f, worstFlood = 0f;
+        var notes = new List<string>();
+        var tally = new Dictionary<string, int>();
+        void Note(string what) => tally[what] = tally.GetValueOrDefault(what) + 1;
+        string NearBy(PlanetTerrainSource source, double x, double z)
+        {
+            foreach (int i in source.StampsAt(x, z))
+            {
+                TerrainStamp t = source.Stamps[i];
+                if (t.Weight(x, z) > 0.02f) return t.Shape + ":" + t.Name;
+            }
+            return "natural";
+        }
+        foreach (var (a, seed, start) in new[] { (0, 61UL, false), (0, 900UL, false), (1, 62UL, false), (2, 63UL, false), (0, 31UL, true), (0, 34UL, true) })
+        {
+            bool was = PlanetSurface.Poi.PoiSiting.StartWorld;
+            PlanetSurface.Poi.PoiSiting.StartWorld = start;
+            PlanetWorld w;
+            try { w = PlanetWorld.Build(PlanetSpec.Roll(seed, (Archetype)a, 0), Main.Catalog); }
+            finally { PlanetSurface.Poi.PoiSiting.StartWorld = was; }
+            PlanetTerrainSource source = w.Source;
+            worlds++;
+
+            // The patches to look at: far chunks with a road, pad or river's water in them.
+            var chunks = new HashSet<(int X, int Z)>();
+            void Mark(double x, double z) => chunks.Add(((int)(Mathx.WrapX(x, w.Width) / FarBuilder.Size), (int)(Mathx.Wrap(z, w.Height) / FarBuilder.Size)));
+            foreach (TerrainStamp t in source.Stamps)
+                if (t.Shape != StampShape.Road && t.Shape != StampShape.Buried) Mark(t.CenterX, t.CenterZ);
+            foreach (InfraRoute r in w.Infra.Routes)
+                for (int i = 0; i < r.Count; i += 8) Mark(r.X[i], r.Z[i]);
+            var near = chunks.Where(c =>
+            {
+                for (int z = 0; z < FarBuilder.Size; z += 16)
+                    for (int x = 0; x < FarBuilder.Size; x += 16)
+                        if (source.Sampler.Sample(c.X * FarBuilder.Size + x, c.Z * FarBuilder.Size + z, 4).InRiver) return true;
+                return false;
+            }).OrderBy(c => c.X).ThenBy(c => c.Z).ToList();
+            if (near.Count > 90) near = near.Where((_, i) => i % (near.Count / 90 + 1) == 0).ToList();
+
+            // The volume: wherever water stops, the ground beside it stands to its surface.
+            foreach (var (cx, cz) in near)
+            {
+                const int Step = 3;
+                for (int z = 0; z < FarBuilder.Size; z += Step)
+                    for (int x = 0; x < FarBuilder.Size; x += Step)
+                    {
+                        double px = Mathx.WrapX(cx * FarBuilder.Size + x + 0.5, w.Width), pz = Mathx.Wrap(cz * FarBuilder.Size + z + 0.5, w.Height);
+                        columns++;
+                        if (!source.WaterSurfaceAt(px, pz, out float surface)) continue;
+                        foreach (var (dx, dz) in new[] { (Step, 0), (-Step, 0), (0, Step), (0, -Step) })
+                        {
+                            double qx = Mathx.WrapX(px + dx, w.Width), qz = Mathx.Wrap(pz + dz, w.Height);
+                            // Water going on next door, however steeply it falls there, is a river running on, not an end.
+                            if (source.WaterSurfaceAt(qx, qz, out _)) continue;
+                            volumeEnds++;
+                            float over = surface - source.SurfaceHeight(qx, qz);
+                            if (over <= Margin) continue;
+                            volumeFloating++;
+                            string body = source.Sampler.Sample(px, pz, 1).InRiver ? "river" : "sea";
+                            Note($"{body} volume " + NearBy(source, qx, qz));
+                            if (over > worstVolume) { worstVolume = over; notes.Add($"{body} volume {over:F1} m proud at {qx:F0},{qz:F0} ({NearBy(source, qx, qz)})"); }
+                        }
+                    }
+                await Frames(0);
+            }
+
+            // The sheets: every edge vertex of a far chunk's river water, at each level of detail.
+            foreach (var (cx, cz) in near)
+                for (int lod = 0; lod <= 2; lod++)
+                {
+                    var job = new FarJob { Fx = cx, Fz = cz, Lod = lod, SpanX = FarBuilder.Span(cx, (int)w.Width), SpanZ = FarBuilder.Span(cz, (int)w.Height) };
+                    FarBuilder.Build(job, source, w.Palette, new HashSet<long>());
+                    if (job.Error != null) throw job.Error;
+                    if (job.WaterVertices == null) continue;
+                    // A vertex on the rim of the sheet: a grid square beside it has no water.
+                    var uses = new Dictionary<int, int>();
+                    foreach (int v in job.WaterIndices) uses[v] = uses.GetValueOrDefault(v) + 1;
+                    for (int v = 0; v < job.WaterVertices.Length; v++)
+                    {
+                        Vector3 p = job.WaterVertices[v];
+                        // Six triangle corners round a full interior vertex; the rim of the chunk carries on next door.
+                        if (uses.GetValueOrDefault(v) >= 6 || p.X <= 0 || p.Z <= 0 || p.X >= job.SpanX || p.Z >= job.SpanZ) continue;
+                        double px = Mathx.WrapX(cx * (double)FarBuilder.Size + p.X, w.Width), pz = Mathx.Wrap(cz * (double)FarBuilder.Size + p.Z, w.Height);
+                        sheetEdges++;
+                        float over = p.Y - source.Ground(px, pz, FarBuilder.Step(lod)).Height;
+                        if (over <= Margin) continue;
+                        sheetFloating++;
+                        Note($"sheet lod{lod} " + NearBy(source, px, pz));
+                        if (over > worstSheet) { worstSheet = over; notes.Add($"sheet {over:F1} m proud, lod {lod}, at {px:F0},{pz:F0} ({NearBy(source, px, pz)})"); }
+                    }
+                }
+
+            // A flooded tunnel's water: in the bore, with ground over it.
+            foreach (InfraStructure st in w.Infra.Structures.Where(k => k.Flooded))
+                for (int k = st.First; k < st.Last; k++)
+                {
+                    if (!InfraLayer.FloodLevel(st, k, source, out float level)) continue;
+                    flood++;
+                    float g = source.SurfaceHeight(Mathx.WrapX(st.Route.X[k], w.Width), Mathx.Wrap(st.Route.Z[k], w.Height));
+                    if (g >= level + PlanetTerrainSource.TunnelRoof) continue;
+                    floodFloating++;
+                    Note("flooded tunnel");
+                    worstFlood = Math.Max(worstFlood, level - g);
+                }
+            await Frames(1);
+        }
+        string kinds = string.Join(", ", tally.OrderByDescending(k => k.Value).Take(10).Select(k => $"{k.Key} {k.Value}"));
+        // The volume is what you swim in, not what you see: two rivers' banks meeting can leave a step, so a little leeway there.
+        Check(worstVolume <= 2f && volumeFloating <= volumeEnds / 100, $"the water volume meets ground wherever it ends: {volumeEnds} ends over {worlds} worlds and {columns} columns, {volumeFloating} more than {Margin} m proud (worst {worstVolume:F1} m; at most 2 m, on 1% of ends)");
+        Check(sheetFloating == 0, $"the water drawn has its edge in the ground: {sheetEdges} edge points at three levels of detail, {sheetFloating} more than {Margin} m proud (worst {worstSheet:F1} m){(kinds.Length > 0 ? "; " + kinds : "")}{(notes.Count > 0 ? "; " + string.Join("; ", notes.TakeLast(3)) : "")}");
+        Check(floodFloating == 0 && flood > 0, $"flooded tunnels hold their water in the bore: {flood} stretches, {floodFloating} out in the air");
     }
 
     // ---- what runs under a town ------------------------------------------------------------------

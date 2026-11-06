@@ -350,23 +350,69 @@ public partial class InfraLayer : Node3D
         public override void Emit(TileBuilder b)
         {
             InfraRoute r = Structure.Route;
-            int k = AtStart ? Structure.First : Structure.Last, n = AtStart ? Math.Min(r.Count - 1, k + 1) : Math.Max(0, k - 1);
-            NV a = b.Local(r.X[k], r.Y[k], r.Z[k]), c = b.Local(r.X[n], r.Y[n], r.Z[n]);
-            NV into = NV.Normalize(new NV(c.X - a.X, 0, c.Z - a.Z)), side = new(-into.Z, 0, into.X);
+            int k = AtStart ? Structure.First : Structure.Last, outward = AtStart ? -1 : 1;
+            // The face stands forward of the mouth, in the cutting, with a covered box back to the bore:
+            // the raw edge where the bore meets the slope is behind it, and so is the far ring's ramp.
+            int boxPoints = (int)Math.Ceiling(TerrainStamp.MouthBox / InfraNetwork.Spacing);
+            int w = Math.Clamp(k + outward * boxPoints, 0, r.Count - 1);
+            NV mouth = b.Local(r.X[k], r.Y[k], r.Z[k]), wall = b.Local(r.X[w], r.Y[w], r.Z[w]);
+            NV flat = new(mouth.X - wall.X, 0, mouth.Z - wall.Z);
+            if (flat.LengthSquared() < 1e-6f) return;
+            float boxLength = flat.Length() + 3f;
+            NV into = NV.Normalize(flat), side = new(-into.Z, 0, into.X), up = NV.UnitY;
             float bore = r.HalfWidth + 1.2f, height = r.Kind == RouteKind.Rail ? 7f : 6.5f;
-            DecoRgb col = r.Tech == TechLevel.Low ? Stone : r.Tech == TechLevel.Mid ? Concrete : Composite;
-            NV face = a + into * 0.6f;
-            // Pillars either side of the bore, and the lintel over it, a metre into the slope.
-            for (int s = -1; s <= 1; s += 2)
-                b.Box(face + side * (s * (bore + 1.2f)) + NV.UnitY * (height * 0.5f + 0.5f), into * 0.8f, NV.UnitY * (height * 0.5f + 1.5f), side * 1.2f, col, DecoSurface.Matte, collide: true);
-            b.Box(face + NV.UnitY * (height + 1.2f), into * 0.8f, NV.UnitY * 1.0f, side * (bore + 2.4f), col, DecoSurface.Matte, collide: true);
-            // A lining a few metres into the bore, so the mouth reads as built, not dug.
-            for (int s = -1; s <= 1; s += 2)
-                b.Box(face + into * 3f + side * (s * (bore + 0.25f)) + NV.UnitY * (height * 0.5f), into * 2.4f, NV.UnitY * (height * 0.5f), side * 0.25f, col, DecoSurface.Matte, collide: true);
+            // Dressed stone, or timber framing on a low-tech track; cast concrete; composite panels.
+            DecoRgb col = r.Tech == TechLevel.Low ? (r.Kind == RouteKind.Track ? PoleWood : Stone) : r.Tech == TechLevel.Mid ? Concrete : Composite;
+            float capped = height + 2.4f, half = bore + 2.4f;
+            // The face: piers either side of the opening, the lintel over it, a coping a little proud.
+            foreach (int s in new[] { -1, 1 })
+                b.Box(wall + side * (s * (bore + 1.2f)) + up * (capped * 0.5f - 0.75f), into * 0.7f, up * (capped * 0.5f + 0.75f), side * 1.2f, col, DecoSurface.Matte, collide: true);
+            b.Box(wall + up * (height + 1.2f), into * 0.7f, up * 1.2f, side * half, col, DecoSurface.Matte, collide: true);
+            b.Box(wall + up * (capped + 0.2f), into * 1f, up * 0.2f, side * (half + 0.35f), col, DecoSurface.Matte, collide: true);
+            // The covered box from the face back into the hill: walls and roof over the raw cut.
+            NV box = wall + into * (boxLength * 0.5f);
+            foreach (int s in new[] { -1, 1 })
+                b.Box(box + side * (s * (bore + 0.3f)) + up * (height * 0.5f), into * (boxLength * 0.5f), up * (height * 0.5f + 0.4f), side * 0.3f, col, DecoSurface.Matte, collide: true);
+            b.Box(box + up * (height + 0.3f), into * (boxLength * 0.5f), up * 0.4f, side * (bore + 0.6f), col, DecoSurface.Matte, collide: true);
+            // Wing walls down each side of the cutting, on its edge as it narrows, as high as the bank they hold.
+            for (int j = 0; j < 4; j++)
+            {
+                int p = w + outward * j, q = p + outward;
+                if (p < 0 || q < 0 || p >= r.Count || q >= r.Count || r.Span[Math.Min(p, q)] != RoadSpan.Ground) break;
+                NV pa = b.Local(r.X[p], r.Y[p], r.Z[p]), pb = b.Local(r.X[q], r.Y[q], r.Z[q]);
+                NV along = new(pb.X - pa.X, 0, pb.Z - pa.Z);
+                float len = along.Length();
+                if (len < 1e-3f) break;
+                NV dir = along / len, across = new(-dir.Z, 0, dir.X);
+                float far = Math.Clamp((j + 0.5f) * InfraNetwork.Spacing / TerrainStamp.MouthFade, 0f, 1f);
+                float edge = r.HalfWidth + (bore + TerrainStamp.MouthRoom - r.HalfWidth) * (1f - far) + 0.35f;
+                foreach (int s in new[] { -1, 1 })
+                {
+                    double gx = (r.X[p] + r.X[q]) * 0.5 + across.X * s * (edge + 2.5f), gz = (r.Z[p] + r.Z[q]) * 0.5 + across.Z * s * (edge + 2.5f);
+                    float tall = Math.Clamp(b.Ground(gx, gz) - Math.Min(r.Y[p], r.Y[q]) + 0.4f, 0.5f, capped);
+                    NV c = (pa + pb) * 0.5f + across * (s * edge) + up * (tall * 0.5f - 0.75f);
+                    b.Box(c, dir * (len * 0.5f + 0.25f), up * (tall * 0.5f + 0.75f), across * 0.35f, col, DecoSurface.Matte, collide: true);
+                }
+            }
         }
     }
 
     /// <summary>Standing water in a neglected tunnel's low middle.</summary>
+    /// <summary>The water standing on a stretch of a flooded tunnel, if any.</summary>
+    public static bool FloodLevel(InfraStructure s, int k, PlanetTerrainSource source, out float level)
+    {
+        InfraRoute r = s.Route;
+        float deck = Math.Min(r.Y[k], r.Y[k + 1]);
+        level = Math.Min(r.Y[s.First], r.Y[s.Last]) - 0.3f;
+        if (s.Flooded && level <= deck + 0.05f) level = deck + 0.45f;
+        if (level <= deck) return false;
+        // Only in the bore: where the ground dips over the tunnel's line (or its bore never opened) there's no water to hold.
+        float over = float.MaxValue;
+        foreach (int i in new[] { k, k + 1 })
+            over = Math.Min(over, source.SurfaceHeight(Mathx.WrapX(r.X[i], source.Width), Mathx.Wrap(r.Z[i], source.Height)));
+        return over >= level + PlanetTerrainSource.TunnelRoof;
+    }
+
     sealed class FloodStretch : Piece
     {
         public InfraStructure Structure;
@@ -374,10 +420,8 @@ public partial class InfraLayer : Node3D
 
         public override void Emit(TileBuilder b)
         {
+            if (!FloodLevel(Structure, K, b.World.Source, out float level)) return;
             InfraRoute r = Structure.Route;
-            float level = Math.Min(r.Y[Structure.First], r.Y[Structure.Last]) - 0.3f;
-            if (Structure.Flooded && level <= Math.Min(r.Y[K], r.Y[K + 1]) + 0.05f) level = Math.Min(r.Y[K], r.Y[K + 1]) + 0.45f;
-            if (level <= Math.Min(r.Y[K], r.Y[K + 1])) return;
             NV a = b.Local(r.X[K], level, r.Z[K]), c = b.Local(r.X[K + 1], level, r.Z[K + 1]);
             NV dir = c - a;
             if (dir.LengthSquared() < 1e-6f) return;

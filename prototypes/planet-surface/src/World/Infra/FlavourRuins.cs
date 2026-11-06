@@ -148,13 +148,17 @@ public static class FlavourRuins
             }
         }
         // Out in the countryside: a farmstead here and there, a lone house.
-        int country = (int)(w * h / 1e6 * (farmland ? 1.2 : 0.5));
-        for (int k = 0, tries = 0; k < country && tries < country * 20; tries++)
+        // At least enough to make a world with few roads look lived in once.
+        int country = Math.Max((int)(w * h / 1e6 * (farmland ? 1.2 : 0.5)), 12 - ruins.Count);
+        int attempts = Math.Max(country * 20, 800);
+        for (int k = 0, tries = 0; k < country && tries < attempts; tries++)
         {
-            FamilyDef f = Pick(farmland || rng.Chance(0.5f) ? "farmstead" : "house") ?? Pick("house");
+            // Rough country takes a farmstead's yard badly: late on, a lone house on what ground there is.
+            bool rough = tries > attempts / 2;
+            FamilyDef f = Pick(!rough && (farmland || rng.Chance(0.5f)) ? "farmstead" : "house") ?? Pick("house");
             if (f == null) break;
             Layout layout = LayoutFor(lib, f, VariantFor(f));
-            var ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng);
+            var ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
             if (ruin == null) continue;
             ruins.Add(ruin);
             k++;

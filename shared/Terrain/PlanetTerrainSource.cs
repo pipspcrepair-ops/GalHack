@@ -161,10 +161,18 @@ public sealed class PlanetTerrainSource : ITerrainSource
     float Stamped(float natural, double x, double z)
     {
         int[] near = StampsAt(x, z);
-        int road = TerrainStamp.OnPad(Stamps, near, x, z) ? -1 : TerrainStamp.NearestRoad(Stamps, near, x, z);
+        float pad = TerrainStamp.PadWeight(Stamps, near, x, z);
         float h = natural;
+        bool roads = false;
         foreach (int i in near)
-            if (Stamps[i].Shape != StampShape.Road || i == road) h = Stamps[i].Apply(h, x, z);
+        {
+            if (Stamps[i].Shape != StampShape.Road) h = Stamps[i].Apply(h, x, z);
+            else if (!roads)
+            {
+                roads = true;
+                if (pad < 1f) h = TerrainStamp.ApplyRoads(Stamps, near, h, x, z, pad);
+            }
+        }
         return h;
     }
 
@@ -178,14 +186,29 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
     public float SurfaceHeight(double x, double z, double spacing = 1)
     {
-        return Stamped(Sampler.Sample(x, z, spacing).Height, x, z);
+        return Banked(Sampler.Sample(x, z, spacing), x, z);
     }
 
     /// <summary>Ground and river at a point, with stamps applied to the ground height.</summary>
     public GroundSample Ground(double x, double z, double spacing)
     {
         GroundSample s = Sampler.Sample(x, z, spacing);
-        return s with { Height = Stamped(s.Height, x, z) };
+        return s with { Height = Banked(s, x, z) };
+    }
+
+    /// <summary>
+    /// The ground with its stamps, which may not cut a river's bank: water stays in its bed, so a pad's
+    /// blend or a road's cutting stops at the bank. On a place's own footprint the place rules (siting
+    /// keeps those back from rivers).
+    /// </summary>
+    float Banked(GroundSample s, double x, double z)
+    {
+        float h = Stamped(s.Height, x, z);
+        if (h < s.Bank && !TerrainStamp.OnPad(Stamps, StampsAt(x, z), x, z)) h = s.Bank;
+        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it:
+        // past the sea's own shore the land stands clear of the water.
+        if (h < WaterLevel + ShoreRise && !s.InRiver && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) >= -SeaMaskDepth) h = WaterLevel + ShoreRise;
+        return h;
     }
 
     /// <summary>
@@ -242,6 +265,9 @@ public sealed class PlanetTerrainSource : ITerrainSource
     /// shader discards its plane where the map's depth (elevation / -120 m) is under 0.004.
     /// </summary>
     public const float SeaMaskDepth = 0.48f;
+
+    /// <summary>How far dry land beside the sea stands over it, at the least.</summary>
+    public const float ShoreRise = 0.1f;
 
     /// <summary>River water is drawn this far below a river's level (FarBuilder's river sheets).</summary>
     public const float RiverDrop = 0.15f;

@@ -161,6 +161,12 @@ public sealed class TerrainStamp
     }
 
     const float TreadWidth = 6f, StripBlend = 4f;
+    /// <summary>
+    /// The longest a terrace or an approach cut eases back to the land. It must stay inside the reach
+    /// the stamp is indexed by: past that the stamp stops applying at a 64 m bucket's edge, however
+    /// high its fill stands there, and leaves a cliff along the bucket's side.
+    /// </summary>
+    const float EaseMax = 36f;
 
     /// <summary>How far from the footprint centre the stamp can reach on each axis, whatever its shape.</summary>
     double ShapeReach => Shape switch
@@ -186,7 +192,7 @@ public sealed class TerrainStamp
     static float Smooth(float t) { t = Math.Clamp(t, 0f, 1f); return t * t * (3f - 2f * t); }
 
     /// <summary>The height this stamp wants at a point and how much it applies there, given the height so far.</summary>
-    float Shaped(float height, double x, double z)
+    float Shaped(float height, double x, double z, float padWeight = 0f)
     {
         if (Shape == StampShape.Buried) return height;
         if (Shape != StampShape.Pad && Kept(x, z)) return height;
@@ -212,7 +218,7 @@ public sealed class TerrainStamp
                 float target = PadY - Step * (k + Smooth((u - k - 0.4f) / 0.6f));
                 if (target <= height) return height;
                 // Past the strip's end and sides the fill eases off over a run long enough to stay walkable.
-                float ease = MathF.Max(StripBlend, (target - height) * 3.5f);
+                float ease = MathF.Min(EaseMax, MathF.Max(StripBlend, (target - height) * 3.5f));
                 if (t > Length + ease || s > Width / 2 + ease) return height;
                 float w = (1f - Smooth(((float)s - Width / 2) / ease)) * (1f - Smooth(((float)t - Length) / ease));
                 return height + (target - height) * w;
@@ -224,7 +230,7 @@ public sealed class TerrainStamp
                 if (t < -Apron) return height;
                 float target = PadY + Grade * (float)Math.Max(0, Math.Min(t, Length));
                 // Its banks and end ease back to the land over a run long enough to stay walkable.
-                float ease = MathF.Max(StripBlend, MathF.Abs(target - height) * 2.5f);
+                float ease = MathF.Min(EaseMax, MathF.Max(StripBlend, MathF.Abs(target - height) * 2.5f));
                 if (t > Length + ease || s > Width / 2 + ease) return height;
                 float w = (1f - Smooth(((float)s - Width / 2) / ease)) * (1f - Smooth(((float)t - Length) / ease));
                 return height + (target - height) * w;
@@ -248,13 +254,25 @@ public sealed class TerrainStamp
                 // (their mouths are faces in the slope); under a bridge the ground is the land's own,
                 // except where the embankment's end spills down under it round the abutment.
                 if (!NearestOnPath(x, z, out _, out _, out RoadSpan span) || span == RoadSpan.Tunnel) return height;
-                if (!NearestOnPath(x, z, out float s, out float target, out _, groundOnly: true)) return height;
+                if (!NearestOnPath(x, z, out float s, out float target, out _, groundOnly: true, out float mouth)) return height;
                 // A century of frost and roots buckles a neglected deck: a gentle heave, never a step.
                 if (Buckle > 0f) target += Buckle * (Heave(x, z) * 2f - 1f);
-                if (s <= HalfWidth) return target;
+                // Near a tunnel the cutting opens out to the portal's width, its banks drawing in to the portal's
+                // walls, so they meet the slope over the bore without a cliff across it where the road stops
+                // changing the ground.
+                float bed = HalfWidth;
                 float ease = MathF.Min(BankMax, MathF.Max(StripBlend, MathF.Abs(target - height) * 2.2f));
-                if (s >= HalfWidth + ease) return height;
-                float w = 1f - Smooth((s - HalfWidth) / ease);
+                if (mouth < MouthBox + MouthFade)
+                {
+                    float far = Math.Clamp((mouth - MouthBox) / MouthFade, 0f, 1f);
+                    ease = MathF.Max(MouthEase, ease * far);
+                    bed = CuttingHalf(far);
+                }
+                if (s <= bed) return target;
+                if (s >= bed + ease) return height;
+                // A place's ground blending out over a road's banks: the banks give way to it as it comes in,
+                // so a pad above or below the road meets it in a slope, not a step along the pad's edge.
+                float w = (1f - Smooth((s - bed) / ease)) * (1f - padWeight * Smooth((s - bed) / MathF.Min(ease, 12f)));
                 return height + (target - height) * w;
             }
             case StampShape.Furrow:
@@ -341,6 +359,20 @@ public sealed class TerrainStamp
         return (uint)lx < (uint)_carveW && (uint)lz < (uint)_carveD && _columns[lz * _carveW + lx];
     }
 
+    /// <summary>
+    /// Road, near a tunnel's mouth: the covered box from the portal's face to the mouth, how far past
+    /// that the banks draw in, and how steep they end up (retained by the portal's wing walls).
+    /// </summary>
+    public const float MouthBox = 8f, MouthFade = 14f, MouthEase = 1.4f;
+
+    float[] _mouth;
+
+    /// <summary>A cutting's half-width as it nears a portal: <paramref name="far"/> 0 at the portal's face, 1 where it's plain road again.</summary>
+    public float CuttingHalf(float far) => HalfWidth + (BoreHalfWidth + MouthRoom - HalfWidth) * (1f - far);
+
+    /// <summary>How far the cutting stands open past the bore at the portal's face: the piers' width and a little.</summary>
+    public const float MouthRoom = 3.2f;
+
     /// <summary>Road: a tunnel's bore, half its width and its height over the deck.</summary>
     public float BoreHalfWidth { get; init; } = 4f;
     public float BoreHeight { get; init; } = 6f;
@@ -351,7 +383,8 @@ public sealed class TerrainStamp
     /// </summary>
     public static TerrainStamp Road(string name, System.Collections.Generic.IReadOnlyList<double> xs, System.Collections.Generic.IReadOnlyList<double> zs,
         System.Collections.Generic.IReadOnlyList<float> ys, System.Collections.Generic.IReadOnlyList<RoadSpan> spans,
-        float halfWidth, StampSurface surface, float wear, double planetWidth, double planetHeight, float boreHalfWidth = 4f, float boreHeight = 6f, float buckle = 0f)
+        float halfWidth, StampSurface surface, float wear, double planetWidth, double planetHeight, float boreHalfWidth = 4f, float boreHeight = 6f, float buckle = 0f,
+        System.Collections.Generic.IReadOnlyList<float> mouth = null)
     {
         double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
         for (int i = 0; i < xs.Count; i++)
@@ -378,6 +411,11 @@ public sealed class TerrainStamp
             t._pz[i] = (float)(zs[i] - shiftZ - t._cz);
             t._py[i] = ys[i];
         }
+        if (mouth != null)
+        {
+            t._mouth = new float[n];
+            for (int i = 0; i < n; i++) t._mouth[i] = mouth[i];
+        }
         t._spans = new RoadSpan[Math.Max(0, n - 1)];
         for (int i = 0; i + 1 < n; i++)
         {
@@ -396,11 +434,16 @@ public sealed class TerrainStamp
     /// The nearest point of the path to a world point: how far off it is, the deck height there and
     /// the span it is on. False when the point is beyond the stamp's reach or the path is empty.
     /// </summary>
-    public bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly = false, bool skipTunnels = false)
+    public bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly = false, bool skipTunnels = false) =>
+        NearestOnPath(x, z, out distance, out deck, out span, groundOnly, out _, skipTunnels);
+
+    /// <summary>The same, and how far along the road the nearest point is from a tunnel's mouth.</summary>
+    bool NearestOnPath(double x, double z, out float distance, out float deck, out RoadSpan span, bool groundOnly, out float mouth, bool skipTunnels = false)
     {
         distance = float.MaxValue;
         deck = 0f;
         span = RoadSpan.Ground;
+        mouth = float.MaxValue;
         if (_px == null || _px.Length < 2) return false;
         Offset(x, z, out double dxd, out double dzd);
         float reach = HalfWidth + BankMax + StripBlend;
@@ -418,6 +461,7 @@ public sealed class TerrainStamp
             best = d2;
             deck = _py[i] + (_py[i + 1] - _py[i]) * u;
             span = _spans[i];
+            if (_mouth != null) mouth = _mouth[i] + (_mouth[i + 1] - _mouth[i]) * u;
         }
         if (best == float.MaxValue) return false;
         distance = MathF.Sqrt(best);
@@ -448,22 +492,65 @@ public sealed class TerrainStamp
     /// <summary>The ground height at a point with this stamp laid over <paramref name="height"/>: eased toward the pad by its weight.</summary>
     public float Apply(float height, double x, double z) => Shaped(height, x, z);
 
+    /// <summary>A road stamp over ground a place's pad is blending into, by that pad's weight here.</summary>
+    public float Apply(float height, double x, double z, float padWeight) => Shaped(height, x, z, padWeight);
+
     /// <summary>
     /// How stamps combine, the one rule every height query uses: in list order, each eases the
     /// height so far toward its own target by its own weight. Off its footprint and apron a stamp
     /// only blends, so pads that overlap meet smoothly, and a later stamp (a road, a rail bed laid
     /// after the places it serves) wins wherever its weight is 1. Order the list by what should win.
-    /// Of the road stamps only the one whose path is nearest applies (tunnels aside): where two
-    /// roads' beds overlap (the legs of a switchback, a road beside a railway) each keeps its own
-    /// deck, and they meet at a step halfway, as a retaining wall would.
+    /// Road stamps count together, weighted by how near each one's deck is: on its own deck a road is
+    /// exact, and between two (the legs of a switchback, a road beside a railway) the ground runs from
+    /// one to the other as a slope, however far apart their heights, never a step along the line
+    /// halfway between them.
     /// </summary>
     public static float Compose(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, float natural, double x, double z)
     {
-        int road = OnPad(stamps, null, x, z) ? -1 : NearestRoad(stamps, null, x, z);
+        float pad = PadWeight(stamps, null, x, z);
         float h = natural;
+        bool roads = false;
         for (int i = 0; i < stamps.Count; i++)
-            if (stamps[i].Shape != StampShape.Road || i == road) h = stamps[i].Apply(h, x, z);
+        {
+            if (stamps[i].Shape != StampShape.Road) h = stamps[i].Apply(h, x, z);
+            else if (!roads)
+            {
+                roads = true;
+                if (pad < 1f) h = ApplyRoads(stamps, null, h, x, z, pad);
+            }
+        }
         return h;
+    }
+
+    /// <summary>The ground under every road stamp near a point, together: each one's result, by the inverse square of how far its deck's edge is.</summary>
+    public static float ApplyRoads(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, int[] only, float height, double x, double z, float padWeight)
+    {
+        float sum = 0f, total = 0f;
+        int n = only?.Length ?? stamps.Count;
+        for (int k = 0; k < n; k++)
+        {
+            TerrainStamp t = stamps[only != null ? only[k] : k];
+            if (t.Shape != StampShape.Road || !t.NearestOnPath(x, z, out float d, out _, out _, skipTunnels: true)) continue;
+            float edge = MathF.Max(0f, d - t.HalfWidth), reach = t.BankMax + StripBlend;
+            if (edge >= reach) continue;
+            float fade = 1f - edge / reach, w = fade * fade / (edge * edge + 0.0025f);
+            sum += w * t.Apply(height, x, z, padWeight);
+            total += w;
+        }
+        return total > 0f ? sum / total : height;
+    }
+
+    /// <summary>How much of a place's pad applies at a point, the most of any: 1 on a footprint and its apron, easing to 0 over its blend.</summary>
+    public static float PadWeight(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, int[] only, double x, double z)
+    {
+        float most = 0f;
+        int n = only?.Length ?? stamps.Count;
+        for (int k = 0; k < n; k++)
+        {
+            TerrainStamp t = stamps[only != null ? only[k] : k];
+            if (t.Shape == StampShape.Pad) most = Math.Max(most, t.Weight(x, z));
+        }
+        return most;
     }
 
     /// <summary>Whether a point is on a place's footprint or apron: roads never change the ground there (the place's pad rules it).</summary>

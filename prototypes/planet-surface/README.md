@@ -192,8 +192,32 @@ Each road site lies on a straight, nearly level stretch with its lane down the r
 - No living settlement stands within 3 km of the landing site, so none is within 1.5 km of the town's edge (`StartTown.NoSettlement`).
 - `StartTown.EdgeX`/`EdgeZ` is a point on the town's edge, toward the place in view, that a person can walk out from: open 60 m in at least three of eight directions. `StartTown.Heading` faces the place.
 
+**Under the town** (`Underground` in the POI generator, `src/World/Infra/UnderTown.cs`, `src/Infra/UnderPieces.cs`). A pure function of the street grid and the ground, built in one-metre blocks on the map's axes:
+- Sewers under every street to a flooded sump at the grid's lowest end, with a junction chamber and a manhole at each crossing.
+- A storm drain under the back street, and a drainage pipe from the sump out to a culvert's headwall where the ground falls away to it (or to a fall of rock where it never does).
+- On mid and high worlds, a service gallery beside the main sewer and a metro station under the main street: stairs from a small pad beside the street, a service shaft from the sewers, running tunnels ending where their roofs came in. Brick and no metro on a low-tech world, concrete on mid, composite and maglev guideways on high.
+- The ground is opened by `TerrainStamp.Buried` stamps (the surface over them doesn't change). `UnderTown.Reserved` keeps house lots clear of the stairs.
+- It's dark: its blocks answer only to lamps and torches (no sky, no sun), with water in the low parts. What daylight reaches (the head of the stairs, the culvert) is drawn like anything outdoors.
+- `UnderBuilt.Spaces` lists rooms and stretches of tunnel for creatures: box, depth, dark, wet, links. They map onto the wildlife prototype's `PoiRoom`: Tunnel to Corridor, Junction and Sump to Room, Hall to Hall, Shaft and Stairs to Descent, Outfall to Entrance. `UnderBuilt.Solid` answers `CaveFauna`'s `ISolidSpace`.
+
+**Water and the ground.** Water sits in ground that contains it:
+- `RiverFit` brings each river's level down to the lowest land beside its line, only ever falling, a metre in seven at the steepest, with tributaries meeting their main river. Hydrology's levels come from the filled coarse map, so left alone a river crossed a basin the fine terrain never filled, up to 100 m in the air.
+- `GroundSample.Bank` is the height the ground must keep beside a river; stamps can't cut it (`PlanetTerrainSource.Banked`), except on a place's own footprint. Dry land beside the sea stands clear of it.
+- River sheets take the same stamped heights as the ground, and their rims go under it at every level of detail.
+- A flooded tunnel's water exists only under ground that covers the bore.
+
+**Hillsides.** Stamped ground has no steps of its own:
+- A terrace's or approach cut's ease is capped inside the reach it's indexed by. It used to run past it on cliffs, and stopped dead at 64 m bucket edges, up to 124 m high: most of the "stitches" on mountains.
+- Road stamps count together, weighted by how near each deck is, so legs of a switchback meet in a slope, not a step halfway. Road banks give way to a place's pad as it blends in.
+- A tunnel's mouth stands square in its hill: `TrimMouths` pulls it in to where both sides of the bore have ground over them, and short gaps between two bores become one tunnel.
+- `Portal` is a built face 8 m forward of the mouth with a covered box back to the bore, wing walls down the cutting, and stone, timber, concrete or composite by tech level. The cutting opens to the face's width and its banks draw in to the walls, so the ground meets the slope over the bore with no cliff across it, and the far ring's ramp is behind the face.
+- Generator caves are carved only in the near ring; the far ring draws the plain slope over them (see Integration).
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
+- `infra:<town|sewer|drain|metro|culvert>:<archetype>[:<seed>]` frames a start world's ruined town and what runs under it, with a torch at the eye underground.
+- `infra:<crossing|padwater|portal|portalfar>:<archetype>[:<seed>]`: a road over a river, a place beside water, a tunnel mouth from the road and from 300 m off.
+- `infra:at:<archetype>:<seed>:<x>:<z>:<back>:<up>[:<bearing>[:start]]` looks at a point on the map.
 - `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
 - `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
@@ -209,6 +233,7 @@ Screenshot views:
 - **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads.
   - To start at the edge of the ruined town, search from the town's edge instead of the landing site: `Bunker.FindSite(zone, new Vector3((float)town.EdgeX, 0, (float)town.EdgeZ))` with `town = zone.Planet.StartTown` (fall back to `Zone.LandingSite` when it is null).
   - The search's own rules still apply (a place in view, walkable ways). The town's edge is chosen to pass them, with `StartTown.Landmark` the place in view.
+- **Under the town.** Comes with `InfraLayer`. Ways in are in `StartTown.Under.Built.WaysIn` (world cells, on the surface). Players climb its ladders, so the slice's walker needs the POI ladder rule there. The head torch (L) is what lights it.
 - **Flavour ruins and ore tells** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
 
 ## How it fits together

@@ -24,6 +24,22 @@ public static class InfraViews
         var arch = Enum.Parse<Archetype>(a[2], true);
         ulong seed = a.Length > 3 ? ulong.Parse(a[3]) : 61;
         string what = a[1];
+        // The views of a ruined town and what runs under it want a start world, which has one.
+        // at: a place in the world by its coordinates: infra:at:<archetype>:<seed>:<x>:<z>:<metres back>:<metres up>[:<bearing degrees>[:start]].
+        if (what == "at")
+        {
+            double px = double.Parse(a[4]), pz = double.Parse(a[5]);
+            float back = float.Parse(a[6]), up = float.Parse(a[7]), bearing = a.Length > 8 ? float.Parse(a[8]) : 30f;
+            if (a.Length > 9) PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m =>
+            {
+                var w = m.World;
+                double vx = px + Mathf.Sin(Mathf.DegToRad(bearing)) * back, vz = pz + Mathf.Cos(Mathf.DegToRad(bearing)) * back;
+                float target = w.GroundHeight(Mathx.WrapX(px, w.Width), Mathx.Wrap(pz, w.Height));
+                float eye = Math.Max(target + up, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 3f);
+                return Look(w, vx, vz, eye, px, pz, target);
+            }, 0.4, WeatherKind.Clear);
+        }
         bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
         Action<Main> torch = what is "sewer" or "drain" or "metro" or "gallery" ? Torch : null;
@@ -71,6 +87,43 @@ public static class InfraViews
             double vx = d.X + 5, vz = d.Y + 5;
             return Look(w, vx, vz, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 1.8f, d.X, d.Y, w.GroundHeight(d.X, d.Y) + 0.5f);
         }
+        // Water beside what's built on the land: a road crossing a river, a place's pad beside water.
+        if (what == "crossing")
+        {
+            var (cross, crossI, crossAway) = ((InfraRoute)null, 0, double.MaxValue);
+            foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
+                for (int i = 2; i + 2 < r.Count; i++)
+                    if (w.Source.Sampler.Sample(Mathx.WrapX(r.X[i], w.Width), Mathx.Wrap(r.Z[i], w.Height), 2).InRiver && Away(r.X[i], r.Z[i]) < crossAway)
+                        (cross, crossI, crossAway) = (r, i, Away(r.X[i], r.Z[i]));
+            if (cross != null)
+            {
+                // From the side of the road and a little above it, along the river.
+                double dx = cross.X[crossI + 2] - cross.X[crossI - 2], dz = cross.Z[crossI + 2] - cross.Z[crossI - 2], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+                double vx = cross.X[crossI] - dz / len * 70, vz = cross.Z[crossI] + dx / len * 70;
+                return Look(w, vx, vz, cross.Y[crossI] + 16f, cross.X[crossI], cross.Z[crossI], cross.Y[crossI]);
+            }
+        }
+        if (what == "padwater")
+        {
+            double Water(PlanetSurface.Poi.PoiSite p)
+            {
+                double near = double.MaxValue;
+                double reach = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 30;
+                for (int k = 0; k < 16; k++)
+                {
+                    double a = k * Math.PI / 8;
+                    if (w.Source.WaterSurfaceAt(Mathx.WrapX(p.Center.X + Math.Cos(a) * reach, w.Width), Mathx.Wrap(p.Center.Z + Math.Sin(a) * reach, w.Height), out _)) near = Math.Min(near, k);
+                }
+                return near;
+            }
+            var site = w.Pois.Where(p => !p.Family.Space && Water(p) < 16).OrderBy(p => Away(p.Center.X, p.Center.Z)).FirstOrDefault();
+            if (site != null)
+            {
+                double a = Water(site) * Math.PI / 8, reach = Math.Max(site.Stamp.ReachX, site.Stamp.ReachZ) + 80;
+                double vx = site.Center.X + Math.Cos(a) * reach, vz = site.Center.Z + Math.Sin(a) * reach;
+                return Look(w, vx, vz, site.Stamp.PadY + 24f, site.Center.X, site.Center.Z, site.Stamp.PadY);
+            }
+        }
         // A ruined town and what runs under it.
         if (w.StartTown is StartTown town)
         {
@@ -103,6 +156,29 @@ public static class InfraViews
                 // Out on the apron, looking back at the mouth.
                 double vx = o.X + o.DirX * 13 + 0.5 + 2 * Math.Abs(o.DirZ), vz = o.Z + o.DirZ * 13 + 0.5 + 2 * Math.Abs(o.DirX);
                 return Look(w, vx, vz, o.Y + 2.6f, o.X + 0.5, o.Z + 0.5, o.Y + 1.6f);
+            }
+        }
+        // A tunnel mouth in the steepest slope near the landing: from the road, or from 300 m off.
+        if (what is "portal" or "portalfar")
+        {
+            var mouths = net.Structures.Where(st => st.Kind == RoadSpan.Tunnel).SelectMany(st => new[] { (st, st.First, Math.Min(st.Route.Count - 1, st.First + 2)), (st, st.Last, Math.Max(0, st.Last - 2)) })
+                .Select(m =>
+                {
+                    InfraRoute r = m.Item1.Route;
+                    double dx = r.X[m.Item3] - r.X[m.Item2], dz = r.Z[m.Item3] - r.Z[m.Item2], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+                    float rise = w.GroundHeight(Mathx.WrapX(r.X[m.Item2] + dx / len * 40, w.Width), Mathx.Wrap(r.Z[m.Item2] + dz / len * 40, w.Height)) - r.Y[m.Item2];
+                    return (r, at: m.Item2, ix: dx / len, iz: dz / len, rise);
+                }).OrderByDescending(m => m.rise - Away(m.r.X[m.at], m.r.Z[m.at]) * 0.002).ToList();
+            if (mouths.Count > 0)
+            {
+                var (r, at, ix, iz, _) = mouths[0];
+                float deck = r.Y[at];
+                // Stand on the road itself, whichever way it comes.
+                int from = Math.Clamp(at + (r.Span[Math.Min(at, r.Span.Length - 1)] == RoadSpan.Tunnel ? -7 : 7), 0, r.Count - 1);
+                if (what == "portal") return Look(w, r.X[from], r.Z[from], r.Y[from] + 3.2f, r.X[at], r.Z[at], deck + 3.5f);
+                double vx = r.X[at] - ix * 260 - iz * 150, vz = r.Z[at] - iz * 260 + ix * 150;
+                float eye = Math.Max(deck + 40f, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 12f);
+                return Look(w, vx, vz, eye, r.X[at], r.Z[at], deck + 6f);
             }
         }
         // A structure: the nearest of its kind.

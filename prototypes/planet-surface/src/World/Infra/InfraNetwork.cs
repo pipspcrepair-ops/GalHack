@@ -511,6 +511,10 @@ public sealed class InfraNetwork
         // Over water the deck never drops below its clearance; the grade passes ramp up to it.
         var floor = new float[n];
         for (int i = 0; i < n; i++) floor[i] = water[i] ? ground[i] : float.MinValue;
+        // Right by a pin (a junction, a gate) a deck can only climb so fast, water or no water: walkable wins.
+        foreach (var (at, y) in pins)
+            for (int i = 0; i < n; i++)
+                if (floor[i] != float.MinValue) floor[i] = Math.Min(floor[i], y + 0.4f * Spacing * Math.Abs(i - at));
         HoldGrade(deck, fixedAt, floor, step, 6);
         // A last light smoothing, so the deck has no kinks (never below a water clearance).
         var smooth = (float[])deck.Clone();
@@ -542,8 +546,16 @@ public sealed class InfraNetwork
             FollowLand(spans, deck, ground, water, fixedAt, RoadSpan.Bridge, MaxViaduct(kind, Profile.Before));
             FollowLand(spans, deck, ground, water, fixedAt, RoadSpan.Tunnel, MaxTunnel(kind, Profile.Before));
         }
+        // A mouth stands square in the hill, not half out of its side: a tunnel starts where both sides of its
+        // bore have ground over them, and short of that the line stays in the open, in a cutting.
+        TrimMouths(spans, path, deck, router, HalfWidthOf(kind));
+        Clean(spans, RoadSpan.Tunnel, 3);
         // Wherever the land was followed, the deck may be steep but always walkable: never more than 0.45 a stretch.
-        HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 3);
+        HoldGrade(deck, fixedAt, floor, 0.45f * Spacing, 8);
+        // Beside a pin a floor can still force a step: walkable wins over clearance there.
+        var free = new float[n];
+        Array.Fill(free, float.MinValue);
+        HoldGrade(deck, fixedAt, free, 0.45f * Spacing, 1);
         // Never a bridge or tunnel at a gate: the first and last stretches lie on the ground.
         if (gateA >= 0 && spans.Length > 1) spans[0] = RoadSpan.Ground;
         if (gateB >= 0 && spans.Length > 1) spans[^1] = RoadSpan.Ground;
@@ -610,6 +622,43 @@ public sealed class InfraNetwork
     }
 
     /// <summary>Lays dry runs of a span kind longer than a limit on the ground: the deck follows the land there, easing in over five points.</summary>
+    /// <summary>Pulls each tunnel's ends in to where the ground over both sides of the bore stands clear of it.</summary>
+    void TrimMouths(RoadSpan[] spans, List<(double X, double Z)> path, float[] deck, Router router, float halfWidth)
+    {
+        float need = 8.5f;
+        bool Covered(int i)
+        {
+            int a = Math.Max(0, i - 1), b = Math.Min(path.Count - 1, i + 1);
+            double dx = path[b].X - path[a].X, dz = path[b].Z - path[a].Z, len = Math.Sqrt(dx * dx + dz * dz);
+            if (len < 1e-6) return true;
+            double nx = -dz / len, nz = dx / len, off = halfWidth + 5;
+            foreach (int s in new[] { -1, 1 })
+                if (router.Ground(Mathx.WrapX(path[i].X + nx * off * s, _w), Mathx.Wrap(path[i].Z + nz * off * s, _h), 4, out _, out _) - deck[i] < need) return false;
+            return true;
+        }
+        for (int i = 0; i < spans.Length; i++)
+        {
+            if (spans[i] != RoadSpan.Tunnel) continue;
+            int j = i;
+            while (j + 1 < spans.Length && spans[j + 1] == RoadSpan.Tunnel) j++;
+            int lo = i, hi = j;
+            while (lo <= hi && !Covered(lo)) spans[lo++] = RoadSpan.Ground;
+            while (hi >= lo && !Covered(hi + 1)) spans[hi--] = RoadSpan.Ground;
+            i = j;
+        }
+        // A few stretches of daylight between two bores would be a slot through the hill: one tunnel, not two.
+        const int Slot = 10;
+        int last = -1;
+        for (int i = 0; i < spans.Length; i++)
+        {
+            if (spans[i] != RoadSpan.Tunnel) continue;
+            if (last >= 0 && i - last - 1 <= Slot && i - last > 1)
+                for (int k = last + 1; k < i; k++)
+                    if (spans[k] == RoadSpan.Ground) spans[k] = RoadSpan.Tunnel;
+            last = i;
+        }
+    }
+
     static void FollowLand(RoadSpan[] spans, float[] deck, float[] ground, bool[] water, bool[] pinned, RoadSpan kind, float limit)
     {
         for (int i = 0; i < spans.Length;)
@@ -689,6 +738,7 @@ public sealed class InfraNetwork
         foreach (InfraRoute r in Routes)
         {
             if (r.Count < 2) continue;
+            float[] mouth = MouthDistances(r);
             for (int s = 0; s + 1 < r.Count; s += Chunk)
             {
                 int e = Math.Min(r.Count - 1, s + Chunk);
@@ -699,10 +749,23 @@ public sealed class InfraNetwork
                 list.Add(TerrainStamp.Road($"{r.Kind} {r.Id}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
                     new ArraySegment<float>(r.Y, s, e - s + 1), spans, r.HalfWidth, r.Surface, r.Wear, _w, _h,
                     boreHalfWidth: r.HalfWidth + 1.2f, boreHeight: r.Kind == RouteKind.Rail ? 7f : 6.5f,
-                    buckle: r.Kept || r.Kind == RouteKind.Rail || r.Surface is StampSurface.Dirt or StampSurface.Gravel ? 0f : 0.22f * r.Wear));
+                    buckle: r.Kept || r.Kind == RouteKind.Rail || r.Surface is StampSurface.Dirt or StampSurface.Gravel ? 0f : 0.22f * r.Wear,
+                    mouth: new ArraySegment<float>(mouth, s, e - s + 1)));
             }
         }
         return list;
+    }
+
+    /// <summary>How far along a route each of its points lies from the nearest tunnel's mouth.</summary>
+    static float[] MouthDistances(InfraRoute r)
+    {
+        var d = new float[r.Count];
+        Array.Fill(d, 1e6f);
+        for (int i = 0; i + 1 < r.Count; i++)
+            if (r.Span[i] == RoadSpan.Tunnel) d[i] = d[i + 1] = 0f;
+        for (int i = 1; i < r.Count; i++) d[i] = Math.Min(d[i], d[i - 1] + Spacing);
+        for (int i = r.Count - 2; i >= 0; i--) d[i] = Math.Min(d[i], d[i + 1] + Spacing);
+        return d;
     }
 
     /// <summary>The route nearest a world point within a distance, its point index and the distance (x, z wrap).</summary>
