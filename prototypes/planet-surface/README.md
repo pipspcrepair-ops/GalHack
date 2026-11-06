@@ -180,6 +180,11 @@ Each road site lies on a straight, nearly level stretch with its lane down the r
 - a shallow one shows as scree, a deep one as a fracture.
 - The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.
 
+**Blast sites.** A blast reaches past its site into the land round it:
+- a ring of flavour ruins flattened outward from ground zero;
+- the ground burnt ash-grey to three times the site's dead radius, fading back to the land's own colours by four times its fade radius;
+- nothing grows in the dead zone, and little where it fades (`GroundPalette.DeadZones`, `Deadness`).
+
 **The start: the edge of a ruined town** (`src/World/Infra/StartTown.cs`, `PlanetWorld.StartTown`). A start world is built with `PoiSiting.StartWorld` set, and it always has a ruined town:
 - It sits on a flat, dry spot 200 m to 1.2 km from the landing site, with a ruin or wreck that nobody holds 420 m to 1.15 km beyond it.
 - Its streets are a grid on the map's axes, joined to the old network by a spur: a main street toward that place, three cross streets, a back street along their ends. (The sewers run under them.)

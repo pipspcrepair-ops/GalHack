@@ -102,6 +102,10 @@ public sealed partial class PlanetWorld
         Source = source;
         Terrain = new PlanetTerrain(source);
         Palette = new GroundPalette(map);
+        // Blast sites' dead zones show in the ground's colour, fading back to the land's own.
+        foreach (PoiSite p in pois)
+            if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
+                Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
         Sky = SkySystem.For(spec);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;

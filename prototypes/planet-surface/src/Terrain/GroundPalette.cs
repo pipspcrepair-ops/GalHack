@@ -23,6 +23,25 @@ public sealed class GroundPalette
     public readonly WorldMap Map;
     public readonly Rgb Rock, DeepRock, Bedrock, Seabed, RiverBed, Snow;
 
+    /// <summary>
+    /// A blast's dead zone (ground zero in world metres, the dead radius and where it has faded back
+    /// to the land's own colours): the ground goes ash-grey and lifeless toward the crater.
+    /// </summary>
+    public readonly List<(double X, double Z, float Dead, float Fade)> DeadZones = new();
+
+    /// <summary>How dead the land is at a point: 1 inside a blast's dead zone, easing to 0 at its fade, 0 elsewhere.</summary>
+    public float Deadness(double x, double z)
+    {
+        float dead = 0f;
+        foreach (var (gx, gz, d0, d1) in DeadZones)
+        {
+            double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
+            float d = (float)Math.Sqrt(dx * dx + dz * dz);
+            if (d >= d1) continue;
+            dead = Math.Max(dead, d <= d0 ? 1f : 1f - SmoothStep(0f, 1f, (d - d0) / (d1 - d0)));
+        }
+        return dead;
+    }
 
     /// <summary>How strongly rock faces show horizontal strata (0-1): canyons and mesas show them most.</summary>
     public readonly float Strata;
@@ -189,6 +208,18 @@ public sealed class GroundPalette
     public Color Natural(double x, double z, float height, float cover, out Vector2 flags)
     {
         Rgb soil = SoilAt(x, z, out float glow);
+        // In a blast's dead zone the soil is burnt to ash, greyer and darker toward ground zero.
+        if (DeadZones.Count > 0)
+        {
+            float dead = Deadness(x, z);
+            if (dead > 0f)
+            {
+                float l = soil.R * 0.3f + soil.G * 0.59f + soil.B * 0.11f;
+                var ash = new Rgb(l * 0.78f + 0.06f, l * 0.74f + 0.055f, l * 0.7f + 0.05f);
+                soil = Rgb.Lerp(soil, ash, dead * (0.75f + 0.2f * ValueNoise(x * 0.05, z * 0.05, 47)));
+                glow *= 1f - dead;
+            }
+        }
         Rgb c = Rgb.Lerp(Rock, soil, cover);
         if (height < 0.6f) c = Rgb.Lerp(c, Seabed, Math.Clamp(0.6f - height, 0f, 1f));
         flags = new Vector2(glow * cover, 0f);

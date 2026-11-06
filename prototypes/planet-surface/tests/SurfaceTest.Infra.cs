@@ -489,4 +489,43 @@ public partial class SurfaceTest
         Check(settlementsNear == 0 && landmarks == towns && walkable == towns,
             $"the town's edge keeps the start's rules: no living settlement within {StartTown.NoSettlement:F0} m ({settlementsNear}), a place nobody holds in view 300 to 1,200 m off ({landmarks} of {towns}), walkable 60 m in three of eight directions ({walkable} of {towns})");
     }
+
+    // ---- a blast's dead zone and ruin ring ---------------------------------------------------------
+
+    async Task BlastChecks()
+    {
+        string forced = PlanetSurface.Poi.PoiSiting.ForceFamily;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "blast_crater";
+        try
+        {
+            var spec = PlanetSpec.Roll(61, Archetype.Temperate, 0);
+            PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
+            PoiSite crater = w.Pois.FirstOrDefault(p => p.GroundZero != null);
+            if (crater == null) { Fail("no blast site to check"); return; }
+            var (gx, gz) = crater.GroundZero.Value;
+            BlastZone zone = crater.Instance.Layout.Extras.Blast;
+            float deadR = zone.Dead * 3f, fadeR = zone.Fade * 4f;
+            float atZero = w.Palette.Deadness(gx, gz), atDead = w.Palette.Deadness(gx + deadR * 0.9, gz), past = w.Palette.Deadness(gx + fadeR + 20, gz);
+            float mid = w.Palette.Deadness(gx + (deadR + fadeR) * 0.5, gz);
+            Color dead = w.Palette.Natural(gx + deadR * 0.9, gz, 10f, 1f, out _), alive = w.Palette.Natural(gx + fadeR + 40, gz, 10f, 1f, out _);
+            float Sat(Color c) => Math.Max(c.R, Math.Max(c.G, c.B)) - Math.Min(c.R, Math.Min(c.G, c.B));
+            Check(atZero == 1f && atDead == 1f && past == 0f && mid > 0f && mid < 1f && Sat(dead) < Sat(alive),
+                $"a blast's dead zone: the ground ash-grey to its dead radius ({atDead:F2}), fading back by its edge ({mid:F2} halfway, {past:F2} past it); saturation {Sat(dead):F2} dead against {Sat(alive):F2} alive");
+            var ring = w.Infra.Ruins.Where(r => r.Blast > 0.05f).ToList();
+            float strongest = ring.Count > 0 ? ring.Max(r => r.Blast) : 0f;
+            int flattened = 0;
+            foreach (FlavourRuin r in ring.Take(4))
+            {
+                PoiInstance inst = r.Spawn(w.Profile);
+                if (inst.Blasted > 0f || r.Blast > 0.05f) flattened++;
+            }
+            Check(ring.Count >= 4 && strongest > 0.3f,
+                $"a ring of flattened ruins round ground zero: {ring.Count} ruins took the blast (strongest {strongest:F2}), {flattened} spawned flattened outward");
+        }
+        finally
+        {
+            PlanetSurface.Poi.PoiSiting.ForceFamily = forced;
+        }
+        await Frames(1);
+    }
 }
