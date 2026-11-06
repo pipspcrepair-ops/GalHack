@@ -75,6 +75,7 @@ public partial class SurfaceTest
         string firstGround = "", firstBlocked = "";
         int wreckSites = 0, wreckPieces = 0, blockedLanes = 0, wreckOnPad = 0;
         var wreckKinds = new Dictionary<string, int>();
+        var stopKinds = new Dictionary<string, int>();
         double ruinRoadKm = 0;
         int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
         int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
@@ -280,7 +281,8 @@ public partial class SurfaceTest
                     double ex = Mathx.WrapX(ruin.Drive.CenterX + dx, w.Width), ez = Mathx.Wrap(ruin.Drive.CenterZ + dz, w.Height);
                     if (net.Nearest(ex, ez, 12, out _, out double off) == null || off > 6) ruinsUnjoined++;
                 }
-                if (ruin.Family.Tags.Contains("wayside") && w.Profile.Before == PoiGenerator.Gen.TechLevel.Low) fuelOnLow++;
+                if (ruin.Family.Tags.Contains("wayside") && ruin.Layout.Variant.Tech != PoiGenerator.Gen.WorldProfile.Tag(w.Profile.Before) && ruin.Layout.Variant.Tech != "unique") fuelOnLow++;
+                if (ruin.Family.Tags.Contains("wayside")) stopKinds[ruin.Layout.Variant.Name] = stopKinds.GetValueOrDefault(ruin.Layout.Variant.Name) + 1;
                 if (ruin.Family.Tags.Contains("house") && ruin.Blast < 0.05f)
                 {
                     houses++;
@@ -342,7 +344,7 @@ public partial class SurfaceTest
         Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
             $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
         Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
-            $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} fuel stations on low-tech worlds");
+            $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} stops of the wrong age ({string.Join(", ", stopKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))})");
         Check(tells > 1000 && glowingTells == 0, $"ore tells: {tells} formations over the deposits, their veins matte ({glowingTells} of {tellsChecked} sampled glow)");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");

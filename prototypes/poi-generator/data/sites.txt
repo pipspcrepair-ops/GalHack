@@ -423,11 +423,35 @@ site fuel_stop
   entrance 0 0 north
   part plain 0 0 what fuelstop
 
-site fuel_roadhouse
-  name Road House
+site fuel_depot
+  name Charge Depot
   style concrete
   entrance 0 0 north
-  part plain 0 0 what roadhouse
+  part plain 0 0 what chargedepot
+
+site fuel_waystone
+  name Waystone
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what waystone
+
+site inn_coach
+  name Coaching Inn
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what coachinn
+
+site inn_cart
+  name Cart Stop
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what cartstop
+
+site home_prefab
+  name Prefab House
+  style concrete
+  entrance 0 0 north
+  part plain 0 0 what prefab
 
 site fuel_truck
   name Truck Stop

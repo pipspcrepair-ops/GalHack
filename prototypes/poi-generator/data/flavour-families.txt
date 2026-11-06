@@ -26,18 +26,26 @@ family flavour_house
   variant Bungalow
     seed 9701
     site home_bungalow
+    tech mid
   variant Gabled Ell
     seed 9702
     site home_ell
+    tech low
   variant Two-Storey House
     seed 9703
     site home_twostorey
+    tech mid
   variant Cottage
     seed 9704
     site home_cottage
+    tech low
   variant Town House
     seed 9705
     site home_townhouse
+  variant Prefab
+    seed 9706
+    site home_prefab
+    tech high
 
 family flavour_farmstead
   tier site
@@ -103,12 +111,11 @@ family flavour_wayside
   tier site
   siting flat
   rise 6
-  name Fuel Station
-  pitch A fuel station on the old highway: pumps under a canopy, a shop, a slab over the tanks.
-  tech mid high
+  name Roadside Stop
+  pitch The stop on the old road: an inn with its stable, a petrol station, a charging depot for grav haulers.
   faction none
   roster raiders
-  site fuel_stop
+  site inn_coach
   core none
   owner none
   rarity common
@@ -120,16 +127,30 @@ family flavour_wayside
   wrong 0
   tags flavour wayside
   states active 0 abandoned 2 infested 0 ruined 6
-  variant Fuel Stop
+  variant Coaching Inn
     seed 9731
-    site fuel_stop
-  variant Road House
+    site inn_coach
+    tech low
+  variant Cart Stop
     seed 9732
-    site fuel_roadhouse
-  variant Truck Stop
+    site inn_cart
+    tech low
+  variant Petrol Station
     seed 9733
+    site fuel_stop
+    tech mid
+  variant Truck Stop
+    seed 9734
     site fuel_truck
-
+    tech mid
+  variant Charge Depot
+    seed 9735
+    site fuel_depot
+    tech high
+  variant Waystone
+    seed 9736
+    site fuel_waystone
+    tech unique
 family flavour_shop
   tier site
   siting flat

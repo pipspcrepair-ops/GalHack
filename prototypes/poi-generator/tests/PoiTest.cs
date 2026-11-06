@@ -1349,7 +1349,7 @@ public partial class PoiTest : Node
                             if (hi.Y - lo.Y != 1) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
                         if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
-                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
+                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
                         foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
                         {
                             PoiInstance p = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());

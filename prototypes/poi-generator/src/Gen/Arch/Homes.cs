@@ -14,7 +14,8 @@ public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
 /// <summary>
 /// The small ruins of the old world, drawn by hand rather than planned from a program, at real size
 /// against a 1.8 m person: houses you know for houses from the road (10 to 16 m across, 4 m a storey),
-/// a farmstead with its barn and silo, sheds, shops, fuel stations.
+/// a farmstead with its barn and silo, sheds, shops, and the stop on the road each age kept: a coaching
+/// inn, a petrol station, a charging and fuel-cell depot, or something nobody here built.
 ///
 /// They are built the way a player builds. POI cells are 1 m and the player's large block is 2 m, so
 /// everything keeps to a 2 m lattice in plan and in storeys, in shapes the player has: walls and
@@ -393,6 +394,10 @@ public static class Homes
                         for (int v = r.V0 + 1; v <= Math.Min(r.V1, r.V0 + 3); v++) Piece(r, r.U1, v, BlockType.Bench, Material.Steel, metal);
                         Piece(r, r.U0, r.V1, BlockType.Machine, Material.Rust, new Rgb(0x6a, 0x44, 0x34));
                         break;
+                    case "mess":
+                        for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
+                            for (int v = r.V0 + 2; v < r.V1 - 1; v += 3) Piece(r, u, v, BlockType.Table, Material.Timber, wood);
+                        break;
                     case "shop":
                         for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
                             for (int v = r.V0 + 2; v < r.V1; v++) Piece(r, u, v, BlockType.Shelf, Material.Steel, metal);
@@ -431,7 +436,7 @@ public static class Homes
         string what = site.Parts[0].Arg("what");
         switch (what)
         {
-            case "bungalow": case "ell": case "twostorey": case "cottage": case "townhouse":
+            case "bungalow": case "ell": case "twostorey": case "cottage": case "townhouse": case "prefab":
             {
                 const int Side = 8, Front = 10;
                 var (w, d, door) = House(l, l.F.Shift(Side, Front), what);
@@ -442,9 +447,12 @@ public static class Homes
             case "hillfarm": Farm(l, 1); break;
             case "bottomfarm": Farm(l, 2); break;
             case "toolshed": case "machineshed": case "leanto": ShedLot(l, what); break;
+            case "coachinn": Inn(l, 2); break;
+            case "cartstop": Inn(l, 1); break;
             case "fuelstop": Fuel(l, 16 + 2 * rng.Range(0, 3), 1, false); break;
-            case "roadhouse": Fuel(l, 18 + 2 * rng.Range(0, 3), 2, true); break;
             case "truckstop": Fuel(l, 22 + 2 * rng.Range(0, 2), 2, true); break;
+            case "chargedepot": Fuel(l, 20 + 2 * rng.Range(0, 3), 2, true, depot: true); break;
+            case "waystone": Waystone(l); break;
             case "cornershop": ShopLot(l, 12 + 2 * rng.Range(0, 4), false); break;
             case "shoprow": ShopLot(l, 20 + 2 * rng.Range(0, 4), false); break;
             case "shophall": ShopLot(l, 14 + 2 * rng.Range(0, 4), true); break;
@@ -573,6 +581,29 @@ public static class Homes
                 h.GableVent(w / 2 - 1, 0);
                 h.Chimney(2, d - 1, 1, 0);
                 h.Porch(door - 1, door + 2, 0);
+                break;
+            }
+            case "prefab":
+            {
+                // Factory panels on a slab: one open room down one side, a hall and a kitchen down the other, a flat roof.
+                int left = r.Chance(0.5f) ? 6 : 8, rear = r.Chance(0.5f) ? 4 : 6;
+                w = left + 8;
+                d = rear + 6;
+                door = left + 4;
+                h.Wings.Add(new Wing(0, 0, w - 1, d - 1, true, RoofKind.Flat));
+                entry = h.Add("hall", 0, left + 2, 1, left + 6, 3, ModuleKind.Hall);
+                h.Add("quarters", 0, 1, 1, left, d - 2);
+                loot = h.Add("farm-kitchen", 0, left + 2, 5, left + 6, d - 2);
+                h.Raise();
+                h.Gap(door, 0, true);
+                h.Gap(left + 1, 2, false);
+                h.Gap(left + 2, 4, true);
+                h.Modules();
+                h.Windows();
+                h.FlatRoof(1, 1);
+                // A row of collectors on the roof, on frames.
+                for (int u = 2; u < w - 2; u += 2)
+                    for (int v = 2; v < d - 2; v += 3) l.C.Set(f.At(u, h.Ring(0) + 1, v), new Block(BlockType.Lattice, Material.Alloy, new Rgb(0x2c, 0x38, 0x48), Role.Decor));
                 break;
             }
             default: // townhouse
@@ -820,20 +851,142 @@ public static class Homes
         l.C.X.Gate = l.F.At(width / 2 + 4, 0, -1);
     }
 
-    // ---- fuel stations ------------------------------------------------------------------------
+    // ---- stops on low-tech roads --------------------------------------------------------------
 
+    /// <summary>
+    /// A coaching inn, or a smaller horse and cart stop: a timber tap room on the road with rooms over
+    /// it, an open stable, a well, a hitching rail and a cart that never left. A forecourt of packed dirt.
+    /// </summary>
+    static void Inn(Lot l, int storeys)
+    {
+        Rng r = l.R;
+        Frame f = l.F.Shift(8, 14);
+        int w = 20 + 2 * r.Range(0, 3), d = 12, tapW = 11, door = 6;
+        var h = new Hut(l, f) { Storeys = storeys };
+        h.Wings.Add(new Wing(0, 0, w - 1, d - 1));
+        Room tap = h.Add("mess", 0, 1, 1, tapW, d - 2, ModuleKind.Hall);
+        h.Add("farm-kitchen", 0, tapW + 2, 1, w - 2, 5);
+        Room store = h.Add("storage", 0, tapW + 2, 7, w - 2, d - 2);
+        Room? gallery = storeys > 1 ? h.Add("hall", 1, 1, 1, 4, d - 2, ModuleKind.Hall) : null;
+        if (gallery != null)
+        {
+            h.Add("quarters", 1, 6, 1, w - 2, 5);
+            h.Add("quarters", 1, 6, 7, w - 2, d - 2);
+        }
+        h.Raise();
+        h.Gap(door, 0, true);
+        h.Gap(tapW + 1, 2, false);
+        h.Gap(tapW + 1, 8, false);
+        if (gallery != null)
+        {
+            h.Gap(5, 2, false, 1);
+            h.Gap(5, 8, false, 1);
+            int stair = h.Stair(1, 2);
+            h.Modules();
+            l.C.Link(tap.Module, stair);
+            l.C.Link(stair, gallery.Module);
+            Upper(l, h);
+        }
+        else h.Modules();
+        h.Windows();
+        h.Roof();
+        h.Chimney(w - 1, d / 2 - 1, 0, 1);
+        h.Furnish();
+        h.Loot(store);
+        h.Box();
+        l.Approach(f, door, -3);
+        h.FrontDoor(door, 0, tap);
+        l.C.Link(l.C.EntranceModule, tap.Module);
+        // The open stable beside it, a low roof over the stalls.
+        var stable = new Hut(l, f.Shift(w + 8, 0)) { Open = true };
+        int sw = 12, sd = 8;
+        stable.Wings.Add(new Wing(0, 0, sw - 1, sd - 1, true, RoofKind.Lean));
+        Room stalls = stable.Add("storage", 0, 1, 1, sw - 2, sd - 2, ModuleKind.Hall);
+        stable.Raise();
+        stable.Gap(2, 0, true, 0, 8, 2);
+        stable.Modules();
+        stable.Roof();
+        stable.Box();
+        l.C.Link(l.C.EntranceModule, stalls.Module);
+        var wood = new Rgb(0x54, 0x46, 0x38);
+        for (int u = 3; u < sw - 2; u += 3)
+            for (int v = 3; v <= sd - 2; v++) l.C.Blocks[f.At(w + 8 + u, 0, v)] = new Block(BlockType.Rail, Material.Timber, wood, Role.Decor);
+        // The yard: a hitching rail along the road, a well with its little roof, a cart.
+        for (int u = -4; u < w + 4; u++)
+            if ((u < door - 3 || u > door + 4) && Hash.Cell(new Int3(u / 2, 0, 1), 71) % 100 > 20) l.C.Set(f.At(u, 0, -8), new Block(BlockType.Rail, Material.Timber, wood, Role.Decor));
+        int wu = w + 2, wv = -6;
+        for (int du = -1; du <= 1; du++)
+            for (int dv = -1; dv <= 1; dv++)
+                if (du != 0 || dv != 0) l.C.Set(f.At(wu + du, 0, wv + dv), new Block(BlockType.Cube, Material.Rock, l.S.Stack, Role.Wall));
+        foreach (int du in new[] { -1, 1 })
+            for (int y = 1; y <= 2; y++) l.C.Set(f.At(wu + du, y, wv), new Block(BlockType.Pillar, Material.Timber, wood, Role.Decor));
+        for (int du = -1; du <= 1; du++) l.C.Set(f.At(wu + du, 3, wv), new Block(BlockType.Cube, Material.Timber, wood, Role.Roof));
+        for (int k = 0; k < 3; k++) l.C.Blocks[f.At(w + 2 + k, 0, -10)] = new Block(BlockType.Bench, Material.Timber, wood, Role.Prop);
+        l.C.Blocks[f.At(w + 1, 0, -10)] = new Block(BlockType.Barricade, Material.Timber, wood.Scale(0.8f), Role.Prop, f.Turn(Dir.East));
+        // The inn's board on a post by the road.
+        for (int y = 0; y < 6; y++) l.C.Set(f.At(2, y, -10), new Block(BlockType.Pillar, Material.Timber, wood, Role.Decor));
+        for (int y = 6; y < 8; y++)
+            for (int k = 0; k < 2; k++) l.C.Set(f.At(2 + k, y, -10), new Block(BlockType.Cube, Material.Timber, l.S.Sign, Role.Wall));
+        for (int v = -13; v < -2; v++)
+            for (int k = 0; k < 2; k++) l.Plate(f, door + k, v, new Rgb(0x6a, 0x5c, 0x4c));
+        l.C.X.Gate = f.At(door, 0, -14);
+    }
+
+    // ---- a stop nobody here built ---------------------------------------------------------------
+
+    /// <summary>
+    /// The rare outlier: whatever the alien or the Precursor road kept instead of a fuel stop. A low dark
+    /// chamber you can walk into, a ring of standing stones round it, a crystal on its roof.
+    /// </summary>
+    static void Waystone(Lot l)
+    {
+        const int Ring = 14;
+        Frame f = l.F.Shift(16, 16);
+        var dark = new Rgb(0x30, 0x2e, 0x38);
+        var s = l.S with { WallM = Material.Basalt, Wall = dark, RoofM = Material.Basalt, Roof = dark.Scale(0.8f), BaseM = Material.Basalt, Base = dark.Scale(1.2f), Floor = dark.Scale(1.1f) };
+        var h = new Hut(l, f, s);
+        h.Wings.Add(new Wing(0, 0, 9, 9, true, RoofKind.Flat));
+        Room room = h.Add("storage", 0, 1, 1, 8, 8, ModuleKind.Hall);
+        h.Raise();
+        h.Gap(4, 0, true);
+        h.Modules();
+        h.FlatRoof(1, 1);
+        h.Loot(room);
+        h.Box();
+        l.Approach(f, 4, -3);
+        h.FrontDoor(4, 0, room);
+        l.C.Set(f.At(4, 4, 4), new Block(BlockType.Crystal, Material.Crystal, new Rgb(0x8a, 0x60, 0xd8), Role.Decor));
+        for (int k = 0; k < 8; k++)
+        {
+            float a = (k + 0.5f) * MathF.Tau / 8;
+            int cu = 4 + (int)MathF.Round(MathF.Cos(a) * Ring), cv = 4 + (int)MathF.Round(MathF.Sin(a) * Ring), tall = 8 + (k * 5 % 5);
+            for (int y = 0; y < tall; y++)
+                for (int du = 0; du <= (y < tall - 3 ? 1 : 0); du++)
+                    for (int dv = 0; dv <= (y < tall - 3 ? 1 : 0); dv++)
+                    {
+                        Int3 p = f.At(cu + du, y, cv + dv);
+                        bool glyph = y % 4 == 3;
+                        l.C.Set(p, new Block(BlockType.Cube, glyph ? Material.Glyph : Material.Basalt, glyph ? new Rgb(0x8a, 0x60, 0xd8) : dark, Role.Decor));
+                        l.C.X.Lasting.Add(p);
+                    }
+        }
+        l.C.X.Gate = f.At(4, 0, -17);
+    }
+
+    // ---- fuel stations ------------------------------------------------------------------------
     /// <summary>
     /// A fuel station at full size: a forecourt (the pad's own concrete) open to the road, a canopy 5 m
     /// clear on posts over the pumps, a shop behind it you can walk into, the slab over the tanks with
     /// its fillers and vent pipes, and a sign on a pole you see coming.
     /// </summary>
-    static void Fuel(Lot l, int canopyW, int islands, bool diner)
+    static void Fuel(Lot l, int canopyW, int islands, bool diner, bool depot = false)
     {
         Frame f = l.F;
-        var steel = new Rgb(0x8e, 0x8e, 0x88);
-        var band = l.S.Sign;
+        var steel = depot ? new Rgb(0xc4, 0xcc, 0xd0) : new Rgb(0x8e, 0x8e, 0x88);
+        var band = depot ? new Rgb(0x2e, 0x6a, 0x8a) : l.S.Sign;
         int canopyD = 8 + 4 * islands, cu = 12, cv = 10;
-        const int Clear = 5;
+        int Clear = depot ? 7 : 5; // a grav hauler rides high
+
         int Lane(int k) => cv + 4 + k * 4; // an island every 4 m of the canopy's depth
         // Six posts, or nine: a grid under the deck.
         for (int i = 0; i <= 2; i++)
@@ -852,13 +1005,22 @@ public static class Homes
         Int3 a = f.At(cu, 0, cv), b = f.At(cu + canopyW - 1, Clear + 2, cv + canopyD - 1);
         l.C.X.Plain.Add(new PlainBox(Int3.Min(a, b), Int3.Max(a, b), Clear, f.Turn(Dir.North)));
         // Pumps on their islands, between the posts.
-        var pump = new Rgb(0x9a, 0x3c, 0x30);
+        var pump = depot ? new Rgb(0x34, 0x50, 0x58) : new Rgb(0x9a, 0x3c, 0x30);
         foreach (int v in Enumerable.Range(0, islands).Select(Lane))
             for (int u = cu + 3; u < cu + canopyW - 3; u++)
             {
-                l.Plate(f, u, v, new Rgb(0x96, 0x94, 0x8c));
+                if (!depot) l.Plate(f, u, v, new Rgb(0x96, 0x94, 0x8c));
                 if ((u - cu - 5) % 5 == 0) l.C.Blocks[f.At(u, 0, v)] = new Block(BlockType.Pump, Material.Steel, pump, Role.Prop, f.Turn(Dir.North));
             }
+        // A depot's hover pads: painted rings where a grav vehicle set down to take a charge.
+        if (depot)
+            foreach (int pu in new[] { cu + canopyW / 4, cu + canopyW * 3 / 4 })
+                for (int dv = -5; dv <= 5; dv++)
+                    for (int du = -5; du <= 5; du++)
+                    {
+                        float dist = MathF.Sqrt(du * du + dv * dv);
+                        if (dist > 3.6f && dist <= 4.8f) l.Plate(f, pu + du, cv + canopyD / 2 + dv, new Rgb(0x8a, 0xb4, 0xc0));
+                    }
         // The shop behind the forecourt.
         int shopW = diner ? 20 : 12 + 2 * l.R.Range(0, 2), shopD = diner ? 16 : 12 + 2 * l.R.Range(0, 2), su = cu + (canopyW - shopW) / 2 / 2 * 2, sv = cv + canopyD + 8;
         Shop(l, f.Shift(su, sv), shopW, shopD, false);
@@ -870,6 +1032,10 @@ public static class Homes
                 l.Plate(f, u, v, (v == tv + 2 || v == tv + 3) && (u - tu) % 3 == 1 ? new Rgb(0x3a, 0x3a, 0x3a) : slab);
         foreach (int k in new[] { 0, 2 })
             for (int y = 0; y < 4; y++) l.C.Set(f.At(tu + tw - 1 - k, y, tv + td), new Block(BlockType.Pillar, Material.Steel, steel.Scale(0.7f), Role.Wall));
+        // A depot keeps its fuel cells above ground, in racks on the slab.
+        if (depot)
+            for (int u = tu + 1; u < tu + tw - 1; u += 2)
+                for (int y = 0; y < 2; y++) l.C.Blocks[f.At(u, y, tv + 1)] = new Block(BlockType.Tank, Material.Steel, new Rgb(0x8c, 0xa4, 0xac), Role.Prop);
         // The sign on its pole, at the road end of the lot, where you see it coming.
         for (int y = 0; y < 10; y++) l.C.Set(f.At(4, y, 4), new Block(BlockType.Rib, Material.Steel, steel, Role.Wall));
         for (int y = 10; y < 14; y++)

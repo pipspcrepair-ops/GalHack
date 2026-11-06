@@ -76,8 +76,8 @@ public sealed class FlavourRuin
 /// The old world's small places (design doc "Infrastructure"), not places but flavour, and few enough
 /// to mean something: long empty stretches of road, then a reason to leave it. Houses stand together
 /// along a street off a junction or on the way into a town, with shops at its road end; a fuel station
-/// stands right on a highway or at a crossroads, its forecourt open to the road (a world that never
-/// had motor fuel has none); a farmstead lies out in the fields down its own track; a shed or a lone
+/// stands right on a highway or at a crossroads, open to the road, and is whatever its age kept (a coaching
+/// inn, a petrol station, a charging depot, now and then something nobody here built); a farmstead lies out in the fields down its own track; a shed or a lone
 /// house turns up now and then. Each faces its road and joins it by a driveway. On once-inhabited
 /// worlds only, built at the world's pre-collapse tech level. Each gets a small pad of its own, laid
 /// before the roads, and never stands on a road bed, a place's pad or another ruin. Round a blast site
@@ -105,6 +105,19 @@ public static class FlavourRuins
         Layouts.GetOrAdd((f.Id, variant, front, tech, salt), _ =>
             PoiFactory.BuildLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech)));
 
+    /// <summary>
+    /// Which of a family's layouts a world of a tech level builds: its own, or any that fit all. A family's
+    /// odd ones out (tech "unique": what the alien or Precursor road kept) turn up now and then.
+    /// </summary>
+    public static int VariantFor(FamilyDef f, TechLevel tech, PoiGenerator.Gen.Rng rng)
+    {
+        var odd = f.Variants.Where(v => v.Tech == "unique").ToList();
+        if (odd.Count > 0 && rng.Chance(0.08f)) return rng.Pick(odd).Index;
+        string tag = WorldProfile.Tag(tech);
+        var fit = f.Variants.Where(v => v.Tech.Length == 0 || v.Tech == tag).ToList();
+        return rng.Pick(fit.Count > 0 ? fit : f.Variants.Where(v => v.Tech != "unique").ToList()).Index;
+    }
+
     /// <summary>The map axis facing nearest a direction.</summary>
     public static Dir Facing(double dx, double dz) => Math.Abs(dx) >= Math.Abs(dz) ? (dx > 0 ? Dir.East : Dir.West) : (dz > 0 ? Dir.South : Dir.North);
 
@@ -124,7 +137,7 @@ public static class FlavourRuins
         double w = map.WidthMeters, h = map.HeightMeters;
         bool farmland = profile.Trade == Trade.Agricultural;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
-        Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, rng.Range(0, f.Variants.Count), front, profile.Before, rng.Range(0, Salts));
+        Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
 
         double roadKm = net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
         double trackKm = net.Routes.Where(r => r.Kind == RouteKind.Track).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
@@ -157,7 +170,7 @@ public static class FlavourRuins
             if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
         }
 
-        // Fuel stations: crossroads first, then wherever a long highway has gone without one.
+        // The stop each age kept on its roads (an inn, a petrol station, a charging depot): crossroads first, then wherever a long highway has gone without one.
         FamilyDef fuel = Pick("wayside");
         if (fuel != null)
         {
@@ -178,7 +191,7 @@ public static class FlavourRuins
                     double deep = LotSize(layout, front).Deep * 0.5, back = deep + r.HalfWidth + 6;
                     FlavourRuin ruin = Try(lib, fuel, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng, spacing: 12, maxCut: 5f, clearance: back - 3);
                     // The forecourt lies level with the road it opens on.
-                    if (ruin == null || Math.Abs(ruin.OriginY - r.Y[i]) > 1.5f || !Connect(ruin, r, 7f, StampSurface.Concrete, bare, w, h)) continue;
+                    if (ruin == null || Math.Abs(ruin.OriginY - r.Y[i]) > 1.5f || !Connect(ruin, r, layout.Variant?.Tech == "mid" || layout.Variant?.Tech == "high" ? 7f : 3f, ruin.Stamp.Surface == StampSurface.Natural ? StampSurface.Gravel : ruin.Stamp.Surface, bare, w, h)) continue;
                     ruin.Route = r;
                     ruins.Add(ruin);
                     stops.Add((r.X[i], r.Z[i]));
@@ -299,7 +312,7 @@ public static class FlavourRuins
                 double a = rng.Float() * Math.PI * 2, d = inner + (outer - inner) * rng.Float();
                 FamilyDef f = Pick("house");
                 if (f == null) break;
-                Layout layout = LayoutFor(lib, f, rng.Range(0, f.Variants.Count), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
+                Layout layout = LayoutFor(lib, f, VariantFor(f, profile.Before, rng), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
                 var ruin = Try(lib, f, layout, gx + Math.Cos(a) * d, gz + Math.Sin(a) * d, bare, net, pois, ruins, w, h, rng);
                 if (ruin == null) continue;
                 ruins.Add(ruin);
@@ -339,7 +352,7 @@ public static class FlavourRuins
                     bool shopFront = shop != null && k < Math.Max(1, pairs / 3);
                     FamilyDef f = shopFront ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                     Dir front = Facing(-sx * side, -sz * side);
-                    Layout layout = LayoutFor(lib, f, rng.Range(0, f.Variants.Count), front, tech, rng.Range(0, Salts));
+                    Layout layout = LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
                     var (wide, deep) = LotSize(layout, front);
                     along += wide * 0.5;
                     double back = StreetHalf + deep * 0.5 + 6.5, cx = px + ux * along + sx * side * back, cz = pz + uz * along + sz * side * back;
@@ -506,7 +519,7 @@ public static class FlavourRuins
         var stamp = new TerrainStamp(f.Name, ox + occ.Min.X, oz + occ.Min.Z, ox + occ.Min.X + occ.Size.X, oz + occ.Min.Z + occ.Size.Z, pad, Apron, blend, w, h,
             ox + occ.Min.X, pad + occ.Min.Y, oz + occ.Min.Z, occ.Size.X, carveH, occ.Size.Z, carve)
         {
-            Surface = f.Tags.Contains("wayside") || f.Tags.Contains("shop") ? StampSurface.Concrete : f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
+            Surface = f.Tags.Contains("wayside") ? (layout.Variant?.Tech switch { "low" => StampSurface.Dirt, "unique" => StampSurface.Natural, _ => StampSurface.Concrete }) : f.Tags.Contains("shop") ? StampSurface.Concrete : f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
         };
         return new FlavourRuin
         {
