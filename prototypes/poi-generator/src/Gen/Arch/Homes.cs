@@ -111,6 +111,7 @@ public static class Homes
         public readonly HashSet<(int U, int V)> Foot = new();
         readonly HashSet<(int U, int V, int S)> _door = new(), _open = new(), _stair = new();
         readonly Dictionary<(int U, int V), int> _top = new();
+        readonly HashSet<(int U, int V)> _verge = new();
         public int Storeys = 1, Height = 3;
         /// <summary>No ceiling under the roof: a barn's or a shed's open rafters.</summary>
         public bool Open;
@@ -272,14 +273,20 @@ public static class Homes
                             C.Remove(P(col.U, old, col.V));
                         }
                         _top[col] = y;
-                        C.Set(P(col.U, y, col.V), left == right ? Cube(S.RoofM, S.Roof, Role.Roof)
-                            : new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, _f.Turn(w.Kind == RoofKind.Lean || left < right ? up : down)));
+                        // The slope's end over a gable wall is the wall's own: its coping, in one clean line from eaves to ridge.
+                        (int U, int V) past = w.RidgeAlongU ? (b == b0 ? b - 1 : b + 1, a) : (a, b == b0 ? b - 1 : b + 1);
+                        bool verge = (b == b0 || b == b1) && !Foot.Contains(past);
+                        if (verge) _verge.Add(col); else _verge.Remove(col);
+                        Rgb colour = verge ? S.Wall : S.Roof;
+                        Material stuff = verge ? S.WallM : S.RoofM;
+                        C.Set(P(col.U, y, col.V), left == right ? Cube(stuff, colour, Role.Roof)
+                            : new Block(BlockType.Ramp, stuff, colour, Role.Roof, _f.Turn(w.Kind == RoofKind.Lean || left < right ? up : down)));
                     }
             }
             foreach (var ((u, v), y) in _top)
             {
                 bool inFoot = Foot.Contains((u, v));
-                if (y - 1 > Eave || !inFoot && y > low) C.Set(P(u, y - 1, v), Cube(S.RoofM, S.Roof.Scale(0.8f), Role.Roof));
+                if (y - 1 > Eave || !inFoot && y > low) C.Set(P(u, y - 1, v), _verge.Contains((u, v)) ? Cube(S.WallM, S.Wall, Role.Roof) : Cube(S.RoofM, S.Roof.Scale(0.8f), Role.Roof));
                 if (inFoot && Edge(u, v))
                     for (int h = Eave + 1; h < y; h++) C.Set(P(u, h, v), Cube(S.WallM, S.Wall, Role.Wall));
             }

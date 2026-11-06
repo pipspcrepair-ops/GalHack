@@ -68,7 +68,7 @@ public static class InfraViews
             return Look(w, sx, sz, eye, tx, tz, w.GroundHeight(Mathx.WrapX(tx, w.Width), Mathx.Wrap(tz, w.Height)) + 1f);
         }
         // A flavour ruin: house, farmstead, shed or wayside, from 30 m off.
-        if (what is "house" or "farmstead" or "shed" or "wayside")
+        if (what is "house" or "farmstead" or "shed" or "wayside" or "shop")
         {
             FlavourRuin ruin = net.Ruins.Where(r => r.Family.Tags.Contains(what)).OrderBy(r => Away(r.Center.X, r.Center.Z)).FirstOrDefault();
             if (ruin != null)

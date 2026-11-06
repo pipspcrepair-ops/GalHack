@@ -11,10 +11,10 @@ using PInt3 = PoiGenerator.Gen.Int3;
 namespace PlanetSurface.Infra;
 
 /// <summary>
-/// A small ruin that isn't a place of its own: an abandoned house by the road, a farmstead, a
-/// shed, a wayside stop. Its layout comes from one of a few small architect families (flavour_*),
-/// shared by every ruin built from it; each ruin spawns it with its own seed, so the century of
-/// decay (timber fallen in unless sheltered, concrete and stone shells, trees through) differs.
+/// A small ruin that isn't a place of its own: a house on a street, a farmstead out in the fields, a
+/// shed, a shop, a fuel station on the highway. Its layout comes from one of a few small families
+/// (flavour_*), drawn at the world's tech level and turned to face its road, shared by every ruin built
+/// from it; each ruin spawns it with its own seed, so the century of decay differs.
 /// </summary>
 public sealed class FlavourRuin
 {
@@ -31,6 +31,8 @@ public sealed class FlavourRuin
     public float BlastX, BlastZ;
     /// <summary>The road it stands by (null for one out in the country).</summary>
     public InfraRoute Route;
+    /// <summary>Its driveway, forecourt apron or farm track to that road (null where it has no road).</summary>
+    public TerrainStamp Drive;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
@@ -71,16 +73,19 @@ public sealed class FlavourRuin
 }
 
 /// <summary>
-/// Lots of abandoned houses, farmsteads, sheds and wayside stops (design doc "Infrastructure"), not
-/// places but flavour: mostly along the roads and tracks, some out in the countryside, a farmstead
-/// where the land was farmed, a wayside stop on a highway. On once-inhabited worlds only, built at
-/// the world's pre-collapse tech level. Each gets a small pad of its own, laid before the roads, and
-/// never stands on a road bed, a place's pad or another ruin. Round a blast site they stand in its
-/// ruin ring, flattened outward from ground zero.
+/// The old world's small places (design doc "Infrastructure"), not places but flavour, and few enough
+/// to mean something: long empty stretches of road, then a reason to leave it. Houses stand together
+/// along a street off a junction or on the way into a town, with shops at its road end; a fuel station
+/// stands right on a highway or at a crossroads, its forecourt open to the road (a world that never
+/// had motor fuel has none); a farmstead lies out in the fields down its own track; a shed or a lone
+/// house turns up now and then. Each faces its road and joins it by a driveway. On once-inhabited
+/// worlds only, built at the world's pre-collapse tech level. Each gets a small pad of its own, laid
+/// before the roads, and never stands on a road bed, a place's pad or another ruin. Round a blast site
+/// they stand in its ruin ring, flattened outward from ground zero.
 /// </summary>
 public static class FlavourRuins
 {
-    static readonly ConcurrentDictionary<(string, int), Layout> Layouts = new();
+    static readonly ConcurrentDictionary<(string, int, Dir, TechLevel?, int), Layout> Layouts = new();
 
     /// <summary>
     /// How far a blast reaches into the land round its site, as a multiple of the site's own fade
@@ -88,80 +93,177 @@ public static class FlavourRuins
     /// </summary>
     public const float WorldReach = 4f;
 
+    /// <summary>Different drawings of each plan a world may use, so a street isn't one house over and over.</summary>
+    public const int Salts = 3;
+
     /// <summary>How hard a blast hits at a distance from ground zero, out in the land round its site.</summary>
     public static float BlastAt(BlastZone zone, float d) =>
         d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
 
-    /// <summary>The flavour families the world can build: their layout for its tech level.</summary>
-    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant) =>
-        Layouts.GetOrAdd((f.Id, variant), _ => PoiFactory.BuildLayout(lib, f, variant, Rarity.Common));
+    /// <summary>A family's layout, turned to face a road, in the world's tech level's materials.</summary>
+    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0) =>
+        Layouts.GetOrAdd((f.Id, variant, front, tech, salt), _ =>
+            PoiFactory.BuildLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech)));
+
+    /// <summary>The map axis facing nearest a direction.</summary>
+    public static Dir Facing(double dx, double dz) => Math.Abs(dx) >= Math.Abs(dz) ? (dx > 0 ? Dir.East : Dir.West) : (dz > 0 ? Dir.South : Dir.North);
+
+    /// <summary>A lot's width across its depth, and its depth from the road, for its turn.</summary>
+    static (double Along, double Deep) LotSize(Layout l, Dir front) =>
+        front is Dir.North or Dir.South ? (l.Occupied.Size.X, l.Occupied.Size.Z) : (l.Occupied.Size.Z, l.Occupied.Size.X);
 
     public static List<FlavourRuin> Plan(InfraNetwork net, PoiLibrary lib, WorldMap map, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, WorldProfile profile, ulong seed,
         List<FlavourRuin> already = null)
     {
         var ruins = already ?? new List<FlavourRuin>();
         if (profile == null || !profile.Inhabited || lib == null) return ruins;
-        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before)))).ToList();
+        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before)))).ToList();
         if (families.Count == 0) return ruins;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0xF1A7UL));
-        string tag = WorldProfile.Tag(profile.Before);
         FamilyDef Pick(string kind) => families.FirstOrDefault(f => f.Tags.Contains(kind));
-        int VariantFor(FamilyDef f)
-        {
-            var fit = f.Variants.Where(v => v.Tech.Length == 0 || v.Tech == tag).ToList();
-            if (fit.Count == 0) fit = f.Variants;
-            return fit[rng.Range(0, fit.Count)].Index;
-        }
         double w = map.WidthMeters, h = map.HeightMeters;
         bool farmland = profile.Trade == Trade.Agricultural;
+        double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
+        Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, rng.Range(0, f.Variants.Count), front, profile.Before, rng.Range(0, Salts));
 
-        // Along the roads and tracks: a ruin every few hundred metres, set back from the verge.
-        foreach (InfraRoute r in net.Routes)
+        double roadKm = net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
+        double trackKm = net.Routes.Where(r => r.Kind == RouteKind.Track).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
+
+        // Crossroads, and the last stretch of road into a town: where people lived.
+        var hubs = new List<(InfraRoute R, int I, bool Junction)>();
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road && r.Count > 12))
         {
-            if (r.Kind == RouteKind.Rail) continue;
-            double every = r.Kind switch { RouteKind.Highway => 520, RouteKind.Road => 330, _ => 450 };
-            double next = every * rng.Float();
-            double run = 0;
-            for (int i = 1; i + 1 < r.Count; i++)
+            if (r.From == null) hubs.Add((r, 0, true));
+            if (r.To == null) hubs.Add((r, r.Count - 1, true));
+            foreach (var (place, end, step) in new[] { (r.From, 0, 1), (r.To, r.Count - 1, -1) })
+                if (place != null && place.Tier is PoiTier.Town or PoiTier.City)
+                {
+                    int i = end + step * (int)((Math.Max(place.Stamp.ReachX, place.Stamp.ReachZ) * 0.5 + 90) / InfraNetwork.Spacing);
+                    if (i > 1 && i + 2 < r.Count) hubs.Add((r, i, false));
+                }
+        }
+        rng.Shuffle(hubs);
+
+        // Streets of houses off the hubs, a good way apart.
+        int streets = Math.Clamp((int)(roadKm / 6), 2, 7);
+        var built = new List<(double X, double Z)>();
+        foreach (var (r, i, junction) in hubs)
+        {
+            if (built.Count >= streets) break;
+            double px = r.X[i], pz = r.Z[i];
+            if (built.Any(b => Dist(b.X, b.Z, px, pz) < 1100)) continue;
+            if (r.Span[Math.Min(i, r.Span.Length - 1)] != RoadSpan.Ground) continue;
+            int length = 3 + rng.Range(0, 4);
+            if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
+        }
+
+        // Fuel stations: crossroads first, then wherever a long highway has gone without one.
+        FamilyDef fuel = Pick("wayside");
+        if (fuel != null)
+        {
+            int want = Math.Clamp((int)(roadKm / 7), 1, 6), got = 0;
+            var stops = new List<(double X, double Z)>();
+            bool Fuel(InfraRoute r, int i)
+            {
+                if (i < 2 || i + 2 >= r.Count || r.Span[i] != RoadSpan.Ground || r.Span[i - 1] != RoadSpan.Ground) return false;
+                if (stops.Any(s => Dist(s.X, s.Z, r.X[i], r.Z[i]) < 1500)) return false;
+                double dx = r.X[i + 2] - r.X[i - 2], dz = r.Z[i + 2] - r.Z[i - 2], len = Math.Sqrt(dx * dx + dz * dz);
+                // A straight bit, near enough on a map axis for a lot to lie square to it.
+                if (len < 1e-6 || Math.Max(Math.Abs(dx), Math.Abs(dz)) / len < 0.92) return false;
+                foreach (int side in rng.Chance(0.5f) ? new[] { 1, -1 } : new[] { -1, 1 })
+                {
+                    double nx = Math.Abs(dx) > Math.Abs(dz) ? 0 : side, nz = Math.Abs(dx) > Math.Abs(dz) ? side : 0;
+                    Dir front = Facing(-nx, -nz);
+                    Layout layout = Lot(fuel, front);
+                    double deep = LotSize(layout, front).Deep * 0.5, back = deep + r.HalfWidth + 6;
+                    FlavourRuin ruin = Try(lib, fuel, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng, spacing: 12, maxCut: 5f, clearance: back - 3);
+                    // The forecourt lies level with the road it opens on.
+                    if (ruin == null || Math.Abs(ruin.OriginY - r.Y[i]) > 1.5f || !Connect(ruin, r, 7f, StampSurface.Concrete, bare, w, h)) continue;
+                    ruin.Route = r;
+                    ruins.Add(ruin);
+                    stops.Add((r.X[i], r.Z[i]));
+                    return true;
+                }
+                return false;
+            }
+            foreach (var (r, i, junction) in hubs.Where(k => k.Junction))
+            {
+                if (got >= want) break;
+                int j = i == 0 ? 12 : i - 12; // a little way along from the junction itself
+                if (j > 0 && j < r.Count && Fuel(r, j)) got++;
+            }
+            foreach (InfraRoute r in net.Routes.Where(r => r.Kind == RouteKind.Highway))
+                for (int i = 40 + rng.Range(0, 60); i < r.Count && got < want; i += 25)
+                    if (Fuel(r, i)) { got++; i += 300; }
+            if (got < Math.Min(want, 2))
+                foreach (InfraRoute r in net.Routes.Where(r => r.Kind == RouteKind.Road))
+                    for (int i = 20; i < r.Count && got < 2; i += 25)
+                        if (Fuel(r, i)) { got++; i += 300; }
+        }
+
+        // Farmsteads out in the fields, a track down to each from the road.
+        FamilyDef farm = Pick("farmstead");
+        var feeders = net.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Track && r.Count > 20).ToList();
+        if (farm != null && feeders.Count > 0)
+        {
+            int want = farmland ? Math.Clamp((int)((roadKm + trackKm) / 4), 4, 12) : Math.Clamp((int)((roadKm + trackKm) / 16), 1, 3);
+            for (int tries = 0, got = 0; tries < want * 40 && got < want; tries++)
+            {
+                InfraRoute r = feeders[rng.Range(0, feeders.Count)];
+                int i = rng.Range(2, r.Count - 2);
+                if (r.Span[i] != RoadSpan.Ground) continue;
+                double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], len = Math.Sqrt(dx * dx + dz * dz);
+                if (len < 1e-6) continue;
+                int side = rng.Chance(0.5f) ? 1 : -1;
+                double nx = -dz / len * side, nz = dx / len * side, off = 70 + 130 * rng.Float();
+                Dir front = Facing(-nx, -nz);
+                Layout layout = Lot(farm, front);
+                FlavourRuin ruin = Try(lib, farm, layout, r.X[i] + nx * off, r.Z[i] + nz * off, bare, net, pois, ruins, w, h, rng, spacing: 40);
+                if (ruin == null || !Connect(ruin, r, 2.2f, profile.Before == TechLevel.Low ? StampSurface.Dirt : StampSurface.Gravel, bare, w, h)) continue;
+                ruin.Route = r;
+                ruins.Add(ruin);
+                got++;
+            }
+        }
+
+        // Now and then a shed or a lone house off a quiet road, with a long way between them.
+        FamilyDef shed = Pick("shed"), house = Pick("house");
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Track))
+        {
+            double every = r.Kind == RouteKind.Track ? 1700 : 2200, next = every * (0.3 + rng.Float()), run = 0;
+            for (int i = 2; i + 2 < r.Count; i++)
             {
                 run += InfraNetwork.Spacing;
                 if (run < next || r.Span[i] != RoadSpan.Ground) continue;
-                next = run + every * (0.5 + rng.Float());
-                string kind = r.Kind == RouteKind.Highway && profile.Before != TechLevel.Low && rng.Chance(0.3f) ? "wayside"
-                    : (farmland || r.Kind == RouteKind.Track) && rng.Chance(0.4f) ? "farmstead"
-                    : rng.Chance(0.2f) ? "shed" : "house";
-                FamilyDef f = Pick(kind) ?? Pick("house");
+                next = run + every * (0.6 + 0.8 * rng.Float());
+                FamilyDef f = (rng.Chance(0.55f) ? shed : house) ?? house;
                 if (f == null) continue;
-                int variant = VariantFor(f);
-                Layout layout = LayoutFor(lib, f, variant);
                 double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], len = Math.Sqrt(dx * dx + dz * dz);
                 if (len < 1e-6) continue;
                 int side = rng.Chance(0.5f) ? 1 : -1;
                 double nx = -dz / len * side, nz = dx / len * side;
+                Dir front = Facing(-nx, -nz);
+                Layout layout = Lot(f, front);
                 var size = layout.Occupied.Size;
-                // Back from the road by the lot's half-diagonal, so a large lot sits as well as a small one.
-                double back = Math.Sqrt(size.X * size.X + size.Z * size.Z) * 0.5 + 18 + rng.Float() * 8;
-                var ruin = Try(lib, f, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng);
-                if (ruin == null) continue;
+                double back = Math.Sqrt(size.X * size.X + size.Z * size.Z) * 0.5 + 12 + rng.Float() * 16;
+                FlavourRuin ruin = Try(lib, f, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng);
+                if (ruin == null || !Connect(ruin, r, 1.6f, profile.Before == TechLevel.Low ? StampSurface.Dirt : StampSurface.Gravel, bare, w, h)) continue;
                 ruin.Route = r;
                 ruins.Add(ruin);
             }
         }
-        // Out in the countryside: a farmstead here and there, a lone house.
-        // At least enough to make a world with few roads look lived in once.
-        int country = Math.Max((int)(w * h / 1e6 * (farmland ? 1.2 : 0.5)), 12 - ruins.Count);
-        int attempts = Math.Max(country * 20, 800);
-        for (int k = 0, tries = 0; k < country && tries < attempts; tries++)
+
+        // Enough to make a world with few roads look lived in once: lone houses and farms off in the country.
+        int attempts = 800;
+        for (int tries = 0; ruins.Count < 12 && tries < attempts; tries++)
         {
             // Rough country takes a farmstead's yard badly: late on, a lone house on what ground there is.
             bool rough = tries > attempts / 2;
             FamilyDef f = Pick(!rough && (farmland || rng.Chance(0.5f)) ? "farmstead" : "house") ?? Pick("house");
             if (f == null) break;
-            Layout layout = LayoutFor(lib, f, VariantFor(f));
-            var ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
-            if (ruin == null) continue;
-            ruins.Add(ruin);
-            k++;
+            Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)]);
+            FlavourRuin ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
+            if (ruin != null) ruins.Add(ruin);
         }
         // A survivor town's landing clearing, at its edge, with a track in, where traders set down.
         if (lib.Families.FirstOrDefault(f => f.Id == "landing_clearing") is { } clearing)
@@ -192,12 +294,12 @@ public static class FlavourRuins
             if (p.GroundZero is not (double gx, double gz) || p.Instance.Layout.Extras.Blast is not BlastZone zone) continue;
             double inner = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 24, outer = zone.Fade * (WorldReach - 1);
             if (outer <= inner) outer = inner + 120;
-            for (int k = 0, placed = 0; k < 60 && placed < 12; k++)
+            for (int k = 0, placed = 0; k < 120 && placed < 12; k++)
             {
                 double a = rng.Float() * Math.PI * 2, d = inner + (outer - inner) * rng.Float();
                 FamilyDef f = Pick("house");
                 if (f == null) break;
-                Layout layout = LayoutFor(lib, f, VariantFor(f));
+                Layout layout = LayoutFor(lib, f, rng.Range(0, f.Variants.Count), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
                 var ruin = Try(lib, f, layout, gx + Math.Cos(a) * d, gz + Math.Sin(a) * d, bare, net, pois, ruins, w, h, rng);
                 if (ruin == null) continue;
                 ruins.Add(ruin);
@@ -206,6 +308,117 @@ public static class FlavourRuins
         }
         foreach (FlavourRuin ruin in ruins) Blasted(ruin, pois, w, h);
         return ruins;
+    }
+
+    /// <summary>
+    /// A street off a road at a point: laid straight along a map axis, the way out across the road,
+    /// houses down both sides facing it, shops at its road end, a shed behind the odd one. It is laid
+    /// only if the ground takes a fair few lots. False if it doesn't, in any of the ways it could run.
+    /// </summary>
+    static bool Street(double px, double pz, InfraRoute road, int pairs, InfraNetwork net, PoiLibrary lib, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, List<FlavourRuin> ruins,
+        double w, double h, PoiGenerator.Gen.Rng rng, FamilyDef house, FamilyDef shed, FamilyDef shop, TechLevel tech)
+    {
+        if (house == null) return false;
+        const float StreetHalf = 4f;
+        var ways = new List<(double X, double Z)> { (1, 0), (-1, 0), (0, 1), (0, -1) };
+        rng.Shuffle(ways);
+        foreach (var (ux, uz) in ways)
+        {
+            // Not back along the road it leaves.
+            bool clear = true;
+            for (double t = 24; t <= 60 && clear; t += 12) clear = net.Nearest(Mathx.WrapX(px + ux * t, w), Mathx.Wrap(pz + uz * t, h), 16, out _, out _) == null;
+            if (!clear) continue;
+            var lots = new List<FlavourRuin>(ruins);
+            int before = lots.Count;
+            double sx = -uz, sz = ux, far = 0;
+            foreach (int side in new[] { -1, 1 })
+            {
+                double along = road.HalfWidth + 14;
+                for (int k = 0; k < pairs; k++)
+                {
+                    bool shopFront = shop != null && k < Math.Max(1, pairs / 3);
+                    FamilyDef f = shopFront ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
+                    Dir front = Facing(-sx * side, -sz * side);
+                    Layout layout = LayoutFor(lib, f, rng.Range(0, f.Variants.Count), front, tech, rng.Range(0, Salts));
+                    var (wide, deep) = LotSize(layout, front);
+                    along += wide * 0.5;
+                    double back = StreetHalf + deep * 0.5 + 6.5, cx = px + ux * along + sx * side * back, cz = pz + uz * along + sz * side * back;
+                    FlavourRuin r = Try(lib, f, layout, cx, cz, bare, net, pois, lots, w, h, rng, spacing: 0, maxCut: 5f, clearance: back - 3);
+                    // A lot sits at the street's level, not up a bank above it.
+                    float kerb = bare.Sampler.Sample(Mathx.WrapX(px + ux * along, w), Mathx.Wrap(pz + uz * along, h), 2).Height;
+                    if (r != null && Math.Abs(r.OriginY - kerb) <= 2.5f) lots.Add(r);
+                    along += wide * 0.5 + 2;
+                    far = Math.Max(far, along);
+                }
+            }
+            if (lots.Count - before < Math.Max(3, pairs)) continue;
+            InfraRoute street = net.Street(new List<(double X, double Z)> { (px, pz), (px + ux * (far + 6), pz + uz * (far + 6)) }, RouteKind.Road);
+            if (street == null) continue;
+            street.Kept = false;
+            street.Wear = 0.92f;
+            foreach (FlavourRuin r in lots.Skip(before))
+            {
+                r.Route = street;
+                r.State = rng.Chance(0.85f) ? PoiState.Ruined : PoiState.Abandoned;
+                if (Connect(r, street, 1.6f, StampSurface.Gravel, bare, w, h)) ruins.Add(r);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Joins a ruin's gate to the nearest point of a road: a stamp of its own, its deck following the land
+    /// from the pad to the road's, at a grade you can drive. False if the ground between won't take one.
+    /// </summary>
+    public static bool Connect(FlavourRuin ruin, InfraRoute road, float halfWidth, StampSurface surface, PlanetTerrainSource bare, double w, double h)
+    {
+        var gate = ruin.Layout.Extras.Gate;
+        double gx = ruin.OriginX + gate.X + 0.5, gz = ruin.OriginZ + gate.Z + 0.5;
+        // Toward the road, from a little way inside the lot.
+        int best = -1;
+        double bestD = double.MaxValue;
+        for (int i = 0; i < road.Count; i++)
+        {
+            double dx = Mathx.WrapDelta(road.X[i] - gx, w), dz = Mathx.WrapDelta(road.Z[i] - gz, h), d = dx * dx + dz * dz;
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        if (best < 0 || road.Span[Math.Min(best, road.Span.Length - 1)] != RoadSpan.Ground) return false;
+        double ex = gx + Mathx.WrapDelta(road.X[best] - gx, w), ez = gz + Mathx.WrapDelta(road.Z[best] - gz, h), len = Math.Sqrt(bestD);
+        if (len > 400) return false;
+        int n = Math.Max(2, (int)Math.Ceiling(len / InfraNetwork.Spacing));
+        double ux = len > 1e-6 ? (ex - gx) / len : 0, uz = len > 1e-6 ? (ez - gz) / len : 0;
+        // A few metres into the lot, so the drive and the pad overlap and no strip of raw ground shows between them.
+        const double Into = 4;
+        var xs = new List<double> { gx - ux * Into };
+        var zs = new List<double> { gz - uz * Into };
+        var ys = new List<float> { ruin.OriginY };
+        float y0 = ruin.OriginY, y1 = road.Y[best];
+        var land = new float[n + 1];
+        for (int i = 0; i <= n; i++)
+        {
+            double t = i / (double)n;
+            GroundSample g = bare.Sampler.Sample(Mathx.WrapX(gx + (ex - gx) * t, w), Mathx.Wrap(gz + (ez - gz) * t, h), 2);
+            if (g.InRiver || g.Height < 2f) return false;
+            land[i] = g.Height;
+        }
+        for (int i = 0; i <= n; i++)
+        {
+            double t = i / (double)n;
+            // The land smoothed, pinned to the pad and the road at its ends.
+            float s = 0;
+            int c = 0;
+            for (int k = Math.Max(0, i - 3); k <= Math.Min(n, i + 3); k++) { s += land[k]; c++; }
+            float ends = y0 + (y1 - y0) * (float)t, pin = (float)Math.Min(1.0, Math.Min(t, 1 - t) * len / 16);
+            float y = ends + (s / c - ends) * pin;
+            if (i > 0 && Math.Abs(y - ys[^1]) > InfraNetwork.Spacing * 0.3f + 0.2f) return false;
+            xs.Add(gx + (ex - gx) * t);
+            zs.Add(gz + (ez - gz) * t);
+            ys.Add(y);
+        }
+        var spans = Enumerable.Repeat(RoadSpan.Ground, xs.Count - 1).ToArray();
+        ruin.Drive = TerrainStamp.Road("drive", xs, zs, ys, spans, halfWidth, surface, 0.9f, w, h);
+        return true;
     }
 
     /// <summary>Takes a ruin's share of any blast round it: the nearer ground zero, the harder.</summary>
@@ -237,6 +450,10 @@ public static class FlavourRuins
         CellMask occ = layout.Occupied;
         double halfX = occ.Size.X * 0.5, halfZ = occ.Size.Z * 0.5;
         const float Apron = 2f;
+        // On the world's 2 m lattice, as a player's blocks are; everything below is judged from there.
+        int ox = (int)Math.Floor((cx - (occ.Min.X + halfX)) / 2) * 2, oz = (int)Math.Floor((cz - (occ.Min.Z + halfZ)) / 2) * 2;
+        cx = ox + occ.Min.X + halfX;
+        cz = oz + occ.Min.Z + halfZ;
         // Clear of every place's reach, every road's bed and banks, and other ruins.
         foreach (PoiSite p in pois)
         {
@@ -265,7 +482,15 @@ public static class FlavourRuins
         int pad = (int)MathF.Round(samples[samples.Count / 2]);
         float cut = MathF.Max(samples[^1] - pad, pad - samples[0]);
         if (cut > maxCut) return null;
-        int ox = (int)Math.Floor(cx - (occ.Min.X + halfX)), oz = (int)Math.Floor(cz - (occ.Min.Z + halfZ));
+        // Every side of the pad, and the 2 m round it, keeps off a road's deck, whichever way the road runs.
+        var edge = new List<(double X, double Z)>();
+        for (double a = -halfX - 2; a <= halfX + 2.01; a += 6) { edge.Add((a, -halfZ - 2)); edge.Add((a, halfZ + 2)); }
+        for (double a = -halfZ - 2; a <= halfZ + 2.01; a += 6) { edge.Add((-halfX - 2, a)); edge.Add((halfX + 2, a)); }
+        foreach (var (ex, ez) in edge)
+            {
+                InfraRoute near = net.Nearest(Mathx.WrapX(cx + ex, w), Mathx.Wrap(cz + ez, h), 24, out _, out double off);
+                if (near != null && off < near.HalfWidth + 2) return null;
+            }
         int carveH = Math.Max(0, -occ.Min.Y);
         bool[] carve = null;
         if (carveH > 0)
@@ -274,13 +499,14 @@ public static class FlavourRuins
             for (int y = 0; y < carveH; y++)
             for (int z = 0; z < occ.Size.Z; z++)
             for (int x = 0; x < occ.Size.X; x++)
-                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = occ[new PInt3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z)];
+                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(layout.Blocks, occ, new PInt3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z));
+            if (!carve.Contains(true)) (carve, carveH) = (null, 0);
         }
         float blend = Math.Clamp(cut * 2.4f + 6f, 6f, 24f);
         var stamp = new TerrainStamp(f.Name, ox + occ.Min.X, oz + occ.Min.Z, ox + occ.Min.X + occ.Size.X, oz + occ.Min.Z + occ.Size.Z, pad, Apron, blend, w, h,
             ox + occ.Min.X, pad + occ.Min.Y, oz + occ.Min.Z, occ.Size.X, carveH, occ.Size.Z, carve)
         {
-            Surface = f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
+            Surface = f.Tags.Contains("wayside") || f.Tags.Contains("shop") ? StampSurface.Concrete : f.Tags.Contains("farmstead") || f.Tags.Contains("shed") ? StampSurface.Dirt : StampSurface.Natural, Wear = 0.9f,
         };
         return new FlavourRuin
         {

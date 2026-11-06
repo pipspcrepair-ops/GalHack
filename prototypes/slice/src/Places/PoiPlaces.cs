@@ -361,7 +361,7 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>How many of an item one roll gives: a handful of materials, a few parts, one tool or weapon.</summary>
-    static int CountOf(ItemDef def, int tier, uint hash)
+    internal static int CountOf(ItemDef def, int tier, uint hash)
     {
         int roll = (int)(hash % 1000);
         return def.Category switch

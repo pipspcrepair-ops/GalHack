@@ -75,6 +75,8 @@ public partial class SurfaceTest
         string firstGround = "", firstBlocked = "";
         int wreckSites = 0, wreckPieces = 0, blockedLanes = 0, wreckOnPad = 0;
         var wreckKinds = new Dictionary<string, int>();
+        double ruinRoadKm = 0;
+        int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
         int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
         var ruinKinds = new Dictionary<string, int>();
         int tells = 0, glowingTells = 0, tellsChecked = 0;
@@ -263,12 +265,27 @@ public partial class SurfaceTest
             // Flavour ruins: plenty of them, none on a road bed, a place's pad or another ruin; each spawns,
             // and yields salvage.
             ruinWorlds++;
+            ruinRoadKm += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Count * InfraNetwork.Spacing) / 1000.0;
             if (net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
             foreach (FlavourRuin ruin in net.Ruins)
             {
                 ruins++;
                 ruinKinds[ruin.Family.Id] = ruinKinds.GetValueOrDefault(ruin.Family.Id) + 1;
                 if (ruin.Blast > 0.05f) blastedRuins++;
+                // Every ruin by a road is joined to it, and a house stands with others; no fuel on a world that never had engines.
+                if (ruin.Route != null && ruin.Drive == null) ruinsUnjoined++;
+                else if (ruin.Route != null)
+                {
+                    var (dx, dz, _) = ruin.Drive.PathPoint(ruin.Drive.PathCount - 1);
+                    double ex = Mathx.WrapX(ruin.Drive.CenterX + dx, w.Width), ez = Mathx.Wrap(ruin.Drive.CenterZ + dz, w.Height);
+                    if (net.Nearest(ex, ez, 12, out _, out double off) == null || off > 6) ruinsUnjoined++;
+                }
+                if (ruin.Family.Tags.Contains("wayside") && w.Profile.Before == PoiGenerator.Gen.TechLevel.Low) fuelOnLow++;
+                if (ruin.Family.Tags.Contains("house") && ruin.Blast < 0.05f)
+                {
+                    houses++;
+                    if (net.Ruins.Any(o => o != ruin && Math.Abs(Mathx.WrapDelta(o.Center.X - ruin.Center.X, w.Width)) + Math.Abs(Mathx.WrapDelta(o.Center.Z - ruin.Center.Z, w.Height)) < 90)) housesInStreets++;
+                }
                 TerrainStamp t = ruin.Stamp;
                 for (double z = t.MinZ - 2; z <= t.MaxZ + 2; z += 3)
                 for (double x = t.MinX - 2; x <= t.MaxX + 2; x += 3)
@@ -324,6 +341,8 @@ public partial class SurfaceTest
             $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
         Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
             $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
+        Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
+            $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} fuel stations on low-tech worlds");
         Check(tells > 1000 && glowingTells == 0, $"ore tells: {tells} formations over the deposits, their veins matte ({glowingTells} of {tellsChecked} sampled glow)");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");

@@ -68,6 +68,7 @@ public sealed partial class Staging
             "damage-repair" => DamageRepair(),
             "thruster-hull" => ThrusterHull(inside: false),
             "thruster-interior" => ThrusterHull(inside: true),
+            "ruin" => RuinView(),
             "place" => PlaceApproach(),
             "interior" => PlaceInterior(),
             "tell" => PlaceTell(),

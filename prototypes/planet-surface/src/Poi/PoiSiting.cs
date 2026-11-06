@@ -376,7 +376,7 @@ public static class PoiSiting
             for (int y = 0; y < carveH; y++)
             for (int z = 0; z < occupied.Size.Z; z++)
             for (int x = 0; x < occupied.Size.X; x++)
-                carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = occupied[new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z)];
+                carve[(y * occupied.Size.Z + z) * occupied.Size.X + x] = PoiGenerator.Gen.Structure.Carved(inst.Layout.Blocks, occupied, new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z));
         }
         // Wide enough that cut and fill slopes stay walkable: the further the ground round the pad is
         // from the pad's height (a slope rising behind it, a drop below it), the longer the blend.

@@ -90,6 +90,7 @@ public partial class Place : Node3D
         Rock = true,
         RockMin = new Int3(min.X + 1, 0, min.Z + 1),
         RockMax = new Int3(min.X, 0, min.Z),
+        GroundShow = 3,
         RockBottom = min.Y,
     };
 

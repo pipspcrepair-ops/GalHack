@@ -68,6 +68,8 @@ public sealed class MeshOptions
     /// short, so a wall's top few courses below ground are drawn rather than left open to the sky.
     /// </summary>
     public int GroundShow;
+    /// <summary>How much each cell's shade wanders, as a share of the full wander: less on plain walls, where it reads as noise.</summary>
+    public float Mottle = 1f;
 }
 
 /// <summary>
@@ -225,7 +227,7 @@ public static class Mesher
             var chunk = Chunk(p);
             bool glass = BlockInfo.IsTransparent(b.Material);
             Surface surf = Shapes.SurfaceOf(b.Material);
-            float jitter = 0.94f + (Hash.Cell(p, 3) % 1000) / 1000f * 0.1f;
+            float jitter = 1f + ((Hash.Cell(p, 3) % 1000) / 1000f * 0.1f - 0.06f) * _o.Mottle;
             // Glyph stone is black, with the glyph inlaid as thin glowing lines.
             bool glyph = b.Material == Material.Glyph;
             Rgb body = glyph ? b.Color.Lerp(new Rgb(0x1a, 0x1b, 0x22), 0.88f) : b.Color;
@@ -445,7 +447,7 @@ public static class Mesher
             V3 R(V3 v) => o + Shapes.Turn(v, b.Facing);
             V3 lowL = new(0, 0, 1), lowR = new(1, 0, 1), highL = new(0, 1, 0), highR = new(1, 1, 0), backL = new(0, 0, 0), backR = new(1, 0, 0);
             var buf = chunk.Surfaces[(int)Shapes.SurfaceOf(b.Material)];
-            float j = 0.95f + (Hash.Cell(p, 5) % 100) / 1000f;
+            float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
             void Quad(V3 a, V3 bb, V3 c, V3 d, float shade)
             {
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
