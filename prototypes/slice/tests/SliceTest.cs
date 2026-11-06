@@ -423,6 +423,26 @@ public partial class SliceTest : Node
 
     // ==== Building ==================================================================================
 
+    /// <summary>What blows and falls have cost, apart from what the climate wears away.</summary>
+    double BodyHarm() => _game.Suit.Lost.GetValueOrDefault(DamageKind.Hit) + _game.Suit.Lost.GetValueOrDefault(DamageKind.Fall);
+
+    /// <summary>A flat spot this far off in country as mild as can be found, without a thought for how the world lies.</summary>
+    Vector3 MildSpot(Vector3 from, float distance)
+    {
+        Suit suit = _game.Suit;
+        Band mild = suit.Sim.Data.Vitals.Temperature.AmbientComfort;
+        Vector3 best = from;
+        double bestOff = double.MaxValue;
+        for (int i = 0; i < 10 && bestOff > 0; i++)
+        {
+            Vector3 p = FlatSpot(from, distance, 0.8f + i * 0.63f);
+            double t = suit.Exposure(new Pos(p.X, p.Y, p.Z), suit.Sim.Time).Temperature;
+            double off = Math.Max(0, Math.Max(mild.Low - t, t - mild.High));
+            if (off < bestOff) (best, bestOff) = (p, off);
+        }
+        return best;
+    }
+
     /// <summary>A flat, dry spot for a vessel this far from a point.</summary>
     Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f)
     {
@@ -540,10 +560,10 @@ public partial class SliceTest : Node
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
-        double healthBefore = _game.Suit.Vitals.Health;
+        double harmBefore = BodyHarm();
         float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
-        Vector3 target = FlatSpot(start, 2150f, 0.8f);
+        Vector3 target = MildSpot(start, 2150f); // a planet has cold and hot country: this check is about flying
         int lifts = _liftedOff, lands = _landed;
         _impacts.Clear();
 
@@ -617,7 +637,7 @@ public partial class SliceTest : Node
             $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
         Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
-        Check(_game.Suit.Vitals.Health >= healthBefore, "the pilot came through unhurt");
+        Check(BodyHarm() <= harmBefore, "the pilot came through unhurt");
         if (windows.Count > 0)
         {
             double best = windows.Min();
@@ -734,11 +754,11 @@ public partial class SliceTest : Node
         }
         w.Frozen = false;
         double threatAt = -1, hurtAt = -1;
-        double health = _game.Suit.Vitals.Health;
+        double health = _game.Suit.Vitals.Health, bitten = BodyHarm();
         for (int i = 0; i < 60 * 25 && hurtAt < 0; i++)
         {
             if (threatAt < 0 && _game.Visor.ThreatShowing) threatAt = i;
-            if (_game.Suit.Vitals.Health < health) hurtAt = i;
+            if (BodyHarm() > bitten) hurtAt = i; // the climate can wear at you all the while: only a blow counts
             yield return 0;
         }
         w.Frozen = true;

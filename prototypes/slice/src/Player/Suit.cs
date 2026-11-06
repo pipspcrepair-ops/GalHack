@@ -45,8 +45,9 @@ public sealed class Suit : IDamageSink
     /// <summary>Lines for the visor (helmet sealing, bottles, hard landings, deaths).</summary>
     public event Action<string> Said;
 
-    /// <summary>When each alert was last on, in survival time (tests check harm never comes first).</summary>
+    /// <summary>When each alert last came on, in survival time (tests check harm never comes first).</summary>
     public readonly Dictionary<Alert, double> WarnedAt = new();
+    Alert _warning;
 
     /// <summary>Health lost, by cause, since the start (tests).</summary>
     public readonly Dictionary<DamageKind, double> Lost = new();
@@ -126,7 +127,8 @@ public sealed class Suit : IDamageSink
         TickReport report = Sim.Tick(dt, activity);
         if (Vitals.Health < before) Count(DamageKindFor(report.Harm), before - Vitals.Health);
         foreach (Alert a in Enum.GetValues<Alert>())
-            if (a != Alert.None && (report.Warnings & a) != 0) WarnedAt[a] = Sim.Time;
+            if (a != Alert.None && (report.Warnings & a) != 0 && (_warning & a) == 0) WarnedAt[a] = Sim.Time;
+        _warning = report.Warnings;
         for (int i = events; i < Sim.Events.Count; i++) Said?.Invoke(Sim.Events[i]);
         return report;
     }
