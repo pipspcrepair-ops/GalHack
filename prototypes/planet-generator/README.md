@@ -149,9 +149,28 @@ A bigger world has bigger or more regions, never stretched ones, because a regio
 | 8x4 km | 10 | 1.6-2 km | 52 ms | 167 ms | 46 ms |
 | 16x8 km | 32 | 2 km | 141 ms | 131 ms | 49 ms |
 | 32x16 km | 32 | 4 km | 490 ms | 429 ms | 55 ms |
-| 64x32 km | 128 | 4 km | 2.0 s | 0.9 s | 0.1 s |
+| 64x32 km | 128 | 4 km | 2.5 s | 1.1 s | 0.1 s |
 
 Timings are one run on the development machine, off the main thread.
+
+## Heights
+
+Orbit starts at 1,060 m and the cloud layer lies at about 600-1,000 m, so land stops short of them:
+
+| What | Height |
+| --- | --- |
+| Hard limit (`ArchetypeDef.TerrainCeiling`) | 900 m on every world |
+| Most ranges top out at | about 500 m |
+| The highest peaks of the biggest ranges | 700-900 m, up into the cloud |
+| Every other landform | up to about 500 m (fjords, whose walls are mountains, reach 584 m) |
+
+Three things keep it that way:
+
+- **`MountainHeight`** is 200-425 m by variant, on a short wavelength (1,150-1,700 m), so low ranges stay as steep as tall ones. Mountain land measures 91% over 30° and 620 m of relief in 1 km.
+- **`SummitHeight`** lifts crests only in the core of the biggest ranges, where a slow swell picks out a few peaks. Narrow ranges have no such core. Ground over 600 m is 1.1% of mountain land.
+- **The ceiling** is a soft roll-off over the last fifth of the height, so the rare peak that gets there stays a peak and never reaches the limit. The highest ground over 140 test worlds is 875 m.
+
+Canyons and fjords still cut below sea level. Temperature falls at the old rate up to 200 m, so lowland climate didn't move, and faster above it, so the tops of 500 m ranges carry ice. All ground over 460 m on temperate and ice worlds is snow or ice, and biome altitude rules are scaled to match.
 
 ## Relief
 
@@ -179,30 +198,30 @@ Each landform's own numbers, measured where it holds on a world that has plenty 
 
 | Landform | Gentle (under 5°) | Over 45° | Relief in 1 km | What is checked |
 | --- | --- | --- | --- | --- |
-| plains | 86% | 0% | 38 m | 80% gentle, 40 m or less |
-| steppe | 96% | 0% | 12 m | 80% gentle, 40 m or less |
-| ice plain | 95% | 1% | 18 m | 80% gentle, 40 m or less |
-| basalt plains | 83% | 0% | 21 m | 65% gentle, 40 m or less |
-| rocky desert | 84% | 2% | 100 m | 65% gentle, rock domes allowed |
-| wetlands | 87% | 0% | 15 m | 85% gentle, 15 m, 5-60% water |
-| delta | 94% | 0% | 3 m | 6 channels crossed per arc across the fan |
-| lake district | 78% | 0% | 18 m | 19% under water (8-60%) |
-| hills | 34% | 1% | 70 m | 25-400 m, not flat |
-| river valleys | 41% | 3% | 65 m | flat floors between bluffs |
-| mountains | 1% | 61% | 1130 m | 220 m and a quarter over 30° |
-| fjords | 2% | 41% | 782 m | steep walls, 24% water in the troughs |
-| plateau | 42% | 19% | 170 m | flat tops and cliffs |
-| mesas | 31% | 6% | 119 m | flat tops and cliffs |
-| canyonlands | 36% | 16% | 156 m | flat tops and cliffs |
-| badlands | 3% | 1% | 62 m | 33% over 30°: dense gullies |
-| dune sea | 20% | 0% | 31 m | crests 28 m, correlation 0.45 one wavelength along the wind, -0.62 at half |
-| karst | 82% | 7% | 108 m | towers out of a flat plain |
-| coastal cliffs | 22% | 1% | 159 m | 85% of its shore rises 15 m within 60 m |
-| archipelago | 36% | 0% | 46 m | 54% water |
-| volcanic field | 31% | 0% | 131 m | cones |
-| shard fields | 23% | 11% | 143 m | spires |
-| dome fields | 20% | 0% | 136 m | rolling domes |
-| ringlands | 79% | 0% | 40 m | ring ridges on open ground |
+| plains | 87% | 0% | 38 m | 80% gentle, 40 m or less |
+| steppe | 97% | 1% | 13 m | 80% gentle, 40 m or less |
+| ice plain | 94% | 1% | 18 m | 80% gentle, 40 m or less |
+| basalt plains | 73% | 1% | 19 m | 65% gentle, 40 m or less |
+| rocky desert | 84% | 3% | 100 m | 65% gentle, rock domes allowed |
+| wetlands | 88% | 1% | 12 m | 85% gentle, 15 m, 5-60% water |
+| delta | 93% | 0% | 3 m | 6 channels crossed per arc across the fan |
+| lake district | 78% | 3% | 18 m | 19% under water (8-60%) |
+| hills | 39% | 0% | 63 m | 25-400 m, not flat |
+| river valleys | 46% | 7% | 98 m | flat floors between bluffs |
+| mountains | 0% | 91% | 620 m | 220 m and a quarter over 30° |
+| fjords | 2% | 61% | 338 m | steep walls, 24% water in the troughs |
+| plateau | 42% | 23% | 170 m | flat tops and cliffs |
+| mesas | 29% | 10% | 119 m | flat tops and cliffs |
+| canyonlands | 36% | 22% | 156 m | flat tops and cliffs |
+| badlands | 3% | 33% | 62 m | 33% over 30°: dense gullies |
+| dune sea | 20% | 4% | 41 m | crests 38 m, correlation 0.41 one wavelength along the wind, -0.60 at half |
+| karst | 82% | 10% | 108 m | towers out of a flat plain |
+| coastal cliffs | 22% | 3% | 159 m | 85% of its shore rises 15 m within 60 m |
+| archipelago | 36% | 4% | 46 m | 54% water |
+| volcanic field | 31% | 4% | 131 m | cones |
+| shard fields | 23% | 22% | 143 m | spires |
+| dome fields | 20% | 1% | 136 m | rolling domes |
+| ringlands | 79% | 3% | 40 m | ring ridges on open ground |
 
 The relief work before landforms (still in the engine): plateaus and escarpments with jagged, wandering edges (sheer in places, a walkable ramp in others); canyons whose width and depth vary along them; mesa steps that fade out up the flanks of real peaks; river channels that meander off their coarse polylines, with ragged gorge walls where they cut through high ground.
 
@@ -254,8 +273,9 @@ On the surface, the HUD shows the distance to the nearest deposit of each starte
 .\tools\test.ps1 -Project prototypes/planet-generator -Scene res://tests/ViewTest.tscn
 ```
 
-`tests/GenTest.tscn` runs headless in about 95 s and checks (`-- --only=Relief,Distinctness` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
+`tests/GenTest.tscn` runs headless in about 150 s and checks (`-- --only=Relief,Distinctness` runs just the named checks). `-- --only=Survey`, `-- --list=a:v:first:count` and `-- --world=a:v:seed` are tuning aids that print worlds' landforms. The checks:
 - **Determinism:** identical map hash and identical fine terrain from the same spec.
+- **Terrain ceiling:** over 140 worlds of every variant, Highlands included: nothing stands over 900 m, most ranges top out about 500 m, ground over 600 m is rare and the greatest peaks still reach 700 m, other landforms stay on the 500 m scale, and high ground carries ice.
 - **Size classes:** the roll keeps to its odds over 200,000 seeds, moons stay small, start worlds are 16x8 km, and `Roll` without a width is still 16 km.
 - **Sized worlds:** at all four sizes regions stay square and 1.6-4 km across, and about a fifth of worlds are one landform. At 8x4 and 64x32 km, landform patches run as far across as down, and plains, mountains and dune seas keep their character. The colour map and globe build at every size with no seam, and a whole 64x32 km world costs under 16 s.
 - **Seamless wrap, both ways:** the step across each seam falls within the range of every other column (or row) pair. The fine terrain is continuous across both seams and at all four corners at once: height and normal differences shrink tenfold when the gap does.
@@ -328,6 +348,7 @@ The generator's public API only grew. Nothing was renamed or removed, and downst
 | planet-surface `tests/SurfaceTest.cs`, solids | The big boulder is sought over 150 m, then on the nearest rocky ground | Big rocks are a third of a pine forest's few rocks: none within 60 m of this forest stood a metre tall |
 | planet-surface `src/Poi/PoiSiting.cs` | A half-buried ruin's tilt hinges on its way in | It hinged on the footprint's front edge, 4-6 m ahead of the door, so the ground stood 0.7 m over the sill. Both blocked ways in were this |
 | planet-surface `src/Terrain/GroundPalette.cs` | Soil colours soften as the generator's do | The same square biome edges, on the voxel ground and the far rings |
+| planet-surface `src/World/PlanetWorld.cs` | Snow lines lowered: temperate 620 to 380 m and 900 to 500 m, alien 800 to 500 m, and arid gains one at 640 m | They were set for ranges over a kilometre high |
 | slice `tests/Driver.cs` | Walking to a seat never digs | The stuck rescue dug beside the hull, the dig woke the landed vessel, and Space on an awake vessel raises no `LiftedOff` |
 | slice `src/Game/Game.cs` | The flight stick snaps to zero under 1e-4 | Its decay never reached zero, so two hops started on different inputs; the difference showed as 1 ULP of height. The check stays exact |
 | slice `tests/SliceTest.cs` | The hunter spawns on dry ground | On a low shore it could spawn in the water creatures keep out of, and stand there |
@@ -364,7 +385,8 @@ The generator's public API only grew. Nothing was renamed or removed, and downst
    - **Kept.** The discovery card, base and town no-spawn zones, day and night, cave and POI fauna and domestic animals are untouched. No new popups.
 3. **Far rings.** planet-surface's far rings use the source's heights directly, which is right. Any far mesh lowered to sit under detailed chunks must sink low ground less: deltas, wetlands and coastal plains sit at 1.7-3 m and would show under the sea, as the generator's own far ring did (fixed here).
 4. **Biomes.** Landform hints use existing biomes only, so `PoiSiting` and `BiomeLook` need nothing.
-5. **Size classes.** To use them, call `PlanetSpec.RollSized(seed, archetype, variant, kind)` where a world is rolled. The slice's start worlds pass `WorldKind.Start`. Worlds of 8x4, 32x16 and 64x32 km have not been run through planet-surface, the slice or capital-base: check streaming, POI placement (`PoiSiting.MaxSites` is fixed at 14 whatever the size) and landing first.
-6. **The shared walker** (`shared/Physics/Core/WalkController.cs`, line 115). It accelerates per axis, as planet-surface's walker did. The fix is the same if the sidestep matters there. Not changed here: it is shared with every prototype.
-7. **Lift-off after a wake** (`shared/Physics/Core/VesselController.cs`). A landed vessel woken by a dig or a ram, then flown, raises no `LiftedOff` and stays `Parked` in flight, because `TryWake` only runs while it is frozen or settling. Harmless today: `Parked` only matters with nobody at the controls.
-8. **Fjord walls in planet-surface.** The streak fix here is in this viewer's terrain shader. planet-surface has its own, with strata already. Worth a look at its walls in the same light.
+5. **Cloud base.** The greatest peaks rise to 875 m, through the cloud layer's base at about 600 m. Phase 2 owns the clouds, and this is on purpose: they stand out of it.
+6. **Size classes.** To use them, call `PlanetSpec.RollSized(seed, archetype, variant, kind)` where a world is rolled. The slice's start worlds pass `WorldKind.Start`. Worlds of 8x4, 32x16 and 64x32 km have not been run through planet-surface, the slice or capital-base: check streaming, POI placement (`PoiSiting.MaxSites` is fixed at 14 whatever the size) and landing first.
+7. **The shared walker** (`shared/Physics/Core/WalkController.cs`, line 115). It accelerates per axis, as planet-surface's walker did. The fix is the same if the sidestep matters there. Not changed here: it is shared with every prototype.
+8. **Lift-off after a wake** (`shared/Physics/Core/VesselController.cs`). A landed vessel woken by a dig or a ram, then flown, raises no `LiftedOff` and stays `Parked` in flight, because `TryWake` only runs while it is frozen or settling. Harmless today: `Parked` only matters with nobody at the controls.
+9. **Fjord walls in planet-surface.** The streak fix here is in this viewer's terrain shader. planet-surface has its own, with strata already. Worth a look at its walls in the same light.
