@@ -27,6 +27,9 @@ public partial class StructureView : RigidBody3D
     public StructureStats Stats { get; private set; }
     public float CellSize => Structure.Grid.CellSize;
 
+    /// <summary>Sparks, chips, marks and smoke on this structure.</summary>
+    public DamageFx Fx { get; private set; }
+
     readonly Dictionary<Int3, ChunkNode> _chunks = new();
     readonly ChunkMeshData _scratch = new();
     readonly List<OmniLight3D> _lights = new();
@@ -48,6 +51,9 @@ public partial class StructureView : RigidBody3D
         FreezeMode = FreezeModeEnum.Static;
         Freeze = !Structure.IsWreck;
         AngularDamp = 0.6f;
+        Fx = new DamageFx { Name = "DamageFx" };
+        AddChild(Fx);
+        Fx.Setup(Structure);
         foreach (Int3 c in Structure.Chunks.Keys) Structure.DirtyChunks.Add(c);
         Sync();
     }
@@ -92,11 +98,14 @@ public partial class StructureView : RigidBody3D
         {
             node.Mesh.QueueFree();
             _chunks.Remove(c);
+            _scratch.Clear();
+            Fx?.Smoke(c, _scratch.Smoking);
             return;
         }
 
         ChunkMesher.Build(Structure, c, _scratch);
         node.Mesh.Mesh = ChunkMesher.ToMesh(_scratch);
+        Fx?.Smoke(c, _scratch.Smoking);
         foreach (var (center, size) in _scratch.Boxes)
             node.Shapes.Add(new CollisionShape3D { Shape = new BoxShape3D { Size = size }, Position = center });
         foreach (Vector3[] hull in _scratch.Hulls)

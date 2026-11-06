@@ -20,6 +20,9 @@ public enum Collide { Cell, Parts, None }
 /// <summary>How a component part is drawn. Body faces take the block's paint; the rest are fixed.</summary>
 public enum PartStyle { Body, Dark, Accent, Glow, Glass }
 
+/// <summary>How a block's material shows damage: metal dents and scorches, concrete chips, alien alloy bruises and bleeds light, glass cracks and shatters.</summary>
+public enum DamageLook { Metal, Concrete, Alien, Glass }
+
 /// <summary>Resistance to each damage type, 0 (none) to 1 (immune).</summary>
 public readonly record struct Resist(float Kinetic, float Explosive, float Energy)
 {
@@ -68,6 +71,7 @@ public sealed class BlockType
     public uint Color, Accent = 0xe85d04, GlowColor = 0xffc46b;
     public FaceTexture Texture = FaceTexture.Panel;
     public byte Metal;
+    public DamageLook DamageLook;
     public string UpgradesTo;
     public BlockType Upgrade;
     public Dictionary<string, int> Cost = new();
@@ -199,7 +203,7 @@ public sealed class Catalogue
                             if (cover == Coverage.Full) _full[i] |= bit;
                             bool occludes = t.IsArmor
                                 ? !t.Transparent && cover == Coverage.Full
-                                : BlockType.Has(open == 1 ? t.CoverFacesOpen : t.CoverFaces, local);
+                                : BlockType.Has(open == 1 ? t.CoverFacesOpen : t.CoverFaces, local) && PartsCover(t, local, open == 1);
                             if (occludes) _occlude[i] |= bit;
                             bool seals = t.IsArmor
                                 ? t.Airtight && cover == Coverage.Full
@@ -208,6 +212,23 @@ public sealed class Catalogue
                         }
                     }
         }
+    }
+
+    /// <summary>
+    /// True if an opaque part really lays a whole cell face here, measured as armour's shapes
+    /// are: <c>covers</c> in the data can only narrow this. A thruster's body stops short of its
+    /// nozzle end, so its sides cover 70% of the cell, and hiding the face behind them would leave
+    /// a hole through the construct.
+    /// </summary>
+    static bool PartsCover(BlockType t, Dir local, bool open)
+    {
+        foreach (Part part in t.Parts)
+        {
+            if (part.Style == PartStyle.Glass || (open && part.ClosedOnly)) continue;
+            foreach (Polygon poly in part.Polygons)
+                if (poly.Boundary == local && poly.Area() > 0.999f) return true;
+        }
+        return false;
     }
 
     /// <summary>Full hit points of a placed block: the type's, scaled by the grid and the shape's volume.</summary>
@@ -351,6 +372,7 @@ public sealed class Catalogue
             Metal = (byte)Int(e, "metal", 0),
         };
         t.Name = Str(e, "name", t.Id);
+        t.DamageLook = e.TryGetProperty("damageLook", out JsonElement look) ? Enum.Parse<DamageLook>(look.GetString(), ignoreCase: true) : DamageLook.Metal;
         if (e.TryGetProperty("resist", out JsonElement r))
             t.Resist = new Resist(Num(r, "kinetic", 0), Num(r, "explosive", 0), Num(r, "energy", 0));
         t.Color = Color(e, "color", 0xc9c3b4);

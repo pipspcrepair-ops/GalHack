@@ -100,7 +100,7 @@ public sealed class Playthrough
     /// <summary>
     /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
     /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
-    /// wall and the tool on the floor, harmless,) up the stairwell to the surface, 50 m away, back
+    /// wall, which wears it, and the tool on the floor,) up the stairwell to the surface, 50 m away, back
     /// down into the bunker, and out again.
     /// </summary>
     public IEnumerable<int> WakeAndLeave(Action<bool, string> check, string label = "", bool shoot = false)
@@ -133,12 +133,13 @@ public sealed class Playthrough
         if (shoot)
         {
             int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
+            float health = b.Ruin.Structure.Blocks().Sum(x => x.block.Hp);
             Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.0f));
             foreach (int x in ShootAt(() => wall)) yield return x;
             foreach (int x in Drive.Wait(20)) yield return x;
             check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
-                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Body.Damage == 0f,
-                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, no harm done");
+                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Structure.Blocks().Sum(x => x.block.Hp) < health,
+                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, and the block it hit loses hit points");
             int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
             foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;

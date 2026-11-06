@@ -34,6 +34,7 @@
          material; planet-surface's planet build, voxel and far-ring meshing, palette and sky data. -->
     <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="..\building\src\Presentation\DamageFx.cs" />
     <Compile Include="..\planet-surface\src\World\PlanetWorld.cs" />
     <!-- Only for PlanetWorld's NearestCopy: this prototype draws a fixed patch, not a stream. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.cs" />

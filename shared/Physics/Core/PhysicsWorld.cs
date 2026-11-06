@@ -470,8 +470,8 @@ public sealed class PhysicsWorld
         other.Asleep = false;
 
         float damage = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
-        Hurt(body, damage);
-        Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
+        Hurt(body, damage, c.Point, c.Normal);
+        Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind), c.Point, -c.Normal);
         (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
         if (closing > Rules.Contacts.EventSpeed)
             Impact?.Invoke(new ImpactInfo(body, other, c.Point, c.Normal, closing, damage, Surface.Body, 0f));
@@ -489,15 +489,15 @@ public sealed class PhysicsWorld
             if (!_pairs.Add(Pair(body, other))) return;
             float mu = Impacts.ReducedMass(body.Mass, MassOf(other));
             float both = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
-            Hurt(body, both);
-            Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
+            Hurt(body, both, point, normal);
+            Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind), point, -normal);
             if (closing > Rules.Contacts.EventSpeed)
                 Impact?.Invoke(new ImpactInfo(body, other, point, normal, closing, both, Surface.Body, 0f));
             return;
         }
 
         float damage = Impacts.Damage(body.Mass, closing, Rules.Contacts, body.Kind);
-        Hurt(body, damage);
+        Hurt(body, damage, point, normal);
         float crater = 0f;
         if (surface == Surface.Ground && normal.Y > 0.5f && Terrain != null)
         {
@@ -535,6 +535,15 @@ public sealed class PhysicsWorld
     {
         if (raw <= 0f) return 0f;
         float dealt = body.DamageSink?.Take(body, raw) ?? raw;
+        body.Damage += dealt;
+        return dealt;
+    }
+
+    /// <summary>The same, knowing where it struck: <paramref name="into"/> is the way into the body from the point (a contact's normal, for the body it points at).</summary>
+    public float Hurt(Body body, float raw, Vector3 point, Vector3 into)
+    {
+        if (raw <= 0f) return 0f;
+        float dealt = body.DamageSink is ILocatedDamageSink located ? located.TakeAt(body, raw, point, into) : body.DamageSink?.Take(body, raw) ?? raw;
         body.Damage += dealt;
         return dealt;
     }

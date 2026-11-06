@@ -8,6 +8,7 @@
 //   cpu        CPU cost per block
 //   color      bare-metal colour (unpainted faces)
 //   metal      0..3, how polished the bare metal looks
+//   damageLook metal (the default), concrete, alien or glass: how the block shows damage
 //   cost       recipe for a large-grid cube
 //   smallCost  recipe for a small-grid cube: cheap, common materials only
 // Each material leans to a damage type: hardened shrugs off kinetic, combat explosive.
@@ -36,13 +37,13 @@
     {
       "id": "glass", "name": "Glass",
       "hp": 250, "armor": 2, "resist": { "kinetic": 0.05, "explosive": 0.05, "energy": 0.30 },
-      "mass": 0.6, "cpu": 15, "color": "a8e0ee", "transparent": true,
+      "mass": 0.6, "cpu": 15, "color": "a8e0ee", "transparent": true, "damageLook": "glass",
       "cost": { "silicon": 8 }, "smallCost": { "silicon": 2 }
     },
     {
       "id": "concrete", "name": "Concrete",
       "hp": 400, "armor": 8, "resist": { "kinetic": 0.15, "explosive": 0.20, "energy": 0.20 },
-      "mass": 2.4, "cpu": 10, "color": "b9b2a4", "metal": 0,
+      "mass": 2.4, "cpu": 10, "color": "b9b2a4", "metal": 0, "damageLook": "concrete",
       "cost": { "silicon": 8, "iron": 2 }, "smallCost": { "silicon": 2 }
     }
   ]

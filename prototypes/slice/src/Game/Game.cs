@@ -491,6 +491,8 @@ public partial class Game : Node3D
 
     void OnBitten(AttackEvent e)
     {
+        // A lunge that meets a wall on the way lands on the wall.
+        if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
         Visor.Hurt(Zone.Wildlife.FromPatch(e.Creature.Position));

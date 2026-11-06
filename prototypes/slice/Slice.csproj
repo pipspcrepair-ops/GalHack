@@ -63,6 +63,7 @@
     <Compile Include="..\planet-surface\src\WeatherView\TornadoFx.cs" />
     <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="..\building\src\Presentation\DamageFx.cs" />
     <Compile Include="..\building\src\Presentation\GhostPreview.cs" />
     <Compile Include="..\wildlife\src\View\**\*.cs" />
     <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />
@@ -75,5 +76,6 @@
 
     <!-- Test helpers, used where they live: planet-surface's per-frame timing probe. -->
     <Compile Include="..\planet-surface\tests\FrameProbe.cs" />
+    <Compile Include="..\building\tests\OcclusionCheck.cs" />
   </ItemGroup>
 </Project>

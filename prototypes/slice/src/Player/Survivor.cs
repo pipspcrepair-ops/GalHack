@@ -199,6 +199,7 @@ public sealed class Survivor
         if (vessel.Seat == null || vessel.IsWreck) return false;
         if (Aboard != vessel) PlaceAboard(vessel, vessel.Seat.Value);
         Seated = vessel;
+        vessel.SeatLost += StandUp;
         Body.Asleep = true;
         Node.CollisionLayer = 0;
         Node.CollisionMask = 0;
@@ -214,6 +215,7 @@ public sealed class Survivor
         Vessel vessel = Seated;
         if (vessel == null) return;
         Seated = null;
+        vessel.SeatLost -= StandUp;
         if (vessel.Flight != null) vessel.Flight.Input = ShipHandling.Handling.PilotInput.Autopilot; // nobody at the controls: it holds course
         Body.Asleep = false;
         MoveNodeTo(vessel.Cabin, inCabin: true);
