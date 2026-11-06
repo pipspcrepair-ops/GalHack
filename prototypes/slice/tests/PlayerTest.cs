@@ -63,6 +63,7 @@ public partial class PlayerTest : Node
     string _said = "";
     float _topFall;
     Device _fab;
+    Vector3 _pad;
 
     public override void _Ready()
     {
@@ -265,6 +266,25 @@ public partial class PlayerTest : Node
         int shots = 0, stalls = 0;
         bool hit = false;
         float close = 25f;
+        int flights = 0;
+        float Above() => w.FromPatch(_prey.Position).Y - _game.Survivor.WorldFeet.Y;
+        // Up over it on the jetpack, firing down whenever it is in range, as a player would.
+        IEnumerable<int> FlyAtPrey()
+        {
+            GD.Print($"  (the {_prey.Species.CommonName} stands {Above():F0} m up a bank: up over it on the jetpack, shooting)");
+            foreach (int x in _play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+            float was = _prey.Health;
+            foreach (int x in _drive.HopToward(w.FromPatch(_prey.Rig.BoundsCenter), 14f, 2f,
+                () =>
+                {
+                    if (_prey.Health >= was) return _prey.Dead;
+                    was = _prey.Health;
+                    hit |= _game.Shots.LastImpact.Kind == ImpactKind.Creature;
+                    return _prey.Dead;
+                },
+                () => { _game.Controls.Primary = true; _game.Controls.PrimaryPressed = true; })) yield return x;
+            _game.Controls.ReleaseAll();
+        }
         GD.Print($"  (the way to it on foot: {(stalk == null ? "none found, straight at it" : $"{stalk.Count} steps over {ground.Count} cells of walkable ground")})");
         if (stalk != null)
             foreach (Vector3 step in stalk)
@@ -281,6 +301,14 @@ public partial class PlayerTest : Node
                 foreach (int x in _drive.WalkTo(at, close * 0.6f, 20f)) yield return x;
                 // A river or a cliff between you and it: a hunter picks another.
                 stalls = w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldFeet) > off - 5f ? stalls + 1 : 0;
+                // Up a bank too steep to stand on, where every step slides back: over it on the jetpack.
+                if (stalls >= 2 && flights < 2 && Above() > 2.5f)
+                {
+                    flights++;
+                    foreach (int x in FlyAtPrey()) yield return x;
+                    stalls = 0;
+                    continue;
+                }
                 if (stalls >= 2 && shots == 0 && NextPrey() is Creature next && tried.Add(_prey))
                 {
                     next = NextPrey();
@@ -298,6 +326,12 @@ public partial class PlayerTest : Node
             shots++;
             if (_prey.Health >= before) close = MathF.Max(2.5f, close * 0.6f); // something in the way (a bank, a crest): closer
             else hit |= _game.Shots.LastImpact.Kind == ImpactKind.Creature;
+            // The crest it stands behind is its own slope, and you can't stand on that: from the air.
+            if (!_prey.Dead && _prey.Health >= before && flights < 2 && Above() > 2.5f)
+            {
+                flights++;
+                foreach (int x in FlyAtPrey()) yield return x;
+            }
         }
         w.Swapped -= carried;
         Check(hit && (_prey.Dead || _prey.Health < health), $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
@@ -626,6 +660,7 @@ public partial class PlayerTest : Node
         Check(!_game.Suit.InSealedRoom, "a command chair in the open gives no air: only a sealed room does");
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 start = v.Body.Position.ToGodot();
+        _pad = start;
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 120; i++) yield return 0;
@@ -637,9 +672,14 @@ public partial class PlayerTest : Node
             float flat = new Vector2(to.X, to.Z).Length();
             if (flat < 30f) break;
             Steer(v, to, flat);
+            // Height over the ground under it and over what it is flying at: at 70 m/s a hillside
+            // arrives faster than a look straight down can tell, as a pilot looking ahead knows.
             float agl = v.AboveGround;
+            for (float ahead = 1f; ahead <= 5f; ahead += 1f)
+                agl = MathF.Min(agl, p.Y - _game.Zone.GroundAt(p.X + v.Body.Velocity.X * ahead, p.Z + v.Body.Velocity.Z * ahead).Y);
             _game.Controls.Hold(Key.Space, agl < 45f);
             _game.Controls.Hold(Key.Ctrl, agl > 80f);
+            if (agl < 20f) _game.Controls.Hold(Key.W, false);
             top = MathF.Max(top, v.Body.Velocity.Length());
             yield return 0;
         }
@@ -663,25 +703,40 @@ public partial class PlayerTest : Node
         Mark("flown");
     }
 
-    /// <summary>The flattest stretch of ground (16 m across) a walk out from the bunker reaches: along its walkable ways, 20 to 120 m out.</summary>
+    /// <summary>
+    /// The flattest stretch of ground (24 m across) with nothing built on it, along the bunker's walkable
+    /// ways, 20 to 120 m out, or round the places already walked to (the base, the fabricator, the pad).
+    /// A fall that hits a slope of more than about 14 degrees only glances: the hit counts along the
+    /// slope's normal, so a hillside world can leave nothing near the bunker that a fall kills on.
+    /// </summary>
     Vector3 FlattestOut(Bunker b)
     {
         Vector3 best = b.Outside;
         float bestSpread = float.MaxValue;
-        foreach (Vector3 way in b.Ways.Count > 0 ? b.Ways : new List<Vector3> { (b.Outside - b.StairTop).Normalized() })
-            for (float d = 20f; d <= 120f; d += 10f)
+        bool Clear(Vector3 p) => !b.Over(p, 8f) && _game.Zone.Devices.All(d => d.GlobalPosition.DistanceTo(p) > 8f)
+            && _game.Zone.Vessels.All(v => v == _vessel || v.IsWreck || v.IsRuin || new Vector2(v.Body.Position.X - p.X, v.Body.Position.Z - p.Z).Length() > 24f);
+        void Try(Vector3 p)
+        {
+            float h = _game.Zone.GroundAt(p.X, p.Z).Y, spread = 0f;
+            if (h < 2f || !Clear(p)) return;
+            for (int k = 0; k < 12; k++)
             {
-                Vector3 p = b.Outside + way * d;
-                float h = _game.Zone.GroundAt(p.X, p.Z).Y, spread = 0f;
-                if (h < 2f) continue;
-                for (int k = 0; k < 12; k++)
-                {
-                    float a = k * MathF.Tau / 12f;
-                    foreach (float r in new[] { 4f, 8f, 12f })
-                        spread = MathF.Max(spread, MathF.Abs(_game.Zone.GroundAt(p.X + MathF.Cos(a) * r, p.Z + MathF.Sin(a) * r).Y - h) / r);
-                }
-                if (spread < bestSpread) { bestSpread = spread; best = _game.Zone.GroundAt(p.X, p.Z); }
+                float a = k * MathF.Tau / 12f;
+                foreach (float r in new[] { 4f, 8f, 12f })
+                    spread = MathF.Max(spread, MathF.Abs(_game.Zone.GroundAt(p.X + MathF.Cos(a) * r, p.Z + MathF.Sin(a) * r).Y - h) / r);
             }
+            if (spread < bestSpread) { bestSpread = spread; best = _game.Zone.GroundAt(p.X, p.Z); }
+        }
+        foreach (Vector3 way in b.Ways.Count > 0 ? b.Ways : new List<Vector3> { (b.Outside - b.StairTop).Normalized() })
+            for (float d = 20f; d <= 120f; d += 10f) Try(b.Outside + way * d);
+        var walked = new List<Vector3> { _pad };
+        if (_base != null) walked.Add(_base.Body.Position.ToGodot());
+        if (_fab != null) walked.Add(_fab.GlobalPosition);
+        foreach (Vector3 place in walked)
+            for (float d = 16f; d <= 64f; d += 8f)
+                for (int k = 0; k < 16; k++)
+                    Try(place + new Vector3(MathF.Cos(k * MathF.Tau / 16f), 0f, MathF.Sin(k * MathF.Tau / 16f)) * d);
+        GD.Print($"  (the drop: over ground that rises at most {bestSpread:F2} m a metre, {best.DistanceTo(b.Outside):F0} m from the way out)");
         return best;
     }
 
@@ -749,7 +804,7 @@ public partial class PlayerTest : Node
             float flat = new Vector2(to.X, to.Z).Length();
             N.Vector3 vel = v.Body.Velocity;
             float speed = new Vector2(vel.X, vel.Z).Length();
-            if (v.AboveGround >= 220f && flat < 10f && speed < 3f) break;
+            if (v.AboveGround >= 220f && flat < 4f && speed < 3f) break;
             if (v.Body.Position.Y > _game.Zone.Physics.Zone.Ceiling - 500f) break;
             Steer(v, to, flat);
             // Right over it, not near it: forward while far and slow enough to stop, back thrust to brake.
