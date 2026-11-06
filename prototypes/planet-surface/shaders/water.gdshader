@@ -16,6 +16,7 @@ uniform vec3 shallow : source_color = vec3(0.1, 0.45, 0.5);
 uniform vec3 deep : source_color = vec3(0.02, 0.12, 0.2);
 uniform bool lava = false;
 uniform float glow = 0.0;
+uniform float daylight = 1.0;   // how lit the underside is from above
 
 varying vec3 wpos;
 
@@ -47,6 +48,19 @@ void fragment() {
 		ALBEDO = c * 0.4;
 		EMISSION = c * glow * (0.12 + hot);
 		ROUGHNESS = 0.8;
+	} else if (!FRONT_FACING) {
+		// The surface from below: a bright rippling window straight overhead (the sky through the
+		// water, Snell's window) closing to the water's own dark mirror further off.
+		vec3 view = normalize(wpos - CAMERA_POSITION_WORLD);
+		float window = smoothstep(0.62, 0.86, view.y);
+		float rip = pnoise(vec3(p.x * 0.7, t * 0.6, p.y * 0.7), planet_size * 0.7) * 0.6
+			+ pnoise(vec3(p.x * 2.1, t * 1.1, p.y * 2.1), planet_size * 2.1) * 0.4;
+		float shimmer = smoothstep(0.35, 0.72, rip);
+		vec3 sky = mix(shallow, vec3(0.78, 0.92, 0.96), 0.6);
+		ALBEDO = vec3(0.0);
+		SPECULAR = 0.0;
+		ROUGHNESS = 1.0;
+		EMISSION = mix(mix(deep, shallow, 0.5 + 0.4 * shimmer) * 0.45, sky * (0.8 + 1.1 * shimmer), window) * daylight;
 	} else {
 		vec2 wind = weather_wind.xy * (0.3 + min(weather_wind.z, 25.0) * 0.04);
 		vec2 g = vec2(0.0);

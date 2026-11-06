@@ -87,6 +87,8 @@ public sealed class Suit : IDamageSink
         string air = planet.Sky.Air.ToString();
         double oxygen = _climate.OxygenByAir.TryGetValue(air, out double o2) ? o2 : 21;
         if (p.Y > _zone.Physics.Zone.Ceiling) oxygen = 0;
+        // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
+        if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
         double radiation = _climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0;
         return new Exposure(baseline + weather + day + height, oxygen, radiation, null, planet.Palette.BiomeAt(x, z).ToString(), double.PositiveInfinity);
     }

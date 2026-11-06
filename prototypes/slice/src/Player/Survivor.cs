@@ -79,7 +79,8 @@ public sealed class Survivor
     {
         Body body = zone.Physics.Register(new BodySpec
         {
-            Kind = BodyKind.Player, Label = "Survivor", Mass = Mass, DragArea = 0.9f,
+            // Lighter than water with the suit's air: it floats with the eyes well clear of the surface.
+            Kind = BodyKind.Player, Label = "Survivor", Mass = Mass, DragArea = 0.9f, Density = 700f,
             Shape = new StuckShape(Height, Radius), Position = feet,
         });
         var c = new CharacterBody3D { Name = "Survivor", CollisionLayer = Layers.Player, CollisionMask = Layers.PlayerMask };

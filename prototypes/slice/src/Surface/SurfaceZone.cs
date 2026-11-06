@@ -47,6 +47,14 @@ public partial class SurfaceZone : Node3D
     public PlanetGround Ground { get; private set; }
     public MeshInstance3D Sea { get; private set; }
 
+    /// <summary>The seas and rivers as a volume: what bodies swim in, and what the view sinks into.</summary>
+    public PlanetWater Water { get; private set; }
+
+    /// <summary>What the camera sees under the surface.</summary>
+    public UnderwaterView Underwater { get; protected set; }
+
+    ShaderMaterial _seaMaterial, _riverMaterial;
+
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
     public PlanetSurface.Fx.Sfx Sfx { get; protected set; }
 
@@ -114,6 +122,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Wildlife);
         Blood = new BloodFx { Name = "Blood" };
         AddChild(Blood);
+        Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
+        AddChild(Underwater);
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
@@ -153,13 +163,16 @@ public partial class SurfaceZone : Node3D
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
+        Water = new PlanetWater(Planet);
+        Physics.Water = Water;
 
         Pois.Build(Planet);
         Infra.Build(Planet);
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
-        Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
-        Sea.MaterialOverride = WaterMaterial(sea: true);
+        Streamer.SetWorld(Planet, landing, _riverMaterial = WaterMaterial(sea: false));
+        Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
         Sky.SetWorld(Planet);
+        Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
         Wildlife.SetWorld(Planet, landing);
         Built?.Invoke();
@@ -250,6 +263,11 @@ public partial class SurfaceZone : Node3D
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
         Sky.PlaceCloudDeck(eye);
+        Underwater.Follow(eye, Camera);
+        // The water's underside is lit by the day above it.
+        float day = 0.15f + 0.85f * Sky.Daylight;
+        _seaMaterial.SetShaderParameter("daylight", day);
+        _riverMaterial.SetShaderParameter("daylight", day);
     }
 
     public override void _PhysicsProcess(double delta)

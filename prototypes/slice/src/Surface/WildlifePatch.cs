@@ -105,14 +105,26 @@ public partial class WildlifePatch : Node3D
     static (Terrain, NavGrid, Vector3) Bake(PlanetWorld planet, Vector3 origin, float halfSize)
     {
         float ox = origin.X, oz = origin.Z;
-        var terrain = new Terrain((x, z) => planet.GroundHeight(Mathx.WrapX(ox + x, planet.Width), Mathx.Wrap(oz + z, planet.Height)), halfSize);
+        // Land animals don't sink: over water their ground is the surface, less a body's draught, so at
+        // the very most one driven in floats. Pure generator reads: safe on a worker.
+        float Height(float x, float z)
+        {
+            double wx = Mathx.WrapX(ox + x, planet.Width), wz = Mathx.Wrap(oz + z, planet.Height);
+            float ground = planet.GroundHeight(wx, wz);
+            return planet.Source.WaterSurfaceAt(wx, wz, out float surface) ? MathF.Max(ground, surface - Draught) : ground;
+        }
+        var terrain = new Terrain(Height, halfSize);
         var nav = new NavGrid(terrain.HalfSize, 3f);
-        // Creatures keep out of the sea and the rivers.
+        // Creatures keep out of the sea and the rivers, coming no nearer than the edge to drink.
         for (float z = -terrain.HalfSize + 3f; z < terrain.HalfSize; z += 6f)
         for (float x = -terrain.HalfSize + 3f; x < terrain.HalfSize; x += 6f)
-            if (terrain.Height(x, z) < 0.5f) nav.AddObstacle(new Vector3(x, 0f, z), 3.5f);
+            if (terrain.Height(x, z) < 0.5f || planet.Source.WaterSurfaceAt(Mathx.WrapX(ox + x, planet.Width), Mathx.Wrap(oz + z, planet.Height), out _))
+                nav.AddObstacle(new Vector3(x, 0f, z), 3.5f);
         return (terrain, nav, origin);
     }
+
+    /// <summary>How far below the surface a land animal's feet hang when it floats, metres.</summary>
+    public const float Draught = 0.35f;
 
     /// <summary>
     /// A new patch takes over: creatures standing inside it come across where they stand, and
