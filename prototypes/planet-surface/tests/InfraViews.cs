@@ -69,6 +69,17 @@ public static class InfraViews
                 return Look(w, vx, vz, Math.Max(c.Y + 7f, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 3f), c.X + c.DirX * 3, c.Z + c.DirZ * 3, c.Y + 1f);
             }
         }
+        // A close look at a vehicle in a jam.
+        if (what == "wreck-close" && net.Wrecks.Any(wk => wk.Site is "evacuation-jam" or "pile-up"))
+        {
+            WreckSite site = net.Wrecks.Where(wk => wk.Site is "evacuation-jam" or "pile-up").OrderBy(wk => Away(wk.X, wk.Z)).First();
+            GalHack.Deco.DecoPlan plan = PlanetSurface.Infra.InfraDeco.DressSite(site.Site, site.Seed, site.Tech);
+            var car = plan.Placements.First(p => p.Piece is "sedan" or "hatchback" or "pickup" or "van" or "old-truck");
+            var (cx, cz) = site.World(car.X, car.Z);
+            double vx = cx + site.DirZ * 5.5 + site.DirX * 2.5, vz = cz - site.DirX * 5.5 + site.DirZ * 2.5;
+            float gy = w.GroundHeight(Mathx.WrapX(cx, w.Width), Mathx.Wrap(cz, w.Height));
+            return Look(w, vx, vz, gy + 1.6f, cx, cz, gy + 0.6f);
+        }
         // A wreck site: evacuation-jam, pile-up, roadblock, car-park, derelict-train, derailed-train, airliner-crash.
         if (net.Wrecks.Any(wk => wk.Site == what))
         {

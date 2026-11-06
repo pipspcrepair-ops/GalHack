@@ -60,6 +60,37 @@ public partial class PoiPlaces
     /// <summary>Registers something the tool can salvage (flavour ruins, vehicle wrecks).</summary>
     public void AddSalvage(SalvageSite site) => _salvage[site.Body.GetInstanceId()] = site;
     public void RemoveSalvage(SalvageSite site) => _salvage.Remove(site.Body.GetInstanceId());
+    /// <summary>Things the tool can salvage standing round the world right now (tests).</summary>
+    public IEnumerable<SalvageSite> SalvageSites => _salvage.Values;
+
+    /// <summary>A site of abandoned vehicles stands: each is the tool's to take apart for what it's made of, and once stripped it stays gone.</summary>
+    public void WreckStood(PlanetSurface.Infra.WreckSite site, GalHack.Deco.Engine.DecoPlanView view)
+    {
+        Decor decor = Decor.Shared;
+        if (decor == null) return;
+        for (int i = 0; i < view.Nodes.Count; i++)
+        {
+            GalHack.Deco.Engine.DecoNode node = view.Nodes[i];
+            if (node.Body == null) continue;
+            DecoPiece piece = decor.Catalogue.Piece(node.Look.Piece);
+            Bill bill = piece.Salvage != null ? decor.Catalogue.SalvageYield(piece.Salvage) : piece.Bill;
+            var left = new Bill();
+            foreach (var (id, n) in bill)
+                if (Zone.Data.Items.Has(id)) left.Add(id, n);
+            if (left.IsEmpty) continue;
+            long id2 = PlanetSurface.Infra.InfraLayer.WreckId(site, view.Plan.Placements.IndexOf(node.Placement ?? view.Plan.Placements[Math.Min(i, view.Plan.Placements.Count - 1)]));
+            var s = new SalvageSite { Name = piece.Name, Body = node.Body, Left = left, Shares = 4, HitPoints = (piece.Hp > 0 ? piece.Hp : 400f) / 4f };
+            s.Emptied = _ =>
+            {
+                Zone.Planet.Felled.Add(id2);
+                RemoveSalvage(s);
+                node.QueueFree();
+            };
+            AddSalvage(s);
+            node.TreeExiting += () => RemoveSalvage(s);
+        }
+    }
+
     public SalvageSite SalvageOf(GodotObject collider) => collider != null && _salvage.TryGetValue(collider.GetInstanceId(), out SalvageSite s) ? s : null;
 
     /// <summary>Blocks and pieces salvaged so far, and hidden walls broken (tests and stats).</summary>

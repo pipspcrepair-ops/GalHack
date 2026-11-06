@@ -172,6 +172,12 @@ public partial class InfraLayer : Node3D
                 {
                     Node3D part = tile.Steps.Dequeue()();
                     if (part != null) tile.Node.AddChild(part);
+                    if (part is DecoPlanView wreck && wreck.HasMeta("wreck"))
+                    {
+                        foreach (DecoNode gone in wreck.Nodes.Where(n => !n.Visible)) gone.QueueFree();
+                        wreck.Nodes.RemoveAll(n => !n.Visible);
+                        WreckStood?.Invoke(_world.Infra.Wrecks[(int)wreck.GetMeta("wreck")], wreck);
+                    }
                     steps++;
                 }
             }

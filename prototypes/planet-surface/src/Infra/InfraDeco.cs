@@ -67,6 +67,12 @@ public static class InfraDeco
 
 public partial class InfraLayer
 {
+    /// <summary>A vehicle of a wreck site's id among <see cref="PlanetWorld.Felled"/>: one taken apart stays gone, as felled trees do.</summary>
+    public static long WreckId(WreckSite site, int index) => long.MinValue | (long)(Planets.Gen.Hash.Of(site.Seed, index, 0x3EC5) >> 2);
+
+    /// <summary>A wreck site stood up, near the player: a game makes its vehicles salvageable.</summary>
+    public event Action<WreckSite, DecoPlanView> WreckStood;
+
     /// <summary>A site of abandoned vehicles, dressed by the library and set on the ground piece by piece, its lane down the road.</summary>
     sealed class WreckPiece : Piece
     {
@@ -87,6 +93,7 @@ public partial class InfraLayer
                 return (Local: seat.Translation, Tilt: seat with { Translation = NV.Zero });
             }).ToArray();
             NV corner = b.Local(Site.X, Site.Y, Site.Z);
+            PlanetWorld world = b.World;
             float yaw = Mathf.DegToRad(Site.Yaw), siteY = Site.Y;
             b.Extra.Add(() =>
             {
@@ -105,7 +112,9 @@ public partial class InfraLayer
                     // The slope, in the site's frame, under the piece's own turn.
                     var slope = new Basis(new Vector3(t.M11, t.M12, t.M13), new Vector3(t.M21, t.M22, t.M23), new Vector3(t.M31, t.M32, t.M33));
                     view.Nodes[i].Basis = toSite * slope * toSite.Inverse() * view.Nodes[i].Basis;
+                    if (world.Felled.Contains(WreckId(Site, i))) view.Nodes[i].Visible = false; // taken apart: its body goes in the next step
                 }
+                view.SetMeta("wreck", world.Infra.Wrecks.IndexOf(Site));
                 return view;
             });
         }

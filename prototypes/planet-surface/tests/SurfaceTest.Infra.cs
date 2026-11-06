@@ -401,6 +401,52 @@ public partial class SurfaceTest
         Check(cutOff == 0 && roadless == 0 && places > 8 && ruins > 8, $"every place and ruin is on a road: {places} places ({cutOff} cut off), {ruins} ruins ({roadless} without), {sea} over the sea; {km:F0} km of road, {highways} highways, {bridges} bridges{first}");
     }
 
+    /// <summary>
+    /// The deco audit: a car is a car against a 1.8 m person, a century keeps the main part of everything
+    /// but what really rots away (a mattress, hay, a rug), and a hulk still stands on its tyres. Every
+    /// shape's every triangle faces out, so no end of a wheel or a drum is open.
+    /// </summary>
+    Task DecoChecks()
+    {
+        var forge = PlanetSurface.Infra.InfraDeco.Poi.Forge;
+        int wrongSize = 0, lost = 0, bald = 0, hulks = 0, inward = 0, parts = 0;
+        string first = "";
+        void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
+        foreach (string id in new[] { "hatchback", "sedan", "pickup", "van" })
+        {
+            var size = forge.Mesh(id).Size;
+            if (size.X is < 1.5f or > 2.1f || size.Y is < 1.2f or > 2.6f || size.Z is < 3.4f or > 5.6f) { wrongSize++; Note($"{id} is {size}"); }
+        }
+        string[] rots = { "floor-rug", "floor-mattress", "hay-bales", "feed-sacks", "parasol", "pallet-stack", "office-partition", "privacy-curtain", "farm-trailer" };
+        foreach (var piece in forge.Catalogue.Pieces)
+        {
+            var fresh = forge.ShapeOf(piece.Id, GalHack.Items.DecoState.Intact, GalHack.Items.DecoFall.None);
+            var aged = forge.ShapeOf(piece.Id, GalHack.Items.DecoState.Intact, GalHack.Items.DecoFall.None, false, GalHack.Deco.DecoAge.OldWorld, true);
+            float was = fresh.Model.Parts.Sum(x => x.Volume), now = aged.Model.Parts.Sum(x => x.Volume);
+            if (now < was * 0.14f && !rots.Contains(piece.Id)) { lost++; Note($"{piece.Id} keeps {now / was:P0}"); }
+            if (fresh.Model.Parts.Any(x => x.Is(GalHack.Deco.PartFlags.Tyre)))
+            {
+                hulks++;
+                // On its rims: round, and wide enough to look like wheels.
+                if (!aged.Model.Parts.Any(x => x.Kind == GalHack.Deco.DecoPrim.Cylinder && x.Segments >= 12)) { bald++; Note($"{piece.Id} has no wheels left"); }
+            }
+            foreach (GalHack.Deco.DecoPart part in fresh.Model.Parts)
+            {
+                parts++;
+                var mesh = new GalHack.Deco.DecoMeshData();
+                GalHack.Deco.DecoEmit.Part(mesh, part, (_, _, _) => new GalHack.Deco.DecoRgb(1, 1, 1), _ => GalHack.Deco.DecoSurface.Matte);
+                System.Numerics.Vector3 centre = System.Numerics.Vector3.Zero;
+                int corners = 0;
+                foreach (var (a, b, c) in mesh.AllTriangles()) { centre += a + b + c; corners += 3; }
+                centre /= Math.Max(1, corners);
+                foreach (var (a, b, c) in mesh.AllTriangles())
+                    if (System.Numerics.Vector3.Cross(b - a, c - a).Length() > 1e-5f && System.Numerics.Vector3.Dot(System.Numerics.Vector3.Normalize(System.Numerics.Vector3.Cross(b - a, c - a)), (a + b + c) / 3f - centre) < -1e-3f) { inward++; Note($"{piece.Id}: a {part.Kind} faces in"); break; }
+            }
+        }
+        Check(wrongSize == 0 && lost == 0 && bald == 0 && inward == 0 && hulks > 8 && parts > 1000, $"deco audit: cars at real size, {wrongSize} wrong; {lost} pieces lost to the weather; {hulks} wheeled pieces, {bald} without wheels; {parts} parts, {inward} open or facing in{first}");
+        return Task.CompletedTask;
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })

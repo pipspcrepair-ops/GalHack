@@ -59,6 +59,7 @@ public partial class SurfaceTest : Node
             await Run("Rail", RailChecks);
             await Run("Pylons", PylonChecks);
             await Run("Connected", ConnectedChecks);
+            await Run("Deco", DecoChecks);
             await Run("CaveMouths", CaveChecks);
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
