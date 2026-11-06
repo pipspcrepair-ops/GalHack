@@ -17,7 +17,28 @@ public partial class Hands : Node3D
     Node3D _rig;
     StandardMaterial3D _glow;
     int _shotsSeen;
-    float _kick, _bob;
+    float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
+
+    /// <summary>The camera's tilt now, in radians (zero at rest): for tests.</summary>
+    public float CameraTilt { get; private set; }
+    public float Kick => _kick;
+
+    /// <summary>The biggest kick and camera tilt since <see cref="ResetPeaks"/> (tests: a tick can fall between drawn frames).</summary>
+    public float PeakKick { get; private set; }
+    public float PeakTilt { get; private set; }
+    public void ResetPeaks() => PeakKick = PeakTilt = 0f;
+
+    /// <summary>A light camera shake for a pilot whose vessel gun fired (strength 0..1); it dies away on its own.</summary>
+    public void Shake(float strength) => _shake = MathF.Max(_shake, strength);
+
+    /// <summary>The hand's kick back and the camera's tilt for a fresh shot of this kind of fire.</summary>
+    public void Recoil(GunFeel feel)
+    {
+        _kick = 1f;
+        _strength = feel.Recoil;
+        _camKick = feel.CameraKick;
+        if (feel.Shake > 0f) Shake(feel.Shake);
+    }
 
     /// <summary>The muzzle's offset in the camera's frame (matches <see cref="SurvivalTool.Muzzle"/>).</summary>
     public static readonly Vector3 MuzzleOffset = new(0.17f, -0.15f, -0.55f);
@@ -52,22 +73,46 @@ public partial class Hands : Node3D
     {
         float dt = (float)delta;
         var g = Game;
+        if (g?.Tool != null && g.Tool.Shots != _shotsSeen)
+        {
+            _shotsSeen = g.Tool.Shots;
+            Recoil(GunFeel.Get(g.Tool.Feel));
+        }
+        _kick = Mathf.MoveToward(_kick, 0f, dt / 0.15f);
+        _shake = Mathf.MoveToward(_shake, 0f, dt * 4f);
+        _shakeTime += dt * 55f;
+        TiltCamera();
         HandKind hand = g?.Pack?.Hand ?? HandKind.Empty;
         bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead
                     && hand is HandKind.Tool or HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         Visible = show;
         if (!show) return;
         _glow.AlbedoColor = hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
-        if (g.Tool.Shots != _shotsSeen)
-        {
-            _shotsSeen = g.Tool.Shots;
-            _kick = 1f;
-        }
-        _kick = Mathf.MoveToward(_kick, 0f, dt * 7f);
         float speed = g.Survivor.Body.OnFloor ? new Vector2(g.Survivor.Body.Velocity.X, g.Survivor.Body.Velocity.Z).Length() : 0f;
         _bob += dt * speed * 1.6f;
         float sway = MathF.Min(speed, 6f) / 6f;
-        _rig.Position = new Vector3(0.05f + MathF.Sin(_bob) * 0.008f * sway, -0.03f + MathF.Abs(MathF.Cos(_bob)) * 0.01f * sway, _kick * 0.05f);
-        _rig.RotationDegrees = new Vector3(_kick * 6f, 0f, 0f);
+        // A snappy kick: back and up at once, then easing home over about 0.15 s.
+        float k = _kick * _kick * _strength;
+        _rig.Position = new Vector3(0.05f + MathF.Sin(_bob) * 0.008f * sway, -0.03f + MathF.Abs(MathF.Cos(_bob)) * 0.01f * sway + k * 0.012f, k * 0.06f);
+        _rig.RotationDegrees = new Vector3(k * 7f, 0f, 0f);
+    }
+
+    /// <summary>
+    /// Tilts the camera a hair after the game has set it for the frame (the game sets it afresh every
+    /// frame, so nothing is ever carried over: at rest the aim is exactly what the player aimed).
+    /// </summary>
+    void TiltCamera()
+    {
+        Camera3D cam = Game?.Camera;
+        if (cam == null) return;
+        float up = _kick * _kick * _camKick * Mathf.DegToRad(1f);
+        float sx = _shake * 0.012f * MathF.Sin(_shakeTime * 1.7f), sy = _shake * 0.012f * MathF.Sin(_shakeTime * 2.3f + 1f);
+        CameraTilt = up + MathF.Abs(sx) + MathF.Abs(sy);
+        PeakKick = MathF.Max(PeakKick, _kick);
+        PeakTilt = MathF.Max(PeakTilt, CameraTilt);
+        if (_kick <= 0f && _shake <= 0f) return;
+        Transform3D t = cam.GlobalTransform;
+        t.Basis = t.Basis * new Basis(Vector3.Right, up + sx) * new Basis(Vector3.Up, sy);
+        cam.GlobalTransform = t;
     }
 }

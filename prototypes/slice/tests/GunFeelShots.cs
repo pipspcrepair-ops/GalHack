@@ -1,0 +1,100 @@
+using System;
+using System.Collections.Generic;
+using Godot;
+using Slice.Game;
+using Slice.Player;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// Screenshots of the muzzle flashes, mid-flash. Run windowed:
+///   godot --path prototypes/slice res://tests/GunFeelShots.tscn -- --feel=bullet --where=bunker|outside --out=FILE.png
+/// (Not a *Test scene, so the gate doesn't run it.)
+/// </summary>
+public partial class GunFeelShots : Node
+{
+    Game.Game _game;
+    Playthrough _play;
+    IEnumerator<int> _run;
+    string _feel = "bullet", _where = "outside", _out = "gunfeel.png";
+    bool _capturing;
+
+    public override void _Ready()
+    {
+        foreach (string arg in OS.GetCmdlineUserArgs())
+        {
+            int eq = arg.IndexOf('=');
+            if (eq < 3 || !arg.StartsWith("--")) continue;
+            string v = arg[(eq + 1)..];
+            switch (arg[2..eq])
+            {
+                case "feel": _feel = v; break;
+                case "where": _where = v; break;
+                case "out": _out = v; break;
+            }
+        }
+        ProcessPhysicsPriority = 100;
+        _run = Scenario().GetEnumerator();
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (_capturing) return;
+        bool more;
+        try { more = _run.MoveNext(); }
+        catch (Exception e)
+        {
+            GD.PrintErr($"gun feel shot failed: {e}");
+            Wildlife.Shutdown.Quit(this, 1);
+            return;
+        }
+        if (!more) Capture();
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        AddChild(_game);
+        _play = new Playthrough(_game);
+        Driver drive = _play.Drive;
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        _game.Zone.Sky.TimeOfDay = 0.33;
+        _game.Zone.Wildlife.Frozen = true;
+        foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
+        if (_where == "outside")
+        {
+            foreach (int x in drive.ClimbOut(_game.Bunker)) yield return x;
+            foreach (int x in drive.UntilSettled()) yield return x;
+        }
+        foreach (int x in _play.Tool(ToolMode.Shoot)) yield return x;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        Vector3 target = _where == "outside"
+            ? _game.Zone.GroundAt(feet.X + 7f, feet.Z + 4f)
+            : _game.Bunker.At(new Vector3(3.25f, 1.4f, -1.0f));
+        foreach (int x in drive.LookAt(target, 8)) yield return x;
+        foreach (int x in drive.Wait(20)) yield return x;
+
+        // The flash and the kick, then freeze them where they stand and let the smoke come out.
+        GunFeel feel = GunFeel.Get(_feel);
+        Vector3 muzzle = _game.Tool.Muzzle();
+        _game.Shots.Muzzle(feel.Id, muzzle, _game.Survivor.WorldLook());
+        _game.Shots.SetProcess(false); // in this very tick, before any frame has counted the flash down
+        _game.Hands.Recoil(feel);
+        yield return 0;
+        _game.Hands.SetProcess(false);
+        foreach (int x in drive.Wait(_where == "outside" ? 10 : 8)) yield return x;
+        GD.Print($"{feel.Id}: showing {_game.Shots.FlashesShowing}, active {_game.Shots.FlashesActive}");
+    }
+
+    async void Capture()
+    {
+        _capturing = true;
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        Error err = GetViewport().GetTexture().GetImage().SavePng(_out);
+        GD.Print(err == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {err}");
+        Wildlife.Shutdown.Quit(this, err == Error.Ok ? 0 : 1);
+    }
+}
