@@ -60,10 +60,17 @@ public sealed class Driver
     public void Face(Vector3 point)
     {
         var s = Game.Survivor;
-        // In the view's own frame: afloat in space its up can be any way at all.
-        Vector3 d = MathX.Unrotate(s.WorldViewFrame, (point - s.WorldEye()).Normalized().ToNumerics()).ToGodot();
-        float yaw = MathF.Atan2(-d.X, -d.Z);
+        Vector3 d = (point - s.WorldEye()).Normalized();
+        float frameHeading = MathX.Heading(s.WorldViewFrame);
+        float yaw = MathF.Atan2(-d.X, -d.Z) - frameHeading;
         float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f));
+        if (s.Legs.Floating)
+        {
+            // Afloat in space your up can be any way at all: the look is in the view's own frame.
+            Vector3 local = MathX.Unrotate(s.WorldViewFrame, d.ToNumerics()).ToGodot();
+            yaw = MathF.Atan2(-local.X, -local.Z);
+            pitch = MathF.Asin(Math.Clamp(local.Y, -1f, 1f));
+        }
         float dy = Mathf.Wrap(yaw - s.Yaw, -MathF.PI, MathF.PI);
         Controls.Look = new Vector2(-dy / Sensitivity, -(pitch - s.Pitch) / Sensitivity);
     }

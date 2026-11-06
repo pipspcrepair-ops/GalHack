@@ -19,12 +19,23 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
-    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules)
+    /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
+    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
         ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth);
         byte[] clouds = CloudMap.Build(spec, look, rules.CloudWidth, out int cloudHeight);
-        for (int i = 3; i < clouds.Length; i += 4) clouds[i] = (byte)(clouds[i] * rules.CloudOpacity);
+        for (int i = 3; i < clouds.Length; i += 4)
+        {
+            float alpha = clouds[i] / 255f * (float)rules.CloudOpacity;
+            if (coverage != null)
+            {
+                int pixel = i / 4;
+                float c = coverage((pixel % rules.CloudWidth + 0.5f) / rules.CloudWidth, (pixel / rules.CloudWidth + 0.5f) / cloudHeight);
+                alpha = Math.Clamp(c / 0.16f, 0f, 1f) * 0.9f;
+            }
+            clouds[i] = (byte)(alpha * 255f);
+        }
         return new GlobePaint
         {
             Look = look,

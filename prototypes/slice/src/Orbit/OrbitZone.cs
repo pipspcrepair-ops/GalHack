@@ -92,7 +92,7 @@ public partial class OrbitZone : SurfaceZone
     IEnumerator<int> _building;
 
     /// <summary>Starts making the orbit round a world, on worker threads. It enters the scene when that's done.</summary>
-    public OrbitZone(PlanetWorld below, GameData data, OrbitRules rules, ulong systemSeed, float ceiling)
+    public OrbitZone(PlanetWorld below, GameData data, OrbitRules rules, ulong systemSeed, float ceiling, Func<float, float, float> cloudCoverage = null)
     {
         Name = "Orbit";
         Data = data;
@@ -111,7 +111,7 @@ public partial class OrbitZone : SurfaceZone
         _preparing = Task.Run(() =>
         {
             var watch = Stopwatch.StartNew();
-            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe);
+            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage);
             List<DerelictPlan> wrecks = Derelicts.Plan(library, systemSeed, map, shell, rules, data.Catalogue, data.Items);
             PrepareMs = watch.Elapsed.TotalMilliseconds;
             return (paint, wrecks);

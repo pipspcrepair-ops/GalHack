@@ -65,6 +65,13 @@ public partial class TabMenu : CanvasLayer
 
     public void OpenInventory() => Open(MenuTab.You);
 
+    /// <summary>Opens the map at a level.</summary>
+    public void OpenMap(MapLevel level)
+    {
+        Root.Map.Levels.Level = level;
+        Open(MenuTab.Map);
+    }
+
     /// <summary>The Core tab on a particular structure.</summary>
     public void OpenCore(Vessel v)
     {
@@ -105,7 +112,7 @@ public partial class MenuRoot : MenuPanel
 
     /// <summary>Redrawn when what it shows changes: the tab, the bag, an open container, progress, and a 4 Hz tick for live vitals and queues.</summary>
     protected override string Signature() => Game?.Pack == null ? "" :
-        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Selected}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}";
+        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Selected}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{(Tab == MenuTab.Map ? Map.Levels.Signature : "")}";
 
     public YouSection You;
     public TechSection Tech;

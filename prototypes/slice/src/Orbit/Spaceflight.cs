@@ -69,6 +69,9 @@ public partial class Spaceflight : Node
     /// <summary>Where everything is, on disk (saves' persistence core), committed before each crossing.</summary>
     public ZoneLedger Ledger { get; private set; }
 
+    /// <summary>What has been discovered, on every map level (shared by everyone in the world).</summary>
+    public readonly Charts Charts = new();
+
     /// <summary>Every crossing so far, in order.</summary>
     public readonly List<Crossing> Crossings = new();
 
@@ -128,6 +131,7 @@ public partial class Spaceflight : Node
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
         OrbitComing();
         if (g.Suit.Dead) return;
+        if (++_chartTick % 30 == 0) Chart();
         // Afloat in a structure you right yourself with its decks, so a door in a tilted hull fits you.
         Survivor s = g.Survivor;
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
@@ -148,11 +152,43 @@ public partial class Spaceflight : Node
         else if (Orbit.Prepared) Game.AddChild(Orbit);
     }
 
+    int _chartTick;
+    readonly DepositFinder _deposits = new();
+
+    /// <summary>A couple of times a second: what is near you comes onto the charts.</summary>
+    void Chart()
+    {
+        GameNode g = Game;
+        Vector3 at = g.Survivor.WorldFeet;
+        if (g.InOrbit)
+        {
+            OrbitZone o = Orbit;
+            foreach (Vessel w in o.Wrecks)
+            {
+                Vector3 p = w.Body.Position.ToGodot();
+                N.Vector3 q = o.ToGlobe(p.ToNumerics());
+                Charts.SeeWreck(w.Derelict.Id, w.Derelict.Name, p.DistanceTo(at), q.Length() / (o.GlobeRadius * 4f), MathF.Atan2(q.Z, q.X), w.Derelict.Site.Kind);
+            }
+            return;
+        }
+        var planet = g.Surface.Planet;
+        double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
+        Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
+        foreach (var (kind, d) in _deposits.Near(g.Surface, at))
+            Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
+    }
+
     /// <summary>Starts making the orbit now, if it isn't already.</summary>
     public void StartOrbit()
     {
         if (Orbit != null) return;
-        Orbit = new OrbitZone(Game.Surface.Planet, Game.Surface.Data, Rules, SystemSeed(Game.Surface.Spec), Ceiling)
+        // The globe's clouds are the sky's: the same coverage over the map, as it stands now.
+        SurfaceZone s = Game.Surface;
+        PlanetSurface.Skies.CloudCoverage clouds = s.Sky.Clouds;
+        float cover = s.Sky.Air.CloudCover, w = (float)s.Planet.Width, h = (float)s.Planet.Height;
+        Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
+        Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
+        Orbit = new OrbitZone(s.Planet, s.Data, Rules, SystemSeed(s.Spec), Ceiling, coverage)
         {
             ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };

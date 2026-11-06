@@ -260,17 +260,18 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
 		t0 = 0.0;
-		t1 = 6000.0;
+		t1 = 2400.0;
 	} else {
 		float ta = (base - ro.y) / rd.y, tb = (top - ro.y) / rd.y;
 		t0 = max(min(ta, tb), 0.0);
 		t1 = max(ta, tb);
 	}
-	if (t1 <= 0.0 || t0 > 40000.0) return vec4(sky, 0.0);
-	t1 = min(t1, t0 + 5000.0);
+	// The layer sits low, so its far reach is scaled to its height: about 16 km and 2 km of path.
+	if (t1 <= 0.0 || t0 > 16000.0) return vec4(sky, 0.0);
+	t1 = min(t1, t0 + 2000.0);
 	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
 	// horizon, where the path is long and too few would slice the clouds into layers.
-	int steps = int(clamp((t1 - t0) / 70.0, 24.0, 64.0));
+	int steps = int(clamp((t1 - t0) / 28.0, 24.0, 64.0));
 	float dt = (t1 - t0) / float(steps);
 	float t = t0 + dt * jitter;
 	float trans = 1.0;
@@ -285,7 +286,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
 			// A thinner slab packs the same cloud into less path: as solid, seen through.
-			float ext = d * dt * 0.016 * clamp(900.0 / cloud_thick, 1.0, 3.0);
+			float ext = d * dt * 0.016 * clamp(700.0 / cloud_thick, 1.0, 2.0);
 			if (lit) {
 				// Light reaching this point from the sun, through two cheaper samples of cloud.
 				float reach = clamp(cloud_thick / 900.0, 0.3, 1.0);
@@ -307,7 +308,9 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float alpha = 1.0 - trans;
 	// Distant clouds thin into the haze along the horizon: they fade in opacity, so whatever is
 	// behind them (a moon, a giant) shows through properly; their colour leans toward the sky's.
-	float fade = exp(-t0 / (16000.0 * density));
+	float fade = exp(-t0 / (6500.0 * density)) * (1.0 - smoothstep(9000.0, 16000.0, t0));
+	// The low layer's far clouds would close to thin streaks along the horizon: they thin out first.
+	if (ro.y < base) fade *= smoothstep(0.015, 0.09, rd.y);
 	vec3 col = alpha > 0.001 ? light / alpha : sky;
 	col = mix(mix(sky, col, 0.5), col, fade);
 	alpha *= fade;

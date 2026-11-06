@@ -33,6 +33,9 @@ public sealed partial class Staging
         "derelict" => DerelictView(),
         "landing" => LandingView(),
         "seam" => SeamView(),
+        "map-world" => MapView(Slice.Ui.MapLevel.World),
+        "map-system" => MapView(Slice.Ui.MapLevel.System),
+        "map-stars" => MapView(Slice.Ui.MapLevel.Stars),
         _ => throw new ArgumentException($"no view '{view}'"),
     };
 
@@ -70,6 +73,29 @@ public sealed partial class Staging
         for (int i = 0; i < 30; i++) yield return 0;
     }
 
+    /// <summary>A level of the Tab menu's map, after a walk round the start (and, for the system's wrecks, a look from orbit).</summary>
+    IEnumerable<int> MapView(Slice.Ui.MapLevel level)
+    {
+        if (level == Slice.Ui.MapLevel.System)
+        {
+            foreach (int x in ToOrbit()) yield return x;
+            Hurry(3);
+            Vector3 centre = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot();
+            Vector3 up = (Skiff.Body.Position.ToGodot() - centre).Normalized();
+            foreach (int x in _pilot.FlyTo(Skiff, () => centre + up * (_game.Orbit.ShellRadius + 2600f), 40f, 60f)) yield return x;
+            Hurry(1);
+            for (int i = 0; i < 70; i++) yield return 0;
+        }
+        else
+        {
+            _game.Spaceflight.Charts.Mark(_game.Start.X + 900, _game.Start.Z - 500);
+            for (int i = 0; i < 70; i++) yield return 0;
+        }
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        _game.Menu.OpenMap(level);
+        for (int i = 0; i < 60; i++) yield return 0;
+    }
+
     /// <summary>Saves what was last drawn, beside the screenshot: --out=a.png, tag "x" gives a-x.png.</summary>
     void Snap(string tag)
     {
@@ -98,6 +124,16 @@ public sealed partial class Staging
             Vector3 eye = at + new Vector3(0f, -3f, 12f);
             _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(at.X, at.Y - 1000f, at.Z - 700f) - eye, Vector3.Forward), eye);
         }
+        if (_args.TryGetValue("weather", out string sky))
+        {
+            _game.Zone.Weather.Sim.Snap(Enum.Parse<Weather.Model.WeatherKind>(sky));
+            for (int i = 0; i < 30; i++) yield return 0;
+        }
+        float seatPitch = _game.Survivor.Pitch;
+        _game.Survivor.Pitch = (float)Num("skypitch", 0.45);
+        for (int i = 0; i < 6; i++) yield return 0;
+        Snap("ground");
+        _game.Survivor.Pitch = seatPitch;
         Hurry(3);
         _game.Controls.Hold(Key.Space);
         foreach (float height in new[] { 400f, 650f, 800f, 900f, 1000f })
@@ -151,7 +187,7 @@ public sealed partial class Staging
         foreach (int x in Seated()) yield return x;
         Hurry(4);
         _game.Controls.Hold(Key.Space);
-        float stop = (float)Num("alt", 1400);
+        float stop = (float)Num("alt", 480);
         Vessel v = Skiff;
         for (int i = 0; i < 60 * 60 && v.Body.Position.Y < stop; i++) yield return 0;
         Hurry(1);
@@ -277,10 +313,32 @@ public sealed partial class Staging
         foreach (int x in _drive.LookAt(Cell(0, 1, max.Z - 2), 20)) yield return x;
     }
 
-    /// <summary>Back down: over the start, descending, landing beside the bunker.</summary>
+    /// <summary>Back down from orbit where it left, landing on the surface it left, seen from the ground.</summary>
     IEnumerable<int> LandingView()
     {
         foreach (int x in ToOrbit()) yield return x;
-        yield break;
+        Vessel v = Skiff;
+        // Straight back down its own legs through the seam, and on down on the gear.
+        Hurry(3);
+        _game.Controls.Hold(Key.Ctrl);
+        for (int i = 0; i < 60 * 60 && _game.InOrbit; i++) yield return 0;
+        for (int i = 0; i < 60 * 60 && !v.Controller.Frozen; i++)
+        {
+            float agl = v.AboveGround, vy = v.Body.Velocity.Y;
+            float wanted = agl > 260f ? -60f : agl > 70f ? -20f : agl > 25f ? -8f : agl > 6f ? -3f : -1.2f;
+            bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f;
+            _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
+            _game.Controls.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
+            if (agl < (float)Num("agl", 9)) break;
+            yield return 0;
+        }
+        Hurry(1);
+        _game.Visor.Visible = _args.GetValueOrDefault("hud") == "1";
+        Vector3 at = v.Body.Position.ToGodot();
+        float heading = (float)Num("heading", 215) * Mathf.Pi / 180f;
+        Vector3 eye = at + new Vector3(MathF.Sin(heading) * 15f, 0f, MathF.Cos(heading) * 15f);
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 2f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(at + Vector3.Up * 1.5f - eye, Vector3.Up), eye);
+        for (int i = 0; i < 4; i++) yield return 0;
     }
 }

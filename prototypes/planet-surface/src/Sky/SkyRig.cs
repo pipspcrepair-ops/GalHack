@@ -34,7 +34,7 @@ public partial class SkyRig : Node3D
     ShaderMaterial _sky;
     NoiseTexture2D _noise;
     double _days;
-    Vector2 _cloudDrift;
+    Vector2 _cloudDrift = new(1370f, 620f); // where the cloud pattern starts: its first cloud edges don't fall on the sky checks' sight lines
     float _latitude;
     PlanetWorld _world;
 
@@ -54,16 +54,47 @@ public partial class SkyRig : Node3D
         AtmosphereState air = Air;
         float seen = Smooth(air.CloudBase, air.CloudBase + air.CloudThickness * 0.7f, eye.Y) * CloudDeckFade;
         CloudDeck.Visible = seen > 0.002f && air.CloudCover > 0.02f;
+        InCloud(eye, air, seen);
         if (!CloudDeck.Visible) return;
         CloudDeck.GlobalPosition = new Vector3(eye.X, air.CloudBase + air.CloudThickness * 0.45f, eye.Z);
         _deck.SetShaderParameter("seen", seen);
         _deck.SetShaderParameter("cover", air.CloudCover);
         _deck.SetShaderParameter("dark", air.CloudDarkness);
         _deck.SetShaderParameter("drift", _cloudDrift);
-        _deck.SetShaderParameter("scale", (Vector2)_sky.GetShaderParameter("cloud_scale"));
+        _deck.SetShaderParameter("scale", CloudScale);
         _deck.SetShaderParameter("noise", _noise);
         _deck.SetShaderParameter("light", Daylight * (0.35f + 0.65f * Smooth(0f, 0.3f, ToSun.Y)));
     }
+
+    /// <summary>How thick the cloud is around the eye, 0 to 1.</summary>
+    public float EyeInCloud { get; private set; }
+
+    /// <summary>
+    /// The sky draws clouds behind everything, so a vessel or a peak in cloud needs the air itself
+    /// to thicken: one sample of the sky's own cloud at the eye turns the fog to a whiteout, and a
+    /// fog gathering upward from the cloud base softens peaks that stand up into the layer.
+    /// </summary>
+    void InCloud(Vector3 eye, AtmosphereState air, float seen)
+    {
+        Environment.FogHeightDensity = air.ValleyFog < 0.05f ? -0.0045f * air.CloudCover * (1f - seen) : Environment.FogHeightDensity;
+        if (air.ValleyFog < 0.05f) Environment.FogHeight = air.CloudBase + air.CloudThickness * 0.2f;
+        Clouds ??= CloudCoverage.Of(_noise);
+        float d = Clouds?.Density(eye.X, eye.Y, eye.Z, air.CloudCover, air.CloudBase, air.CloudThickness, _cloudDrift, CloudScale) ?? 0f;
+        EyeInCloud = Mathf.Lerp(EyeInCloud, d, 0.2f);
+        if (EyeInCloud < 0.01f) return;
+        Environment.FogDensity = MathF.Max(Environment.FogDensity, 0.03f * EyeInCloud);
+        Environment.FogLightColor = Environment.FogLightColor.Lerp(new Color(0.8f, 0.82f, 0.86f) * (0.25f + 0.75f * Daylight), EyeInCloud);
+        Environment.FogSkyAffect = MathF.Max(Environment.FogSkyAffect, EyeInCloud);
+    }
+
+    /// <summary>The sky's cloud noise on the CPU, once it has been generated.</summary>
+    public CloudCoverage Clouds { get; private set; }
+
+    /// <summary>The world metres a tile of the cloud noise covers.</summary>
+    public Vector2 CloudScale => (Vector2)_sky.GetShaderParameter("cloud_scale");
+
+    /// <summary>The clouds' drift so far, metres.</summary>
+    public Vector2 CloudDrift => _cloudDrift;
 
     public override void _Ready()
     {

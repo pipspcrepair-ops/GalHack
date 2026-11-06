@@ -297,7 +297,7 @@ public sealed class Survivor
     public Vector3 WorldLook()
     {
         N.Quaternion look = MathX.ThenLocal(MathX.ThenLocal(WorldView(), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
-        if (Seated is Vessel seat) look = MathX.ThenLocal(MathX.ThenLocal(seat.Body.Rotation, MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
+        if (Seated is Vessel seat) look = MathX.ThenLocal(MathX.ThenLocal(MathX.ThenLocal(seat.Body.Rotation, seat.ChairBasis.ToNumerics()), MathX.Yaw(Yaw)), MathX.AxisAngle(N.Vector3.UnitX, Pitch));
         return MathX.Forward(look).ToGodot();
     }
 
