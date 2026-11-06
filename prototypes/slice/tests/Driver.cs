@@ -101,15 +101,17 @@ public sealed class Driver
         }
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
         float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f;
-        bool digging = false;
+        bool digging = false, climbed = false;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
         {
             Vector3 feet = Game.Survivor.WorldFeet;
             // Down in the bunker (fallen into its stairwell from the side, say) and going
             // somewhere above: up its stairs first, as a person would.
-            if (!_following && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
+            // Once: if its way out doesn't take you (a bank at the head of the stairs), the walk's own hops and digging must.
+            if (!_following && !climbed && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
             {
+                climbed = true;
                 Controls.Hold(Key.W, false);
                 Controls.Hold(Key.Space, false);
                 foreach (int x in ClimbOut(b)) yield return x;

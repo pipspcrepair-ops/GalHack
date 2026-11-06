@@ -238,7 +238,8 @@ public partial class SliceTest : Node
                 int got = _game.Pack[material] - before;
                 int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell;
                 GD.Print($"  {material}: walked {walked:F0} m to a deposit, dug {cells} ore cells for {got} {material}");
-                if (first)
+                // The first deposit that gives anything (one against the bunker's own walls may not; the check below this loop wants them all).
+                if (first && got > 0)
                 {
                     first = false;
                     Check(got > 0 && got == cells * yield1 && _game.Tool.Gathered[material] - gatheredBefore == got,
@@ -581,12 +582,17 @@ public partial class SliceTest : Node
         var windows = new List<double>();
         double windowSum = 0;
         int windowFrames = 0;
-        float bestAgl = 0f, top = 0f;
+        float bestAgl = 0f, top = 0f, flown = 0f;
+        Vector3 was = start;
         // Cruise toward the target at height, steering with the mouse stick.
         int ticks = 0;
         while (ticks++ < 60 * 120)
         {
             Vector3 p = v.Body.Position.ToGodot();
+            // Along the way, not from end to end: the world wraps, and on a small one 2 km comes round the seam.
+            float stride = new Vector2(p.X - was.X, p.Z - was.Z).Length();
+            if (stride < 50f) flown += stride;
+            was = p;
             Vector3 to = target - p;
             float flat = new Vector2(to.X, to.Z).Length();
             if (flat < 120f) break;
@@ -633,8 +639,6 @@ public partial class SliceTest : Node
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(60)) yield return x;
 
-        Vector3 end = v.Body.Position.ToGodot();
-        float flown = new Vector2(end.X - start.X, end.Z - start.Z).Length();
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
         Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,

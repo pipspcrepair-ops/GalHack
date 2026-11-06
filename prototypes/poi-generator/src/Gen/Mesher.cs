@@ -130,8 +130,11 @@ public static class Mesher
             Int3 min = g.Min, max = g.Min + g.Size - new Int3(1, 1, 1);
             if (o.Rock)
             {
-                min = Int3.Min(min, new Int3(o.RockMin.X, o.RockBottom, o.RockMin.Z));
-                max = Int3.Max(max, new Int3(o.RockMax.X, Assembler.GroundY, o.RockMax.Z));
+                // An empty rock area (min past max) reaches nowhere: taken literally it would stretch these
+                // bounds from a grid far out in world coordinates all the way to the origin.
+                bool area = o.RockMin.X <= o.RockMax.X && o.RockMin.Z <= o.RockMax.Z;
+                min = Int3.Min(min, new Int3(area ? o.RockMin.X : min.X, o.RockBottom, area ? o.RockMin.Z : min.Z));
+                max = Int3.Max(max, new Int3(area ? o.RockMax.X : max.X, Assembler.GroundY, area ? o.RockMax.Z : max.Z));
             }
             _fMin = min - new Int3(1, 1, 1);
             _fSize = max - min + new Int3(3, 3, 3);
