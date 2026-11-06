@@ -140,6 +140,8 @@ public partial class PlaceTest : Node
             foreach (int x in Bodies(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
         }
         if (Array.IndexOf(args, "--doors-only") >= 0) yield break;
+        foreach (int x in Neutrals(WorldChoice.Fresh("temperate"))) yield return x;
+        if (Array.IndexOf(args, "--neutrals-only") >= 0) yield break;
         foreach (int x in RealPlayer(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
         if (Array.IndexOf(args, "--walk-only") < 0) foreach (int x in Settlement(WorldChoice.FromArgs(args) ?? WorldChoice.Tested)) yield return x;
     }
@@ -749,6 +751,53 @@ public partial class PlaceTest : Node
     }
 
     static bool LivingTown(PlanetSurface.Poi.PoiSite s) => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile;
+
+    /// <summary>
+    /// Scavengers camped in a large place: they watch you and leave you be, nothing that hunts lives
+    /// where they do, and wildlife keeps off their ground. Only a shot starts it.
+    /// </summary>
+    IEnumerable<int> Neutrals(WorldChoice world)
+    {
+        PlanetSurface.Poi.PoiSiting.ForceFamily = "sewage_works";
+        PlanetSurface.Poi.PoiSiting.ForceState = PoiState.Abandoned;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = new OccupancyRoll(Occupant.Scavengers);
+        var game = new Game.Game { Interactive = false, World = world, SkipIntro = true };
+        AddChild(game);
+        var drive = new Driver(game);
+        foreach (int x in drive.UntilPlaying()) yield return x;
+        PlanetSurface.Poi.PoiSiting.ForceFamily = null;
+        PlanetSurface.Poi.PoiSiting.ForceState = null;
+        PlanetSurface.Poi.PoiSiting.ForceOccupancy = null;
+        GD.Print($"-- scavengers in a large place, {world} --");
+        game.Zone.Weather.Bridge.Calm = true;
+        foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
+        var site = game.Zone.Planet.Pois.FirstOrDefault(s => s.Family.Id == "sewage_works" && s.Instance.Occupancy?.Main == Occupant.Scavengers);
+        if (site == null) { GD.Print("  (no works could be seated on this world: on to the next test)"); game.QueueFree(); yield return 0; yield break; }
+        Vector3 Local(PoiGenerator.Gen.Int3 c) => game.Zone.Planet.NearestCopy(new Vector3(site.Origin.X + c.X + 0.5f, site.Origin.Y + c.Y, site.Origin.Z + c.Z + 0.5f), game.Survivor.WorldFeet);
+        ActivitySpot camp = site.Instance.Townsfolk?.Spots.FirstOrDefault();
+        Check(camp != null && site.Instance.Mood == Mood.Wary && site.Instance.Enemies.Count == 0, $"they are in the place as people, not enemies: {site.Instance.Townsfolk?.People.Count} people, {site.Instance.Mood}, {site.Instance.Enemies.Count} enemies");
+        if (camp == null) yield break;
+        game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
+        for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
+        Place place = game.Places.PlaceOf(site);
+        Check(place is { Ready: true } && place.Memory.Town != null, $"it stands, and its people are about ({place?.Memory.Town?.People.Count})");
+        if (place?.Memory.Town == null) yield break;
+        Town town = place.Memory.Town;
+        double health = game.Suit.HealthShare;
+        // Among them for a while: a look, and nothing more.
+        foreach (int x in drive.Wait(600)) yield return x;
+        Check(town.GuardShots == 0 && town.GuardAims == 0 && game.Suit.HealthShare >= health && place.Memory.Mood == Mood.Wary, $"they watch and leave you be: {town.GuardShots} shots in 10 s among them, health {game.Suit.HealthShare * 100:F0}%, still {place.Memory.Mood}");
+        var pop = place.Memory.Fauna?.Population;
+        int hunters = pop == null || pop.Silent ? 0 : pop.Spawns.Count(s => s.Role != Wildlife.DeepRole.Subsister);
+        Check(hunters == 0, $"nothing that hunts lives where they do ({pop?.Note ?? "nothing"})");
+        var sim = game.Zone.Wildlife.Sim;
+        Check(sim != null && sim.Settlements.Any(q => q.Name == site.Name), "and wildlife knows their ground as it knows a town's");
+        town.Provoked();
+        foreach (int x in drive.Wait(10)) yield return x;
+        Check(place.Memory.Mood == Mood.Hostile, "a shot starts it: they turn on you");
+        game.QueueFree();
+        yield return 0;
+    }
 
     /// <summary>
     /// A settlement on foot: over the land to it, through it among its people going about their

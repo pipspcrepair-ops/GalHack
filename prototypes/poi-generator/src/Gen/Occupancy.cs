@@ -237,7 +237,6 @@ public static class OccupancyLayer
     static void Camp(Ctx x, List<PlacedModule> rooms, bool full)
     {
         Rgb cloth = new(0x5a, 0x5a, 0x4a), ash = new(0x54, 0x50, 0x4c), can = new(0x8a, 0x8a, 0x80);
-        var people = x.Lib.Roster("raiders").Where(e => e.Kind == EnemyKind.Guard).ToList();
         foreach (PlacedModule m in Settled(x, rooms, full ? 2 : 1))
         {
             if (Patch(x, m, 4f) is not { } p) continue;
@@ -254,13 +253,42 @@ public static class OccupancyLayer
             if (!full) continue;
             x.Inst.Lights.Add(new LightSpot { Cell = p.Mid + Int3.Up, Color = Ember, Mode = LightMode.Flicker, Energy = 1.6f, Range = 10f, Module = m.Index });
             x.Inst.Markers.Add(new Marker("campfire", p.Mid));
-            if (people.Count > 0 && p.Near.Count > 0)
-                for (int e = 0, n = x.R.Between(2, 4); e < n; e++)
-                    x.Enemy(x.R.Pick(people), EnemyKind.Guard, x.R.Pick(p.Near), m.Index);
+            // Picking the place over, not holding it: they watch you and leave you be, unless you start it.
+            People(x, p.Mid, p.Near, m.Index, Mood.Wary, x.R.Between(2, 4), lookout: true);
         }
         // They've been through the side rooms.
         foreach (LootCache c in x.Inst.Caches.Where(c => !c.InVault && !c.Secret))
             if (full && !c.PickedOver && c.Items.Count > 1) { c.PickedOver = true; c.Items.RemoveRange(1, c.Items.Count - 1); }
+    }
+
+    /// <summary>
+    /// People who aren't anyone's enemy: a few spots round where they settled (a bed, somewhere to talk,
+    /// something to do) and the people who use them, as a town's are. They are no spawn of the place's
+    /// enemies: nothing here fights you unless you start it, and wildlife keeps out of their ground as
+    /// it does a town's. The wariest group in a place sets its mood.
+    /// </summary>
+    static void People(Ctx x, Int3 mid, List<Int3> near, int module, Mood mood, int count, bool lookout)
+    {
+        var free = near.Where(c => x.Inst.Blocks.Get(c).IsAir && x.Nav.Standable(c) && c.FlatDistance(mid) > 1.5f).OrderBy(c => Hash.Cell(c, 211)).ToList();
+        if (free.Count < 3) return;
+        Townsfolk town = x.Inst.Townsfolk ??= new Townsfolk();
+        int first = town.Spots.Count;
+        town.Spots.Add(new ActivitySpot("home", free[0], module));
+        town.Spots.Add(new ActivitySpot("chat", free[1], module));
+        town.Spots.Add(new ActivitySpot("work", free[2], module));
+        town.Links.Add((first, first + 1));
+        town.Links.Add((first + 1, first + 2));
+        town.Links.Add((first, first + 2));
+        for (int i = 0; i < count; i++)
+        {
+            int spot = first + i % 3;
+            town.People.Add(i == 0 && lookout ? new CitizenSpawn("guard", "patrol", free[spot - first], spot)
+                : i % 2 == 0 ? new CitizenSpawn("worker", "steady", free[spot - first], spot) : new CitizenSpawn("wanderer", "amble", free[spot - first], spot));
+        }
+        town.AreaCenter = new Int3((int)town.Spots.Average(s => s.Cell.X), 0, (int)town.Spots.Average(s => s.Cell.Z));
+        town.AreaRadius = MathF.Min(64f, town.Spots.Max(s => s.Cell.FlatDistance(town.AreaCenter)) + 10f);
+        if (mood > x.Inst.Mood) x.Inst.Mood = mood;
+        x.Inst.Friendly = true;
     }
 
     /// <summary>A place someone lives in: bunks in a row, a stove and its pipe, water barrels, a garden in troughs. Nobody's hostile.</summary>
@@ -285,8 +313,11 @@ public static class OccupancyLayer
                 }
             }
             if (Patch(x, m, 2.5f) is { } p)
+            {
                 foreach (Int3 c in p.Near.Where(_ => x.R.Chance(0.5f)))
                     x.Put(c, BlockType.Plant, Material.Plant, new Rgb(0x56, 0x72, 0x3c));
+                if (full) People(x, p.Mid, floor, m.Index, Mood.Peaceful, x.R.Between(2, 3), lookout: false);
+            }
         }
     }
 

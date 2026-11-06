@@ -134,6 +134,8 @@ public static partial class PoiSiting
     /// <summary>Tests and screenshots: the state and layout of the forced family, when they matter.</summary>
     public static PoiState? ForceState;
     public static int? ForceVariant;
+    /// <summary>Tests: who is in the forced place.</summary>
+    public static OccupancyRoll ForceOccupancy;
     /// <summary>
     /// Start worlds: no faction holds ground (faction places only as ruins, no cores, no defenders;
     /// wrecks, abandoned and infested places, the Bloom, wildlife and gang camps stay). The slice sets
@@ -181,7 +183,7 @@ public static partial class PoiSiting
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             state = ForceState ?? state;
             int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
-            PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
+            PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, forced, forcedVariant, forced.Rarity), state, 7, profile, ForceOccupancy);
             for (int k = 0; k < 60 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6, r = 700 + k / 12 * 240;

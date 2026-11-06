@@ -218,7 +218,13 @@ public sealed class RegionPlan
             home.Town = home.Index;
             var options = _roll.Industry.Concat(_roll.Farm).Concat(_roll.Poi)
                 .Where(kv => !_lib.Family(kv.Key).Tags.Contains("settlement")).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.First().Value);
-            for (int n = 0; n < 2; n++)
+            // One of the large works stands within a fair walk: the first big place of a game.
+            var large = _lib.Families.Where(f => f.Tags.Contains("grand") && Stands(f.Id)).Select(f => f.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+            bool seated = false;
+            foreach (string id in large.OrderBy(_ => _r.Float()))
+                if (!seated && Spot(_landing.X, _landing.Z, 700, 1300, id) is { } near)
+                    seated = Add(id, near.X, near.Z, home, "landmark", "the works the old town by the landing lived on") != null;
+            for (int n = seated ? 1 : 0; n < 2; n++)
                 if (Choose(options) is { } id && Spot(_landing.X, _landing.Z, 800, 1500, id) is { } s)
                     Add(id, s.X, s.Z, home, "landmark", "what the old town by the landing lived on");
         }

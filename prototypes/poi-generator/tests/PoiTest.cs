@@ -167,6 +167,7 @@ public partial class PoiTest : Node
             Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed);
             var counts = new Dictionary<Occupant, Dictionary<BlockType, int>>();
             var enemies = new Dictionary<Occupant, int>();
+            var people = new Dictionary<Occupant, (int Count, Mood Mood)>();
             var walls = new HashSet<int>();
             foreach (Occupant who in Enum.GetValues<Occupant>())
             {
@@ -174,12 +175,14 @@ public partial class PoiTest : Node
                 foreach (string p in Validator.Check(inst).Take(2)) { bad++; if (first.Length == 0) first = $" ({f.Id}, {who}: {p})"; }
                 counts[who] = inst.Blocks.Blocks().GroupBy(b => b.Block.Type).ToDictionary(g => g.Key, g => g.Count());
                 enemies[who] = inst.Enemies.Count;
+                people[who] = (inst.Townsfolk?.People.Count ?? 0, inst.Mood);
                 walls.Add(inst.Blocks.Blocks().Count(b => b.Block.Role is Role.Wall or Role.Roof));
             }
             int Of(Occupant who, BlockType t) => counts[who].GetValueOrDefault(t);
             Check(enemies[Occupant.Empty] == 0, $"{f.Id}: an empty place is empty");
             Check(Of(Occupant.Nesters, BlockType.Pod) > Of(Occupant.Empty, BlockType.Pod) + 3 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters leave {Of(Occupant.Nesters, BlockType.Pod)} egg pods and {enemies[Occupant.Nesters]} creatures");
-            Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] > 0, $"{f.Id}: scavengers leave a camp fire and {enemies[Occupant.Scavengers]} people");
+            Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] == 0 && people[Occupant.Scavengers] is { Count: >= 2, Mood: Mood.Wary }, $"{f.Id}: scavengers leave a camp fire and are no one's enemies: {people[Occupant.Scavengers].Count} people, {people[Occupant.Scavengers].Mood}");
+            Check(enemies[Occupant.Squatters] == 0 && people[Occupant.Squatters].Mood == Mood.Peaceful, $"{f.Id}: squatters are at home and at peace: {people[Occupant.Squatters].Count} people");
             Check(Of(Occupant.Gang, BlockType.Barricade) > Of(Occupant.Empty, BlockType.Barricade) + 3 && enemies[Occupant.Gang] > 0, $"{f.Id}: a gang leaves {Of(Occupant.Gang, BlockType.Barricade)} barricades and {enemies[Occupant.Gang]} of its own");
             Check(Of(Occupant.Turned, BlockType.Remains) > Of(Occupant.Empty, BlockType.Remains) + 3, $"{f.Id}: the turned leave {Of(Occupant.Turned, BlockType.Remains)} bodies");
             Check(Of(Occupant.Squatters, BlockType.Bunk) > 0, $"{f.Id}: squatters leave {Of(Occupant.Squatters, BlockType.Bunk)} bunks");

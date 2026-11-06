@@ -47,6 +47,24 @@ public partial class PlacePerf : Node
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+        if (_args.TryGetValue("survey", out string survey))
+        {
+            // Fresh start worlds, and how far each is from a large place: --survey=N.
+            PoiSiting.StartWorld = true;
+            for (int i = 0; i < int.Parse(survey); i++)
+            {
+                WorldChoice w = WorldChoice.Fresh("temperate");
+                var world = PlanetSurface.World.PlanetWorld.Build(w.Spec(), Slice.Surface.SurfaceZone.PoiCatalog);
+                var grand = world.Pois.Where(s => s.Family.Tags.Contains("grand")).Select(s =>
+                {
+                    double dx = Planets.Gen.Mathx.WrapDelta(s.Center.X - world.Landing.X, world.Width), dz = Planets.Gen.Mathx.WrapDelta(s.Center.Z - world.Landing.Y, world.Height);
+                    return (s.Family.Id, Off: Math.Sqrt(dx * dx + dz * dz), s.Instance.State, s.Instance.Occupancy);
+                }).OrderBy(g => g.Off).ToList();
+                GD.Print($"PERF survey seed {w.Seed}: {string.Join("; ", grand.Take(4).Select(g => $"{g.Id} {g.Off:F0} m {g.State} {g.Occupancy}"))}");
+            }
+            Wildlife.Shutdown.Quit(this, 0);
+            return;
+        }
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family)) PoiSiting.ForceFamily = family;
