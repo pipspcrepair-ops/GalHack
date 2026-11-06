@@ -26,7 +26,7 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
     /// <summary>The layout for a window size and a UI scale (1 is the default; it shrinks to fit a narrow window).</summary>
     public static HudLayout Compute(Vector2 size, float uiScale = 1f)
     {
-        float vitalsW = 6 * VitalW + 5 * VitalGap;
+        float vitalsW = 7 * VitalW + 6 * VitalGap;
         float s = MathF.Min(size.Y / 900f * uiScale, MathF.Min(size.X / (vitalsW + 40f), size.Y / 520f));
         float cx = size.X / 2f;
         Rect2 Row(float y, float w, float h) => new(cx - w * s / 2f, y, w * s, h * s);

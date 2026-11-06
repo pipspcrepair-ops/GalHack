@@ -280,6 +280,12 @@ public partial class Game : Node3D
         if (Menu.IsOpen && Slice.Items.ItemViews.Focused != null && (c.Typed.Length > 0 || c.Backspaces > 0))
             Slice.Items.ItemViews.Type(c.Typed, c.Backspaces);
         if (c.WasPressed(Key.Tab)) { Slice.Items.ItemViews.Focused = null; Menu.Toggle(); }
+        if (c.WasPressed(Key.M) && Slice.Items.ItemViews.Focused == null)
+        {
+            if (Menu.IsOpen && Menu.Tab == Slice.Ui.MenuTab.Map) Menu.Close();
+            else if (!Menu.IsOpen) Menu.OpenMap(Slice.Ui.MapLevel.Local);
+            else Menu.Tab = Slice.Ui.MenuTab.Map;
+        }
         if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
         if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
         if (Menu.IsOpen) Menu.Input(c);
@@ -544,7 +550,7 @@ public partial class Game : Node3D
 
     static readonly Key[] Watched =
     {
-        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E,
+        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M,
     };
 
     void PollKeyboard()

@@ -84,6 +84,13 @@ public sealed class SurvivalTool
 
     /// <summary>The crosshair is on a place's block, a piece of its dressing or a registered wreck, nearer than the ground: the tool works that.</summary>
     public bool OnPlace => _placeHit != null || _wreck != null;
+
+    /// <summary>The crosshair is on an ore tell rock (an outcrop or scree over a deposit) that still has ore to give.</summary>
+    public bool OnTell => _tell != null;
+    Deposit? _tell;
+    readonly Dictionary<(double, double), int> _tellsWorked = new();
+    /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
+    public const int TellPulses = 4, TellOrePerPulse = 3;
     public PoiPlaces.Hit? PlaceHit => _placeHit;
     PoiPlaces.Hit? _placeHit;
     SalvageSite _wreck;
@@ -115,6 +122,7 @@ public sealed class SurvivalTool
         if (Mode == ToolMode.Shoot) Shoot();
         else if (StrikeCreature()) { }
         else if (!OnBlock && OnPlace) WorkPlace();
+        else if (!OnBlock && _tell != null) WorkTell();
         else if (!OnBlock && !CutPlant()) Dig();
         else if (OnBlock)
         {
@@ -138,12 +146,14 @@ public sealed class SurvivalTool
         TargetLabel = "";
         _placeHit = null;
         _wreck = null;
+        _tell = null;
         if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
             && (!HasTarget || p.Distance < ground + 0.05f))
         {
             _placePoint = p.Point;
             if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h)) _placeHit = h;
             else _wreck = Places.SalvageOf(p.Collider);
+            if (!OnPlace) _tell = TellAt(p.Point);
             if (OnPlace)
             {
                 TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
@@ -218,6 +228,39 @@ public sealed class SurvivalTool
         CreatureHit?.Invoke(c);
         Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
         return true;
+    }
+
+    /// <summary>The deposit whose tell rock stands at a point (its outcrop or scree, within the ore body's radius), if it still has rock to break.</summary>
+    Deposit? TellAt(Vector3 point)
+    {
+        var world = _zone.Planet;
+        double px = Mathx.WrapX(point.X, world.Width), pz = Mathx.Wrap(point.Z, world.Height);
+        foreach (Deposit d in world.Map.Deposits.InRect(px - 8, pz - 8, px + 8, pz + 8))
+        {
+            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture) continue;
+            double dx = Mathx.Wrap(px - d.X, world.Width), dz = Mathx.Wrap(pz - d.Y, world.Height);
+            float r = PlanetTerrainSource.OreRadius(d) + 0.6f;
+            if (dx * dx + dz * dz > r * r) continue;
+            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses ? d : (Deposit?)null;
+        }
+        return null;
+    }
+
+    /// <summary>One pulse on an ore tell rock: it gives a little of its ore, and after a few pulses it is broken down and the tool digs on through to the ground.</summary>
+    void WorkTell()
+    {
+        Deposit d = _tell.Value;
+        _cooldown = _rules.DigInterval;
+        _suit.Worked();
+        _tellsWorked[(d.X, d.Y)] = _tellsWorked.GetValueOrDefault((d.X, d.Y)) + 1;
+        Vector3 at = _placePoint;
+        Sfx?.Play(Sfx.Sound.Clank, at, 1.1f, -8f);
+        Debris?.Puff(at, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        if (OreOf(d.Kind) is ItemDef item)
+        {
+            Give(item.Id, TellOrePerPulse);
+            Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
+        }
     }
 
     /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>

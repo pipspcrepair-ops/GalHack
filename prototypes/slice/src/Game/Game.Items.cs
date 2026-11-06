@@ -82,6 +82,11 @@ public partial class Game
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
+            if (device.Constructor != null)
+            {
+                Menu.OpenCore(device); // the full panel: hopper beside the recipes and queue
+                return;
+            }
             Open(new OpenContainer { Title = $"{device.Label} hopper", Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
             return;
         }
@@ -100,7 +105,9 @@ public partial class Game
             }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
             {
-                Menu.OpenCore(v);
+                int at = 0, k = 0;
+                foreach (var cell in v.Machines.Keys) { if (cell.Equals(look.Cell)) at = k; k++; }
+                Menu.OpenCore(v, at);
                 return;
             }
         }

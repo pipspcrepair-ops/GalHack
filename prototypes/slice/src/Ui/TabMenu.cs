@@ -73,9 +73,9 @@ public partial class TabMenu : CanvasLayer
     }
 
     /// <summary>The Core tab on a particular structure.</summary>
-    public void OpenCore(Vessel v)
+    public void OpenCore(object v, int machine = 0)
     {
-        Root.Core.Pick(v);
+        Root.Core.Pick(v, machine);
         Open(MenuTab.Core);
     }
 

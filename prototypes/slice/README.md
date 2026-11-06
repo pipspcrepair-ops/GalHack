@@ -69,11 +69,12 @@ Building by hand, block by block, is the game. Blueprints are in the menu, nowhe
 | Right button | A block in hand: take the block aimed at down | |
 | Q | Survival tool: gather / shoot / deconstruct | Roll |
 | R / T, X, wheel | A block in hand: turn it, mirror, its shape (the visor shows the shape picker) | |
-| E | Open a container, a body, a backpack, a locker, a place's cache, a device's hopper; open or shut a door; take a keycard | Roll |
+| E | Open a container, a body, a backpack, a locker, a place's cache; a constructor, standalone or on a structure, opens its full panel (hopper, recipes, queue); open or shut a door; take a keycard | Roll |
 | F | Sit in the command chair within reach | Get up |
 | G / C | | Landing gear / cruise |
 | L | Head torch | |
 | Tab | The menu (the game doesn't pause; you can still walk) | |
+| M | The map (Tab, MAP); M again closes it | |
 | H, B | Helmet, the survival replicator | |
 | V | Third person | Chase camera |
 | R (dead) | Wake in the bunker (your backpack stays where you fell, on the compass) | |

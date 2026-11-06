@@ -59,7 +59,7 @@
     { "make": "survival-constructor", "count": 1, "from": { "iron-ore": 16, "copper-ore": 8, "silicon-ore": 4 }, "seconds": 20, "tier": -1 }
   ],
   "constructors": [
-    { "id": "suit", "name": "Suit fabricator", "tag": "FAB-S", "tier": -1, "speed": 1.0 }
+    { "id": "suit", "name": "Suit fabricator", "tag": "FAB-S", "tier": -1, "speed": 2.0 }
   ],
   "consumables": {
     "trail-ration": { "food": 0.3 },
