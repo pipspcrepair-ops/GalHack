@@ -564,7 +564,7 @@ public partial class Game : Node3D
             if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
                 Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
         }
-        else if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
+        else if (hands && hand == HandKind.Tool) { Tool.ItemId = Pack.HandItem; Tool.Tick(dt, primary); }
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);

@@ -121,6 +121,7 @@ public partial class SliceTest : Node
             foreach (int x in CutPlant()) yield return x;
             foreach (int x in OreRock()) yield return x;
             foreach (int x in HoverBike()) yield return x;
+            foreach (int x in Chipping()) yield return x;
         }
         // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
         // the parts the Skiff's bill needs and opens the tech tree. The real-player test
@@ -244,8 +245,10 @@ public partial class SliceTest : Node
                 if (first && got > 0)
                 {
                     first = false;
-                    Check(got > 0 && got == cells * yield1 + tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
-                        $"digging ore fills the pack: {cells} {material} ore cells dug, {tellOre} off the rock over it, {got} {material} in the pack ({yield1} a cell)");
+                    // Gathering chips and ore trickles in as the beam works (a cell gives its yield over its durability), so the
+                    // pack holds what the beam earned, whole items as the shares add up, not a whole cell's yield per pulse.
+                    Check(got > 0 && got >= tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
+                        $"digging ore fills the pack as it chips: {got} {material} in the pack, {tellOre} off the rock over it, about {got / (float)yield1:F1} cells' worth ({yield1} a cell)");
                     Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
                         $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
@@ -339,6 +342,44 @@ public partial class SliceTest : Node
         Check(boat.OnWater && lowest > source.WaterLevel + 0.4f && highest < source.WaterLevel + 1.6f && skimmed > 15f,
             $"over a lake the hover bike skims it as ground: {skimmed:F0} m, riding {lowest - source.WaterLevel:F2} to {highest - source.WaterLevel:F2} m above the water");
         _game.Bikes.Remove(boat);
+    }
+
+    /// <summary>Gathering chips: a pulse wears the ground without taking it, sustained work sinks it a cell at a time, and the better drills do it faster.</summary>
+    IEnumerable<int> Chipping()
+    {
+        GD.Print("-- chipping --");
+        foreach (int x in new Playthrough(_game).Tool(Slice.Player.ToolMode.Gather)) yield return x;
+        var store = _game.Zone.Planet.Terrain.Store;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        Vector3 fwd = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, _game.Survivor.Yaw);
+        Vector3 Ground(float along, float across)
+        {
+            Vector3 q = feet + fwd * along + fwd.Rotated(Vector3.Up, Mathf.Pi / 2f) * across;
+            return _game.Zone.GroundAt(q.X, q.Z);
+        }
+        Vector3 a = Ground(2.6f, -3f), b = Ground(2.6f, 3f);
+        int before = store.RemovedCount;
+        foreach (int x in _drive.HoldPrimary(a, 2)) yield return x;
+        Check(store.RemovedCount == before && _game.Tool.ChippedCells > 0, $"one pulse of the beam chips the ground without taking a cell ({store.RemovedCount - before} cells gone, {_game.Tool.ChippedCells} worn)");
+        int mid = 0;
+        foreach (int x in _drive.HoldPrimary(a, 60)) yield return x;
+        mid = store.RemovedCount - before;
+        foreach (int x in _drive.HoldPrimary(a, 200)) yield return x;
+        int late = store.RemovedCount - before;
+        Check(mid > 0 && late > mid, $"sustained work sinks the ground a cell at a time: {mid} cells in a second, {late} after four more (the store holds whole cells, so it steps in stages)");
+
+        // The better drill, on the other spot, in the same time.
+        _game.Pack.Storage.Add("plasma-drill", 1);
+        _game.Pack.Grid[2].Item = "plasma-drill";
+        _game.Pack.Grid[2].Count = 1;
+        _game.Pack.Grid.Reconcile();
+        foreach (int x in new Playthrough(_game).Select(2)) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Tool, "the plasma drill is a hand tool");
+        int plain = store.RemovedCount;
+        foreach (int x in _drive.HoldPrimary(b, 60)) yield return x;
+        int fast = store.RemovedCount - plain;
+        Check(fast > mid * 1.4f, $"the plasma drill gathers faster: {fast} cells in a second against {mid} for the survival tool");
+        foreach (int x in new Playthrough(_game).Select(0)) yield return x;
     }
 
     IEnumerable<int> OreRock()
@@ -470,6 +511,11 @@ public partial class SliceTest : Node
         Vector3 p = default;
         long id = 0;
         float reach = _game.Zone.Data.Rules.Tool.CutReach - 0.5f;
+        // What was in hand before the walk: the walk digs its own way past what is in it, and the tool
+        // (in gather mode, trigger held) can take the plant on the way (that once left +0 against a
+        // baseline read after it), so the baseline comes first.
+        double organics = _game.Suit.Kit.Organics;
+        int biomass = _game.Pack["biomass"];
         for (int attempt = 0; attempt < 4; attempt++)
         {
             var found = NearestPlant(_game.Survivor.WorldFeet, 200f, trees: true, tried) ?? NearestPlant(_game.Survivor.WorldFeet, 200f, trees: false, tried);
@@ -490,12 +536,12 @@ public partial class SliceTest : Node
         }
         bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
         bool trunkBefore = TrunkCollider(p, id);
-        double organics = _game.Suit.Kit.Organics;
-        int biomass = _game.Pack["biomass"];
+        bool takenEnRoute = _game.Zone.Planet.Felled.Contains(id);
         bool cutThisFrame = false, colliderGoneThatFrame = false;
         if (_game.Pack.Selected != 0) foreach (int x in _drive.Tap(Key.Key1)) yield return x;
         if (_game.Tool.Mode != Slice.Player.ToolMode.Gather) foreach (int x in _drive.Tap(Key.Q)) yield return x;
-        for (int i = 0; i < 6 && !cutThisFrame; i++)
+        // Gathering chips: a plant takes a pulse or two, a tree a few seconds, each pulse paying a share.
+        for (int i = 0; i < 1500 && !cutThisFrame && !takenEnRoute; i++)
         {
             _drive.Face(p + Vector3.Up * 0.9f);
             _game.Controls.Primary = true;
@@ -507,16 +553,21 @@ public partial class SliceTest : Node
             }
         }
         _game.Controls.Primary = false;
-        if (!cutThisFrame)
+        if (!cutThisFrame && !takenEnRoute)
             GD.Print($"  (the cut: plant {id} at {p}, {(tree ? "a tree" : "a plant")}; eye {_game.Survivor.WorldEye()} {_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f):F1} m from it; hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, on a block {_game.Tool.OnBlock})");
         foreach (int x in _drive.Wait(90)) yield return x;
-        Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
+        Check(_game.Zone.Planet.Felled.Contains(id) && _game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
             $"cutting a plant gives organics (+{_game.Suit.Kit.Organics - organics:F1} kg) and biomass (+{_game.Pack["biomass"] - biomass})");
         bool gone = !_game.Zone.Streamer.FloraNear(p, 0.3f).Any();
         Check(gone && _game.Zone.Planet.Felled.Contains(id), "the cut plant is gone from the ground, and on the planet's felled list (kept through streaming and saves)");
-        if (tree)
+        if (tree && takenEnRoute) GD.Print("  (the walk's own digging took this tree on the way: its collider is checked in the next plant)");
+        else if (tree)
+        {
             Check(trunkBefore && cutThisFrame && colliderGoneThatFrame && !TrunkCollider(p, id),
                 $"the tree's trunk was solid, and its collider went in the frame it was cut (before {trunkBefore}, gone that frame {colliderGoneThatFrame})");
+            Check(_game.Tool.TreesFelled >= 1 && _game.Tool.Trees != null && _game.Tool.Trees.Stumps >= 1,
+                $"the felled tree leaves a stump ({_game.Tool.Trees?.Stumps ?? 0}) and falls over");
+        }
         else GD.Print("  (no tree near: the plant cut was not a solid one)");
     }
 

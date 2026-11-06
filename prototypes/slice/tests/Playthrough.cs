@@ -596,7 +596,8 @@ public sealed class Playthrough
             if (plant.Id == 0) yield break;
             tried.Add(plant.Id);
             foreach (int x in Drive.WalkTo(plant.Root, 1.8f, 40f)) yield return x;
-            for (int i = 0; i < 6 && Game.Tool.PlantsCut == cut; i++)
+            // Gathering chips: a plant takes a pulse or two, a tree some seconds.
+            for (int i = 0; i < 900 && Game.Tool.PlantsCut == cut; i++)
             {
                 Drive.Face(plant.Root + Vector3.Up * 0.9f);
                 Controls.Primary = true;
