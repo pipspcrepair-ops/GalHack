@@ -53,6 +53,14 @@ public static class InfraViews
                 return Look(w, vx, vz, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 4f, rx, rz, ruin.OriginY + 3f);
             }
         }
+        // An ore outcrop: the nearest deposit breaking the surface, from a few metres off.
+        if (what == "ore")
+        {
+            var d = w.Map.Deposits.InRect(0, 0, w.Width, w.Height).Where(dp => dp.Depth <= 0.01f && w.Source.StampWeight(dp.X, dp.Y) <= 0f)
+                .OrderBy(dp => Away(dp.X, dp.Y)).FirstOrDefault();
+            double vx = d.X + 5, vz = d.Y + 5;
+            return Look(w, vx, vz, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 1.8f, d.X, d.Y, w.GroundHeight(d.X, d.Y) + 0.5f);
+        }
         // A structure: the nearest of its kind.
         if (what is "bridge" or "viaduct" or "tunnel")
         {

@@ -149,10 +149,17 @@ public sealed class GroundPalette
         switch (material)
         {
             case CellMaterial.Ore:
-                c = DepositLook.Color(ore) * 0.85f;
-                flags.X = DepositLook.Glow(ore) * 0.5f;
-                rock = 0.6f;
+            {
+                // Ore shows in the rock as speckle and streaks of its colour, not a flat stain: a
+                // texture over the rock, read by its pattern first, and only a faint glow.
+                Rgb oreColour = DepositLook.Color(ore);
+                float speck = SmoothStep(0.55f, 0.85f, ValueNoise(x * 1.7, z * 1.7 + height * 0.9, 41));
+                float streak = MathF.Abs(ValueNoise(x * 0.45 + height * 0.3, z * 0.45, 43) - 0.5f) < 0.1f ? 1f : 0f;
+                c = Rgb.Lerp(Rock, oreColour, 0.22f + 0.38f * speck + 0.25f * streak);
+                flags.X = DepositLook.Glow(ore) * 0.12f;
+                rock = 0.8f;
                 break;
+            }
             case CellMaterial.Bedrock:
                 c = Bedrock;
                 flags.Y = 1f;

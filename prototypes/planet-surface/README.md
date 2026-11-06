@@ -175,9 +175,14 @@ Each road site lies on a straight, nearly level stretch with its lane down the r
 - A ruin is spawned from its own seed when its tile comes near, with the POI generator's century of decay: timber fallen in unless sheltered, shells of concrete and stone, trees through.
 - `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of.
 
+**Ore tells.** Every deposit shows in the ground over it (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`):
+- a deposit breaking the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with the ore's colour in its veins);
+- a shallow one shows as scree, a deep one as a fracture.
+- The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.
+
 Screenshot views:
 - `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
-- `infra:<house|farmstead|shed|wayside>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind.
+- `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
 - `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
 ### Integration (the slice)
@@ -190,7 +195,7 @@ Screenshot views:
 
   Until then, roads in the slice reach the edge of each river and ravine and stop there: their bridges are missing.
 - **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads. No change is needed.
-- **Flavour ruins** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
+- **Flavour ruins and ore tells** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
 
 ## How it fits together
 
