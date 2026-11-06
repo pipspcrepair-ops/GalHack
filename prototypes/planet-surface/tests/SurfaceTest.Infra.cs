@@ -360,6 +360,47 @@ public partial class SurfaceTest
             $"pylons stride on their own: {pylons} on {legs} lines, {wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
     }
 
+    /// <summary>Every place people built and every ruin or cluster of them is on a road, on fresh worlds, and the network has its highways and bridges.</summary>
+    async Task ConnectedChecks()
+    {
+        int places = 0, cutOff = 0, ruins = 0, roadless = 0, bridges = 0, highways = 0, sea = 0;
+        double km = 0;
+        string first = "";
+        var rand = new Random();
+        for (int k = 0; k < 4; k++)
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), k % 2 == 0 ? Archetype.Temperate : Archetype.Arid, 0), Main.Catalog);
+            InfraNetwork net = w.Infra;
+            if (net?.Routes == null || net.Routes.Count == 0) continue;
+            foreach (PoiSite p in net.Places)
+            {
+                places++;
+                if (net.Isolated.Contains(p)) { sea++; continue; }
+                if (!net.Routes.Any(r => r.From == p || r.To == p))
+                {
+                    cutOff++;
+                    if (first.Length == 0) first = $" (first: {p.Name})";
+                }
+            }
+            foreach (PlanetSurface.Infra.FlavourRuin r in net.Ruins)
+            {
+                ruins++;
+                var (x, z) = r.Center;
+                if (r.Route != null || r.Drive != null || r.Tracked) continue;
+                if (net.Ruins.Any(o => o != r && (o.Route != null || o.Drive != null || o.Tracked) && Dist(w, o.Center.X, o.Center.Z, x, z) < 60)) continue;
+                // Over water from anything, or nothing near to reach: the sea keeps some corners of a world.
+                if (net.Nearest(x, z, 2400, out _, out _) == null) { sea++; continue; }
+                roadless++;
+                if (first.Length == 0) first = $" (first: {r.Family.Id} at {x:F0}, {z:F0})";
+            }
+            bridges += net.Structures.Count(s => s.Kind == RoadSpan.Bridge);
+            highways += net.Routes.Count(r => r.Kind == RouteKind.Highway);
+            km += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Length) / 1000;
+            await Frames(1);
+        }
+        Check(cutOff == 0 && roadless == 0 && places > 8 && ruins > 8, $"every place and ruin is on a road: {places} places ({cutOff} cut off), {ruins} ruins ({roadless} without), {sea} over the sea; {km:F0} km of road, {highways} highways, {bridges} bridges{first}");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })

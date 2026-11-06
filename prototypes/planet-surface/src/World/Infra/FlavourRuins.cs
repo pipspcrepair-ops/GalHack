@@ -33,6 +33,8 @@ public sealed class FlavourRuin
     public InfraRoute Route;
     /// <summary>Its driveway, forecourt apron or farm track to that road (null where it has no road).</summary>
     public TerrainStamp Drive;
+    /// <summary>A track of its own runs from its gate to the nearest road.</summary>
+    public bool Tracked;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
@@ -322,6 +324,21 @@ public static class FlavourRuins
             }
         }
         foreach (FlavourRuin ruin in ruins) Blasted(ruin, pois, w, h);
+        // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
+        foreach (FlavourRuin ruin in ruins) net.KeepOff(ruin.Stamp);
+        foreach (FlavourRuin ruin in ruins)
+        {
+            if (ruin.Route != null || ruin.Drive != null) continue;
+            var (rx, rz) = ruin.Center;
+            if (ruins.Any(o => o != ruin && (o.Route != null || o.Drive != null) && Dist(o.Center.X, o.Center.Z, rx, rz) < 60)) continue;
+            InfraRoute near = net.Nearest(rx, rz, 380, out _, out _);
+            if (near != null && near.Kind != RouteKind.Rail && Connect(ruin, near, 1.8f, StampSurface.Dirt, bare, w, h)) { ruin.Route = near; continue; }
+            // From a little way out of the lot's gate, and a drive of its own from the gate to that.
+            var gate = ruin.Layout.Extras.Gate;
+            double gx = ruin.OriginX + gate.X + 0.5, gz = ruin.OriginZ + gate.Z + 0.5, ox = gx - rx, oz = gz - rz, olen = Math.Max(1e-3, Math.Sqrt(ox * ox + oz * oz));
+            ruin.Tracked = net.Spur((gx + ox / olen * 16, gz + oz / olen * 16), RouteKind.Track, 2400);
+            if (ruin.Tracked) Connect(ruin, net.Routes[^1], 1.8f, StampSurface.Dirt, bare, w, h);
+        }
         return ruins;
     }
 

@@ -69,7 +69,7 @@ public sealed class InfraStructure
 /// The once-inhabited world's infrastructure, planned before anything is built: highways between
 /// cities and spaceports, roads to towns, mines and bunkers, tracks out to remote outposts, and
 /// railways where the old world ran them. A spanning tree joins the places by importance, with
-/// about one link in ten added back as loops. Every link is found by one path engine over the real
+/// about one link in five added back as loops. Every link is found by one path engine over the real
 /// terrain with a cost table per kind of route (gentle grades, water dearest, existing road cheap so
 /// routes merge into junctions), then smoothed, given a deck that keeps to the kind's grade, and
 /// split into ground, bridges over rivers and ravines, and tunnels through ridges. Each route is laid
@@ -194,7 +194,7 @@ public sealed class InfraNetwork
         net._router = router;
         net._rng = rng;
 
-        // The links: a spanning tree by importance, then about one in ten added back as loops.
+        // The links: a spanning tree by importance, then about one in five added back as loops.
         var places = net.Places;
         var links = new List<(int A, int B, double D)>();
         for (int a = 0; a < places.Count; a++)
@@ -211,7 +211,7 @@ public sealed class InfraNetwork
             tree.Add(l);
         }
         double longest = tree.Count > 0 ? tree.Max(l => l.D) : 0;
-        int loops = places.Count >= 4 ? Math.Max(1, (int)Math.Round(places.Count * 0.1)) : 0;
+        int loops = places.Count >= 4 ? Math.Max(2, (int)Math.Round(places.Count * 0.22)) : 0;
         var extra = links.Where(l => !tree.Contains(l) && l.D < longest * 1.2).OrderBy(l => l.D).Take(loops).ToList();
 
         // The most important links first, so the lesser ones merge into them at junctions.
@@ -256,7 +256,8 @@ public sealed class InfraNetwork
         static bool Urban(PoiSite p) => p.Tier is PoiTier.Town or PoiTier.City or PoiTier.Spaceport;
         // Highways between cities and spaceports, and between towns on a world that built them.
         // Whatever matters on the world has a highway to its main starport.
-        RouteKind k = r >= 3 || Urban(a) && Urban(b) && tech >= TechLevel.Mid || a.Primary || b.Primary ? RouteKind.Highway : r >= 2 ? RouteKind.Road : RouteKind.Track;
+        // On a world that built them, the main roads between anything that mattered were highways too.
+        RouteKind k = r >= 3 || r >= 2 && tech >= TechLevel.Mid || Urban(a) && Urban(b) && tech >= TechLevel.Mid || a.Primary || b.Primary ? RouteKind.Highway : r >= 2 ? RouteKind.Road : RouteKind.Track;
         // Frontier worlds had no highways: their best roads were gravel.
         if (tech == TechLevel.Low && k == RouteKind.Highway) k = RouteKind.Road;
         return k;
@@ -588,6 +589,9 @@ public sealed class InfraNetwork
         if (route != null) _router.Mark(route);
         return route;
     }
+
+    /// <summary>Later routes go round this pad.</summary>
+    public void KeepOff(TerrainStamp pad) => _router?.Block(pad, 12);
 
     /// <summary>A spur from a point to the nearest route already laid (within a reach), found by the path engine. False if none.</summary>
     public bool Spur((double X, double Z) from, RouteKind kind, double reach)
@@ -1045,13 +1049,14 @@ public sealed class InfraNetwork
             _came = new int[_nx * _nz];
             _closed = new bool[_nx * _nz];
             // Places' footprints and aprons are never driven through.
-            foreach (PoiSite p in pois)
-            {
-                TerrainStamp t = p.Stamp;
-                for (double z = t.MinZ - 4; z <= t.MaxZ + 4; z += Cell / 2)
-                for (double x = t.MinX - 4; x <= t.MaxX + 4; x += Cell / 2)
-                    _blocked[Index(x, z)] = true;
-            }
+            foreach (PoiSite p in pois) Block(p.Stamp, 4);
+        }
+
+        public void Block(TerrainStamp t, double margin)
+        {
+            for (double z = t.MinZ - margin; z <= t.MaxZ + margin; z += Cell / 2)
+            for (double x = t.MinX - margin; x <= t.MaxX + margin; x += Cell / 2)
+                _blocked[Index(x, z)] = true;
         }
 
         int Index(double x, double z)
@@ -1131,7 +1136,8 @@ public sealed class InfraNetwork
             int gx = goal % _nx, gz = goal / _nx;
             // A railway's deck holds its own grade whatever the land does: it isn't asked to wind round every rise, only to go the easiest way.
             float grade = kind == RouteKind.Rail ? 0.09f : MaxGrade(kind);
-            float bridge = kind switch { RouteKind.Highway => 5f, RouteKind.Road => 7f, RouteKind.Track => 10f, _ => 7f };
+            // A river is bridged where the road meets it, rather than followed for kilometres to a ford.
+            float bridge = kind switch { RouteKind.Highway => 2f, RouteKind.Road => 3f, RouteKind.Track => 8f, _ => 5f };
             // Crossing open sea: a long causeway only where the old world had the means, never on a frontier world.
             float sea = tech == TechLevel.Low ? float.PositiveInfinity : tech == TechLevel.Mid ? 120f : 60f;
             int expanded = 0;

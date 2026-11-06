@@ -1422,7 +1422,18 @@ public partial class PoiTest : Node
                         || BlockInfo.Collides(g.Get(c + Int3.Up + new Int3(0, 0, k)).Type) && g.Get(c + new Int3(0, 0, k > 0 ? 1 : -1)).Color == hazard)) { onto++; break; }
             }
         }
-        Check(onto == 0, $"road markings stop before a structure: {paint} painted cells, {onto} running on to a wall");
+        var white = new Rgb(0xe8, 0xe4, 0xd8);
+        foreach (var f in Arch.Where(f => f.Site != null && _lib.Sites[f.Site].Parts.Any(x => x.Kind == "runway")))
+        {
+            var g = PoiFactory.BuildLayout(_lib, f, 0, Rarity.Common, (ulong)rand.NextInt64()).Blocks;
+            foreach (var (c, b) in g.Blocks())
+            {
+                if (b.Color != white || c.Y != -1 || b.Material != Gen.Material.Concrete) continue;
+                paint++;
+                if (BlockInfo.Collides(g.Get(c + Int3.Up).Type)) onto++;
+            }
+        }
+        Check(onto == 0, $"road and runway markings stop before a structure: {paint} painted cells, {onto} running on to a wall");
     }
 
     /// <summary>Holds a structure's open faces against what the planet's mesher draws: each cube face not against a full block must be there, buried or not (the ground can be dug off it).</summary>

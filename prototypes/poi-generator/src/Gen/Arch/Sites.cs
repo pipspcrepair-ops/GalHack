@@ -153,7 +153,7 @@ public static class Sites
                 bool edge = runway && (j == 0 || j == width - 1);
                 Rgb plain = col;
                 if (centre || threshold || edge) col = (centre || edge) && !runway ? Hazard : Paint;
-                if (col != plain && !runway) x.Paint.Add((c, plain, alongX));
+                if (col != plain) x.Paint.Add((c, plain, alongX));
                 x.C.Set(c, new Block(BlockType.Cube, Material.Concrete, col, Role.Floor));
             }
         if (runway && p.Arg("lights") != "no")
@@ -164,7 +164,7 @@ public static class Sites
             }
     }
 
-    /// <summary>A road's painted line ends clear of whatever stands on it: no marking runs on to a wall.</summary>
+    /// <summary>A road's or a runway's painted line ends clear of whatever stands on it: no marking runs on to a wall.</summary>
     static void StopPaint(Ctx x)
     {
         const int Clear = 4;
