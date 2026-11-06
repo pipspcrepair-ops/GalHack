@@ -62,7 +62,12 @@ public partial class Place
             if (doorCells.Count == 0) continue; // blown out of a ruin: an open doorway
             Block b0 = Inst.Blocks.Get(doorCells[0]);
             bool lift = index >= 0 && liftDoor.ContainsKey(index);
-            if (b0.Variant == DoorState.Open && !lift) continue; // standing open: nothing to draw
+            // A jammed door's gap has just the room for a body, straight on: with a block crowding either side
+            // of it there is no getting through, so what the years left in a doorway like that is a door forced wide.
+            bool pinched = b0.Variant == DoorState.Jammed && !lift && cells.Any(c => c.Y <= cells.Min(o => o.Y) + 1
+                && (BlockInfo.Collides(Inst.Blocks.Get(c + facing.Vec()).Type) || BlockInfo.Collides(Inst.Blocks.Get(c - facing.Vec()).Type)));
+            if (pinched) foreach (Int3 c in doorCells) Inst.Blocks.At(c).Variant = DoorState.Open;
+            if ((b0.Variant == DoorState.Open || pinched) && !lift) continue; // standing open: nothing to draw
             Int3 min = cells.Aggregate(Int3.Min), max = cells.Aggregate(Int3.Max);
             var lo = new Vector3(min.X, min.Y, min.Z);
             var hi = new Vector3(max.X + 1, max.Y + 1, max.Z + 1);

@@ -145,8 +145,10 @@ public partial class SurfaceTest
         var rand = new Random();
         foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid })
         {
-            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
+            ulong seed = (ulong)rand.NextInt64();
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
             TerrainDigging.Terrain.ChunkStore store = w.Terrain.Store;
+            List<PlanetSurface.Infra.FlavourRuin> ruins = w.Infra?.Ruins?.ToList() ?? new();
             float Top(float x, float z, float from)
             {
                 for (float y = from + 4f; y > from - 6f; y -= 0.1f)
@@ -171,12 +173,15 @@ public partial class SurfaceTest
                         if (float.IsInfinity(near) || float.IsInfinity(far)) continue;
                         walls++;
                         taken++;
+                        // Street lots stand two metres apart at their own levels: the bank up to the next lot's pad can lean on a wall, and that is a slope, no slump.
+                        double sx = fx + v.X * 1.5f, sz = fz + v.Z * 1.5f;
+                        if (ruins.Any(o => o.OriginY != oy && o.Stamp.Weight(sx, sz) > 0.05f)) continue;
                         float dip = far - near;
                         worst = MathF.Max(worst, dip);
                         if (dip > 0.4f)
                         {
                             dips++;
-                            if (first.Length == 0) first = $" (first: {name} at {c}: {dip:F2} m)";
+                            if (first.Length == 0) first = $" (first: {name} at {c}, its origin ({ox}, {oy}, {oz}), wall face {d}: {dip:F2} m; seed {seed}, {kind})";
                         }
                         break;
                     }
