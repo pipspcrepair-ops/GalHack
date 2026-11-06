@@ -121,6 +121,52 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 | `sky.gdshader` | cloud march | 40 steps, a third of a step of jitter by direction | 24–64 steps by path length, a whole step of jitter by pixel |
 | `sky.gdshader` | stars, nebula, horizon | lattice cut by the sphere; longitude-latitude nebula; stars cut off below the horizon | shell stars; 3D nebula (`nebula_noise`, `nebula_detail`, set by `SkyRig`); stars fade out below it |
 
+## The world around the places
+
+**The world profile comes first.** `PlanetWorld.Build` rolls the world's profile (`PlanetWorld.Profile`, `PoiGenerator.Gen.WorldProfile`) before anything else: whether it was ever inhabited, its old population, starport and trade, and its tech levels before the fall and now (low, mid or high each). The POIs are placed by it; see the POI generator's README.
+
+**Infrastructure** (`src/World/Infra/InfraNetwork.cs`, `PlanetWorld.Infra`; design doc "Infrastructure"). On once-inhabited worlds only:
+
+1. **Plan first.** A spanning tree joins the places people built (not wrecks, alien or Precursor sites) by importance, with about one link in ten added back as loops.
+   - Highways join cities and spaceports, and towns on worlds that built them (mid and high tech).
+   - Roads go to towns, bases, mines, works and farms; tracks out to everything else.
+   - Railways run through the places that mattered most: diesel lines on low and mid worlds, maglev guideways on high ones.
+2. **One path engine.** A* runs over 16 m cells of the whole torus, with a cost table per kind of route:
+   - grade against the kind's limit (highway 6%, road 9%, track 15%, railway 3%);
+   - water dearest (a bridge), and the open sea never on a frontier world;
+   - other places' pads never;
+   - a route already laid cheap, so new links join it at junctions instead of running beside it.
+3. **A deck.** Each path is smoothed and given a deck: the ground averaged along it, held to the kind's grade, pinned to the gate's pad height and to the deck of any route it joins. Over water the deck clears the water.
+4. **Spans.** Where the deck stands well over the ground it becomes a bridge or viaduct (out to where it meets the bank, so the abutment never leaves a step). Where it cuts deep into a ridge it becomes a tunnel (out to where the slope is about a bore high, a portal face).
+   - Past what its builders could span or bore (a frontier road: 40 m; a modern road: 200 m), a route follows the land instead, steep where it must be but always walkable.
+   - Tracks never tunnel.
+   - A railway that would be mostly viaduct and tunnel is never built.
+5. **Tech and decay.**
+   - Surfaces: dirt and gravel on frontier worlds; tarmac on modern ones; concrete highways on high ones.
+   - Bridges: timber trestles, steel and concrete, or composite.
+   - A century of neglect cracks and buckles decks, drifts sand and soil over them, lets grass and shrubs (never trees) back onto the road, drops a span or two out of an old bridge into the valley, and floods a tunnel whose middle lies low.
+   - Routes serving a place a faction holds, or a settlement, are kept up.
+6. **Into the terrain.** Routes are laid as road stamps (`StampShape.Road`, about 100 m each) after the places' own stamps, so they show in the near voxels and the far rings alike.
+   - Each stamp cuts and fills to its deck, with banks easing back at a walkable slope.
+   - Under a bridge's end the embankment spills down round the abutment; tunnels keep their bore open.
+   - Roads never touch a place's footprint or apron, and of overlapping road beds only the nearest applies (the legs of a switchback meet at a step, as at a retaining wall).
+   - `PlanetTerrainSource` indexes stamps in 64 m buckets, so a height query composes only the few near it.
+7. **Drawn.** `src/Infra/InfraLayer.cs` streams 256 m tiles within 900 m of the camera. It draws bridges (deck, parapets, piers, abutments, fallen spans lying broken below), tunnel portals and their flooded water, railway sleepers and rails, and maglev guideways on pylons, all with collision. Other systems add their own pieces through `InfraLayer.Sources`.
+
+Screenshot views:
+- `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
+
+### Integration (the slice)
+
+- **Terrain roads come for free.** The slice compiles `src/World/**`, so `PlanetWorld.Build` already lays the network's road stamps and fills in `PlanetWorld.Infra` and `PlanetWorld.Profile`.
+- **To draw bridges, portals and track:**
+  1. Add `<Compile Include="..\planet-surface\src\Infra\**\*.cs" />` to the slice's csproj.
+  2. Make an `InfraLayer` node in the surface zone beside the POI layer, and call `Infra.Build(world)` where it calls `Pois.Build(world)`.
+  3. Call `Infra.Clear()` where it clears the POI layer.
+
+  Until then, roads in the slice reach the edge of each river and ravine and stop there: their bridges are missing.
+- **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads. No change is needed.
+
 ## How it fits together
 
 - `shared/Terrain`: `PlanetTerrainSource` (the planet as cells), `PlanetTerrain` (the ghost-band torus store, edits on every copy, save and load), `TerrainStamp` (POI pads), `PeriodicNoise` (3D noise whose lattice wraps with the planet).
@@ -129,6 +175,8 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 - `src/Sky`: `SkySystem` (the sky as data, from the planet spec), `Atmosphere` (weather to fog and cloud), `SkyRig` (sun, moons, giant, environment).
 - `src/WeatherView`: the weather prototype's model and forces as particles, lightning, tornadoes, sound and ground cover.
 - `src/Poi`: placement, siting and meshes for the POI generator's places.
+- `src/World/Infra`: the infrastructure network's plan (routes, decks, bridges and tunnels, the road stamps).
+- `src/Infra`: the infrastructure layer, streamed tiles of what stands on the network.
 - `src/Player`: the walker, survival tool, free-fly and stuck guard.
 
 ## Limits

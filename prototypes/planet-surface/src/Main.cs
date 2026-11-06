@@ -33,6 +33,8 @@ public partial class Main : Node3D
     public SkyRig Sky { get; private set; }
     public WeatherRig Weather { get; private set; }
     public PoiLayer Pois { get; private set; }
+    /// <summary>Bridges, tunnel portals, railway track and what else stands along the old world's network.</summary>
+    public PlanetSurface.Infra.InfraLayer Infra { get; private set; }
     public Walker Player { get; private set; }
     public Camera3D Camera { get; private set; }
     public FreeFly Fly { get; private set; }
@@ -91,6 +93,8 @@ public partial class Main : Node3D
         AddChild(Streamer);
         Pois = new PoiLayer { Name = "Pois" };
         AddChild(Pois);
+        Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
+        AddChild(Infra);
         Structures = new StructureView { Name = "Structures" };
         AddChild(Structures);
 
@@ -151,6 +155,7 @@ public partial class Main : Node3D
         Guard.Enabled = false;
         Streamer.Clear();
         Pois.Clear();
+        Infra.Clear();
         Structures.Clear();
         World = null;
         Hud.Loading($"Generating {spec.Archetype} / {Archetypes.Get(spec.Archetype, spec.Variant).VariantName}...");
@@ -203,6 +208,7 @@ public partial class Main : Node3D
         Sky.SetWorld(world);
         Weather.SetWorld(world);
         Pois.Build(world);
+        Infra.Build(world);
         Player.Teleport(spawn);
         Player.SetLook(-world.Landing.Heading, -0.1f);
         Camera.GlobalPosition = spawn + Vector3.Up * 1.6f;

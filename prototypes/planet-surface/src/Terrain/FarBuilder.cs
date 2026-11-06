@@ -287,7 +287,10 @@ public static class FarBuilder
             int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
             int s = grid.Sample(i, j);
             if (river[s] || up[j * grid.Nx + i] < FloraMeshes.MinUp(rule.Kind) || height[s] < 0.6f) continue;
-            if (source.StampWeight(x, z) > 0f) continue; // pads and their aprons stay clear
+            // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
+            // through a road nobody has kept up for a century (never a tree: the way stays open).
+            if (source.StampWeight(x, z) > 0f
+                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);

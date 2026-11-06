@@ -19,7 +19,7 @@ namespace PlanetSurface.World;
 /// arrive: the generator's world map, the POIs placed on it and the pads they sit on, the voxel
 /// terrain source and store, the ground palette, and the sky its system gives it.
 /// </summary>
-public sealed class PlanetWorld
+public sealed partial class PlanetWorld
 {
     public readonly PlanetSpec Spec;
     public readonly WorldMap Map;
@@ -37,6 +37,11 @@ public sealed class PlanetWorld
     /// (the living: settlements and faction places, their gear, defences and animals).
     /// </summary>
     public readonly WorldProfile Profile;
+    /// <summary>
+    /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
+    /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
+    /// </summary>
+    readonly object _around;
     public readonly double BuildMs;
 
     public double Width => Map.WidthMeters;
@@ -86,10 +91,11 @@ public sealed class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms)
     {
         Spec = spec;
         Profile = profile;
+        _around = around;
         Map = map;
         Landing = landing;
         Pois = pois;
@@ -117,9 +123,17 @@ public sealed class PlanetWorld
             stamps.AddRange(p.Stamps);   // the pad, then whatever grounds it (bowl, terraces, approach cut, tilt, furrow)
             anchors.Add(new TerrainDigging.Terrain.PoiSite(p.Name, p.Footprint));
         }
+        // The world round the places: planned on the bare land, its stamps laid after the places' own,
+        // then finished on the final ground (see PlanetWorld.Infra.cs; nothing when that isn't compiled in).
+        object around = null;
+        PlanAround(spec, map, bare, pois, profile, stamps, ref around);
         var source = new PlanetTerrainSource(map, stamps, anchors);
-        return new PlanetWorld(spec, profile, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
+        FinishAround(spec, source, pois, around);
+        return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
     }
+
+    static partial void PlanAround(PlanetSpec spec, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, List<TerrainStamp> stamps, ref object around);
+    static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
 
     /// <summary>
     /// A planet's world profile: rolled from its seed and kind, the first thing generated. Start

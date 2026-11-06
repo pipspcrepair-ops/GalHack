@@ -32,6 +32,8 @@ namespace GalHack.Terrain;
 public sealed class PlanetTerrainSource : ITerrainSource
 {
     public const float BedrockDepth = 30f;
+    /// <summary>The ground a tunnel's bore always leaves over it, metres: its mouth is a face in the slope, never a hole from above.</summary>
+    public const float TunnelRoof = 1.2f;
     public const float CaveTop = 3f, CaveBottom = 36f;
     const int S = ChunkStore.Size, P = S + 2;
     const float Limit = ChunkStore.DensityLimit;
@@ -52,6 +54,12 @@ public sealed class PlanetTerrainSource : ITerrainSource
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
     readonly ConcurrentDictionary<long, float> _floors = new();
+
+    // Stamps by 64 m bucket: each bucket lists, in list order, every stamp whose reach touches it,
+    // so a height query composes only the few stamps near it (a planet's roads add hundreds).
+    const int Bucket = 64;
+    int _bucketsX, _bucketsZ;
+    int[][] _buckets;
 
     /// <summary>Surface heights for one chunk column: its 16 x 16 cells plus a one-cell ring, at cell centres.</summary>
     public sealed class Column
@@ -75,6 +83,7 @@ public sealed class PlanetTerrainSource : ITerrainSource
         Width = (int)Math.Round(map.WidthMeters);
         Height = (int)Math.Round(map.HeightMeters);
         if (Width % S != 0 || Height % S != 0) throw new ArgumentException($"planet size {Width} x {Height} m must be whole chunks");
+        IndexStamps();
         ChunksX = Width / S;
         ChunksZ = Height / S;
 
@@ -102,6 +111,63 @@ public sealed class PlanetTerrainSource : ITerrainSource
         };
     }
 
+    // ---- Stamp index ----------------------------------------------------------------------
+
+    void IndexStamps()
+    {
+        _bucketsX = (Width + Bucket - 1) / Bucket;
+        _bucketsZ = (Height + Bucket - 1) / Bucket;
+        var lists = new List<int>[_bucketsX * _bucketsZ];
+        for (int i = 0; i < Stamps.Count; i++)
+        {
+            TerrainStamp t = Stamps[i];
+            double rx = t.ReachX + 8, rz = t.ReachZ + 8;
+            bool allX = rx * 2 >= Width, allZ = rz * 2 >= Height;
+            var xs = new List<int>();
+            var zs = new List<int>();
+            if (allX) for (int b = 0; b < _bucketsX; b++) xs.Add(b);
+            else
+                for (double px = t.CenterX - rx; ; px = Math.Min(px + Bucket / 2.0, t.CenterX + rx))
+                {
+                    int b = (int)(Mathx.WrapX(px, Width) / Bucket);
+                    if (!xs.Contains(b)) xs.Add(b);
+                    if (px >= t.CenterX + rx) break;
+                }
+            if (allZ) for (int b = 0; b < _bucketsZ; b++) zs.Add(b);
+            else
+                for (double pz = t.CenterZ - rz; ; pz = Math.Min(pz + Bucket / 2.0, t.CenterZ + rz))
+                {
+                    int b = (int)(Mathx.Wrap(pz, Height) / Bucket);
+                    if (!zs.Contains(b)) zs.Add(b);
+                    if (pz >= t.CenterZ + rz) break;
+                }
+            foreach (int bz in zs)
+            foreach (int bx in xs)
+                (lists[bz * _bucketsX + bx] ??= new List<int>()).Add(i);
+        }
+        _buckets = new int[lists.Length][];
+        for (int k = 0; k < lists.Length; k++) _buckets[k] = lists[k]?.ToArray() ?? Array.Empty<int>();
+    }
+
+    /// <summary>The stamps (indices into <see cref="Stamps"/>, in order) that can touch a point. x and z wrap.</summary>
+    public int[] StampsAt(double x, double z)
+    {
+        int bx = Math.Min(_bucketsX - 1, (int)(Mathx.WrapX(x, Width) / Bucket));
+        int bz = Math.Min(_bucketsZ - 1, (int)(Mathx.Wrap(z, Height) / Bucket));
+        return _buckets[bz * _bucketsX + bx];
+    }
+
+    /// <summary>The natural height with the stamps near a point laid over it, by <see cref="TerrainStamp.Compose"/>'s rule.</summary>
+    float Stamped(float natural, double x, double z)
+    {
+        int[] near = StampsAt(x, z);
+        int road = TerrainStamp.OnPad(Stamps, near, x, z) ? -1 : TerrainStamp.NearestRoad(Stamps, near, x, z);
+        float h = natural;
+        foreach (int i in near)
+            if (Stamps[i].Shape != StampShape.Road || i == road) h = Stamps[i].Apply(h, x, z);
+        return h;
+    }
+
     // ---- Heights --------------------------------------------------------------------------
 
     /// <summary>The planet generator's own ground height, without stamps. x and z wrap.</summary>
@@ -112,28 +178,29 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
     public float SurfaceHeight(double x, double z, double spacing = 1)
     {
-        return TerrainStamp.Compose(Stamps, Sampler.Sample(x, z, spacing).Height, x, z);
+        return Stamped(Sampler.Sample(x, z, spacing).Height, x, z);
     }
 
     /// <summary>Ground and river at a point, with stamps applied to the ground height.</summary>
     public GroundSample Ground(double x, double z, double spacing)
     {
         GroundSample s = Sampler.Sample(x, z, spacing);
-        return s with { Height = TerrainStamp.Compose(Stamps, s.Height, x, z) };
+        return s with { Height = Stamped(s.Height, x, z) };
     }
 
     /// <summary>
-    /// The made ground at a point: the surface of the pad that applies most here, how much of it
-    /// shows (eased off well inside the blend, so a made apron never ends in a hard edge), and how worn it is.
+    /// The made ground at a point: the surface of the pad or road that applies most here, how much
+    /// of it shows (eased off well inside the blend, so a made apron never ends in a hard edge), and how worn it is.
     /// </summary>
     public StampSurface MadeGround(double x, double z, out float weight, out float wear)
     {
         weight = 0f;
         wear = 0f;
         StampSurface best = StampSurface.Natural;
-        foreach (TerrainStamp t in Stamps)
+        foreach (int i in StampsAt(x, z))
         {
-            if (t.Shape != StampShape.Pad) continue;
+            TerrainStamp t = Stamps[i];
+            if (t.Shape is not (StampShape.Pad or StampShape.Road)) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;
@@ -143,11 +210,28 @@ public sealed class PlanetTerrainSource : ITerrainSource
         return best;
     }
 
+    /// <summary>
+    /// Whether a point is on a road's deck or shoulder and on no place's pad, and how worn that road
+    /// is: old roads let grass and shrubs back in.
+    /// </summary>
+    public bool OnRoad(double x, double z, out float wear)
+    {
+        wear = 0f;
+        bool road = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Pad && t.Weight(x, z) > 0f) return false;
+            if (t.Shape == StampShape.Road && t.Weight(x, z) > 0f) { road = true; wear = Math.Max(wear, t.Wear); }
+        }
+        return road;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {
         float w = 0f;
-        foreach (TerrainStamp t in Stamps) w = Math.Max(w, t.Weight(x, z));
+        foreach (int i in StampsAt(x, z)) w = Math.Max(w, Stamps[i].Weight(x, z));
         return w;
     }
 
@@ -184,8 +268,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
     /// <summary>The stamp whose footprint or apron covers a point, if any.</summary>
     public TerrainStamp StampAt(double x, double z)
     {
-        foreach (TerrainStamp t in Stamps)
-            if (t.Weight(x, z) >= 1f) return t;
+        foreach (int i in StampsAt(x, z))
+            if (Stamps[i].Weight(x, z) >= 1f) return Stamps[i];
         return null;
     }
 
@@ -387,11 +471,12 @@ public sealed class PlanetTerrainSource : ITerrainSource
                 float depth = h - (y + 0.5f);
                 float dist = depth * slopeScale;
 
-                // Rooms a place digs below its pad stay open, however deep they go.
+                // Rooms a place digs below its pad stay open, however deep they go; a tunnel's bore
+                // keeps a metre of roof under the surface, so it never opens a hole in the ground.
                 bool carved = false;
                 if (padded)
                     foreach (TerrainStamp t in stamps)
-                        carved |= t.IsCarved(x, y, z);
+                        carved |= t.IsCarved(x, y, z) && (t.Shape != StampShape.Road || depth > TunnelRoof);
                 if (carved)
                 {
                     density[i] = -Limit;
@@ -474,15 +559,13 @@ public sealed class PlanetTerrainSource : ITerrainSource
         return list;
     }
 
+    /// <summary>Stamps that could touch a chunk column (a chunk lies inside one 64 m bucket), or null.</summary>
     List<TerrainStamp> StampsNear(int ox, int oz)
     {
-        List<TerrainStamp> list = null;
-        foreach (TerrainStamp t in Stamps)
-        {
-            t.Offset(ox + S * 0.5, oz + S * 0.5, out double dx, out double dz);
-            if (Math.Abs(dx) > t.ReachX + S && Math.Abs(dz) > t.ReachZ + S) continue;
-            (list ??= new List<TerrainStamp>()).Add(t);
-        }
+        int[] near = StampsAt(ox + S * 0.5, oz + S * 0.5);
+        if (near.Length == 0) return null;
+        var list = new List<TerrainStamp>(near.Length);
+        foreach (int i in near) list.Add(Stamps[i]);
         return list;
     }
 
@@ -549,8 +632,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
         float hz = SurfaceHeight(x + 0.5, z + 1.5) - SurfaceHeight(x + 0.5, z - 0.5);
         float slopeScale = 1f / MathF.Sqrt(1f + (hx * hx + hz * hz) * 0.25f);
         float depth = h - (y + 0.5f), d = depth * slopeScale;
-        foreach (TerrainStamp t in Stamps)
-            if (t.IsCarved(x, y, z)) return -Limit;
+        foreach (int i in StampsAt(x + 0.5, z + 0.5))
+            if (Stamps[i].IsCarved(x, y, z) && (Stamps[i].Shape != StampShape.Road || depth > TunnelRoof)) return -Limit;
         if (depth > BedrockDepth)
         {
             // Bedrock lies under the low ground nearby, which is never above the surface here: only

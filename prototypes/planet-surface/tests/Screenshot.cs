@@ -99,7 +99,7 @@ public partial class Screenshot : Node
                 break;
             case 1:
                 _main.Streamer.SetFocus(_main.Camera.GlobalPosition);
-                bool settled = _main.Streamer.Settled && _main.Pois.Built;
+                bool settled = _main.Streamer.Settled && _main.Pois.Built && _main.Infra.Built;
                 _settled = settled ? _settled + 1 : 0;
                 if (_settled == SettleFrames - 12) _spec.BeforeCapture?.Invoke(_main);
                 if (_settled == SettleFrames - 12 && _args.TryGetValue("hide", out string hide))
@@ -156,6 +156,7 @@ public static class Views
         "cave" => new(PlanetSpec.Roll(9, Archetype.Temperate, 0), CaveView, CaveTime, WeatherKind.Clouds, Prepare: DigCave),
         "volcanic_dusk" => new(PlanetSpec.Roll(3, Archetype.Lava, 0), m => LookAtPeak(m, 1400, 120, 6), 0.735, WeatherKind.Clouds),
         _ when name.StartsWith("far:") => FarView(name),
+        _ when name.StartsWith("infra:") => InfraViews.Get(name),
         _ => null,
     };
 

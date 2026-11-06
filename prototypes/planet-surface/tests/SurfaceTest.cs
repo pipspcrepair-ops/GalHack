@@ -54,6 +54,8 @@ public partial class SurfaceTest : Node
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
             await Run("Profile", ProfileChecks);
+            await Run("Infra", InfraChecks);
+            if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);
             await Run("Heights", Heights);
@@ -172,7 +174,9 @@ public partial class SurfaceTest : Node
             // Compare natural ground only: pads, cave mouths and river channels are meant to differ.
             float natural = w.Source.NaturalHeight(wx, wz);
             GroundSample g = w.Source.Sampler.Sample(wx, wz, 1);
-            if (w.Source.StampWeight(wx, wz) > 0f || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
+            // (A stamp changes the ground there: a pad, its blend, a road's bed and banks.)
+            bool stamped = w.Source.StampWeight(wx, wz) > 0f || Math.Abs(w.Source.SurfaceHeight(wx, wz) - natural) > 0.001f;
+            if (stamped || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
             float field = FieldSurface(store, cx, cz, (int)MathF.Ceiling(natural) + 6, (int)MathF.Floor(natural) - 6);
             if (float.IsNaN(field)) { skipped++; continue; }
             double d = Math.Abs(field - natural);
@@ -310,7 +314,8 @@ public partial class SurfaceTest : Node
                     double ra = ray * Math.PI / 4, first = -1, last = -1;
                     for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
                     {
-                        w.Source.MadeGround(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d, out float mw, out _);
+                        // The place's own pad (a road leaving its gate has edges of its own).
+                        float mw = t.Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
                         if (mw < 0.97f && first < 0) first = d;
                         if (mw <= 0.5f) { last = d; break; }
                     }
@@ -550,13 +555,18 @@ public partial class SurfaceTest : Node
             {
                 var p = new Vector3(here.X + MathF.Cos(k * MathF.Tau / 16) * r, 0f, here.Z + MathF.Sin(k * MathF.Tau / 16) * r);
                 float lo = float.MaxValue, hi = float.MinValue;
+                // Level along the walk and across it (not a hillside that happens to run level along x).
                 for (float m = 0f; m <= 8f; m += 0.5f)
+                for (float side = -0.6f; side <= 0.6f; side += 0.6f)
                 {
-                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z, w.Height));
+                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z + side, w.Height));
                     lo = MathF.Min(lo, h);
                     hi = MathF.Max(hi, h);
                 }
-                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && w.Source.StampWeight(p.X, p.Z) <= 0f
+                // Open ground, or an old road's level deck.
+                bool ground = w.Source.StampWeight(p.X, p.Z) <= 0f
+                              || w.Source.OnRoad(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height), out _) && w.Source.OnRoad(Mathx.WrapX(p.X + 8f, w.Width), Mathx.Wrap(p.Z, w.Height), out _);
+                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && ground
                             && !_main.Streamer.SolidsNear(p + new Vector3(4f, 0f, 0f), 7f).Any();
                 if (open) found = new Vector3(p.X, hi, p.Z);
             }
@@ -574,6 +584,11 @@ public partial class SurfaceTest : Node
             slab.GlobalPosition = start + new Vector3(5f, -2f, 0f); // out of the way, under the ground
             player.Teleport(start + Vector3.Up * 0.1f);
             player.SetLook(-MathF.PI / 2f, 0f); // facing east, at the slab
+            // Held still until the ground there has streamed in, so it can't fall through ground not yet built.
+            var mode = player.ProcessMode;
+            player.ProcessMode = ProcessModeEnum.Disabled;
+            await Until(() => _main.Streamer.ReadyAround(start, 1, needCollision: true), 60);
+            player.ProcessMode = mode;
             await SolidsIn();
             await PhysicsFrames(2); // the teleport's stale floor contact gone
             await UntilTicks(() => player.IsOnFloor() && MathF.Abs(player.Velocity.Y) < 0.05f, 60);
