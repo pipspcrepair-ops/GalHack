@@ -30,7 +30,7 @@ public sealed record GunFeel(
     /// <summary>One multiplier for every flash's size (for size samples; the sizes below are the ones the owner chose).</summary>
     public static float FlashScale = 1f;
 
-    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Star, new Color(0.3f, 0.6f, 1f), 0.084f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
+    public static readonly GunFeel Tool = new("tool_shot", FlashStyle.Star, new Color(1f, 0.25f, 0.2f), 0.084f, 0.7f, 3.5f, 2, 0f, 0f, 0.6f, 0.12f);
 
     static readonly Dictionary<string, GunFeel> Table = Build(
         Tool,

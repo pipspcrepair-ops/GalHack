@@ -109,6 +109,8 @@ public sealed class SurvivalTool
     {
         _cooldown -= dt;
         Aim();
+        if (trigger && !_suit.Dead && Mode == ToolMode.Gather && !OnBlock && (OnPlace || HasTarget))
+            ShowBeam(OnPlace ? _placePoint : new Vector3(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f));
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
         else if (StrikeCreature()) { }
@@ -269,6 +271,9 @@ public sealed class SurvivalTool
         Said?.Invoke($"+{biomass} Biomass, +{organics:F1} kg organics", Tones.Good);
         return true;
     }
+
+    /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>
+    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle(), to);
 
     // ---- Shoot ---------------------------------------------------------------------------------
 

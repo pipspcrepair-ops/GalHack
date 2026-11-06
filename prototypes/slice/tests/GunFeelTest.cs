@@ -103,6 +103,8 @@ public partial class GunFeelTest : Node
         Check(peakKick > 0.5f && peakTilt > 0.0005f, $"the hand kicked ({peakKick:F2}) and the camera tilted ({Mathf.RadToDeg(peakTilt):F2} degrees)");
         Check(hands.Kick == 0f && AimIsExact(), "then the recoil returned to rest and the camera aim came back exactly");
 
+        Check(GunFeel.Tool.Colour.R > 0.9f && GunFeel.Tool.Colour.B < 0.4f, $"the shoot bolt and its flash are red ({GunFeel.Tool.Colour})");
+
         // ---- Every kind of fire flashes, lasts a few frames, and clears ----
         Vector3 at = _game.Tool.Muzzle(), dir = _game.Survivor.WorldLook();
         foreach (GunFeel feel in GunFeel.All)
@@ -155,5 +157,20 @@ public partial class GunFeelTest : Node
         Check(fx.FlashPool == 16 && maxNodes - warm <= 40 && after - warm <= 2,
             $"the pool never grew ({fx.FlashPool} slots) and nodes held steady: {warm} before, at most {maxNodes} during, {after} after");
         Check(AimIsExact(), "and the aim is still exactly where it was");
+
+        // ---- Gather mode: a blue beam while the tool works, gone when it stops ----
+        foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        foreach (int x in _drive.LookAt(_game.Zone.GroundAt(feet.X + 1.5f, feet.Z + 1.5f), 8)) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Check(!fx.BeamShowing, "no beam while the tool is idle");
+        int flashesG = fx.Flashes;
+        _game.Controls.Primary = true;
+        for (int i = 0; i < 20; i++) yield return 0;
+        Check(fx.BeamShowing && fx.Beams >= 1, "gathering shows the blue beam");
+        Check(fx.Flashes == flashesG, "and the gather beam has no muzzle flash");
+        _game.Controls.Primary = false;
+        for (int i = 0; i < 10; i++) yield return 0;
+        Check(!fx.BeamShowing, "the beam is gone once the tool stops");
     }
 }

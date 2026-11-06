@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -483,7 +483,12 @@ public partial class Game : Node3D
         bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
-        else if (hands && deconstruct) Builder.TickDeconstruct(pressed);
+        else if (hands && deconstruct)
+        {
+            Builder.TickDeconstruct(pressed);
+            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
+                Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
+        }
         else if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
@@ -591,13 +596,16 @@ public partial class Game : Node3D
 
     // ---- The camera -----------------------------------------------------------------------------
 
+    bool _menuWasOpen;
+
     public override void _Process(double delta)
     {
         if (Zone == null) return; // the start screen is up
         if (Suit != null) SyncReplicators();
         if (Interactive)
         {
-            var want = Menu.IsOpen ? Input.MouseModeEnum.Visible : Input.MouseMode;
+            var want = Menu.IsOpen ? Input.MouseModeEnum.Visible : _menuWasOpen ? Input.MouseModeEnum.Captured : Input.MouseMode;
+            _menuWasOpen = Menu.IsOpen; // the moment the menu closes, by any means, aim is back
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.

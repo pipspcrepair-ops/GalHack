@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Godot;
 using Slice.Game;
@@ -8,7 +8,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Screenshots of the muzzle flashes, mid-flash. Run windowed:
-///   godot --path prototypes/slice res://tests/GunFeelShots.tscn -- --feel=bullet --where=bunker|outside --out=FILE.png
+///   godot --path prototypes/slice res://tests/GunFeelShots.tscn -- --feel=bullet|tool|gather --where=bunker|outside --out=FILE.png
 /// (Not a *Test scene, so the gate doesn't run it.)
 /// </summary>
 public partial class GunFeelShots : Node
@@ -69,15 +69,32 @@ public partial class GunFeelShots : Node
             foreach (int x in drive.ClimbOut(_game.Bunker)) yield return x;
             foreach (int x in drive.UntilSettled()) yield return x;
         }
-        foreach (int x in _play.Tool(ToolMode.Shoot)) yield return x;
+        foreach (int x in _play.Tool(_feel == "gather" ? ToolMode.Gather : ToolMode.Shoot)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 target = _where == "outside"
             ? _game.Zone.GroundAt(feet.X + 7f, feet.Z + 4f)
             : _game.Bunker.At(new Vector3(3.25f, 1.4f, -1.0f));
+        if (_feel == "gather")
+        {
+            Vector3 away = feet - _game.Bunker.At(Vector3.Zero); // the ground on the far side from the bunker, so no block is in the way
+            away.Y = 0f;
+            away = away.LengthSquared() < 1e-4f ? Vector3.Right : away.Normalized();
+            target = _game.Zone.GroundAt(feet.X + away.X * 3f, feet.Z + away.Z * 3f);
+        }
         foreach (int x in drive.LookAt(target, 8)) yield return x;
         foreach (int x in drive.Wait(20)) yield return x;
 
         // The flash and the kick, then freeze them where they stand and let the smoke come out.
+        if (_feel == "gather")
+        {
+            _game.Controls.Primary = true;
+            foreach (int x in drive.Wait(6)) yield return x;
+            _game.Shots.SetProcess(false);
+            _game.Hands.SetProcess(false);
+            foreach (int x in drive.Wait(2)) yield return x;
+            GD.Print($"gather: beam showing {_game.Shots.BeamShowing}");
+            yield break;
+        }
         GunFeel feel = GunFeel.Get(_feel);
         _game.Hands.Recoil(feel);
         yield return 0; // the hand has kicked: the flash goes on its barrel tip as it is now
