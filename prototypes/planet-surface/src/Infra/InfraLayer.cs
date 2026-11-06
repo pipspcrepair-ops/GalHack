@@ -488,22 +488,27 @@ public partial class InfraLayer : Node3D
             float h = p.Height;
             if (p.Fallen)
             {
-                // Lying along the line, its foot snapped off at the stump.
+                // Lying along the line, its foot snapped off at the stump, and along the ground, however it falls away.
                 b.Box(foot + NV.UnitY * 0.4f, NV.UnitX * 0.14f, NV.UnitY * 0.4f, NV.UnitZ * 0.14f, p.Pylon ? PylonSteel : PoleWood, DecoSurface.Matte, collide: true);
-                NV lieDir = NV.Normalize(along + side * 0.25f);
-                NV mid = foot + lieDir * (h * 0.5f) + NV.UnitY * 0.2f;
-                if (p.Pylon) b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.9f, side * 1.4f, PylonSteel, DecoSurface.Metal, collide: true);
+                NV flat = NV.Normalize(along + side * 0.25f);
+                NV top = foot + flat * h;
+                top.Y = b.Ground(p.X + flat.X * h, p.Z + flat.Z * h);
+                NV lieDir = NV.Normalize(top - foot), lieSide = NV.Normalize(NV.Cross(NV.UnitY, lieDir)), lieUp = NV.Normalize(NV.Cross(lieDir, lieSide));
+                if (lieUp.Y < 0) lieUp = -lieUp;
+                NV mid = foot + lieDir * (h * 0.5f) + lieUp * (p.Pylon ? 0.7f : 0.1f);
+                float length = (top - foot).Length();
+                if (p.Pylon) b.Box(mid, lieDir * (length * 0.5f), lieUp * 0.9f, lieSide * 1.4f, PylonSteel, DecoSurface.Metal, collide: true);
                 else
                 {
-                    b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.13f, side * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
-                    b.Box(foot + lieDir * (h - 0.4f) + NV.UnitY * 0.3f, lieDir * 0.07f, NV.UnitY * 0.07f, side * 1.25f, PoleWood, DecoSurface.Matte, collide: false);
+                    b.Box(mid, lieDir * (length * 0.5f), lieUp * 0.13f, lieSide * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
+                    b.Box(foot + lieDir * (length - 0.4f) + lieUp * 0.3f, lieDir * 0.07f, lieUp * 0.07f, lieSide * 1.25f, PoleWood, DecoSurface.Matte, collide: true);
                 }
                 return;
             }
             if (!p.Pylon)
             {
                 b.Box(foot + NV.UnitY * (h * 0.5f - 0.6f), NV.UnitX * 0.13f, NV.UnitY * (h * 0.5f + 0.6f), NV.UnitZ * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
-                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: false);
+                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: true);
                 for (int k = 0; k < Lines.WiresOn(p); k++)
                 {
                     var a = p.Anchor(k, Lines.WiresOn(p));
@@ -512,16 +517,17 @@ public partial class InfraLayer : Node3D
                 return;
             }
             // A lattice pylon: four legs tapering up, braced in tiers, and two crossarms.
-            float baseHalf = 3.2f, topHalf = 0.8f;
+            float baseHalf = h * 0.13f, topHalf = 0.9f;
+            int tiers = Math.Max(4, (int)(h / 6f));
             NV[] bottom = { foot + (side + along) * baseHalf, foot + (side - along) * baseHalf, foot + (-side - along) * baseHalf, foot + (-side + along) * baseHalf };
             NV TopOf(NV c) => foot + (c - foot) * (topHalf / baseHalf) + NV.UnitY * h;
             for (int i = 0; i < 4; i++)
             {
-                b.Beam(bottom[i] - NV.UnitY * 1f, TopOf(bottom[i]), 0.12f, PylonSteel);
+                b.Beam(bottom[i] - NV.UnitY * 1.5f, TopOf(bottom[i]), 0.16f, PylonSteel, collide: true);
                 NV n0 = bottom[i], n1 = bottom[(i + 1) % 4];
-                for (int tier = 0; tier < 4; tier++)
+                for (int tier = 0; tier < tiers; tier++)
                 {
-                    float t0 = tier / 4f, t1 = (tier + 1) / 4f;
+                    float t0 = tier / (float)tiers, t1 = (tier + 1) / (float)tiers;
                     NV a0 = NV.Lerp(n0, TopOf(n0), t0), b1 = NV.Lerp(n1, TopOf(n1), t1);
                     b.Beam(a0, b1, 0.05f, PylonSteel);
                     b.Beam(NV.Lerp(n0, TopOf(n0), t1), NV.Lerp(n1, TopOf(n1), t1), 0.05f, PylonSteel);
@@ -530,7 +536,7 @@ public partial class InfraLayer : Node3D
             for (int arm = 0; arm < 2; arm++)
             {
                 NV at = foot + NV.UnitY * (h - 2f - arm * 4f);
-                b.Box(at, along * 0.25f, NV.UnitY * 0.25f, side * (Lines.WiresOn(p) / 2 * 4.2f + 0.6f), PylonSteel, DecoSurface.Metal, collide: false);
+                b.Box(at, along * 0.25f, NV.UnitY * 0.25f, side * (Lines.WiresOn(p) / 2 * 4.2f + 0.6f), PylonSteel, DecoSurface.Metal, collide: true);
             }
             for (int k = 0; k < Lines.WiresOn(p); k++)
             {
@@ -739,7 +745,7 @@ public sealed partial class TileBuilder
     }
 
     /// <summary>A thin square beam between two points.</summary>
-    public void Beam(NV from, NV to, float half, DecoRgb color)
+    public void Beam(NV from, NV to, float half, DecoRgb color, bool collide = false)
     {
         NV d = to - from;
         float len = d.Length();
@@ -747,7 +753,7 @@ public sealed partial class TileBuilder
         NV y = d / len;
         NV helper = MathF.Abs(y.Y) < 0.95f ? NV.UnitY : NV.UnitX;
         NV x = NV.Normalize(NV.Cross(helper, y)), z = NV.Cross(x, y);
-        Box((from + to) * 0.5f, y * (len * 0.5f), x * half, z * half, color, DecoSurface.Matte, collide: false);
+        Box((from + to) * 0.5f, y * (len * 0.5f), x * half, z * half, color, DecoSurface.Matte, collide);
     }
 
     /// <summary>A quad (two triangles), wound to face away from <paramref name="inside"/> when given.</summary>

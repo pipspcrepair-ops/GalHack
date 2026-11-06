@@ -310,6 +310,56 @@ public partial class SurfaceTest
             $"railways sweep: {lines} lines on {worlds} worlds, {metres / 1000:F1} km, {straight / Math.Max(1, metres):P0} straight, tightest curve {Math.Min(tightest, 1e6):F0} m, {sharp} sharp points, {crossed} over themselves, {steep} steep stretches, {unended} not ending at a place; dropped: {string.Join(", ", drops.Select(d => $"{d.Value} {d.Key}"))}{first}");
     }
 
+    /// <summary>Pylons on fresh worlds: 30 to 50 m tall, striding on their own straight legs rather than along a road, and pylons and poles alike solid.</summary>
+    async Task PylonChecks()
+    {
+        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0;
+        var rand = new Random();
+        for (int k = 0; k < 6 && pylons < 60; k++)
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+            PowerLines power = w.Infra?.Power;
+            if (power == null) continue;
+            foreach (PowerPole p in power.Poles)
+            {
+                if (!p.Pylon)
+                {
+                    poles++;
+                    continue;
+                }
+                pylons++;
+                if (p.Tall < 30f || p.Tall > 50f) wrongHeight++;
+                if (w.Infra.Nearest(p.X, p.Z, 40, out _, out _) != null) byRoad++;
+            }
+            foreach (var (first, last) in power.Legs)
+            {
+                legs++;
+                for (int i = first + 1; i < last; i++)
+                {
+                    PowerPole a = power.Poles[i - 1], b = power.Poles[i], c = power.Poles[i + 1];
+                    double ux = b.X - a.X, uz = b.Z - a.Z, vx = c.X - b.X, vz = c.Z - b.Z;
+                    double cos = (ux * vx + uz * vz) / Math.Max(1e-6, Math.Sqrt(ux * ux + uz * uz) * Math.Sqrt(vx * vx + vz * vz));
+                    stretches++;
+                    if (cos < Math.Cos(Mathf.DegToRad(20))) turns++;
+                }
+            }
+            spanned += power.Wires.Count(wire => wire.Spanned && power.Poles[wire.A].Pylon);
+            // Solid: each emits collision into its tile.
+            var pieces = PlanetSurface.Infra.InfraLayer.Plan(w);
+            int tested = 0;
+            foreach (var piece in pieces.Values.SelectMany(l => l).Where(p => p.GetType().Name == "PolePiece"))
+            {
+                if (tested++ >= 40) break;
+                var b = new PlanetSurface.Infra.TileBuilder(w, 0, 0);
+                piece.Emit(b);
+                if (b.Collision.Count == 0) hollow++;
+            }
+            await Frames(1);
+        }
+        Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
+            $"pylons stride on their own: {pylons} on {legs} lines, {wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })
