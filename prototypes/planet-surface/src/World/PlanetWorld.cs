@@ -10,6 +10,7 @@ using PlanetSurface.Skies;
 using PlanetSurface.Terrain;
 using TerrainDigging.Terrain;
 using PoiSite = PlanetSurface.Poi.PoiSite;
+using WorldProfile = PoiGenerator.Gen.WorldProfile;
 
 namespace PlanetSurface.World;
 
@@ -18,7 +19,7 @@ namespace PlanetSurface.World;
 /// arrive: the generator's world map, the POIs placed on it and the pads they sit on, the voxel
 /// terrain source and store, the ground palette, and the sky its system gives it.
 /// </summary>
-public sealed class PlanetWorld
+public sealed partial class PlanetWorld
 {
     public readonly PlanetSpec Spec;
     public readonly WorldMap Map;
@@ -29,6 +30,18 @@ public sealed class PlanetWorld
     public readonly IReadOnlyList<PoiSite> Pois;
     public readonly SkySystem Sky;
     public readonly WorldLook Look;
+    /// <summary>
+    /// The world's profile, rolled first from its seed: whether it was ever inhabited, its old
+    /// population, starport and trade, and two tech levels (low, mid or high): before the collapse
+    /// (the old world: ruins, POI families, infrastructure, wrecked traffic, decorations) and now
+    /// (the living: settlements and faction places, their gear, defences and animals).
+    /// </summary>
+    public readonly WorldProfile Profile;
+    /// <summary>
+    /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
+    /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
+    /// </summary>
+    readonly object _around;
     public readonly double BuildMs;
 
     public double Width => Map.WidthMeters;
@@ -78,15 +91,21 @@ public sealed class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, PlanetTerrainSource source, double ms)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms)
     {
         Spec = spec;
+        Profile = profile;
+        _around = around;
         Map = map;
         Landing = landing;
         Pois = pois;
         Source = source;
         Terrain = new PlanetTerrain(source);
         Palette = new GroundPalette(map);
+        // Blast sites' dead zones show in the ground's colour, fading back to the land's own.
+        foreach (PoiSite p in pois)
+            if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
+                Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
         Sky = SkySystem.For(spec);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
@@ -96,10 +115,11 @@ public sealed class PlanetWorld
     public static PlanetWorld Build(PlanetSpec spec, PoiCatalog catalog)
     {
         var watch = Stopwatch.StartNew();
+        WorldProfile profile = ProfileFor(spec, PoiSiting.StartWorld);
         WorldMap map = PlanetGenerator.Generate(spec);
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
-        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing);
+        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
@@ -107,9 +127,25 @@ public sealed class PlanetWorld
             stamps.AddRange(p.Stamps);   // the pad, then whatever grounds it (bowl, terraces, approach cut, tilt, furrow)
             anchors.Add(new TerrainDigging.Terrain.PoiSite(p.Name, p.Footprint));
         }
+        // The world round the places: planned on the bare land, its stamps laid after the places' own,
+        // then finished on the final ground (see PlanetWorld.Infra.cs; nothing when that isn't compiled in).
+        object around = null;
+        PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, ref around);
         var source = new PlanetTerrainSource(map, stamps, anchors);
-        return new PlanetWorld(spec, map, landing, pois, source, watch.Elapsed.TotalMilliseconds);
+        FinishAround(spec, source, pois, around);
+        return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
     }
+
+    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
+    static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
+
+    /// <summary>
+    /// A planet's world profile: rolled from its seed and kind, the first thing generated. Start
+    /// worlds were always inhabited (their survivors live among the old world's ruins). The same
+    /// spec always rolls the same profile.
+    /// </summary>
+    public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false) =>
+        WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld);
 
     /// <summary>
     /// The folder planets' saves go in. Tests give each run a folder of its own: user:// is shared
@@ -177,14 +213,14 @@ public sealed record WorldLook
         ArchetypeDef def = map.Def;
         return (def.Archetype, def.Variant) switch
         {
-            (Archetype.Temperate, 0) => new() { SnowAltitude = 620f, Shallow = new("2e7a80"), Deep = new("0c2c40") },
-            (Archetype.Temperate, _) => new() { SnowAltitude = 900f, Shallow = new("2f7c6c"), Deep = new("0c3236") },
-            (Archetype.Arid, _) => new() { Dust = new("b98a56"), Shallow = new("3a8c8a"), Deep = new("12384a") },
+            (Archetype.Temperate, 0) => new() { SnowAltitude = 380f, Shallow = new("2e7a80"), Deep = new("0c2c40") },
+            (Archetype.Temperate, _) => new() { SnowAltitude = 500f, Shallow = new("2f7c6c"), Deep = new("0c3236") },
+            (Archetype.Arid, _) => new() { SnowAltitude = 640f, Dust = new("b98a56"), Shallow = new("3a8c8a"), Deep = new("12384a") },
             (Archetype.Ice, 0) => new() { BaseSnow = 0.55f, SnowAltitude = 60f, Dust = new("c8ccd0"), Shallow = new("2c5a78"), Deep = new("0a1c34") },
             (Archetype.Ice, _) => new() { BaseSnow = 0.35f, SnowAltitude = 150f, Dust = new("c0c4c8"), Shallow = new("2a6a7c"), Deep = new("0a2236"), Glow = new("40fff0") },
             (Archetype.Lava, _) => new() { Dust = new("4a4442"), Shallow = new("8a1a0a"), Deep = new("ff6a18"), Lava = true, LiquidGlow = 2.2f },
-            (Archetype.Alien, 0) => new() { SnowAltitude = 800f, Dust = new("a898b8"), Shallow = new("2a8a86"), Deep = new("0c2a3a"), Glow = new("c070ff"), LiquidGlow = 0.25f },
-            _ => new() { SnowAltitude = 800f, Dust = new("8a8a5a"), Shallow = new("5a3a7a"), Deep = new("1a0c30"), Glow = new("30ffc0"), LiquidGlow = 0.25f },
+            (Archetype.Alien, 0) => new() { SnowAltitude = 500f, Dust = new("a898b8"), Shallow = new("2a8a86"), Deep = new("0c2a3a"), Glow = new("c070ff"), LiquidGlow = 0.25f },
+            _ => new() { SnowAltitude = 500f, Dust = new("8a8a5a"), Shallow = new("5a3a7a"), Deep = new("1a0c30"), Glow = new("30ffc0"), LiquidGlow = 0.25f },
         };
     }
 }

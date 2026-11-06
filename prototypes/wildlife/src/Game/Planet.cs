@@ -25,6 +25,9 @@ public partial class Planet : Node3D
     public const float GridStep = Terrain.Step;
 
     public Terrain Terrain { get; private set; }
+
+    /// <summary>Ground to stand on instead of the prototype's own (a patch of a generated planet), if set before Build.</summary>
+    public Terrain TerrainOverride;
     public NavGrid Nav { get; private set; }
     public WorldStyle Style { get; private set; }
 
@@ -40,7 +43,7 @@ public partial class Planet : Node3D
 
     public void Build()
     {
-        Terrain = new Terrain(LandSeed);
+        Terrain = TerrainOverride ?? new Terrain(LandSeed);
         Nav = new NavGrid(Terrain.HalfSize, 3f);
         BuildSky();
         BuildGround();

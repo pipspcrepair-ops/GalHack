@@ -242,6 +242,39 @@ All sounds are synthesised at start-up (`src/Game/ProceduralAudio.cs`), the disc
 
 The prototype starts no threads of its own.
 
+### Built for landforms
+
+Design doc rev 423, end of "Landforms": "each region's creatures are adapted to its ground ... so crossing into new country means meeting new creatures."
+
+| | |
+| --- | --- |
+| ![A herd of long-legged runners on open plains, the plains' giant behind](screenshots/home-plains.png) | ![Splay-legged climbers on a mountain shoulder](screenshots/home-mountains.png) |
+| ![Sand-swimmers surfacing between dunes](screenshots/home-dunes.png) | ![Stilt-legged waders at a delta channel](screenshots/home-delta.png) |
+
+**Species per landform.** `FaunaGenerator.Generate(seed, alienness, bloom, landforms, ground)` rolls a planet's wildlife for its landform mix (planet-generator's [LANDFORMS.md](../planet-generator/LANDFORMS.md)). Each landform gets two or three species of its own, filling the niches its ground offers (`src/Core/LandformFauna.cs`):
+
+| Ground | Landforms | Niches, and how the bodies are built |
+| --- | --- | --- |
+| Open | plains, steppe, ice and basalt plains, rocky desert, ringlands | a herd of runners (longer, lighter legs, faster); pack hunters that run them down; the odd territorial giant |
+| Steep | mountains, fjords, coastal cliffs, mesas, canyonlands, plateau, karst, shard fields | climbers (splayed, thick legs low to the rock); cliff gliders; ambushers on the ledges |
+| Sand | dune sea, badlands | burrowers; sand-swimmers (sleek, burrowing chain bodies); quick leapers |
+| Wet | delta, wetlands, lake district, river valleys, archipelago | waders (stilt legs, a long neck); ambushers in the shallows; scavenging fliers |
+| Broken | hills, dome fields, volcanic field | grazers; lone predators; armoured crawlers (plates or shell) |
+
+How the species are built:
+- **Ranging species.** Landforms of the same kind share one ranging species too (a herd that roams plains and steppe alike).
+- **The usual rules.** Bodies are built by the planet's usual rules (parts that suit the job, proportions that read as animals, quality checked), then adapted.
+- **Coats.** Coats take on their home ground's colour, from the planet's own biome colours when it passes them in, less so on alien worlds.
+- **Names.** Common names say how a body is built: "running banded crystalback", "wading tendrilled strider", "sand-swimming lamprey-mouthed crawler".
+- **Species count.** It grows with the mix: 2-3 on a one-landform world, about 15-17 with five or six landforms.
+
+**Homes and spawning.** Each species knows its home landforms (`Species.Homes`) and how its body is adapted (`Species.Adaptation`):
+- `LandformFauna.PickFor(fauna, blend, rng)` picks a species for a spot from the landforms there. Deep in a region it is always one of the region's own; near a border, either side's, as much as each holds there.
+- `Spawner.LandformAt` keeps the prototype's spawner to home ground.
+- The old `Generate(seed, alienness, bloom)` is unchanged, and so is everything else: the discovery card, no spawns near bases or towns, day and night, cave and POI fauna, domestic animals.
+
+`tests/Screenshot.tscn -- --view=home --landform=Plains [--archetype --variant --seed]` stands the prototype on a patch of a real generated planet, in its biome colours, with that landform's signature creature in front of the camera.
+
 ## Play it
 
 From the repo root, in PowerShell:
@@ -274,7 +307,23 @@ You start on the alien world with a herd on the plain ahead and a grove to the l
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/WildlifeTest.tscn
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/CreaturesTest.tscn
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/ShowroomProbe.tscn
+.\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/LandformFaunaTest.tscn
 ```
+
+`tests/LandformFaunaTest.tscn` (headless, 8 checks, on a real generated planet) checks:
+- **Same seed, same species.** Seventeen species are identical twice over, and another seed differs.
+- **Species grow from the mix.** 3 on a one-landform world, 6 with two landforms, 17 with six.
+- **Distinct per landform.** Each landform of a mixed world has two or more species of its own, and every pair of landforms differs.
+- **Built for the ground** (six planets):
+  - plains have herds and their hunters
+  - mountains have splay-legged climbers and gliders
+  - dune seas have burrowers and sand-swimmers
+  - wetlands have stilt-legged waders and ambushers
+  - all 77 species pass the quality rules
+- **Colours fit the ground.** 12 of 14 species are nearer their own ground's colour than other landforms'.
+- **Spawns by landform.** Of 2000 picks deep in regions, none was off its home ground. Of 3724 picks near borders, 1506 came from the landform next door.
+- **The spawner keeps to home ground.** 33 creatures on a patch across a border, none off home ground.
+- **Old fauna unchanged.** Fauna rolled without landforms has no homes and no adaptations.
 
 Runs headless and exits 0 or 1. `tests/QuitProbe.tscn` checks the game's own way out: it drives the hovercraft with its sounds playing, closes the window, and must exit 0 with nothing leaked. `WildlifeTest` checks:
 - **Generator:**
@@ -367,6 +416,8 @@ godot --path prototypes/wildlife res://tests/Screenshot.tscn -- --view=<view> --
 Everything here is additive: no public name was renamed or removed, and a sim that doesn't opt in (day and night, settlements) behaves exactly as before. These are the changes for other folders, to make after the merges; none of them is made here.
 
 ### The slice (`prototypes/slice`)
+
+0. **Landforms.** To roll the planet's wildlife for its landforms and spawn by home ground, see item 6 of planet-generator's [Integration](../planet-generator/README.md#integration) (`WildlifePatch.SetWorld` and `Populate`). The wildlife csproj now also compiles planet-generator's `src/Gen` and `src/Look`, which the slice compiles already, so nothing changes in `Slice.csproj`.
 
 1. **Compile list.** `src/Core`, `Rigs`, `Sim`, `View`, `Game/ProceduralAudio.cs` and `Game/Shutdown.cs` gained new files that compile with what the slice already includes. For the voxel caves add one line to `Slice.csproj`, next to the other wildlife lines (it needs terrain-digging's `src/Terrain`, already compiled there):
    ```xml

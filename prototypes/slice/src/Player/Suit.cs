@@ -42,11 +42,15 @@ public sealed class Suit : IDamageSink
     /// </summary>
     public bool InSealedRoom;
 
+    /// <summary>Somewhere that counts as a sealed room without being a structure's: the cryo bunker, heated and with air of its own.</summary>
+    public Func<bool> Sheltered;
+
     /// <summary>Lines for the visor (helmet sealing, bottles, hard landings, deaths).</summary>
     public event Action<string> Said;
 
-    /// <summary>When each alert was last on, in survival time (tests check harm never comes first).</summary>
+    /// <summary>When each alert last came on, in survival time (tests check harm never comes first).</summary>
     public readonly Dictionary<Alert, double> WarnedAt = new();
+    Alert _warning;
 
     /// <summary>Health lost, by cause, since the start (tests).</summary>
     public readonly Dictionary<DamageKind, double> Lost = new();
@@ -118,7 +122,7 @@ public sealed class Suit : IDamageSink
     {
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
-        InSealedRoom = InRoom(survivor);
+        InSealedRoom = InRoom(survivor) || (Sheltered?.Invoke() ?? false);
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
         int events = Sim.Events.Count;
@@ -126,7 +130,8 @@ public sealed class Suit : IDamageSink
         TickReport report = Sim.Tick(dt, activity);
         if (Vitals.Health < before) Count(DamageKindFor(report.Harm), before - Vitals.Health);
         foreach (Alert a in Enum.GetValues<Alert>())
-            if (a != Alert.None && (report.Warnings & a) != 0) WarnedAt[a] = Sim.Time;
+            if (a != Alert.None && (report.Warnings & a) != 0 && (_warning & a) == 0) WarnedAt[a] = Sim.Time;
+        _warning = report.Warnings;
         for (int i = events; i < Sim.Events.Count; i++) Said?.Invoke(Sim.Events[i]);
         return report;
     }

@@ -58,6 +58,8 @@ public sealed class MeshOptions
     public Func<int, int, Rgb>? GroundColorAt;
     public Rgb RockColor = new(0x7a, 0x55, 0x3a);
     public bool Collision = true;
+    /// <summary>Draw only the blocks this picks; the rest still hide faces (two meshes of one structure with different materials).</summary>
+    public Func<Int3, bool>? Only;
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
     public bool Detail = true;
 }
@@ -90,7 +92,7 @@ public static class Mesher
                 {
                     var p = new Int3(x, y, z);
                     var b = grid.Get(p);
-                    if (!b.IsAir) ctx.Block(p, b);
+                    if (!b.IsAir && (opt.Only == null || opt.Only(p))) ctx.Block(p, b);
                 }
         if (opt.Rock)
             for (int y = opt.RockBottom; y <= Assembler.GroundY; y++)
@@ -128,8 +130,11 @@ public static class Mesher
             Int3 min = g.Min, max = g.Min + g.Size - new Int3(1, 1, 1);
             if (o.Rock)
             {
-                min = Int3.Min(min, new Int3(o.RockMin.X, o.RockBottom, o.RockMin.Z));
-                max = Int3.Max(max, new Int3(o.RockMax.X, Assembler.GroundY, o.RockMax.Z));
+                // An empty rock area (min past max) reaches nowhere: taken literally it would stretch these
+                // bounds from a grid far out in world coordinates all the way to the origin.
+                bool area = o.RockMin.X <= o.RockMax.X && o.RockMin.Z <= o.RockMax.Z;
+                min = Int3.Min(min, new Int3(area ? o.RockMin.X : min.X, o.RockBottom, area ? o.RockMin.Z : min.Z));
+                max = Int3.Max(max, new Int3(area ? o.RockMax.X : max.X, Assembler.GroundY, area ? o.RockMax.Z : max.Z));
             }
             _fMin = min - new Int3(1, 1, 1);
             _fSize = max - min + new Int3(3, 3, 3);

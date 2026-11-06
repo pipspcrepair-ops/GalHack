@@ -24,9 +24,10 @@ namespace Slice.Vessels;
 /// anyone aboard. Blocks change through <see cref="ApplyEdits"/>, which rebuilds only dirty chunks
 /// and keeps mass, centre of mass, landing legs and the four numbers in step with the blocks.
 /// </summary>
-public sealed class Vessel
+public sealed partial class Vessel
 {
-    public readonly SurfaceZone Zone;
+    /// <summary>The zone it is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    public SurfaceZone Zone { get; internal set; }
     public readonly Structure Structure;
     public readonly Body Body;
     public readonly InteriorMap Interior;
@@ -42,6 +43,12 @@ public sealed class Vessel
     public StructureMesh View { get; private set; }
     public CabinWorld Cabin { get; private set; }
     public VesselFx Fx { get; private set; }
+
+    /// <summary>Where damage lands on its blocks, and how they're repaired.</summary>
+    public VesselDamage Hits { get; }
+
+    /// <summary>The cockpit is gone: whoever sat in it gets up, while <see cref="Seat"/> still says where it was.</summary>
+    public event Action SeatLost;
 
     /// <summary>
     /// The structure's one shared storage (shared/Items): every container on it adds room, every
@@ -97,6 +104,8 @@ public sealed class Vessel
         Body = body;
         Interior = new InteriorMap(structure);
         Field = new StructureField(body, structure);
+        Hits = new VesselDamage(this);
+        body.DamageSink = Hits;
         if (body.Kind == BodyKind.Vessel)
         {
             Spec = new StructureVessel(structure, zone.Data.Handling);
@@ -104,6 +113,7 @@ public sealed class Vessel
         }
         Storage = new SharedStorage(zone.Data.Items, structure.Name, BuildingBridge.StorageCapacity(structure));
         StorageGrid = new ItemGrid(Storage, 8, 6, growable: true);
+        Roles.PilotChanged += FollowPilot;
         RefreshSeat();
         RefreshMachines();
     }
@@ -188,6 +198,7 @@ public sealed class Vessel
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = 1f,
+            Integrity = HullPoints(zone, mass.Mass), // a base's blocks are as tough as a ship's
             Shape = StructureBridge.ShapeOf(s),
             Position = at,
             Rotation = MathX.Yaw(heading),
@@ -218,6 +229,9 @@ public sealed class Vessel
         return wreck;
     }
 
+    /// <summary>Hull points for this much structure, whatever it is: blocks are blocks on a ship, a base or a wreck.</summary>
+    static float HullPoints(SurfaceZone zone, float massKg) => Impacts.Integrity(BodyKind.Vessel, massKg, zone.Physics.Rules.Integrity);
+
     static MassProperties MassOf(Structure s) =>
         s.Count > 0 ? StructureBridge.Mass(s) : new MassProperties(100f, N.Vector3.Zero);
 
@@ -225,7 +239,7 @@ public sealed class Vessel
     {
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
         HullShapes.Apply(colliders);
-        View = new StructureMesh { Name = "View" };
+        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush };
         owner.AddChild(View);
         View.Setup(Structure);
         Fx = new VesselFx { Name = "Fx" };
@@ -242,6 +256,7 @@ public sealed class Vessel
     {
         Zone.Physics.StuckFields.Add(Field);
         Zone.Weather.Bridge?.Track(Body);
+        Zone.Weather.Happened += Hits.OnWeather;
         Zone.Track(this);
     }
 
@@ -269,6 +284,8 @@ public sealed class Vessel
             Body.CenterOfMass = mass.CenterOfMass;
             Body.Shape = StructureBridge.ShapeOf(Structure);
             Body.DragArea = StructureBridge.DragArea(Structure);
+            // Hull points follow what was built (a vessel starts as one core), and don't shrink as it's shot away.
+            Body.Integrity = MathF.Max(Body.Integrity, HullPoints(Zone, mass.Mass));
             if (Binding is FreeBinding free)
             {
                 free.Rigid.Mass = mass.Mass;
@@ -329,13 +346,19 @@ public sealed class Vessel
 
     void RefreshSeat()
     {
-        Seat = null;
+        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        {
+            Seat = StructureBridge.CellCenter(Structure, taken);
+            return;
+        }
         foreach (var (p, b) in Structure.Blocks())
-            if (Structure.TypeOf(b).IsCommandChair)
+            if (IsChair(Structure.TypeOf(b)))
             {
                 Seat = StructureBridge.CellCenter(Structure, p);
                 return;
             }
+        if (Seat != null) SeatLost?.Invoke();
+        Seat = null;
     }
 
     /// <summary>The world-space box around some of the structure's chunks.</summary>

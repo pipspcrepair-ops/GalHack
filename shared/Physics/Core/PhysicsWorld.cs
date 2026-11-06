@@ -125,6 +125,48 @@ public sealed class PhysicsWorld
         Unregistered?.Invoke(body);
     }
 
+    /// <summary>
+    /// A zone handover, leaving: takes a body out of this world exactly as it is, with everything
+    /// riding in its cabin (riders keep their place aboard; nothing is let go), for another zone's
+    /// world to <see cref="Adopt"/> in the same tick. Anything parked on it is unparked and stays.
+    /// Returns what left: the body first, then its riders.
+    /// </summary>
+    public List<Body> Release(Body body)
+    {
+        var leaving = new List<Body>();
+        if (!_bodies.Contains(body)) return leaving;
+        leaving.Add(body);
+        foreach (Body b in _bodies)
+            if (b.Frame == body) leaving.Add(b);
+        foreach (Body b in leaving)
+        {
+            _bodies.Remove(b);
+            Stuck.Forget(b);
+            Unpark(b);
+        }
+        foreach (Body b in _bodies)
+            if (b.ParkedOn != null && leaving.Contains(b.ParkedOn)) Unpark(b);
+        foreach (Body b in leaving) Unregistered?.Invoke(b);
+        return leaving;
+    }
+
+    /// <summary>
+    /// A zone handover, arriving: takes in bodies another world released, as they are (riders stay
+    /// aboard). Each gets this world's next id, so the world still steps in id order.
+    /// </summary>
+    public void Adopt(IEnumerable<Body> bodies)
+    {
+        foreach (Body b in bodies)
+        {
+            if (_bodies.Contains(b)) continue;
+            b.Id = _nextId++;
+            b.Underfoot = null;
+            b.Water = WaterState.Dry;
+            _bodies.Add(b);
+            Registered?.Invoke(b);
+        }
+    }
+
     public Body Find(int id)
     {
         foreach (Body b in _bodies) if (b.Id == id) return b;
@@ -470,8 +512,8 @@ public sealed class PhysicsWorld
         other.Asleep = false;
 
         float damage = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
-        Hurt(body, damage);
-        Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
+        Hurt(body, damage, c.Point, c.Normal);
+        Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind), c.Point, -c.Normal);
         (body.Controller as IContactListener)?.OnContact(this, body, c, closing);
         if (closing > Rules.Contacts.EventSpeed)
             Impact?.Invoke(new ImpactInfo(body, other, c.Point, c.Normal, closing, damage, Surface.Body, 0f));
@@ -489,15 +531,15 @@ public sealed class PhysicsWorld
             if (!_pairs.Add(Pair(body, other))) return;
             float mu = Impacts.ReducedMass(body.Mass, MassOf(other));
             float both = Impacts.Damage(mu, closing, Rules.Contacts, body.Kind);
-            Hurt(body, both);
-            Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind));
+            Hurt(body, both, point, normal);
+            Hurt(other, Impacts.Damage(mu, closing, Rules.Contacts, other.Kind), point, -normal);
             if (closing > Rules.Contacts.EventSpeed)
                 Impact?.Invoke(new ImpactInfo(body, other, point, normal, closing, both, Surface.Body, 0f));
             return;
         }
 
         float damage = Impacts.Damage(body.Mass, closing, Rules.Contacts, body.Kind);
-        Hurt(body, damage);
+        Hurt(body, damage, point, normal);
         float crater = 0f;
         if (surface == Surface.Ground && normal.Y > 0.5f && Terrain != null)
         {
@@ -535,6 +577,15 @@ public sealed class PhysicsWorld
     {
         if (raw <= 0f) return 0f;
         float dealt = body.DamageSink?.Take(body, raw) ?? raw;
+        body.Damage += dealt;
+        return dealt;
+    }
+
+    /// <summary>The same, knowing where it struck: <paramref name="into"/> is the way into the body from the point (a contact's normal, for the body it points at).</summary>
+    public float Hurt(Body body, float raw, Vector3 point, Vector3 into)
+    {
+        if (raw <= 0f) return 0f;
+        float dealt = body.DamageSink is ILocatedDamageSink located ? located.TakeAt(body, raw, point, into) : body.DamageSink?.Take(body, raw) ?? raw;
         body.Damage += dealt;
         return dealt;
     }

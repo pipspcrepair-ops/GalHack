@@ -245,6 +245,8 @@ public partial class WorkshopProbe : Node
             $"the panel fills the console's {console.Pixels.X} x {console.Pixels.Y} pixels and takes the screen's theme");
 
         // A still cursor on the panel's background costs nothing; a change in the model redraws it.
+        // Let the constructor finish first: it runs in real time, and a job taking parts from storage is a change in the model (the SU line).
+        for (int i = 0; i < 2000 && w.Fab.Busy; i++) w.Fab.Tick(0.5);
         await AimAt(console, new Vector2(640, 60));
         await Frames(10);
         long before = console.Redraws;
@@ -254,7 +256,7 @@ public partial class WorkshopProbe : Node
         await Frames(3);
         bool redrew = console.Redraws > before;
         w.Fab.Restock.Enabled = !w.Fab.Restock.Enabled;
-        Check(_main.Pointer.Target == console && idle && redrew,
+        Check(!w.Fab.Busy && _main.Pointer.Target == console && idle && redrew,
             $"with the cursor still on it the console stays idle (0 redraws in 30 frames), and a change in the model redraws it ({console.Redraws - before})");
 
         // Hover and click a stock toggle button.

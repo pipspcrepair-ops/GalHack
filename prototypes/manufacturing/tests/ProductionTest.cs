@@ -146,7 +146,7 @@ public partial class ProductionTest : TestBase
         int lastO2 = starts.FindLastIndex(s => s.Item == "o2-bottle"), firstCell = starts.FindIndex(s => s.Item == "energy-cell");
         Check(lastO2 >= 0 && firstCell > lastO2, "the first order finishes before the second starts");
         Check(storage.Count("o2-bottle") == 3 && storage.Count("energy-cell") == 4, "both orders are delivered");
-        Check(Math.Abs(fab.RunSeconds(_items.Item("o2-bottle").Recipe) - 4) < 1e-9, "the survival constructor runs at half speed (a 2 s recipe takes 4 s)");
+        Check(Math.Abs(fab.RunSeconds(_items.Item("o2-bottle").Recipe) - 2) < 1e-9, "the survival constructor runs at the recipe's own speed (a 2 s recipe takes 2 s)");
     }
 
     void TestMissing()
@@ -180,10 +180,12 @@ public partial class ProductionTest : TestBase
         Check(small.Order("lattice-core").Status == OrderStatus.NoRecipe, "unique finds can't be ordered");
         Check(small.Order("iron-ore").Status == OrderStatus.NoRecipe, "raw ore can't be ordered");
         double t = _items.Item("hull-plate").Recipe.Seconds;
-        Check(Math.Abs(large.RunSeconds(_items.Item("hull-plate").Recipe) - t / 2) < 1e-9 && Math.Abs(survival.RunSeconds(_items.Item("hull-plate").Recipe) - t * 2) < 1e-9,
+        Check(Math.Abs(large.RunSeconds(_items.Item("hull-plate").Recipe) - t / 4) < 1e-9 && Math.Abs(survival.RunSeconds(_items.Item("hull-plate").Recipe) - t) < 1e-9,
             "a large constructor is four times as fast as the survival one");
+        double full = small.RunSeconds(_items.Item("hull-plate").Recipe);
+        Check(Math.Abs(full - t / 2) < 1e-9, "a small constructor at full power is twice as fast as the recipe");
         small.Efficiency = 0.5;
-        Check(Math.Abs(small.RunSeconds(_items.Item("hull-plate").Recipe) - t * 2) < 1e-9, "over the CPU budget, constructors slow down");
+        Check(Math.Abs(small.RunSeconds(_items.Item("hull-plate").Recipe) - full * 2) < 1e-9, "over the CPU budget, constructors slow down (at half efficiency a run takes twice as long)");
     }
 
     void TestCancelAndDrain()

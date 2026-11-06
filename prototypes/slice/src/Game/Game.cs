@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -154,6 +154,7 @@ public partial class Game : Node3D
         Zone.Camera = Camera;
         Zone.Focus = Focus;
         Zone.Built += OnPlanetBuilt;
+        StartZones();
         AddChild(new AfterStep { Name = "AfterStep", Game = this });
         AddChild(new DiegeticUi.Screens.ScreenManager { Name = "Screens", Camera = Camera });
         Visor = new Visor { Name = "Visor", Game = this };
@@ -229,7 +230,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Happened += OnWeather;
@@ -252,12 +253,14 @@ public partial class Game : Node3D
         AddChild(Audio);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Survivor.Node.AddChild(CharacterModel.Build());
-        _creatureBlockers = new CreatureBlockers { Name = "CreatureBlockers", Game = this };
-        Zone.AddChild(_creatureBlockers);
+        Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
+        Zone.AddChild(Bodies);
+        SetUpPlaces();
 
     }
 
-    CreatureBlockers _creatureBlockers;
+    /// <summary>Creatures' collision, from their own bodies.</summary>
+    public CreatureBodies Bodies { get; private set; }
 
 
     // ---- Each tick: input in, before the physics steps ------------------------------------------
@@ -277,6 +280,12 @@ public partial class Game : Node3D
         if (Menu.IsOpen && Slice.Items.ItemViews.Focused != null && (c.Typed.Length > 0 || c.Backspaces > 0))
             Slice.Items.ItemViews.Type(c.Typed, c.Backspaces);
         if (c.WasPressed(Key.Tab)) { Slice.Items.ItemViews.Focused = null; Menu.Toggle(); }
+        if (c.WasPressed(Key.M) && Slice.Items.ItemViews.Focused == null)
+        {
+            if (Menu.IsOpen && Menu.Tab == Slice.Ui.MenuTab.Map) Menu.Close();
+            else if (!Menu.IsOpen) Menu.OpenMap(Slice.Ui.MapLevel.Local);
+            else Menu.Tab = Slice.Ui.MenuTab.Map;
+        }
         if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
         if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
         if (Menu.IsOpen) Menu.Input(c);
@@ -309,6 +318,7 @@ public partial class Game : Node3D
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
+        Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
         // A number picks a slot; the same number again, or Y, switches between your own toolbar
@@ -401,6 +411,7 @@ public partial class Game : Node3D
     {
         // The mouse moves a virtual stick that recentres by itself (as in ship-handling).
         if (!Menu.IsOpen) _stick = (_stick * 0.85f + c.Look * 0.012f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
+        if (_stick.LengthSquared() < 1e-8f) _stick = Vector2.Zero; // recentred means centred: the decay alone never reaches zero
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             Survivor.StandUp();
@@ -413,6 +424,8 @@ public partial class Game : Node3D
         float cap = vessel.Structure.Grid.Size == GridSize.Small && vessel.Stats is HandlingStats st && st.TurnRate > 0f
             ? Mathf.Min(1f, Zone.Data.Rules.Build.SmallVesselMaxTurn / st.TurnRate) : 1f;
         var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E)) * cap;
+        // Anyone in a seat can reach the ship's systems; only the pilot role's holder flies it.
+        if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
         if (c.WasPressed(Key.G)) vessel.Controller?.ToggleGear();
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
@@ -433,12 +446,12 @@ public partial class Game : Node3D
         float bestDistance = 3.2f;
         foreach (Vessel v in Zone.Vessels)
         {
-            if (v.Seat == null || v.IsWreck) continue;
-            float d = v.ToWorld(v.Seat.Value).DistanceTo(eye);
+            if (v.IsWreck) continue;
+            float d = v.NearestChair(eye, out _);
             if (d < bestDistance) { best = v; bestDistance = d; }
         }
         if (best == null) Say("No seat within reach", Tones.Caution);
-        else if (Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
+        else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
     }
 
     void Report(Outcome o) => Say(o.Message, o.Ok ? Tones.Good : Tones.Caution);
@@ -463,7 +476,7 @@ public partial class Game : Node3D
         Suit.Tick(dt, Survivor);
         Target.Sync();
         Zone.Wildlife.Follow(Survivor.WorldFeet, onFoot: Survivor.Body.Frame == null);
-        _creatureBlockers.KeepOff();
+        Bodies.KeepOff();
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
@@ -472,10 +485,16 @@ public partial class Game : Node3D
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
         if (hand == HandKind.Tool) ToolEquipped = true;
+        if (hands && Spaceflight.TakeHands(dt, hand, primary, pressed)) hands = false; // in space: salvage, claiming
         bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
-        else if (hands && deconstruct) Builder.TickDeconstruct(pressed);
+        else if (hands && deconstruct)
+        {
+            Builder.TickDeconstruct(pressed);
+            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
+                Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
+        }
         else if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
@@ -490,9 +509,11 @@ public partial class Game : Node3D
 
     void OnBitten(AttackEvent e)
     {
+        // A lunge that meets a wall on the way lands on the wall.
+        if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
-        Visor.Hurt(Zone.Wildlife.FromPatch(e.Creature.Position));
+        Visor.Hurt(Zone.Wildlife.WorldOf(e.Creature));
         Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
     }
 
@@ -529,7 +550,7 @@ public partial class Game : Node3D
 
     static readonly Key[] Watched =
     {
-        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E,
+        Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M,
     };
 
     void PollKeyboard()
@@ -581,13 +602,16 @@ public partial class Game : Node3D
 
     // ---- The camera -----------------------------------------------------------------------------
 
+    bool _menuWasOpen;
+
     public override void _Process(double delta)
     {
         if (Zone == null) return; // the start screen is up
         if (Suit != null) SyncReplicators();
         if (Interactive)
         {
-            var want = Menu.IsOpen ? Input.MouseModeEnum.Visible : Input.MouseMode;
+            var want = Menu.IsOpen ? Input.MouseModeEnum.Visible : _menuWasOpen ? Input.MouseModeEnum.Captured : Input.MouseMode;
+            _menuWasOpen = Menu.IsOpen; // the moment the menu closes, by any means, aim is back
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
@@ -662,8 +686,11 @@ public sealed class PlayerTarget : ITarget
     public Vector3 Forward => _game.Survivor.WorldLook();
     public Health Health { get; } = new(100f);
 
-    /// <summary>On foot and alive; aboard a vessel nothing can bite you.</summary>
-    public bool Attackable => !_game.Suit.Dead && _game.Survivor.Body.Frame == null;
+    /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>
+    public bool Attackable => OnFoot && !_game.Sheltered();
+
+    /// <summary>On foot and alive: fair game for whatever lives where you are.</summary>
+    public bool OnFoot => !_game.Suit.Dead && _game.Survivor.Body.Frame == null;
     public float ThreatScale => _game.Survivor.Seated != null ? 2f : 1f;
 
     /// <summary>Wildlife keeps its own health scale (100); the suit's is the real one.</summary>

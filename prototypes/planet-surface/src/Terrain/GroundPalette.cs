@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using GalHack.Terrain;
 using Planets.Gen;
@@ -22,6 +23,26 @@ public sealed class GroundPalette
     public readonly WorldMap Map;
     public readonly Rgb Rock, DeepRock, Bedrock, Seabed, RiverBed, Snow;
 
+    /// <summary>
+    /// A blast's dead zone (ground zero in world metres, the dead radius and where it has faded back
+    /// to the land's own colours): the ground goes ash-grey and lifeless toward the crater.
+    /// </summary>
+    public readonly List<(double X, double Z, float Dead, float Fade)> DeadZones = new();
+
+    /// <summary>How dead the land is at a point: 1 inside a blast's dead zone, easing to 0 at its fade, 0 elsewhere.</summary>
+    public float Deadness(double x, double z)
+    {
+        float dead = 0f;
+        foreach (var (gx, gz, d0, d1) in DeadZones)
+        {
+            double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
+            float d = (float)Math.Sqrt(dx * dx + dz * dz);
+            if (d >= d1) continue;
+            dead = Math.Max(dead, d <= d0 ? 1f : 1f - SmoothStep(0f, 1f, (d - d0) / (d1 - d0)));
+        }
+        return dead;
+    }
+
     /// <summary>How strongly rock faces show horizontal strata (0-1): canyons and mesas show them most.</summary>
     public readonly float Strata;
 
@@ -32,7 +53,7 @@ public sealed class GroundPalette
     public GroundPalette(WorldMap map)
     {
         Map = map;
-        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), 160, 4);
+        _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), ColorMap.BorderWave, 4);
         _tone = new Fractal(Hash.Of(map.Spec.Seed, 0x746F6E), 700, 3);
         _cells = new Rgb[map.Count];
         _glow = new float[map.Count];
@@ -42,6 +63,7 @@ public sealed class GroundPalette
             _cells[k] = Soil(biome);
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
+        _cells = ColorMap.Soften(map, _cells);
 
         (Rock, Strata) = (map.Def.Archetype, map.Def.Variant) switch
         {
@@ -109,14 +131,10 @@ public sealed class GroundPalette
     public Rgb SoilAt(double x, double z, out float glow)
     {
         Jitter(x, z, out double gx, out double gz);
-        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
-        float tx = (float)(gx - i0), tz = (float)(gz - j0);
         Rgb c = default;
         float g = 0f, total = 0f;
-        Add(i0, j0, (1 - tx) * (1 - tz), ref c, ref g, ref total);
-        Add(i0 + 1, j0, tx * (1 - tz), ref c, ref g, ref total);
-        Add(i0, j0 + 1, (1 - tx) * tz, ref c, ref g, ref total);
-        Add(i0 + 1, j0 + 1, tx * tz, ref c, ref g, ref total);
+        Around(gx, gz, ref c, ref g, ref total);
+        if (total <= 0f) Around(x / Map.CellSize - 0.5, z / Map.CellSize - 0.5, ref c, ref g, ref total); // by the shore a border can wander right out over water
         if (total <= 0f)
         {
             glow = 0f;
@@ -147,10 +165,17 @@ public sealed class GroundPalette
         switch (material)
         {
             case CellMaterial.Ore:
-                c = DepositLook.Color(ore) * 0.85f;
-                flags.X = DepositLook.Glow(ore) * 0.5f;
-                rock = 0.6f;
+            {
+                // Ore shows in the rock as speckle and streaks of its colour, not a flat stain: a
+                // texture over the rock, read by its pattern first, and only a faint glow.
+                Rgb oreColour = DepositLook.Color(ore);
+                float speck = SmoothStep(0.55f, 0.85f, ValueNoise(x * 1.7, z * 1.7 + height * 0.9, 41));
+                float streak = MathF.Abs(ValueNoise(x * 0.45 + height * 0.3, z * 0.45, 43) - 0.5f) < 0.1f ? 1f : 0f;
+                c = Rgb.Lerp(Rock, oreColour, 0.22f + 0.38f * speck + 0.25f * streak);
+                flags.X = DepositLook.Glow(ore) * 0.12f;
+                rock = 0.8f;
                 break;
+            }
             case CellMaterial.Bedrock:
                 c = Bedrock;
                 flags.Y = 1f;
@@ -180,6 +205,18 @@ public sealed class GroundPalette
     public Color Natural(double x, double z, float height, float cover, out Vector2 flags)
     {
         Rgb soil = SoilAt(x, z, out float glow);
+        // In a blast's dead zone the soil is burnt to ash, greyer and darker toward ground zero.
+        if (DeadZones.Count > 0)
+        {
+            float dead = Deadness(x, z);
+            if (dead > 0f)
+            {
+                float l = soil.R * 0.3f + soil.G * 0.59f + soil.B * 0.11f;
+                var ash = new Rgb(l * 0.78f + 0.06f, l * 0.74f + 0.055f, l * 0.7f + 0.05f);
+                soil = Rgb.Lerp(soil, ash, dead * (0.75f + 0.2f * ValueNoise(x * 0.05, z * 0.05, 47)));
+                glow *= 1f - dead;
+            }
+        }
         Rgb c = Rgb.Lerp(Rock, soil, cover);
         if (height < 0.6f) c = Rgb.Lerp(c, Seabed, Math.Clamp(0.6f - height, 0f, 1f));
         flags = new Vector2(glow * cover, 0f);
@@ -269,11 +306,21 @@ public sealed class GroundPalette
         return (h & 0xFFFFFF) / (float)0xFFFFFF;
     }
 
+    void Around(double gx, double gz, ref Rgb c, ref float g, ref float total)
+    {
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
+        float tx = (float)(gx - i0), tz = (float)(gz - j0);
+        Add(i0, j0, (1 - tx) * (1 - tz), ref c, ref g, ref total);
+        Add(i0 + 1, j0, tx * (1 - tz), ref c, ref g, ref total);
+        Add(i0, j0 + 1, (1 - tx) * tz, ref c, ref g, ref total);
+        Add(i0 + 1, j0 + 1, tx * tz, ref c, ref g, ref total);
+    }
+
     void Jitter(double x, double z, out double gx, out double gz)
     {
         P4 p = Map.Model.Torus.At(x, z);
-        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * 0.9;
-        gz = z / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * 0.9;
+        gx = x / Map.CellSize - 0.5 + _jitter.Fbm(p, 4) * ColorMap.BorderWander;
+        gz = z / Map.CellSize - 0.5 + _jitter.Fbm(p.Swap, 4) * ColorMap.BorderWander;
     }
 
     void Add(int i, int j, float w, ref Rgb c, ref float g, ref float total)

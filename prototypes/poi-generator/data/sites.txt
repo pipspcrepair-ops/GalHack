@@ -14,6 +14,9 @@
 #       tower     h size every crown(lamp|wheel|hut) loot;  crater  r depth radiation
 #       aircraft  len;  rocket  decks r;  trench  len axis;  vehicles  count gap axis
 #       camp      gang(yes|no);  obelisks  count h spread
+#       basins    count r h gap axis water(clean|foul);  heaps  count r h gap type(coal|spoil)
+#       conveyor  len h0 h axis;  dome  r wall breach;  turbines  count h blade gap axis;  panels  rows len gap
+#       slipway   len w h axis;  freighter  len axis
 
 site old_airfield
   name Old Airfield
@@ -46,7 +49,73 @@ site spaceport
   part building -56 -46 program control_tower floors 5
   part hangar 40 30 w 30 d 20 h 10
   part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part tanks -48 62 count 3 r 4 h 10 gap 4 axis x
+  part crane 92 26 h 24 jib 16 back 6 axis x
   part containers 84 -6 rows 3 cols 3
+  part poles -60 -6 count 6 gap 12 h 8 axis x
+  part vehicles -30 20 count 3 gap 8 axis x
+  part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
+
+# The starport class sets the spaceport. A: a sprawling complex with shipyard slipways. B: the full
+# port with yards and refined fuel. C: a working port, terminal and hangars. D: a few pads and a depot.
+# E: a marked field, a beacon and what never left.
+site port_e
+  name Frontier Field
+  style miningtown
+  entrance -30 4 west
+  part road -24 2 len 12 width 5 axis x cracks 0.4
+  part pad 0 0 r 13
+  part tower 20 -14 h 12 size 4 crown lamp
+  part building -6 -30 program shed vault yes
+  part crater 8 22 r 5 depth 1
+  part vehicles -18 16 count 2 gap 8 axis x
+
+site port_d
+  name Depot Field
+  style concrete
+  entrance -40 4 west
+  part road -34 2 len 22 width 5 axis x cracks 0.3
+  part pad 0 0 r 11
+  part pad 30 0 r 9
+  part pad 0 34 r 9
+  part building 26 -36 program works_office vault yes
+  part tanks -30 26 count 3 r 3 h 7 gap 4 axis x
+  part tower 54 18 h 12 size 4 crown lamp
+  part vehicles -24 -18 count 2 gap 8 axis x
+
+site spaceport_field
+  name Landing Field
+  style meridian
+  entrance -64 4 west
+  part rocket 0 0 decks 8 r 4
+  part pad 0 0 r 11
+  part road -58 2 len 46 width 6 axis x cracks 0.12
+  part building 26 -34 program terminal vault yes
+  part hangar 40 18 w 28 d 18 h 10
+  part tanks -30 26 count 2 r 3 h 8 gap 4 axis x
+  part poles -44 -6 count 3 gap 12 h 8 axis x
+  part vehicles -24 16 count 2 gap 8 axis x
+
+site spaceport_grand
+  name Grand Spaceport
+  style meridian
+  entrance -96 4 west
+  part rocket 0 0 decks 12 r 5
+  part pad 0 0 r 15
+  part rocket 0 64 decks 14 r 5
+  part pad 0 64 r 15
+  part road -90 2 len 74 width 6 axis x cracks 0.1
+  part road -16 14 len 40 width 6 axis z cracks 0.1
+  part building 34 -46 program terminal vault yes
+  part building -56 -46 program control_tower floors 6
+  part hangar 40 30 w 30 d 20 h 10
+  part hangar 44 78 w 30 d 20 h 12
+  part slipway 40 112 len 64 w 18 h 12 axis x
+  part slipway 40 138 len 52 w 14 h 10 axis x
+  part crane 112 104 h 30 jib 22 back 8 axis z
+  part tanks -48 34 count 3 r 4 h 10 gap 4 axis x
+  part tanks -48 84 count 3 r 4 h 10 gap 4 axis x
+  part containers 84 -6 rows 3 cols 4
   part poles -60 -6 count 6 gap 12 h 8 axis x
   part vehicles -30 20 count 3 gap 8 axis x
   part fence -100 -60 len 200 h 2 axis x gate 96 breaches 0.08
@@ -279,3 +348,242 @@ site survivor_town
   part tower -8 -14 h 8 size 4 every 4 crown hut
   part tower 78 14 h 8 size 4 every 4 crown hut
   part fence -8 20 len 92 h 2 axis x gate 44 breaches 0.1 type wall
+
+# ---- flavour: small ruins along the roads (planet surface FlavourRuins), not places of their own ------
+
+site farmstead_ruin
+  name Ruined Farmstead
+  style miningtown
+  entrance -10 6 west
+  part building 0 0 program cottage_timber vault yes
+  part hangar 22 0 w 16 d 12 h 7
+  part tanks 42 2 count 1 r 3 h 10 gap 4 axis z
+  part fields 0 22 w 24 d 12
+  part fence 22 16 len 16 h 2 axis x gate 6 breaches 0.3
+
+site shed_ruin
+  name Roadside Shed
+  style miningtown
+  entrance -8 6 west
+  part building 0 0 program shed vault yes
+  part vehicles 2 20 count 1 gap 6 axis x
+
+site wayside_stop
+  name Wayside Stop
+  style concrete
+  entrance -12 6 west
+  part building 0 0 program kiosk vault yes
+  part tanks 0 22 count 2 r 2 h 3 gap 6 axis x
+  part poles -8 -4 count 2 gap 10 h 6 axis z
+  part vehicles 18 20 count 2 gap 7 axis x
+
+# ---- the old utilities ----------------------------------------------------------------------------
+
+site coal_plant
+  name Coal Power Station
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.3
+  part building 0 0 program boiler_house vault yes
+  part hangar 32 0 w 36 d 20 h 14
+  part stacks 6 30 count 2 r 3 h 52 gap 8
+  part heaps 24 44 count 3 r 7 h 6 gap 3 type coal
+  part conveyor 14 44 len 18 h0 2 h 12 axis z
+  part tanks 76 4 count 2 r 4 h 10 gap 4 axis z
+  part poles 72 30 count 3 gap 12 h 9 axis z
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.1
+
+site nuclear_plant
+  name Nuclear Power Station
+  style concrete
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.2
+  part building 0 0 program reactor_hall vault yes
+  part hangar 36 0 w 40 d 22 h 16
+  part stacks 20 50 count 2 r 15 h 58 gap 12 type cooling
+  part tanks 84 4 count 2 r 4 h 12 gap 4 axis z
+  part poles 82 34 count 3 gap 14 h 10 axis z
+  part fence -10 -10 len 110 h 3 axis x gate 16 breaches 0.08 type wall
+
+site water_works
+  name Water Treatment Works
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.3
+  part building 0 0 program pump_station vault yes
+  part basins 40 6 count 3 r 7 h 2 gap 4 water clean
+  part basins 40 26 count 4 r 4 h 1 gap 3 water clean
+  part tanks 6 34 count 2 r 5 h 9 gap 5 axis x
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.15
+
+site sewage_works
+  name Sewage Works
+  style concrete
+  entrance -16 8 west
+  part road -14 6 len 14 width 6 axis x cracks 0.4
+  part building 0 0 program pump_station vault yes
+  part basins 40 6 count 3 r 8 h 2 gap 4 water foul
+  part tanks 6 34 count 2 r 6 h 10 gap 5 axis x
+  part fence -10 -8 len 100 h 2 axis x gate 14 breaches 0.2
+
+site fusion_plant
+  name Fusion Power Station
+  style meridian
+  entrance -16 10 west
+  part road -14 8 len 14 width 6 axis x cracks 0.15
+  part building 0 0 program fusion_hall vault yes
+  part dome 62 20 r 20 wall 10 breach 2
+  part tanks 90 4 count 2 r 3 h 12 gap 4 axis z
+  part poles 90 34 count 3 gap 14 h 10 axis z
+  part fence -10 -10 len 112 h 3 axis x gate 16 breaches 0.08 type wall
+
+site substation
+  name Substation
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 30 2 count 3 r 2 h 4 gap 5 axis x
+  part tanks 30 16 count 3 r 2 h 4 gap 5 axis x
+  part poles 58 2 count 3 gap 10 h 13 axis z
+  part fence -6 -6 len 74 h 3 axis x gate 12 breaches 0.2
+
+site refinery
+  name Refinery
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 34 2 count 4 r 6 h 12 gap 4 axis x
+  part stacks 36 26 count 3 r 2 h 37 gap 8
+  part conveyor 28 40 len 40 h0 4 h 4 axis x
+  part tower 76 28 h 28 size 5 crown lamp
+  part tanks 34 48 count 3 r 4 h 8 gap 4 axis x
+  part fence -8 -8 len 100 h 2 axis x gate 14 breaches 0.2
+
+site steelworks
+  name Steelworks
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 44 d 22 h 18
+  part stacks 40 30 count 2 r 3 h 45 gap 10
+  part heaps 34 44 count 3 r 6 h 5 gap 3 type spoil
+  part conveyor 18 28 len 22 h0 2 h 14 axis z
+  part crane 84 34 h 26 jib 18 back 6 axis x
+  part fence -8 -8 len 110 h 2 axis x gate 14 breaches 0.2
+
+site grain_elevator
+  name Grain Elevator
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part tanks 28 2 count 4 r 4 h 27 gap 1 axis x
+  part conveyor 28 14 len 34 h0 3 h 3 axis x
+  part vehicles 28 22 count 2 gap 8 axis x
+
+site rail_yard
+  name Rail Yard
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 40 d 20 h 12
+  part containers 30 28 rows 3 cols 6
+  part poles 76 2 count 4 gap 12 h 8 axis z
+  part tower 84 28 h 16 size 4 crown lamp
+
+site docks
+  name Old Docks
+  style concrete
+  entrance -14 8 west
+  part road -12 6 len 12 width 6 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part hangar 30 0 w 36 d 20 h 12
+  part containers 30 30 rows 3 cols 5
+  part crane 78 18 h 30 jib 22 back 8 axis x
+  part tanks 76 44 count 2 r 3 h 8 gap 4 axis x
+
+site telecom_site
+  name Telecom Exchange
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.25
+  part building 0 0 program telecom_exchange vault yes
+  part tower 34 6 h 40 size 5 crown lamp
+  part fence -6 -6 len 60 h 2 axis x gate 12 breaches 0.2
+
+site wind_farm
+  name Wind Farm
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part turbines 32 8 count 3 h 34 blade 13 gap 34 axis x
+  part turbines 32 46 count 3 h 34 blade 13 gap 34 axis x
+
+site solar_farm
+  name Solar Farm
+  style concrete
+  entrance -12 6 west
+  part road -10 4 len 12 width 5 axis x cracks 0.3
+  part building 0 0 program works_office vault yes
+  part panels 28 0 rows 8 len 60 gap 3
+  part fence -6 -6 len 96 h 2 axis x gate 12 breaches 0.3
+
+# ---- what people left, and what they scraped together ------------------------------------------------
+
+# A scrappy port: a cleared field with scrap pads, a gantry of scaffolding, fuel drums, a ship half
+# loaded and never launched, the scars of the ones that tried, containers stacked for walls.
+site scrappy_port
+  name Improvised Launch Field
+  style miningtown
+  entrance -30 4 west
+  part road -24 2 len 14 width 5 axis x cracks 0.5
+  part rocket 0 0 decks 5 r 3
+  part pad 0 0 r 9
+  part tower 12 -4 h 16 size 4 crown lamp
+  part building -8 -30 program shed vault yes
+  part containers 24 -26 rows 2 cols 3
+  part tanks -26 18 count 3 r 1 h 3 gap 3 axis x
+  part crater 26 20 r 5 depth 1
+  part crater 2 30 r 4 depth 1
+  part vehicles -22 -14 count 3 gap 7 axis z
+
+# An evacuation camp: rows of shelters inside a wire fence by the road, an aid post, what was left behind.
+site evacuation_camp
+  name Evacuation Camp
+  style concrete
+  entrance -30 6 west
+  part road -24 4 len 14 width 5 axis x cracks 0.4
+  part building -6 -34 program kiosk vault yes
+  part shacks 0 0 count 4 gap 2
+  part shacks 0 18 count 4 gap 2
+  part containers 30 -22 rows 2 cols 2
+  part vehicles -20 16 count 3 gap 7 axis z
+  part fence -14 -8 len 66 h 2 axis x gate 12 breaches 0.2
+
+# A landing clearing at a survivor town's edge: a flattened field, a beacon pole, fuel drums, a trader set down.
+site landing_clearing
+  name Landing Clearing
+  style miningtown
+  entrance -18 4 west
+  part pad 0 0 r 11
+  part freighter -6 -3 len 14 axis x
+  part poles 13 -9 count 1 gap 4 h 9 axis z
+  part tanks 13 9 count 2 r 1 h 2 gap 2 axis x
+  part building -8 -26 program shed vault yes
+
+# A frontier base: a walled yard of containers, one solid building, a mast.
+site frontier_base
+  name Frontier Base
+  style miningtown
+  entrance -24 8 west
+  part road -18 6 len 8 width 5 axis x cracks 0.2
+  part building 0 0 program works_office vault yes
+  part containers 28 2 rows 2 cols 2
+  part tower 32 22 h 14 size 4 crown lamp
+  part tanks 4 24 count 2 r 2 h 4 gap 3 axis x
+  part fence -10 -8 len 62 h 3 axis x gate 12 breaches 0.05 type wall

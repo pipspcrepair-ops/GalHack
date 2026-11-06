@@ -26,11 +26,11 @@ public partial class PoiTest : Node
         {
             ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
-            ("Sense", Sense), ("Variety", Variety), ("Cores", Cores), ("StateTransforms", StateTransforms),
+            ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -313,15 +313,195 @@ public partial class PoiTest : Node
     }
 
     /// <summary>
+    /// The networks under a town, on invented ground of three kinds at each tech level (the planet
+    /// surface's tests do the same on real towns). Walked by the same grid walker as every place: every
+    /// way in, every room and every stretch of tunnel reachable from the first way in; no open cell
+    /// against bare rock; the right things at the right tech level.
+    /// </summary>
+    void UndergroundNet()
+    {
+        int plans = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
+        var notes = new List<string>();
+        var grounds = new (string Name, Func<int, int, float> F)[]
+        {
+            ("flat", (_, _) => 40.5f),
+            ("tilted", (x, z) => 60f - (x - 1000) * 0.06f - (z - 1000) * 0.03f),
+            ("rolling", (x, z) => 50f + 7f * MathF.Sin(x / 47f) * MathF.Cos(z / 61f) - (x - 1000) * 0.03f),
+        };
+        foreach (TechLevel tech in new[] { TechLevel.Low, TechLevel.Mid, TechLevel.High })
+            foreach (var (name, ground) in grounds)
+                foreach (var (ax, az, back) in new[] { (1, 0, 1), (-1, 0, -1), (0, 1, -1), (0, -1, 1) })
+                {
+                    var site = new UnderSite { X = 1000, Z = 1000, AlongX = ax, AlongZ = az, BackSide = back, Tech = tech, Seed = (ulong)(plans + 3), Ground = ground };
+                    UnderPlan plan = Underground.Plan(site);
+                    UnderBuilt built = Underground.Build(plan);
+                    plans++;
+                    string where = $"{tech} {name} ({ax},{az})";
+                    if (plan.HasMetro != UnderPlan.Metro(tech)) { wrongTech++; notes.Add("metro on " + where); }
+                    // Brick sewers on a low-tech world: none of the higher levels' poured concrete or composite.
+                    if (tech == TechLevel.Low && built.Blocks.Values.Any(b => b.Type == BlockType.Cube && b.Role == Role.Wall && b.Material is PoiGenerator.Gen.Material.Concrete or PoiGenerator.Gen.Material.Alloy)) { wrongTech++; notes.Add("concrete on " + where); }
+                    stations += plan.Stations.Count;
+                    outfalls += plan.Outfalls.Count;
+                    if (plan.Outfalls.Count == 0) stubs++;
+                    var view = new UnderView(built);
+                    var nav = new NavGrid(view, view.Mask());
+                    HashSet<Int3> reach = nav.Reachable(view.Local(built.WaysIn[0]));
+                    foreach (Int3 w in built.WaysIn)
+                    {
+                        ways++;
+                        if (!reach.Contains(view.Local(w))) { unreached++; notes.Add($"way in {w} on {where}"); }
+                    }
+                    bool Reached(int x, int y, int z, int hx, int hz, int hw)
+                    {
+                        for (int k = -hw; k <= hw; k++)
+                            for (int v = -1; v <= 1; v++)
+                                if (reach.Contains(view.Local(new Int3(x + hx * k, y + v, z + hz * k)))) return true;
+                        return false;
+                    }
+                    foreach (UnderRoom r in plan.Rooms)
+                    {
+                        rooms++;
+                        Int3 c = new((r.Min.X + r.Max.X) / 2, r.Min.Y, (r.Min.Z + r.Max.Z) / 2);
+                        if (!Reached(c.X, c.Y, c.Z, 1, 0, 3)) { unreached++; notes.Add($"{r.Kind} {r.Min} on {where}"); }
+                    }
+                    foreach (UnderRun r in plan.Runs)
+                    {
+                        // The far end of a run that stops in a fall of rock is the fall of rock.
+                        int end = r.Length - (plan.Collapses.Any(k => k.X == r.Column(r.Length - 1).X && k.Z == r.Column(r.Length - 1).Z) ? 6 : 0);
+                        for (int i = 0; i < end; i += 3)
+                        {
+                            columns++;
+                            var (x, z) = r.Column(i);
+                            if (!Reached(x, r.Floors[i], z, Math.Abs(r.DirZ), Math.Abs(r.DirX), r.HalfWidth)) { unreached++; notes.Add($"{r.Kind} column {i}/{r.Length} at {x},{z} on {where}"); break; }
+                        }
+                    }
+                    // Sealed: nothing open opens straight onto the rock (the terrain would show through).
+                    foreach (Int3 p in built.Open)
+                        foreach (Dir d in Dirs.All)
+                        {
+                            Int3 n = p + d.Vec();
+                            if (!built.Open.Contains(n) && !built.Daylight.Contains(n) && !built.Blocks.ContainsKey(n)) { leaks++; break; }
+                        }
+                    spaces += built.Spaces.Count;
+                    unlinked += built.Spaces.Count(sp => sp.Links.Count == 0);
+                    // Determinism: the plan and its blocks are a pure function of the site.
+                    if (plans % 11 == 0 && Underground.Build(Underground.Plan(site)).Blocks.Count != built.Blocks.Count) { unreached++; notes.Add("not deterministic on " + where); }
+                }
+        Check(unreached == 0 && leaks == 0,
+            $"under {plans} towns: {ways} ways in, {rooms} chambers and {columns} sampled tunnel stretches all walked to from one way in ({unreached} not), {leaks} open cells against bare rock{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
+        Check(wrongTech == 0 && stations == plans * 2 / 3 && outfalls > 0,
+            $"the networks fit their worlds: {stations} metro stations and none on a low-tech world ({wrongTech} wrong), {outfalls} outfall culverts, {stubs} drains ending in a fall of rock where the ground never drops");
+        Check(spaces > 0 && unlinked == 0, $"{spaces} spaces for creatures, all dark, each linked to its neighbours ({unlinked} alone)");
+    }
+
+    /// <summary>
+    /// Starports, exodus worlds and who lives here now. Classes follow people and tech: A and B take many
+    /// people and modern or high tech, a low-tech world has D, E or none. A world has one primary port
+    /// of its class, its secondaries lesser than it; an exodus world has a crowd of scrappy ports round
+    /// the primary. How many live here now caps the living places, and what they can be.
+    /// </summary>
+    void PortsAndPeople()
+    {
+        var classes = new Dictionary<Starport, int>();
+        int rolled = 0, inhabited = 0, wrongClass = 0, exoduses = 0, wrongExodus = 0, emptyExodus = 0, manySecondary = 0;
+        var levels = new Dictionary<PopulationNow, int>();
+        string[] kinds = { "temperate", "arid", "ice", "lava", "alien" };
+        for (ulong s = 0; s < 4000; s++)
+        {
+            WorldProfile w = WorldProfile.Roll(Hash.Combine(0x70F7UL, s), kinds[s % 5], s % 9 == 0);
+            rolled++;
+            if (!w.Inhabited) { if (w.Starport != Starport.None) wrongClass++; continue; }
+            inhabited++;
+            classes[w.Starport] = classes.GetValueOrDefault(w.Starport) + 1;
+            levels[w.Current] = levels.GetValueOrDefault(w.Current) + 1;
+            if (w.Starport == Starport.A && (w.Population < 8 || w.Before != TechLevel.High)) wrongClass++;
+            if (w.Starport == Starport.B && (w.Population < 6 || w.Before == TechLevel.Low)) wrongClass++;
+            if (w.Before == TechLevel.Low && w.Starport > Starport.D) wrongClass++;
+            if (w.SecondaryPorts >= 3) { manySecondary++; if (w.Starport != Starport.A) wrongClass++; }
+            if (w.Exodus)
+            {
+                exoduses++;
+                if (w.Population < 6 || w.Starport < Starport.D || w.ScrappyPorts < 6) wrongExodus++;
+                if (w.Current <= PopulationNow.Survivors) emptyExodus++;
+            }
+        }
+        float share = exoduses / (float)inhabited;
+        Check(wrongClass == 0 && Enum.GetValues<Starport>().All(c => classes.GetValueOrDefault(c) > 0),
+            $"starport classes follow people and tech over {inhabited} inhabited worlds: {string.Join(", ", Enum.GetValues<Starport>().Select(c => $"{c} {classes.GetValueOrDefault(c)}"))}; {manySecondary} with many secondary ports, all class A ({wrongClass} wrong)");
+        Check(wrongExodus == 0 && share > 0.08f && share < 0.25f && emptyExodus > exoduses * 0.6f,
+            $"exodus worlds: {exoduses} of {inhabited} inhabited ({share:P0}), all crowded once with a port to leave from ({wrongExodus} wrong), {emptyExodus} of them empty or nearly now");
+        Check(Enum.GetValues<PopulationNow>().All(l => levels.GetValueOrDefault(l) > 0),
+            $"who lives here now: {string.Join(", ", Enum.GetValues<PopulationNow>().Select(l => $"{l} {levels.GetValueOrDefault(l)}"))}");
+
+        int worlds = 0, noPrimary = 0, twoPrimaries = 0, wrongPrimary = 0, secondaries = 0, wrongSecondary = 0, exodusWorlds = 0, scrappy = 0, thin = 0, camps = 0, far = 0;
+        int overCap = 0, livingTooBig = 0, emptyWorlds = 0, emptyLiving = 0, tested = 0;
+        var theme = _lib.Themes.First(t => t.Id == "temperate");
+        for (ulong s = 0; tested < 80 && s < 4000; s++)
+        {
+            WorldProfile w = WorldProfile.Roll(Hash.Combine(0x70F7UL, s), kinds[s % 2], false);
+            // Enough exodus and empty worlds among them to mean something.
+            if (!w.Inhabited || (!w.Exodus && s % 5 != 0)) continue;
+            tested++;
+            var map = PlanetMap.GenerateWorld(Hash.Combine(0x5EEDUL, s), 120, 60, 80f, "ports");
+            var r = WorldPlacement.Place(_lib, map, theme, Hash.Combine(0x9A1EUL, s), profile: w);
+            worlds++;
+            var primaries = r.Pois.Where(p => p.Primary).ToList();
+            if (w.Starport != Starport.None && primaries.Count == 0) noPrimary++;
+            if (primaries.Count > 1) twoPrimaries++;
+            foreach (var p in primaries) if (p.Port != w.Starport) wrongPrimary++;
+            foreach (var p in r.Pois.Where(p => p.Port != null && !p.Primary))
+            {
+                secondaries++;
+                if (p.Port >= w.Starport) wrongSecondary++;
+            }
+            int living = r.Pois.Count(p => WorldProfile.Living(p.Family, p.State) && !WorldProfile.Unbuilt(p.Family));
+            if (living > w.LivingCap) overCap++;
+            foreach (var p in r.Pois.Where(p => WorldProfile.Living(p.Family, p.State) && !WorldProfile.Unbuilt(p.Family)))
+                if (!w.LivingFits(p.Family)) livingTooBig++;
+            if (w.Current == PopulationNow.None) { emptyWorlds++; emptyLiving += living; }
+            if (w.Exodus)
+            {
+                exodusWorlds++;
+                var main = primaries.FirstOrDefault();
+                var mine = r.Pois.Where(p => p.Family.Tags.Contains("scrappy")).ToList();
+                scrappy += mine.Count;
+                camps += r.Pois.Count(p => p.Family.Tags.Contains("evacuation"));
+                if (mine.Count < Math.Min(w.ScrappyPorts, 6)) thin++;
+                // Crowded round the main port: nearer it than the world's other places, on the whole.
+                if (main != null && mine.Count > 0)
+                {
+                    float near = mine.Average(p => WorldPlacement.TorusDist(map, p.CellX, p.CellY, main.CellX, main.CellY));
+                    float all = r.Pois.Average(p => WorldPlacement.TorusDist(map, p.CellX, p.CellY, main.CellX, main.CellY));
+                    if (near > all * 1.1f) far++;
+                }
+            }
+        }
+        Check(noPrimary == 0 && twoPrimaries == 0 && wrongPrimary == 0, $"one main starport a world, of the world's class, over {worlds} worlds ({noPrimary} without, {twoPrimaries} with two, {wrongPrimary} of the wrong class)");
+        Check(wrongSecondary == 0, $"{secondaries} secondary ports, all of a lesser class ({wrongSecondary} not)");
+        Check(exodusWorlds > 5 && thin == 0 && far == 0 && camps >= exodusWorlds, $"exodus worlds crowd round their main port: {exodusWorlds} worlds, {scrappy} scrappy ports and {camps} evacuation camps ({thin} worlds thin, {far} not gathered round the port)");
+        Check(overCap == 0 && livingTooBig == 0 && emptyLiving == 0 && emptyWorlds > 0,
+            $"living places follow who lives here now: none on {emptyWorlds} empty worlds ({emptyLiving} found), {overCap} worlds over their cap, {livingTooBig} too big for their people");
+        var plain = OrbitPlacement.Place(_lib, 77, false, Starport.B);
+        var great = OrbitPlacement.Place(_lib, 77, false, Starport.A);
+        Check(!plain.Any(o => o.Site.Port != Starport.None) && great.Count(o => o.Site.Port == Starport.A) >= 2, $"a class A port's orbital works hang over its world ({great.Count(o => o.Site.Port == Starport.A)}), and over no lesser port's");
+    }
+
+    /// <summary>
     /// Sameness, three ways. Thresholds: within a type, no two of 20 seeds may have the same plan,
     /// and no coarse topology (shape, circulation, junctions, dead ends, room count in threes, storey
     /// by storey) may be shared by more than a quarter of them. Within a building, no two storeys
     /// may share a plan. Between types that should never walk alike (a prison and a hospital, a tower
     /// and a bunker...), their mixes of footprint and circulation overlap by less than half.
+    /// Flavour ruins (a house, a shed by the road) are filler, not places: they repeat by design, so
+    /// they're held only to a looser rule, no plan shared by more than half their seeds.
     /// </summary>
     void Variety()
     {
         int types = 0, layouts = 0, repeats = 0, storeyRepeats = 0, buildings = 0, fewestPatterns = int.MaxValue;
+        float worstFiller = 0f;
+        var repeated = new List<string>();
+        string repeatedStorey = "";
+        string worstFillerType = "";
         float worstPattern = 0f;
         string worstPatternType = "", fewestType = "";
         float worstShare = 0f;
@@ -346,9 +526,18 @@ public partial class PoiTest : Node
                 {
                     buildings++;
                     var sigs = b.Where(p => p.Signature != "hut").Select(p => p.Signature).ToList();
+                    if (sigs.Count != sigs.Distinct().Count()) repeatedStorey = f.Id;
                     storeyRepeats += sigs.Count - sigs.Distinct().Count();
                 }
             }
+            // Small improvised places repeat by design, as flavour ruins do.
+            if (f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation"))
+            {
+                float same = full.GroupBy(c => c).Max(g => g.Count()) / (float)full.Count;
+                if (same > worstFiller) { worstFiller = same; worstFillerType = f.Id; }
+                continue;
+            }
+            if (full.Count != full.Distinct().Count()) repeated.Add(f.Id);
             repeats += full.Count - full.Distinct().Count();
             float share = coarse.GroupBy(c => c).Max(g => g.Count()) / (float)coarse.Count;
             if (share > worstShare && f.Generator == Generator.Building) { worstShare = share; worstType = f.Id; }
@@ -361,10 +550,12 @@ public partial class PoiTest : Node
             }
         }
         Check(repeats == 0 && worstShare <= 0.15f,
-            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 15%)");
+            $"seeds differ within a type: {layouts} layouts of {types} types, {repeats} identical plans{(repeated.Count > 0 ? " (" + string.Join(", ", repeated) + ")" : "")}; the commonest coarse topology covers {worstShare:P0} of a type's seeds ({worstType}; at most 15%)");
+        Check(worstFiller <= 0.5f,
+            $"flavour ruins (filler) still vary: the commonest exact plan covers {worstFiller:P0} of a kind's seeds ({worstFillerType}; at most 50%)");
         Check(worstPattern <= 0.45f && fewestPatterns >= 3,
             $"circulation varies within a type: no pattern walks more than {worstPattern:P0} of a type's storeys ({worstPatternType}; at most 45%), and every type with a broad grammar uses at least {fewestPatterns} of its patterns ({fewestType})");
-        Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building");
+        Check(storeyRepeats == 0, $"every storey is its own: {buildings} buildings, {storeyRepeats} storeys sharing a plan with another storey of the same building{(repeatedStorey.Length > 0 ? " (" + repeatedStorey + ")" : "")}");
 
         // Types that must never walk alike: footprint and circulation mixes overlap by less than half.
         float Overlap(string a, string b)
@@ -746,6 +937,72 @@ public partial class PoiTest : Node
         Check(byRarity[0] > byRarity[1] && byRarity[1] > byRarity[2] && byRarity[2] > byRarity[3] && rareDupes == 0,
             $"rarity in practice over {planets} planets: {byRarity[0]} common, {byRarity[1]} uncommon, {byRarity[2]} rare, {byRarity[3]} exotic, {byRarity[4]} unique; no exotic or unique family twice on a planet ({rareDupes})");
         Check(poorCover == 0, $"placement covers the whole planet, not just the landing site: the worst planet has places in {worstCover:P0} of its 18 regions (6 by 3)");
+    }
+
+    /// <summary>
+    /// The world profile decides what stands where: old-world places at the pre-collapse tech level,
+    /// living places (settlements, a faction's places it holds) at the post-collapse level, nothing
+    /// old on a world never inhabited, spaceport ruins only where the old starport was big enough and
+    /// sized by it. The same seed rolls the same profile. "New on old": a faction's high-tech place
+    /// on a world of modern ruins is built at the high level, and knows it stands on older ruins;
+    /// the living keep the animals of their own level.
+    /// </summary>
+    void WorldProfiles()
+    {
+        int worlds = 0, places = 0, oldWrong = 0, livingWrong = 0, neverOld = 0, portWrong = 0, variantWrong = 0, ports = 0, same = 0;
+        string first = "";
+        var theme = _lib.Themes.First(t => t.Id == "temperate");
+        for (ulong s = 0; s < 40; s++)
+        {
+            WorldProfile w = WorldProfile.Roll(Hash.Combine(0x9F0FUL, s), s % 3 == 0 ? "alien" : s % 3 == 1 ? "temperate" : "arid", s % 7 == 0);
+            if (WorldProfile.Roll(Hash.Combine(0x9F0FUL, s), s % 3 == 0 ? "alien" : s % 3 == 1 ? "temperate" : "arid", s % 7 == 0) == w) same++;
+            var map = PlanetMap.GenerateWorld(Hash.Combine(0x5EEDUL, s), 120, 60, 80f, "profile");
+            var r = WorldPlacement.Place(_lib, map, s % 7 == 0 ? theme.AsStart() : theme, Hash.Combine(0x9A1EUL, s), profile: w);
+            worlds++;
+            foreach (var p in r.Pois)
+            {
+                places++;
+                FamilyDef f = p.Family;
+                bool living = WorldProfile.Living(f, p.State);
+                string level = WorldProfile.Tag(w.LevelFor(f, p.State));
+                if (WorldProfile.Unbuilt(f)) continue;
+                if (!living && !w.Inhabited) { neverOld++; if (first.Length == 0) first = $" (first: old {f.Id} on a world never inhabited)"; }
+                if (f.Techs.Count > 0 && !f.Techs.Contains(level))
+                {
+                    if (living) livingWrong++; else oldWrong++;
+                    if (first.Length == 0) first = $" (first: {f.Id} {p.State} at {level}, belongs to {string.Join("/", f.Techs)})";
+                }
+                if (p.Variant.Tech.Length > 0 && p.Variant.Tech != level && f.Variants.Any(v => v.Tech == level)) variantWrong++;
+                if (f.Tier == PoiTier.Spaceport && !living)
+                {
+                    ports++;
+                    if (w.Starport == Starport.None) portWrong++;
+                    Starport wanted = p.Port ?? w.Starport;
+                    int bestGap = f.Variants.Where(v => v.Port != null).Min(v => Math.Abs((int)v.Port!.Value - (int)wanted));
+                    if (p.Variant.Port != null && Math.Abs((int)p.Variant.Port.Value - (int)wanted) != bestGap) portWrong++;
+                }
+            }
+        }
+        Check(same == worlds, $"the same seed rolls the same world profile ({same} of {worlds})");
+        Check(oldWrong == 0 && livingWrong == 0 && neverOld == 0 && variantWrong == 0,
+            $"content keeps to the right tech level over {worlds} worlds and {places} places: old-world places at the pre-collapse level ({oldWrong} wrong), living ones at the post-collapse level ({livingWrong} wrong), layouts for their level ({variantWrong} wrong), no old-world place on a world never inhabited ({neverOld}){first}");
+        Check(portWrong == 0 && ports > 0, $"spaceport ruins only where there was a starport, laid out for their class: {ports} placed, {portWrong} wrong");
+
+        // New on old: a faction's high-tech place on a world of modern ruins.
+        var newOnOld = new WorldProfile { Inhabited = true, Population = 7, Starport = Starport.C, Trade = Trade.Industrial, Before = TechLevel.Mid, Now = TechLevel.High };
+        FamilyDef spire = _lib.Family("kessari_spire");
+        var inst = PoiFactory.Generate(_lib, spire, 0, Rarity.Uncommon, PoiState.Active, 21, world: newOnOld);
+        var ruin = PoiFactory.Generate(_lib, _lib.Family("ominous_tower"), 0, Rarity.Uncommon, PoiState.Abandoned, 21, world: newOnOld);
+        bool spireFits = newOnOld.Fits(spire, PoiState.Active) && !newOnOld.Fits(spire, PoiState.Ruined);
+        Check(inst.NewOnOld && inst.Tech == TechLevel.High && !ruin.NewOnOld && ruin.Tech == TechLevel.Mid && spireFits,
+            $"new on old: a Kessari spire held now is built at the high level on a world of mid-level ruins (new on old {inst.NewOnOld}, {inst.Tech}); a tower of the old world there is mid ({ruin.Tech}); the spire could stand only as a living place there ({spireFits})");
+
+        // The living keep the animals of their own level: working beasts on a low-tech world, machines on a high one.
+        FamilyDef hamlet = _lib.Family("survivor_hamlet");
+        var low = PoiFactory.Generate(_lib, hamlet, 0, Rarity.Common, PoiState.Active, 33, world: newOnOld with { Before = TechLevel.High, Now = TechLevel.Low });
+        var high = PoiFactory.Generate(_lib, hamlet, 0, Rarity.Common, PoiState.Active, 33, world: newOnOld with { Before = TechLevel.Low, Now = TechLevel.High });
+        int lowWorking = low.Townsfolk?.Animals.Count(a => a.Kind == "working") ?? -1, highWorking = high.Townsfolk?.Animals.Count(a => a.Kind == "working") ?? -1;
+        Check(lowWorking > 0 && highWorking == 0, $"the living keep animals of their own level: a hamlet of low-tech survivors among high-tech ruins keeps working beasts ({lowWorking}), one of high-tech people among low-tech ruins none ({highWorking})");
     }
 
     /// <summary>

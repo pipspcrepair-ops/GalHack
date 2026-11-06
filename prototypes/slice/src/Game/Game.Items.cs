@@ -46,6 +46,7 @@ public partial class Game
     /// </summary>
     void Use()
     {
+        if (Spaceflight.Use()) return; // in space: a wreck's doors
         Replicator rep = Suit.Sim.NearestReplicator(FeetPos(), 2.5);
         if (rep != null)
         {
@@ -53,12 +54,25 @@ public partial class Game
             return;
         }
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
+        if (UseKeycard(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
+        // A living creature in the way stops the reach (its body is solid to E as well).
+        if (Zone.Wildlife.Raycast(eye, dir, reach, out float creatureAt, out _) is Creature { Dead: false }) reach = creatureAt;
         Lootable loot = Zone.Loot.Pick(eye, dir, reach + 0.3f, out _);
         if (loot != null)
         {
+            if (loot == Bunker?.MineLocker.Loot)
+            {
+                Bunker.MineLocker.Swing();
+                if (Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
+            }
             Open(new OpenContainer { Title = loot.Name, Grid = loot.Grid, Loot = loot, Where = () => loot.Position });
+            return;
+        }
+        if (Bunker?.SealedAlong(eye, dir, reach + 0.3f) is Slice.Start.BunkerLocker sealedOne)
+        {
+            Say($"Locker {sealedOne.Number} is sealed: its sleeper never woke", Tones.Caution);
             return;
         }
         if (!hit)
@@ -68,6 +82,11 @@ public partial class Game
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
+            if (device.Constructor != null)
+            {
+                Menu.OpenCore(device); // the full panel: hopper beside the recipes and queue
+                return;
+            }
             Open(new OpenContainer { Title = $"{device.Label} hopper", Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
             return;
         }
@@ -76,9 +95,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer)
             {
-                if (v == Bunker?.Ruin && Suit.Sim.Pods[0].Rations > 0) Report(Suit.Sim.LootPod(Suit.Sim.Pods[0]));
-                Vector3 at = v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell));
-                Open(new OpenContainer { Title = v == Bunker?.Ruin ? "Bunker locker" : $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
+                Open(new OpenContainer { Title = $"{v.Name} storage", Grid = v.StorageGrid, Vessel = v, Where = () => v.ToWorld(StructureBridge.CellCenter(v.Structure, look.Cell)) });
                 return;
             }
             if (type.IsCommandChair)
@@ -88,10 +105,13 @@ public partial class Game
             }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
             {
-                Menu.OpenCore(v);
+                int at = 0, k = 0;
+                foreach (var cell in v.Machines.Keys) { if (cell.Equals(look.Cell)) at = k; k++; }
+                Menu.OpenCore(v, at);
                 return;
             }
         }
+        if (UsePlace(look)) return;
         Say("Nothing to use here", Tones.Caution);
     }
 
@@ -99,10 +119,13 @@ public partial class Game
     public string UsePrompt()
     {
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
+        if (Spaceflight.UsePrompt() is string door) return door;
         if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
+        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"Locker {sealedOne.Number}: sealed";
+        if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
@@ -174,7 +197,8 @@ public partial class Game
         from.Reconcile();
         Vector3 look = Survivor.WorldLook();
         Vector3 ahead = Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
-        Zone.Loot.Spill(bill, Zone.GroundAt(ahead.X, ahead.Z));
+        Vector3 ground = Zone.GroundAt(ahead.X, ahead.Z);
+        Zone.Loot.Spill(bill, float.IsFinite(ground.Y) ? ground : ahead + Vector3.Up * 0.6f); // in space it floats where it was let go
         Say($"Dropped {Zone.Data.Items.Describe(bill)}", Tones.Text);
     }
 
@@ -232,7 +256,7 @@ public partial class Game
         var rng = Wildlife.Rng.For(s.Seed, "drop", c.Id);
         if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.FromPatch(c.Position);
+        Vector3 at = Zone.Wildlife.WorldOf(c);
         Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
         body.Creature = c;
         body.Radius = MathF.Max(0.5f, s.Stats.Radius);

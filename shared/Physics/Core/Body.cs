@@ -108,6 +108,17 @@ public interface IDamageSink
 }
 
 /// <summary>
+/// A damage sink that also hears where the damage landed: a structure, whose blocks take the hit
+/// where it struck. World frame; <paramref name="into"/> is the unit direction into the body from
+/// the point. Everything else about the hit (the formula, the sum in <see cref="Body.Damage"/>) is
+/// as for any other sink.
+/// </summary>
+public interface ILocatedDamageSink : IDamageSink
+{
+    float TakeAt(Body body, float raw, Vector3 point, Vector3 into);
+}
+
+/// <summary>
 /// One registered body: a vessel, wreck, crate, player or creature. It registers once, with
 /// mass and drag area, and from then on every force on it goes through the world's one force
 /// path. Plain data plus a few derived values; the world and the movers change it.

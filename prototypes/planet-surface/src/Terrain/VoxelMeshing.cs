@@ -93,11 +93,26 @@ public static class VoxelMeshing
         }
     }
 
-    /// <summary>The triangle soup a collision shape takes.</summary>
+    /// <summary>The squared cross product under which a triangle counts as having no area (a little over Jolt's own limit, 1e-12).</summary>
+    const float MinFaceArea = 4e-12f;
+
+    /// <summary>
+    /// The triangle soup a collision shape takes, without the slivers of no area surface nets leaves
+    /// on a nearly flat cut: Jolt throws those out, and a shape of nothing else fails to build.
+    /// </summary>
     public static Vector3[] Faces(Vector3[] positions, int[] indices)
     {
         var faces = new Vector3[indices.Length];
-        for (int t = 0; t < indices.Length; t++) faces[t] = positions[indices[t]];
+        int kept = 0;
+        for (int t = 0; t + 2 < indices.Length; t += 3)
+        {
+            Vector3 a = positions[indices[t]], b = positions[indices[t + 1]], c = positions[indices[t + 2]];
+            if ((b - a).Cross(c - a).LengthSquared() < MinFaceArea) continue;
+            faces[kept++] = a;
+            faces[kept++] = b;
+            faces[kept++] = c;
+        }
+        if (kept < faces.Length) Array.Resize(ref faces, kept);
         return faces;
     }
 

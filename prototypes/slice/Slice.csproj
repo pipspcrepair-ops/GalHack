@@ -39,6 +39,8 @@
     <Compile Include="..\wildlife\src\Space\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\FocusMachine.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\Items.cs" />
+    <!-- Phase 2: saves' persistence core (the zone ledger's commits). -->
+    <Compile Include="..\saves\src\Persistence\**\*.cs" />
 
     <!-- The physics sandbox's bridges: a structure as a vessel, the handling model as flight
          rules, weather onto the force path. -->
@@ -50,11 +52,14 @@
          building's structure mesher and ghosts, the creatures' view, the diegetic UI's theme and
          in-world screens. Their shaders and fonts are mounted at the paths they expect (src/Boot). -->
     <Compile Include="..\planet-surface\src\Terrain\**\*.cs" />
+    <!-- Phase 2: the generator's globe, space sky and ring shaders (the orbit's globe is drawn as its OrbitView draws it). -->
+    <Compile Include="..\planet-generator\src\Shaders.cs" />
     <Compile Include="..\planet-surface\src\Sky\**\*.cs" />
     <Compile Include="..\planet-surface\src\World\**\*.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayerDeco.cs" />
+    <Compile Include="..\planet-surface\src\Infra\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
     <Compile Include="..\planet-surface\src\Fx\**\*.cs" />
@@ -63,6 +68,7 @@
     <Compile Include="..\planet-surface\src\WeatherView\TornadoFx.cs" />
     <Compile Include="..\building\src\Presentation\ChunkMesher.cs" />
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="..\building\src\Presentation\DamageFx.cs" />
     <Compile Include="..\building\src\Presentation\GhostPreview.cs" />
     <Compile Include="..\wildlife\src\View\**\*.cs" />
     <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />
@@ -75,5 +81,6 @@
 
     <!-- Test helpers, used where they live: planet-surface's per-frame timing probe. -->
     <Compile Include="..\planet-surface\tests\FrameProbe.cs" />
+    <Compile Include="..\building\tests\OcclusionCheck.cs" />
   </ItemGroup>
 </Project>

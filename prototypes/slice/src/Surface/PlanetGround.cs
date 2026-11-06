@@ -56,7 +56,31 @@ public sealed class PlanetGround : IStuckField
         if (body.Motion == Motion.Free)
             return _store.SampleDensity(feet + N.Vector3.UnitY * shape.FeetBelowOrigin) > 0f;
         if (InsideSolid(feet, shape) != null) return true;
-        return StuckResolver.IsInsideTerrain(_store, feet, Of(shape));
+        return StuckResolver.IsInsideTerrain(_store, feet, Of(shape)) && !OnlyASliver(feet, shape);
+    }
+
+    /// <summary>
+    /// Whether the solid at a body's core is no more than a one-cell pillar or ridge left between
+    /// dug cells. The mesh, and so the collider, smooths such a sliver away (a walker stands in
+    /// it, half a metre under the density's surface), so it doesn't bury anyone: ground that does
+    /// reaches past the core on at least three sides.
+    /// </summary>
+    bool OnlyASliver(N.Vector3 feet, StuckShape shape)
+    {
+        const float Beside = 0.7f;
+        float bottom = feet.Y + shape.Radius, top = feet.Y + MathF.Max(shape.Height - shape.Radius, shape.Radius);
+        for (float y = bottom; y <= top; y += 0.4f)
+        {
+            var core = new N.Vector3(feet.X, y, feet.Z);
+            if (_store.SampleDensity(core) <= StuckResolver.InsideThreshold) continue;
+            int sides = 0;
+            if (_store.SampleDensity(core + N.Vector3.UnitX * Beside) > 0f) sides++;
+            if (_store.SampleDensity(core - N.Vector3.UnitX * Beside) > 0f) sides++;
+            if (_store.SampleDensity(core + N.Vector3.UnitZ * Beside) > 0f) sides++;
+            if (_store.SampleDensity(core - N.Vector3.UnitZ * Beside) > 0f) sides++;
+            if (sides >= 3) return false;
+        }
+        return true;
     }
 
     public bool Fits(Body body, N.Vector3 feet, StuckShape shape) =>

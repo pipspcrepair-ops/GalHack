@@ -27,6 +27,8 @@ public sealed class SpaceSiteDef
     /// <summary>Where it turns up: near (close to the start world), orbit, belt, moon, deep.</summary>
     public List<string> Zones = new();
     public List<string> Tags = new();
+    /// <summary>Only over a world with a main starport of this class (data: port a): its highport and yards. None: anywhere.</summary>
+    public Starport Port = Starport.None;
     public bool IsWreck => Kind is "wreck" or "field" or "hulk" or "broken";
 }
 
@@ -92,6 +94,7 @@ public static class OrbitParser
                             case "faction": s.Faction = Enum.Parse<Faction>(p[1], true); break;
                             case "held": s.Held = true; break;
                             case "zones": s.Zones = p.Skip(1).ToList(); break;
+                            case "port": s.Port = Enum.Parse<Starport>(p[1], true); break;
                             case "tags": s.Tags = p.Skip(1).ToList(); break;
                             default: throw Err($"unknown keyword '{p[0]}'");
                         }
@@ -128,12 +131,13 @@ public static class OrbitPlacement
         ?? lib.OrbitThemes.FirstOrDefault()
         ?? new OrbitTheme { Id = "default", Set = lib.SpaceSites.Select(s => (s.Id, 1f)).ToList() };
 
-    public static List<OrbitPoi> Place(PoiLibrary lib, ulong systemSeed, bool start)
+    /// <param name="port">The class of the main starport below, if known: its orbital works hang over it.</param>
+    public static List<OrbitPoi> Place(PoiLibrary lib, ulong systemSeed, bool start, Starport port = Starport.None)
     {
         var theme = Theme(lib, start);
         var rng = new Rng(Hash.Combine(systemSeed, 0x0B17UL));
         var set = theme.Set.Select(s => (Site: lib.SpaceSites.FirstOrDefault(d => d.Id == s.Site), s.Weight))
-            .Where(s => s.Site != null && s.Site.Danger <= theme.DangerMax).Select(s => (Site: s.Site!, s.Weight)).ToList();
+            .Where(s => s.Site != null && s.Site.Danger <= theme.DangerMax && s.Site.Port == Starport.None).Select(s => (Site: s.Site!, s.Weight)).ToList();
         int n = rng.Between(theme.SitesMin, theme.SitesMax);
         int wrecks = Math.Min(n, Math.Max(theme.WrecksMin, (int)MathF.Round(n * theme.WreckShare)));
         var result = new List<OrbitPoi>();
@@ -164,6 +168,8 @@ public static class OrbitPlacement
         var otherSet = set.Where(s => !s.Site.IsWreck).ToList();
         for (int i = 0; i < wrecks && wreckSet.Count > 0; i++) Add(wreckSet);
         for (int i = wrecks; i < n && otherSet.Count > 0; i++) Add(otherSet);
+        // The great port's orbital works, dead or alive, over the world they served.
+        foreach (SpaceSiteDef works in lib.SpaceSites.Where(s => s.Port != Starport.None && port >= s.Port)) Add(new List<(SpaceSiteDef Site, float Weight)> { (works, 1f) });
         return result;
     }
 }

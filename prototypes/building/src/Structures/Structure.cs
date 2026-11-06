@@ -146,6 +146,31 @@ public sealed class Structure
 
     public void Clear(Int3 p) => Set(p, default);
 
+    /// <summary>
+    /// Changes only a block's hit points: damage that doesn't destroy it, or a repair. Nothing
+    /// about its shape changes, so only its own chunk redraws (never a neighbour across a chunk
+    /// edge) and <see cref="Version"/> stands still: stats, rooms and colliders stay valid.
+    /// </summary>
+    public void SetHp(Int3 p, float hp)
+    {
+        Int3 c = ChunkOf(p);
+        if (!_chunks.TryGetValue(c, out Chunk chunk)) return;
+        ref Block cell = ref chunk.Cells[Chunk.Index(p.X, p.Y, p.Z)];
+        if (cell.IsEmpty) return;
+        cell.Hp = hp;
+        DirtyChunks.Add(c);
+    }
+
+    /// <summary>Hits since the presentation last looked, for sparks and marks. Capped: nobody may be looking.</summary>
+    public readonly List<BlockHit> RecentHits = new();
+
+    internal void NoteHit(in BlockHit hit)
+    {
+        if (RecentHits.Count < MaxRecentHits) RecentHits.Add(hit);
+    }
+
+    const int MaxRecentHits = 256;
+
     /// <summary>Marks the cell's chunk dirty, and neighbouring chunks when it sits on a chunk edge (their culling changes).</summary>
     public void MarkDirty(Int3 p)
     {

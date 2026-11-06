@@ -120,6 +120,7 @@ public partial class BuildTest : Node
         foreach (int x in BackIntoInventories()) yield return x;
         foreach (int x in Areas()) yield return x;
         foreach (int x in Machines()) yield return x;
+        foreach (int x in CpuExtender()) yield return x;
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in Creative()) yield return x;
     }
@@ -298,7 +299,28 @@ public partial class BuildTest : Node
 
     void Teleport(Vector3 feet) => _game.Survivor.PlaceOutside(feet.ToNumerics());
 
-    Vector3 Ground(Vector3 at) => _game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.1f;
+    /// <summary>The ground as it stands (the natural height, or lower where the site was levelled).</summary>
+    Vector3 Ground(Vector3 at)
+    {
+        Vector3 natural = _game.Zone.GroundAt(at.X, at.Z);
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(natural + Vector3.Up * 1f, natural + Vector3.Down * 30f, GalHack.Physics.Layers.World));
+        return (hit.Count > 0 ? (Vector3)hit["position"] : natural) + Vector3.Up * 0.1f;
+    }
+
+    /// <summary>Digs the ground down to the site's height, as a builder would cut a pad into a slope.</summary>
+    void LevelSite(float radius)
+    {
+        int y0 = (int)MathF.Floor(_site.Y), r = (int)radius;
+        var cells = new List<TerrainDigging.Terrain.Int3>();
+        for (int dx = -r; dx <= r; dx++)
+        for (int dz = -r; dz <= r; dz++)
+        {
+            int x = (int)MathF.Floor(_site.X) + dx, z = (int)MathF.Floor(_site.Z) + dz;
+            int top = (int)MathF.Ceiling(_game.Zone.GroundAt(x + 0.5f, z + 0.5f).Y);
+            for (int y = y0; y <= top; y++) cells.Add(new TerrainDigging.Terrain.Int3(x, y, z));
+        }
+        _game.Zone.Edits.DigCells(cells);
+    }
 
     IEnumerable<int> StandAt(Vector3 at)
     {
@@ -326,7 +348,13 @@ public partial class BuildTest : Node
     IEnumerable<int> Founding()
     {
         GD.Print("-- every structure starts with its core --");
-        _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f);
+        // Flat right across the base and the spots to stand at round it: on a slope the ground
+        // buries its lowest blocks and stands between you and them. Any slope left is cut away.
+        _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
+        foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
+        LevelSite(14f);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        _site = Ground(_site);
         foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
         string steelL = Item("steel", false), steelS = Item("steel", true);
         foreach (int x in Carry(steelL, 12, 2)) yield return x;
@@ -597,6 +625,45 @@ public partial class BuildTest : Node
         f.Cancel(r.Job);
         f.Lock = null;
         _game.CraftTimeScale = 40f;
+    }
+
+    /// <summary>In Survival: the CPU extender can be unlocked, crafted in the base's own constructor, placed, and it raises the structure's CPU tier.</summary>
+    IEnumerable<int> CpuExtender()
+    {
+        GD.Print("-- the CPU extender: unlock, craft, place, a higher CPU tier --");
+        Check(_game.Mode == GameMode.Survival && !_game.Progress.Creative, "in Survival");
+        TechNode node = _game.Progress.NodeOfBlock("cpuext", false);
+        Check(node != null, "the CPU extender is a node on the tech tree");
+        if (node == null) yield break;
+        // Level it up by playing (XP), then buy it and its parents with the points that brings.
+        _game.Progress.Earn(1_000_000, "test");
+        var chain = new List<TechNode>();
+        for (TechNode n = node; n != null; n = _game.Progress.Node(n.Unlock.Parent)) chain.Insert(0, n);
+        foreach (TechNode n in chain)
+            if (!_game.Progress.IsUnlocked(n.Id)) _game.Progress.Unlock(n.Id);
+        Check(_game.Progress.IsUnlocked(node.Id), $"unlocked on the tech tree through {string.Join(" > ", chain.Select(n => n.Id))}");
+        string ext = Item("cpuext", false);
+        ItemDef def = Items.Item(ext);
+        Constructor c = _base.Machines.Values.First();
+        Check(c.Knows(def) && _game.Progress.ItemAllowed(def), $"the base's {c.Def.Name} (tier {c.Def.Tier}) knows the recipe (tier {def.Recipe.Tier}) and it is allowed");
+        // Its parts come out of the constructor's own lane; stock them as the earlier steps would have made them.
+        foreach (var (id, n) in def.Recipe.Inputs) _base.Storage.Add(id.Id, n);
+        int before = _base.Storage.Count(ext);
+        Check(c.Order(ext, 1).Ok, "the constructor takes an order for the CPU extender");
+        foreach (int x in _play.WaitFor(() => !c.Busy, 60)) yield return x;
+        Check(_base.Storage.Count(ext) == before + 1, "and makes it into the base's storage");
+        int tier = _base.StructureStats.Tier, extenders = _base.StructureStats.Extenders;
+        Pack.SetStructureSlot(6, ext);
+        _base.Storage.Add(ext, 0);
+        foreach (int x in _drive.Tap(Key.Y)) yield return x;
+        bool on = false;
+        foreach (int x in StandByBase(7, 1)) yield return x;
+        foreach (int x in _play.PlaceBlock(6, _base, new Int3(1, 0, 0), Dir.PosX, p => on = p)) yield return x;
+        foreach (int x in _drive.Tap(Key.Y)) yield return x;
+        Check(on && _base.StructureStats.Extenders == extenders + 1, $"placed on the base: {_base.StructureStats.Extenders} extender(s)");
+        // The tiers climb with the count (one extender is the second tier); add the rest until it does.
+        Check(_base.StructureStats.Tier > tier || _base.StructureStats.Extenders < _base.Structure.Catalogue.ExtendersPerTier[Math.Min(tier, _base.Structure.Catalogue.ExtendersPerTier.Length - 1)],
+            $"CPU tier {tier} -> {_base.StructureStats.Tier}, limit {_base.StructureStats.CpuLimit}");
     }
 
     IEnumerable<int> MenuChecks()

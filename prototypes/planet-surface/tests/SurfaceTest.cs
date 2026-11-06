@@ -53,6 +53,15 @@ public partial class SurfaceTest : Node
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);
+            await Run("Profile", ProfileChecks);
+            await Run("Infra", InfraChecks);
+            await Run("StartTown", StartTownChecks);
+            await Run("Under", UnderChecks);
+            await Run("Water", WaterChecks);
+            await Run("Ports", PortChecks);
+            await Run("Stitches", StitchChecks);
+            await Run("Blast", BlastChecks);
+            if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);
             await Run("Heights", Heights);
@@ -171,7 +180,9 @@ public partial class SurfaceTest : Node
             // Compare natural ground only: pads, cave mouths and river channels are meant to differ.
             float natural = w.Source.NaturalHeight(wx, wz);
             GroundSample g = w.Source.Sampler.Sample(wx, wz, 1);
-            if (w.Source.StampWeight(wx, wz) > 0f || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
+            // (A stamp changes the ground there: a pad, its blend, a road's bed and banks.)
+            bool stamped = w.Source.StampWeight(wx, wz) > 0f || Math.Abs(w.Source.SurfaceHeight(wx, wz) - natural) > 0.001f;
+            if (stamped || g.InRiver || w.Source.CellDensity(cx, (int)MathF.Floor(natural - 0.5f), cz) <= 0f) { skipped++; continue; }
             float field = FieldSurface(store, cx, cz, (int)MathF.Ceiling(natural) + 6, (int)MathF.Floor(natural) - 6);
             if (float.IsNaN(field)) { skipped++; continue; }
             double d = Math.Abs(field - natural);
@@ -203,16 +214,14 @@ public partial class SurfaceTest : Node
 
     // ---- 2. Relief per archetype -----------------------------------------------------------
 
-    /// <summary>The same floors as the planet generator's relief check, measured on the surface's own ground (pads included).</summary>
-    static readonly (float range, float s30, float s45, float canyon)[] Floors =
-    {
-        (450, 0.3f, 0.15f, 35), (300, 0.3f, 0.15f, 30),   // temperate
-        (150, 0.12f, 0.04f, 18), (220, 0.15f, 0.1f, 60),  // arid
-        (450, 0.3f, 0.15f, 35), (250, 0.2f, 0.08f, 22),   // ice
-        (300, 0.2f, 0.08f, 22), (250, 0.25f, 0.1f, 18),   // lava
-        (250, 0.25f, 0.1f, 30), (140, 0.15f, 0.06f, 20),  // alien: crystal, and gentler domed fungal country
-    };
-
+    /// <summary>
+    /// The surface keeps the planet's relief. Since landforms, a world is dramatic in places
+    /// (ranges, canyons, cliffs) and flat in others on purpose (plains, ice plains, wetlands, some
+    /// worlds one flat landform throughout), so the planet generator holds each landform to its
+    /// own character. Here the surface's own ground (pads included) is held to the generator's
+    /// ground on the same windows and points: the stamps may flatten a little, never the drama.
+    /// Worlds with rugged country (a tenth of their land or more) must also show it.
+    /// </summary>
     async Task ReliefChecks()
     {
         for (int a = 0; a < 5; a++)
@@ -221,9 +230,14 @@ public partial class SurfaceTest : Node
             var spec = PlanetSpec.Roll((ulong)(510 + a * 3 + v), (Archetype)a, v);
             PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
             Relief.Stats r = Relief.Measure(w.Map, (x, y, s) => w.Source.SurfaceHeight(x, y, s), 1, windows: 6, slopePoints: 2000, incisionPoints: 400);
-            var f = Floors[a * 2 + v];
-            Check(r.RangeMedian >= f.range && r.Slope30 >= f.s30 && r.Slope45 >= f.s45 && r.Incision95 >= f.canyon,
-                $"relief on the surface {(Archetype)a}/{w.Map.Def.VariantName}: {r}");
+            Relief.Stats g = Relief.Measure(w.Map, (x, y, s) => w.Source.Sampler.HeightAt(x, y, s), 1, windows: 6, slopePoints: 2000, incisionPoints: 400);
+            float rugged = 0f;
+            foreach (var (l, share) in w.Map.Landforms.Present()) if (LandformInfo.Openness(l) == Openness.Rugged) rugged += share;
+            bool kept = r.RangeMax >= g.RangeMax * 0.85f && r.Slope30 >= g.Slope30 * 0.75f && r.Slope45 >= g.Slope45 * 0.75f;
+            bool drama = rugged < 0.1f || r.RangeMax >= 120f;
+            Check(kept && drama,
+                $"relief on the surface {(Archetype)a}/{w.Map.Def.VariantName} ({w.Map.Model.Mix}): {r}; the generator's own ground: range {g.RangeMax:F0} m max, " +
+                $">30° {g.Slope30:P1}, >45° {g.Slope45:P1}; rugged country {rugged:P0}");
             await Frames(1);
         }
     }
@@ -242,6 +256,7 @@ public partial class SurfaceTest : Node
         var byKind = new Dictionary<string, int>();
         var families = new HashSet<string>();
         var notes = new List<string>();
+        var blockedWays = new List<string>();
         for (int a = 0; a < 5; a++)
         {
             var spec = PlanetSpec.Roll((ulong)(800 + a * 7), (Archetype)a, 0);
@@ -308,7 +323,8 @@ public partial class SurfaceTest : Node
                     double ra = ray * Math.PI / 4, first = -1, last = -1;
                     for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
                     {
-                        w.Source.MadeGround(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d, out float mw, out _);
+                        // The place's own pad (a road leaving its gate has edges of its own).
+                        float mw = t.Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
                         if (mw < 0.97f && first < 0) first = d;
                         if (mw <= 0.5f) { last = d; break; }
                     }
@@ -326,7 +342,20 @@ public partial class SurfaceTest : Node
                 TInt3 e = site.Entrance;
                 bool open = !store.IsSolid(e) && !store.IsSolid(e + TInt3.Up) && !store.IsSolid(e + TInt3.Up + TInt3.Up);
                 bool footing = store.IsSolid(e - TInt3.Up) || !inst.Blocks.Get(inst.Layout.EntranceCell + PInt3.Down).IsAir;
-                if (!open || !footing) doors++;
+                if (!open || !footing) { doors++; if (blockedWays.Count < 4)
+                    {
+                        double ex = e.X + 0.5, ez = e.Z + 0.5;
+                        float hh = w.Source.NaturalHeight(ex, ez);
+                        var steps = new List<string> { $"natural {hh:F2}" };
+                        foreach (TerrainStamp st in w.Source.Stamps)
+                        {
+                            float before = hh;
+                            hh = st.Apply(hh, ex, ez);
+                            if (hh != before) steps.Add($"{st.Name}/{st.Shape} {hh:F2}");
+                        }
+                        blockedWays.Add($"{site.Name} way in {(open ? "has no footing" : "is not open")} at {e} (solid {store.IsSolid(e)} {store.IsSolid(e + TInt3.Up)} {store.IsSolid(e + TInt3.Up + TInt3.Up)}; {string.Join(", ", steps)}; surface {w.Source.SurfaceHeight(ex, ez):F2})");
+                    }
+                }
                 // Every way in can be walked up to from outside: straight out from it, past the apron
                 // and the blend, the ground never climbs or drops more than a body can walk (45 degrees)
                 // except where the natural ground beyond the stamp is that steep anyway.
@@ -378,7 +407,7 @@ public partial class SurfaceTest : Node
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");
         Check(sites >= 10 && floating == 0 && overlaps == 0 && doors == 0 && corners == 0,
             $"POIs seated: {sites} places on 5 worlds ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}); " +
-            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in");
+            $"{corners} corners off floor level, {floating} cells of missing ground under and around their rooms, {overlaps} blocks buried in ground, {doors} blocked ways in{(blockedWays.Count > 0 ? ": " + string.Join("; ", blockedWays) : "")}");
         Check(gates >= sites && steep == 0,
             $"every way in can be walked up to: {gates} entrances and gates ({string.Join(", ", byKind.Select(k => $"{k.Value} on {k.Key} ground"))}), each with a walk on foot out past everything the place stamped, no step steeper than 45 degrees");
         Check(same, "the same planet seats the same places at the same cells with the same ways in");
@@ -535,13 +564,19 @@ public partial class SurfaceTest : Node
             {
                 var p = new Vector3(here.X + MathF.Cos(k * MathF.Tau / 16) * r, 0f, here.Z + MathF.Sin(k * MathF.Tau / 16) * r);
                 float lo = float.MaxValue, hi = float.MinValue;
+                // Level along the walk and across it (not a hillside that happens to run level along x).
                 for (float m = 0f; m <= 8f; m += 0.5f)
+                for (float side = -0.6f; side <= 0.6f; side += 0.6f)
                 {
-                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z, w.Height));
+                    float h = w.GroundHeight(Mathx.WrapX(p.X + m, w.Width), Mathx.Wrap(p.Z + side, w.Height));
                     lo = MathF.Min(lo, h);
                     hi = MathF.Max(hi, h);
                 }
-                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && w.Source.StampWeight(p.X, p.Z) <= 0f
+                // Open ground, or an old road's level deck (clear of its poles).
+                bool ground = w.Source.StampWeight(p.X, p.Z) <= 0f
+                              || w.Source.OnRoad(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height), out _) && w.Source.OnRoad(Mathx.WrapX(p.X + 8f, w.Width), Mathx.Wrap(p.Z, w.Height), out _)
+                                 && !w.Infra.Power.Poles.Any(pp => Math.Abs(Mathx.WrapDelta(pp.X - p.X - 4, w.Width)) < 7 && Math.Abs(Mathx.WrapDelta(pp.Z - p.Z, w.Height)) < 4);
+                bool open = hi - lo < 0.2f && lo > 0.5f && w.WaterSurfaceAt(p) == null && ground
                             && !_main.Streamer.SolidsNear(p + new Vector3(4f, 0f, 0f), 7f).Any();
                 if (open) found = new Vector3(p.X, hi, p.Z);
             }
@@ -559,6 +594,11 @@ public partial class SurfaceTest : Node
             slab.GlobalPosition = start + new Vector3(5f, -2f, 0f); // out of the way, under the ground
             player.Teleport(start + Vector3.Up * 0.1f);
             player.SetLook(-MathF.PI / 2f, 0f); // facing east, at the slab
+            // Held still until the ground there has streamed in, so it can't fall through ground not yet built.
+            var mode = player.ProcessMode;
+            player.ProcessMode = ProcessModeEnum.Disabled;
+            await Until(() => _main.Streamer.ReadyAround(start, 1, needCollision: true), 60);
+            player.ProcessMode = mode;
             await SolidsIn();
             await PhysicsFrames(2); // the teleport's stale floor contact gone
             await UntilTicks(() => player.IsOnFloor() && MathF.Abs(player.Velocity.Y) < 0.05f, 60);
@@ -720,7 +760,10 @@ public partial class SurfaceTest : Node
     // ---- 6c. Solid trees and boulders -------------------------------------------------------------
 
     /// <summary>The nearest pine forest (trees and rocks both) to a point, searching outward on a 40 m lattice.</summary>
-    static Vector3? FindForest(PlanetWorld w, Vector3 near)
+    static Vector3? FindForest(PlanetWorld w, Vector3 near) => FindBiome(w, near, b => b == Planets.Gen.Biome.PineForest);
+
+    /// <summary>The middle of the nearest ground of the wanted biomes (all round for 60 m) to a point, searching outward on a 40 m lattice.</summary>
+    static Vector3? FindBiome(PlanetWorld w, Vector3 near, Func<Planets.Gen.Biome, bool> want)
     {
         for (double r = 0; r < 6000; r += 40)
         {
@@ -729,11 +772,11 @@ public partial class SurfaceTest : Node
             {
                 double a = k * Math.Tau / steps;
                 double x = Mathx.WrapX(near.X + Math.Cos(a) * r, w.Width), z = Mathx.Wrap(near.Z + Math.Sin(a) * r, w.Height);
-                if (w.Palette.BiomeAt(x, z) != Planets.Gen.Biome.PineForest || w.Source.StampWeight(x, z) > 0f) continue;
-                // The middle of the forest: pine forest all round, so its trees and rocks are near.
+                if (!want(w.Palette.BiomeAt(x, z)) || w.Source.StampWeight(x, z) > 0f) continue;
+                // The middle of it: the same ground all round, so its trees and rocks are near.
                 bool deep = true;
                 for (int d = 0; d < 8 && deep; d++)
-                    deep = w.Palette.BiomeAt(Mathx.WrapX(x + Math.Cos(d * Math.Tau / 8) * 60, w.Width), Mathx.Wrap(z + Math.Sin(d * Math.Tau / 8) * 60, w.Height)) == Planets.Gen.Biome.PineForest;
+                    deep = want(w.Palette.BiomeAt(Mathx.WrapX(x + Math.Cos(d * Math.Tau / 8) * 60, w.Width), Mathx.Wrap(z + Math.Sin(d * Math.Tau / 8) * 60, w.Height)));
                 if (deep) return new Vector3((float)x, w.GroundHeight(x, z) + 0.3f, (float)z);
             }
         }
@@ -799,6 +842,19 @@ public partial class SurfaceTest : Node
                  $"(ready {_main.Streamer.SolidsReady}), ground with collision {_main.Streamer.ReadyAround(p, 1, needCollision: true)}");
         }
         await PhysicsFrames(1);
+    }
+
+    /// <summary>
+    /// Puts the player somewhere and waits until its colliders are in: when that is far from where
+    /// they stood (beyond the finest far rings), until the ground round it has streamed in first.
+    /// </summary>
+    async Task GoTo(Vector3 feet)
+    {
+        Walker player = _main.Player;
+        bool far = new Vector2(feet.X - player.GlobalPosition.X, feet.Z - player.GlobalPosition.Z).Length() > 100f;
+        player.Teleport(feet);
+        if (far) await Streamed();
+        await SolidsIn();
     }
 
     /// <summary>Walks the player forward for a time; returns how far they got along their facing, and their last position.</summary>
@@ -874,22 +930,37 @@ public partial class SurfaceTest : Node
             $"a navigation grid would mark the trunk blocked and the open ground before it not ({blocked})");
 
         // A big boulder stops a walker; a pebble under the step height is walked over.
-        var boulders = streamer.SolidsNear(here, 60f).Where(b => !b.solid.IsTrunk && b.solid.Center.Y + b.solid.Extents.Y - w.GroundHeight(Mathx.WrapX(b.solid.Center.X, w.Width), Mathx.Wrap(b.solid.Center.Z, w.Height)) > 1f)
-            .OrderBy(b => (b.solid.Center + b.offset).DistanceTo(here)).ToList();
+        // Big boulders are the largest third of rocks, and a pine forest has few rocks (0.4 per
+        // 1000 m² against 10 conifers), so look through the ground the finest far rings hold round
+        // the forest (150 m, inside their reach), then (if none there has open ground before it) on the nearest rocky ground.
         (FloraSolid solid, Vector3 offset) boulder = default;
         path = null;
-        foreach (var b in boulders)
-            if ((path = Approach(w, b.solid, b.offset, 4f)) != null) { boulder = b; break; }
+        bool FindBoulder(Vector3 at)
+        {
+            var big = streamer.SolidsNear(at, 150f).Where(b => !b.solid.IsTrunk && b.solid.Center.Y + b.solid.Extents.Y - w.GroundHeight(Mathx.WrapX(b.solid.Center.X, w.Width), Mathx.Wrap(b.solid.Center.Z, w.Height)) > 1f)
+                .OrderBy(b => (b.solid.Center + b.offset).DistanceTo(at));
+            foreach (var b in big)
+                if ((path = Approach(w, b.solid, b.offset, 4f)) != null) { boulder = b; return true; }
+            return false;
+        }
+        string boulderPlace = "the forest";
+        if (!FindBoulder(here) && FindBiome(w, here, b => BiomeLook.FloraOf(b).Any(r => r.Kind == Flora.Rock && r.Density >= 0.6f)) is Vector3 rocky)
+        {
+            Vector3 there = _main.World.NearestCopy(rocky, here);
+            await GoTo(there);
+            boulderPlace = $"{w.Palette.BiomeAt(rocky.X, rocky.Z)} {new Vector2(there.X - here.X, there.Z - here.Z).Length():F0} m from the forest";
+            FindBoulder(player.GlobalPosition);
+        }
         bool boulderStops = false;
-        string boulderNote = "no big boulder with open ground before it";
+        string boulderNote = "no big boulder with open ground before it, in the forest or on the nearest rocky ground";
         if (path != null)
         {
-            player.Teleport(path.Value.from);
             player.SetLook(path.Value.yaw, 0f);
-            await SolidsIn();
+            await GoTo(path.Value.from);
             (progress, end) = await WalkForward(2f);
             boulderStops = !boulder.solid.Contains(end + Vector3.Up * 0.5f - boulder.offset) && progress < 4f;
-            boulderNote = $"walking into a boulder {boulder.solid.Extents.X * 2f:F1} m across stops the player {4f - progress:F1} m short of its middle";
+            boulderNote = $"walking into a boulder {boulder.solid.Extents.X * 2f:F1} m across (in {boulderPlace}) stops the player {4f - progress:F1} m short of its middle";
+            await GoTo(here); // back to the forest
         }
         FloraSolidRules rules = FarBuilder.Solids;
         // A pebble with open ground either side of it, walked over northward (-z).
@@ -932,8 +1003,7 @@ public partial class SurfaceTest : Node
             float Ride(Vector3 p) => (level ?? GroundAt(p)) + clearance + 0.75f;
             // Colliders live only near the player: stand them beside the middle of the sweep first.
             Vector3 middle = start + dir * (length * 0.5f) + new Vector3(-dir.Z, 0f, dir.X) * 8f;
-            player.Teleport(middle with { Y = w.GroundHeight(Mathx.WrapX(middle.X, w.Width), Mathx.Wrap(middle.Z, w.Height)) + 0.3f });
-            await SolidsIn();
+            await GoTo(middle with { Y = w.GroundHeight(Mathx.WrapX(middle.X, w.Width), Mathx.Wrap(middle.Z, w.Height)) + 0.3f });
             hull.GlobalTransform = new Transform3D(Basis.LookingAt(dir, Vector3.Up), start with { Y = Ride(start) });
             // No settling wait: MoveAndCollide sweeps from the transform just set, and every step below waits its tick first.
             for (float gone = 0f; gone < length; gone += 0.5f)
@@ -965,7 +1035,7 @@ public partial class SurfaceTest : Node
             $"a hover-vessel-sized hull (4 x 1.5 x 7 m) can't pass through a grove: riding 1.5 m up it hits a trunk {groveNote}; low over the ground it hits the boulder {boulderSweep}");
 
         // Fell the conifer with the survival tool: its collider goes that frame.
-        player.Teleport(path?.from ?? player.GlobalPosition);
+        await GoTo(here);
         var stand = Approach(w, tree.solid, tree.offset, 2.2f);
         if (stand == null) { Fail("nowhere to stand to fell the tree"); return; }
         player.Teleport(stand.Value.from);

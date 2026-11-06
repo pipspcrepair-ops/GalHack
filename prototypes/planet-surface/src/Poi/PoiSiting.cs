@@ -37,6 +37,8 @@ public sealed class PoiCatalog
 public sealed class PoiSite
 {
     public string Name = "";
+    /// <summary>The world's main starport: the network's main node.</summary>
+    public bool Primary;
     public FamilyDef Family;
     public PoiInstance Instance;
 
@@ -131,7 +133,7 @@ public static class PoiSiting
     const double SearchRadius = 140;
     const double SeamMargin = 320;           // keeps POIs clear of the ghost band either side of a seam
 
-    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null)
+    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
     {
         bool start = startWorld ?? StartWorld;
         PoiLibrary lib = catalog.Library;
@@ -140,7 +142,7 @@ public static class PoiSiting
         int cellsX = Math.Max(8, (int)(map.WidthMeters / WorldCell)), cellsZ = Math.Max(4, (int)(map.HeightMeters / WorldCell));
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
-        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143));
+        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
         var placed = world.Pois.Where(p => !p.Family.Space).ToList();
         // Spread over the whole planet, but the landing site's country gets its share first.
         double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
@@ -151,12 +153,18 @@ public static class PoiSiting
         var spread = far.Where((_, i) => i % stride == 0).ToList();
         // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
         var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
+        // The ports come first and don't count against the rest: the main one above all, an exodus world's crowd round it.
+        var ports = placed.Where(IsPort).OrderByDescending(p => p.Primary).ToList();
+        order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
+        static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("evacuation");
+        int budget = MaxSites + ports.Count;
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
             // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
-            PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned ? PoiState.Active : PoiState.Abandoned;
-            PoiInstance inst = PoiFactory.Generate(lib, forced, 0, forced.Rarity, state, 7);
+            PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
+            int forcedVariant = profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0;
+            PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
             for (int k = 0; k < 12 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6;
@@ -166,19 +174,31 @@ public static class PoiSiting
         }
         foreach (PlacedPoi p in order)
         {
-            if (sites.Count >= MaxSites + (ForceFamily != null ? 1 : 0)) break;
+            if (sites.Count >= budget + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
             ulong spawnSeed = p.SpawnSeed;
             if (start)
             {
                 // A start world: any blast site lies far from the bunker, and the settlements near it are never hostile.
                 if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) continue;
-                if (p.Family.Tags.Contains("settlement") && Away(p) < 1500)
+                // No living settlement near the start: the bunker sits at the edge of a ruined town by the
+                // landing site, and survivors live further out (never hostile in the near country).
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed);
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
-            if (site != null) sites.Add(site);
+            // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
+            int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
+            for (int k = 0; site == null && k < retries; k++)
+            {
+                double a = k * 2.399963, r = 300 + (p.Primary ? 90 : 60) * k;
+                site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+            }
+            if (site == null) continue;
+            site.Primary = p.Primary;
+            sites.Add(site);
         }
         Blasts(sites, map);
         return sites;
@@ -387,8 +407,18 @@ public static class PoiSiting
         var extra = new List<TerrainStamp>();
         double fx0 = ox + lx0, fz0 = oz + lz0, fx1 = ox + lx1, fz1 = oz + lz1;
         if (ruin)
-            extra.Add(new TerrainStamp(family.Name + " (half-buried)", (int)fx0, (int)fz0, (int)fx1, (int)fz1, bestPad, Apron, blend, width, height)
-                { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt });
+        {
+            // The tilt hinges on the way in, not on the footprint's front edge: a wing can stand
+            // forward of the door, and by the door the ground would already have risen over its sill.
+            // The rise then starts a little past the way in, so the way in stays open.
+            PInt3 door = inst.Layout.EntranceCell;
+            int tx0 = outward.X < 0 ? Math.Max((int)fx0, ox + door.X + 1) : (int)fx0, tx1 = outward.X > 0 ? Math.Min((int)fx1, ox + door.X) : (int)fx1;
+            int tz0 = outward.Z < 0 ? Math.Max((int)fz0, oz + door.Z + 1) : (int)fz0, tz1 = outward.Z > 0 ? Math.Min((int)fz1, oz + door.Z) : (int)fz1;
+            double along = (ox + door.X + 0.5 - (tx0 + tx1) * 0.5) * -outward.X + (oz + door.Z + 0.5 - (tz0 + tz1) * 0.5) * -outward.Z;
+            double halfAlong = Math.Abs(outward.X) * (tx1 - tx0) * 0.5 + Math.Abs(outward.Z) * (tz1 - tz0) * 0.5;
+            extra.Add(new TerrainStamp(family.Name + " (half-buried)", tx0, tz0, tx1, tz1, bestPad, Apron, blend, width, height)
+                { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt, Shift = (float)Math.Max(0, along + halfAlong + 2.5) });
+        }
         // A crater's bowl, so it shows in the far rings too (its rim is the place's own rubble).
         if (inst.Layout.Extras.Blast is { } blast)
         {

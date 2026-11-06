@@ -74,6 +74,12 @@ public sealed class PoiInstance
     public Townsfolk? Townsfolk;
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
+    /// <summary>The world it stands on, when placed on one: its tech levels decide the living's animals and gear.</summary>
+    public WorldProfile? World;
+    /// <summary>"New on old": held by people of a higher level than the ruins round it (the world round it shows the old level).</summary>
+    public bool NewOnOld => World != null && World.NewOnOld(Layout.Family, State);
+    /// <summary>The tech level it is built at on its world (the living at the post-collapse level, the old world at the pre-collapse one), or null off a world.</summary>
+    public TechLevel? Tech => World?.LevelFor(Layout.Family, State);
 
     public Exposure ExposureOf(int module)
     {
@@ -150,13 +156,13 @@ public static class PoiFactory
     /// vault or the core (it shouldn't: those paths are protected), the spawn is rolled again from a
     /// new sub-seed, up to three times.
     /// </summary>
-    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed)
+    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null)
     {
-        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed);
+        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world);
         for (int attempt = 1; attempt <= 3 && !Reaches(inst); attempt++)
         {
             System.Threading.Interlocked.Increment(ref Respawns);
-            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL));
+            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world);
         }
         return inst;
     }
@@ -248,12 +254,12 @@ public static class PoiFactory
         return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
     }
 
-    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed)
+    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world)
     {
         var inst = new PoiInstance
         {
             Layout = layout, State = state, SpawnSeed = spawnSeed, Blocks = layout.Blocks.Clone(),
-            HasCore = layout.Family.HasCore(state),
+            HasCore = layout.Family.HasCore(state), World = world,
         };
         inst.Age = PoiInstance.AgeFor(layout.Family, state, layout.Extras.InSpace);
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
@@ -282,8 +288,9 @@ public static class PoiFactory
         return inst;
     }
 
-    public static PoiInstance Generate(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, PoiState state, ulong spawnSeed, ulong? customSeed = null) =>
-        Spawn(lib, BuildLayout(lib, family, variant, rarity, customSeed), state, spawnSeed);
+    /// <param name="world">The world's profile, when it stands on one: the living's animals follow its post-collapse tech level.</param>
+    public static PoiInstance Generate(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, PoiState state, ulong spawnSeed, ulong? customSeed = null, WorldProfile? world = null) =>
+        Spawn(lib, BuildLayout(lib, family, variant, rarity, customSeed), state, spawnSeed, world);
 
     public static int CountStructure(BlockGrid g)
     {

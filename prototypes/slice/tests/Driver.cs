@@ -64,6 +64,13 @@ public sealed class Driver
         float frameHeading = MathX.Heading(s.WorldViewFrame);
         float yaw = MathF.Atan2(-d.X, -d.Z) - frameHeading;
         float pitch = MathF.Asin(Math.Clamp(d.Y, -1f, 1f));
+        if (s.Legs.Floating)
+        {
+            // Afloat in space your up can be any way at all: the look is in the view's own frame.
+            Vector3 local = MathX.Unrotate(s.WorldViewFrame, d.ToNumerics()).ToGodot();
+            yaw = MathF.Atan2(-local.X, -local.Z);
+            pitch = MathF.Asin(Math.Clamp(local.Y, -1f, 1f));
+        }
         float dy = Mathf.Wrap(yaw - s.Yaw, -MathF.PI, MathF.PI);
         Controls.Look = new Vector2(-dy / Sensitivity, -(pitch - s.Pitch) / Sensitivity);
     }
@@ -94,15 +101,17 @@ public sealed class Driver
         }
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
         float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f;
-        bool digging = false;
+        bool digging = false, climbed = false;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
         {
             Vector3 feet = Game.Survivor.WorldFeet;
             // Down in the bunker (fallen into its stairwell from the side, say) and going
             // somewhere above: up its stairs first, as a person would.
-            if (!_following && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
+            // Once: if its way out doesn't take you (a bank at the head of the stairs), the walk's own hops and digging must.
+            if (!_following && !climbed && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
             {
+                climbed = true;
                 Controls.Hold(Key.W, false);
                 Controls.Hold(Key.Space, false);
                 foreach (int x in ClimbOut(b)) yield return x;
@@ -131,11 +140,14 @@ public sealed class Driver
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
-            digging = dig && noProgress > 2f && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            // Under the ground with the way on above it (a cave fallen into, a shaft dug): a ramp up out of
+            // it, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
+            bool buried = target.Y - feet.Y > 2.5f && Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y > 2.5f;
+            digging = dig && (noProgress > 2f || buried) && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
             if (digging)
             {
                 var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
-                Face(feet + ahead * 1.6f + Vector3.Up * 0.7f);
+                Face(feet + ahead * 1.6f + Vector3.Up * (buried ? 3.2f : 0.7f));
             }
             Controls.Primary = digging;
             // Over an edge: the jetpack brakes the fall, as a careful player would.
@@ -151,6 +163,31 @@ public sealed class Driver
         Controls.Hold(Key.Shift, false);
         Controls.Hold(Key.Space, false);
         for (int i = 0; i < 20; i++) yield return 0;
+    }
+
+    /// <summary>
+    /// Up to a point on ground too steep to stand on, where the walker slides off below it: over it
+    /// on the jetpack, looking at it, pressing whenever within reach, again when the tanks are full.
+    /// </summary>
+    public IEnumerable<int> HopToward(Vector3 aim, float reach, float over, Func<bool> done, Action press)
+    {
+        for (int hop = 0; hop < 6 && !done(); hop++)
+        {
+            for (int i = 0; i < 240 && !done(); i++)
+            {
+                Face(aim);
+                Vector3 eye = Game.Survivor.WorldEye();
+                Controls.Primary = false;
+                Controls.Hold(Key.W, new Vector2(aim.X - eye.X, aim.Z - eye.Z).Length() > 1.2f);
+                Controls.Hold(Key.Space, eye.Y < aim.Y + over);
+                if (i % 4 == 3 && eye.DistanceTo(aim) < reach) press();
+                yield return 0;
+            }
+            Controls.ReleaseAll();
+            if (done()) break;
+            for (int i = 0; i < 600 && !Game.Survivor.Body.OnFloor; i++) yield return 0;
+            for (int i = 0; i < 200; i++) yield return 0; // the jetpack fills again underfoot
+        }
     }
 
     /// <summary>Presses a key for one tick.</summary>
@@ -324,8 +361,21 @@ public sealed class Driver
     public IEnumerable<int> Board(Vessel v)
     {
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
-        foreach (int x in WalkTo(seat, 1.6f, 30f)) yield return x;
+        // Never digging: the hull in the way isn't a bank to dig through, and a hole beside a landed vessel wakes it.
+        foreach (int x in WalkTo(seat, 1.6f, 30f, dig: false)) yield return x;
+        // The hull or a slope can keep the seat out of reach from the ground: up on the jetpack, as a player would.
+        float Reach() => v.NearestChair(Game.Survivor.WorldEye(), out _);
+        for (int i = 0; i < 240 && Reach() > 2.8f; i++)
+        {
+            Face(seat);
+            Controls.Hold(Key.W);
+            Controls.Hold(Key.Space, Game.Survivor.WorldEye().Y < seat.Y + 0.8f);
+            yield return 0;
+        }
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Space, false);
         foreach (int x in LookAt(seat, 4)) yield return x;
+        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
     }

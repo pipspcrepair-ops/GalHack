@@ -38,16 +38,16 @@ public partial class SurfaceZone : Node3D
     public PlanetWorld Planet { get; private set; }
     public TerrainStreamer Streamer { get; private set; }
     public SkyRig Sky { get; private set; }
-    public SurfaceWeather Weather { get; private set; }
-    public WildlifePatch Wildlife { get; private set; }
-    public PhysicsWorld Physics { get; private set; }
-    public PhysicsHost Host { get; private set; }
+    public SurfaceWeather Weather { get; protected set; }
+    public WildlifePatch Wildlife { get; protected set; }
+    public PhysicsWorld Physics { get; protected set; }
+    public PhysicsHost Host { get; protected set; }
     public PlanetEdits Edits { get; private set; }
     public PlanetGround Ground { get; private set; }
     public MeshInstance3D Sea { get; private set; }
 
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
-    public PlanetSurface.Fx.Sfx Sfx { get; private set; }
+    public PlanetSurface.Fx.Sfx Sfx { get; protected set; }
 
     /// <summary>Every vessel, base, wreck and pod in the zone.</summary>
     public readonly List<Vessel> Vessels = new();
@@ -59,7 +59,7 @@ public partial class SurfaceZone : Node3D
     public readonly GalHack.Items.WorldRules WorldRules = new();
 
     /// <summary>Containers on the ground: creature bodies, backpacks, things set down.</summary>
-    public Slice.Items.Lootables Loot { get; private set; }
+    public Slice.Items.Lootables Loot { get; protected set; }
 
     public bool IsBuilt => Planet != null;
     public int FrameShifts { get; private set; }
@@ -114,8 +114,13 @@ public partial class SurfaceZone : Node3D
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
+        // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
+        PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
+        PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the survival tool breaks them down for a little ore
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
         AddChild(Pois);
+        Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
+        AddChild(Infra);
         PlanetSpec spec = Spec;
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
@@ -146,6 +151,7 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
 
         Pois.Build(Planet);
+        Infra.Build(Planet);
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, WaterMaterial(sea: false));
         Sea.MaterialOverride = WaterMaterial(sea: true);
@@ -164,6 +170,7 @@ public partial class SurfaceZone : Node3D
 
     /// <summary>The places on the planet (ruins, wrecks, abandoned works), drawn by planet-surface's POI layer.</summary>
     public PlanetSurface.Poi.PoiLayer Pois { get; private set; }
+    public PlanetSurface.Infra.InfraLayer Infra { get; private set; }
 
     static PlanetSurface.Poi.PoiCatalog _poiCatalog;
     /// <summary>The POI generator's families and pieces, read once.</summary>
@@ -176,7 +183,7 @@ public partial class SurfaceZone : Node3D
     public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);
 
     /// <summary>The natural ground (before digging) under a frame position.</summary>
-    public Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
+    public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
 
     ShaderMaterial WaterMaterial(bool sea)
     {
@@ -238,6 +245,7 @@ public partial class SurfaceZone : Node3D
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
+        Sky.PlaceCloudDeck(eye);
     }
 
     public override void _PhysicsProcess(double delta)

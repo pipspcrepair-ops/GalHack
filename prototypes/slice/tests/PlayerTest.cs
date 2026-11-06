@@ -63,6 +63,7 @@ public partial class PlayerTest : Node
     string _said = "";
     float _topFall;
     Device _fab;
+    Vector3 _pad;
 
     public override void _Ready()
     {
@@ -183,14 +184,14 @@ public partial class PlayerTest : Node
         {
             int want = raw[ore] + 6;
             if (want <= 6) continue;
-            int cells = _game.Tool.OreCells, before = _game.Pack[ore];
+            int cells = _game.Tool.OreCells, before = _game.Pack[ore], rock = _game.Tool.TellOre;
             foreach (int x in _play.Gather(kind, want)) yield return x;
             GD.Print($"  {ore}: {_game.Pack[ore]}/{want} ({_game.Tool.OreCells - cells} cells), level {_game.Progress.Level}, {_game.Progress.Xp} XP");
             if (firstCells < 0)
             {
                 firstCells = _game.Tool.OreCells - cells;
-                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell && firstCells > 0,
-                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells, +{_game.Pack[ore] - before}");
+                Check(_game.Pack[ore] - before == firstCells * _game.Zone.Data.Rules.Materials.OrePerCell + _game.Tool.TellOre - rock && firstCells > 0,
+                    $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell: {firstCells} cells and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
             }
         }
         var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();
@@ -223,6 +224,7 @@ public partial class PlayerTest : Node
             var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 6f, p + Vector3.Down * 6f, Layers.World));
             if (down.Count == 0) continue;
             Vector3 g = (Vector3)down["position"];
+            if (eye.Y - g.Y < 0.7f) continue; // ground at eye level would only be grazed
             var seen = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, g + (g - eye).Normalized() * 0.5f, Layers.World | Layers.Hull | Layers.Props));
             if (seen.Count > 0 && ((Vector3)seen["position"]).DistanceTo(g) < 0.3f) { ahead = g; break; }
         }
@@ -234,29 +236,105 @@ public partial class PlayerTest : Node
 
         WildlifePatch w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
-        _prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
-            .OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).FirstOrDefault();
+        var tried = new HashSet<Creature>();
+        Creature NextPrey()
+        {
+            Vector3 from = _game.Survivor.WorldFeet;
+            return w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
+                .OrderBy(c => w.FromPatch(c.Position).DistanceTo(from)).FirstOrDefault();
+        }
+        // One you can walk to, by the way you can walk: straight at it, a hunter can go down a cliff
+        // and strand the rest of the test at the bottom. The nearest of all if there is no such one.
+        var ground = _play.WalkableFrom(feet);
+        List<Vector3> stalk = null;
+        foreach (Creature c in w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)))
+            if (_play.WayTo(ground, feet, w.FromPatch(c.Position), 2.5f) is List<Vector3> way) { _prey = c; stalk = way; break; }
+        _prey ??= NextPrey();
         if (_prey == null) { Fail("no creature near to hunt"); yield break; }
+        // Walking on brings a new wildlife patch, and the creatures in it are new objects: follow
+        // the prey across, or the hunt goes after the old one's stale position in the new patch.
+        Action<WildSim, Vector3, WildSim> carried = (old, oldOrigin, sim) =>
+        {
+            if (_prey.Dead) return;
+            Vector3 was = _prey.Position + oldOrigin;
+            _prey = sim.Creatures.Where(c => c.Species == _prey.Species && w.FromPatch(c.Position).DistanceTo(was) < 2f).FirstOrDefault() ?? _prey;
+        };
+        w.Swapped += carried;
         GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
         float health = _prey.Health;
         int xp = _game.Progress.Xp;
-        int shots = 0;
+        int shots = 0, stalls = 0;
+        bool hit = false;
         float close = 25f;
+        int flights = 0;
+        float Above() => w.FromPatch(_prey.Position).Y - _game.Survivor.WorldFeet.Y;
+        // Up over it on the jetpack, firing down whenever it is in range, as a player would.
+        IEnumerable<int> FlyAtPrey()
+        {
+            GD.Print($"  (the {_prey.Species.CommonName} stands {Above():F0} m up a bank: up over it on the jetpack, shooting)");
+            foreach (int x in _play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+            float was = _prey.Health;
+            foreach (int x in _drive.HopToward(w.FromPatch(_prey.Rig.BoundsCenter), 14f, 2f,
+                () =>
+                {
+                    if (_prey.Health >= was) return _prey.Dead;
+                    was = _prey.Health;
+                    hit |= _game.Shots.LastImpact.Kind == ImpactKind.Creature;
+                    return _prey.Dead;
+                },
+                () => { _game.Controls.Primary = true; _game.Controls.PrimaryPressed = true; })) yield return x;
+            _game.Controls.ReleaseAll();
+        }
+        GD.Print($"  (the way to it on foot: {(stalk == null ? "none found, straight at it" : $"{stalk.Count} steps over {ground.Count} cells of walkable ground")})");
+        if (stalk != null)
+            foreach (Vector3 step in stalk)
+            {
+                if (w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldFeet) < 8f) break;
+                foreach (int x in _drive.WalkTo(step, 1.5f, 8f, sprint: false, dig: false)) yield return x;
+            }
         for (int tries = 0; tries < 40 && !_prey.Dead; tries++)
         {
             Vector3 at = w.FromPatch(_prey.Position);
-            if (at.DistanceTo(_game.Survivor.WorldFeet) > close)
+            float off = at.DistanceTo(_game.Survivor.WorldFeet);
+            if (off > close)
             {
                 foreach (int x in _drive.WalkTo(at, close * 0.6f, 20f)) yield return x;
+                // A river or a cliff between you and it: a hunter picks another.
+                stalls = w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldFeet) > off - 5f ? stalls + 1 : 0;
+                // Up a bank too steep to stand on, where every step slides back: over it on the jetpack.
+                if (stalls >= 2 && flights < 2 && Above() > 2.5f)
+                {
+                    flights++;
+                    foreach (int x in FlyAtPrey()) yield return x;
+                    stalls = 0;
+                    continue;
+                }
+                if (stalls >= 2 && shots == 0 && NextPrey() is Creature next && tried.Add(_prey))
+                {
+                    next = NextPrey();
+                    GD.Print($"  (no way to the {_prey.Species.CommonName}, {off:F0} m off: hunting a {next.Species.CommonName} instead)");
+                    _prey = next;
+                    health = _prey.Health;
+                    stalls = 0;
+                    close = 25f;
+                }
                 continue;
             }
             float before = _prey.Health;
             foreach (int x in _play.ShootAt(() => w.FromPatch(_prey.Rig.BoundsCenter))) yield return x;
+            if (tries < 12) GD.Print($"  (shot {shots + 1}: prey at {w.FromPatch(_prey.Rig.BoundsCenter)}, health {_prey.Health:F0}, {w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldEye()):F1} m off; the bolt landed {_game.Shots.LastImpact.Kind} at {_game.Shots.LastImpact.At}; dead {_game.Suit.Dead}, hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, menu {_game.Menu.IsOpen})");
             shots++;
-            if (_prey.Health >= before) close = MathF.Max(6f, close * 0.6f); // something in the way: closer
-            if (shots == 3) Check(_prey.Health < health && _game.Shots.LastImpact.Kind == ImpactKind.Creature,
-                $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
+            if (_prey.Health >= before) close = MathF.Max(2.5f, close * 0.6f); // something in the way (a bank, a crest): closer
+            else hit |= _game.Shots.LastImpact.Kind == ImpactKind.Creature;
+            // The crest it stands behind is its own slope, and you can't stand on that: from the air.
+            if (!_prey.Dead && _prey.Health >= before && flights < 2 && Above() > 2.5f)
+            {
+                flights++;
+                foreach (int x in FlyAtPrey()) yield return x;
+            }
         }
+        w.Swapped -= carried;
+        Check(hit && (_prey.Dead || _prey.Health < health), $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
         Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
         Mark("hunted");
     }
@@ -273,6 +351,10 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        // On a slope too steep to stand on the walker slides off below it: up on the jetpack and E
+        // from the air, as a player would.
+        if (_game.Opened?.Loot != body)
+            foreach (int x in _drive.HopToward(body.Position + Vector3.Up * 0.3f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == body, () => _game.Controls.Tap(Key.E))) yield return x;
         Check(_game.Opened?.Loot == body, "E on the body opens its loot beside the bag");
         // Drag the meat across, shift-click the hide, then take the rest.
         int meatSlot = body.Grid.IndexOf("meat"), free = Enumerable.Range(PlayerInventory.ToolbarSlots, _game.Pack.Grid.BagSlots).First(i => _game.Pack.Grid[i].IsEmpty);
@@ -300,6 +382,28 @@ public partial class PlayerTest : Node
 
     // ==== 5 & 6. The survival constructor and the base core ======================================
 
+    /// <summary>Up to the constructor and E on it: at its front, or round another side if the ground stands in the way of the look, as a player would.</summary>
+    /// <summary>E on a fabricator opens the full panel: the Tab menu's CORE tab, picked on that machine.</summary>
+    bool FabPanelOpen => _game.Menu.IsOpen && _game.Menu.Tab == MenuTab.Core && _game.Menu.Root.Core.Picked == _fab;
+
+    IEnumerable<int> OpenFab()
+    {
+        foreach (var (x0, z0) in new[] { (0f, -1.4f), (1.6f, 0f), (-1.6f, 0f), (0f, 1.4f) })
+        {
+            Vector3 stand = _fab.GlobalTransform * new Vector3(x0, 0f, z0);
+            foreach (int x in _play.WalkAround(_fab.GlobalPosition, stand, 2.6f)) yield return x;
+            foreach (int x in _drive.WalkTo(stand, 0.4f, 15f)) yield return x;
+            foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
+            foreach (Vector3 aim in new[] { _fab.Front, _fab.GlobalTransform * new Vector3(0f, 1.1f, 0f) })
+            {
+                foreach (int x in _drive.LookAt(aim, 6)) yield return x;
+                foreach (int x in _drive.Tap(Key.E)) yield return x;
+                foreach (int x in _drive.Wait(2)) yield return x;
+                if (FabPanelOpen) yield break;
+            }
+        }
+    }
+
     IEnumerable<int> SurvivalConstructor()
     {
         GD.Print("-- 5. the suit fabricator makes a survival constructor; set it down --");
@@ -308,15 +412,16 @@ public partial class PlayerTest : Node
         foreach (int x in _play.Order("fab", "survival-constructor", 1)) yield return x;
         Check(_game.Fabricator.Orders.Any(j => j.Item.Id == "survival-constructor"), "ordered a survival constructor in the suit fabricator");
         foreach (int x in _play.CloseMenu()) yield return x;
-        // It makes it while you walk to a flat spot near the pod.
-        Vector3 site = _play.FlatSpot(_game.Start, 22f);
+        // It makes it while you walk to a flat spot near by (at about your own height: the hunt
+        // may have ended at the foot of a cliff, with the pod up on top).
+        Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 22f, within: 12f);
         foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
         foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
         Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
         foreach (int x in _play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(_game.Pack.Grid[2].Item == "survival-constructor", "dragged onto toolbar slot 3");
-        Vector3 spot = _play.FlatSpot(_game.Survivor.WorldFeet, 4f);
+        Vector3 spot = _play.FlatSpot(_game.Survivor.WorldFeet, 4f, within: 6f);
         foreach (int x in _play.PlaceOnGround(2, spot)) yield return x;
         _fab = _game.Zone.Devices.FirstOrDefault();
         Check(_fab != null && _game.Pack["survival-constructor"] == 0, "3 and a click set it down on open ground");
@@ -324,14 +429,8 @@ public partial class PlayerTest : Node
 
         GD.Print("-- 6. the base core, made in the survival constructor --");
         // Up to its front, as you would to use it.
-        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
-        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
-        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
-        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
-        foreach (int x in _drive.Wait(2)) yield return x;
-        if (_game.Opened?.Device != _fab)
+        foreach (int x in OpenFab()) yield return x;
+        if (!FabPanelOpen)
         {
             bool seen = WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
             GD.Print($"  (E at the constructor: the visor said \"{_said}\"; the look from {_game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} at {look.Distance:F1} m" : "meets nothing")}; the constructor's front {_fab.Front}, {_game.Survivor.WorldEye().DistanceTo(_fab.Front):F1} m off; opened {_game.Opened?.Title})");
@@ -340,12 +439,12 @@ public partial class PlayerTest : Node
             var under = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
             GD.Print($"  (standing on {(under.Count > 0 ? ((Node)under["collider"].AsGodotObject()).GetPath().ToString() : "nothing")}, the ground {_game.Zone.GroundAt(f.X, f.Z).Y:F1} under feet at {f.Y:F1}, on floor {_game.Survivor.Body.OnFloor})");
         }
-        Check(_game.Opened?.Device == _fab, "E on it opens its hopper beside the bag");
-        foreach (int x in _drive.ClickWidget("box:store-all")) yield return x;
+        Check(FabPanelOpen, "E on it opens the Tab menu's CORE panel on it: hopper, recipes and queue");
+        foreach (int x in _drive.ClickWidget("storage:store-all")) yield return x;
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
         foreach (int x in _play.CloseMenu()) yield return x;
         // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
+        foreach (int x in _drive.WalkTo(_fab.GlobalTransform * new Vector3(0f, 0f, -1.4f), 0.4f, 15f)) yield return x;
         _game.MachineScreens.Sync();
         MachineScreens.Mounted screen = _game.MachineScreens.Screens.TryGetValue((_fab, Int3.Zero), out var m) ? m : null;
         if (screen != null) foreach (int x in _play.ScreenClick(screen, "order:screen:base-core:1", "screen:down")) yield return x;
@@ -392,12 +491,8 @@ public partial class PlayerTest : Node
         Check(_fab.Storage.Count(smallfab) == 1, "and the small constructor, a block item like the rest, came out of it");
         // Take what it made.
         // Up to its front, as you would to use it.
-        Vector3 before = _fab.GlobalTransform * new Vector3(0f, 0f, -1.4f);
-        foreach (int x in _play.WalkAround(_fab.GlobalPosition, before, 2.6f)) yield return x;
-        foreach (int x in _drive.WalkTo(before, 0.4f, 15f)) yield return x;
-        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 5)) yield return x;
-        foreach (int x in _drive.LookAt(_fab.Front, 6)) yield return x;
-        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        foreach (int x in OpenFab()) yield return x;
+        foreach (int x in _drive.ClickWidget("storage:open")) yield return x; // beside the bag, for the lot
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
 
@@ -464,7 +559,7 @@ public partial class PlayerTest : Node
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
-        Check(_base.Storage.Count("iron-ore") > 0, $"STORE MY ORE AND MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
+        Check(_base.Storage.Count("iron-ore") > 0, $"STORE ORE, MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
         Bill parts = new();
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
         Bill blockParts = parts.Clone();
@@ -534,6 +629,7 @@ public partial class PlayerTest : Node
             foreach (int x in _play.BlockToToolbar(block, true, slot)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 pad = _play.FlatSpot(_base.Body.Position.ToGodot(), 26f, 2.4f, 0.3f);
+        GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the castaway at {_game.Survivor.WorldFeet})");
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
         _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && v.Structure.Grid.Size == GridSize.Small);
@@ -568,6 +664,7 @@ public partial class PlayerTest : Node
         Check(!_game.Suit.InSealedRoom, "a command chair in the open gives no air: only a sealed room does");
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 start = v.Body.Position.ToGodot();
+        _pad = start;
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 120; i++) yield return 0;
@@ -579,9 +676,14 @@ public partial class PlayerTest : Node
             float flat = new Vector2(to.X, to.Z).Length();
             if (flat < 30f) break;
             Steer(v, to, flat);
+            // Height over the ground under it and over what it is flying at: at 70 m/s a hillside
+            // arrives faster than a look straight down can tell, as a pilot looking ahead knows.
             float agl = v.AboveGround;
+            for (float ahead = 1f; ahead <= 5f; ahead += 1f)
+                agl = MathF.Min(agl, p.Y - _game.Zone.GroundAt(p.X + v.Body.Velocity.X * ahead, p.Z + v.Body.Velocity.Z * ahead).Y);
             _game.Controls.Hold(Key.Space, agl < 45f);
             _game.Controls.Hold(Key.Ctrl, agl > 80f);
+            if (agl < 20f) _game.Controls.Hold(Key.W, false);
             top = MathF.Max(top, v.Body.Velocity.Length());
             yield return 0;
         }
@@ -605,25 +707,40 @@ public partial class PlayerTest : Node
         Mark("flown");
     }
 
-    /// <summary>The flattest stretch of ground (16 m across) a walk out from the bunker reaches: along its walkable ways, 20 to 120 m out.</summary>
+    /// <summary>
+    /// The flattest stretch of ground (24 m across) with nothing built on it, along the bunker's walkable
+    /// ways, 20 to 120 m out, or round the places already walked to (the base, the fabricator, the pad).
+    /// A fall that hits a slope of more than about 14 degrees only glances: the hit counts along the
+    /// slope's normal, so a hillside world can leave nothing near the bunker that a fall kills on.
+    /// </summary>
     Vector3 FlattestOut(Bunker b)
     {
         Vector3 best = b.Outside;
         float bestSpread = float.MaxValue;
-        foreach (Vector3 way in b.Ways.Count > 0 ? b.Ways : new List<Vector3> { (b.Outside - b.StairTop).Normalized() })
-            for (float d = 20f; d <= 120f; d += 10f)
+        bool Clear(Vector3 p) => !b.Over(p, 8f) && _game.Zone.Devices.All(d => d.GlobalPosition.DistanceTo(p) > 8f)
+            && _game.Zone.Vessels.All(v => v == _vessel || v.IsWreck || v.IsRuin || new Vector2(v.Body.Position.X - p.X, v.Body.Position.Z - p.Z).Length() > 24f);
+        void Try(Vector3 p)
+        {
+            float h = _game.Zone.GroundAt(p.X, p.Z).Y, spread = 0f;
+            if (h < 2f || !Clear(p)) return;
+            for (int k = 0; k < 12; k++)
             {
-                Vector3 p = b.Outside + way * d;
-                float h = _game.Zone.GroundAt(p.X, p.Z).Y, spread = 0f;
-                if (h < 2f) continue;
-                for (int k = 0; k < 12; k++)
-                {
-                    float a = k * MathF.Tau / 12f;
-                    foreach (float r in new[] { 4f, 8f, 12f })
-                        spread = MathF.Max(spread, MathF.Abs(_game.Zone.GroundAt(p.X + MathF.Cos(a) * r, p.Z + MathF.Sin(a) * r).Y - h) / r);
-                }
-                if (spread < bestSpread) { bestSpread = spread; best = _game.Zone.GroundAt(p.X, p.Z); }
+                float a = k * MathF.Tau / 12f;
+                foreach (float r in new[] { 4f, 8f, 12f })
+                    spread = MathF.Max(spread, MathF.Abs(_game.Zone.GroundAt(p.X + MathF.Cos(a) * r, p.Z + MathF.Sin(a) * r).Y - h) / r);
             }
+            if (spread < bestSpread) { bestSpread = spread; best = _game.Zone.GroundAt(p.X, p.Z); }
+        }
+        foreach (Vector3 way in b.Ways.Count > 0 ? b.Ways : new List<Vector3> { (b.Outside - b.StairTop).Normalized() })
+            for (float d = 20f; d <= 120f; d += 10f) Try(b.Outside + way * d);
+        var walked = new List<Vector3> { _pad };
+        if (_base != null) walked.Add(_base.Body.Position.ToGodot());
+        if (_fab != null) walked.Add(_fab.GlobalPosition);
+        foreach (Vector3 place in walked)
+            for (float d = 16f; d <= 64f; d += 8f)
+                for (int k = 0; k < 16; k++)
+                    Try(place + new Vector3(MathF.Cos(k * MathF.Tau / 16f), 0f, MathF.Sin(k * MathF.Tau / 16f)) * d);
+        GD.Print($"  (the drop: over ground that rises at most {bestSpread:F2} m a metre, {best.DistanceTo(b.Outside):F0} m from the way out)");
         return best;
     }
 
@@ -659,6 +776,8 @@ public partial class PlayerTest : Node
         GD.Print("-- the jetpack: IMPACT only when falling --");
         bool warnedRising = false;
         float top = 0f;
+        // Full tanks first: the walk here may have burned them.
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor && _game.Survivor.Legs.JetpackFuel >= _game.Survivor.Legs.JetpackFuelMax, 12)) yield return x;
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 && !_game.Suit.Dead; i++)
         {
@@ -689,7 +808,7 @@ public partial class PlayerTest : Node
             float flat = new Vector2(to.X, to.Z).Length();
             N.Vector3 vel = v.Body.Velocity;
             float speed = new Vector2(vel.X, vel.Z).Length();
-            if (v.AboveGround >= 220f && flat < 10f && speed < 3f) break;
+            if (v.AboveGround >= 220f && flat < 4f && speed < 3f) break;
             if (v.Body.Position.Y > _game.Zone.Physics.Zone.Ceiling - 500f) break;
             Steer(v, to, flat);
             // Right over it, not near it: forward while far and slow enough to stop, back thrust to brake.
@@ -751,6 +870,9 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.LookAt(pack.Position + Vector3.Up * 0.25f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
+        // On a bank over a walker's head: up on the jetpack and E from the air, as for the creature's body.
+        if (_game.Opened?.Loot != pack)
+            foreach (int x in _drive.HopToward(pack.Position + Vector3.Up * 0.25f, Game.Game.UseReach - 0.5f, 1f, () => _game.Opened?.Loot == pack, () => _game.Controls.Tap(Key.E))) yield return x;
         if (_game.Opened?.Loot != pack)
             GD.Print($"  (E at the backpack: \"{_said}\"; feet {_game.Survivor.WorldFeet}, the backpack at {pack.Position}, {_game.Survivor.WorldFeet.DistanceTo(pack.Position):F1} m; menu {_game.Menu.IsOpen})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;

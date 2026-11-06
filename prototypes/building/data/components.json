@@ -9,7 +9,8 @@
 //   storage    SU added to the one shared storage of the structure
 //   attach     faces other blocks can attach to ("all", "none" or a list such as ["-y"])
 //   airtight   faces that seal air (doors: airtightOpen applies while open)
-//   covers     faces whose parts fully hide the cell face behind them (for culling)
+//   covers     faces that may hide the cell face behind them (for culling). Only ever a limit:
+//              a face hides nothing unless an opaque part really covers the whole of it
 //   collide    cell, parts (the part boxes) or none
 //   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
 //              glass; closedOnly parts belong to a door leaf
@@ -48,7 +49,7 @@
       "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.15 },
       "mass": 3, "cpu": 2500, "power": -1.5, "thrust": 1200, "color": "3a3f47", "glow": "ff8a1c",
       "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"],
-      "covers": ["+x", "-x", "+y", "-y", "-z"],
+      "covers": ["-z"],
       "cost": { "iron": 20, "tungsten": 6, "electronics": 4 }, "smallCost": { "iron": 4, "copper": 3 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body" },
@@ -103,7 +104,7 @@
       "hp": 700, "armor": 20, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
       "mass": 1.5, "cpu": 300, "power": -0.01, "color": "f4a100", "accent": "2b2d42",
       "attach": "all", "airtight": "all", "airtightOpen": "none",
-      "covers": ["+x", "-x", "+y"],
+      "covers": ["+x", "-x"],
       "cost": { "iron": 14, "electronics": 2 }, "smallCost": { "iron": 3, "copper": 1 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, -0.44, 0.5, 0.5], "style": "dark" },

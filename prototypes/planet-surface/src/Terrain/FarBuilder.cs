@@ -128,7 +128,7 @@ public static class FarBuilder
             AddSkirts(job, grid, step, indices);
             job.Indices = indices.ToArray();
 
-            BuildRiverWater(job, grid, step, level, river);
+            BuildRiverWater(job, grid, step, level, river, height);
             if (job.Lod <= 1) Scatter(job, source, palette, dug, felled, grid, step, height, river, up);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -190,7 +190,7 @@ public static class FarBuilder
     }
 
     /// <summary>Flat water at the river's surface over every grid square that touches the channel.</summary>
-    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river)
+    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river, float[] height)
     {
         int g = grid.G;
         var verts = new List<Vector3>();
@@ -212,7 +212,10 @@ public static class FarBuilder
                     if (t >= 0 && t < river.Length && river[t]) { l = level[t]; break; }
                 }
             }
-            verts.Add(new Vector3(i * step, l - 0.15f, j * step));
+            float y = l - PlanetTerrainSource.RiverDrop;
+            // The sheet's rim goes under this same ground, stamps and all, so it can't stand proud of it.
+            if (!river[s]) y = Math.Min(y, height[s] - 0.3f);
+            verts.Add(new Vector3(i * step, y, j * step));
             colors.Add(new Color(1, 1, 1, river[s] ? 1f : 0f));
             map[s] = v;
             return v;
@@ -287,7 +290,12 @@ public static class FarBuilder
             int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
             int s = grid.Sample(i, j);
             if (river[s] || up[j * grid.Nx + i] < FloraMeshes.MinUp(rule.Kind) || height[s] < 0.6f) continue;
-            if (source.StampWeight(x, z) > 0f) continue; // pads and their aprons stay clear
+            // Nothing grows back in a blast's dead zone, and little where it fades.
+            if (pal.DeadZones.Count > 0 && turn < pal.Deadness(x, z)) continue;
+            // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
+            // through a road nobody has kept up for a century (never a tree: the way stays open).
+            if (source.StampWeight(x, z) > 0f
+                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);

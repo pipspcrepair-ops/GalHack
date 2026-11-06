@@ -82,6 +82,7 @@ public partial class ChunkStreamer : Node3D
         Rgb glow = _palette.GlowColor;
         material.SetShaderParameter("glow_color", new Color(glow.R, glow.G, glow.B));
         material.SetShaderParameter("map_size", new Vector2((float)_width, (float)_height));
+        material.SetShaderParameter("rock_color", new Color(_palette.Cliff.R, _palette.Cliff.G, _palette.Cliff.B));
         material.SetShaderParameter("veins", _palette.Map.Def.Archetype == Archetype.Lava ? 1f : 0f);
         return material;
     }
@@ -294,8 +295,11 @@ public partial class ChunkStreamer : Node3D
             float hd = height[Math.Max(j - 1, 0) * n + i], hu = height[Math.Min(j + 1, n - 1) * n + i];
             var normal = new Vector3(hl - hr, 2f * FarSpacing, hd - hu).Normalized();
             float h = height[k];
-            // Sit a little low: where both exist, the detailed chunks win.
-            verts[k] = new Vector3((float)(x - cx), h - 3f, (float)(z - cz));
+            // Sit a little low: where both exist, the detailed chunks win. Low ground (deltas,
+            // wetlands, coastal plains a metre or two above the sea) sinks less, or the far ring
+            // would show it under water.
+            float sink = Math.Clamp((h - 0.6f) * 0.5f, 0f, 3f);
+            verts[k] = new Vector3((float)(x - cx), h - sink, (float)(z - cz));
             normals[k] = normal;
             uvs[k] = new Vector2((float)Mathx.WrapX(x, map.WidthMeters), (float)Mathx.Wrap(z, map.HeightMeters));
             Rgb c = pal.ColorAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters), out float glow);

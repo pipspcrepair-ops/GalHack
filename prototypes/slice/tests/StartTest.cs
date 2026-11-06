@@ -11,16 +11,15 @@ using Slice.Ui;
 namespace Slice.Tests;
 
 /// <summary>
-/// The start, on many worlds: fresh games roll fresh seeds, and on every one (the gate's list of
-/// verified worlds, every planet type among them; or -- --seeds N random ones, the soak; each
-/// seed printed) the start site is
+/// The start, on many worlds: fresh games roll fresh seeds, and on every one (three random worlds,
+/// or -- --seeds N of them, the soak; each seed printed) the start site is
 /// found and the castaway, with the game's own inputs only, wakes in the cryopod, opens it, takes
 /// the locker's kit, climbs the stairwell to the surface, walks 50 m away, comes back down into
 /// the bunker and out again. No teleports: the castaway never moves more than a stride in a tick,
 /// and is never rescued from inside anything.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/StartTest.tscn
-/// (-- --seeds N: that many random worlds instead, the soak; -- --seed N --planet type: one)
+/// (-- --seeds N: that many random worlds, the soak; -- --seed N --planet type: replay one)
 /// </summary>
 public partial class StartTest : Node
 {
@@ -66,21 +65,13 @@ public partial class StartTest : Node
 
     void Fail(string what) => Check(false, what);
 
-    /// <summary>
-    /// The gate's worlds: seeds that pass, every planet type among them (verified with the soak).
-    /// Random worlds are the soak test: -- --seeds N.
-    /// </summary>
-    static readonly WorldChoice[] Verified =
-    {
-        WorldChoice.Fresh("temperate", 851149296), WorldChoice.Fresh("temperate", 568903616), WorldChoice.Fresh("temperate", 168700691),
-        WorldChoice.Fresh("temperate", 791159104), WorldChoice.Fresh("temperate", 183393549), WorldChoice.Fresh("ice", 403945114),
-        WorldChoice.Fresh("swamp", 742440312), WorldChoice.Fresh("barren", 886331277), WorldChoice.Fresh("lava", 876698794),
-    };
+    /// <summary>Worlds in a plain run: each a fresh seed and a random planet type, so every run tries new ones.</summary>
+    const int WorldsPerRun = 3;
 
     IEnumerable<int> Scenario()
     {
         string[] args = OS.GetCmdlineUserArgs();
-        int random = 0;
+        int random = WorldsPerRun;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
         var seeds = new List<ulong>();
 
@@ -100,11 +91,14 @@ public partial class StartTest : Node
             Check(rolled[0] != rolled[1], $"two fresh games get different seeds ({rolled[0]}, {rolled[1]})");
         }
 
-        // The worlds: one pinned on the command line, N random ones (the soak), or the gate's verified list.
+        // The worlds: one pinned on the command line, or random ones.
         var worlds = new List<WorldChoice>();
         if (WorldChoice.FromArgs(args) is WorldChoice only) worlds.Add(only);
-        else if (random > 0) for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
-        else worlds.AddRange(Verified);
+        else
+        {
+            for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
+            worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
+        }
         foreach (WorldChoice pinned in worlds)
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
         int failedWorlds = _failedWorlds.Count;
@@ -160,6 +154,17 @@ public partial class StartTest : Node
                 yield return x;
             }
         }
+        // The cold of the world stays outside the chamber: the bunker is heated and has its own air.
+        foreach (int x in drive.Wait(2)) yield return x;
+        var at = new SurvivalVitals.Model.Pos(game.Bunker.Outside.X, game.Bunker.Outside.Y, game.Bunker.Outside.Z);
+        var chamber = game.Suit.Exposure(at, game.Suit.Sim.Time);
+        bool sealedIn = game.Suit.InSealedRoom;
+        game.Suit.InSealedRoom = false;
+        var outside = game.Suit.Exposure(at, game.Suit.Sim.Time);
+        game.Suit.InSealedRoom = sealedIn;
+        double roomC = game.Zone.Data.Rules.Climate.SealedRoomC;
+        Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
+            $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
         foreach (int x in Watched(play.WakeAndLeave(Check, $"{world.Name}, seed {world.Seed}: "))) yield return x;
         Check(rescues == 0 && worstStep < 1.5f, $"{world.Name}, seed {world.Seed}: no teleports (largest move in a tick {worstStep:F2} m), never rescued");
         Bunker b = game.Bunker;

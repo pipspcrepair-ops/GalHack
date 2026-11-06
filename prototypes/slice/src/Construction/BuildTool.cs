@@ -422,6 +422,9 @@ public sealed class BuildTool
 
     // ---- Blueprints (the projector) ---------------------------------------------------------------
 
+    /// <summary>The blueprint's ghost is standing where you look: a click sets it down there.</summary>
+    public bool PlanShown => Plan != null && Underway == null && _planGhost.Visible;
+
     /// <summary>Starts following a blueprint: its ghost goes down where you look; the first click sets it there.</summary>
     public void Follow(Structure blueprint)
     {
@@ -455,6 +458,7 @@ public sealed class BuildTool
             {
                 _planGhost.Visible = false;
                 Verdict = "Look at open ground to set the blueprint down";
+                if (pressed) Said?.Invoke(Verdict, Tones.Caution); // a click that can't place never goes unanswered
                 return;
             }
             Transform3D frame = AnchorFrame(_groundPoint);

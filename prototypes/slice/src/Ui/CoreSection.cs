@@ -65,10 +65,13 @@ public sealed class CoreSection : IMenuSection
         return near.OrderBy(n => n.d).Select(n => n.thing).ToList();
     }
 
-    public void Pick(object thing)
+    /// <summary>The structure or device the panel is on.</summary>
+    public object Picked => _picked;
+
+    public void Pick(object thing, int index = 0)
     {
         _picked = thing;
-        _machine = 0;
+        _machine = index;
     }
 
     Constructor CurrentMachine => _picked switch
@@ -166,7 +169,13 @@ public sealed class CoreSection : IMenuSection
         }
         y += 26;
         var only = view.Filtering ? new HashSet<int>(shownSlots) : null;
-        if (g.Button($"storage:store-raw", new Rect2(r.Position.X, y, r.Size.X, 34), "STORE MY ORE AND MATERIALS", C.Accent2))
+        float half = (r.Size.X - 8) / 2;
+        if (g.Button("storage:store-all", new Rect2(r.Position.X + half + 8, y, half, 34), "STORE ALL MY BAG", C.Accent2, size: 14))
+        {
+            Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false);
+            _game.Say(moved.IsEmpty ? "Nothing in your bag to store (or no room; the toolbar stays with you)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+        }
+        if (g.Button("storage:store-raw", new Rect2(r.Position.X, y, half, 34), "STORE ORE, MATERIALS", C.Accent2, size: 14))
         {
             var moved = new Bill();
             PlayerInventory pack = _game.Pack;
@@ -244,6 +253,14 @@ public sealed class StructureSection : IMenuSection
             }
             if (!capitalOk && s.Mode == CoreMode.Base) g.Text("capital mode: " + _game.Progress.LockReason("thruster@large"), new Vector2(o.X + 8, y + 34), C.Warn, 11);
             y += 50;
+        }
+        // The pilot role: whoever holds it flies, and their seat is forward. It can go to anyone in a seat.
+        if (v.Flight != null && v.Roles.Seated.Count > 0)
+        {
+            var seated = v.Roles.Seated.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            string next = seated[(seated.IndexOf(v.Roles.Pilot ?? seated[0]) + 1) % seated.Count];
+            if (g.Button("core:pilot", new Rect2(o.X, y, area.Size.X, 32), $"PILOT: {(v.Roles.Pilot ?? "nobody").ToUpperInvariant()}{(seated.Count > 1 ? " (HAND OVER)" : "")}", C.Accent2, enabled: seated.Count > 1, size: 15)) v.Roles.Assign(next);
+            y += 38;
         }
         if (Toggle("core:gravity", "CORE GRAVITY", s.GravityOn))
         {

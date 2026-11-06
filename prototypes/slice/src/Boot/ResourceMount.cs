@@ -52,8 +52,10 @@ public static class ResourceMount
             }
         }
         // Several test runs may start at once: each mounts its own copy. Copies left by earlier
-        // runs are cleared (one still open by a running game refuses, and stays).
-        foreach (string old in Directory.EnumerateFiles(Path.GetDirectoryName(pack), "mounted-*.zip")) TryDelete(old);
+        // runs are cleared (one still open by a running game refuses, and stays), but never a
+        // fresh one: a run just starting has made it and not opened it yet.
+        foreach (string old in Directory.EnumerateFiles(Path.GetDirectoryName(pack), "mounted-*.zip"))
+            if (DateTime.UtcNow - File.GetLastWriteTimeUtc(old) > TimeSpan.FromHours(1)) TryDelete(old);
         string mine = Path.Combine(Path.GetDirectoryName(pack), $"mounted-{System.Environment.ProcessId}.zip");
         File.Move(temp, mine, overwrite: true);
         if (!ProjectSettings.LoadResourcePack(mine, replaceFiles: false))

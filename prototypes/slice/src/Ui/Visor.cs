@@ -186,14 +186,17 @@ public partial class Visor : CanvasLayer
         Vitals v = suit.Vitals;
         VitalsRules r = suit.Sim.Data.Vitals;
         Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
+        double air = suit.Sim.Here.Temperature;
+        double fuel = Game.Survivor.Legs.JetpackFuel, fuelMax = Game.Survivor.Legs.JetpackFuelMax;
         var items = new (string label, string value, double share, Alert alert)[]
         {
             ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
             ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, Alert.Food),
             ("O2", (warn & Alert.Breath) != 0 ? $"{v.Breath:F0}s" : $"{suit.OxygenShare * 100:F0}%", (warn & Alert.Breath) != 0 ? v.Breath / r.Oxygen.HoldBreathSeconds : suit.OxygenShare, Alert.Oxygen | Alert.Breath),
-            ("TEMP", $"{v.BodyTemperature:F1}°", 1 - Math.Abs(v.BodyTemperature - r.Temperature.Normal) / 4.0, Alert.Cold | Alert.Heat),
+            ("TEMP", $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
             ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
+            ("JET", $"{fuel:0.0}s", fuel / Math.Max(0.01, fuelMax), Alert.None), // the jetpack's fuel: seconds of thrust, refilled on the ground
         };
         HudLayout layout = Layout;
         float s = layout.Scale;
@@ -231,7 +234,7 @@ public partial class Visor : CanvasLayer
     {
         float s = S;
         Vector2 size = _hud.Size;
-        Vector3 look = survivor.WorldLook();
+        Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
         float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
@@ -249,9 +252,10 @@ public partial class Visor : CanvasLayer
 
         Vector3 feet = survivor.WorldFeet;
         var labels = new List<(float x, int row)>();
+        _compassBottom = (y + 44 * s + 16 * s); // grows below with each row of contact labels
         void Mark(Vector3 at, string tag, Color colour)
         {
-            Vector3 to = at - feet;
+            Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
             float x = cx + off / 60f * width / 2;
@@ -259,9 +263,10 @@ public partial class Visor : CanvasLayer
             _hud.Block(new Rect2(x - 5 * s, y + 4 * s, 10 * s, 10 * s), colour);
             // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
-            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 110 * s)) row++;
+            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
             labels.Add((x, row));
-            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 60 * s, y + (44 + row * 16) * s, 120 * s, 16 * s), $"{tag} {d:F0}m", colour, HorizontalAlignment.Center);
+            _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
+            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
         // The place seen from the bunker's way out, on the compass until you have been there.
@@ -289,16 +294,18 @@ public partial class Visor : CanvasLayer
         }
     }
 
+    float _compassBottom;
+
     void DrawWarnings()
     {
         float s = S;
-        float y = 90 * s;
+        float y = MathF.Max(90 * s, _compassBottom + 8 * s); // always below the compass labels
         foreach (WarningEntry w in Game.WeatherWarnings())
         {
             Color c = w.Level == WarningLevel.Danger ? C.Danger : w.Level == WarningLevel.Warning ? C.Warn : C.Dim;
             _hud.Text(UiTheme.Label, (int)(17 * s), new Vector2(40 * s, y), w.Text, c);
             y += 24 * s;
-            if (y > 200 * s) break;
+            if (y > _compassBottom + 130 * s) break;
         }
     }
 
@@ -455,7 +462,8 @@ public partial class Visor : CanvasLayer
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
-        string line = $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
+        string line = Game.InOrbit ? Game.Spaceflight.FlightLine(v)
+            : $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
         // Under the compass, clear of the cockpit console.
         var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
         _hud.Block(band, new Color(C.Glass, 0.6f));

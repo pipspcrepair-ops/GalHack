@@ -47,12 +47,12 @@
     "normal": 37.0,
     "comfortBand": { "low": 35.0, "high": 39.0 },     // body: outside this, health drains while the cause lasts
     "warnBand": { "low": 36.0, "high": 38.0 },        // body: outside this, the visor flashes
-    "ambientComfort": { "low": 2.0, "high": 30.0 },   // felt air temperature that leaves the body alone
+    "ambientComfort": { "low": -4.0, "high": 56.0 },  // felt air that leaves the body alone: with the light suit's 6 cold and 4 heat, -10 to 60 °C
     "bodyDegreesPerDegree": 0.25,     // how far the body settles per degree of felt cold or heat beyond that
-    "driftPerSecond": 0.1,            // so there are 10 s between the flash and any harm
+    "driftPerSecond": 0.02,           // about 100 s to leave the comfort band; times 1 + felt degrees beyond comfort / 20, so sooner the harsher
     "recoverPerSecond": 0.5,
-    "damagePerSecond": 1.0,
-    "damagePerDegree": 0.08           // extra per degree of felt cold or heat
+    "damagePerSecond": 0.2,
+    "damagePerDegree": 0.04           // extra per degree of felt cold or heat: 0.6 a second at 10 degrees past comfort, 2.6 at 60
   },
 
   "radiation": {

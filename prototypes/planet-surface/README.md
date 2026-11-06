@@ -121,6 +121,121 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 | `sky.gdshader` | cloud march | 40 steps, a third of a step of jitter by direction | 24–64 steps by path length, a whole step of jitter by pixel |
 | `sky.gdshader` | stars, nebula, horizon | lattice cut by the sphere; longitude-latitude nebula; stars cut off below the horizon | shell stars; 3D nebula (`nebula_noise`, `nebula_detail`, set by `SkyRig`); stars fade out below it |
 
+## The world around the places
+
+**The world profile comes first.** `PlanetWorld.Build` rolls the world's profile (`PlanetWorld.Profile`, `PoiGenerator.Gen.WorldProfile`) before anything else: whether it was ever inhabited, its old population, starport and trade, and its tech levels before the fall and now (low, mid or high each). The POIs are placed by it; see the POI generator's README.
+
+**Infrastructure** (`src/World/Infra/InfraNetwork.cs`, `PlanetWorld.Infra`; design doc "Infrastructure"). On once-inhabited worlds only:
+
+1. **Plan first.** A spanning tree joins the places people built (not wrecks, alien or Precursor sites) by importance, with about one link in ten added back as loops.
+   - Highways join cities and spaceports, and towns on worlds that built them (mid and high tech).
+   - Roads go to towns, bases, mines, works and farms; tracks out to everything else.
+   - Railways run through the places that mattered most: diesel lines on low and mid worlds, maglev guideways on high ones.
+2. **One path engine.** A* runs over 16 m cells of the whole torus, with a cost table per kind of route:
+   - grade against the kind's limit (highway 6%, road 9%, track 15%, railway 3%);
+   - water dearest (a bridge), and the open sea never on a frontier world;
+   - other places' pads never;
+   - a route already laid cheap, so new links join it at junctions instead of running beside it.
+3. **A deck.** Each path is smoothed and given a deck: the ground averaged along it, held to the kind's grade, pinned to the gate's pad height and to the deck of any route it joins. Over water the deck clears the water.
+4. **Spans.** Where the deck stands well over the ground it becomes a bridge or viaduct (out to where it meets the bank, so the abutment never leaves a step). Where it cuts deep into a ridge it becomes a tunnel (out to where the slope is about a bore high, a portal face).
+   - Past what its builders could span or bore (a frontier road: 40 m; a modern road: 200 m), a route follows the land instead, steep where it must be but always walkable.
+   - Tracks never tunnel.
+   - A railway that would be mostly viaduct and tunnel is never built.
+5. **Tech and decay.**
+   - Surfaces: dirt and gravel on frontier worlds; tarmac on modern ones; concrete highways on high ones.
+   - Bridges: timber trestles, steel and concrete, or composite.
+   - A century of neglect cracks and buckles decks, drifts sand and soil over them, lets grass and shrubs (never trees) back onto the road, drops a span or two out of an old bridge into the valley, and floods a tunnel whose middle lies low.
+   - Routes serving a place a faction holds, or a settlement, are kept up.
+6. **Into the terrain.** Routes are laid as road stamps (`StampShape.Road`, about 100 m each) after the places' own stamps, so they show in the near voxels and the far rings alike.
+   - Each stamp cuts and fills to its deck, with banks easing back at a walkable slope.
+   - Under a bridge's end the embankment spills down round the abutment; tunnels keep their bore open.
+   - Roads never touch a place's footprint or apron, and of overlapping road beds only the nearest applies (the legs of a switchback meet at a step, as at a retaining wall).
+   - `PlanetTerrainSource` indexes stamps in 64 m buckets, so a height query composes only the few near it.
+7. **Drawn.** `src/Infra/InfraLayer.cs` streams 256 m tiles within 900 m of the camera. It draws bridges (deck, parapets, piers, abutments, fallen spans lying broken below), tunnel portals and their flooded water, railway sleepers and rails, and maglev guideways on pylons, all with collision. Other systems add their own pieces through `InfraLayer.Sources`.
+
+**Power lines** (`src/World/Infra/PowerLines.cs`, `PlanetWorld.Infra.Power`) run only where they made sense. They follow roads and highways out of the places that needed power: on frontier worlds only out to mines and works, never across open country.
+- Wooden poles stand beside roads, steel lattice pylons beside highways on modern and high-tech worlds.
+- Each pole goes as far on from the last as its spacing allows while every wire still clears the ground, so a hump in the land brings the next pole closer.
+- Every wire is anchored. It is strung with its sag between two standing poles, or, where a pole has fallen or a wire snapped on a neglected line, it hangs from the pole that still holds it and lies on the ground toward where it went (`PowerLines.Path`).
+- Poles never stand on a road bed, a bridge or a place's pad.
+
+**Abandoned vehicles** (`src/World/Infra/Wrecks.cs`, `PlanetWorld.Infra.Wrecks`) come from the deco library's sites (`InfraDeco`), set on the ground piece by piece:
+- evacuation jams and rusted pile-ups on highways and roads;
+- roadblocks within a short drive of places soldiers held;
+- car parks beside towns;
+- derelict and derailed trains on straight stretches of line, on the line's own track;
+- an airliner down in a field on worlds that flew them.
+
+Each road site lies on a straight, nearly level stretch with its lane down the road's centre line, so the way stays open, and none stands on a place's pad. The vehicles are the library's pieces with collision. `WreckSite` and the dressed plan's placements are what the slice's survival tool can salvage.
+
+**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are lots of abandoned houses, farmsteads, sheds and wayside stops that aren't places of their own.
+- Most stand along the roads and tracks, set back from the verge; some are out in the countryside, more of them on farming worlds.
+- They come from four small architect families (`flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside`, data in the POI generator), at the world's pre-collapse tech level: timber, brick and concrete, or composite.
+- Each gets a small pad of its own, laid before the roads. None stands on a road bed, a place's pad or another ruin.
+- A ruin is spawned from its own seed when its tile comes near, with the POI generator's century of decay: timber fallen in unless sheltered, shells of concrete and stone, trees through.
+- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of.
+
+**Ore tells.** Every deposit shows in the ground over it (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`):
+- a deposit breaking the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with the ore's colour in its veins);
+- a shallow one shows as scree, a deep one as a fracture.
+- The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.
+
+**Blast sites.** A blast reaches past its site into the land round it:
+- a ring of flavour ruins flattened outward from ground zero;
+- the ground burnt ash-grey to three times the site's dead radius, fading back to the land's own colours by four times its fade radius;
+- nothing grows in the dead zone, and little where it fades (`GroundPalette.DeadZones`, `Deadness`).
+
+**The start: the edge of a ruined town** (`src/World/Infra/StartTown.cs`, `PlanetWorld.StartTown`). A start world is built with `PoiSiting.StartWorld` set, and it always has a ruined town:
+- It sits on a flat, dry spot 200 m to 1.2 km from the landing site, with a ruin or wreck that nobody holds 420 m to 1.15 km beyond it.
+- Its streets are a grid on the map's axes, joined to the old network by a spur: a main street toward that place, three cross streets, a back street along their ends. (The sewers run under them.)
+- Abandoned houses line the streets, a stalled jam of rusted cars stands on the main street, and grass and shrubs are taking it all back.
+- No living settlement stands within 3 km of the landing site, so none is within 1.5 km of the town's edge (`StartTown.NoSettlement`).
+- `StartTown.EdgeX`/`EdgeZ` is a point on the town's edge, toward the place in view, that a person can walk out from: open 60 m in at least three of eight directions. `StartTown.Heading` faces the place.
+
+**Under the town** (`Underground` in the POI generator, `src/World/Infra/UnderTown.cs`, `src/Infra/UnderPieces.cs`). A pure function of the street grid and the ground, built in one-metre blocks on the map's axes:
+- Sewers under every street to a flooded sump at the grid's lowest end, with a junction chamber and a manhole at each crossing.
+- A storm drain under the back street, and a drainage pipe from the sump out to a culvert's headwall where the ground falls away to it (or to a fall of rock where it never does).
+- On mid and high worlds, a service gallery beside the main sewer and a metro station under the main street: stairs from a small pad beside the street, a service shaft from the sewers, running tunnels ending where their roofs came in. Brick and no metro on a low-tech world, concrete on mid, composite and maglev guideways on high.
+- The ground is opened by `TerrainStamp.Buried` stamps (the surface over them doesn't change). `UnderTown.Reserved` keeps house lots clear of the stairs.
+- It's dark: its blocks answer only to lamps and torches (no sky, no sun), with water in the low parts. What daylight reaches (the head of the stairs, the culvert) is drawn like anything outdoors.
+- `UnderBuilt.Spaces` lists rooms and stretches of tunnel for creatures: box, depth, dark, wet, links. They map onto the wildlife prototype's `PoiRoom`: Tunnel to Corridor, Junction and Sump to Room, Hall to Hall, Shaft and Stairs to Descent, Outfall to Entrance. `UnderBuilt.Solid` answers `CaveFauna`'s `ISolidSpace`.
+
+**Water and the ground.** Water sits in ground that contains it:
+- `RiverFit` brings each river's level down to the lowest land beside its line, only ever falling, a metre in seven at the steepest, with tributaries meeting their main river. Hydrology's levels come from the filled coarse map, so left alone a river crossed a basin the fine terrain never filled, up to 100 m in the air.
+- `GroundSample.Bank` is the height the ground must keep beside a river; stamps can't cut it (`PlanetTerrainSource.Banked`), except on a place's own footprint. Dry land beside the sea stands clear of it.
+- River sheets take the same stamped heights as the ground, and their rims go under it at every level of detail.
+- A flooded tunnel's water exists only under ground that covers the bore.
+
+**Hillsides.** Stamped ground has no steps of its own:
+- A terrace's or approach cut's ease is capped inside the reach it's indexed by. It used to run past it on cliffs, and stopped dead at 64 m bucket edges, up to 124 m high: most of the "stitches" on mountains.
+- Road stamps count together, weighted by how near each deck is, so legs of a switchback meet in a slope, not a step halfway. Road banks give way to a place's pad as it blends in.
+- A tunnel's mouth stands square in its hill: `TrimMouths` pulls it in to where both sides of the bore have ground over them, and short gaps between two bores become one tunnel.
+- `Portal` is a built face 8 m forward of the mouth with a covered box back to the bore, wing walls down the cutting, and stone, timber, concrete or composite by tech level. The cutting opens to the face's width and its banks draw in to the walls, so the ground meets the slope over the bore with no cliff across it, and the far ring's ramp is behind the face.
+- Generator caves are carved only in the near ring; the far ring draws the plain slope over them (see Integration).
+
+Screenshot views:
+- `infra:<road|highway|track|rail|bridge|viaduct|tunnel>:<archetype>[:<seed>]` frames the nearest one to the landing site.
+- `infra:<town|sewer|drain|metro|culvert>:<archetype>[:<seed>]` frames a start world's ruined town and what runs under it, with a torch at the eye underground.
+- `infra:<crossing|padwater|portal|portalfar>:<archetype>[:<seed>]`: a road over a river, a place beside water, a tunnel mouth from the road and from 300 m off.
+- `infra:at:<archetype>:<seed>:<x>:<z>:<back>:<up>[:<bearing>[:start]]` looks at a point on the map.
+- `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
+- `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
+
+### Integration (the slice)
+
+- **Terrain roads come for free.** The slice compiles `src/World/**`, so `PlanetWorld.Build` already lays the network's road stamps and fills in `PlanetWorld.Infra` and `PlanetWorld.Profile`.
+- **To draw bridges, portals and track:**
+  1. Add `<Compile Include="..\planet-surface\src\Infra\**\*.cs" />` to the slice's csproj.
+  2. Make an `InfraLayer` node in the surface zone beside the POI layer, and call `Infra.Build(world)` where it calls `Pois.Build(world)`.
+  3. Call `Infra.Clear()` where it clears the POI layer.
+
+  Until then, roads in the slice reach the edge of each river and ravine and stop there: their bridges are missing.
+- **Start-site search.** The bunker's `Fit` and `WalkableWays` read `GroundAt` and `Terrain`, which include the roads.
+  - To start at the edge of the ruined town, search from the town's edge instead of the landing site: `Bunker.FindSite(zone, new Vector3((float)town.EdgeX, 0, (float)town.EdgeZ))` with `town = zone.Planet.StartTown` (fall back to `Zone.LandingSite` when it is null).
+  - The search's own rules still apply (a place in view, walkable ways). The town's edge is chosen to pass them, with `StartTown.Landmark` the place in view.
+- **Under the town.** Comes with `InfraLayer`. Ways in are in `StartTown.Under.Built.WaysIn` (world cells, on the surface). Players climb its ladders, so the slice's walker needs the POI ladder rule there. The head torch (L) is what lights it.
+- **Flavour ruins and ore tells** are drawn by the same `InfraLayer`, so they come with it. Salvage: `FlavourRuin.Yields(ruin.Spawn(world.Profile))`, and `WreckSite` for vehicles.
+
 ## How it fits together
 
 - `shared/Terrain`: `PlanetTerrainSource` (the planet as cells), `PlanetTerrain` (the ghost-band torus store, edits on every copy, save and load), `TerrainStamp` (POI pads), `PeriodicNoise` (3D noise whose lattice wraps with the planet).
@@ -129,6 +244,8 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 - `src/Sky`: `SkySystem` (the sky as data, from the planet spec), `Atmosphere` (weather to fog and cloud), `SkyRig` (sun, moons, giant, environment).
 - `src/WeatherView`: the weather prototype's model and forces as particles, lightning, tornadoes, sound and ground cover.
 - `src/Poi`: placement, siting and meshes for the POI generator's places.
+- `src/World/Infra`: the infrastructure network's plan (routes, decks, bridges and tunnels, the road stamps).
+- `src/Infra`: the infrastructure layer, streamed tiles of what stands on the network.
 - `src/Player`: the walker, survival tool, free-fly and stuck guard.
 
 ## Limits

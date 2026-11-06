@@ -39,7 +39,7 @@ public sealed partial class Staging
         _game.Zone.Wildlife.Frozen = view != "dig";
         foreach (int x in Play.MakeTool()) yield return x;
         // Every view but the bunker's own starts out on the surface: up the stairs first, on foot.
-        if (view is not ("bunker" or "climb" or "bunkershot"))
+        if (view is not ("bunker" or "climb" or "bunkershot" or "bunkerclose"))
             foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         IEnumerable<int> script = view switch
         {
@@ -62,7 +62,20 @@ public sealed partial class Staging
             "hand" => HandView(),
             "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
-            _ => throw new ArgumentException($"no view '{view}'"),
+            "damage-crash" => DamageCrash(),
+            "damage-gunfire" => DamageGunfire(),
+            "damage-wall" => DamageWall(),
+            "damage-repair" => DamageRepair(),
+            "thruster-hull" => ThrusterHull(inside: false),
+            "thruster-interior" => ThrusterHull(inside: true),
+            "place" => PlaceApproach(),
+            "interior" => PlaceInterior(),
+            "tell" => PlaceTell(),
+            "cache" => PlaceCache(),
+            "town" => TownView(),
+            "salvage" => Salvage(),
+            "bunkerclose" => BunkerClose(),
+            _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";

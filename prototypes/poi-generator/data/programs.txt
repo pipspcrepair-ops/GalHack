@@ -477,3 +477,199 @@ program cathedral
   rooms top chapel monitor
   rooms deepest vault! cryo-bay
   fill chapel archive
+
+# ---- flavour: small ruins along the roads, not places of their own (planet surface FlavourRuins) ------
+
+# A house by the road: kitchen and rooms below, bedrooms above, a cellar under it. One program per
+# tech level's materials (timber, brick and concrete, composite); the farmhouse's plan, smaller.
+program cottage_timber
+  name House
+  shapes rect
+  plans spine 2 enfilade 3 jog 1
+  basement same 1
+  style miningtown
+  width 16 18
+  depth 16
+  floors 1 2
+  levels 1 1
+  windows 0.5
+  secrets 0 0
+  rooms ground farm-kitchen! quarters storage
+  rooms upper quarters washroom
+  rooms basement cellar!
+  rooms deepest cellar
+  fill quarters storage
+
+program cottage_brick
+  name House
+  shapes rect
+  plans spine 2 enfilade 3 jog 1
+  basement same 1
+  style concrete
+  width 16 18
+  depth 16
+  floors 1 2
+  levels 1 1
+  windows 0.5
+  secrets 0 0
+  rooms ground farm-kitchen! quarters storage
+  rooms upper quarters washroom
+  rooms basement cellar!
+  rooms deepest cellar
+  fill quarters storage
+
+program cottage_composite
+  name House
+  shapes rect
+  plans spine 2 enfilade 3 jog 1
+  basement same 1
+  style meridian
+  width 16 18
+  depth 16
+  floors 1 2
+  levels 1 1
+  windows 0.6
+  secrets 0 0
+  rooms ground farm-kitchen! quarters storage
+  rooms upper quarters washroom
+  rooms basement cellar!
+  rooms deepest cellar
+  fill quarters storage
+
+# A shed: one long room, a workbench and whatever was left in it.
+program shed
+  name Shed
+  shapes rect
+  plans hall
+  style miningtown
+  width 18 20
+  depth 16
+  floors 1 1
+  levels 0 0
+  lift 0
+  windows 0.2
+  hall ground workshop
+  rooms ground storage workshop
+  fill storage
+
+# A wayside kiosk: a shop counter and a back room by the pumps.
+program kiosk
+  name Kiosk
+  shapes rect
+  plans hall
+  style concrete
+  width 18 20
+  depth 16
+  floors 1 1
+  levels 0 0
+  lift 0
+  windows 0.6
+  hall ground shop
+  rooms ground storage office
+  fill storage
+
+# ---- the old utilities: power, water and sewage (design doc "Infrastructure") ------------------------
+
+# A boiler house: the furnace hall where the coal went in, a control room over it.
+program boiler_house
+  name Boiler House
+  shapes rect
+  plans hall 2 spine 2 enfilade 1 jog 1
+  basement same 1
+  style concrete
+  width 24 28
+  depth 18 20
+  floors 2 3
+  levels 1 1
+  lift 0.3
+  windows 0.25
+  secrets 0 1
+  hall ground boiler-house
+  rooms ground control! workshop
+  rooms upper control office
+  rooms basement plant generator
+  rooms deepest vault! storage
+  fill plant storage
+
+# A reactor hall: the containment hall itself breached, the control rooms round it, the plant below.
+program reactor_hall
+  name Reactor Hall
+  shapes rect
+  plans hall 2 spine 1
+  basement same 1
+  style concrete
+  width 26 30
+  depth 20 22
+  floors 2 3
+  levels 1 2
+  lift 0.5
+  windows 0.1
+  secrets 1 1
+  hall ground reactor
+  rooms ground control! decon
+  rooms upper control monitor
+  rooms basement plant generator
+  rooms deepest vault! containment
+  fill plant storage
+
+# A fusion hall: the machine hall under a round containment, its magnets dead, the control gallery over it.
+program fusion_hall
+  name Fusion Hall
+  shapes rect
+  plans hall 2 spine 1
+  basement same 1
+  style meridian
+  width 26 30
+  depth 20 22
+  floors 2 3
+  levels 1 2
+  lift 0.6
+  windows 0.15
+  secrets 1 1
+  hall ground reactor
+  rooms ground control! decon
+  rooms upper control monitor
+  rooms basement plant generator
+  rooms deepest vault! containment
+  fill plant storage
+
+# A telephone exchange: racks floor over floor, the operators' room at the top, cable vaults below.
+program telecom_exchange
+  name Telecom Exchange
+  shapes rect 2 L 1
+  plans spine 2 enfilade 2 jog 1
+  basement same 1
+  style concrete
+  width 24 28
+  depth 18 20
+  floors 2 4
+  levels 1 1
+  lift 0.5
+  windows 0.3
+  secrets 0 1
+  rooms ground lobby! storage
+  rooms upper archive*2 monitor office
+  rooms top control! office
+  rooms basement plant generator
+  rooms deepest vault! archive
+  fill archive storage
+
+# A works office: the gatehouse and foreman's rooms of a refinery, a mill or a yard.
+program works_office
+  name Works Office
+  shapes rect
+  plans spine 2 enfilade 2 jog 1
+  basement same 1
+  style concrete
+  width 20 24
+  depth 16 18
+  floors 1 2
+  levels 1 1
+  lift 0
+  windows 0.4
+  secrets 0 1
+  rooms ground lobby! office workshop
+  rooms upper control! office
+  rooms basement storage plant
+  rooms deepest vault! storage
+  fill storage office

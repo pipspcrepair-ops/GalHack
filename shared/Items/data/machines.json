@@ -11,11 +11,11 @@
   "schema": "galhack.machines",
   "version": 1,
   "constructors": [
-    { "id": "survival", "name": "Survival constructor", "tag": "FAB-0", "tier": 0, "speed": 0.5,  "item": "survival-constructor", "portable": true },
-    { "id": "portable", "name": "Portable constructor", "tag": "FAB-P", "tier": 1, "speed": 0.75, "block": "portfab" },
-    { "id": "small",    "name": "Small constructor",    "tag": "FAB-1", "tier": 1, "speed": 1.0,  "block": "smallfab" },
-    { "id": "large",    "name": "Large constructor",    "tag": "FAB-2", "tier": 2, "speed": 2.0,  "block": "largefab" },
-    { "id": "advanced", "name": "Advanced constructor", "tag": "FAB-3", "tier": 3, "speed": 3.0,  "block": "advfab" }
+    { "id": "survival", "name": "Survival constructor", "tag": "FAB-0", "tier": 0, "speed": 1.0,  "item": "survival-constructor", "portable": true },
+    { "id": "portable", "name": "Portable constructor", "tag": "FAB-P", "tier": 1, "speed": 1.5,  "block": "portfab" },
+    { "id": "small",    "name": "Small constructor",    "tag": "FAB-1", "tier": 1, "speed": 2.0,  "block": "smallfab" },
+    { "id": "large",    "name": "Large constructor",    "tag": "FAB-2", "tier": 2, "speed": 4.0,  "block": "largefab" },
+    { "id": "advanced", "name": "Advanced constructor", "tag": "FAB-3", "tier": 3, "speed": 6.0,  "block": "advfab" }
   ],
   "tierNames": [ "survival", "small", "large", "advanced" ],
 

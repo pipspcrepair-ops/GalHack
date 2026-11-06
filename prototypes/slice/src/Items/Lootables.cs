@@ -16,6 +16,11 @@ public enum LootKind
     Backpack,
     /// <summary>Things set down (dropped out of the inventory, or what a full storage couldn't take).</summary>
     Drop,
+    /// <summary>
+    /// A place's cache (a locker, a crate, a vault's strongbox): part of the place, drawn by it, and
+    /// never taken away, empty or not (Empyrion's POI containers stay where they stand).
+    /// </summary>
+    Cache,
 }
 
 /// <summary>A container on the ground: a grid of slots over its own storage, at a place in the zone.</summary>
@@ -101,7 +106,7 @@ public partial class Lootables : Node3D
         for (int i = All.Count - 1; i >= 0; i--)
         {
             Lootable l = All[i];
-            if (l.IsEmpty && l != Open)
+            if (l.IsEmpty && l != Open && l.Kind != LootKind.Cache)
             {
                 l.Node.QueueFree();
                 All.RemoveAt(i);
@@ -130,6 +135,7 @@ public partial class Lootables : Node3D
     static Node3D Look(LootKind kind)
     {
         var root = new Node3D { Name = $"Loot{kind}" };
+        if (kind == LootKind.Cache) return root; // the place draws its own caches
         Color body = kind switch { LootKind.Backpack => new Color("e85d04"), LootKind.Drop => new Color("6c757d"), _ => new Color("7f5539") };
         var bundle = new MeshInstance3D
         {

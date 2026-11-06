@@ -92,7 +92,7 @@ public partial class SliceTest : Node
         foreach (int x in _drive.UntilPlaying()) yield return x;
         SurfaceZone zone = _game.Zone;
         var severe = zone.Weather.Sim.Timeline.Where(seg => seg.Start < SurfaceWeather.CalmOpening && zone.Data.Weather.State(seg.Kind).Severe).ToList();
-        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} …)");
+        Check(severe.Count == 0, $"the weather opens calm: no severe weather forecast for the first {SurfaceWeather.CalmOpening / 60:F0} minutes ({string.Join(", ", zone.Weather.Sim.Timeline.Take(4).Select(seg => seg.Kind))} â€¦)");
         // The planet's weather is held calm and its creatures still for the scripted run, so it
         // can't be blown off course; each gets its own check below.
         zone.Weather.Bridge.Calm = true;
@@ -119,6 +119,7 @@ public partial class SliceTest : Node
         {
             foreach (int x in Gather()) yield return x;
             foreach (int x in CutPlant()) yield return x;
+            foreach (int x in OreRock()) yield return x;
         }
         // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
         // the parts the Skiff's bill needs and opens the tech tree. The real-player test
@@ -159,9 +160,9 @@ public partial class SliceTest : Node
         Check(sa.Mass == sb.Mass && sa.LiftMargin == sb.LiftMargin && sa.TurnRate == sb.TurnRate,
             "determinism: the starter blueprint's four numbers come out the same twice");
         Check(sa.CanLiftOff && sa.LiftMargin > 0f && MathF.Abs(sa.LiftMargin - (sa.UpwardThrust - sa.Weight)) < 1e-3f,
-            $"the starter vessel can lift off: lift margin {sa.LiftMargin:F1} kN = {sa.UpwardThrust:F1} up − {sa.Weight:F1} weight ({sa.SpareLift:F1} t spare)");
-        GD.Print($"  starter: {plan.Count} blocks, {sa.Mass:F2} t, accel f/b/up/side {sa.Accel(Direction.Forward):F1}/{sa.Accel(Direction.Back):F1}/{sa.Accel(Direction.Up):F1}/{sa.Accel(Direction.Right):F1} m/s², " +
-                 $"turn {sa.TurnRate:F0}°/s, top {sa.TopSpeed:F0} m/s, lift margin {sa.LiftMargin:F0} kN");
+            $"the starter vessel can lift off: lift margin {sa.LiftMargin:F1} kN = {sa.UpwardThrust:F1} up âˆ’ {sa.Weight:F1} weight ({sa.SpareLift:F1} t spare)");
+        GD.Print($"  starter: {plan.Count} blocks, {sa.Mass:F2} t, accel f/b/up/side {sa.Accel(Direction.Forward):F1}/{sa.Accel(Direction.Back):F1}/{sa.Accel(Direction.Up):F1}/{sa.Accel(Direction.Right):F1} m/sÂ², " +
+                 $"turn {sa.TurnRate:F0}Â°/s, top {sa.TopSpeed:F0} m/s, lift margin {sa.LiftMargin:F0} kN");
     }
 
     static HandlingStats Stats(Structure s)
@@ -187,7 +188,7 @@ public partial class SliceTest : Node
             $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
-            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
+            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} Â°C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
         Check(zone.Wildlife.Sim.Creatures.Count > 20 && zone.Wildlife.Fauna.Species.Count >= 6,
             $"the planet's own wildlife lives around the start: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
     }
@@ -200,11 +201,11 @@ public partial class SliceTest : Node
         foreach (int x in _drive.LookAt(b.Locker, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(_game.Opened?.Vessel == b.Ruin && _game.Menu.IsOpen, "E at the bunker's locker opens it beside the bag");
+        Check(_game.Opened?.Loot == b.MineLocker.Loot && _game.Menu.IsOpen, $"E at locker {b.MineLocker.Number} opens it beside the bag; the other three stay sealed ({b.Lockers.Count(l => l.Sealed)})");
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
         Dictionary<string, int> want = _game.Zone.Data.Rules.Materials.StartKit;
-        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && b.Ruin.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
+        Check(want.All(kv => _game.Pack[kv.Key] == kv.Value) && b.MineLocker.Loot.Storage.IsEmpty && _game.Suit.Kit.CountFood("ration-pack") > 0 && !_game.Menu.IsOpen,
             $"TAKE ALL empties the locker into the bag: {string.Join(", ", want.Select(kv => $"{_game.Pack[kv.Key]} {kv.Key}"))}, and the rations");
         foreach (int x in _drive.ClimbOut(b)) yield return x;
         Check(_drive.OnSurface && _game.Survivor.Body.OnFloor && !_rescues.Any(r => r.Body == _game.Survivor.Body),
@@ -224,25 +225,28 @@ public partial class SliceTest : Node
         {
             if (_game.Tool.OreOf(kind) is not GalHack.Items.ItemDef oreItem || !need.ContainsKey(oreItem.Id)) continue;
             string material = oreItem.Id;
-            for (int deposit = 0; deposit < 2 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
+            for (int deposit = 0; deposit < 4 && _game.Pack[material] < need.GetValueOrDefault(material); deposit++)
             {
                 Vector3? found = NearestUntried(kind, tried);
                 if (found is not Vector3 ore) break;
                 tried.Add(ore);
-                int before = _game.Pack[material], gatheredBefore = _game.Tool.Gathered.GetValueOrDefault(material);
+                int before = _game.Pack[material], gatheredBefore = _game.Tool.Gathered.GetValueOrDefault(material), tellBefore = _game.Tool.TellOre;
                 Vector3 start = _game.Survivor.WorldFeet;
                 foreach (int x in _drive.WalkTo(ore, 3.5f)) yield return x;
                 float walked = new Vector2(_game.Survivor.WorldFeet.X - start.X, _game.Survivor.WorldFeet.Z - start.Z).Length();
                 int cells = 0;
                 foreach (int x in DigOut(ore, need.GetValueOrDefault(material), material, c => cells += c)) yield return x;
                 int got = _game.Pack[material] - before;
-                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell;
+                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell, tellOre = _game.Tool.TellOre - tellBefore; // the rock over a deposit gives a little first
                 GD.Print($"  {material}: walked {walked:F0} m to a deposit, dug {cells} ore cells for {got} {material}");
-                if (first)
+                // The first deposit that gives anything (one against the bunker's own walls may not; the check below this loop wants them all).
+                if (first && got > 0)
                 {
                     first = false;
-                    Check(got > 0 && got == cells * yield1 && _game.Tool.Gathered[material] - gatheredBefore == got,
-                        $"digging ore fills the pack: {cells} {material} ore cells dug, {got} {material} in the pack ({yield1} a cell)");
+                    Check(got > 0 && got == cells * yield1 + tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
+                        $"digging ore fills the pack: {cells} {material} ore cells dug, {tellOre} off the rock over it, {got} {material} in the pack ({yield1} a cell)");
+                    Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
+                        $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
                         $"the dig is real terrain, removed and logged: {_game.Zone.Planet.Terrain.Store.RemovedCount} cells so far, the castaway still in the open");
                 }
@@ -253,6 +257,50 @@ public partial class SliceTest : Node
             GD.Print($"  (the bag: {_game.Pack.Storage.UsedSu:F0} SU used: {_game.Zone.Data.Items.Describe(_game.Pack.Storage.Contents, 8)}; gathered {string.Join(", ", _game.Tool.Gathered.Select(kv => $"{kv.Value} {kv.Key}"))}; feet {_game.Survivor.WorldFeet}, {_game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y - _game.Survivor.WorldFeet.Y:F1} m under the ground)");
         Check(shortOf.Count == 0,
             $"the nearest deposits give every common ore: {string.Join(", ", need.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
+    }
+
+    /// <summary>A rock over a deposit stops the ray and the walker, and the tool breaks it down: a little ore a pulse, then it digs on through.</summary>
+    IEnumerable<int> OreRock()
+    {
+        GD.Print("-- an ore rock --");
+        SurfaceZone zone = _game.Zone;
+        Vector3 from = _game.Survivor.WorldFeet;
+        var source = zone.Planet.Source;
+        var rocks = zone.Planet.Map.Deposits.InRect(from.X - 400, from.Z - 400, from.X + 400, from.Z + 400)
+            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null
+                && source.StampWeight(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height)) <= 0f
+                && !source.WaterSurfaceAt(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height), out _))
+            .Select(d => (d, at: zone.Planet.NearestCopy(new Vector3((float)d.X, from.Y, (float)d.Y), from)))
+            .OrderBy(r => r.at.DistanceTo(from)).Take(6).ToList();
+        if (_game.Pack.Selected != 0) foreach (int x in _drive.Tap(Key.Key1)) yield return x;
+        if (_game.Tool.Mode != Slice.Player.ToolMode.Gather) foreach (int x in _drive.Tap(Key.Q)) yield return x;
+        foreach (var (d, at) in rocks)
+        {
+            foreach (int x in _drive.WalkTo(at, 2.4f, 40f)) yield return x;
+            // The rock's solid boulders lie round the deposit's middle: look over it till the tool is on one (a small pile has none).
+            float radius = GalHack.Terrain.PlanetTerrainSource.OreRadius(d);
+            Vector3? aim = null;
+            var spots = new List<Vector2> { Vector2.Zero };
+            for (int a = 0; a < 8; a++)
+                foreach (float r in new[] { 0.5f, 1f })
+                    spots.Add(Vector2.FromAngle(a * MathF.PI / 4f) * radius * r);
+            foreach (Vector2 spot in spots)
+            {
+                Vector3 look = zone.GroundAt(at.X + spot.X, at.Z + spot.Y) + Vector3.Up * 0.35f;
+                foreach (int x in _drive.LookAt(look, 3)) yield return x;
+                foreach (int x in _drive.Wait(1)) yield return x;
+                if (_game.Tool.OnTell) { aim = look; break; }
+            }
+            if (aim == null) continue;
+            string ore = _game.Tool.OreOf(d.Kind).Id;
+            int before = _game.Tool.TellOre, pack = _game.Pack[ore], all = Slice.Player.SurvivalTool.TellPulses * Slice.Player.SurvivalTool.TellOrePerPulse;
+            foreach (int x in _drive.HoldPrimary(aim, 600, () => _game.Tool.TellOre - before >= all)) yield return x;
+            foreach (int x in _drive.Wait(2)) yield return x;
+            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && !_game.Tool.OnTell,
+                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} {ore} over {Slice.Player.SurvivalTool.TellPulses} pulses, then it digs on through");
+            yield break;
+        }
+        GD.Print($"  (no ore rock to aim at among the {rocks.Count} nearest deposits)");
     }
 
     Vector3? NearestUntried(DepositKind kind, HashSet<Vector3> tried)
@@ -348,9 +396,11 @@ public partial class SliceTest : Node
             tried.Add(plant);
             (p, id) = (root, plant);
             foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) > reach)
+            // In reach, and not up a bank over the castaway's head, where the tool can't be aimed at it.
+            bool InReach() => _game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach && p.Y < _game.Survivor.WorldEye().Y;
+            if (!InReach())
                 foreach (int x in _drive.WalkTo(p, 0.9f, 15f)) yield return x;
-            if (_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach) break;
+            if (InReach()) break;
         }
         if (id == 0)
         {
@@ -421,6 +471,27 @@ public partial class SliceTest : Node
 
     // ==== Building ==================================================================================
 
+    /// <summary>What blows and falls have cost, apart from what the climate wears away.</summary>
+    double BodyHarm() => _game.Suit.Lost.GetValueOrDefault(DamageKind.Hit) + _game.Suit.Lost.GetValueOrDefault(DamageKind.Fall);
+
+    /// <summary>A flat spot this far off in country as mild as can be found, without a thought for how the world lies.</summary>
+    Vector3 MildSpot(Vector3 from, float distance)
+    {
+        Suit suit = _game.Suit;
+        Band mild = suit.Sim.Data.Vitals.Temperature.AmbientComfort; // the air the body feels, so counting what the suit handles
+        double low = mild.Low - suit.Sim.Mods.ColdProtection, high = mild.High + suit.Sim.Mods.HeatProtection;
+        Vector3 best = from;
+        double bestOff = double.MaxValue;
+        for (int i = 0; i < 10 && bestOff > 0; i++)
+        {
+            Vector3 p = FlatSpot(from, distance, 0.8f + i * 0.63f);
+            double t = suit.Exposure(new Pos(p.X, p.Y, p.Z), suit.Sim.Time).Temperature;
+            double off = Math.Max(0, Math.Max(low - t, t - high));
+            if (off < bestOff) (best, bestOff) = (p, off);
+        }
+        return best;
+    }
+
     /// <summary>A flat, dry spot for a vessel this far from a point.</summary>
     Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f)
     {
@@ -451,10 +522,13 @@ public partial class SliceTest : Node
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+        // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
+        for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+            foreach (int x in _drive.LookAt(pad, 1)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         Vessel skiff = _game.Builder.Underway;
         Check(skiff != null && skiff.Structure.Count == 1 && skiff.Structure.Core != null && skiff.Controller.Frozen,
-            "a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground");
+            $"a click sets the blueprint down: its core is placed and paid for, a new vessel standing on the ground (the tool says: {_game.Builder.Verdict})");
         if (skiff == null) yield break;
         _skiff = skiff;
         int placed = 0, stalls = 0;
@@ -485,7 +559,7 @@ public partial class SliceTest : Node
             $"the vessel's body weighs what its blocks do: {skiff.Body.Mass:F0} kg");
         Check(MathF.Abs(built.LiftMargin - expected.LiftMargin) < 1e-2f && built.CanLiftOff
               && MathF.Abs(built.Accel(Direction.Forward) - expected.Accel(Direction.Forward)) < 1e-3f && built.TurnRate == expected.TurnRate,
-            $"its four numbers are the blueprint's: {built.Accel(Direction.Forward):F1} m/s² forward, {built.TurnRate:F0}°/s, {built.TopSpeed:F0} m/s, lift margin {built.LiftMargin:+0} kN");
+            $"its four numbers are the blueprint's: {built.Accel(Direction.Forward):F1} m/sÂ² forward, {built.TurnRate:F0}Â°/s, {built.TopSpeed:F0} m/s, lift margin {built.LiftMargin:+0} kN");
         Check(skiff.Controller.Gear != null && skiff.Controller.Gear.Count == 3, "its three landing legs are its controller's");
         Check(!_rescues.Any(r => r.Body == skiff.Body), "building never pushed the vessel out of the ground");
     }
@@ -494,7 +568,7 @@ public partial class SliceTest : Node
     {
         GD.Print("-- the same build in Creative --");
         _game.Mode = GalHack.Items.GameMode.Creative;
-        GalHack.Items.Bill pack = _game.Pack.Storage.Contents;
+        GalHack.Items.Bill pack = null; // taken at the click: the walk to the pad can dig its way and fill the bag
         var spent = new Dictionary<string, int>(_game.Builder.Spent);
         double organics = _game.Suit.Kit.Organics;
         Vessel twin = null;
@@ -504,6 +578,7 @@ public partial class SliceTest : Node
             Vector3 pad = FlatSpot(_game.Start, 30f + attempt * 15f, 2.5f + attempt * 1.3f);
             Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
             foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
+            pack = _game.Pack.Storage.Contents;
             _game.Builder.Project(); // the CORE tab's projector: blueprints are never on the toolbar
             foreach (int x in _drive.LookAt(pad, 6)) yield return x;
             foreach (int x in _drive.Click()) yield return x;
@@ -515,7 +590,7 @@ public partial class SliceTest : Node
             $"Creative builds the same blueprint: {twin?.Structure.Count} blocks");
         Check(_game.Pack.Storage.Contents.Equals(pack)
               && _game.Builder.Spent.All(kv => spent.GetValueOrDefault(kv.Key) == kv.Value) && _game.Suit.Kit.Organics == organics,
-            "the same build in Creative consumes nothing: the pack and the spend are unchanged");
+            $"the same build in Creative consumes nothing: the pack and the spend are unchanged (pack {pack} now {_game.Pack.Storage.Contents}; organics {organics:F2} now {_game.Suit.Kit.Organics:F2}; spent now {string.Join(", ", _game.Builder.Spent.Where(kv => spent.GetValueOrDefault(kv.Key) != kv.Value).Select(kv => $"{kv.Key} {spent.GetValueOrDefault(kv.Key)}->{kv.Value}"))})");
         _game.Mode = GalHack.Items.GameMode.Survival;
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
@@ -537,9 +612,10 @@ public partial class SliceTest : Node
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
-        double healthBefore = _game.Suit.Vitals.Health;
+        double harmBefore = BodyHarm();
+        float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
-        Vector3 target = FlatSpot(start, 2150f, 0.8f);
+        Vector3 target = MildSpot(start, 2150f); // a planet has cold and hot country: this check is about flying
         int lifts = _liftedOff, lands = _landed;
         _impacts.Clear();
 
@@ -553,12 +629,17 @@ public partial class SliceTest : Node
         var windows = new List<double>();
         double windowSum = 0;
         int windowFrames = 0;
-        float bestAgl = 0f, top = 0f;
+        float bestAgl = 0f, top = 0f, flown = 0f;
+        Vector3 was = start;
         // Cruise toward the target at height, steering with the mouse stick.
         int ticks = 0;
         while (ticks++ < 60 * 120)
         {
             Vector3 p = v.Body.Position.ToGodot();
+            // Along the way, not from end to end: the world wraps, and on a small one 2 km comes round the seam.
+            float stride = new Vector2(p.X - was.X, p.Z - was.Z).Length();
+            if (stride < 50f) flown += stride;
+            was = p;
             Vector3 to = target - p;
             float flat = new Vector2(to.X, to.Z).Length();
             if (flat < 120f) break;
@@ -596,22 +677,22 @@ public partial class SliceTest : Node
             // Creep on toward the flat spot while coming down.
             float ground = new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length();
             _game.Controls.Hold(Key.W, flat > 12f && ground < 6f && agl > 4f);
-            _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, vy < wanted - 0.5f);
+            // Feet down: let go, and it settles. Pushing on would only skid it along a slope.
+            bool down = v.Controller.Gear.Contact;
+            _game.Controls.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
+            _game.Controls.Hold(Key.Space, !down && vy < wanted - 0.5f);
             yield return 0;
         }
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(60)) yield return x;
 
-        Vector3 end = v.Body.Position.ToGodot();
-        float flown = new Vector2(end.X - start.X, end.Z - start.Z).Length();
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
-        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == 0f && worst < 8f,
+        Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,
             $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
-        Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}° of tilt), not in the ground");
-        Check(_game.Suit.Vitals.Health >= healthBefore, "the pilot came through unhurt");
+        Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}Â° of tilt), not in the ground");
+        Check(BodyHarm() <= harmBefore, "the pilot came through unhurt");
         if (windows.Count > 0)
         {
             double best = windows.Min();
@@ -700,6 +781,11 @@ public partial class SliceTest : Node
         if (_game.Survivor.Seated != null) _game.Controls.Tap(Key.F);
         foreach (int x in _drive.Wait(3)) yield return x;
         Vector3 clear = _skiff != null ? _skiff.Body.Position.ToGodot() + new Vector3(6f, 0f, 6f) : _game.Survivor.WorldFeet;
+        // Out of the water, if it landed on a shore: nothing that hunts on land comes in after you.
+        PlanetSurface.World.PlanetWorld planet = _game.Zone.Planet;
+        bool Wet(Vector3 p) => planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, planet.Width), Planets.Gen.Mathx.Wrap(p.Z, planet.Height), out _) || _game.Zone.GroundAt(p.X, p.Z).Y < 1f;
+        for (int k = 0; k < 96 && Wet(clear); k++)
+            clear += new Vector3(MathF.Cos(k * 0.7f), 0f, MathF.Sin(k * 0.7f)) * (2f + k * 0.5f);
         _game.Survivor.PlaceOutside(_game.Zone.GroundAt(clear.X, clear.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
         // The wildlife follows the castaway: a patch of the planet's own animals is baked around them.
         float Away() { Vector3 l = w.PatchLocal(_game.Survivor.WorldFeet); return new Vector2(l.X, l.Z).Length(); }
@@ -709,7 +795,18 @@ public partial class SliceTest : Node
         Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f && w.Sim.Creatures.Count > 10,
             $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
-        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + new Vector3(14f, 0f, 0f)), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
+        // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,
+        // and the flight can end on a low shore. The way whose lowest ground is highest, out past where it can land.
+        Vector3 local = w.PatchLocal(feet), toward = Vector3.Right;
+        float driest = float.MinValue;
+        for (int d = 0; d < 16; d++)
+        {
+            var dir = new Vector3(MathF.Cos(d * MathF.Tau / 16), 0f, MathF.Sin(d * MathF.Tau / 16));
+            float lowest = float.MaxValue;
+            for (float r = 2f; r <= 26f; r += 2f) lowest = MathF.Min(lowest, w.Sim.Terrain.Height(local.X + dir.X * r, local.Z + dir.Z * r));
+            if (lowest > driest) (driest, toward) = (lowest, dir);
+        }
+        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + toward * 14f), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
         foreach (Creature g in group)
         {
             g.ProvokedBy = w.Player;
@@ -717,16 +814,16 @@ public partial class SliceTest : Node
         }
         w.Frozen = false;
         double threatAt = -1, hurtAt = -1;
-        double health = _game.Suit.Vitals.Health;
+        double health = _game.Suit.Vitals.Health, bitten = BodyHarm();
         for (int i = 0; i < 60 * 25 && hurtAt < 0; i++)
         {
             if (threatAt < 0 && _game.Visor.ThreatShowing) threatAt = i;
-            if (_game.Suit.Vitals.Health < health) hurtAt = i;
+            if (BodyHarm() > bitten) hurtAt = i; // the climate can wear at you all the while: only a blow counts
             yield return 0;
         }
         w.Frozen = true;
         Check(threatAt >= 0 && (hurtAt < 0 || threatAt < hurtAt),
-            hurtAt < 0 ? $"a {hunter.CommonName} wound up to attack and the visor warned (THREAT) {(threatAt >= 0 ? "" : "NOT ")}— it never landed a bite"
+            hurtAt < 0 ? $"a {hunter.CommonName} wound up to attack and the visor warned (THREAT) {(threatAt >= 0 ? "" : "NOT ")}â€” it never landed a bite"
                        : $"a {hunter.CommonName}'s attack: THREAT on the visor {(hurtAt - threatAt) / 60.0:F1} s before its bite cost {health - _game.Suit.Vitals.Health:F0} health");
         foreach (Creature g in group) if (!g.Dead) w.Sim.Kill(g, w.Player);
     }

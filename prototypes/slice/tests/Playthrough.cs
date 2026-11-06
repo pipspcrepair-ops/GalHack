@@ -100,7 +100,7 @@ public sealed class Playthrough
     /// <summary>
     /// The start, as a player plays it: wake empty-handed in the cryopod, make the survival tool
     /// (free, Tab, YOU), F opens the pod, step out, E on the locker and TAKE ALL, (a shot at the
-    /// wall and the tool on the floor, harmless,) up the stairwell to the surface, 50 m away, back
+    /// wall, which wears it, and the tool on the floor,) up the stairwell to the surface, 50 m away, back
     /// down into the bunker, and out again.
     /// </summary>
     public IEnumerable<int> WakeAndLeave(Action<bool, string> check, string label = "", bool shoot = false)
@@ -123,22 +123,23 @@ public sealed class Playthrough
         foreach (int x in Drive.LookAt(b.Locker, 8)) yield return x;
         foreach (int x in Drive.Tap(Key.E)) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
-        check(Game.Opened?.Vessel == b.Ruin && Game.Menu.IsOpen && Game.Menu.Tab == MenuTab.You, $"{label}E on the locker opens it beside the bag");
+        check(Game.Opened?.Loot == b.MineLocker.Loot && Game.Menu.IsOpen && Game.Menu.Tab == MenuTab.You, $"{label}E on locker {b.MineLocker.Number} on the side wall opens it beside the bag");
         foreach (int x in Drive.ClickWidget("box:take-all")) yield return x;
         var kit = Game.Zone.Data.Rules.Materials.StartKit;
-        check(b.Ruin.Storage.IsEmpty && kit.All(kv => Pack[kv.Key] >= kv.Value),
+        check(b.MineLocker.Loot.Storage.IsEmpty && kit.All(kv => Pack[kv.Key] >= kv.Value),
             $"{label}TAKE ALL moves the kit into the bag: {string.Join(", ", kit.Select(kv => $"{Pack[kv.Key]} {kv.Key}"))}");
         foreach (int x in CloseMenu()) yield return x;
 
         if (shoot)
         {
             int blocks = b.Ruin.Structure.Count, bolts = Game.Shots.Bolts, impacts = Game.Shots.Impacts;
-            Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.0f));
+            float health = b.Ruin.Structure.Blocks().Sum(x => x.block.Hp);
+            Vector3 wall = b.At(new Vector3(3.25f, 1.4f, -1.75f)); // past the lockers on the side wall
             foreach (int x in ShootAt(() => wall)) yield return x;
             foreach (int x in Drive.Wait(20)) yield return x;
             check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
-                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Body.Damage == 0f,
-                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, no harm done");
+                  && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Structure.Blocks().Sum(x => x.block.Hp) < health,
+                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim ({Game.Shots.LastImpact.Kind}), and the block it hit loses hit points ({health - b.Ruin.Structure.Blocks().Sum(x => x.block.Hp):F0} lost, {b.Ruin.Hits.HitsTaken} hits taken, {blocks - b.Ruin.Structure.Count} blocks gone)");
             int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
             foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;
@@ -163,7 +164,10 @@ public sealed class Playthrough
             Vector3 toward = b.Landmark is Vector3 lm ? lm - b.Outside : b.Outside - b.StairTop;
             toward.Y = 0f;
             Vector3 way = b.Ways.OrderByDescending(w => w.Dot(toward.Normalized())).First();
-            foreach (int x in Drive.WalkTo(b.Outside + way * 56f, 2f, 60f, sprint: false, dig: false))
+            // To the ground out there, not a point in the air level with the way out: the walker
+            // jets up toward a target well above it.
+            Vector3 end = b.Outside + way * 56f;
+            foreach (int x in Drive.WalkTo(Game.Zone.GroundAt(end.X, end.Z), 2f, 60f, sprint: false, dig: false))
             {
                 if (crumbs.Count == 0 || crumbs[^1].DistanceTo(Game.Survivor.WorldFeet) > 3f) crumbs.Add(Game.Survivor.WorldFeet);
                 yield return x;
@@ -234,6 +238,64 @@ public sealed class Playthrough
         foreach (int x in WaitFor(() => Game.Survivor.Body.OnFloor, 3)) yield return x;
         check(Drive.OnSurface && Game.Survivor.WorldFeet.DistanceTo(b.Outside) < 2f, $"{label}and out again, with no snag");
         check(Drive.StairJumps == jumps, $"{label}up and down the stairs and through the way out at a walk: no jump, no jetpack ({Drive.StairJumps - jumps} needed)");
+    }
+
+    /// <summary>
+    /// Where a person can walk from a point: a flood over the ground on a 3 m grid, out to a radius,
+    /// over dry ground no steeper than 38 degrees and with no drop beside it. Each cell knows the
+    /// one it was reached from, so a way to any of them can be read back.
+    /// </summary>
+    public Dictionary<(int X, int Z), (int X, int Z)> WalkableFrom(Vector3 from, float radius = 300f)
+    {
+        const float Step = 3f, Climb = 2.3f;
+        SurfaceZone zone = Game.Zone;
+        Vector3 At((int X, int Z) c) => new(from.X + c.X * Step, 0f, from.Z + c.Z * Step);
+        bool Standable(Vector3 p, float h)
+        {
+            if (h < 1.5f || (Game.Bunker?.Over(p, 3f) ?? false)) return false;
+            if (zone.Planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(p.X, zone.Planet.Width), Planets.Gen.Mathx.Wrap(p.Z, zone.Planet.Height), out float surface) && surface - h > 0.5f) return false;
+            foreach (var (dx, dz) in new[] { (Step, 0f), (-Step, 0f), (0f, Step), (0f, -Step) })
+                if (MathF.Abs(zone.GroundAt(p.X + dx, p.Z + dz).Y - h) > Climb) return false;
+            return true;
+        }
+        var from0 = (0, 0);
+        var came = new Dictionary<(int X, int Z), (int X, int Z)> { [from0] = from0 };
+        var open = new Queue<(int X, int Z)>();
+        open.Enqueue(from0);
+        while (open.Count > 0)
+        {
+            var c = open.Dequeue();
+            float h = zone.GroundAt(At(c).X, At(c).Z).Y;
+            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1) })
+            {
+                var n = (X: c.X + dx, Z: c.Z + dz);
+                if (came.ContainsKey(n) || new Vector2(n.X, n.Z).Length() * Step > radius) continue;
+                Vector3 p = At(n);
+                float nh = zone.GroundAt(p.X, p.Z).Y;
+                if (MathF.Abs(nh - h) > Climb * (dx != 0 && dz != 0 ? 1.4f : 1f) || !Standable(p, nh)) continue;
+                came[n] = c;
+                open.Enqueue(n);
+            }
+        }
+        return came;
+    }
+
+    /// <summary>The way on foot from a flood's start to within a distance of a point: its waypoints on the ground, or null if it doesn't reach there.</summary>
+    public List<Vector3> WayTo(Dictionary<(int X, int Z), (int X, int Z)> came, Vector3 from, Vector3 to, float within)
+    {
+        const float Step = 3f;
+        (int X, int Z)? best = null;
+        float bestDistance = within;
+        foreach (var c in came.Keys)
+        {
+            float d = new Vector2(from.X + c.X * Step - to.X, from.Z + c.Z * Step - to.Z).Length();
+            if (d < bestDistance) { bestDistance = d; best = c; }
+        }
+        if (best is not (int X, int Z) cell) return null;
+        var way = new List<Vector3>();
+        for (var c = cell; c != came[c]; c = came[c]) way.Add(Game.Zone.GroundAt(from.X + c.X * Step, from.Z + c.Z * Step));
+        way.Reverse();
+        return way;
     }
 
     /// <summary>A point a walk away over dry, gentle ground: the way you face first, then round from it.</summary>
@@ -556,8 +618,15 @@ public sealed class Playthrough
         bool seen = WorldRay.Cast(Game.Zone, Game.Survivor, 20f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, out LookHit look);
         if (!seen || look.Point.DistanceTo(at) > 1.5f)
             Log($"(placing on the ground at {at}: the look from {Game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} on {look.Vessel?.Name} at {look.Point}, {look.Distance:F1} m" : "meets nothing")}; aboard {Game.Survivor.Aboard?.Name}, menu {Game.Menu.IsOpen})");
+        string verdict = Game.Builder.Verdict;
+        int inHand = Game.Pack.Grid[slot].Count;
         foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(3)) yield return x;
+        if (Game.Pack.Grid[slot].Count == inHand)
+        {
+            Log($"(placing on the ground at {at} from {Game.Survivor.WorldEye()}: nothing went down; \"{verdict}\", look {look.Distance:F1} m: over it on the jetpack, as a player would)");
+            foreach (int x in Drive.HopToward(at, 8f, 2.5f, () => Game.Pack.Grid[slot].Count != inHand, () => { Controls.PrimaryPressed = true; Controls.Primary = true; })) yield return x;
+        }
     }
 
     /// <summary>
@@ -569,14 +638,44 @@ public sealed class Playthrough
         foreach (int x in Select(slot)) yield return x;
         Int3 target = on + face.Vec();
         float cell = v.Structure.Grid.CellSize;
-        N.Vector3 local = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
+        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
-        foreach (int x in Drive.LookAt(v.ToWorld(local), 6)) yield return x;
-        foreach (int x in Drive.Click()) yield return x;
+        // Standing where the block would go: step back out of it, as a player would.
+        if (face.Vec().Y == 0 && InCell(v, target))
+        {
+            Log($"(stepping out of {target} on {v.Name}: feet {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame)");
+            foreach (int x in Drive.WalkTo(v.ToWorld(centre + face.Vec().ToVector3() * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
+        }
+        // Where the ground stands against the face, aim at what shows of it, as a player would.
+        var aims = new List<N.Vector3> { centre };
+        if (face.Vec().Y == 0) aims.Add(centre + N.Vector3.UnitY * (cell * 0.4f));
+        // Click only with the ghost on that face, as a player would: a walker settling on a slope
+        // drifts the crosshair, and a click on anything else spends the block somewhere unwanted.
+        bool OnFace() => Game.Builder.TargetVessel == v && Game.Builder.PlaceCell == target;
+        for (int round = 0; round < 2 && !OnFace(); round++)
+        {
+            foreach (N.Vector3 aim in aims)
+            {
+                foreach (int x in Drive.LookAt(v.ToWorld(aim), 6)) yield return x;
+                if (OnFace()) break;
+            }
+            if (OnFace() || face.Vec().Y != 0) break;
+            // The face can't be seen from here: a step up to it, clear of the cell it wants.
+            N.Vector3 close = centre + face.Vec().ToVector3() * (cell + 1f);
+            foreach (int x in Drive.WalkTo(v.ToWorld(close), 0.5f, 6f)) yield return x;
+        }
+        if (OnFace()) foreach (int x in Drive.Click()) yield return x;
         foreach (int x in Drive.Wait(2)) yield return x;
         bool ok = v.Structure.Has(target) && v.Structure.Count > before;
-        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict})");
+        if (!ok) Log($"(placing at {target} on {v.Name}: {Game.Builder.Verdict}; feet {Game.Survivor.WorldFeet}, {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame, ghost {Game.Builder.PlaceCell} on {Game.Builder.TargetVessel?.Name}, aboard {Game.Survivor.Aboard?.Name}, frame {Game.Survivor.Body.Frame?.Id})");
         placed?.Invoke(ok);
+    }
+
+    bool InCell(Vessel v, Int3 cell)
+    {
+        N.Vector3 d = N.Vector3.Abs(v.Body.ToLocal(Game.Survivor.Body.WorldPosition) - StructureBridge.CellCenter(v.Structure, cell));
+        float reach = v.Structure.Grid.CellSize * 0.5f + 0.8f;
+        return d.X < reach && d.Z < reach;
     }
 
     /// <summary>Turns the block in hand with R and T until it faces a way (tapped like a player: the fewest taps that get there).</summary>
@@ -738,7 +837,7 @@ public sealed class Playthrough
     }
 
 /// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
-    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f)
+    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue, float span = 5f)
     {
         SurfaceZone zone = Game.Zone;
         foreach (float allow in new[] { spread, spread * 2f, spread * 4f, 4f })
@@ -750,12 +849,13 @@ public sealed class Playthrough
                 for (int k = 0; k < 8; k++)
                 {
                     float b = k * MathF.Tau / 8f;
-                    worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
+                    for (float r2 = span; r2 >= 5f; r2 /= 2f)
+                        worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * r2, p.Z + MathF.Sin(b) * r2).Y - h0));
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
                              && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
-                if (h0 > 1f && worst < allow && clear) return g;
+                if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
     }

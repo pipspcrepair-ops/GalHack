@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using GalHack.Structures;
 using GalHack.Structures.Presentation;
 using Godot;
@@ -10,12 +11,33 @@ namespace Slice.Vessels;
 /// Draws a structure with building's own chunk mesher and materials (paint, patterns, stencils,
 /// grime and glass), one mesh per 16³ chunk, rebuilt only for the chunks an edit dirtied, and
 /// gives its light blocks real light. Presentation only: it never moves anything.
+///
+/// Damage redraws by way of <see cref="Queue"/>: chunks wait here and are rebuilt once a frame up
+/// to a time budget, so a heavy crash spreads over a frame or two instead of hitching one.
 /// </summary>
 public partial class StructureMesh : Node3D
 {
     const int MaxLights = 8;
 
+    /// <summary>What damage may spend redrawing in one frame, ms. One chunk always goes, so the queue always drains.</summary>
+    const double BudgetMs = 5.0;
+
     public Structure Structure { get; private set; }
+
+    /// <summary>Runs first thing each frame: the vessel applies the frame's hits.</summary>
+    public System.Action BeforeDraw;
+
+    /// <summary>Sparks, chips, marks and smoke on this structure.</summary>
+    public DamageFx Fx { get; private set; }
+
+    /// <summary>Chunks rebuilt since the start, and chunks waiting (tests).</summary>
+    public int Rebuilt { get; private set; }
+    public int Waiting => _waiting.Count;
+
+    /// <summary>What damage cost in the last frame that had any, ms: applying its hits and redrawing (tests).</summary>
+    public double LastFrameMs { get; private set; }
+
+    readonly HashSet<Int3> _waiting = new();
     readonly Dictionary<Int3, MeshInstance3D> _chunks = new();
     readonly ChunkMeshData _scratch = new();
     readonly List<OmniLight3D> _lights = new();
@@ -26,20 +48,61 @@ public partial class StructureMesh : Node3D
         Structure = structure;
         foreach (MeshInstance3D m in _chunks.Values) m.QueueFree();
         _chunks.Clear();
+        if (Fx == null)
+        {
+            Fx = new DamageFx { Name = "DamageFx", GroundMask = GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull };
+            AddChild(Fx);
+        }
+        Fx.Setup(structure);
         Rebuild(structure.Chunks.Keys);
+    }
+
+    /// <summary>Chunks to redraw soon: their blocks wore away or healed, and nothing else about them changed.</summary>
+    public void Queue(IEnumerable<Int3> chunks) => _waiting.UnionWith(chunks);
+
+    public override void _Process(double delta)
+    {
+        long start = Stopwatch.GetTimestamp();
+        int rebuilt = Rebuilt, queued = _waiting.Count;
+        BeforeDraw?.Invoke();
+        if (_waiting.Count > 0) DrainQueue();
+        if (Rebuilt != rebuilt || queued > 0) LastFrameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    /// <summary>Redraws waiting chunks, until the frame's budget is spent.</summary>
+    public void DrainQueue(double budgetMs = BudgetMs)
+    {
+        long start = Stopwatch.GetTimestamp();
+        int done = 0;
+        var chunks = new List<Int3>(_waiting);
+        foreach (Int3 c in chunks)
+        {
+            double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+            if (done > 0 && ms > budgetMs) break;
+            _waiting.Remove(c);
+            Rebuild(c, colliders: false);
+            done++;
+        }
     }
 
     public void Rebuild(IEnumerable<Int3> chunks)
     {
-        foreach (Int3 c in chunks) Rebuild(c);
+        foreach (Int3 c in chunks)
+        {
+            _waiting.Remove(c);
+            Rebuild(c, colliders: false);
+        }
         UpdateLights();
     }
 
-    void Rebuild(Int3 chunk)
+    void Rebuild(Int3 chunk, bool colliders)
     {
+        Rebuilt++;
         if (!Structure.Chunks.ContainsKey(chunk))
         {
             if (_chunks.Remove(chunk, out MeshInstance3D gone)) gone.QueueFree();
+            _scratch.Clear();
+            Fx?.Smoke(chunk, _scratch.Smoking);
             return;
         }
         if (!_chunks.TryGetValue(chunk, out MeshInstance3D mesh))
@@ -48,8 +111,9 @@ public partial class StructureMesh : Node3D
             AddChild(mesh);
             _chunks[chunk] = mesh;
         }
-        ChunkMesher.Build(Structure, chunk, _scratch);
+        ChunkMesher.Build(Structure, chunk, _scratch, colliders);
         mesh.Mesh = ChunkMesher.ToMesh(_scratch);
+        Fx?.Smoke(chunk, _scratch.Smoking);
     }
 
     void UpdateLights()

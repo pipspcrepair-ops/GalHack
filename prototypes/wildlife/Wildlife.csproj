@@ -15,5 +15,10 @@
     <!-- Terrain-digging's engine-free voxel store and mesher, used in place: cave crawlers live
          in real dug tunnels and generator caves (src/Bridges/VoxelSpace.cs, the showroom, tests). -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
+    <!-- The planet generator's pure core (and its colour tables), used in place: species are built
+         for their home landforms (src/Core/LandformFauna.cs), and the tests and the home-landform
+         screenshots stand creatures on real generated planets. -->
+    <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
+    <Compile Include="..\planet-generator\src\Look\**\*.cs" />
   </ItemGroup>
 </Project>

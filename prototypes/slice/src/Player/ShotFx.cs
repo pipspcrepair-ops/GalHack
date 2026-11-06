@@ -22,7 +22,7 @@ public partial class ShotFx : Node3D
         public MeshInstance3D Mesh;
         public OmniLight3D Light;
         public Vector3 From, To;
-        public float Travelled, Length;
+        public float Travelled;
         public Action Arrived;
     }
 
@@ -30,7 +30,7 @@ public partial class ShotFx : Node3D
     readonly List<(Decal decal, float age)> _scorches = new();
     readonly List<(OmniLight3D light, float left)> _flashes = new();
     StandardMaterial3D _boltMaterial;
-    BoxMesh _boltMesh;
+    CylinderMesh _boltMesh;
     ImageTexture _scorchTexture;
 
     /// <summary>For tests and screenshots: bolts fired, impacts shown, and the last impact.</summary>
@@ -43,15 +43,213 @@ public partial class ShotFx : Node3D
     {
         _boltMaterial = new StandardMaterial3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color(1f, 0.55f, 0.2f),
-            EmissionEnabled = true, Emission = new Color(1f, 0.5f, 0.15f), EmissionEnergyMultiplier = 4f,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = GunFeel.Tool.Colour,
+            EmissionEnabled = true, Emission = GunFeel.Tool.Colour, EmissionEnergyMultiplier = 4f,
         };
-        _boltMesh = new BoxMesh { Size = new Vector3(0.05f, 0.05f, BoltLength) };
+        _boltMesh = new CylinderMesh { TopRadius = 0.0175f, BottomRadius = 0.0175f, Height = 1f, RadialSegments = 10, Rings = 1 };
         _scorchTexture = ScorchTexture();
+        _starTexture = FlashTexture(true);
+        _bloomTexture = FlashTexture(false);
+        _smokeRamp = new Gradient { Colors = new[] { new Color(0.8f, 0.78f, 0.74f, 0.35f), new Color(0.5f, 0.5f, 0.5f, 0f) } };
+        _smokeGrow = new Curve();
+        _smokeGrow.AddPoint(new Vector2(0f, 0.4f));
+        _smokeGrow.AddPoint(new Vector2(1f, 1.6f));
+        _coneMesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.22f, Height = 1f, RadialSegments = 10, Rings = 1 };
+        _quad = new QuadMesh { Size = Vector2.One };
+        for (int i = 0; i < PoolSize; i++) _slots.Add(MakeSlot(i));
+    }
+
+    // ---- Muzzle flashes ------------------------------------------------------------------------
+
+    const int PoolSize = 16;
+
+    /// <summary>One pooled muzzle flash: a billboard, a backblast cone, a light and a smoke emitter, all kept for good.</summary>
+    sealed class Slot
+    {
+        public Node3D Root;
+        public MeshInstance3D Star, Cone;
+        public OmniLight3D Light;
+        public CpuParticles3D Smoke;
+        public StandardMaterial3D StarMaterial, ConeMaterial;
+        public int FramesLeft, TotalFrames;
+        public float SmokeLeft, LightEnergy;
+        public ulong Age;
+        public Func<Vector3?> Follow;
+        public bool Busy => FramesLeft > 0 || SmokeLeft > 0f;
+    }
+
+    readonly List<Slot> _slots = new();
+    ImageTexture _starTexture, _bloomTexture;
+    Gradient _smokeRamp;
+    Curve _smokeGrow;
+    CylinderMesh _coneMesh;
+    QuadMesh _quad;
+    ulong _fired;
+    double _lastFlash = -10;
+
+    /// <summary>For tests: muzzle flashes shown, how many are still showing or smoking, and the pool's size.</summary>
+    public int Flashes { get; private set; }
+    public int FlashesActive { get { int n = 0; foreach (Slot s in _slots) if (s.Busy) n++; return n; } }
+    public int FlashesShowing { get { int n = 0; foreach (Slot s in _slots) if (s.FramesLeft > 0) n++; return n; } }
+    public int FlashPool => _slots.Count;
+    public string LastFeel { get; private set; } = "";
+
+    Slot MakeSlot(int i)
+    {
+        var s = new Slot { Root = new Node3D { Name = $"Flash{i}", Visible = false } };
+        s.StarMaterial = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add, BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled, BillboardKeepScale = true,
+        };
+        s.ConeMaterial = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add, AlbedoColor = new Color(1f, 0.6f, 0.2f, 0.8f),
+        };
+        s.Star = new MeshInstance3D { Mesh = _quad, MaterialOverride = s.StarMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        s.Cone = new MeshInstance3D { Mesh = _coneMesh, MaterialOverride = s.ConeMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };
+        s.Light = new OmniLight3D { Visible = false, ShadowEnabled = false };
+        s.Smoke = new CpuParticles3D
+        {
+            Emitting = false, OneShot = true, Amount = 14, LocalCoords = false, Mesh = new SphereMesh { Radius = 0.018f, Height = 0.036f, RadialSegments = 6, Rings = 3 },
+            Direction = Vector3.Forward, Spread = 22f, InitialVelocityMin = 0.2f, InitialVelocityMax = 0.8f, Gravity = new Vector3(0f, 0.25f, 0f),
+            ColorRamp = _smokeRamp, ScaleAmountCurve = _smokeGrow, ScaleAmountMin = 0.8f, ScaleAmountMax = 1.6f, Explosiveness = 0.9f,
+            MaterialOverride = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, VertexColorUseAsAlbedo = true,
+            },
+        };
+        s.Root.AddChild(s.Star);
+        s.Root.AddChild(s.Cone);
+        s.Root.AddChild(s.Light);
+        s.Root.AddChild(s.Smoke);
+        AddChild(s.Root);
+        return s;
+    }
+
+    /// <summary>
+    /// A muzzle flash at the muzzle for a kind of fire (<see cref="GunFeel"/>): a flash that lasts a few
+    /// frames with a short light, and smoke if the kind has it. A vessel gun passes a larger
+    /// <paramref name="scale"/> for its calibre. Nodes come from a fixed pool, so nothing is allocated.
+    /// </summary>
+    public void Muzzle(string feel, Vector3 at, Vector3 dir, Color colour = default, float scale = 1f, Func<Vector3?> follow = null)
+    {
+        GunFeel f = GunFeel.Get(feel);
+        Flashes++;
+        LastFeel = f.Id;
+        Slot s = null;
+        foreach (Slot c in _slots)
+            if (!c.Busy) { s = c; break; }
+        if (s == null)
+        {
+            s = _slots[0]; // all busy: take the oldest
+            foreach (Slot c in _slots) if (c.Age < s.Age) s = c;
+        }
+        s.Age = ++_fired;
+        s.Follow = follow;
+        // Held fire doesn't strobe: a shot hard on the last one's heels is dimmer.
+        double now = Time.GetTicksMsec() / 1000.0;
+        float dim = now - _lastFlash < GunFeel.RepeatWindow ? GunFeel.RepeatDim : 1f;
+        _lastFlash = now;
+        Color col = colour != default && f.Style is FlashStyle.Bloom ? colour : f.Colour;
+        float size = f.Size * scale * GunFeel.FlashScale;
+        s.Root.Visible = true;
+        s.Root.GlobalTransform = new Transform3D(Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up), at);
+
+        s.StarMaterial.AlbedoTexture = f.Style == FlashStyle.Star ? _starTexture : _bloomTexture;
+        s.StarMaterial.AlbedoColor = new Color(col.R * dim, col.G * dim, col.B * dim);
+        float flicker = 0.85f + 0.3f * (float)(_fired * 2654435761UL % 1000UL / 1000.0);
+        float wide = f.Style == FlashStyle.Star ? 2.4f : f.Style == FlashStyle.Bloom ? 2.0f : 1.5f;
+        s.Star.Scale = Vector3.One * size * wide * flicker;
+        s.Star.Position = Vector3.Forward * size * 0.15f;
+        s.Star.Visible = true;
+
+        bool rocket = f.Style == FlashStyle.Rocket;
+        s.Cone.Visible = rocket;
+        if (rocket)
+        {
+            // The backblast cone points back along the barrel (the cone's Y turned to the root's +Z).
+            s.Cone.Basis = new Basis(Vector3.Right, Mathf.Pi / 2f).Scaled(new Vector3(size * 1.3f, size * 2.6f, size * 1.3f));
+            s.Cone.Position = Vector3.Back * size * 1.3f;
+        }
+
+        s.Light.LightColor = col;
+        s.LightEnergy = f.LightEnergy * scale * dim;
+        s.Light.LightEnergy = s.LightEnergy;
+        s.Light.OmniRange = f.LightRange * MathF.Sqrt(scale);
+        s.Light.Visible = true;
+        s.FramesLeft = s.TotalFrames = f.Frames;
+
+        s.SmokeLeft = 0f;
+        if (f.Smoke > 0f)
+        {
+            s.Smoke.Lifetime = f.SmokeLife;
+            s.Smoke.Explosiveness = rocket ? 0.15f : 0.9f;
+            s.Smoke.InitialVelocityMax = rocket ? 0.5f : 0.8f;
+            s.Smoke.Direction = rocket ? Vector3.Back : Vector3.Forward;
+            s.Smoke.Spread = rocket ? 14f : 22f;
+            s.Smoke.ScaleAmountMax = rocket ? 3f : 1.6f;
+            s.Smoke.Restart();
+            s.Smoke.Emitting = true;
+            s.SmokeLeft = f.SmokeLife + 0.1f;
+        }
+    }
+
+    void TickFlashes(float dt)
+    {
+        foreach (Slot s in _slots)
+        {
+            if (s.FramesLeft > 0)
+            {
+                if (s.Follow?.Invoke() is Vector3 tip) s.Root.GlobalPosition = tip; // rides the hand for its few frames
+                s.Light.LightEnergy = s.LightEnergy * s.FramesLeft / s.TotalFrames;
+                if (--s.FramesLeft == 0)
+                {
+                    s.Star.Visible = false;
+                    s.Cone.Visible = false;
+                    s.Light.Visible = false;
+                }
+            }
+            if (s.SmokeLeft > 0f) s.SmokeLeft -= dt;
+            if (!s.Busy && s.Root.Visible) s.Root.Visible = false;
+        }
+    }
+
+    /// <summary>A four-point star with small diagonal spikes (or a soft round bloom), white-hot in the middle, drawn into a texture.</summary>
+    static ImageTexture FlashTexture(bool star)
+    {
+        const int n = 96;
+        var image = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+            float r = MathF.Sqrt(dx * dx + dy * dy);
+            float a;
+            if (star)
+            {
+                float ax = MathF.Abs(dx), ay = MathF.Abs(dy);
+                float u = MathF.Abs(dx + dy) * 0.7071f, v = MathF.Abs(dx - dy) * 0.7071f;
+                float cross = MathF.Max(Spike(ax, ay, 0.09f), Spike(ay, ax, 0.09f));
+                float diag = MathF.Max(Spike(u, v, 0.07f), Spike(v, u, 0.07f)) * 0.5f;
+                a = MathF.Max(MathF.Max(cross, diag), Mathf.Clamp(1f - r * 3.2f, 0f, 1f));
+            }
+            else a = MathF.Pow(Mathf.Clamp(1f - r, 0f, 1f), 1.8f);
+            image.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.Clamp(a, 0f, 1f)));
+        }
+        return ImageTexture.CreateFromImage(image);
+    }
+
+    // A spike along one axis: bright near the centre, tapering to a point at the edge.
+    static float Spike(float along, float across, float width)
+    {
+        float t = Mathf.Clamp(1f - along, 0f, 1f);
+        return t * Mathf.Clamp(1f - across / (width * (0.25f + t)), 0f, 1f);
     }
 
     /// <summary>Fires a bolt from the muzzle to where the shot lands; the impact shows when it gets there.</summary>
-    public void Fire(Vector3 muzzle, Vector3 end, Color colour, Action arrived)
+    public void Fire(Vector3 muzzle, Vector3 end, Color colour, Action arrived, string feel = null, Func<Vector3?> follow = null)
     {
         Bolts++;
         var mesh = new MeshInstance3D { Mesh = _boltMesh, MaterialOverride = _boltMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
@@ -61,24 +259,70 @@ public partial class ShotFx : Node3D
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = colour,
                 EmissionEnabled = true, Emission = colour, EmissionEnergyMultiplier = 4f,
             };
-        var light = new OmniLight3D { LightColor = colour == default ? new Color(1f, 0.55f, 0.2f) : colour, LightEnergy = 1.6f, OmniRange = 4f };
+        var light = new OmniLight3D { LightColor = colour == default ? GunFeel.Tool.Colour : colour, LightEnergy = 1.6f, OmniRange = 4f };
         AddChild(mesh);
         AddChild(light);
-        Flash(muzzle, new Color(1f, 0.7f, 0.4f), 2.5f, 0.06f);
-        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Length = muzzle.DistanceTo(end), Arrived = arrived };
+        Vector3 aim = end - muzzle;
+        Muzzle(feel, muzzle, aim.LengthSquared() < 1e-6f ? Vector3.Forward : aim.Normalized(), colour, 1f, follow);
+        var bolt = new Bolt { Mesh = mesh, Light = light, From = muzzle, To = end, Arrived = arrived };
         _bolts.Add(bolt);
         Place(bolt);
     }
 
+    /// <summary>The bolt: a short streak whose head flies from the muzzle to the end, then its tail catches up.</summary>
     void Place(Bolt b)
     {
-        Vector3 dir = (b.To - b.From).Normalized();
-        float head = Mathf.Min(b.Travelled, b.Length);
-        Vector3 at = b.From + dir * Mathf.Max(0f, head - BoltLength * 0.5f);
-        var basis = Basis.LookingAt(dir.IsZeroApprox() ? Vector3.Forward : dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
-        b.Mesh.GlobalTransform = new Transform3D(basis, at);
-        b.Light.GlobalPosition = at;
+        Vector3 line = b.To - b.From;
+        float full = line.Length();
+        Vector3 dir = full > 1e-4f ? line / full : Vector3.Forward;
+        float head = Mathf.Min(b.Travelled, full), tail = Mathf.Max(0f, b.Travelled - BoltLength);
+        float length = Mathf.Max(0.05f, head - tail);
+        var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
+        b.Mesh.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), b.From + dir * (tail + length * 0.5f)); // the cylinder's axis laid along the bolt
+        b.Light.GlobalPosition = b.From + dir * head;
     }
+
+    // ---- The working beam ----------------------------------------------------------------------
+
+    MeshInstance3D _beam;
+    ulong _beamFrame;
+
+    /// <summary>For tests: whether the working beam is showing, and how many times it has been drawn.</summary>
+    public bool BeamShowing => _beam != null && _beam.Visible;
+    public int Beams { get; private set; }
+
+    /// <summary>
+    /// The survival tool's gather and deconstruct beam, from the barrel tip to the point being worked:
+    /// one pooled cylinder, called every frame the tool works, and it goes out a frame or two after the
+    /// last call. No flash, no smoke.
+    /// </summary>
+    public void Beam(Vector3 from, Vector3 to)
+    {
+        if (_beam == null)
+        {
+            _beam = new MeshInstance3D
+            {
+                Mesh = _boltMesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false, Name = "WorkBeam",
+                MaterialOverride = new StandardMaterial3D
+                {
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = BeamColour,
+                    EmissionEnabled = true, Emission = BeamColour, EmissionEnergyMultiplier = 4f,
+                },
+            };
+            AddChild(_beam);
+        }
+        Vector3 line = to - from;
+        float length = line.Length();
+        if (length < 1e-3f) return;
+        Vector3 dir = line / length;
+        var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
+        _beam.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), from + dir * length * 0.5f);
+        if (!_beam.Visible) Beams++;
+        _beam.Visible = true;
+        _beamFrame = Engine.GetProcessFrames();
+    }
+
+    public static readonly Color BeamColour = new(0.3f, 0.6f, 1f);
 
     /// <summary>The impact where a shot landed: sparks, a flash, and a scorch on ground or blocks (on a structure, riding its node).</summary>
     public void Impact(Vector3 at, Vector3 normal, ImpactKind kind, Node3D onto = null)
@@ -136,16 +380,23 @@ public partial class ShotFx : Node3D
         {
             Bolt b = _bolts[i];
             b.Travelled += BoltSpeed * dt;
-            if (b.Travelled >= b.Length + BoltLength * 0.5f)
+            float full = b.From.DistanceTo(b.To);
+            if (b.Arrived != null && b.Travelled >= full)
+            {
+                b.Arrived();
+                b.Arrived = null;
+            }
+            if (b.Travelled >= full + BoltLength) // the tail has reached the end
             {
                 b.Mesh.QueueFree();
                 b.Light.QueueFree();
                 _bolts.RemoveAt(i);
-                b.Arrived?.Invoke();
                 continue;
             }
             Place(b);
         }
+        TickFlashes(dt);
+        if (_beam != null && _beam.Visible && Engine.GetProcessFrames() > _beamFrame + 2) _beam.Visible = false;
         for (int i = _flashes.Count - 1; i >= 0; i--)
         {
             var (light, left) = _flashes[i];

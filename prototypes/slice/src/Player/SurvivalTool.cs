@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Items;
 using GalHack.Physics.Engine;
 using GalHack.Terrain;
@@ -9,6 +10,7 @@ using PlanetSurface.Fx;
 using PlanetSurface.Terrain;
 using Slice.Game;
 using Slice.Items;
+using Slice.Places;
 using Slice.Surface;
 using TerrainDigging.Terrain;
 using Wildlife;
@@ -27,9 +29,9 @@ public enum ToolMode { Gather, Shoot, Deconstruct }
 /// The survival tool, an item on the toolbar: in Gather mode it digs a small ball of ground under
 /// the crosshair (terrain-digging's rules: bedrock and anchored ground refuse) and cuts plants;
 /// in Shoot mode it is a short blaster whose bolt you can see fly from the muzzle and land, with
-/// sparks and a scorch where it strikes. Shots only hurt creatures. Every ray asks the world the
-/// survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets the vessel's own
-/// walls: it digs nothing through a floor, and a shot scorches the wall it hits, harmlessly.
+/// sparks and a scorch where it strikes. Shots hurt creatures and the blocks they hit. Every ray
+/// asks the world the survivor is in (<see cref="WorldRay"/>), so inside a vessel the tool meets
+/// the vessel's own walls: it digs nothing through a floor, and a shot damages the wall it hits.
 /// Dug ore and cut plants go into the pack as shared/Items' raw items.
 /// </summary>
 public sealed class SurvivalTool
@@ -42,9 +44,17 @@ public sealed class SurvivalTool
     readonly SliceRules.MaterialRules _yields;
 
     public ToolMode Mode = ToolMode.Gather;
+    /// <summary>The planet's standing places: the tool salvages their blocks and dressing and breaks their hidden walls.</summary>
+    public PoiPlaces Places;
     public Debris Debris;
     public Sfx Sfx;
     public ShotFx Fx;
+
+    /// <summary>What firing feels like (<see cref="GunFeel"/> id): the flash at the muzzle and the kick.</summary>
+    public string Feel = GunFeel.Tool.Id;
+
+    /// <summary>The held tool's barrel tip in the world, when the hands show it (set by <see cref="Hands"/>); null otherwise.</summary>
+    public Func<Vector3?> HeldMuzzle;
 
     /// <summary>What the tool did, for the visor ("+12 Iron ore", "BEDROCK").</summary>
     public event Action<string, Color> Said;
@@ -62,6 +72,9 @@ public sealed class SurvivalTool
 
     public int PlantsCut { get; private set; }
     public int OreCells { get; private set; }
+
+    /// <summary>Ore broken off tell rocks so far (a few a pulse), apart from what the cells gave.</summary>
+    public int TellOre { get; private set; }
     public int Shots { get; private set; }
 
     public bool HasTarget { get; private set; }
@@ -71,6 +84,23 @@ public sealed class SurvivalTool
 
     /// <summary>The crosshair is on a structure's block nearer than any ground (the tool can't dig it).</summary>
     public bool OnBlock { get; private set; }
+
+    /// <summary>The crosshair is on a place's block, a piece of its dressing or a registered wreck, nearer than the ground: the tool works that.</summary>
+    public bool OnPlace => _placeHit != null || _wreck != null;
+
+    /// <summary>The crosshair is on an ore tell rock (an outcrop or scree over a deposit) that still has ore to give.</summary>
+    public bool OnTell => _tell != null;
+    Deposit? _tell;
+    readonly Dictionary<(double, double), int> _tellsWorked = new();
+    /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
+    public const int TellPulses = 4, TellOrePerPulse = 3;
+    public PoiPlaces.Hit? PlaceHit => _placeHit;
+    PoiPlaces.Hit? _placeHit;
+    SalvageSite _wreck;
+    Vector3 _placePoint;
+
+    /// <summary>A block or piece came away (experience by the piece).</summary>
+    public event Action Salvaged;
 
     float _cooldown;
 
@@ -89,8 +119,13 @@ public sealed class SurvivalTool
     {
         _cooldown -= dt;
         Aim();
+        if (trigger && !_suit.Dead && Mode == ToolMode.Gather && !OnBlock && (OnPlace || OnTell || HasTarget))
+            ShowBeam(OnPlace || OnTell ? _placePoint : new Vector3(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f));
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
+        else if (StrikeCreature()) { }
+        else if (!OnBlock && OnPlace) WorkPlace();
+        else if (!OnBlock && _tell != null) WorkTell();
         else if (!OnBlock && !CutPlant()) Dig();
         else if (OnBlock)
         {
@@ -112,6 +147,22 @@ public sealed class SurvivalTool
                   && (block.OnBlock || _zone.Devices.Exists(d => d.Collider == block.Collider))
                   && (!HasTarget || block.Distance < ground);
         TargetLabel = "";
+        _placeHit = null;
+        _wreck = null;
+        _tell = null;
+        if (!OnBlock && Places != null && WorldRay.Cast(_zone, _survivor, _rules.Reach, Layers.World | Layers.Props | Place.SceneryLayer, out LookHit p)
+            && (!HasTarget || p.Distance < ground + 0.05f))
+        {
+            _placePoint = p.Point;
+            if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h)) _placeHit = h;
+            else _wreck = Places.SalvageOf(p.Collider);
+            if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid)) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
+            if (OnPlace)
+            {
+                TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
+                return;
+            }
+        }
         if (OnBlock)
         {
             return; // a structure's block: nothing by the crosshair (where you are is on the CORE tab)
@@ -167,6 +218,73 @@ public sealed class SurvivalTool
         return edit;
     }
 
+    /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
+    bool StrikeCreature()
+    {
+        Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
+        Creature c = _zone.Wildlife.Raycast(eye, dir, _rules.CutReach, out float distance, out Vector3 point);
+        if (c == null || c.Dead) return false;
+        if (OnPlace && _placePoint.DistanceTo(eye) < distance) return false;
+        _cooldown = 0.4f;
+        _suit.Worked();
+        _zone.Wildlife.Damage(c, _rules.ShotDamage * 0.5f * _zone.Wildlife.HitScale(c, point));
+        CreatureHit?.Invoke(c);
+        Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
+        return true;
+    }
+
+    /// <summary>The deposit whose tell rock stands at a point (its outcrop or scree, within the ore body's radius), if it still has rock to break.</summary>
+    Deposit? TellAt(Vector3 point)
+    {
+        var world = _zone.Planet;
+        double px = Mathx.WrapX(point.X, world.Width), pz = Mathx.Wrap(point.Z, world.Height);
+        foreach (Deposit d in world.Map.Deposits.InRect(px - 8, pz - 8, px + 8, pz + 8))
+        {
+            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture) continue;
+            double dx = Mathx.Wrap(px - d.X, world.Width), dz = Mathx.Wrap(pz - d.Y, world.Height);
+            float r = PlanetTerrainSource.OreRadius(d) + 0.6f;
+            if (dx * dx + dz * dz > r * r) continue;
+            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses ? d : (Deposit?)null;
+        }
+        return null;
+    }
+
+    /// <summary>One pulse on an ore tell rock: it gives a little of its ore, and after a few pulses it is broken down and the tool digs on through to the ground.</summary>
+    void WorkTell()
+    {
+        Deposit d = _tell.Value;
+        _cooldown = _rules.DigInterval;
+        _suit.Worked();
+        _tellsWorked[(d.X, d.Y)] = _tellsWorked.GetValueOrDefault((d.X, d.Y)) + 1;
+        Vector3 at = _placePoint;
+        Sfx?.Play(Sfx.Sound.Clank, at, 1.1f, -8f);
+        Debris?.Puff(at, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        if (OreOf(d.Kind) is ItemDef item)
+        {
+            Give(item.Id, TellOrePerPulse);
+            TellOre += TellOrePerPulse;
+            Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
+        }
+    }
+
+    /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>
+    void WorkPlace()
+    {
+        _cooldown = _rules.DigInterval;
+        _suit.Worked();
+        float damage = Places.Rules.Salvage.ToolDamage;
+        var (got, message) = _wreck != null ? Places.Work(_wreck, damage) : Places.Work(_placeHit.Value, damage);
+        Sfx?.Play(Sfx.Sound.Clank, _placePoint, 1.25f, -12f);
+        Debris?.Puff(_placePoint, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        if (got != null && !got.IsEmpty)
+        {
+            foreach (var (id, n) in got) Give(id, n);
+            Said?.Invoke(string.Join(", ", got.Select(kv => $"+{kv.Value} {_zone.Data.Items.Item(kv.Key).Name}")), Tones.Good);
+            Salvaged?.Invoke();
+        }
+        if (!string.IsNullOrEmpty(message)) Said?.Invoke(message, got != null || message.Contains("room") ? Tones.Good : Tones.Caution);
+    }
+
     void Give(string id, int n)
     {
         Gathered[id] = Gathered.GetValueOrDefault(id) + n;
@@ -201,11 +319,15 @@ public sealed class SurvivalTool
         return true;
     }
 
+    /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>
+    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle(), to);
+
     // ---- Shoot ---------------------------------------------------------------------------------
 
     /// <summary>Where the bolt leaves the tool: low and to the right of the eye, out along the look (the first-person tool's muzzle).</summary>
     public Vector3 Muzzle()
     {
+        if (HeldMuzzle?.Invoke() is Vector3 tip) return tip;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         Vector3 right = dir.Cross(_survivor.WorldUp());
         right = right.LengthSquared() < 1e-6f ? Vector3.Right : right.Normalized();
@@ -233,28 +355,53 @@ public sealed class SurvivalTool
             normal = entry.LengthSquared() > 0.5f ? entry.Normalized() : -dir;
         }
         uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
-        if (WorldRay.Cast(_zone, _survivor, reach, mask, out LookHit hit) && hit.Distance <= reach)
+        // The voxel cast counts whole cubes, and a cube's corner stands proud of the smooth ground that is
+        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and on a
+        // shallow slope the drawn ground lies further on, the flatter the shot the further. So the world's
+        // own ray runs on past the cube by what a cube's height is worth along this shot, and has the say.
+        float past = kind == ImpactKind.Ground ? Math.Clamp(1.2f / MathF.Max(MathF.Abs(dir.Y), 0.01f), 0.75f, 6f) : 0f;
+        if (WorldRay.Cast(_zone, _survivor, reach + past, mask, out LookHit hit))
         {
             reach = hit.Distance;
             normal = hit.Normal;
             kind = hit.OnBlock ? ImpactKind.Block : ImpactKind.Ground;
             onto = hit.Vessel?.Node;
         }
+        PoiPlaces.Hit? onPlace = null;
+        if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
+            && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph)) onPlace = ph;
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
+        // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
+        float personAt = 0f;
+        Town.Person person = Places == null ? null : Places.PersonAlong(eye, dir, struck ? distance : reach, out personAt);
+        if (person != null)
+        {
+            struck = false;
+            c = null;
+            kind = ImpactKind.Creature;
+            reach = personAt;
+            person.Town.Shoot(person, _rules.ShotDamage);
+            onPlace = null;
+        }
+        else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
+        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage))
+            Said?.Invoke("The cracked panel gives way: a room behind it", Tones.Good);
         Vector3 end = struck ? point : eye + dir * reach;
         if (struck)
         {
             kind = ImpactKind.Creature;
             onto = null;
-            _zone.Wildlife.Sim.Damage(c, _rules.ShotDamage, _zone.Wildlife.Player);
+            _zone.Wildlife.Damage(c, _rules.ShotDamage * _zone.Wildlife.HitScale(c, point));
             CreatureHit?.Invoke(c);
         }
+        else if (kind == ImpactKind.Block && hit.OnBlock)
+            hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage, GalHack.Structures.DamageType.Energy);
         Vector3 muzzle = Muzzle();
         Vector3 at = end, face = normal;
         Node3D on = onto;
         ImpactKind landed = kind;
-        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on));
+        if (Fx != null) Fx.Fire(muzzle, end, default, () => Fx.Impact(at, face, landed, on), Feel, HeldMuzzle);
         Sfx?.Play(Sfx.Sound.Ping, muzzle, struck ? 0.8f : 1.2f, -8f);
         if (kind != ImpactKind.Nothing) Sfx?.Play(Sfx.Sound.Clank, end, 1.6f, -14f);
     }

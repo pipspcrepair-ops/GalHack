@@ -181,8 +181,11 @@ public partial class Walker : CharacterBody3D, IForceBody
         float speed = (IsCrouching ? CrouchSpeed : Held(Key.Shift) && ControlsEnabled ? SprintSpeed : WalkSpeed) * MoveFactor;
         Vector3 wish = new Basis(Vector3.Up, _yaw) * new Vector3(move.X, 0, move.Y) * speed;
         float accel = onFloor ? GroundAccel : AirAccel;
-        v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
-        v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
+        // Toward the wish as one vector: per axis, setting off at any heading but the axes' own
+        // first runs at 45° until the smaller component saturates (a 5 cm sidestep at 30°).
+        Vector2 flat = new Vector2(v.X, v.Z).MoveToward(new Vector2(wish.X, wish.Z), accel * dt);
+        v.X = flat.X;
+        v.Z = flat.Y;
 
         bool jumped = false;
         if (ControlsEnabled && Held(Key.Space) && !IsCrouching)

@@ -40,6 +40,16 @@ public struct FlightState
 
     public Basis Orientation;
 
+    /// <summary>
+    /// The pilot's seat in the hull: which way its forward, up and right lie in hull axes. All
+    /// flight input works in this frame (design: a vessel's heading is set by the seat of whoever
+    /// holds the pilot role). Changing it moves nothing: only what counts as forward.
+    /// </summary>
+    public Basis Seat;
+
+    /// <summary>The control frame in the world: the hull's orientation, then the seat's.</summary>
+    public readonly Basis Control => Orientation * Seat;
+
     public float BoostLeft;
     public float BoostCooldown;
     public bool Cruise;
@@ -51,7 +61,7 @@ public struct FlightState
     public readonly bool Boosting => BoostLeft > 0f;
     public readonly bool BoostReady => BoostLeft <= 0f && BoostCooldown <= 0f;
 
-    public static FlightState At(Basis orientation) => new() { Orientation = orientation };
+    public static FlightState At(Basis orientation) => new() { Orientation = orientation, Seat = Basis.Identity };
 }
 
 /// <summary>
@@ -89,7 +99,7 @@ public static class FlightModel
     public static void ToggleCruise(ref FlightState s)
     {
         s.Cruise = !s.Cruise;
-        if (s.Cruise) s.CruiseSpeed = Mathf.Max(0f, -(Frame(s.Orientation, false).Inverse() * s.Velocity).Z);
+        if (s.Cruise) s.CruiseSpeed = Mathf.Max(0f, -(Frame(s.Control, false).Inverse() * s.Velocity).Z);
     }
 
     /// <summary>
@@ -123,10 +133,13 @@ public static class FlightModel
         {
             target.X = 0f;
             target.Z = 0f;
-            s.AngularVelocity.X = 0f;
-            s.AngularVelocity.Z = 0f;
+            Vector3 yaw = s.Seat.Inverse() * s.AngularVelocity;
+            s.AngularVelocity = s.Seat * new Vector3(0f, yaw.Y, 0f);
         }
 
+        // Pitch, yaw and roll are the seat's; the spin itself is kept in hull axes.
+        target = s.Seat * target;
+        limit = (s.Seat * limit).Abs();
         Vector3 spinUp = limit / Mathf.Max(t.Turning.SpinUpTime, 1e-3f);
         for (int axis = 0; axis < 3; axis++)
             s.AngularVelocity[axis] = Mathf.MoveToward(s.AngularVelocity[axis], target[axis], spinUp[axis] * dt);
@@ -140,7 +153,7 @@ public static class FlightModel
         Tunables t, float dt, float boost)
     {
         bool hover = stats.IsHover;
-        Basis frame = Frame(s.Orientation, hover);
+        Basis frame = Frame(s.Control, hover);
         Vector3 local = frame.Inverse() * s.Velocity;
         float top = stats.TopSpeed;
         Vector3 move = input.Move.Clamp(-Vector3.One, Vector3.One).LimitLength(1f);
@@ -172,9 +185,10 @@ public static class FlightModel
 
             Direction dir = DirectionOf(axis, dv);
             if (sinking && dir == Direction.Up) continue; // the lift thrusters are already flat out losing
-            float a = stats.Accel(dir) * boost;
+            Direction hull = InHull(s.Seat, dir); // thrusters push along their own facing, whatever the seat
+            float a = stats.Accel(hull) * boost;
             if (weighed && dir == Direction.Up)
-                a = Mathf.Max(0f, (stats.Thrust[(int)Direction.Up] * boost - stats.Weight) / stats.Mass); // climbing pays for weight
+                a = Mathf.Max(0f, (stats.Thrust[(int)hull] * boost - stats.Weight) / stats.Mass); // climbing pays for weight
 
             bool driving = Mathf.Abs(move[axis]) > 0.01f && Mathf.Sign(move[axis]) == Mathf.Sign(dv);
             if (!driving)
@@ -203,11 +217,30 @@ public static class FlightModel
             moving = moving.Normalized() * cap;
             local = new Vector3(moving.X, hover ? local.Y : moving.Y, moving.Z);
         }
-        s.ThrustLocal = (local - before) / dt;
+        s.ThrustLocal = s.Seat * ((local - before) / dt);
 
         s.Velocity = frame * local;
         // Too heavy: the thrusters are flat out and still losing to gravity.
         if (sinking) s.Velocity += Vector3.Down * (-stats.LiftMargin / stats.Mass) * dt;
+    }
+
+    /// <summary>The hull direction a direction of the seat's lies along (chairs stand on the grid's axes).</summary>
+    static Direction InHull(in Basis seat, Direction direction)
+    {
+        if (seat == Basis.Identity) return direction;
+        Vector3 along = seat * HandlingModel.Directions[(int)direction];
+        int best = 0;
+        float most = float.MinValue;
+        for (int d = 0; d < HandlingModel.Directions.Length; d++)
+        {
+            float dot = along.Dot(HandlingModel.Directions[d]);
+            if (dot > most)
+            {
+                most = dot;
+                best = d;
+            }
+        }
+        return (Direction)best;
     }
 
     static Direction DirectionOf(int axis, float sign) => axis switch

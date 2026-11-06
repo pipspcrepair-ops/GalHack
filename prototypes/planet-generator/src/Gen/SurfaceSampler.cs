@@ -3,8 +3,11 @@ using System.Collections.Generic;
 
 namespace Planets.Gen;
 
-/// <summary>One fine terrain sample: ground height and, if a river runs here, its surface.</summary>
-public readonly record struct GroundSample(float Height, float RiverLevel, bool InRiver);
+/// <summary>
+/// One fine terrain sample: ground height and, if a river runs here, its surface. Bank is the
+/// height the ground must keep here for the river beside it to stay in its bed, stamps or no stamps.
+/// </summary>
+public readonly record struct GroundSample(float Height, float RiverLevel, bool InRiver, float Bank = float.NegativeInfinity);
 
 /// <summary>
 /// Fine-detail terrain for the area around the player, sampled on demand at 1-2 m. It evaluates
@@ -21,6 +24,7 @@ public sealed class SurfaceSampler
     // River segments bucketed on a grid so each sample only checks the few nearby.
     const double Bucket = 128;      // bucket size; adjusted to divide the map exactly both ways
     const float Reach = 70f;  // metres beyond a channel edge that a river still shapes the land
+    const float BankRise = 0.3f, BankFlat = 3f, BankFall = 0.25f;   // a bank's lip over the water, how far it runs flat, and its fall beyond (1 in 4)
     readonly int _bx, _by;
     readonly double _bucketW, _bucketH, _height;
     readonly List<int>[] _buckets;
@@ -37,9 +41,13 @@ public sealed class SurfaceSampler
         _by = Math.Max(1, (int)Math.Round(_height / Bucket));
         _bucketH = _height / _by;
         _buckets = new List<int>[_bx * _by];
-        foreach (River r in map.Rivers)
+        float[][] levels = RiverFit.Levels(map, _model);
+        for (int n = 0; n < map.Rivers.Count; n++)
+        {
+            River r = map.Rivers[n];
             for (int k = 0; k + 1 < r.Count; k++)
-                AddSegment(r.X[k], r.Y[k], r.X[k + 1], r.Y[k + 1], r.Level[k], r.Level[k + 1], r.Width[k], r.Width[k + 1]);
+                AddSegment(r.X[k], r.Y[k], r.X[k + 1], r.Y[k + 1], levels[n][k], levels[n][k + 1], r.Width[k], r.Width[k + 1]);
+        }
     }
 
     public double Width => _width;
@@ -50,8 +58,8 @@ public sealed class SurfaceSampler
     {
         x = Mathx.WrapX(x, _width);
         y = Mathx.Wrap(y, _height);
-        float e = _model.Elevation(x, y, spacing);
-        _model.Meander(x, y, out double mx, out double my);
+        float e = _model.Elevation(x, y, spacing, out float meander);
+        _model.Meander(x, y, meander, out double mx, out double my);
         if (!NearestRiver(Mathx.WrapX(x + mx, _width), Mathx.Wrap(y + my, _height), out float d, out float level, out float width))
             return new GroundSample(e, 0f, false);
 
@@ -66,14 +74,27 @@ public sealed class SurfaceSampler
             // term keeps them from running as straight and even as the river's polyline.
             float out_ = d - half;
             out_ = Math.Max(0f, out_ + _model.Jag(x, y, spacing) * Math.Min(out_, 24f) * 0.7f);
-            target = level + 0.35f + 0.18f * out_ + 0.03f * out_ * out_;
+            // Where rivers meander (plains, wetlands, deltas) their banks are low and gentle;
+            // where they cut through high ground the banks become gorge walls.
+            target = level + 0.35f + (0.18f * out_ + 0.03f * out_ * out_) / Math.Clamp(meander, 1f, 2.6f);
         }
         float keep = Mathx.Smooth(half + Reach, half + Reach * 0.75f, d);
         float h = Mathx.Lerp(e, Math.Min(e, target), keep);
-        return new GroundSample(h, level, d < half + 1.5f);
+        // Water stays in its bed: past the channel the ground never stands lower than the water beside
+        // it, a low levee where the land dips, running down to meet the land at a walkable slope.
+        float bank = float.NegativeInfinity;
+        if (d >= half)
+        {
+            bank = level + BankRise - Math.Max(0f, d - half - BankFlat) * BankFall;
+            h = Math.Max(h, bank);
+        }
+        return new GroundSample(h, level, d < half + 1.5f, bank);
     }
 
     public float HeightAt(double x, double y, double spacing = 2) => Sample(x, y, spacing).Height;
+
+    /// <summary>The landforms at a point (both axes wrap), strongest first: cheap, and the same on every machine.</summary>
+    public LandformBlend LandformsAt(double x, double y) => Map.LandformsAt(x, y);
 
     bool NearestRiver(double x, double y, out float distance, out float level, out float width)
     {

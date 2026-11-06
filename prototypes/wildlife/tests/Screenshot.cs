@@ -18,6 +18,7 @@ namespace Wildlife;
 /// - lineup: the bestiary of two or three planets, for scale
 /// - sheet: a contact sheet of one camera per species, for checking the generator by eye
 /// - discovery: the brief card a first meeting brings up, over a stalking predator
+/// - home: creatures in their home landform on a real generated planet (--landform=Plains, Mountains, DuneSea, Delta...)
 /// --hud keeps the debug HUD. Only the discovery view shows a discovery card.
 /// </summary>
 public partial class Screenshot : Node
@@ -57,7 +58,7 @@ public partial class Screenshot : Node
             AddChild(_room);
             return;
         }
-        _main = new Main();
+        _main = _view == "home" ? new Main { PatchTerrain = HomeTerrain() } : new Main();
         AddChild(_main);
     }
 
@@ -309,6 +310,9 @@ public partial class Screenshot : Node
                 _captureTick = 90;
                 break;
             }
+            case "home":
+                HomeSetup();
+                break;
             case "lineup":
                 Lineup();
                 break;

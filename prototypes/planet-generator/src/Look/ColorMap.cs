@@ -29,6 +29,11 @@ public sealed class ColorMap
     static readonly (float x, float y, float z) Light = Normalize(-1f, -1f, 1.1f); // from the north-west
     const float Relief = 2.6f;   // vertical exaggeration for shading
 
+    /// <summary>How far biome borders wander, in map cells, and the longest wave they wander on (metres). Colours and biomes share both.</summary>
+    public const float BorderWander = 2.6f;
+    public const double BorderWave = 300;
+    const int SoftenPasses = 8;  // about two cells of spread: past the stair-steps a 32 m grid leaves in a border
+
     public static ColorMap Build(WorldMap map, ArchetypeLook look, int width)
     {
         int height = width / 2;
@@ -50,9 +55,10 @@ public sealed class ColorMap
             float s = nrm.x * Light.x + nrm.y * Light.y + nrm.z * Light.z;
             shade[k] = Math.Clamp(1f + (s - flat) * 1.5f, 0.5f, 1.35f);
         }
+        shade = Soften(map, shade, 2); // a cliff one cell wide would otherwise shade as a stair of cells
 
         float[] rivers = RasterizeRivers(map, width, height);
-        var jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), 160, 3);
+        var jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), BorderWave, 4);
         Rgb riverColor = Rgb.Lerp(look.ShallowSea, look.DeepSea, 0.25f);
         bool lava = map.Def.Liquid == Liquid.Lava;
         double sx = map.WidthMeters / width, sy = map.HeightMeters / height;
@@ -87,7 +93,7 @@ public sealed class ColorMap
                 {
                     // Borders wander a little so biome edges never trace the grid.
                     P4 p = map.Model.Torus.At(x, y);
-                    double jx = gx + jitter.Fbm(p, 16) * 0.9, jy = gy + jitter.Fbm(p.Swap, 16) * 0.9;
+                    double jx = gx + jitter.Fbm(p, 16) * BorderWander, jy = gy + jitter.Fbm(p.Swap, 16) * BorderWander;
                     int ji = (int)Math.Floor(jx), jj = (int)Math.Floor(jy);
                     float ux = (float)(jx - ji), uy = (float)(jy - jj);
                     col = default;
@@ -96,6 +102,14 @@ public sealed class ColorMap
                     Blend(map, color, glow, ji + 1, jj, ux * (1 - uy), ref col, ref emit, ref total);
                     Blend(map, color, glow, ji, jj + 1, (1 - ux) * uy, ref col, ref emit, ref total);
                     Blend(map, color, glow, ji + 1, jj + 1, ux * uy, ref col, ref emit, ref total);
+                    if (total <= 0f)
+                    {
+                        // By the shore a border can wander right out over water: the colour here, then.
+                        Blend(map, color, glow, i0, j0, wa, ref col, ref emit, ref total);
+                        Blend(map, color, glow, i0 + 1, j0, wb, ref col, ref emit, ref total);
+                        Blend(map, color, glow, i0, j0 + 1, wc, ref col, ref emit, ref total);
+                        Blend(map, color, glow, i0 + 1, j0 + 1, wd, ref col, ref emit, ref total);
+                    }
                     if (total > 0f)
                     {
                         col *= 1f / total;
@@ -147,8 +161,64 @@ public sealed class ColorMap
             color[k] = c * (1f + 0.07f * drift);
             lit[k] = BiomeLook.Glow(biome) * (look.GlowingNights ? 3f : 1f);
         }
-        glow = lit;
-        return color;
+        glow = Soften(map, lit);
+        return Soften(map, color);
+    }
+
+    /// <summary>A per-cell field spread over its neighbours by repeated [1 2 1] passes both ways, the map's seams wrapping.</summary>
+    public static float[] Soften(WorldMap map, float[] field, int passes)
+    {
+        int w = map.Width, h = map.Height;
+        var from = (float[])field.Clone();
+        var to = new float[field.Length];
+        void Pass(int di, int dj) => Parallel.For(0, h, j =>
+        {
+            for (int i = 0; i < w; i++)
+                to[j * w + i] = (from[j * w + i] * 2f + from[map.Index(i - di, j - dj)] + from[map.Index(i + di, j + dj)]) * 0.25f;
+        });
+        for (int pass = 0; pass < passes; pass++)
+        {
+            Pass(1, 0);
+            (from, to) = (to, from);
+            Pass(0, 1);
+            (from, to) = (to, from);
+        }
+        return from;
+    }
+
+    /// <summary>
+    /// Biomes are decided cell by cell, so a border is a stair of 32 m steps however it is
+    /// interpolated afterwards. This spreads each land cell's colour over its land neighbours
+    /// (repeated [1 2 1] passes both ways, the map's seams wrapping), so one biome fades into the
+    /// next over a hundred metres or so. Land never takes colour from water, nor gives it any.
+    /// </summary>
+    public static Rgb[] Soften(WorldMap map, Rgb[] cells)
+    {
+        int w = map.Width, h = map.Height;
+        var from = (Rgb[])cells.Clone();
+        var to = new Rgb[cells.Length];
+        void Pass(int di, int dj) => Parallel.For(0, h, j =>
+        {
+            for (int i = 0; i < w; i++)
+            {
+                int k = j * w + i;
+                if (map.Has(k, CellFlags.Water)) { to[k] = from[k]; continue; }
+                Rgb sum = from[k] * 2f;
+                float total = 2f;
+                int a = map.Index(i - di, j - dj), b = map.Index(i + di, j + dj);
+                if (!map.Has(a, CellFlags.Water)) { sum += from[a]; total += 1f; }
+                if (!map.Has(b, CellFlags.Water)) { sum += from[b]; total += 1f; }
+                to[k] = sum * (1f / total);
+            }
+        });
+        for (int pass = 0; pass < SoftenPasses; pass++)
+        {
+            Pass(1, 0);
+            (from, to) = (to, from);
+            Pass(0, 1);
+            (from, to) = (to, from);
+        }
+        return from;
     }
 
     /// <summary>Albedo with the glow added on top, as RGB8: how the map looks lit and flat.</summary>
