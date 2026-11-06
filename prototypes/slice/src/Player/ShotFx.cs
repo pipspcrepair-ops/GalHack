@@ -285,7 +285,10 @@ public partial class ShotFx : Node3D
     // ---- The working beam ----------------------------------------------------------------------
 
     MeshInstance3D _beam;
-    ulong _beamFrame;
+    /// <summary>Seconds since the beam was last asked for; where it starts (the barrel tip, asked afresh each rendered frame) and ends.</summary>
+    float _beamAge;
+    Func<Vector3> _beamFrom;
+    Vector3 _beamTo;
 
     /// <summary>For tests: whether the working beam is showing, and how many times it has been drawn.</summary>
     public bool BeamShowing => _beam != null && _beam.Visible;
@@ -296,8 +299,16 @@ public partial class ShotFx : Node3D
     /// one pooled cylinder, called every frame the tool works, and it goes out a frame or two after the
     /// last call. No flash, no smoke.
     /// </summary>
-    public void Beam(Vector3 from, Vector3 to)
+    public void Beam(Vector3 from, Vector3 to) => Beam(() => from, to);
+
+    /// <summary>
+    /// The same, starting wherever <paramref name="from"/> says: the beam is asked for on the physics
+    /// tick, but the camera and the hands move every rendered frame, so it is set again after them each
+    /// frame (see <see cref="_Process"/>) and stays on the barrel tip however you move.
+    /// </summary>
+    public void Beam(Func<Vector3> from, Vector3 to)
     {
+        ProcessPriority = 100; // after the game's camera and the hands, which place themselves in their own _Process
         if (_beam == null)
         {
             _beam = new MeshInstance3D
@@ -311,15 +322,24 @@ public partial class ShotFx : Node3D
             };
             AddChild(_beam);
         }
-        Vector3 line = to - from;
+        _beamFrom = from;
+        _beamTo = to;
+        _beamAge = 0f;
+        if (!PlaceBeam()) return;
+        if (!_beam.Visible) Beams++;
+        _beam.Visible = true;
+    }
+
+    /// <summary>Lays the beam from its start now to its end. False when they coincide.</summary>
+    bool PlaceBeam()
+    {
+        Vector3 from = _beamFrom(), line = _beamTo - from;
         float length = line.Length();
-        if (length < 1e-3f) return;
+        if (length < 1e-3f) return false;
         Vector3 dir = line / length;
         var basis = Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.99f ? Vector3.Right : Vector3.Up);
         _beam.GlobalTransform = new Transform3D(basis * new Basis(Vector3.Right, Mathf.Pi / 2f) * Basis.FromScale(new Vector3(1f, length, 1f)), from + dir * length * 0.5f);
-        if (!_beam.Visible) Beams++;
-        _beam.Visible = true;
-        _beamFrame = Engine.GetProcessFrames();
+        return true;
     }
 
     public static readonly Color BeamColour = new(0.3f, 0.6f, 1f);
@@ -396,7 +416,12 @@ public partial class ShotFx : Node3D
             Place(b);
         }
         TickFlashes(dt);
-        if (_beam != null && _beam.Visible && Engine.GetProcessFrames() > _beamFrame + 2) _beam.Visible = false;
+        if (_beam != null && _beam.Visible)
+        {
+            _beamAge += dt;
+            if (_beamAge > 0.1f) _beam.Visible = false; // a few physics ticks without a call
+            else PlaceBeam(); // the tip has moved with the camera and hands since the last tick
+        }
         for (int i = _flashes.Count - 1; i >= 0; i--)
         {
             var (light, left) = _flashes[i];
