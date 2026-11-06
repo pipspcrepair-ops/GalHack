@@ -91,6 +91,8 @@ public sealed class SurvivalTool
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
     public const int TellPulses = 4, TellOrePerPulse = 3;
+    /// <summary>Ore the rocks over deposits have given so far (tests).</summary>
+    public int TellOre { get; private set; }
     public PoiPlaces.Hit? PlaceHit => _placeHit;
     PoiPlaces.Hit? _placeHit;
     SalvageSite _wreck;
@@ -259,6 +261,7 @@ public sealed class SurvivalTool
         if (OreOf(d.Kind) is ItemDef item)
         {
             Give(item.Id, TellOrePerPulse);
+            TellOre += TellOrePerPulse;
             Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
         }
         // Worked through: the rock and its collider go, and the tool digs on into the ground under it.

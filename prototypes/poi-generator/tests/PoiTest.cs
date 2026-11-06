@@ -24,7 +24,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Grand", GrandPlaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -156,6 +156,45 @@ public partial class PoiTest : Node
     }
 
     /// <summary>The same layout, different people: what each occupant leaves is theirs, nobody's plan changes, and it all still validates.</summary>
+    /// <summary>The merged drawing and collision of a large place are the same surfaces as the plain ones, in far fewer faces.</summary>
+    void MergedFaces()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        foreach (string id in new[] { "sewage_works", "old_farm", "works_complex" })
+        {
+            FamilyDef f = _lib.Family(id);
+            PoiInstance inst = PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed), PoiState.Ruined, seed + 1);
+            BlockGrid g = inst.Blocks;
+            MeshOptions Options(bool merged) => new()
+            {
+                ChunkSize = 32, Doors = false, Collision = true, Merged = merged, Drawn = true,
+                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround,
+            };
+            static double Area(List<ChunkMesh> meshes)
+            {
+                double total = 0;
+                foreach (ChunkMesh m in meshes)
+                    for (int i = 0; i + 8 < m.Collision.Count; i += 9)
+                    {
+                        var a = new V3(m.Collision[i], m.Collision[i + 1], m.Collision[i + 2]);
+                        var e = new V3(m.Collision[i + 3], m.Collision[i + 4], m.Collision[i + 5]) - a;
+                        var h = new V3(m.Collision[i + 6], m.Collision[i + 7], m.Collision[i + 8]) - a;
+                        V3 c = V3.Cross(e, h);
+                        total += Math.Sqrt(V3.Dot(c, c)) * 0.5;
+                    }
+                return total;
+            }
+            List<ChunkMesh> plain = Mesher.Build(g, inst.Layout.Occupied, Options(false)), merged = Mesher.Build(g, inst.Layout.Occupied, Options(true));
+            double a0 = Area(plain), a1 = Area(merged);
+            int q0 = plain.Sum(m => m.Quads), q1 = merged.Sum(m => m.Quads);
+            int t0 = plain.Sum(m => m.Collision.Count), t1 = merged.Sum(m => m.Collision.Count);
+            Check(Math.Abs(a0 - a1) < a0 * 1e-4, $"{id}: what you touch from further off is what you touch up close: {a1:F0} m² of collision merged, {a0:F0} plain");
+            Check(q1 * 3 < q0 && t1 * 5 < t0 * 2, $"{id}: merged, {q1} faces for {q0}, {t1 / 9} collision triangles for {t0 / 9}");
+            ChunkMesh far = Mesher.Coarse(g, inst.Layout.Occupied);
+            Check(far.Quads > 0 && far.Quads * 20 < q0, $"{id}: the far mesh is {far.Quads} faces");
+        }
+    }
+
     void Occupancy()
     {
         ulong seed = (ulong)Random.Shared.NextInt64();

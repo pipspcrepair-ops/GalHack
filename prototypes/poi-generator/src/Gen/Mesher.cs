@@ -162,6 +162,8 @@ public static class Mesher
         var built = Build(coarse, occupied, new MeshOptions { ChunkSize = Math.Max(size.X, Math.Max(size.Y, size.Z)) + 1, Rock = false, Collision = false, Detail = false, Doors = false, Merged = true });
         var all = new ChunkMesh();
         foreach (ChunkMesh m in built)
+        {
+            all.Quads += m.Quads;
             for (int k = 0; k < m.Surfaces.Length; k++)
             {
                 MeshBuffer from = m.Surfaces[k], to = all.Surfaces[k];
@@ -176,6 +178,7 @@ public static class Mesher
                 to.Colors.AddRange(from.Colors);
                 foreach (int i in from.Indices) to.Indices.Add(first + i);
             }
+        }
         return all;
     }
 
