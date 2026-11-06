@@ -41,6 +41,7 @@ public partial class PoiLayer : Node3D
     public void Build(PlanetWorld world)
     {
         Clear();
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
         foreach (PoiSite site in world.Pois)
         {
@@ -88,7 +89,9 @@ public partial class PoiLayer : Node3D
         {
             if (p.Node == null) continue;
             var origin = new Vector3(p.Site.Origin.X, p.Site.Origin.Y, p.Site.Origin.Z);
-            p.Node.Position = _world.NearestCopy(origin, camera);
+            // Written only when it changes: a same-spot write still tells every body and mesh under the node.
+            Vector3 at = _world.NearestCopy(origin, camera);
+            if (p.Node.Position != at) p.Node.Position = at;
         }
     }
 

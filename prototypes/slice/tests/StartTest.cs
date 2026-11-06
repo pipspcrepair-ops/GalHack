@@ -130,6 +130,7 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
+        Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Wildlife.Frozen = true;
         var drive = new Driver(game);

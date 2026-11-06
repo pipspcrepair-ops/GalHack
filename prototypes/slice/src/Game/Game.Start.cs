@@ -62,10 +62,21 @@ public partial class Game
         if (SkipIntro) Bunker.Mine.OpenLid();
     }
 
-    /// <summary>Playing once the ground round the castaway is in.</summary>
+    /// <summary>The longest the loading screen waits for what stands round the start, seconds.</summary>
+    const double MostWait = 30;
+    System.Diagnostics.Stopwatch _waiting;
+
+    /// <summary>Whether everything that stands round the start is in: a place's blocks, the roads' ruins, wrecks and bridges.</summary>
+    public bool WorldStanding => Zone.Pois.Built && Zone.Infra.Planned && Zone.Infra.Built;
+
+    /// <summary>Playing once the ground round the castaway is in, and what stands on it: nothing appears after you've come up the stairs.</summary>
     void Waking()
     {
         if (Survivor == null || !Zone.Streamer.ReadyAround(Survivor.WorldFeet, 1, needCollision: true)) return;
+        _waiting ??= System.Diagnostics.Stopwatch.StartNew();
+        Zone.Infra.Hurry = !WorldStanding;
+        if (Zone.Infra.Hurry && _waiting.Elapsed.TotalSeconds < MostWait) return;
+        Zone.Infra.Hurry = false;
         Phase = Phase.Playing;
         Say(Bunker.Mine.Open
             ? $"Out of the cryopod. Locker {Bunker.MineLocker.Number} (E) has the kit. The stairs lead up."

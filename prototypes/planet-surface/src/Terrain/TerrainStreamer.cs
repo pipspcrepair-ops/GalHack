@@ -115,7 +115,9 @@ public partial class TerrainStreamer : Node3D
     readonly ConcurrentQueue<FarJob> _farDone = new();
     readonly List<(int fx, int fz, int lod, int d)> _farWanted = new();
     readonly HashSet<(int, int)> _farKeep = new();
-    int _farInFlight;
+    int _farInFlight, _farWaited;
+    /// <summary>The most frames a finished far chunk waits for an unhurried one.</summary>
+    const int FarPatience = 6;
     MeshInstance3D _horizon;
     Task<(Godot.Collections.Array arrays, double x, double z)> _horizonJob;
     double _horizonX = double.MaxValue, _horizonZ = double.MaxValue;
@@ -650,10 +652,13 @@ public partial class TerrainStreamer : Node3D
 
         // Far chunks share the frame's upload budget with the voxels: one at most, and only if the
         // voxel uploads left time for it, so the two never stack into one long frame.
+        // But a run of busy frames (walking with the voxels streaming) never starves them: every few frames one goes in anyway.
         int applied = 0;
+        if (!_farDone.IsEmpty) _farWaited++;
         while (_farDone.TryPeek(out _))
         {
-            if (applied > 0 || Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs) break;
+            if (applied > 0 || Stopwatch.GetElapsedTime(_frameStart).TotalMilliseconds > UploadBudgetMs && _farWaited < FarPatience) break;
+            _farWaited = 0;
             _farDone.TryDequeue(out FarJob job);
             _farInFlight--;
             applied++;

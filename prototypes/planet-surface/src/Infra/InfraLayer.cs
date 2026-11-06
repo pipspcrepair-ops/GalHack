@@ -24,8 +24,11 @@ namespace PlanetSurface.Infra;
 public partial class InfraLayer : Node3D
 {
     public const float TileSize = 256f;
-    /// <summary>Tiles within this distance of the camera are built; past it plus a margin they are freed.</summary>
-    public static float Radius = 900f;
+    /// <summary>
+    /// Tiles within this distance of the camera are built; past it plus a margin they are freed. As far as
+    /// the far rings reach, corners included: a pad shows in the far ground, and what stands on it must be there already.
+    /// </summary>
+    public static float Radius = 1320f;
 
     /// <summary>One thing to draw, in the tile its middle falls in.</summary>
     public abstract class Piece
@@ -50,6 +53,13 @@ public partial class InfraLayer : Node3D
 
     /// <summary>Main-thread time a frame may spend making tiles' nodes, ms (at least one step a frame).</summary>
     public static double FrameBudgetMs = 1.5;
+    /// <summary>The same with an unfinished tile close enough to see into, and how close that is: one step a frame there is seconds of buildings arriving in view.</summary>
+    public static double NearBudgetMs = 6;
+    public const float NearTiles = 600f;
+    /// <summary>The same with nobody watching: the game holds its loading screen until everything near the start stands.</summary>
+    public const double HurryBudgetMs = 14;
+    /// <summary>Behind a loading screen: tiles take what they need.</summary>
+    public bool Hurry;
     /// <summary>The slowest frame of this layer's own main-thread work, ms, and the most it made in one frame (tests).</summary>
     public double WorstMainMs;
 
@@ -70,6 +80,7 @@ public partial class InfraLayer : Node3D
     public void Build(PlanetWorld world)
     {
         Clear();
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // nothing here moves but by whole planets at a seam
         _world = world;
         _tilesX = (int)Math.Ceiling(world.Width / TileSize);
         _tilesZ = (int)Math.Ceiling(world.Height / TileSize);
@@ -140,14 +151,16 @@ public partial class InfraLayer : Node3D
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var drop = new List<long>();
         int steps = 0;
+        double budget = Hurry ? HurryBudgetMs : FrameBudgetMs;
         foreach (var (key, tile) in _tiles.OrderBy(t => TileDistance(t.Value.Ix, t.Value.Iz, cx, cz)))
         {
+            if (!tile.Done && TileDistance(tile.Ix, tile.Iz, cx, cz) < NearTiles) budget = Math.Max(budget, NearBudgetMs);
             if (TileDistance(tile.Ix, tile.Iz, cx, cz) > Radius + TileSize)
             {
                 drop.Add(key);
                 continue;
             }
-            if (!tile.Done && tile.Building.IsCompleted && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
+            if (!tile.Done && tile.Building.IsCompleted && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
             {
                 if (tile.Node == null)
                 {
@@ -155,7 +168,7 @@ public partial class InfraLayer : Node3D
                     tile.Steps = tile.Building.Result.Steps();
                     AddChild(tile.Node);
                 }
-                while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
+                while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
                 {
                     Node3D part = tile.Steps.Dequeue()();
                     if (part != null) tile.Node.AddChild(part);

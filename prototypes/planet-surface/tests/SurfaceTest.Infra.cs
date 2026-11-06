@@ -249,6 +249,14 @@ public partial class SurfaceTest
         Check(shut == 0 && unroofed == 0 && mouths >= 12 && kinds.Count >= 2, $"cave mouths in sensible spots: {mouths} ({string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}), {shut} shut, {unroofed} without a roof{first}");
     }
 
+    /// <summary>What stands on the land is built as far out as the land's far rings show its pads, corners included.</summary>
+    Task ReachChecks()
+    {
+        float rings = (TerrainStreamer.FarRadius + 1) * FarBuilder.Size * MathF.Sqrt(2f);
+        Check(PlanetSurface.Infra.InfraLayer.Radius + PlanetSurface.Infra.InfraLayer.TileSize >= rings, $"buildings load before their pads show: tiles reach {PlanetSurface.Infra.InfraLayer.Radius:F0} m, the far rings {rings:F0} m");
+        return Task.CompletedTask;
+    }
+
     async Task InfraScan()
     {
         foreach (int a in new[] { 0, 1 })
