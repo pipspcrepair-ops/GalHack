@@ -235,20 +235,38 @@ public partial class PlayerTest : Node
 
         WildlifePatch w = _game.Zone.Wildlife;
         Vector3 feet = _game.Survivor.WorldFeet;
-        _prey = w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
-            .OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)).FirstOrDefault();
+        var tried = new HashSet<Creature>();
+        Creature NextPrey()
+        {
+            Vector3 from = _game.Survivor.WorldFeet;
+            return w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
+                .OrderBy(c => w.FromPatch(c.Position).DistanceTo(from)).FirstOrDefault();
+        }
+        _prey = NextPrey();
         if (_prey == null) { Fail("no creature near to hunt"); yield break; }
         GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
         float health = _prey.Health;
         int xp = _game.Progress.Xp;
-        int shots = 0;
+        int shots = 0, stalls = 0;
         float close = 25f;
         for (int tries = 0; tries < 40 && !_prey.Dead; tries++)
         {
             Vector3 at = w.FromPatch(_prey.Position);
-            if (at.DistanceTo(_game.Survivor.WorldFeet) > close)
+            float off = at.DistanceTo(_game.Survivor.WorldFeet);
+            if (off > close)
             {
                 foreach (int x in _drive.WalkTo(at, close * 0.6f, 20f)) yield return x;
+                // A river or a cliff between you and it: a hunter picks another.
+                stalls = w.FromPatch(_prey.Position).DistanceTo(_game.Survivor.WorldFeet) > off - 5f ? stalls + 1 : 0;
+                if (stalls >= 2 && shots == 0 && NextPrey() is Creature next && tried.Add(_prey))
+                {
+                    next = NextPrey();
+                    GD.Print($"  (no way to the {_prey.Species.CommonName}, {off:F0} m off: hunting a {next.Species.CommonName} instead)");
+                    _prey = next;
+                    health = _prey.Health;
+                    stalls = 0;
+                    close = 25f;
+                }
                 continue;
             }
             float before = _prey.Health;
