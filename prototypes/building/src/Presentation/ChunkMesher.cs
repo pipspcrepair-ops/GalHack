@@ -388,8 +388,9 @@ public static class ChunkMesher
         FaceLook plate = Look(s, _pad[c], d, PartStyle.Body, 3, holed: true);
         plate = plate with { Base = WithSeed(plate.Base, h) };
         FaceLook torn = new(WithSeed(Rgb(DarkColor), h), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 3, false, 1, 0, false, DamageLook.Metal, true));
-        var frame = new FaceLook(Rgb(FrameColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Plates, 0, false, 2, 0, false, DamageLook.Metal, false));
-        var strut = new FaceLook(Rgb(StrutColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 0, false, 2, 0, false, DamageLook.Metal, false));
+        // Not polished: it would mirror the sky down the hole.
+        var frame = new FaceLook(Rgb(FrameColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Plates, 0, false, 0, 0, false, DamageLook.Metal, false));
+        var strut = new FaceLook(Rgb(StrutColor), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, 0, false, 0, 0, false, DamageLook.Metal, false));
 
         // The tear: a lopsided four-sided hole, each corner its own way off a rough rectangle.
         float s0 = 0.14f + 0.14f * Next(ref h), s1 = 0.72f + 0.14f * Next(ref h);

@@ -75,7 +75,8 @@ float fbm3(vec3 p) { return 0.55 * noise3(p) + 0.3 * noise3(p * 2.03 + 3.1) + 0.
 vec2 hash2(vec2 p) { float a = hash3(vec3(p, 1.7)); return vec2(a, hash3(vec3(p, a * 13.1 + 4.3))); }
 // One block's seed: the mesher's, in the colour's alpha, or (merged faces, where that reads 1) from
 // which block of which plane this is. Either way it depends only on the block, so remeshing can't change it.
-float block_seed(float alpha, vec2 uv, float plane) { return alpha > 0.998 ? hash3(vec3(floor(uv), floor(plane * 3.0 + 0.5))) : alpha; }
+// The seed is snapped to the mesher's 1/128 steps: interpolation jitters it a hair, and the hashes would turn that into speckle.
+float block_seed(float alpha, vec2 uv, float plane) { return alpha > 0.998 ? hash3(vec3(floor(uv), floor(plane * 3.0 + 0.5))) : floor(alpha * 128.0 + 0.5) / 128.0; }
 // Worley borders: 1 on a line between cells. Thin lines that branch and meet, as real cracks do.
 float crack_lines(vec2 p, float seed, float width) {
     vec2 ip = floor(p); vec2 fp = fract(p); float d1 = 9.0; float d2 = 9.0;
@@ -157,7 +158,8 @@ void wear_metal(int damage, vec2 uv, vec2 f, float edge, float seed, float n, bo
         col = mix(col, vec3(0.02, 0.018, 0.016), 0.72);
         float tear = crack_lines(uv * 3.4, seed + 0.31, 0.03);
         col = mix(col, vec3(0.006), tear);
-        emission += vec3(1.0, 0.3, 0.04) * tear * smoothstep(0.42, 0.62, n) * 2.6;
+        // Only the odd seam still glows: a burned plate, not a lava tile.
+        emission += vec3(1.0, 0.3, 0.04) * tear * smoothstep(0.6, 0.72, n) * 1.5;
         grit = 1.0;
         // Shapes that can't be torn open in the mesh are burned through instead.
         if (!holed) col = mix(col, vec3(0.004), smoothstep(0.6, 0.66, fbm3(vec3(uv * 2.0, seed * 3.0 + 2.0))));
@@ -189,17 +191,17 @@ void wear_alien(int damage, vec2 uv, float seed, float n, inout vec3 col, inout 
     vec3 glow = mix(vec3(0.1, 0.95, 0.75), vec3(0.75, 0.2, 1.0), seed);
     float bruise = smoothstep(0.55 - float(damage) * 0.08, 0.68 - float(damage) * 0.08, n);
     col = mix(col, vec3(0.05, 0.02, 0.07), bruise * 0.85);
-    emission += glow * bruise * 0.12 * float(damage);
+    emission += glow * bruise * 0.025 * float(damage);
     if (damage >= 2) {
         float vein = crack_lines(uv * 2.4, seed, 0.03);
         col = mix(col, vec3(0.01), vein);
-        emission += glow * vein * (damage == 2 ? 1.4 : 3.0);
+        emission += glow * vein * (damage == 2 ? 0.8 : 1.6);
         grit = max(grit, 0.6);
     }
     if (damage == 3) {
-        float wound = smoothstep(0.56, 0.64, fbm3(vec3(uv * 2.0, seed * 3.0 + 2.0)));
-        col = mix(col, vec3(0.012, 0.01, 0.016), 0.7);
-        emission += glow * wound * 2.2;
+        float wound = smoothstep(0.64, 0.7, fbm3(vec3(uv * 2.0, seed * 3.0 + 2.0)));
+        col = mix(col, vec3(0.012, 0.01, 0.016), 0.85);
+        emission += glow * wound * 0.9;
         grit = 1.0;
     }
 }
@@ -320,9 +322,9 @@ void fragment() {
         float wobble = noise3(vec3(q * 5.0, seed * 9.0)) * 0.9;
         float spokes = float(4 + damage * 3);
         float a = (atan(q.y, q.x) / 6.2832 + seed + wobble * 0.08) * spokes;
-        float spoke = (1.0 - aastep(0.016, abs(fract(a) - 0.5) / spokes * 6.2832 * r)) * (1.0 - aastep(reach, r));
+        float spoke = (1.0 - aastep(0.006, abs(fract(a) - 0.5) / spokes * 6.2832 * r)) * (1.0 - aastep(reach, r));
         float ring = 0.0;
-        if (damage >= 2) ring = (1.0 - aastep(0.012, abs(fract(r * 4.0 + wobble) - 0.5) * 0.25)) * (1.0 - aastep(reach, r));
+        if (damage >= 2) ring = (1.0 - aastep(0.005, abs(fract(r * 4.0 + wobble) - 0.5) * 0.25)) * (1.0 - aastep(reach, r));
         crazed = max(spoke, ring);
         if (damage == 3) {
             // Shards: sectors between the spokes and rings, about half of them fallen out.

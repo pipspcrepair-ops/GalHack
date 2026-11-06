@@ -108,7 +108,28 @@ single-block edit: 6.21 ms average, 14.69 ms worst (1.3 chunks rebuilt per edit)
 - To draw one, `src/Presentation/StructureView` is a ready RigidBody3D (frozen while it has a core), or call `ChunkMesher.Build` per dirty chunk for your own nodes. The walkable ship's cabin world can take the same box and hull colliders.
 - `Structure.Version` and `Structure.DirtyChunks` tell a view what changed; nothing in the core calls back into the engine.
 
+## How damage looks
+
+A block's health picks its stage (`Damage.Bucket`): over 75% whole, then scuffed, cracked and dented, and holed under 25%. Its material picks how that looks (`damageLook` in `materials.json`).
+
+| Stage | Metal | Concrete | Alien alloy | Glass |
+|---|---|---|---|---|
+| Scuffed | Scratches through the paint, small scorches | Pale chips and dust | Dark bruises, faint glow | A small star crack |
+| Cracked | Peeled to bare metal, cracks, broken edges, a dent | Wide cracks, broken corners, a dent | Glowing veins, a dent | Long spokes and rings |
+| Holed | Soot, the plate torn open and bent in, the frame and strut behind it, the odd hot seam | Rubble, rusty rebar, the same hole | A burned shell over bright wounds, the same hole | Whole shards gone |
+
+Dents and holes are real geometry on cube faces, and their outer edges stay where they were, so nothing opens up against the next block. Shaped blocks and components are drawn by the shader alone. Colliders never change until a block is destroyed. Each look comes from a hash of the block's cell and face, so a remesh can't change it.
+
+A hit also throws sparks, leaves an impact mark and, if it was hard enough, throws chips that land, lie there and fade (`DamageFx`). Badly damaged devices smoke until they're repaired, and smashed lights go out. Wear redraws only the block's own chunk and leaves `Structure.Version` alone (`Structure.SetHp`). `Structure.RecentHits` is how the effects hear about hits, and it's capped because nothing has to read it.
+
+Crashes go through `Damage.Crash`, which spreads the impact from where it struck and ignores flat armour (it's meant for one round on one plate), though kinetic resistance still counts. Repairs cost that share of the block's recipe, rounded up, and restore the look stage by stage.
+
+The stages follow the brief's summary of how Empyrion works (worse damage textures, destroyed blocks gone, repairs restoring them). No Empyrion page was read for this, and the design doc wins.
+
 ## Known limits
+
+- Repairing in the slice has its rule and tests (`VesselDamage.Repair`), but no tool in the player's hands yet.
+- A wall holed on both faces costs about 6 ms a chunk to redraw, so a barrage across four such chunks takes four frames, not one or two.
 
 - Every block fills exactly one cell; there are no multi-cell blocks yet.
 - Two structures never merge: a block touching two structures joins the one you aimed at. A wreck rejoins only by being claimed with its own core.
@@ -116,7 +137,7 @@ single-block edit: 6.21 ms average, 14.69 ms worst (1.3 chunks rebuilt per edit)
 - Two partial faces always count as touching, even where their areas don't overlap (two slopes facing opposite ways).
 - Leaking rooms are found among air the hull encloses along all six axes, so a room with a whole wall missing reads as outside rather than as a leaking room. Rooms with more than 48 independent holes are reported as wide open, without faces.
 - The nav export knows floors, doors and ladders; slopes are not ramps for it yet.
-- Creative inventory: placing is free and removing pays out. Repairs cost nothing.
+- Creative inventory: placing and repairing are free and removing pays out.
 - The CPU, power, thrust and recipe numbers are first guesses, all in the data files.
 - Quick save only (one slot, written under `saves/` when running from source).
 - The HUD font is the system's Bahnschrift, falling back to Segoe UI or Arial. No font, sound or texture assets are used: every sound is synthesised in `Sfx.cs`.
