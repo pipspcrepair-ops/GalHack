@@ -2,9 +2,9 @@
 // shared/Items is copied or changed on disk). Same formats as shared/Items/data.
 //
 //   items          things the slice's loop needs that the catalogue doesn't have yet: the survival
-//                  tool, the suit fabricator's bare minimum, core items (a placed core starts a new
-//                  structure, as in Empyrion; the catalogue prices blocks only) and what creatures
-//                  leave behind
+//                  tool, the suit fabricator's bare minimum, the hover and capital cores (a placed
+//                  core starts a new structure, as in Empyrion; the base and small-vessel cores are
+//                  the core block's own items in shared/Items) and what creatures leave behind
 //   recipes        how they are made. Tier -1 is the suit fabricator, below the survival
 //                  constructor: it works from raw finds only, since it can't refine
 //   replaceRecipes recipes the slice makes differently: the placeable survival constructor comes
@@ -23,12 +23,10 @@
       "uses": "Heals a little", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "air-cell", "name": "Air cell", "short": "AIR", "category": "consumable", "rarity": "common", "mass": 1.2, "volume": 1,
       "uses": "Refills half the suit's oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
-    { "id": "base-core", "name": "Base core", "short": "B-CORE", "category": "component", "rarity": "common", "mass": 40, "volume": 12, "stack": 4,
-      "uses": "Set down on open ground: a new base", "unlock": { "level": 1, "cost": 0, "tab": "base" } },
-    { "id": "vessel-core", "name": "Small-vessel core", "short": "SV-CORE", "category": "component", "rarity": "common", "mass": 6, "volume": 2, "stack": 4,
-      "uses": "Set down on open ground: a new small vessel", "unlock": { "level": 5, "cost": 2, "tab": "small" } },
     { "id": "hover-core", "name": "Hover core", "short": "HV-CORE", "category": "component", "rarity": "common", "mass": 6, "volume": 2, "stack": 4,
       "uses": "Set down on open ground: a new hover vessel", "unlock": { "level": 1, "cost": 1, "tab": "hover" } },
+    { "id": "capital-core", "name": "Capital core", "short": "CV-CORE", "category": "component", "rarity": "common", "mass": 48, "volume": 14, "stack": 4,
+      "uses": "Set down on open ground: a new capital vessel", "unlock": { "level": 7, "cost": 2, "parent": "thruster@large", "tab": "capital" } },
     { "id": "meat", "name": "Raw meat", "short": "MEAT", "category": "raw", "rarity": "common", "source": "harvest", "mass": 0.5, "volume": 0.5, "stack": 50,
       "where": "Creatures", "uses": "Food" },
     { "id": "hide", "name": "Hide", "short": "HIDE", "category": "raw", "rarity": "common", "source": "harvest", "mass": 1.0, "volume": 1, "stack": 50,
@@ -41,10 +39,10 @@
     { "make": "trail-ration",  "count": 1, "from": { "biomass": 2 },                                     "seconds": 3,  "tier": -1 },
     { "make": "patch-kit",     "count": 1, "from": { "biomass": 2, "silicon-ore": 1 },                   "seconds": 4,  "tier": -1 },
     { "make": "air-cell",      "count": 1, "from": { "biomass": 3 },                                     "seconds": 4,  "tier": -1 },
-    // Cores cost what the core block's bill does (shared/Items blocks.json), as one item.
-    { "make": "base-core",     "count": 1, "from": { "hull-plate": 16, "winding": 4, "copper-wire": 12 }, "seconds": 12, "tier": 0 },
-    { "make": "vessel-core",   "count": 1, "from": { "hull-plate": 4, "circuit-board": 2, "winding": 1 }, "seconds": 10, "tier": 1 },
-    { "make": "hover-core",    "count": 1, "from": { "hull-plate": 4, "circuit-board": 1, "winding": 2 }, "seconds": 10, "tier": 1 }
+    // The base core and the small-vessel core are the core block's items (shared/Items blocks.json).
+    // A hover core and a capital core place the same block, founding a hover or capital vessel.
+    { "make": "hover-core",    "count": 1, "from": { "hull-plate": 4, "circuit-board": 1, "winding": 2 }, "seconds": 10, "tier": 1 },
+    { "make": "capital-core",  "count": 1, "from": { "hull-plate": 16, "control-unit": 2, "winding": 4 }, "seconds": 14, "tier": 1 }
   ],
   "replaceRecipes": [
     { "make": "survival-constructor", "count": 1, "from": { "iron-ore": 16, "copper-ore": 8, "silicon-ore": 4 }, "seconds": 20, "tier": -1 }

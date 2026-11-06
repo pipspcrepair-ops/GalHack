@@ -1,7 +1,20 @@
-// What a block costs to place, by building's block id (prototypes/building/data plus the parts in
-// building-parts.json and building-materials.json). Blocks are never items: in survival, placing
-// a block takes its bill from the structure's shared storage and removing it gives the whole bill
-// back. Shapes cost the same as cubes (design section 11), so a slope and a cube share one bill.
+// Every block, by building's block id (prototypes/building/data plus the parts in
+// building-parts.json and building-materials.json), and the block family items made from it.
+// Blocks are craftable items, as in Empyrion: a constructor makes a block item from its bill, the
+// player carries it in stacks, placing a block in survival uses one, and taking it down gives it
+// back. One item per block and grid (the small and large grids are separate families); an armour
+// item places as any shape, so a slope and a cube share one item and one bill (design section 11).
+//
+//   items           defaults for every block item, per family and grid: stack size and craft
+//                   seconds. An item's mass and volume are its bill's (a block is what it is made
+//                   of); its rarity is its rarest input's; its constructor tier is the lowest
+//                   that can make everything in its bill.
+//   family          armour (placed in any shape), device (the default: one fixed shape), or deco
+//   places          per grid, the classes of structure it can go on (Empyrion's AllowPlacingAt):
+//                   base, capital, small, hover. Default: large on base and capital, small on
+//                   small and hover vessels.
+//   item            per grid, an item that isn't the default (id, name, short, stack): the cores
+//   stack, seconds  per grid, overriding the family's defaults; tier overrides the derived tier
 //
 //   small / large   the bill on each grid. Small-grid blocks for a first vessel stay on common
 //                   materials, so a small vessel is an hour or two from the crash. The foothold
@@ -19,33 +32,44 @@
   "schema": "galhack.blocks",
   "version": 1,
   "assembly": { "small": 0.4, "large": 1.6 },
+  "items": {
+    "stack":   { "armour": { "small": 500, "large": 250 }, "device": { "small": 25, "large": 10 }, "deco": { "small": 20, "large": 10 } },
+    "seconds": { "armour": { "small": 1, "large": 2 },     "device": { "small": 3, "large": 6 },   "deco": { "small": 2, "large": 4 } }
+  },
   "blocks": {
     // ---- Armour (building materials.json) ----------------------------------------------------
-    "steel":     { "small": { "hull-plate": 1 },                                     "large": { "hull-plate": 8 },
+    "steel":     { "family": "armour", "small": { "hull-plate": 1 },                                     "large": { "hull-plate": 8 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "vessel-core", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "base-core", "tab": "base" } } },
-    "hardened":  { "small": { "hull-plate": 1, "gravium-ingot": 1 },                 "large": { "hull-plate": 8, "gravium-ingot": 4 },
+    "hardened":  { "family": "armour", "small": { "hull-plate": 1, "gravium-ingot": 1 },                 "large": { "hull-plate": 8, "gravium-ingot": 4 },
                    "unlock": { "small": { "level": 8, "cost": 2, "parent": "steel@small", "tab": "small" },
                                "large": { "level": 6, "cost": 2, "parent": "steel@large", "tab": "base" } } },
-    "combat":    { "small": { "hull-plate": 1, "gravium-ingot": 2, "ceramic": 1 },   "large": { "hull-plate": 8, "gravium-ingot": 8, "ceramic": 4 },
+    "combat":    { "family": "armour", "small": { "hull-plate": 1, "gravium-ingot": 2, "ceramic": 1 },   "large": { "hull-plate": 8, "gravium-ingot": 8, "ceramic": 4 },
                    "unlock": { "small": { "level": 14, "cost": 3, "parent": "hardened@small", "tab": "small" },
                                "large": { "level": 12, "cost": 3, "parent": "hardened@large", "tab": "base" } } },
-    "glass":     { "small": { "glass": 1 },                                          "large": { "glass": 6 },
+    "glass":     { "family": "armour", "small": { "glass": 1 },                                          "large": { "glass": 6 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "steel@small", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "steel@large", "tab": "base" } } },
-    "concrete":  { "small": { "concrete-mix": 1 },                                   "large": { "concrete-mix": 6 },
+    "concrete":  { "family": "armour", "places": { "large": ["base"] }, "small": { "concrete-mix": 1 },                                   "large": { "concrete-mix": 6 },
                    "unlock": { "small": { "level": 6, "cost": 1, "parent": "steel@small", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "base-core", "tab": "base" } } },
-    "precursor": { "uniqueOnly": true, "small": { "precursor-alloy": 1 },            "large": { "precursor-alloy": 6 },
+    "precursor": { "family": "armour", "uniqueOnly": true, "small": { "precursor-alloy": 1 },            "large": { "precursor-alloy": 6 },
                    "unlock": { "small": { "level": 20, "cost": 5, "parent": "combat@small", "tab": "small" },
                                "large": { "level": 20, "cost": 5, "parent": "combat@large", "tab": "base" } } },
 
     // ---- Components (building components.json) ------------------------------------------------
-    "core":      { "small": { "hull-plate": 4, "circuit-board": 2, "winding": 1 },   "large": { "hull-plate": 16, "winding": 4, "copper-wire": 12 } },
-    "cockpit":   { "small": { "hull-plate": 2, "circuit-board": 2, "glass": 2, "polymer": 1 }, "large": { "hull-plate": 8, "control-unit": 2, "glass": 6, "polymer": 2 },
+    // A core item founds a new structure where it is set down (Empyrion's way); the slice adds a
+    // hover core and a capital core, which place the same block as a hover or capital vessel.
+    "core":      { "small": { "hull-plate": 4, "circuit-board": 2, "winding": 1 },   "large": { "hull-plate": 16, "winding": 4, "copper-wire": 12 },
+                   "seconds": { "small": 10, "large": 12 },
+                   "item": { "small": { "id": "vessel-core", "name": "Small-vessel core", "short": "SV-CORE", "stack": 4 },
+                             "large": { "id": "base-core", "name": "Base core", "short": "B-CORE", "stack": 4 } },
+                   "unlock": { "small": { "level": 5, "cost": 2, "tab": "small" },
+                               "large": { "level": 1, "cost": 0, "tab": "base" } } },
+    "cockpit":   { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "circuit-board": 2, "glass": 2, "polymer": 1 }, "large": { "hull-plate": 8, "control-unit": 2, "glass": 6, "polymer": 2 },
                    "unlock": { "small": { "level": 5, "cost": 1, "parent": "vessel-core", "tab": "small" },
                                "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
-    "thruster":  { "small": { "hull-plate": 2, "nozzle": 1, "winding": 1 },         "large": { "hull-plate": 10, "thrust-assembly": 2 },
+    "thruster":  { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "nozzle": 1, "winding": 1 },         "large": { "hull-plate": 10, "thrust-assembly": 2 },
                    "unlock": { "small": { "level": 5, "cost": 1, "parent": "vessel-core", "tab": "small" },
                                "large": { "level": 7, "cost": 3, "tab": "capital" } } },
     "generator": { "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 10, "winding": 8, "copper-wire": 8 },
@@ -70,18 +94,18 @@
     "cpuext":    { "small": { "circuit-board": 4, "copper-wire": 4 },               "large": { "circuit-board": 8, "logic-module": 4 },
                    "unlock": { "small": { "level": 7, "cost": 1, "parent": "generator@small", "tab": "small" },
                                "large": { "level": 4, "cost": 1, "parent": "generator@large", "tab": "base" } } },
-    "ladder":    { "small": { "iron-bar": 1 },                                       "large": { "iron-bar": 3 },
+    "ladder":    { "stack": { "small": 100, "large": 50 }, "small": { "iron-bar": 1 },                                       "large": { "iron-bar": 3 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "steel@small", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "steel@large", "tab": "base" } } },
 
     // ---- Vessel parts (prototypes/physics-sandbox/data/vessel-parts.json) -----------------------
-    "gyro":      { "small": { "hull-plate": 2, "servo": 1, "circuit-board": 1 },    "large": { "hull-plate": 8, "servo": 2, "magnet": 4, "control-unit": 1 },
+    "gyro":      { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "servo": 1, "circuit-board": 1 },    "large": { "hull-plate": 8, "servo": 2, "magnet": 4, "control-unit": 1 },
                    "unlock": { "small": { "level": 5, "cost": 1, "parent": "cockpit@small", "tab": "small" },
                                "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
-    "hover":     { "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 8, "power-unit": 1, "nozzle": 2 },
+    "hover":     { "places": { "small": ["hover"], "large": ["capital"] }, "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 8, "power-unit": 1, "nozzle": 2 },
                    "unlock": { "small": { "level": 1, "cost": 1, "tab": "hover" },
                                "large": { "level": 10, "cost": 2, "parent": "hover@small", "tab": "hover" } } },
-    "gear":      { "small": { "hull-plate": 2, "servo": 1 },                         "large": { "hull-plate": 6, "servo": 2 },
+    "gear":      { "places": { "small": ["small"], "large": ["capital"] }, "small": { "hull-plate": 2, "servo": 1 },                         "large": { "hull-plate": 6, "servo": 2 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "vessel-core", "tab": "small" },
                                "large": { "level": 7, "cost": 0, "parent": "thruster@large", "tab": "capital" } } },
 
@@ -98,7 +122,7 @@
     "advfab":    { "small": { "hull-plate": 16, "servo": 4, "logic-module": 4, "machine-frame": 3, "starsilver-bar": 2 }, "large": { "hull-plate": 30, "servo": 8, "logic-module": 8, "machine-frame": 6, "starsilver-bar": 4 },
                    "unlock": { "small": { "level": 16, "cost": 5, "parent": "largefab@small", "tab": "small" },
                                "large": { "level": 15, "cost": 5, "parent": "largefab@large", "tab": "base" } } },
-    "decon":     { "small": { "hull-plate": 8, "servo": 2, "circuit-board": 2, "nozzle": 1 }, "large": { "hull-plate": 16, "servo": 4, "circuit-board": 4, "nozzle": 2 },
+    "decon":     { "places": { "large": ["base"] }, "small": { "hull-plate": 8, "servo": 2, "circuit-board": 2, "nozzle": 1 }, "large": { "hull-plate": 16, "servo": 4, "circuit-board": 4, "nozzle": 2 },
                    "unlock": { "small": { "level": 7, "cost": 2, "parent": "smallfab@small", "tab": "small" },
                                "large": { "level": 4, "cost": 2, "parent": "smallfab@large", "tab": "base" } } },
     "factory":   { "small": { "hull-plate": 20, "servo": 6, "control-unit": 2, "machine-frame": 4, "logic-module": 2 }, "large": { "hull-plate": 40, "servo": 10, "control-unit": 4, "machine-frame": 8, "logic-module": 4 },

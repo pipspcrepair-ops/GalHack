@@ -3,9 +3,11 @@ using System.Collections.Generic;
 namespace GalHack.Items;
 
 /// <summary>
-/// What one block costs to place, per grid. Blocks are never items: placing one in survival takes
-/// its bill from shared storage and removing it gives the whole bill back. Every shape of an
-/// armour material costs the same as its cube (design section 11).
+/// What one block is made of, per grid, and the block family items made from it (Empyrion's way:
+/// blocks are craftable items). A constructor makes a block item from its bill; placing a block in
+/// survival uses one item, and taking it down gives the item back. Every shape of an armour
+/// material is placed from the same family item, so every shape costs what its cube does (design
+/// section 11). The small and large grids are separate families, with separate items.
 /// </summary>
 public sealed class BlockBill
 {
@@ -20,6 +22,17 @@ public sealed class BlockBill
     /// <summary>Its tech-tree nodes on each grid (data: <c>unlock.small</c>, <c>unlock.large</c>), or null where it is always available.</summary>
     public Unlock UnlockSmall { get; init; }
     public Unlock UnlockLarge { get; init; }
+
+    /// <summary>The grids it can be placed on (every catalogue block is on both; deco pieces may be on one).</summary>
+    public bool OnSmall { get; init; } = true;
+    public bool OnLarge { get; init; } = true;
+    public BlockFamily Family { get; init; } = BlockFamily.Device;
+
+    /// <summary>The block family items, per grid (null where it isn't on that grid).</summary>
+    public ItemDef ItemSmall { get; internal set; }
+    public ItemDef ItemLarge { get; internal set; }
+    public ItemDef ItemFor(bool smallGrid) => smallGrid ? ItemSmall : ItemLarge;
+    public bool On(bool smallGrid) => smallGrid ? OnSmall : OnLarge;
 
     public Bill For(bool smallGrid) => smallGrid ? Small : Large;
     public Unlock UnlockFor(bool smallGrid) => smallGrid ? UnlockSmall : UnlockLarge;
@@ -49,6 +62,17 @@ public sealed class BlockBills
 
     /// <summary>The ammo a weapon block fires, or null if it isn't a weapon.</summary>
     public string AmmoFor(string blockId) => _bills.TryGetValue(blockId, out BlockBill b) ? b.Ammo : null;
+
+    /// <summary>The block family item for a block on a grid, or null if there is none.</summary>
+    public ItemDef ItemFor(string blockId, bool smallGrid) => _bills.TryGetValue(blockId, out BlockBill b) ? b.ItemFor(smallGrid) : null;
+
+    /// <summary>A build list as block items: one item per block (what survival placement uses).</summary>
+    public Bill ItemsFor(IEnumerable<BlockCount> blocks)
+    {
+        var total = new Bill();
+        foreach (BlockCount b in blocks) total.Add(Get(b.BlockId).ItemFor(b.Small)?.Id ?? throw new KeyNotFoundException($"no item for block '{b.BlockId}'"), b.Count);
+        return total;
+    }
 
     /// <summary>The summed bill of a build list.</summary>
     public Bill Total(IEnumerable<BlockCount> blocks)

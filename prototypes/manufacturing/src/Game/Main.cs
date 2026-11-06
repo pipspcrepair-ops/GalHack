@@ -419,6 +419,8 @@ public partial class Main : Node3D
         BlockType type = Workshop.Blocks.Type(Palette[_slot]);
         Block block = Building.Make(s, type, Workshop.Blocks.Shape(type.IsArmor ? Shapes[_shape] : "cube"));
         PlaceResult r = Workshop.Placer.Place(s, place, block, Workshop.Storage);
+        if (r.Status == PlaceStatus.WrongClass) Hud.Toast(Workshop.Placer.ClassProblem(s, block).ToUpperInvariant(), bad: true);
+        if (r.Ok) Workshop.Placer.Sync(s, Workshop.Storage, 0, 2, 0);
         if (r.Status == PlaceStatus.NotEnoughMaterials) Hud.Toast("MISSING " + Workshop.Items.Describe(r.Missing).ToUpperInvariant(), bad: true);
         BaseView.Sync();
         return r;
@@ -431,8 +433,9 @@ public partial class Main : Node3D
         Vector3 at = BaseView.CellToGlobal(remove);
         TakeDownResult r = Workshop.Placer.Remove(Workshop.Base, remove, Workshop.Storage, at.X, at.Y - 1, at.Z + 1.5f);
         if (r.Removal.Status == RemoveStatus.CoreHoldsStructure) Hud.Toast("THE CORE HOLDS THE BASE TOGETHER", bad: true);
-        else if (r.Ok && !r.Spilled.IsEmpty) Hud.Toast($"STORAGE FULL: {r.Spilled.Total} PARTS WENT INTO A CRATE", bad: true);
-        else if (r.Ok && !r.Refunded.IsEmpty) Hud.Toast("REFUNDED " + Workshop.Items.Describe(r.Refunded).ToUpperInvariant());
+        else if (r.Ok && !r.Spilled.IsEmpty) Hud.Toast($"STORAGE FULL: {r.Spilled.Total} BLOCK WENT INTO A CRATE", bad: true);
+        else if (r.Ok && !r.Refunded.IsEmpty) Hud.Toast("BACK IN STORAGE: " + Workshop.Items.Describe(r.Refunded).ToUpperInvariant());
+        if (r.Ok) Workshop.Placer.Sync(Workshop.Base, Workshop.Storage, at.X, at.Y - 1, at.Z + 1.5f);
         foreach (Structure wreck in r.Removal.Wrecks)
         {
             var view = StructureView.Create(wreck);

@@ -111,16 +111,17 @@ public partial class WorkshopProbe : Node
         Check(w.Fab.Restock.State is GalHack.Items.Production.RestockState.Stocked or GalHack.Items.Production.RestockState.Paused,
             $"restock has settled: {w.Fab.Restock.Status}");
 
-        // The multi-tool pays from storage, and refunds.
-        int plates = w.Storage.Count("hull-plate");
+        // The multi-tool places a steel block item from storage, and gives it back.
+        string steel = w.Items.BlockItem("steel", false).Id;
+        int plates = w.Storage.Count(steel);
         _main.SelectSlot(0);
         _main.AimAt(new Int3(4, 0, 2), new Int3(5, 0, 2));
         PlaceResult? placed = _main.PlaceAimed();
         Check(placed?.Ok == true && w.Base.Has(new Int3(5, 0, 2)), "a steel block placed with the multi-tool joins the base");
-        Check(w.Storage.Count("hull-plate") == plates - 8, "and its 8 hull plates came out of storage");
+        Check(w.Storage.Count(steel) == plates - 1, "and one large steel block item came out of storage");
         _main.AimAt(new Int3(5, 0, 2), new Int3(6, 0, 2));
         TakeDownResult? removed = _main.RemoveAimed();
-        Check(removed?.Ok == true && w.Storage.Count("hull-plate") == plates, "taking it down puts the plates back");
+        Check(removed?.Ok == true && w.Storage.Count(steel) == plates, "taking it down puts the block item back");
 
         await CursorOnTheConstructor();
         await ConsoleShowsTheStructurePanel();

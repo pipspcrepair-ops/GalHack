@@ -29,6 +29,8 @@ public partial class ItemsTest : TestBase
     protected override void RunAll()
     {
         Run("Catalogue loads and keeps the design rules", TestCatalogue);
+        Run("Blocks are craftable items", TestBlockItems);
+        Run("Deco pieces join as block items", TestDecoItems);
         Run("No cycles in the tree", TestNoCycles);
         Run("Rarity is never lower than any input", TestRarity);
         Run("Every building block has a recipe path from ore, or is unique-only", TestBlocksHavePaths);
@@ -73,6 +75,59 @@ public partial class ItemsTest : TestBase
         }
         Check(Refused(n => n == ItemCatalogue.RecipesFile ? Read(n).Replace("\"iron-ore\": 2 }", "\"unobtainium\": 2 }") : null), "a recipe naming an unknown item is refused");
         Check(Refused(n => n == ItemCatalogue.BlocksFile ? Read(n).Replace("{ \"hull-plate\": 1 },", "{ \"hull-plate\": 0 },") : null), "a zero count in a bill is refused");
+    }
+
+    void TestBlockItems()
+    {
+        BuildingBridge.NameBlockItems(_items, _blocks);
+        int families = 0;
+        foreach (BlockBill b in _items.Blocks.All)
+            foreach (bool small in new[] { true, false })
+            {
+                ItemDef item = b.ItemFor(small);
+                families++;
+                bool ok = item != null && item.Category == ItemCategory.Block && item.Recipe != null && item.StackSize > 0 && item.MassKg > 0 && item.VolumeSu > 0
+                          && item.Unlock != null && item.Places.Count > 0 && item.BlockId == b.BlockId && item.SmallGrid == small && item.Recipe.InputsFor(1).Equals(b.For(small));
+                if (!ok) Check(false, $"block {b.BlockId} on the {(small ? "small" : "large")} grid is a block item with recipe, stack, mass, volume, unlock and classes");
+            }
+        Check(_items.BlockItems.Count() == families, $"every block family on both grids is an item: {families} block items, each with a recipe, stack, mass, volume, unlock and classes");
+        ItemDef steelL = _items.BlockItem("steel", false), steelS = _items.BlockItem("steel", true);
+        Check(steelL != steelS && steelL.Name == "Steel block (large)" && steelS.Name == "Steel block (small)", $"small and large are separate families: {steelS.Name}, {steelL.Name}");
+        Check(steelL.StackSize > _items.BlockItem("thruster", false).StackSize, $"armour stacks deep ({steelL.StackSize}), devices don't ({_items.BlockItem("thruster", false).StackSize})");
+        Check(Math.Abs(steelL.MassKg - _items.MassOf(_items.Blocks.For("steel", false))) < 1e-9 && Math.Abs(steelL.VolumeSu - _items.VolumeOf(_items.Blocks.For("steel", false))) < 1e-9,
+            $"a block item weighs and packs as what it is made of ({steelL.MassKg} kg, {steelL.VolumeSu} SU)");
+        Check(_items.BlockItem("core", false).Id == "base-core" && _items.BlockItem("core", true).Id == "vessel-core", "the core block's items are the base core and the small-vessel core");
+        Check(_items.BlockItem("container", false).Unlock?.Level == 1, "devices (containers) are items too, unlocked in the tech tree");
+        // The constructor tiers make the right blocks.
+        Constructor Make(string tier) => new(_items, _items.Machines.Get(tier), SharedStorage.Unbounded(_items, "t"), new WorldRules());
+        Constructor survival = Make("survival"), smallFab = Make("small"), large = Make("large");
+        foreach (string id in new[] { "steel", "glass", "concrete", "container", "generator", "fueltank", "smallfab", "light", "ladder" })
+            Check(survival.Knows(_items.BlockItem(id, false)), $"the survival constructor makes {_items.BlockItem(id, false).Name}");
+        Check(survival.Knows(_items.BlockItem("core", false)), "the survival constructor makes the base core");
+        foreach (string id in new[] { "thruster", "cockpit", "gyro", "gear", "core" })
+            Check(!survival.Knows(_items.BlockItem(id, true)) && smallFab.Knows(_items.BlockItem(id, true)), $"{_items.BlockItem(id, true).Name} needs the small constructor");
+        foreach (string id in new[] { "hardened", "combat", "thruster" })
+            Check(!smallFab.Knows(_items.BlockItem(id, false)) && large.Knows(_items.BlockItem(id, false)), $"{_items.BlockItem(id, false).Name} needs the large constructor");
+        Check(_items.BlockItem("steel", false).Recipe.Tier == 0 && _items.BlockItem("hardened", false).Recipe.Tier == 2, "steel is a survival-tier block, hardened a large-constructor block (as Empyrion's hardened steel)");
+    }
+
+    void TestDecoItems()
+    {
+        ItemCatalogue items = ItemCatalogue.LoadDirectory(DataPaths.Items);
+        DecoCatalogue deco = DecoCatalogue.LoadDirectory(DataPaths.Items);
+        int before = items.Items.Count;
+        deco.AddBillsTo(items);
+        int grids = deco.Pieces.Sum(p => (p.OnLarge ? 1 : 0) + (p.OnSmall ? 1 : 0));
+        Check(items.Items.Count == before + grids, $"every intact deco piece is a block item on each grid it goes on ({grids} items from {deco.Pieces.Count} pieces)");
+        DecoPiece first = deco.Pieces[0];
+        ItemDef d = items.BlockItem(first.Id, false);
+        Check(d != null && d.Family == BlockFamily.Deco && d.Name == first.Name && d.Group == first.Set && d.Unlock?.Tab == "deco" && d.Recipe.InputsFor(1).Equals(first.Bill),
+            $"{d?.Name}: a deco block item, made from its bill, on the deco tab, in its set ({d?.Group})");
+        Check(d.Id == first.NodeId(false) && d.Unlock.Level == first.UnlockLarge.Level && d.Unlock.Parent == first.UnlockLarge.Parent, "its unlock is the piece's node, mapped one to one");
+        Check(!items.Has(first.BlockId(DecoState.Broken)) && items.BlockItem(first.BlockId(DecoState.Broken), false) == null, "damaged states are Creative and POI only: no item");
+        List<string> problems = items.Validate();
+        foreach (string p in problems.Take(10)) Note("rule broken: " + p);
+        Check(problems.Count == 0, $"the catalogue with deco keeps every design rule ({problems.Count} broken)");
     }
 
     void TestNoCycles()
