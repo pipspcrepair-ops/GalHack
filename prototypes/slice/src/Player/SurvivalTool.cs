@@ -241,7 +241,7 @@ public sealed class SurvivalTool
             double dx = Mathx.Wrap(px - d.X, world.Width), dz = Mathx.Wrap(pz - d.Y, world.Height);
             float r = PlanetTerrainSource.OreRadius(d) + 0.6f;
             if (dx * dx + dz * dz > r * r) continue;
-            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses ? d : (Deposit?)null;
+            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses && !world.Felled.Contains(PlanetSurface.Infra.InfraLayer.TellId(d)) ? d : (Deposit?)null;
         }
         return null;
     }
@@ -261,6 +261,8 @@ public sealed class SurvivalTool
             Give(item.Id, TellOrePerPulse);
             Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
         }
+        // Worked through: the rock and its collider go, and the tool digs on into the ground under it.
+        if (_tellsWorked[(d.X, d.Y)] >= TellPulses) _zone.Infra.BreakTell(d);
     }
 
     /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>

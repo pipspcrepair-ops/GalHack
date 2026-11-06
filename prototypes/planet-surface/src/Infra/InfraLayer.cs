@@ -43,6 +43,9 @@ public partial class InfraLayer : Node3D
         /// <summary>What is still to be made of it on the main thread: its mesh, its collision, each extra (a wreck site, a ruin).</summary>
         public Queue<Func<Node3D>> Steps;
         public bool Done => Node != null && Steps != null && Steps.Count == 0;
+        /// <summary>A tell here was broken: its rocks are built again, and this is that job.</summary>
+        public bool TellsStale;
+        public Task<TileBuilder> TellJob;
     }
 
     /// <summary>Main-thread time a frame may spend making tiles' nodes, ms (at least one step a frame).</summary>
@@ -159,6 +162,7 @@ public partial class InfraLayer : Node3D
                     steps++;
                 }
             }
+            if (tile.Done) UpdateTells(tile, key);
             if (tile.Node != null)
             {
                 // Written only when it changes: a same-spot write still tells every body and mesh under the node.
@@ -172,6 +176,25 @@ public partial class InfraLayer : Node3D
             _tiles[key].Node?.QueueFree();
             _tiles.Remove(key);
         }
+    }
+
+    /// <summary>Swaps a tile's tells for a build without the ones broken since, and starts that build when one is due.</summary>
+    void UpdateTells(Tile tile, long key)
+    {
+        if (tile.TellJob is { IsCompleted: true })
+        {
+            TileBuilder built = tile.TellJob.Result;
+            tile.TellJob = null;
+            if (tile.Node.GetNodeOrNull("Tells") is Node old)
+            {
+                old.Name = "Tells gone"; // the old node stays in the tree to the end of the frame
+                old.QueueFree();
+            }
+            if (built.HasContent) tile.Node.AddChild(built.ToNode("Tells"));
+        }
+        if (!tile.TellsStale || tile.TellJob != null || !_pieces.TryGetValue(key, out var pieces)) return;
+        tile.TellsStale = false;
+        tile.TellJob = Task.Run(() => TellsOf(tile, pieces));
     }
 
     double TileDistance(int ix, int iz, double cx, double cz)
@@ -585,6 +608,9 @@ public sealed partial class TileBuilder
     public readonly List<Vector3> Collision = new();
     /// <summary>Godot nodes a piece wants added as they are (deco placements and the like): made on the main thread.</summary>
     public readonly List<Func<Node3D>> Extra = new();
+    /// <summary>The tile's ore tells, on their own: a broken one takes its rock and collider with it, and the rest of the tile stands.</summary>
+    public TileBuilder Tells;
+    public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0;
 
     public TileBuilder(PlanetWorld world, double ox, double oz)
     {
@@ -678,6 +704,7 @@ public sealed partial class TileBuilder
                 return body;
             });
         }
+        if (Tells is { HasContent: true }) steps.Enqueue(() => Tells.ToNode("Tells"));
         foreach (var make in Extra) steps.Enqueue(make);
         return steps;
     }

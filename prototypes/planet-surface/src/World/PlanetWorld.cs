@@ -49,7 +49,8 @@ public sealed partial class PlanetWorld
 
     /// <summary>
     /// Trees felled on this planet, by scatter id (<see cref="Terrain.FarBuilder.ScatterId"/>): gone
-    /// at every level of detail, through streaming, saves and loads, as terrain edits are.
+    /// at every level of detail, through streaming, saves and loads, as terrain edits are. Broken ore
+    /// tell rocks keep their (negative) ids here too.
     /// </summary>
     public readonly HashSet<long> Felled = new();
 

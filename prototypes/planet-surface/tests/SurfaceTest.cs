@@ -67,6 +67,7 @@ public partial class SurfaceTest : Node
             await Run("Heights", Heights);
             await Run("Seams", Seams);
             await Run("Persistence", Persistence);
+            await Run("Emptied", Emptied);
             await Run("Stuck", Stuck);
             await Run("Steps", Steps);
             await Run("Water", Water);
@@ -237,7 +238,7 @@ public partial class SurfaceTest : Node
             bool drama = rugged < 0.1f || r.RangeMax >= 120f;
             Check(kept && drama,
                 $"relief on the surface {(Archetype)a}/{w.Map.Def.VariantName} ({w.Map.Model.Mix}): {r}; the generator's own ground: range {g.RangeMax:F0} m max, " +
-                $">30° {g.Slope30:P1}, >45° {g.Slope45:P1}; rugged country {rugged:P0}");
+                $">30Â° {g.Slope30:P1}, >45Â° {g.Slope45:P1}; rugged country {rugged:P0}");
             await Frames(1);
         }
     }
@@ -500,6 +501,69 @@ public partial class SurfaceTest : Node
         if (!await Land(home, spot)) return;
         Check(_main.World.Terrain.Store.IsRemoved(target) && _main.World.Terrain.Store.RemovedCount == removed,
             $"leaving the planet and coming back restores its edits ({_main.World.Terrain.Store.RemovedCount} of {removed} cells)");
+    }
+
+    /// <summary>
+    /// What is drawn is what collides: a chunk dug empty loses its collision with its mesh, and an ore
+    /// tell that's broken loses its rock and its collider together, and stays gone.
+    /// </summary>
+    async Task Emptied()
+    {
+        PlanetWorld w = _main.World;
+        if (w == null) return;
+        Walker player = _main.Player;
+        await Streamed();
+        await Until(() => _main.Streamer.ReadyAround(player.GlobalPosition, 2, needCollision: true), 20);
+        // The chunk up to the ground a little way off: dug out with a cell round it, nothing's left to draw in it.
+        Vector3 at = player.GlobalPosition + new Vector3(24, 0, 0);
+        int gy = (int)MathF.Floor(w.GroundHeight(at.X, at.Z));
+        TInt3 chunk = ChunkStore.ChunkOf(new TInt3((int)MathF.Floor(at.X), gy, (int)MathF.Floor(at.Z)));
+        for (int k = 0; k < 2 && !_main.Streamer.Collides(chunk); k++) chunk = new TInt3(chunk.X, chunk.Y - 1, chunk.Z);
+        bool before = _main.Streamer.Collides(chunk);
+        TInt3 o = chunk * ChunkStore.Size;
+        var cells = new List<TInt3>();
+        for (int y = -1; y <= ChunkStore.Size; y++) for (int z = -1; z <= ChunkStore.Size; z++) for (int x = -1; x <= ChunkStore.Size; x++) cells.Add(new TInt3(o.X + x, o.Y + y, o.Z + z));
+        cells.RemoveAll(c => !w.Terrain.Store.IsSolid(c));
+        PlanetEdit dug = w.Terrain.DigCells(cells);
+        _main.Streamer.MarkDirty(dug.DirtyChunks);
+        bool gone = await Until(() => !_main.Streamer.Collides(chunk), 15);
+        Check(before && gone && dug.Removed.Count > 0, $"a chunk dug empty loses its collision with its mesh ({dug.Removed.Count} cells dug, collided before {before}, after {!gone})");
+
+        // The nearest outcrop: its tile holds it, a ray meets it, and once broken nothing's there.
+        var infra = _main.Infra;
+        await Until(() => infra.Built, 30);
+        Deposit? near = null;
+        double best = double.MaxValue;
+        foreach (Deposit d in w.Map.Deposits.InRect(w.Width * 0.5 - 2500, w.Height * 0.5 - 2500, w.Width * 0.5 + 2500, w.Height * 0.5 + 2500))
+        {
+            if (PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Outcrop || w.Source.StampWeight(d.X, d.Y) > 0f || w.Source.WaterSurfaceAt(d.X, d.Y, out _) || PlanetTerrainSource.OreRadius(d) < 2f) continue;
+            double dist = Math.Abs(Mathx.WrapDelta(d.X - player.GlobalPosition.X, w.Width)) + Math.Abs(Mathx.WrapDelta(d.Y - player.GlobalPosition.Z, w.Height));
+            if (dist < best) { best = dist; near = d; }
+        }
+        if (near is not Deposit tell) { Fail("no outcrop to break"); return; }
+        var rockAt = w.NearestCopy(new Vector3((float)tell.X, w.GroundHeight(tell.X, tell.Y), (float)tell.Y), player.GlobalPosition);
+        player.Teleport(rockAt + new Vector3(0, 12, 0));
+        await Until(() => infra.Built, 30);
+        await Frames(4);
+        await PhysicsFrames(4);
+        var space = GetViewport().GetCamera3D()?.GetWorld3D().DirectSpaceState ?? _main.GetWorld3D().DirectSpaceState;
+        bool Hit()
+        {
+            for (int k = -2; k <= 2; k++)
+            for (int j = -2; j <= 2; j++)
+            {
+                var q = PhysicsRayQueryParameters3D.Create(rockAt + new Vector3(k * 0.5f, 8, j * 0.5f), rockAt + new Vector3(k * 0.5f, -3, j * 0.5f), PlanetSurface.Poi.PoiLayer.PlaceLayer);
+                if (space.IntersectRay(q).Count > 0) return true;
+            }
+            return false;
+        }
+        bool stood = Hit();
+        infra.BreakTell(tell);
+        await Frames(2);
+        bool cleared = await Until(() => { return !Hit(); }, 10);
+        Check(stood && cleared && w.Felled.Contains(PlanetSurface.Infra.InfraLayer.TellId(tell)), $"a broken ore rock takes its collider with it: solid before {stood}, gone after {cleared}");
+        w.Felled.Remove(PlanetSurface.Infra.InfraLayer.TellId(tell));
+        player.Teleport(rockAt + new Vector3(0, 2, 0));
     }
 
     // ---- 6. Stuck safety --------------------------------------------------------------------
@@ -931,7 +995,7 @@ public partial class SurfaceTest : Node
 
         // A big boulder stops a walker; a pebble under the step height is walked over.
         // Big boulders are the largest third of rocks, and a pine forest has few rocks (0.4 per
-        // 1000 m² against 10 conifers), so look through the ground the finest far rings hold round
+        // 1000 mÂ² against 10 conifers), so look through the ground the finest far rings hold round
         // the forest (150 m, inside their reach), then (if none there has open ground before it) on the nearest rocky ground.
         (FloraSolid solid, Vector3 offset) boulder = default;
         path = null;

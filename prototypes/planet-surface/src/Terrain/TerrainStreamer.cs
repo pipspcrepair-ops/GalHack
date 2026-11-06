@@ -473,7 +473,12 @@ public partial class TerrainStreamer : Node3D
         if (c.Body != null)
         {
             if (c.Faces != null) SetShape(c);
-            else c.ShapeHash = 0;
+            else
+            {
+                c.ShapeHash = 0;
+                // Nothing left in the chunk (its last ground dug away): its old shape must go with the mesh, or it stands there unseen.
+                if (job.IsEmpty) c.Shape.Disabled = true;
+            }
         }
         PlaceChunkNodes(c);
         ChunkApplied?.Invoke(c.Key);
@@ -982,6 +987,9 @@ public partial class TerrainStreamer : Node3D
     }
 
     public bool IsLoaded(Int3 key) => _chunks.ContainsKey(key);
+
+    /// <summary>Whether a loaded chunk has live collision (tests).</summary>
+    public bool Collides(Int3 key) => _chunks.TryGetValue(key, out VChunk c) && c.Shape != null && !c.Shape.Disabled;
 
     /// <summary>
     /// Whether a chunk has been meshed in the current frame, so its cells (and its neighbours') are

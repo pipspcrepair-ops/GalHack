@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using GalHack.Deco;
+using TerrainDigging.Terrain;
 using Planets.Gen;
 using Planets.Look;
 using PlanetSurface.World;
@@ -33,6 +34,57 @@ public partial class InfraLayer
         }
     }
 
+    /// <summary>A tell's id among <see cref="PlanetWorld.Felled"/> (negative, so it never meets a tree's): broken tells stay gone, as felled trees do.</summary>
+    public static long TellId(Deposit d) => long.MinValue | (long)(Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind) >> 2);
+
+    /// <summary>
+    /// A tell rock is broken: its rock and its collider go together. The tile's tells are one mesh and one
+    /// body, so they are built again without it, on a worker, and swapped in the moment that's done.
+    /// </summary>
+    public void BreakTell(Deposit d)
+    {
+        if (_world == null || !_world.Felled.Add(TellId(d))) return;
+        long key = Key((int)(Mathx.WrapX(d.X, _world.Width) / TileSize), (int)(Mathx.Wrap(d.Y, _world.Height) / TileSize));
+        if (_tiles.TryGetValue(key, out Tile tile)) tile.TellsStale = true;
+    }
+
+    /// <summary>The ground under a tell was dug away: nothing holds it up, so it goes too.</summary>
+    public void GroundDug(IReadOnlyList<RemovedCell> cells)
+    {
+        if (_world == null || cells.Count == 0) return;
+        double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
+        foreach (RemovedCell c in cells)
+        {
+            x0 = Math.Min(x0, c.Cell.X);
+            x1 = Math.Max(x1, c.Cell.X + 1);
+            z0 = Math.Min(z0, c.Cell.Z);
+            z1 = Math.Max(z1, c.Cell.Z + 1);
+        }
+        const double Reach = 4;
+        double wx = Mathx.WrapX(x0 - Reach, _world.Width), wz = Mathx.Wrap(z0 - Reach, _world.Height);
+        foreach (Deposit d in _world.Map.Deposits.InRect(wx, wz, wx + x1 - x0 + 2 * Reach, wz + z1 - z0 + 2 * Reach))
+        {
+            if (_world.Felled.Contains(TellId(d))) continue;
+            float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * 0.6f, ground = _world.GroundHeight(d.X, d.Y);
+            foreach (RemovedCell c in cells)
+            {
+                double dx = Mathx.WrapDelta(c.Cell.X + 0.5 - d.X, _world.Width), dz = Mathx.WrapDelta(c.Cell.Z + 0.5 - d.Y, _world.Height);
+                if (dx * dx + dz * dz > radius * radius || c.Cell.Y < ground - 1.5f) continue;
+                BreakTell(d);
+                break;
+            }
+        }
+    }
+
+    /// <summary>The tile's tells as they stand, on their own builder (nothing if none are left).</summary>
+    TileBuilder TellsOf(Tile tile, List<Piece> pieces)
+    {
+        var b = new TileBuilder(_world, tile.Ix * TileSize, tile.Iz * TileSize);
+        foreach (Piece p in pieces)
+            if (p is OreTellPiece t) t.Rock(b);
+        return b;
+    }
+
     /// <summary>The kind of tell a deposit shows, by how deep it lies.</summary>
     public static DecoTellKind TellOf(Deposit d) => d.Depth <= 0.01f ? DecoTellKind.Outcrop : d.Depth < 3f ? DecoTellKind.Scree : DecoTellKind.Fracture;
 
@@ -40,9 +92,12 @@ public partial class InfraLayer
     {
         public Deposit Deposit;
 
-        public override void Emit(TileBuilder b)
+        public override void Emit(TileBuilder b) => Rock(b.Tells ??= new TileBuilder(b.World, b.OriginX, b.OriginZ));
+
+        public void Rock(TileBuilder b)
         {
             Deposit d = Deposit;
+            if (b.World.Felled.Contains(TellId(d))) return;
             Rgb ore = DepositLook.Color(d.Kind), rock = b.World.Palette.Rock;
             bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Titanium or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Silicon;
             ulong seed = Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind);

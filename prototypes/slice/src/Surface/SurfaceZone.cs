@@ -146,6 +146,7 @@ public partial class SurfaceZone : Node3D
         RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
+        Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
