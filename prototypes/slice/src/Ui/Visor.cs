@@ -390,11 +390,12 @@ public partial class Visor : CanvasLayer
         switch (hand)
         {
             case HandKind.Tool:
+                string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
                 return Game.Tool.Mode switch
                 {
-                    ToolMode.Shoot => "SURVIVAL TOOL · SHOOT",
-                    ToolMode.Deconstruct => "SURVIVAL TOOL · DECONSTRUCT",
-                    _ => "SURVIVAL TOOL · GATHER",
+                    ToolMode.Shoot => $"{toolName} · SHOOT",
+                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
+                    _ => $"{toolName} · GATHER",
                 };
             case HandKind.Vehicle:
                 return "HOVER BIKE · click to set it down";
