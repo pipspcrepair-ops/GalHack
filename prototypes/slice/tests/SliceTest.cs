@@ -229,21 +229,23 @@ public partial class SliceTest : Node
                 Vector3? found = NearestUntried(kind, tried);
                 if (found is not Vector3 ore) break;
                 tried.Add(ore);
-                int before = _game.Pack[material], gatheredBefore = _game.Tool.Gathered.GetValueOrDefault(material);
+                int before = _game.Pack[material], gatheredBefore = _game.Tool.Gathered.GetValueOrDefault(material), tellBefore = _game.Tool.TellOre;
                 Vector3 start = _game.Survivor.WorldFeet;
                 foreach (int x in _drive.WalkTo(ore, 3.5f)) yield return x;
                 float walked = new Vector2(_game.Survivor.WorldFeet.X - start.X, _game.Survivor.WorldFeet.Z - start.Z).Length();
                 int cells = 0;
                 foreach (int x in DigOut(ore, need.GetValueOrDefault(material), material, c => cells += c)) yield return x;
                 int got = _game.Pack[material] - before;
-                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell;
+                int yield1 = _game.Zone.Data.Rules.Materials.OrePerCell, tellOre = _game.Tool.TellOre - tellBefore; // the rock over a deposit gives a little first
                 GD.Print($"  {material}: walked {walked:F0} m to a deposit, dug {cells} ore cells for {got} {material}");
                 // The first deposit that gives anything (one against the bunker's own walls may not; the check below this loop wants them all).
                 if (first && got > 0)
                 {
                     first = false;
-                    Check(got > 0 && got == cells * yield1 && _game.Tool.Gathered[material] - gatheredBefore == got,
-                        $"digging ore fills the pack: {cells} {material} ore cells dug, {got} {material} in the pack ({yield1} a cell)");
+                    Check(got > 0 && got == cells * yield1 + tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
+                        $"digging ore fills the pack: {cells} {material} ore cells dug, {tellOre} off the rock over it, {got} {material} in the pack ({yield1} a cell)");
+                    Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
+                        $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
                         $"the dig is real terrain, removed and logged: {_game.Zone.Planet.Terrain.Store.RemovedCount} cells so far, the castaway still in the open");
                 }

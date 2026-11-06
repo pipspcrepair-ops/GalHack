@@ -72,6 +72,9 @@ public sealed class SurvivalTool
 
     public int PlantsCut { get; private set; }
     public int OreCells { get; private set; }
+
+    /// <summary>Ore broken off tell rocks so far (a few a pulse), apart from what the cells gave.</summary>
+    public int TellOre { get; private set; }
     public int Shots { get; private set; }
 
     public bool HasTarget { get; private set; }
@@ -116,8 +119,8 @@ public sealed class SurvivalTool
     {
         _cooldown -= dt;
         Aim();
-        if (trigger && !_suit.Dead && Mode == ToolMode.Gather && !OnBlock && (OnPlace || HasTarget))
-            ShowBeam(OnPlace ? _placePoint : new Vector3(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f));
+        if (trigger && !_suit.Dead && Mode == ToolMode.Gather && !OnBlock && (OnPlace || OnTell || HasTarget))
+            ShowBeam(OnPlace || OnTell ? _placePoint : new Vector3(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f));
         if (!trigger || _cooldown > 0f || _suit.Dead) return;
         if (Mode == ToolMode.Shoot) Shoot();
         else if (StrikeCreature()) { }
@@ -153,7 +156,7 @@ public sealed class SurvivalTool
             _placePoint = p.Point;
             if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h)) _placeHit = h;
             else _wreck = Places.SalvageOf(p.Collider);
-            if (!OnPlace) _tell = TellAt(p.Point);
+            if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid)) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
             if (OnPlace)
             {
                 TargetLabel = _placeHit is PoiPlaces.Hit ph ? Places.Label(ph) : _wreck.Name.ToUpperInvariant();
@@ -259,6 +262,7 @@ public sealed class SurvivalTool
         if (OreOf(d.Kind) is ItemDef item)
         {
             Give(item.Id, TellOrePerPulse);
+            TellOre += TellOrePerPulse;
             Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
         }
     }

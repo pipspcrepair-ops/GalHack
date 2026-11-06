@@ -383,6 +383,9 @@ public partial class PlayerTest : Node
     // ==== 5 & 6. The survival constructor and the base core ======================================
 
     /// <summary>Up to the constructor and E on it: at its front, or round another side if the ground stands in the way of the look, as a player would.</summary>
+    /// <summary>E on a fabricator opens the full panel: the Tab menu's CORE tab, picked on that machine.</summary>
+    bool FabPanelOpen => _game.Menu.IsOpen && _game.Menu.Tab == MenuTab.Core && _game.Menu.Root.Core.Picked == _fab;
+
     IEnumerable<int> OpenFab()
     {
         foreach (var (x0, z0) in new[] { (0f, -1.4f), (1.6f, 0f), (-1.6f, 0f), (0f, 1.4f) })
@@ -396,7 +399,7 @@ public partial class PlayerTest : Node
                 foreach (int x in _drive.LookAt(aim, 6)) yield return x;
                 foreach (int x in _drive.Tap(Key.E)) yield return x;
                 foreach (int x in _drive.Wait(2)) yield return x;
-                if (_game.Opened?.Device == _fab) yield break;
+                if (FabPanelOpen) yield break;
             }
         }
     }
@@ -427,7 +430,7 @@ public partial class PlayerTest : Node
         GD.Print("-- 6. the base core, made in the survival constructor --");
         // Up to its front, as you would to use it.
         foreach (int x in OpenFab()) yield return x;
-        if (_game.Opened?.Device != _fab)
+        if (!FabPanelOpen)
         {
             bool seen = WorldRay.Cast(_game.Zone, _game.Survivor, 6f, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
             GD.Print($"  (E at the constructor: the visor said \"{_said}\"; the look from {_game.Survivor.WorldEye()} {(seen ? $"meets {look.Collider} at {look.Distance:F1} m" : "meets nothing")}; the constructor's front {_fab.Front}, {_game.Survivor.WorldEye().DistanceTo(_fab.Front):F1} m off; opened {_game.Opened?.Title})");
@@ -436,8 +439,8 @@ public partial class PlayerTest : Node
             var under = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
             GD.Print($"  (standing on {(under.Count > 0 ? ((Node)under["collider"].AsGodotObject()).GetPath().ToString() : "nothing")}, the ground {_game.Zone.GroundAt(f.X, f.Z).Y:F1} under feet at {f.Y:F1}, on floor {_game.Survivor.Body.OnFloor})");
         }
-        Check(_game.Opened?.Device == _fab, "E on it opens its hopper beside the bag");
-        foreach (int x in _drive.ClickWidget("box:store-all")) yield return x;
+        Check(FabPanelOpen, "E on it opens the Tab menu's CORE panel on it: hopper, recipes and queue");
+        foreach (int x in _drive.ClickWidget("storage:store-all")) yield return x;
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
         foreach (int x in _play.CloseMenu()) yield return x;
         // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
