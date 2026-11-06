@@ -303,7 +303,9 @@ public sealed class SurvivalTool
             normal = entry.LengthSquared() > 0.5f ? entry.Normalized() : -dir;
         }
         uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
-        if (WorldRay.Cast(_zone, _survivor, reach, mask, out LookHit hit) && hit.Distance <= reach)
+        // The voxel cast counts whole cubes, and a cube's corner can stand just proud of a block the drawn
+        // ground doesn't reach (a bunker wall at an angle to the grid): such a block is what the bolt meets.
+        if (WorldRay.Cast(_zone, _survivor, reach + (kind == ImpactKind.Ground ? 0.75f : 0f), mask, out LookHit hit) && (hit.Distance <= reach || hit.OnBlock))
         {
             reach = hit.Distance;
             normal = hit.Normal;

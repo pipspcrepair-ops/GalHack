@@ -139,7 +139,7 @@ public sealed class Playthrough
             foreach (int x in Drive.Wait(20)) yield return x;
             check(Game.Shots.Bolts > bolts && Game.Shots.Impacts > impacts && Game.Shots.LastImpact.Kind == Slice.Player.ImpactKind.Block
                   && Game.Shots.LastImpact.At.DistanceTo(wall) < 1.2f && b.Ruin.Structure.Count == blocks && b.Ruin.Structure.Blocks().Sum(x => x.block.Hp) < health,
-                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim, and the block it hit loses hit points");
+                $"{label}a shot inside the bunker: a bolt from the muzzle and an impact on its wall {Game.Shots.LastImpact.At.DistanceTo(wall):F2} m from the aim ({Game.Shots.LastImpact.Kind}), and the block it hit loses hit points ({health - b.Ruin.Structure.Blocks().Sum(x => x.block.Hp):F0} lost, {b.Ruin.Hits.HitsTaken} hits taken, {blocks - b.Ruin.Structure.Count} blocks gone)");
             int removed = Game.Zone.Planet.Terrain.Store.RemovedCount;
             foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
             foreach (int x in Drive.HoldPrimary(b.At(new Vector3(0f, 0.25f, -1.5f)), 30)) yield return x;

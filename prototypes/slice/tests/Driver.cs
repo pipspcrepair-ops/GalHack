@@ -333,7 +333,19 @@ public sealed class Driver
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
         // Never digging: the hull in the way isn't a bank to dig through, and a hole beside a landed vessel wakes it.
         foreach (int x in WalkTo(seat, 1.6f, 30f, dig: false)) yield return x;
+        // The hull or a slope can keep the seat out of reach from the ground: up on the jetpack, as a player would.
+        float Reach() => v.NearestChair(Game.Survivor.WorldEye(), out _);
+        for (int i = 0; i < 240 && Reach() > 2.8f; i++)
+        {
+            Face(seat);
+            Controls.Hold(Key.W);
+            Controls.Hold(Key.Space, Game.Survivor.WorldEye().Y < seat.Y + 0.8f);
+            yield return 0;
+        }
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Space, false);
         foreach (int x in LookAt(seat, 4)) yield return x;
+        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
     }

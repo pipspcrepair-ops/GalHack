@@ -496,7 +496,7 @@ public partial class SliceTest : Node
     {
         GD.Print("-- the same build in Creative --");
         _game.Mode = GalHack.Items.GameMode.Creative;
-        GalHack.Items.Bill pack = _game.Pack.Storage.Contents;
+        GalHack.Items.Bill pack = null; // taken at the click: the walk to the pad can dig its way and fill the bag
         var spent = new Dictionary<string, int>(_game.Builder.Spent);
         double organics = _game.Suit.Kit.Organics;
         Vessel twin = null;
@@ -506,6 +506,7 @@ public partial class SliceTest : Node
             Vector3 pad = FlatSpot(_game.Start, 30f + attempt * 15f, 2.5f + attempt * 1.3f);
             Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
             foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
+            pack = _game.Pack.Storage.Contents;
             _game.Builder.Project(); // the CORE tab's projector: blueprints are never on the toolbar
             foreach (int x in _drive.LookAt(pad, 6)) yield return x;
             foreach (int x in _drive.Click()) yield return x;
@@ -517,7 +518,7 @@ public partial class SliceTest : Node
             $"Creative builds the same blueprint: {twin?.Structure.Count} blocks");
         Check(_game.Pack.Storage.Contents.Equals(pack)
               && _game.Builder.Spent.All(kv => spent.GetValueOrDefault(kv.Key) == kv.Value) && _game.Suit.Kit.Organics == organics,
-            "the same build in Creative consumes nothing: the pack and the spend are unchanged");
+            $"the same build in Creative consumes nothing: the pack and the spend are unchanged (pack {pack} now {_game.Pack.Storage.Contents}; organics {organics:F2} now {_game.Suit.Kit.Organics:F2}; spent now {string.Join(", ", _game.Builder.Spent.Where(kv => spent.GetValueOrDefault(kv.Key) != kv.Value).Select(kv => $"{kv.Key} {spent.GetValueOrDefault(kv.Key)}->{kv.Value}"))})");
         _game.Mode = GalHack.Items.GameMode.Survival;
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
