@@ -708,7 +708,18 @@ public partial class SliceTest : Node
         Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f && w.Sim.Creatures.Count > 10,
             $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
-        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + new Vector3(14f, 0f, 0f)), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
+        // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,
+        // and the flight can end on a low shore. The way whose lowest ground is highest, out past where it can land.
+        Vector3 local = w.PatchLocal(feet), toward = Vector3.Right;
+        float driest = float.MinValue;
+        for (int d = 0; d < 16; d++)
+        {
+            var dir = new Vector3(MathF.Cos(d * MathF.Tau / 16), 0f, MathF.Sin(d * MathF.Tau / 16));
+            float lowest = float.MaxValue;
+            for (float r = 2f; r <= 26f; r += 2f) lowest = MathF.Min(lowest, w.Sim.Terrain.Height(local.X + dir.X * r, local.Z + dir.Z * r));
+            if (lowest > driest) (driest, toward) = (lowest, dir);
+        }
+        List<Creature> group = w.Sim.SpawnGroup(hunter, w.PatchLocal(feet + toward * 14f), hunter.Behaviour == Behaviour.PackHunter ? 3 : 1);
         foreach (Creature g in group)
         {
             g.ProvokedBy = w.Player;
