@@ -4,6 +4,8 @@ A first-person space survival sandbox for one group of friends: wake from cryosl
 
 GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.md).
 
+**GalHack is vibe coded.** One human sets the direction, playtests and makes the calls; AI agents (Claude Code) write the code, tests, design notes and procedural assets, working in parallel on branches that are reviewed and only merged when the full test suite passes.
+
 ## Gallery
 
 Work in progress, straight from the prototypes. Click an image for full size.
