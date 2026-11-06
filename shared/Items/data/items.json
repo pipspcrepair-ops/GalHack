@@ -57,7 +57,7 @@
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
-      "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: warp fuel, shields" },
+      "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: hyperdrive fuel, shields" },
     { "id": "emberite-ore", "name": "Emberite ore", "short": "EMBER", "category": "raw", "rarity": "rare", "source": "mine",
       "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells, plasma charges, fusion cores" },
     { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine",
@@ -95,7 +95,8 @@
     { "id": "neodymium-bar", "name": "Neodymium bar", "short": "ND BAR", "category": "refined", "rarity": "uncommon", "mass": 3.0, "volume": 0.5 },
     { "id": "gold-bar", "name": "Gold bar", "category": "refined", "rarity": "uncommon", "mass": 4.0, "volume": 0.3 },
     { "id": "gravium-ingot", "name": "Gravium ingot", "short": "GRAV IN", "category": "refined", "rarity": "uncommon", "mass": 7.0, "volume": 0.5 },
-    { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5, "fuel": 1 },
+    { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5, "fuel": 1,
+      "uses": "Hyperdrive fuel, about 1 per light year, from a fold crystal tank; shields" },
     { "id": "emberite", "name": "Refined emberite", "short": "EMBERIT", "category": "refined", "rarity": "rare", "mass": 2.0, "volume": 0.5 },
     { "id": "starsilver-bar", "name": "Starsilver bar", "short": "STARBAR", "category": "refined", "rarity": "rare", "mass": 3.2, "volume": 0.4 },
     { "id": "voidglass", "name": "Voidglass pane", "short": "VOIDPAN", "category": "refined", "rarity": "exotic", "mass": 1.0, "volume": 0.5 },
@@ -134,6 +135,9 @@
     { "id": "o2-bottle", "name": "Oxygen bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "unlock": { "level": 2, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "unlock": { "level": 2, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
+    // Warp drive fuel, about 1 per AU from a warp cell tank. The name is data: the owner may rename it.
+    { "id": "warp-cell", "name": "Warp cell", "short": "WARPCEL", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 0.5, "stack": 100,
+      "uses": "Warp drive fuel, about 1 per AU, from a warp cell tank", "unlock": { "level": 9, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
     { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },

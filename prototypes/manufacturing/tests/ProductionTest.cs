@@ -614,14 +614,14 @@ public partial class ProductionTest : TestBase
             Constructor gated = Fab("small", Storage(contents: Ores(400)));
             gated.Lock = i => i.Recipe != null && i.Recipe.Tier > 0 ? "needs a large constructor" : null;
             gated.Order(thruster.Id, 1);
-            Check(gated.Blockers.Any(b => b.Contains("Nozzle") && b.Contains("constructor")), $"a sub-part this machine can't make is reported exactly: {string.Join("; ", gated.Blockers)}");
+            Check(gated.Blockers.Any(b => b.Contains("nozzle") && b.Contains("constructor")), $"a sub-part this machine can't make is reported exactly: {string.Join("; ", gated.Blockers)}");
         }
         Constructor lowFab = Fab("small", Storage(contents: Ores(400)));
         Check(lowFab.Order(_items.BlockItem("thruster", false).Id, 1).Status == OrderStatus.NeedsHigherTier, "a large thruster needs a large constructor: the order says so");
         Constructor locked = Fab("small", Storage(contents: Ores(400)));
         locked.Lock = i => i.Id == "nozzle" ? "locked: level 9" : null;
         locked.Order(thruster.Id, 1);
-        Check(!locked.SubParts.Any(j => j.Item.Id == "nozzle") && locked.Blockers.Any(b => b.Contains("Nozzle") && b.Contains("locked: level 9")),
+        Check(!locked.SubParts.Any(j => j.Item.Id == "nozzle") && locked.Blockers.Any(b => b.Contains("nozzle") && b.Contains("locked: level 9")),
             $"a locked sub-part is not queued, and the order says which and why: {string.Join("; ", locked.Blockers)}");
 
         // Cancelling the parent cancels its unstarted auto-parts.

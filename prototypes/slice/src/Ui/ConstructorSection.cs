@@ -73,6 +73,7 @@ public sealed class ConstructorSection : IMenuSection
         // ---- What it can make -------------------------------------------------------------------
         ItemView view = FilterBar.Build(g, $"recipes:{_key}", new Rect2(o.X, o.Y + 74, area.Size.X, FilterBar.Height), readOnly: _key == "screen");
         var list = view.Apply(Recipes(c), i => c.Storage.Count(i.Id));
+        if (view.Sort == ItemSort.Slot) list = list.OrderBy(i => !c.Knows(i)).ThenBy(i => !p.ItemAllowed(i)).ToList();
         int perPage = 7;
         _scroll = Math.Clamp(_scroll, 0, Math.Max(0, (list.Count - 1) / perPage));
         float y = o.Y + 74 + FilterBar.Height;

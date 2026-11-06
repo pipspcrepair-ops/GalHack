@@ -232,16 +232,20 @@ public sealed class ItemCatalogue
             if (ammo != null && Known(ammo, $"{where} ammo").Category != ItemCategory.Ammo)
                 throw new InvalidDataException($"{where}: '{ammo}' is not ammo");
             bool unlocks = e.TryGetProperty("unlock", out JsonElement u);
+            string[] grids = e.TryGetProperty("grids", out JsonElement gr) ? gr.EnumerateArray().Select(x => x.GetString()).ToArray() : new[] { "small", "large" };
+            bool onSmall = grids.Contains("small"), onLarge = grids.Contains("large");
             var bill = new BlockBill
             {
                 BlockId = p.Name,
-                Small = ReadBill(e.GetProperty("small"), where),
-                Large = ReadBill(e.GetProperty("large"), where),
+                Small = onSmall ? ReadBill(e.GetProperty("small"), where) : new Bill(),
+                Large = onLarge ? ReadBill(e.GetProperty("large"), where) : new Bill(),
+                OnSmall = onSmall,
+                OnLarge = onLarge,
                 UniqueOnly = DataJson.Bool(e, "uniqueOnly", false),
                 Ammo = ammo,
                 Family = ParseFamily(DataJson.Str(e, "family", "device"), where),
-                UnlockSmall = unlocks ? ReadUnlock(u, where, "small") : null,
-                UnlockLarge = unlocks ? ReadUnlock(u, where, "large") : null,
+                UnlockSmall = unlocks && onSmall ? ReadUnlock(u, where, "small") : null,
+                UnlockLarge = unlocks && onLarge ? ReadUnlock(u, where, "large") : null,
             };
             AddBlock(bill, small =>
             {

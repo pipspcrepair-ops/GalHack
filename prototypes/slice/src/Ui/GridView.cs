@@ -113,12 +113,12 @@ public static class FilterBar
         ItemGroup.Ores => "ORE",
         ItemGroup.Materials => "MAT",
         ItemGroup.Parts => "PART",
-        ItemGroup.Blocks => "BLOCK",
-        ItemGroup.Devices => "DEVICE",
-        ItemGroup.Ammo => "AMMO",
+        ItemGroup.Blocks => "BLK",
+        ItemGroup.Devices => "DEV",
+        ItemGroup.Ammo => "AMO",
         ItemGroup.Food => "FOOD",
         ItemGroup.Deco => "DECO",
-        _ => "OTHER",
+        _ => "OTH",
     };
 
     /// <summary>Draws (and handles) one view's filter bar in a <see cref="Height"/>-tall strip. Returns the view.</summary>

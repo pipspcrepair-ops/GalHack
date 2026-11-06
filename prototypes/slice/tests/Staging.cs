@@ -56,6 +56,10 @@ public sealed partial class Staging
             "bunkershot" => BunkerShot(),
             "torch" => Torch(),
             "base" => BaseView(),
+            "blockbase" => BaseView(survival: true),
+            "constructor" => ConstructorBlocks(),
+            "hand" => HandView(),
+            "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
             _ => throw new ArgumentException($"no view '{view}'"),
         };

@@ -84,6 +84,7 @@ public partial class ItemsTest : TestBase
         foreach (BlockBill b in _items.Blocks.All)
             foreach (bool small in new[] { true, false })
             {
+                if (!b.On(small)) continue;
                 ItemDef item = b.ItemFor(small);
                 families++;
                 bool ok = item != null && item.Category == ItemCategory.Block && item.Recipe != null && item.StackSize > 0 && item.MassKg > 0 && item.VolumeSu > 0
@@ -98,6 +99,14 @@ public partial class ItemsTest : TestBase
             $"a block item weighs and packs as what it is made of ({steelL.MassKg} kg, {steelL.VolumeSu} SU)");
         Check(_items.BlockItem("core", false).Id == "base-core" && _items.BlockItem("core", true).Id == "vessel-core", "the core block's items are the base core and the small-vessel core");
         Check(_items.BlockItem("container", false).Unlock?.Level == 1, "devices (containers) are items too, unlocked in the tech tree");
+        // The two drives (data only): warp on small and capital vessels, hyperdrive on capital only, each with its own fuel and tank.
+        ItemDef warp = _items.BlockItem("warpdrive", true), hyper = _items.BlockItem("hyperdrive1", false);
+        Check(warp.PlacesOn(StructureClass.Small) && _items.BlockItem("warpdrive", false).PlacesOn(StructureClass.Capital) && _items.BlockItem("warptank", true) != null,
+            "a warp drive and its warp cell tank fit small and capital vessels");
+        Check(hyper.Places.SequenceEqual(new[] { StructureClass.Capital }) && _items.BlockItem("hyperdrive1", true) == null && _items.BlockItem("hyperdrive2", false) != null && _items.BlockItem("foldtank", true) == null,
+            "hyperdrives T1 and T2 and the fold crystal tank are capital vessels only");
+        Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Rarity == Rarity.Common), "warp cells are made in constructors from common materials");
+        Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
         // The constructor tiers make the right blocks.
         Constructor Make(string tier) => new(_items, _items.Machines.Get(tier), SharedStorage.Unbounded(_items, "t"), new WorldRules());
         Constructor survival = Make("survival"), smallFab = Make("small"), large = Make("large");
@@ -179,6 +188,7 @@ public partial class ItemsTest : TestBase
             checkedBlocks++;
             foreach (bool small in new[] { true, false })
             {
+                if (!bill.On(small)) continue;
                 Bill b = bill.For(small);
                 string grid = small ? "small" : "large";
                 var blockers = new List<string>();

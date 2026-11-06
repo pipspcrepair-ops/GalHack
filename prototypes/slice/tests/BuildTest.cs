@@ -268,6 +268,20 @@ public partial class BuildTest : Node
             }
             Check(true, $"{devices} device types on the {(small ? "small" : "large")} grid in all {Orientations.Count} orientations: the same power, CPU, storage, crafting, control and torque; a thruster changes only its axis");
         }
+        // A chair gives no air: only a sealed room does.
+        var room = new Structure(Blocks, Blocks.Grid(GridSize.Small)) { Mode = CoreMode.Capital };
+        Building.Place(room, new Int3(0, -1, 0), Building.Make(room, Blocks.CoreType));
+        for (int x = -1; x <= 1; x++)
+            for (int y = -1; y <= 2; y++)
+                for (int z = -1; z <= 1; z++)
+                    if ((x != 0 || z != 0 || y is -1 or 2) && !(x == 0 && y == -1 && z == 0) && !room.Has(new Int3(x, y, z)))
+                        Building.Place(room, new Int3(x, y, z), Building.Make(room, Blocks.Type("steel")));
+        Int3 chair = new(0, 0, 0);
+        Building.Place(room, chair, Building.Make(room, Blocks.Type("chair")));
+        Check(Rooms.Detect(room).Sealed.Any(r => r.Cells.Contains(chair)), "a command chair inside a sealed shell sits in a sealed room");
+        Building.Remove(room, new Int3(0, 1, 1), null);
+        Check(!Rooms.Detect(room).Sealed.Any(r => r.Cells.Contains(chair)), "open a hole and the room leaks: the chair is no help");
+        Check(Blocks.TryGetType("cockpit", out BlockType old) && old.IsCommandChair && old.IsCockpit, "old blueprints' cockpit id reads as the command chair");
     }
 
     // ---- In the world ----------------------------------------------------------------------------

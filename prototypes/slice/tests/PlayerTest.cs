@@ -561,10 +561,11 @@ public partial class PlayerTest : Node
         GD.Print("-- 9. fly it 500 m and land --");
         if (v.Seat == null) { Fail("the vessel has no seat to fly it from"); yield break; }
         foreach (int x in _drive.Board(v)) yield return x;
-        Check(_game.Survivor.Seated == v, "F at its seat");
+        Check(_game.Survivor.Seated == v, "F at its command chair");
         if (_game.Survivor.Seated != v) yield break;
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         Check(_game.Menu.RectOf("core:power") != null, "the CORE tab shows the vessel: its four numbers and lift margin");
+        Check(!_game.Suit.InSealedRoom, "a command chair in the open gives no air: only a sealed room does");
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 start = v.Body.Position.ToGodot();
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
