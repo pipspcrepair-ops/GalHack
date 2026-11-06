@@ -298,7 +298,28 @@ public partial class BuildTest : Node
 
     void Teleport(Vector3 feet) => _game.Survivor.PlaceOutside(feet.ToNumerics());
 
-    Vector3 Ground(Vector3 at) => _game.Zone.GroundAt(at.X, at.Z) + Vector3.Up * 0.1f;
+    /// <summary>The ground as it stands (the natural height, or lower where the site was levelled).</summary>
+    Vector3 Ground(Vector3 at)
+    {
+        Vector3 natural = _game.Zone.GroundAt(at.X, at.Z);
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(natural + Vector3.Up * 1f, natural + Vector3.Down * 30f, GalHack.Physics.Layers.World));
+        return (hit.Count > 0 ? (Vector3)hit["position"] : natural) + Vector3.Up * 0.1f;
+    }
+
+    /// <summary>Digs the ground down to the site's height, as a builder would cut a pad into a slope.</summary>
+    void LevelSite(float radius)
+    {
+        int y0 = (int)MathF.Floor(_site.Y), r = (int)radius;
+        var cells = new List<TerrainDigging.Terrain.Int3>();
+        for (int dx = -r; dx <= r; dx++)
+        for (int dz = -r; dz <= r; dz++)
+        {
+            int x = (int)MathF.Floor(_site.X) + dx, z = (int)MathF.Floor(_site.Z) + dz;
+            int top = (int)MathF.Ceiling(_game.Zone.GroundAt(x + 0.5f, z + 0.5f).Y);
+            for (int y = y0; y <= top; y++) cells.Add(new TerrainDigging.Terrain.Int3(x, y, z));
+        }
+        _game.Zone.Edits.DigCells(cells);
+    }
 
     IEnumerable<int> StandAt(Vector3 at)
     {
@@ -326,7 +347,13 @@ public partial class BuildTest : Node
     IEnumerable<int> Founding()
     {
         GD.Print("-- every structure starts with its core --");
-        _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f);
+        // Flat right across the base and the spots to stand at round it: on a slope the ground
+        // buries its lowest blocks and stands between you and them. Any slope left is cut away.
+        _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
+        foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
+        LevelSite(14f);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        _site = Ground(_site);
         foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
         string steelL = Item("steel", false), steelS = Item("steel", true);
         foreach (int x in Carry(steelL, 12, 2)) yield return x;

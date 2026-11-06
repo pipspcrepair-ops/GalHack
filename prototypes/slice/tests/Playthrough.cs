@@ -837,7 +837,7 @@ public sealed class Playthrough
     }
 
 /// <summary>A flat, dry spot about this far from a point, clear of structures and devices (for a base or a vessel). Flatter first, then less flat.</summary>
-    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue)
+    public Vector3 FlatSpot(Vector3 near, float distance, float startAngle = 0f, float spread = 0.35f, float within = float.MaxValue, float span = 5f)
     {
         SurfaceZone zone = Game.Zone;
         foreach (float allow in new[] { spread, spread * 2f, spread * 4f, 4f })
@@ -849,7 +849,8 @@ public sealed class Playthrough
                 for (int k = 0; k < 8; k++)
                 {
                     float b = k * MathF.Tau / 8f;
-                    worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
+                    for (float r2 = span; r2 >= 5f; r2 /= 2f)
+                        worst = MathF.Max(worst, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * r2, p.Z + MathF.Sin(b) * r2).Y - h0));
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
