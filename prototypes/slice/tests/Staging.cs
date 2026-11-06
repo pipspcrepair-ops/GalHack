@@ -75,6 +75,8 @@ public sealed partial class Staging
             "town" => TownView(),
             "salvage" => Salvage(),
             "bunkerclose" => BunkerClose(),
+            "remotebar" => RemoteBarView(),
+            "decogallery" => DecoGalleryView(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

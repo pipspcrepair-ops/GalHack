@@ -454,7 +454,7 @@ public partial class Visor : CanvasLayer
             {
                 float side = cell - 14 * s;
                 _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cell - side) / 2, 2 * s), new Vector2(side, side)), false, new Color(1, 1, 1, out_ || empty ? 0.4f : 1f));
-                _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(box.Position + new Vector2(1, cell - 14 * s), new Vector2(cell - 2, 13 * s)), label, ink, HorizontalAlignment.Center);
+                _hud.TextIn(UiTheme.Label, (int)(9 * s), new Rect2(box.Position + new Vector2(1, cell - 14 * s), new Vector2(cell - 2, 13 * s)), HudLayout.Fit(UiTheme.Label, (int)(9 * s), label, cell - 3), ink, HorizontalAlignment.Center);
                 if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, 2), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : out_ ? C.Dim : C.Accent2, HorizontalAlignment.Right);
             }
             else
