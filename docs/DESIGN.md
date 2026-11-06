@@ -1,6 +1,6 @@
 # GalHack — Game Design Document
 
-> This is a published copy of GalHack's living design document, last refreshed from revision 438. The design doc is the authority on how the game should work; the code may lag behind it.
+> This is a published copy of GalHack's living design document, last refreshed from revision 493. The design doc is the authority on how the game should work; the code may lag behind it.
 
 ## 1. Overview
 
@@ -104,7 +104,7 @@ The galaxy is generated from a seed, one system at a time when it's first visite
 | Core | Dense old stars around a central black hole; strongest factions and precursor sites | Endgame expeditions |
 | Inner arms | Faction space, trade routes, stations | Mid-game trade and missions |
 | Outer arms | Frontier systems, pirates, Freeholder colonies | Early-to-mid exploration |
-| Mid-galaxy voids | Few stars, long gaps between them | Tests warp range and fold crystal reserves |
+| Mid-galaxy voids | Few stars, long gaps between them | Tests hyperdrive range and fold crystal reserves |
 | Periphery and satellite galaxies | Exotic, unclaimed, far from help | Late-game discovery |
 
 **Zones**
@@ -168,11 +168,12 @@ Real astronomy gives the galaxy its landmarks, and a few science-fiction anomali
 | Ion storm | Space weather drifting through a system | Static on scanners, draining shields, a light show from orbit |
 
 - **Starting on the border:** every game begins on a border world out at the galaxy's rim. The galaxy map isn't known at the start: players see only the neighbouring stars they can travel to, and each jump reveals the stars around the new system, marked on the shared map for everyone. The rim has no factions; travelling coreward, players start encountering them.
+- **Maps:** the Tab menu's Map section has three levels: a world map of the planet you're on, a system map of its star's bodies, stations and known wrecks, and the star map of the stars discovered so far. Each shows only what's been found, and everything marked is shared.
 - **Wormholes** sit somewhere in a system's space, unmarked until someone finds them, but they always leave clues. The stars visibly warp around a mouth, so a sharp-eyed pilot can spot one from far off. A system scan picks up the gravity disturbance as a bearing and rough distance. A survey probe fired from the galaxy map flags an unknown anomaly before anyone jumps. Signal leads, Kessari relay spires and traders selling rumours point the way too. Once found, players short-range warp to the mouth, and it's marked on the shared map for everyone. A stable wormhole links two systems both ways for free; an unstable one collapses after a set time or number of passes and can strand a crew on the far side (section 14).
 - Anomalies follow the warning rule: they're shown on the map once found, and their effects build up before they hurt.
 - Real features follow real rules where that makes the game more interesting, and bend them where it would be dull or unfair (no instant spaghettification).
 
-**Planet archetypes** (each with 2–4 variants; sizes from 8 × 4 km to 64 × 32 km, terrain up to about 500 m high)
+**Planet archetypes** (each with 2–4 variants; sizes vary in four classes as in Empyrion: 8 × 4 km, 16 × 8 km, 32 × 16 km and a rare 64 × 32 km, with moons in the two smaller classes and start worlds always 16 × 8 km; most ranges top out around 500 m, with the highest peaks reaching about 900 m through the cloud layer, still below orbit)
 
 | Archetype | Signature landscape | Key hazard | Signature resources | Life |
 | --- | --- | --- | --- | --- |
@@ -249,14 +250,14 @@ A few planets carry a theme that overrides the usual rules. They're rare enough 
 
 **World identity.** Every world has a character, not just a terrain type. One seeded identity ties together whether it was ever inhabited (most were; some never were), how advanced its old settlers were (not every place was high tech: frontier colonies of dirt roads, timber and diesel trains, up to high-tech worlds of maglevs and skyways), which factions hold ground there (many worlds have none), its terrain, its dominant POIs and their states, the traffic in its sky, its weather mood and a signature landmark, so each world is remembered for something: a sunken swamp world with a Reaver capital ship patrolling overhead, a glassed fallen world crossed by gang convoys, an ice moon where one observatory light still burns. Most worlds follow their type; a few break it. A world can be one strong type or **mixed**: several regions of different types on one planet, arid, temperate, ice and volcanic side by side (ice caps at the poles, a desert belt, swamp lowlands, a jungle equator, a volcanic region of lava fields, an alien crystal region where something landed), each region with its own POI themes, wildlife and weather, blending at the borders. Regions sit where they make sense, never as a random patchwork: ice where it's cold (poles, high peaks), desert where it's dry (rain shadows, subtropical belts), swamp in wet lowlands and river deltas, and fire along the hot equator: lava fields and active volcanoes there and on rifts and hotspots elsewhere. Active volcanoes are landmarks you see from far off; they smoke, and they erupt with warning like every other hazard, sending out lava flows and ash fall.
 
-**Landforms.** A few worlds are one landform throughout (a planet of dune seas, an endless ice plain), but most combine two or more. Their land is divided into regions, each with its own landform, placed where it makes sense and blended at the borders: mountain ranges and alpine peaks along old uplifts, rolling hills and foothills below them, wide flat plains and open steppe in the interiors, sprawling deserts and dune seas in dry basins, mesas, plateaus and canyon country, badlands, river valleys opening into deltas and marshes at the coast, lake districts, cliffs and beaches, fjords on cold coasts, and island chains. Flat and open ground is as common as rugged ground, so a world has room to build, drive and fly low, and the dramatic places stand out because not everything is dramatic. The landform also shapes the wildlife: each region's creatures are adapted to its ground, such as herds and their hunters on plains and steppe, climbers and cliff-nesters in the mountains, burrowers and sand-swimmers in dune seas, and waders and ambushers in deltas and marshes, so crossing into new country means meeting new creatures.
+**Landforms.** A few worlds are one landform throughout (a planet of dune seas, an endless ice plain), but most combine two or more. Their land is divided into regions, each with its own landform, placed where it makes sense and blended at the borders: mountain ranges and alpine peaks along old uplifts, rolling hills and foothills below them, wide flat plains and open steppe in the interiors, sprawling deserts and dune seas in dry basins, mesas, plateaus and canyon country, badlands, river valleys opening into deltas and marshes at the coast, lake districts, waterfalls where rivers meet escarpments and cliffs, cliffs and beaches, fjords on cold coasts, and island chains. Flat and open ground is as common as rugged ground, so a world has room to build, drive and fly low, and the dramatic places stand out because not everything is dramatic. The landform also shapes the wildlife: each region's creatures are adapted to its ground, such as herds and their hunters on plains and steppe, climbers and cliff-nesters in the mountains, burrowers and sand-swimmers in dune seas, and waders and ambushers in deltas and marshes, so crossing into new country means meeting new creatures.
 
 **Tech level comes first.** World generation starts with a world profile, taking ideas from the Traveller tabletop RPG's world profiles (ideas only, with GalHack's own names): whether the world was ever inhabited, how many people lived there, the size of its old starport, its main trade (agricultural, industrial, mining, research and so on), and two tech levels, in rough bands rather than fine steps.
 
 - **The pre-collapse tech level** is how advanced the place was before the fall. It decides the old world: which POI families, ruins, infrastructure, vehicles and decorations appear.
 - **The post-collapse tech level** is how advanced the people living there now are: survivors, settlements and any faction holding ground. It decides their settlements, gear, vehicles and defences. The two are independent: survivors often live several levels below the ruins around them, while a high-tech place can stand on ruins from a lower level, such as a faction's base built over a town from our own modern-day level.
 
-The bands are low (pre-industrial and industrial: timber, stone, carts and animals, rail, diesel, mines and mills; frontier or regressed colonies), mid (modern: highways, airliners, computers, nuclear power) and high (stellar: grav vehicles, fusion, spaceports, maglevs, skyways, arcologies, space elevators). Neighbouring worlds can differ widely, because colonies developed unevenly; the old starport's size sets how big its spaceport ruins are.
+The bands are low (pre-industrial and industrial: timber, stone, carts and animals, rail, diesel, mines and mills; frontier or regressed colonies), mid (modern: highways, airliners, computers, nuclear power) and high (stellar: grav vehicles, fusion, spaceports, maglevs, skyways, arcologies, space elevators). Neighbouring worlds can differ widely, because colonies developed unevenly; the old starport's class sets what its spaceport ruins are, on tiers inspired by Traveller's starport classes (our own wording): class A, a great port with terminals, yards that built starships, refined fuel and orbital stations; class B, a large port with yards for smaller craft and refined fuel; class C, a working port with basic repairs and raw fuel; class D, a poor one with little beyond a fuel depot and a few pads; class E, a frontier field that's just a marked landing area and a beacon; and none at all on some worlds. A world has one primary starport of its class; it may have more, even many, but always one main one. On exodus worlds, where it looks like as many people as possible tried to leave at the end, one major port is surrounded by many scrappy improvised ones: makeshift pads and launch fields, half-loaded ships, evacuation camps, and roads jammed with abandoned vehicles all leading toward them. Many of these worlds are nearly empty now, with that evidence of a once-huge population and little else: scattered survivors, outposts and frontier bases at most, or a scrappy town whose small starport is simply a flattened clearing where trading vessels set down.
 
 **Infrastructure.** Worlds that were once inhabited are crossed by what's left of their infrastructure: highways, roads and tracks, railways (lines, stations, sidings, depots, viaducts and rail tunnels), bridges, tunnels and underground roads, pipelines, power lines and landing strips, in varying states of decay (cracked and buckled, buried by sand or snow, overgrown, flooded, bridges with fallen spans). Infrastructure isn't a POI, but it serves them. It's laid out logically between the old places (highways between cities and spaceports, roads branching off to towns, mines and bunkers, tracks out to remote outposts), it follows the land the way engineers would build it (gentle grades, switchbacks, bridges over rivers and ravines, tunnels through ridges), it matches the world's tech level (dirt tracks, timber bridges and diesel railways on frontier worlds; highways, maglevs and skyways on advanced ones), and it leads players toward POIs. Faction bases have their own infrastructure, kept in good repair (patrolled roads, landing pads, defence lines, supply routes), often old roads patched up and put back into service, so a route's condition tells you who uses it: maintained near faction bases, crumbling where nobody has driven since the collapse, and roving gangs drive the old roads. Below ground, old towns and cities keep their own networks, laid out under the streets above: sewers and storm drains, drainage pipes running out to rivers and the sea, utility and service tunnels, and metro and subway lines with their stations, all walkable, dark and often occupied. The old utilities are places too, matched to the world's old tech level: blown power plants (coal with its stacks and coal yards, nuclear with cooling towers and a breached reactor hall, fusion with its torus halls), dams and hydro stations, substations and switching yards, water treatment, sewage works and pumping stations, desalination plants, refineries and gas works, steelworks and cement works, quarries, landfills and incinerators, grain elevators, docks and ports, rail yards, telecom exchanges and data centres, radio masts, and wind and solar farms. Other old places that tell the collapse's story or stand out on the skyline come first among the rest: vast half-flooded cisterns, missile silos, evacuation camps abandoned mid-step, walled quarantine zones, stadiums used as camps, collapsed highway interchanges, open-pit mines, offshore drilling platforms and arcologies the size of towns. Power lines run only where they'd make sense (from power plants to towns, along main roads and railways, into sites that needed power), never strung everywhere. Wires and cables are always attached: power lines are strung between poles and pylons, sagging between two fixed points, and a line that's broken or attached at one end only hangs down from whatever still holds it, never floating in the air. Along with it come lots of abandoned houses, farmsteads, sheds, wayside stops and small ruins that aren't POIs at all, and abandoned vehicles (rusted cars, trucks and buses, often jammed nose to tail on highways where an evacuation stalled, rusted pile-ups on the highways, crashed flyers, airliners crashed in fields or abandoned on runways, trains standing derelict or derailed on their tracks), salvageable for scrap: flavour scattered along the roads and across the countryside. They're also an early source of raw and primary materials: the survival tool salvages scrap metal, wiring, glass, plastics and rubble from ruins and wrecked vehicles, a quicker start than mining alone, though each ruin runs out and mining soon yields more. Worlds that were never inhabited have none of this, and it's a big part of what makes a world feel abandoned and ruined.
 
@@ -343,7 +344,7 @@ Structures are ominous and mysterious. Most places hint at a dark history the pl
 
 | Expedition | Where | The draw | Gate |
 | --- | --- | --- | --- |
-| The Quiet Reach | A dead region of burnt-out stars | Precursor beacons that point to each other, then to a vault | Long warp range; radiation gear |
+| The Quiet Reach | A dead region of burnt-out stars | Precursor beacons that point to each other, then to a vault | Long hyperdrive range; radiation gear |
 | The Hive Expanse | A Dominion-held cluster | A Dominion war-hive fortress whose core can be destroyed or hijacked | Capital-tier fleet |
 | The Sealed Gate | The galaxy's edge | A one-way ancient gate to a sealed cluster with its own archetypes | Advanced drive and a full fold crystal tank; no way back except the long route |
 | The Heart | The black hole at the core | A graveyard of ancient derelicts in the accretion disc | Shielding against tidal and radiation damage |
@@ -459,7 +460,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 | 2. Foothold | A safe, powered shelter | Base core, generator, fuel tank, small constructor, galley replicator | Night predators, first Vharn scouts |
 | 3. Wheels | Cover the whole planet | Hover vessel, hand drill, detector, portable constructor | Vharn patrols, guarded POIs |
 | 4. Wings | Reach orbit, moons and asteroids | Small vessel, landing gear, large constructor, CPU tier 2 | Space pirates, hostile fighters |
-| 5. Capital | A mobile base that jumps between stars | Capital vessel, warp drive, fold crystal tank, shields, repair bay | Faction warships, higher-danger planets |
+| 5. Capital | A mobile base that jumps between stars | Capital vessel, hyperdrive, fold crystal tank, shields, repair bay | Faction warships, higher-danger planets |
 | 6. Frontier | Master the deep galaxy | CPU T3/T4, combat steel, advanced constructor, Hijack Tool T3, charged armor | Heavy capital ships, alien ruins, Hollow Bloom horrors |
 
 **Character level**
@@ -491,7 +492,7 @@ The player is a fragile body in a hostile place. Six vitals and planet-specific 
 | Health | 500 | Damage, falls, starvation, exposure, radiation | Medkits in the field; a healing booth restores everything | Death |
 | Food | 500 | Always; 1.5× running, 3× sprinting, faster while mining | Replicator feeding, replicator food, foraged fruit | Health damage over time; healing stops working |
 | Stamina | 100 | Running, sprinting, melee, heat | Rest, fastest when standing still | Can't run; no damage |
-| Suit oxygen | 500 | Breathing with the helmet on in thin or no atmosphere | O2 bottles (small +75, large +250); refills automatically in any breathable room or cockpit | Suffocation damage |
+| Suit oxygen | 500 | Breathing with the helmet on in thin or no atmosphere | O2 bottles (small +75, large +250); refills automatically in any breathable room | Suffocation damage |
 | Body temperature | Comfort band | Climate, day and night, weather, water | Armor insulation, heaters, coolers, drinks, showers | Health drains until back in range |
 | Radiation | 0 is safe | Irradiated worlds, stars, precursor alloy | Radiation booster, immunity shot | Health drains above 5 RAD |
 
@@ -589,12 +590,12 @@ Resources climb a five-step rarity ladder (common, uncommon, rare, exotic, uniqu
 | Uncommon | Neodymium | Every planet in small deposits; rich on moons and asteroids | Magnets for thrusters and RCS |
 | Uncommon | Gold | Scattered; richer on volcanic worlds | Advanced electronics, trade value |
 | Uncommon | Gravium | High-gravity worlds | Hardened and combat steel |
-| Rare | Fold crystal | Irradiated ice worlds; asteroids near dead and irradiated stars | Warp fuel, shields |
+| Rare | Fold crystal | Irradiated ice worlds; asteroids near dead and irradiated stars | Hyperdrive fuel, shields |
 | Rare | Emberite | Lava worlds around young and dying stars | Fusion cells, plasma weapons, high-output generators |
-| Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, warp drive T2, advanced constructor |
+| Rare | Starsilver | Barren metal worlds and dense asteroids near giant stars | Top-tier devices, hyperdrive T2, advanced constructor |
 | Exotic | Voidglass | Glass-desert worlds | Long-range scanners, sensor arrays, holographic displays |
 | Exotic | Stormcore | Storm worlds | Capacitors, high-output shields |
-| Exotic | Rimefire | Cryo-fire worlds | Warp range boosters |
+| Exotic | Rimefire | Cryo-fire worlds | Hyperdrive range boosters |
 | Unique | Precursor alloy | Alien ruins and ancient derelicts (salvage only) | Prize armor blocks; can't be crafted |
 | Unique | Echo shards | Alien ruins | Charged combat armor, epic gear upgrades |
 | Unique | Lattice cores and lattice arrays | Derelicts, faction strongholds, rare traders | CPU extenders T3 and T4 |
@@ -618,7 +619,7 @@ The generator checks every seed against these rules. If a guarantee fails, it ad
 | Progress stage | Materials it needs | Guarantee |
 | --- | --- | --- |
 | Wake to Wings (everything up to and including small vessels) | Iron, copper, silicon, stone, burnstone, cobalt, magnesium, neodymium | Every planet has deposits of all of them. Uncommon ores are smaller and fewer there, but never absent |
-| Capital (first capital vessel and first warp) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
+| Capital (first capital vessel and first hyperdrive jump) | The above, plus gravium, gold and fold crystal | All of them can be gathered inside the start system by small vessel, and the start system's trading station stocks fold crystal |
 | Frontier | Emberite, starsilver | At least one system rich in each lies within one T1 jump (about 30 LY) of every start system |
 | Unique items | Precursor alloy, echo shards, lattice cores and arrays | The rare POIs that hold them regenerate, and rare traders sell them at a premium, so a looted site never blocks anyone's progress on a shared server |
 | Exotic upgrades | Voidglass, stormcore, rimefire | Optional upgrades only, never needed to advance; each lives on its themed planet type (section 4) |
@@ -649,7 +650,7 @@ Players can dig into the ground to reach ore, but voxel terrain is the most bug-
 3. **Dig anywhere.** Terrain under and around structures and POIs can be dug like any other ground, so players can tunnel under an enemy base or into a POI to breach it, as in Empyrion. Bases and POIs are static: undermining one never makes it fall or disappear; it stays where it was built. Vessels, creatures and loose objects rest on whatever ground is left. Faction bases and POIs resist tunnelling with what they're built from (armoured floors and foundations) and with their defenders, not with protected ground. Only bedrock can't be dug.
 4. **Building clears terrain.** Placing a block removes any terrain inside it, so bases sit on uneven ground without flattening.
 5. **No terrain physics.** No cave-ins, falling sand or collapsing overhangs; leftover floating bits of terrain stay put.
-6. **Static water.** Lakes and seas are fixed surfaces with no fluid simulation; a hole dug beside a lake stays dry.
+6. **Water finds its level.** Lakes, ponds, rivers and seas are bodies with one even, flat surface level, not a full fluid simulation, but water always settles at the lowest point it can reach. Digging a path below a body's surface lets water spill into the new space over a few seconds: a pond drops by the volume it lost, while rivers and seas are effectively endless and fill what's dug to their level. Water never hangs in the air or stands above the ground around it.
 7. **Stuck-safe.** Any player, creature or vehicle found inside terrain is moved to the nearest open space.
 8. **Edits stored as differences.** The server keeps terrain changes as small per-chunk edit lists on top of the seed and sends those to clients, so every player sees the same holes and saves stay small.
 9. **Caves come from the generator.** Cave networks and underground POIs are generated or hand-built, never carved by players.
@@ -671,7 +672,7 @@ Manufacturing in full is being prototyped: the whole item catalogue as data (ore
 
 ## 11. Building system
 
-Every structure the player owns is built block by block on a grid. Blocks carry hit points and mass, components are the functional parts, and a structure's function comes from which blocks are attached to its core: devices work whichever way they face and wherever they sit, except thrusters, which push along their facing. A vessel's heading is set by the seat of whoever holds the pilot role: forward is whichever way that seat faces. Roles can be reassigned to any player in a control seat, so handing the pilot role to someone in a seat facing another way turns the ship's forward with it. There is no separate ship editor: the player builds in the world, in either game mode. In Survival, as in Empyrion, blocks are craftable items: constructors make them from materials, players carry them in stacks on the toolbar and in their bag, each placement uses one (from the player's own stack, or, when building on a structure, from that structure's shared storage: still one storage per core, kept separate from the player's own storage, and usable only while the player is within the structure's area radius, for bases, small vessels and capital ships alike; the player selects which source they're taking from, as in Empyrion), a crafted block of a family can be placed in any of that family's shapes, and taking a block down with the tool returns it to the inventory. A new base or vessel starts with its crafted core block placed from the inventory; everything else is built onto that structure, and only blocks compatible with its class can be placed (base and capital-vessel blocks, small-vessel blocks, and so on, as in Empyrion); building happens under threat; in Creative placing is free and unlimited, with every block available.
+Every structure the player owns is built block by block on a grid. Blocks carry hit points and mass, components are the functional parts, and a structure's function comes from which blocks are attached to its core: devices work whichever way they face and wherever they sit, except thrusters, which push along their facing. A vessel's heading is set by the seat of whoever holds the pilot role: forward is whichever way that seat faces. Roles can be reassigned to any player in a command chair, so handing the pilot role to someone in a seat facing another way turns the ship's forward with it. There is no separate ship editor: the player builds in the world, in either game mode. In Survival, as in Empyrion, blocks are craftable items: constructors make them from materials, players carry them in stacks on the toolbar and in their bag, each placement uses one (from the player's own stack, or, when building on a structure, from that structure's shared storage: still one storage per core, kept separate from the player's own storage, and usable only while the player is within the structure's area radius, for bases, small vessels and capital ships alike; the player selects which source they're taking from, as in Empyrion), a crafted block of a family can be placed in any of that family's shapes, and taking a block down with the tool returns it to the inventory. A new base or vessel starts with its crafted core block placed from the inventory; everything else is built onto that structure, and only blocks compatible with its class can be placed (base and capital-vessel blocks, small-vessel blocks, and so on, as in Empyrion); building happens under threat; in Creative placing is free and unlimited, with every block available.
 
 **Grids**
 
@@ -692,7 +693,7 @@ Reference cap: about 250 blocks per axis per structure, for performance.
 
 **Block stats**
 
-Ships and structures are built from blocks and components: blocks form the hull and frame, and components (engines, generators, turrets, shields, cockpits and the other devices in section 12) do the work. Every block and component carries its own structural stats. A structure's toughness comes from how it's built: where the heavy plates sit, what shields the core, where the devices hide.
+Ships and structures are built from blocks and components: blocks form the hull and frame, and components (engines, generators, turrets, shields, command chairs and the other devices in section 12) do the work. Every block and component carries its own structural stats. A structure's toughness comes from how it's built: where the heavy plates sit, what shields the core, where the devices hide.
 
 | Stat | What it does |
 | --- | --- |
@@ -744,16 +745,16 @@ Four structure classes divide the world by where each can go, and two of them (b
 | Class | Grid | Where it operates | What it's for | Hard limits | Unlock (reference level) |
 | --- | --- | --- | --- | --- | --- |
 | Base | Large, core in base mode | Fixed, on a planet or in space | Production hub, storage, defence, repair, respawn | Can't move until switched to capital mode | Start |
-| Capital vessel | Large, core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a cockpit or control seat, and enough thrust to lift its mass | 7 |
+| Capital vessel | Large, core in capital mode | Space; can land on planets | Mobile base, warship, interstellar explorer | Needs thrusters, a command chair, and enough thrust to lift its mass | 7 |
 | Hover vessel (HV) | Small | Planet surface only, hovering a few metres up | Rovers, mining crawlers, ground combat, cargo haulers | No flight or space; moves in 2D, so needs forward, reverse and strafe thrust | 1 |
-| Small vessel (SV) | Small | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Short-range warp only; no jumps between systems | 5 |
+| Small vessel (SV) | Small | Atmosphere and space within one star system | Fighters, shuttles, miners, scouts | Warp drive within a system; no hyperdrive, so no jumps between systems | 5 |
 
 **Bases and capital vessels are one thing**
 
 Bases and capital vessels share every block and component; only the core's mode differs, and a core console switches it. Every material, block and recipe works the same in both modes, so nothing ever needs rebuilding when a core changes mode.
 
 - **Ship to base:** allowed when the ship is landed and still, or holding still in space (it becomes a station). The structure anchors and stops simulating physics.
-- **Base to ship:** allowed once the structure has thrusters, a cockpit or control seat, and enough thrust to lift its mass. Add those, switch the core, and fly.
+- **Base to ship:** allowed once the structure has thrusters, a command chair, and enough thrust to lift its mass. Add those, switch the core, and fly.
 - **Clean liftoff:** any terrain touching or inside the hull crumbles away in a burst of rock and dust as the structure rises, so a base never snags on or phases into the ground.
 - One CPU budget covers both modes (section 13).
 
@@ -772,7 +773,7 @@ Any wreck with no core (shot down, crashed, severed in combat or found as a POI)
 
 **Seats and stations**
 
-Every seat aboard a ship is a control seat: the player in it can reach all of the ship's systems. Only one player flies at a time, and the rest of the work is split into station roles that anyone can rearrange in seconds from the ship's systems console by dragging a role onto a player.
+Unlike Empyrion, there's no cockpit component: every seat aboard a ship is a command chair, and players build whatever enclosure they like around it. The player in a chair can reach all of the ship's systems. Only one player flies at a time, and the rest of the work is split into station roles that anyone can rearrange in seconds from the ship's systems console by dragging a role onto a player.
 
 | Role | What the holder controls | When nobody holds it |
 | --- | --- | --- |
@@ -786,18 +787,18 @@ Every seat aboard a ship is a control seat: the player in it can reach all of th
 - A role's controls work from any seat. If its holder stands up, the AI covers the role until they sit down again; the assignment stays.
 - Every role works solo too: a lone player flies while the AI handles the rest.
 
-**Seats can kill.** A seat is a component with its own hit points, and if it's destroyed, whoever is sitting in it dies. Seats warn first: sparks, a cockpit alarm and a visor warning at half and at a quarter of the seat's hit points give the occupant time to get out. Armoring the cockpit is a real survival choice.
+**Seats can kill.** A seat is a component with its own hit points, and if it's destroyed, whoever is sitting in it dies. Seats warn first: sparks, an alarm and a visor warning at half and at a quarter of the seat's hit points give the occupant time to get out. Armoring around the command chair is a real survival choice.
 
 **Component catalogue**
 
 | Category | Devices | Available on |
 | --- | --- | --- |
-| Control | Core, cockpits, control seats, passenger seats, remote-control console | All |
+| Control | Core, command chairs, remote-control console | All |
 | Power | Generators sized per class, fuel tanks T1–T3, solar panels and capacitors | All; solar on bases and capital vessels |
 | Life support | Healing booth, respawn (clone) chamber; air and gravity are built into the core | Mostly bases and capital vessels |
 | Food | Replicators T1–T3 | Portable (T1); small vessels, bases and capital vessels |
 | Propulsion | Thrusters (small, medium, large, jet), RCS gyros, hover engines, landing gear, docking pads | Per class |
-| Travel | Warp drive T1/T2, fold crystal tank | Capital vessels; small vessels get short-range warp |
+| Travel | Warp drive and warp cell tank; hyperdrive T1/T2 and fold crystal tank | Warp drive on small and capital vessels; hyperdrive on capital vessels only |
 | Production | Constructors (small, large, advanced), deconstructor, blueprint factory | Constructors on all; factory on bases and capital vessels |
 | Storage | Cargo containers in several sizes, all adding to one shared storage | All, with volume caps per class |
 | Defense | Shield generator and extenders, turrets, fixed weapons, detector, spotlights | Per class (section 15) |
@@ -812,10 +813,10 @@ Air is handled by the core, like gravity: there are no ventilators, oxygen tanks
 - **Rooms are found automatically.** The game checks the block grid, and a room is sealed when every block on its boundary is airtight. Each block's tooltip says whether it's airtight; closed doors, hatches, ramps, glass doors and windows all are.
 - **Only the boundary matters.** Ladders, lifts, furniture and components inside a room never break its seal, so a ladder up to a roof hatch is fine while the hatch is shut.
 - **The core keeps sealed rooms breathable** whenever it has power, at no extra energy cost. If power fails, the air lasts a grace period (reference: 10 minutes) with a visor countdown before it thins.
-- **Exterior doors cycle like airlocks,** so walking in and out never vents a room.
+- **Force fields hold the air at open doors.** A shimmering field spans any open bulkhead or outer hull door, so walking in and out never vents a room and it's plain to see why. Force field emitters can also span wide openings such as hangar bays: people, vessels and objects pass through, but the atmosphere stays in. Fields run on the structure's power: if the power goes out they fail, and any room relying on one decompresses at once, with the breach rules below.
 - **Breaches:** a room opened to vacuum or toxic air vents over a few seconds with a visible rush and an alarm, then stays unbreathable until the gap is fixed. Air comes back within seconds of resealing; nothing needs refilling.
 - **Finding leaks:** the visor's airtight overlay marks every leaking face in red, and the systems console lists each room as sealed, open or breached, with a marker to the problem.
-- **Suits top themselves up** in any breathable room or cockpit; oxygen bottles cover time outside.
+- **Suits top themselves up** in any breathable room; oxygen bottles cover time outside.
 - On breathable planets, open rooms are simply fine.
 
 This keeps the good part of the genre's air systems (sealed rooms that matter in a breach) and drops the chores players complain about: hunting invisible leaks, tanks that silently run dry after a refit, ladder shafts that break seals, and power-hungry vents.
@@ -846,7 +847,7 @@ Three budgets (power, CPU and mass) make every device a trade-off. Without them 
 
 **Fold crystal** (a rare crystal that folds space for jumps and feeds shields) sits in one shared tank per structure:
 
-- Warp costs about 1 refined fold crystal per AU inside a system and per light year between systems.
+- A hyperdrive jump between star systems costs about 1 refined fold crystal per light year. The warp drive, used between planets inside a system, burns a different fuel: warp cells, made in constructors from common materials, about 1 per AU, kept in their own tank.
 - Shields burn fold crystal only while recharging (reference: about 1,000 shield HP per unit), never while full or off. Shields must be down to warp.
 - Fold crystal deposits favour irradiated and dead stars, so fuelling long voyages pulls players toward dangerous systems.
 
@@ -878,7 +879,7 @@ Every block above a trivial hit-point threshold costs CPU. A structure's CPU cei
 
 ## 14. Movement, flight and travel
 
-Movement scales with the ladder: feet and jetpack, then hover, then flight, then in-system warp, then interstellar jumps. Each step multiplies the space the player can explore.
+Movement scales with the ladder: feet and jetpack, then hover, then flight, then in-system warp, then hyperdrive jumps between stars. Each step multiplies the space the player can explore.
 
 | Mode | Where | Speed (reference) | Limits |
 | --- | --- | --- | --- |
@@ -933,8 +934,8 @@ These rules keep what works in the genre (thrust against mass, big engines, heav
 | --- | --- | --- |
 | Surface to orbit | Fly straight up past the atmosphere ceiling; the game transitions to the orbit playfield | Fuel only |
 | Within a playfield | Fly, or use **short-range warp**: reach 30 m/s, pick a bookmark, planet or radar contact, and jump | Free, on any warp drive |
-| Planet to planet in a system | Small or capital vessel; in-system warp | About 1 fold crystal per AU |
-| Star to star | Capital vessel warp drive; T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
+| Planet to planet in a system | Small or capital vessel; in-system warp | About 1 warp cell per AU |
+| Star to star | Capital vessel hyperdrive; T1 about 30 LY range, T2 60 LY | About 1 fold crystal per LY |
 | Multi-jump routes | Route planner plots up to 500 LY and previews the fold crystal cost before committing | Sum of jumps |
 | Between owned structures | Networked teleporters and portals in range | Power |
 | Through a wormhole | Fly into its mouth (section 4) | Free; unstable ones can collapse behind you |
@@ -957,7 +958,7 @@ Players can leave the pilot seat and walk around inside any vessel while it flie
 - Inside the hull, players, guards, loose items and docked craft move in the ship's frame. They inherit its velocity and rotation, and its acceleration doesn't throw them around.
 - Hard hits, collisions and emergency stops cause a short jolt (camera shake and a stagger) but never fling players across the room.
 - When the pilot stands up, the ship holds course: it keeps its velocity and heading, or follows the active route. A warp in progress completes.
-- The ship's frame covers the sealed hull plus open hangar bays. Stepping out an airlock in space leaves the player drifting alongside; jumping out in atmosphere means a fall, so bring a jetpack.
+- The ship's frame covers the sealed hull plus open hangar bays. Stepping out through a door's force field in space leaves the player drifting alongside; jumping out in atmosphere means a fall, so bring a jetpack.
 - Boarding uses the same rules: once inside an enemy ship, the boarding party is in that ship's frame even while it's still flying.
 - In multiplayer, positions inside a ship are sent relative to the ship, so everyone aboard moves smoothly even at full speed.
 
@@ -985,7 +986,7 @@ Fights should feel punchy and readable: tight, responsive shooting with heavy fe
 - **Enemies react:** guards flinch, stagger and take cover; damaged ships trail smoke and fire; creatures recoil.
 - **Visible destruction:** blocks show scorching and cracks as they lose hit points, then break away in chunks; shields ripple where they're struck; hull breaches vent atmosphere; destroyed devices burst.
 - **Every weapon feels different:** sound, kick, rate of fire and impact all match the weapon's job (section 9), so switching weapons changes the fight.
-- **Ship weapons too:** turrets visibly track, heavy guns shake the cockpit, and plasma bolts and rockets are easy to read in a busy fight.
+- **Ship weapons too:** turrets visibly track, heavy guns shake the command chair, and plasma bolts and rockets are easy to read in a busy fight.
 - **Smooth under load:** debris and effects are capped and pooled so big fights keep a steady frame rate (guiding rule 1).
 
 **Warned, never ambushed: inaccuracy and warning shots**
@@ -1082,8 +1083,8 @@ Any enemy structure with a core (an outpost, a fortress, a small vessel or a cap
 | --- | --- | --- | --- | --- | --- |
 | Outpost | Small base | Level 1 | 2–6 guards, 2–4 turrets | Doors, walls, roof | 30 s |
 | Fortress | Large base | Level 2 | 10–20 guards, internal turrets | Blast doors, breaching charges, vents | 60 s |
-| Small vessel | Fighter or shuttle | Level 1 | Pilot only | Force a landing, then the cockpit | 15 s |
-| Capital ship | Frigate, freighter or patrol ship | Level 2 | 4–12 guards, internal turrets | Dock at an airlock, cut the hull, boarding pod | 60 s |
+| Small vessel | Fighter or shuttle | Level 1 | Pilot only | Force a landing, then the command chair | 15 s |
+| Capital ship | Frigate, freighter or patrol ship | Level 2 | 4–12 guards, internal turrets | Dock at an outer door, cut the hull, boarding pod | 60 s |
 | Heavy capital ship | Warship or flagship | Level 3 | 15–30 guards, internal turrets, a vaulted core | Cut the hull, boarding pod, sabotage the shields from inside | 120 s in 3 stages |
 
 **Hijack rules**
@@ -1229,7 +1230,7 @@ The economy is a shortcut, not a second game: credits turn surplus into what a w
 - **Auto-miners** hold their ore until a player collects it (section 10).
 - **Teleporters and portals** link the player's structures within range.
 
-**Home and auto-transmit.** The player flags exactly one base or capital ship as Home; flagging a new one clears the old. Vessels carry an auto-transmit toggle (a vessel component): with it on, materials the vessel farms go straight into Home's storage while the vessel is within transmit range of Home and Home has space. Otherwise they stay in the vessel's own cargo and transfer automatically once it's back in range or Home frees space. When Home is part full, what fits transfers and the rest waits aboard; nothing is ever deleted. The cockpit console shows the link: in range, out of range, or Home full. The range is a data value, and a moving capital-ship Home works the same way.
+**Home and auto-transmit.** The player flags exactly one base or capital ship as Home; flagging a new one clears the old. Vessels carry an auto-transmit toggle (a vessel component): with it on, materials the vessel farms go straight into Home's storage while the vessel is within transmit range of Home and Home has space. Otherwise they stay in the vessel's own cargo and transfer automatically once it's back in range or Home frees space. When Home is part full, what fits transfers and the rest waits aboard; nothing is ever deleted. The vessel's console shows the link: in range, out of range, or Home full. The range is a data value, and a moving capital-ship Home works the same way.
 
 **Toggles and triggers**
 
@@ -1238,7 +1239,7 @@ Builders control devices with simple toggles, not circuits: there are no logic g
 - **Device groups:** any set of devices (doors, lights, turrets, hangar doors, energy barriers) can be grouped and named.
 - **Switches and buttons** toggle a group on or off. Groups also appear on the ship's systems console and can be bound to hotkeys.
 - **Sensors:** a motion or proximity sensor can toggle one group when something enters its area, which covers automatic hangar doors or an alarm light. One sensor drives one group, with no chaining.
-- **Built in:** doors open for the player faction on their own and airlocks cycle automatically, so the common cases need no setup.
+- **Built in:** doors open for the player faction on their own and their force fields hold the air, so the common cases need no setup.
 - NPC points of interest use designer-authored scripting for traps and puzzle doors; players never need to learn it.
 
 ## 19. Multiplayer, game modes and difficulty
@@ -1266,7 +1267,7 @@ GalHack plays the same alone, or in co-op over Steam, and every player belongs t
 **Starts**
 
 - The player picks a seed and a start planet type: temperate (easy), ice, alien swamp, barren or lava. Same seed, same galaxy.
-- **Every start is a cryo bunker.** Whatever the start planet, the player wakes in a cryopod chamber: a small buried shelter where they slept through the collapse. Theirs is the only cryopod that worked; the other sleepers are dead. They climb out through a hatch or a collapsed stairwell into the ruined world above. Start worlds were always inhabited. No faction holds ground on them, though factionless people may be there (lone survivors, scavengers, roving gangs). A start world's system has plenty of space wrecks in orbit and nearby (derelict ships, wreck fields, broken stations) to salvage once the player reaches space. The bunker lies at the edge of a ruined town or city, away from any living settlement, so the first view outside shows the setting at once: overgrown ruins and abandoned houses, a broken road with rusted cars, and a POI on the horizon worth heading for. The bunker holds the starting kit. It's built from ordinary blocks, so players can pull it apart for materials or reuse it: build onto it, or make it part of their first base. There is no escape-pod start.
+- **Every start is a cryo bunker.** Whatever the start planet, the player wakes in a cryopod chamber: a small buried shelter where they slept through the collapse. The bunker has four cryopods: one works for each player, and the other sleepers are dead. In co-op (up to 4 players), a player who joins later wakes from one of those pods, which comes alive for them. They climb out through a hatch or a collapsed stairwell into the ruined world above. Start worlds were always inhabited. No faction holds ground on them, though factionless people may be there (lone survivors, scavengers, roving gangs). A start world's system has plenty of space wrecks in orbit and nearby (derelict ships, wreck fields, broken stations) to salvage once the player reaches space. The bunker lies at the edge of a ruined town or city, away from any living settlement, so the first view outside shows the setting at once: overgrown ruins and abandoned houses, a broken road with rusted cars, and a POI on the horizon worth heading for. The player wakes empty-handed: the first thing they do is make the survival tool, free of charge, in the suit's fabricator, then equip it. Each pod has its own locker on the wall holding the rest of that player's starting kit; a locker stays sealed until its player comes online. It's built from ordinary blocks, so players can pull it apart for materials or reuse it: build onto it, or make it part of their first base. There is no escape-pod start.
 - **Veteran starts** drop the player on a harder world with hostile patrols and no protection around the bunker.
 
 **Difficulty dials**
@@ -1370,7 +1371,7 @@ Trading is built last of all systems.
 
 - [ ] How many POI families and planet archetypes are the launch target?
 - [ ] Does the creative workshop ship at launch or later?
-- [ ] What is the player cap for a Steam co-op session?
+- [ ] Decided: a Steam co-op session has a cap of 4 players, which may rise later if performance allows.
 
 ## 22. Technology and production
 
@@ -1430,7 +1431,7 @@ Crashes, collisions, wind and liftoff live in one self-contained module with a f
 - **Precision:** the host pins each zone's physics origin at its centre. With the map wrapping both ways, nothing is ever more than half a map away on either axis (32 km east-west and 16 km north-south on the largest surface, about 2 mm precision), so no custom engine build is needed.
 - **Clients** load only their own zone, plus the destination during a transition. Every networked object carries a zone ID, so each player only receives what's in their zone.
 - **Ship cabins:** each occupied ship gets its own small private world for its cabin, released when the ship is empty and parked. This replaces the prototype's single ghost slot: no slot limits, no ghosts colliding, and passengers ride through zone changes untouched.
-- **Saving across zones:** every saved record has exactly one zone ID, plus a ship ID if it's aboard. To the player, crossing between a planet and space is seamless: no loading screen, fade or flashy effect, the destination streamed in ahead, and the ship's position, orientation and velocity carried straight across. Underneath, crossing a zone is one atomic write, then the object is removed from the old zone and spawned in the new one. A crash mid-crossing leaves it in the old zone or the new one, never both and never nowhere. The load audit moves any record pointing at a missing zone to the last base.
+- **Saving across zones:** every saved record has exactly one zone ID, plus a ship ID if it's aboard. Orbit starts low, on Empyrion's scale rather than a realistic one: about 1,060 m up (a data value), with most terrain under about 500 m, the cloud layer above that, and only the highest peaks (about 900 m) rising into it. To the player, crossing between a planet and space is seamless: no loading screen, fade to black or flashy effect, only the atmosphere fading away as the ship climbs (the sky darkens to space, the haze thins and the stars come out, and the reverse on the way down), the destination streamed in ahead, and the ship's position, orientation and velocity carried straight across. Underneath, crossing a zone is one atomic write, then the object is removed from the old zone and spawned in the new one. A crash mid-crossing leaves it in the old zone or the new one, never both and never nowhere. The load audit moves any record pointing at a missing zone to the last base.
 
 **Persistence: nothing ever disappears**
 
@@ -1521,7 +1522,7 @@ The world save is the most important system in the game. Structures, items and p
 | Archetype | A planet type (temperate, lava, ocean...), refined by a variant and modifiers |
 | Burnstone | Common fuel ore, refined into fuel packs |
 | Capital vessel (CV) | A large-grid structure with its core in capital mode: it flies, warps between stars and carries smaller craft. Switch the core to base mode once landed |
-| Component | A functional part of a ship or structure (engine, generator, turret, shield, cockpit and so on), with its own structural stats; also called a device |
+| Component | A functional part of a ship or structure (engine, generator, turret, shield, command chair and so on), with its own structural stats; also called a device |
 | Core | The block that defines a structure's owner; destroy it to make a derelict, hijack it to capture |
 | CPU tier and extender | A structure's complexity budget, raised in four tiers by placing extenders |
 | Danger grade | Easy, medium, hard or extreme, shown on the map before travel |
