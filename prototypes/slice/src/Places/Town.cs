@@ -20,7 +20,8 @@ namespace Slice.Places;
 /// place turns it hostile and its people flee indoors. Its animals are wildlife's domestic kinds
 /// (working beasts and stock only where the tech is low, stock on farms, pets anywhere); wildlife
 /// keeps out of the town, the guards cull strays, and outside the town a predator may take one of
-/// its people. Bodies are placeholders: a capsule, a head and a colour by role.
+/// its people. Bodies come from the bestiary: each person is rolled for this world, this place and
+/// their job, walks on real legs, and from a distance is one cheap mesh.
 /// </summary>
 public sealed partial class Town
 {
@@ -64,12 +65,30 @@ public sealed partial class Town
         public float Wait, Speed = 1.3f, Hurt, Aim = -1f, Cooldown;
         /// <summary>How fast they are going now (they ease into it), how far through a stride, how far down into a seat; time since their last full update.</summary>
         public float Now, Gait, Seated, Saved;
-        /// <summary>Their head, turned as they glance about.</summary>
-        public Node3D Head;
+        /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
+        public Species Looks;
+        public HumanRig Rig;
+        public PersonView View;
+        public Figure Figure => Looks.Figure;
+        /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
+        public float Down, Raised, Bent;
+        public bool Laid;
+        /// <summary>Their nerve (set once), and when they act on the latest upset: nobody reacts on the same instant.</summary>
+        public float Nerve = 0.5f, ReactAt = -1f;
+        public bool Reacted = true;
+        /// <summary>What their body is saying, how far into it (eased), how long it holds at least, and what's next.</summary>
+        public BodyAct Act, Wanted;
+        public float ActAmount, ActHeld;
+        /// <summary>Greeted you on this approach; aimed at (with hysteresis); you were close last tick.</summary>
+        public bool Greeted, Covered, Close;
+        public float StartleFor;
+        /// <summary>Gesture changes, and those that came back within a second (tests: there should be none).</summary>
+        public int ActChanges, Flickers;
+        public float LastChange = -9f;
+        public BodyAct Before;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
         public Person Partner;
-        public Node3D Body;
         public Health Health { get; } = new(60f);
         public bool Dead => Health.Current <= 0f;
 
@@ -107,15 +126,13 @@ public sealed partial class Town
         return path;
     }
 
+    /// <summary>What a tick of everyone in the town cost last time, ms.</summary>
+    public float LastTickMs { get; private set; }
+
     public Vector3 World(Vector3 local) => _place != null ? _place.ToWorld(local) : local;
 
     // ---- Standing and sitting ---------------------------------------------------------------------
 
-    static readonly Dictionary<string, Color> RoleColour = new()
-    {
-        ["vendor"] = new Color("c9862b"), ["worker"] = new Color("4a6a8a"), ["guard"] = new Color("3a3f36"),
-        ["rusher"] = new Color("8a4a3a"), ["wanderer"] = new Color("7a7462"),
-    };
 
     public void Stand(Place place, PoiPlaces places)
     {
@@ -132,7 +149,7 @@ public sealed partial class Town
                 p.Wait = (float)_rng.NextDouble() * 6f;
                 People.Add(p);
             }
-        foreach (Person p in People) p.Body = MakeBody(p);
+        if (People.Count > 0 && People[0].Looks == null) RollPeople(places.Zone.Wildlife.Life);
         WildlifePatch patch = places.Zone.Wildlife;
         Register(patch.Sim, null, Vector3.Zero);
         patch.Swapped += OnSwapped;
@@ -154,6 +171,7 @@ public sealed partial class Town
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
+        foreach (Person p in People) p.View = null;
         _view = null;
         _place = null;
     }
@@ -181,8 +199,7 @@ public sealed partial class Town
             }
             return;
         }
-        var gen = new FaunaGenerator(_places.Zone.Data.Wildlife.Fauna, _places.Zone.Data.Wildlife.Activity);
-        float alien = _places.Zone.Data.Rules.Wildlife.Alienness;
+        WorldLife life = patch.Life;
         int n = 0;
         foreach (var (kindName, cell) in Data.Animals)
         {
@@ -191,7 +208,7 @@ public sealed partial class Town
             if (kind == DomesticKind.None || kind == DomesticKind.Working && _tech != "low"
                 || kind == DomesticKind.Stock && _tech != "low" && !Memory.Inst.Family.Tags.Contains("farm")) continue;
             Species s;
-            try { s = gen.RollDomestic(_places.Zone.Planet.Spec.Seed + (ulong)n++, kind, alien); }
+            try { s = life.Domestic(kind, n++); }
             catch (Exception) { continue; }
             Vector3 pen = World(Walk(cell));
             int count = kind == DomesticKind.Stock ? 3 : 1;
@@ -236,7 +253,12 @@ public sealed partial class Town
     sealed partial class Ticker : Node
     {
         public Town Town;
-        public override void _PhysicsProcess(double delta) => Town.Tick((float)delta);
+        public override void _PhysicsProcess(double delta)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            Town.Tick((float)delta);
+            Town.LastTickMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+        }
     }
 
     bool Night()
@@ -245,30 +267,57 @@ public sealed partial class Town
         return t < 0.24f || t > 0.8f;
     }
 
-    /// <summary>Beyond this someone updates a few times a second; beyond the second, their body isn't posed at all.</summary>
-    const float NearPeople = 40f, FarPeople = 90f;
+    /// <summary>Beyond this someone updates a few times a second; bodies built a tick at most.</summary>
+    const float NearPeople = 40f;
+    const int BodiesPerTick = 2;
     int _tick;
 
     void Tick(float tickDt)
     {
         if (_place == null || !_place.Ready || _place.Dormant) return;
         bool night = Night();
-        Mood mood = Memory.Mood;
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
+        // Where you are looking, in the place's frame: what you point at, people see.
+        Vector3 eye = player + Vector3.Up * 1.6f;
+        ITarget you = _places.Zone.Wildlife.Player;
+        Vector3 look = you == null ? Vector3.Forward : (_place.FromWorld(_places.Zone.Wildlife.PlayerWorld() + you.Forward) - player);
+        look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
         _tick++;
+        _clock += tickDt;
+        Voices(player, tickDt);
+        int built = 0;
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
-            if (p.Dead) continue;
+            if (p.Dead)
+            {
+                // Going down, then lying where they fell.
+                if (p.View == null) MakeBody(p);
+                if (p.Down >= 1f && p.Laid) continue;
+                p.Laid = p.Down >= 1f;
+                p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
+                _posing = (player - p.Pos).Length() < PersonView.NearRange + 6f;
+                Pose(p, who);
+                continue;
+            }
+            if (p.View == null && built < BodiesPerTick) { MakeBody(p); built++; }
             // Far from you a town needn't move every tick: each in their turn, with the time they missed.
             p.Saved += tickDt;
             float away = (player - p.Pos).Length();
             if (away > NearPeople && (_tick + who) % 6 != 0) continue;
             float dt = p.Saved;
             p.Saved = 0f;
-            _posing = away < FarPeople;
+            _posing = away < PersonView.NearRange + 6f;
+            if (_posing && p.Looks != null) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
+            // Until it reaches them, they carry on as they were; then a start, and they act.
+            Mood mood = Memory.Mood;
+            if (!p.Reacted)
+            {
+                if (_clock < p.ReactAt) mood = _moodBefore;
+                else { p.Reacted = true; p.Path = null; p.Step = 0; p.Partner = null; p.StartleFor = 0.7f; }
+            }
             // Hostile: the people go indoors; the guards turn on you.
             bool hide = !guard && (night || mood == Mood.Hostile);
             if (hide && !p.Indoors)
@@ -277,7 +326,7 @@ public sealed partial class Town
                 p.Fleeing = mood == Mood.Hostile;
                 p.Speed = p.Fleeing ? 3.4f : p.Speed;
                 if (Move(p, dt)) { p.Indoors = _homes.Length > 0; }
-                Pose(p);
+                Pose(p, who);
                 continue;
             }
             if (!hide && p.Indoors)
@@ -286,11 +335,11 @@ public sealed partial class Town
                 p.Fleeing = false;
                 p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
             }
-            if (p.Indoors) { Pose(p); continue; }
+            if (p.Indoors) { Pose(p, who); continue; }
             if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
-                Pose(p);
+                Pose(p, who);
                 continue;
             }
             if (Move(p, dt))
@@ -299,7 +348,7 @@ public sealed partial class Town
                 if (p.Wait <= 0f) Next(p);
                 else Idle(p, dt);
             }
-            Pose(p);
+            Pose(p, who);
         }
     }
 
@@ -378,7 +427,20 @@ public sealed partial class Town
                 p.Wait = 2f + (float)_rng.NextDouble() * 4f;
                 return;
             default:
-                if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
+                if (p.Figure?.Playful == true)
+                {
+                    // Children run about: after another child, round a grown-up, off somewhere and back, in quick bursts with sudden stops.
+                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && o.Pos.DistanceSquaredTo(p.Pos) < 400f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                    int dash = other != null && _rng.NextDouble() < 0.6 ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
+                    GoTo(p, dash);
+                    p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
+                    p.Wait = 0.3f + (float)_rng.NextDouble() * 1.6f;
+                    return;
+                }
+                // A child goes where a grown-up is.
+                Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Indoors && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
+                if (minder != null) GoTo(p, minder.Spot);
+                else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
                 // Someone else already at this spot: they stop and chat.
                 p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher");
@@ -408,7 +470,9 @@ public sealed partial class Town
         p.Cooldown -= dt;
         if (p.Aim < 0f)
         {
-            if (p.Cooldown > 0f || !CanSee(p, player)) return;
+            // One raises first; the next only a beat after: never all at once.
+            if (p.Cooldown > 0f || _clock < _nextAimAt || !CanSee(p, player)) return;
+            _nextAimAt = _clock + 0.9f + (float)_rng.NextDouble() * 1.1f;
             p.Aim = 1.4f;
             GuardAims++;
             Aimed?.Invoke(_place.ToWorld(p.Pos + Vector3.Up * 1.5f));
@@ -440,12 +504,23 @@ public sealed partial class Town
     public void Provoked()
     {
         if (Memory.Mood == Mood.Hostile) return;
+        _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
-        foreach (Person p in People) { p.Path = null; p.Step = 0; p.Partner = null; }
+        // Each takes it in in their own time: the bold and the near first, children and the old later.
+        Vector3 at = _place != null ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) : Vector3.Zero;
+        var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "provoked", (long)(_clock * 100f));
+        foreach (Person p in People)
+        {
+            Figure f = p.Looks?.Figure;
+            p.ReactAt = _clock + Reaction.Delay(p.Nerve, (p.Pos - at).Length(), saw: false, f?.Stage == LifeStage.Child, f?.Stage == LifeStage.Elder, roll);
+            p.Reacted = false;
+        }
         TurnedHostile?.Invoke();
     }
 
     public event Action TurnedHostile;
+    Mood _moodBefore = Mood.Peaceful;
+    float _nextAimAt;
 
     /// <summary>Whether a world point is in the town's area.</summary>
     public bool Covers(Vector3 world)
@@ -465,11 +540,12 @@ public sealed partial class Town
         foreach (Person p in People)
         {
             if (p.Dead || p.Indoors) continue;
-            Vector3 c = p.Pos + Vector3.Up * (p.Sitting ? 0.6f : 0.95f);
+            float h = p.Looks?.Figure.Height ?? 1.75f;
+            Vector3 c = p.Pos + Vector3.Up * h * (p.Sitting ? 0.34f : 0.53f);
             float along = (c - e).Dot(dir);
             if (along < 0f || along > distance) continue;
             Vector3 off = e + dir * along - c;
-            if (new Vector2(off.X, off.Z).Length() > 0.35f || MathF.Abs(off.Y) > 0.95f) continue;
+            if (new Vector2(off.X, off.Z).Length() > 0.35f || MathF.Abs(off.Y) > h * 0.53f) continue;
             distance = along;
             best = p;
         }
@@ -486,53 +562,170 @@ public sealed partial class Town
 
     void Fall(Person p)
     {
-        if (p.Body != null) p.Body.RotationDegrees = new Vector3(90f, Mathf.RadToDeg(p.Yaw), 0f);
         _places?.Zone.Wildlife.Sim?.Targets.Remove(p);
     }
 
     // ---- Bodies ---------------------------------------------------------------------------------------
 
-    Node3D MakeBody(Person p)
+    /// <summary>
+    /// Who each of them is, from the bestiary: this world's people, in this world's clothes, with
+    /// the look of their job. A hostile place's people have gone to raiding; what the world does to
+    /// bodies shows on some of them, more on some than others.
+    /// </summary>
+    void RollPeople(WorldLife life)
     {
-        var root = new Node3D { Name = $"{p.Role} {People.IndexOf(p)}" };
-        Color c = RoleColour.GetValueOrDefault(p.Role, new Color("777777"));
-        var cloth = new StandardMaterial3D { AlbedoColor = c, Roughness = 0.9f };
-        var skin = new StandardMaterial3D { AlbedoColor = new Color("b08a6a"), Roughness = 0.8f };
-        root.AddChild(new MeshInstance3D { Name = "Body", Mesh = new CapsuleMesh { Radius = 0.24f, Height = 1.35f }, Position = Vector3.Up * 0.72f, MaterialOverride = cloth });
-        root.AddChild(new MeshInstance3D { Name = "Head", Mesh = new SphereMesh { Radius = 0.14f, Height = 0.28f }, Position = Vector3.Up * 1.55f, MaterialOverride = skin });
-        // A hood or cap in a darker shade, so they don't read as mannequins.
-        root.AddChild(new MeshInstance3D { Name = "Hood", Mesh = new SphereMesh { Radius = 0.155f, Height = 0.18f, IsHemisphere = true }, Position = Vector3.Up * 1.58f, MaterialOverride = new StandardMaterial3D { AlbedoColor = c.Darkened(0.4f) } });
-        if (p.Role == "guard")
-            root.AddChild(new MeshInstance3D { Name = "Rifle", Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.08f, 0.8f) }, Position = new Vector3(0.22f, 1.1f, -0.2f), RotationDegrees = new Vector3(-20, 0, 0), MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("202020") } });
-        if (p.Role == "vendor")
-            root.AddChild(new MeshInstance3D { Name = "Apron", Mesh = new BoxMesh { Size = new Vector3(0.36f, 0.6f, 0.04f) }, Position = new Vector3(0, 0.75f, -0.24f), MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("e8d8b0") } });
-        _view.AddChild(root);
-        root.Position = p.Pos;
-        if (p.Dead) root.RotationDegrees = new Vector3(90f, 0, 0);
-        return root;
+        bool raiders = Memory.Mood == Mood.Hostile, farm = Memory.Inst.Family.Tags.Contains("farm");
+        var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "townsfolk");
+        float hardened = life.People.HardenedChance(raiders, People.Count(q => q.Role != "wanderer"));
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[i];
+            PersonRole role = PeopleGenerator.RoleFor(p.Role, farm, roll);
+            // Raiders keep a few who don't fight, and they don't dress for it.
+            if (raiders && role != PersonRole.Child && role != PersonRole.Elder) role = PersonRole.Raider;
+            bool raider = raiders; // everyone in a raider place is of it, children too, whatever they look like
+            float twist = roll.Float();
+            float mutation = life.World.Mutagen * twist * twist * 1.4f;
+            // Now and then, where the world forces it, the one doing this job is a child.
+            bool young = role is not (PersonRole.Child or PersonRole.Elder or PersonRole.Drunk) && roll.Chance(hardened);
+            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young);
+            p.Rig = new HumanRig(p.Looks);
+            p.Nerve = roll.Float();
+            p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
+        }
+    }
+
+    float _voiceIn = 2f;
+
+    /// <summary>A body's act has to hold this long before another may start, s; it eases in and out at this rate a second.</summary>
+    const float ActHold = 1.4f, ActEase = 3.5f;
+    /// <summary>Aimed at inside this angle, no longer outside the wider one (so the edge never flickers); within this reach, m.</summary>
+    static readonly float AimIn = MathF.Cos(Mathf.DegToRad(5f)), AimOut = MathF.Cos(Mathf.DegToRad(10f));
+    const float AimReach = 32f, GreetIn = 11f, GreetRearm = 22f, StartleIn = 4.5f;
+
+    /// <summary>Gesture flickers across the whole town (tests).</summary>
+    public int Flickers => People.Sum(p => p.Flickers);
+
+    /// <summary>
+    /// What each body says to you, without words, chosen by state, role and mood (the role's
+    /// reactions are data): a gun on them puts unarmed hands up, a peaceful approach gets a wave (or
+    /// a guard's warning, a trader's wares, a raider's taunt), coming up on them suddenly makes them
+    /// start, and running for cover is panic. Every change eases in and out, holds long enough to
+    /// read, and the aim test has an inner and an outer edge, so nothing flickers.
+    /// </summary>
+    void Acts(Person p, Vector3 player, Vector3 eye, Vector3 look, float away, float dt)
+    {
+        Figure f = p.Figure;
+        Vector3 to = p.Pos + Vector3.Up * f.Height * 0.6f - eye;
+        float along = to.LengthSquared() > 0.01f ? look.Dot(to.Normalized()) : 0f;
+        p.Covered = away < AimReach && along > (p.Covered ? AimOut : AimIn);
+        bool armed = f.Prop is "rifle" or "club";
+        bool peaceful = Memory.Mood != Mood.Hostile;
+        if (away > GreetRearm) p.Greeted = false;
+        // Coming up close out of nowhere: a start, before anything else.
+        if (away < StartleIn && !p.Close && !p.Greeted) { p.StartleFor = 0.9f; Speak(p, VoiceMood.Murmur); }
+        p.Close = away < StartleIn + 1.5f;
+        p.StartleFor = MathF.Max(0f, p.StartleFor - dt);
+        BodyAct want = BodyAct.None;
+        if (p.Fleeing) want = BodyAct.Panic;
+        else if (p.StartleFor > 0f) want = f.Startled;
+        else if (p.Covered && (!armed || f.Aimed != BodyAct.HandsUp) && p.Aim < 0f) want = f.Aimed;
+        else if (peaceful && !p.Greeted && away < GreetIn && !p.Sitting && p.Now < 0.6f)
+        {
+            p.Greeted = true;
+            p.ActHeld = 0f;
+            want = f.Approach;
+            Speak(p, VoiceMood.Murmur);
+        }
+        else if (p.Act is BodyAct.Greet or BodyAct.Present or BodyAct.Warn or BodyAct.Taunt && p.ActHeld < 2.6f && away < GreetRearm) want = p.Act;
+        // A child at ease plays, on and off.
+        if (want == BodyAct.None && peaceful && f.Stage == LifeStage.Child && p.Now < 0.2f && !p.Sitting && MathF.Sin(_clock * 0.23f + p.Spot) > 0.1f) want = BodyAct.Play;
+        if (want == BodyAct.HandsUp && p.Wanted != BodyAct.HandsUp) Speak(p, _rng.NextDouble() < 0.5 ? VoiceMood.Whisper : VoiceMood.Cry);
+        // A new act waits for the old one to have held, then the old eases out before the new eases in.
+        if (want != p.Wanted && (p.ActHeld >= ActHold || p.Wanted == BodyAct.None || want is BodyAct.Panic or BodyAct.Startle)) p.Wanted = want;
+        p.ActHeld += dt;
+        if (p.Act != p.Wanted)
+        {
+            p.ActAmount = MathF.Max(0f, p.ActAmount - dt * ActEase * (p.Wanted is BodyAct.Startle ? 3f : 1f));
+            if (p.ActAmount <= 0f)
+            {
+                if (p.Wanted != BodyAct.None)
+                {
+                    p.ActChanges++;
+                    if (p.Wanted == p.Before && _clock - p.LastChange < 1f) p.Flickers++;
+                    p.Before = p.Act == BodyAct.None ? p.Before : p.Act;
+                    p.LastChange = _clock;
+                }
+                p.Act = p.Wanted;
+                p.ActHeld = 0f;
+            }
+        }
+        else if (p.Act != BodyAct.None) p.ActAmount = MathF.Min(1f, p.ActAmount + dt * ActEase * (p.Act == BodyAct.Startle ? 3f : 1f));
+        // Hands up, they face you; close in on them and they cower.
+        if (p.Act is BodyAct.HandsUp or BodyAct.Warn or BodyAct.Taunt or BodyAct.Greet or BodyAct.Startle)
+        {
+            Vector3 d = player - p.Pos;
+            p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 3f));
+        }
+        if (p.Act == BodyAct.HandsUp && away < 3f) p.Wanted = BodyAct.Cower;
+    }
+
+    void Speak(Person p, VoiceMood mood)
+    {
+        Vector3 at = World(p.Pos + Vector3.Up * p.Figure.Height * 0.9f);
+        _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Say(p.Looks, mood, at));
+    }
+
+    /// <summary>
+    /// The sound of the place, one voice at a time and only near you: people at ease murmur, a
+    /// frightened one whispers or cries, whoever turns on you shouts.
+    /// </summary>
+    void Voices(Vector3 player, float dt)
+    {
+        if ((_voiceIn -= dt) > 0f) return;
+        _voiceIn = 0.9f + (float)_rng.NextDouble() * 2.4f;
+        Person who = null;
+        float best = 26f * 26f;
+        foreach (Person p in People)
+        {
+            if (p.Dead || p.Indoors || p.Looks == null) continue;
+            float d = (player - p.Pos).LengthSquared() * (0.6f + (float)_rng.NextDouble());
+            if (d < best) { best = d; who = p; }
+        }
+        if (who == null) return;
+        VoiceMood mood = who.Aim >= 0f ? VoiceMood.Shout
+            : who.Fleeing ? (_rng.NextDouble() < 0.5 ? VoiceMood.Cry : VoiceMood.Whisper)
+            : Memory.Mood == Mood.Hostile ? VoiceMood.Shout : VoiceMood.Murmur;
+        if (mood == VoiceMood.Shout && who.Figure.Stage == LifeStage.Child) mood = VoiceMood.Cry;
+        Vector3 at = World(who.Pos + Vector3.Up * who.Figure.Height * 0.9f);
+        _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Say(who.Looks, mood, at));
+    }
+
+    /// <summary>Builds what they're drawn with: a few at a time, so a town coming into view never costs a whole frame.</summary>
+    void MakeBody(Person p)
+    {
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}" };
+        _view.AddChild(p.View);
+        p.View.Build(p.Rig);
     }
 
     bool _posing = true;
+    float _clock;
 
-    void Pose(Person p)
+    void Pose(Person p, int who)
     {
-        if (p.Body == null) return;
-        p.Body.Visible = !p.Indoors;
-        if (p.Indoors || !_posing) return;
+        if (p.View == null) return;
+        if (p.View.Visible == p.Indoors) p.View.Visible = !p.Indoors;
+        if (p.Indoors) return;
+        // Far off they're one mesh, and only that moves.
+        p.View.SyncFar(p.Pos, p.Yaw);
+        if (!_posing) return;
         bool moving = p.Now > 0.05f;
-        int who = People.IndexOf(p);
-        float t = (float)_places.Zone.Sky.TimeOfDay * 86400f / 60f + who;
-        // The bob and sway go by the ground covered, so they keep step with the walk.
-        float stride = p.Gait * 3.2f;
-        float bob = moving ? MathF.Abs(MathF.Sin(stride)) * 0.05f : 0f;
-        float sway = moving ? MathF.Sin(stride) * 0.03f : MathF.Sin(t * 0.7f) * 0.012f; // at rest, a slow shift of weight
-        float lean = Math.Clamp(p.Now / 3f, 0f, 1f) * 7f;
-        p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f / 60f);
-        float work = !moving && p.Role == "worker" ? MathF.Max(0f, MathF.Sin(t * 1.7f)) * 18f : 0f;
-        p.Body.Position = p.Pos + Vector3.Up * (bob - p.Seated * 0.45f);
-        p.Body.Rotation = new Vector3(Mathf.DegToRad(-work - lean), p.Yaw, sway);
-        p.Head ??= p.Body.GetNodeOrNull<Node3D>("Head");
-        if (p.Head == null) return;
+        float dt = 1f / 60f;
+        float t = _clock + who * 1.7f;
+        p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
+        p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Role == "worker" ? 1f : 0f, 2f * dt);
+        p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f ? 1f : 0f, 3f * dt);
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
         Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
@@ -542,6 +735,23 @@ public sealed partial class Town
             if (MathF.Abs(off) < 1.25f) look = off;
         }
         p.HeadYaw = Mathf.Lerp(p.HeadYaw, look, 0.08f);
-        p.Head.Rotation = new Vector3(0f, p.HeadYaw, 0f);
+        p.Rig.Drive(new Gesture
+        {
+            Feet = p.Pos,
+            Yaw = p.Yaw,
+            Speed = p.Now,
+            Walked = p.Gait,
+            Sit = p.Seated,
+            Work = p.Bent,
+            Aim = p.Raised,
+            Look = p.HeadYaw,
+            Down = p.Down,
+            Act = p.Act,
+            ActAmount = p.ActAmount,
+            ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
+            Clock = t,
+        });
+        p.View.Sync();
+        p.View.Hurt(p.Hurt / 0.4f);
     }
 }

@@ -832,6 +832,7 @@ public sealed class PlayerTarget : ITarget
     public Vector3 Position => _game.Zone.Wildlife.PatchLocal(_game.Survivor.WorldFeet);
     public Vector3 Forward => _game.Survivor.WorldLook();
     public bool Crouched => _game.Survivor.Crouched && OnFoot;
+    public float Lamp => _game.Torch is { Visible: true } ? 1f : 0f;
     public Health Health { get; } = new(100f);
 
     /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>

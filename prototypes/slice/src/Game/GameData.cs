@@ -80,7 +80,7 @@ public sealed class GameData
             Consumables = consumables,
             Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
-            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("wildlife", "data", "wildlife.json"))),
+            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("..", "shared", "Bestiary", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
         };
     }
@@ -276,6 +276,8 @@ public sealed class SliceRules
         public float PatchHalfSize { get; set; } = 300f;
         public float SafeRadius { get; set; } = 60f;
         public float Alienness { get; set; } = 0.25f;
+        /// <summary>Server setting: whether block-breaking creatures can damage players' bases.</summary>
+        public bool BreakBases { get; set; } = true;
 
         /// <summary>The most wild creatures a patch holds on the most livable world.</summary>
         public int MostPerPatch { get; set; } = 40;

@@ -35,12 +35,12 @@ public sealed class PlaceFauna
         /// <summary>How livable the world is, 0..1.</summary>
         public readonly float Livable;
 
-        public Deep(WildlifeData data, PlanetFauna surface, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
+        public Deep(WorldLife life, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
         {
-            Data = data;
+            Data = life.Data;
             Planet = planet;
             Livable = livable;
-            Fauna = new DeepFauna(data, surface);
+            Fauna = life.Deep();
         }
     }
 

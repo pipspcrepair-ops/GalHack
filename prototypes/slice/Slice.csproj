@@ -22,6 +22,8 @@
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Items\Production\**\*.cs" />
     <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
+    <!-- The bestiary: everything that moves. -->
+    <Compile Include="..\..\shared\Bestiary\**\*.cs" />
 
     <!-- Pure cores. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
@@ -35,10 +37,6 @@
     <Compile Include="..\ship-handling\src\Handling\**\*.cs" />
     <Compile Include="..\building\src\Structures\**\*.cs" />
     <Compile Include="..\survival-vitals\src\Model\**\*.cs" />
-    <Compile Include="..\wildlife\src\Core\**\*.cs" />
-    <Compile Include="..\wildlife\src\Rigs\**\*.cs" />
-    <Compile Include="..\wildlife\src\Sim\**\*.cs" />
-    <Compile Include="..\wildlife\src\Space\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\FocusMachine.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\Items.cs" />
     <!-- Phase 2: saves' persistence core (the zone ledger's commits). -->
@@ -73,9 +71,6 @@
     <Compile Include="..\building\src\Presentation\BlockMaterials.cs" />
     <Compile Include="..\building\src\Presentation\DamageFx.cs" />
     <Compile Include="..\building\src\Presentation\GhostPreview.cs" />
-    <Compile Include="..\wildlife\src\View\**\*.cs" />
-    <Compile Include="..\wildlife\src\Game\ProceduralAudio.cs" />
-    <Compile Include="..\wildlife\src\Game\Shutdown.cs" />
     <Compile Include="..\diegetic-ui\src\Theme\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Screens\**\*.cs" />
     <!-- Sounds, synthesised in code where they live: building's block clunks and UI clicks, the diegetic UI's chirp. -->

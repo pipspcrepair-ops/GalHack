@@ -876,6 +876,7 @@ public partial class PlaceTest : Node
         var before = town.People.ToDictionary(q => q, Where);
         foreach (int x in drive.Wait(600)) yield return x;
         int moved = town.People.Count(q => q.Pos.DistanceTo(before[q]) > 1f);
+        Check(town.Flickers == 0, $"what their bodies say changes cleanly: {town.People.Sum(q => q.ActChanges)} gestures, none flipped straight back ({town.Flickers})");
         int stayed = town.People.Count(q => q.Role is "vendor" or "worker" && q.Pos.DistanceTo(before[q]) < 1f);
         Check(moved >= 2 && town.People.Any(q => q.Role is "rusher" or "wanderer" && q.Pos.DistanceTo(before[q]) > 2f), $"in 10 s {moved} of {town.People.Count} have gone somewhere; {stayed} vendors and workers keep to their places ({string.Join(", ", town.People.GroupBy(q => q.Role).Select(g => $"{g.Count()} {g.Key}"))})");
         // Through the town at a walk: nobody minds.
@@ -901,6 +902,8 @@ public partial class PlaceTest : Node
         int aims = town.GuardAims;
         foreach (int x in play.ShootAt(() => game.Survivor.WorldEye() + game.Survivor.WorldLook() * 8f + Vector3.Down * 1f)) yield return x;
         Check(place.Memory.Mood == Mood.Hostile, "a shot in a peaceful place turns it hostile");
+        var reacts = town.People.Where(q => !q.Dead).Select(q => q.ReactAt).ToList();
+        Check(reacts.Count < 3 || reacts.Max() - reacts.Min() > 0.3f && reacts.Select(t => MathF.Round(t * 60f)).Distinct().Count() > reacts.Count / 2, $"nobody reacts on the same instant: they take it in over {(reacts.Count > 0 ? reacts.Max() - reacts.Min() : 0f):F2} s");
         foreach (int x in drive.Wait(300)) yield return x;
         Check(town.People.Where(q => q.Role != "guard").All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
         Check(town.GuardShots == 0 || town.GuardAims > aims, $"its guards take aim where you can see it before they fire ({town.GuardAims - aims} aims, {town.GuardShots} shots)");
