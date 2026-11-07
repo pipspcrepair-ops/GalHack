@@ -158,7 +158,7 @@ public static class Decay
         }
         inst.Markers.AddRange(x.Markers);
 
-        // The Bloom creeps into the deep levels whatever the state (it's thickest deepest).
+        // Damp and disorder deep down whatever the state; the Bloom creeps in (thickest deepest) only where it has taken the place.
         var nav = inst.Nav();
         foreach (var m in layout.Modules)
         {
@@ -169,7 +169,7 @@ public static class Decay
             int seeds = (int)MathF.Round((w - 0.3f) * (m.Kind == ModuleKind.Cave ? 6f : 2.5f) + rng.Float(0f, 0.8f));
             var roots = m.Cells.Where(c => inst.Blocks.Get(c).IsAir && !inst.Protected[c] && Touches(inst.Blocks, c)).ToList();
             rng.Shuffle(roots);
-            foreach (Int3 r in roots.Take(seeds))
+            foreach (Int3 r in inst.State == PoiState.Infested ? roots.Take(seeds) : Enumerable.Empty<Int3>())
             {
                 StateTransforms.GrowAt(inst, r, rng.Between(4, 6 + (int)(w * 10)), rng);
                 if (rng.Chance(0.5f)) inst.Lights.Add(new LightSpot { Cell = r + Int3.Up, Color = BloomGlow, Mode = LightMode.Bloom, Energy = 0.9f + w, Range = 6f, Module = m.Index, Storey = m.Storey });

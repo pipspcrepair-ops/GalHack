@@ -109,7 +109,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - `AgeOf(module)`: a sealed vault, cryo bay or hidden room keeps its own age.
   - `ExposureOf(module)`: indoors, outdoors, or breached (open to the sky).
 
-  Old-world places hold no food outside sealed rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. Trees, many of them mature, grow through courtyards and breaches.
+  Old-world places hold no food outside sealed rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. The generator leaves spots where trees could root in courtyards and breaches (`Growth.cs`); the planet plants its own flora there (planet-surface `RuinGrowth`), so a ruin's trees are the trees round it and a treeless world grows none.
 - **Repair after decay.** Anything left floating comes down. Every spawn is then flood-filled from the way in, and rolled again from a new sub-seed if decay cut the way to the vault or the core.
 - **Loot** comes from real `shared/Items` ids (`loot.txt`). The cache tier rises with rarity, depth and wrongness, and is higher for vaults, hidden stashes and infested places.
 - **Frozen moments** replace text logs: an abandoned meal, welded doors scratched from the inside, drag marks leading deeper, a last stand by the core. Terminals are props.

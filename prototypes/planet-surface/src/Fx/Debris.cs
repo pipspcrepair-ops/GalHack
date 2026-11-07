@@ -34,6 +34,9 @@ public partial class Debris : Node3D
     /// <summary>An ore chunk reached the player. Purely visual: ore is counted when it's dug.</summary>
     public event Action OreArrived;
 
+    /// <summary>How many digs have thrown debris (tests).</summary>
+    public int Bursts { get; private set; }
+
     readonly Piece[] _chunks = new Piece[MaxChunks], _dust = new Piece[MaxDust];
     readonly float[] _chunkBuffer = new float[MaxChunks * 16], _dustBuffer = new float[MaxDust * 16];
     int _nextChunk, _nextDust;
@@ -82,6 +85,7 @@ public partial class Debris : Node3D
     /// <summary>Debris for a dig: a few chunks per removed cell, thrown away from the tool.</summary>
     public void Burst(System.Collections.Generic.IReadOnlyList<RemovedCell> cells, Vector3 toolOrigin, float strength = 1f)
     {
+        Bursts++;
         int perCell = cells.Count > 120 ? 1 : cells.Count > 30 ? 2 : 3;
         for (int i = 0; i < cells.Count; i++)
         {
@@ -94,9 +98,11 @@ public partial class Debris : Node3D
             {
                 Vector3 jitter = new Vector3(_rng.RandfRange(-0.4f, 0.4f), _rng.RandfRange(-0.4f, 0.4f), _rng.RandfRange(-0.4f, 0.4f));
                 Vector3 velocity = (-away * 1.5f + Vector3.Up * 3.2f + jitter * 6f) * strength;
-                Spawn(center + jitter, velocity, ColorOf(cell.Material, center), _rng.RandfRange(0.12f, 0.3f), ore);
+                Color shade = ColorOf(cell.Material, center) * _rng.RandfRange(0.82f, 1.08f);
+                shade.A = 1f;
+                Spawn(center + jitter, velocity, shade, _rng.RandfRange(0.08f, 0.22f), ore);
             }
-            if (i % 4 == 0) Puff(center, Dust.Lerp(ColorOf(cell.Material, center), 0.4f), 0.9f * strength);
+            if (i % 4 == 0) Puff(center, Dust.Lerp(ColorOf(cell.Material, center), 0.7f), 0.6f * strength);
         }
     }
 
@@ -194,7 +200,7 @@ public partial class Debris : Node3D
             }
             float fade = Mathf.Clamp((p.Life - p.Age) / 0.35f, 0f, 1f);
             Color c = p.Color;
-            if (p.Homing) c = new Color(c.R * 2.2f, c.G * 2.2f, c.B * 2.2f);
+            if (p.Homing) c = new Color(c.R * 1.1f, c.G * 1.1f, c.B * 1.1f);
             Write(_chunkBuffer, i, new Basis(p.Axis, p.Angle).Scaled(Vector3.One * p.Size * fade), p.Position, c);
         }
 

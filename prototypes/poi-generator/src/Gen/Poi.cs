@@ -74,6 +74,9 @@ public sealed class PoiInstance
     public Townsfolk? Townsfolk;
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
+    /// <summary>Where something could have rooted, best first, and how many trees it wants at most (see <see cref="GrowthSpot"/>).</summary>
+    public readonly List<GrowthSpot> Growth = new();
+    public int GrowthWanted;
     /// <summary>The world it stands on, when placed on one: its tech levels decide the living's animals and gear.</summary>
     public WorldProfile? World;
     /// <summary>"New on old": held by people of a higher level than the ruins round it (the world round it shows the old level).</summary>
@@ -288,6 +291,7 @@ public static class PoiFactory
         // A plain ruin's weeds and moss come last, on what's left.
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
+        inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
         return inst;
     }
 

@@ -402,7 +402,7 @@ public partial class SliceTest : Node
         Vector3 from = _game.Survivor.WorldFeet;
         var source = zone.Planet.Source;
         var rocks = zone.Planet.Map.Deposits.InRect(from.X - 400, from.Z - 400, from.X + 400, from.Z + 400)
-            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null
+            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null && PlanetSurface.Infra.InfraLayer.HasTell(zone.Planet, d)
                 && source.StampWeight(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height)) <= 0f
                 && !source.WaterSurfaceAt(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height), out _))
             .Select(d => (d, at: zone.Planet.NearestCopy(new Vector3((float)d.X, from.Y, (float)d.Y), from)))

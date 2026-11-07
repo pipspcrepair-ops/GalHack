@@ -57,6 +57,45 @@ public sealed partial class PlanetWorld
     /// <summary>Where the felled trees are saved: beside the terrain's save, written the same moment.</summary>
     public string FelledPath => SavePath + ".felled";
 
+    /// <summary>The colour a place's rubble takes: the planet's own rock.</summary>
+    public PoiGenerator.Gen.Rgb RubbleRock => new(Rgb.Byte(Palette.Rock.R), Rgb.Byte(Palette.Rock.G), Rgb.Byte(Palette.Rock.B));
+
+    PoiGenerator.Gen.Rgb? _weed;
+    bool _weedKnown;
+
+    /// <summary>The colour weeds take in a place's cracks: the planet's own low growth, or null on a world where nothing grows.</summary>
+    public PoiGenerator.Gen.Rgb? Weed
+    {
+        get
+        {
+            if (_weedKnown) return _weed;
+            _weedKnown = true;
+            foreach (byte b in new HashSet<byte>(Map.Biome))
+                foreach (FloraRule r in BiomeLook.FloraOf((Biome)b))
+                    if (r.Kind == Flora.Shrub)
+                    {
+                        Rgb c = r.Color.Saturate(0.6f) * 0.8f;
+                        return _weed = new PoiGenerator.Gen.Rgb(Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B));
+                    }
+            return null;
+        }
+    }
+
+    /// <summary>The colour of what the tool knocks off a cell of ground at a point (frame coordinates): what that cell is made of, here.</summary>
+    public Color ChipColor(CellMaterial material, Vector3 at)
+    {
+        double x = Mathx.WrapX(at.X, Width), z = Mathx.Wrap(at.Z, Height);
+        var cell = new TerrainDigging.Terrain.Int3((int)Math.Floor(x), (int)Math.Floor(at.Y), (int)Math.Floor(z));
+        return Palette.Chip(material, x, z, at.Y, material == CellMaterial.Ore ? Source.OreKindAt(cell) : DepositKind.Iron);
+    }
+
+    /// <summary>Grit off the land at a point: its rock, half clear.</summary>
+    public Color Grit(Vector3 at)
+    {
+        Color c = ChipColor(CellMaterial.Rock, at);
+        return new Color(c.R, c.G, c.B, 0.5f);
+    }
+
     /// <summary>Writes the felled trees atomically (a temporary file renamed over the old one).</summary>
     public void SaveFelled()
     {
@@ -107,6 +146,9 @@ public sealed partial class PlanetWorld
         foreach (PoiSite p in pois)
             if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
                 Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
+        // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
+        Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
+        foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
         Sky = SkySystem.For(spec);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;

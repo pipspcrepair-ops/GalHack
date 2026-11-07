@@ -79,6 +79,7 @@ public sealed partial class Staging
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "decogallery" => DecoGalleryView(),
+            "natural" => Natural(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;
