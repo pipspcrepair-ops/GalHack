@@ -91,7 +91,60 @@ void fragment() {
 }
 ";
 
-    static Shader _shader;
+    const string EmitterCode = @"
+shader_type spatial;
+render_mode blend_mix, cull_back;
+
+uniform vec3 tint : source_color = vec3(0.18, 0.77, 0.71);
+uniform vec3 half_size = vec3(0.05);
+uniform int shape = 0;            // 0 box lens (long axis Z), 1 round lens (disc facing Y)
+uniform float glow = 1.0;
+
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+
+void fragment() {
+    vec2 q = lp.xz / half_size.xz;
+    float d = shape == 1 ? length(q) : max(abs(q.x), abs(q.y) * 0.8);
+    float centre = clamp(1.0 - d, 0.0, 1.0);
+    // Faint moulded ribs across the lens, and a fine cell grid.
+    float ribs = shape == 1 ? abs(fract(length(lp.xz) * 170.0) - 0.5) : abs(fract(lp.z * 120.0) - 0.5);
+    float rib = 1.0 - smoothstep(0.0, 0.12, ribs);
+    float cell = shape == 1 ? abs(fract(atan(lp.z, lp.x) * 1.9099) - 0.5) : abs(fract(lp.x * 400.0) - 0.5);
+    float grid = (1.0 - smoothstep(0.0, 0.07, cell)) * 0.5;
+    float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+    float edge = smoothstep(0.0, 0.25, 1.0 - d);   // dimmer toward the bezel
+    vec3 e = tint * (0.45 + 1.6 * pow(centre, 1.4)) * edge;
+    e *= 1.0 - 0.28 * rib - 0.18 * grid;
+    e += mix(tint, vec3(1.0), 0.6) * pow(centre, 4.0) * 0.5;      // hot core
+    e += mix(tint, vec3(1.0), 0.7) * fres * 0.5;                  // soft rim highlight
+    ALBEDO = tint * 0.3;
+    EMISSION = e * glow;
+    ROUGHNESS = 0.12;
+    SPECULAR = 0.9;
+    ALPHA = clamp(0.78 + 0.2 * fres, 0.0, 1.0);
+}
+";
+
+    static Shader _shader, _emitterShader;
+
+    /// <summary>A moulded translucent plastic emitter lens (a glowing panel or tip), brightest at its centre; tint it per mode.</summary>
+    public static ShaderMaterial Emitter(Mesh mesh, Color tint)
+    {
+        _emitterShader ??= new Shader { Code = EmitterCode };
+        Vector3 half = new(0.05f, 0.01f, 0.05f);
+        int shape = 0;
+        switch (mesh)
+        {
+            case BoxMesh b: half = b.Size * 0.5f; break;
+            case CylinderMesh c: shape = 1; half = new Vector3(c.TopRadius, c.Height * 0.5f, c.TopRadius); break;
+        }
+        var m = new ShaderMaterial { Shader = _emitterShader };
+        m.SetShaderParameter("tint", tint);
+        m.SetShaderParameter("half_size", half);
+        m.SetShaderParameter("shape", shape);
+        return m;
+    }
 
     /// <summary>A worn material for a box or a cylinder mesh (its edges are the ones that wear).</summary>
     public static ShaderMaterial Make(Mesh mesh, Color baseColor, float wear = 0.6f, float roughness = 0.6f, float metallic = 0.1f, float seed = 0f)
