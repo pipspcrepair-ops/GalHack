@@ -261,7 +261,9 @@ public partial class PlaceTest : Node
         // A cache a level or more down where the place has one you can get to (the stairs are walked on
         // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
         var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
+            .Select(c => (Cache: c, Steps: FreeSteps(nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)))).ToList();
+        // No card in the bag yet: a way through a locked door is no way at all.
+        int FreeSteps(List<PoiGenerator.Gen.Int3> path) => path == null || path.Any(c => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up)))) ? 9999 : path.Count;
         bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
         bool downstairs = ways.Any(Below);
         LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
