@@ -100,6 +100,14 @@
     "cpuext":    { "small": { "circuit-board": 4, "copper-wire": 4 },               "large": { "circuit-board": 8, "logic-module": 4 },
                    "unlock": { "small": { "level": 7, "cost": 1, "parent": "generator@small", "tab": "small" },
                                "large": { "level": 4, "cost": 1, "parent": "generator@large", "tab": "base" } } },
+    // CPU tiers 3 and 4 are gated by exploration (design 480, 883): the lattice parts are found in
+    // POIs, so these can't be made from ore however high the level. Levels from tech-tree-pacing.md.
+    "cpuext3":   { "uniqueOnly": true, "small": { "circuit-board": 4, "copper-wire": 4, "lattice-core": 1 }, "large": { "circuit-board": 8, "logic-module": 4, "lattice-core": 1 },
+                   "unlock": { "small": { "level": 19, "cost": 4, "parent": "cpuext@small", "tab": "small" },
+                               "large": { "level": 19, "cost": 4, "parent": "cpuext@large", "tab": "base" } } },
+    "cpuext4":   { "uniqueOnly": true, "small": { "circuit-board": 4, "copper-wire": 4, "lattice-array": 1 }, "large": { "circuit-board": 8, "logic-module": 4, "lattice-array": 1 },
+                   "unlock": { "small": { "level": 24, "cost": 5, "parent": "cpuext3@small", "tab": "small" },
+                               "large": { "level": 24, "cost": 5, "parent": "cpuext3@large", "tab": "base" } } },
     "ladder":    { "stack": { "small": 100, "large": 50 }, "small": { "iron-bar": 1 },                                       "large": { "iron-bar": 3 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "steel@small", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "steel@large", "tab": "base" } } },

@@ -77,9 +77,9 @@
     { "id": "echo-shard", "name": "Echo shard", "short": "ECHO", "category": "unique", "rarity": "unique", "source": "explore",
       "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating for charged armour" },
     { "id": "lattice-core", "name": "Lattice core", "short": "LATTICE", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "Lattice processors for CPU tier 3" },
+      "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T3" },
     { "id": "lattice-array", "name": "Lattice array", "short": "ARRAY", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 4.0, "volume": 4, "where": "Derelicts, faction strongholds, rare traders", "uses": "Lattice matrices for CPU tier 4" },
+      "mass": 4.0, "volume": 4, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T4" },
 
     // ---- Refined: made from raw only. The blueprint factory pays in these. -----------------
     { "id": "iron-bar", "name": "Iron bar", "category": "refined", "rarity": "common", "mass": 2.4, "volume": 0.5 },

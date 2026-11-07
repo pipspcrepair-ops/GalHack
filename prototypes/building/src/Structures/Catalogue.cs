@@ -97,6 +97,8 @@ public sealed class BlockType
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
     public bool IsCpuExtender => Function == "cpu-extender";
+    /// <summary>A CPU extender: the highest CPU tier it counts towards.</summary>
+    public int ExtenderTier;
     /// <summary>The one block that gives control: a seat with a small console. There are no cockpit components.</summary>
     public bool IsCommandChair => Function == "chair";
     /// <summary>Old name for <see cref="IsCommandChair"/>, kept for branches that still use it.</summary>
@@ -325,6 +327,7 @@ public sealed class Catalogue
         {
             BlockType t = Common(c, BlockKind.Component);
             t.Function = Str(c, "function", "");
+            t.ExtenderTier = t.IsCpuExtender ? Int(c, "extenderTier", 2) : 0;
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);
             t.Storage = Num(c, "storage", 0);

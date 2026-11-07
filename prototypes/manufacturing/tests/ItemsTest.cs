@@ -80,6 +80,12 @@ public partial class ItemsTest : TestBase
     void TestBlockItems()
     {
         BuildingBridge.NameBlockItems(_items, _blocks);
+        foreach (bool small in new[] { true, false })
+        {
+            Check(_items.BlockItem("cpuext3", small).Recipe.InputsFor(1)["lattice-core"] > 0 && _items.BlockItem("cpuext4", small).Recipe.InputsFor(1)["lattice-array"] > 0,
+                $"the T3 and T4 CPU extenders ({(small ? "small" : "large")} grid) take lattice parts");
+        }
+        Check(new[] { "lattice-core", "lattice-array" }.All(id => _items.Item(id).Recipe == null && _items.Item(id).Source == ItemSource.Found), "lattice parts are found, never made");
         ItemDef factory = _items.BlockItem("factory", false);
         Check(_items.BlockItem("factory", true) == null && factory.PlacesOn(StructureClass.Base) && factory.PlacesOn(StructureClass.Capital) && factory.Places.Count == 2,
             "the blueprint factory goes on bases and capital vessels only");
@@ -213,7 +219,7 @@ public partial class ItemsTest : TestBase
                 }
             }
         }
-        Note($"{checkedBlocks} block types priced on both grids ({uniqueOnly} unique-only: precursor armour)");
+        Note($"{checkedBlocks} block types priced on both grids ({uniqueOnly} unique-only: precursor armour, lattice extenders)");
         // Every armour upgrade's bill holds the one it upgrades, so upgrading never loses material.
         foreach (BlockType t in _blocks.Types.Skip(1).Where(t => t.Upgrade != null))
             foreach (bool small in new[] { true, false })

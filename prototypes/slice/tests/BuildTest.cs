@@ -123,6 +123,7 @@ public partial class BuildTest : Node
         foreach (int x in Machines()) yield return x;
         TechTabs();
         foreach (int x in CpuExtender()) yield return x;
+        LatticeGate();
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in Creative()) yield return x;
     }
@@ -935,6 +936,17 @@ public partial class BuildTest : Node
         // The tiers climb with the count (one extender is the second tier); add the rest until it does.
         Check(_base.StructureStats.Tier > tier || _base.StructureStats.Extenders < _base.Structure.Catalogue.ExtendersPerTier[Math.Min(tier, _base.Structure.Catalogue.ExtendersPerTier.Length - 1)],
             $"CPU tier {tier} -> {_base.StructureStats.Tier}, limit {_base.StructureStats.CpuLimit}");
+    }
+
+    /// <summary>The lattice extenders are real blocks, but no amount of ore pays for one: the parts are found in places.</summary>
+    void LatticeGate()
+    {
+        foreach (string block in new[] { "cpuext3", "cpuext4" })
+        {
+            ItemDef def = Items.Item(Item(block, false));
+            Check(def.Recipe.InputsFor(1).Ids.Any(id => Items.Item(id).IsUnique && Items.Item(id).Recipe == null), $"{def.Name} needs a part found in places");
+            Check(_base.Structure.Catalogue.Type(block).IsCpuExtender, $"{def.Name} is a CPU extender on the structure");
+        }
     }
 
     IEnumerable<int> MenuChecks()

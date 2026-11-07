@@ -24,7 +24,9 @@
       "storageCap": 32000
     }
   ],
-  // CPU extenders needed for tiers 1 to 4. The core alone gives tier 1.
+  // CPU extenders needed for tiers 1 to 4. The core alone gives tier 1. An extender only counts
+  // towards tiers up to its own extenderTier (components.json), so the plain one stops at tier 2
+  // and tiers 3 and 4 take the lattice extenders, however many plain ones are aboard.
   "extendersPerTier": [0, 1, 2, 4],
   // Tonnes per storage unit of cargo, for the mass readout.
   "cargoMassPerSu": 0.001,
