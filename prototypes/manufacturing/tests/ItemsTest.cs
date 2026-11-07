@@ -80,6 +80,9 @@ public partial class ItemsTest : TestBase
     void TestBlockItems()
     {
         BuildingBridge.NameBlockItems(_items, _blocks);
+        ItemDef factory = _items.BlockItem("factory", false);
+        Check(_items.BlockItem("factory", true) == null && factory.PlacesOn(StructureClass.Base) && factory.PlacesOn(StructureClass.Capital) && factory.Places.Count == 2,
+            "the blueprint factory goes on bases and capital vessels only");
         int families = 0;
         foreach (BlockBill b in _items.Blocks.All)
             foreach (bool small in new[] { true, false })
