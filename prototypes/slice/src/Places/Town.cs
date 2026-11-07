@@ -73,6 +73,16 @@ public sealed partial class Town
         /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
         public float Down, Raised, Bent;
         public bool Laid;
+        /// <summary>What their body is saying, how far into it (eased), how long it holds at least, and what's next.</summary>
+        public BodyAct Act, Wanted;
+        public float ActAmount, ActHeld;
+        /// <summary>Greeted you on this approach; aimed at (with hysteresis); you were close last tick.</summary>
+        public bool Greeted, Covered, Close;
+        public float StartleFor;
+        /// <summary>Gesture changes, and those that came back within a second (tests: there should be none).</summary>
+        public int ActChanges, Flickers;
+        public float LastChange = -9f;
+        public BodyAct Before;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
         public Person Partner;
@@ -265,6 +275,11 @@ public sealed partial class Town
         bool night = Night();
         Mood mood = Memory.Mood;
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
+        // Where you are looking, in the place's frame: what you point at, people see.
+        Vector3 eye = player + Vector3.Up * 1.6f;
+        ITarget you = _places.Zone.Wildlife.Player;
+        Vector3 look = you == null ? Vector3.Forward : (_place.FromWorld(_places.Zone.Wildlife.PlayerWorld() + you.Forward) - player);
+        look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
         _tick++;
         _clock += tickDt;
         Voices(player, tickDt);
@@ -291,6 +306,7 @@ public sealed partial class Town
             float dt = p.Saved;
             p.Saved = 0f;
             _posing = away < PersonView.NearRange + 6f;
+            if (_posing && p.Looks != null) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
             // Hostile: the people go indoors; the guards turn on you.
@@ -402,7 +418,20 @@ public sealed partial class Town
                 p.Wait = 2f + (float)_rng.NextDouble() * 4f;
                 return;
             default:
-                if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
+                if (p.Figure?.Playful == true)
+                {
+                    // Children run about: after another child, round a grown-up, off somewhere and back, in quick bursts with sudden stops.
+                    Person other = People.Where(o => o != p && !o.Dead && !o.Indoors && o.Pos.DistanceSquaredTo(p.Pos) < 400f).OrderBy(_ => _rng.Next()).FirstOrDefault();
+                    int dash = other != null && _rng.NextDouble() < 0.6 ? other.Spot : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : p.Spot;
+                    GoTo(p, dash);
+                    p.Speed = 2.4f + (float)_rng.NextDouble() * 1.4f;
+                    p.Wait = 0.3f + (float)_rng.NextDouble() * 1.6f;
+                    return;
+                }
+                // A child goes where a grown-up is.
+                Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Indoors && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
+                if (minder != null) GoTo(p, minder.Spot);
+                else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
                 // Someone else already at this spot: they stop and chat.
                 p.Partner = People.FirstOrDefault(o => o != p && !o.Dead && !o.Indoors && o.Spot == p.Spot && o.Partner == null && o.Role is "wanderer" or "rusher");
@@ -525,21 +554,104 @@ public sealed partial class Town
     {
         bool raiders = Memory.Mood == Mood.Hostile, farm = Memory.Inst.Family.Tags.Contains("farm");
         var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "townsfolk");
+        float hardened = life.People.HardenedChance(raiders, People.Count(q => q.Role != "wanderer"));
         for (int i = 0; i < People.Count; i++)
         {
             Person p = People[i];
             PersonRole role = PeopleGenerator.RoleFor(p.Role, farm, roll);
             // Raiders keep a few who don't fight, and they don't dress for it.
             if (raiders && role != PersonRole.Child && role != PersonRole.Elder) role = PersonRole.Raider;
+            bool raider = raiders; // everyone in a raider place is of it, children too, whatever they look like
             float twist = roll.Float();
             float mutation = life.World.Mutagen * twist * twist * 1.4f;
-            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raiders ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation);
+            // Now and then, where the world forces it, the one doing this job is a child.
+            bool young = role is not (PersonRole.Child or PersonRole.Elder or PersonRole.Drunk) && roll.Chance(hardened);
+            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young);
             p.Rig = new HumanRig(p.Looks);
-            p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, PersonRole.Child => 1.1f, _ => 1f };
+            p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
         }
     }
 
     float _voiceIn = 2f;
+
+    /// <summary>A body's act has to hold this long before another may start, s; it eases in and out at this rate a second.</summary>
+    const float ActHold = 1.4f, ActEase = 3.5f;
+    /// <summary>Aimed at inside this angle, no longer outside the wider one (so the edge never flickers); within this reach, m.</summary>
+    static readonly float AimIn = MathF.Cos(Mathf.DegToRad(5f)), AimOut = MathF.Cos(Mathf.DegToRad(10f));
+    const float AimReach = 32f, GreetIn = 11f, GreetRearm = 22f, StartleIn = 4.5f;
+
+    /// <summary>Gesture flickers across the whole town (tests).</summary>
+    public int Flickers => People.Sum(p => p.Flickers);
+
+    /// <summary>
+    /// What each body says to you, without words, chosen by state, role and mood (the role's
+    /// reactions are data): a gun on them puts unarmed hands up, a peaceful approach gets a wave (or
+    /// a guard's warning, a trader's wares, a raider's taunt), coming up on them suddenly makes them
+    /// start, and running for cover is panic. Every change eases in and out, holds long enough to
+    /// read, and the aim test has an inner and an outer edge, so nothing flickers.
+    /// </summary>
+    void Acts(Person p, Vector3 player, Vector3 eye, Vector3 look, float away, float dt)
+    {
+        Figure f = p.Figure;
+        Vector3 to = p.Pos + Vector3.Up * f.Height * 0.6f - eye;
+        float along = to.LengthSquared() > 0.01f ? look.Dot(to.Normalized()) : 0f;
+        p.Covered = away < AimReach && along > (p.Covered ? AimOut : AimIn);
+        bool armed = f.Prop is "rifle" or "club";
+        bool peaceful = Memory.Mood != Mood.Hostile;
+        if (away > GreetRearm) p.Greeted = false;
+        // Coming up close out of nowhere: a start, before anything else.
+        if (away < StartleIn && !p.Close && !p.Greeted) { p.StartleFor = 0.9f; Speak(p, VoiceMood.Murmur); }
+        p.Close = away < StartleIn + 1.5f;
+        p.StartleFor = MathF.Max(0f, p.StartleFor - dt);
+        BodyAct want = BodyAct.None;
+        if (p.Fleeing) want = BodyAct.Panic;
+        else if (p.StartleFor > 0f) want = f.Startled;
+        else if (p.Covered && (!armed || f.Aimed != BodyAct.HandsUp) && p.Aim < 0f) want = f.Aimed;
+        else if (peaceful && !p.Greeted && away < GreetIn && !p.Sitting && p.Now < 0.6f)
+        {
+            p.Greeted = true;
+            p.ActHeld = 0f;
+            want = f.Approach;
+            Speak(p, VoiceMood.Murmur);
+        }
+        else if (p.Act is BodyAct.Greet or BodyAct.Present or BodyAct.Warn or BodyAct.Taunt && p.ActHeld < 2.6f && away < GreetRearm) want = p.Act;
+        // A child at ease plays, on and off.
+        if (want == BodyAct.None && peaceful && f.Stage == LifeStage.Child && p.Now < 0.2f && !p.Sitting && MathF.Sin(_clock * 0.23f + p.Spot) > 0.1f) want = BodyAct.Play;
+        if (want == BodyAct.HandsUp && p.Wanted != BodyAct.HandsUp) Speak(p, _rng.NextDouble() < 0.5 ? VoiceMood.Whisper : VoiceMood.Cry);
+        // A new act waits for the old one to have held, then the old eases out before the new eases in.
+        if (want != p.Wanted && (p.ActHeld >= ActHold || p.Wanted == BodyAct.None || want is BodyAct.Panic or BodyAct.Startle)) p.Wanted = want;
+        p.ActHeld += dt;
+        if (p.Act != p.Wanted)
+        {
+            p.ActAmount = MathF.Max(0f, p.ActAmount - dt * ActEase * (p.Wanted is BodyAct.Startle ? 3f : 1f));
+            if (p.ActAmount <= 0f)
+            {
+                if (p.Wanted != BodyAct.None)
+                {
+                    p.ActChanges++;
+                    if (p.Wanted == p.Before && _clock - p.LastChange < 1f) p.Flickers++;
+                    p.Before = p.Act == BodyAct.None ? p.Before : p.Act;
+                    p.LastChange = _clock;
+                }
+                p.Act = p.Wanted;
+                p.ActHeld = 0f;
+            }
+        }
+        else if (p.Act != BodyAct.None) p.ActAmount = MathF.Min(1f, p.ActAmount + dt * ActEase * (p.Act == BodyAct.Startle ? 3f : 1f));
+        // Hands up, they face you; close in on them and they cower.
+        if (p.Act is BodyAct.HandsUp or BodyAct.Warn or BodyAct.Taunt or BodyAct.Greet or BodyAct.Startle)
+        {
+            Vector3 d = player - p.Pos;
+            p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 3f));
+        }
+        if (p.Act == BodyAct.HandsUp && away < 3f) p.Wanted = BodyAct.Cower;
+    }
+
+    void Speak(Person p, VoiceMood mood)
+    {
+        Vector3 at = World(p.Pos + Vector3.Up * p.Figure.Height * 0.9f);
+        _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Say(p.Looks, mood, at));
+    }
 
     /// <summary>
     /// The sound of the place, one voice at a time and only near you: people at ease murmur, a
@@ -611,6 +723,9 @@ public sealed partial class Town
             Aim = p.Raised,
             Look = p.HeadYaw,
             Down = p.Down,
+            Act = p.Act,
+            ActAmount = p.ActAmount,
+            ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
             Clock = t,
         });
         p.View.Sync();

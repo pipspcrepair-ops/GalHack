@@ -15,6 +15,9 @@ public sealed class FitTables
     public float VacuumLife { get; set; } = 0.12f;
     /// <summary>The chance an ordinary world has machines walking it.</summary>
     public float MachineWorld { get; set; } = 0.22f;
+    /// <summary>The chance a world has a block-breaker, and how rare it is there (a share of the usual groups).</summary>
+    public float BreakerWorld { get; set; } = 0.3f;
+    public float BreakerScarcity { get; set; } = 0.35f;
 }
 
 public sealed class ClimateFit
@@ -167,6 +170,35 @@ public static class Fit
         s.CommonName = $"sealed {s.CommonName}";
         s.Senses = new SenseProfile { Sight = 0f, Hearing = 1.4f, Scent = 0f };
         s.EarSize = 0f;
+    }
+
+    /// <summary>
+    /// The young of a species: the same body at about half the size, rounder, the head a little
+    /// large for it and the legs a little long, as young things are; harmless, and slower to
+    /// tire of following. Its sounds come higher from the same numbers, because it weighs less.
+    /// </summary>
+    public static Species Young(Species s, Rng rng)
+    {
+        if (s.Figure != null || s.Mechanical || s.IsDeep || s.Rig is RigKind.Swarm or RigKind.GasBag or RigKind.Winged) return null;
+        Species y = s.Copy();
+        float k = rng.Range(0.42f, 0.55f);
+        Proportions b = y.Body;
+        b.Size *= k; b.Width *= k * 1.06f; b.Height *= k * 1.08f; b.LegLength *= MathF.Pow(k, 0.85f); b.LegThickness *= k;
+        b.HeadSize *= MathF.Pow(k, 0.8f); b.NeckLength *= k; b.TailLength *= k;
+        Stats st = y.Stats;
+        st.MaxHealth = MathF.Max(4f, MathF.Round(st.MaxHealth * k * k));
+        st.Damage = 0f;
+        st.Hunts = false;
+        st.Retaliates = false;
+        st.Radius *= k;
+        st.FleeRadius *= 1.3f;
+        y.Spit = SpitKind.None;
+        y.Parts["horns"] = "none";
+        y.Mate = null;
+        y.Adult = s;
+        y.CommonName = "young " + s.CommonName;
+        y.Drops.Meat = Math.Max(1, (int)(s.Drops.Meat * k * k));
+        return y;
     }
 
     /// <summary>

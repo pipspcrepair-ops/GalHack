@@ -41,6 +41,10 @@ public partial class BestiaryTest : Node
             ScentFollowsTheWind();
             VoicesAreTheirOwn();
             HeavyThingsSoundHeavy();
+            StatesHold();
+            YoungStayInTheMiddle();
+            QuietInsidePlaces();
+            BreakersBreakWeakBlocks();
         }
         catch (Exception e)
         {
@@ -462,5 +466,133 @@ public partial class BestiaryTest : Node
         Check(Heft.Mass(huge) > Heft.Mass(small) * 4f, $"a colossus outweighs a strider ({Heft.Mass(huge):F0} and {Heft.Mass(small):F0} kg)");
         Check(Heft.Pitch(huge) < Heft.Pitch(small) && Heft.Loudness(huge) > Heft.Loudness(small), "and sounds it: lower and louder, from the same number");
         Check(Heft.TurnRate(new Creature { Species = huge }, 0f) < Heft.TurnRate(new Creature { Species = small }, 0f), "and turns slower");
+    }
+
+    /// <summary>Creatures near someone walking about among them change state cleanly: a state, once left, isn't flipped straight back.</summary>
+    void StatesHold()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 150f), new NavGrid(150f, 3f));
+        var walker = new DummyTarget { Position = new Vector3(-40f, 0f, 0f) };
+        sim.Targets.Add(walker);
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        foreach (Species s in life.Fauna.Species.Where(s => !s.Mechanical && s.Figure == null).Take(5))
+            sim.SpawnGroup(s, new Vector3(_fresh.Range(-30f, 30f), 0f, _fresh.Range(-30f, 30f)), Math.Max(1, s.GroupMin));
+        for (int i = 0; i < 1800; i++)
+        {
+            // Walking a slow figure of eight through them, about the edge of what they notice.
+            float t = i / 60f;
+            walker.Position = new Vector3(MathF.Sin(t * 0.21f) * 40f, 0f, MathF.Sin(t * 0.42f) * 20f);
+            walker.Health.Restore();
+            sim.Step(1f / 60f);
+        }
+        int changes = sim.Creatures.Sum(c => c.StateChanges), flips = sim.Creatures.Sum(c => c.StateFlips);
+        Check(changes > 0 && flips <= changes * 0.05f, $"states hold: {flips} quick flips back in {changes} changes over 30 s near someone");
+    }
+
+    void YoungStayInTheMiddle()
+    {
+        Species herd = null;
+        for (int i = 0; i < 30 && herd == null; i++) herd = Bestiary.Roll(_data, World(15f)).Fauna.Species.FirstOrDefault(s => s.Young != null);
+        Check(herd != null, "herds have young");
+        if (herd == null) return;
+        Check(herd.Young.Body.Size < herd.Body.Size * 0.6f && herd.Young.Body.HeadSize / herd.Young.Body.Size > herd.Body.HeadSize / herd.Body.Size && herd.Young.Stats.Damage == 0f, "young are small, big-headed for their size and harmless, from the same body");
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f));
+        var group = sim.SpawnGroup(herd, Vector3.Zero, 8);
+        Vector3 middle = group.Aggregate(Vector3.Zero, (a, c) => a + c.Position) / group.Count;
+        float Ring(IEnumerable<Creature> l) => l.Select(c => WildSim.Flat(c.Position - middle).Length()).DefaultIfEmpty(0f).Average();
+        var young = group.Where(c => c.Species.Adult != null).ToList();
+        Check(young.Count > 0 && Ring(young) < Ring(group.Where(c => c.Species.Adult == null)), "a herd keeps its young in the middle");
+        Check(Heft.Pitch(herd.Young) > Heft.Pitch(herd), "and they sound higher, from the same numbers");
+        float Moved(Func<Creature, bool> who)
+        {
+            var at = group.Where(who).ToDictionary(c => c, c => c.Position);
+            float most = 0f;
+            for (int i = 0; i < 600; i++) { sim.Step(1f / 60f); foreach (var c in at.Keys) most = MathF.Max(most, WildSim.Flat(c.Velocity).Length()); }
+            return most;
+        }
+        float youngTop = Moved(c => c.Species.Adult != null), adultTop = Moved(c => c.Species.Adult == null);
+        Check(youngTop > adultTop, $"at ease the young dash about while the adults go steadily ({youngTop:F1} and {adultTop:F1} m/s at most)");
+        group[0].Herd.Alarm(Vector3.Zero, sim.Time);
+        sim.Step(1f / 60f);
+        Check(young.All(c => c.FriskFor <= 0f), "and the play stops at once when the herd takes fright");
+    }
+
+    /// <summary>Inside a place, nothing calls out: something moving out of sight makes a small sound, through a wall a quieter one; something still makes none.</summary>
+    void QuietInsidePlaces()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f));
+        var you = new DummyTarget { Position = new Vector3(0f, 0f, 0f) };
+        bool wall = true;
+        sim.SightLine = (a, b) => !wall;
+        var gen = new FaunaGenerator(_data.Fauna, _data.Activity);
+        Species s = gen.RollOne(Seed(), "stalker", Behaviour.Predator, 0.2f);
+        Creature c = sim.Spawn(s, new Vector3(8f, 0f, 0f));
+        c.Space = new BoxSpace();
+        var heard = new List<QuietSound>();
+        for (int i = 0; i < 600; i++) Quiet.Step(sim, you, 1f / 60f, heard);
+        Check(heard.Count == 0, "standing still in a place, it makes no sound at all");
+        for (int i = 0; i < 600; i++) { c.Velocity = Vector3.Forward * 1.5f; Quiet.Step(sim, you, 1f / 60f, heard); }
+        Check(heard.Count >= 1 && heard.All(q => q.ThroughWall && q.Kind is QuietKind.Footsteps or QuietKind.Clatter), $"moving behind a wall, it is heard: {heard.Count} footfalls in 10 s, quieter for the wall");
+        heard.Clear();
+        wall = false;
+        for (int i = 0; i < 600; i++) { c.Velocity = Vector3.Forward * 1.5f; Quiet.Step(sim, you, 1f / 60f, heard); }
+        Check(heard.Count == 0, "in plain sight it makes no telltale sound");
+    }
+
+    /// <summary>An open room: for things that only need to know they're inside.</summary>
+    sealed class BoxSpace : ISolidSpace
+    {
+        public float Density(Vector3 p) => -p.Y;
+        public bool SolidCell(int x, int y, int z) => y < 0;
+    }
+
+    /// <summary>One wall across the way, of a given armour and hit points, under the game's rule: each blow loses the armour first.</summary>
+    sealed class Wall : IBlockWorld
+    {
+        public float Armour, Hp, X = 4f;
+        public bool Base;
+        public int Blows;
+        public bool Blocking(Vector3 from, Vector3 to, out BlockAt b)
+        {
+            b = new BlockAt { Point = new Vector3(X, 1f, 0f), PlayerBase = Base };
+            return Hp > 0f && (from.X - X) * (to.X - X) < 0f;
+        }
+        public void Strike(in BlockAt b, float amount, BreakerKind kind) { Blows++; Hp -= MathF.Max(0f, amount - Armour); }
+    }
+
+    void BreakersBreakWeakBlocks()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        Species ram = life.Breaker(BreakerKind.Ram, new Rng(Seed()));
+        int breakers = Enumerable.Range(0, 200).Count(_ => Bestiary.Roll(_data, World(15f)).Fauna.Species.Any(s => s.Breaker != BreakerKind.None));
+        Check(breakers > 20 && breakers < 120, $"block-breakers are their own uncommon class: on {breakers} of 200 worlds");
+        (Wall wall, float warnedAt, float firstBlowAt) Batter(float armour, float hp, bool isBase = false, bool bases = true)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f)) { BreakBases = bases };
+            var wall = new Wall { Armour = armour, Hp = hp, Base = isBase };
+            sim.Blocks = wall;
+            var you = new DummyTarget { Position = new Vector3(6f, 0f, 0f) };
+            sim.Targets.Add(you);
+            sim.SightLine = (a, b) => wall.Hp <= 0f;
+            Creature c = sim.Spawn(ram, new Vector3(2f, 0f, 0f));
+            float warned = -1f, blow = -1f;
+            sim.Battering += (_, _) => { if (warned < 0f) warned = sim.Time; };
+            sim.Broke += (_, _) => { if (blow < 0f) blow = sim.Time; };
+            for (int i = 0; i < 60 * 25 && wall.Hp > 0f; i++)
+            {
+                c.Noticed = you;
+                c.NoticedAt = sim.Time;
+                you.Health.Restore();
+                sim.Step(1f / 60f);
+            }
+            return (wall, warned, blow);
+        }
+        var scrap = Batter(5f, 120f);
+        Check(scrap.wall.Hp <= 0f, $"a ram breaks through a scrap wall ({scrap.wall.Blows} blows of {Breaking.Blow(ram):F0})");
+        Check(scrap.warnedAt >= 0f && scrap.firstBlowAt - scrap.warnedAt >= Breaking.Warning - 0.05f, $"and gives warning first ({scrap.firstBlowAt - scrap.warnedAt:F1} s of battering before the first blow)");
+        var steel = Batter(Breaking.Blow(ram) + 10f, 400f);
+        Check(steel.wall.Blows > 2 && steel.wall.Hp >= 400f, $"combat steel holds ({steel.wall.Blows} blows, not a scratch)");
+        var safe = Batter(5f, 120f, isBase: true, bases: false);
+        Check(safe.wall.Blows == 0 && safe.wall.Hp >= 120f, "with damage to bases switched off, a base takes none");
     }
 }

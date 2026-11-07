@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using GalHack.Physics.Engine;
 using Godot;
 using PoiGenerator.Gen;
 using Slice.Places;
@@ -9,6 +10,7 @@ using Slice.Surface;
 using Wildlife;
 using Rng = Wildlife.Rng;
 using WeatherKind = Weather.Model.WeatherKind;
+using Mood = PoiGenerator.Gen.Mood;
 
 namespace Slice.Tests;
 
@@ -118,12 +120,12 @@ public sealed partial class Staging
         string dir = Folder("crowd");
         Vector3 from = _game.Survivor.WorldFeet;
         foreach (int x in _drive.UntilSettled()) yield return x;
-        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null).OrderBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
-        if (site == null) { GD.Print("(no town on this world)"); yield break; }
+        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null).OrderBy(s => s.Instance.Mood == Mood.Hostile ? 1 : 0).ThenBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
+        if (site == null) { GD.Print($"(no town on this world: {_game.Zone.Planet.Pois.Count} places, {_game.Zone.Planet.Pois.Count(s => s.Instance != null)} planned, settlements {_game.Zone.Planet.Pois.Count(s => s.Family.Tags.Contains("settlement"))})"); yield break; }
         GD.Print($"(town: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people)");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.42); // the walk there took the day
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5); // the walk there took the day
         foreach (int x in _drive.Wait(300)) yield return x;
         Town town = p.Memory.Town;
         var people = town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
@@ -145,24 +147,33 @@ public sealed partial class Staging
             return best;
         }
         _game.Visor.Visible = false;
+        // The survivor stands where the camera is, as in play: what's near them is what's posed.
+        void Stand(Vector3 eye)
+        {
+            _game.Survivor.PlaceOutside(Ground(eye).ToNumerics());
+            Look(eye, at + Vector3.Up * 1f);
+        }
+        float worst = 0f;
         foreach (float r in new[] { 5f, 14f, 32f, 70f, 140f })
         {
-            Look(EyeAt(r), at + Vector3.Up * 1f);
-            foreach (int x in _drive.Wait(20)) yield return x;
+            Stand(EyeAt(r));
+            for (int i = 0; i < 20; i++) { yield return 0; worst = MathF.Max(worst, town.LastTickMs); }
             foreach (int x in Shot(Path.Combine(dir, $"at-{r:F0}m.png"))) yield return x;
         }
-        Town.Person walker = town.People.Where(q => !q.Dead && !q.Indoors && q.Spawn.Gait is "hurry" or "amble").OrderBy(q => q.Pos.DistanceTo(busy.Pos)).FirstOrDefault() ?? busy;
+        Town.Person walker = town.People.Where(q => !q.Dead && !q.Indoors && q.Now > 0.4f).OrderBy(q => q.Pos.DistanceTo(busy.Pos)).FirstOrDefault() ?? busy;
         string frames = Path.Combine(dir, "walk");
         Directory.CreateDirectory(frames);
-        Vector3 eye = EyeAt(7f);
+        Vector3 eye = p.ToWorld(walker.Pos) + new Vector3(4.5f, 0f, 4.5f);
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.6f;
+        _game.Survivor.PlaceOutside(Ground(eye).ToNumerics());
         for (int i = 0; i < 48; i++)
         {
             Vector3 w = p.ToWorld(walker.Pos);
-            Look(eye, w + Vector3.Up * 1f);
+            Look(eye, w + Vector3.Up * 0.9f);
             foreach (int x in _drive.Wait(2)) yield return x;
             foreach (int x in Shot(Path.Combine(frames, $"f{i:000}.png"))) yield return x;
         }
-        GD.Print($"(people cost: tick {town.LastTickMs:F2} ms for {town.People.Count})");
+        GD.Print($"(people cost: worst tick {worst:F2} ms for {town.People.Count} while shooting, {people.Count} out; walker {walker.Role} at {walker.Now:F1} m/s)");
     }
 
     IEnumerable<int> FaunaView()

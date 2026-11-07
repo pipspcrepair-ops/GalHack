@@ -3,6 +3,9 @@ using Godot;
 
 namespace Wildlife;
 
+/// <summary>What a body says without words. Each is only where the hands, the back and the head go.</summary>
+public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play }
+
 /// <summary>What someone is doing, for the rig to show. Everything a game has to say about a person's body.</summary>
 public struct Gesture
 {
@@ -15,6 +18,10 @@ public struct Gesture
     public float Sit, Work, Aim, Crouch, Reach, Retch, Down;
     /// <summary>Which way the head is turned from the body, radians.</summary>
     public float Look;
+    /// <summary>A gesture, how far into it they are (0..1), and where it's aimed (pointing, presenting).</summary>
+    public BodyAct Act;
+    public float ActAmount;
+    public Vector3 ActAt;
     /// <summary>Seconds, for the slow things: weight shifting, a drink, a tool coming down.</summary>
     public float Clock;
 }
@@ -112,7 +119,8 @@ public sealed class HumanRig : Rig
 
         // Hips: over the feet, dropping as a step lands; low in a crouch, on the seat when sitting.
         float bob = moving * (0.012f + 0.024f * run) * f.Height * MathF.Cos(cycle * 2f);
-        float hipY = f.LegLength * (0.985f - 0.045f * moving - 0.08f * run - 0.42f * g.Crouch) + bob;
+        float slump = g.Act switch { BodyAct.Cower => 0.5f, BodyAct.Grieve => 0.18f, BodyAct.Startle => 0.15f, _ => 0f } * Math.Clamp(g.ActAmount, 0f, 1f);
+        float hipY = f.LegLength * (0.985f - 0.045f * moving - 0.08f * run - 0.42f * MathF.Max(g.Crouch, slump)) + bob;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
         float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * 2.3f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
@@ -121,6 +129,8 @@ public sealed class HumanRig : Rig
 
         // The torso leans into a run and over work, bows with age and drink, rolls with the stride.
         float pitch = 0.05f + 0.26f * run + f.Stoop * 0.55f + g.Work * (0.5f + 0.2f * MathF.Sin(g.Clock * 1.7f)) + g.Crouch * 0.5f + g.Retch * 0.8f - g.Sit * 0.1f - g.Aim * 0.03f + g.Reach * 0.3f;
+        float act = g.Act == BodyAct.None ? 0f : Math.Clamp(g.ActAmount, 0f, 1f);
+        pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.18f, BodyAct.Startle => -0.2f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, _ => 0f };
         float roll = -sway * 1.2f + staggerSide * 2.2f;
         float twist = moving * (0.1f + 0.1f * run) * MathF.Sin(cycle);
         Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
@@ -202,14 +212,20 @@ public sealed class HumanRig : Rig
             }
             if (g.Reach > 0f) hand = hand.Lerp(shoulder + ahead * arm * 0.98f + Vector3.Up * 0.05f + torso.X * side * -0.06f, g.Reach);
             if (g.Sit > 0f && !longGun) hand = hand.Lerp(hip + ahead * 0.32f + torso.X * side * 0.14f + Vector3.Up * 0.03f, g.Sit);
-            (Vector3 elbow, Vector3 wrist) = LeggedRig.SolveIK(shoulder, hand, f.UpperArm, f.Forearm, torso.Z + down * 0.2f + torso.X * side * 0.3f);
+            Vector3 pole = torso.Z + down * 0.2f + torso.X * side * 0.3f;
+            if (act > 0f && !(longGun && i == 1 && g.Act is BodyAct.Warn or BodyAct.Taunt))
+            {
+                hand = hand.Lerp(ActHand(g, i, side, shoulder, chest, neck, hip, torso, arm), act);
+                pole = (torso.Z * 0.6f + torso.X * side * 0.7f - Vector3.Up * 0.2f).Normalized();
+            }
+            (Vector3 elbow, Vector3 wrist) = LeggedRig.SolveIK(shoulder, hand, f.UpperArm, f.Forearm, pole);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
             if (i == 1 && _prop >= 0) Pose[_prop] = PropPose(g, wrist, Pose[_armL[0]].Origin + (Pose[_armL[0]].Basis.Y.Normalized() * f.Forearm), torso, fwd, right);
         }
 
         // The head turns on its own, and stays nearer level than the back it sits on.
-        float headPitch = pitch * 0.35f + g.Retch * 0.5f + (f.Prop == "rifle" ? g.Aim * 0.1f : 0f);
+        float headPitch = pitch * 0.35f + g.Retch * 0.5f + (f.Prop == "rifle" ? g.Aim * 0.1f : 0f) + act * (g.Act == BodyAct.Grieve ? 0.5f : g.Act == BodyAct.Taunt ? -0.25f : 0f);
         Basis headBasis = turn * new Basis(Vector3.Up, g.Look + staggerSide) * new Basis(Vector3.Right, -headPitch);
         Pose[_head] = new Transform3D(headBasis, neck);
 
@@ -219,6 +235,40 @@ public sealed class HumanRig : Rig
             var fall = new Transform3D(new Basis(right, g.Down * MathF.PI * 0.49f), g.Feet);
             Transform3D lay = fall * new Transform3D(Basis.Identity, -g.Feet);
             for (int i = 0; i < Pose.Length; i++) Pose[i] = lay * Pose[i];
+        }
+    }
+
+    /// <summary>
+    /// Where a hand goes for a gesture: big, clear shapes that read at 30 m. The right hand (i = 1)
+    /// does the one-handed ones. Everything moves on the clock, so none of it is a held pose.
+    /// </summary>
+    static Vector3 ActHand(in Gesture g, int i, float side, Vector3 shoulder, Vector3 chest, Vector3 neck, Vector3 hip, Basis torso, float arm)
+    {
+        Vector3 up = Vector3.Up, ahead = -torso.Z, out_ = torso.X * side;
+        float t = g.Clock;
+        bool right = i == 1;
+        Vector3 toward = g.ActAt - shoulder;
+        toward = toward.LengthSquared() > 0.01f ? toward.Normalized() : ahead;
+        Vector3 rest = shoulder + Vector3.Down * arm * 0.9f + out_ * 0.05f;
+        switch (g.Act)
+        {
+            case BodyAct.HandsUp: return shoulder + up * arm * 0.78f + out_ * 0.2f + ahead * 0.12f + up * 0.02f * MathF.Sin(t * 13f + i);
+            case BodyAct.Cower: return neck + ahead * 0.16f + out_ * 0.07f + up * 0.06f;
+            case BodyAct.WaveOff: return right ? chest + ahead * 0.42f + up * 0.05f + torso.X * (0.1f + 0.32f * MathF.Sin(t * 7f)) : rest;
+            case BodyAct.Beckon: return right ? shoulder + ahead * arm * (0.55f + 0.3f * MathF.Max(0f, MathF.Sin(t * 5f))) + Vector3.Down * 0.12f : rest;
+            case BodyAct.Point: return right ? shoulder + toward * arm * 0.98f : rest;
+            case BodyAct.Shrug: return hip + out_ * 0.38f + ahead * 0.28f + up * (0.12f + 0.08f * MathF.Max(0f, MathF.Sin(t * 3f)));
+            case BodyAct.Warn: return right ? shoulder + (ahead * 0.85f + up * 0.45f).Normalized() * arm * 0.97f : rest;
+            case BodyAct.Celebrate: return shoulder + up * arm * (0.7f + 0.25f * MathF.Max(0f, MathF.Sin(t * 8f + i * 1.3f))) + out_ * 0.28f;
+            case BodyAct.Grieve: return neck + ahead * 0.14f + out_ * 0.04f + up * 0.04f;
+            case BodyAct.Panic: return shoulder + up * (0.25f + 0.2f * MathF.Sin(t * 11f + i * 2f)) + out_ * (0.3f + 0.15f * MathF.Sin(t * 9f)) + ahead * 0.15f;
+            case BodyAct.Fidget: return right && MathF.Sin(t * 0.4f) > 0.2f ? neck + torso.Z * 0.06f + out_ * 0.12f : hip + out_ * 0.2f + ahead * 0.02f;
+            case BodyAct.Taunt: return shoulder + out_ * arm * 0.75f + up * (0.15f + 0.25f * MathF.Max(0f, MathF.Sin(t * 6f + i * 3f))) + ahead * 0.15f;
+            case BodyAct.Present: return right ? shoulder + (toward * 0.6f + out_ * 0.4f).Normalized() * arm * 0.9f + Vector3.Down * 0.15f : rest;
+            case BodyAct.Greet: return right ? shoulder + up * arm * 0.82f + out_ * (0.22f + 0.16f * MathF.Sin(t * 9f)) : rest;
+            case BodyAct.Startle: return shoulder + up * 0.25f + out_ * 0.38f + ahead * 0.2f;
+            case BodyAct.Play: return shoulder + out_ * arm * (0.45f + 0.35f * MathF.Sin(t * 4f + i * 3.1f)) + up * (0.05f + 0.3f * MathF.Max(0f, MathF.Sin(t * 4f + i * 3.1f))) + ahead * 0.2f;
+            default: return rest;
         }
     }
 

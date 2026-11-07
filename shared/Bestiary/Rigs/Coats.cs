@@ -31,11 +31,11 @@ public static class Coats
                 }
                 break;
             case Coat.Wool:
-                if (body != null) Fleece(body, k, rng, w * 0.3f, (int)Math.Clamp(38f * s.Body.Size, 24f, 60f));
+                if (body != null) Fleece(body, k, rng, w * 0.19f, (int)Math.Clamp(80f * s.Body.Size, 50f, 130f));
                 foreach (Piece p in layout.Pieces)
                 {
-                    if (p.Name.StartsWith("neck")) Fleece(p, k, rng, w * 0.2f, 6);
-                    else if (p.Name.Length > 3 && p.Name.StartsWith("leg") && p.Name.EndsWith("u")) Fleece(p, k, rng, w * 0.17f, 5);
+                    if (p.Name.StartsWith("neck")) Fleece(p, k, rng, w * 0.13f, 10);
+                    else if (p.Name.Length > 3 && p.Name.StartsWith("leg") && p.Name.EndsWith("u")) Fleece(p, k, rng, w * 0.11f, 9);
                 }
                 break;
             case Coat.Blubber:
@@ -102,8 +102,8 @@ public static class Coats
         {
             var (at, n, _) = Mutation.SurfacePoint(m, rng);
             float r = size * rng.Range(0.75f, 1.25f);
-            Color c = k.Base.Lightened(rng.Range(0f, 0.08f)).Darkened(rng.Range(0f, 0.1f));
-            p.Add(Shape.Sphere, new Vector3(r, r * 0.8f, r), at + n * r * 0.18f, c, 0f, 0f, Geo.AlongY(n), 6);
+            Color c = k.Base.Darkened(rng.Range(0f, 0.12f));
+            p.Add(Shape.Sphere, new Vector3(r, r * 0.55f, r), at - n * r * 0.05f, c, 0.3f, 0f, Geo.AlongY(n), 5);
         }
     }
 

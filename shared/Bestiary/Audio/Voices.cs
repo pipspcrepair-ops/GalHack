@@ -155,11 +155,11 @@ public sealed class Voice
             from = to;
             if (mood == VoiceMood.Cry && s < syllables - 1) at += Rate / 14; // a catch of breath
         }
-        float gain = 0.85f / peak;
+        float gain = (mood is VoiceMood.Murmur or VoiceMood.Whisper ? 0.55f : 0.85f) / peak; // a murmur is held back, a shout is not
         for (int i = 0; i < total; i++)
         {
             float x = buffer[i] * gain;
-            if (mood == VoiceMood.Shout) x = MathF.Tanh(x * 1.8f) * 0.8f;
+            if (mood == VoiceMood.Shout) x = MathF.Tanh(x * 2.4f) * 0.9f;
             if (i > total - 300) x *= (total - i) / 300f;
             out_[i] = (short)(x * 30000f);
         }

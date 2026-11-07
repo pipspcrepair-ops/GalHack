@@ -66,6 +66,12 @@ public partial class ProceduralAudio : Node3D
         _clips["retch"] = Make(0.8f, (t, n) => Envelope(t, 0.8f, 0.55f) * (Saw(t * (95f - 40f * t)) * 0.35f + n * 0.7f) * (0.55f + 0.45f * MathF.Sin(t * 38f)), rng);
         // A machine winding up: a servo whine climbing over a hard buzz.
         _clips["servo"] = Make(1.1f, (t, n) => Envelope(t, 1.1f, 0.9f) * (Square(t * (140f + 260f * t)) * 0.28f + MathF.Sin(MathF.Tau * (520f + 700f * t) * t) * 0.28f + n * 0.08f), rng);
+        // Small sounds from out of sight: a couple of soft footfalls; something knocked over; a machine's tick.
+        _clips["steps"] = Make(0.7f, (t, n) => (MathF.Exp(-MathF.Max(0f, t) * 40f) + MathF.Exp(-MathF.Max(0f, t - 0.36f) * 40f) * (t > 0.36f ? 1f : 0f)) * (MathF.Sin(MathF.Tau * 70f * t) * 0.6f + n * 0.5f), rng);
+        _clips["clatter"] = Make(0.55f, (t, n) => MathF.Exp(-t * 9f) * (n * 0.6f + Square(t * 410f) * 0.15f * MathF.Exp(-t * 20f)) * (0.4f + 0.6f * MathF.Abs(MathF.Sin(t * 70f))), rng, highpass: true);
+        _clips["tick"] = Make(0.4f, (t, n) => (MathF.Exp(-t * 60f) + 0.6f * MathF.Exp(-MathF.Max(0f, t - 0.2f) * 60f) * (t > 0.2f ? 1f : 0f)) * (Square(t * 900f) * 0.3f + n * 0.3f), rng, highpass: true);
+        // Something battering at a wall: a deep blow, and the crack of what's giving.
+        _clips["batter"] = Make(0.9f, (t, n) => MathF.Exp(-t * 7f) * (MathF.Sin(MathF.Tau * (48f - 20f * t) * t) * 0.9f + n * 0.5f) + MathF.Exp(-MathF.Max(0f, t - 0.08f) * 25f) * (t > 0.08f ? 1f : 0f) * n * 0.4f, rng);
         MakeTells(rng);
 
         for (int i = 0; i < 12; i++)
@@ -130,8 +136,26 @@ public partial class ProceduralAudio : Node3D
     /// <summary>The dry click of something that hunts by its voice.</summary>
     public void Click(Creature c) => Play("click", c.Position + Vector3.Up * c.Species.BodyHeight * 0.8f, Heft.Pitch(c.Species), -6f);
 
+    /// <summary>A breaker at a block: the warning blows, then the one that lands, heavier.</summary>
+    public void Batter(Creature c, Vector3 at, bool landed = false) => Play("batter", at, Heft.Pitch(c.Species) * (landed ? 0.85f : 1f), Heft.Loudness(c.Species) + (landed ? 4f : 0f));
+
     /// <summary>A footfall, as heavy as what made it.</summary>
     public void Footfall(Creature c) => Play("thud", c.Position, Heft.Pitch(c.Species) * 0.8f, Heft.Loudness(c.Species) - 8f);
+
+    /// <summary>A small sound from something out of sight in a place: what it is, doing what, as loud as it weighs.</summary>
+    public void Quiet(QuietSound q)
+    {
+        Species s = q.Creature.Species;
+        float pitch = Heft.Pitch(s) * (q.ThroughWall ? 0.8f : 1f);
+        switch (q.Kind)
+        {
+            case QuietKind.Murmur: Say(s, q.ThroughWall ? VoiceMood.Whisper : VoiceMood.Murmur, q.At, q.Volume); break;
+            case QuietKind.Skitter: Play("scratch", q.At, pitch * 1.2f, q.Volume); break;
+            case QuietKind.Clatter: Play("clatter", q.At, 1f, q.Volume); break;
+            case QuietKind.Servo: Play("tick", q.At, pitch, q.Volume); break;
+            default: Play("steps", q.At, pitch, q.Volume); break;
+        }
+    }
 
     // ---- Voices ----------------------------------------------------------------------------
 
@@ -142,7 +166,7 @@ public partial class ProceduralAudio : Node3D
     int _nextThroat, _take;
 
     /// <summary>Someone says something, wordlessly. A phrase not yet heard is rendered off the main thread and spoken next time.</summary>
-    public void Say(Species person, VoiceMood mood, Vector3 at)
+    public void Say(Species person, VoiceMood mood, Vector3 at, float? volumeDb = null)
     {
         Voice v = person.Figure?.Voice;
         if (v == null || _throats.Count == 0) return;
@@ -172,7 +196,7 @@ public partial class ProceduralAudio : Node3D
         }
         AudioStreamPlayer3D p = _throats[_nextThroat++ % _throats.Count];
         p.Stream = clip;
-        p.VolumeDb = mood switch { VoiceMood.Shout => 2f, VoiceMood.Cry => -3f, VoiceMood.Whisper => -14f, _ => -11f };
+        p.VolumeDb = volumeDb ?? mood switch { VoiceMood.Shout => 2f, VoiceMood.Cry => -3f, VoiceMood.Whisper => -14f, _ => -11f };
         p.MaxDistance = mood == VoiceMood.Shout ? 70f : mood == VoiceMood.Whisper ? 9f : 24f;
         p.GlobalPosition = at + Origin;
         p.Play();

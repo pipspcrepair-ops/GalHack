@@ -59,6 +59,13 @@ public sealed class Figure
     public string Prop = "";
     /// <summary>A Hollow husk: gaunt, slack, and what lives in it shows at the mouth and the eyes.</summary>
     public bool Husk;
+    /// <summary>A child doing a grown-up's job out of necessity: walks, stands and dresses like one.</summary>
+    public bool Hardened;
+    /// <summary>A child at play: quick, darting, never still for long.</summary>
+    public bool Playful => Stage == LifeStage.Child && !Hardened;
+
+    /// <summary>What their body says to you coming up peacefully, to you aiming at them, to a fright (from their role's data).</summary>
+    public BodyAct Approach = BodyAct.Greet, Aimed = BodyAct.HandsUp, Startled = BodyAct.Startle;
 
     /// <summary>How they sound.</summary>
     public Voice Voice;

@@ -195,6 +195,14 @@ public sealed class Creature
     public float NextClick;
     /// <summary>Footfalls the view has already played.</summary>
     public int StepsHeard;
+    /// <summary>Inside a place: when it next makes a small sound, if it's doing anything.</summary>
+    public float QuietIn;
+    /// <summary>A breaker's wind-up on the block in its way, s.</summary>
+    public float BreakWind;
+    /// <summary>The young at play: how long this dash lasts, when the next, which way.</summary>
+    public float FriskFor, FriskIn;
+    public Vector3 FriskDir;
+    public Creature FriskAfter;
     /// <summary>Whether it could see or hear a player at its last think.</summary>
     public bool Sensing;
     /// <summary>Where it last knew a player, or a loud noise, to be.</summary>
@@ -224,9 +232,16 @@ public sealed class Creature
 
     public void RememberAttack(ITarget target, float now) => _lastAttack[target] = now;
 
+    /// <summary>State changes, and those straight back to the one before within half a second: flicker (tests: there should be few).</summary>
+    public int StateChanges, StateFlips;
+    CState _before = CState.Wander;
+
     public void SetState(CState state)
     {
         if (State == state) return;
+        StateChanges++;
+        if (state == _before && StateTime < 0.5f) StateFlips++;
+        _before = State;
         State = state;
         StateTime = 0f;
         HasGoal = false;

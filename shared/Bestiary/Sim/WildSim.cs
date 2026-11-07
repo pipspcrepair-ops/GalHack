@@ -139,6 +139,53 @@ public sealed class WildSim
         return light;
     }
 
+    /// <summary>The game's blocks, for the block-breakers; and whether they may harm players' bases (a server setting).</summary>
+    public IBlockWorld Blocks;
+    public bool BreakBases = true;
+    /// <summary>A breaker started on a block (the warning), and landed a blow.</summary>
+    public event Action<Creature, BlockAt> Battering, Broke;
+    internal void RaiseBattering(Creature c, BlockAt b) => Battering?.Invoke(c, b);
+    internal void RaiseBroke(Creature c, BlockAt b) => Broke?.Invoke(c, b);
+
+    /// <summary>
+    /// The young of a herd at ease don't walk calmly like their parents: a quick dash out round the
+    /// herd and back, a sudden stop, another. When the herd is alarmed they keep to it.
+    /// </summary>
+    void Frisk(Creature c, float dt)
+    {
+        if (c.Herd == null || c.Herd.Alarmed || c.State is CState.Flee or CState.Rest) { c.FriskFor = 0f; return; }
+        if (c.FriskFor > 0f)
+        {
+            c.FriskFor -= dt;
+            if (c.FriskAfter is { Dead: false } mate)
+            {
+                // Chasing another of the young: at it, a pounce, and off again.
+                Vector3 to = Flat(mate.Position - c.Position);
+                if (to.Length() < c.Radius + mate.Radius + 0.4f) { c.Lunge = 1f; c.FriskFor = 0f; mate.FriskFor = MathF.Max(mate.FriskFor, 0.8f); mate.FriskDir = to.LengthSquared() > 1e-4f ? to.Normalized() : mate.Forward; }
+                else c.FriskDir = to.Normalized();
+            }
+            c.Desired = c.FriskDir * c.Stats.RunSpeed * 0.8f;
+            return;
+        }
+        if ((c.FriskIn -= dt) > 0f) return;
+        c.FriskIn = c.Rng.Range(2f, 6f);
+        c.FriskFor = c.Rng.Range(0.6f, 1.5f);
+        // Out round the herd, never far: back towards the middle once it's out at the edge.
+        Vector3 toMiddle = Flat(c.Herd.Center - c.Position);
+        float a = c.Rng.Range(-MathF.PI, MathF.PI);
+        Vector3 dir = new(MathF.Cos(a), 0f, MathF.Sin(a));
+        if (toMiddle.Length() > c.Herd.Spread * 0.6f) dir = (dir * 0.4f + toMiddle.Normalized()).Normalized();
+        c.FriskDir = dir;
+        // Half the time it goes after another of the young; a grown one looks up to watch.
+        c.FriskAfter = null;
+        foreach (Creature o in c.Herd.Members)
+        {
+            if (o == c || o.Dead || o.Removed) continue;
+            if (o.Species.Adult != null && c.FriskAfter == null && c.Rng.Chance(0.5f)) c.FriskAfter = o;
+            else if (o.Species.Adult == null && o.LookAt == null) { o.LookAt = c.Position + Vector3.Up; break; }
+        }
+    }
+
     /// <summary>Something that hunts by its voice clicked.</summary>
     public event Action<Creature> Clicked;
     internal void RaiseClick(Creature c) => Clicked?.Invoke(c);
@@ -320,13 +367,15 @@ public sealed class WildSim
         }
         var rng = Rng.For(species.Seed, "spawn", _nextId);
         float spread = herd?.Spread ?? (pack != null ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : species.Body.Size * 3f);
+        // A herd keeps its young in the middle, where the spiral starts: the adults stand round them.
+        int young = herd != null && species.Young != null && count >= 3 ? Math.Max(1, count / 4) : 0;
         for (int i = 0; i < count; i++)
         {
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
             if (InBaseZone(p) || (allow != null && !allow(p))) continue;
-            list.Add(Spawn(species, p, herd, pack));
+            list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
         return list;
@@ -426,6 +475,8 @@ public sealed class WildSim
                 }
                 else Brain.Follow(c);
                 Attacks.Update(this, c, dt);
+                if (c.Species.Breaker != BreakerKind.None) Breaking.Step(this, c, dt);
+                if (c.Species.Adult != null) Frisk(c, dt);
             }
             if (Profile) { long t = Stopwatch.GetTimestamp(); thinkTicks += t - t0; t0 = t; }
             Locomotion.Move(this, c, dt);

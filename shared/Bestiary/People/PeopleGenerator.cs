@@ -48,6 +48,10 @@ public sealed class RoleLook
     public float Stoop { get; set; }
     public float Stagger { get; set; }
     public string Hair { get; set; } = "";
+    /// <summary>What their body says when you come up to them peacefully, when you aim at them, and when you make them jump (a <see cref="BodyAct"/> name).</summary>
+    public string Approach { get; set; } = "Greet";
+    public string Aimed { get; set; } = "HandsUp";
+    public string Startled { get; set; } = "Startle";
 }
 
 /// <summary>
@@ -117,14 +121,16 @@ public sealed class PeopleGenerator
     /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this
     /// world has twisted them, 0 to 1 (see <see cref="Mutation"/>).
     /// </summary>
-    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false)
+    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false)
     {
         var rng = Rng.For(seed, "person");
         var look = occupancy == Occupancy.Feral ? _t.Feral
             : _t.Roles.TryGetValue(role.ToString(), out RoleLook l) ? l : new RoleLook();
         var f = new Figure { Role = role, Occupancy = occupancy, Folk = Folk, Husk = husk };
         f.Sex = rng.Chance(0.5f) ? Sex.Female : Sex.Male;
-        f.Stage = role == PersonRole.Child ? LifeStage.Child : role == PersonRole.Elder ? LifeStage.Elder : LifeStage.Adult;
+        f.Stage = role == PersonRole.Child || young ? LifeStage.Child : role == PersonRole.Elder ? LifeStage.Elder : LifeStage.Adult;
+        // A child doing a grown-up's job carries it like one: upright, kitted out, no play in them.
+        f.Hardened = young && role != PersonRole.Child;
         f.Age = f.Stage switch { LifeStage.Child => rng.Range(7f, 13f), LifeStage.Elder => rng.Range(62f, 84f), _ => rng.Range(18f, 58f) };
 
         // Height: the sexes differ by as much as this folk's bodies do; age takes a little back.
@@ -134,7 +140,7 @@ public sealed class PeopleGenerator
         f.Height = f.Stage == LifeStage.Child ? rng.Range(_t.HeightChild) : Normal(rng, mean, h[1]) * Folk.HeightScale;
         if (f.Stage == LifeStage.Elder) f.Height *= 0.97f;
         f.Build = Math.Clamp(rng.Range(0.1f, 0.75f) + Folk.BuildBias + look.Build + (f.Age > 40f ? 0.08f : 0f) - (f.Stage == LifeStage.Child ? 0.2f : 0f), 0f, 1f);
-        f.Stoop = look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f);
+        f.Stoop = f.Hardened ? 0f : look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f);
         f.Stagger = look.Stagger * rng.Range(0.7f, 1.2f);
         if (husk) { f.Build = MathF.Min(f.Build, 0.2f); f.Stoop = rng.Range(0.3f, 0.6f); f.Stagger = 0.25f; }
 
@@ -169,6 +175,9 @@ public sealed class PeopleGenerator
         }
         else Put(f, rng, look.Wear);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
+        f.Approach = Enum.TryParse(look.Approach, out BodyAct approach) ? approach : BodyAct.Greet;
+        f.Aimed = Enum.TryParse(look.Aimed, out BodyAct aimed) ? aimed : BodyAct.HandsUp;
+        f.Startled = Enum.TryParse(look.Startled, out BodyAct startled) ? startled : BodyAct.Startle;
         f.Measure();
         if (!husk) f.Voice = Voice.For(f, Dialect, seed);
 
@@ -256,6 +265,13 @@ public sealed class PeopleGenerator
     static float Wrap(float h) => h - MathF.Floor(h);
 
     /// <summary>The look of a town's job, as the place's own data calls it, with a roll for who the idle people are.</summary>
+    /// <summary>
+    /// How likely a child is to be doing a grown-up's job here: rare, and only where the world
+    /// forces it: a harsh world, a raider place, too few adults to go round.
+    /// </summary>
+    public float HardenedChance(bool raiders, int adults) =>
+        Math.Clamp(0.01f + (_w.BadAir || _w.Climate is ClimateBand.Frozen or ClimateBand.Scorching ? 0.04f : 0f) + _w.Mutagen * 0.05f + (raiders ? 0.08f : 0f) + (adults < 6 ? 0.08f : 0f), 0f, 0.25f);
+
     public static PersonRole RoleFor(string townRole, bool farm, Rng rng) => townRole switch
     {
         "vendor" => PersonRole.Trader,

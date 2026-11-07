@@ -144,6 +144,10 @@ public partial class WildlifePatch : Node3D
         // Creatures see by the same light the eye does; scent goes with the weather.
         sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
         sim.Clicked += c => Audio.Click(c);
+        sim.Blocks = new Vessels.HullBlocks(Zone, () => Origin);
+        sim.BreakBases = Zone.Data.Rules.Wildlife.BreakBases;
+        sim.Battering += (c, b) => Audio.Batter(c, b.Point);
+        sim.Broke += (c, b) => Audio.Batter(c, b.Point, landed: true);
         sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), -3f);
         sim.Splashed += (g, hit) => Splashed?.Invoke(g, hit);
         sim.Telegraph += e =>

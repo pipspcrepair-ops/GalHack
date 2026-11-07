@@ -128,7 +128,17 @@ public partial class DeepSite : Node3D
         Sim.Clock.Time01 = (float)Patch.Zone.Sky.TimeOfDay;
         Sim.Frozen = Patch.Frozen;
         Sim.Step((float)delta);
+        // What lives here keeps quiet; what it's doing out of sight gives it away.
+        _quiet.Clear();
+        Quiet.Step(Sim, Player, (float)delta, _quiet);
+        foreach (QuietSound q in _quiet) Patch.Sound(GlobalPosition, a => a.Quiet(q));
+        QuietSounds += _quiet.Count;
     }
+
+    readonly List<QuietSound> _quiet = new();
+
+    /// <summary>Small sounds made so far (tests).</summary>
+    public int QuietSounds { get; private set; }
 
     public override void _Process(double delta)
     {

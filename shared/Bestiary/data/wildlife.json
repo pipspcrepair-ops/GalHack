@@ -489,7 +489,9 @@
     "crawl": { "gravity": 12, "turnRate": 9, "substep": 0.08, "floorUp": 0.6, "wallSpeed": 0.6, "scratchEvery": 0.6 }
   },
 
-  // People. Heights in metres (mean, spread). What someone wears is rolled in order of hazard,
+  // People. Heights in metres (mean, spread). Each role can say what its body does when you come
+  // up peacefully ("approach"), aim at it ("aimed") or give it a fright ("startled"); the defaults
+  // are a wave, hands up and a start. What someone wears is rolled in order of hazard,
   // job, weather, each garment at its chance, and each slot of the body takes only one thing,
   // so a guard in a freezing town keeps the helmet and the fur coat but not a fur hood as well.
   "people": {
@@ -542,12 +544,13 @@
       },
       "Trader": {
         "wear": { "apron": 0.55, "satchel": 0.7, "scarf": 0.5, "wide_hat": 0.4, "shawl": 0.25 },
-        "trim": ["a8622a", "8a3f2c", "9a7a2c", "5a3f6a", "2f6a5e"]
+        "trim": ["a8622a", "8a3f2c", "9a7a2c", "5a3f6a", "2f6a5e"],
+        "approach": "Present"
       },
       "Guard": {
         "wear": { "vest": 0.95, "helmet": 0.8, "satchel": 0.3, "bandoleer": 0.25 },
         "trim": ["3a3f36", "2f3a3f", "45443a", "3c3430"],
-        "prop": "rifle", "build": 0.15
+        "prop": "rifle", "build": 0.15, "approach": "Warn", "aimed": "Warn"
       },
       "Farmer": {
         "wear": { "straw_hat": 0.75, "apron": 0.2, "wide_hat": 0.2, "tool_belt": 0.15 },
@@ -580,7 +583,7 @@
       "Raider": {
         "wear": { "spike_pads": 0.95, "bandoleer": 0.85, "face_paint": 0.75, "vest": 0.4, "eyepatch": 0.2, "goggles": 0.3, "helmet": 0.12 },
         "trim": ["1f1a18", "2a2320", "33261e", "3a1f1a"],
-        "prop": "rifle", "propChance": 0.55, "build": 0.15, "hair": "mohawk"
+        "prop": "rifle", "propChance": 0.55, "build": 0.15, "hair": "mohawk", "approach": "Taunt", "aimed": "Taunt"
       }
     },
     "feral": {
@@ -597,6 +600,8 @@
     "vacuumScarcity": 0.12,
     "vacuumLife": 0.12,
     "machineWorld": 0.22,
+    "breakerWorld": 0.3,
+    "breakerScarcity": 0.35,
     "climates": {
       "Frozen": {
         "banRigs": ["Chain", "Swarm", "GasBag"],

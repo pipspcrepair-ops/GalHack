@@ -68,8 +68,16 @@ public sealed class WorldLife
             if (World.Mutagen > 0f) species[i] = _generator.Mutate(species[i], World.Mutagen * rng.Range(0.4f, 1f));
             Fit.Throat(species[i], rng);
             Fit.Dimorph(species[i], Rng.For(species[i].Seed, "dimorph"));
+            if (species[i].Behaviour == Behaviour.Herd)
+            {
+                Species young = Fit.Young(species[i], Rng.For(species[i].Seed, "young"));
+                species[i].Young = young;
+                if (species[i].Mate != null) species[i].Mate.Young = young;
+            }
         }
         if (rng.Chance(t.MachineWorld)) species.Add(Robots.Roll(World, rng.Int(0, 2)));
+        // Now and then a world has something that breaks blocks.
+        if (rng.Chance(t.BreakerWorld) && Breaker((BreakerKind)rng.Int(1, 4), rng) is { } breaker) species.Add(breaker);
         // Where the world has twisted its people far enough, some have gone wild.
         if (World.Mutagen >= 0.3f) species.Add(Feral(rng));
         if (World.Bloom) species.Add(Husk(rng));
@@ -81,6 +89,33 @@ public sealed class WorldLife
         var deep = new DeepFauna(Data, Fauna);
         deep.Husks = theme => Husk(Rng.For(Seed, "husk", (long)theme));
         return deep;
+    }
+
+    /// <summary>
+    /// A block-breaker of a kind, built by the usual rules from a body that can do the job: a
+    /// heavy, armoured head for a ram, a digger for a burrower, a spitter for the corroder, a giant
+    /// for the siege beast. Bodies the world bans fall back to a stalker.
+    /// </summary>
+    public Species Breaker(BreakerKind kind, Rng rng)
+    {
+        string form = kind switch { BreakerKind.Siege => "colossus", BreakerKind.Burrower => "burrower", BreakerKind.Ram => "strider", _ => "stalker" };
+        FormDef def = Data.Fauna.Forms.Find(f => f.Id == form);
+        if (def == null || !Fit.Allows(Data.Fit, World, def)) form = "stalker";
+        ulong seed = Rng.Mix(Seed, 0xB4EA + (ulong)kind);
+        Species s = _generator.RollOne(seed, form, Behaviour.Predator, Alienness);
+        s.Breaker = kind;
+        s.Index = 400 + (int)kind;
+        s.Id = $"{Seed:x}-breaker-{kind}";
+        s.Scarcity = Data.Fit.BreakerScarcity;
+        s.Stats.Hunts = true;
+        s.Stats.Retaliates = true;
+        s.Stats.Damage = MathF.Max(s.Stats.Damage, 18f);
+        s.Temperament = Temperament.Aggressive;
+        if (kind == BreakerKind.Ram) { if (Data.Fauna.FindPart("horns", "ram") != null) s.Parts["horns"] = "ram"; if (Data.Fauna.FindPart("back", "plates") != null) s.Parts["back"] = "plates"; s.Attack = s.Attack.With(AttackStyle.Charge, "Ram"); }
+        if (kind == BreakerKind.Corroder) s.Spit = SpitKind.Bile;
+        if (kind == BreakerKind.Burrower) s.Burrows = true;
+        Fit.Apply(Data.Fit, World, s, Rng.For(seed, "fit"));
+        return s;
     }
 
     /// <summary>People gone wild: the same people, feral, with the same world in them. Both sexes run together.</summary>

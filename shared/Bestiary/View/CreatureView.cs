@@ -167,7 +167,7 @@ public partial class CreatureView : Node3D
     {
         if (_hum == null) return;
         Creature c = Creature;
-        bool humming = !c.Landed && !c.Dead && distance < HumReach;
+        bool humming = !c.Landed && !c.Dead && distance < HumReach && c.Space == null; // inside a place nothing makes a constant noise
         if (humming) _hum.GlobalPosition = c.Position;
         if (humming != _hum.Playing)
         {

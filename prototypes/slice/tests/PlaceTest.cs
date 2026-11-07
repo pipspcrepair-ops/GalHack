@@ -876,6 +876,7 @@ public partial class PlaceTest : Node
         var before = town.People.ToDictionary(q => q, Where);
         foreach (int x in drive.Wait(600)) yield return x;
         int moved = town.People.Count(q => q.Pos.DistanceTo(before[q]) > 1f);
+        Check(town.Flickers == 0, $"what their bodies say changes cleanly: {town.People.Sum(q => q.ActChanges)} gestures, none flipped straight back ({town.Flickers})");
         int stayed = town.People.Count(q => q.Role is "vendor" or "worker" && q.Pos.DistanceTo(before[q]) < 1f);
         Check(moved >= 2 && town.People.Any(q => q.Role is "rusher" or "wanderer" && q.Pos.DistanceTo(before[q]) > 2f), $"in 10 s {moved} of {town.People.Count} have gone somewhere; {stayed} vendors and workers keep to their places ({string.Join(", ", town.People.GroupBy(q => q.Role).Select(g => $"{g.Count()} {g.Key}"))})");
         // Through the town at a walk: nobody minds.

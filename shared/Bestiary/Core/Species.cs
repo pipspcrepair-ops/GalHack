@@ -83,6 +83,10 @@ public sealed class Species
     public Coat Coat;
     /// <summary>How it knows what is around it.</summary>
     public SenseProfile Senses = new();
+    /// <summary>A block-breaker, and of which kind; None for everything else.</summary>
+    public BreakerKind Breaker;
+    /// <summary>Its young, where it has them in a herd; on a young one, the grown species.</summary>
+    public Species Young, Adult;
     /// <summary>The other sex, where a species shows one. Both are this species.</summary>
     public Species Mate;
     /// <summary>How big its ears stand, 0 to 1: how well it hears, and how much heat it sheds.</summary>
