@@ -218,8 +218,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     /// <summary>
     /// The made ground at a point: the surface of the pad or road that applies most here, how much
     /// of it shows (eased off well inside the blend, so a made apron never ends in a hard edge), and how worn it is.
+    /// Without <paramref name="roads"/>, only places' pads: a renderer that draws roads from their lines leaves them out.
     /// </summary>
-    public StampSurface MadeGround(double x, double z, out float weight, out float wear)
+    public StampSurface MadeGround(double x, double z, out float weight, out float wear, bool roads = true)
     {
         weight = 0f;
         wear = 0f;
@@ -227,7 +228,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road)) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;

@@ -74,7 +74,7 @@ public static class VoxelMeshing
                         {
                             float slope2 = PlanetTerrainSource.BroadSlope2(column, fx, fz);
                             job.Colors[i] = palette.Natural(x, z, p.Y, source.SoilCover(x, z, slope2), out job.Flags[i]);
-                            StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear);
+                            StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear, roads: false);
                             if (madeWeight > 0f) job.Colors[i] = palette.Made(job.Colors[i], made, madeWeight, wear, x, z);
                             continue;
                         }

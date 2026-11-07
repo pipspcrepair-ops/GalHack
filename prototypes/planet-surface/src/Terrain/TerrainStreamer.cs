@@ -189,6 +189,7 @@ public partial class TerrainStreamer : Node3D
         Focus = focus;
         _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
+        _roads = RoadField.Build(world.Source, world.Width, world.Height);
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
         _horizonMaterial = TerrainMaterial(far: true);
@@ -201,6 +202,7 @@ public partial class TerrainStreamer : Node3D
         _horizonMaterial.SetShaderParameter("hole_sink", HorizonSink);
         _horizonMaterial.SetShaderParameter("hole_sink_from", HorizonSpacing - 0.5f);
         _horizonMaterial.SetShaderParameter("hole_cut", 2f * HorizonSpacing);
+        _horizonMaterial.SetShaderParameter("road_tolerance", 12f);
         _horizon.MaterialOverride = _horizonMaterial;
         // The far rings meet the voxels the same way. The square moves 16 m at a time, so the meshes
         // can't be stitched, and on a cliff the two can differ by metres along it. Far grid lines fall on
@@ -212,6 +214,9 @@ public partial class TerrainStreamer : Node3D
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
     }
 
+    /// <summary>The roads the terrain shader paints, for the planet being streamed.</summary>
+    RoadField _roads;
+
     ShaderMaterial TerrainMaterial(bool far)
     {
         var m = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
@@ -222,6 +227,11 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("base_snow", look.BaseSnow);
         m.SetShaderParameter("dust_color", look.Dust);
         m.SetShaderParameter("glow_color", look.Glow);
+        m.SetShaderParameter("road_segments", _roads.Segments);
+        m.SetShaderParameter("road_cells", _roads.Cells);
+        m.SetShaderParameter("road_index", _roads.Index);
+        m.SetShaderParameter("road_grid", _roads.Grid);
+        m.SetShaderParameter("road_tolerance", far ? 4f : 1.2f);
         return m;
     }
 
