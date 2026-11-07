@@ -27,7 +27,10 @@
 //   unlock          its tech-tree node on each grid (the tree is built from these, there is no
 //                   separate tree file): the character level it unlocks from, its cost in unlock
 //                   points, the parent node it hangs under (an item id, or block@grid) and its tab
-//                   (base, capital, small, hover, tools, weapons, misc). The core has none: cores
+//                   (base, small, tools, weapons, deco, misc). The base tab is Base & Capital and the
+//                   small tab is Small & Hover: bases and capital vessels share the large grid, small
+//                   and hover vessels the small one, so each tab is one grid's blocks, one node a block.
+//                   On the small tab the hover plate is the parent of the thruster. The core has none: cores
 //                   are placed from core items, which carry their own nodes.
 {
   "schema": "galhack.blocks",
@@ -70,11 +73,11 @@
     // The only block that gives control: every seat aboard is a command chair, and you build
     // whatever enclosure you like round it. It gives no air: that takes a sealed room, or the suit.
     "chair":     { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "circuit-board": 2, "polymer": 1 }, "large": { "hull-plate": 8, "control-unit": 2, "polymer": 2 },
-                   "unlock": { "small": { "level": 1, "cost": 0, "tab": "hover" },
-                               "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
+                   "unlock": { "small": { "level": 1, "cost": 0, "tab": "small" },
+                               "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "base" } } },
     "thruster":  { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "nozzle": 1, "winding": 1 },         "large": { "hull-plate": 10, "thrust-assembly": 2 },
-                   "unlock": { "small": { "level": 5, "cost": 1, "parent": "vessel-core", "tab": "small" },
-                               "large": { "level": 7, "cost": 3, "tab": "capital" } } },
+                   "unlock": { "small": { "level": 5, "cost": 1, "parent": "hover@small", "tab": "small" },
+                               "large": { "level": 7, "cost": 3, "tab": "base" } } },
     "generator": { "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 10, "winding": 8, "copper-wire": 8 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "vessel-core", "tab": "small" },
                                "large": { "level": 1, "cost": 0, "parent": "base-core", "tab": "base" } } },
@@ -104,13 +107,13 @@
     // ---- Vessel parts (prototypes/physics-sandbox/data/vessel-parts.json) -----------------------
     "gyro":      { "places": { "large": ["capital"] }, "small": { "hull-plate": 2, "servo": 1, "circuit-board": 1 },    "large": { "hull-plate": 8, "servo": 2, "magnet": 4, "control-unit": 1 },
                    "unlock": { "small": { "level": 5, "cost": 1, "parent": "chair@small", "tab": "small" },
-                               "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "capital" } } },
+                               "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "base" } } },
     "hover":     { "places": { "small": ["hover"], "large": ["capital"] }, "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 8, "power-unit": 1, "nozzle": 2 },
-                   "unlock": { "small": { "level": 1, "cost": 1, "tab": "hover" },
-                               "large": { "level": 10, "cost": 2, "parent": "hover@small", "tab": "hover" } } },
+                   "unlock": { "small": { "level": 1, "cost": 1, "tab": "small" },
+                               "large": { "level": 10, "cost": 2, "parent": "hover@small", "tab": "small" } } },
     "gear":      { "places": { "small": ["small"], "large": ["capital"] }, "small": { "hull-plate": 2, "servo": 1 },                         "large": { "hull-plate": 6, "servo": 2 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "vessel-core", "tab": "small" },
-                               "large": { "level": 7, "cost": 0, "parent": "thruster@large", "tab": "capital" } } },
+                               "large": { "level": 7, "cost": 0, "parent": "thruster@large", "tab": "base" } } },
 
     // ---- Production and weapons (building-parts.json) -----------------------------------------
     "portfab":   { "small": { "hull-plate": 6, "winding": 2, "copper-wire": 4 },    "large": { "hull-plate": 12, "winding": 4, "copper-wire": 8, "glass": 2 },
@@ -141,20 +144,20 @@
     "warpdrive": { "places": { "small": ["small"], "large": ["capital"] },
                    "small": { "hull-plate": 8, "warp-coil": 1, "control-unit": 1 },        "large": { "hull-plate": 30, "warp-coil": 2, "control-unit": 2, "power-unit": 2 },
                    "unlock": { "small": { "level": 12, "cost": 3, "parent": "chair@small", "tab": "small" },
-                               "large": { "level": 12, "cost": 3, "parent": "thruster@large", "tab": "capital" } } },
+                               "large": { "level": 12, "cost": 3, "parent": "thruster@large", "tab": "base" } } },
     "warptank":  { "places": { "small": ["small"], "large": ["capital"] },
                    "small": { "hull-plate": 3, "polymer": 1 },                             "large": { "hull-plate": 10, "polymer": 2 },
                    "unlock": { "small": { "level": 12, "cost": 0, "parent": "warpdrive@small", "tab": "small" },
-                               "large": { "level": 12, "cost": 0, "parent": "warpdrive@large", "tab": "capital" } } },
+                               "large": { "level": 12, "cost": 0, "parent": "warpdrive@large", "tab": "base" } } },
     "hyperdrive1": { "grids": ["large"], "places": { "large": ["capital"] },
                    "large": { "hull-plate": 40, "warp-coil": 4, "field-emitter": 2, "fusion-core": 1 },
-                   "unlock": { "large": { "level": 15, "cost": 5, "parent": "warpdrive@large", "tab": "capital" } } },
+                   "unlock": { "large": { "level": 15, "cost": 5, "parent": "warpdrive@large", "tab": "base" } } },
     "hyperdrive2": { "grids": ["large"], "places": { "large": ["capital"] },
                    "large": { "hull-plate": 60, "warp-coil": 8, "field-emitter": 4, "fusion-core": 2 },
-                   "unlock": { "large": { "level": 20, "cost": 6, "parent": "hyperdrive1@large", "tab": "capital" } } },
+                   "unlock": { "large": { "level": 20, "cost": 6, "parent": "hyperdrive1@large", "tab": "base" } } },
     "foldtank":  { "grids": ["large"], "places": { "large": ["capital"] },
                    "large": { "hull-plate": 12, "polymer": 3 },
-                   "unlock": { "large": { "level": 15, "cost": 0, "parent": "hyperdrive1@large", "tab": "capital" } } },
+                   "unlock": { "large": { "level": 15, "cost": 0, "parent": "hyperdrive1@large", "tab": "base" } } },
     "rocketpod": { "ammo": "rocket",
                    "small": { "hull-plate": 3, "circuit-board": 1, "servo": 1 },    "large": { "hull-plate": 10, "control-unit": 1, "servo": 2 },
                    "unlock": { "small": { "level": 9, "cost": 2, "parent": "gatling@small", "tab": "weapons" },
