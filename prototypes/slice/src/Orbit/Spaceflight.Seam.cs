@@ -83,8 +83,11 @@ public partial class Spaceflight
     /// </summary>
     float Height(Vector3 world) => Orbit.SurfaceHeight(Orbit.ToGlobe(world.ToNumerics()).Length());
 
-    /// <summary>The most a frame has spent on the seam and the skies, ms (tests read this, and reset it).</summary>
-    public double WorstSeamMs;
+    /// <summary>The most a frame has spent on the seam and the skies, and on the skies alone, ms (tests read these, and reset them).</summary>
+    public double WorstSeamMs, WorstSkyMs;
+
+    /// <summary>Screenshots of other bodies: the sky as seen from here, in the globe's frame, m.</summary>
+    public PlanetSurface.Skies.D3? ViewFrom;
 
     public override void _Process(double delta)
     {
@@ -100,7 +103,9 @@ public partial class Spaceflight
         {
             // The surface waits, but the clock and the sky above it don't.
             Game.Surface.Sky.RunClock(delta);
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             TrackSky();
+            WorstSkyMs = Math.Max(WorstSkyMs, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             PlaceSeam();
         }
         else ThinTheAir();
@@ -113,7 +118,7 @@ public partial class Spaceflight
         SurfaceZone s = Game.Surface;
         Vector3 eye = Game.Camera.GlobalPosition;
         N.Vector3 q = o.ToGlobe(eye.ToNumerics());
-        var inGlobe = new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
+        var inGlobe = ViewFrom ?? new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
         Basis turn = o.Turn.ToBasis();
         s.Sky.Stand(turn.Transposed(), inGlobe);
         s.Sky.Track();

@@ -4,32 +4,93 @@ using System.Threading;
 namespace GalHack.Music;
 
 /// <summary>
-/// The music of a game in play: the world's drone and deep space's, crossfaded by how far the air
-/// has gone. Only what can be heard runs: the far drone starts when the climb begins, and is let go
-/// once it has been silent a while, so most of the time this costs one engine. Fed by one thread
-/// (<see cref="Render"/>); <see cref="Space"/> may be set from any other.
+/// The music of a game in play: one deck for the ground and one for the sky, crossfaded by how far
+/// the air has gone. Each deck crossfades slowly from scene to scene, always in the world's key.
+/// Only what can be heard runs, so most of the time this costs one engine. Fed by one thread
+/// (<see cref="Render"/>); the scenes and <see cref="Space"/> may be set from any other.
 /// </summary>
 public sealed class DroneMix
 {
     /// <summary>How long the mix takes to follow <see cref="Space"/>. The climb is already gradual; this means even a jump in it can't be heard.</summary>
     const float FollowSeconds = 3f;
 
-    public int Rate { get; }
-    readonly DroneMood _world, _space;
-    readonly ulong _seed;
-    readonly float[] _a, _b;
-    DroneEngine _worldDrone, _spaceDrone;
-    float _target, _duckTarget = 1f;
-    double _at, _duck = 1.0; // doubles: an ease this slow moves by less than a float can hold near 1, and would stall short
+    /// <summary>How long one scene takes to become the next.</summary>
+    public const float SceneSeconds = 18f;
 
-    public DroneMix(DroneMood world, ulong seed, int sampleRate, int maxFrames)
+    /// <summary>One scene, and the one it is leaving.</summary>
+    sealed class Deck
     {
-        _world = world;
-        _space = DroneMood.DeepSpace;
-        _seed = seed;
+        readonly MusicWorld _world;
+        readonly int _rate;
+        readonly float[] _l, _r, _oldL, _oldR;
+        DroneEngine _now, _old;
+        double _fade = 1.0;
+
+        public Deck(MusicWorld world, int rate, int maxFrames)
+        {
+            _world = world;
+            _rate = rate;
+            _l = new float[maxFrames];
+            _r = new float[maxFrames];
+            _oldL = new float[maxFrames];
+            _oldR = new float[maxFrames];
+        }
+
+        public int Running => (_now != null ? 1 : 0) + (_old != null ? 1 : 0);
+
+        public void Release()
+        {
+            _now = null;
+            _old = null;
+            _fade = 1.0;
+        }
+
+        /// <summary>Adds this deck's frames at this level. A change waits for one under way, so no more than two ever run.</summary>
+        public void Render(MusicScene wanted, float[] left, float[] right, int frames, float[] gain)
+        {
+            if (_now == null) _now = new DroneEngine(_world, wanted, _rate);
+            else if (_old == null && wanted != _now.Scene)
+            {
+                _old = _now;
+                _now = new DroneEngine(_world, wanted, _rate);
+                _fade = 0.0;
+            }
+            _now.Render(_l, _r, 0, frames);
+            _old?.Render(_oldL, _oldR, 0, frames);
+            double step = 1.0 / (SceneSeconds * _rate);
+            for (int i = 0; i < frames; i++)
+            {
+                float g = gain[i];
+                if (_old == null)
+                {
+                    left[i] += _l[i] * g;
+                    right[i] += _r[i] * g;
+                    continue;
+                }
+                _fade = Math.Min(1.0, _fade + step);
+                float angle = (float)_fade * MathF.PI / 2f, up = MathF.Sin(angle) * g, down = MathF.Cos(angle) * g;
+                left[i] += _l[i] * up + _oldL[i] * down;
+                right[i] += _r[i] * up + _oldR[i] * down;
+            }
+            if (_fade >= 1.0) _old = null;
+        }
+    }
+
+    public int Rate { get; }
+    readonly Deck _ground, _sky;
+    readonly float[] _groundGain, _skyGain;
+    readonly object _lock = new();
+    MusicScene _groundScene, _skyScene = new(MusicPlace.HighOrbit);
+    float _target;
+    double _at; // a double: an ease this slow moves by less than a float can hold near 1, and would stall short
+
+    public DroneMix(MusicWorld world, int sampleRate, int maxFrames)
+    {
         Rate = sampleRate;
-        _a = new float[maxFrames * 2];
-        _b = new float[maxFrames * 2];
+        _ground = new Deck(world, sampleRate, maxFrames);
+        _sky = new Deck(world, sampleRate, maxFrames);
+        _groundGain = new float[maxFrames];
+        _skyGain = new float[maxFrames];
     }
 
     /// <summary>How far into space the listener is: 0 on the ground, 1 once the air has gone.</summary>
@@ -39,46 +100,72 @@ public sealed class DroneMix
         set => Volatile.Write(ref _target, Math.Clamp(value, 0f, 1f));
     }
 
-    /// <summary>How loud the drones are under a recorded track, 0 to 1 (eased here, so it can be set from any thread, in steps).</summary>
-    public float Duck
+    /// <summary>The scene on the ground.</summary>
+    public MusicScene Ground
     {
-        get => Volatile.Read(ref _duckTarget);
-        set => Volatile.Write(ref _duckTarget, Math.Clamp(value, 0f, 1f));
+        get { lock (_lock) return _groundScene; }
+        set { lock (_lock) _groundScene = value; }
+    }
+
+    /// <summary>The scene in the sky.</summary>
+    public MusicScene Sky
+    {
+        get { lock (_lock) return _skyScene; }
+        set { lock (_lock) _skyScene = value; }
     }
 
     /// <summary>The drones running right now, for tests and for the cost report.</summary>
-    public int Running => (_worldDrone != null ? 1 : 0) + (_spaceDrone != null ? 1 : 0);
+    public int Running => _ground.Running + _sky.Running;
 
     /// <summary>Writes the next frames. No more than the <c>maxFrames</c> it was made with.</summary>
     public void Render(float[] left, float[] right, int frames)
     {
-        float target = Space, duckTarget = Duck;
-        if (target > 0f) _spaceDrone ??= new DroneEngine(_space, _seed ^ 0x51ACE51ACE5UL, Rate);
-        if (target < 1f) _worldDrone ??= new DroneEngine(_world, _seed, Rate);
-
+        float target = Space;
         double step = 1.0 - Math.Exp(-1.0 / (FollowSeconds * Rate));
-        Array.Clear(left, 0, frames);
-        Array.Clear(right, 0, frames);
-        _worldDrone?.Render(_a, _b, 0, frames);
-        _spaceDrone?.Render(_a, _b, frames, frames);
         for (int i = 0; i < frames; i++)
         {
             _at += (target - _at) * step;
-            _duck += (duckTarget - _duck) * step;
             // Equal power: the middle of the climb is as loud as either end.
-            float angle = (float)_at * MathF.PI / 2f, ground = MathF.Cos(angle) * (float)_duck, sky = MathF.Sin(angle) * (float)_duck;
-            if (_worldDrone != null)
-            {
-                left[i] += _a[i] * ground;
-                right[i] += _b[i] * ground;
-            }
-            if (_spaceDrone != null)
-            {
-                left[i] += _a[i + frames] * sky;
-                right[i] += _b[i + frames] * sky;
-            }
+            float angle = (float)_at * MathF.PI / 2f;
+            _groundGain[i] = MathF.Cos(angle);
+            _skyGain[i] = MathF.Sin(angle);
         }
-        if (target == 0f && _at < 0.001f) _spaceDrone = null;
-        if (target == 1f && _at > 0.999f) _worldDrone = null;
+        Array.Clear(left, 0, frames);
+        Array.Clear(right, 0, frames);
+        if (target < 1f || _at < 0.999) _ground.Render(Ground, left, right, frames, _groundGain);
+        else _ground.Release();
+        if (target > 0f || _at > 0.001) _sky.Render(Sky, left, right, frames, _skyGain);
+        else _sky.Release();
+    }
+}
+
+/// <summary>
+/// Keeps the music from flickering between scenes at a border: a new scene has to hold for a few
+/// seconds before it counts, longer if only the ground has changed than if you have gone indoors.
+/// </summary>
+public sealed class SceneDwell
+{
+    const float PlaceSeconds = 5f, GroundSeconds = 30f;
+    MusicScene _candidate;
+    float _held;
+
+    public MusicScene Scene { get; private set; }
+
+    public SceneDwell(MusicScene start)
+    {
+        Scene = start;
+        _candidate = start;
+    }
+
+    public MusicScene Feed(MusicScene seen, float dt)
+    {
+        if (seen != _candidate)
+        {
+            _candidate = seen;
+            _held = 0f;
+        }
+        _held += dt;
+        if (seen != Scene && _held >= (seen.Place != Scene.Place ? PlaceSeconds : GroundSeconds)) Scene = seen;
+        return Scene;
     }
 }

@@ -19,7 +19,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(2)) yield return x;
         float music = _game.Audio.Settings.Get(Game.AudioSettings.Music);
         float bus = Mathf.DbToLinear(AudioServer.GetBusVolumeDb(AudioServer.GetBusIndex("Music")));
-        GD.Print($"(music volume {music:F2}, bus {bus:F2}, master {_game.Audio.Settings.Get(Game.AudioSettings.Master):F2}, drones running {_game.Audio.Music.Running}, frames pushed {_game.Audio.Music.Pushed})");
+        GD.Print($"(music volume {music:F2}, bus {bus:F2}, master {_game.Audio.Settings.Get(Game.AudioSettings.Master):F2}, scene {_game.Audio.Music.GroundScene}, reading now {Game.MusicScenes.Ground(_game)}, drones running {_game.Audio.Music.Running}, frames pushed {_game.Audio.Music.Pushed})");
         if (MathF.Abs(music - 0.5f) > 0.03f || MathF.Abs(bus - music) > 0.03f) throw new InvalidOperationException("the music slider did not set its bus");
         foreach (int x in Shot($"{dir}/settings.png")) yield return x;
         foreach (int x in _drive.ClickWidget("options:credits")) yield return x;

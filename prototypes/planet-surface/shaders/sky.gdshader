@@ -34,10 +34,16 @@ uniform vec3 moon_dir[10];
 uniform float moon_radius[10];
 uniform vec3 moon_color[10] : source_color;
 uniform vec3 moon_light[10];
+uniform int moon_layer[10];            // which layer of surfaces shows it; -1 while it is plain
+uniform vec3 moon_axis[10];
+uniform vec3 moon_zero[10];            // where its map's zero longitude faces this moment
+uniform sampler2DArray surfaces : source_color, filter_linear_mipmap, repeat_enable;
 
 uniform bool giant = false;
 uniform vec3 giant_dir = vec3(0.0, 1.0, 0.0);
 uniform float giant_radius = 0.1;
+uniform int giant_layer = -1;
+uniform vec3 giant_zero = vec3(1.0, 0.0, 0.0);
 uniform int giant_at = 0;              // how many of the moon slots, farthest first, stand behind the giant
 uniform vec3 giant_light = vec3(0.0, 1.0, 0.0);
 uniform bool home_ring = false;
@@ -115,6 +121,13 @@ vec4 over(vec4 front, vec4 back) {
 	return vec4(front.rgb + back.rgb * (1.0 - front.a), front.a + back.a * (1.0 - front.a));
 }
 
+// A body's own map at a point of its surface, at the detail a disc of this angular radius can show.
+vec4 surface_at(int layer, vec3 n, vec3 axis, vec3 zero, float radius) {
+	float u = atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853;
+	float v = acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927;
+	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(40.7 / (radius * 700.0), 1.0)));
+}
+
 vec4 lit_disc(vec3 dir, vec3 centre, float radius, vec3 sun, out vec3 normal) {
 	float c = dot(dir, centre);
 	normal = -centre;
@@ -175,6 +188,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			float lat = dot(n, axis);
 			float bands = sin(lat * 19.0 + sin(lat * 7.0) * 1.6) * 0.5 + 0.5;
 			vec3 surface = mix(giant_color, giant_band, bands * 0.7);
+			if (giant_layer >= 0) surface = surface_at(giant_layer, n, axis, giant_zero, giant_radius).rgb;
 			disc.rgb = surface * (0.03 + 0.97 * disc.r) * disc.a;
 		}
 		layer = over(front, over(disc, back));
@@ -185,8 +199,14 @@ vec4 bodies(vec3 dir, vec3 sun) {
 		vec3 n;
 		vec4 m = lit_disc(dir, moon_dir[i], moon_radius[i], moon_light[i], n);
 		if (m.a <= 0.0) continue;
-		float craters = 0.82 + 0.18 * texture(cloud_noise, n.xz * 0.7 + float(i) * 0.31).r;
-		m.rgb = moon_color[i] * craters * (0.025 + 1.1 * m.r) * m.a;
+		vec3 ground = moon_color[i] * (0.82 + 0.18 * texture(cloud_noise, n.xz * 0.7 + float(i) * 0.31).r);
+		float glows = 0.0;
+		if (moon_layer[i] >= 0) {
+			vec4 own = surface_at(moon_layer[i], n, moon_axis[i], moon_zero[i], moon_radius[i]);
+			ground = own.rgb;
+			glows = own.a;
+		}
+		m.rgb = ground * (0.025 + 1.1 * m.r + glows * 0.8) * m.a;
 		result = over(m, result);
 	}
 	if (giant_at >= moon_count) result = over(layer, result);

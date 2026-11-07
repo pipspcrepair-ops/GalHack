@@ -206,7 +206,7 @@ public partial class Spaceflight : Node
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
         Orbit = new OrbitZone(s.Planet, s.Data, Rules, s.Planet.StarSystem.StarKey, Ceiling, coverage)
         {
-            ProcessMode = ProcessModeEnum.Disabled, Visible = false,
+            ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
         };
         Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
     }

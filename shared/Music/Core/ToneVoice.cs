@@ -78,6 +78,36 @@ internal sealed class ToneVoice
                 _vibrato = 0.002f;
                 _vibratoRate = rng.Range(1f, 2f);
                 break;
+            case ToneKind.Bowed: // a long note drawn on something with strings, somewhere else in the building
+                Set(new[] { 1f, 2f, 3f, 4f, 5f, 6f }, new[] { 1f, 0.55f, 0.4f, 0.26f, 0.16f, 0.1f });
+                _attack = rng.Range(1.4f, 2.8f); _hold = rng.Range(0.8f, 2f); _release = rng.Range(3f, 5f); _bloom = 0.35f;
+                _vibrato = 0.0022f;
+                _vibratoRate = rng.Range(3.8f, 5.2f);
+                _dry = 0.14f;
+                break;
+            case ToneKind.Choir: // not voices, but the shape of them: a vowel held by nobody
+                Set(new[] { 1f, 2f, 3f, 4f, 7f, 8f }, new[] { 0.55f, 1f, 0.5f, 0.2f, 0.34f, 0.26f });
+                _attack = rng.Range(2f, 3.6f); _hold = rng.Range(1f, 2.4f); _release = rng.Range(3.5f, 6f); _bloom = 0.2f;
+                _vibrato = 0.0016f;
+                _vibratoRate = rng.Range(2.6f, 3.8f);
+                break;
+            case ToneKind.Pluck: // a string or tine touched gently, and left to die away
+                Set(new[] { 1f, 2f, 3.01f, 4.2f, 5.4f, 6.8f }, new[] { 1f, 0.42f, 0.22f, 0.1f, 0.05f, 0.02f });
+                _attack = 0.04f; _hold = 0f; _release = rng.Range(3f, 5.5f); _bloom = 1.2f;
+                _dry = 0.16f;
+                break;
+            case ToneKind.Wire: // current in a line: one thin steady note with its octaves, gone as it came
+                Set(new[] { 1f, 2f, 3f, 4f, 6f, 8f }, new[] { 1f, 0.3f, 0.2f, 0.12f, 0.06f, 0.03f });
+                _attack = rng.Range(2.4f, 4.2f); _hold = rng.Range(2f, 5f); _release = rng.Range(3f, 5f); _bloom = 0.15f;
+                _vibrato = 0.0006f;
+                _vibratoRate = 0.13f;
+                break;
+            case ToneKind.Drip: // one drop in a long way of dark
+                Set(new[] { 1f, 2.3f, 3.1f, 4.4f, 5.9f, 7.3f }, new[] { 1f, 0.18f, 0.08f, 0.04f, 0.02f, 0.01f });
+                _attack = 0.012f; _hold = 0f; _release = rng.Range(0.3f, 0.7f); _bloom = 1.4f;
+                _glide = rng.Range(0.3f, 0.6f);
+                _dry = 0.03f;
+                break;
             default: // Beacon: a slow, patient signal, repeating to nobody
                 Set(new[] { 1f, 1.5f, 2f, 3f, 4f, 6f }, new[] { 1f, 0.24f, 0.2f, 0.07f, 0.03f, 0.01f });
                 _attack = 0.5f; _hold = rng.Range(7f, 11f); _release = 3f; _bloom = 0.3f;

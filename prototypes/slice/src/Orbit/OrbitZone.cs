@@ -48,6 +48,9 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>The world this orbit is round.</summary>
     public PlanetWorld Below { get; private set; }
 
+    /// <summary>What every other body looks like from afar: the surface's sky paints them, and both skies show them.</summary>
+    public PlanetSurface.Skies.BodySurfaces Surfaces { get; init; }
+
     /// <summary>The globe's mapping between its directions and the map's points.</summary>
     public GlobeMap Map { get; private set; }
 
@@ -183,7 +186,7 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space);
+        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces);
         yield return 0;
         foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
         foreach (DerelictPlan p in wrecks)
