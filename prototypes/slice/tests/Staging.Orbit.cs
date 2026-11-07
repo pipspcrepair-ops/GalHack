@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics;
@@ -142,7 +142,7 @@ public sealed partial class Staging
         _game.Survivor.Pitch = seatPitch;
         Hurry(3);
         _game.Controls.Hold(Key.Space);
-        foreach (float height in new[] { 400f, 650f, 800f, 900f, 1000f })
+        foreach (float height in _args.TryGetValue("heights", out string hs) ? hs.Split(',').Select(float.Parse).ToArray() : new[] { 400f, 650f, 800f, 900f, 1000f })
         {
             for (int i = 0; i < 60 * 60 && v.Body.Position.Y < height; i++)
             {

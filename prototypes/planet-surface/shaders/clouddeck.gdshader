@@ -12,10 +12,13 @@ uniform float cover = 0.4;
 uniform float dark = 0.0;
 uniform float seen = 0.0;
 uniform float light = 1.0;
+uniform float bend = 0.0; // 1 / m: the ground's own curve as it climbs; none on the way up from the ground, so the deck lies flat
+
 
 varying vec3 wpos;
 
 void vertex() {
+	VERTEX.y -= bend * 0.5 * dot(VERTEX.xz, VERTEX.xz);
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 

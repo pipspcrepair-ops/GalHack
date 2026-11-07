@@ -94,6 +94,7 @@ public sealed partial class Staging
             "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
             "monsoon" => MonsoonCost(),
+            "funnel" => FunnelShot(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),
             "rain" => RainShot(),

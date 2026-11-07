@@ -239,15 +239,17 @@ float cloud_density(vec3 p, bool cheap) {
 	vec2 uv = (p.xz + cloud_drift) / cloud_scale;
 	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
 	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
-	if (stratus > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, stratus);
+	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
+	float st = stratus > 0.001 ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
+	if (st > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, st);
 	float storm = tower_count > 0 ? storm_at(p.xz) : 0.0;
 	float cover = mix(0.12, 1.05, cloud_cover);
 	float coverage = n - (1.0 - cover) + storm * 0.55;
 	if (coverage <= 0.0) return 0.0;
 	float h = (p.y - cloud_base) / cloud_thick;
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
-	top = mix(top, 0.4, stratus);
-	top = mix(top, 1.9, storm); // the tower stands up through the deck
+	top = mix(top, 0.4, st);
+	top = mix(top, 2.8, storm); // the tower stands up through the deck
 	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * 0.55, top, h));
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
@@ -270,7 +272,7 @@ float march_jitter(vec2 pixel) {
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
 vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
-	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 1.9 : 1.0);
+	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 2.8 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
@@ -403,10 +405,14 @@ void sky() {
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
 		if (cirrus > 0.01 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
-			vec2 q = dir.xz / (dir.y + 0.16) + cloud_drift * 0.00002;
+			// The deck's perspective is eased (the streaks used to fan out to a point on the horizon) and the
+			// combing warped, so they wander like real cirrus; patches of it come and go across the sky.
+			vec2 q = dir.xz / (dir.y + 0.55) + cloud_drift * 0.00002;
 			vec2 r = vec2(q.x * 0.82 + q.y * 0.57, q.y * 0.82 - q.x * 0.57);
-			float s = texture(cloud_noise, r * vec2(0.07, 0.42)).r * 0.7 + texture(cloud_noise, r * vec2(0.19, 1.3) + 0.2).r * 0.3;
-			float wisps = smoothstep(0.5, 0.78, s) * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover);
+			r += (texture(cloud_noise, q * 0.3 + 0.6).rg - 0.5) * 0.7;
+			float s = texture(cloud_noise, r * vec2(0.14, 0.42)).r * 0.7 + texture(cloud_noise, r * vec2(0.34, 1.1) + 0.2).r * 0.3;
+			float patch = smoothstep(0.35, 0.6, texture(cloud_noise, q * 0.12 + 0.3).r);
+			float wisps = smoothstep(0.5, 0.78, s) * patch * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover);
 			vec3 lit = mix(sunset * 1.4, cloud_lit, smoothstep(0.02, 0.32, sun.y)) * (0.08 + 0.92 * day);
 			col = mix(col, lit, wisps * cirrus * 0.5);
 		}

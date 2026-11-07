@@ -93,6 +93,9 @@ public partial class SkyRig : Node3D
     /// <summary>How much of the cloud deck shows, on top of what the eye's height over it allows, 0 to 1 (the air thinning away).</summary>
     public float CloudDeckFade = 1f;
 
+    /// <summary>How the cloud layer curves, 1 / m: nothing from the ground and at flight heights, then the ground's own bend as the climb brings the globe in.</summary>
+    public float CloudBend;
+
     /// <summary>
     /// Keeps the cloud deck under an eye: it sits in the layer, shows once the eye is climbing
     /// through it, and is lit as the sky's clouds are.
@@ -106,6 +109,7 @@ public partial class SkyRig : Node3D
         if (!CloudDeck.Visible) return;
         CloudDeck.GlobalPosition = new Vector3(eye.X, air.CloudBase + air.CloudThickness * 0.45f, eye.Z);
         _deck.SetShaderParameter("seen", seen);
+        _deck.SetShaderParameter("bend", CloudBend);
         _deck.SetShaderParameter("cover", air.CloudCover);
         _deck.SetShaderParameter("dark", air.CloudDarkness);
         _deck.SetShaderParameter("drift", _cloudDrift);
@@ -149,7 +153,7 @@ public partial class SkyRig : Node3D
         _deck = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/clouddeck.gdshader") };
         CloudDeck = new MeshInstance3D
         {
-            Name = "CloudDeck", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) }, MaterialOverride = _deck, Visible = false,
+            Name = "CloudDeck", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 31, SubdivideDepth = 31 }, MaterialOverride = _deck, Visible = false,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
         };
         AddChild(CloudDeck);

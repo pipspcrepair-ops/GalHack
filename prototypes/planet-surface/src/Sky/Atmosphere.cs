@@ -42,9 +42,12 @@ public static class Atmosphere
     {
         // Where the weather is cells, the sky between them opens: the dark is theirs, not the whole deck's.
         float cellular = Math.Clamp(c.Cellular, 0f, 1f);
-        float cover = Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.42f * cellular);
-        float dark = Math.Clamp(c.CloudDarkness, 0f, 1f) * (1f - 0.6f * cellular);
-        float overcast = Smooth(0.6f, 0.95f, cover) * (0.55f + 0.45f * dark);
+        float cover = Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.6f * cellular);
+        // The cloud shade follows the weather's severity, the same values that set the rain: a drizzle
+        // greys the cloud a little, heavy rain darkens it, a thunderstorm is near slate. (Its towers are darker still.)
+        float dark = Math.Clamp(Math.Clamp(c.CloudDarkness, 0f, 1f) * (1f - 0.2f * cellular) + 0.15f * Math.Clamp(c.Rain, 0f, 1f), 0f, 1f);
+        float overcast = Smooth(0.6f, 0.95f, Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.1f * cellular)) * // the light is dimmed by the whole storm, not only where its cells open the sky
+             (0.55f + 0.45f * dark);
         float visibility = Math.Clamp(c.Visibility, 10f, 30000f);
 
         float haze = 0.00006f * sky.Density;
@@ -56,6 +59,11 @@ public static class Atmosphere
         float dawn = Smooth(-0.12f, 0.02f, sunHeight) * Smooth(0.4f, 0.12f, sunHeight);
         float valley = Math.Clamp(Math.Max(c.GroundFog, dawn * damp * (1f - c.Dust)), 0f, 1f);
 
+        // Which clouds the air makes: damp, warm air heaps cumulus; cold air lies in grey stratus; dry air
+        // and wind comb out high cirrus. (The shader varies them across the map and over time.)
+        float humid = Math.Clamp(sky.Air switch { AirKind.Humid => 0.9f, AirKind.Breathable => 0.6f, AirKind.Exotic => 0.5f, AirKind.Sulfurous => 0.4f, AirKind.Ash => 0.3f, _ => 0.15f } + 0.5f * c.Rain + 0.3f * c.GroundFog, 0f, 1f);
+        float cold = Smooth(12f, -2f, c.Temperature);
+        float wind = Smooth(2f, 18f, c.WindSpeed);
         float solar = Math.Clamp(c.Solar, 0f, 1f);
         // The cloud layer sits between the peaks and the top of the atmosphere (about 1,060 m, on
         // Empyrion's scale): its base at 600 to 650 m, its top at about 1,000 m at the most.
@@ -76,8 +84,8 @@ public static class Atmosphere
             Visibility: visibility)
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),
-            Stratus = Smooth(0.5f, 0.85f, cover) * (1f - cellular),
-            Cirrus = (0.3f + 0.7f * Smooth(0.03f, 0.3f, cover)) * (1f - Smooth(0.5f, 0.9f, cover)),
+            Stratus = MathF.Max(Smooth(0.5f, 0.85f, cover), cold * Smooth(0.2f, 0.6f, cover) * 0.85f) * (1f - cellular),
+            Cirrus = (0.08f + 0.92f * (1f - humid)) * (0.35f + 0.65f * wind) * (1f - Smooth(0.5f, 0.9f, cover)),
         };
     }
 
