@@ -79,6 +79,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     /// <summary>The storm towers this frame, and their rain shafts.</summary>
     readonly Vector4[] _towers = new Vector4[MostTowers];
+    readonly float[] _funnels = new float[MostTowers];
     /// <summary>For tests: draw the towers without their rain shafts.</summary>
     public bool ShaftsHidden;
     readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
@@ -131,6 +132,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             if (strength < 0.04f) continue;
             Vector3 at = _planet.NearestCopy(_planet.Canonical(cell.Position), camera);
             _towers[count] = new Vector4(at.X, at.Z, cell.Radius, strength);
+            _funnels[count] = cell.Funnel != null ? 1f : 0f;
             if (count >= _shafts.Count) _shafts.Add(AddShaft());
             var (node, draw) = _shafts[count];
             float baseY = at.Y - 10f, height = CloudBaseY - baseY, reach = cell.Radius * 0.85f;
@@ -153,7 +155,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             draw.SetShaderParameter("tint", new Color(0.24f, 0.26f, 0.3f) * (0.2f + 0.8f * Zone.Sky.Daylight));
             count++;
         }
-        Zone.Sky.SetCells(_towers, count);
+        Zone.Sky.SetCells(_towers, count, _funnels);
         for (int i = count; i < _shafts.Count; i++) _shafts[i].node.Visible = false;
 
         if (count == 0 || c.LightningPerMinute < 0.1f || (_flicker -= dt) > 0f) return;
@@ -474,7 +476,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
-            fx.ReachTo(CloudBaseY - 50f - fx.GlobalPosition.Y); // up into the storm's lowered dark base, at any distance and as it lowers
+            fx.ReachTo(CloudBaseY - 150f - fx.GlobalPosition.Y); // up into the lumpy bulge of the storm's dark base, at any distance and as it lowers
             Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();
