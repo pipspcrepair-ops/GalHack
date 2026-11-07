@@ -39,6 +39,7 @@ public sealed class MapLevels
     Task<Image> _painting;
     ImageTexture _chart;
     Vector2? _dragFrom;
+    bool _homed;
 
     public MapLevels(Game.Game game) => _game = game;
 
@@ -165,8 +166,20 @@ public sealed class MapLevels
     {
         var planet = _game.Surface.Planet;
         Paint();
-        View ??= new WorldMapView(planet.Width, planet.Height, planet.Width / panel.Size.X);
+        if (View == null)
+        {
+            // Poles at the top and bottom, the equator across the middle; east-west on you.
+            View = new WorldMapView(planet.Width, planet.Height, planet.Width / panel.Size.X) { PanelHeight = panel.Size.Y };
+            View.CentreZ = planet.Height / 2;
+        }
+        View.PanelHeight = panel.Size.Y;
+        View.Settle();
         var (ux, uz) = You();
+        if (!_homed)
+        {
+            _homed = true;
+            View.CentreX = ux;
+        }
         Vector2 c = panel.GetCenter();
         Vector2 Screen(double x, double z)
         {
@@ -198,13 +211,13 @@ public sealed class MapLevels
                 else
                 {
                     var (mx, mz) = View.FromView(g.Mouse.X - c.X, g.Mouse.Y - c.Y);
-                    own.Mark(mx, mz);
+                    if (!View.Past(mz)) own.Mark(mx, mz);
                 }
             }
         }
         if (g.Drawing)
         {
-            if (_chart != null) Tiles(g, panel, View.CentreX, View.CentreZ, View.MetresPerPixel, View.Width, View.Height);
+            if (_chart != null) Tiles(g, panel, View.CentreX, View.CentreZ, View.MetresPerPixel, View.Width, View.Height, false);
             else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
             var labels = new MapLabels();
             void Mark(double x, double z, string label, Color colour, float r, int priority)
@@ -233,17 +246,18 @@ public sealed class MapLevels
         {
             View.CentreX = ux;
             View.CentreZ = uz;
+            View.Settle();
         }
     }
 
     /// <summary>The map's picture, as many wrapped copies as it takes to fill the panel.</summary>
-    void Tiles(Gui g, Rect2 panel, double centreX, double centreZ, double metresPerPixel, double width, double height)
+    void Tiles(Gui g, Rect2 panel, double centreX, double centreZ, double metresPerPixel, double width, double height, bool wrapNorthSouth = true)
     {
         float w = (float)(width / metresPerPixel), h = (float)(height / metresPerPixel);
         Vector2 c = panel.GetCenter();
         float ox = c.X - (float)(centreX / metresPerPixel), oy = c.Y - (float)(centreZ / metresPerPixel);
         for (int i = -2; i <= 2; i++)
-            for (int j = -2; j <= 2; j++)
+            for (int j = wrapNorthSouth ? -2 : 0; j <= (wrapNorthSouth ? 2 : 0); j++)
             {
                 var tile = new Rect2(ox + i * w, oy + j * h, w, h);
                 Rect2 shown = tile.Intersection(panel);
@@ -456,6 +470,9 @@ public sealed class MapLevels
                     var (mx, mz) = map.MapPoint(Globe(q));
                     View ??= new WorldMapView(planet.Width, planet.Height, planet.Width / panel.Size.X);
                     (View.CentreX, View.CentreZ) = (mx, mz);
+                    View.PanelHeight = panel.Size.Y;
+                    View.Settle();
+                    _homed = true;
                     Level = MapLevel.World;
                 }
                 _dragFrom = null;
@@ -692,17 +709,25 @@ public sealed class MapLevels
                 if (reach > 6f) g.Canvas.DrawArc(home, reach, 0, Mathf.Tau, 96, new Color(C.Accent, 0.6f), 1.5f);
                 Ring(g, panel, you.Position, Galaxy.JumpT1, new Color(C.Accent, 0.28f), 1f, At);
             }
+            // The hyperdrive's lanes: a thin line from where you are to every star in jump range (true 3D distance), brighter for the star picked or hovered.
+            if (At(you.Position, out Vector2 from3, out _))
+            {
+                int hovered = -1;
+                float near = 14f * 14f;
+                foreach (int id in shown)
+                    if (At(galaxy.Stars[id].Position, out Vector2 hq, out _) && hq.DistanceSquaredTo(g.Mouse) < near) (near, hovered) = (hq.DistanceSquaredTo(g.Mouse), id);
+                foreach (int id in shown)
+                {
+                    if (id == Trail.You || N.Vector3.Distance(you.Position, galaxy.Stars[id].Position) > Galaxy.JumpT1) continue;
+                    if (!At(galaxy.Stars[id].Position, out Vector2 to, out _)) continue;
+                    bool lit = id == charts.ChosenStar || id == hovered;
+                    g.Canvas.DrawLine(from3, to, new Color(C.Accent, lit ? 0.85f : 0.2f), lit ? 1.5f : 1f);
+                }
+            }
             foreach (int id in shown.OrderByDescending(id => { At(galaxy.Stars[id].Position, out _, out float d); return d; }))
             {
                 Star s = galaxy.Stars[id];
                 if (!At(s.Position, out Vector2 q, out float depth) || !panel.HasPoint(q)) continue;
-                // The thin line down to the plane: its length and side are the star's height.
-                if (At(s.Position with { Y = 0f }, out Vector2 foot, out _) && panel.HasPoint(foot))
-                {
-                    Color line = s.Position.Y >= 0f ? new Color(C.Holo, 0.5f) : new Color(C.Warn, 0.5f);
-                    g.Canvas.DrawLine(q, foot, line, 1f);
-                    g.Canvas.DrawCircle(foot, 1.5f, line);
-                }
                 float r = Math.Clamp((3.2f + 0.8f * MathF.Log10(s.Light + 0.01f)) * MathF.Sqrt(96f / depth), 2.4f, 8f);
                 g.Canvas.DrawCircle(q, r, StarColour(id));
                 if (id != Trail.You && id != charts.ChosenStar) labels.Add(q, r, depth < 220f ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);

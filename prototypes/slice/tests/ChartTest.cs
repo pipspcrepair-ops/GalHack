@@ -73,12 +73,19 @@ public partial class ChartTest : Node
             worst = Math.Max(worst, Math.Max(dx, dz));
         }
         Check(worst < 1e-6, $"a point picked anywhere on the world map comes back to itself through the wrap (worst {worst:E1} m)");
-        view.CentreX = 15990;
-        view.CentreZ = 7990;
-        var (sx, sy) = view.ToView(10, 10);
-        Check(Math.Abs(sx - 2) < 1e-6 && Math.Abs(sy - 2) < 1e-6, $"a point just across the seam shows just across the seam ({sx:F1}, {sy:F1}) px, both ways");
-        view.Drag(-400, -300);
-        Check(Math.Abs(view.CentreX - 3990) < 1e-6 && Math.Abs(view.CentreZ - 2990) < 1e-6, $"dragging over the edge wraps the view ({view.CentreX:F0}, {view.CentreZ:F0})");
+        view.PanelHeight = 400;
+        view.CentreX = W - 10;
+        view.CentreZ = H / 2;
+        var (sx, sy) = view.ToView(10, H / 2);
+        Check(Math.Abs(sx - 2) < 1e-6 && Math.Abs(sy) < 1e-6, $"a point just across the east-west seam shows just across it ({sx:F1}) px");
+        view.Drag(-400, -3000);
+        Check(Math.Abs(view.CentreX - ((W - 10 + 4000) % W)) < 1e-6 && Math.Abs(view.CentreZ - (H - 2000)) < 1e-6, $"dragging east-west wraps but north-south stops at the pole ({view.CentreX:F0}, {view.CentreZ:F0})");
+        view.Drag(0, 9000);
+        Check(Math.Abs(view.CentreZ - 2000) < 1e-6, "and at the other pole");
+        view.MetresPerPixel = H / 100;
+        view.Settle();
+        Check(Math.Abs(view.CentreZ - H / 2) < 1e-6, "a map shorter than the panel sits with the equator across the middle");
+        view.MetresPerPixel = 10;
         double wide = view.MetresPerPixel;
         view.Zoom(-3);
         Check(view.MetresPerPixel < wide, "the wheel zooms in");
