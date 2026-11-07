@@ -74,6 +74,16 @@ public sealed class MeshOptions
     public const int AllGround = 1 << 20;
     /// <summary>How much each cell's shade wanders, as a share of the full wander: less on plain walls, where it reads as noise.</summary>
     public float Mottle = 1f;
+
+    /// <summary>
+    /// Anything standing on a planet: buried ground is turned on so rooms keep their shading, with an
+    /// empty plug, so none of it is drawn, and it hides no face: the voxel terrain is the ground there, and it can be dug away.
+    /// </summary>
+    public static MeshOptions OnPlanet(Int3 min) => new()
+    {
+        Doors = true, Collision = true, Detail = true, Rock = true,
+        RockMin = new Int3(min.X + 1, 0, min.Z + 1), RockMax = new Int3(min.X, 0, min.Z), RockBottom = min.Y, GroundShow = AllGround,
+    };
 }
 
 /// <summary>
@@ -118,6 +128,29 @@ public static class Mesher
         list.Sort((a, b) => (a.Chunk.Y, a.Chunk.Z, a.Chunk.X).CompareTo((b.Chunk.Y, b.Chunk.Z, b.Chunk.X)));
         return list;
     }
+
+    /// <summary>One chunk alone, seeing its neighbours' cells exactly as the whole build does; null if nothing is in it. The options are asked for by the chunk's lowest cell.</summary>
+    public static ChunkMesh? BuildChunk(IBlockStructure grid, CellMask occupied, Int3 chunk, int size, Func<Int3, MeshOptions> options)
+    {
+        var window = new ChunkWindow(grid, chunk * size, size);
+        foreach (ChunkMesh m in Build(window, occupied, options(window.Min)))
+            if (m.Chunk == chunk) return m;
+        return null;
+    }
+
+    /// <summary>The chunks whose faces or shading depend on these cells: their own and every one round them, so a block gone shows what it hid in the next chunk too.</summary>
+    public static HashSet<Int3> ChunksTouching(IEnumerable<Int3> cells, int size)
+    {
+        var chunks = new HashSet<Int3>();
+        foreach (Int3 c in cells)
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+                chunks.Add(new Int3(FloorDiv(c.X + dx, size), FloorDiv(c.Y + dy, size), FloorDiv(c.Z + dz, size)));
+        return chunks;
+    }
+
+    static int FloorDiv(int a, int b) => a >= 0 ? a / b : (a - b + 1) / b;
 
     sealed class Ctx
     {
@@ -504,6 +537,34 @@ public static class Mesher
             }
         }
     }
+}
+
+/// <summary>
+/// One chunk's box of a grid, read through to the whole grid, so the mesher builds that chunk alone
+/// with its neighbours' faces and shading seen exactly as in the whole build.
+/// </summary>
+public sealed class ChunkWindow : IBlockStructure
+{
+    readonly IBlockStructure _grid;
+    public Int3 Min { get; }
+    public Int3 Size { get; }
+
+    public ChunkWindow(IBlockStructure grid, Int3 min, int size)
+    {
+        _grid = grid;
+        Min = min;
+        Size = new Int3(size, size, size);
+    }
+
+    public bool InBounds(Int3 p)
+    {
+        Int3 l = p - Min;
+        return (uint)l.X < (uint)Size.X && (uint)l.Y < (uint)Size.Y && (uint)l.Z < (uint)Size.Z;
+    }
+
+    public Block Get(Int3 p) => _grid.Get(p);
+    public void Set(Int3 p, Block b) => _grid.Set(p, b);
+    public int CountBlocks() => 0;
 }
 
 public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface, bool SkipBottom = false);

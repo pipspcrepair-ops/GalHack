@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Godot;
@@ -13,7 +13,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class Screenshot : Node
 {
-    const double TimeoutSeconds = 600;
+    const double TimeoutSeconds = 1200;
 
     Game.Game _game;
     string _out = "screenshot.png", _view = "pod";
@@ -21,6 +21,8 @@ public partial class Screenshot : Node
     IEnumerator<int> _script;
     double _elapsed;
     bool _capturing;
+    Staging _staging;
+    string _pending;
 
     public override void _Ready()
     {
@@ -34,13 +36,18 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("view", out string v)) _view = v;
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
-        var staging = new Staging(_game, _args);
-        _script = staging.Run(_view).GetEnumerator();
+        _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };
+        _script = _staging.Run(_view).GetEnumerator();
     }
 
     public override void _PhysicsProcess(double delta)
     {
         if (_capturing) return;
+        if (_pending != null)
+        {
+            Middle(_pending);
+            return;
+        }
         if ((_elapsed += delta) > TimeoutSeconds)
         {
             GD.PrintErr($"screenshot '{_view}' timed out");
@@ -56,6 +63,19 @@ public partial class Screenshot : Node
             return;
         }
         if (!more) Capture();
+    }
+
+    /// <summary>A shot part way through a view: saved, and the view goes on.</summary>
+    async void Middle(string file)
+    {
+        _capturing = true;
+        _pending = null;
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        Image image = GetViewport().GetTexture().GetImage();
+        GD.Print(image.SavePng(file) == Error.Ok ? $"saved {file}" : $"could not save {file}");
+        _capturing = false;
+        _staging.Snapping = false;
     }
 
     async void Capture()

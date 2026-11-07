@@ -517,6 +517,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
                     // As far under zero as the ground beside it is over: the surface between them lies on
                     // the cell's face. A flat -limit drew it back into the ground near the top, in a dip.
                     density[i] = dist > 0f ? -MathF.Min(MathF.Max(dist, CarvedLeast), Limit) : MathF.Max(MathF.Min(dist, -CarvedLeast), -Limit);
+                    // Beside a wall it is the wall that holds the surface: right back inside it, or a room's corners fill in with a fillet of ground.
+                    foreach (TerrainStamp t in stamps)
+                        if (t.WalledIn(x, y, z)) density[i] = -Limit;
                     material[i] = CellMaterial.Air;
                     continue;
                 }
@@ -531,7 +534,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
                 if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, dist, caves));
                 if (mouths != null && depth > -4f && !padded) d = MathF.Min(d, MouthsAt(mouths, x + 0.5, y + 0.5, z + 0.5));
                 d = Math.Clamp(d, -Limit, Limit);
-                if (wall) d = MathF.Min(d, TerrainStamp.WallDensity);
+                if (wall) d = TerrainStamp.InWall(d);
                 density[i] = d;
 
                 if (d <= 0f)

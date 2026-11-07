@@ -374,7 +374,9 @@ public static class PoiSiting
         // Rooms below the pad (and the floor layer, which sits in the ground) stay open.
         int carveH = Math.Max(0, -occupied.Min.Y) + buryTop;
         bool[] carve = null, walls = null;
-        // From the place as it stands, decay and all: where a wall has gone, so has the ground that ran into it.
+        // Under the pad, from the place as it was built: where decay took a wall the ground it held back comes up to where the wall
+        // stood and shows in the gap; carved by what stands now, that gap opened a pit in the ground outside, down into the rooms.
+        // Over the pad (a half-buried ruin) from the place as it stands: its rooms stay open, a gap in the wall with them.
         void Recarve()
         {
             if (carve == null) return;
@@ -384,8 +386,9 @@ public static class PoiSiting
             {
                 var cell = new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z);
                 int i = (y * occupied.Size.Z + z) * occupied.Size.X + x;
-                carve[i] = PoiGenerator.Gen.Structure.Carved(inst.Blocks, occupied, cell);
-                walls[i] = PoiGenerator.Gen.Structure.OuterWall(inst.Blocks, occupied, cell);
+                BlockGrid by = cell.Y < 0 ? inst.Layout.Blocks : inst.Blocks;
+                carve[i] = PoiGenerator.Gen.Structure.Carved(by, occupied, cell);
+                walls[i] = PoiGenerator.Gen.Structure.OuterWall(by, occupied, cell);
             }
         }
         if (carveH > 0)

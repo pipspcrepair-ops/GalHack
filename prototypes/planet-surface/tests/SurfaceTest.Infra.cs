@@ -139,7 +139,7 @@ public partial class SurfaceTest
     /// </summary>
     async Task FlushChecks()
     {
-        int walls = 0, dips = 0;
+        int walls = 0, dips = 0, banked = 0;
         float worst = 0f;
         string first = "";
         var rand = new Random();
@@ -152,7 +152,12 @@ public partial class SurfaceTest
             float Top(float x, float z, float from)
             {
                 for (float y = from + 4f; y > from - 6f; y -= 0.1f)
-                    if (store.SampleDensity(new System.Numerics.Vector3(x, y, z)) > 0f) return y;
+                    if (store.SampleDensity(new System.Numerics.Vector3(x, y, z)) > 0f)
+                    {
+                        // To a couple of centimetres: a slope is judged from the difference of two of these.
+                        while (store.SampleDensity(new System.Numerics.Vector3(x, y + 0.02f, z)) > 0f) y += 0.02f;
+                        return y;
+                    }
                 return float.NegativeInfinity;
             }
             void Walls(PoiInstance inst, int ox, int oy, int oz, string name)
@@ -173,12 +178,20 @@ public partial class SurfaceTest
                         if (float.IsInfinity(near) || float.IsInfinity(far)) continue;
                         walls++;
                         taken++;
-                        // Street lots stand two metres apart at their own levels: the bank up to the next lot's pad can lean on a wall, and that is a slope, no slump.
-                        double sx = fx + v.X * 1.5f, sz = fz + v.Z * 1.5f;
-                        if (ruins.Any(o => o.OriginY != oy && o.Stamp.Weight(sx, sz) > 0.05f)) continue;
                         float dip = far - near;
+                        // Street lots stand two metres apart at their own levels: the bank up to the next lot's pad can lean on a wall, and
+                        // that is a slope, no slump. A next lot's blend reaches 24 m, so that excuses no wall outright: on a bank the last
+                        // of the slope is held to the slope just before it, and ground that steepens into the wall's foot is a slump all the same.
+                        double sx = fx + v.X * 1.5f, sz = fz + v.Z * 1.5f;
+                        if (ruins.Any(o => o.OriginY != oy && o.Stamp.Weight(sx, sz) > 0.05f))
+                        {
+                            float mid = Top(fx + v.X * 0.7f, fz + v.Z * 0.7f, oy), back = Top(fx + v.X * 1.1f, fz + v.Z * 1.1f, oy);
+                            if (float.IsInfinity(mid) || float.IsInfinity(back)) continue;
+                            dip = mid + (mid - back) - near;
+                            banked++;
+                        }
                         worst = MathF.Max(worst, dip);
-                        if (dip > 0.4f)
+                        if (dip > 0.25f)
                         {
                             dips++;
                             if (first.Length == 0) first = $" (first: {name} at {c}, its origin ({ox}, {oy}, {oz}), wall face {d}: {dip:F2} m; seed {seed}, {kind})";
@@ -192,7 +205,7 @@ public partial class SurfaceTest
                 Walls(r.Spawn(w.Profile, w.Source), r.OriginX, r.OriginY, r.OriginZ, r.Family.Id);
             await Frames(1);
         }
-        Check(dips == 0 && walls > 200, $"ground meets walls flush: {walls} walls, {dips} with a dip along the foot, the worst {worst:F2} m{first}");
+        Check(dips == 0 && walls > 200, $"ground meets walls flush: {walls} walls ({banked} on a bank up to the next lot, held to its slope), {dips} with a dip along the foot, the worst {worst:F2} m{first}");
     }
 
     /// <summary>

@@ -86,6 +86,13 @@ Runs headless in about 100 s and exits 0 or 1. Add `-- --only=Heights,Flight` to
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
 - walking north across the edge keeps you on the ground and at speed in every one of three walks (simulation ticks, so load can't shorten one), with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames in the best of the three
 
+`tests/FaceTest.tscn` doesn't take the mesher's word that nothing can be seen through. In about 50 s, on three fresh worlds (`-- --worlds=N`, and `--seed=N` to replay one it names), it casts millions of rays at the triangles actually drawn, their front faces only, and walks the same rays through the blocks and the ground:
+
+- a ray from anywhere, round a place or ruin as decay left it, over it, under the ground or from its rooms, never enters a solid block or deep ground without meeting a drawn face first: with all the ground dug away, with the real ground, and from a pit really dug round it
+- every other shape (pillars, ramps, doors, furniture) has its faces from above, below and the side, wound the right way
+- built as a near place is, a chunk at a time, with blocks taken out and only the chunks they touch redrawn, the same holds
+- the ground stays behind a room's walls, and at the foot of every wall the ground as drawn lies level with the ground a stride off, at every height, slopes and half-buried ruins too: within 15 cm
+
 `tests/SkyTest.tscn` renders, so a headless run starts itself again in a normal window and passes on what it prints (`shared/Sky/SkySeams.cs`). In about 2 minutes it checks that:
 
 - the sky alone, from the slice's world (`SkyRig` with no ground), looked at straight along a cube's corners and edges, the zenith, the axes and the azimuth's wrap, by day under broken cloud with the sun well up and in the afternoon west, at dusk and under heavy cloud, and a nebula world's sky at midnight (and its backdrop alone, brightened six times): shows no line where the colour jumps, no crowd of jumps, no swirl round a pole, and stars as dense along the axes as anywhere else

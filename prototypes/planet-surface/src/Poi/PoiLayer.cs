@@ -51,22 +51,10 @@ public partial class PoiLayer : Node3D
         }
     }
 
-    static List<ChunkMesh> Mesh(PoiSite site)
+    public static List<ChunkMesh> Mesh(PoiSite site)
     {
         BlockGrid g = site.Instance.Blocks;
-        var options = new MeshOptions
-        {
-            Doors = true,
-            Collision = true,
-            Detail = true,
-            Rock = true,
-            // An empty plug: nothing is drawn for it, and every outer face stays, however deep: the ground can be dug off it.
-            RockMin = new Int3(1, 0, 1),
-            RockMax = new Int3(0, 0, 0),
-            RockBottom = g.Min.Y,
-            GroundShow = MeshOptions.AllGround,
-        };
-        return Mesher.Build(g, site.Instance.Layout.Occupied, options);
+        return Mesher.Build(g, site.Instance.Layout.Occupied, MeshOptions.OnPlanet(g.Min));
     }
 
     public override void _Process(double delta)
