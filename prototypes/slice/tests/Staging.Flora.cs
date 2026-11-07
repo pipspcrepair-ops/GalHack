@@ -235,6 +235,72 @@ public sealed partial class Staging
         if (_args.ContainsKey("cost")) foreach (int x in FloraCost(wood.Value)) yield return x;
     }
 
+    /// <summary>
+    /// Crowned trees of this world one by one on open ground, each from several sides and from under its crown: to look for
+    /// any gap between a trunk, its limbs and its foliage. Weeping ones get the most views.
+    /// </summary>
+    IEnumerable<int> FloraTrees()
+    {
+        var planet = _game.Zone.Planet;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.43);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Visor.Visible = false;
+        _game.Zone.Wildlife.Frozen = true;
+        var book = planet.Flora.Book;
+        var picks = new List<Plant>();
+        picks.AddRange(book.Plants.Where(p => p.Form == PlantForm.Weeping).Take(2));
+        foreach (PlantForm form in new[] { PlantForm.Umbrella, PlantForm.Domed, PlantForm.Bottle, PlantForm.Spindle, PlantForm.CloudPads })
+            if (book.Plants.FirstOrDefault(p => p.Form == form) is Plant one) picks.Add(one);
+        GD.Print($"FLORA trees: {string.Join(", ", picks.Select(p => $"{p.Form} {p.Height:F1} m"))}");
+        Vector3? spot = Best(_game.Survivor.WorldFeet, (x, z) => 1f);
+        if (spot == null) yield break;
+        foreach (int x in Arrive(spot.Value)) yield return x;
+        Vector3 origin = _game.Survivor.WorldFeet;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.43);
+        var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
+        var roots = new List<Vector3>();
+        for (int i = 0; i < picks.Count; i++)
+        {
+            Plant p = picks[i];
+            Vector3 at = origin + new Vector3(8f + i * 26f, 0f, 22f);
+            at.Y = _game.Zone.GroundAt(at.X, at.Z).Y;
+            roots.Add(at);
+            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = _game.Zone.Streamer.PlantMesh(p.Index, 0), InstanceCount = 1 };
+            Rgb tint = planet.Flora.Tint(p, 0.8f, at.X, at.Z);
+            mm.SetInstanceTransform(0, new Transform3D(Basis.Identity, at));
+            mm.SetInstanceCustomData(0, new Color(tint.R, tint.G, tint.B, 0f));
+            _game.Zone.AddChild(new MultiMeshInstance3D { Multimesh = mm, MaterialOverride = material });
+        }
+        foreach (int x in _drive.Wait(30)) yield return x;
+        for (int i = 0; i < picks.Count; i++)
+        {
+            Plant p = picks[i];
+            Vector3 root = roots[i];
+            float h = MathF.Max(p.Height, 3f), reach = MathF.Max(h * 1.5f, p.CrownRadius * 3f);
+            int views = p.Form == PlantForm.Weeping ? 4 : 2;
+            for (int v = 0; v < views; v++)
+            {
+                float a = v * MathF.Tau / views + 0.5f;
+                Vector3 eye = root + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * reach;
+                eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f + (v % 2) * h * 0.15f;
+                Vector3 target = root + Vector3.Up * h * 0.5f;
+                _game.FixedCamera = new Transform3D(Basis.LookingAt(target - eye, Vector3.Up), eye);
+                foreach (int x in _drive.Wait(12)) yield return x;
+                FloraShot($"tree{i}-{p.Form}-{v}");
+            }
+            if (p.Form == PlantForm.Weeping)
+            {
+                // From under the crown, looking up the trunk into the foliage.
+                Vector3 under = root + new Vector3(p.CrownRadius * 0.55f, 0f, 0f);
+                under.Y = _game.Zone.GroundAt(under.X, under.Z).Y + 1.2f;
+                _game.FixedCamera = new Transform3D(Basis.LookingAt(root + Vector3.Up * h * 0.55f - under, Vector3.Up), under);
+                foreach (int x in _drive.Wait(12)) yield return x;
+                FloraShot($"tree{i}-{p.Form}-under");
+            }
+        }
+        _game.FixedCamera = null;
+    }
+
     /// <summary>Frame time and memory in the thick of the woods: with no flora drawn, with stands only, with cover as well.</summary>
     IEnumerable<int> FloraCost(Vector3 at)
     {

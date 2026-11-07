@@ -85,6 +85,7 @@ public sealed partial class Staging
             "cores" => CoresView(),
             "natural" => Natural(),
             "flora" => FloraProof(),
+            "flora-trees" => FloraTrees(),
             "crouch" => CrouchView(),
             "dark" => Dark(),
             "monsoon" => MonsoonCost(),

@@ -13,16 +13,146 @@ internal sealed class Sculptor
 {
     readonly List<Vector3> _p = new(), _n = new();
     readonly List<Vector4> _c = new();
+    readonly List<int> _owner = new();
+    readonly List<byte> _kinds = new() { 0 };
+    int _depth, _part;
 
     public int Triangles => _p.Count / 3;
 
-    public PlantMesh Finish() => new() { Positions = _p.ToArray(), Normals = _n.ToArray(), Colors = _c.ToArray() };
+    /// <summary>Each primitive is a part, numbered from 1; one made of others (a tube is quads, a quad is triangles) is still one part.</summary>
+    void Begin(PartKind kind)
+    {
+        if (_depth++ > 0) return;
+        _part = _kinds.Count;
+        _kinds.Add((byte)kind);
+    }
+
+    void End() => _depth--;
+
+    public PlantMesh Finish() => new() { Positions = _p.ToArray(), Normals = _n.ToArray(), Colors = _c.ToArray(), PartOf = _owner.ToArray(), PartKind = _kinds.ToArray() };
+
+    /// <summary>
+    /// Nothing floats: whatever the body plan left adrift gets a branch. A group of parts that no part
+    /// in the ground reaches is joined to the nearest of those that are held (from a limb or trunk where
+    /// one is about as near), and a lobe of leaves that no wood touches is joined to the nearest wood. The
+    /// branch runs from the wood into the mass, <see cref="PlantAudit"/>'s own rule deciding what counts as joined.
+    /// </summary>
+    public void Weld(Dice d, Vector4 bark, float radius, Vector3? stemTop = null)
+    {
+        for (int pass = 0; pass < 40; pass++)
+        {
+            PlantMesh m = Finish();
+            PlantAudit.Report r = PlantAudit.Analyse(m);
+            var adrift = new List<int>(r.Adrift());
+            bool lobe = false;
+            if (adrift.Count == 0)
+            {
+                adrift.AddRange(r.Loose(m));
+                lobe = true;
+                if (adrift.Count == 0)
+                {
+                    if (stemTop is Vector3 top && JoinStem(m, top, d, bark, radius)) continue;
+                    return;
+                }
+            }
+            // The group to join: its parts' vertices, against the held (or wood) parts' vertices.
+            int target = adrift[0];
+            var mine = new List<int>();
+            if (lobe) mine.Add(target);
+            else
+                for (int p = 1; p <= r.Parts; p++)
+                    if (r.Count[p] > 0 && r.Group[p] == r.Group[target]) mine.Add(p);
+            Vector3 best0 = default, best1 = default, centre = default;
+            float best = float.MaxValue;
+            int bestPart = -1;
+            for (int p = 1; p <= r.Parts; p++)
+            {
+                if (r.Count[p] == 0 || mine.Contains(p)) continue;
+                bool wood = m.PartKind[p] == (byte)PartKind.Wood;
+                if (lobe ? !wood : !r.GroupRooted[r.Group[p]]) continue;
+                float weight = wood ? 0.5f : 1f;
+                for (int i = 0; i < r.Count[p]; i++)
+                    for (int c = 0; c < 3; c++)
+                    {
+                        Vector3 from = m.Positions[r.Tris[r.First[p] + i] * 3 + c];
+                        foreach (int q in mine)
+                            for (int j = 0; j < r.Count[q]; j++)
+                                for (int k = 0; k < 3; k++)
+                                {
+                                    Vector3 to = m.Positions[r.Tris[r.First[q] + j] * 3 + k];
+                                    float dist = Vector3.Distance(from, to) * weight;
+                                    if (dist >= best) continue;
+                                    best = dist;
+                                    best0 = from;
+                                    best1 = to;
+                                    bestPart = q;
+                                }
+                    }
+            }
+            if (bestPart < 0) return;
+            centre = Vector3.Zero;
+            for (int t = 0; t < r.Count[bestPart]; t++)
+                for (int v = 0; v < 3; v++) centre += m.Positions[r.Tris[r.First[bestPart] + t] * 3 + v];
+            centre /= r.Count[bestPart] * 3f;
+            // Into the mass a little way, so the branch is buried in it and shows no end.
+            Vector3 end = best1 + (centre - best1) * 0.4f;
+            Vector3 way = end - best0;
+            float length = way.Length();
+            if (length < 0.03f)
+            {
+                end = best0 + Vector3.UnitY * 0.08f;
+                way = end - best0;
+                length = 0.08f;
+            }
+            Vector3 dir = way / length;
+            Bridge(best0, end, dir, radius, bark);
+        }
+    }
+
+    /// <summary>A thin straight branch, three sides, buried at both ends: thin enough that whatever it starts in is within touching distance of its skin.</summary>
+    void Bridge(Vector3 from, Vector3 to, Vector3 dir, float radius, Vector4 bark)
+    {
+        float rad = Math.Clamp(radius, 0.03f, PlantAudit.Touch * 0.7f);
+        Tube(new[] { from - dir * rad, to }, new[] { rad, rad * 0.6f }, 3, bark, bark, false);
+    }
+
+    /// <summary>A trunk's top that nothing meets: a branch from it into the nearest other part, and on into that part. False when it is met.</summary>
+    bool JoinStem(PlantMesh m, Vector3 top, Dice d, Vector4 bark, float radius)
+    {
+        float best = float.MaxValue;
+        Vector3 at = default;
+        int part = -1;
+        for (int t = 0; t < m.PartOf.Length; t++)
+        {
+            if (m.PartOf[t] == 1) continue;
+            Vector3 q = PlantAudit.Closest(top, m.Positions[t * 3], m.Positions[t * 3 + 1], m.Positions[t * 3 + 2]);
+            float dist = Vector3.Distance(top, q);
+            if (dist >= best) continue;
+            best = dist;
+            at = q;
+            part = m.PartOf[t];
+        }
+        if (PlantAudit.TrunkMeets(m, top) || part < 0) return false;
+        Vector3 centre = Vector3.Zero;
+        int n = 0;
+        for (int t = 0; t < m.PartOf.Length; t++)
+            if (m.PartOf[t] == part) { centre += m.Positions[t * 3] + m.Positions[t * 3 + 1] + m.Positions[t * 3 + 2]; n += 3; }
+        centre /= n;
+        Vector3 end = at + (centre - at) * 0.4f, way = end - top;
+        float length = way.Length();
+        Vector3 dir = way / length;
+        Bridge(top, end, dir, radius, bark);
+        return true;
+    }
 
     public void Tri(Vector3 a, Vector3 b, Vector3 c, Vector3 outward, Vector4 ca, Vector4 cb, Vector4 cc)
     {
         Vector3 n = Vector3.Cross(b - a, c - a);
         float length = n.Length();
         if (length < 1e-7f) return;
+        Begin(PartKind.Body);
+        _owner.Add(_part);
+        End();
         n /= length;
         if (Vector3.Dot(n, outward) < 0f)
         {
@@ -37,8 +167,10 @@ internal sealed class Sculptor
 
     public void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward, Vector4 ca, Vector4 cb, Vector4 cc, Vector4 cd)
     {
+        Begin(PartKind.Body);
         Tri(a, b, c, outward, ca, cb, cc);
         Tri(a, c, d, outward, ca, cc, cd);
+        End();
     }
 
     static Vector3 Perpendicular(Vector3 v) =>
@@ -46,6 +178,13 @@ internal sealed class Sculptor
 
     /// <summary>A bending tube along a path, its colour running along its length. Radius 0 at the end comes to a point.</summary>
     public void Tube(IReadOnlyList<Vector3> path, IReadOnlyList<float> radii, int sides, Vector4 from, Vector4 to, bool cap = true)
+    {
+        Begin(PartKind.Wood);
+        TubeCore(path, radii, sides, from, to, cap);
+        End();
+    }
+
+    void TubeCore(IReadOnlyList<Vector3> path, IReadOnlyList<float> radii, int sides, Vector4 from, Vector4 to, bool cap = true)
     {
         int n = path.Count;
         var rings = new Vector3[n][];
@@ -84,6 +223,13 @@ internal sealed class Sculptor
     /// the outside, to the top: so a lens, a cap with a skirt or a bottle all read outward.
     /// </summary>
     public void Lathe(Vector3 at, Vector3 axis, (float R, float Y)[] profile, int sides, Func<int, Vector4> band, float ribs = 0f, float wobble = 0f, Dice dice = null, float squash = 1f, float phase = 0f)
+    {
+        Begin(PartKind.Body);
+        LatheCore(at, axis, profile, sides, band, ribs, wobble, dice, squash, phase);
+        End();
+    }
+
+    void LatheCore(Vector3 at, Vector3 axis, (float R, float Y)[] profile, int sides, Func<int, Vector4> band, float ribs = 0f, float wobble = 0f, Dice dice = null, float squash = 1f, float phase = 0f)
     {
         axis = Vector3.Normalize(axis);
         Vector3 u = Perpendicular(axis), v = Vector3.Cross(axis, u);
@@ -140,6 +286,13 @@ internal sealed class Sculptor
     /// <summary>A faceted mass of leaves: nudged out of round, flatter underneath as a real crown is, light on top and dark below.</summary>
     public void Lump(Vector3 centre, Vector3 radii, Dice dice, Vector4 top, Vector4 under, float jitter = 0.18f, float flatBelow = 0.55f)
     {
+        Begin(PartKind.Lobe);
+        LumpCore(centre, radii, dice, top, under, jitter, flatBelow);
+        End();
+    }
+
+    void LumpCore(Vector3 centre, Vector3 radii, Dice dice, Vector4 top, Vector4 under, float jitter = 0.18f, float flatBelow = 0.55f)
+    {
         var v = new Vector3[Ico.Length];
         for (int i = 0; i < v.Length; i++)
         {
@@ -158,6 +311,13 @@ internal sealed class Sculptor
 
     /// <summary>A hanging skirt of foliage round a trunk: a cone with a toothed, drooping hem.</summary>
     public void Skirt(Vector3 at, float radius, float height, int sides, float jag, float droop, Dice dice, Vector4 top, Vector4 hem, Vector4 under)
+    {
+        Begin(PartKind.Body);
+        SkirtCore(at, radius, height, sides, jag, droop, dice, top, hem, under);
+        End();
+    }
+
+    void SkirtCore(Vector3 at, float radius, float height, int sides, float jag, float droop, Dice dice, Vector4 top, Vector4 hem, Vector4 under)
     {
         Vector3 apex = at + Vector3.UnitY * height;
         var rim = new Vector3[sides];
@@ -182,6 +342,13 @@ internal sealed class Sculptor
     /// an optional fold along its midrib. Ends in a point.
     /// </summary>
     public void Blade(Vector3 root, Vector3 dir, float length, float width, float arch, int segments, Vector4 from, Vector4 to, float fold = 0f, float widest = 0.4f)
+    {
+        Begin(PartKind.Body);
+        BladeCore(root, dir, length, width, arch, segments, from, to, fold, widest);
+        End();
+    }
+
+    void BladeCore(Vector3 root, Vector3 dir, float length, float width, float arch, int segments, Vector4 from, Vector4 to, float fold = 0f, float widest = 0.4f)
     {
         dir = Vector3.Normalize(dir);
         Vector3 side = Vector3.Cross(dir, Vector3.UnitY);
@@ -218,6 +385,13 @@ internal sealed class Sculptor
     /// <summary>A small pointed leaf: two triangles, tilted off its stem.</summary>
     public void Leaf(Vector3 at, Vector3 dir, Vector3 face, float length, float width, Vector4 root, Vector4 tip)
     {
+        Begin(PartKind.Body);
+        LeafCore(at, dir, face, length, width, root, tip);
+        End();
+    }
+
+    void LeafCore(Vector3 at, Vector3 dir, Vector3 face, float length, float width, Vector4 root, Vector4 tip)
+    {
         dir = Vector3.Normalize(dir);
         Vector3 side = Vector3.Cross(dir, face);
         side = side.LengthSquared() < 1e-4f ? Vector3.UnitX : Vector3.Normalize(side);
@@ -229,6 +403,13 @@ internal sealed class Sculptor
 
     /// <summary>A small flower: a shallow five-sided cup, its colour running from a pale heart to the rim. Five triangles.</summary>
     public void Blossom(Vector3 at, Vector3 face, float radius, Vector4 petal, Vector4 heart)
+    {
+        Begin(PartKind.Body);
+        BlossomCore(at, face, radius, petal, heart);
+        End();
+    }
+
+    void BlossomCore(Vector3 at, Vector3 face, float radius, Vector4 petal, Vector4 heart)
     {
         face = Vector3.Normalize(face);
         Vector3 u = Perpendicular(face), v = Vector3.Cross(face, u);
@@ -243,6 +424,13 @@ internal sealed class Sculptor
 
     /// <summary>A crystal: a faceted prism with a pointed tip, leaning along an axis, its foot sunk.</summary>
     public void Shard(Vector3 at, Vector3 axis, float radius, float length, int sides, Vector4 foot, Vector4 tip)
+    {
+        Begin(PartKind.Body);
+        ShardCore(at, axis, radius, length, sides, foot, tip);
+        End();
+    }
+
+    void ShardCore(Vector3 at, Vector3 axis, float radius, float length, int sides, Vector4 foot, Vector4 tip)
     {
         Vector3 d = Vector3.Normalize(axis);
         Tube(new[] { at - d * 1.2f, at + d * length * 0.72f, at + d * length }, new[] { radius, radius * 0.9f, 0f }, sides, foot, tip);

@@ -89,6 +89,10 @@ public sealed class PlantMesh
 {
     public Vector3[] Positions, Normals;
     public Vector4[] Colors;
+
+    /// <summary>The part each triangle belongs to (a primitive the sculptor laid down, numbered from 1), and what each part is, by number.</summary>
+    public int[] PartOf;
+    public byte[] PartKind;
     public int Triangles => Positions.Length / 3;
 
     /// <summary>Bytes of vertex data once on the graphics card (position, normal, colour).</summary>
@@ -134,6 +138,9 @@ public sealed class Plant
     /// <summary>A trunk, for a collider. Off for what you walk through.</summary>
     public bool Solid;
     public float TrunkRadius, TrunkHeight;
+
+    /// <summary>Where its trunk ends, in its own frame: the junction of limbs and crown.</summary>
+    public Vector3 StemTop;
     public Vector3 TrunkAxis = Vector3.UnitY;
 
     /// <summary>How far the base reaches from its root: what must stay in the ground on a slope.</summary>

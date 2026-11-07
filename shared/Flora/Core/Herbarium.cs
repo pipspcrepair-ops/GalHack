@@ -398,6 +398,7 @@ public sealed class Herbarium
         }
         p.Reach = reach;
         p.FootRadius = MathF.Max(0.12f, body.Foot);
+        p.StemTop = body.StemTop;
         p.Solid = p.Tree || p.Mineral;
         if (!p.Solid) return;
         Vector3 top = body.StemTop;
