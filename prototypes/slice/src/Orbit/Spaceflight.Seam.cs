@@ -25,9 +25,8 @@ namespace Slice.Orbit;
 ///   cap. Behind it the sheet comes over the land just under the cap, at the same size and in the
 ///   same place, and at the cap the land is gone. Nothing of it is left over the cap.
 /// - Over the cap the shroud thins, the sheet curves away, and the sky fades into space's own
-///   backdrop (the very same stars and nebula the orbit's sky draws: planet-surface's sky shader
-///   carries them, and they only come out as the sky goes dark), so when the orbit's sky takes
-///   over at the top of the band nothing changes. Wind and haze go with the air, and the star's
+///   backdrop (the same galaxy the orbit's sky draws, from the same catalogue, in the same
+///   directions), so when the orbit's sky takes over at the top of the band nothing changes. Wind and haze go with the air, and the star's
 ///   light takes over from the planet's sun.
 ///
 /// Air thin enough to have little shroud has little to hide the swap, and needs little: its sheet
@@ -42,7 +41,7 @@ public partial class Spaceflight
     WorldEnvironment _surfaceWorld;
     ShaderMaterial _sky;
     float _fogDensity, _fogHeight, _fogScatter, _fogSky, _ambient, _sunEnergy, _nightEnergy;
-    bool _aligned, _surfaceShown = true, _groundShown = true, _streaming, _skyLookSet;
+    bool _aligned, _surfaceShown = true, _groundShown = true, _streaming;
     float _wreckFade = -1f;
     float _band;
 
@@ -133,12 +132,7 @@ public partial class Spaceflight
         _sky ??= Game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial;
         _sky.SetShaderParameter("space_turn", frame.ToBasis());
         _sky.SetShaderParameter("space_sun", sunInGlobe);
-        if (_skyLookSet || !Orbit.Prepared) return;
-        _skyLookSet = true;
-        var look = Orbit.Paint.Look;
-        var second = look.Atmosphere * 0.6f;
-        _sky.SetShaderParameter("space_nebula", new Color(look.Nebula.R, look.Nebula.G, look.Nebula.B));
-        _sky.SetShaderParameter("space_nebula_b", new Color(second.R, second.G, second.B));
+        _sky.SetShaderParameter("star_turn", GalHack.Stars.GalaxySky.Basis(Game.Surface.Sky.Stars.From(frame)));
     }
 
     /// <summary>The air gone from the surface's sky: its colour into space's, its haze, its share of the light on your hull.</summary>
@@ -322,6 +316,8 @@ public partial class Spaceflight
         Vector3 at = carrier != null ? carrier.DrawTransform.Origin : Game.Survivor.WorldFeet;
         OrbitZone o = Orbit;
         float y = Height(at);
+        Game.Surface.Sky.Stars.Poll();
+        o.Space.Galaxy(Game.Surface.Sky.Stars);
         if (!_aligned || y >= BandTop)
         {
             AirGone = 1f;

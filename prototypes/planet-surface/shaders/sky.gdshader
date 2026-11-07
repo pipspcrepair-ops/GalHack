@@ -1,6 +1,7 @@
 // The sky, from the world's own data (see SkySystem): a clear-sky gradient from its air, the
 // sun and its glow in the star's colour, sunsets toward a low sun, moons lit by the sun (so they
-// show phases), a neighbouring giant with bands and maybe rings, stars and a nebula at night,
+// show phases), a neighbouring giant with bands and maybe rings, the galaxy's real stars and
+// nebulae at night (from its catalogue, as seen from this star: GalaxyShader),
 // and a layer of clouds you can see the shape of: a slab of cloud raymarched against the sun,
 // with flat bases, lit tops and dark undersides, computed at half resolution.
 //
@@ -24,13 +25,9 @@ uniform float sun_radius = 0.01;
 uniform float sun_energy = 1.3;
 uniform float density = 1.0;
 uniform float stars_by_day = 0.0;
-uniform mat3 star_turn = mat3(1.0);
+uniform mat3 star_turn = mat3(1.0);   // world directions into the galaxy catalogue's
 uniform float overcast = 0.0;          // weather greying the whole sky
 uniform vec3 overcast_color : source_color = vec3(0.5);
-
-uniform bool nebula = false;
-uniform vec3 nebula_a : source_color = vec3(0.5, 0.2, 0.6);
-uniform vec3 nebula_b : source_color = vec3(0.2, 0.4, 0.7);
 
 uniform int moon_count = 0;
 uniform vec3 moon_dir[3];
@@ -57,12 +54,6 @@ uniform vec3 cloud_lit : source_color = vec3(1.0);
 uniform vec3 cloud_shade : source_color = vec3(0.5, 0.55, 0.62);
 uniform vec3 cloud_underglow : source_color = vec3(0.0);   // light from the ground: lava under ash
 uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
-
-float hash31(vec3 p) {
-	p = fract(p * vec3(443.897, 441.423, 437.195));
-	p += dot(p, p.yzx + 19.19);
-	return fract((p.x + p.y) * p.z);
-}
 
 // How much of the sun's light gets through the air, by its height: all of it from about 17° up,
 // under half at the horizon (SkyRig.AirMass, the same curve for the sunlight on the ground).
@@ -102,60 +93,12 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	return col;
 }
 
-// The night backdrop has no seams, poles or corners anywhere on the sky: everything is looked up
-// along the 3D direction itself. (A longitude-latitude map pinched the nebula into a starburst at
-// its pole and tore it along a meridian; stars cut from a 3D lattice by a sphere left a star-free
-// hole and rings at each of the six axis directions, and thinned toward them.)
-uniform sampler3D nebula_noise : filter_linear, repeat_disable;    // broad clouds of it
-uniform sampler3D nebula_detail : filter_linear, repeat_disable;   // its finer structure
+#include "res://galaxy_sky.gdshaderinc"
 
-// A 3D noise texture looked up along a sky direction, inside one tile (no wrap, so no tiling seam),
-// with the trilinear weights eased so its texel grid never shows as creases in a smooth glow.
-float sky_noise(sampler3D tex, vec3 d) {
-	vec3 size = vec3(textureSize(tex, 0));
-	vec3 t = (d * 0.45 + 0.5) * size - 0.5;
-	vec3 i = floor(t), f = t - i;
-	f = f * f * (3.0 - 2.0 * f);
-	return textureLod(tex, (i + f + 0.5) / size, 0.0).r;
-}
-
-// Stars: points scattered through a thin shell of a 3D lattice, STAR_SHELL cells out, each drawn
-// where the view ray passes within its radius. Every star is placed and kept or dropped by itself
-// (its own place, inside its cell, and whether it lies in the shell), never by where the ray cuts
-// a cell, so the field is equally dense in every direction. A star that close to the ray lies
-// within half a cell of the ray's own point on each axis: the two cells round it, each way, hold it.
-const float STAR_SHELL = 260.0;
-const float STAR_DEPTH = 0.35;   // half the shell's thickness, cells
-const float STAR_RADIUS = 0.32;  // cells
-
-vec3 stars(vec3 d) {
-	vec3 p = d * STAR_SHELL;
-	vec3 base = floor(p + 0.28) - 1.0;
-	vec3 col = vec3(0.0);
-	for (int i = 0; i < 8; i++) {
-		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
-		float h = hash31(cell);
-		if (h <= 0.985) continue;
-		vec3 star = cell + 0.2 + 0.6 * vec3(hash31(cell + 7.7), hash31(cell + 13.1), hash31(cell + 19.3));
-		if (abs(length(star) - STAR_SHELL) > STAR_DEPTH) continue;
-		float off = length(star - d * dot(star, d));   // from the ray, in cells
-		float b = smoothstep(STAR_RADIUS, 0.0, off) * pow((h - 0.985) / 0.015, 6.0);   // a few bright, most faint
-		col += vec3(0.85 + 0.15 * hash31(cell + 3.1), 0.9, 1.0) * b * 4.0;
-	}
-	return col;
-}
-
-vec3 night_sky(vec3 dir, vec3 sun) {
-	vec3 d = star_turn * dir;
-	vec3 col = vec3(0.0);
-	if (nebula) {
-		float n = sky_noise(nebula_noise, d);
-		float m = sky_noise(nebula_detail, d);
-		float off_band = (d.y - 0.15 + 0.3 * (n - 0.5)) * 2.2;
-		float band = exp(-off_band * off_band);   // squared, not pow(): its base goes negative
-		col += mix(nebula_a, nebula_b, m) * pow(max(n * m, 0.0), 1.5) * band * 0.9;
-	}
-	return col + stars(d);
+// The night backdrop: the galaxy, in true directions. Looked up along the direction itself, so it
+// has no seams, poles or corners. The stars themselves need the full picture, not a reflection.
+vec3 night_sky(vec3 dir, bool points) {
+	return galaxy_sky(star_turn * dir, points);
 }
 
 // Moons and the giant: discs lit from the sun's side, so they show phases; the giant has bands
@@ -319,62 +262,16 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 }
 
 // ---- The way out ---------------------------------------------------------------------------
-// As the air thins with height the sky fades into space's own backdrop: the same stars, nebula
-// and glare the orbit's sky draws (planet-generator's space shader, copied here because a sky
-// shader can't include another's), so when the orbit's sky takes over nothing changes.
+// As the air thins with height the sky fades into space's own backdrop: the same galaxy and glare
+// the orbit's sky draws (planet-generator's space shader), so when it takes over nothing changes.
 
 uniform float space_fade = 0.0;        // 0 the planet's sky, 1 space
 uniform mat3 space_turn = mat3(1.0);   // the world's directions into the backdrop's
 uniform vec3 space_sun = vec3(0.0, 1.0, 0.0);
-uniform vec3 space_nebula : source_color = vec3(0.16, 0.1, 0.35);
-uniform vec3 space_nebula_b : source_color = vec3(0.1, 0.2, 0.3);
 
-float hash3(vec3 p) {
-	uvec3 q = uvec3(ivec3(floor(p))) * uvec3(1597334673u, 3812015801u, 2798796415u);
-	return float((q.x ^ q.y ^ q.z) * 1597334673u) * 2.3283064e-10;
-}
-
-float vnoise3(vec3 p) {
-	vec3 i = floor(p);
-	vec3 f = fract(p);
-	vec3 u = f * f * (3.0 - 2.0 * f);
-	float a = mix(hash3(i), hash3(i + vec3(1, 0, 0)), u.x);
-	float b = mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), u.x);
-	float c = mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), u.x);
-	float d = mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), u.x);
-	return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
-}
-
-float fbm3(vec3 p) {
-	float s = 0.0, a = 0.5;
-	for (int i = 0; i < 4; i++) { s += a * vnoise3(p); p *= 2.03; a *= 0.5; }
-	return s / 0.9375;
-}
-
-vec3 star_shell(vec3 d, float shell, float chance, float radius) {
-	vec3 p = d * shell;
-	vec3 base = floor(p + 0.28) - 1.0;
-	vec3 col = vec3(0.0);
-	for (int i = 0; i < 8; i++) {
-		vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
-		if (hash3(cell) < 1.0 - chance) continue;
-		vec3 star = cell + 0.2 + 0.6 * vec3(hash3(cell + 3.0), hash3(cell + 7.0), hash3(cell + 11.0));
-		if (abs(length(star) - shell) > 0.35) continue;
-		float off = length(star - d * dot(star, d));
-		float lit = smoothstep(radius, 0.0, off);
-		col += lit * (0.4 + 0.6 * hash3(cell + 9.0)) * mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), hash3(cell + 2.0));
-	}
-	return col;
-}
-
-// Space behind the sky; the stars only come out once the sky has gone dark enough to show them.
-vec3 space_backdrop(vec3 d) {
-	vec3 col = vec3(0.012, 0.012, 0.03);
-	float n = fbm3(d * 2.2 + vec3(fbm3(d * 3.0) * 1.2));
-	float neb = smoothstep(0.42, 0.85, n);
-	col += space_nebula * neb * 0.55 + space_nebula_b * smoothstep(0.6, 0.95, fbm3(d * 4.5 + 3.0)) * neb * 0.35;
-	float dark = smoothstep(0.78, 1.0, space_fade);
-	col += star_shell(d, 150.0, 0.16, 0.27) * 1.6 * dark * dark;
+// Space behind the sky. The stars show once the sky has gone dark enough, or if it already was.
+vec3 space_backdrop(vec3 d, vec3 catalogue, float shown, bool points) {
+	vec3 col = vec3(0.003, 0.003, 0.006) + galaxy_sky(catalogue, points) * shown;
 	float s = max(dot(d, space_sun), 0.0);
 	col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
 	return col;
@@ -399,7 +296,7 @@ void sky() {
 		vec3 plain = col;
 		// Faded out just below the horizon, not cut: seen from high up there is no hard line.
 		float starlight = max(1.0 - day, stars_by_day) * (1.0 - overcast) * smoothstep(-0.08, 0.0, dir.y);
-		if (starlight > 0.0) col += night_sky(dir, sun) * starlight;
+		if (starlight > 0.0) col += night_sky(dir, !AT_CUBEMAP_PASS) * starlight;
 		// Bodies show through a clear sky by day as well as by night, faded by the daylight's glare.
 		vec4 b = bodies(dir, sun) * (1.0 - overcast * 0.9);
 		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
@@ -425,11 +322,14 @@ void sky() {
 			col = clouded + (col - plain) * (1.0 - cover);
 		}
 		if (debug_view == 1) col = vec3(cover);
-		if (debug_view == 3) col = night_sky(dir, sun) * 6.0;
+		if (debug_view == 3) col = night_sky(dir, true) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
 		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
 		// The air under the level goes first: nothing is left there to light but the world's own rim.
-		if (space_fade > 0.0) col = mix(col, space_backdrop(space_turn * dir), mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y)));
+		if (space_fade > 0.0) {
+			float dark = smoothstep(0.78, 1.0, space_fade);
+			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS), mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y)));
+		}
 		COLOR = col;
 	}
 }

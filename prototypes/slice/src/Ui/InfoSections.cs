@@ -90,6 +90,7 @@ public sealed class MapSection : IMenuSection
         Vector3 me = _game.Survivor.WorldFeet;
         Vector2 Proj(Vector3 p) => map.GetCenter() + new Vector2(p.X - me.X, p.Z - me.Z) / Range * (size / 2f);
         bool In(Vector2 q) => map.HasPoint(q);
+        if (!g.Drawing && g.Over(map) && _game.Controls.Wheel > 0) Levels.WheelPast(_game.Controls.Wheel); // the wheel out: the level above
         if (g.RightClicked(map)) Levels.LocalRightClick(g.Mouse, Proj, q => me + new Vector3(q.X - map.GetCenter().X, 0, q.Y - map.GetCenter().Y) * (Range / (size / 2f)));
         var labels = new MapLabels();
         if (g.Drawing)

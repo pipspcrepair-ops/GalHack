@@ -245,6 +245,7 @@ public partial class SurfaceZone : Node3D
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
+        Sky.Place(Mathx.WrapX(focus.X, Planet.Width), Mathx.Wrap(focus.Z, Planet.Height));
         Sky.Advance(delta, latitude, Weather.Air(Sky.ToSun.Y), Weather.Wind2D);
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;

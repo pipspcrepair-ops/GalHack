@@ -1,0 +1,295 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using GalHack.Stars;
+using Godot;
+using Slice.Game;
+using Slice.Orbit;
+using Slice.Ui;
+using Slice.Vessels;
+using Weather.Model;
+using N = System.Numerics;
+
+namespace Slice.Tests;
+
+/// <summary>
+/// The galaxy's proof, from the real game on a world picked with --seed: the night sky from the
+/// ground and the same direction from space with a chosen star bracketed in both, the map beside
+/// it, the sky after a jump and from inside a nebula, the map's trail down and back up, and the
+/// sky's cost on the graphics card.
+/// </summary>
+public sealed partial class Staging
+{
+    IEnumerable<int> GalaxyViews(string view) => view switch
+    {
+        "galaxy-climb" => GalaxyClimb(),
+        "night-ground" => NightGround(),
+        "night-space" => NightSpace(),
+        "galaxy-map" => GalaxyMap(),
+        "galaxy-core" => GalaxyCore(),
+        "galaxy-jump" => GalaxyJump(),
+        "galaxy-nebula" => GalaxyNebula(),
+        "galaxy-trail" => GalaxyTrail(),
+        "galaxy-perf" => GalaxyPerf(),
+        _ => throw new ArgumentException($"no view '{view}'"),
+    };
+
+    GalaxySky Stars => _game.Surface.Sky.Stars;
+
+    /// <summary>Waits for the sky, then holds the night still and clear.</summary>
+    IEnumerable<int> Midnight()
+    {
+        Stars.Finish();
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.0);
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The nearest neighbour standing well up in this sky, or failing that the nearest. It is the star all the views look at.</summary>
+    int ChosenStar()
+    {
+        List<int> near = Stars.Galaxy.Neighbours(Stars.Here);
+        foreach (int id in near)
+            if (_game.Spaceflight.LookToward(id).Y > 0.35f) return id;
+        return near[0];
+    }
+
+    void Choose(int id)
+    {
+        _game.Spaceflight.Charts.ChosenStar = id;
+        Vector3 d = _game.Spaceflight.LookToward(id);
+        GD.Print($"(galaxy: chosen star {id} {Stars.Galaxy.Name(id)}, {Stars.Galaxy.Stars[id].Kind}, {Vector3.Zero.DistanceTo(ToGodot(Stars.Galaxy.Stars[id].Position - Stars.Galaxy.Stars[Stars.Here].Position)):F1} LY, world direction {d}, home {Stars.Home} {Stars.Galaxy.Name(Stars.Home)} {Stars.Galaxy.Stars[Stars.Home].Kind}, {Stars.Galaxy.Stars.Length} stars)");
+    }
+
+    static Vector3 ToGodot(N.Vector3 v) => new(v.X, v.Y, v.Z);
+
+    void Face(Vector3 dir)
+    {
+        Vector3 eye = _game.Camera.GlobalPosition;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(dir, MathF.Abs(dir.Y) > 0.95f ? Vector3.Forward : Vector3.Up), eye);
+    }
+
+    IEnumerable<int> GalaxyClimb()
+    {
+        foreach (int x in Seated()) yield return x;
+        foreach (int x in UpAndOut()) yield return x;
+    }
+
+    /// <summary>From the seat, out of the air and on up past the band, into the orbit's own sky.</summary>
+    IEnumerable<int> UpAndOut()
+    {
+        Hurry(4);
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 * 240 && _game.Spaceflight.Band < 1f; i++) yield return 0;
+        _game.Controls.ReleaseAll();
+        Hurry(1);
+        GD.Print($"(galaxy: climbed, {(_game.InOrbit ? "in orbit" : "still on the surface")}, band {_game.Spaceflight.Band:F2})");
+        for (int i = 0; i < 30; i++) yield return 0;
+    }
+
+    IEnumerable<int> NightGround()
+    {
+        foreach (int x in Midnight()) yield return x;
+        int id = ChosenStar();
+        Choose(id);
+        Face(_game.Spaceflight.LookToward(id));
+        foreach (int x in _drive.Wait(40)) yield return x; // the charts catch up
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    IEnumerable<int> NightSpace()
+    {
+        foreach (int x in Seated()) yield return x;
+        foreach (int x in Midnight()) yield return x;
+        int id = ChosenStar();
+        Choose(id);
+        foreach (int x in UpAndOut()) yield return x;
+        Face(_game.Spaceflight.LookToward(id));
+        Choose(id);
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The 3D map through the game's own mouse: turned by a drag, a star picked by a click.</summary>
+    IEnumerable<int> GalaxyMap()
+    {
+        foreach (int x in Midnight()) yield return x;
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        _game.Menu.OpenMap(MapLevel.Galaxy);
+        for (int i = 0; i < 90; i++) yield return 0;
+        Snap("a-opened");
+        foreach (int x in Drag(new Vector2(420, 620), new Vector2(760, 380))) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("b-turned");
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        int id = ChosenStar();
+        Vector2 at = levels.ScreenOf(id).Value;
+        foreach (int x in MouseClick(at)) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+        GD.Print($"(galaxy: clicked {at}, chosen {_game.Spaceflight.Charts.ChosenStar}, wanted {id}, {Stars.Galaxy.Name(id)})");
+        Snap("c-picked");
+        foreach (int x in _drive.ClickWidget("map:whole")) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("d-whole");
+        foreach (int x in _drive.ClickWidget("map:on-me")) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+    }
+
+    /// <summary>Over the map with the mouse held: moves in small steps, as a hand does.</summary>
+    IEnumerable<int> Drag(Vector2 from, Vector2 to)
+    {
+        Controls c = _game.Controls;
+        c.Mouse = from;
+        yield return 0;
+        c.PrimaryPressed = true;
+        c.Primary = true;
+        yield return 0;
+        for (int i = 1; i <= 20; i++)
+        {
+            c.Mouse = from.Lerp(to, i / 20f);
+            yield return 0;
+        }
+        c.Primary = false;
+        c.PrimaryReleased = true;
+        yield return 0;
+    }
+
+    IEnumerable<int> MouseClick(Vector2 at) => Drag(at, at);
+
+    /// <summary>One notch of the wheel over the map, in (-1) or out (+1).</summary>
+    IEnumerable<int> Wheel(int notch)
+    {
+        _game.Controls.Mouse = new Vector2(620, 480);
+        yield return 0;
+        _game.Controls.Wheel = notch;
+        yield return 0;
+    }
+
+    /// <summary>The way in: the galaxy's band and its core, from space, where no ground is in the way.</summary>
+    IEnumerable<int> GalaxyCore()
+    {
+        foreach (int x in Seated()) yield return x;
+        foreach (int x in Midnight()) yield return x;
+        foreach (int x in UpAndOut()) yield return x;
+        Face(ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere)));
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>A jump, as far as the sky goes: there is no drive yet, so the catalogue is simply asked for the sky from a neighbour.</summary>
+    IEnumerable<int> GalaxyJump()
+    {
+        foreach (int x in Midnight()) yield return x;
+        int home = Stars.Here;
+        List<int> near = Stars.Galaxy.Neighbours(home);
+        // A neighbour low in this sky: from there, home stands high in the same world's sky, in the opposite direction.
+        int to = near.OrderBy(id => _game.Spaceflight.LookToward(id).Y).ElementAt(near.Count / 8);
+        Vector3 back = -_game.Spaceflight.LookToward(to);
+        Face(back);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Snap("before");
+        Stars.MoveTo(to);
+        Stars.Finish();
+        GD.Print($"(galaxy: jumped from {home} to {to}, {Stars.Galaxy.Name(to)}: staged, the sky only)");
+        foreach (int x in _drive.Wait(50)) yield return x;
+        Choose(home);
+        Face(_game.Spaceflight.LookToward(home));
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The sky from a star inside an emission nebula: staged the same way as the jump.</summary>
+    IEnumerable<int> GalaxyNebula()
+    {
+        foreach (int x in Midnight()) yield return x;
+        Galaxy g = Stars.Galaxy;
+        Nebula n = g.Nebulae.Where(k => k.Kind == NebulaKind.Emission).OrderByDescending(k => k.Radius).First();
+        int inside = g.Stars.Where(s => s.Nebula == n.Id).OrderBy(s => N.Vector3.Distance(s.Position, n.Centre)).First().Id;
+        Stars.MoveTo(inside);
+        Stars.Finish();
+        GD.Print($"(galaxy: inside the {n.Name}, radius {n.Radius:F0} LY, at {g.Name(inside)}: staged, the sky only)");
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Face(new Vector3(0.3f, 0.6f, -0.75f).Normalized());
+        foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The wheel, all the way out from the ground under you to the galaxy, and in again, a frame of each level; and into a neighbour's system.</summary>
+    IEnumerable<int> GalaxyTrail()
+    {
+        foreach (int x in Midnight()) yield return x;
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        _game.Menu.OpenMap(MapLevel.Local);
+        for (int i = 0; i < 20; i++) yield return 0;
+        IEnumerable<int> Until(MapLevel level, int notch, string tag)
+        {
+            for (int i = 0; i < 300 && levels.Level != level; i++)
+            {
+                foreach (int x in Wheel(notch)) yield return x;
+                for (int k = 0; k < 4; k++) yield return 0;
+            }
+            for (int i = 0; i < 40; i++) yield return 0;
+            GD.Print($"(galaxy: wheel to {levels.Level}{(levels.Level == level ? "" : $", wanted {level}")}, trail {string.Join(" > ", levels.Trail.Crumbs(Stars.Galaxy.Name(levels.Trail.Star)).Select(c => c.name))})");
+            Snap(tag);
+        }
+        foreach (int x in Until(MapLevel.Local, 1, "up-0-here")) yield return x;
+        foreach (int x in Until(MapLevel.World, 1, "up-1-world")) yield return x;
+        foreach (int x in Until(MapLevel.HighOrbit, 1, "up-2-orbit")) yield return x;
+        foreach (int x in Until(MapLevel.System, 1, "up-3-system")) yield return x;
+        foreach (int x in Until(MapLevel.Galaxy, 1, "up-4-galaxy")) yield return x;
+        // Down into a neighbour nobody has been to: it opens to what the catalogue knows, and goes no lower.
+        int neighbour = ChosenStar();
+        foreach (int x in MouseClick(levels.ScreenOf(neighbour).Value)) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        foreach (int x in Until(MapLevel.System, -1, "down-1-neighbour")) yield return x;
+        foreach (int x in Until(MapLevel.Galaxy, 1, "down-2-back-out")) yield return x;
+        foreach (int x in _drive.ClickWidget("map:clear-star")) yield return x;
+        for (int i = 0; i < 10; i++) yield return 0;
+        // And down into your own, all the way to the ground.
+        foreach (int x in Until(MapLevel.System, -1, "down-3-your-system")) yield return x;
+        foreach (int x in Until(MapLevel.HighOrbit, -1, "down-4-orbit")) yield return x;
+        foreach (int x in Until(MapLevel.World, -1, "down-5-world")) yield return x;
+        foreach (int x in Until(MapLevel.Local, -1, "down-6-here")) yield return x;
+    }
+
+    /// <summary>What the sky costs on the graphics card: the same frame with the galaxy on and off, on the ground and in space.</summary>
+    IEnumerable<int> GalaxyPerf()
+    {
+        foreach (int x in Seated()) yield return x;
+        foreach (int x in Midnight()) yield return x;
+        Rid viewport = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
+        _game.Visor.Visible = false;
+        Face(Vector3.Up);
+        Vector3 band = ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere));
+        Face(band.Y > 0.1f ? band : new Vector3(0.2f, 0.8f, -0.5f).Normalized());
+        var ground = _game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial;
+        double on = 0, off = 0, cpuOn = 0, cpuOff = 0;
+        IEnumerable<int> Measure(ShaderMaterial m, bool show, Action<double, double> done)
+        {
+            m.SetShaderParameter("galaxy_on", show);
+            foreach (int x in _drive.Wait(40)) yield return x;
+            double gpu = 0, cpu = 0;
+            const int Frames = 90;
+            for (int i = 0; i < Frames; i++)
+            {
+                int drawn = Engine.GetFramesDrawn();
+                while (Engine.GetFramesDrawn() == drawn) yield return 0;
+                gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
+                cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
+            }
+            done(gpu / Frames, cpu / Frames);
+        }
+        foreach (int x in Measure(ground, true, (g, c) => (on, cpuOn) = (g, c))) yield return x;
+        foreach (int x in Measure(ground, false, (g, c) => (off, cpuOff) = (g, c))) yield return x;
+        ground.SetShaderParameter("galaxy_on", true);
+        GD.Print($"(perf: ground, looking along the band: galaxy on {on:F2} ms gpu, off {off:F2} ms gpu, cost {on - off:F2} ms; render thread {cpuOn:F2} and {cpuOff:F2} ms)");
+        foreach (int x in UpAndOut()) yield return x;
+        Vector3 inSpace = ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere));
+        Face(inSpace);
+        var space = _game.Orbit.Space.Environment.Sky.SkyMaterial as ShaderMaterial;
+        foreach (int x in Measure(space, true, (g, c) => (on, cpuOn) = (g, c))) yield return x;
+        foreach (int x in Measure(space, false, (g, c) => (off, cpuOff) = (g, c))) yield return x;
+        space.SetShaderParameter("galaxy_on", true);
+        GD.Print($"(perf: space, looking at the core: galaxy on {on:F2} ms gpu, off {off:F2} ms gpu, cost {on - off:F2} ms; render thread {cpuOn:F2} and {cpuOff:F2} ms)");
+    }
+}

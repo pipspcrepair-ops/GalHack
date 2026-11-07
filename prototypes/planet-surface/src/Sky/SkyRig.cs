@@ -1,4 +1,5 @@
 using System;
+using GalHack.Stars;
 using Godot;
 using Planets.Look;
 using PlanetSurface.World;
@@ -37,6 +38,16 @@ public partial class SkyRig : Node3D
     Vector2 _cloudDrift = new(1370f, 620f); // where the cloud pattern starts: its first cloud edges don't fall on the sky checks' sight lines
     float _latitude;
     PlanetWorld _world;
+    double _mapX, _mapZ;
+
+    /// <summary>The galaxy and the sky from where you are: the stars and nebulae the sky draws, and the star map reads.</summary>
+    public GalaxySky Stars { get; private set; }
+
+    /// <summary>Where on the map the sky is seen from: the globe's turn under you sets which stars are overhead.</summary>
+    public void Place(double x, double z) => (_mapX, _mapZ) = (x, z);
+
+    /// <summary>The world's directions here into the globe's.</summary>
+    public System.Numerics.Quaternion ToGlobe => SkyFrame.Map(_mapX, _mapZ, _world.Width, _world.Height);
 
     /// <summary>The cloud layer from above: the sky draws clouds behind the ground, so from over them this mesh draws what is under you.</summary>
     public MeshInstance3D CloudDeck { get; private set; }
@@ -110,27 +121,13 @@ public partial class SkyRig : Node3D
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,
             Noise = new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
         };
+        GalaxyShader.Register();
         _sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/sky.gdshader") };
         _sky.SetShaderParameter("cloud_noise", _noise);
         _sky.SetShaderParameter("cloud_detail", new NoiseTexture3D
         {
             Width = 64, Height = 64, Depth = 64, Seamless = true,
             Noise = new FastNoiseLite { Seed = 5, Frequency = 0.06f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
-        });
-        // The nebula is looked up along the sky's 3D directions, inside one tile of each texture, so
-        // it has no seam, no pole and no tiling edge: the textures needn't be seamless (blending a
-        // seamless one's edges leaves faint planes in it).
-        // Fine enough that even the finest octave spans a few texels: coarser, its texel grid
-        // showed as square blotches.
-        _sky.SetShaderParameter("nebula_noise", new NoiseTexture3D
-        {
-            Width = 128, Height = 128, Depth = 128,
-            Noise = new FastNoiseLite { Seed = 23, Frequency = 0.035f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
-        });
-        _sky.SetShaderParameter("nebula_detail", new NoiseTexture3D
-        {
-            Width = 128, Height = 128, Depth = 128,
-            Noise = new FastNoiseLite { Seed = 29, Frequency = 0.08f, FractalOctaves = 2, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
         });
         Environment = new Godot.Environment
         {
@@ -182,9 +179,9 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("sun_energy", s.SunEnergy);
         _sky.SetShaderParameter("density", s.Density);
         _sky.SetShaderParameter("stars_by_day", s.StarsByDay);
-        _sky.SetShaderParameter("nebula", s.Nebula);
-        _sky.SetShaderParameter("nebula_a", C(s.NebulaA));
-        _sky.SetShaderParameter("nebula_b", C(s.NebulaB));
+        // The game's seed is the galaxy's; the home star is found in it to fit this world.
+        Stars = new GalaxySky(world.Spec.Seed, KindOf(s.Star), s.Nebula);
+        Stars.Bind(_sky);
         // The noise tile must divide the planet both ways, so clouds join across the seams.
         float W = (float)world.Width, H = (float)world.Height;
         _sky.SetShaderParameter("cloud_scale", new Vector2(W / MathF.Max(1, MathF.Round(W / 8000f)), H / MathF.Max(1, MathF.Round(H / 8000f))));
@@ -296,8 +293,11 @@ public partial class SkyRig : Node3D
         NightLight.LightColor = new Color(0.62f, 0.7f, 0.95f);
         NightLight.LookAt(NightLight.GlobalPosition - (brightest.Y > 0.1f ? brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
 
-        // The stars turn with the day.
-        _sky.SetShaderParameter("star_turn", new Basis(new Vector3(1, 0, 0).Rotated(Vector3.Up, 0.3f), (float)(TimeOfDay * Math.Tau)));
+        // The stars stand still and the world turns under them, a day to the turn.
+        Stars.Poll();
+        Stars.TimeOfDay = TimeOfDay;
+        _sky.SetShaderParameter("star_turn", GalaxySky.Basis(Stars.From(ToGlobe)));
+        GalaxySky.SetPixel(_sky, IsInsideTree() ? GetViewport() : null);
 
         // Clouds and overcast from the weather.
         _sky.SetShaderParameter("cloud_cover", air.CloudCover);
@@ -375,6 +375,16 @@ public partial class SkyRig : Node3D
         new(MathF.Sin(azimuth) * MathF.Cos(elevation), MathF.Sin(elevation), -MathF.Cos(azimuth) * MathF.Cos(elevation));
 
     static Color C(Rgb c) => new(c.R, c.G, c.B);
+
+    /// <summary>The catalogue's name for the world's own star class.</summary>
+    public static StarKind KindOf(StarClass c) => c switch
+    {
+        StarClass.RedDwarf => StarKind.RedDwarf,
+        StarClass.Orange => StarKind.OrangeDwarf,
+        StarClass.Yellow => StarKind.YellowDwarf,
+        StarClass.White => StarKind.WhiteStar,
+        _ => StarKind.BlueGiant,
+    };
 
     static float Smooth(float e0, float e1, float x)
     {

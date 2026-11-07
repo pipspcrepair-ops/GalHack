@@ -1,3 +1,4 @@
+using GalHack.Stars;
 using Godot;
 
 namespace Planets;
@@ -54,35 +55,6 @@ static class Shaders
             float s = 0.0, a = 0.5;
             for (int i = 0; i < 4; i++) { s += a * vnoise3(p); p *= 2.03; a *= 0.5; }
             return s / 0.9375;
-        }
-        """;
-
-    /// <summary>
-    /// Stars: points scattered through a thin shell of a 3D lattice, `shell` cells out, each drawn
-    /// where the view ray passes within `radius` cells of it. Every star is placed, and kept or
-    /// dropped, by itself (where it lies in its cell, and whether that is inside the shell), never
-    /// by where the ray cuts a cell, so the field is equally dense in every direction. (Cutting the
-    /// lattice with the sky's sphere clipped stars at cell walls and left a hole ringed by bands at
-    /// each of the six axis directions.) A star that close to the ray lies within half a cell of
-    /// the ray's own point each way, so the two cells round that point on each axis hold it.
-    /// Needs <see cref="Noise3D"/>. Each star's brightness and tint come from its cell's hashes.
-    /// </summary>
-    const string Stars = """
-        vec3 star_shell(vec3 d, float shell, float chance, float radius, bool varied) {
-            vec3 p = d * shell;
-            vec3 base = floor(p + 0.28) - 1.0;
-            vec3 col = vec3(0.0);
-            for (int i = 0; i < 8; i++) {
-                vec3 cell = base + vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1));
-                if (hash3(cell) < 1.0 - chance) continue;
-                vec3 star = cell + 0.2 + 0.6 * vec3(hash3(cell + 3.0), hash3(cell + 7.0), hash3(cell + 11.0));
-                if (abs(length(star) - shell) > 0.35) continue;
-                float off = length(star - d * dot(star, d));
-                float lit = smoothstep(radius, 0.0, off);
-                if (varied) col += lit * (0.4 + 0.6 * hash3(cell + 9.0)) * mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), hash3(cell + 2.0));
-                else col += vec3(lit);
-            }
-            return col;
         }
         """;
 
@@ -291,8 +263,9 @@ static class Shaders
         uniform float stars = 0.0;
         uniform vec3 cloud_color : source_color;
         uniform float cloud_cover = 0.4;
+        uniform mat3 star_turn = mat3(1.0);
         {{Noise3D}}
-        {{Stars}}
+        {{GalaxyShader.Code}}
         void sky() {
             vec3 d = EYEDIR;
             float h = d.y;
@@ -302,8 +275,7 @@ static class Shaders
             col += sun_color * (pow(s, 8.0) * 0.25 + pow(s, 64.0) * 0.4);
 
             if (stars > 0.0 && h > 0.0) {
-                // About 0.0028 rad across, as before: 0.28 cells of a shell 100 cells out.
-                vec3 star = star_shell(d, 100.0, 0.073, 0.28, false);
+                vec3 star = galaxy_sky(star_turn * d, !AT_CUBEMAP_PASS);
                 // Daylight drowns them: only a sky dark enough shows any, however thin the air.
                 float daylight = smoothstep(0.004, 0.03, dot(col, vec3(0.2126, 0.7152, 0.0722)));
                 col += star * stars * smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.9, 1.0, s)) * (1.0 - daylight);
@@ -413,22 +385,15 @@ static class Shaders
         }
         """;
 
-    /// <summary>Deep space: stars, a painted nebula in the planet's accent colour, and the sun's glare.</summary>
+    /// <summary>Deep space: the galaxy from its catalogue (see <see cref="GalaxyShader"/>), and the sun's glare.</summary>
     const string SpaceSource = $$"""
         shader_type sky;
         render_mode use_debanding;
-        uniform vec3 nebula : source_color;
-        uniform vec3 nebula_b : source_color;
-        {{Noise3D}}
-        {{Stars}}
+        uniform mat3 star_turn = mat3(1.0);   // the sky's directions into the catalogue's
+        {{GalaxyShader.Code}}
         void sky() {
             vec3 d = EYEDIR;
-            vec3 col = vec3(0.012, 0.012, 0.03);
-            float n = fbm3(d * 2.2 + vec3(fbm3(d * 3.0) * 1.2));
-            float neb = smoothstep(0.42, 0.85, n);
-            col += nebula * neb * 0.55 + nebula_b * smoothstep(0.6, 0.95, fbm3(d * 4.5 + 3.0)) * neb * 0.35;
-            // About 0.0018 rad across, as before: 0.27 cells of a shell 150 cells out.
-            col += star_shell(d, 150.0, 0.16, 0.27, true) * 1.6;
+            vec3 col = vec3(0.003, 0.003, 0.006) + galaxy_sky(star_turn * d, !AT_CUBEMAP_PASS);
             float s = max(dot(d, LIGHT0_DIRECTION), 0.0);
             col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
             COLOR = col;

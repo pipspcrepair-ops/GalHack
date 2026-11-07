@@ -267,6 +267,7 @@ public partial class Main : Node3D
 
         float latitude = (float)(Mathx.Wrap(focus.Z, World.Height) / World.Height * 2.0 - 1.0);
         long t1 = Stopwatch.GetTimestamp();
+        Sky.Place(Mathx.WrapX(focus.X, World.Width), Mathx.Wrap(focus.Z, World.Height));
         Sky.Advance(delta, latitude, Weather.Air(Sky.ToSun.Y), Weather.Wind2D);
         long t2 = Stopwatch.GetTimestamp();
         UpdateValleyFog(delta, focus);

@@ -97,10 +97,12 @@ public partial class SkyTest : Node
             _failures += failures;
         }
 
-        // Night under a nebula, the stars' own frame lined up with the world's (midnight): the
-        // backdrop's pole and wrap, if it had them, would be straight up and behind.
-        PlanetWorld alien = PlanetWorld.Build(PlanetSpec.Roll(1, Archetype.Alien, 0), Main.Catalog);
+        // Night under the galaxy's own stars and nebulae: a cube's faces and the like, if they showed,
+        // would be straight up and behind. Fresh every run, as every sky is.
+        SkySeams.RealStars = true;
+        PlanetWorld alien = PlanetWorld.Build(PlanetSpec.Roll((ulong)System.Random.Shared.NextInt64(), Archetype.Alien, 0), Main.Catalog);
         rig.SetWorld(alien);
+        rig.Stars.Finish();
         Pose(rig, alien, 0.0, 0.1f);
         await Frames(8);
         _failures += SkySeams.Report("a nebula world's sky at midnight", await SkySeams.LookAround(stage, eye, SkySeams.Probes()));

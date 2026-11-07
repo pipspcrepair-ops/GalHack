@@ -152,6 +152,7 @@ public partial class Visor : CanvasLayer
         DrawTracers();
         DrawHurtEdge();
         DrawCompass(survivor);
+        DrawChosenStar();
         DrawLines();
         DrawWarnings();
         DrawProgress();
@@ -167,6 +168,22 @@ public partial class Visor : CanvasLayer
             DrawCrosshair();
             DrawHand();
         }
+    }
+
+    /// <summary>The star picked on the galaxy map, bracketed where it stands in the sky.</summary>
+    void DrawChosenStar()
+    {
+        Slice.Orbit.Charts charts = Game.Spaceflight.Charts;
+        GalHack.Stars.GalaxySky stars = Game.Surface.Sky.Stars;
+        if (charts.ChosenStar < 0 || stars?.View == null) return;
+        Camera3D camera = Game.Camera;
+        Vector3 point = camera.GlobalPosition + Game.Spaceflight.LookToward(charts.ChosenStar) * 1000f;
+        if (camera.IsPositionBehind(point)) return;
+        float s = S;
+        Vector2 at = camera.UnprojectPosition(point), r = new(13f * s, 13f * s);
+        _hud.Frame(new Rect2(at - r, r * 2f), C.Holo, 1.5f);
+        string name = charts.Charted(stars.Galaxy, charts.ChosenStar) ? stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant() : "UNCHARTED STAR";
+        _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(at + new Vector2(18f * s, -10f * s), new Vector2(260f * s, 22f * s)), name, C.Holo, HorizontalAlignment.Left);
     }
 
     void Banner(string title, string detail, Color colour)

@@ -190,6 +190,12 @@ public static class SkySeams
         (look.Line > SeamScore && look.LinePixels >= SeamPixels) || (look.Pinch > SeamScore && look.PinchPixels >= SeamPixels) || look.Swirl > SwirlScore;
 
     /// <summary>
+    /// A sky drawn from the real galaxy: its stars crowd along the band on purpose, so the even-density
+    /// check (which catches a lattice) doesn't apply to it. Lines and pinches still do.
+    /// </summary>
+    public static bool RealStars;
+
+    /// <summary>
     /// Whether stars thin out at the axes: the mean count in the middle of the pictures taken along
     /// an axis, against the middle of all the others. Null when there are too few stars to say (a
     /// day sky).
@@ -252,7 +258,7 @@ public static class SkySeams
             if (seam) failures++;
             GD.Print($"{(seam ? "FAIL" : "PASS")}  {sky}, looking at {Describe(k)}");
         }
-        if (AxisStarRatio(looks) is float ratio)
+        if (!RealStars && AxisStarRatio(looks) is float ratio)
         {
             bool even = ratio > 0.6f && ratio < 1.6f;
             if (!even) failures++;

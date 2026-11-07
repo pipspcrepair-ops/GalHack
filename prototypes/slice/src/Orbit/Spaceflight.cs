@@ -170,6 +170,8 @@ public partial class Spaceflight : Node
     {
         GameNode g = Game;
         Vector3 at = g.Survivor.WorldFeet;
+        // Where you are is charted, and with it everything a jump away.
+        if (g.Surface.Sky.Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;

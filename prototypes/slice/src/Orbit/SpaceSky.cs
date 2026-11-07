@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using GalHack.Stars;
 using Godot;
 using Planets.Look;
 using PlanetSurface.Skies;
@@ -7,8 +8,8 @@ using PlanetSurface.Skies;
 namespace Slice.Orbit;
 
 /// <summary>
-/// Space round the start world: planet-generator's space sky (stars, the world's nebula, the sun's
-/// glare), the sun as the one light (hard shadows, so a dead hull's inside is dark), a faint
+/// Space round the start world: planet-generator's space sky (the galaxy's stars and nebulae, from
+/// the one catalogue, and the sun's glare), the sun as the one light (hard shadows, so a dead hull's inside is dark), a faint
 /// ambient, and the world's own moons and giant from planet-surface's sky system, the same bodies
 /// the surface sees overhead, standing far off where its sky shows them at the first crossing point.
 ///
@@ -50,8 +51,6 @@ public partial class SpaceSky : Node3D
     {
         _rules = rules;
         _sky = new ShaderMaterial { Shader = Planets.Shaders.Space };
-        _sky.SetShaderParameter("nebula", C(look.Nebula));
-        _sky.SetShaderParameter("nebula_b", C(look.Atmosphere * 0.6f));
         Environment = new Godot.Environment
         {
             BackgroundMode = Godot.Environment.BGMode.Sky,
@@ -125,6 +124,17 @@ public partial class SpaceSky : Node3D
         Sun.Basis = Facing((turn * ToSun).Normalized());
         Environment.SkyRotation = turn.GetEuler();
     }
+
+    /// <summary>The galaxy as it stands from here: the same catalogue, and the same turn of the world, as the surface's sky.</summary>
+    public void Galaxy(GalaxySky stars)
+    {
+        if (!_galaxyBound) stars.Bind(_sky);
+        _galaxyBound = true;
+        _sky.SetShaderParameter("star_turn", GalaxySky.Basis(stars.FromGlobe));
+        GalaxySky.SetPixel(_sky, GetViewport());
+    }
+
+    bool _galaxyBound;
 
     /// <summary>The star's share of the light, 0 to 1 (the surface's sun has the rest).</summary>
     public void Light(float share) => Sun.LightEnergy = SunEnergy * share;

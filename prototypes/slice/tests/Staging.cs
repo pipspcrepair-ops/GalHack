@@ -140,8 +140,14 @@ public sealed partial class Staging
         Vector3 pad = FlatSpot(pod, 16f);
         Vector3 stand = pad + (pad - pod).Normalized() * 8f;
         foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
-        foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
+        // The walk stops anywhere within its tolerance, which can leave the pad just past the tool's
+        // reach: a step nearer each try.
+        for (int i = 0; i < 4 && _game.Builder.Underway == null; i++)
+        {
+            if (i > 0) foreach (int x in _drive.WalkTo(pad + (pad - pod).Normalized() * (7f - i * 1.5f), 0.5f, 10f)) yield return x;
+            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+            foreach (int x in _drive.Click()) yield return x;
+        }
         Vessel v = _game.Builder.Underway;
         int stop = half ? _game.StarterPlan.Count * 11 / 20 : int.MaxValue;
         foreach (int x in _drive.HoldPrimary(v.Body.Position.ToGodot(), 3000, () => _game.Builder.Underway == null || v.Structure.Count >= stop)) yield return x;

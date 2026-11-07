@@ -1,4 +1,5 @@
 using System;
+using GalHack.Stars;
 using Godot;
 using Planets.Gen;
 using Planets.Look;
@@ -14,6 +15,7 @@ namespace Planets.Surface;
 public partial class SurfaceView : Node3D
 {
     internal WorldMap Map;
+    GalaxySky _galaxy;
     internal ArchetypeLook Look;
     internal LandingSite Landing;
 
@@ -60,6 +62,7 @@ public partial class SurfaceView : Node3D
 
     public override void _Process(double delta)
     {
+        _galaxy?.Poll();
         Camera.Fly((float)delta);
         KeepInBounds();
         Vector3 p = Camera.Position;
@@ -113,6 +116,9 @@ public partial class SurfaceView : Node3D
         sky.SetShaderParameter("ring", Look.Ring ? 1f : 0f);
         sky.SetShaderParameter("ring_color", C(Look.RingColor));
         sky.SetShaderParameter("stars", Look.Stars);
+        _galaxy = new GalaxySky(Map.Spec.Seed, StarKind.YellowDwarf, false);
+        _galaxy.Bind(sky);
+        sky.SetShaderParameter("star_turn", GalaxySky.Basis(_galaxy.Tilt));
         sky.SetShaderParameter("cloud_color", C(Look.CloudColor));
         sky.SetShaderParameter("cloud_cover", Look.CloudCover);
 
