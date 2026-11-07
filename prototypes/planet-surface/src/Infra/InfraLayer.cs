@@ -481,6 +481,19 @@ public partial class InfraLayer : Node3D
 
     internal static readonly DecoRgb PoleWood = DecoRgb.Hex("4f3d2c"), PylonSteel = DecoRgb.Hex("6e7072"), Insulator = DecoRgb.Hex("a8b4b8"), WireDark = DecoRgb.Hex("1e2024");
 
+    internal static readonly DecoRgb PylonConcrete = DecoRgb.Hex("8a8a86");
+    /// <summary>How far a pylon leg's end sinks below the ground under its foot.</summary>
+    internal const float PylonSink = 1f;
+
+    /// <summary>The four feet of a standing pylon: world x, z, and the height each leg's lower end is drawn at (a little below the ground under it).</summary>
+    public static (double X, double Z, float Y)[] PylonFeet(PowerPole p, Func<double, double, float> ground)
+    {
+        var xz = p.FeetXZ();
+        var feet = new (double X, double Z, float Y)[4];
+        for (int i = 0; i < 4; i++) feet[i] = (xz[i].X, xz[i].Z, ground(xz[i].X, xz[i].Z) - PylonSink);
+        return feet;
+    }
+
     /// <summary>A pole or pylon, standing, or fallen flat along the line.</summary>
     sealed class PolePiece : Piece
     {
@@ -525,11 +538,16 @@ public partial class InfraLayer : Node3D
             // A lattice pylon: four legs tapering up, braced in tiers, and two crossarms.
             float baseHalf = h * 0.13f, topHalf = 0.9f;
             int tiers = Math.Max(4, (int)(h / 6f));
-            NV[] bottom = { foot + (side + along) * baseHalf, foot + (side - along) * baseHalf, foot + (-side - along) * baseHalf, foot + (-side + along) * baseHalf };
-            NV TopOf(NV c) => foot + (c - foot) * (topHalf / baseHalf) + NV.UnitY * h;
+            // Each leg runs down to the ground under its own foot (sunk a little), with a concrete footing round it.
+            var feet = PylonFeet(p, b.Ground);
+            NV[] bottom = new NV[4];
+            for (int i = 0; i < 4; i++) bottom[i] = b.Local(feet[i].X, feet[i].Y, feet[i].Z);
+            NV TopOf(NV c) => foot + new NV(c.X - foot.X, 0, c.Z - foot.Z) * (topHalf / baseHalf) + NV.UnitY * h;
             for (int i = 0; i < 4; i++)
             {
-                b.Beam(bottom[i] - NV.UnitY * 1.5f, TopOf(bottom[i]), 0.16f, PylonSteel, collide: true);
+                float gy = bottom[i].Y + PylonSink;
+                b.Box(new NV(bottom[i].X, gy - 0.1f, bottom[i].Z), NV.UnitX * 0.55f, NV.UnitY * 0.5f, NV.UnitZ * 0.55f, PylonConcrete, DecoSurface.Matte, collide: true);
+                b.Beam(bottom[i], TopOf(bottom[i]), 0.16f, PylonSteel, collide: true);
                 NV n0 = bottom[i], n1 = bottom[(i + 1) % 4];
                 for (int tier = 0; tier < tiers; tier++)
                 {

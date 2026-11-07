@@ -23,6 +23,17 @@ public sealed class PowerPole
     public float Tall = 36f;
     public float Height => Pylon ? Tall : 9f;
 
+    /// <summary>A pylon's four feet on the ground plan (world x, z): the corners of its base.</summary>
+    public (double X, double Z)[] FeetXZ()
+    {
+        float bh = Height * 0.13f;
+        float[] sa = { 1, 1, -1, -1 }, sb = { 1, -1, -1, 1 };
+        var f = new (double X, double Z)[4];
+        for (int i = 0; i < 4; i++)
+            f[i] = (X + (SideX * sa[i] + -SideZ * sb[i]) * bh, Z + (SideZ * sa[i] + SideX * sb[i]) * bh);
+        return f;
+    }
+
     /// <summary>The anchor of wire <paramref name="k"/> (of <see cref="PowerLines.Wires"/>), in world metres (x, z as the pole's; any copy).</summary>
     public Vector3 Anchor(int k, int wires)
     {
@@ -162,13 +173,19 @@ public sealed class PowerLines
             {
                 // At the spot due, or the nearest that takes a pylon along or to the side of it.
                 PowerPole pole = null;
-                foreach (double o in new[] { 0.0, 24, -24 })
-                    foreach (double s in new[] { 0.0, -40, 40, -80, 80, -120, 120 })
-                    {
-                        double x = px + vx * (t + s) - vz * o, z = pz + vz * (t + s) + vx * o;
-                        if (pole != null || last != null && (x - last.X) * (x - last.X) + (z - last.Z) * (z - last.Z) > PylonFarthest * PylonFarthest || !Takes(x, z)) continue;
-                        pole = new PowerPole { X = x, Z = z, Ground = ground(x, z), SideX = (float)-vz, SideZ = (float)vx, Pylon = true };
-                    }
+                // The first pass wants ground flat under all four feet; the second takes a steeper spot (the legs reach down to the ground under each foot), never a cliff.
+                for (int pass = 0; pass < 2 && pole == null; pass++)
+                    foreach (double o in new[] { 0.0, 24, -24 })
+                        foreach (double s in new[] { 0.0, -40, 40, -80, 80, -120, 120 })
+                        {
+                            double x = px + vx * (t + s) - vz * o, z = pz + vz * (t + s) + vx * o;
+                            if (pole != null || last != null && (x - last.X) * (x - last.X) + (z - last.Z) * (z - last.Z) > PylonFarthest * PylonFarthest || !Takes(x, z)) continue;
+                            var cand = new PowerPole { X = x, Z = z, Ground = ground(x, z), SideX = (float)-vz, SideZ = (float)vx, Pylon = true };
+                            float lo = float.MaxValue, hi = float.MinValue;
+                            foreach (var f in cand.FeetXZ()) { float g = ground(f.X, f.Z); lo = Math.Min(lo, g); hi = Math.Max(hi, g); }
+                            if (hi - lo > (pass == 0 ? 3.5f : 8f)) continue;
+                            pole = cand;
+                        }
                 if (pole == null) { t += PylonSpan * 0.5; if (last != null && t > 0) { last = null; prev = -1; } continue; }
                 bool strung = false;
                 foreach (float tall in PylonHeights)

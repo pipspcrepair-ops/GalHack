@@ -40,6 +40,7 @@ public static class InfraViews
                 return Look(w, vx, vz, eye, px, pz, target);
             }, 0.4, WeatherKind.Clear);
         }
+        if (what == "pylon") PylonBearing = a.Length > 4 ? float.Parse(a[4]) : 20f;
         bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
         Action<Main> torch = what is "sewer" or "drain" or "metro" or "gallery" ? Torch : null;
@@ -52,10 +53,25 @@ public static class InfraViews
         LightColor = new Color("ffeeda"), LightEnergy = 5f, OmniRange = 48f, OmniAttenuation = 0.8f, ShadowEnabled = false, Position = new Vector3(0.2f, -0.2f, 0f),
     });
 
+    static float PylonBearing = 20f;
+
     static (Vector3, float, float) Frame(Main m, string what)
     {
         var w = m.World;
         InfraNetwork net = w.Infra;
+        // The standing pylon on the steepest ground (the feet's spread), from the side so the slope shows.
+        if (what == "pylon" && net.Power != null)
+        {
+            Func<double, double, float> gr = (x, z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            var p = net.Power.Poles.Where(q => q.Pylon && !q.Fallen).OrderByDescending(q => { var g = q.FeetXZ().Select(f => gr(f.X, f.Z)).ToList(); return g.Max() - g.Min(); }).FirstOrDefault();
+            if (p != null)
+            {
+                var g = p.FeetXZ().Select(f => gr(f.X, f.Z)).ToList();
+                GD.Print($"STEEPEST PYLON at {p.X:F0},{p.Z:F0}: feet spread {g.Max() - g.Min():F2} m, height {p.Height}");
+                double vx = p.X + Math.Sin(Mathf.DegToRad(PylonBearing)) * 40, vz = p.Z + Math.Cos(Mathf.DegToRad(PylonBearing)) * 40;
+                return Look(w, vx, vz, Math.Max(gr(vx, vz) + 3f, p.Ground + 4f), p.X, p.Z, p.Ground + 8f);
+            }
+        }
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
         // A cave mouth, from out in front of it.
