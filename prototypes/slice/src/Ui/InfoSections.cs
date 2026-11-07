@@ -11,15 +11,70 @@ using Palette = DiegeticUi.Theme.Palette;
 
 namespace Slice.Ui;
 
-/// <summary>STATS: what you have done since the crash.</summary>
+/// <summary>STATS: what you have done since the crash, and behind two buttons, the settings and the credits.</summary>
 public sealed class StatsSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
+    enum Page { Stats, Settings, Credits }
     readonly Game.Game _game;
+    Page _page;
+    int _creditsScroll;
     public StatsSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
 
+    /// <summary>What the page shows, beyond the menu's own tick: a slider moved, a page turned, the credits scrolled.</summary>
+    public string Signature => $"{_page}|{_creditsScroll}|{_game.Audio?.Settings.Version}";
+
     public void Build(Gui g, Rect2 area)
+    {
+        g.Caption(_page switch { Page.Settings => "SETTINGS", Page.Credits => "CREDITS", _ => "SINCE YOU WOKE" }, area.Position, area.Size.X);
+        // A new game (the start screen: type this world's seed there to replay it).
+        if (g.Button("options:new-game", new Rect2(area.End.X - 640, area.Position.Y, 200, 34), "NEW GAME", C.Accent) && _game.Interactive) _game.NewGame();
+        if (g.Button("options:settings", new Rect2(area.End.X - 430, area.Position.Y, 200, 34), "SETTINGS", C.Accent2, lit: _page == Page.Settings)) _page = _page == Page.Settings ? Page.Stats : Page.Settings;
+        if (g.Button("options:credits", new Rect2(area.End.X - 220, area.Position.Y, 200, 34), "CREDITS", C.Accent2, lit: _page == Page.Credits)) _page = _page == Page.Credits ? Page.Stats : Page.Credits;
+        var below = new Rect2(area.Position + new Vector2(0, 44), area.Size - new Vector2(0, 44));
+        switch (_page)
+        {
+            case Page.Settings: Settings(g, below); break;
+            case Page.Credits: Credits(g, below); break;
+            default: Numbers(g, area); break;
+        }
+    }
+
+    /// <summary>The four volumes. Remembered between runs.</summary>
+    void Settings(Gui g, Rect2 area)
+    {
+        Game.AudioSettings settings = _game.Audio?.Settings;
+        if (settings == null) return;
+        for (int i = 0; i < Game.AudioSettings.Volumes.Length; i++)
+        {
+            string key = Game.AudioSettings.Volumes[i];
+            float value = settings.Get(key), y = area.Position.Y + 20 + i * 64;
+            g.Fill(new Rect2(area.Position.X, y - 12, area.Size.X, 56), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
+            g.Text($"{key.ToUpperInvariant()} VOLUME", new Vector2(area.Position.X + 12, y + 4), C.Dim, 17);
+            g.Text($"{value * 100f:F0}%", new Vector2(area.Position.X + 300, y + 2), C.Text, 19, UiTheme.Mono);
+            if (g.Slider($"options:volume-{key}", new Rect2(area.Position.X + 420, y, 760, 32), ref value, C.Accent2)) _game.Audio.SetVolume(key, value);
+        }
+    }
+
+    /// <summary>Everyone whose work is in the game, generated music included. The wheel scrolls it.</summary>
+    void Credits(Gui g, Rect2 area)
+    {
+        const float RowHeight = 54f;
+        var rows = Game.Credits.Shared.Rows;
+        int fits = Math.Max(1, (int)(area.Size.Y / RowHeight));
+        if (!g.Drawing && g.Wheel != 0) _creditsScroll = Math.Clamp(_creditsScroll - g.Wheel * 2, 0, Math.Max(0, rows.Count - fits));
+        for (int i = _creditsScroll; i < rows.Count && i < _creditsScroll + fits; i++)
+        {
+            Game.CreditRow row = rows[i];
+            float y = area.Position.Y + (i - _creditsScroll) * RowHeight;
+            g.Fill(new Rect2(area.Position.X, y, area.Size.X, RowHeight - 4), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
+            g.TextIn($"{row.Section}: {row.What}", new Rect2(area.Position.X + 12, y + 4, area.Size.X - 24, 24), C.Text, 17);
+            g.TextIn($"{row.Author}   ·   {row.Licence}   ·   {row.Source}", new Rect2(area.Position.X + 12, y + 28, area.Size.X - 24, 20), C.Dim, 14);
+        }
+    }
+
+    void Numbers(Gui g, Rect2 area)
     {
         Game.GameStats s = _game.Stats;
         Progress p = _game.Progress;
@@ -43,15 +98,6 @@ public sealed class StatsSection : IMenuSection
             ("SUPPLIES USED", $"{s.Used}"),
             ("DEATHS", $"{s.Deaths}"),
         };
-        g.Caption("SINCE YOU WOKE", area.Position, area.Size.X);
-        // A new game (the start screen: type this world's seed there to replay it).
-        if (g.Button("options:new-game", new Rect2(area.End.X - 640, area.Position.Y, 200, 34), "NEW GAME", C.Accent) && _game.Interactive) _game.NewGame();
-        // Options: the master volume.
-        var vol = new Rect2(area.End.X - 420, area.Position.Y + 2, 420, 34);
-        float master = _game.Audio?.Master ?? 1f;
-        g.Text($"MASTER VOLUME {master * 100:F0}%", vol.Position + new Vector2(0, 6), C.Text, 16);
-        if (g.Button("options:volume-down", new Rect2(vol.Position + new Vector2(230, 0), new Vector2(80, 32)), "-", C.Accent2) && _game.Audio != null) _game.Audio.Master = Mathf.Max(0f, master - 0.1f);
-        if (g.Button("options:volume-up", new Rect2(vol.Position + new Vector2(320, 0), new Vector2(80, 32)), "+", C.Accent2) && _game.Audio != null) _game.Audio.Master = Mathf.Min(1f, master + 0.1f);
         for (int i = 0; i < rows.Length; i++)
         {
             var (label, value) = rows[i];
