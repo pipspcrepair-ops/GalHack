@@ -37,6 +37,9 @@ public partial class WildlifePatch : Node3D
     /// <summary>Wildlife's own synthesised calls: every wind-up is heard before it lands.</summary>
     public ProceduralAudio Audio { get; private set; }
 
+    /// <summary>What's in the air from their throats.</summary>
+    public SpitView Spit { get; private set; }
+
     /// <summary>The tells of the patch's ambushers and hunters: grit, shadows, scratching, rattles.</summary>
     public TellView Tells { get; private set; }
 
@@ -57,6 +60,9 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>A creature lunged at the player: hit or not, with its damage (wildlife's own scale, a share of 100).</summary>
     public event Action<AttackEvent> Attacked;
+
+    /// <summary>What was thrown from a throat came down (hit someone or not).</summary>
+    public event Action<Gob, bool> Splashed;
 
     /// <summary>A creature went for someone other than the player (a townsperson out of town).</summary>
     public event Action<AttackEvent> Bitten;
@@ -100,6 +106,9 @@ public partial class WildlifePatch : Node3D
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
+        View.Audio = Audio;
+        Spit = new SpitView { Name = "Spit" };
+        AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
         var (terrain, nav, origin) = Bake(planet, Snapped(landing), rules.PatchHalfSize);
@@ -132,6 +141,11 @@ public partial class WildlifePatch : Node3D
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
+        // Creatures see by the same light the eye does; scent goes with the weather.
+        sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
+        sim.Clicked += c => Audio.Click(c);
+        sim.Spat += g => Audio.Play("retch", g.Position, Math.Clamp(0.9f / MathF.Cbrt(Heft.Mass(g.From.Species) / 70f), 0.55f, 1.3f), -3f);
+        sim.Splashed += (g, hit) => Splashed?.Invoke(g, hit);
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
@@ -192,7 +206,7 @@ public partial class WildlifePatch : Node3D
         int most = (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
         foreach (Species s in Fauna.Species)
         {
-            int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density, rng);
+            int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density * s.Scarcity, rng);
             for (int g = 0; g < groups && Sim.Creatures.Count < most; g++)
             {
                 int count = Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable)));
@@ -384,6 +398,8 @@ public partial class WildlifePatch : Node3D
     {
         if (Sim == null) return;
         Sim.Clock.Time01 = (float)Zone.Sky.TimeOfDay;
+        Vector2 wind = Zone.Weather?.Wind2D ?? Vector2.Zero;
+        Sim.Wind = new Vector3(wind.X, 0f, wind.Y);
         if ((_baseSync += (float)delta) >= 1f)
         {
             _baseSync = 0f;
@@ -396,5 +412,6 @@ public partial class WildlifePatch : Node3D
     {
         if (Sim == null || Zone.Camera == null) return;
         View.Sync(PatchLocal(Zone.Camera.GlobalPosition));
+        Spit.Sync(Sim);
     }
 }

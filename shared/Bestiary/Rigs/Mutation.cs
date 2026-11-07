@@ -42,7 +42,7 @@ public static class Mutation
     public static RigLayout Decorate(RigLayout layout, Species s)
     {
         // Swarm members are specks: nothing to see on them.
-        if (s.Mutation <= 0f || layout.Pieces.Count == 0 || s.Rig == RigKind.Swarm) return layout;
+        if (s.Mutation <= 0f || s.Mechanical || layout.Pieces.Count == 0 || s.Rig == RigKind.Swarm) return layout;
         float k = Math.Clamp(s.Mutation, 0f, 1f);
         var rng = Rng.For(s.Seed, "mutation", (long)MathF.Round(k * 1000f));
         var paint = new Paint(s);
@@ -106,13 +106,55 @@ public static class Mutation
         }
 
         // A patch of skin in a colour that isn't the species' own.
-        if (k >= 0.15f && rng.Chance(0.4f + 0.6f * k) && body != null)
+        if (k >= 0.15f && rng.Chance(0.4f + 0.6f * k) && body != null && s.Figure == null)
         {
             Patch(body, s, rng);
             report.Patch = true;
         }
+        if (s.Monstrous) Monstrous(layout, s, paint, rng, report, side, k);
+        if (s.Spit != SpitKind.None && head != null) Throat(head, s, paint);
         Reports.AddOrUpdate(s, report);
         return layout;
+    }
+
+    /// <summary>
+    /// Past growths: the body itself has gone wrong. A hump dragging it down, lumps on every part
+    /// of it, one arm swollen to twice the other. It still walks: lengths never change.
+    /// </summary>
+    static void Monstrous(RigLayout layout, Species s, Paint paint, Rng rng, Report report, float side, float k)
+    {
+        Piece body = Find(layout, "body") ?? Largest(layout);
+        Piece head = Find(layout, "head");
+        float W = s.Body.Width, H = s.Body.Height;
+        Color flesh = paint.Base.Lerp(new Color(0.66f, 0.48f, 0.44f), 0.5f);
+        Vector3 hump = s.Figure != null ? new Vector3(side * W * 0.2f, H * 0.78f, s.Figure.ChestD * 1.1f) : new Vector3(side * W * 0.18f, H * 0.5f, -s.Body.Size * 0.1f);
+        float size = s.Figure != null ? W * 1.05f : MathF.Min(W, H) * 0.9f;
+        body.Add(Shape.Sphere, new Vector3(size, size * 0.9f, size), hump, flesh, 0.1f, 0f, null, 12, Mat.Membrane);
+        body.Add(Shape.Sphere, Vector3.One * size * 0.5f, hump + new Vector3(-side * size * 0.4f, size * 0.3f, 0f), flesh.Darkened(0.1f), 0.1f, 0f, null, 9, Mat.Membrane);
+        int more = rng.Int(5, 9);
+        var parts = layout.Pieces.FindAll(p => p.Name is "body" or "head" || p.Name.StartsWith("arm") || p.Name.StartsWith("leg") && p.Name.EndsWith("u") || p.Name.StartsWith("neck") || p.Name.StartsWith("up"));
+        for (int i = 0; i < more; i++)
+        {
+            Piece on = parts[rng.Int(0, parts.Count - 1)];
+            float across = on == body ? W : on == head ? s.Body.HeadSize * 0.5f : W * 0.5f;
+            report.AddedVolume += Growth(on, paint, rng, k, across);
+            report.Growths++;
+        }
+        // One arm built for something else.
+        foreach (Piece p in layout.Pieces)
+        {
+            if (!p.Name.StartsWith("arm") || p.Name.Length < 5) continue;
+            bool swollen = (p.Name[3] == '0' ? -1f : 1f) == side;
+            Thicken(p, swollen ? 1.9f : 0.75f);
+        }
+    }
+
+    /// <summary>A throat that brings things up: swollen under the jaw, and the colour of what's in it.</summary>
+    static void Throat(Piece head, Species s, Paint k)
+    {
+        float hs = s.Figure != null ? s.Figure.HeadRadius * 1.6f : s.Body.HeadSize;
+        Vector3 at = s.Figure != null ? new Vector3(0f, s.Figure.Neck * 0.6f, -s.Figure.HeadRadius * 0.5f) : new Vector3(0f, -hs * 0.3f, -hs * 0.05f);
+        head.Add(Shape.Sphere, new Vector3(hs * 0.72f, hs * 0.5f, hs * 0.66f), at, k.Base.Lerp(Spitting.ColourOf(s), 0.45f), 0.1f, 0f, null, 9, Mat.Membrane);
     }
 
     static Piece Find(RigLayout l, string name) => l.Pieces.Find(p => p.Name == name);
@@ -157,7 +199,7 @@ public static class Mutation
     }
 
     /// <summary>A point on a prim's surface and the outward normal there, in piece space; upper side favoured.</summary>
-    static (Vector3 at, Vector3 n, float girth) SurfacePoint(Prim m, Rng rng)
+    internal static (Vector3 at, Vector3 n, float girth) SurfacePoint(Prim m, Rng rng)
     {
         float theta = rng.Range(0.15f, 0.85f) * MathF.PI * (rng.Chance(0.8f) ? 1f : -1f);
         switch (m.Shape)

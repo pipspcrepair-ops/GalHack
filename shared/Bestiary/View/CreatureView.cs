@@ -222,6 +222,10 @@ public partial class WildlifeView : Node3D
     readonly List<Creature> _gone = new();
 
     public float NearDistance = 60f, MidDistance = 120f, FarDistance = 220f;
+    /// <summary>Where heavy footfalls are heard; left out, they aren't.</summary>
+    public ProceduralAudio Audio;
+    /// <summary>The lightest thing heard walking from any way off, kg, and how far.</summary>
+    const float HeavyStep = 180f, StepHeard = 45f;
 
     public int NodeCount
     {
@@ -270,6 +274,11 @@ public partial class WildlifeView : Node3D
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             view.Listen(d);
+            if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
+            {
+                c.StepsHeard = c.Rig.Steps;
+                if (Heft.Mass(c.Species) >= HeavyStep) Audio.Footfall(c);
+            }
         }
 
         _gone.Clear();

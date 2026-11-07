@@ -55,6 +55,8 @@ public sealed class DeepFauna
     /// </summary>
     public Species For(DeepRole role, PoiTheme theme, int depth, bool infested = false)
     {
+        // What the Hollow leaves walking keeps to the corridors of the places it has taken.
+        if (infested && role == DeepRole.Prowler && Husks != null) return _husks[theme] = _husks.TryGetValue(theme, out Species husk) ? husk : Prowling(Husks(theme), role, theme, depth);
         DepthRules dr = _data.Deep.Depth;
         depth = Math.Clamp(depth, 0, dr.MaxLevel);
         int band = Band(depth);
@@ -64,6 +66,30 @@ public sealed class DeepFauna
         int floor = BandFloor(band);
         Species s = scales && depth != floor ? Deeper(For(role, theme, floor, infested), depth) : Roll(role, theme, band, scales ? floor : depth, infested);
         _cache[key] = s;
+        return s;
+    }
+
+    /// <summary>Where the world has people to take, this rolls one of what's left of them (set by <see cref="WorldLife"/>).</summary>
+    public Func<PoiTheme, Species> Husks;
+    readonly Dictionary<PoiTheme, Species> _husks = new();
+
+    /// <summary>A body from elsewhere, given a prowler's job in a place.</summary>
+    Species Prowling(Species s, DeepRole role, PoiTheme theme, int depth)
+    {
+        DeepRoleDef rd = _data.Deep.Roles[role.ToString()];
+        s.Role = role;
+        s.Theme = theme;
+        s.Depth = depth;
+        s.Activity = Activity.Cathemeral;
+        s.RestKind = RestKind.None;
+        s.NoticeRadius = rd.Notice;
+        s.StrikeRadius = rd.Strike;
+        s.WarnRadius = rd.Warn;
+        s.DefendRadius = rd.Defend;
+        s.TellSeconds = MathF.Max(1f, rd.TellSeconds);
+        s.Tells = new[] { TellKind.Breath };
+        s.Id = $"{_seed:x}-deep-husk-{theme}";
+        s.Index = 190 + (int)theme;
         return s;
     }
 
@@ -112,6 +138,9 @@ public sealed class DeepFauna
         Size(s, rd.SizeScale);
         Stats(s, rd, depth);
         Attack(s, role, form);
+        // What a dark place does: pale thin skin far down, and senses for no light at all.
+        if (band > 0 && s.Coat == Coat.Hide) s.Coat = Coat.ThinSkin;
+        Fit.Senses(s, rng);
 
         s.Name = _names.MakeUnique(rng, _taken);
         s.CommonName = Prefix(s, band) + _gen.NameFor(s);

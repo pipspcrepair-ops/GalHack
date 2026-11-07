@@ -62,6 +62,10 @@ public partial class ProceduralAudio : Node3D
         _clips["discover"] = Make(0.75f, (t, n) => 0.3f * (Bell(t, 659.3f) + 0.85f * Bell(t - 0.11f, 987.8f)) * Math.Clamp((0.75f - t) * 16f, 0f, 1f), rng);
         HoverLoop = Make(1.0f, (t, n) => (MathF.Sin(MathF.Tau * 55f * t) * 0.5f + MathF.Sin(MathF.Tau * 110f * t) * 0.25f + n * 0.08f) * 0.6f, rng, loop: true);
         GrindLoop = Make(0.5f, (t, n) => (Square(t * 36f) * 0.3f + n * 0.6f) * (0.7f + 0.3f * MathF.Sin(t * MathF.Tau * 12f)), rng, loop: true);
+        // A throat bringing something up: a wet heave with a rough voice under it.
+        _clips["retch"] = Make(0.8f, (t, n) => Envelope(t, 0.8f, 0.55f) * (Saw(t * (95f - 40f * t)) * 0.35f + n * 0.7f) * (0.55f + 0.45f * MathF.Sin(t * 38f)), rng);
+        // A machine winding up: a servo whine climbing over a hard buzz.
+        _clips["servo"] = Make(1.1f, (t, n) => Envelope(t, 1.1f, 0.9f) * (Square(t * (140f + 260f * t)) * 0.28f + MathF.Sin(MathF.Tau * (520f + 700f * t) * t) * 0.28f + n * 0.08f), rng);
         MakeTells(rng);
 
         for (int i = 0; i < 12; i++)
@@ -69,6 +73,12 @@ public partial class ProceduralAudio : Node3D
             var p = new AudioStreamPlayer3D { UnitSize = 8f, MaxDistance = 90f, Bus = "Master" };
             AddChild(p);
             _pool.Add(p);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            var p = new AudioStreamPlayer3D { UnitSize = 5f, MaxDistance = 40f, Bus = "Master" };
+            AddChild(p);
+            _throats.Add(p);
         }
         _ui = new AudioStreamPlayer { Name = "UiSound", Bus = "Master" };
         AddChild(_ui);
@@ -108,8 +118,64 @@ public partial class ProceduralAudio : Node3D
             _ => c.Species.Attack.Sound,
         };
         if (!_clips.ContainsKey(clip)) clip = "growl";
-        float pitch = Math.Clamp(1.4f / MathF.Sqrt(MathF.Max(0.3f, c.Species.Body.Size)), 0.55f, 1.8f);
-        Play(clip, c.Position + Vector3.Up, pitch, c.Species.Plan == BodyPlan.Giant ? 6f : 2f);
+        // A person shouts; a machine and an animal sound what they weigh.
+        if (c.Species.Figure is { Voice: not null } && c.Species.Spit == SpitKind.None)
+        {
+            Say(c.Species, VoiceMood.Shout, c.Position + Vector3.Up * 1.6f);
+            return;
+        }
+        Play(clip, c.Position + Vector3.Up, Heft.Pitch(c.Species), Heft.Loudness(c.Species));
+    }
+
+    /// <summary>The dry click of something that hunts by its voice.</summary>
+    public void Click(Creature c) => Play("click", c.Position + Vector3.Up * c.Species.BodyHeight * 0.8f, Heft.Pitch(c.Species), -6f);
+
+    /// <summary>A footfall, as heavy as what made it.</summary>
+    public void Footfall(Creature c) => Play("thud", c.Position, Heft.Pitch(c.Species) * 0.8f, Heft.Loudness(c.Species) - 8f);
+
+    // ---- Voices ----------------------------------------------------------------------------
+
+    const int Takes = 3;
+    readonly Dictionary<(Voice, VoiceMood, int), AudioStreamWav> _spoken = new();
+    readonly Dictionary<(Voice, VoiceMood, int), System.Threading.Tasks.Task<byte[]>> _rendering = new();
+    readonly List<AudioStreamPlayer3D> _throats = new();
+    int _nextThroat, _take;
+
+    /// <summary>Someone says something, wordlessly. A phrase not yet heard is rendered off the main thread and spoken next time.</summary>
+    public void Say(Species person, VoiceMood mood, Vector3 at)
+    {
+        Voice v = person.Figure?.Voice;
+        if (v == null || _throats.Count == 0) return;
+        var key = (v, mood, _take++ % Takes);
+        if (!_spoken.TryGetValue(key, out AudioStreamWav clip))
+        {
+            if (_rendering.TryGetValue(key, out var task))
+            {
+                if (!task.IsCompleted) return;
+                clip = new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Voice.Rate, Stereo = false, Data = task.Result };
+                _rendering.Remove(key);
+                if (_spoken.Count > 256) _spoken.Clear();
+                _spoken[key] = clip;
+            }
+            else
+            {
+                int take = key.Item3;
+                _rendering[key] = System.Threading.Tasks.Task.Run(() =>
+                {
+                    short[] pcm = v.Render(mood, take);
+                    var bytes = new byte[pcm.Length * 2];
+                    Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
+                    return bytes;
+                });
+                return;
+            }
+        }
+        AudioStreamPlayer3D p = _throats[_nextThroat++ % _throats.Count];
+        p.Stream = clip;
+        p.VolumeDb = mood switch { VoiceMood.Shout => 2f, VoiceMood.Cry => -3f, VoiceMood.Whisper => -14f, _ => -11f };
+        p.MaxDistance = mood == VoiceMood.Shout ? 70f : mood == VoiceMood.Whisper ? 9f : 24f;
+        p.GlobalPosition = at + Origin;
+        p.Play();
     }
 
     public void Play(string clip, Vector3 at, float pitch = 1f, float volumeDb = 0f)
@@ -244,8 +310,7 @@ public partial class ProceduralAudio : Node3D
             _ => e.Creature?.Species.Attack.Sound ?? "growl",
         };
         if (clip == "") return;
-        float size = e.Creature?.Species.Body.Size ?? 1f;
-        float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, size)), 0.6f, 1.6f);
+        float pitch = e.Creature != null ? Heft.Pitch(e.Creature.Species) : 1f;
         float volume = e.Kind == TellKind.Scratch && e.Creature is { InWalls: true } ? -5f : e.Kind == TellKind.Dust ? -2f : 1f;
         Play(clip, e.Position, e.Kind is TellKind.Rattle or TellKind.Thump or TellKind.Dust ? 1f : pitch, volume);
     }

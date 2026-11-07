@@ -267,6 +267,7 @@ public sealed partial class Town
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
         _clock += tickDt;
+        Voices(player, tickDt);
         int built = 0;
         for (int who = 0; who < People.Count; who++)
         {
@@ -536,6 +537,33 @@ public sealed partial class Town
             p.Rig = new HumanRig(p.Looks);
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, PersonRole.Child => 1.1f, _ => 1f };
         }
+    }
+
+    float _voiceIn = 2f;
+
+    /// <summary>
+    /// The sound of the place, one voice at a time and only near you: people at ease murmur, a
+    /// frightened one whispers or cries, whoever turns on you shouts.
+    /// </summary>
+    void Voices(Vector3 player, float dt)
+    {
+        if ((_voiceIn -= dt) > 0f) return;
+        _voiceIn = 0.9f + (float)_rng.NextDouble() * 2.4f;
+        Person who = null;
+        float best = 26f * 26f;
+        foreach (Person p in People)
+        {
+            if (p.Dead || p.Indoors || p.Looks == null) continue;
+            float d = (player - p.Pos).LengthSquared() * (0.6f + (float)_rng.NextDouble());
+            if (d < best) { best = d; who = p; }
+        }
+        if (who == null) return;
+        VoiceMood mood = who.Aim >= 0f ? VoiceMood.Shout
+            : who.Fleeing ? (_rng.NextDouble() < 0.5 ? VoiceMood.Cry : VoiceMood.Whisper)
+            : Memory.Mood == Mood.Hostile ? VoiceMood.Shout : VoiceMood.Murmur;
+        if (mood == VoiceMood.Shout && who.Figure.Stage == LifeStage.Child) mood = VoiceMood.Cry;
+        Vector3 at = World(who.Pos + Vector3.Up * who.Figure.Height * 0.9f);
+        _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Say(who.Looks, mood, at));
     }
 
     /// <summary>Builds what they're drawn with: a few at a time, so a town coming into view never costs a whole frame.</summary>

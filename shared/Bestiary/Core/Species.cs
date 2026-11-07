@@ -83,6 +83,16 @@ public sealed class Species
     public Coat Coat;
     /// <summary>How it knows what is around it.</summary>
     public SenseProfile Senses = new();
+    /// <summary>The other sex, where a species shows one. Both are this species.</summary>
+    public Species Mate;
+    /// <summary>How big its ears stand, 0 to 1: how well it hears, and how much heat it sheds.</summary>
+    public float EarSize;
+    /// <summary>No lungs and no blood: it runs on what it was built with.</summary>
+    public bool Mechanical;
+    /// <summary>Alive, and sealed against vacuum.</summary>
+    public bool Hardened;
+    /// <summary>How many groups of it there are, as a share of the usual.</summary>
+    public float Scarcity = 1f;
     /// <summary>What its throat throws at you, if anything.</summary>
     public SpitKind Spit;
 

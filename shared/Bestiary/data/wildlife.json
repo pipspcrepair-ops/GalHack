@@ -588,5 +588,39 @@
       "trim": ["2a2420", "33291f"],
       "stoop": 0.3, "stagger": 0.15, "hair": "long"
     }
+  },
+
+  // Bodies fit their world. A coat is rolled from what the climate lists; banned bodies can't
+  // live there at all. bulk is girth, limbs is legs, necks and tails, ears are for shedding heat,
+  // pale and tan are how far a coat goes to snow or sand.
+  "fit": {
+    "vacuumScarcity": 0.12,
+    "vacuumLife": 0.12,
+    "machineWorld": 0.22,
+    "climates": {
+      "Frozen": {
+        "banRigs": ["Chain", "Swarm", "GasBag"],
+        "banForms": ["skitterer", "mothwing", "walkingplant"],
+        "coats": { "Wool": 3, "Fur": 3, "Blubber": 2 },
+        "bulk": 1.2, "limbs": 0.82, "pale": 0.6
+      },
+      "Cold": {
+        "banRigs": ["Chain"],
+        "banForms": ["mothwing"],
+        "coats": { "Fur": 3, "Wool": 2, "Blubber": 1, "Hide": 0.6 },
+        "bulk": 1.1, "limbs": 0.92, "pale": 0.25
+      },
+      "Mild": {
+        "coats": { "Hide": 3, "Fur": 2, "Scale": 1 }
+      },
+      "Hot": {
+        "coats": { "Scale": 3, "ThinSkin": 2, "Hide": 1.5 },
+        "bulk": 0.93, "limbs": 1.08, "ears": 0.5, "tan": 0.3
+      },
+      "Scorching": {
+        "coats": { "Scale": 3, "ThinSkin": 3 },
+        "bulk": 0.88, "limbs": 1.14, "ears": 0.8, "tan": 0.5
+      }
+    }
   }
 }

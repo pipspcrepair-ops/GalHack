@@ -78,6 +78,8 @@ public sealed class WildlifeData
     public DeepTables Deep { get; set; } = new();
     /// <summary>How people look: heights, what each climate and hazard dresses them in, what each job wears.</summary>
     public PeopleTables People { get; set; } = new();
+    /// <summary>What each climate does to bodies.</summary>
+    public FitTables Fit { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {

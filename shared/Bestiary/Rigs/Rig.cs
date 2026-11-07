@@ -26,6 +26,9 @@ public abstract class Rig
     /// <summary>Height of the body's centre above the ground under it, for the tests.</summary>
     public float BodyClearance;
 
+    /// <summary>Feet that have come down so far: a heavy thing is heard walking.</summary>
+    public int Steps;
+
     // Intentions from the brain, smoothed so poses never snap.
     protected float Crouch, Hidden, Graze, Rearing, Lunging, Bracing, Dead;
     protected float LookYaw;
@@ -38,7 +41,7 @@ public abstract class Rig
     {
         Species = species;
         // A mutagenic world's growths, asymmetry and extra parts go on after the body is built (none at strength 0).
-        Layout = Layouts.GetValue(species, s => Mutation.Decorate(Tack.Decorate(build(s), s), s));
+        Layout = Layouts.GetValue(species, s => Mutation.Decorate(Coats.Decorate(Tack.Decorate(build(s), s), s), s));
         Pose = new Transform3D[Layout.Pieces.Count];
         for (int i = 0; i < Pose.Length; i++) Pose[i] = Transform3D.Identity;
     }

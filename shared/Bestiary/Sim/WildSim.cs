@@ -117,6 +117,32 @@ public sealed class WildSim
     /// <summary>Loud sounds of the last moment.</summary>
     public readonly List<WorldNoise> Noises = new();
 
+    /// <summary>Things thrown from throats, in the air.</summary>
+    public readonly List<Gob> Gobs = new();
+    /// <summary>A gob left a mouth; a gob came down (on someone or not).</summary>
+    public event Action<Gob> Spat;
+    public event Action<Gob, bool> Splashed;
+    internal void RaiseSpat(Gob g) => Spat?.Invoke(g);
+    internal void RaiseSplash(Gob g, bool hit) => Splashed?.Invoke(g, hit);
+
+    /// <summary>How lit a point is (this sim's frame), 0 to about 1; left out, everywhere is plain to see.</summary>
+    public Func<Vector3, float> LightAt;
+    readonly Dictionary<ITarget, (float time, float light)> _lit = new();
+
+    /// <summary>How lit a target is. Worked out a few times a second however many are looking.</summary>
+    public float LightOn(ITarget t)
+    {
+        if (LightAt == null) return 1f;
+        if (_lit.TryGetValue(t, out var was) && Time - was.time < 0.3f) return was.light;
+        float light = MathF.Max(LightAt(t.Position + Vector3.Up * 1.2f), t.Lamp);
+        _lit[t] = (Time, light);
+        return light;
+    }
+
+    /// <summary>Something that hunts by its voice clicked.</summary>
+    public event Action<Creature> Clicked;
+    internal void RaiseClick(Creature c) => Clicked?.Invoke(c);
+
     /// <summary>A loud sound: everything within the radius turns to look.</summary>
     public void Noise(Vector3 at, float radius) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time });
 
@@ -236,6 +262,13 @@ public sealed class WildSim
             Yaw = 0f,
         };
         c.Rng = new Rng(Rng.Mix(species.Seed, (ulong)c.Id));
+        // Half of a dimorphic species is the other sex.
+        if (species.Mate != null && c.Rng.Chance(0.5f))
+        {
+            species = species.Mate;
+            c.Species = species;
+            c.Health = species.Stats.MaxHealth;
+        }
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
         c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
@@ -366,6 +399,7 @@ public sealed class WildSim
         Clock.Advance(dt);
         _pathBudget = PathBudgetPerStep;
         WatchTargets(dt);
+        if (Gobs.Count > 0) Spitting.Step(this, dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
         for (int i = 0; i < Creatures.Count; i++)

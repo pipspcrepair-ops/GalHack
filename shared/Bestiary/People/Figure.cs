@@ -60,6 +60,9 @@ public sealed class Figure
     /// <summary>A Hollow husk: gaunt, slack, and what lives in it shows at the mouth and the eyes.</summary>
     public bool Husk;
 
+    /// <summary>How they sound.</summary>
+    public Voice Voice;
+
     public bool Has(string garment) => Wear.Contains(garment);
 
     /// <summary>The body's lengths and widths from its height, build, sex and age. Only numbers: the rig and the view read these.</summary>

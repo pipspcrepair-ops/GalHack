@@ -53,7 +53,7 @@ public static class Attacks
     }
 
     /// <summary>How close it has to be to start a bite that will reach: no nearer than its jaws let it.</summary>
-    public static float Range(Creature c) => MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
+    public static float Range(Creature c) => Spitting.Can(c) ? Spitting.Reach : MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
 
     /// <summary>How far a lunge's pose throws its head forward, on top of its jaws at rest.</summary>
     public static float Stretch(Creature c) => c.Species.Rig == RigKind.Legged ? c.Species.Body.Size * 0.3f : c.Species.Body.Size * 0.08f;
@@ -150,7 +150,19 @@ public static class Attacks
                 c.FacePoint = c.AimPoint;
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
                 CommitIfDue(w, c, t);
-                if (c.PhaseTime >= c.PhaseLength) Launch(w, c);
+                if (c.PhaseTime >= c.PhaseLength)
+                {
+                    if (Spitting.Wants(c))
+                    {
+                        // A throat, not teeth: it lets go from where it stands.
+                        Spitting.Launch(w, c);
+                        c.Phase = AttackPhase.Recover;
+                        c.PhaseTime = 0f;
+                        c.PhaseLength = r.AttackCooldown * 1.6f;
+                        c.Rear = 0f;
+                    }
+                    else Launch(w, c);
+                }
                 break;
 
             case AttackPhase.Lunge:

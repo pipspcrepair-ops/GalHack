@@ -55,6 +55,15 @@ public static class Heft
     /// <summary>How high its middle is above the ground, standing (the rig holds it there).</summary>
     public static float StandHeight(Species s) => s.Body.Height * 0.5f + s.Body.Width * 0.25f;
 
+    /// <summary>What it weighs, kg: the one number big things sound and move by. A person's is their own; anything else, its bulk at about the density of flesh.</summary>
+    public static float Mass(Species s) => s.Figure != null ? s.Figure.Mass * (s.Mechanical ? 3f : 1f) : MathF.Max(0.1f, Weight(s) * (s.Coat == Coat.Plating ? 700f : 420f));
+
+    /// <summary>How low its sounds are pitched: the heavier, the deeper, by the same number that slows its turns.</summary>
+    public static float Pitch(Species s) => Math.Clamp(1.3f * MathF.Pow(Mass(s) / 60f, -0.17f), 0.4f, 1.9f);
+
+    /// <summary>How loud it is, dB against a person: a few dB for each doubling of weight.</summary>
+    public static float Loudness(Species s) => Math.Clamp(2f + 1.25f * MathF.Log2(MathF.Max(1f, Mass(s)) / 60f), -5f, 11f);
+
     /// <summary>0 for anything up to about a metre, 1 from five metres.</summary>
     public static float Bulk(Species s) => Math.Clamp((s.Body.Size - 1f) / 4f, 0f, 1f);
 }

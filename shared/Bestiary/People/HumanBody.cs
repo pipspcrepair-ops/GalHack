@@ -95,7 +95,6 @@ public static class HumanBody
             (0.72f, (f.HipW + f.WaistW) * 0.5f * pad, d * 0.9f, 0f),
             (1f, f.WaistW * 1.02f * pad, d * 0.82f, 0f),
         }, 9, 0.2f);
-        p.Loft(hips, lower, lower.Darkened(0.1f), 0f, 0f, Mat.Skin, null, upright, 11);
         var chest = LoftProfile.Smooth(0.34f * T, 1.02f * T, new[]
         {
             (0f, f.WaistW * pad, d * 0.82f, 0f),
@@ -105,6 +104,7 @@ public static class HumanBody
             (1f, f.ShoulderW * 0.42f, d * 0.46f, 0f),
         }, 11, 0.2f);
         p.Loft(chest, top, top.Darkened(0.12f), 0f, 0f, Mat.Skin, null, upright, 11);
+        p.Loft(hips, lower, lower.Darkened(0.1f), 0f, 0f, Mat.Skin, null, upright, 11);
         float belt = 0.4f * T;
         if (f.Dress != "rags")
             p.Add(Shape.Cylinder, new Vector3(f.WaistW * 2.1f * pad, 0.05f * Scale(f), f.WaistW * 2.1f * pad), new Vector3(0f, belt, 0f), f.Dress == "wraps" ? f.Trim : f.Leather, 0f, 0f, new Basis(Vector3.Up, 0f) * Basis.FromScale(new Vector3(1f, 1f, d / MathF.Max(0.01f, f.WaistW * pad))), 10);

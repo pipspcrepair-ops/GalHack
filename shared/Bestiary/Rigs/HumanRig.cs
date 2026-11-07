@@ -39,7 +39,7 @@ public sealed class HumanRig : Rig
     WildSim _world;
     Creature _creature;
 
-    public HumanRig(Species s) : base(s, HumanBody.Build)
+    public HumanRig(Species s) : base(s, s.Mechanical ? Robots.BuildAutomaton : HumanBody.Build)
     {
         _f = s.Figure;
         var pieces = Layout.Pieces;
@@ -103,7 +103,7 @@ public sealed class HumanRig : Rig
         Figure f = _f;
         float run = Math.Clamp((g.Speed - 2f) / 1.4f, 0f, 1f);
         float moving = Math.Clamp(g.Speed / 0.45f, 0f, 1f);
-        float strideLength = f.LegLength * Mathf.Lerp(1.55f, 2.9f, run);
+        float strideLength = f.LegLength * Mathf.Lerp(1.45f, 2.6f, run);
         float phase = g.Walked / strideLength + _offset;
         float cycle = MathF.Tau * phase;
 
@@ -112,7 +112,7 @@ public sealed class HumanRig : Rig
 
         // Hips: over the feet, dropping as a step lands; low in a crouch, on the seat when sitting.
         float bob = moving * (0.012f + 0.024f * run) * f.Height * MathF.Cos(cycle * 2f);
-        float hipY = f.LegLength * (0.985f - 0.05f * run - 0.42f * g.Crouch) + bob;
+        float hipY = f.LegLength * (0.985f - 0.045f * moving - 0.08f * run - 0.42f * g.Crouch) + bob;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
         float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * 2.3f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
@@ -151,9 +151,13 @@ public sealed class HumanRig : Rig
             Vector3 hipJoint = hip + torso.X * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
             Vector3 foot = g.Feet + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f);
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
-            foot.Y = ground + f.Ankle + moving * lift * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run);
+            // The heel comes up as a foot trails behind; the swing clears the ground.
+            float heel = stance ? MathF.Max(0f, -reach - 0.35f) * 0.16f * f.LegLength : 0f;
+            foot.Y = ground + f.Ankle + moving * (heel + lift * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run));
             _feet[i] = foot;
-            _planted[i] = stance || moving <= 0f;
+            bool grounded = stance || moving <= 0f;
+            if (grounded && !_planted[i]) Steps++;
+            _planted[i] = grounded;
             (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwd + right * side * 0.12f);
             _drawn[i] = drawn;
             Pose[_legU[i]] = Geo.Segment(hipJoint, knee, right);

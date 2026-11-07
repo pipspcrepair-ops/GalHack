@@ -36,6 +36,9 @@ public sealed class FaunaGenerator
 {
     readonly FaunaTables _t;
     readonly ActivityRules _activity;
+    /// <summary>Which forms can live on this world; null for any.</summary>
+    public Func<FormDef, bool> Allow;
+    bool Lives(FormDef f) => Allow == null || Allow(f);
 
     public FaunaGenerator(FaunaTables tables) : this(tables, null) { }
 
@@ -165,7 +168,7 @@ public sealed class FaunaGenerator
         foreach (string id in niche.Forms)
         {
             FormDef f = _t.Forms.Find(x => x.Id == id);
-            if (f != null && !f.Deep) options.Add(f);
+            if (f != null && !f.Deep && Lives(f)) options.Add(f);
         }
         if (options.Count == 0) return null;
         FormDef form = rng.Weighted(options, f => (f.Behaviours.ContainsKey(niche.Behaviour.ToString()) ? 1f : 0.25f) * f.Weight * Affinity(f.Weirdness, alienness));
@@ -476,11 +479,11 @@ public sealed class FaunaGenerator
             bool distinct = i < _t.DistinctPlans;
             // Cave and place forms are the deep fauna's: never rolled for the open surface.
             var options = _t.Forms.FindAll(f =>
-                !f.Deep
+                !f.Deep && Lives(f)
                 && (!distinct || !usedPlans.Contains(f.Plan))
                 && (role == null || f.Behaviours.ContainsKey(role.Value.ToString()))
                 && formUses.GetValueOrDefault(f.Id) < MaxUses(f));
-            if (options.Count == 0) options = _t.Forms.FindAll(f => !f.Deep && formUses.GetValueOrDefault(f.Id) < MaxUses(f));
+            if (options.Count == 0) options = _t.Forms.FindAll(f => !f.Deep && Lives(f) && formUses.GetValueOrDefault(f.Id) < MaxUses(f));
             FormDef form = rng.Weighted(options, f => f.Weight * Affinity(f.Weirdness, alienness));
             usedPlans.Add(form.Plan);
             formUses[form.Id] = formUses.GetValueOrDefault(form.Id) + 1;

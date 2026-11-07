@@ -93,7 +93,7 @@ public sealed class Spawner
 
         var alive = new Dictionary<Species, int>();
         foreach (Creature c in _sim.Creatures)
-            if (!c.Removed && c.Alive) alive[c.Species] = alive.GetValueOrDefault(c.Species) + 1;
+            if (!c.Removed && c.Alive) { Species kind = c.Species.Mate != null && !_target.ContainsKey(c.Species) ? c.Species.Mate : c.Species; alive[kind] = alive.GetValueOrDefault(kind) + 1; }
 
         foreach (Species s in _fauna.Species)
         {

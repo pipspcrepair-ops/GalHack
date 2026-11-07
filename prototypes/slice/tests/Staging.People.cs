@@ -123,6 +123,7 @@ public sealed partial class Staging
         GD.Print($"(town: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people)");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42); // the walk there took the day
         foreach (int x in _drive.Wait(300)) yield return x;
         Town town = p.Memory.Town;
         var people = town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
@@ -175,30 +176,39 @@ public sealed partial class Staging
         WildlifePatch patch = _game.Zone.Wildlife;
         patch.Frozen = true;
         Vector3 spot = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 16f));
-        var everyone = life.Moving.Take(9).ToList();
-        GD.Print($"({life.World.Climate} {life.World.TempC:F0} C, vacuum {life.World.Vacuum}: {everyone.Count} kinds)");
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42); // the climb took the day
+        var everyone = life.Moving.Where(s => !s.Flies && s.Plan != BodyPlan.Giant).Take(7).ToList();
+        Species giant = life.Moving.FirstOrDefault(s => s.Plan == BodyPlan.Giant);
+        GD.Print($"({life.World.Climate} {life.World.TempC:F0} C, vacuum {life.World.Vacuum}: {life.Moving.Count()} kinds)");
+        foreach (Species s in life.Moving) GD.Print($"  {s.CommonName} ({s.Form}, {s.Rig}): {s.Coat} size {s.Body.Size:F1} legs {s.Body.LegLength:F2} ears {s.EarSize:F2} {s.Activity} senses {s.Senses} mate {s.Mate != null} scarcity {s.Scarcity:F2}");
         float x0 = 0f;
+        var stood = new List<Vector3>();
         foreach (Species s in everyone)
         {
-            float gap = MathF.Max(2.4f, s.BodyLength + 1.2f);
-            Vector3 at = spot + new Vector3(x0 + gap * 0.5f, 0f, 0f);
+            float gap = MathF.Max(2.2f, s.BodyLength + 1.4f);
+            Vector3 at = Ground(spot + new Vector3(x0 + gap * 0.5f, 0f, 0f));
             x0 += gap;
-            Creature c = patch.Sim.Spawn(s, patch.PatchLocal(Ground(at)));
-            c.Yaw = 1.57f;
+            Creature c = patch.Sim.Spawn(s, patch.PatchLocal(at));
+            c.Yaw = MathF.PI * 0.5f;
             c.Rig.Reset(patch.Sim, c);
-            GD.Print($"  {s.CommonName} ({s.Form}, {s.Rig}): {s.Coat} size {s.Body.Size:F1} legs {s.Body.LegLength:F2} activity {s.Activity} senses {s.Senses}");
+            stood.Add(at);
+        }
+        if (giant != null)
+        {
+            Creature c = patch.Sim.Spawn(giant, patch.PatchLocal(Ground(spot + new Vector3(x0 * 0.5f, 0f, -16f))));
+            c.Yaw = MathF.PI * 0.5f;
+            c.Rig.Reset(patch.Sim, c);
         }
         foreach (int x in _drive.Wait(4)) yield return x;
-        patch.View.Sync(patch.PatchLocal(spot));
         _game.Visor.Visible = false;
-        Look(spot + new Vector3(x0 * 0.5f, 2.2f, MathF.Max(9f, x0 * 0.62f)), spot + new Vector3(x0 * 0.5f, 1f, 0f));
+        Look(spot + new Vector3(x0 * 0.5f, 2.4f, MathF.Max(8f, x0 * 0.72f)), spot + new Vector3(x0 * 0.5f, 1f, -3f));
         foreach (int x in _drive.Wait(20)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "lineup.png"))) yield return x;
-        Look(spot + new Vector3(x0 * 0.22f, 1.6f, 6f), spot + new Vector3(x0 * 0.22f, 1f, 0f));
-        foreach (int x in _drive.Wait(10)) yield return x;
-        foreach (int x in Shot(Path.Combine(dir, "left.png"))) yield return x;
-        Look(spot + new Vector3(x0 * 0.75f, 1.6f, 6f), spot + new Vector3(x0 * 0.75f, 1f, 0f));
-        foreach (int x in _drive.Wait(10)) yield return x;
-        foreach (int x in Shot(Path.Combine(dir, "right.png"))) yield return x;
+        for (int i = 0; i < stood.Count; i += 2)
+        {
+            Look(stood[i] + new Vector3(0.7f, 1.3f, 3.6f), stood[i] + Vector3.Up * 0.6f);
+            foreach (int x in _drive.Wait(10)) yield return x;
+            foreach (int x in Shot(Path.Combine(dir, $"close-{i}.png"))) yield return x;
+        }
     }
 }

@@ -23,6 +23,8 @@ public interface ITarget
     bool Attackable { get; }
     /// <summary>Multiplies flee distances: a roaring hovercraft is scarier than someone walking.</summary>
     float ThreatScale { get; }
+    /// <summary>The light they carry, 0 none to 1: a torch gives you away however dark it is.</summary>
+    float Lamp => 0f;
     /// <summary>Low to the ground (a player holding crouch): quieter to the ear, and a smaller target to the eye.</summary>
     bool Crouched => false;
 }
@@ -189,6 +191,10 @@ public sealed class Creature
     public float NoticedAt = -999f;
     /// <summary>0..1: how far it has got to noticing a player (see <see cref="Senses"/>); at 1 it has.</summary>
     public float Awareness;
+    /// <summary>When a hunter by voice next clicks.</summary>
+    public float NextClick;
+    /// <summary>Footfalls the view has already played.</summary>
+    public int StepsHeard;
     /// <summary>Whether it could see or hear a player at its last think.</summary>
     public bool Sensing;
     /// <summary>Where it last knew a player, or a loud noise, to be.</summary>

@@ -61,12 +61,15 @@ public sealed class PeopleGenerator
     readonly PeopleTables _t;
     readonly WorldConditions _w;
     public readonly Folk Folk;
+    /// <summary>How everyone here speaks, more or less.</summary>
+    public readonly Dialect Dialect;
 
     public PeopleGenerator(PeopleTables tables, WorldConditions world)
     {
         _t = tables;
         _w = world;
         Folk = RollFolk(world);
+        Dialect = Dialect.For(world.Seed);
     }
 
     /// <summary>
@@ -106,7 +109,8 @@ public sealed class PeopleGenerator
 
     static Color Hex(string s) => new("#" + s.TrimStart('#'));
 
-    ClimateDress Dress => _w.Vacuum ? _t.Vacuum : _w.BadAir ? _t.BadAir
+    /// <summary>What the weather dresses them in; a suit where there is no air; and where the air is bad but the weather mild, a sealed coverall.</summary>
+    ClimateDress Dress => _w.Vacuum ? _t.Vacuum : _w.BadAir && _w.Climate == ClimateBand.Mild ? _t.BadAir
         : _t.Climates.TryGetValue(_w.Climate.ToString(), out ClimateDress d) ? d : new ClimateDress();
 
     /// <summary>
@@ -158,14 +162,15 @@ public sealed class PeopleGenerator
         // What they wear goes on hazard first, then the job, then the weather: whatever filled a slot stays.
         if (occupancy != Occupancy.Feral)
         {
-            if (_w.BadAir) Put(f, rng, dress.Wear);
+            // Bad air comes first: a mask whatever else they have on.
+            if (_w.BadAir) Put(f, rng, _w.Vacuum ? _t.Vacuum.Wear : _t.BadAir.Wear);
             Put(f, rng, look.Wear);
-            if (!_w.BadAir) Put(f, rng, dress.Wear);
+            if (!_w.Vacuum) Put(f, rng, dress.Wear);
         }
         else Put(f, rng, look.Wear);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
-        // Raiders on a day's cold world keep their crest under nothing: spikes and a mohawk are how they're known.
         f.Measure();
+        if (!husk) f.Voice = Voice.For(f, Dialect, seed);
 
         var s = new Species
         {
@@ -219,6 +224,7 @@ public sealed class PeopleGenerator
         s.Drops.Meat = 0;
         s.Mutation = Math.Clamp(mutation, 0f, 1f);
         if (mutation > 0f) MutateFigure(s, rng, mutation);
+        if (occupancy != Occupancy.Friendly) Fit.Throat(s, rng);
         return s;
     }
 

@@ -1,0 +1,466 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Godot;
+using PlanetSpec = Planets.Gen.PlanetSpec;
+using Archetype = Planets.Gen.Archetype;
+using Modifier = Planets.Gen.Modifier;
+
+namespace Wildlife;
+
+/// <summary>
+/// Headless test of the bestiary's rules, on fresh worlds every run:
+///   godot --headless --path prototypes/wildlife res://tests/BestiaryTest.tscn
+/// Nothing is designed here: each check rolls many worlds and asks whether the rules produced
+/// what they should. A blind thing with big ears in the dark, wool on the ice, nothing that
+/// breathes in vacuum. Exits 0 if every check passes.
+/// </summary>
+public partial class BestiaryTest : Node
+{
+    WildlifeData _data;
+    int _failures, _checks;
+    readonly Rng _fresh = new((ulong)DateTime.UtcNow.Ticks);
+
+    public override void _Ready()
+    {
+        try
+        {
+            _data = DataFiles.LoadWildlife();
+            GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
+            SameWorldSameLife();
+            BodiesFitTheClimate();
+            VacuumHasNothingThatBreathes();
+            DarkMakesBlindEars();
+            PeopleVary();
+            LooksFollowJobAndClimate();
+            Walking();
+            AllRigsRun();
+            MutationIsALayer();
+            SpitIsDodgeable();
+            SensesFollowLight();
+            ScentFollowsTheWind();
+            VoicesAreTheirOwn();
+            HeavyThingsSoundHeavy();
+        }
+        catch (Exception e)
+        {
+            Fail($"crashed: {e}");
+        }
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+        Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    void Check(bool ok, string what)
+    {
+        _checks++;
+        if (ok) GD.Print($"  ok    {what}");
+        else Fail(what);
+    }
+
+    void Fail(string what)
+    {
+        _failures++;
+        GD.Print($"  FAIL  {what}");
+    }
+
+    ulong Seed() => _fresh.NextU64();
+
+    WorldConditions World(float tempC, bool vacuum = false, float oxygen = 21f, float mutagen = 0f, float alien = 0.25f) => new()
+    {
+        Seed = Seed(), Alienness = alien, TempC = tempC, Vacuum = vacuum, Oxygen = vacuum ? 0f : oxygen, Mutagen = mutagen,
+    };
+
+    void SameWorldSameLife()
+    {
+        ulong seed = Seed();
+        string Print(WorldLife l) => string.Join("\n", l.Fauna.Species.Select(s => $"{s.Id} {s.CommonName} {s.Coat} {s.Body.Width} {s.Senses}"))
+            + l.People.Person(5, PersonRole.Trader).Figure.Height;
+        var w = new WorldConditions { Seed = seed, Alienness = 0.3f, TempC = -20f };
+        var v = new WorldConditions { Seed = seed + 1, Alienness = 0.3f, TempC = -20f };
+        Check(Print(Bestiary.Roll(_data, w)) == Print(Bestiary.Roll(_data, w)) && Print(Bestiary.Roll(_data, w)) != Print(Bestiary.Roll(_data, v)), "the same world gives the same life, another world another");
+    }
+
+    void BodiesFitTheClimate()
+    {
+        var ice = new List<Species>();
+        var hot = new List<Species>();
+        for (int i = 0; i < 40; i++)
+        {
+            ice.AddRange(Bestiary.Roll(_data, World(-25f)).Fauna.Species);
+            hot.AddRange(Bestiary.Roll(_data, World(50f)).Fauna.Species);
+        }
+        ice = ice.Where(s => !s.Mechanical).ToList();
+        hot = hot.Where(s => !s.Mechanical).ToList();
+        Check(!ice.Any(s => s.Rig is RigKind.Chain or RigKind.Swarm), $"no snakes, centipedes or insect clouds in {ice.Count} ice species");
+        var warm = ice.Where(s => s.Coat is Coat.Fur or Coat.Wool or Coat.Blubber).ToList();
+        Check(warm.Count > ice.Count * 0.75f && !ice.Any(s => s.Coat is Coat.Scale or Coat.ThinSkin), $"{warm.Count} of {ice.Count} ice species are shaggy, woolly or fat-layered, none scaled or thin-skinned");
+        var dry = hot.Where(s => s.Coat is Coat.Scale or Coat.ThinSkin).ToList();
+        Check(dry.Count > hot.Count * 0.6f && !hot.Any(s => s.Coat is Coat.Fur or Coat.Wool or Coat.Blubber), $"{dry.Count} of {hot.Count} hot-world species have scale or thin skin, none fur or fat");
+        float Stock(IEnumerable<Species> l) => l.Where(s => s.Rig == RigKind.Legged).Select(s => s.Body.Width / s.Body.LegLength).DefaultIfEmpty(0f).Average();
+        Check(Stock(ice) > Stock(hot) * 1.25f, $"cold bodies are stocky and short-legged, hot ones long ({Stock(ice):F2} vs {Stock(hot):F2} width to leg)");
+        Check(hot.Average(s => s.EarSize) > ice.Average(s => s.EarSize) + 0.2f, $"hot-world bodies shed heat through big ears ({hot.Average(s => s.EarSize):F2} vs {ice.Average(s => s.EarSize):F2})");
+    }
+
+    void VacuumHasNothingThatBreathes()
+    {
+        int alive = 0, machines = 0, worlds = 400;
+        bool clean = true;
+        for (int i = 0; i < worlds; i++)
+        {
+            foreach (Species s in Bestiary.Roll(_data, World(-60f, vacuum: true)).Fauna.Species)
+            {
+                if (s.Mechanical) machines++;
+                else if (s.Hardened) alive++;
+                else clean = false;
+            }
+        }
+        Check(clean && machines >= worlds * 2, $"vacuum worlds hold only machines and sealed things ({machines} machines)");
+        Check(alive > 0 && alive < worlds * 0.25f, $"sealed animals are super rare: on {alive} of {worlds} worlds");
+        var spec = new PlanetSpec(Seed(), Archetype.Arid, 0, Modifier.Cratered);
+        Check(WorldConditions.Of(spec).Vacuum && !WorldConditions.Of(new PlanetSpec(Seed(), Archetype.Temperate, 0, Modifier.None)).Vacuum, "cratered rock has no air; a temperate world has");
+    }
+
+    void DarkMakesBlindEars()
+    {
+        int blind = 0, big = 0, echo = 0, lit = 0, litBig = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            var deep = new DeepFauna(_data, Seed(), 0.4f);
+            foreach (DeepRole role in new[] { DeepRole.Lurker, DeepRole.Prowler, DeepRole.Ambusher })
+            {
+                Species far = deep.For(role, PoiTheme.Natural, _data.Deep.Depth.BlindFrom + 1);
+                if (far.Blind)
+                {
+                    blind++;
+                    if (far.EarSize >= 0.4f && far.Senses.Hearing >= 1.4f && far.Senses.Sight == 0f) big++;
+                    if (far.Senses.Echo) echo++;
+                }
+                Species near = deep.For(role, PoiTheme.Natural, 0);
+                lit++;
+                if (near.EarSize >= 0.4f) litBig++;
+            }
+        }
+        Check(blind > 0 && big == blind, $"dark caves make blind things with big ears: {big} of {blind} far down, nobody designed them");
+        Check(echo > blind / 3, $"some of them click to find their way ({echo} of {blind})");
+        Check(litBig < big, $"near the way in eyes still work, and fewer have those ears ({litBig} of {lit})");
+    }
+
+    void PeopleVary()
+    {
+        var life = Bestiary.Roll(_data, World(15f));
+        var folk = Enumerable.Range(0, 300).Select(i => life.People.Person(Seed(), PersonRole.Worker)).ToList();
+        float men = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.Height), women = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.Height);
+        Check(men > women + 0.04f * life.People.Folk.Dimorphism, $"men and women differ in height ({men:F2} and {women:F2} m)");
+        float wide = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.ShoulderW / s.Figure.HipW), broad = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.ShoulderW / s.Figure.HipW);
+        Check(wide > broad, $"and in shoulder to hip ({wide:F2} and {broad:F2})");
+        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.25f && folk.Select(s => s.Figure.Build).Distinct().Count() > 200, "heights and builds spread");
+        Check(life.People.Person(Seed(), PersonRole.Child).Figure.Height < 1.5f, "a child is a child");
+        var e = life.People.Person(Seed(), PersonRole.Elder).Figure;
+        Check(e.Age > 60f && e.Stoop > 0.2f, $"an elder is old and bent ({e.Age:F0}, stoop {e.Stoop:F2})");
+        var looks = folk.Select(s => s.Figure.Height.ToString("F3") + s.Figure.Cloth + string.Join(",", s.Figure.Wear)).Distinct().Count();
+        Check(looks > 290, $"{looks} of 300 people look different");
+    }
+
+    void LooksFollowJobAndClimate()
+    {
+        var mild = Bestiary.Roll(_data, World(15f)).People;
+        int Count(PersonRole r, Occupancy o, PeopleGenerator g, Func<Figure, bool> test) => Enumerable.Range(0, 40).Count(i => test(g.Person(Seed(), r, o).Figure));
+        Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && f.Prop == "rifle") > 30, "guards wear armour and carry rifles");
+        Check(Count(PersonRole.Raider, Occupancy.Raider, mild, f => f.HairStyle == "mohawk" && f.Has("bandoleer") | f.Has("spike_pads")) > 30, "raiders have mohawks, spikes and bandoleers");
+        Check(Count(PersonRole.Medic, Occupancy.Friendly, mild, f => f.Has("medic_band")) == 40, "medics carry their kit");
+        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe") > 30, "farmers have hats and hoes");
+        Check(Count(PersonRole.Elder, Occupancy.Friendly, mild, f => f.Prop == "cane") > 18, "elders have sticks");
+        Check(Count(PersonRole.Drunk, Occupancy.Friendly, mild, f => f.Stagger > 0.3f) == 40, "drunks stagger");
+        Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(-25f)).People, f => f.Dress == "furs") == 40, "on ice everyone is in furs");
+        Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(45f)).People, f => f.Dress == "wraps" && (f.Has("head_wrap") | f.Has("wide_hat"))) >= 30, "in the heat, wraps and something on the head");
+        Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(10f, oxygen: 9f)).People, f => f.Dress == "hazard" && f.Has("respirator")) == 40, "where the air is bad, masks");
+        Check(Count(PersonRole.Raider, Occupancy.Raider, Bestiary.Roll(_data, World(-60f, vacuum: true)).People, f => f.Dress == "suit" && f.Has("suit_helmet") && f.Has("air_tank")) == 40, "on a vacuum world, even raiders are in suits");
+    }
+
+    void Walking()
+    {
+        var life = Bestiary.Roll(_data, World(15f));
+        Species s = life.People.Person(Seed(), PersonRole.Worker);
+        Figure f = s.Figure;
+        var rig = new HumanRig(s);
+        Vector3 feet = new(3f, 0f, -2f);
+        float walked = 0f, worst = 0f, worstRun = 0f, off = 0f;
+        var last = new[] { Vector3.Zero, Vector3.Zero };
+        var was = new[] { false, false };
+        bool finite = true;
+        int steps0 = rig.Steps;
+        for (int i = 0; i < 400; i++)
+        {
+            bool run = i >= 200;
+            float speed = run ? 3.4f : 1.3f, dt = 1f / 60f;
+            feet += Vector3.Forward * speed * dt;
+            walked += speed * dt;
+            rig.Drive(new Gesture { Feet = feet, Yaw = 0f, Speed = speed, Walked = walked, Clock = i * dt });
+            for (int k = 0; k < 2; k++)
+            {
+                if (rig.FootPlanted(k))
+                {
+                    off = MathF.Max(off, rig.FootTarget(k).DistanceTo(rig.FootDrawn(k)));
+                    if (was[k] && i % 200 != 0)
+                    {
+                        float slip = rig.FootTarget(k).DistanceTo(last[k]);
+                        if (run) worstRun = MathF.Max(worstRun, slip); else worst = MathF.Max(worst, slip);
+                    }
+                }
+                was[k] = rig.FootPlanted(k);
+                last[k] = rig.FootTarget(k);
+            }
+            foreach (Transform3D t in rig.Pose) finite &= Geo.Finite(t);
+        }
+        Check(finite, "every pose is finite");
+        Check(worst < 0.012f, $"a planted foot stays planted at a walk (slides {worst * 100f:F1} cm a frame at most)");
+        Check(worstRun < 0.03f, $"and at a run ({worstRun * 100f:F1} cm)");
+        Check(off < 0.05f, $"legs reach their feet ({off * 100f:F1} cm short at worst)");
+        Check(rig.Steps - steps0 > 10, $"the walk takes steps ({rig.Steps - steps0})");
+        foreach (float sit in new[] { 0f, 1f })
+        foreach (float work in new[] { 0f, 1f })
+        foreach (float aim in new[] { 0f, 1f })
+        {
+            rig.Drive(new Gesture { Feet = Vector3.Zero, Yaw = 1f, Sit = sit, Work = work, Aim = aim, Clock = 3f, Down = aim });
+            foreach (Transform3D t in rig.Pose) finite &= Geo.Finite(t);
+        }
+        Check(finite, "sitting, bending, aiming and dying are finite too");
+    }
+
+    /// <summary>Everything a world can roll runs on its rig in the sim: people, machines, and what's left on a vacuum world.</summary>
+    void AllRigsRun()
+    {
+        var terrain = new Terrain((x, z) => 0f, 200f);
+        var sim = new WildSim(_data, terrain, new NavGrid(200f, 3f));
+        var target = new DummyTarget { Position = new Vector3(4f, 0f, 4f) };
+        sim.Targets.Add(target);
+        var worlds = new[] { World(-20f), World(45f), World(15f, mutagen: 0.9f), World(-60f, vacuum: true) };
+        var kinds = new List<Species>();
+        foreach (WorldConditions w in worlds)
+        {
+            w.Bloom = w.Mutagen > 0f;
+            WorldLife life = Bestiary.Roll(_data, w);
+            kinds.AddRange(life.Moving);
+            kinds.Add(Robots.Roll(w, 0));
+            kinds.Add(Robots.Roll(w, 1));
+            kinds.Add(Robots.Roll(w, 2));
+        }
+        foreach (Species s in kinds.Where(s => s.Figure != null || s.Mechanical || s.Rig == RigKind.Legged).Take(24)) sim.Spawn(s, new Vector3(_fresh.Range(-30f, 30f), 0f, _fresh.Range(-30f, 30f)));
+        bool finite = true;
+        for (int i = 0; i < 600; i++)
+        {
+            sim.Step(1f / 30f);
+            foreach (Creature c in sim.Creatures) foreach (Transform3D t in c.Rig.Pose) finite &= Geo.Finite(t);
+        }
+        Check(finite, $"{sim.Creatures.Count} walkers, machines, ferals and husks run in the sim for 20 s with every pose finite");
+        Check(kinds.Any(s => s.Figure?.Husk == true), "a Bloom world has husks walking in it");
+        Check(kinds.Where(s => s.Figure?.Husk == true).All(s => !s.CommonName.Contains("hollow", StringComparison.OrdinalIgnoreCase) && !s.CommonName.Contains("husk", StringComparison.OrdinalIgnoreCase)), "and nothing labels them");
+    }
+
+    void MutationIsALayer()
+    {
+        var life = Bestiary.Roll(_data, World(15f, mutagen: 0.8f));
+        PeopleGenerator g = life.People;
+        ulong seed = Seed();
+        Species clean = g.Person(seed, PersonRole.Worker), mild = g.Person(seed, PersonRole.Worker, Occupancy.Friendly, 0.2f), monster = g.Person(seed, PersonRole.Raider, Occupancy.Raider, 0.95f);
+        int Prims(Species s) => new HumanRig(s).Layout.Pieces.Sum(p => p.Prims.Count);
+        int a = Prims(clean), b = Prims(mild), c = Prims(monster);
+        Check(b > a && Mutation.Of(mild).Growths >= 1 && Mutation.Of(mild).Growths <= 3, $"a mild mutation adds a few growths ({Mutation.Of(mild).Growths})");
+        Check(c > b + 8 && monster.Monstrous, $"a monstrous one changes the body ({Mutation.Of(monster).Growths} growths, {a} to {c} parts)");
+        var wild = g.Person(Seed(), PersonRole.Worker, Occupancy.Feral, 0.8f);
+        Check(wild.Figure.Dress == "rags" && wild.Stats.Hunts, "feral people are in rags and hunt; the mutation is the same layer");
+        var friendly = g.Person(Seed(), PersonRole.Trader, Occupancy.Friendly, 0.8f);
+        Check(!friendly.Stats.Hunts && friendly.Mutation > 0f, "a mutated townsperson is still a townsperson: occupancy decides");
+        var machine = Robots.Roll(life.World, 0);
+        machine.Mutation = 1f;
+        Check(Mutation.Decorate(new RigLayout(), machine).Pieces.Count == 0 && Mutation.Of(machine).Growths == 0, "machines don't mutate");
+        Species cow = new FaunaGenerator(_data.Fauna, _data.Activity).RollOne(Seed(), "strider", Behaviour.Herd, 0.2f);
+        Species twisted = new FaunaGenerator(_data.Fauna, _data.Activity).Mutate(cow, 0.8f);
+        twisted.Monstrous = true;
+        Check(new LeggedRig(twisted).Layout.Pieces.Sum(p => p.Prims.Count) > new LeggedRig(cow).Layout.Pieces.Sum(p => p.Prims.Count) + 8, "the same layer works on an animal");
+    }
+
+    void SpitIsDodgeable()
+    {
+        var life = Bestiary.Roll(_data, World(15f, mutagen: 1f));
+        Species spitter = null, bile = null;
+        for (int i = 0; i < 300 && (spitter == null || bile == null); i++)
+        {
+            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Feral, 1f);
+            if (s.Spit == SpitKind.Blood) spitter ??= s;
+            if (s.Spit == SpitKind.Bile) bile ??= s;
+        }
+        Check(spitter != null && bile != null, "mutated throats bring up blood and bile");
+        if (spitter == null || bile == null) return;
+        Check(Spitting.ColourOf(spitter) == spitter.Blood, "blood comes up the colour of their own blood");
+        Color g = Spitting.ColourOf(bile);
+        Check(g.G > g.R && g.G > g.B * 2f, $"bile is green-yellow ({g})");
+        Check(new HumanRig(spitter).Layout.Pieces.Find(p => p.Name == "head").Prims.Count > new HumanRig(life.People.Person(spitter.Seed, PersonRole.Worker, Occupancy.Friendly)).Layout.Pieces.Find(p => p.Name == "head").Prims.Count, "a throat like that shows");
+
+        (bool hit, int gobs) Fight(bool dodge)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f));
+            var t = new DummyTarget { Position = new Vector3(0f, 0f, -8f) };
+            sim.Targets.Add(t);
+            Creature c = sim.Spawn(spitter, Vector3.Zero);
+            c.Yaw = 0f;
+            int gobs = 0;
+            bool hit = false;
+            sim.Spat += _ => gobs++;
+            sim.Splashed += (_, h) => hit |= h;
+            Attacks.Start(sim, c, t);
+            for (int i = 0; i < 240 && (gobs == 0 || sim.Gobs.Count > 0); i++)
+            {
+                if (dodge && gobs > 0) t.Position = new Vector3(4f, 0f, -8f);
+                c.Desired = Vector3.Zero;
+                sim.Step(1f / 60f);
+            }
+            return (hit, gobs);
+        }
+        var stood = Fight(false);
+        var stepped = Fight(true);
+        Check(stood.gobs == 1 && stood.hit, "standing still, it lands");
+        Check(stepped.gobs == 1 && !stepped.hit, "stepping aside once it's let go, it misses");
+    }
+
+    void SensesFollowLight()
+    {
+        var gen = new FaunaGenerator(_data.Fauna, _data.Activity);
+        Species hunter = gen.RollOne(Seed(), "stalker", Behaviour.Predator, 0.2f);
+        hunter.Stats.Perception = 50f;
+        float Awareness(SenseProfile p, float light, float lamp = 0f, bool crouched = false)
+        {
+            Species s = hunter.Copy();
+            s.Senses = p;
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f)) { LightAt = _ => light };
+            var t = new LitTarget { Position = new Vector3(0f, 0f, -35f), LampOn = lamp, Crouched = crouched };
+            sim.Targets.Add(t);
+            Creature c = sim.Spawn(s, Vector3.Zero);
+            c.Yaw = 0f;
+            float top = 0f;
+            for (int i = 0; i < 60; i++)
+            {
+                Senses.Surface(sim, c, t, 35f, 0.05f);
+                top = MathF.Max(top, c.Awareness);
+                sim.Time += 0.05f;
+            }
+            return top;
+        }
+        var plain = new SenseProfile();
+        var night = new SenseProfile { DarkVision = 0.95f };
+        Check(Awareness(plain, 1f) >= 1f, "in daylight it sees you at 35 m");
+        Check(Awareness(plain, 0.005f) < 0.2f, $"in the dark it doesn't ({Awareness(plain, 0.005f):F2})");
+        Check(Awareness(plain, 0.005f, lamp: 1f) >= 1f, "unless you carry a torch");
+        Check(Awareness(night, 0.005f) >= 1f, "and eyes made for the dark see you anyway");
+        Check(Awareness(new SenseProfile { Sight = 0f }, 1f) < 0.1f, "a blind thing doesn't, however bright it is");
+        float Ear(bool crouched)
+        {
+            Species s = hunter.Copy();
+            s.Senses = new SenseProfile { Sight = 0f, Hearing = 1.6f };
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f));
+            var t = new LitTarget { Position = new Vector3(0f, 0f, -22f), Crouched = crouched };
+            sim.Targets.Add(t);
+            Creature c = sim.Spawn(s, Vector3.Zero);
+            for (int i = 0; i < 30; i++) { Senses.Surface(sim, c, t, 22f, 0.05f); sim.Time += 0.05f; }
+            return c.Awareness;
+        }
+        Check(Ear(false) > 0.3f && Ear(true) < 0.05f, $"good ears hear a walker, not someone creeping ({Ear(false):F2} and {Ear(true):F2})");
+        int clicks = 0;
+        Species bat = hunter.Copy();
+        bat.Senses = new SenseProfile { Sight = 0f, Hearing = 1.5f, Echo = true };
+        var world = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f));
+        var prey = new LitTarget { Position = new Vector3(0f, 0f, -14f) };
+        world.Targets.Add(prey);
+        world.Clicked += _ => clicks++;
+        Creature b = world.Spawn(bat, Vector3.Zero);
+        for (int i = 0; i < 60; i++) { Senses.Surface(world, b, prey, 14f, 0.05f); world.Time += 0.05f; }
+        Check(clicks >= 2 && b.Awareness >= 1f, $"an echo hunter finds you in the dark, and clicks as it does ({clicks} clicks)");
+    }
+
+    sealed class LitTarget : ITarget
+    {
+        public string Name => "Lit";
+        public Vector3 Position { get; set; }
+        public Vector3 Forward => Vector3.Forward;
+        public Health Health { get; } = new(100f);
+        public bool Attackable => true;
+        public float ThreatScale => 1f;
+        public bool Crouched { get; set; }
+        public float LampOn;
+        public float Lamp => LampOn;
+    }
+
+    void ScentFollowsTheWind()
+    {
+        var gen = new FaunaGenerator(_data.Fauna, _data.Activity);
+        Species nose = gen.RollOne(Seed(), "stalker", Behaviour.Predator, 0.2f);
+        nose.Stats.Perception = 50f;
+        nose.Senses = new SenseProfile { Sight = 0f, Hearing = 0.1f, Scent = 1.3f };
+        float Awareness(Vector3 wind)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 100f), new NavGrid(100f, 3f)) { Wind = wind };
+            var t = new LitTarget { Position = new Vector3(0f, 0f, -44f) };
+            sim.Targets.Add(t);
+            Creature c = sim.Spawn(nose, Vector3.Zero);
+            for (int i = 0; i < 100; i++) { Senses.Surface(sim, c, t, 44f, 0.05f); sim.Time += 0.05f; }
+            return c.Awareness;
+        }
+        // Wind from you to it (+Z here) carries you to it; the other way doesn't.
+        Check(Awareness(new Vector3(0f, 0f, 7f)) > 0.5f, $"downwind it smells you at 44 m ({Awareness(new Vector3(0f, 0f, 7f)):F2})");
+        Check(Awareness(new Vector3(0f, 0f, -7f)) < 0.05f, "upwind it doesn't");
+        Check(Awareness(Vector3.Zero) < 0.05f, "and in still air not that far");
+    }
+
+    static float Rms(short[] s) => MathF.Sqrt(s.Average(v => v * (float)v)) / 32768f;
+
+    /// <summary>How often the wave crosses zero, a second: rough brightness and pitch.</summary>
+    static float Crossings(short[] s)
+    {
+        int n = 0;
+        for (int i = 1; i < s.Length; i++) if ((s[i - 1] < 0) != (s[i] < 0)) n++;
+        return n / (s.Length / (float)Voice.Rate);
+    }
+
+    static float Difference(short[] a, short[] b)
+    {
+        int n = Math.Min(a.Length, b.Length);
+        double total = 0;
+        for (int i = 0; i < n; i++) total += Math.Abs(a[i] - b[i]);
+        return (float)(total / n / 32768.0);
+    }
+
+    void VoicesAreTheirOwn()
+    {
+        var life = Bestiary.Roll(_data, World(15f));
+        PeopleGenerator g = life.People;
+        Species a = g.Person(Seed(), PersonRole.Trader), b = g.Person(Seed(), PersonRole.Trader);
+        short[] clip = a.Figure.Voice.Render(VoiceMood.Murmur, 0);
+        Check(clip.Length > Voice.Rate / 3 && Rms(clip) > 0.02f, $"a voice makes sound ({clip.Length / (float)Voice.Rate:F1} s, level {Rms(clip):F2})");
+        Check(a.Figure.Voice.Render(VoiceMood.Murmur, 0).SequenceEqual(clip), "the same person says the same thing the same way");
+        Check(Difference(clip, b.Figure.Voice.Render(VoiceMood.Murmur, 0)) > 0.01f, "two people don't sound alike");
+        Check(Rms(a.Figure.Voice.Render(VoiceMood.Shout, 0)) > Rms(clip), "a shout is fuller than a murmur");
+        Check(Crossings(a.Figure.Voice.Render(VoiceMood.Whisper, 0)) > Crossings(clip) * 1.6f, "a whisper is breath, not voice");
+        Check(a.Figure.Voice.Render(VoiceMood.Cry, 0).Length > 0, "a cry renders");
+        Species child = g.Person(Seed(), PersonRole.Child);
+        Species big = null;
+        for (int i = 0; i < 80; i++)
+        {
+            Species s = g.Person(Seed(), PersonRole.Guard);
+            if (s.Figure.Sex == Sex.Male && (big == null || s.Figure.Mass > big.Figure.Mass)) big = s;
+        }
+        Check(big.Figure.Voice.Pitch < child.Figure.Voice.Pitch * 0.7f, $"a big man speaks lower than a child ({big.Figure.Voice.Pitch:F0} and {child.Figure.Voice.Pitch:F0} Hz)");
+        Dialect here = Dialect.For(Seed()), there = Dialect.For(Seed());
+        Check(here.Vowels.Length >= 4 && (MathF.Abs(here.Rate - there.Rate) > 0.01f || here.Vowels[0] != there.Vowels[0]), "each world has its own way of speaking");
+        string text = System.IO.File.ReadAllText(System.IO.Path.Combine(DataFiles.Root, "Audio", "Voices.cs"));
+        Check(!text.Contains("AudioStreamWav") && !text.Contains(".wav") && !text.Contains(".ogg"), "voices are made in code, from nothing");
+    }
+
+    void HeavyThingsSoundHeavy()
+    {
+        var gen = new FaunaGenerator(_data.Fauna, _data.Activity);
+        Species small = gen.RollOne(Seed(), "strider", Behaviour.Herd, 0.2f), huge = gen.RollOne(Seed(), "colossus", Behaviour.TerritorialGiant, 0.2f);
+        Check(Heft.Mass(huge) > Heft.Mass(small) * 4f, $"a colossus outweighs a strider ({Heft.Mass(huge):F0} and {Heft.Mass(small):F0} kg)");
+        Check(Heft.Pitch(huge) < Heft.Pitch(small) && Heft.Loudness(huge) > Heft.Loudness(small), "and sounds it: lower and louder, from the same number");
+        Check(Heft.TurnRate(new Creature { Species = huge }, 0f) < Heft.TurnRate(new Creature { Species = small }, 0f), "and turns slower");
+    }
+}

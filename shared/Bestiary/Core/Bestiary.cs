@@ -32,9 +32,77 @@ public sealed class WorldLife
     {
         Data = data;
         World = world;
-        _generator = new FaunaGenerator(data.Fauna, data.Activity);
+        _generator = new FaunaGenerator(data.Fauna, data.Activity) { Allow = f => Fit.Allows(data.Fit, world, f) };
         Fauna = _generator.Generate(world.Seed, world.Alienness, world.Bloom);
         People = new PeopleGenerator(data.People, world);
+        FitToWorld();
+    }
+
+    /// <summary>
+    /// What the world does with what was rolled: bodies fit its climate, what it twists is
+    /// twisted, one sex differs from the other; machines walk where they walk; and on a world with
+    /// no air, nothing that breathes is left.
+    /// </summary>
+    void FitToWorld()
+    {
+        var rng = Rng.For(Seed, "fit");
+        List<Species> species = Fauna.Species;
+        FitTables t = Data.Fit;
+        if (World.Vacuum)
+        {
+            Species hardy = rng.Chance(t.VacuumLife) ? species.Find(s => s.Rig is RigKind.Legged && !s.Flies) : null;
+            species.Clear();
+            if (hardy != null)
+            {
+                Fit.Harden(t, hardy, rng);
+                species.Add(hardy);
+            }
+            species.Add(Robots.Roll(World, 0));
+            species.Add(Robots.Roll(World, 1));
+            if (rng.Chance(0.5f)) species.Add(Robots.Roll(World, 2));
+            return;
+        }
+        for (int i = 0; i < species.Count; i++)
+        {
+            Fit.Apply(t, World, species[i], Rng.For(species[i].Seed, "fit"));
+            if (World.Mutagen > 0f) species[i] = _generator.Mutate(species[i], World.Mutagen * rng.Range(0.4f, 1f));
+            Fit.Throat(species[i], rng);
+            Fit.Dimorph(species[i], Rng.For(species[i].Seed, "dimorph"));
+        }
+        if (rng.Chance(t.MachineWorld)) species.Add(Robots.Roll(World, rng.Int(0, 2)));
+        // Where the world has twisted its people far enough, some have gone wild.
+        if (World.Mutagen >= 0.3f) species.Add(Feral(rng));
+        if (World.Bloom) species.Add(Husk(rng));
+    }
+
+    /// <summary>What lives in this world's caves and places, with its husks.</summary>
+    public DeepFauna Deep()
+    {
+        var deep = new DeepFauna(Data, Fauna);
+        deep.Husks = theme => Husk(Rng.For(Seed, "husk", (long)theme));
+        return deep;
+    }
+
+    /// <summary>People gone wild: the same people, feral, with the same world in them. Both sexes run together.</summary>
+    Species Feral(Rng rng)
+    {
+        Species a = Wild(rng, Rng.Mix(Seed, 0xFE4A), PersonRole.Worker, World.Mutagen * rng.Range(0.5f, 1f), husk: false);
+        Species b = Wild(rng, Rng.Mix(Seed, 0xFE4B), PersonRole.Scavenger, World.Mutagen * rng.Range(0.5f, 1f), husk: false);
+        a.Mate = b;
+        b.Mate = a;
+        return a;
+    }
+
+    /// <summary>What the Hollow leaves walking. Nothing says so.</summary>
+    Species Husk(Rng rng) => Wild(rng, Rng.Mix(Seed, 0x4057), PersonRole.Worker, rng.Range(0.1f, 0.35f), husk: true);
+
+    Species Wild(Rng rng, ulong seed, PersonRole role, float mutation, bool husk)
+    {
+        Species s = People.Person(seed, role, Occupancy.Feral, mutation, husk);
+        s.Scarcity = 0.5f;
+        s.Senses = new SenseProfile { DarkVision = People.Folk.DarkVision, Hearing = 1.2f, Scent = 0.3f };
+        Fit.Throat(s, rng);
+        return s;
     }
 
     /// <summary>Every kind that moves on this world.</summary>

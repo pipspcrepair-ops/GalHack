@@ -37,7 +37,7 @@ public sealed class LeggedRig : Rig
     readonly float _hipRest, _neckLen, _tailLen, _neckRest;
     float _gait, _neckPitch, _sag;
 
-    public LeggedRig(Species s) : base(s, Build)
+    public LeggedRig(Species s) : base(s, s.Mechanical ? Robots.BuildLegged : Build)
     {
         Proportions b = s.Body;
         var pieces = Layout.Pieces;
@@ -249,6 +249,7 @@ public sealed class LeggedRig : Rig
                 if (leg.T >= 1f)
                 {
                     leg.Stepping = false;
+                    Steps++;
                     leg.Foot = leg.To;
                 }
             }
