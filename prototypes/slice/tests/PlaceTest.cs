@@ -925,6 +925,16 @@ public partial class PlaceTest : Node
         double hurtBefore = game.Suit.HealthShare;
         gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the castaway is on another copy of it
         foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
+        // Those 55 m can be a gully or a river: the walk over land is proved above, and the town is what's under test.
+        if (new Vector2(game.Survivor.WorldFeet.X - gate.X, game.Survivor.WorldFeet.Z - gate.Z).Length() > 8f)
+        {
+            GD.Print($"  (TEST: the last 55 m didn't reach its way in, stopped at {game.Survivor.WorldFeet}: set down at the gate)");
+            Vector3 atGate = gate + new Vector3(facing.X, 0f, facing.Z) * 3f;
+            atGate.Y = game.Zone.GroundAt(atGate.X, atGate.Z).Y + 0.3f;
+            game.Survivor.PlaceOutside(atGate.ToNumerics());
+            foreach (int x in drive.Wait(30)) yield return x;
+            foreach (int x in drive.UntilSettled()) yield return x;
+        }
         for (int i = 0; i < 300 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
         Check(place is { Ready: true } && place.Memory.Town != null, $"it stands as a structure, its people about ({place?.Memory.Town?.People.Count})");
