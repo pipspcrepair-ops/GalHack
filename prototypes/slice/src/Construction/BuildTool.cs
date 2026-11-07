@@ -200,14 +200,9 @@ public sealed partial class BuildTool
         }
         Structure s = TargetVessel.Structure;
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
-<<<<<<< HEAD
-        ItemDef back = s.TypeOf(b).IsCore && s.Count == 1 ? Items.Item(StructureArea.CoreItem(TargetVessel)) : BuildingBridge.ItemOf(Items, s, b);
-        Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name}: +1 {back?.Name ?? "nothing"}";
-=======
         ItemDef back = BuildingBridge.ItemOf(Items, s, b);
         if (s.TypeOf(b).IsCore) Verdict = CoreStays;
         else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name}: +1 {back?.Name ?? "nothing"}";
->>>>>>> refs/heads/proto/rules
         if (pressed) Remove(TargetVessel, TargetCell);
     }
 
@@ -710,31 +705,14 @@ public sealed partial class BuildTool
     }
 
     /// <summary>
-<<<<<<< HEAD
-    /// Takes a block down: Survival gives its item back, whole, and sets down whatever has nowhere
-    /// to go; sections it cuts loose become wrecks. The last block, the core, comes back as its core
-    /// item, and the structure's storage comes with it.
-=======
-    /// A base's block reaching into the ground: the cells whose centres lie inside it are cleared
-    /// and its volume registered, so the ground meets its faces flush (terrain-digging's rule 4).
+    /// What the tool says on a core: design 693, with no exception for the last block.
     /// </summary>
-    void ClearGround(Vessel v, Int3 cell)
-    {
-        var volume = new TerrainDigging.Terrain.StructureVolume(
-            v.Body.ToParent(StructureBridge.CellCenter(v.Structure, cell)), v.Body.Rotation, new N.Vector3(v.Structure.Grid.CellSize));
-        _zone.Edits.ClearForStructure(BlockKey(v, cell), volume);
-    }
-
-    static TerrainDigging.Terrain.VolumeKey BlockKey(Vessel v, Int3 cell) => new(v.Body.Id, cell.X, cell.Y, cell.Z);
-
-    /// <summary>What the tool says on a core: design 693, with no exception for the last block.</summary>
     public const string CoreStays = "The core can't be removed, only destroyed or hijacked";
 
     /// <summary>
     /// Takes a block down: Survival gives its item back, whole, and sets down whatever has nowhere
     /// to go; sections it cuts loose become wrecks. The core stays: it can only be destroyed or
     /// hijacked, even when it is the last block.
->>>>>>> refs/heads/proto/rules
     /// </summary>
     public void Remove(Vessel v, Int3 cell)
     {
@@ -756,25 +734,6 @@ public sealed partial class BuildTool
                 if (!s.Has(p)) _zone.Edits.ReleaseStructure(v.GroundKey(p));
         TakenDown++;
         Vector3 at = v.ToWorld(StructureBridge.CellCenter(s, cell));
-<<<<<<< HEAD
-        if (s.TypeOf(b).IsCore && s.Count == 0)
-        {
-            // The last block, its core: it goes back as the core item it was founded with.
-            back = Creative ? new Bill() : Bill.Of((StructureArea.CoreItem(v), 1));
-            GiveBack(back, null, at);
-            Bill held = v.Storage.Contents;
-            v.Storage.TryTake(held);
-            if (!held.IsEmpty) Spilled?.Invoke(held, at);
-            if (_pack.Linked == v.Storage) _pack.Link(null, null);
-            _zone.Physics.Unregister(v.Body);
-            _zone.Physics.StuckFields.Remove(v.Field);
-            _zone.Untrack(v);
-            v.Node.QueueFree();
-            Said?.Invoke($"{v.Name} taken down", Tones.Text);
-            return;
-        }
-=======
->>>>>>> refs/heads/proto/rules
         GiveBack(back, v, at);
         foreach (Structure piece in r.Wrecks) v.Sever(piece);
         // A container gone shrinks storage: what no longer fits is set down, never lost.
