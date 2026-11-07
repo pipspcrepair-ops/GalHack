@@ -226,7 +226,9 @@ public sealed class StructureVessel : IVesselStructure
 {
     readonly Structure _s;
     readonly Tunables _t;
+    readonly CoreMode? _as;
     int _version = -1;
+    CoreMode _mode;
 
     readonly List<ThrusterSpec> _thrusters = new();
     readonly List<GyroSpec> _gyros = new();
@@ -236,10 +238,12 @@ public sealed class StructureVessel : IVesselStructure
     VesselClass _class;
     GVector3 _cockpit;
 
-    public StructureVessel(Structure structure, Tunables tunables)
+    /// <param name="asMode">Reads the structure as if its core were in this mode, to ask what that mode would do; null: its own mode.</param>
+    public StructureVessel(Structure structure, Tunables tunables, CoreMode? asMode = null)
     {
         _s = structure;
         _t = tunables;
+        _as = asMode;
         Refresh();
     }
 
@@ -257,16 +261,18 @@ public sealed class StructureVessel : IVesselStructure
     public GVector3 Cockpit { get { Refresh(); return _cockpit; } }
     public int Revision => _s.Version;
 
-    /// <summary>Hover engine positions for the shared hover controller: the bottom face of each pad.</summary>
+    /// <summary>Hover plate positions for the shared hover controller: the bottom face of each plate (none outside Hover Mode).</summary>
     public N.Vector3[] HoverPoints => HoverEngines.Select(h => new N.Vector3(h.Position.X, h.Position.Y, h.Position.Z)).ToArray();
 
-    /// <summary>Landing legs for the shared gear: each hangs from the bottom face of its housing.</summary>
-    public GearLeg[] Legs => LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
+    /// <summary>Landing legs for the shared gear, each hanging from the bottom face of its housing. They stay folded in Hover Mode.</summary>
+    public GearLeg[] Legs => Class == VesselClass.Hover ? Array.Empty<GearLeg>() : LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
 
     void Refresh()
     {
-        if (_version == _s.Version) return;
+        CoreMode mode = _as ?? _s.Mode;
+        if (_version == _s.Version && _mode == mode) return;
         _version = _s.Version;
+        _mode = mode;
         _thrusters.Clear();
         _gyros.Clear();
         _hover.Clear();
@@ -276,7 +282,9 @@ public sealed class StructureVessel : IVesselStructure
         _mass = (float)stats.Mass;
         float cell = _s.Grid.CellSize;
         string size = _s.Grid.Size == GridSize.Small ? "small" : "large";
-        float efficiency = stats.Flies ? (float)stats.Efficiency : 0f;
+        // Base Mode leaves its thrusters idle; hover plates lift in Hover Mode and do nothing in any other.
+        float efficiency = mode != CoreMode.Base && stats.HasCore && stats.Powered ? (float)stats.Efficiency : 0f;
+        bool hovering = mode == CoreMode.Hover && _s.Grid.Size == GridSize.Small;
         _cockpit = GVector3.Zero;
 
         foreach (var (p, b) in _s.Blocks())
@@ -292,7 +300,7 @@ public sealed class StructureVessel : IVesselStructure
                     t.Thrust * _s.Grid.FunctionScale * efficiency, 0f));
             }
             else if (t.Function == "gyro") _gyros.Add(new GyroSpec(size, at, _t.Parts.Gyros[size].Torque, 0f));
-            else if (t.Function == "hover")
+            else if (t.Function == "hover" && hovering)
             {
                 var part = _t.Parts.HoverEngines[size];
                 _hover.Add(new HoverEngineSpec(size, underside, part.Lift, part.RideHeight, 0f));
@@ -301,7 +309,8 @@ public sealed class StructureVessel : IVesselStructure
             else if (t.IsCommandChair) _cockpit = at + GVector3.Up * 0.8f;
         }
 
-        _class = _hover.Count > 0 ? VesselClass.Hover : _s.Grid.Size == GridSize.Small ? VesselClass.Small : VesselClass.Capital;
+        // A structure's class is its core and that core's mode, never the blocks on it.
+        _class = hovering ? VesselClass.Hover : _s.Grid.Size == GridSize.Small ? VesselClass.Small : VesselClass.Capital;
     }
 }
 

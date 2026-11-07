@@ -80,9 +80,9 @@ public partial class CockpitConsole : Node3D
 
         protected override string Signature()
         {
-            if (Vessel?.Stats is not HandlingStats st) return Vessel == null ? "none" : "pod";
+            if (Vessel?.Stats is not HandlingStats st) return Vessel == null ? "none" : $"pod|{Vessel.Structure.Mode}|{Vessel.ModeWarning}";
             VesselController c = Vessel.Controller;
-            return $"{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
+            return $"{Vessel.Structure.Mode}|{Vessel.ModeWarning}|{st.Mass:F1}|{st.LiftMargin:F0}|{Vessel.Body.Velocity.Length():F0}|{Vessel.Body.Position.Y:F0}|{c?.Gear?.Deployed}|{c?.Frozen}|{Vessel.Flight.State.Cruise}|{c?.ConsoleMessage}";
         }
 
         public override void _Draw()
@@ -93,6 +93,14 @@ public partial class CockpitConsole : Node3D
             HandlingStats st = Vessel.Stats;
             if (st == null || Vessel.Spec?.Thrusters.Count == 0)
             {
+                if (!Vessel.IsRuin && Vessel.Structure.Core != null)
+                {
+                    // A core with nothing to fly on: what it is set to, and what its mode lacks.
+                    this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode), C.Accent2);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), Vessel.ModeWarning ?? "Anchored: no flight systems in use.", Vessel.ModeWarning == null ? C.Text : C.Warn);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "Mode: Tab menu, CORE tab.", C.Dim);
+                    return;
+                }
                 this.Header(w, Vessel.Name.ToUpperInvariant(), "BEACON", C.Accent2);
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "Distress beacon transmitting.", C.Text);
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "No engines: this pod came down once.", C.Dim);

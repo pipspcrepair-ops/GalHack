@@ -13,7 +13,7 @@ public sealed class ProgressRules
     public int[] Levels { get; set; } = Array.Empty<int>();
     public int[] Points { get; set; } = Array.Empty<int>();
     public int PastCap { get; set; } = 1500;
-    /// <summary>Unlock points a new character starts with (the hover vessel's gate opens at level 1).</summary>
+    /// <summary>Unlock points a new character starts with (the Small Core and the hover plate open at level 1).</summary>
     public int StartPoints { get; set; }
     public XpRules Xp { get; set; } = new();
 
@@ -135,7 +135,7 @@ public sealed class Progress
         State = state ?? new ProgressState { PointsEarned = rules.StartPoints };
         Nodes = Build(items, blocks);
         _byId = Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
-        _unlocked = new HashSet<string>(State.Unlocked, StringComparer.Ordinal);
+        _unlocked = new HashSet<string>(State.Unlocked.Select(items.Current), StringComparer.Ordinal);
         _found = new HashSet<string>(State.Found, StringComparer.Ordinal);
         // The starting essentials: every node at level 1 that costs nothing.
         GrantFree();
@@ -144,7 +144,7 @@ public sealed class Progress
     /// <summary>
     /// Nodes that cost nothing unlock themselves as soon as their level and parent are reached:
     /// the starting essentials at level 1, and later the free blocks under a node you bought
-    /// (the small vessel's hull and legs once its core is unlocked).
+    /// (the small vessel's hull and legs once the Small Core is unlocked and its level reached).
     /// </summary>
     void GrantFree()
     {
@@ -271,7 +271,7 @@ public sealed class Progress
         return UnlockState.Affordable;
     }
 
-    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL-VESSEL CORE".</summary>
+    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL CORE".</summary>
     public string Needs(TechNode n) => StateOf(n) switch
     {
         UnlockState.Unlocked => "UNLOCKED",

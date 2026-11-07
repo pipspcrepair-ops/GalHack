@@ -111,6 +111,29 @@ public sealed class Gui
         if (Drawing) Canvas.TextIn(font ?? UiTheme.Label, size, r, text, colour, align);
     }
 
+    /// <summary>A warning-striped band round a rectangle, drawn just inside its edge.</summary>
+    public void Stripes(Rect2 r, float band, Color colour)
+    {
+        if (!Drawing) return;
+        foreach (Rect2 b in new[]
+                 {
+                     new Rect2(r.Position, new Vector2(r.Size.X, band)), new Rect2(r.Position.X, r.End.Y - band, r.Size.X, band),
+                     new Rect2(r.Position.X, r.Position.Y + band, band, r.Size.Y - 2 * band), new Rect2(r.End.X - band, r.Position.Y + band, band, r.Size.Y - 2 * band),
+                 })
+        {
+            Canvas.Block(b, new Color(0.04f, 0.04f, 0.05f));
+            Vector2[] edge = { b.Position, new(b.End.X, b.Position.Y), b.End, new(b.Position.X, b.End.Y) };
+            // Bands of equal width at 45 degrees, on the lines x + y = c, so the pattern runs on round every corner.
+            float period = band * 2f, top = b.Position.Y, bottom = b.End.Y;
+            for (float c = Mathf.Floor((b.Position.X + top) / period) * period - period; c < b.End.X + bottom + period; c += period)
+            {
+                Vector2[] stripe = { new(c - top, top), new(c + band - top, top), new(c + band - bottom, bottom), new(c - bottom, bottom) };
+                foreach (Vector2[] piece in Geometry2D.IntersectPolygons(edge, stripe))
+                    if (piece.Length >= 3) Canvas.DrawColoredPolygon(piece, colour);
+            }
+        }
+    }
+
     public void Bar(Rect2 r, double value, double max, Color fill, int count = 12)
     {
         if (Drawing) Canvas.Segments(r, Math.Clamp(value, 0, max), Math.Max(1e-6, max), fill, count: count, gap: 2);

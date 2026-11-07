@@ -6,7 +6,7 @@
 //                  loop (gather, craft the foothold base, build it) reaches level 5, the small
 //                  vessel's gate, in about 30 to 40 minutes, when its base can make the vessel's parts
 //   points         unlock points granted on reaching each level, from level 2 up
-//   startPoints    unlock points a new character starts with: enough for the hover core and the hover
+//   startPoints    unlock points a new character starts with: enough for the Small Core and the hover
 //                  plate at level 1, with one to spare
 //   pastCap        past the cap, one more point for every this much experience
 //   xp             what each thing done is worth

@@ -37,7 +37,7 @@ namespace Slice.Tests;
 ///   3  shoot the ground and a creature
 ///   4  loot the creature's body (drag, shift-click, split, take all), fill the toolbar by drag
 ///   5  craft the survival constructor in the suit fabricator, set it down
-///   6  craft the base core in it
+///   6  craft the Big Core in it
 ///   7  found a base, build onto it: a container, a generator, a small constructor, steel
 ///   8  earn level 5, unlock the small vessel, make its core and parts in the base's constructor
 ///   9  build a vessel, fly 500 m and land
@@ -149,8 +149,8 @@ public partial class PlayerTest : Node
         ItemCatalogue items = _game.Zone.Data.Items;
         var need = new Bill();
         need.Add("survival-constructor", 1);
-        need.Add("base-core", 1);
-        need.Add("vessel-core", 1);
+        need.Add("big-core", 1);
+        need.Add("small-core", 1);
         foreach (var (block, small, n) in BaseBlocks.Concat(VesselBlocks)) need.Add(items.Blocks.For(block, small), n);
         return items.Graph.Expand(need).Leaves;
     }
@@ -408,7 +408,7 @@ public partial class PlayerTest : Node
         Mark("looted");
     }
 
-    // ==== 5 & 6. The survival constructor and the base core ======================================
+    // ==== 5 & 6. The survival constructor and the Big Core ======================================
 
     /// <summary>Up to the constructor and E on it: at its front, or round another side if the ground stands in the way of the look, as a player would.</summary>
     /// <summary>E on a fabricator opens the full panel: the Tab menu's CORE tab, picked on that machine.</summary>
@@ -455,7 +455,7 @@ public partial class PlayerTest : Node
         Check(_fab != null && _game.Pack["survival-constructor"] == 0, "3 and a click set it down on open ground");
         if (_fab == null) yield break;
 
-        GD.Print("-- 6. the base core, made in the survival constructor --");
+        GD.Print("-- 6. the Big Core, made in the survival constructor --");
         // Up to its front, as you would to use it.
         foreach (int x in OpenFab()) yield return x;
         if (!FabPanelOpen)
@@ -471,25 +471,25 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.ClickWidget("storage:store-all")) yield return x;
         Check(_fab.Storage.Count("iron-ore") > 0 && _game.Pack["iron-ore"] == 0, $"STORE ALL loads the bag's ore into it ({_fab.Storage.UsedSu:F0} SU)");
         foreach (int x in _play.CloseMenu()) yield return x;
-        // Its own screen, at eye height on its mast: step up to it, look at the base core's +1, click.
+        // Its own screen, at eye height on its mast: step up to it, look at the Big Core's +1, click.
         foreach (int x in _drive.WalkTo(_fab.GlobalTransform * new Vector3(0f, 0f, -1.4f), 0.4f, 15f)) yield return x;
         _game.MachineScreens.Sync();
         MachineScreens.Mounted screen = _game.MachineScreens.Screens.TryGetValue((_fab, Int3.Zero), out var m) ? m : null;
-        if (screen != null) foreach (int x in _play.ScreenClick(screen, "order:screen:base-core:1", "screen:down")) yield return x;
-        bool onScreen = _fab.Constructor.Orders.Any(j => j.Item.Id == "base-core");
+        if (screen != null) foreach (int x in _play.ScreenClick(screen, "order:screen:big-core:1", "screen:down")) yield return x;
+        bool onScreen = _fab.Constructor.Orders.Any(j => j.Item.Id == "big-core");
         Check(screen != null && onScreen && ScreenMount.AtEyeHeight(screen.Screen, _fab.GlobalPosition.Y, 0.15f, 15f),
-            $"its own screen, at eye height: a cursor where you look, +1 on the base core clicked there");
+            $"its own screen, at eye height: a cursor where you look, +1 on the Big Core clicked there");
         if (!onScreen)
         {
             foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
-            foreach (int x in _play.Order("core", "base-core", 1)) yield return x;
+            foreach (int x in _play.Order("core", "big-core", 1)) yield return x;
             foreach (int x in _play.CloseMenu()) yield return x;
         }
-        Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "base-core") && _fab.Constructor.SubParts.Count > 0,
-            $"a base core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
-        foreach (int x in _play.WaitFor(() => _fab.Storage.Count("base-core") > 0, 120)) yield return x;
-        Check(_fab.Storage.Count("base-core") == 1, $"the base core came out ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play since looting)");
-        Mark("base core");
+        Check(_fab.Constructor.Orders.Any(j => j.Item.Id == "big-core") && _fab.Constructor.SubParts.Count > 0,
+            $"the Big Core ordered; it planned {_fab.Constructor.SubParts.Count} lines of sub-parts by itself");
+        foreach (int x in _play.WaitFor(() => _fab.Storage.Count("big-core") > 0, 120)) yield return x;
+        Check(_fab.Storage.Count("big-core") == 1, $"the Big Core came out ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play since looting)");
+        Mark("Big Core");
     }
 
     // ==== 7. The base ===============================================================================
@@ -524,14 +524,14 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
 
-        foreach (int x in _play.ToToolbar("base-core", 3)) yield return x;
+        foreach (int x in _play.ToToolbar("big-core", 3)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 site = _play.FlatSpot(_fab.GlobalPosition, 14f, 1.2f, 0.5f);
         foreach (int x in _play.StandOff(site, _game.Survivor.WorldFeet, 6f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, site)) yield return x;
         _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
         Check(_base != null && _base.Structure.Mode == GalHack.Structures.CoreMode.Base && _base.Body.Motion == GalHack.Physics.Motion.Fixed,
-            "the base core set down founds a base: large grid, base mode, a fixed body where it stands");
+            "the Big Core set down founds a base: large grid, base mode, a fixed body where it stands");
         if (_base == null) yield break;
 
         // The crafted stacks onto the toolbar, then onto the core.
@@ -576,11 +576,11 @@ public partial class PlayerTest : Node
         Mark("base");
     }
 
-    // ==== 8. The small-vessel core ==================================================================
+    // ==== 8. The Small Core ==================================================================
 
     IEnumerable<int> VesselCore()
     {
-        GD.Print("-- 8. level 5, the small-vessel tech, and its core from the base's constructor --");
+        GD.Print("-- 8. level 5, the small vessel's tech, and the Small Core from the base's constructor --");
         // The vessel's parts first (they need no unlock): the base's own constructor makes them.
         Vector3 core = _base.Body.Position.ToGodot();
         foreach (int x in _drive.WalkTo(core, 6f, 30f)) yield return x;
@@ -592,7 +592,7 @@ public partial class PlayerTest : Node
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
         Bill blockParts = parts.Clone();
         // And what its core is made of, so making the core later leaves the blocks' parts whole.
-        parts.Add(_game.Zone.Data.Items.Item("vessel-core").Recipe.InputsFor(1));
+        parts.Add(_game.Zone.Data.Items.Item("small-core").Recipe.InputsFor(1));
         GalHack.Items.Production.Constructor c = _base.Machines.Values.FirstOrDefault();
         if (c == null) { Fail("the base has no constructor"); yield break; }
         foreach (int x in _play.MakeAll("core", c, _base.Storage, parts, 300)) yield return x;
@@ -611,7 +611,7 @@ public partial class PlayerTest : Node
         }
         Check(_game.Progress.Level >= 5, $"level {_game.Progress.Level} earned by playing: {_game.Progress.Xp} XP in {_game.Stats.Seconds / 60:F1} min (test time-scale on crafting only)");
         Mark("level 5");
-        foreach (string node in new[] { "vessel-core", "hover@small", "thruster@small", "gyro@small" })
+        foreach (string node in new[] { "small-core", "hover@small", "thruster@small", "gyro@small" })
         {
             foreach (int x in _play.Unlock(node)) yield return x;
             Check(_game.Progress.IsUnlocked(node), $"unlocked {_game.Progress.Node(node).Name} ({_game.Progress.Points} points left)");
@@ -621,10 +621,10 @@ public partial class PlayerTest : Node
         Check(_game.Survivor.WorldFeet.DistanceTo(core) <= 12f, $"walked back to the base ({_game.Survivor.WorldFeet.DistanceTo(core):F0} m from its core)");
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(_base)) yield return x;
-        foreach (int x in _play.Order("core", "vessel-core", 1)) yield return x;
+        foreach (int x in _play.Order("core", "small-core", 1)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        foreach (int x in _play.WaitFor(() => _base.Storage.Count("vessel-core") > 0, 120)) yield return x;
-        Check(_base.Storage.Count("vessel-core") == 1, "the base's constructor made the small-vessel core");
+        foreach (int x in _play.WaitFor(() => _base.Storage.Count("small-core") > 0, 120)) yield return x;
+        Check(_base.Storage.Count("small-core") == 1, "the base's constructor made the Small Core");
         // The vessel's blocks, crafted as items from the parts already made, into the base's one storage.
         Bill vesselItems = new();
         foreach (var (b, small, n) in VesselBlocks) vesselItems.Add(_play.BlockItem(b, small), n);
@@ -636,8 +636,8 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.ClickWidget("storage:open")) yield return x;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(_game.Pack["vessel-core"] == 1 && vesselItems.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and block stacks taken from the base's storage into the bag");
-        Mark("vessel core");
+        Check(_game.Pack["small-core"] == 1 && vesselItems.All(kv => _game.Pack[kv.Key] >= kv.Value), "its core and block stacks taken from the base's storage into the bag");
+        Mark("small core");
     }
 
     IEnumerable<int> Pick(Vessel v)
@@ -652,7 +652,7 @@ public partial class PlayerTest : Node
     IEnumerable<int> BuildVessel()
     {
         GD.Print("-- 9. build a vessel on its core --");
-        foreach (int x in _play.ToToolbar("vessel-core", 3)) yield return x;
+        foreach (int x in _play.ToToolbar("small-core", 3)) yield return x;
         foreach (var (block, slot) in Slots)
             foreach (int x in _play.BlockToToolbar(block, true, slot)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
@@ -661,10 +661,16 @@ public partial class PlayerTest : Node
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
         _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && v.Structure.Grid.Size == GridSize.Small);
-        if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", vessel cores in the bag {_game.Pack["vessel-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
-        Check(_vessel != null && _vessel.Controller.Frozen, "the small-vessel core set down starts a small vessel on its build stand");
+        if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", Small Cores in the bag {_game.Pack["small-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
+        Check(_vessel != null && _vessel.Controller.Frozen, "the Small Core set down starts a small craft on its build stand");
         if (_vessel == null) yield break;
         Vessel v = _vessel;
+        Check(v.Structure.Mode == GalHack.Structures.CoreMode.Hover, "a new Small Core is in Hover Mode");
+        foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in Pick(v)) yield return x;
+        foreach (int x in _drive.ClickWidget("core:mode:vessel")) yield return x;
+        foreach (int x in _play.CloseMenu()) yield return x;
+        Check(v.Structure.Mode == GalHack.Structures.CoreMode.Vessel, "the CORE tab's switch puts it in Vessel Mode");
         int ok = 0;
         foreach (int x in _play.BuildVessel(v, Slots, n => ok = n)) yield return x;
         HandlingStats st = v.Stats;

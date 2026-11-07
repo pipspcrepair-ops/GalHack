@@ -51,7 +51,7 @@ public sealed class SharedStorage
 
     public static SharedStorage Unbounded(ItemCatalogue items, string name) => new(items, name, double.PositiveInfinity);
 
-    public int Count(string id) => _counts.TryGetValue(id, out int n) ? n : 0;
+    public int Count(string id) => _counts.TryGetValue(_items.Current(id), out int n) ? n : 0;
     public int this[string id] => Count(id);
     public bool IsEmpty => _counts.Count == 0;
 
@@ -77,6 +77,7 @@ public sealed class SharedStorage
     /// <summary>Adds as many as fit and returns how many went in.</summary>
     public int Add(string id, int count)
     {
+        id = _items.Current(id);
         int added = Math.Min(count, RoomFor(id));
         if (added <= 0) return 0;
         Change(id, added);

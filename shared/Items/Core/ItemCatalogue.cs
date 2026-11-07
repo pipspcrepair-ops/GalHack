@@ -26,8 +26,15 @@ public sealed class ItemCatalogue
     public MachineCatalogue Machines { get; } = new();
     public RecipeGraph Graph { get; private set; }
 
-    public ItemDef Item(string id) => _byId.TryGetValue(id, out ItemDef item) ? item : throw new KeyNotFoundException($"unknown item '{id}'");
-    public bool TryGet(string id, out ItemDef item) => _byId.TryGetValue(id, out item);
+    public ItemDef Item(string id) => _byId.TryGetValue(Current(id), out ItemDef item) ? item : throw new KeyNotFoundException($"unknown item '{id}'");
+    public bool TryGet(string id, out ItemDef item) => _byId.TryGetValue(Current(id), out item);
+
+    /// <summary>
+    /// An item's id today: an id it has replaced (the "was" list on an item in the data) reads as the
+    /// item that replaced it, so old saves and old test data still load.
+    /// </summary>
+    public string Current(string id) => _was.TryGetValue(id, out string now) ? now : id;
+    readonly Dictionary<string, string> _was = new(StringComparer.Ordinal);
     public bool Has(string id) => _byId.ContainsKey(id);
 
     public IEnumerable<ItemDef> InCategory(ItemCategory c) => _items.Where(i => i.Category == c);
@@ -187,7 +194,7 @@ public sealed class ItemCatalogue
 
     /// <summary>What the data says about one grid's block item beyond its bill (all optional).</summary>
     internal sealed record BlockItemSpec(string Id = null, string Name = null, string Short = null, int? Stack = null, double? Seconds = null,
-        int? Tier = null, Unlock Unlock = null, string Group = null, IReadOnlyList<StructureClass> Places = null);
+        int? Tier = null, Unlock Unlock = null, string Group = null, string Uses = null, string[] Was = null);
 
     static BlockFamily ParseFamily(string s, string where) => s switch
     {
@@ -196,16 +203,6 @@ public sealed class ItemCatalogue
         "deco" => BlockFamily.Deco,
         _ => throw new InvalidDataException($"{where}: family is armour, device or deco, not '{s}'"),
     };
-
-    static List<StructureClass> ParseClasses(JsonElement list, string where)
-    {
-        var classes = new List<StructureClass>();
-        foreach (JsonElement c in list.EnumerateArray())
-            classes.Add(StructureClasses.TryParse(c.GetString(), out StructureClass sc) ? sc
-                : throw new InvalidDataException($"{where}: structure classes are base, capital, small and hover, not '{c.GetString()}'"));
-        if (classes.Count == 0) throw new InvalidDataException($"{where}: it must go on at least one class of structure");
-        return classes;
-    }
 
     void LoadBlocks(JsonElement root)
     {
@@ -229,6 +226,8 @@ public sealed class ItemCatalogue
         {
             JsonElement e = p.Value;
             string where = $"block '{p.Name}'";
+            if (e.TryGetProperty("places", out _))
+                throw new InvalidDataException($"{where}: no block is limited to a core's mode; 'grids' says which grids it comes on");
             string ammo = DataJson.Str(e, "ammo", null);
             if (ammo != null && Known(ammo, $"{where} ammo").Category != ItemCategory.Ammo)
                 throw new InvalidDataException($"{where}: '{ammo}' is not ammo");
@@ -257,10 +256,9 @@ public sealed class ItemCatalogue
                     : e.TryGetProperty("stack", out JsonElement es) && es.TryGetProperty(grid, out JsonElement esg) ? esg.GetInt32() : null;
                 double? seconds = e.TryGetProperty("seconds", out JsonElement sec) && sec.TryGetProperty(grid, out JsonElement secg) ? secg.GetDouble() : null;
                 int? tier = e.TryGetProperty("tier", out JsonElement t) ? t.GetInt32() : null;
-                IReadOnlyList<StructureClass> places = e.TryGetProperty("places", out JsonElement pl) && pl.TryGetProperty(grid, out JsonElement plg)
-                    ? ParseClasses(plg, where) : null;
                 return new BlockItemSpec(has ? DataJson.Str(item, "id", null) : null, has ? DataJson.Str(item, "name", null) : null,
-                    has ? DataJson.Str(item, "short", null) : null, stack, seconds, tier, Places: places);
+                    has ? DataJson.Str(item, "short", null) : null, stack, seconds, tier, Uses: has ? DataJson.Str(item, "uses", null) : null,
+                    Was: has && item.TryGetProperty("was", out JsonElement was) ? was.EnumerateArray().Select(x => x.GetString()).ToArray() : null);
             });
         }
     }
@@ -269,8 +267,7 @@ public sealed class ItemCatalogue
     /// Adds a block's bill and makes its family items, one per grid it is on: crafted from the bill
     /// (one item a run), by the lowest constructor tier that can make everything in it, as heavy
     /// and as bulky as what it is made of, of its rarest input's rarity, unlocked by the block's
-    /// tech-tree node on that grid, and placeable on the structure classes of that grid (large:
-    /// bases and capital vessels; small: small and hover vessels) unless the data narrows them.
+    /// tech-tree node on that grid. Any block goes on any structure of its grid.
     /// </summary>
     internal void AddBlock(BlockBill bill, Func<bool, BlockItemSpec> spec)
     {
@@ -285,9 +282,6 @@ public sealed class ItemCatalogue
             string grid = small ? "small" : "large";
             string id = s.Id ?? BlockBill.NodeId(bill.BlockId, small);
             string fallback = $"{char.ToUpperInvariant(bill.BlockId[0])}{bill.BlockId[1..]} ({grid})";
-            IReadOnlyList<StructureClass> places = s.Places ?? StructureClasses.OfGrid(small);
-            foreach (StructureClass c in places)
-                if (StructureClasses.IsSmallGrid(c) != small) throw new InvalidDataException($"block item '{id}': a {grid}-grid block can't go on a {StructureClasses.Name(c)}");
             var item = new ItemDef
             {
                 Id = id,
@@ -299,14 +293,13 @@ public sealed class ItemCatalogue
                 Source = ItemSource.Crafted,
                 MassKg = MassOf(made),
                 VolumeSu = VolumeOf(made),
-                Uses = bill.Family == BlockFamily.Armour ? "Placed as any of its shapes" : "Placed as a block",
+                Uses = s.Uses ?? (bill.Family == BlockFamily.Armour ? "Placed as any of its shapes" : "Placed as a block"),
                 StackSize = s.Stack ?? _blockStack[(bill.Family, small)],
                 Unlock = s.Unlock ?? bill.UnlockFor(small),
                 BlockId = bill.BlockId,
                 SmallGrid = small,
                 Family = bill.Family,
                 Group = s.Group,
-                Places = places,
             };
             if (item.StackSize <= 0) throw new InvalidDataException($"block item '{id}': stack must be positive");
             if (_byId.ContainsKey(id)) throw new InvalidDataException($"block item '{id}' clashes with an item id");
@@ -315,6 +308,7 @@ public sealed class ItemCatalogue
             item.Index = _items.Count;
             _items.Add(item);
             _byId[id] = item;
+            foreach (string old in s.Was ?? Array.Empty<string>()) _was[old] = id;
             _recipes.Add(item.Recipe);
             if (small) bill.ItemSmall = item;
             else bill.ItemLarge = item;
@@ -332,7 +326,6 @@ public sealed class ItemCatalogue
             MassKg = MassOf(bill), VolumeSu = VolumeOf(bill),
             Uses = "One block places any deco piece: pick the piece from the gallery, each placement uses one block",
             StackSize = 50, Unlock = unlock, BlockId = DecoCatalogue.UniversalBlock, SmallGrid = false, Family = BlockFamily.Deco,
-            Places = StructureClasses.All,
         };
         item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = 3, Tier = Math.Max(tier, inputs.Max(i => TierOf(i.Item1, null))) };
         item.Index = _items.Count;

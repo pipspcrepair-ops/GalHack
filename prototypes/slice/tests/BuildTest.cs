@@ -384,11 +384,11 @@ public partial class BuildTest : Node
         Check(_game.Zone.Vessels.Count == structures && Pack[steelL] == 12 && _game.Builder.Verdict.Contains("set a core down"),
             $"a block can't be placed in the open without a structure: \"{_game.Builder.Verdict}\"");
 
-        foreach (int x in Carry("base-core", 1, 4)) yield return x;
+        foreach (int x in Carry("big-core", 1, 4)) yield return x;
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
         _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
-        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["base-core"] == 0,
-            "a base core founds a base (large grid, anchored), and is used up");
+        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["big-core"] == 0,
+            "the Big Core founds a base (large grid, anchored), and is used up");
         if (_base == null) yield break;
 
         // A small-grid block is refused on a base, with a clear message.
@@ -396,7 +396,7 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(1f, 0, 0)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("blocks only"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
+        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("small-grid block"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
 
         // Building onto the founded structure works.
         bool on = false;
@@ -404,8 +404,12 @@ public partial class BuildTest : Node
         foreach (int x in _play.PlaceBlock(2, _base, Int3.Zero, Dir.PosX, p => on = p)) yield return x;
         Check(on && Pack[steelL] == 11, "a large block goes onto the base's core, one item used");
 
-        // A hover core, a small-vessel core and a capital core found their own classes.
-        foreach (var (core, cls, slot, offset) in new[] { ("vessel-core", StructureClass.Small, 5, new Vector3(20, 0, 0)), ("hover-core", StructureClass.Hover, 6, new Vector3(-20, 0, 0)), ("capital-core", StructureClass.Capital, 7, new Vector3(0, 0, 40)) })
+        // A structure's class is its core and that core's mode: the two cores make all four.
+        foreach (var (core, mode, cls, slot, offset) in new[]
+                 {
+                     ("small-core", CoreMode.Vessel, StructureClass.Small, 5, new Vector3(20, 0, 0)), ("small-core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
+                     ("big-core", CoreMode.Capital, StructureClass.Capital, 7, new Vector3(0, 0, 20)),
+                 })
         {
             Vector3 spot = _play.FlatSpot(_site + offset, 4f, 1.4f, 0.5f);
             foreach (int x in StandAt(spot + new Vector3(5, 0, 0))) yield return x;
@@ -413,23 +417,21 @@ public partial class BuildTest : Node
             foreach (int x in Carry(core, 1, slot)) yield return x;
             foreach (int x in _play.PlaceOnGround(slot, spot)) yield return x;
             Vessel v = _game.Zone.Vessels.FirstOrDefault(n => !before.Contains(n));
+            v?.SwitchMode(mode);
             Check(v != null && StructureArea.ClassOf(v) == cls && (v.Structure.Grid.Size == GridSize.Small) == StructureClasses.IsSmallGrid(cls),
-                $"{Items.Item(core).Name} founds a {StructureClasses.Name(cls)}: {v?.Name}");
+                $"{Items.Item(core).Name} in {mode} Mode is a {StructureClasses.Name(cls)}: {v?.Name}");
             if (cls == StructureClass.Small) _small = v;
             else if (cls == StructureClass.Hover) _hover = v;
             else _capital = v;
         }
         if (_small == null || _capital == null) yield break;
 
-        // Devices per class.
+        // No block is limited to a mode: what used to be for one class goes on the other.
         foreach (int x in StandAt(_small.Body.Position.ToGodot() + new Vector3(3, 0, 0))) yield return x;
-        foreach (int x in Carry(Item("concrete", false), 1, 8)) yield return x;
+        foreach (int x in Carry(Item("hover", true), 1, 8)) yield return x;
         foreach (int x in _play.Select(8)) yield return x;
         foreach (int x in _drive.LookAt(_small.Body.Position.ToGodot(), 8)) yield return x;
-        Check(_game.Builder.TargetVessel == _small && _game.Builder.Verdict.Contains("base blocks only"), $"a base-only block is refused on a small vessel: \"{_game.Builder.Verdict}\"");
-        ItemDef pad = Items.BlockItem("hover", true), decon = Items.BlockItem("decon", false);
-        Check(!pad.PlacesOn(StructureClass.Small) && pad.PlacesOn(StructureClass.Hover) && decon.PlacesOn(StructureClass.Base) && !decon.PlacesOn(StructureClass.Capital),
-            "a hover pad only goes on a hover vessel, a large deconstructor only on a base");
+        Check(_game.Builder.TargetVessel == _small && !_game.Builder.Verdict.Contains("only"), $"a hover plate goes on a craft in Vessel Mode: \"{_game.Builder.Verdict}\"");
     }
 
     IEnumerable<int> Sources()
@@ -499,9 +501,9 @@ public partial class BuildTest : Node
 
         // A remote core goes down only while its origin is in reach: a slot from a core you are not near is out of range.
         var far = new SharedStorage(Items, "Far core", 200);
-        far.Add("vessel-core", 1);
+        far.Add("small-core", 1);
         Pack.Bar = BarSource.Remote;
-        Pack.SetRemote(6, far, "Far core", "vessel-core");
+        Pack.SetRemote(6, far, "Far core", "small-core");
         Check(!Pack.RemoteReady(6), "a slot whose core you are not in the area of is out of range");
         foreach (int x in _drive.Tap(Key.Key7)) yield return x;
         foreach (int x in StandByBase(0, 13)) yield return x;
@@ -509,7 +511,7 @@ public partial class BuildTest : Node
         int all = _game.Zone.Vessels.Count;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_game.Zone.Vessels.Count == all && far.Count("vessel-core") == 1, $"a core from a storage out of reach can't be set down: \"{_game.Builder.Verdict}\"");
+        Check(_game.Zone.Vessels.Count == all && far.Count("small-core") == 1, $"a core from a storage out of reach can't be set down: \"{_game.Builder.Verdict}\"");
         Pack.Bar = BarSource.Personal;
         Pack.ClearRemote(6);
         foreach (int x in RemoteRules()) yield return x;
@@ -656,7 +658,7 @@ public partial class BuildTest : Node
     {
         GD.Print("-- the universal deco block --");
         ItemDef block = Items.Item(DecoCatalogue.UniversalItem);
-        Check(block.IsBlock && block.Family == BlockFamily.Deco && block.Places.Count == 4 && block.Recipe.Tier >= 1, $"one deco block item goes on every class of structure and needs a small constructor or better (tier {block.Recipe.Tier})");
+        Check(block.IsBlock && block.Family == BlockFamily.Deco && block.Recipe.Tier >= 1, $"one deco block item goes on every class of structure and needs a small constructor or better (tier {block.Recipe.Tier})");
         var survival = new Constructor(Items, Items.Machines.Get("survival"), SharedStorage.Unbounded(Items, "t"), new WorldRules());
         var small = new Constructor(Items, Items.Machines.Get("small"), SharedStorage.Unbounded(Items, "t2"), new WorldRules());
         Check(!survival.Knows(block) && small.Knows(block), "the survival tier doesn't make the deco block; the small constructor does");
@@ -858,11 +860,11 @@ public partial class BuildTest : Node
         var stray = fresh.Nodes.Where(n => !Progress.Tabs.Contains(n.Tab)).Select(n => $"{n.Id}:{n.Tab}").ToList();
         Check(stray.Count == 0, $"every node sits on one of them{(stray.Count > 0 ? ": " + string.Join(", ", stray) : "")}");
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice (a block shared by a base and a capital vessel is one node)");
-        Check(fresh.Node("thruster@large").Tab == "base" && fresh.Node("capital-core").Tab == "base" && fresh.Node("base-core").Tab == "base", "the capital vessel's thruster and core stand on the Base & Capital tab");
-        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("hover-core").Tab == "small" && fresh.Node("thruster@small").Tab == "small", "the hover plate and core stand with the small vessel's thruster");
+        Check(fresh.Node("thruster@large").Tab == "base" && fresh.Node("big-core").Tab == "base" && fresh.Node("thruster@large").Unlock.Parent == "big-core", "the Big Core heads the Base & Capital tab, the large thruster under it");
+        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("small-core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "small-core", "the Small Core heads the Small & Hover tab, the hover plate under it");
         Check(fresh.Node("thruster@small").Unlock.Parent == "hover@small", "hover plates are the thruster's prerequisite on Small & Hover");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
-        Check(fresh.Unlock("hover@small") && fresh.Unlock("hover-core") && fresh.Points == 1, "the hover plate and the hover core both open at level 1, with a point to spare");
+        Check(fresh.Unlock("small-core") && fresh.Unlock("hover@small") && fresh.Points == 1, "the Small Core and the hover plate both open at level 1, with a point to spare");
         Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.NeedsLevel, "and the thruster behind them waits for its level");
         fresh.Earn(fresh.Rules.XpFor(5), "test");
         Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.Affordable && fresh.Unlock("thruster@small"), $"at level {fresh.Level} the thruster unlocks with its hover plate in hand");
@@ -960,8 +962,8 @@ public partial class BuildTest : Node
         foreach (int x in Hover(Item("steel", false))) yield return x;
         string block = All();
         GD.Print($"  (a block's tooltip: {block})");
-        Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("large grid") && block.Contains("base") && block.Contains("capital vessel") && block.Contains("Stacks to 250") && block.Contains("stack of "),
-            "a block's tooltip: name, recipe, stack, the grid and classes it fits, the whole stack's mass");
+        Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("large grid") && block.Contains("Stacks to 250") && block.Contains("stack of "),
+            "a block's tooltip: name, recipe, stack, the grid it fits, the whole stack's mass");
         foreach (int x in Hover("iron-ore")) yield return x;
         string ore = All();
         GD.Print($"  (an ore's tooltip: {ore})");
@@ -996,7 +998,7 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 7f)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("blocks only"), "and the same class rules apply: a small-grid block is refused on a base");
+        Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("small-grid block"), "and the same grid rule applies: a small-grid block is refused on a base");
         _game.Mode = GameMode.Survival;
     }
 }

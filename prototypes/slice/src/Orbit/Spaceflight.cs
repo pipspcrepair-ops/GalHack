@@ -209,7 +209,8 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         float y = carrier != null ? carrier.Body.Position.Y : Game.Survivor.WorldFeet.Y;
         if (y > Ceiling * Rules.Crossing.PreloadAt) StartOrbit();
-        if (y > Ceiling && Orbit?.Ready == true) BeginCrossing(carrier, up: true);
+        // Hover only works close to the ground: a craft in Hover Mode never crosses, however it got up here.
+        if (y > Ceiling && Orbit?.Ready == true && carrier?.Structure.Mode != CoreMode.Hover) BeginCrossing(carrier, up: true);
     }
 
     void Ascend(Vessel carrier)
@@ -417,7 +418,7 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         foreach (Vessel v in g.Zone.Vessels)
         {
-            if (v == carrier || v.Flight == null || v.Controller?.Frozen != false) continue;
+            if (v == carrier && v.Structure.Mode != CoreMode.Hover || v.Flight == null || v.Controller?.Frozen != false) continue;
             if (g.Zone is OrbitZone orbit)
             {
                 Vector3 p = v.Body.Position.ToGodot();

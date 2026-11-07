@@ -178,7 +178,6 @@ public sealed partial class BuildTool
             return;
         }
         var (cells, local, _, why) = PlanDeco(v, piece, TargetCell, PlaceCell, DecoYaw);
-        why ??= !item.PlacesOn(StructureArea.ClassOf(v)) ? $"{item.Name}: {StructureClasses.Only(item.Places)}" : null;
         why ??= (small ? piece.OnSmall : piece.OnLarge) ? null : $"{piece.Name} is a {(small ? "large" : "small")}-grid piece";
         why ??= InSurvivorAny(v, cells) ? "Step out of the way to build there" : null;
         why ??= SourceProblem(v, item, slotIndex);

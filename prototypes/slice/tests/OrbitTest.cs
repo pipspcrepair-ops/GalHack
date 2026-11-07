@@ -30,7 +30,7 @@ namespace Slice.Tests;
 /// mapping (the map point under you and your heading), the ledger, that everything on the surface
 /// waited exactly as it was left, and the frame cost in orbit.
 ///
-/// Setting up is the one shortcut, printed when it happens: the Skiff's parts and a base core
+/// Setting up is the one shortcut, printed when it happens: the Skiff's parts and the Big Core
 /// are handed over and the tech tree opened (the real-player test earns all of that). From there
 /// on, only the game's inputs: no teleports, no grants.
 ///
@@ -176,12 +176,12 @@ public partial class OrbitTest : Node
     {
         GD.Print("-- the Skiff, built by hand --");
         foreach (int x in new Playthrough(_game).MakeTool()) yield return x; // you wake empty-handed: the tool is made first, for what the boarding wants of it
-        // SETUP SHORTCUT (printed): the Skiff's parts and a base core handed over, the tech tree
+        // SETUP SHORTCUT (printed): the Skiff's parts and the Big Core handed over, the tech tree
         // opened. The real-player test makes and earns all of it; this test is about orbit.
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
-        _game.Pack.Add("base-core", 1);
+        _game.Pack.Add("big-core", 1);
         _game.Progress.Creative = true;
-        GD.Print($"  (setup: handed over the Skiff's parts and a base core, and opened the tech tree)");
+        GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
         Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f, span: 10f); // room for you to stand off it and see it
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
@@ -404,14 +404,14 @@ public partial class OrbitTest : Node
         _salvagedTo = ship.Count;
         _lootedFrom = hold.Total;
 
-        // Out by the way in, and claim it from outside with a base core.
+        // Out by the way in, and claim it from outside with the Big Core.
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z + 1), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 3f, 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 5f, "back out through its door");
-        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "base-core");
+        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "big-core");
         ItemGrid.Move(_game.Pack.Grid, coreSlot, _game.Pack.Grid, 4);
         foreach (int x in _drive.Tap(Key.Key5)) yield return x;
         Vector3 hull = CellAt(_door.X, 1, _door.Z + 2); // the flat of the hull beside the door
@@ -420,8 +420,8 @@ public partial class OrbitTest : Node
         _game.Spaceflight.Claimed += _ => claimed = true;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["base-core"] == 0,
-            $"a base core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["base-core"]}, said: {_said})");
+        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["big-core"] == 0,
+            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["big-core"]}, said: {_said})");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
 

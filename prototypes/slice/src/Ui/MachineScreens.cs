@@ -82,7 +82,7 @@ public partial class MachineScreens : Node3D
             if (!v.IsBase || v.IsWreck || v.Structure.Core is not Int3 core) continue;
             var coreKey = ((object)v, core);
             want.Add(coreKey);
-            if (!_screens.ContainsKey(coreKey) && OnBlock(v, core, new StructureSection(Game, () => v), () => StructureState(v)) is Mounted m) _screens[coreKey] = m;
+            if (!_screens.ContainsKey(coreKey) && OnBlock(v, core, new StructureSection(Game, () => v, modeSwitch: false), () => StructureState(v)) is Mounted m) _screens[coreKey] = m;
             foreach (var (cell, machine) in v.Machines)
             {
                 var key = ((object)v, cell);
