@@ -249,7 +249,7 @@ float cloud_density(vec3 p, bool cheap) {
 	float h = (p.y - cloud_base) / cloud_thick;
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
 	top = mix(top, 0.4, st);
-	top = mix(top, 1.9, storm); // the tower stands up through the deck
+	top = mix(top, 2.8, storm); // the tower stands up through the deck
 	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * 0.55, top, h));
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
@@ -272,7 +272,7 @@ float march_jitter(vec2 pixel) {
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
 vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
-	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 1.9 : 1.0);
+	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 2.8 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);

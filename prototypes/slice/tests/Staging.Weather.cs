@@ -23,9 +23,13 @@ public partial class Staging
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
         var sim = _game.Zone.Weather.Sim;
-        sim.Snap(WeatherKind.Tornado);
+        sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Tornado")));
         foreach (int x in _drive.UntilSettled()) yield return x;
-        Vector3 eye = _game.Survivor.WorldEye();
+        Vector3 eye = Clearing(_game.Survivor.WorldFeet);
+        // Never inside terrain or a hull: at least 1.2 m clear of the ground, with a note when it had to move.
+        float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        eye.Y = MathF.Max(eye.Y, groundY) + (float)Num("up", 1.6);
+        GD.Print($"(funnel camera stands at {eye}, {eye.Y - groundY:F1} m over the ground, moved out of the start bunker)");
         float dist = (float)Num("dist", 500);
         sim.ClearTornadoes();
         Tornado t = sim.SpawnTornado(eye + new Vector3(dist, 0f, 0f), eye);
@@ -35,7 +39,14 @@ public partial class Staging
         Vector3 look = new Vector3(1f, MathF.Tan(pitch) , 0f).Normalized();
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
         foreach (int x in _drive.Wait(60)) yield return x;
+        if (Num("hide", 0) == 1) _game.Zone.Sky.Visible = false;
+        if (Num("hide", 0) == 2) _game.Zone.Weather.Visible = false;
+        if (Num("hide", 0) == 3) foreach (Node n in _game.Zone.Sky.GetChildren()) GD.Print($"SKYKID {n.Name} {n.GetType().Name} {(n as Node3D)?.Visible}");
+        foreach (int x in _drive.Wait(5)) yield return x;
         GD.Print($"funnel at {t.Position}, formation {t.Formation:F2}");
+        foreach (Node n in _game.GetTree().Root.FindChildren("*", "MeshInstance3D", true, false))
+            if (n is MeshInstance3D m && m.IsVisibleInTree() && m.Mesh is BoxMesh or CylinderMesh && m.GetAabb().Size.Length() > 2f)
+                GD.Print($"BOX {m.GetPath()} {m.Mesh.GetType().Name} rel {m.GlobalPosition - eye} size {m.GetAabb().Size * m.GlobalTransform.Basis.Scale}");
     }
 
     /// <summary>Stands in a monsoon and prints the frame's cost, with the rain, over a few hundred drawn frames.</summary>

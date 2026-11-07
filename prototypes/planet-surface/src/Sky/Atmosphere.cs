@@ -42,7 +42,7 @@ public static class Atmosphere
     {
         // Where the weather is cells, the sky between them opens: the dark is theirs, not the whole deck's.
         float cellular = Math.Clamp(c.Cellular, 0f, 1f);
-        float cover = Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.42f * cellular);
+        float cover = Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.6f * cellular);
         // The cloud shade follows the weather's severity, the same values that set the rain: a drizzle
         // greys the cloud a little, heavy rain darkens it, a thunderstorm is near slate. (Its towers are darker still.)
         float dark = Math.Clamp(Math.Clamp(c.CloudDarkness, 0f, 1f) * (1f - 0.2f * cellular) + 0.15f * Math.Clamp(c.Rain, 0f, 1f), 0f, 1f);
