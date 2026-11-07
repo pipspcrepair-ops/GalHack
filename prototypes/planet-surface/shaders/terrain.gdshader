@@ -38,6 +38,9 @@ uniform vec4 road_grid = vec4(16.0, 0.0, 0.0, 0.0); // cell size, cells across, 
 uniform float road_tolerance = 1.2;
 // The world's prevailing wind on the ground, along a map axis: it lays sand and soil over roads from one side.
 uniform vec2 road_wind = vec2(1.0, 0.0);
+// The world's road paint: x yellow centre lines (else white), y a dashed centre line on roads (else solid),
+// z paint at all (a low-tech world painted none).
+uniform vec4 road_paint = vec4(0.0, 1.0, 1.0, 0.0);
 
 varying vec3 wpos;
 varying vec3 wnormal;
@@ -56,10 +59,14 @@ struct Road {
 	float style;    // 0 road, 1 highway, 2 track, 3 rail bed, 4 drive
 	float pad;      // a place's pad over it: markings stop
 	float core;     // on a place's footprint: the road stops
+	float core_end; // whether the stretch it's on runs onto one (a drive into a yard)
 	float other;    // how far another road's deck edge is (junctions), m
 	float other_hw; // that road's half width
 	float other_id; // and which road it is
+	vec2 other_dir; // and the way it runs
+	float other_core; // and how far it has run onto a place's footprint (where it isn't drawn)
 	float id;       // which road this is
+	float town;     // 1 on a town's street
 };
 
 Road nearest_road(vec2 at, float y) {
@@ -68,6 +75,8 @@ Road nearest_road(vec2 at, float y) {
 	r.other = 1e9;
 	r.other_hw = 0.0;
 	r.other_id = -1.0;
+	r.other_dir = vec2(1.0, 0.0);
+	r.other_core = 0.0;
 	r.id = -1.0;
 	if (road_grid.w < 0.5) return r;
 	vec2 c = mod(at, planet_size);
@@ -75,6 +84,7 @@ Road nearest_road(vec2 at, float y) {
 	vec2 list = texelFetch(road_cells, cell, 0).xy;
 	int first = int(list.x), count = min(int(list.y), 64);
 	float best_id = -1.0;
+	bool best_grounded = false;
 	r.along = 0.0;
 	for (int k = 0; k < count; k++) {
 		int e = first + k;
@@ -87,18 +97,26 @@ Road nearest_road(vec2 at, float y) {
 		float d = length(rel - t0.zw * u);
 		vec4 t2 = texelFetch(road_segments, b + ivec2(2, 0), 0);
 		float edge = d - t2.x;
-		if (edge > 4.0) continue;
+		if (edge > 8.0) continue;
 		vec4 t1 = texelFetch(road_segments, b + ivec2(1, 0), 0);
 		float off = abs(y - mix(t1.x, t1.y, u));
-		// Banks fall away past the deck: the further out, the further off it the ground may lie.
-		if (off > road_tolerance + max(edge, 0.0) * 1.2) continue;
+		// Banks fall away past the deck: the further out, the further off it the ground may lie. Where a
+		// place's pad lies over the road (a drive up to its yard), the ground is the pad's, not the deck's:
+		// held to the deck there, a drive showed only in slivers where the two heights crossed.
+		vec4 t3p = texelFetch(road_segments, b + ivec2(3, 0), 0);
+		float strict = road_tolerance + 6.0 * mix(t3p.x, t3p.y, u);
+		if (off > strict + max(edge, 0.0) * 1.2) continue;
+		// Only a road whose deck is the ground here makes a junction: one standing off it (a drive whose
+		// deck isn't the land's) would round a kerb toward a road that isn't drawn, a pale wedge.
+		bool grounded = off <= strict;
 		float id = floor(t2.w / 8.0);
 		float along = mix(t1.z, t1.w, u);
 		// Another road, or the same one coming back past itself (a hairpin, a loop): its own markings
 		// give way there, so where two stretches overlap they make one surface with one set of lines.
 		bool apart = id != best_id || abs(along - r.along) > 2.0 * t2.x + 6.0;
 		if (edge < r.edge) {
-			if (apart && r.edge < r.other) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; }
+			// (A stretch on a place's footprint isn't drawn, so it makes no junction: no kerbs, no crossing.)
+			if (apart && r.edge < r.other && r.core_end < 0.5 && best_grounded) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; r.other_dir = r.dir; r.other_core = r.core; }
 			vec4 t3 = texelFetch(road_segments, b + ivec2(3, 0), 0);
 			r.edge = edge;
 			r.across = d;
@@ -111,14 +129,24 @@ Road nearest_road(vec2 at, float y) {
 			r.wear = t2.y;
 			r.surface = t2.z;
 			r.style = t2.w - id * 8.0;
+			r.town = r.style > 4.5 ? 1.0 : 0.0;
+			r.style -= 5.0 * r.town;
 			r.pad = mix(t3.x, t3.y, u);
 			r.core = mix(t3.z, t3.w, u);
+			r.core_end = max(t3.z, t3.w);
 			best_id = id;
 			r.id = id;
-		} else if (apart && edge < r.other) {
-			r.other = edge;
-			r.other_hw = t2.x;
-			r.other_id = id;
+			best_grounded = grounded;
+		} else if (apart && edge < r.other && grounded) {
+			vec4 t3o = texelFetch(road_segments, b + ivec2(3, 0), 0);
+			float oc = max(t3o.z, t3o.w);
+			if (oc < 0.5) {
+				r.other_core = oc;
+				r.other = edge;
+				r.other_hw = t2.x;
+				r.other_id = id;
+				r.other_dir = t0.zw / max(length(t0.zw), 1e-4);
+			}
 		}
 	}
 	return r;
@@ -181,7 +209,16 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 		+ (pn2(p, 3.7) - 0.5) * (hard ? 0.18 * wear : 0.15) * near;
 	// Where two roads meet, their decks join in one surface with curved kerb corners, a tighter curve for
 	// smaller roads (a smooth union of the two decks).
-	float kerb = clamp(max(r.half_width, r.other_hw) * 1.4, 3.0, 12.0);
+	// Sized for a vehicle to turn from its near lane into the near lane of the other road: about 7 m on town
+	// streets, 12 on main roads, 15 where highways meet (the smooth union's width is 1.7 times the radius).
+	float turn_r = r.town > 0.5 ? 7.0 : max(r.half_width, r.other_hw) > 5.0 ? 15.0 : 12.0;
+	float crossing = 1.0 - abs(dot(r.dir, r.other_dir));   // 0 where the two run the same way, 1 square
+	// (Not with a drive running onto a place's footprint: its deck gives way to the pad, and so do its corners.)
+	// Neither where this stretch is a drive running onto a place's footprint (its corners would spread a
+	// pale wedge over the yard's apron), and a small one where either road is a place's drive.
+	float onto = max(smoothstep(0.0, 0.4, r.other_core), step(0.5, r.core_end));
+	float drive_r = r.style > 3.5 ? 3.0 : turn_r;
+	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto), 0.5) : 3.0;
 	float h_k = max(kerb - abs(r.edge - r.other), 0.0) / kerb;
 	float joined = min(r.edge, r.other) - h_k * h_k * kerb * 0.25;
 	float edge = joined + wander;
@@ -310,23 +347,44 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			pit_wet = pit * water * seen;
 		}
 	}
-	// Markings: painted lines on laid roads, worn away in flakes, and not where it meets another road or a place.
-	if (hard && r.style < 1.5 && r.half_width >= 3.5) {
-		// The way with priority keeps its lines through a junction: the wider road, or the older of two alike.
+	// Markings: painted lines on laid roads, worn away in flakes, generated from the classes that meet.
+	// The way with priority (the wider road, or the older of two alike) runs through a junction, its lines
+	// dotted across the other's mouth; the other stops at a bar set back from the edge, behind a crosswalk
+	// in town. A track gets no paint, nor does any road on a world that never painted its roads.
+	if (hard && r.style < 1.5 && road_paint.z > 0.5) {
 		bool gives_way = r.other_id == r.id || r.other_hw > r.half_width + 0.1 || abs(r.other_hw - r.half_width) <= 0.1 && r.other_id < r.id;
-		float keep = (1.0 - smoothstep(0.2, 0.6, r.pad)) * (gives_way ? smoothstep(0.3, 1.2, r.other) : 1.0) * (1.0 - 0.7 * wear);
-		keep *= smoothstep(0.25, 0.7, pn2(p, 0.8) + 0.45 - 0.35 * wear);
-		float paint = 0.0;
-		float dash = band(fract(r.along / 9.0) * 9.0 - 1.5, 1.5, fw);
-		if (r.style < 0.5) {
-			paint = band(x, 0.07, fw) * dash;
-			if (r.half_width >= 4.0) paint = max(paint, band(x - (r.half_width - 0.55), 0.06, fw));
-		} else {
-			paint = max(band(x - 0.18, 0.06, fw), band(x - (r.half_width - 0.6), 0.08, fw));
-			paint = max(paint, band(x - r.half_width * 0.5, 0.07, fw) * dash);
+		// A junction is where roads meet at an angle; one running on into another is just the same road.
+		bool meets = r.other < 30.0 && r.other_id != r.id && abs(dot(r.dir, r.other_dir)) < 0.85;
+		float setback = r.town > 0.5 ? 4.6 : 1.6;           // a crosswalk 3 m deep and a metre clear of it, in town
+		float flake = smoothstep(0.25, 0.7, pn2(p, 0.8) + 0.45 - 0.35 * wear) * (1.0 - 0.7 * wear) * (1.0 - smoothstep(0.2, 0.6, r.pad));
+		float lines = 0.0;
+		if (r.half_width >= 3.5) {
+			float dash = band(fract(r.along / 9.0) * 9.0 - 1.5, 1.5, fw);
+			bool dashed_centre = road_paint.y > 0.5;
+			if (r.style < 0.5) {
+				lines = band(x, 0.07, fw) * (dashed_centre ? dash : 1.0);
+				if (r.half_width >= 4.0) lines = max(lines, band(x - (r.half_width - 0.55), 0.06, fw));
+			} else {
+				lines = max(band(x - 0.18, 0.06, fw), band(x - (r.half_width - 0.6), 0.08, fw));
+				lines = max(lines, band(x - r.half_width * 0.5, 0.07, fw) * dash);
+			}
+			if (meets && gives_way) lines *= smoothstep(setback + 0.3, setback + 1.2, r.other);
+			// Across the other road's mouth the way through is only dotted.
+			if (meets && !gives_way && r.other < 0.5) lines *= band(fract(r.along / 1.8) * 1.8 - 0.45, 0.3, fw);
 		}
-		vec3 ink = r.style > 0.5 && x < 0.4 ? vec3(0.6, 0.45, 0.08) : vec3(0.62, 0.62, 0.6);
-		c = mix(c, ink, paint * keep);
+		vec3 centre_ink = road_paint.x > 0.5 ? vec3(0.6, 0.45, 0.08) : vec3(0.62, 0.62, 0.6);
+		vec3 ink = x < 0.4 && (r.style > 0.5 || road_paint.x > 0.5) ? centre_ink : vec3(0.62, 0.62, 0.6);
+		c = mix(c, ink, lines * flake);
+		if (meets && gives_way) {
+			// The stop bar, across the way in, and in town a crosswalk of wide stripes in front of it.
+			float bar = band(r.other - setback, 0.22, fw) * step(x, r.half_width - 0.35);
+			float walk = 0.0;
+			if (r.town > 0.5) {
+				float stripe = band(fract((r.side + r.half_width) / 1.2) * 1.2 - 0.6, 0.28, fw);
+				walk = stripe * band(r.other - (setback - 2.3), 1.5, fw) * step(x, r.half_width - 0.25);
+			}
+			c = mix(c, vec3(0.62, 0.62, 0.6), max(bar, walk) * flake);
+		}
 	}
 	// The land takes it back from the edges in: grass and soil creep in along both, sand blows in from the
 	// side the wind comes from in long tapering tongues, and the middle goes last. It lies over the markings.
@@ -419,15 +477,18 @@ void fragment() {
 	// Roads, painted from their exact lines (on level ground facing up, not a dug wall).
 	float road_cover = 0.0;
 	float road_rough = 0.93;
-	if (road_grid.w > 0.5 && up > (far_ring ? 0.0 : 0.45)) {
+	// Not on a far ring inside the voxels' square: there it is only the wall it dives under them by, which
+	// sticks up as a sliver where the coarse ground stands higher, and painted it would show as a floating sheet.
+	// (Nor on a far ring's curtains, upright walls under each chunk's edge: painted, they show as pale sheets.)
+	if (road_grid.w > 0.5 && up > (far_ring ? 0.3 : 0.7) && !(far_ring && inside_hole(wpos.xz) > 0.0)) {
 		Road r = nearest_road(wpos.xz, wpos.y);
-		if (r.edge < 4.0) {
+		if (r.edge < 8.0) {
 			float fw = length(fwidth(wpos.xz)) * 0.7;
 			vec4 road = paint_road(r, wpos.xz, soil, fw, near, road_cover, road_rough);
 			// Up close only level ground takes it (not the wall of a pit dug in it). A far grid is too
 			// coarse to hold a deck's level through a tight bend, so there the deck is painted whole
 			// and only its shoulders keep off steep ground: one clean surface, not a smear.
-			float flat_ = smoothstep(0.45, 0.7, up);
+			float flat_ = smoothstep(0.72, 0.88, up);   // a deck is near level: a bank or fin beside it keeps the land's colour
 			float keep = far_ring ? max(road_cover, flat_) : flat_;
 			albedo = mix(albedo, road.rgb, road.a * keep);
 			road_cover *= keep;
