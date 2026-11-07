@@ -4,7 +4,7 @@ A theme is a seeded flavour that sits on top of a world profile (pre-collapse te
 
 How to read an entry:
 
-- **Happened**: the one-sentence cause, shown only through what the player finds, never told.
+- **Happened**: the one-sentence cause, shown only through what the player finds, never told. The game has no written logs and no dialogue, so wherever an entry mentions a log, a record, a tally, a voice or a speech, it shows as a place, an object, a behaviour or a wordless sound, never as text to read or words to hear.
 - **Land/sky**: landform and biome bias, weather, palette.
 - **Regions/infra**: what the region planner lays down; road, rail, power and wreck character.
 - **POIs**: `top` are existing families that should dominate. `NEW` are families that do not exist yet (snake_case, counted in the last section). `Inside` is what the rooms hold and the story they tell.
@@ -811,13 +811,13 @@ Worlds where people left, or tried to. The evidence is paperwork, queues and hal
 - Hazards/rewards: Low danger; permits, records and travel documents that open doors.
 - Fit: pre H > post H | ports B-D | U | S
 
-**85. Pirate Radio** (`pirate_radio`) - A voice that never stops.
+**85. Pirate Radio** (`pirate_radio`) - A murmur of radio static that never stops.
 - Happened: A hobbyist station was kept on air by long-life cells and never told it could stop.
 - Land/sky: Soft hills, masts on every ridge, warm evenings, wildflowers in the verges.
 - Regions/infra: A mast farm, a studio hut, scattered listening posts joined by footpaths; telephone poles in lines.
-- POIs: top: meridian_relay, survivor_hamlet, telecom_exchange. NEW: radio_mast_site. Inside: a cheerful host recording that loops, a request box with notes, shelves of tapes of callers, a coffee mug left on the desk.
-- Life/people: Friendly survivors who tune in, a hermit who thinks he is the host.
-- Hazards/rewards: Calm; comms parts, news of nearby worlds, a trade tip each night.
+- POIs: top: meridian_relay, survivor_hamlet, telecom_exchange. NEW: radio_mast_site. Inside: a transmitter still humming, speakers murmuring static that almost sounds like a voice, a request box stuffed with paper, shelves of unlabelled tapes, a coffee mug left on the desk.
+- Life/people: Friendly survivors who tune in, a hermit who sits by the set all night.
+- Hazards/rewards: Calm; comms parts and tapes to salvage.
 - Fit: pre M > post L | ports D-E | U | S
 
 **86. Zoo World** (`zoo_world`) - Escaped menagerie.
@@ -1084,7 +1084,8 @@ Rules:
 - Every inhabited world rolls one primary apocalypse; about a third roll a second, smaller one that struck a region ("scar"), such as a blast crater on a plague world. Never-inhabited worlds roll none.
 - High-tech and well-recovered worlds roll apocalypses too. They show it as spotted evidence (a sealed district, a scorched wing, a plaque, a roped-off crater) not as ruin everywhere. This is the "recovered" column in every entry, and it is also the hook to reclaim: a recovered world has places waiting to be reopened.
 - Each entry gives: how long ago and how fast, what it leaves (land, buildings, interiors as placeable things), which POIs and hazards it favours, what it means for survivors and creatures, and what remains on a recovered high-tech world.
-- Time scale: "years ago" is real years since the fall, always 100 to 200; "speed" is how fast the fall itself was: instant (hours), quick (days), season (months), slow (decades).
+- Time scale: "years ago" is real years since the fall, 100 to 200 on most worlds; "speed" is how fast the fall itself was: instant (hours), quick (days), season (months), slow (decades).
+- The exception is a world in the midst of collapse: it was hurt by the galactic collapse, survived it, and is falling only now because of that damage. Its "years ago" is close to zero. The cause can be as ordinary as a slide into barbarism or civil war; it needs no Hollow or invasion. It isn't a separate list: mid-collapse is a phase of the existing layers, so any suitable theme and apocalypse here can be rolled as still happening, which gives each one its own version of a world falling.
 
 ### War and weapons
 
@@ -1648,7 +1649,7 @@ Occupancy is a layer separate from layout. The same hospital layout is built onc
 | --- | --- | --- |
 | EMP | Empty | No spawns at all. Dust, dead light, no tracks. Loot is intact but untouched, so it is often the best loot. Still gets logs and the frozen-moment dressing. |
 | NST | Nesters (creature nests) | Nests in rooms and vents, webbing and egg clusters, droppings, gnawed furniture, bones of prey, chewed doors, a smell sound-cue. Guarded brood rooms deeper in. |
-| HSK | Husks (bodies run by leftover medical nanites or implants) | Slumped figures in beds and corridors that rise when disturbed; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
+| HSK | Husks (bodies run by leftover medical nanites or implants) | Slumped figures in beds and corridors that rise when disturbed, with worm-like protuberances coming from their orifices; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
 | SCV | Scavengers passing | A few people, in and out: a camp fire in the ward, a tripod over ash, picked-over shelves, bedrolls, fresh boot tracks, a chalk arrow, a stash they will return for. Often neutral until threatened. |
 | SQT | Squatters / settled survivors | A lived-in place: tidy bunks, cooking stove, water barrels, boarded windows, a notice board, a barter shelf. Friendly or wary; they trade. |
 | GNG | Gang-held | Fortified: welded barricades, spikes, trophy walls, loot piles, a boss room, hostages or cages. Always hostile. |
