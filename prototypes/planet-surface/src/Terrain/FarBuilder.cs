@@ -38,7 +38,7 @@ public sealed class FarJob
 /// <summary>
 /// The ground beyond the voxel chunks: heightfield chunks sampled from the same terrain source
 /// (planet generator heights plus stamps) at 2, 4 or 8 m, coloured with the same palette, with
-/// skirts that hide cracks between levels of detail, river water, and flora scatter. Flora is
+/// curtains that close the join between levels of detail, river water, and flora scatter. Flora is
 /// laid out here for the voxel area too, and skips spots that have been dug, covered by a pad or
 /// opened by a cave mouth, so nothing ever floats. At the finest level it also lists the solid
 /// flora (trunks and boulders, <see cref="FloraSolidRules"/>) for the colliders near the player,
@@ -107,11 +107,12 @@ public static class FarBuilder
                 river[k] = s.InRiver;
             }
 
+            // A curtain has two rows of vertices along each edge: it is painted apart from the ground.
             int points = grid.Nx * grid.Nz, skirt = 2 * (grid.Nx + grid.Nz);
-            job.Vertices = new Vector3[points + skirt];
-            job.Normals = new Vector3[points + skirt];
-            job.Colors = new Color[points + skirt];
-            job.Flags = new Vector2[points + skirt];
+            job.Vertices = new Vector3[points + skirt * 2];
+            job.Normals = new Vector3[points + skirt * 2];
+            job.Colors = new Color[points + skirt * 2];
+            job.Flags = new Vector2[points + skirt * 2];
             var up = new float[points];
             for (int j = 0; j < grid.Nz; j++)
             for (int i = 0; i < grid.Nx; i++)
@@ -123,7 +124,7 @@ public static class FarBuilder
                 double x = x0 + i * step, z = z0 + j * step;
                 job.Vertices[k] = new Vector3(i * step, h, j * step);
                 job.Normals[k] = normal;
-                job.Colors[k] = GroundColor(source, palette, x, z, h, gx * gx + gz * gz, river[s], out job.Flags[k]);
+                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k]);
                 up[k] = normal.Y;
             }
 
@@ -135,7 +136,7 @@ public static class FarBuilder
                 indices.Add(a); indices.Add(b); indices.Add(c);
                 indices.Add(b); indices.Add(d); indices.Add(c);
             }
-            AddSkirts(job, grid, step, indices);
+            AddCurtains(job, grid, step, indices, source, palette, x0, z0);
             job.Indices = indices.ToArray();
 
             BuildRiverWater(job, grid, step, level, river, height);
@@ -147,6 +148,32 @@ public static class FarBuilder
             job.Error = e;
         }
     }
+
+    /// <summary>
+    /// The squared slope that picks a grid point's colour. A point on a spur or in a gully on a jagged
+    /// cliff has neighbours far below (or above) it on both sides, so the difference across it says it
+    /// is flat, and a point by a cliff only across a diagonal does the same: it was painted as soil, and
+    /// every long triangle down the cliff from it showed as a pale streak, which at a distance looks
+    /// like a tear in the rock with the sky behind it. So the steepest of the six triangle edges meeting
+    /// at a point counts too, where it is a cliff and the plain gradient misses it. Ordinary slopes and
+    /// crests, whose gradient tells the truth, keep their colours.
+    /// </summary>
+    static float CliffSlope2(float[] height, int s, int g, float step, float plain2)
+    {
+        float h = height[s], steepest = 0f;
+        void Edge(int n, float length) => steepest = MathF.Max(steepest, MathF.Abs(height[n] - h) / (length * step));
+        Edge(s + 1, 1f);
+        Edge(s - 1, 1f);
+        Edge(s + g, 1f);
+        Edge(s - g, 1f);
+        Edge(s + 1 - g, Mathf.Sqrt2);
+        Edge(s - 1 + g, Mathf.Sqrt2);
+        float cliff = Smooth(CliffFrom, CliffFrom * 2f, steepest) * Smooth(0.8f, 0.5f, MathF.Sqrt(plain2) / MathF.Max(steepest, 1e-4f));
+        return plain2 + (MathF.Max(plain2, steepest * steepest) - plain2) * cliff;
+    }
+
+    /// <summary>The rise per metre over a triangle edge from which a point can count as on a cliff.</summary>
+    const float CliffFrom = 0.75f;
 
     /// <summary>The same soil-to-rock rule as the voxel source: soil thins out and slides off as slopes steepen.</summary>
     static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
@@ -172,31 +199,110 @@ public static class FarBuilder
         public int Sample(int i, int j) => (j + 1) * G + i + 1;
     }
 
-    /// <summary>A short wall under each edge, so a coarser neighbour never shows a crack.</summary>
-    static void AddSkirts(FarJob job, Grid grid, float step, List<int> indices)
+    /// <summary>
+    /// A curtain under each edge, so no level of detail shows a crack at its neighbour. Each level is
+    /// its own surface (a coarser one has fewer points and fewer octaves of noise), so where a cliff
+    /// crosses an edge one side can stand tens of metres above the other. Looking outward past the
+    /// lower side's edge, the eye would go in under the higher side's ground, whose back faces aren't
+    /// drawn, and out to whatever lies beyond. A level's neighbours change as the player moves, and
+    /// stitching the two meshes would mean rebuilding them each time and bending the finer one to the
+    /// coarser, so instead each chunk hangs a curtain from its edge to below where any level's edge runs
+    /// there: short on ordinary ground, and on a cliff the height of the difference and painted as rock.
+    /// The heights of the levels along the edge are sampled to know: no fixed depth is deep enough.
+    /// </summary>
+    static void AddCurtains(FarJob job, Grid grid, float step, List<int> indices, PlanetTerrainSource source, GroundPalette palette, double x0, double z0)
     {
         int nx = grid.Nx, nz = grid.Nz;
         int Edge(int edge, int t) => edge switch { 0 => t, 1 => (nz - 1) * nx + t, 2 => t * nx, _ => t * nx + nx - 1 };
-        float drop = step * 2f + 2f;
+        float least = step * 2f + 2f;
+        float endX = (nx - 1) * step, endZ = (nz - 1) * step;
         int dst = nx * nz;
         for (int edge = 0; edge < 4; edge++)
         {
             int count = edge < 2 ? nx : nz;
-            for (int t = 0; t < count; t++, dst++)
+            double ex = x0 + (edge == 3 ? endX : 0f), ez = z0 + (edge == 1 ? endZ : 0f);
+            bool alongX = edge < 2;
+            float[] extra = EdgeDepths(job, step, count, t => job.Vertices[Edge(edge, t)].Y, d => alongX ? (ex + d, ez) : (ex, ez + d), source);
+            var outward = edge switch { 0 => Vector3.Forward, 1 => Vector3.Back, 2 => Vector3.Left, _ => Vector3.Right };
+            for (int t = 0; t < count; t++, dst += 2)
             {
                 int src = Edge(edge, t);
-                job.Vertices[dst] = job.Vertices[src] + Vector3.Down * drop;
-                job.Normals[dst] = job.Normals[src];
-                job.Colors[dst] = job.Colors[src];
-                job.Flags[dst] = job.Flags[src];
+                Vector3 at = job.Vertices[src];
+                float depth = extra[t];
+                Color color = job.Colors[src];
+                Vector3 normal = job.Normals[src];
+                Vector2 flags = job.Flags[src];
+                // A long curtain is a piece of cliff: bare rock facing out. A short one stays the ground it hangs from.
+                float wall = Smooth(0f, 4f, depth);
+                if (wall > 0f)
+                {
+                    double x = x0 + at.X, z = z0 + at.Z;
+                    Color rock = palette.Natural(x, z, at.Y, 0f, out Vector2 rockFlags);
+                    color = color.Lerp(rock, wall);
+                    flags = flags.Lerp(rockFlags, wall);
+                    normal = normal.Lerp(outward, wall).Normalized();
+                }
+                job.Vertices[dst] = at;
+                job.Vertices[dst + 1] = at + Vector3.Down * (least + depth);
+                job.Normals[dst] = job.Normals[dst + 1] = normal;
+                job.Colors[dst] = job.Colors[dst + 1] = color;
+                job.Flags[dst] = job.Flags[dst + 1] = flags;
                 if (t == 0) continue;
-                int a = Edge(edge, t - 1), b = src, c = dst - 1, d = dst;
+                int a = dst - 2, b = dst, c = dst - 1, d = dst + 1;
                 indices.Add(a); indices.Add(b); indices.Add(c);
                 indices.Add(b); indices.Add(d); indices.Add(c);
                 indices.Add(a); indices.Add(c); indices.Add(b);
                 indices.Add(b); indices.Add(c); indices.Add(d);
             }
         }
+    }
+
+    /// <summary>
+    /// How far beyond its usual depth a curtain must reach at each point of an edge: enough that all
+    /// along the edge it is below where every level draws that edge, its own and the others.
+    /// </summary>
+    static float[] EdgeDepths(FarJob job, float step, int count, Func<int, float> own, Func<float, (double x, double z)> place, PlanetTerrainSource source)
+    {
+        float span = (count - 1) * step, fine = Step(0);
+        int points = (int)(span / fine) + 1;
+        var mine = new float[points];
+        var low = new float[points];
+        for (int p = 0; p < points; p++)
+        {
+            float at = p * fine / step;
+            int i = Math.Min((int)at, count - 2);
+            mine[p] = low[p] = Mathx.Lerp(own(i), own(i + 1), at - i);
+        }
+        for (int level = 0; level <= 2; level++)
+        {
+            float levelStep = Step(level);
+            if (levelStep == step) continue;
+            int samples = (int)(span / levelStep) + 1;
+            var line = new float[samples];
+            for (int i = 0; i < samples; i++)
+            {
+                var (x, z) = place(i * levelStep);
+                line[i] = source.Ground(x, z, levelStep).Height;
+            }
+            for (int p = 0; p < points; p++)
+            {
+                float at = p * fine / levelStep;
+                int i = Math.Min((int)at, samples - 2);
+                low[p] = MathF.Min(low[p], Mathx.Lerp(line[i], line[i + 1], at - i));
+            }
+        }
+        // A curtain's foot is straight between its points, so both ends of a stretch cover the whole of it.
+        var depths = new float[count];
+        for (int p = 0; p < points; p++)
+        {
+            float need = mine[p] - low[p];
+            if (need <= 0f) continue;
+            float at = p * fine / step;
+            int i = Math.Min((int)at, count - 2);
+            depths[i] = MathF.Max(depths[i], need);
+            depths[i + 1] = MathF.Max(depths[i + 1], need);
+        }
+        return depths;
     }
 
     /// <summary>Flat water at the river's surface over every grid square that touches the channel.</summary>

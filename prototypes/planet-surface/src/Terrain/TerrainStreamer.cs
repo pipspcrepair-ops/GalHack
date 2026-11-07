@@ -21,8 +21,8 @@ namespace PlanetSurface.Terrain;
 ///   the player, where something can touch it.
 /// - <b>Far:</b> heightfield chunks from the same source at 2, 4 and 8 m out to about a kilometre,
 ///   then a horizon mesh straight from the planet generator's world map.
-/// Each level cuts a hole where the finer one is complete, so they never overlap; the horizon first
-/// dives under the far rings' edge, so no gap between them can show the sky.
+/// Each level cuts a hole where the finer one is complete, so they never overlap; first it dives
+/// under the finer one's edge, so no gap between them can show the sky or what lies past them.
 ///
 /// The main thread only takes snapshots and swaps finished meshes in, under a per-frame time
 /// budget. Voxel chunks live in the terrain's frame (see <see cref="PlanetTerrain"/>); when the
@@ -39,6 +39,9 @@ public partial class TerrainStreamer : Node3D
     public double UploadBudgetMs = 3.0;
     public const int FarRadius = 7, FarLod0Radius = 1, FarLod1Radius = 3;
     const float HorizonSpacing = 64f, HorizonReach = 7000f, HorizonRebuild = 1200f, HorizonSink = 1000f;
+
+    /// <summary>How far inside the voxel square the far rings still draw: a grid square of the coarsest level, the last that can be there.</summary>
+    const float FarHoleCut = 8f;
 
     public PlanetWorld World { get; private set; }
     public Vector3 Focus { get; private set; }
@@ -185,6 +188,13 @@ public partial class TerrainStreamer : Node3D
         _horizonMaterial.SetShaderParameter("hole_sink_from", HorizonSpacing - 0.5f);
         _horizonMaterial.SetShaderParameter("hole_cut", 2f * HorizonSpacing);
         _horizon.MaterialOverride = _horizonMaterial;
+        // The far rings meet the voxels the same way. The square moves 16 m at a time, so the meshes
+        // can't be stitched, and on a cliff the two can differ by metres along it. Far grid lines fall on
+        // the square's edge, and the next vertices in go under, so the last grid square is a wall
+        // down from that edge: it fills any step up from the voxels, and is hidden under them otherwise.
+        FarMaterial.SetShaderParameter("hole_sink", HorizonSink);
+        FarMaterial.SetShaderParameter("hole_sink_from", 0.25f);
+        FarMaterial.SetShaderParameter("hole_cut", FarHoleCut);
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
     }
 
@@ -669,6 +679,8 @@ public partial class TerrainStreamer : Node3D
                 GD.PushError($"far chunk {job.Fx},{job.Fz} failed: {job.Error}");
                 continue;
             }
+            FarBuildMs[job.Lod] += job.Milliseconds;
+            FarBuilds[job.Lod]++;
             if (job.Version != f.Version) continue; // flora went stale: it is requested again
             f.Node?.QueueFree();
             long nodeStart = Stopwatch.GetTimestamp();
@@ -784,6 +796,10 @@ public partial class TerrainStreamer : Node3D
     }
 
     public double WorstFarNodeMs { get; private set; }
+
+    /// <summary>Workers' time building far chunks so far, by level of detail, and how many: tests report it.</summary>
+    public readonly double[] FarBuildMs = new double[3];
+    public readonly int[] FarBuilds = new int[3];
     public string WorstFarNode { get; private set; } = "";
 
     /// <summary>A canonical position moved by whole planets to the copy nearest the focus (frame coordinates).</summary>
@@ -1011,6 +1027,25 @@ public partial class TerrainStreamer : Node3D
         offset = c.Mesh.Position;
         return c.Mesh.Mesh as ArrayMesh;
     }
+
+    /// <summary>The voxel meshes on show right now, with their offsets in the frame: what a test's rays must meet.</summary>
+    public IEnumerable<(ArrayMesh Mesh, Vector3 Offset)> DrawnVoxels()
+    {
+        foreach (VChunk c in _chunks.Values)
+            if (c.Mesh != null && c.Mesh.Visible && c.Mesh.Mesh is ArrayMesh mesh) yield return (mesh, c.Mesh.Position);
+    }
+
+    /// <summary>The far chunks' ground meshes on show right now, with their positions in the frame and their levels.</summary>
+    public IEnumerable<(ArrayMesh Mesh, Vector3 At, int Lod)> DrawnFar()
+    {
+        foreach (FarChunk f in _far.Values)
+            if (f.Node != null && f.Node.GetChild(0) is MeshInstance3D { Mesh: ArrayMesh mesh }) yield return (mesh, f.Node.Position, f.Lod);
+    }
+
+    /// <summary>The horizon's mesh and where it stands in the frame. Null until it is built.</summary>
+    public (ArrayMesh Mesh, Vector3 At) DrawnHorizon() => (_horizon.Mesh as ArrayMesh, _horizon.Position);
+
+    public ShaderMaterial HorizonMaterial => _horizonMaterial;
 
     static int Mod(int v, int m) => (v % m + m) % m;
     static double Mod(double v, double m)

@@ -95,6 +95,7 @@ public partial class Screenshot : Node
                 if (_spec.Weather is WeatherKind kind) _main.Weather.Snap(kind, _spec.Ground);
                 if (!_args.TryGetValue("hud", out string hud) || hud != "1") _main.Hud.HideAll();
                 if (_args.TryGetValue("debug", out string debug)) _main.Sky.DebugView(int.Parse(debug));
+                RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
                 _stage = 1;
                 break;
             case 1:
@@ -121,7 +122,8 @@ public partial class Screenshot : Node
         Vector3 p = _main.Camera.GlobalPosition;
         GD.Print($"{_main.World.Spec} · {_main.World.Sky.Summary} · camera {p.X:F0}, {p.Y:F0}, {p.Z:F0} · " +
                  $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame) / 1000} k primitives, " +
-                 $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls");
+                 $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls, " +
+                 $"{RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid()):F1} ms on the GPU");
         Vector3 fwd = -_main.Camera.GlobalBasis.Z;
         GD.Print($"time {_main.Sky.TimeOfDay:F3} · sun {_main.Sky.ToSun.X:F2}, {_main.Sky.ToSun.Y:F2}, {_main.Sky.ToSun.Z:F2} · facing {fwd.X:F2}, {fwd.Y:F2}, {fwd.Z:F2}");
         if (_main.Pois.DecoRooms > 0) GD.Print($"rooms dressed from the decorations library: {_main.Pois.DecoRooms}");
