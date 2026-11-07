@@ -33,11 +33,41 @@ public static class Seizing
     /// <summary>How close the faces come, m (feet to feet).</summary>
     public const float FaceToFace = 0.5f;
 
+    /// <summary>Where a standing and a crouching player's head is, m off the ground.</summary>
+    public const float StandingHead = 1.7f, CrouchedHead = 1.05f;
+    /// <summary>How far above its own head a Husk's hands can pull a head down to its face, m.</summary>
+    public const float ReachAbove = 0.15f;
+
+    /// <summary>How high a target's head is: a player's by their stance, a person's by their height, an animal's by its body.</summary>
+    public static float HeadHeight(ITarget t) => t switch
+    {
+        CreatureTarget { Creature: { } v } => v.Dead ? 0.3f : v.Species.Figure?.Height ?? v.Species.BodyHeight,
+        IHost { Body.Figure: { } f } => f.Height,
+        _ => t.Crouched ? CrouchedHead : StandingHead,
+    };
+
     /// <summary>
-    /// Whether this Husk can seize a head at all: only one standing at least <see cref="HuskRules.SeizeHeight"/>.
-    /// A short one (a child, a small build) never does, whoever it's after: it swings and retches instead.
+    /// Whether it can bring its face to the victim's head here and now:
+    /// - its reach: tall enough for that head (a short Husk, a child, can't take a standing adult's,
+    ///   but can a crouched one's);
+    /// - room: the spot face to face is open ground it can stand on, and the line from its face to
+    ///   their head is clear of anything solid (a wall, a doorframe, a ceiling).
+    /// Nothing about the victim moves for it: if it can't, it strikes or retches instead.
     /// </summary>
-    public static bool CanReach(WildSim w, Creature c) => c.Species.Figure is { } f && f.Height >= w.Data.Husks.SeizeHeight;
+    public static bool CanReach(WildSim w, Creature c, ITarget t)
+    {
+        if (c.Species.Figure is not { } f || t == null) return false;
+        float head = HeadHeight(t);
+        if (f.Height + ReachAbove < head) return false;
+        Vector3 to = WildSim.Flat(t.Position - c.Position);
+        Vector3 dir = to.LengthSquared() > 1e-4f ? to.Normalized() : c.Forward;
+        Vector3 spot = t.Position - dir * FaceToFace;
+        Vector3 face = spot + Vector3.Up * MathF.Min(f.Height * 0.9f, head), theirs = t.Position + Vector3.Up * head * 0.92f;
+        if (c.Space != null)
+            return c.Space.Density(spot + Vector3.Up * 0.9f) < -0.2f && SpaceMath.Clear(c.Space, face, theirs, 0.2f);
+        if (Interpenetration.SolidSurface(w, spot, c.Species)) return false;
+        return w.SightLine == null || w.SightLine(face, theirs);
+    }
 
     public static void Begin(WildSim w, Creature c, ITarget t)
     {

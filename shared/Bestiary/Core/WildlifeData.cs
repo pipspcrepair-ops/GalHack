@@ -506,8 +506,6 @@ public sealed class HuskRules
     public float Telegraph { get; set; } = 0.7f;
     /// <summary>Share of close attacks on someone with a head to take that are the seize; the rest are arm strikes.</summary>
     public float SeizeShare { get; set; } = 0.6f;
-    /// <summary>Below this height, m, a Husk never seizes a head (a child, a small build): it swings and retches instead.</summary>
-    public float SeizeHeight { get; set; } = 1.5f;
     /// <summary>How long a seized person takes to turn (an animal is killed in the same time), s.</summary>
     public float TurnSeconds { get; set; } = 4f;
     /// <summary>The most a hold lasts before it lets go of its own accord, s (a game ends it sooner).</summary>

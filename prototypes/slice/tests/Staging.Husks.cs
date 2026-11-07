@@ -33,7 +33,7 @@ public sealed partial class Staging
         List<Species> hosts = life.Moving.FirstOrDefault(s => s.Husk)?.Hosts
             ?? Enumerable.Range(0, 6).Select(i => life.People.Person((ulong)Random.Shared.NextInt64(), (PersonRole)(i % 7), Occupancy.Friendly, 0.2f, husk: true)).ToList();
         // One tall enough to seize a head, whose face shows.
-        Species husk = hosts.OrderBy(h => h.Figure.Height >= life.Data.Husks.SeizeHeight ? 0 : 1).ThenBy(h => h.Figure.Wear.Any(w => HumanBody.Slot(w) == "head") ? 1 : 0).First();
+        Species husk = hosts.OrderBy(h => h.Figure.Height + Seizing.ReachAbove >= Seizing.StandingHead ? 0 : 1).ThenBy(h => h.Figure.Wear.Any(w => HumanBody.Slot(w) == "head") ? 1 : 0).First();
         Vector3 look = _game.Survivor.WorldLook();
         look = new Vector3(look.X, 0f, look.Z).Normalized();
         Creature c = patch.Sim.Spawn(husk, patch.PatchLocal(Ground(feet + look * 1.4f)));

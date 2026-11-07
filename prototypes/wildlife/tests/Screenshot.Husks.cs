@@ -152,7 +152,7 @@ public partial class Screenshot
                     c.Rig.Reset(m.Sim, c);
                 }
                 float r = MathF.Max(healthy.Body.Size, healthy.Body.LegLength + healthy.Body.Height);
-                Vector3 eye = Ground(origin - fwd * (gap * 2.2f + r * 2.2f)) + Vector3.Up * (1.2f + r * 0.4f);
+                Vector3 eye = Ground(origin - fwd * (gap * 1.3f + r * 1.5f)) + Vector3.Up * (1.2f + r * 0.5f);
                 m.Camera.Fov = 50f;
                 _aim = () => (eye, origin + Vector3.Up * (healthy.Body.LegLength + healthy.Body.Height) * 0.5f);
                 _captureTick = 180;

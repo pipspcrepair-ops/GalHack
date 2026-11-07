@@ -421,7 +421,7 @@
       "base": "#6b5a44",
       "veins": "#d9d6b8",
       "glow": "#c8f08a",
-      "mix": 0.38,
+      "mix": 0.5,
       "weirdnessBonus": 0.2,
       "healthScale": 0.75,
       "damageScale": 0.8,

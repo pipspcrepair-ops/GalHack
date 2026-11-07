@@ -20,7 +20,7 @@ public partial class Game
     public Creature HeldBy { get; private set; }
     WildSim _heldIn;
     float _heldFor;
-    bool _openHelmet;
+    bool _openHelmet, _crouchedWhenSeized;
 
     /// <summary>How far through breaking a sealed-helmet hold you are, 0 to 1.</summary>
     public float Struggle { get; private set; }
@@ -63,6 +63,8 @@ public partial class Game
         _heldFor = 0f;
         Struggle = 0f;
         _openHelmet = !Suit.Sim.Player.Gear.HelmetOn;
+        // Your stance holds while it has you: crouched you stay crouched, standing you stay standing.
+        _crouchedWhenSeized = Survivor.Crouched;
         Survivor.Dismount();
         Zone.Wildlife.Audio.PlayUi("hurt", -4f);
         Visor.Hurt(Zone.Wildlife.WorldOf(e.Husk));
@@ -98,6 +100,8 @@ public partial class Game
         Survivor.Legs.Move = default;
         Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
         Survivor.Legs.Sprint = false;
+        // Nothing moves you: you stay where you stand, in the stance you were taken in (only the Husk comes to you).
+        Survivor.WantCrouch = _crouchedWhenSeized;
         // Its face, a hand's width from yours.
         // (Its head, where its rig has it: a hunched one's is lower than its height.)
         Vector3 face = h.Rig != null && h.Rig.HitCount > 1

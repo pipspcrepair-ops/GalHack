@@ -815,7 +815,7 @@ public sealed class FaunaGenerator
         s.Colors.Base = s.Colors.Base.Lerp(fungus, c.Mix * rng.Range(0.8f, 1.1f));
         s.Colors.Belly = s.Colors.Belly.Lerp(fungus, c.Mix * 0.8f);
         // Mould in patches over the hide: the animal's own colour, gone pale and grey-green there.
-        s.Colors.Accent = s.Colors.Base.Lerp(Color.FromHtml(c.Veins), 0.6f);
+        s.Colors.Accent = s.Colors.Base.Lerp(Color.FromHtml(c.Veins), 0.35f);
         s.Colors.Glow = Color.FromHtml(c.Glow);
         s.Colors.GlowStrength = Math.Max(s.Colors.GlowStrength, rng.Range(0.25f, 0.45f));
         s.Colors.Pattern = Pattern.Mottle;

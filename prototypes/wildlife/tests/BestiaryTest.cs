@@ -341,7 +341,7 @@ public partial class BestiaryTest : Node
             sim.Seized += _ => seized++;
             sim.Turned += _ => turned++;
             bool person = t % 2 == 0;
-            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.First(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged);
+            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
             Creature h = sim.Spawn(husk, new Vector3(0f, 0f, 0f));
             Creature v = sim.Spawn(prey, new Vector3(1.6f, 0f, 0f));
             v.Health = v.Stats.MaxHealth = 10000f; // only the seize may end it
@@ -369,28 +369,30 @@ public partial class BestiaryTest : Node
         for (int i = 0; i < 200; i++)
         {
             Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
-            if (s.Figure.Height >= _data.Husks.SeizeHeight + 0.05f) return s;
+            if (s.Figure.Height + Seizing.ReachAbove >= Seizing.StandingHead + 0.05f) return s;
         }
         throw new InvalidOperationException("no tall Husk in 200 rolls");
     }
 
-    /// <summary>Below the seize height a Husk never takes a head, whatever its victim does: it swings and retches instead.</summary>
+    /// <summary>A Husk too short to bring its face to a standing head (a child) strikes and retches instead; crouch near it, and it can.</summary>
     void ShortHusksNeverSeize()
     {
         WorldLife life = Bestiary.Roll(_data, World(15f));
-        int seized = 0, blows = 0;
+        int seized = 0, seizedCrouched = 0, blows = 0;
         for (int t = 0; t < 4; t++)
         {
             Species child = life.People.Person(Seed(), PersonRole.Child, Occupancy.Friendly, 0.2f, husk: true);
             var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
             var you = new DummyTarget { Position = new Vector3(0f, 0f, -3f), Health = new Health(1e9f), Crouched = t % 2 == 1 };
             sim.Targets.Add(you);
-            sim.Seized += _ => seized++;
+            bool crouched = t % 2 == 1;
+            sim.Seized += _ => { if (crouched) seizedCrouched++; else seized++; };
             sim.Attacked += e => { if (e.Target == you) blows++; };
             sim.Spawn(child, Vector3.Zero);
             for (int i = 0; i < 30 * 25; i++) sim.Step(1f / 30f);
         }
-        Check(seized == 0 && blows > 0, $"Husked children never seize a head, standing or crouched ({blows} blows and retches instead)");
+        Check(seized == 0 && blows > 0, $"a Husked child never takes a standing head ({blows} blows and retches instead)");
+        Check(seizedCrouched > 0, $"but takes a crouched one ({seizedCrouched} holds)");
     }
 
     /// <summary>The player is held for the game to settle (death or a struggle), and never infected: a broken hold throws the Husk back.</summary>
