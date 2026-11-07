@@ -145,7 +145,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Blood);
         Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
         AddChild(Underwater);
-        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder };
         AddChild(Loot);
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
@@ -221,6 +221,21 @@ public partial class SurfaceZone : Node3D
 
     /// <summary>The generator's landing site, on the ground.</summary>
     public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);
+
+    /// <summary>
+    /// The first floor at or below a point that someone on foot stands on (a place's floor, a deck,
+    /// the dug ground), and never above the point: a thing left inside a ceiling or on a ledge out of
+    /// reach comes down to it. With nothing below in reach, the natural ground.
+    /// </summary>
+    public Vector3 FloorUnder(Vector3 p)
+    {
+        var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p + Vector3.Down * 80f, GalHack.Physics.Layers.Solid);
+        q.HitFromInside = false;
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(q);
+        if (hit.Count > 0) return (Vector3)hit["position"];
+        Vector3 ground = GroundAt(p.X, p.Z);
+        return float.IsFinite(ground.Y) ? ground : p;
+    }
 
     /// <summary>The natural ground (before digging) under a frame position.</summary>
     public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);

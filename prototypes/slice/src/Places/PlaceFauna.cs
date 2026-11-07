@@ -182,8 +182,17 @@ public sealed class PlaceFauna
         var c = new PInt3(x, y, z);
         Block b = inst.Blocks.Get(c);
         if (b.IsAir) return y <= Assembler.GroundY && !inst.Layout.Occupied[c];
-        return BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
+        return Built(b);
     }
+
+    /// <summary>Solid to a creature out on the surface: only what was built (walls, floors, roofs, heavy fittings), not the ground round it.</summary>
+    public static bool BuiltSolid(PoiInstance inst, PInt3 c)
+    {
+        Block b = inst.Blocks.Get(c);
+        return !b.IsAir && Built(b);
+    }
+
+    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
 
     /// <summary>
     /// Its sim, made once (worker-safe): the place's ground round it for anything that wanders

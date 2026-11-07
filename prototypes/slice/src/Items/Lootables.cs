@@ -100,7 +100,13 @@ public partial class Lootables : Node3D
         return best;
     }
 
-    /// <summary>Empty ones that aren't open go; bodies whose creature has been cleared away show as a bundle.</summary>
+    /// <summary>Where a creature's body is in the zone, while the wildlife still draws it (set by the game).</summary>
+    public Func<Creature, Vector3> BodyAt;
+
+    /// <summary>The floor under a point that someone on foot can reach (set by the game): a body that came down on a ledge or a ceiling ends on it.</summary>
+    public Func<Vector3, Vector3> Settle;
+
+    /// <summary>Empty ones that aren't open go; a body goes where its creature's body goes (it falls off a ledge, it lets go of a ceiling), and once the creature is cleared away it shows as a bundle on the floor below.</summary>
     public void Tick()
     {
         for (int i = All.Count - 1; i >= 0; i--)
@@ -114,10 +120,18 @@ public partial class Lootables : Node3D
                 Removed?.Invoke(l);
                 continue;
             }
-            if (l.Creature != null && l.Creature.Removed)
+            if (l.Creature == null) continue;
+            if (l.Creature.Removed)
             {
                 l.Creature = null;
+                if (Settle != null) l.Position = Settle(l.Position);
+                l.Node.GlobalPosition = l.Position;
                 l.Node.GetNode<Node3D>("Bundle").Visible = true;
+            }
+            else if (BodyAt != null && BodyAt(l.Creature) is var at && at.DistanceSquaredTo(l.Position) > 1e-4f)
+            {
+                l.Position = at;
+                l.Node.GlobalPosition = at;
             }
         }
     }
@@ -131,7 +145,7 @@ public partial class Lootables : Node3D
         }
     }
 
-    /// <summary>Procedural looks: a hide-wrapped bundle under a ring for a body, a pack with a beacon for a backpack, a crate for a drop.</summary>
+    /// <summary>Procedural looks: a hide-wrapped bundle for a body once its creature is gone, a pack with a beacon for a backpack, a crate for a drop.</summary>
     static Node3D Look(LootKind kind)
     {
         var root = new Node3D { Name = $"Loot{kind}" };
@@ -146,8 +160,10 @@ public partial class Lootables : Node3D
             Visible = kind != LootKind.Corpse,
         };
         root.AddChild(bundle);
-        // A beacon so it can be found again: amber for things set down, orange for a backpack, a dim ring for a body.
-        Color beacon = kind switch { LootKind.Backpack => new Color("ff8c1a"), LootKind.Drop => new Color("ffd166"), _ => new Color("9ef01a") };
+        // A body is its own mark: it lies where the creature fell, with nothing drawn round it.
+        if (kind == LootKind.Corpse) return root;
+        // A beacon so it can be found again: amber for things set down, orange for a backpack.
+        Color beacon = kind == LootKind.Backpack ? new Color("ff8c1a") : new Color("ffd166");
         root.AddChild(new MeshInstance3D
         {
             Name = "Ring", Mesh = new TorusMesh { InnerRadius = 0.55f, OuterRadius = 0.62f, Rings = 24, RingSegments = 6 },

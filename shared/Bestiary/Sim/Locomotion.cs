@@ -93,8 +93,25 @@ public static class Locomotion
         Avoid(w, c, ref p, ref v);
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
+        if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>
+    /// A place's walls are walls: a step that would take the body into one slides along it on
+    /// whichever way is still open, or doesn't happen. (A body already inside, which never should
+    /// be, is let walk out: the sim's scan puts it back in the open.)
+    /// </summary>
+    static void KeepOutOfSolid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
+    {
+        if (!Interpenetration.SolidSurface(w, p, c.Species) || Interpenetration.SolidSurface(w, c.Position, c.Species)) return;
+        var alongX = new Vector3(p.X, 0f, c.Position.Z);
+        var alongZ = new Vector3(c.Position.X, 0f, p.Z);
+        if (!Interpenetration.SolidSurface(w, alongX, c.Species)) { p = alongX; v.Z = 0f; }
+        else if (!Interpenetration.SolidSurface(w, alongZ, c.Species)) { p = alongZ; v.X = 0f; }
+        else { p = c.Position; v = Vector3.Zero; return; }
+        p.Y = w.Terrain.Height(p.X, p.Z);
     }
 
     /// <summary>Hoppers stand still on the ground and cover distance in ballistic hops.</summary>

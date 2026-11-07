@@ -114,6 +114,18 @@ public sealed class WildSim
     /// </summary>
     public Func<Vector3, Vector3, bool> SightLine;
 
+    /// <summary>
+    /// Whether a point (sim frame) is inside something solid that the terrain's heights don't know
+    /// of: a place's walls and floors standing on the surface. The game sets it; walkers out on the
+    /// surface never step into it, and nothing spawns in it. (Creatures of a cave or a place go by
+    /// their own <see cref="ISolidSpace"/>.)
+    /// </summary>
+    public Func<Vector3, bool> SolidAt;
+
+    /// <summary>Creatures found inside solid geometry and freed (see <see cref="Interpenetration"/>); should stay at zero.</summary>
+    public int Freed;
+    float _scanAt;
+
     /// <summary>Loud sounds of the last moment.</summary>
     public readonly List<WorldNoise> Noises = new();
 
@@ -384,7 +396,7 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
-            if (InBaseZone(p) || (allow != null && !allow(p))) continue;
+            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
             list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
@@ -434,6 +446,8 @@ public sealed class WildSim
         c.Space = space;
         c.Clearance = Crawl.ClearanceFor(species);
         Crawl.Place(this, c, near, up);
+        // A spot inside a wall, a pillar or a stair is no spot: the nearest open floor near it, or nowhere.
+        if (Interpenetration.Inside(this, c) && !Interpenetration.Free(this, c, near)) c.Removed = true;
         c.Home = c.Position;
         c.Rig.Reset(this, c);
         return c;
@@ -512,6 +526,12 @@ public sealed class WildSim
 
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
+        // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
+        if (Time >= _scanAt)
+        {
+            _scanAt = Time + 1f;
+            foreach (Creature c in Interpenetration.Scan(this)) if (Interpenetration.Free(this, c)) Freed++;
+        }
         // Moss, fungus and scraps grow back slowly.
         if (Food.Count > 0 && Frame % 30 == 0)
             foreach (FoodPatch f in Food) f.Amount = MathF.Min(1f, f.Amount + dt * 30f / 90f);

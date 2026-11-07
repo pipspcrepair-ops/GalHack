@@ -491,6 +491,17 @@ public partial class PoiPlaces : Node3D
         return ClimbMode.None;
     }
 
+    /// <summary>Whether a world point is inside a standing place's built blocks (for creatures out on the surface: they walk round places, never through them).</summary>
+    public bool SolidAt(Vector3 world)
+    {
+        foreach (Place p in Standing)
+        {
+            Int3 c = p.CellAt(world);
+            if (p.Inst.Blocks.InBounds(c) && PlaceFauna.BuiltSolid(p.Inst, c)) return true;
+        }
+        return false;
+    }
+
     /// <summary>The standing place whose grid holds a world point, if any.</summary>
     public Place PlaceAt(Vector3 world)
     {

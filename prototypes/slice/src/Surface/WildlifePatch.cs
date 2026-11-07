@@ -52,6 +52,9 @@ public partial class WildlifePatch : Node3D
     /// <summary>The patch's middle, in the zone's frame.</summary>
     public Vector3 Origin { get; private set; }
 
+    /// <summary>Whether a zone point is inside something built on the surface (the places standing; set by the game).</summary>
+    public Func<Vector3, bool> SolidAt;
+
     /// <summary>The player as a target for creatures (set by the game).</summary>
     public ITarget Player { get; private set; }
 
@@ -153,6 +156,8 @@ public partial class WildlifePatch : Node3D
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
+        // Places standing on the surface are solid to everything walking out there.
+        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p));
         // Creatures see by the same light the eye does; scent goes with the weather.
         sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
         sim.Clicked += c => Audio.Click(c);
