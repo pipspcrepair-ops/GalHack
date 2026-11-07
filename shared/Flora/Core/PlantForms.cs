@@ -71,6 +71,7 @@ internal static class PlantForms
             case PlantForm.LeafCrop: LeafCrop(g, s, d, c); break;
             case PlantForm.VineCrop: VineCrop(g, s, d, c); break;
         }
+        if (PlantAudit.Joined(p.Form)) s.Weld(d, c.Bark, MathF.Min(g.TrunkRadius * 0.5f, 0.3f), PlantAudit.Crowned(p.Form) ? a.StemTop : null);
     }
 
     static Vector3 Ring(float angle, float radius, float y = 0f) => new(MathF.Cos(angle) * radius, y, MathF.Sin(angle) * radius);
@@ -234,14 +235,19 @@ internal static class PlantForms
     static void Weeping(Genome g, Sculptor s, Dice d, Paints c, bool far, Anatomy a)
     {
         float H = g.Height, stemH = H * g.Stem, R = H * g.Crown;
-        var (path, radii) = Trunk(g, d, stemH, g.TrunkRadius, g.TrunkRadius * 0.7f, far ? 1 : 2, a);
+        float crown = H - stemH, centre = stemH + crown * 0.45f;
+        // The trunk runs up into the dome (its top inside the lumps), so the crown never hangs above a bare stump.
+        var (path, radii) = Trunk(g, d, stemH + crown * 0.34f, g.TrunkRadius, g.TrunkRadius * 0.55f, far ? 2 : 3, a);
         s.Tube(path, radii, far ? 4 : g.Sides, c.BarkLow, c.Bark);
         Vector3 top = a.StemTop;
-        float crown = H - stemH, centre = stemH + crown * 0.45f, phase = d.Range(0f, MathF.Tau);
+        float phase = d.Range(0f, MathF.Tau);
         for (int i = 0; i < (far ? 0 : 3); i++)
         {
             float r = R * 0.6f;
-            s.Lump(new Vector3(top.X, centre + crown * d.Range(-0.05f, 0.14f), top.Z) + Ring(phase + i * MathF.Tau / 3f, R * 0.42f), new Vector3(r, crown * 0.42f, r), d, c.Top, c.Mid, 0.2f, 0.8f);
+            Vector3 lobe = new Vector3(top.X, centre + crown * d.Range(-0.05f, 0.14f), top.Z) + Ring(phase + i * MathF.Tau / 3f, R * 0.42f);
+            // A limb from the trunk's top to the middle of each lobe.
+            Limb(s, d, top, lobe, g.TrunkRadius * 0.5f, g.TrunkRadius * 0.2f, 4, c.Bark, c.Bark);
+            s.Lump(lobe, new Vector3(r, crown * 0.42f, r), d, c.Top, c.Mid, 0.2f, 0.8f);
         }
         s.Lump(new Vector3(top.X, centre + crown * (far ? 0f : 0.2f), top.Z), new Vector3(R * (far ? 1f : 0.7f), crown * (far ? 0.55f : 0.42f), R * (far ? 1f : 0.7f)), d, c.Top, c.Mid, 0.16f, 0.7f);
         int strips = far ? 6 : g.Fronds;
@@ -252,10 +258,10 @@ internal static class PlantForms
             float angle = phase + i * MathF.Tau / strips + d.Range(-0.08f, 0.08f);
             Vector3 dir = Ring(angle, 1f);
             Vector3 side = Ring(angle + MathF.PI / 2f, width * 0.5f);
-            Vector3 hang = new Vector3(top.X, centre + crown * 0.16f, top.Z) + dir * R * 0.86f;
+            Vector3 hang = new Vector3(top.X, centre + crown * 0.16f, top.Z) + dir * R * 0.62f; // the curtain's head is inside the dome
             float fall = (hang.Y - H * (0.1f + g.Droop * 0.3f)) * d.Range(0.5f, 1f);
-            Vector3 mid = hang + dir * R * 0.12f + Vector3.UnitY * -fall * 0.5f;
-            Vector3 low = hang + dir * R * 0.1f + Vector3.UnitY * -fall;
+            Vector3 mid = hang + dir * R * 0.36f + Vector3.UnitY * -fall * 0.5f;
+            Vector3 low = hang + dir * R * 0.34f + Vector3.UnitY * -fall;
             Vector3 outward = dir + Vector3.UnitY * 0.1f;
             s.Quad(hang - side, hang + side, mid + side * 0.92f, mid - side * 0.92f, outward, c.Mid, c.Mid, fade, fade);
             s.Quad(mid - side * 0.92f, mid + side * 0.92f, low + side * 0.4f, low - side * 0.4f, outward, fade, fade, c.Under, c.Under);
