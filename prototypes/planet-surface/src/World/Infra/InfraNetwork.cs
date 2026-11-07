@@ -838,6 +838,32 @@ public sealed class InfraNetwork
     {
         var pts = p.ToList();
         tight = false;
+        // First straighten what the land's line left wavering: a broad average over the run takes out the
+        // small back-and-forth a road following the ground picks up, so it runs straight between its bends.
+        for (int pass = 0; pass < 3; pass++)
+        {
+            int lo = Math.Max(4, keepStart + 2), hi = pts.Count - Math.Max(4, keepEnd + 2);
+            if (hi - lo < 12) break;
+            const int Broad = 12;
+            var next = pts.ToList();
+            for (int i = lo; i < hi; i++)
+            {
+                double x = 0, z = 0, sw = 0;
+                for (int k = -2 * Broad; k <= 2 * Broad; k++)
+                {
+                    int j = Math.Clamp(i + k, lo - 1, hi);
+                    double g = Math.Exp(-0.5 * k * k / (Broad * Broad * 0.25));
+                    x += pts[j].X * g;
+                    z += pts[j].Z * g;
+                    sw += g;
+                }
+                x /= sw;
+                z /= sw;
+                if (!router.Blocked(x, z) || router.Blocked(pts[i].X, pts[i].Z)) next[i] = (x, z);
+            }
+            pts = Resample(next, Spacing);
+        }
+        // Then open every bend still tighter than the class allows.
         const int Gap = 5;
         int window = Math.Max(3, (int)(least / Spacing));
         for (int pass = 0; pass < 400; pass++)
@@ -858,11 +884,12 @@ public sealed class InfraNetwork
             var next = pts.ToList();
             // Late passes may edge into a place's keep-off margin, a few metres at most, rather than leave a hairpin.
             double pressed = pass > 300 ? 8 : pass > 160 ? 3 : 0;
+            // The whole run is smoothed each pass (a road that follows the land runs straight between its bends,
+            // without wobbles), the tight stretches most.
             for (int i = lo; i < hi; i++)
             {
-                if (!mark[i]) continue;
                 int a = Math.Max(lo - 1, i - window), b = Math.Min(hi, i + window);
-                double x = 0, z = 0, sw = 0, sigma = window * 0.5;
+                double x = 0, z = 0, sw = 0, sigma = window * (mark[i] ? 0.5 : 0.3);
                 for (int k = a; k <= b; k++)
                 {
                     double g = Math.Exp(-0.5 * (k - i) * (k - i) / (sigma * sigma));
@@ -1005,33 +1032,39 @@ public sealed class InfraNetwork
     }
 
     /// <summary>
-    /// A road joining another meets it square: its last stretch runs straight out from the other's edge,
-    /// along the other's normal, for a length that grows with the other's width, so a junction is a clean
-    /// T and not a long blunt wedge where one road slides into the other at a glancing angle.
+    /// A road joining another meets it square: its last stretch curves smoothly round to leave the other's
+    /// edge along the other's normal, over a length that grows with the other's width, so a junction is a
+    /// clean T and not a long blunt wedge where one road slides into the other at a glancing angle. The
+    /// curve (a cubic from the road's own heading to the normal) turns one way only: no wobble.
     /// </summary>
     static void Square(List<(double X, double Z)> path, InfraRoute joined, (double X, double Z) at, (double X, double Z) dir, bool atStart)
     {
-        if (path.Count < 4) return;
-        double reach = Math.Clamp(joined.HalfWidth + 12, 14, 26);
-        var inner = atStart ? path[Math.Min(path.Count - 1, 6)] : path[Math.Max(0, path.Count - 7)];
+        if (path.Count < 6) return;
+        if (atStart) path.Reverse();
+        double reach = Math.Clamp(joined.HalfWidth + 12, 14, 26), cut = reach * 1.6;
+        var inner = path[Math.Max(0, path.Count - 7)];
         double nx = -dir.Z, nz = dir.X;
         if ((inner.X - at.X) * nx + (inner.Z - at.Z) * nz < 0) { nx = -nx; nz = -nz; }
-        var foot = (at.X + nx * reach, at.Z + nz * reach);
-        var keep = new List<(double X, double Z)>();
-        if (atStart)
+        // Keep the road up to where the curve begins, and its heading there.
+        int k = path.Count - 1;
+        while (k > 1 && (path[k].X - at.X) * (path[k].X - at.X) + (path[k].Z - at.Z) * (path[k].Z - at.Z) < cut * cut) k--;
+        if (k < 1) { if (atStart) path.Reverse(); return; }
+        var p0 = path[k];
+        double tx = p0.X - path[k - 1].X, tz = p0.Z - path[k - 1].Z, tl = Math.Max(1e-6, Math.Sqrt(tx * tx + tz * tz));
+        tx /= tl; tz /= tl;
+        double l = Math.Sqrt((at.X - p0.X) * (at.X - p0.X) + (at.Z - p0.Z) * (at.Z - p0.Z));
+        var c1 = (p0.X + tx * l * 0.4, p0.Z + tz * l * 0.4);
+        var c2 = (at.X + nx * l * 0.45, at.Z + nz * l * 0.45);
+        var keep = path.Take(k + 1).ToList();
+        int steps = Math.Max(4, (int)(l / 2));
+        for (int s = 1; s <= steps; s++)
         {
-            keep.Add(at);
-            keep.Add(foot);
-            foreach (var q in path.Skip(1)) if ((q.X - at.X) * (q.X - at.X) + (q.Z - at.Z) * (q.Z - at.Z) > reach * reach * 2.2) keep.Add(q);
+            double t = s / (double)steps, u = 1 - t;
+            keep.Add((u * u * u * p0.X + 3 * u * u * t * c1.Item1 + 3 * u * t * t * c2.Item1 + t * t * t * at.X,
+                u * u * u * p0.Z + 3 * u * u * t * c1.Item2 + 3 * u * t * t * c2.Item2 + t * t * t * at.Z));
         }
-        else
-        {
-            foreach (var q in path.Take(path.Count - 1)) if ((q.X - at.X) * (q.X - at.X) + (q.Z - at.Z) * (q.Z - at.Z) > reach * reach * 2.2) keep.Add(q);
-            keep.Add(foot);
-            keep.Add(at);
-        }
-        if (keep.Count < 3) return;
         var even = Resample(keep, Spacing);
+        if (atStart) even.Reverse();
         path.Clear();
         path.AddRange(even);
     }
