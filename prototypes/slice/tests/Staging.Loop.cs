@@ -54,7 +54,7 @@ public sealed partial class Staging
         if (_game.Zone.Devices.FirstOrDefault() is Device fab)
         {
             fab.Storage.AddAll(new Bill().Add("iron-ore", 60).Add("carbon-ore", 40).Add("copper-ore", 30));
-            fab.Constructor.Order("base-core", 1);
+            fab.Constructor.Order("big-core", 1);
             fab.Tick(3); // under way
         }
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
@@ -63,6 +63,10 @@ public sealed partial class Staging
         var target = Enum.Parse<MenuTab>(_args.TryGetValue("tab", out string t) ? t : "you", true);
         if (target != MenuTab.You) foreach (int x in Play.OpenMenu(target)) yield return x;
         if (target == MenuTab.Tech) foreach (int x in _drive.ClickWidget($"tech:tab:{(_args.TryGetValue("techtab", out string tt) ? tt : "base")}")) yield return x;
+        // --scroll=end: the tech tree scrolled to its far corner (a screenshot of the long tabs' far end).
+        if (target == MenuTab.Tech && _args.TryGetValue("scroll", out string sc) && sc == "end") _game.Menu.Root.Tech.ColOff = _game.Menu.Root.Tech.RowOff = 999;
+        if (target == MenuTab.Tech && _args.TryGetValue("coloff", out string co) && int.TryParse(co, out int cols)) _game.Menu.Root.Tech.ColOff = cols;
+        if (target == MenuTab.Tech && _args.TryGetValue("rowoff", out string ro) && int.TryParse(ro, out int rows)) _game.Menu.Root.Tech.RowOff = rows;
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
@@ -170,8 +174,8 @@ public sealed partial class Staging
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         if (!survival) _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
         else Hand((Play.BlockItem("container", false), 3), (Play.BlockItem("generator", false), 2), (Play.BlockItem("smallfab", false), 2), (Play.BlockItem("steel", false), 40), (Play.BlockItem("glass", false), 12));
-        Hand(("base-core", 1), ("survival-constructor", 1));
-        foreach (int x in Play.ToToolbar("base-core", 3)) yield return x;
+        Hand(("big-core", 1), ("survival-constructor", 1));
+        foreach (int x in Play.ToToolbar("big-core", 3)) yield return x;
         foreach (int x in Play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (var (b, s) in new[] { ("container", 4), ("generator", 5), ("smallfab", 6), ("steel", 7), ("glass", 8) })
             foreach (int x in Play.BlockToToolbar(b, false, s)) yield return x;
@@ -220,8 +224,8 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = Num("time", 0.37);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
-        Hand(("vessel-core", 1));
-        foreach (int x in Play.ToToolbar("vessel-core", 3)) yield return x;
+        Hand(("small-core", 1));
+        foreach (int x in Play.ToToolbar("small-core", 3)) yield return x;
         var slots = new Dictionary<string, int> { ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
         foreach (var (b, s) in slots) foreach (int x in Play.BlockToToolbar(b, true, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
@@ -230,6 +234,7 @@ public sealed partial class Staging
         foreach (int x in Play.PlaceOnGround(3, pad)) yield return x;
         Vessel v = _game.Zone.Vessels.FirstOrDefault(x => !x.IsBase && !x.IsRuin);
         if (v == null) yield break;
+        v.SwitchMode(CoreMode.Vessel);
         foreach (int x in Play.BuildVessel(v, slots, _ => { })) yield return x;
         Vector3 ground = v.Body.Position.ToGodot();
         foreach (int x in _drive.Board(v)) yield return x;

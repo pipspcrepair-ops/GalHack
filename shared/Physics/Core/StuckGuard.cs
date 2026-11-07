@@ -131,10 +131,13 @@ public sealed class StuckGuard
     /// <summary>
     /// Moves a body to the nearest open space, at rest. A rider found inside its own ship stays
     /// aboard; one found inside anything else (terrain, another ship) goes back to the zone's world.
+    /// A hull that came down into the ground where it has no collider yet (colliders stand only near
+    /// the player) has still crashed: it takes the impact it would have taken on the surface.
     /// </summary>
     public void Rescue(Body body, IStuckField inside)
     {
         Vector3 from = body.WorldPosition;
+        float closing = IsStructure(body) ? -body.Velocity.Y : 0f;
         Vector3 feet = IsStructure(body) ? LiftStructure(body) : FindOpen(body, WorldFeet(body), body.Shape);
         if (body.Frame != null && inside?.Owner != body.Frame) Riding.LeaveCabin(body);
         body.Position = body.Frame != null
@@ -146,6 +149,7 @@ public sealed class StuckGuard
         if (body.Controller is VesselController vessel) vessel.Wake(body);
         Rescues++;
         _world.RaiseRescued(new RescueInfo(body, from, body.WorldPosition, inside?.Name));
+        if (closing > 0f) _world.ResolveImpact(body, inside?.Owner, feet, Vector3.UnitY, closing, inside?.Owner != null ? Surface.Body : Surface.Ground);
     }
 
     /// <summary>A whole hull goes straight up until its keel clears the highest ground under its footprint.</summary>

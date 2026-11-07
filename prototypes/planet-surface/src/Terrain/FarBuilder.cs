@@ -9,6 +9,9 @@ using Planets.Surface;
 
 namespace PlanetSurface.Terrain;
 
+/// <summary>A plant set down on purpose rather than rolled (a tree through a ruin): canonical metres, its foot's height, its size, its turn and its colour.</summary>
+public readonly record struct PlantedFlora(Flora Kind, double X, double Z, float Foot, float Scale, float Angle, Rgb Tint);
+
 /// <summary>One far-ring heightfield chunk: plain arrays built off the main thread.</summary>
 public sealed class FarJob
 {
@@ -67,6 +70,13 @@ public static class FarBuilder
     /// random numbers at every level of detail, so the id holds across streaming and reloads.
     /// </summary>
     public static long ScatterId(int fx, int fz, int gi, int gj) => Key(fx * ScatterCells + gi, fz * ScatterCells + gj);
+
+    /// <summary>The scatter id of the cell a canonical point lies in.</summary>
+    public static long ScatterIdAt(double x, double z)
+    {
+        int fx = (int)Math.Floor(x / Size), fz = (int)Math.Floor(z / Size);
+        return ScatterId(fx, fz, (int)((x - fx * (double)Size) / ScatterCell), (int)((z - fz * (double)Size) / ScatterCell));
+    }
 
     /// <summary>The far chunk a scatter id belongs to.</summary>
     public static (int fx, int fz) ChunkOfScatter(long id) => ((int)(id >> 32) / ScatterCells, (int)(uint)id / ScatterCells);
@@ -267,6 +277,17 @@ public static class FarBuilder
             long id = ScatterId(job.Fx, job.Fz, gi, gj);
             if (felled != null && felled.Contains(id)) continue; // felled: gone, at every level of detail
 
+            // A tree through a ruin takes the cell's place in the scatter: it's the same flora from here on.
+            if (pal.Planted != null && pal.Planted.TryGetValue(id, out PlantedFlora tree))
+            {
+                if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
+                float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
+                Add(tree.Kind, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
+                if (solids != null && solids.TryMake(tree.Kind, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, out FloraSolid trunk))
+                    job.Solids.Add(trunk);
+                continue;
+            }
+
             Biome biome = pal.BiomeAt(x, z);
             FloraRule[] rules = BiomeLook.FloraOf(biome);
             if (rules.Length == 0) continue;
@@ -299,30 +320,84 @@ public static class FarBuilder
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
-            if (dug != null && (dug.Contains(Key(cx, cz)) || dug.Contains(Key(cx + 1, cz)) || dug.Contains(Key(cx, cz + 1)) || dug.Contains(Key(cx - 1, cz)) || dug.Contains(Key(cx, cz - 1)))) continue;
+            if (Dug(dug, cx, cz)) continue;
             float h = source.SurfaceHeight(x, z);
             if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue; // a cave mouth or overhang: nothing to root in
 
             float scale = Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
             float angle = turn * Mathf.Tau;
             float cos = MathF.Cos(angle) * scale, sin = MathF.Sin(angle) * scale;
-            Rgb tint = rule.Color.Saturate(0.78f) * Mathx.Lerp(0.72f, 1.0f, shade);
-            float glow = rule.Kind == Flora.Crystal && biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.GlowMoss ? 0.35f
+            Rgb tint = Tint(rule, shade, pal, x, z);
+            float glow = rule.Kind == Flora.Crystal && biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.GlowMoss ? 0.12f
                 : rule.Kind == Flora.Mushroom && biome is Biome.GlowMoss or Biome.SporeMarsh ? 0.3f : 0f;
 
-            if (!buffers.TryGetValue(rule.Kind, out List<float> list)) buffers[rule.Kind] = list = new List<float>();
-            // MultiMesh layout: a 3x4 row-major transform, then four custom floats (tint and glow).
-            list.Add(cos); list.Add(0f); list.Add(sin); list.Add(lx);
-            list.Add(0f); list.Add(scale); list.Add(0f); list.Add(h - 0.25f);
-            list.Add(-sin); list.Add(0f); list.Add(cos); list.Add(lz);
-            list.Add(tint.R); list.Add(tint.G); list.Add(tint.B); list.Add(glow);
+            // On a slope nothing hangs over the low side: a stem is sunk by the drop across its foot, and a
+            // rock lies along the ground (it would slide if it stood level), sunk by what's left of the slope.
+            bool rock = rule.Kind is Flora.Rock or Flora.LavaRock;
+            float foot = FootRadius(rule.Kind) * scale;
+            float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
+            float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
+            float rootY = h - FloraSolidRules.Sink - (slope - lean) * foot;
+            var basis = new Basis(Vector3.Up, angle).Scaled(new Vector3(scale, scale, scale));
+            if (lean > 0.01f && slope > 0f)
+                basis = new Basis(new Vector3(-gz, 0f, gx) / slope, -MathF.Atan(lean)) * basis;
+
+            Add(rule.Kind, lx, rootY, lz, basis, tint, glow);
 
             // Trunks and boulders are solid: their colliders, in planet coordinates.
-            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, h - FloraSolidRules.Sink, (float)z), scale, angle, out FloraSolid solid))
+            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
                 job.Solids.Add(solid);
         }
         foreach (var (kind, list) in buffers) job.Flora.Add((kind, list.ToArray(), list.Count / 16));
+
+        void Add(Flora kind, float lx, float y, float lz, Basis basis, Rgb tint, float glow)
+        {
+            if (!buffers.TryGetValue(kind, out List<float> list)) buffers[kind] = list = new List<float>();
+            // MultiMesh layout: a 3x4 row-major transform, then four custom floats (tint and glow).
+            list.Add(basis.X.X); list.Add(basis.Y.X); list.Add(basis.Z.X); list.Add(lx);
+            list.Add(basis.X.Y); list.Add(basis.Y.Y); list.Add(basis.Z.Y); list.Add(y);
+            list.Add(basis.X.Z); list.Add(basis.Y.Z); list.Add(basis.Z.Z); list.Add(lz);
+            list.Add(tint.R); list.Add(tint.G); list.Add(tint.B); list.Add(glow);
+        }
     }
+
+    /// <summary>A plant's colour: its biome's, muted, each one a little lighter or darker (<paramref name="shade"/> 0..1).</summary>
+    public static Rgb Tint(FloraRule rule, float shade) => rule.Color.Saturate(0.78f) * Mathx.Lerp(0.72f, 1.0f, shade);
+
+    /// <summary>
+    /// The colour of one scattered piece where it stands. Rock is the world's own rock, picking up a
+    /// little of the ground it lies on and of its biome; crystal and ice keep their hue, but quietly.
+    /// </summary>
+    public static Rgb Tint(FloraRule rule, float shade, GroundPalette pal, double x, double z)
+    {
+        switch (rule.Kind)
+        {
+            case Flora.Rock or Flora.LavaRock:
+                Rgb land = pal.SoilAt(x, z, out _);
+                return Rgb.Lerp(Rgb.Lerp(pal.Rock, land, 0.18f), rule.Color.Saturate(0.45f), 0.14f) * Mathx.Lerp(0.82f, 1.04f, shade);
+            case Flora.Crystal:
+                return Rgb.Lerp(rule.Color.Saturate(0.42f), pal.Rock, 0.3f) * Mathx.Lerp(0.72f, 0.95f, shade);
+            case Flora.IceShard:
+                return rule.Color.Saturate(0.45f) * Mathx.Lerp(0.8f, 1.0f, shade);
+            default:
+                return Tint(rule, shade);
+        }
+    }
+
+    /// <summary>Whether the ground has been dug under a root or beside it.</summary>
+    static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
+
+    const float MaxRockLean = 0.8f;
+
+    /// <summary>How far a kind's foot reaches from its root, at scale 1: what must stay in the ground on a slope.</summary>
+    public static float FootRadius(Flora kind) => kind switch
+    {
+        Flora.Rock or Flora.LavaRock => 0.9f,
+        Flora.Crystal or Flora.IceShard => 0.5f,
+        Flora.Shrub => 0.6f,
+        _ when FloraMeshes.IsLarge(kind) => 0.4f,
+        _ => 0.2f,
+    };
 
     /// <summary>A canonical column (x, z in metres) as a set key.</summary>
     public static long Key(int x, int z) => (long)x << 32 | (uint)z;

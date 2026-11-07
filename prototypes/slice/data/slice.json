@@ -52,7 +52,20 @@
     "cutReach": 4,
     "shotDamage": 18,
     "shotInterval": 0.22,
-    "shotRange": 120
+    "shotRange": 120,
+    // Gathering chips: each pulse of the beam does rate x interval damage to the cell or plant under
+    // it (less to the cells around it), and resources trickle in as it goes. A cell, plant or tree
+    // is gone when its durability is worked through. Ground is held a cell at a time (the terrain
+    // store has no partial density), so it sinks in cell-sized stages, the beam's ball of cells
+    // wearing down from the centre out.
+    "gatherRate": 3,
+    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 3, "boulderStone": 6 },
+    // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
+    "tiers": {
+      "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
+      "mining-drill":  { "name": "Mining drill",  "rate": 2.5, "radius": 1.6, "shot": 1.4 },
+      "plasma-drill":  { "name": "Plasma drill",  "rate": 5,   "radius": 1.9, "shot": 2 }
+    }
   },
 
   "build": {
@@ -72,7 +85,7 @@
   },
 
   // The head torch (L): a cone from the helmet.
-  "torch": { "range": 45, "angle": 32, "energy": 5.5 },
+  "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
 
   // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
   "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },
@@ -82,6 +95,11 @@
     "patchHalfSize": 300,
     // Nothing spawns this close to the pod.
     "safeRadius": 60,
-    "alienness": 0.25
+    "alienness": 0.25,
+    // The most wild creatures a patch holds on the most livable world.
+    "mostPerPatch": 40,
+    // How much life a world of each archetype carries: lush worlds busiest, lava all but dead.
+    "livable": { "Temperate": 1.0, "Alien": 0.6, "Arid": 0.35, "Ice": 0.3, "Lava": 0.08 },
+    "cratered": 0.4
   }
 }

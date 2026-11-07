@@ -224,6 +224,9 @@ public partial class PlaceTest : Node
         float stoodAt = -1f;
         game.Places.Stood += p => { if (p.Site == site) stoodAt = game.Places.DistanceTo(site, game.Survivor.WorldFeet); };
         double t0 = game.Stats.Seconds;
+        // A roaming pack on the way decides nothing about the land route or the place: held still from here (printed).
+        GD.Print("  (TEST: creatures held still on the walk over the land)");
+        game.Zone.Wildlife.Frozen = true;
         List<Vector3> way = walk.Overland(game.Survivor.WorldFeet, entrance, site);
         Check(way != null, $"a way over the land to it, picked as a player picks one by eye: {way?.Count * 4} m of 4 m steps round cave mouths, water and steep ground");
         if (way == null) { GD.Print($"  ({string.Join("; ", walk.Notes)})"); yield break; }
@@ -235,6 +238,7 @@ public partial class PlaceTest : Node
             if (game.Suit.Dead) break;
         }
         foreach (int x in Watched(drive.WalkTo(entrance, 0.8f, 30f, sprint: false, dig: false))) yield return x;
+        if (game.Suit.Dead) { Fail("the castaway died on the walk to the place"); game.QueueFree(); yield break; }
         Vector3 f = game.Survivor.WorldFeet;
         GD.Print($"  (arrived: feet {f}, the way in {entrance}, ground {game.Zone.GroundAt(f.X, f.Z).Y:F1})");
         Place place = game.Places.PlaceOf(site);
@@ -257,7 +261,9 @@ public partial class PlaceTest : Node
         // A cache a level or more down where the place has one you can get to (the stairs are walked on
         // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
         var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
+            .Select(c => (Cache: c, Steps: FreeSteps(nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)))).ToList();
+        // No card in the bag yet: a way through a locked door is no way at all.
+        int FreeSteps(List<PoiGenerator.Gen.Int3> path) => path == null || path.Any(c => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up)))) ? 9999 : path.Count;
         bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
         bool downstairs = ways.Any(Below);
         LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
@@ -309,7 +315,7 @@ public partial class PlaceTest : Node
             string refusedPrompt = game.UsePrompt();
             foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
             foreach (int x in Watched(drive.Wait(60))) yield return x;
-            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut");
+            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut (walked there {ok}, to {side}, feet {place.FromWorld(game.Survivor.WorldFeet)}, door {locked.Index} at {locked.Centre}, {game.Survivor.WorldEye().DistanceTo(place.ToWorld(locked.Centre)):F1} m off, lift {locked.Lift}, seen {DoorSight(game, place)}{(walk.Notes.Count > 0 ? $"; {walk.Notes[^1]}" : "")})");
             // The card.
             foreach (int x in Watched(walk.To(place, nav.AccessCell(key.Cell) ?? key.Cell, r => ok = r))) yield return x;
             foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(key.Cell.X + 0.55f, key.Cell.Y + 0.08f, key.Cell.Z + 0.42f)), 8))) yield return x;
@@ -348,6 +354,14 @@ public partial class PlaceTest : Node
             Vector3 wallMiddle = place.ToWorld(new Vector3(low.X + 0.5f, low.Y + 1.2f, low.Z + 0.5f));
             foreach (int x in Watched(drive.LookAt(wallMiddle, 8))) yield return x;
             string label = game.Tool.TargetLabel;
+            // Furniture can stand before the panel: a player takes it away first.
+            for (int i = 0; i < 4 && label != "CRACKED PANEL" && label != ""; i++)
+            {
+                string piece = label;
+                foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 300, () => game.Tool.TargetLabel != piece))) yield return x;
+                foreach (int x in Watched(drive.Wait(2))) yield return x;
+                label = game.Tool.TargetLabel;
+            }
             foreach (int x in Watched(drive.HoldPrimary(wallMiddle, 90, () => place.Memory.Broken.Contains(secret)))) yield return x;
             Check(ok && label == "CRACKED PANEL" && place.Memory.Broken.Contains(secret) && secret.WallCells.All(c => inst.Blocks.Get(c).IsAir),
                 $"the hidden room's cracked panel ('{label}' by the crosshair, a draft through it) broken with the survival tool");
@@ -420,11 +434,17 @@ public partial class PlaceTest : Node
         // The creatures: up to one of the place's hunters, awake: its tell (grit, a shadow, a scratch,
         // a rattle) comes before it strikes, its wind-up is warned, and it can be shot down and looted.
         foreach (int x in Watched(MeetHunter(game, place, walk, drive))) yield return x;
-        Check(_aimedTells > 0 && _untold == 0,
+        if (_nothingHere) GD.Print("  (nothing to meet in this place: tells and shooting not exercised on this world)");
+        else Check(_aimedTells > 0 && _untold == 0,
             $"met a {_hunter?.Species.CommonName} ({_hunter?.Species.Role}): {_aimedTells} tells aimed at you, the nearest {_nearestTell:F1} m off; {_bites} bites, every creature's first warned before it landed ({_untold} not), health {game.Suit.HealthShare * 100:F0}%");
-        Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
-        Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
-        Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+        if (!_nothingHere)
+        {
+            Check(_lastDown != null, $"they can be shot down in the place's rooms ({_shotDown} shot down, {_healed} patch kits used)");
+            Slice.Items.Lootable body = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == _lastDown);
+            Check(body != null, $"a body lies where it fell, a container: {body?.Name} ({body?.Storage.Contents.Total} items)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood and {game.Zone.Blood.Splats} splats on the surfaces round it");
+            if (_bites > 0) Check(game.Hands.PeakJolt > 0f, $"a bite knocks the view: {game.Hands.PeakJolt:F2}");
+        }
         game.Zone.Wildlife.Frozen = true;
 
         // And out the way we came.
@@ -474,6 +494,8 @@ public partial class PlaceTest : Node
                 if (c.Dead || c.Removed || c.Species.Role == Wildlife.DeepRole.Subsister) continue;
                 if (s.World(c.Position).DistanceTo(feet) > 7f || c.InWalls) continue;
                 if (c.Target != s.Player && c.AttackTarget != s.Player && c.Noticed != s.Player && c.TellTarget != s.Player) continue;
+                // Meeting a hunter to see its tell: hold fire till it has given one, or it would die before it warned anyone.
+                if (_awaitTell && _aimedTells == 0 && c.Species.Tells.Length > 0 && game.Suit.HealthShare > 0.5) continue;
                 // A clear shot only, and not the same one over and over: a player gives up on what they can't hit.
                 if (_shotAt.TryGetValue(c, out double when) && game.Stats.Seconds - when < 4.0) continue;
                 _shotAt[c] = game.Stats.Seconds;
@@ -505,13 +527,19 @@ public partial class PlaceTest : Node
 
     Wildlife.Creature _hunter, _lastDown;
     int _untold;
+    bool _nothingHere, _awaitTell;
     readonly HashSet<Wildlife.Creature> _warned = new(), _bitBy = new();
 
     /// <summary>Walks up to a hunter that gives tells (held still), wakes the creatures, and stays until it is dealt with.</summary>
     IEnumerable<int> MeetHunter(Game.Game game, Place place, PlaceWalk walk, Driver drive)
     {
         DeepSite s = game.Zone.Wildlife.Sites.FirstOrDefault(q => q.Sim == place.Memory.Fauna?.Sim);
-        if (s == null) yield break;
+        if (s == null)
+        {
+            GD.Print("  (nothing lives here: a place can be empty and silent)");
+            _nothingHere = true;
+            yield break;
+        }
         var nav = place.Nav();
         var reach = nav.Reachable(walk.Here(place, nav));
         // The hunter nearest the way in that has tells, on a level with a reachable floor near it.
@@ -521,25 +549,55 @@ public partial class PlaceTest : Node
                      .OrderBy(c => s.World(c.Position).DistanceTo(way) + Mathf.Abs(c.Position.Y - way.Y) * 3f).Take(4).ToList())
         {
             var cell = new PoiGenerator.Gen.Int3(Mathf.FloorToInt(c.Position.X), Mathf.FloorToInt(c.Position.Y), Mathf.FloorToInt(c.Position.Z));
+            // Close enough that it can tell you are there: it won't give itself away for nothing.
+            float keep = MathF.Max(2f, c.Species.StrikeRadius * 0.7f);
             PoiGenerator.Gen.Int3? near = null;
             float best = float.MaxValue;
             foreach (var q in reach)
             {
                 float d = new Vector2(q.X - cell.X, q.Z - cell.Z).Length() + Mathf.Abs(q.Y - cell.Y) * 3f;
-                if (d >= 5f && d < best) { best = d; near = q; }
+                if (d >= keep && d < best) { best = d; near = q; }
             }
-            if (near == null || best > 9f) continue;
+            if (near == null || best > keep + 2f) continue;
             _hunter = c;
             GD.Print($"  (going to meet a {c.Species.CommonName} ({c.Species.Role}, {c.Species.Stats.MaxHealth:F0} health) near {cell}, from {near})");
             bool ok = false;
             foreach (int x in walk.To(place, near.Value, r => ok = r)) yield return x;
             game.Zone.Wildlife.Frozen = false;
+            _awaitTell = true;
             // A lurker can sit tight behind a wall and never know you are there: then on to the next one.
-            for (int t = 0; t < 3600 && _lastDown == null && !game.Suit.Dead && (t < 1500 || _aimedTells > 0); t++) yield return 0;
-            if (_aimedTells > 0 || _lastDown != null || game.Suit.Dead) yield break;
+            for (int t = 0; t < 3600 && (_lastDown == null || _aimedTells == 0) && !game.Suit.Dead && (t < 1500 || _aimedTells > 0); t++) yield return 0;
+            if (_aimedTells > 0 || game.Suit.Dead) yield break;
             game.Zone.Wildlife.Frozen = true;
             reach = nav.Reachable(walk.Here(place, nav));
         }
+        // Everyone in reach sat tight, or nobody was in reach.
+        _hunter = null;
+        if (s.Sim.Creatures.FirstOrDefault()?.Space is { } rooms)
+        {
+            // A place holds few hunters now, and none may be in reach: one comes down the hall, staged.
+            var here = walk.Here(place, nav);
+            var cells = reach.Where(q => q.Y == here.Y && new Vector2(q.X - here.X, q.Z - here.Z).Length() is > 5f and < 10f).ToList();
+            if (cells.Count > 0)
+            {
+                var cell = cells[0];
+                Wildlife.Species prowler = game.Places.Fauna.Fauna.For(Wildlife.DeepRole.Prowler, Wildlife.PoiTheme.Industrial, 0);
+                prowler = game.Places.Fauna.Fauna.Fitted(prowler, 1.5f, 3f) ?? prowler;
+                var near = new Vector3(cell.X + 0.5f, cell.Y + 0.3f, cell.Z + 0.5f);
+                _hunter = s.Sim.SpawnIn(prowler, rooms, near);
+                Vector3 toward = new Vector3(here.X + 0.5f, cell.Y, here.Z + 0.5f) - _hunter.Position;
+                _hunter.Facing = Wildlife.SpaceMath.Frame(toward, Vector3.Up);
+                GD.Print($"  (SYSTEMS: a {prowler.CommonName} staged at {cell}, no hunter in reach of here)");
+            }
+        }
+        if (_hunter == null)
+        {
+            _nothingHere = true;
+            yield break;
+        }
+        game.Zone.Wildlife.Frozen = false;
+        _awaitTell = true;
+        for (int t = 0; t < 3600 && (_lastDown == null || _aimedTells == 0) && !game.Suit.Dead; t++) yield return 0;
     }
 
 
@@ -564,6 +622,13 @@ public partial class PlaceTest : Node
     }
 
     /// <summary>A standable cell a step or two from a door, on the side reachable from here without passing it.</summary>
+    /// <summary>What the crosshair lands on, for a door the aim didn't find.</summary>
+    static string DoorSight(Game.Game game, Place p)
+    {
+        if (!WorldRay.Cast(game.Zone, game.Survivor, Game.Game.UseReach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props, out LookHit look)) return "nothing in reach";
+        return $"{(look.Collider as Node)?.GetParent()?.Name}/{(look.Collider as Node)?.Name} on layer {(look.Collider as CollisionObject3D)?.CollisionLayer} at {look.Distance:F1} m, cell {p.FromWorld(look.Point)}, door {p.DoorOf(look.Collider)?.Index}, piece {p.PieceOf(look.Collider as GodotObject)?.Piece.Id}";
+    }
+
     static PoiGenerator.Gen.Int3 DoorSide(Place p, PoiGenerator.Gen.NavGrid nav, Place.Door d, PoiGenerator.Gen.Int3 from)
     {
         int y = d.Cells.Min(c => c.Y);
@@ -646,6 +711,7 @@ public partial class PlaceTest : Node
             float hp = flyer.Health;
             foreach (int x in play.ShootAt(() => w.FromPatch(flyer.Rig.BoundsCenter), 3)) yield return x;
             Check(flyer.Health < hp || flyer.Dead, $"a {wing.CommonName} in the air: a shot lands ({hp:F0} to {flyer.Health:F0} health)");
+            Check(game.Zone.Blood.Bursts > 0, $"hits show: {game.Zone.Blood.Bursts} spurts of its blood where it landed, {game.Zone.Blood.Splats} splats on the ground under it");
             w.Sim.Remove(flyer);
             foreach (int x in play.Tool(Slice.Player.ToolMode.Gather)) yield return x;
         }
@@ -799,6 +865,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.Wait(30)) yield return x;
         foreach (int x in drive.UntilSettled()) yield return x;
         double hurtBefore = game.Suit.HealthShare;
+        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the castaway is on another copy of it
         foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
         for (int i = 0; i < 300 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
@@ -817,7 +884,7 @@ public partial class PlaceTest : Node
         bool ok = false;
         foreach (int x in walk.To(place, far.Cell, r => ok = r)) yield return x;
         foreach (int x in walk.To(place, place.Inst.Layout.EntranceCell, r => ok = r)) yield return x;
-        Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace: still {place.Memory.Mood}, no guard raised a gun");
+        Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace ({(ok ? "" : $"the walk stopped: {string.Join("; ", walk.Notes.TakeLast(2))}; ")}health {game.Suit.HealthShare * 100:F0}%): still {place.Memory.Mood}, no guard raised a gun");
         // Night sends them in (the clock wound on, printed), morning brings them out.
         GD.Print("  (TEST: the clock wound on to night and back)");
         double morning = game.Zone.Sky.TimeOfDay;
@@ -852,7 +919,25 @@ public partial class PlaceTest : Node
         game.Zone.Wildlife.Frozen = true;
         foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         GD.Print("-- a door on a base (SYSTEMS: its wall is set down whole, not built by hand) --");
-        Vector3 ahead = game.Bunker.Ahead(14f);
+        // On level ground along the way through: where it rises past the gate, your head meets the lintel in the doorway.
+        Vector3 ahead = game.Bunker.Ahead(14f), start = game.Survivor.WorldFeet with { Y = 0f };
+        Vector3 forward = (ahead with { Y = 0f } - start).Normalized(), side = forward.Cross(Vector3.Up);
+        float gateHeading = game.Bunker.Heading, rise = float.MaxValue;
+        Vector3 through = new Vector3(-MathF.Sin(gateHeading), 0f, -MathF.Cos(gateHeading));
+        foreach (float d in new[] { 10f, 14f, 18f, 22f })
+            for (float o = -12f; o <= 12f; o += 4f)
+            {
+                Vector3 p = start + forward * d + side * o;
+                float low = float.MaxValue, high = float.MinValue;
+                for (float k = -7f; k <= 8f; k += 1f)
+                {
+                    float g = game.Zone.GroundAt(p.X + through.X * k, p.Z + through.Z * k).Y;
+                    low = MathF.Min(low, g);
+                    high = MathF.Max(high, g);
+                }
+                if (high - low < rise) { rise = high - low; ahead = p; }
+            }
+        GD.Print($"  (the gate stands where the ground rises {rise:F2} m along the way through)");
         ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
         string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
         var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
@@ -865,8 +950,9 @@ public partial class PlaceTest : Node
         Vector3 door = gate.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, new GalHack.Structures.Int3(0, 0, 0)));
         var cell = new GalHack.Structures.Int3(0, 0, 0);
         Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "the built door stands shut with nobody near");
-        Vector3 along = (door - game.Survivor.WorldFeet) with { Y = 0f };
+        Vector3 along = (gate.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, new GalHack.Structures.Int3(0, 0, 1))) - door) with { Y = 0f };
         along = along.Normalized();
+        if (along.Dot(door - game.Survivor.WorldFeet) < 0f) along = -along;
         Vector3 before = door - along * 6f, past = door + along * 7f;
         foreach (int x in drive.WalkTo(before, 1f, 20f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.WalkTo(door + along * 1.8f, 0.6f, 12f, sprint: false, dig: false, hop: false)) yield return x;
@@ -875,7 +961,8 @@ public partial class PlaceTest : Node
         Check(game.Doors.OpenDoors(game.Places).Any(), "an open door is there to read (a force field's hook)");
         foreach (int x in drive.WalkTo(past, 1f, 12f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in drive.Wait(90)) yield return x;
-        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), "and it shuts behind you, solid again");
+        Vector3 walked = game.Survivor.WorldFeet;
+        Check(!Slice.Vessels.BlockDoors.IsOpen(gate, cell), $"and it shuts behind you, solid again ({(walked + Vector3.Up * 0.9f).DistanceTo(door):F1} m off it, walking to {past}, feet {walked}, {game.Doors.Opened} opened, {game.Doors.Shut} shut)");
         var ray = PhysicsRayQueryParameters3D.Create(door - along * 1.5f, door + along * 1.5f, Layers.Hull);
         Check(game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(ray).Count > 0, "the shut leaf collides");
         // E works it too, from reach: walk up, it opens; E shuts it; it stays shut while you stand there.

@@ -29,6 +29,7 @@ public sealed partial class PlanetWorld
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);
         stamps.AddRange(infra.Stamps());
+        foreach (FlavourRuin ruin in infra.Ruins) if (ruin.Drive != null) stamps.Add(ruin.Drive);
         // What runs under a town: its ways in on pads of their own, after the roads so they win there.
         if (infra.Town is StartTown town)
         {

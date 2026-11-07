@@ -18,6 +18,9 @@ public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Od
 /// caves, tunnels and places: a body that lies against whatever surface it holds (floor, wall
 /// or ceiling) on legs that plant on it.
 /// </summary>
+/// <summary>How a winged body stays up (see <see cref="Species.Flight"/>). Gas bags and swarms are neither: they drift.</summary>
+public enum FlightKind { None, Glide, Hover }
+
 public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger, Crawler }
 
 /// <summary>Where a species lives. Planet wildlife lives on the surface; space fauna in the rest.</summary>
@@ -187,6 +190,8 @@ public sealed class HarvestRules
 /// </summary>
 public sealed class SpawnRules
 {
+    /// <summary>The share of a species' natural groups a world holds at its most livable (the world's livability scales it down).</summary>
+    public float Density { get; set; } = 0.5f;
     /// <summary>Metres from a base's footprint edge inside which nothing spawns or respawns.</summary>
     public float BaseClearance { get; set; } = 80f;
     /// <summary>How long a species that has fallen short waits before a group comes back.</summary>
@@ -198,8 +203,22 @@ public sealed class SpawnRules
     /// <summary>Respawns within this distance of a player must also be outside their view cone.</summary>
     public float ViewDistance { get; set; } = 220f;
     public float ViewConeDegrees { get; set; } = 65f;
+    /// <summary>Nobody within this of where they were this many seconds ago sees anything come back.</summary>
+    public float StayPutRadius { get; set; } = 30f;
+    public float StayPutSeconds { get; set; } = 60f;
+    /// <summary>Cracks don't let anything out within this of a player, or in their line of sight within <see cref="ViewDistance"/>.</summary>
+    public float ColonyClearance { get; set; } = 25f;
+    /// <summary>The nearest a cave's creatures are put to someone already there.</summary>
+    public float CaveClearance { get; set; } = 12f;
     /// <summary>Spots tried for one group before it waits for the next check.</summary>
     public int Attempts { get; set; } = 24;
+
+    /// <summary>Whole groups for a wanted number of them: the fraction left over is a roll.</summary>
+    public static int Groups(float wanted, Rng rng)
+    {
+        int n = (int)wanted;
+        return n + (rng.Chance(wanted - n) ? 1 : 0);
+    }
 }
 
 public sealed class WorldRules

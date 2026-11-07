@@ -23,6 +23,10 @@ public sealed class OrbitRules
         public int TextureWidth { get; set; } = 4096;
         public int CloudWidth { get; set; } = 1024;
         public double CloudHeight { get; set; } = 0.012;
+        public double ReliefFar { get; set; } = 0.12;
+        public double SphereReach { get; set; } = 105;
+        public double MapDaysPerTurn { get; set; } = 1.0;
+        public double TemperateYearDays { get; set; } = 24.0;
         public double CloudOpacity { get; set; } = 0.55;
         public double CloudCoverAtLeast { get; set; } = 0.38;
     }
@@ -30,11 +34,19 @@ public sealed class OrbitRules
     public sealed class CrossingRules
     {
         public Dictionary<string, float> Altitude { get; set; } = new() { ["default"] = 1060f };
-        public float ClearOfGround { get; set; } = 150f;
-        public float PreloadAt { get; set; } = 0.5f;
+        public float PreloadAt { get; set; } = 0.2f;
         public float Gap { get; set; } = 80f;
         public float FadeFrom { get; set; } = 700f;
         public float Band { get; set; } = 1000f;
+        public float SwapFrom { get; set; } = 960f;
+        public float ShroudFrom { get; set; } = 760f;
+        public float ShroudHolds { get; set; } = 30f;
+        public float ShroudThins { get; set; } = 620f;
+        public float ShroudThickness { get; set; } = 0.9f;
+        public float FarLandFrom { get; set; } = 220f;
+        public float FlatCurve { get; set; } = 300000f;
+        public float TrueGlobeAt { get; set; } = 7000f;
+        public float MapWrapsBy { get; set; } = 2400f;
         public float StreamAhead { get; set; } = 1.5f;
     }
 
@@ -76,12 +88,9 @@ public sealed class OrbitRules
     /// <summary>data/orbit.json, read once.</summary>
     public static OrbitRules Shared => _shared ??= Parse(File.ReadAllText(GameData.Own("data/orbit.json")));
 
-    /// <summary>Where orbit starts on a world, m: low, over its clouds, and clear of its highest ground.</summary>
-    public float OrbitAltitude(string airKind, float highestGround)
-    {
-        float altitude = Crossing.Altitude.TryGetValue(airKind, out float a) ? a : Crossing.Altitude["default"];
-        return Math.Max(altitude, highestGround + Crossing.ClearOfGround);
-    }
+    /// <summary>Where orbit starts on a world, m: a hard cap, the same however tall its peaks (the design keeps the land under it).</summary>
+    public float OrbitAltitude(string airKind) =>
+        Crossing.Altitude.TryGetValue(airKind, out float a) ? a : Crossing.Altitude["default"];
 
     /// <summary>The loot rolls for a salvage grade (scrap if the grade has none).</summary>
     public IEnumerable<(string item, int least, int most)> LootFor(string grade)

@@ -27,7 +27,7 @@ public static class Architect
         }
     }
 
-    public static Layout Build(PoiLibrary lib, FamilyDef family, VariantDef variant, Rarity rarity, ulong seed)
+    public static Layout Build(PoiLibrary lib, FamilyDef family, VariantDef variant, Rarity rarity, ulong seed, LayoutHints? hints = null)
     {
         string? last = null;
         for (int attempt = 0; attempt < MaxAttempts; attempt++)
@@ -41,7 +41,7 @@ public static class Architect
             canvas.X.Wrong = rng.Chance(family.Wrong);
             try
             {
-                if (variant.Site != null || family.Site != null) Sites.Compose(lib, canvas, lib.Sites[variant.Site ?? family.Site!], family, rarity, rng.Fork("site"));
+                if (variant.Site != null || family.Site != null) Sites.Compose(lib, canvas, lib.Sites[variant.Site ?? family.Site!], family, rarity, rng.Fork("site"), hints);
                 else
                 {
                     var built = Building.Build(canvas, lib, family, rarity, new BuildingSpec { Program = lib.Programs[variant.Program ?? family.Program!] }, rng.Fork("building"));

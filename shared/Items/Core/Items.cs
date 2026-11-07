@@ -43,17 +43,16 @@ public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Am
 public enum BlockFamily { None, Armour, Device, Deco }
 
 /// <summary>
-/// The four classes of structure, as in Empyrion: bases and capital vessels are large-grid, small
-/// and hover vessels small-grid. Every block family says which it can be placed on.
+/// The four classes of structure, as in Empyrion. A structure's class is its core and that core's
+/// mode: a Big Core in Base or Capital Mode, a Small Core in Vessel or Hover Mode. No block is
+/// limited to a class: bases and capital vessels share every large block, small and hover vessels
+/// every small one.
 /// </summary>
 public enum StructureClass { Base, Capital, Small, Hover }
 
 public static class StructureClasses
 {
-    public static readonly StructureClass[] All = { StructureClass.Base, StructureClass.Capital, StructureClass.Small, StructureClass.Hover };
     public static bool IsSmallGrid(StructureClass c) => c is StructureClass.Small or StructureClass.Hover;
-    public static IReadOnlyList<StructureClass> OfGrid(bool small) =>
-        small ? new[] { StructureClass.Small, StructureClass.Hover } : new[] { StructureClass.Base, StructureClass.Capital };
     public static string Name(StructureClass c) => c switch
     {
         StructureClass.Base => "base",
@@ -61,21 +60,6 @@ public static class StructureClasses
         StructureClass.Small => "small vessel",
         _ => "hover vessel",
     };
-    public static bool TryParse(string s, out StructureClass c)
-    {
-        switch (s)
-        {
-            case "base": c = StructureClass.Base; return true;
-            case "capital": c = StructureClass.Capital; return true;
-            case "small": c = StructureClass.Small; return true;
-            case "hover": c = StructureClass.Hover; return true;
-            default: c = default; return false;
-        }
-    }
-
-    /// <summary>"base and capital vessel blocks only", for a refusal.</summary>
-    public static string Only(IReadOnlyList<StructureClass> places) =>
-        $"{string.Join(" and ", System.Linq.Enumerable.Select(places, Name))} blocks only";
 }
 
 /// <summary>Where a raw or unique item comes from. Crafted items are <see cref="Crafted"/>.</summary>
@@ -125,8 +109,6 @@ public sealed class ItemDef
     public bool SmallGrid { get; init; }
     public BlockFamily Family { get; init; }
     /// <summary>Block items: the structure classes it can be placed on (Empyrion's base, capital, small and hover vessels).</summary>
-    public IReadOnlyList<StructureClass> Places { get; init; } = Array.Empty<StructureClass>();
-    public bool PlacesOn(StructureClass c) => System.Linq.Enumerable.Contains(Places, c);
     /// <summary>A sub-group for long lists and the tech tree: a deco piece's theme set.</summary>
     public string Group { get; init; }
     /// <summary>True once the item was given its name explicitly (data), so building's names don't replace it.</summary>
@@ -143,6 +125,10 @@ public sealed class ItemDef
     public bool IsAmmo => Category == ItemCategory.Ammo;
     /// <summary>A block family item: placed as a block (survival uses one per placement, taking it down gives it back).</summary>
     public bool IsBlock => BlockId != null;
+    /// <summary>The universal deco block: one item, every deco piece is built under it (the piece is chosen from a gallery before placing, each placement costs one).</summary>
+    public bool IsUniversalDeco => BlockId == DecoCatalogue.UniversalBlock;
+    /// <summary>One deco piece's own item (an unlock node and a gallery entry): never crafted or carried, since the universal block places every piece.</summary>
+    public bool IsDecoPiece => Family == BlockFamily.Deco && !IsUniversalDeco;
     public string ShortName => Short ?? Name;
 
     public override string ToString() => Id;

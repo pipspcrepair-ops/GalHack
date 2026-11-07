@@ -66,12 +66,18 @@
   // capital-mode structures block nothing. Respawns also keep minPlayerDistance from every
   // player and out of the view cone of anyone within viewDistance.
   "spawning": {
+    // The share of a species' natural groups a world holds at its most livable.
+    "density": 0.5,
     "baseClearance": 80,
     "respawnSeconds": 90,
     "checkSeconds": 5,
     "minPlayerDistance": 90,
     "viewDistance": 220,
     "viewConeDegrees": 65,
+    "stayPutRadius": 30,
+    "stayPutSeconds": 60,
+    "colonyClearance": 25,
+    "caveClearance": 12,
     "attempts": 24
   },
 
@@ -137,6 +143,14 @@
         "size": [0.6, 1.5], "wings": [4, 4], "width": [0.3, 0.42], "height": [0.28, 0.36], "headSize": [0.22, 0.3], "neck": [0.0, 0.2], "tail": [0.2, 0.6],
         "flies": true,
         "behaviours": { "Scavenger": 2, "HarmlessOddity": 2, "Predator": 1 } },
+
+      // Small and light enough to hold still in the air: the only flyers that can. Upright bodies
+      // on narrow wings that beat too fast to see (Species.Flight goes by size: past 0.55 m a
+      // winged body has to keep flying, so this size range is what makes these hoverers).
+      { "id": "darter", "plan": "Flier", "rig": "Winged", "weight": 0.8, "weirdness": 0.3, "noun": "darter",
+        "size": [0.24, 0.46], "wings": [2, 2], "width": [0.26, 0.34], "height": [0.26, 0.34], "headSize": [0.3, 0.38], "neck": [0.05, 0.2], "tail": [0.3, 0.7],
+        "flies": true,
+        "behaviours": { "HarmlessOddity": 3, "Grazer": 2, "Predator": 2 } },
 
       { "id": "gasbag", "plan": "Floater", "rig": "GasBag", "weight": 0.8, "weirdness": 0.65, "noun": "drifter",
         "size": [1.6, 3.6], "bags": [1, 3], "width": [0.8, 1.1], "height": [0.8, 1.2], "headSize": [0.18, 0.26], "tail": [0.9, 1.8],
@@ -460,12 +474,17 @@
       "Alien": { "alienness": 0.85, "hue": [165, 300], "saturation": [0.45, 0.8], "value": [0.32, 0.58], "glow": 0.75, "backs": ["bubbles", "crystals", "vents", "spines"] },
       "Derelict": { "alienness": 0.5, "hue": [10, 32], "saturation": [0.22, 0.42], "value": [0.16, 0.3], "glow": 0.3, "backs": ["plates", "shell"], "warning": "#9c5a2e" }
     },
-    "depth": { "paleFrom": 2, "blindFrom": 3, "paleness": 0.35, "nestScale": 0.1, "nesters": [2, 0.75], "toughness": 0.1, "maxLevel": 6 },
+    "depth": { "paleFrom": 2, "blindFrom": 3, "paleness": 0.35, "nestScale": 0.1, "nesters": [2, 1.25], "toughness": 0.1, "maxLevel": 6 },
     "population": {
-      "silent": { "Active": 0.9, "Abandoned": 0.25, "Ruined": 0.3, "Infested": 0.0 },
-      "density": { "Active": 0.25, "Abandoned": 1.0, "Ruined": 0.8, "Infested": 2.2 },
+      // A place holds a few things you hear before you see, not a dozen on show. "roomCap" is the most
+      // in a room (one more per "roomArea" square metres of floor); "nestCap" the most in a room with a
+      // nest; "placeCap" the most in a place by its state, one more per "capRooms" rooms up to double.
+      "silent": { "Active": 0.9, "Abandoned": 0.35, "Ruined": 0.4, "Infested": 0.0 },
+      "density": { "Active": 0.15, "Abandoned": 0.55, "Ruined": 0.45, "Infested": 1.1 },
       "lurker": 0.55, "ambusher": 0.35, "prowler": 0.34, "subsister": 0.6,
-      "food": [1, 3], "cracks": [1, 3]
+      "food": [1, 3], "cracks": [1, 3],
+      "roomCap": 2, "roomArea": 60, "nestCap": 5, "capRooms": 10,
+      "placeCap": { "Active": 3, "Abandoned": 5, "Ruined": 5, "Infested": 9 }
     },
     "crawl": { "gravity": 12, "turnRate": 9, "substep": 0.08, "floorUp": 0.6, "wallSpeed": 0.6, "scratchEvery": 0.6 }
   }

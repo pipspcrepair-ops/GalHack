@@ -105,15 +105,17 @@ public static partial class DecoModels
         }
     }
 
-    /// <summary>A wheel on an axle along X: a tyre and a hub.</summary>
+    /// <summary>A wheel on an axle along X: a tyre, a round steel rim the full width of it (what's left when the tyre has gone), and a hubcap at each end.</summary>
     static void Wheel(DecoBuilder b, float x, float y, float z, float r, float width, DecoSlot tyre = DecoSlot.Rubber, DecoSlot hub = DecoSlot.Metal)
     {
         // The tyre's lowest corner sits exactly r below the axle, so a wheel at y = r touches the ground.
-        DecoPart t = b.Tube(x - width / 2, y, z, x + width / 2, y, z, r, tyre, 10).Tyre();
+        DecoPart t = b.Tube(x - width / 2, y, z, x + width / 2, y, z, r, tyre, 14).Tyre();
         float lift = (y - r) - DecoEmit.Vertices(t).Min(v => v.Y);
         t.M *= DecoGeo.Move(0, lift, 0);
-        DecoPart h = b.Tube(x - width / 2 - 0.005f, y, z, x + width / 2 + 0.005f, y, z, r * 0.45f, hub, 6).Ghost();
+        DecoPart h = b.Tube(x - width / 2 - 0.003f, y, z, x + width / 2 + 0.003f, y, z, r * 0.6f, hub, 12).Ghost();
         h.M *= DecoGeo.Move(0, lift, 0);
+        DecoPart cap = b.Tube(x - width / 2 - 0.006f, y, z, x + width / 2 + 0.006f, y, z, r * 0.22f, DecoSlot.Chrome, 8).Ghost();
+        cap.M *= DecoGeo.Move(0, lift, 0);
     }
 
     /// <summary>A round gauge facing -Z: a pale face in a dark rim, with a needle.</summary>

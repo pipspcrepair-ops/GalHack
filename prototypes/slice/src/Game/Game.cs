@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -13,6 +13,7 @@ using Slice.Items;
 using Slice.Player;
 using Slice.Surface;
 using Slice.Ui;
+using Slice.Vehicles;
 using Slice.Vessels;
 using SurvivalVitals.Model;
 using Progress = Slice.Items.Progress;
@@ -71,7 +72,7 @@ public partial class Game : Node3D
     public Visor Visor { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
-    /// <summary>The in-world screens on constructors and base cores (looked at to use).</summary>
+    /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
     public MachineScreens MachineScreens { get; private set; }
     public DebugHud Debug { get; private set; }
     public Hands Hands { get; private set; }
@@ -115,6 +116,7 @@ public partial class Game : Node3D
 
     public override void _Ready()
     {
+        PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
         // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
@@ -180,6 +182,7 @@ public partial class Game : Node3D
     Vector3 Focus()
     {
         if (Survivor == null) return Zone.IsBuilt ? Start : Vector3.Zero;
+        if (Survivor.OnBike is HoverBike bike) return bike.Position + new Vector3(bike.Velocity.X, 0f, bike.Velocity.Z).LimitLength(48f) * 0.5f;
         if (Survivor.Seated is Vessel v)
         {
             // Streaming leads a flying vessel a little, so the ground ahead has collision when it gets there.
@@ -209,18 +212,31 @@ public partial class Game : Node3D
         }
         Pack.Grid.Reconcile();
         Slice.Items.ItemViews.Reset();
+        Icons = new Slice.Ui.ItemIcons { Name = "Icons" };
+        AddChild(Icons);
+        Icons.Setup(data.Items, data.Catalogue);
+        Slice.Ui.ItemIcons.Shared = Icons;
         Progress = new Progress(data.Progress, data.Items, data.Catalogue) { Creative = Mode == GameMode.Creative };
         Fabricator = new GalHack.Items.Production.Constructor(data.Items, data.Items.Machines.Get("suit"), Pack.Storage, Zone.WorldRules);
 
         Shots = new ShotFx { Name = "Shots" };
         Zone.AddChild(Shots);
         Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
-        var debris = new PlanetSurface.Fx.Debris { Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f };
+        var debris = new PlanetSurface.Fx.Debris
+        {
+            Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f,
+            ColorOf = (material, at) => Zone.Planet?.ChipColor(material, at) ?? new Color(0.5f, 0.45f, 0.4f),
+        };
         Zone.AddChild(debris);
         Tool.Debris = debris;
+        Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
+        Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
+        Zone.AddChild(Bikes);
+        Survivor.Bikes = Bikes;
         Tool.Said += Say;
         Tool.Overflowed += left => SetDown(left, Survivor.WorldFeet);
         Tool.CreatureHit += c => Visor.Hit();
+        Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
         Builder.Said += Say;
         Builder.Finished += v => Say($"Fly it: F at the {v.Name}'s seat", Tones.Good);
@@ -244,7 +260,7 @@ public partial class Game : Node3D
         SliceRules.TorchRules torch = data.Rules.Torch;
         Torch = new SpotLight3D
         {
-            Name = "HeadTorch", Visible = false, SpotRange = torch.Range, SpotAngle = torch.Angle, LightEnergy = torch.Energy,
+            Name = "HeadTorch", Visible = false, SpotRange = torch.Range, SpotAngle = torch.Angle, LightEnergy = torch.Energy, SpotAttenuation = torch.Attenuation,
             SpotAngleAttenuation = 0.8f, LightColor = new Color(1f, 0.95f, 0.85f), ShadowEnabled = true, Position = new Vector3(0.12f, 0.05f, 0f),
         };
         Camera.AddChild(Torch);
@@ -258,6 +274,12 @@ public partial class Game : Node3D
         SetUpPlaces();
 
     }
+
+    /// <summary>Small 3D icons of items, each rendered once.</summary>
+    public Slice.Ui.ItemIcons Icons { get; private set; }
+
+    /// <summary>The hover bikes standing in the world.</summary>
+    public HoverBikes Bikes { get; private set; }
 
     /// <summary>Creatures' collision, from their own bodies.</summary>
     public CreatureBodies Bodies { get; private set; }
@@ -288,18 +310,72 @@ public partial class Game : Node3D
         }
         if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
         if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
+        if (Menu.IsOpen && c.WasPressed(Key.A) && c.IsHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
+        Survivor.WantCrouch = false; // only the walk below asks for it
         if (Suit.Dead)
         {
+            Survivor.Dismount();
             if (c.WasPressed(Key.R)) Respawn();
             Survivor.Legs.Move = default;
             Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
             return;
         }
-        if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
+        if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
+        else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
+    }
+
+    /// <summary>On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The mouse looks.</summary>
+    void Ride(HoverBike bike, Controls c)
+    {
+        Survivor s = Survivor;
+        s.Legs.Move = default;
+        s.Legs.Jump = s.Legs.Jetpack = false;
+        s.Legs.Vertical = 0f;
+        bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
+        if (!Menu.IsOpen)
+        {
+            s.Yaw -= c.Look.X * 0.0025f;
+            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
+        }
+        if (c.WasPressed(Key.F) && !Menu.IsOpen)
+        {
+            s.Dismount();
+            Say("Off the hover bike", Tones.Text);
+            return;
+        }
+        bike.Throttle = typing ? 0f : c.Axis(Key.W, Key.S);
+        bike.Steer = typing ? 0f : c.Axis(Key.D, Key.A);
+        bike.Boost = !typing && c.IsHeld(Key.Shift);
+        bike.Hop = !typing && c.IsHeld(Key.Space);
+    }
+
+    /// <summary>Sets the hover bike in hand down on the ground in front of you.</summary>
+    void PlaceBike()
+    {
+        if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
+        {
+            Say("Look at open ground to set the hover bike down", Tones.Caution);
+            return;
+        }
+        if (Pack.Remove("hover-bike", 1) < 1) return;
+        Pack.Grid.Reconcile();
+        Bikes.Place(look.Point, Survivor.Yaw);
+        Say("Hover bike set down: F to ride, E to pick it up", Tones.Good);
+    }
+
+    /// <summary>E at a standing hover bike: it goes back in the pack.</summary>
+    bool PickUpBike(Vector3 eye, Vector3 dir)
+    {
+        if (Bikes.Aimed(eye, dir, UseReach) is not HoverBike bike) return false;
+        Bill left = Pack.Add("hover-bike", 1);
+        if (!left.IsEmpty) SetDown(left, bike.Position);
+        Bikes.Remove(bike);
+        Say("Hover bike packed away", Tones.Text);
+        return true;
     }
 
     void Walk(Controls c)
@@ -315,6 +391,7 @@ public partial class Game : Node3D
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         s.Legs.Move = typing ? N.Vector2.Zero : new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
         s.Legs.Sprint = c.IsHeld(Key.Shift) && !Menu.IsOpen;
+        s.WantCrouch = c.IsHeld(Key.Ctrl) && !Menu.IsOpen; // hold Ctrl to crouch (where Ctrl is "down" instead, in water, on a ladder or in a shaft, the survivor ignores it)
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
@@ -349,8 +426,16 @@ public partial class Game : Node3D
         }
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
-            if (c.Wheel != 0 && hand == HandKind.Block) Builder.NextShape(c.Wheel);
-            if (c.WasPressed(Key.R)) Builder.Rotate(1);
+            bool decoInHand = hand == HandKind.Block && Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem;
+            bool smallGrid = Builder.TargetVessel != null && Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+            if (c.Wheel != 0 && hand == HandKind.Block)
+            {
+                if (decoInHand) Builder.NextPiece(c.Wheel, smallGrid);
+                else Builder.NextShape(c.Wheel);
+            }
+            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme(smallGrid);
+            if (decoInHand && c.WasPressed(Key.R)) Builder.TurnDeco();
+            else if (c.WasPressed(Key.R)) Builder.Rotate(1);
             if (c.WasPressed(Key.T)) Builder.Rotate(0);
             if (c.WasPressed(Key.X))
             {
@@ -380,31 +465,42 @@ public partial class Game : Node3D
         Slot s = Pack.InHand;
         string id = Pack.HandItem;
         string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
-        Say($"{slot + 1}{(Pack.OnStructureBar ? $" ({Pack.LinkedName})" : "")}: {what}", Tones.Text);
+        string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
+        Say($"{slot + 1}{origin}: {what}{(Pack.OnRemoteBar && !Pack.HandUsable && Pack.HandRemote != null ? " · out of range" : "")}", Tones.Text);
     }
 
-    /// <summary>Switches between your own toolbar and the linked structure's (only with a structure linked).</summary>
+    /// <summary>Switches between your own toolbar and the remote one (an empty remote bar can't be opened).</summary>
     public void SwitchBar()
     {
-        if (Pack.Bar == BarSource.Personal && Pack.Linked == null)
+        string refused = Pack.ToggleBar();
+        if (refused != null)
         {
-            Say("No structure in range: its toolbar works inside its area", Tones.Caution);
+            Say(refused, Tones.Caution);
             return;
         }
-        Pack.ToggleBar();
         Builder.Hide();
-        Say(Pack.Bar == BarSource.Structure ? $"{Pack.LinkedName.ToUpperInvariant()} TOOLBAR: blocks come from its storage" : "YOUR TOOLBAR: blocks come from your own stacks", Tones.Text);
+        Say(Pack.OnRemoteBar ? "REMOTE TOOLBAR: items stay in their core's storage" : "YOUR TOOLBAR: items come from your own stacks", Tones.Text);
     }
 
     /// <summary>The structure you are linked to (its area holds you), or null.</summary>
     public Vessel LinkedStructure { get; private set; }
 
-    /// <summary>Links the structure toolbar to the structure whose area you are in (the one you build on first).</summary>
+    /// <summary>The cores whose area holds you, nearest first (the remote toolbar's reach).</summary>
+    public IReadOnlyList<Vessel> CoresInReach { get; private set; } = Array.Empty<Vessel>();
+
+    /// <summary>Links to the structure whose area you are in (the one you build on first), and works out which cores are in reach.</summary>
     public void LinkStructure()
     {
-        Vessel v = Slice.Construction.StructureArea.Linked(Zone, Survivor.WorldFeet, Zone.Data.Rules.Build.Area, Builder.TargetVessel, Survivor.Seated, Survivor.Aboard);
+        var rules = Zone.Data.Rules.Build.Area;
+        Vessel v = Slice.Construction.StructureArea.Linked(Zone, Survivor.WorldFeet, rules, Builder.TargetVessel, Survivor.Seated, Survivor.Aboard);
         LinkedStructure = v;
         Pack.Link(v?.Storage, v?.Name);
+        var reach = Slice.Construction.StructureArea.Around(Zone, Survivor.WorldFeet, rules);
+        // A structure you are aboard or seated in counts even when its area test misses (a hull far from its blocks' box).
+        foreach (Vessel p in new[] { Survivor.Seated as Vessel, Survivor.Aboard })
+            if (p != null && Slice.Construction.StructureArea.Linkable(p) && !reach.Contains(p)) reach.Add(p);
+        CoresInReach = reach;
+        Pack.InRange = s => reach.Any(r => r.Storage == s);
     }
 
     void Fly(Vessel vessel, Controls c)
@@ -450,7 +546,13 @@ public partial class Game : Node3D
             float d = v.NearestChair(eye, out _);
             if (d < bestDistance) { best = v; bestDistance = d; }
         }
-        if (best == null) Say("No seat within reach", Tones.Caution);
+        HoverBike bike = Bikes.Nearest(eye, bestDistance, out _);
+        if (bike != null && Survivor.Mount(bike))
+        {
+            Say("On the hover bike: W/S throttle, A/D steer, Shift boost, Space hop, F get off", Tones.Text);
+            return;
+        }
+        if (best == null) Say("No seat or hover bike within reach", Tones.Caution);
         else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
     }
 
@@ -472,6 +574,8 @@ public partial class Game : Node3D
             Controls.EndTick();
             return;
         }
+        Bikes.Tick(dt);
+        if (Survivor.OnBike is HoverBike ridden) Survivor.Yaw += ridden.LastTurn;
         Survivor.AfterPhysics(dt);
         Suit.Tick(dt, Survivor);
         Target.Sync();
@@ -480,7 +584,9 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
-        bool hands = !Suit.Dead && Survivor.Seated == null && !Menu.IsOpen;
+        if (Pack.Tick()) Say("The remote toolbar emptied: back on your own", Tones.Text);
+        // A remote slot out of its origin's range stays in the hand, greyed, and does nothing.
+        bool hands = !Suit.Dead && Survivor.Seated == null && Survivor.OnBike == null && !Menu.IsOpen && Pack.HandUsable;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
         if (hands && MachineScreens.Use(Controls)) hands = false;
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
@@ -495,10 +601,11 @@ public partial class Game : Node3D
             if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
                 Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
         }
-        else if (hands && hand == HandKind.Tool) Tool.Tick(dt, primary);
+        else if (hands && hand == HandKind.Tool) { Tool.ItemId = Pack.HandItem; Tool.Tick(dt, primary); }
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
+        else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
         if (!hands || !(building || deconstruct)) Builder.Hide();
         TickMachines(dt);
         CheckDeath();
@@ -513,8 +620,23 @@ public partial class Game : Node3D
         if (Slice.Vessels.VesselDamage.Struck(Zone, e.Creature, Survivor.WorldEye())) return;
         if (!e.Hit || e.Damage <= 0f) return;
         double lost = Suit.Hit(e.Damage / 100.0 * Suit.Sim.Data.Vitals.Health.Max, DamageKind.Hit);
-        Visor.Hurt(Zone.Wildlife.WorldOf(e.Creature));
+        Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
+        Visor.Hurt(from);
+        Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
+        Zone.Wildlife.Audio.PlayUi("hurt", -6f);
         Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
+    }
+
+    /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
+    void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)
+    {
+        Species s = c.Species;
+        bool swarm = s.Rig == RigKind.Swarm;
+        Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+        float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
+        Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
+        if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
+        else Zone.Blood.Hit(point, dir, s.Blood, s.Body.Size);
     }
 
     void OnWeather(WeatherEvent e)
@@ -615,7 +737,7 @@ public partial class Game : Node3D
             if (Input.MouseMode != want) Input.MouseMode = want;
         }
         // A vessel in flight gets collision a column further out than someone on foot.
-        if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false ? 3 : 2;
+        if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
@@ -684,6 +806,7 @@ public sealed class PlayerTarget : ITarget
     public string Name => "Castaway";
     public Vector3 Position => _game.Zone.Wildlife.PatchLocal(_game.Survivor.WorldFeet);
     public Vector3 Forward => _game.Survivor.WorldLook();
+    public bool Crouched => _game.Survivor.Crouched && OnFoot;
     public Health Health { get; } = new(100f);
 
     /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>

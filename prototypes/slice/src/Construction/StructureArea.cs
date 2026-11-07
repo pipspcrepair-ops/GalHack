@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using GalHack.Items;
 using GalHack.Items.Bridge;
 using GalHack.Physics;
@@ -18,53 +17,19 @@ using StructureClass = GalHack.Items.StructureClass;
 namespace Slice.Construction;
 
 /// <summary>
-/// Structure classes and areas. Every structure is a base, a capital vessel, a small vessel or a
-/// hover vessel (Empyrion's four), set by the core that founded it. Its area is its blocks'
+/// Structure classes and areas. A structure's class is its core and that core's mode (Empyrion's
+/// four: a base or capital vessel on a Big Core, a small or hover vessel on a Small Core). Its area is its blocks'
 /// bounding box grown by a margin for its class plus a share of its own size (data/slice.json
 /// build.area): inside it you are linked to its one shared storage, and only there can you build
 /// from that storage, open the CORE tab on it, or use its containers and constructors.
 /// </summary>
 public static class StructureArea
 {
-    static readonly ConditionalWeakTable<Vessel, StrongBox<StructureClass>> _classes = new();
+    /// <summary>The structure's class, from its core's mode.</summary>
+    public static StructureClass ClassOf(Vessel v) => BuildingBridge.ClassOf(v.Structure);
 
-    /// <summary>Records what a core founded (building's model can't tell a hover vessel from a small one).</summary>
-    public static void SetClass(Vessel v, StructureClass c)
-    {
-        _classes.Remove(v);
-        _classes.Add(v, new StrongBox<StructureClass>(c));
-    }
-
-    /// <summary>The structure's class: as founded, or from its grid and core mode.</summary>
-    public static StructureClass ClassOf(Vessel v)
-    {
-        if (_classes.TryGetValue(v, out StrongBox<StructureClass> c))
-        {
-            // A base switched to capital mode (or back) follows its core mode.
-            if (c.Value is StructureClass.Base or StructureClass.Capital) return BuildingBridge.ClassOf(v.Structure);
-            return c.Value;
-        }
-        // A fixed large grid is a base; the bunker's small grid stays a small-grid structure.
-        return v.IsBase && !BuildingBridge.IsSmall(v.Structure) ? StructureClass.Base : BuildingBridge.ClassOf(v.Structure);
-    }
-
-    /// <summary>The core item that founds (and, taken down last, gives back) a structure of a class.</summary>
-    public static string CoreItem(StructureClass c) => c switch
-    {
-        StructureClass.Base => "base-core",
-        StructureClass.Capital => "capital-core",
-        StructureClass.Hover => "hover-core",
-        _ => "vessel-core",
-    };
-
-    /// <summary>The class a core item founds.</summary>
-    public static StructureClass ClassOfCore(string coreItem) => coreItem switch
-    {
-        "base-core" => StructureClass.Base,
-        "capital-core" => StructureClass.Capital,
-        "hover-core" => StructureClass.Hover,
-        _ => StructureClass.Small,
-    };
+    /// <summary>The core item that founds a structure and, taken down last, comes back: there is one for each grid.</summary>
+    public static string CoreItem(Vessel v) => BuildingBridge.IsSmall(v.Structure) ? Slice.Items.PlayerInventory.SmallCore : Slice.Items.PlayerInventory.BigCore;
 
     /// <summary>How far past its blocks a structure's area reaches, m.</summary>
     public static float Margin(Vessel v, SliceRules.AreaRules rules)

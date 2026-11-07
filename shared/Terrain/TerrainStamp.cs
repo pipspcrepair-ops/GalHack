@@ -40,6 +40,27 @@ public sealed class TerrainStamp
     readonly int _carveX, _carveY, _carveZ, _carveW, _carveH, _carveD;
     readonly bool[] _carve;
 
+    /// <summary>
+    /// Same box as the carve: cells left solid inside a building's outer walls. The ground runs into them,
+    /// but only just (<see cref="WallDensity"/>), so its surface stays inside the wall, behind the room's own face.
+    /// </summary>
+    public bool[] Walls { get; init; }
+
+    /// <summary>The most a wall cell's density reaches: the surface toward an opened room lies well inside the wall, at any depth.</summary>
+    public const float WallDensity = 0.05f;
+
+    /// <summary>
+    /// The share of it a wall cell keeps in the course the ground runs through. The ground height is the
+    /// crossing between a cell and the one over it, so a wall cell held to the depth above pulls the surface
+    /// down inside the wall, and with it the last vertex out at the wall's face: a curved dip along every
+    /// wall. Near its true value the surface runs level into the wall; a little under it, it stays clear of
+    /// the top of a sill on level ground (four centimetres down, not coplanar), and follows a slope.
+    /// </summary>
+    public const float WallTop = 0.85f;
+
+    /// <summary>What ground of this true density may be in a wall cell.</summary>
+    public static float InWall(float density) => density <= 0f ? density : density <= 1f ? density * WallTop : MathF.Min(density, WallDensity);
+
     public TerrainStamp(string name, int minX, int minZ, int maxX, int maxZ, int padY, float apron, float blend,
         double planetWidth, double planetHeight, int carveX = 0, int carveY = 0, int carveZ = 0, int carveW = 0, int carveH = 0, int carveD = 0, bool[] carve = null)
     {
@@ -114,6 +135,32 @@ public sealed class TerrainStamp
         int lz = (int)Math.Floor(Wrap(z - _carveZ + 0.5 - _carveD * 0.5, _height) + _carveD * 0.5);
         if ((uint)lx >= (uint)_carveW || (uint)lz >= (uint)_carveD) return false;
         return _carve[(ly * _carveD + lz) * _carveW + lx];
+    }
+
+    /// <summary>Whether a cell is ground inside a building's outer wall.</summary>
+    public bool IsWall(int x, int y, int z)
+    {
+        if (Walls == null) return false;
+        int ly = y - _carveY;
+        if ((uint)ly >= (uint)_carveH) return false;
+        int lx = (int)Math.Floor(Wrap(x - _carveX + 0.5 - _carveW * 0.5, _width) + _carveW * 0.5);
+        int lz = (int)Math.Floor(Wrap(z - _carveZ + 0.5 - _carveD * 0.5, _height) + _carveD * 0.5);
+        if ((uint)lx >= (uint)_carveW || (uint)lz >= (uint)_carveD) return false;
+        return Walls[(ly * _carveD + lz) * _carveW + lx];
+    }
+
+    /// <summary>Whether an opened cell has a wall beside it and no open ground: nothing but the wall holds the surface next to it. (Beside the ground outside, as in a gap in a wall, it must mirror that ground or the surface leaves the wall's line.)</summary>
+    public bool WalledIn(int x, int y, int z)
+    {
+        if (Walls == null) return false;
+        bool wall = false;
+        for (int k = 0; k < 4; k++)
+        {
+            int nx = x + (k == 0 ? -1 : k == 1 ? 1 : 0), nz = z + (k == 2 ? -1 : k == 3 ? 1 : 0);
+            if (IsWall(nx, y, nz)) wall = true;
+            else if (!IsCarved(nx, y, nz)) return false;
+        }
+        return wall;
     }
 
     /// <summary>Lowest world y any carved cell reaches, or <see cref="PadY"/> when nothing is carved.</summary>

@@ -62,6 +62,28 @@ public sealed class MeshOptions
     public Func<Int3, bool>? Only;
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
     public bool Detail = true;
+    /// <summary>
+    /// How many cells of buried ground below ground level hide no faces. On a planet nothing keeps the
+    /// ground where it was generated: it dips round a room carved under the pad, a cut or a bank leaves it
+    /// short, the player digs it away. A face left out there is a wall you see straight through from
+    /// outside and still walk into (its inner face is solid from behind), so the planet draws every
+    /// face however deep: <see cref="AllGround"/>.
+    /// </summary>
+    public int GroundShow;
+    /// <summary>For <see cref="GroundShow"/>: buried ground hides no face at any depth.</summary>
+    public const int AllGround = 1 << 20;
+    /// <summary>How much each cell's shade wanders, as a share of the full wander: less on plain walls, where it reads as noise.</summary>
+    public float Mottle = 1f;
+
+    /// <summary>
+    /// Anything standing on a planet: buried ground is turned on so rooms keep their shading, with an
+    /// empty plug, so none of it is drawn, and it hides no face: the voxel terrain is the ground there, and it can be dug away.
+    /// </summary>
+    public static MeshOptions OnPlanet(Int3 min) => new()
+    {
+        Doors = true, Collision = true, Detail = true, Rock = true, Mottle = 0.3f,
+        RockMin = new Int3(min.X + 1, 0, min.Z + 1), RockMax = new Int3(min.X, 0, min.Z), RockBottom = min.Y, GroundShow = AllGround,
+    };
 }
 
 /// <summary>
@@ -106,6 +128,29 @@ public static class Mesher
         list.Sort((a, b) => (a.Chunk.Y, a.Chunk.Z, a.Chunk.X).CompareTo((b.Chunk.Y, b.Chunk.Z, b.Chunk.X)));
         return list;
     }
+
+    /// <summary>One chunk alone, seeing its neighbours' cells exactly as the whole build does; null if nothing is in it. The options are asked for by the chunk's lowest cell.</summary>
+    public static ChunkMesh? BuildChunk(IBlockStructure grid, CellMask occupied, Int3 chunk, int size, Func<Int3, MeshOptions> options)
+    {
+        var window = new ChunkWindow(grid, chunk * size, size);
+        foreach (ChunkMesh m in Build(window, occupied, options(window.Min)))
+            if (m.Chunk == chunk) return m;
+        return null;
+    }
+
+    /// <summary>The chunks whose faces or shading depend on these cells: their own and every one round them, so a block gone shows what it hid in the next chunk too.</summary>
+    public static HashSet<Int3> ChunksTouching(IEnumerable<Int3> cells, int size)
+    {
+        var chunks = new HashSet<Int3>();
+        foreach (Int3 c in cells)
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+                chunks.Add(new Int3(FloorDiv(c.X + dx, size), FloorDiv(c.Y + dy, size), FloorDiv(c.Z + dz, size)));
+        return chunks;
+    }
+
+    static int FloorDiv(int a, int b) => a >= 0 ? a / b : (a - b + 1) / b;
 
     sealed class Ctx
     {
@@ -191,6 +236,9 @@ public static class Mesher
 
         bool CollidesFull(Int3 p) => (Flags(p) & FCollides) != 0;
 
+        /// <summary>Whether a neighbour hides a face: as <see cref="Occludes"/>, except the top of the buried ground where it may not really be (<see cref="MeshOptions.GroundShow"/>).</summary>
+        bool Hides(Int3 p) => Occludes(p) && !(_o.GroundShow > 0 && IsRock(p) && p.Y > Assembler.GroundY - _o.GroundShow);
+
         public void Block(Int3 p, Block b)
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
@@ -216,7 +264,7 @@ public static class Mesher
             var chunk = Chunk(p);
             bool glass = BlockInfo.IsTransparent(b.Material);
             Surface surf = Shapes.SurfaceOf(b.Material);
-            float jitter = 0.94f + (Hash.Cell(p, 3) % 1000) / 1000f * 0.1f;
+            float jitter = 1f + ((Hash.Cell(p, 3) % 1000) / 1000f * 0.1f - 0.06f) * _o.Mottle;
             // Glyph stone is black, with the glyph inlaid as thin glowing lines.
             bool glyph = b.Material == Material.Glyph;
             Rgb body = glyph ? b.Color.Lerp(new Rgb(0x1a, 0x1b, 0x22), 0.88f) : b.Color;
@@ -225,12 +273,12 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) : Occludes(n))
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
                     continue;
                 Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
                 if (glyph) Glyph(chunk, p, f, b.Color);
                 if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
-                if (_o.Collision && !CollidesFull(n)) CollideFace(chunk, p, f);
+                if (_o.Collision && (!CollidesFull(n) || IsRock(n))) CollideFace(chunk, p, f);
             }
         }
 
@@ -436,7 +484,7 @@ public static class Mesher
             V3 R(V3 v) => o + Shapes.Turn(v, b.Facing);
             V3 lowL = new(0, 0, 1), lowR = new(1, 0, 1), highL = new(0, 1, 0), highR = new(1, 1, 0), backL = new(0, 0, 0), backR = new(1, 0, 0);
             var buf = chunk.Surfaces[(int)Shapes.SurfaceOf(b.Material)];
-            float j = 0.95f + (Hash.Cell(p, 5) % 100) / 1000f;
+            float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
             void Quad(V3 a, V3 bb, V3 c, V3 d, float shade)
             {
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
@@ -459,6 +507,8 @@ public static class Mesher
                 Quad(sBR, sBL, sHL, sHR, 0.82f);                  // the tall back
                 TriFace(sBL, sLL, sHL, 0.78f);                    // sides
                 TriFace(sLR, sBR, sHR, 0.78f);
+                // The underside, for a ramp nothing stands under: an eave or a roof seen from inside.
+                if (!Hides(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f);
             }
             if (_o.Collision)
             {
@@ -487,6 +537,34 @@ public static class Mesher
             }
         }
     }
+}
+
+/// <summary>
+/// One chunk's box of a grid, read through to the whole grid, so the mesher builds that chunk alone
+/// with its neighbours' faces and shading seen exactly as in the whole build.
+/// </summary>
+public sealed class ChunkWindow : IBlockStructure
+{
+    readonly IBlockStructure _grid;
+    public Int3 Min { get; }
+    public Int3 Size { get; }
+
+    public ChunkWindow(IBlockStructure grid, Int3 min, int size)
+    {
+        _grid = grid;
+        Min = min;
+        Size = new Int3(size, size, size);
+    }
+
+    public bool InBounds(Int3 p)
+    {
+        Int3 l = p - Min;
+        return (uint)l.X < (uint)Size.X && (uint)l.Y < (uint)Size.Y && (uint)l.Z < (uint)Size.Z;
+    }
+
+    public Block Get(Int3 p) => _grid.Get(p);
+    public void Set(Int3 p, Block b) => _grid.Set(p, b);
+    public int CountBlocks() => 0;
 }
 
 public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface, bool SkipBottom = false);
@@ -532,6 +610,7 @@ public static class Shapes
         BlockType.Shelf or BlockType.Locker => (new V3(0.06f, 0, 0.1f), new V3(0.94f, 1f, 0.9f)),
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
         BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
+        BlockType.Pump => (new V3(0.2f, 0, 0.25f), new V3(0.8f, 1.7f, 0.75f)),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
 
@@ -580,8 +659,9 @@ public static class Shapes
             {
                 bool bottom = g.Get(p + Int3.Down).Type != BlockType.Door;
                 if (b.Variant == DoorState.Open || b.Variant == DoorState.Jammed && bottom) break;
-                l.Add(Box(0, 0, 0.4f, 1, 1, 0.6f, c, Surface.Metal, b.Facing));
-                if (bottom) l.Add(Box(0, 0.35f, 0.38f, 1, 0.5f, 0.62f, new Rgb(0xe0, 0xa8, 0x00), Surface.Metal, b.Facing));
+                bool plainDoor = b.Material == Material.Timber; // a house's door: a plain leaf, no hazard band
+                l.Add(Box(0, 0, 0.4f, 1, 1, 0.6f, c, plainDoor ? Surface.Matte : Surface.Metal, b.Facing));
+                if (bottom && !plainDoor) l.Add(Box(0, 0.35f, 0.38f, 1, 0.5f, 0.62f, new Rgb(0xe0, 0xa8, 0x00), Surface.Metal, b.Facing));
                 break;
             }
             case BlockType.SealedDoor:
@@ -663,6 +743,9 @@ public static class Shapes
                 l.Add(Box(0.36f, 0.12f, 0.97f, 0.64f, 0.26f, 0.99f, new Rgb(0x30, 0x48, 0x58), Surface.Glass, b.Facing));
                 break;
             }
+            case BlockType.Plate:
+                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte));
+                break;
             case BlockType.Scorch:
                 l.Add(new ShapeBox(new V3(0.02f, 0, 0.02f), new V3(0.98f, 0.02f, 0.98f), c, Surface.Matte, true));
                 break;
@@ -827,6 +910,16 @@ public static class Shapes
                 l.Add(Box(0.36f, 1.3f, 0.38f, 0.64f, 1.65f, 0.62f, c, Surface.Matte));
                 l.Add(Box(0.15f, 0.9f, 0.42f, 0.85f, 1.05f, 0.58f, c.Scale(0.9f), Surface.Matte));
                 break;
+            case BlockType.Pump:
+            {
+                // A fuel pump: a body on a plinth, a dead display, a hose hanging on its side.
+                l.Add(Box(0.15f, 0, 0.25f, 0.85f, 0.12f, 0.75f, c.Scale(0.6f), Surface.Metal, b.Facing));
+                l.Add(Box(0.22f, 0.12f, 0.3f, 0.78f, 1.25f, 0.7f, c, Surface.Metal, b.Facing));
+                l.Add(Box(0.26f, 1.25f, 0.34f, 0.74f, 1.7f, 0.66f, c.Scale(0.8f), Surface.Metal, b.Facing));
+                l.Add(Box(0.3f, 1.3f, 0.32f, 0.7f, 1.62f, 0.34f, new Rgb(0x1c, 0x20, 0x22), Surface.Matte, b.Facing));
+                l.Add(Box(0.8f, 0.45f, 0.45f, 0.85f, 1.1f, 0.5f, new Rgb(0x20, 0x20, 0x20), Surface.Matte, b.Facing));
+                break;
+            }
             case BlockType.Ramp:
             case BlockType.Spike:
                 break;

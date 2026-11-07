@@ -8,6 +8,15 @@ GalHack credits every asset it uses, including CC0 ones. Add a row for each asse
 | Oxanium font (prototypes/diegetic-ui/fonts/Oxanium; also read in place by prototypes/manufacturing) | Severin Meyer, The Oxanium Project Authors | https://github.com/google/fonts/tree/main/ofl/oxanium | SIL Open Font License 1.1 |
 | Space Mono Bold font (prototypes/diegetic-ui/fonts/SpaceMono; also read in place by prototypes/manufacturing) | Colophon Foundry, The Space Mono Project Authors | https://github.com/google/fonts/tree/main/ofl/spacemono | SIL Open Font License 1.1 |
 
+## Music and sound
+
+| Work | Author | Source | Licence |
+| --- | --- | --- | --- |
+| Generated ambient drones (shared/Music), written for this game, no samples | The GalHack project | https://github.com/pipspcrepair-ops/GalHack | PolyForm Noncommercial, as the rest of this repository |
+| All sound effects, synthesised in code | The GalHack project | https://github.com/pipspcrepair-ops/GalHack | PolyForm Noncommercial, as the rest of this repository |
+
+All of the game's music is generated. It uses no recordings or samples.
+
 ## Libraries
 
 | Library | Author | Source | Licence | Used by |

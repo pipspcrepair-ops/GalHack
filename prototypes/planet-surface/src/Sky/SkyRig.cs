@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using GalHack.Stars;
 using Godot;
 using Planets.Look;
 using PlanetSurface.World;
@@ -24,6 +26,38 @@ public partial class SkyRig : Node3D
     public bool Paused;
 
     public SkySystem System { get; private set; }
+
+    /// <summary>The system this sky looks out at.</summary>
+    public StarSystem Model => _world?.StarSystem;
+
+    /// <summary>The one clock: days since the system's day 0, its fraction the time of day. A save holds this.</summary>
+    public double Days
+    {
+        get => _wholeDays + TimeOfDay;
+        set
+        {
+            _wholeDays = Math.Floor(value);
+            TimeOfDay = value - _wholeDays;
+        }
+    }
+
+    /// <summary>Takes this sky's directions (the world's, which at a point on the ground are east, up, south) to the star field's frame.</summary>
+    public Basis SkyToStars { get; private set; } = Basis.Identity;
+
+    /// <summary>Toward the star in the star field's frame.</summary>
+    public Vector3 StarInField { get; private set; } = Vector3.Up;
+
+    /// <summary>The radius of the sphere this world's own ring stands round, m: 0 for the true globe. Over the cap that is the curved sheet you can see.</summary>
+    public float RingRadius;
+
+    /// <summary>What every other body looks like from afar.</summary>
+    public BodySurfaces Surfaces { get; private set; }
+
+    /// <summary>The ring plane's normal of the giant this world circles, in this sky.</summary>
+    public Vector3 NeighbourRing { get; private set; } = Vector3.Up;
+
+    /// <summary>What this sky is drawing right now, for checking against the model: each body and its direction in this sky.</summary>
+    public IReadOnlyList<(Orbiter Body, Vector3 Direction, float Angular)> Drawn => _drawn;
     public Godot.Environment Environment { get; private set; }
     public DirectionalLight3D Sun { get; private set; }
     public DirectionalLight3D NightLight { get; private set; }
@@ -33,10 +67,24 @@ public partial class SkyRig : Node3D
 
     ShaderMaterial _sky;
     NoiseTexture2D _noise;
-    double _days;
+    double _wholeDays;
+    Basis _skyToGlobe = Basis.Identity;
+    D3 _eye = new(0, 1, 0);
+    bool _stood;
+    const int BodySlots = 10;
+    readonly List<Sighting> _seen = new(), _inSlots = new();
+    readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
+    readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
+    readonly float[] _bodyRadii = new float[BodySlots];
+    readonly int[] _bodyLayers = new int[BodySlots];
+    readonly Vector3[] _bodyAxes = new Vector3[BodySlots], _bodyZeros = new Vector3[BodySlots];
+    Vector3 _brightest = Vector3.Up;
+    float _brightestEnergy = 0.06f;
     Vector2 _cloudDrift = new(1370f, 620f); // where the cloud pattern starts: its first cloud edges don't fall on the sky checks' sight lines
-    float _latitude;
     PlanetWorld _world;
+
+    /// <summary>The galaxy and the sky from where you are: the stars and nebulae the sky draws, and the star map reads.</summary>
+    public GalaxySky Stars { get; private set; }
 
     /// <summary>The cloud layer from above: the sky draws clouds behind the ground, so from over them this mesh draws what is under you.</summary>
     public MeshInstance3D CloudDeck { get; private set; }
@@ -110,27 +158,13 @@ public partial class SkyRig : Node3D
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,
             Noise = new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
         };
+        GalaxyShader.Register();
         _sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/sky.gdshader") };
         _sky.SetShaderParameter("cloud_noise", _noise);
         _sky.SetShaderParameter("cloud_detail", new NoiseTexture3D
         {
             Width = 64, Height = 64, Depth = 64, Seamless = true,
             Noise = new FastNoiseLite { Seed = 5, Frequency = 0.06f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
-        });
-        // The nebula is looked up along the sky's 3D directions, inside one tile of each texture, so
-        // it has no seam, no pole and no tiling edge: the textures needn't be seamless (blending a
-        // seamless one's edges leaves faint planes in it).
-        // Fine enough that even the finest octave spans a few texels: coarser, its texel grid
-        // showed as square blotches.
-        _sky.SetShaderParameter("nebula_noise", new NoiseTexture3D
-        {
-            Width = 128, Height = 128, Depth = 128,
-            Noise = new FastNoiseLite { Seed = 23, Frequency = 0.035f, FractalOctaves = 3, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
-        });
-        _sky.SetShaderParameter("nebula_detail", new NoiseTexture3D
-        {
-            Width = 128, Height = 128, Depth = 128,
-            Noise = new FastNoiseLite { Seed = 29, Frequency = 0.08f, FractalOctaves = 2, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
         });
         Environment = new Godot.Environment
         {
@@ -162,7 +196,11 @@ public partial class SkyRig : Node3D
             DirectionalShadowMaxDistance = 320f,
         };
         AddChild(Sun);
-        NightLight = new DirectionalLight3D { Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly };
+        NightLight = new DirectionalLight3D
+        {
+            Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
+            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits, DirectionalShadowMaxDistance = 320f,
+        };
         AddChild(NightLight);
         Air = Atmosphere.Compute(SkySystem.For(new Planets.Gen.PlanetSpec(1, Planets.Gen.Archetype.Temperate, 0, 0)), Atmosphere.Clear(), 0.5f);
     }
@@ -178,75 +216,170 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("sunset", C(s.Sunset));
         _sky.SetShaderParameter("haze", C(s.Haze));
         _sky.SetShaderParameter("star_color", C(s.StarColor));
-        _sky.SetShaderParameter("sun_radius", s.SunRadius);
+        _sky.SetShaderParameter("sun_radius", world.StarSystem.See(world.StarSystem.Star, 0.0, new D3(0, world.StarSystem.Home.Radius, 0)).Angular);
         _sky.SetShaderParameter("sun_energy", s.SunEnergy);
         _sky.SetShaderParameter("density", s.Density);
         _sky.SetShaderParameter("stars_by_day", s.StarsByDay);
-        _sky.SetShaderParameter("nebula", s.Nebula);
-        _sky.SetShaderParameter("nebula_a", C(s.NebulaA));
-        _sky.SetShaderParameter("nebula_b", C(s.NebulaB));
+        // The game's seed is the galaxy's; the world found its home star in it when it was built.
+        world.ChartStars();
+        Stars = new GalaxySky(world.Catalogue, world.HomeStar, world.Spec.Seed);
+        Stars.Bind(_sky);
         // The noise tile must divide the planet both ways, so clouds join across the seams.
         float W = (float)world.Width, H = (float)world.Height;
         _sky.SetShaderParameter("cloud_scale", new Vector2(W / MathF.Max(1, MathF.Round(W / 8000f)), H / MathF.Max(1, MathF.Round(H / 8000f))));
-        int moons = 0;
-        var moonColors = new Vector3[3];
-        var moonRadii = new float[3];
-        bool giant = false;
-        foreach (SkyBody b in s.Bodies)
+        Orbiter giant = world.StarSystem.Neighbour;
+        _sky.SetShaderParameter("giant", giant != null);
+        if (giant != null)
         {
-            if (b.Kind == BodyKind.GasGiant)
-            {
-                giant = true;
-                _sky.SetShaderParameter("giant_radius", b.Radius);
-                _sky.SetShaderParameter("giant_color", C(b.Color));
-                _sky.SetShaderParameter("giant_band", C(b.Band));
-                _sky.SetShaderParameter("rings", b.Rings);
-                _sky.SetShaderParameter("ring_color", C(b.RingColor));
-            }
-            else if (moons < 3)
-            {
-                moonColors[moons] = new Vector3(b.Color.R, b.Color.G, b.Color.B);
-                moonRadii[moons] = b.Radius;
-                moons++;
-            }
+            _sky.SetShaderParameter("giant_color", C(giant.Color));
+            _sky.SetShaderParameter("giant_band", C(giant.Band));
+            _sky.SetShaderParameter("rings", giant.Rings);
+            _sky.SetShaderParameter("ring_color", C(giant.RingColor));
         }
-        _sky.SetShaderParameter("giant", giant);
-        _sky.SetShaderParameter("moon_count", moons);
-        _sky.SetShaderParameter("moon_color", moonColors);
-        _sky.SetShaderParameter("moon_radius", moonRadii);
+        Surfaces = new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
+        _sky.SetShaderParameter("surfaces", Surfaces.Texture);
+        _sky.SetShaderParameter("home_ring", world.StarSystem.Home.Rings);
+        _sky.SetShaderParameter("home_ring_color", C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
     }
 
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
     public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
 
-    /// <summary>Sets the time and the weather's air for this frame. <paramref name="latitude"/> is -1 (one pole) to 1 (the other).</summary>
+    /// <summary>Sets the time and the weather's air for this frame. <paramref name="latitude"/> is -1 (one pole) to 1 (the other): where you stand, unless <see cref="Stand"/> has said better.</summary>
     public void Advance(double delta, float latitude, AtmosphereState air, Vector2 wind)
     {
         if (System == null) return;
-        _latitude = latitude;
+        if (!_stood) Stand(StarSystem.NoonLongitude, (latitude + 1f) * 0.5 * Math.PI, 0.0);
         Air = air;
-        if (!Paused) TimeOfDay = (TimeOfDay + delta * TimeScale / (System.DayMinutes * 60.0)) % 1.0;
-        _days += Paused ? 0 : delta * TimeScale / (System.DayMinutes * 60.0);
+        RunClock(delta);
         _cloudDrift += wind * (float)delta * 1.8f;
         Apply();
     }
 
-    /// <summary>The direction to the sun at a time of day (0 midnight, 0.5 noon), at the latitude last given.</summary>
-    public Vector3 SunAt(double timeOfDay)
+    /// <summary>Runs the clock on: it never stops, whichever zone you are in.</summary>
+    public void RunClock(double delta)
     {
-        float hour = (float)(timeOfDay * Math.Tau - Math.PI);   // 0 at noon
-        float lat = _latitude * 1.3f;                            // up to about 75 degrees at the poles
-        return Direction(hour, lat, 0.18f, 0f);
+        if (Paused || System == null) return;
+        double t = TimeOfDay + delta * TimeScale / (System.DayMinutes * 60.0);
+        double whole = Math.Floor(t);
+        _wholeDays += whole;
+        TimeOfDay = t - whole;
+    }
+
+    /// <summary>Where this sky is seen from: a point of the map at a height over it, so east, up and south are the ground's there.</summary>
+    public void Stand(double longitude, double colatitude, double height)
+    {
+        if (Model == null) return;
+        var (e, u, n) = StarSystem.FrameAt(longitude, colatitude);
+        _skyToGlobe = new Basis(V(e), V(u), V(n));
+        _eye = u * (Model.Home.Radius + height);
+        _stood = true;
+    }
+
+    /// <summary>Where this sky is seen from, up in orbit: its directions are the zone's, and <paramref name="eye"/> is in the globe's frame.</summary>
+    public void Stand(Basis worldToGlobe, D3 eye)
+    {
+        _skyToGlobe = worldToGlobe;
+        _eye = eye;
+        _stood = true;
+    }
+
+    static Vector3 V(D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
+
+    Vector3 InSky(D3 globe) => (_skyToGlobe.Inverse() * V(globe)).Normalized();
+
+    /// <summary>The direction to the sun at a time of day (0 midnight, 0.5 noon) from where you stand.</summary>
+    public Vector3 SunAt(double timeOfDay) => InSky(Model.ToStar(_wholeDays + timeOfDay, _eye));
+
+    /// <summary>Puts the sun, the moons, the giant and the stars where the system has them this moment, from where you stand.</summary>
+    public void Track()
+    {
+        StarSystem m = Model;
+        double days = Days;
+        StarSystem.Orientation o = m.Orient(days);
+        Surfaces?.Pump();
+        (Vector3 Axis, Vector3 Zero) Turned(Orbiter b)
+        {
+            var (axis, zero) = m.Turned(b, days);
+            return (InSky(o.ToGlobe(axis)), InSky(o.ToGlobe(zero)));
+        }
+        Basis system = new Basis(V(o.X), V(o.Y), V(o.Z)); // the globe's axes in the system's frame
+        SkyToStars = system * _skyToGlobe;
+        Vector3 toSun = InSky(m.See(m.Star, days, _eye, o).Direction);
+        ToSun = toSun;
+        StarInField = (V(m.Position(m.Star, days) - m.Position(m.Home, days))).Normalized();
+        Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
+        _sky.SetShaderParameter("star_turn", Stars.Field * SkyToStars);
+        _sky.SetShaderParameter("sky_to_globe", _skyToGlobe);
+        // The eye against the sphere the ring stands round, at the height it really is over it.
+        double ringSphere = RingRadius > 0f ? RingRadius : m.Home.Radius;
+        _sky.SetShaderParameter("home_ring_eye", V(_eye.Normalized * (1.0 + (_eye.Length - m.Home.Radius) / ringSphere)));
+
+        _seen.Clear();
+        foreach (Orbiter b in m.Bodies)
+            if (b.Kind != OrbiterKind.Star && b.Kind != OrbiterKind.Belt && b != m.Home) _seen.Add(m.See(b, days, _eye, o));
+        _seen.Sort((a, b) => b.Angular.CompareTo(a.Angular));
+        _drawn.Clear();
+        _brightest = Vector3.Up;
+        _brightestEnergy = 0.06f; // starlight
+        double giantAt = -1.0;
+        _inSlots.Clear();
+        foreach (Sighting s in _seen)
+        {
+            if (s.Body != m.Neighbour)
+            {
+                if (_inSlots.Count < BodySlots) _inSlots.Add(s);
+                continue;
+            }
+            Vector3 dir = InSky(s.Direction), light = InSky(s.ToItsLight);
+            giantAt = s.Distance;
+            _sky.SetShaderParameter("giant_dir", dir);
+            _sky.SetShaderParameter("giant_radius", s.Angular);
+            _sky.SetShaderParameter("giant_light", light);
+            var (giantAxis, giantZero) = Turned(s.Body);
+            _sky.SetShaderParameter("giant_layer", Surfaces?.LayerOf(s.Body) ?? -1);
+            _sky.SetShaderParameter("giant_zero", giantZero);
+            NeighbourRing = giantAxis;
+            _sky.SetShaderParameter("ring_normal", NeighbourRing);
+            float lit = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f);
+            if (dir.Y > 0f && 0.25f * lit > _brightestEnergy) (_brightestEnergy, _brightest) = (0.25f * lit, dir);
+            _drawn.Add((s.Body, dir, s.Angular));
+        }
+        _inSlots.Sort((a, b) => b.Distance.CompareTo(a.Distance));
+        int slot = 0, behindGiant = 0;
+        foreach (Sighting s in _inSlots)
+        {
+            Vector3 dir = InSky(s.Direction), light = InSky(s.ToItsLight);
+            if (s.Distance > giantAt) behindGiant++;
+            _bodyDirs[slot] = dir;
+            _bodyLights[slot] = light;
+            _bodyRadii[slot] = s.Angular;
+            (_bodyAxes[slot], _bodyZeros[slot]) = Turned(s.Body);
+            _bodyLayers[slot] = Surfaces?.LayerOf(s.Body) ?? -1;
+            _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
+            float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
+            float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
+            if (e > _brightestEnergy) (_brightestEnergy, _brightest) = (e, dir);
+            _drawn.Add((s.Body, dir, s.Angular));
+        }
+        _sky.SetShaderParameter("giant_at", behindGiant);
+        _sky.SetShaderParameter("moon_count", slot);
+        _sky.SetShaderParameter("moon_dir", _bodyDirs);
+        _sky.SetShaderParameter("moon_light", _bodyLights);
+        _sky.SetShaderParameter("moon_radius", _bodyRadii);
+        _sky.SetShaderParameter("moon_color", _bodyColors);
+        _sky.SetShaderParameter("moon_layer", _bodyLayers);
+        _sky.SetShaderParameter("moon_axis", _bodyAxes);
+        _sky.SetShaderParameter("moon_zero", _bodyZeros);
     }
 
     /// <summary>Recomputes lights and the sky from the current time and air (screenshots call it directly).</summary>
     public void Apply()
     {
         SkySystem s = System;
-        float lat = _latitude * 1.3f;
-        Vector3 toSun = SunAt(TimeOfDay);
-        ToSun = toSun;
+        Track();
+        Vector3 toSun = ToSun;
         float day = Smooth(-0.12f, 0.12f, toSun.Y);
         Daylight = day;
         AtmosphereState air = Air;
@@ -261,43 +394,16 @@ public partial class SkyRig : Node3D
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
         // twilight); it just gives no light and casts no shadows then.
         Sun.ShadowEnabled = toSun.Y > -0.03f;
-        Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
-
-        // Moons: their own hour angles; the giant nearly fixed in the sky.
-        int m = 0;
-        var moonDirs = new Vector3[3];
-        Vector3 brightest = Vector3.Up;
-        float brightestEnergy = 0.06f; // starlight
-        foreach (SkyBody b in s.Bodies)
-        {
-            if (b.Kind == BodyKind.GasGiant)
-            {
-                float sway = (float)Math.Sin(_days * Math.Tau / b.Period) * 0.03f;
-                Vector3 dir = AzimuthElevation(b.Azimuth + sway, b.Inclination);
-                _sky.SetShaderParameter("giant_dir", dir);
-                _sky.SetShaderParameter("ring_normal", new Vector3(MathF.Sin(b.RingTilt) * 0.6f, MathF.Cos(b.RingTilt), MathF.Sin(b.RingTilt) * 0.8f).Normalized());
-                float lit = Math.Clamp(-dir.Dot(-toSun) * 0.5f + 0.5f, 0f, 1f);
-                if (dir.Y > 0f && 0.25f * lit > brightestEnergy) { brightestEnergy = 0.25f * lit; brightest = dir; }
-            }
-            else if (m < 3)
-            {
-                float angle = (float)((_days / b.Period + b.Phase0) * Math.Tau);
-                Vector3 dir = Direction(angle - (float)Math.PI, lat, b.Inclination - 0.5f, b.Azimuth);
-                moonDirs[m++] = dir;
-                float phase = Math.Clamp(dir.Dot(toSun) * -0.5f + 0.5f, 0f, 1f); // full when opposite the sun
-                float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (b.Radius / 0.03f);
-                if (e > brightestEnergy) { brightestEnergy = e; brightest = dir; }
-            }
-        }
-        _sky.SetShaderParameter("moon_dir", moonDirs);
 
         // Night light: the brightest moon (or the giant's reflected light, or starlight), so night is dark but playable.
-        NightLight.LightEnergy = (1f - day) * Math.Clamp(brightestEnergy, 0.06f, 0.35f) * air.SunScale;
+        // It takes over the sun's shadows once the sun has none, so it stops at walls and roofs too: one
+        // shadowed light at a time, and it stays out until the sun has gone so the two never leak past each other.
+        NightLight.ShadowEnabled = !Sun.ShadowEnabled;
+        NightLight.LightEnergy = Smooth(-0.03f, -0.08f, toSun.Y) * Math.Clamp(_brightestEnergy, 0.06f, 0.35f) * air.SunScale;
         NightLight.LightColor = new Color(0.62f, 0.7f, 0.95f);
-        NightLight.LookAt(NightLight.GlobalPosition - (brightest.Y > 0.1f ? brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
-
-        // The stars turn with the day.
-        _sky.SetShaderParameter("star_turn", new Basis(new Vector3(1, 0, 0).Rotated(Vector3.Up, 0.3f), (float)(TimeOfDay * Math.Tau)));
+        NightLight.LookAt(NightLight.GlobalPosition - (_brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
+        Stars.Poll();
+        GalaxySky.SetPixel(_sky, IsInsideTree() ? GetViewport() : null);
 
         // Clouds and overcast from the weather.
         _sky.SetShaderParameter("cloud_cover", air.CloudCover);
@@ -359,22 +465,17 @@ public partial class SkyRig : Node3D
     /// </summary>
     public static float AirMass(float sunY) => 0.45f + 0.55f * Smooth(0.02f, 0.3f, sunY);
 
-    /// <summary>A direction in the sky from an hour angle (0 = highest), latitude, declination and a turn of the whole path.</summary>
-    static Vector3 Direction(float hour, float latitude, float declination, float turn)
-    {
-        // Equatorial coordinates to horizon coordinates: x east, y up, z south.
-        float sinAlt = MathF.Sin(declination) * MathF.Sin(latitude) + MathF.Cos(declination) * MathF.Cos(latitude) * MathF.Cos(hour);
-        float alt = MathF.Asin(Math.Clamp(sinAlt, -1f, 1f));
-        float az = MathF.Atan2(-MathF.Sin(hour) * MathF.Cos(declination),
-            MathF.Sin(declination) * MathF.Cos(latitude) - MathF.Cos(declination) * MathF.Sin(latitude) * MathF.Cos(hour));
-        return AzimuthElevation(az + turn, alt);
-    }
-
-    /// <summary>Azimuth (0 north, clockwise) and elevation to a direction: -Z is north.</summary>
-    static Vector3 AzimuthElevation(float azimuth, float elevation) =>
-        new(MathF.Sin(azimuth) * MathF.Cos(elevation), MathF.Sin(elevation), -MathF.Cos(azimuth) * MathF.Cos(elevation));
-
     static Color C(Rgb c) => new(c.R, c.G, c.B);
+
+    /// <summary>The catalogue's name for the world's own star class.</summary>
+    public static StarKind KindOf(StarClass c) => c switch
+    {
+        StarClass.RedDwarf => StarKind.RedDwarf,
+        StarClass.Orange => StarKind.OrangeDwarf,
+        StarClass.Yellow => StarKind.YellowDwarf,
+        StarClass.White => StarKind.WhiteStar,
+        _ => StarKind.BlueGiant,
+    };
 
     static float Smooth(float e0, float e1, float x)
     {

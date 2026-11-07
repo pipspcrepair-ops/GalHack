@@ -100,7 +100,8 @@ public sealed class Driver
             yield return 0;
         }
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
-        float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f;
+        float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f, side = 0f, sideFor = 0f;
+        bool sideLeft = false;
         bool digging = false, climbed = false;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
@@ -143,7 +144,21 @@ public sealed class Driver
             // Under the ground with the way on above it (a cave fallen into, a shaft dug): a ramp up out of
             // it, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
             bool buried = target.Y - feet.Y > 2.5f && Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y > 2.5f;
-            digging = dig && (noProgress > 2f || buried) && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
+            digging = canDig && (noProgress > 2f || buried);
+            // Nose to a tree or wedged under a parked hull, with nothing to dig with: back off and sidestep, further each time.
+            if (!canDig && !_following && noProgress > 1.5f && side <= 0f)
+            {
+                sideFor += 0.8f;
+                side = sideFor;
+                sideLeft = !sideLeft;
+                noProgress = 0f;
+            }
+            Controls.Hold(Key.W, side <= 0f);
+            Controls.Hold(Key.S, side > sideFor - 0.5f && side > 0f);
+            Controls.Hold(Key.A, side > 0f && sideLeft);
+            Controls.Hold(Key.D, side > 0f && !sideLeft);
+            side -= 1f / 60f;
             if (digging)
             {
                 var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
@@ -160,6 +175,9 @@ public sealed class Driver
         }
         if (digging) Controls.Primary = false;
         Controls.Hold(Key.W, false);
+        Controls.Hold(Key.S, false);
+        Controls.Hold(Key.A, false);
+        Controls.Hold(Key.D, false);
         Controls.Hold(Key.Shift, false);
         Controls.Hold(Key.Space, false);
         for (int i = 0; i < 20; i++) yield return 0;
@@ -247,6 +265,90 @@ public sealed class Driver
         yield return 0;
     }
 
+    /// <summary>Clicks a menu widget with Ctrl and/or Shift held (selection).</summary>
+    public IEnumerable<int> ClickWidgetWith(string id, bool ctrl = false, bool shift = false)
+    {
+        foreach (int x in UntilWidget(id)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
+        Controls.Hold(Key.Ctrl, ctrl);
+        Controls.Hold(Key.Shift, shift);
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Ctrl, false);
+        Controls.Hold(Key.Shift, false);
+        yield return 0;
+    }
+
+    /// <summary>Two quick clicks on a menu widget (a double-click).</summary>
+    public IEnumerable<int> DoubleClickWidget(string id)
+    {
+        foreach (int x in ClickWidget(id)) yield return x;
+        foreach (int x in ClickWidget(id)) yield return x;
+    }
+
+    /// <summary>Drags from one widget to another with the right button held (half a stack; Ctrl: one); the wheel ticks change the amount on the way.</summary>
+    public IEnumerable<int> RightDragWidget(string from, string to, bool ctrl = false, int wheel = 0)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(to)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), b = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Mouse = a;
+        Controls.Hold(Key.Ctrl, ctrl);
+        yield return 0;
+        Controls.SecondaryPressed = true;
+        Controls.Secondary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Secondary = true;
+            Controls.Mouse = a.Lerp(b, i / 4f);
+            if (i == 2) Controls.Wheel = wheel;
+            yield return 0;
+        }
+        Controls.Secondary = false;
+        Controls.SecondaryReleased = true;
+        yield return 0;
+        Controls.Hold(Key.Ctrl, false);
+        yield return 0;
+    }
+
+    /// <summary>Holds the mouse over a widget with the left button held for a while (a drag in progress), then lets go over another.</summary>
+    public IEnumerable<int> DragWidgetVia(string from, string via, int hoverTicks, string to)
+    {
+        foreach (int x in UntilWidget(from)) yield return x;
+        foreach (int x in UntilWidget(via)) yield return x;
+        Vector2 a = Game.Menu.RectOf(from).Value.GetCenter(), v = Game.Menu.RectOf(via).Value.GetCenter();
+        Controls.Mouse = a;
+        yield return 0;
+        Controls.PrimaryPressed = true;
+        Controls.Primary = true;
+        yield return 0;
+        for (int i = 1; i <= 4; i++)
+        {
+            Controls.Primary = true;
+            Controls.Mouse = a.Lerp(v, i / 4f);
+            yield return 0;
+        }
+        for (int i = 0; i < hoverTicks; i++)
+        {
+            Controls.Primary = true;
+            yield return 0;
+        }
+        foreach (int x in UntilWidget(to)) yield return x;
+        Controls.Mouse = Game.Menu.RectOf(to).Value.GetCenter();
+        Controls.Primary = true;
+        yield return 0;
+        Controls.Primary = false;
+        Controls.PrimaryReleased = true;
+        yield return 0;
+        yield return 0;
+    }
+
     /// <summary>Right-clicks a menu widget (splits a stack).</summary>
     public IEnumerable<int> RightClickWidget(string id)
     {
@@ -254,6 +356,10 @@ public sealed class Driver
         Controls.Mouse = Game.Menu.RectOf(id).Value.GetCenter();
         yield return 0;
         Controls.SecondaryPressed = true;
+        Controls.Secondary = true;
+        yield return 0;
+        Controls.Secondary = false;
+        Controls.SecondaryReleased = true;
         yield return 0;
     }
 
@@ -321,7 +427,7 @@ public sealed class Driver
         string Hit(Vector3 a, Vector3 b)
         {
             var h = space.IntersectRay(PhysicsRayQueryParameters3D.Create(a, b, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props));
-            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).Name} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
+            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).GetPath()} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
         }
         Vector3 q = feet + look * 0.6f;
         var store = Game.Zone.Planet.Terrain.Store;
@@ -358,6 +464,17 @@ public sealed class Driver
     public bool OnSurface => Game.Survivor.WorldFeet.Y > Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y - 1.0f;
 
     /// <summary>Walks up to a vessel's seat and takes it.</summary>
+    /// <summary>What stands in the way of the feet, ankle and chest high, along the look.</summary>
+    IEnumerable<string> Blockers()
+    {
+        Vector3 feet = Game.Survivor.WorldFeet, look = Game.Survivor.WorldLook() with { Y = 0f };
+        foreach (float up in new[] { 0.3f, 1.2f })
+        {
+            var r = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(feet + Vector3.Up * up, feet + Vector3.Up * up + look.Normalized() * 2f));
+            yield return r.Count == 0 ? "clear" : $"{((Node)r["collider"].AsGodotObject()).GetPath()} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
+        }
+    }
+
     public IEnumerable<int> Board(Vessel v)
     {
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
@@ -375,9 +492,22 @@ public sealed class Driver
         Controls.Hold(Key.W, false);
         Controls.Hold(Key.Space, false);
         foreach (int x in LookAt(seat, 4)) yield return x;
-        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat})");
+        if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat}; feet {Game.Survivor.WorldFeet}, ground {Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y:F2}, on the floor {Game.Survivor.Body.OnFloor}, bike {Game.Survivor.OnBike != null}, seated {Game.Survivor.Seated?.Name}, menu {Game.Menu.IsOpen}, dead {Game.Suit.Dead}, hit {string.Join(" / ", Blockers())})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
+        // The walk ended out of reach (on a hull or a ruin, or walled off from the seat): back down beside
+        // the seat on one side or the other, over what's in the way on the jetpack, and again.
+        for (int attempt = 0; attempt < 3 && Game.Survivor.Seated != v; attempt++)
+        {
+            seat = v.ToWorld(v.Seat.Value);
+            Vector3 side = MathX.Rotate(v.Body.Rotation, N.Vector3.UnitX).ToGodot() * (attempt % 2 == 0 ? 1f : -1f);
+            Vector3 beside = seat + side * 2.2f;
+            beside.Y = Game.Zone.GroundAt(beside.X, beside.Z).Y;
+            foreach (int x in WalkTo(beside, 0.5f, 20f, sprint: false, dig: false)) yield return x;
+            foreach (int x in LookAt(seat, 4)) yield return x;
+            foreach (int x in Tap(Key.F)) yield return x;
+            for (int i = 0; i < 5; i++) yield return 0;
+        }
     }
 
     public void ReleaseAll() => Controls.ReleaseAll();

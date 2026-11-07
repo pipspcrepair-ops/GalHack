@@ -119,6 +119,7 @@ public partial class Main : Node3D
         Sfx = new Sfx { Name = "Sfx" };
         AddChild(Sfx);
         Debris = new Debris { Name = "Debris", Collector = () => Player.GlobalPosition + Vector3.Up * 1.1f };
+        Debris.ColorOf = (material, at) => World?.ChipColor(material, at) ?? new Color(0.5f, 0.45f, 0.4f);
         AddChild(Debris);
         Hud = new Hud { Name = "Hud" };
         AddChild(Hud);

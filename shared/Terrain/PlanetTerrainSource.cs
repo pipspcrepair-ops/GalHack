@@ -20,8 +20,9 @@ namespace GalHack.Terrain;
 /// - bedrock <see cref="BedrockDepth"/> metres under the low ground nearby (not under the
 ///   surface right overhead, or a tunnel into a cliff's foot would meet it in a few steps):
 ///   nothing cuts it;
-/// - caves: winding tubes 3 to 36 m down where two periodic noise fields both cross zero, now and
-///   then breaking the surface as a cave mouth;
+/// - caves: winding tubes 3 to 36 m down where two periodic noise fields both cross zero, kept under
+///   their roof of rock everywhere; you get in by a <see cref="CaveMouth"/>, a passage chosen for its
+///   spot in the land;
 /// - ore: a lumpy body under every deposit on the planet generator's deposit map, surface
 ///   outcrops breaking the ground, shallow ones a few metres down.
 ///
@@ -29,12 +30,14 @@ namespace GalHack.Terrain;
 /// seam) generate exactly the cells of their counterpart on the other side.
 /// Thread-safe: chunks generate on mesh workers.
 /// </summary>
-public sealed class PlanetTerrainSource : ITerrainSource
+public sealed partial class PlanetTerrainSource : ITerrainSource
 {
     public const float BedrockDepth = 30f;
     /// <summary>The ground a tunnel's bore always leaves over it, metres: its mouth is a face in the slope, never a hole from above.</summary>
     public const float TunnelRoof = 1.2f;
     public const float CaveTop = 3f, CaveBottom = 36f;
+    /// <summary>The least a carved cell's density is below zero: a wall cell's surface stays well back from it.</summary>
+    const float CarvedLeast = 0.4f;
     const int S = ChunkStore.Size, P = S + 2;
     const float Limit = ChunkStore.DensityLimit;
 
@@ -93,8 +96,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
         foreach (TerrainStamp t in Stamps)
             stampHash = (stampHash ^ (ulong)(t.MinX * 73856093 ^ t.MinZ * 19349663 ^ t.PadY * 83492791 ^ t.MaxX * 2654435761)) * 1099511628211UL;
         // Saves record this and refuse to load against anything else: same planet, same stamps, same generator version.
-        // Version 2: landforms (the same seed now gives different ground).
-        GeneratorId = $"planet-surface/2 {spec.Archetype}/{spec.Variant} seed {spec.Seed} mods {(int)spec.Modifiers} {spec.WidthKm} km stamps {stampHash:X16}";
+        // Version 2: landforms (the same seed now gives different ground). Version 3: cave mouths.
+        GeneratorId = $"planet-surface/3 {spec.Archetype}/{spec.Variant} seed {spec.Seed} mods {(int)spec.Modifiers} {spec.WidthKm} km stamps {stampHash:X16}";
 
         ulong salt = Hash.Of(spec.Seed, 0xCA7E);
         _caveA = new PeriodicNoise(salt + 1, Width, Height, 52);
@@ -442,7 +445,12 @@ public sealed class PlanetTerrainSource : ITerrainSource
             double x = ox + (k == 4 ? 8 : (k & 1) * 15 + 0.5), z = oz + (k == 4 ? 8 : (k >> 1) * 15 + 0.5);
             if (CaveStrength(x, z, column.Max) > 0f) deepest = CaveBottom + 6f;
         }
+        if (MouthsNear(ox, oz) != null) deepest = CaveBottom + 6f;
         float bottom = column.Min - deepest;
+        // A mouth's passage runs as deep as it needs to reach the caves: its floor has to be there too.
+        if (MouthsNear(ox, oz) is { } mouths)
+            foreach (CaveMouth m in mouths)
+                foreach (var p in m.Path) bottom = MathF.Min(bottom, m.Y + p.Y - p.R - 2f);
         List<TerrainStamp> stamps = StampsNear(ox, oz);
         if (stamps != null) foreach (TerrainStamp t in stamps) bottom = Math.Min(bottom, t.CarveBottom - 2);
         return (FloorDiv((int)MathF.Floor(bottom), S), FloorDiv((int)MathF.Ceiling(column.Max + 2f), S));
@@ -467,6 +475,7 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
         List<OreBody> deposits = OreBodiesNear(ox, oz);
         List<TerrainStamp> stamps = StampsNear(ox, oz);
+        List<CaveMouth> mouths = MouthsNear(ox, oz);
         for (int lz = 0; lz < S; lz++)
         for (int lx = 0; lx < S; lx++)
         {
@@ -500,13 +509,21 @@ public sealed class PlanetTerrainSource : ITerrainSource
 
                 // Rooms a place digs below its pad stay open, however deep they go; a tunnel's bore
                 // keeps a metre of roof under the surface, so it never opens a hole in the ground.
-                bool carved = false;
+                bool carved = false, wall = false;
                 if (padded)
                     foreach (TerrainStamp t in stamps)
+                    {
                         carved |= t.IsCarved(x, y, z) && (t.Shape != StampShape.Road || depth > TunnelRoof);
+                        wall |= t.IsWall(x, y, z);
+                    }
                 if (carved)
                 {
-                    density[i] = -Limit;
+                    // As far under zero as the ground beside it is over: the surface between them lies on
+                    // the cell's face. A flat -limit drew it back into the ground near the top, in a dip.
+                    density[i] = dist > 0f ? -MathF.Min(MathF.Max(dist, CarvedLeast), Limit) : MathF.Max(MathF.Min(dist, -CarvedLeast), -Limit);
+                    // Beside a wall it is the wall that holds the surface: right back inside it, or a room's corners fill in with a fillet of ground.
+                    foreach (TerrainStamp t in stamps)
+                        if (t.WalledIn(x, y, z)) density[i] = -Limit;
                     material[i] = CellMaterial.Air;
                     continue;
                 }
@@ -518,8 +535,10 @@ public sealed class PlanetTerrainSource : ITerrainSource
                 }
 
                 float d = dist;
-                if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
+                if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, dist, caves));
+                if (mouths != null && depth > -4f && !padded) d = MathF.Min(d, MouthsAt(mouths, x + 0.5, y + 0.5, z + 0.5));
                 d = Math.Clamp(d, -Limit, Limit);
+                if (wall) d = TerrainStamp.InWall(d);
                 density[i] = d;
 
                 if (d <= 0f)
@@ -550,7 +569,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
     /// <summary>
     /// Distance-like density (metres, positive inside rock) of the cave tubes at a point: where
     /// two noise fields are both near zero their zero-surfaces cross in a winding line, and the
-    /// tube is the neighbourhood of that line. Squashing y makes passages run mostly level.
+    /// tube is the neighbourhood of that line. Squashing y makes passages run mostly level. Depth is
+    /// the true distance to the surface, so a passage keeps its roof under a slope and behind a cliff too.
     /// </summary>
     float CaveDensity(double x, double y, double z, float depth, float strength)
     {
@@ -560,10 +580,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
         float radius = 0.085f * strength;
         // About 22 m of ground per noise unit at this wavelength.
         float tube = (r - radius) * 22f;
-        // Fade out above and below the cave band; now and then a passage reaches the surface:
-        // a cave mouth, where the region noise is strongest.
-        float top = strength > 0.85f ? 0f : CaveTop;
-        float keep = Smooth(top - 1f, top + 2f, depth) * Smooth(CaveBottom + 4f, CaveBottom - 4f, depth);
+        // Fade out above and below the cave band: nothing underground reaches the surface by accident.
+        float keep = Smooth(CaveTop - 1f, CaveTop + 2f, depth) * Smooth(CaveBottom + 4f, CaveBottom - 4f, depth);
         return keep > 0f ? tube + (1f - keep) * 6f : Limit;
     }
 
@@ -669,7 +687,8 @@ public sealed class PlanetTerrainSource : ITerrainSource
             if (y + 0.5f < BaseLevel(ColumnAt(cx, cz), x - cx * S + 0.5f, z - cz * S + 0.5f, h) - BedrockDepth) return Limit;
         }
         float caves = StampWeight(x + 0.5, z + 0.5) > 0f ? 0f : CaveStrength(x + 0.5, z + 0.5, h);
-        if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth, caves));
+        if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, depth * slopeScale, caves));
+        if (depth > -4f && StampWeight(x + 0.5, z + 0.5) <= 0f && MouthsNear(FloorDiv(x, S) * S, FloorDiv(z, S) * S) is { } mouths) d = MathF.Min(d, MouthsAt(mouths, x + 0.5, y + 0.5, z + 0.5));
         return Math.Clamp(d, -Limit, Limit);
     }
 

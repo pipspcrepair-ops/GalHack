@@ -40,10 +40,14 @@ public partial class SurfaceZone : Node3D
     public SkyRig Sky { get; private set; }
     public SurfaceWeather Weather { get; protected set; }
     public WildlifePatch Wildlife { get; protected set; }
+    public BloodFx Blood { get; protected set; }
     public PhysicsWorld Physics { get; protected set; }
     public PhysicsHost Host { get; protected set; }
     public PlanetEdits Edits { get; private set; }
     public PlanetGround Ground { get; private set; }
+
+    /// <summary>What daylight reaches, and how lit any spot is.</summary>
+    public SkyLight Light { get; private set; }
     public MeshInstance3D Sea { get; private set; }
 
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
@@ -86,8 +90,11 @@ public partial class SurfaceZone : Node3D
         // Trunks and boulders are solid (planet-surface's rules): colliders in the near rings.
         PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(GameData.Proto("planet-surface", "data", "flora-solids.json"));
 
+        SkyLit.Watch(GetTree());
         Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
         AddChild(Sky);
+        Light = new SkyLight { Name = "SkyLight", Zone = this };
+        AddChild(Light);
         Streamer = new TerrainStreamer { Name = "Terrain" };
         AddChild(Streamer);
         Sea = new MeshInstance3D
@@ -111,6 +118,8 @@ public partial class SurfaceZone : Node3D
         AddChild(Weather);
         Wildlife = new WildlifePatch { Name = "Wildlife", Zone = this };
         AddChild(Wildlife);
+        Blood = new BloodFx { Name = "Blood" };
+        AddChild(Blood);
         Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
 
@@ -146,6 +155,8 @@ public partial class SurfaceZone : Node3D
         RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
+        Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
+        Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
@@ -241,11 +252,15 @@ public partial class SurfaceZone : Node3D
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
+        // The sky is the system's, seen from where you stand: the sun goes down as you go east.
+        double east = Mathx.WrapDelta(focus.X - Planet.Width * 0.5, Planet.Width) / Planet.Width * Math.Tau * Slice.Orbit.OrbitRules.Shared.Globe.MapDaysPerTurn;
+        Sky.Stand(PlanetSurface.Skies.StarSystem.NoonLongitude + east, GalHack.Stars.SkyFrame.SeamColatitude(Mathx.Wrap(focus.Z, Planet.Height), Planet.Height), focus.Y);
         Sky.Advance(delta, latitude, Weather.Air(Sky.ToSun.Y), Weather.Wind2D);
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
         Sky.PlaceCloudDeck(eye);
+        Light.DimFog(Sky.Environment);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -305,8 +320,10 @@ public partial class SurfaceZone : Node3D
         Streamer.ShiftFrame(dx * Planet.Terrain.ChunksX, dz * Planet.Terrain.ChunksZ);
         Streamer.SetFocus(Focus());
         Wildlife.Shift(shift);
+        Blood.Shift(shift);
         Loot.Shift(shift);
         foreach (Device d in Devices) d.GlobalPosition += shift;
+        Light.Shift(shift);
         FrameShifts++;
         FrameShifted?.Invoke(shift);
     }

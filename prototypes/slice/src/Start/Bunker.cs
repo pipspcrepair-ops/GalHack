@@ -434,7 +434,28 @@ public sealed class Bunker
             Verdict v = terrain.Check(c, TerrainDigging.Terrain.EditKind.Tool);
             if (v is Verdict.Bedrock or Verdict.OutsideWorld) return false;
         }
-        return true;
+        return !MeetsUnderTown(zone, site);
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PoiGenerator.Gen.UnderBuilt, HashSet<PoiGenerator.Gen.Int3>> _underCells = new();
+
+    /// <summary>
+    /// Whether the bunker (a metre of margin round it) would be dug into the ruined town's underground
+    /// network, whose blocks stand apart from the terrain: its walls would cut across the stairwell,
+    /// and a walker would stop on a step that is not there.
+    /// </summary>
+    static bool MeetsUnderTown(SurfaceZone zone, Site site)
+    {
+        PoiGenerator.Gen.UnderBuilt built = zone.Planet.StartTown?.Under?.Built;
+        if (built == null) return false;
+        HashSet<PoiGenerator.Gen.Int3> taken;
+        lock (_underCells) taken = _underCells.GetValue(built, b => new HashSet<PoiGenerator.Gen.Int3>(b.Occupied));
+        foreach (TInt3 c in CellsFor(zone, site))
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if (taken.Contains(new PoiGenerator.Gen.Int3(c.X + dx, c.Y + dy, c.Z + dz))) return true;
+        return false;
     }
 
 

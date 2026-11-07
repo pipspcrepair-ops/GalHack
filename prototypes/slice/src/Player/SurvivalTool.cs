@@ -6,6 +6,7 @@ using GalHack.Physics.Engine;
 using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
+using Planets.Look;
 using PlanetSurface.Fx;
 using PlanetSurface.Terrain;
 using Slice.Game;
@@ -64,6 +65,12 @@ public sealed class SurvivalTool
     public event Action PlantCut;
     public event Action<Creature> CreatureHit;
 
+    /// <summary>The same hit, with where it landed and which way it was going.</summary>
+    public event Action<Creature, Vector3, Vector3> CreatureStruck;
+
+    /// <summary>How far a shot carries, m: what lives round here turns to look.</summary>
+    const float ShotHeard = 45f;
+
     /// <summary>Items gathered since the start, by id (tests and stats).</summary>
     public readonly SortedDictionary<string, int> Gathered = new(StringComparer.Ordinal);
 
@@ -90,6 +97,10 @@ public sealed class SurvivalTool
 
     /// <summary>The crosshair is on an ore tell rock (an outcrop or scree over a deposit) that still has ore to give.</summary>
     public bool OnTell => _tell != null;
+    /// <summary>The deposit whose ore rock the tool is on, if any.</summary>
+    public Deposit? Tell => _tell;
+    /// <summary>The pulses a deposit's ore rock still has in it.</summary>
+    public int TellLeft(Deposit d) => TellPulses - _tellsWorked.GetValueOrDefault((d.X, d.Y));
     Deposit? _tell;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
@@ -180,42 +191,120 @@ public sealed class SurvivalTool
     /// <summary>The raw item a deposit kind gives (shared/Items' deposit field).</summary>
     public ItemDef OreOf(DepositKind kind) => SliceItems.OreFor(_zone.Data.Items, kind.ToString());
 
-    /// <summary>One dig pulse at the target. Ore and rock become raw items in the pack.</summary>
+    /// <summary>The hand tool in hand (the item id), which sets how fast and how wide it gathers; Game sets it each tick.</summary>
+    public string ItemId = "survival-tool";
+    SliceRules.ToolTier Tier => _rules.TierOf(ItemId);
+
+    /// <summary>Damage one pulse does at the centre: the gather rate of the tool, over one interval.</summary>
+    float Power => _rules.GatherRate * Tier.Rate * _rules.DigInterval;
+
+    /// <summary>Work done on each cell the beam has touched but not yet taken (damage units), with when it last was.</summary>
+    readonly Dictionary<Int3, (float Hurt, double At)> _cellHurt = new();
+    /// <summary>Resources earned in fractions, paid out as whole items as they add up.</summary>
+    readonly Dictionary<string, double> _pool = new(StringComparer.Ordinal);
+    double _clock;
+
+    /// <summary>Hurt cells still being remembered (tests and stats).</summary>
+    public int ChippedCells => _cellHurt.Count;
+
+    float DurabilityOf(CellMaterial m) => m switch
+    {
+        CellMaterial.Soil => _rules.Durability.Soil,
+        CellMaterial.Rock => _rules.Durability.Rock,
+        CellMaterial.DeepRock => _rules.Durability.DeepRock,
+        CellMaterial.Ore => _rules.Durability.Ore,
+        _ => _rules.Durability.Rock,
+    };
+
+    /// <summary>Earns a share of something: whole items go to the pack as the fractions add up.</summary>
+    void Earn(string id, double amount, SortedDictionary<string, int> got)
+    {
+        double have = _pool.GetValueOrDefault(id) + amount;
+        int whole = (int)Math.Floor(have + 1e-9);
+        _pool[id] = have - whole;
+        if (whole <= 0) return;
+        Give(id, whole);
+        got[id] = got.GetValueOrDefault(id) + whole;
+    }
+
+    void Announce(SortedDictionary<string, int> got, bool quietStone)
+    {
+        foreach (var (id, n) in got)
+            if (!quietStone || id != "stone") Said?.Invoke($"+{n} {_zone.Data.Items.Item(id).Name}", Tones.Good);
+    }
+
+    /// <summary>
+    /// One pulse of the beam at the target: it wears the cell under the crosshair, and less the
+    /// cells about it, and resources trickle in as it does. A cell that has taken all it can is gone
+    /// (the terrain store holds a cell whole, so the ground sinks a cell at a time, never in partial
+    /// density). Bedrock and anchored ground refuse.
+    /// </summary>
     public PlanetEdit Dig()
     {
         if (!HasTarget) return null;
         _cooldown = _rules.DigInterval;
-        _suit.Worked();
-        PlanetEdit edit = _zone.Edits.Dig(Target, _rules.DigRadius);
+        PlanetTerrain terrain = _zone.Planet.Terrain;
         Vector3 at = new(Target.X + 0.5f, Target.Y + 0.5f, Target.Z + 0.5f);
+        Verdict verdict = terrain.Check(Target, EditKind.Tool);
+        if (verdict != Verdict.Removable)
+        {
+            _cooldown = 0.35f;
+            var refused = new PlanetEdit(EditKind.Tool);
+            if (verdict == Verdict.Bedrock) { refused.Bedrock = 1; Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning); }
+            else if (verdict == Verdict.Anchored) refused.Anchored = 1;
+            else refused.AlreadyAir = 1;
+            Sfx?.Play(Sfx.Sound.Clank, at);
+            return refused;
+        }
+        _suit.Worked();
+        _clock += _rules.DigInterval;
+        float power = Power, radius = Tier.Radius;
+        var finished = new List<Int3>();
+        var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        foreach (Int3 cell in ChunkStore.SphereCells(Target, radius))
+        {
+            CellMaterial m = terrain.Store.MaterialAt(cell);
+            if (m is CellMaterial.Air or CellMaterial.Bedrock || terrain.Check(cell, EditKind.Tool) != Verdict.Removable) continue;
+            float d = new Vector3(cell.X - Target.X, cell.Y - Target.Y, cell.Z - Target.Z).Length();
+            float weight = d < 0.01f ? 1f : 0.8f * (1f - d / (1.2f * radius));
+            if (weight <= 0f) continue;
+            float durability = DurabilityOf(m), hurt = _cellHurt.TryGetValue(cell, out var h) ? h.Hurt : 0f;
+            float dealt = MathF.Min(power * weight, durability - hurt);
+            if (dealt <= 0f) dealt = 0f;
+            double share = dealt / durability;
+            if (m == CellMaterial.Ore && OreOf(_zone.Planet.Source.OreKindAt(cell)) is ItemDef item) Earn(item.Id, _yields.OrePerCell * share, got);
+            else if (m is CellMaterial.Rock or CellMaterial.DeepRock && _yields.StonePerRockCell > 0) Earn("stone", _yields.StonePerRockCell * share, got);
+            hurt += power * weight;
+            if (hurt >= durability) { finished.Add(cell); _cellHurt.Remove(cell); }
+            else _cellHurt[cell] = (hurt, _clock);
+        }
+        PruneHurt();
+        PlanetEdit edit = finished.Count > 0 ? _zone.Edits.DigCells(finished) : new PlanetEdit(EditKind.Tool);
+        int ore = 0;
+        foreach (RemovedCell r in edit.Removed) if (r.Material == CellMaterial.Ore) ore++;
         if (edit.Removed.Count > 0)
         {
-            var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
-            int ore = 0;
-            foreach (RemovedCell r in edit.Removed)
-            {
-                if (r.Material == CellMaterial.Ore && OreOf(_zone.Planet.Source.OreKindAt(r.Cell)) is ItemDef item)
-                {
-                    got[item.Id] = got.GetValueOrDefault(item.Id) + _yields.OrePerCell;
-                    ore++;
-                }
-                else if (r.Material is CellMaterial.Rock or CellMaterial.DeepRock && _yields.StonePerRockCell > 0)
-                    got["stone"] = got.GetValueOrDefault("stone") + _yields.StonePerRockCell;
-            }
-            foreach (var (id, n) in got) Give(id, n);
             OreCells += ore;
             if (ore > 0) OreDug?.Invoke(ore);
             Debris?.Burst(edit.Removed, _survivor.WorldEye());
             Sfx?.Play(Sfx.Sound.Dig, at);
             if (ore > 0) Sfx?.Play(Sfx.Sound.Ore, at, 1f, -4f);
-            foreach (var (id, n) in got)
-                if (id != "stone" || ore == 0) Said?.Invoke($"+{n} {_zone.Data.Items.Item(id).Name}", Tones.Good);
-            return edit;
         }
-        _cooldown = 0.35f;
-        if (edit.Headline == Verdict.Bedrock) Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning);
-        Sfx?.Play(Sfx.Sound.Clank, at);
+        else
+        {
+            // Still chipping: a puff of grit and a low scrape.
+            Debris?.Puff(at, _zone.Planet.Grit(at), 0.35f);
+            Sfx?.Play(Sfx.Sound.Dig, at, 0.8f, -9f);
+        }
+        Announce(got, quietStone: got.Count > 1);
         return edit;
+    }
+
+    /// <summary>Forgets cells nobody has worked for a while, so the memory stays small.</summary>
+    void PruneHurt()
+    {
+        if (_cellHurt.Count < 400) return;
+        foreach (Int3 c in _cellHurt.Where(kv => _clock - kv.Value.At > 30.0).Select(kv => kv.Key).ToList()) _cellHurt.Remove(c);
     }
 
     /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
@@ -227,8 +316,9 @@ public sealed class SurvivalTool
         if (OnPlace && _placePoint.DistanceTo(eye) < distance) return false;
         _cooldown = 0.4f;
         _suit.Worked();
-        _zone.Wildlife.Damage(c, _rules.ShotDamage * 0.5f * _zone.Wildlife.HitScale(c, point));
+        _zone.Wildlife.Damage(c, _rules.ShotDamage * Tier.Shot * 0.5f * _zone.Wildlife.HitScale(c, point));
         CreatureHit?.Invoke(c);
+        CreatureStruck?.Invoke(c, point, dir);
         Sfx?.Play(Sfx.Sound.Dig, point, 1.2f, -6f);
         return true;
     }
@@ -240,11 +330,11 @@ public sealed class SurvivalTool
         double px = Mathx.WrapX(point.X, world.Width), pz = Mathx.Wrap(point.Z, world.Height);
         foreach (Deposit d in world.Map.Deposits.InRect(px - 8, pz - 8, px + 8, pz + 8))
         {
-            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture) continue;
+            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture || !PlanetSurface.Infra.InfraLayer.HasTell(world, d)) continue;
             double dx = Mathx.Wrap(px - d.X, world.Width), dz = Mathx.Wrap(pz - d.Y, world.Height);
             float r = PlanetTerrainSource.OreRadius(d) + 0.6f;
             if (dx * dx + dz * dz > r * r) continue;
-            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses ? d : (Deposit?)null;
+            return _tellsWorked.GetValueOrDefault((d.X, d.Y)) < TellPulses && !world.Felled.Contains(PlanetSurface.Infra.InfraLayer.TellId(d)) ? d : (Deposit?)null;
         }
         return null;
     }
@@ -255,16 +345,20 @@ public sealed class SurvivalTool
         Deposit d = _tell.Value;
         _cooldown = _rules.DigInterval;
         _suit.Worked();
-        _tellsWorked[(d.X, d.Y)] = _tellsWorked.GetValueOrDefault((d.X, d.Y)) + 1;
+        // A faster tool takes the rock down in fewer pulses, a share of the ore in each.
+        int worked = _tellsWorked.GetValueOrDefault((d.X, d.Y)), pulses = Math.Min(TellPulses - worked, (int)MathF.Ceiling(Tier.Rate));
+        _tellsWorked[(d.X, d.Y)] = worked + pulses;
         Vector3 at = _placePoint;
         Sfx?.Play(Sfx.Sound.Clank, at, 1.1f, -8f);
-        Debris?.Puff(at, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        Debris?.Puff(at, _zone.Planet.Grit(at), 0.5f);
         if (OreOf(d.Kind) is ItemDef item)
         {
-            Give(item.Id, TellOrePerPulse);
-            TellOre += TellOrePerPulse;
-            Said?.Invoke($"+{TellOrePerPulse} {item.Name}", Tones.Good);
+            Give(item.Id, TellOrePerPulse * pulses);
+            TellOre += TellOrePerPulse * pulses;
+            Said?.Invoke($"+{TellOrePerPulse * pulses} {item.Name}", Tones.Good);
         }
+        // Worked through: the rock and its collider go, and the tool digs on into the ground under it.
+        if (_tellsWorked[(d.X, d.Y)] >= TellPulses) _zone.Infra.BreakTell(d);
     }
 
     /// <summary>One pulse on a place's block or piece, or a wreck: it comes away once worked through, its materials into the pack.</summary>
@@ -272,7 +366,7 @@ public sealed class SurvivalTool
     {
         _cooldown = _rules.DigInterval;
         _suit.Worked();
-        float damage = Places.Rules.Salvage.ToolDamage;
+        float damage = Places.Rules.Salvage.ToolDamage * Tier.Rate;
         var (got, message) = _wreck != null ? Places.Work(_wreck, damage) : Places.Work(_placeHit.Value, damage);
         Sfx?.Play(Sfx.Sound.Clank, _placePoint, 1.25f, -12f);
         Debris?.Puff(_placePoint, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
@@ -292,35 +386,97 @@ public sealed class SurvivalTool
         if (!left.IsEmpty) Overflowed?.Invoke(left);
     }
 
+    public TreeFx Trees { get; private set; }
+
+    readonly Dictionary<long, float> _plantHurt = new();
+
+    /// <summary>Trees that have fallen to the tool (tests).</summary>
+    public int TreesFelled { get; private set; }
+
+    static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
+    static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
+
+    /// <summary>What flies off a plant: its own colour, as its biome tints it.</summary>
+    Color LeafOf(Flora kind, Vector3 at)
+    {
+        var planet = _zone.Planet;
+        foreach (FloraRule rule in BiomeLook.FloraOf(planet.Palette.BiomeAt(Mathx.WrapX(at.X, planet.Width), Mathx.Wrap(at.Z, planet.Height))))
+            if (rule.Kind == kind)
+            {
+                Rgb c = FarBuilder.Tint(rule, 0.8f);
+                return new Color(c.R, c.G, c.B);
+            }
+        return TreeFx.LeafColour(kind);
+    }
+
     /// <summary>
-    /// Cuts the plant nearest the crosshair within reach: biomass, and organics for the replicator,
-    /// and the plant is gone from the ground for good: planet-surface's felling rule
-    /// (<see cref="PlanetSurface.World.PlanetWorld.Felled"/> and <see cref="TerrainStreamer.Fell"/>),
-    /// so a tree's collider goes in the same frame and the cut is kept through streaming and saves.
+    /// Chips the plant nearest the crosshair within reach: each pulse wears it down and gives a share
+    /// of its biomass and organics (a boulder's stone), and when it is worked through it is gone from
+    /// the ground for good: planet-surface's felling rule (<see cref="PlanetSurface.World.PlanetWorld.Felled"/>
+    /// and <see cref="TerrainStreamer.Fell"/>), so a tree's collider goes in the same frame and the
+    /// cut is kept through streaming and saves. A tree falls over, leaving a stump.
     /// </summary>
     public bool CutPlant()
     {
-        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out Vector3 plant, out float scale, out long id))
+        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out Vector3 plant, out float scale, out long id, out Flora kind))
             return false;
-        if (!_zone.Planet.Felled.Add(id)) return false;
+        if (_zone.Planet.Felled.Contains(id)) return false;
+        bool tree = IsTree(kind), boulder = IsBoulder(kind);
+        float size = Math.Clamp(scale, 0.5f, 3f);
+        float durability = (boulder ? _rules.Durability.Boulder : tree ? _rules.Durability.Tree : _rules.Durability.Plant) * size;
+        float done = _plantHurt.GetValueOrDefault(id);
+        float dealt = MathF.Min(Power, durability - done);
+        done += Power;
+        _cooldown = _rules.DigInterval;
+        _suit.Worked();
+        double share = dealt / durability, scaleUp = tree ? _rules.Durability.TreeYield : 1f;
+        var got = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        if (boulder) Earn("stone", _rules.Durability.BoulderStone * size * share, got);
+        else
+        {
+            _suit.Kit.Organics += _yields.OrganicsPerPlant * size * scaleUp * share;
+            Earn("biomass", Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
+        }
+        Trees ??= AddTrees();
+        Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, 2.2f * size + 1f) : 0.6f * size);
+        Color leaf = LeafOf(kind, plant);
+        if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
+        else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
+        Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
+        if (done < durability)
+        {
+            _plantHurt[id] = done;
+            Announce(got, quietStone: false);
+            return true;
+        }
+        _plantHurt.Remove(id);
+        _zone.Planet.Felled.Add(id);
         _zone.Streamer.Fell(id);
         PlantsCut++;
-        _cooldown = _rules.DigInterval * 2f;
-        _suit.Worked();
-        float size = Math.Clamp(scale, 0.5f, 3f);
-        double organics = Math.Round(_yields.OrganicsPerPlant * size, 1);
-        int biomass = Math.Max(1, (int)MathF.Round(_yields.BiomassPerPlant * size));
-        _suit.Kit.Organics += organics;
-        Give("biomass", biomass);
         PlantCut?.Invoke();
-        Debris?.Puff(plant + Vector3.Up * 0.8f, new Color(0.35f, 0.5f, 0.2f, 0.6f), 1.5f);
-        Sfx?.Play(Sfx.Sound.Dig, plant, 1.4f, -6f);
-        Said?.Invoke($"+{biomass} Biomass, +{organics:F1} kg organics", Tones.Good);
+        if (tree)
+        {
+            TreesFelled++;
+            float height = 3.2f * size, radius = 0.28f * size;
+            foreach (var (solid, _) in _zone.Streamer.SolidsNear(plant, 2.5f))
+                if (solid.Id == id && solid.IsTrunk) { height = MathF.Max(2f, solid.Extents.Y * 2f); radius = solid.Extents.X; }
+            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true);
+            Trees.Leaves(plant + Vector3.Up * height, leaf, 30, 1.8f);
+            Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
+        }
+        Announce(got, quietStone: false);
         return true;
     }
 
+    TreeFx AddTrees()
+    {
+        var fx = new TreeFx();
+        _zone.AddChild(fx);
+        return fx;
+    }
+
     /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>
-    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle(), to);
+    public void ShowBeam(Vector3 to) => Fx?.Beam(Muzzle, to);
 
     // ---- Shoot ---------------------------------------------------------------------------------
 
@@ -334,6 +490,9 @@ public sealed class SurvivalTool
         Vector3 viewUp = right.Cross(dir).Normalized();
         return eye + dir * 0.55f + right * 0.17f - viewUp * 0.15f;
     }
+
+    /// <summary>How far past a voxel cube a shot looks for the drawn ground: ample for a shot along a slope, short of reaching through an unloaded hill to what stands behind it.</summary>
+    const float GrazePast = 24f;
 
     void Shoot()
     {
@@ -356,10 +515,10 @@ public sealed class SurvivalTool
         }
         uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
         // The voxel cast counts whole cubes, and a cube's corner stands proud of the smooth ground that is
-        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and on a
-        // shallow slope the drawn ground lies further on, the flatter the shot the further. So the world's
-        // own ray runs on past the cube by what a cube's height is worth along this shot, and has the say.
-        float past = kind == ImpactKind.Ground ? Math.Clamp(1.2f / MathF.Max(MathF.Abs(dir.Y), 0.01f), 0.75f, 6f) : 0f;
+        // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and down
+        // along a slope the drawn ground lies many metres further on, however steep the shot. So the world's
+        // own ray runs on past the cube and has the say; only with no collision there does the cube stand.
+        float past = kind == ImpactKind.Ground ? GrazePast : 0f;
         if (WorldRay.Cast(_zone, _survivor, reach + past, mask, out LookHit hit))
         {
             reach = hit.Distance;
@@ -370,6 +529,7 @@ public sealed class SurvivalTool
         PoiPlaces.Hit? onPlace = null;
         if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
             && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph)) onPlace = ph;
+        _zone.Wildlife.Noise(eye, ShotHeard);
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
         // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
@@ -381,22 +541,23 @@ public sealed class SurvivalTool
             c = null;
             kind = ImpactKind.Creature;
             reach = personAt;
-            person.Town.Shoot(person, _rules.ShotDamage);
+            person.Town.Shoot(person, _rules.ShotDamage * Tier.Shot);
             onPlace = null;
         }
         else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
-        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage))
+        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage * Tier.Shot))
             Said?.Invoke("The cracked panel gives way: a room behind it", Tones.Good);
         Vector3 end = struck ? point : eye + dir * reach;
         if (struck)
         {
             kind = ImpactKind.Creature;
             onto = null;
-            _zone.Wildlife.Damage(c, _rules.ShotDamage * _zone.Wildlife.HitScale(c, point));
+            _zone.Wildlife.Damage(c, _rules.ShotDamage * Tier.Shot * _zone.Wildlife.HitScale(c, point));
             CreatureHit?.Invoke(c);
+            CreatureStruck?.Invoke(c, point, dir);
         }
         else if (kind == ImpactKind.Block && hit.OnBlock)
-            hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage, GalHack.Structures.DamageType.Energy);
+            hit.Vessel.Hits.Shot(hit.Cell, hit.Point.ToNumerics(), hit.Normal.ToNumerics(), _rules.ShotDamage * Tier.Shot, GalHack.Structures.DamageType.Energy);
         Vector3 muzzle = Muzzle();
         Vector3 at = end, face = normal;
         Node3D on = onto;
@@ -410,13 +571,14 @@ public sealed class SurvivalTool
 /// <summary>Finds the plant nearest a look ray, from the planet streamer's own flora scatter.</summary>
 public static class FloraFinder
 {
-    public static bool Nearest(TerrainStreamer streamer, Vector3 eye, Vector3 dir, float reach, out Vector3 at, out float scale, out long id)
+    public static bool Nearest(TerrainStreamer streamer, Vector3 eye, Vector3 dir, float reach, out Vector3 at, out float scale, out long id, out Flora kind)
     {
         at = default;
+        kind = default;
         scale = 0f;
         id = 0;
         float best = float.MaxValue;
-        foreach (var (_, root, s, plantId) in streamer.FloraNear(eye, reach + 2f))
+        foreach (var (plantKind, root, s, plantId) in streamer.FloraNear(eye, reach + 2f))
         {
             // A plant is a column from its root up to about twice its scale.
             Vector3 mid = root + Vector3.Up * Mathf.Min(1.2f, s);
@@ -429,6 +591,7 @@ public static class FloraFinder
                 at = root;
                 scale = s;
                 id = plantId;
+                kind = plantKind;
             }
         }
         return best < float.MaxValue;

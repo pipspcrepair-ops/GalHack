@@ -12,9 +12,8 @@ namespace PlanetSurface.Poi;
 /// <summary>
 /// Draws the planet's POIs: the POI generator's own mesher builds each place's chunked block
 /// meshes (in its own grid, one unit a cell) on a worker; here they become meshes and collision.
-/// The mesher's buried ground is turned on with an empty plug, so faces against the ground are
-/// culled and the voxel terrain itself (cut and filled by the place's stamp) is the ground around
-/// and under it. Places sit at their canonical position, drawn at the copy nearest the camera.
+/// The mesher's buried ground is turned on with an empty plug and shows every face: the voxel terrain
+/// itself (cut and filled by the place's stamp) is the ground around and under it, and it can be dug away. Places sit at their canonical position, drawn at the copy nearest the camera.
 /// </summary>
 public partial class PoiLayer : Node3D
 {
@@ -42,6 +41,7 @@ public partial class PoiLayer : Node3D
     public void Build(PlanetWorld world)
     {
         Clear();
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
         foreach (PoiSite site in world.Pois)
         {
@@ -51,21 +51,10 @@ public partial class PoiLayer : Node3D
         }
     }
 
-    static List<ChunkMesh> Mesh(PoiSite site)
+    public static List<ChunkMesh> Mesh(PoiSite site)
     {
         BlockGrid g = site.Instance.Blocks;
-        var options = new MeshOptions
-        {
-            Doors = true,
-            Collision = true,
-            Detail = true,
-            Rock = true,
-            // An empty plug: nothing is drawn for it, but faces against buried ground are culled.
-            RockMin = new Int3(1, 0, 1),
-            RockMax = new Int3(0, 0, 0),
-            RockBottom = g.Min.Y,
-        };
-        return Mesher.Build(g, site.Instance.Layout.Occupied, options);
+        return Mesher.Build(g, site.Instance.Layout.Occupied, MeshOptions.OnPlanet(g.Min));
     }
 
     public override void _Process(double delta)
@@ -88,7 +77,9 @@ public partial class PoiLayer : Node3D
         {
             if (p.Node == null) continue;
             var origin = new Vector3(p.Site.Origin.X, p.Site.Origin.Y, p.Site.Origin.Z);
-            p.Node.Position = _world.NearestCopy(origin, camera);
+            // Written only when it changes: a same-spot write still tells every body and mesh under the node.
+            Vector3 at = _world.NearestCopy(origin, camera);
+            if (p.Node.Position != at) p.Node.Position = at;
         }
     }
 

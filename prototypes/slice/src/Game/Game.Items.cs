@@ -54,6 +54,7 @@ public partial class Game
             return;
         }
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
+        if (PickUpBike(eye, dir)) return;
         if (UseKeycard(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
@@ -103,6 +104,11 @@ public partial class Game
                 Say("F to take the command chair", Tones.Text);
                 return;
             }
+            if (type.IsLight && v.ToggleLight(look.Cell))
+            {
+                Say(v.Structure.Get(look.Cell).Off ? "Light off" : "Light on", Tones.Text);
+                return;
+            }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
             {
                 int at = 0, k = 0;
@@ -118,8 +124,10 @@ public partial class Game
     /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
     public string UsePrompt()
     {
+        if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  A/D steer  Shift boost  Space hop";
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
         if (Spaceflight.UsePrompt() is string door) return door;
+        if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride the hover bike  ·  E  Pick it up";
         if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
@@ -133,6 +141,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
             if (type.IsCommandChair) return "F  Take the command chair";
+            if (type.IsLight) return b.Off ? "E  Switch the light on" : "E  Switch the light off";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";
@@ -157,7 +166,10 @@ public partial class Game
     /// <summary>Uses one of a consumable from a toolbar or bag slot: eats, heals or refills air.</summary>
     public bool Consume(int slot)
     {
-        Slot s = Pack.Grid[slot];
+        // On the remote toolbar the food stays in its core's storage until it is eaten.
+        bool remote = Pack.OnRemoteBar && slot == Pack.Selected;
+        Slot s = remote ? Pack.InHand : Pack.Grid[slot];
+        if (remote && !Pack.HandUsable) return false;
         if (s.Item == null || !Zone.Data.Consumables.TryGetValue(s.Item, out ConsumableEffect e)) return false;
         Vitals v = Suit.Vitals;
         VitalsRules r = Suit.Sim.Data.Vitals;
@@ -167,10 +179,10 @@ public partial class Game
             return false;
         }
         string name = Zone.Data.Items.Item(s.Item).Name;
-        if (!Pack.Grid.TakeOne(slot)) return false;
+        if (remote ? Pack.HandSource.Remove(s.Item, 1) != 1 : !Pack.Grid.TakeOne(slot)) return false;
         if (e.Food > 0) v.Food = Math.Min(r.Food.Max, v.Food + e.Food * r.Food.Max);
         if (e.Health > 0) v.Heal(e.Health);
-        if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen * Suit.Sim.OxygenCapacity);
+        if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen);
         Say($"Used a {name}", Tones.Good);
         Stats.Used++;
         return true;
@@ -209,17 +221,14 @@ public partial class Game
     /// <summary>The backpack your last death left, if it still holds anything.</summary>
     public Lootable Backpack { get; private set; }
 
-    /// <summary>On death everything you carry goes into a backpack where you fell, marked on the compass; nothing is lost.</summary>
+    /// <summary>On death the bag goes into a backpack where you fell, marked on the compass; the toolbar and the survival tool stay with you, and nothing is lost.</summary>
     void CheckDeath()
     {
         if (Suit.Dead && !_wasDead)
         {
             _wasDead = true;
             if (Survivor.Seated != null) Survivor.StandUp();
-            Bill all = Pack.Storage.Contents;
-            Pack.Storage.TryTake(all);
-            foreach (Slot s in Pack.Grid.Slots) if (s.Item != null) s.Clear();
-            Pack.Grid.Reconcile();
+            Bill all = Pack.TakeBagForDeath();
             int[] size = Zone.Data.Rules.Containers.Backpack;
             Vector3 feet = Survivor.WorldFeet;
             if (!all.IsEmpty) Backpack = Zone.Loot.Create(LootKind.Backpack, "Your backpack", feet, size[0], size[1], all);
@@ -250,6 +259,20 @@ public partial class Game
     void OnCreatureDied(Creature c, ITarget killer)
     {
         Species s = c.Species;
+        if (s.Rig == RigKind.Swarm)
+        {
+            // A swarm doesn't lie down and leave a body: the last of it goes in a burst.
+            Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+            Zone.Blood.Pop(c.Position + origin + Vector3.Up * c.Altitude, s.Blood, 40);
+            Zone.Wildlife.Sound(origin, a => a.Play("pop", c.Position + Vector3.Up, 0.7f, 2f));
+            c.Removed = true;
+            if (killer == Target)
+            {
+                Stats.Kills++;
+                Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
+            }
+            return;
+        }
         var drops = new Bill();
         if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
         drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));
@@ -294,6 +317,7 @@ public partial class Game
             // A vessel on its build stand holds there until its pilot first takes its seat.
             if (v.Stand != null && Survivor.Seated == v) v.Stand = null;
             v.HoldOnStand();
+            v.TickMode();
             if (v.Machines.Count == 0) continue;
             foreach (Constructor c in v.Machines.Values) Snapshot(c);
             v.TickMachines(t);

@@ -58,6 +58,28 @@ public static class InfraViews
         InfraNetwork net = w.Infra;
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
+        // A cave mouth, from out in front of it.
+        if (what is "cave" or "cliff" or "gully" or "flank")
+        {
+            var mouths = w.Source.CaveMouths(lx - 1500, lz - 1500, lx + 1500, lz + 1500).Where(c => what == "cave" || c.Kind == what).OrderBy(c => Away(c.X, c.Z)).ToList();
+            if (mouths.Count > 0)
+            {
+                GalHack.Terrain.CaveMouth c = mouths[0];
+                double vx = c.X - c.DirX * 28 + c.DirZ * 9, vz = c.Z - c.DirZ * 28 - c.DirX * 9;
+                return Look(w, vx, vz, Math.Max(c.Y + 7f, w.GroundHeight(Mathx.WrapX(vx, w.Width), Mathx.Wrap(vz, w.Height)) + 3f), c.X + c.DirX * 3, c.Z + c.DirZ * 3, c.Y + 1f);
+            }
+        }
+        // A close look at a vehicle in a jam.
+        if (what == "wreck-close" && net.Wrecks.Any(wk => wk.Site is "evacuation-jam" or "pile-up"))
+        {
+            WreckSite site = net.Wrecks.Where(wk => wk.Site is "evacuation-jam" or "pile-up").OrderBy(wk => Away(wk.X, wk.Z)).First();
+            GalHack.Deco.DecoPlan plan = PlanetSurface.Infra.InfraDeco.DressSite(site.Site, site.Seed, site.Tech);
+            var car = plan.Placements.First(p => p.Piece is "sedan" or "hatchback" or "pickup" or "van" or "old-truck");
+            var (cx, cz) = site.World(car.X, car.Z);
+            double vx = cx + site.DirZ * 5.5 + site.DirX * 2.5, vz = cz - site.DirX * 5.5 + site.DirZ * 2.5;
+            float gy = w.GroundHeight(Mathx.WrapX(cx, w.Width), Mathx.Wrap(cz, w.Height));
+            return Look(w, vx, vz, gy + 1.6f, cx, cz, gy + 0.6f);
+        }
         // A wreck site: evacuation-jam, pile-up, roadblock, car-park, derelict-train, derailed-train, airliner-crash.
         if (net.Wrecks.Any(wk => wk.Site == what))
         {
@@ -68,7 +90,7 @@ public static class InfraViews
             return Look(w, sx, sz, eye, tx, tz, w.GroundHeight(Mathx.WrapX(tx, w.Width), Mathx.Wrap(tz, w.Height)) + 1f);
         }
         // A flavour ruin: house, farmstead, shed or wayside, from 30 m off.
-        if (what is "house" or "farmstead" or "shed" or "wayside")
+        if (what is "house" or "farmstead" or "shed" or "wayside" or "shop")
         {
             FlavourRuin ruin = net.Ruins.Where(r => r.Family.Tags.Contains(what)).OrderBy(r => Away(r.Center.X, r.Center.Z)).FirstOrDefault();
             if (ruin != null)

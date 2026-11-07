@@ -9,6 +9,7 @@ namespace Wildlife;
 public static class CreatureMaterials
 {
     static Shader _shader;
+    static StandardMaterial3D _blur;
     static readonly ConditionalWeakTable<Species, ShaderMaterial> Cache = new();
 
     public static Shader Shader => _shader ??= GD.Load<Shader>("res://shaders/creature.gdshader");
@@ -31,6 +32,16 @@ public static class CreatureMaterials
         return m;
     });
 
+    /// <summary>The soft see-through fan of a wing beating too fast to see. Its colour and strength come from the mesh's vertices.</summary>
+    public static StandardMaterial3D Blur => _blur ??= new StandardMaterial3D
+    {
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        VertexColorUseAsAlbedo = true,
+        CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        Roughness = 0.6f,
+        DisableReceiveShadows = true,
+    };
+
     /// <summary>Drops the shared materials and shader on the main thread (at shutdown).</summary>
     public static void Release()
     {
@@ -40,6 +51,9 @@ public static class CreatureMaterials
         foreach (ShaderMaterial material in materials) material.Dispose();
         _shader?.Dispose();
         _shader = null;
+        _blur?.Dispose();
+        _blur = null;
+        ProceduralAudio.ReleaseHum();
     }
 
     /// <summary>A plain vertex-colour material for plants and props, glowing in their own colours.</summary>
@@ -65,6 +79,9 @@ public partial class CreatureView : Node3D
     readonly List<MeshInstance3D> _parts = new();
     MultiMeshInstance3D _swarm;
     float _hurtShown, _wakeShown;
+    AudioStreamPlayer3D _hum;
+    /// <summary>How near the listener has to be for a hoverer's hum to play at all, m.</summary>
+    const float HumReach = 24f;
 
     public int NodeCount => _swarm != null ? 1 : _parts.Count;
 
@@ -100,17 +117,44 @@ public partial class CreatureView : Node3D
                 var mi = new MeshInstance3D
                 {
                     Mesh = MeshBuilder.For(piece),
-                    MaterialOverride = material,
+                    MaterialOverride = piece.Blur ? CreatureMaterials.Blur : material,
                     CastShadow = piece.Shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
                     VisibilityRangeEnd = range,
                 };
                 AddChild(mi);
                 _parts.Add(mi);
             }
+            if (c.Species.Flight == FlightKind.Hover)
+            {
+                _hum = new AudioStreamPlayer3D
+                {
+                    Stream = ProceduralAudio.Hum,
+                    UnitSize = 1.4f,
+                    MaxDistance = HumReach,
+                    VolumeDb = -9f,
+                    PitchScale = Math.Clamp(0.34f / c.Species.Body.Size, 0.8f, 1.4f) * (0.96f + 0.08f * (c.Id % 5) / 4f),
+                    Bus = "Master",
+                };
+                AddChild(_hum);
+            }
         }
         Sync();
         ResetPhysicsInterpolation();
         foreach (var p in _parts) p.ResetPhysicsInterpolation();
+    }
+
+    /// <summary>A hoverer's hum runs while it is up and someone is near enough to hear; nothing plays for the rest.</summary>
+    public void Listen(float distance)
+    {
+        if (_hum == null) return;
+        Creature c = Creature;
+        bool humming = !c.Landed && !c.Dead && distance < HumReach;
+        if (humming) _hum.GlobalPosition = c.Position;
+        if (humming != _hum.Playing)
+        {
+            if (humming) _hum.Play();
+            else _hum.Stop();
+        }
     }
 
     /// <summary>Copies the rig's pose onto the meshes.</summary>
@@ -206,6 +250,7 @@ public partial class WildlifeView : Node3D
             bool visible = d < far;
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
+            view.Listen(d);
         }
 
         _gone.Clear();

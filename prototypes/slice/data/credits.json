@@ -1,0 +1,27 @@
+{
+  "_read": "What the Stats tab's credits show. Each row is also in CREDITS.md at the repo root; MusicTest checks that they match.",
+  "sections": [
+    {
+      "name": "MUSIC AND SOUND",
+      "rows": [
+        { "what": "Generated ambient drones (shared/Music), written for this game, no samples", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial, as the rest of this repository" },
+        { "what": "All sound effects, synthesised in code", "author": "The GalHack project", "source": "https://github.com/pipspcrepair-ops/GalHack", "licence": "PolyForm Noncommercial, as the rest of this repository" }
+      ]
+    },
+    {
+      "name": "FONTS",
+      "rows": [
+        { "what": "Michroma", "author": "Vernon Adams, The Michroma Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/michroma", "licence": "SIL Open Font License 1.1" },
+        { "what": "Oxanium", "author": "Severin Meyer, The Oxanium Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/oxanium", "licence": "SIL Open Font License 1.1" },
+        { "what": "Space Mono Bold", "author": "Colophon Foundry, The Space Mono Project Authors", "source": "https://github.com/google/fonts/tree/main/ofl/spacemono", "licence": "SIL Open Font License 1.1" }
+      ]
+    },
+    {
+      "name": "ENGINE",
+      "rows": [
+        { "what": "Godot Engine 4.7 (.NET build)", "author": "Juan Linietsky, Ariel Manzur and the Godot contributors", "source": "https://godotengine.org", "licence": "MIT" },
+        { "what": "Jolt Physics (bundled with Godot)", "author": "Jorrit Rouwe", "source": "https://github.com/jrouwe/JoltPhysics", "licence": "MIT" }
+      ]
+    }
+  ]
+}

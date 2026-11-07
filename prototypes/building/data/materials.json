@@ -1,11 +1,11 @@
 // Armour materials. Any material combines with any shape: the shape keeps the material's armour
 // and resistances, while hit points and mass scale with the shape's volume. Every material works
 // on bases and capital ships alike (the core's mode never restricts a block).
+// Armour costs no CPU: only devices do (design 874), so size alone never uses up the budget.
 //   hp         hit points of a large-grid cube
 //   armor      flat damage taken off every hit
 //   resist     fraction of each damage type ignored after armour
 //   mass       tonnes per large-grid cube
-//   cpu        CPU cost per block
 //   color      bare-metal colour (unpainted faces)
 //   metal      0..3, how polished the bare metal looks
 //   damageLook metal (the default), concrete, alien or glass: how the block shows damage
@@ -19,31 +19,31 @@
     {
       "id": "steel", "name": "Steel",
       "hp": 500, "armor": 10, "resist": { "kinetic": 0.10, "explosive": 0.10, "energy": 0.10 },
-      "mass": 1.0, "cpu": 20, "color": "c9c1ae", "metal": 1,
+      "mass": 1.0, "color": "c9c1ae", "metal": 1,
       "upgradesTo": "hardened", "cost": { "iron": 10 }, "smallCost": { "iron": 2 }
     },
     {
       "id": "hardened", "name": "Hardened steel",
       "hp": 1000, "armor": 25, "resist": { "kinetic": 0.45, "explosive": 0.20, "energy": 0.15 },
-      "mass": 2.0, "cpu": 45, "color": "8b97a3", "metal": 2,
+      "mass": 2.0, "color": "8b97a3", "metal": 2,
       "upgradesTo": "combat", "cost": { "iron": 14, "tungsten": 4 }, "smallCost": { "iron": 3, "carbon": 1 }
     },
     {
       "id": "combat", "name": "Combat steel",
       "hp": 2000, "armor": 50, "resist": { "kinetic": 0.30, "explosive": 0.55, "energy": 0.25 },
-      "mass": 4.0, "cpu": 90, "color": "4d5563", "metal": 3,
+      "mass": 4.0, "color": "4d5563", "metal": 3,
       "cost": { "iron": 18, "tungsten": 8, "ceramic": 4 }, "smallCost": { "iron": 4, "carbon": 2 }
     },
     {
       "id": "glass", "name": "Glass",
       "hp": 250, "armor": 2, "resist": { "kinetic": 0.05, "explosive": 0.05, "energy": 0.30 },
-      "mass": 0.6, "cpu": 15, "color": "a8e0ee", "transparent": true, "damageLook": "glass",
+      "mass": 0.6, "color": "a8e0ee", "transparent": true, "damageLook": "glass",
       "cost": { "silicon": 8 }, "smallCost": { "silicon": 2 }
     },
     {
       "id": "concrete", "name": "Concrete",
       "hp": 400, "armor": 8, "resist": { "kinetic": 0.15, "explosive": 0.20, "energy": 0.20 },
-      "mass": 2.4, "cpu": 10, "color": "b9b2a4", "metal": 0, "damageLook": "concrete",
+      "mass": 2.4, "color": "b9b2a4", "metal": 0, "damageLook": "concrete",
       "cost": { "silicon": 8, "iron": 2 }, "smallCost": { "silicon": 2 }
     }
   ]

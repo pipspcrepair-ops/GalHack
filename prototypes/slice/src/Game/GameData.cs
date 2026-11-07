@@ -59,8 +59,10 @@ public sealed class GameData
             File.ReadAllText(Own("data/survival.json")),
         };
         var items = Slice.Items.SliceItems.Load(SharedPath("Items", "data"), Own("data/items.json"), out var consumables);
-        // Deco pieces are craftable block items too, unlocked on the tech tree's deco tab.
-        GalHack.Items.DecoCatalogue.LoadDirectory(SharedPath("Items", "data")).AddBillsTo(items);
+        // Deco pieces are block items on the tech tree's deco tab (nodes and gallery entries); the one universal deco block places any of them.
+        var decoLibrary = GalHack.Items.DecoCatalogue.LoadDirectory(SharedPath("Items", "data"));
+        decoLibrary.AddBillsTo(items);
+        decoLibrary.AddUniversalBlockTo(items);
         var catalogue = GalHack.Items.Bridge.BuildingBridge.LoadCatalogue(Proto("building", "data"),
             new[] { Proto("physics-sandbox", "data", "vessel-parts.json"), SharedPath("Items", "data", "building-parts.json") },
             new[] { SharedPath("Items", "data", "building-materials.json") });
@@ -171,6 +173,39 @@ public sealed class SliceRules
         public float ShotDamage { get; set; } = 18f;
         public float ShotInterval { get; set; } = 0.22f;
         public float ShotRange { get; set; } = 120f;
+
+        /// <summary>Gathering works at a rate: damage per second to the cell or plant under the beam at tier 1 (the survival tool), against each thing's durability.</summary>
+        public float GatherRate { get; set; } = 3f;
+        public DurabilityRules Durability { get; set; } = new();
+        /// <summary>Each hand tool by item id: the faster drills the tech tree unlocks.</summary>
+        public Dictionary<string, ToolTier> Tiers { get; set; } = new();
+
+        public ToolTier TierOf(string itemId) => itemId != null && Tiers.TryGetValue(itemId, out ToolTier t) ? t : new ToolTier();
+    }
+
+    /// <summary>How much a hand tool does: its gather rate as a multiple of the survival tool's, the ball of ground its beam reaches, its shots' damage as a multiple.</summary>
+    public sealed class ToolTier
+    {
+        public string Name { get; set; } = "Survival tool";
+        public float Rate { get; set; } = 1f;
+        public float Radius { get; set; } = 1.42f;
+        public float Shot { get; set; } = 1f;
+    }
+
+    /// <summary>How much work each thing takes before it is gone (damage units; a pulse does rate x interval of them).</summary>
+    public sealed class DurabilityRules
+    {
+        public float Soil { get; set; } = 1f;
+        public float Rock { get; set; } = 2f;
+        public float DeepRock { get; set; } = 3f;
+        public float Ore { get; set; } = 3f;
+        /// <summary>A plant, a tree and a boulder, at scale 1 (they grow with the plant's size).</summary>
+        public float Plant { get; set; } = 1.5f;
+        public float Tree { get; set; } = 9f;
+        public float Boulder { get; set; } = 5f;
+        /// <summary>A tree gives this many times a plant's materials.</summary>
+        public float TreeYield { get; set; } = 3f;
+        public float BoulderStone { get; set; } = 6f;
     }
 
     public sealed class BuildRules
@@ -205,6 +240,7 @@ public sealed class SliceRules
         public float Range { get; set; } = 45f;
         public float Angle { get; set; } = 32f;
         public float Energy { get; set; } = 5.5f;
+        public float Attenuation { get; set; } = 1f;
     }
 
     public sealed class ContainerRules
@@ -219,5 +255,17 @@ public sealed class SliceRules
         public float PatchHalfSize { get; set; } = 300f;
         public float SafeRadius { get; set; } = 60f;
         public float Alienness { get; set; } = 0.25f;
+
+        /// <summary>The most wild creatures a patch holds on the most livable world.</summary>
+        public int MostPerPatch { get; set; } = 40;
+
+        /// <summary>How livable a world of each archetype is, 0..1: lush worlds busiest, lava all but dead.</summary>
+        public Dictionary<string, float> Livable { get; set; } = new() { ["Temperate"] = 1f, ["Alien"] = 0.6f, ["Arid"] = 0.35f, ["Ice"] = 0.3f, ["Lava"] = 0.08f };
+
+        /// <summary>A cratered world, airless rock for the most part, holds this share of that.</summary>
+        public float Cratered { get; set; } = 0.4f;
+
+        public float LivableOn(Planets.Gen.PlanetSpec spec) =>
+            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Has(Planets.Gen.Modifier.Cratered) ? Cratered : 1f);
     }
 }

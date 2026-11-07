@@ -9,45 +9,132 @@ namespace Slice.Game;
 /// The slice's sound, all synthesised in code (no audio files): the modules' own synths compiled
 /// in from where they live (planet-surface's digging, ore, clank, place, boom, thunder and its
 /// wind and rain; building's place, remove, upgrade and UI clicks; diegetic-ui's chirp; wildlife's
-/// calls), plus three small loops of the slice's own (the jetpack's hiss, a vessel's engines,
-/// footsteps). One master volume, set in the Stats tab's options; everything is mixed well under
-/// it, so nothing is harsh. Players are stopped before quitting (wildlife's shutdown drains them).
+/// calls), plus the slice's own small voices (the jetpack's hiss and a vessel's engines, both synthesised live by <see cref="ThrusterVoice"/> with no loop to hear, and
+/// footsteps), and the music (<see cref="SliceMusic"/>). Four volumes in the Stats tab's settings,
+/// remembered between runs: master, and music, effects and ambience as buses under it. Every player
+/// that joins the tree is routed to its bus here, so nothing needs to know about them, wherever
+/// the code that made it lives. Players are stopped before quitting (wildlife's shutdown drains them).
 /// </summary>
 public partial class SliceAudio : Node
 {
     public Game Game;
     BlockBuilding.Sfx _ui;
-    AudioStreamPlayer _jet, _engine;
+    ThrusterPlayer _jet, _engine;
+    Vessel _engineOf;
     AudioStreamPlayer3D _step;
     AudioStreamWav _chirp;
     float _stepTimer;
     int _shots, _placed, _taken;
+    float _saveIn;
 
-    /// <summary>The master volume, 0 to 1 (the options).</summary>
-    public float Master
+    /// <summary>The four volumes, as they are saved.</summary>
+    public AudioSettings Settings { get; private set; }
+
+    /// <summary>The music.</summary>
+    public SliceMusic Music { get; private set; }
+
+    static string SettingsPath => ProjectSettings.GlobalizePath("user://audio-settings.json");
+
+    /// <summary>A volume, 0 to 1, by its key in <see cref="AudioSettings.Volumes"/>: applied now, saved a moment later.</summary>
+    public void SetVolume(string key, float value)
     {
-        get => Mathf.DbToLinear(AudioServer.GetBusVolumeDb(0));
-        set => AudioServer.SetBusVolumeDb(0, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+        Settings.Set(key, value);
+        Apply(key);
+        _saveIn = 1f;
+    }
+
+    /// <summary>The bus a volume sets (master is the engine's own bus 0).</summary>
+    static int Bus(string key) => key == AudioSettings.Master ? 0 : AudioServer.GetBusIndex(AudioSettings.BusName(key));
+
+    void Apply(string key)
+    {
+        int bus = Bus(key);
+        float value = Settings.Get(key);
+        AudioServer.SetBusMute(bus, value <= 0f);
+        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+    }
+
+    public static void MakeBuses()
+    {
+        foreach (string key in AudioSettings.Volumes)
+        {
+            if (key == AudioSettings.Master || AudioServer.GetBusIndex(AudioSettings.BusName(key)) >= 0) continue;
+            AudioServer.AddBus();
+            int bus = AudioServer.BusCount - 1;
+            AudioServer.SetBusName(bus, AudioSettings.BusName(key));
+            AudioServer.SetBusSend(bus, "Master");
+        }
+    }
+
+    /// <summary>A player still on the default bus goes to ambience if it is the wind or the rain, and to effects otherwise.</summary>
+    public static void Route(Node n)
+    {
+        if (n is AudioStreamPlayer p)
+        {
+            if (p.Bus == "Master") p.Bus = AudioSettings.BusName(n.Name == "Wind" || n.Name == "Rain" ? AudioSettings.Ambience : AudioSettings.Effects);
+        }
+        else if (n is AudioStreamPlayer3D p3)
+        {
+            if (p3.Bus == "Master") p3.Bus = AudioSettings.BusName(AudioSettings.Effects);
+        }
+        else if (n is AudioStreamPlayer2D p2)
+        {
+            if (p2.Bus == "Master") p2.Bus = AudioSettings.BusName(AudioSettings.Effects);
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        GetTree().NodeAdded -= Route;
+        if (_saveIn > 0f) Settings.Save(SettingsPath);
     }
 
     public override void _Ready()
     {
+        MakeBuses();
+        Settings = AudioSettings.Load(SettingsPath);
+        foreach (string key in AudioSettings.Volumes) Apply(key);
+        foreach (Node n in Game.FindChildren("*", "", true, false)) Route(n);
+        GetTree().NodeAdded += Route;
         _ui = new BlockBuilding.Sfx { Name = "BuildingSfx" };
         AddChild(_ui);
         _chirp = DiegeticUi.World.Sfx.WarningChirp();
-        _jet = Loop("Jetpack", Noise(0.6f, 1600f, 0.18f), -16f);
-        _engine = Loop("Engines", Noise(0.8f, 420f, 0.3f), -14f);
+        _jet = Engine("Jetpack", VoiceProfile.Jetpack, -9f);
+        _engine = Engine("Engines", VoiceProfile.Vessel(100f), -6f);
         _step = new AudioStreamPlayer3D { Name = "Steps", Stream = Tap(), VolumeDb = -20f, MaxDistance = 20f };
         AddChild(_step);
-        Master = 0.8f;
+        Music = new SliceMusic { Name = "Music", Game = Game };
+        AddChild(Music);
         Game.Menu.Sounded += OnMenu;
     }
 
-    AudioStreamPlayer Loop(string name, AudioStreamWav stream, float db)
+    /// <summary>An engine voice: synthesised as it plays, so it has no loop point to hear.</summary>
+    ThrusterPlayer Engine(string name, VoiceProfile profile, float db)
     {
-        var p = new AudioStreamPlayer { Name = name, Stream = stream, VolumeDb = db };
+        var p = new ThrusterPlayer { Name = name, Voice = new ThrusterVoice(profile), Db = db };
         AddChild(p);
         return p;
+    }
+
+    /// <summary>A vessel's strongest direction of thrust in kN: what sets how big its engines sound.</summary>
+    public static float BiggestThrust(Vessel v)
+    {
+        var stats = v.Stats;
+        if (stats == null) return 0f;
+        float best = stats.UpwardThrust;
+        foreach (float t in stats.Thrust) best = Mathf.Max(best, t);
+        return best;
+    }
+
+    /// <summary>
+    /// How hard a vessel's engines are working, 0..1: the force they are applying (acceleration times mass)
+    /// over the most they can give. Boost can ask for more than the rated thrust, so it caps at 1.
+    /// </summary>
+    public static float Effort(Vessel v)
+    {
+        float cap = BiggestThrust(v);
+        if (cap <= 0f || v.Flight == null) return 0f;
+        return Mathf.Clamp(v.Flight.State.ThrustLocal.Length() * v.Stats.Mass / cap, 0f, 1f);
     }
 
     /// <summary>The Tab menu's own chirps: open, close, tab, drop, queued, unlock, refused.</summary>
@@ -79,6 +166,11 @@ public partial class SliceAudio : Node
 
     public override void _Process(double delta)
     {
+        if (_saveIn > 0f)
+        {
+            _saveIn -= (float)delta;
+            if (_saveIn <= 0f) Settings.Save(SettingsPath);
+        }
         Game g = Game;
         if (g?.Survivor == null || g.Phase != Phase.Playing) return;
         float dt = (float)delta;
@@ -90,10 +182,22 @@ public partial class SliceAudio : Node
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
         bool jetting = g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack && !g.Suit.Dead;
-        Fade(_jet, jetting, -18f, dt);
+        _jet.Voice.On = jetting;
+        _jet.Voice.Thrust = 1f;
+        _jet.Voice.Air = 1f - g.Spaceflight.AirGone;
         bool engines = g.Survivor.Seated is Vessel v && v.Flight != null && v.Controller?.Frozen == false;
-        Fade(_engine, engines, -15f, dt);
-        if (engines) _engine.PitchScale = 0.8f + Mathf.Min(0.6f, ((Vessel)g.Survivor.Seated).Body.Velocity.Length() / 120f);
+        _engine.Voice.On = engines;
+        if (engines)
+        {
+            var seat = (Vessel)g.Survivor.Seated;
+            if (seat != _engineOf)
+            {
+                _engineOf = seat;
+                _engine.Voice.Retarget(VoiceProfile.Vessel(BiggestThrust(seat)));
+            }
+            _engine.Voice.Thrust = Effort(seat);
+            _engine.Voice.Air = 1f - g.Spaceflight.AirGone; // in vacuum the roar thins to what the hull carries
+        }
 
         // Footsteps on the ground: a soft tap per stride.
         float speed = g.Survivor.Body.OnFloor ? new Vector2(g.Survivor.Body.Velocity.X, g.Survivor.Body.Velocity.Z).Length() : 0f;
@@ -105,6 +209,7 @@ public partial class SliceAudio : Node
                 _stepTimer = 1.6f;
                 _step.GlobalPosition = g.Survivor.WorldFeet;
                 _step.PitchScale = 0.85f + (float)GD.RandRange(0, 0.3);
+                _step.VolumeDb = g.Survivor.Crouched ? -28f : -20f; // creeping is softer
                 _step.Play();
             }
         }
@@ -115,43 +220,19 @@ public partial class SliceAudio : Node
         if (g.Builder.TakenDown != _taken) { _taken = g.Builder.TakenDown; _ui.Play("remove", g.Survivor.WorldEye(), 1f, -8f); }
     }
 
-    static void Fade(AudioStreamPlayer p, bool on, float db, float dt)
-    {
-        if (on && !p.Playing) { p.VolumeDb = -40f; p.Play(); }
-        if (!p.Playing) return;
-        p.VolumeDb = Mathf.MoveToward(p.VolumeDb, on ? db : -40f, dt * 60f);
-        if (!on && p.VolumeDb <= -39f) p.Stop();
-    }
-
     public void StopAll()
     {
-        _jet.Stop();
-        _engine.Stop();
+        _jet.Silence();
+        _engine.Silence();
+        _jet.StopPlayer();
+        _engine.StopPlayer();
         _step.Stop();
+        Music.StopAll();
     }
 
     // ---- The slice's own small synths ----------------------------------------------------------
 
     const int Rate = 22050;
-
-    /// <summary>A looping band of filtered noise: a hiss (high cut-off) or a rumble (low).</summary>
-    static AudioStreamWav Noise(float seconds, float cutoff, float gain)
-    {
-        int n = (int)(seconds * Rate);
-        var data = new byte[n * 2];
-        var rng = new Random(11);
-        float a = Mathf.Clamp(cutoff / Rate * Mathf.Tau, 0.001f, 1f), y = 0f;
-        for (int i = 0; i < n; i++)
-        {
-            y += a * ((float)rng.NextDouble() * 2f - 1f - y);
-            // Ends meet: fade the last 5% into the first.
-            float fade = i > n * 0.95f ? (n - i) / (n * 0.05f) : 1f;
-            short s = (short)(Math.Clamp(y * gain * 3f * fade, -1f, 1f) * 32767);
-            data[2 * i] = (byte)s;
-            data[2 * i + 1] = (byte)(s >> 8);
-        }
-        return new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Rate, Data = data, LoopMode = AudioStreamWav.LoopModeEnum.Forward, LoopEnd = n };
-    }
 
     /// <summary>A footstep: a short soft thud of low noise.</summary>
     static AudioStreamWav Tap()

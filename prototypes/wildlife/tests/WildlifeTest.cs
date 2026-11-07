@@ -489,7 +489,7 @@ public partial class WildlifeTest : Node
                             float err = MathF.Max(drawn.DistanceTo(target3), MathF.Abs(target3.Y - w.Terrain.Height(target3.X, target3.Z)));
                             footChecks++;
                             if (err / tol > worstFoot / MathF.Max(worstFootTol, 1e-4f) || worstFootTol == 0f) { worstFoot = err; worstFootTol = tol; }
-                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what}"; break; }
+                            if (err > tol) { problem = $"planted foot {i} off the ground by {err:F2} m (tolerance {tol:F2}): {what} {c.State} {c.Phase} v {c.Velocity.Length():F1} time {c.PhaseTime:F2}"; break; }
                         }
                     }
                     if (problem != null) break;
@@ -544,6 +544,13 @@ public partial class WildlifeTest : Node
                 Creature c = w.Spawn(s, Vector3.Zero);
                 c.Yaw = 0f;
                 var target = new DummyTarget { Position = Ground(w, c.Forward * (c.Stats.AttackRange * 0.8f)) };
+                // A glider opens from the air, from where it would line up its run.
+                if (s.Flight == FlightKind.Glide)
+                {
+                    target.Position = Ground(w, c.Forward * Swoop.RunIn(c));
+                    c.Position = new Vector3(c.Position.X, target.Position.Y + Swoop.Height(s), c.Position.Z);
+                    c.Altitude = Swoop.Height(s);
+                }
                 w.Targets.Add(target);
                 float telegraphAt = -1f, contactAt = -1f, windup = 0f;
                 bool first = false, hit = false;
@@ -578,7 +585,7 @@ public partial class WildlifeTest : Node
                     w.Telegraph += e => { if (!e.First) second = e.Windup; };
                     for (int step = 0; step < 300 && c.Attacking; step++) w.Step(Dt);
                     Attacks.Start(w, c, target);
-                    if (second < 0f || second > telegraph) problem ??= $"{s.Name}: second attack wind-up {second:F2} s is not the normal rate";
+                    if (second < 0f || second > (s.Flight == FlightKind.Glide ? MathF.Max(telegraph, Swoop.LeastTell(s)) : telegraph)) problem ??= $"{s.Name}: second attack wind-up {second:F2} s is not the normal rate";
                 }
             }
         }
@@ -822,6 +829,10 @@ public partial class WildlifeTest : Node
         Creature h = w2.Spawn(hunter, Vector3.Zero);
         var prey = new DummyTarget { Name = "Prey", Position = Ground(w2, new Vector3(0f, 0f, -12f)), Health = new Health(1e9f) };
         w2.Targets.Add(prey);
+        h.Noticed = prey; // it saw where they went, before the trunk came between them
+        h.Awareness = 1f;
+        h.NoticedAt = w2.Time;
+        h.LastSeen = prey.Position;
         float allowed2 = tree2.TrunkRadius + h.Radius * 0.5f, closest2 = float.MaxValue;
         bool reached = false;
         w2.Attacked += e => reached = true;

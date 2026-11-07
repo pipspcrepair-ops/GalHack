@@ -1,5 +1,5 @@
 // Components the handling model needs that the building catalogue doesn't have yet: gyros,
-// hover pads and landing legs. Same format as prototypes/building/data/components.json (stats
+// hover plates and landing legs. Same format as prototypes/building/data/components.json (stats
 // for a large-grid block; each grid scales them). The sandbox appends these to the building
 // catalogue when it loads it; nothing in prototypes/building changes.
 //
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "id": "hover", "name": "Hover pad", "function": "hover",
+      "id": "hover", "name": "Hover plate", "function": "hover",
       "hp": 450, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
       "mass": 6, "cpu": 1500, "power": -1, "color": "3a3f47", "glow": "5ee0e6",
       "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"],

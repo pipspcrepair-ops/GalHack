@@ -77,7 +77,7 @@ public static class Decay
     {
         var layout = inst.Layout;
         var x = layout.Extras;
-        bool powered = inst.State == PoiState.Active;
+        bool powered = inst.State == PoiState.Active, plain = x.Plain.Count > 0;
         foreach (var spot in x.Lights)
         {
             var lvl = LevelAt(layout, spot.Cell.Y);
@@ -111,7 +111,7 @@ public static class Decay
             }
         }
         // One wrong detail from afar: in a dead place, a single window high up is still lit.
-        if (!powered && (rng.Chance(0.75f) || !inst.Lights.Any(l => l.Cell.Y >= 0)))
+        if (!powered && !plain && (rng.Chance(0.75f) || !inst.Lights.Any(l => l.Cell.Y >= 0)))
         {
             var windows = new List<Int3>();
             foreach (var (p, b) in inst.Blocks.Blocks())
@@ -121,11 +121,24 @@ public static class Decay
                 int top = windows.Max(w => w.Y);
                 var high = windows.Where(w => w.Y >= top - 4).ToList();
                 Int3 lit = high[rng.Range(0, high.Count)];
-                var wb = inst.Blocks.Get(lit);
-                wb.Material = Material.Lumen;
-                wb.Color = new Rgb(0xff, 0xc8, 0x78);
-                inst.Blocks.Set(lit, wb);
-                inst.Lights.Add(new LightSpot { Cell = lit, Color = wb.Color, Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Storey = (lit.Y + 1) / Building.Pitch });
+                // The whole window, pane by pane: one lit tile reads as a fault, not a window.
+                var window = new HashSet<Int3> { lit };
+                var next = new Queue<Int3>(window);
+                while (next.Count > 0 && window.Count < 6)
+                {
+                    Int3 pane = next.Dequeue();
+                    foreach (Dir d in Dirs.All)
+                        if (windows.Contains(pane + d.Vec()) && window.Add(pane + d.Vec())) next.Enqueue(pane + d.Vec());
+                }
+                Rgb glow = new(0xff, 0xc8, 0x78);
+                foreach (Int3 c in window)
+                {
+                    var wb = inst.Blocks.Get(c);
+                    wb.Material = Material.Lumen;
+                    wb.Color = glow;
+                    inst.Blocks.Set(c, wb);
+                }
+                inst.Lights.Add(new LightSpot { Cell = lit, Color = glow, Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Storey = (lit.Y + 1) / Building.Pitch });
             }
         }
         // No window to leave lit (a mine mouth, a hatch): a work lamp still burns over the way in.
@@ -133,7 +146,7 @@ public static class Decay
         {
             Int3 out1 = layout.EntranceFacing.Vec();
             Int3 door = layout.EntranceCell - out1 * 2;
-            bool done = false;
+            bool done = plain; // a house keeps no lamp in its walls: only the light itself, for a lived-in later
             for (int back = 0; back <= 2 && !done; back++)
                 for (int up = 1; up <= 5 && !done; up++)
                 {
@@ -146,7 +159,7 @@ public static class Decay
                     inst.Lights.Add(new LightSpot { Cell = c + out1, Color = lb.Color, Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
                     done = true;
                 }
-            if (!done)   // nothing over the door at all: a lamp left by it
+            if (!done || plain)   // nothing over the door at all: a lamp left by it
                 inst.Lights.Add(new LightSpot { Cell = layout.EntranceCell + Int3.Up * 2, Color = new Rgb(0xff, 0xa0, 0x50), Mode = LightMode.Flicker, Energy = 1.1f, Range = 7f });
         }
         // A thin column of smoke where something still burns or vents.
@@ -158,7 +171,7 @@ public static class Decay
         }
         inst.Markers.AddRange(x.Markers);
 
-        // The Bloom creeps into the deep levels whatever the state (it's thickest deepest).
+        // Damp and disorder deep down whatever the state; the Bloom creeps in (thickest deepest) only where it has taken the place.
         var nav = inst.Nav();
         foreach (var m in layout.Modules)
         {
@@ -169,7 +182,7 @@ public static class Decay
             int seeds = (int)MathF.Round((w - 0.3f) * (m.Kind == ModuleKind.Cave ? 6f : 2.5f) + rng.Float(0f, 0.8f));
             var roots = m.Cells.Where(c => inst.Blocks.Get(c).IsAir && !inst.Protected[c] && Touches(inst.Blocks, c)).ToList();
             rng.Shuffle(roots);
-            foreach (Int3 r in roots.Take(seeds))
+            foreach (Int3 r in inst.State == PoiState.Infested ? roots.Take(seeds) : Enumerable.Empty<Int3>())
             {
                 StateTransforms.GrowAt(inst, r, rng.Between(4, 6 + (int)(w * 10)), rng);
                 if (rng.Chance(0.5f)) inst.Lights.Add(new LightSpot { Cell = r + Int3.Up, Color = BloomGlow, Mode = LightMode.Bloom, Energy = 0.9f + w, Range = 6f, Module = m.Index, Storey = m.Storey });

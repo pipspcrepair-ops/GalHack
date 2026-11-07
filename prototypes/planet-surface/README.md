@@ -86,6 +86,13 @@ Runs headless in about 100 s and exits 0 or 1. Add `-- --only=Heights,Flight` to
 - an edit straddling the north-south seam is removed on both sides and kept through save and load
 - walking north across the edge keeps you on the ground and at speed in every one of three walks (simulation ticks, so load can't shorten one), with no frame over 8 ms of game code (about 3 ms; the crossing frame about 1.6 ms) and no engine stall between frames in the best of the three
 
+`tests/FaceTest.tscn` doesn't take the mesher's word that nothing can be seen through. In about 50 s, on three fresh worlds (`-- --worlds=N`, and `--seed=N` to replay one it names), it casts millions of rays at the triangles actually drawn, their front faces only, and walks the same rays through the blocks and the ground:
+
+- a ray from anywhere, round a place or ruin as decay left it, over it, under the ground or from its rooms, never enters a solid block or deep ground without meeting a drawn face first: with all the ground dug away, with the real ground, and from a pit really dug round it
+- every other shape (pillars, ramps, doors, furniture) has its faces from above, below and the side, wound the right way
+- built as a near place is, a chunk at a time, with blocks taken out and only the chunks they touch redrawn, the same holds
+- the ground stays behind a room's walls, and at the foot of every wall the ground as drawn lies level with the ground a stride off, at every height, slopes and half-buried ruins too: within 15 cm
+
 `tests/SkyTest.tscn` renders, so a headless run starts itself again in a normal window and passes on what it prints (`shared/Sky/SkySeams.cs`). In about 2 minutes it checks that:
 
 - the sky alone, from the slice's world (`SkyRig` with no ground), looked at straight along a cube's corners and edges, the zenith, the axes and the azimuth's wrap, by day under broken cloud with the sun well up and in the afternoon west, at dusk and under heavy cloud, and a nebula world's sky at midnight (and its backdrop alone, brightened six times): shows no line where the colour jumps, no crowd of jumps, no swirl round a pole, and stars as dense along the axes as anywhere else
@@ -168,14 +175,15 @@ The slice uses this prototype's `SkyRig` and `shaders/sky.gdshader` as they are,
 
 Each road site lies on a straight, nearly level stretch with its lane down the road's centre line, so the way stays open, and none stands on a place's pad. The vehicles are the library's pieces with collision. `WreckSite` and the dressed plan's placements are what the slice's survival tool can salvage.
 
-**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are lots of abandoned houses, farmsteads, sheds and wayside stops that aren't places of their own.
-- Most stand along the roads and tracks, set back from the verge; some are out in the countryside, more of them on farming worlds.
-- They come from four small architect families (`flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside`, data in the POI generator), at the world's pre-collapse tech level: timber, brick and concrete, or composite.
-- Each gets a small pad of its own, laid before the roads. None stands on a road bed, a place's pad or another ruin.
-- A ruin is spawned from its own seed when its tile comes near, with the POI generator's century of decay: timber fallen in unless sheltered, shells of concrete and stone, trees through.
-- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of.
+**Flavour ruins** (`src/World/Infra/FlavourRuins.cs`, `PlanetWorld.Infra.Ruins`) are small ruins that aren't places of their own, few enough to mean something: long empty stretches of road, then a reason to leave it.
+- Houses stand together along a street laid off a junction or on the way into a town, with shops at its road end. The stop on the road stands right on a highway or at a crossroads, open to it, and each age kept its own: a coaching inn or a cart stop on a low-tech world, a petrol station or truck stop on a mid-tech one, a charging and fuel-cell depot with grav vehicles in mind on a high-tech one, and now and then a waystone nobody here built. A farmstead lies out in the fields with a track to it. A shed or a lone house turns up now and then.
+- Each lot is turned to face its road and joined to it by `FlavourRuin.Drive`, a road stamp of its own (a gravel drive, a farm track, a concrete apron). No road marking runs on to a wall.
+- The buildings are drawn by hand (`Homes.cs` in the POI generator), at real size against a 1.8 m person, on the player's 2 m lattice and in the player's shapes, in `flavour_house`, `flavour_farmstead`, `flavour_shed`, `flavour_wayside` and `flavour_shop`, at the world's pre-collapse tech level.
+- Each gets a small pad of its own, laid before the roads, and no cell below it: the ground runs flush up to the walls. None stands on a road bed, a place's pad or another ruin.
+- A ruin is spawned from its own seed when its tile comes near, and decays believably (`PlainRuin.cs`): holes through the roof, a stretch of wall gone, rubble where it fell, nothing left hanging, chimneys and foundations standing, weeds last on what's left. No block trees.
+- `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of. In the slice, `RuinLoot` opens its caches.
 
-**Ore tells.** Every deposit shows in the ground over it (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`):
+**Ore tells.** Deposits show in the ground over them as a rock, about one in eight in open country and more in rock country (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`); the rest show only as broken patches in the soil and on the scanner:
 - a deposit breaking the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with the ore's colour in its veins);
 - a shallow one shows as scree, a deep one as a fracture.
 - The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.
@@ -218,7 +226,7 @@ Screenshot views:
 - `infra:<town|sewer|drain|metro|culvert>:<archetype>[:<seed>]` frames a start world's ruined town and what runs under it, with a torch at the eye underground.
 - `infra:<crossing|padwater|portal|portalfar>:<archetype>[:<seed>]`: a road over a river, a place beside water, a tunnel mouth from the road and from 300 m off.
 - `infra:at:<archetype>:<seed>:<x>:<z>:<back>:<up>[:<bearing>[:start]]` looks at a point on the map.
-- `infra:<house|farmstead|shed|wayside|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
+- `infra:<house|farmstead|shed|wayside|shop|ore>:<archetype>[:<seed>]` frames the nearest flavour ruin of that kind, or an ore outcrop.
 - `infra:<evacuation-jam|pile-up|roadblock|car-park|derelict-train|derailed-train|airliner-crash>:<archetype>[:<seed>]` frames the nearest site of that kind.
 
 ### Integration (the slice)

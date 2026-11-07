@@ -408,7 +408,7 @@ public static class Dressing
             {
                 if (!g.InBounds(c)) continue;
                 ref Block w = ref g.At(c);
-                if (!w.IsAir && w.Role == Role.Wall && rng.Chance(0.35f)) w.Color = w.Color.Lerp(Soot, 0.65f);
+                if (!w.IsAir && w.Role == Role.Wall && Hash.Cell(new Int3(c.X >> 2, c.Y >> 2, c.Z >> 2), 109) % 100 < 35) w.Color = w.Color.Lerp(Soot, 0.65f);
             }
             if (line.Count > 0) Add("scorched barricade", line[0], "Bunks and crates stacked against the door, burned from this side.");
         }

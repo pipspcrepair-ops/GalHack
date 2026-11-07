@@ -207,14 +207,14 @@ public static class Building
     }
 
     /// <summary>
-    /// The multi-tool's take-down: the block's materials go to the inventory. The core can only
-    /// be picked up when it is the last block, since it holds the structure together. Anything
-    /// the removal cuts off becomes a wreck (returned), never lost.
+    /// The multi-tool's take-down: the block's materials go to the inventory. The core is never
+    /// taken down, not even as the last block: it can only be destroyed or hijacked (design 693).
+    /// Anything the removal cuts off becomes a wreck (returned), never lost.
     /// </summary>
     public static RemoveResult Remove(Structure s, Int3 p, Inventory inventory)
     {
         if (!s.TryGet(p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
-        if (s.TypeOf(b).IsCore && s.Count > 1) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
+        if (s.TypeOf(b).IsCore) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
         inventory?.Add(s.Catalogue.CostOf(b, s.Grid));
         s.Clear(p);
         return new RemoveResult(RemoveStatus.Removed, b, Connectivity.SplitOff(s));
@@ -303,17 +303,23 @@ public static class Building
         return s.Palette[b.Paint[face]];
     }
 
-    /// <summary>
-    /// Switches a large-grid core between base and capital. Small-grid cores are always vessels,
-    /// and a wreck has no core to switch.
-    /// </summary>
-    public static bool ToggleCoreMode(Structure s)
+    /// <summary>Sets the core's mode. One value changes; no block does. A wreck has no core to set.</summary>
+    public static bool SetCoreMode(Structure s, CoreMode mode)
     {
-        if (s.Core is not Int3 core || s.Grid.Size == GridSize.Small) return false;
-        s.Mode = s.Mode == CoreMode.Base ? CoreMode.Capital : CoreMode.Base;
+        if (s.Core is not Int3 core) return false;
+        s.Mode = mode;
         s.MarkDirty(core);
         return true;
     }
+
+    /// <summary>Switches a core to its other mode: a Big Core between Base and Capital, a Small Core between Vessel and Hover.</summary>
+    public static bool ToggleCoreMode(Structure s) => SetCoreMode(s, s.Mode switch
+    {
+        CoreMode.Base => CoreMode.Capital,
+        CoreMode.Capital => CoreMode.Base,
+        CoreMode.Hover => CoreMode.Vessel,
+        _ => CoreMode.Hover,
+    });
 
     /// <summary>Opens or closes a door, switches a light, or flips the core's gravity. Returns false if the block does nothing.</summary>
     public static bool Toggle(Structure s, Int3 p)

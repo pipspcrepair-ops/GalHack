@@ -19,7 +19,9 @@ public sealed class PowerPole
     public bool Pylon;
     /// <summary>Fallen over (lying on the ground toward <see cref="SideX"/>, <see cref="SideZ"/> rotated a quarter): its wires hang from the poles either side.</summary>
     public bool Fallen;
-    public float Height => Pylon ? 26f : 9f;
+    /// <summary>A pylon's height: 30 to 50 m, as tall as its spans need.</summary>
+    public float Tall = 36f;
+    public float Height => Pylon ? Tall : 9f;
 
     /// <summary>The anchor of wire <paramref name="k"/> (of <see cref="PowerLines.Wires"/>), in world metres (x, z as the pole's; any copy).</summary>
     public Vector3 Anchor(int k, int wires)
@@ -40,10 +42,10 @@ public sealed class PowerWire
 }
 
 /// <summary>
-/// Power lines, only where they made sense (design doc "Infrastructure"): from the places that
-/// needed power (towns, bases, mines and works on worlds that had grids) along the main roads and
-/// railways between them, never strung across open country. Wooden poles along roads; steel pylons
-/// along highways on modern and high-tech worlds. Every wire is anchored: strung between two
+/// Power lines, only where they made sense (design doc "Infrastructure"): wooden poles along the roads
+/// to the places that needed power (towns, bases, mines and works on worlds that had grids), and on
+/// modern and high-tech worlds a grid of steel pylons, 30 to 50 m tall, striding from place to place on
+/// long straight legs of their own, whatever the roads do. Every wire is anchored: strung between two
 /// standing poles with its sag, or, where a pole has fallen or a wire snapped on a neglected line,
 /// hanging from the pole that still holds it down to the ground. Poles stand beside the road bed,
 /// never on a deck, a bridge or a place's pad. Planned once the terrain (with its stamps) is final,
@@ -71,11 +73,132 @@ public sealed class PowerLines
             if (r.Kind is RouteKind.Track or RouteKind.Rail) continue;
             bool industrial(PoiSite p) => p != null && (p.Family.Tags.Contains("mine") || p.Family.Tags.Contains("industry"));
             if (profile.Before == TechLevel.Low && !industrial(r.From) && !industrial(r.To)) continue;
-            if (r.Length < 120) continue;
-            bool pylons = r.Kind == RouteKind.Highway && profile.Before != TechLevel.Low;
-            lines.Lay(r, source, net, pylons, rng);
+            if (r.Length < 120 || r.Kind == RouteKind.Highway && profile.Before != TechLevel.Low) continue;
+            lines.Lay(r, source, net, false, rng);
         }
+        if (profile.Before != TechLevel.Low) lines.Grid(net, source, rng);
         return lines;
+    }
+
+    /// <summary>The pylons' legs, as polylines of pylons (for tests).</summary>
+    public readonly List<(int FirstPole, int LastPole)> Legs = new();
+
+    const float PylonSpan = 300f, PylonFarthest = 440f;
+    static readonly float[] PylonHeights = { 30f, 36f, 42f, 50f };
+
+    /// <summary>The places that needed power, joined by the shortest lines that reach them all.</summary>
+    void Grid(InfraNetwork net, PlanetTerrainSource source, PoiGenerator.Gen.Rng rng)
+    {
+        var nodes = net.Places.Where(p => InfraNetwork.Rank(p) >= 2).OrderByDescending(InfraNetwork.Rank).Take(9).ToList();
+        if (nodes.Count < 2) return;
+        double Dist(PoiSite a, PoiSite b)
+        {
+            double dx = Mathx.WrapDelta(a.Center.X - b.Center.X, net.Width), dz = Mathx.WrapDelta(a.Center.Z - b.Center.Z, net.Height);
+            return Math.Sqrt(dx * dx + dz * dz);
+        }
+        var joined = new List<PoiSite> { nodes[0] };
+        var left = nodes.Skip(1).ToList();
+        while (left.Count > 0)
+        {
+            (PoiSite From, PoiSite To) next = default;
+            double best = double.MaxValue;
+            foreach (PoiSite a in joined)
+                foreach (PoiSite b in left)
+                    if (Dist(a, b) < best) { best = Dist(a, b); next = (a, b); }
+            left.Remove(next.To);
+            joined.Add(next.To);
+            if (best < 7000) Line(next.From, next.To, net, source, rng);
+        }
+    }
+
+    /// <summary>One line between two places: out from each, straight across the land, or by one bend where the land asks for it.</summary>
+    void Line(PoiSite a, PoiSite b, InfraNetwork net, PlanetTerrainSource source, PoiGenerator.Gen.Rng rng)
+    {
+        Func<double, double, float> ground = (x, z) => source.SurfaceHeight(Mathx.WrapX(x, net.Width), Mathx.Wrap(z, net.Height));
+        double ax = a.Center.X, az = a.Center.Z;
+        double dx = Mathx.WrapDelta(b.Center.X - ax, net.Width), dz = Mathx.WrapDelta(b.Center.Z - az, net.Height), len = Math.Sqrt(dx * dx + dz * dz);
+        if (len < 400) return;
+        double ux = dx / len, uz = dz / len;
+        double reachA = Math.Max(a.Stamp.ReachX, a.Stamp.ReachZ) + 30, reachB = Math.Max(b.Stamp.ReachX, b.Stamp.ReachZ) + 30;
+        (double X, double Z) start = (ax + ux * reachA, az + uz * reachA), end = (ax + ux * (len - reachB), az + uz * (len - reachB));
+        // Spots along a stretch, and how many of them won't take a pylon: pick the straight, or the bend that does better.
+        bool Takes(double x, double z)
+        {
+            double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
+            if (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _)) return false;
+            float h = ground(x, z);
+            return MathF.Abs(ground(x + 8, z) - h) < 7f && MathF.Abs(ground(x, z + 8) - h) < 7f;
+        }
+        int Bad(params (double X, double Z)[] pts)
+        {
+            int bad = 0;
+            for (int i = 0; i + 1 < pts.Length; i++)
+            {
+                double l = Math.Sqrt(Math.Pow(pts[i + 1].X - pts[i].X, 2) + Math.Pow(pts[i + 1].Z - pts[i].Z, 2));
+                for (double t = 0; t < l; t += 100)
+                    if (!Takes(pts[i].X + (pts[i + 1].X - pts[i].X) * t / l, pts[i].Z + (pts[i + 1].Z - pts[i].Z) * t / l)) bad++;
+            }
+            return bad;
+        }
+        var way = new List<(double X, double Z)> { start, end };
+        int least = Bad(start, end) + 2;
+        foreach (double along in new[] { 0.35, 0.65 })
+            foreach (double off in new[] { 0.14, -0.14, 0.25, -0.25 })
+            {
+                (double X, double Z) bend = (start.X + (end.X - start.X) * along - uz * off * len, start.Z + (end.Z - start.Z) * along + ux * off * len);
+                int bad = Bad(start, bend, end);
+                if (bad < least) { least = bad; way = new List<(double X, double Z)> { start, bend, end }; }
+            }
+        int first = Poles.Count, prev = -1;
+        PowerPole last = null;
+        for (int leg = 0; leg + 1 < way.Count; leg++)
+        {
+            var (px, pz) = way[leg];
+            var (qx, qz) = way[leg + 1];
+            double l = Math.Sqrt((qx - px) * (qx - px) + (qz - pz) * (qz - pz));
+            double vx = (qx - px) / l, vz = (qz - pz) / l;
+            double t = leg == 0 ? 0 : Math.Min(PylonSpan * 0.5, l * 0.5);
+            while (t < l)
+            {
+                // At the spot due, or the nearest that takes a pylon along or to the side of it.
+                PowerPole pole = null;
+                foreach (double o in new[] { 0.0, 24, -24 })
+                    foreach (double s in new[] { 0.0, -40, 40, -80, 80, -120, 120 })
+                    {
+                        double x = px + vx * (t + s) - vz * o, z = pz + vz * (t + s) + vx * o;
+                        if (pole != null || last != null && (x - last.X) * (x - last.X) + (z - last.Z) * (z - last.Z) > PylonFarthest * PylonFarthest || !Takes(x, z)) continue;
+                        pole = new PowerPole { X = x, Z = z, Ground = ground(x, z), SideX = (float)-vz, SideZ = (float)vx, Pylon = true };
+                    }
+                if (pole == null) { t += PylonSpan * 0.5; if (last != null && t > 0) { last = null; prev = -1; } continue; }
+                bool strung = false;
+                foreach (float tall in PylonHeights)
+                {
+                    pole.Tall = tall;
+                    if (last == null || (strung = Clears(last, pole, ground, 8f))) break;
+                }
+                if (last != null && !strung) { last = null; prev = -1; }
+                pole.Fallen = rng.Chance(0.04f);
+                Poles.Add(pole);
+                int idx = Poles.Count - 1;
+                if (prev >= 0)
+                    for (int k = 0; k < WiresOn(pole); k++)
+                    {
+                        PowerPole p0 = Poles[prev];
+                        if (!p0.Fallen && !pole.Fallen)
+                        {
+                            bool snapped = rng.Chance(0.03f);
+                            Wires.Add(snapped ? new PowerWire { A = rng.Chance(0.5f) ? prev : idx, B = 0, K = k, Spanned = false }.Finish(prev, idx)
+                                : new PowerWire { A = prev, B = idx, K = k, Slack = 0.02f });
+                        }
+                        else if (!p0.Fallen) Wires.Add(new PowerWire { A = prev, B = idx, K = k, Spanned = false });
+                        else if (!pole.Fallen) Wires.Add(new PowerWire { A = idx, B = prev, K = k, Spanned = false });
+                    }
+                prev = idx;
+                last = pole;
+                t += PylonSpan * (0.9 + 0.2 * rng.Float());
+            }
+        }
+        if (Poles.Count > first) Legs.Add((first, Poles.Count - 1));
     }
 
     /// <summary>

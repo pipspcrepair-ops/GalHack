@@ -25,7 +25,11 @@ public sealed class Gui
 
     // Input, for the input pass.
     public Vector2 Mouse;
-    public bool Pressed, Released, Held, RightPressed, Shift;
+    public bool Pressed, Released, Held, RightPressed, Shift, Ctrl, RightReleased, RightHeld;
+    /// <summary>Wheel ticks this pass (positive: up).</summary>
+    public int Wheel;
+    /// <summary>The clock double clicks are timed on, seconds (real time; tests may set it).</summary>
+    public Func<double> Clock = () => Time.GetTicksMsec() / 1000.0;
 
     /// <summary>Every widget's rectangle from the last input pass, by id (tests click them).</summary>
     public readonly Dictionary<string, Rect2> Rects = new();
@@ -41,7 +45,7 @@ public sealed class Gui
     /// <summary>A sound to play for what the last input pass did ("click", "drop", "tab").</summary>
     public string Sound;
 
-    public void BeginInput(Vector2 mouse, bool pressed, bool released, bool held, bool right, bool shift)
+    public void BeginInput(Vector2 mouse, bool pressed, bool released, bool held, bool right, bool shift, bool ctrl = false, bool rightReleased = false, bool rightHeld = false, int wheel = 0)
     {
         Canvas = null;
         Tip = null;
@@ -52,6 +56,11 @@ public sealed class Gui
         Held = held;
         RightPressed = right;
         Shift = shift;
+        Ctrl = ctrl;
+        RightReleased = rightReleased;
+        RightHeld = rightHeld;
+        Wheel = wheel;
+        if (wheel != 0 && DragPayload is IDragAmount da) da.Step(wheel * (shift ? 10 : 1));
         Sound = null;
         _building.Clear();
     }
@@ -60,7 +69,7 @@ public sealed class Gui
     {
         Rects.Clear();
         foreach (var (k, v) in _building) Rects[k] = v;
-        if (Released && DragId != null && !_dropTaken) { DragId = null; DragPayload = null; }
+        if (LetGo && DragId != null && !_dropTaken) { DragId = null; DragPayload = null; DragRight = false; }
         _dropTaken = false;
         LastTip = Tip;
         LastFirstBox = FirstBox;
@@ -73,6 +82,12 @@ public sealed class Gui
     }
 
     bool _dropTaken;
+
+    /// <summary>The drag in progress was begun with the right button (half a stack, or one with Ctrl).</summary>
+    public bool DragRight;
+
+    /// <summary>The button that began the drag was let go this pass.</summary>
+    public bool LetGo => DragRight ? RightReleased : Released;
 
     public bool Over(Rect2 r) => r.HasPoint(Mouse);
 
@@ -94,6 +109,29 @@ public sealed class Gui
     public void TextIn(string text, Rect2 r, Color colour, int size = 18, HorizontalAlignment align = HorizontalAlignment.Left, Font font = null)
     {
         if (Drawing) Canvas.TextIn(font ?? UiTheme.Label, size, r, text, colour, align);
+    }
+
+    /// <summary>A warning-striped band round a rectangle, drawn just inside its edge.</summary>
+    public void Stripes(Rect2 r, float band, Color colour)
+    {
+        if (!Drawing) return;
+        foreach (Rect2 b in new[]
+                 {
+                     new Rect2(r.Position, new Vector2(r.Size.X, band)), new Rect2(r.Position.X, r.End.Y - band, r.Size.X, band),
+                     new Rect2(r.Position.X, r.Position.Y + band, band, r.Size.Y - 2 * band), new Rect2(r.End.X - band, r.Position.Y + band, band, r.Size.Y - 2 * band),
+                 })
+        {
+            Canvas.Block(b, new Color(0.04f, 0.04f, 0.05f));
+            Vector2[] edge = { b.Position, new(b.End.X, b.Position.Y), b.End, new(b.Position.X, b.End.Y) };
+            // Bands of equal width at 45 degrees, on the lines x + y = c, so the pattern runs on round every corner.
+            float period = band * 2f, top = b.Position.Y, bottom = b.End.Y;
+            for (float c = Mathf.Floor((b.Position.X + top) / period) * period - period; c < b.End.X + bottom + period; c += period)
+            {
+                Vector2[] stripe = { new(c - top, top), new(c + band - top, top), new(c + band - bottom, bottom), new(c - bottom, bottom) };
+                foreach (Vector2[] piece in Geometry2D.IntersectPolygons(edge, stripe))
+                    if (piece.Length >= 3) Canvas.DrawColoredPolygon(piece, colour);
+            }
+        }
     }
 
     public void Bar(Rect2 r, double value, double max, Color fill, int count = 12)
@@ -128,6 +166,33 @@ public sealed class Gui
         return clicked;
     }
 
+    string _sliding;
+
+    /// <summary>A slider from 0 to 1. True on the input passes where a drag changed it.</summary>
+    public bool Slider(string id, Rect2 r, ref float value, Color colour)
+    {
+        Register(id, r);
+        if (Drawing)
+        {
+            var track = new Rect2(r.Position + new Vector2(0, r.Size.Y / 2f - 3f), new Vector2(r.Size.X, 6f));
+            Canvas.Block(track, new Color(C.Glass, 0.85f));
+            Canvas.Block(new Rect2(track.Position, new Vector2(r.Size.X * value, 6f)), colour);
+            Canvas.Block(new Rect2(r.Position + new Vector2(r.Size.X * value - 5f, 0f), new Vector2(10f, r.Size.Y)), Over(r) || _sliding == id ? C.Text : colour);
+            return false;
+        }
+        if (Pressed && Over(r) && DragId == null) _sliding = id;
+        if (_sliding != id) return false;
+        if (!Pressed && !Held)
+        {
+            _sliding = null;
+            return false;
+        }
+        float next = Mathf.Clamp((Mouse.X - r.Position.X) / r.Size.X, 0f, 1f);
+        if (next == value) return false;
+        value = next;
+        return true;
+    }
+
     /// <summary>A tab header: lit when current. True when clicked.</summary>
     public bool Tab(string id, Rect2 r, string label, bool current, Color colour)
     {
@@ -144,23 +209,33 @@ public sealed class Gui
     {
         Register(id, r);
         if (Drawing) return false;
-        if (Pressed && Over(r) && payload != null && DragId == null)
+        bool left = Pressed && Over(r), right = RightPressed && Over(r) && payload is IDragAmount;
+        if ((left || right) && payload != null && DragId == null)
         {
             DragId = id;
             DragPayload = payload;
             DragLabel = label;
             DragColour = colour;
+            DragRight = right && !left;
+            if (DragRight && payload is IDragAmount da) da.Begin(Ctrl);
             _dragFrom = Mouse;
         }
-        return Released && DragId == id && Over(r) && Mouse.DistanceTo(_dragFrom) < 6f;
+        return !DragRight && Released && DragId == id && Over(r) && Mouse.DistanceTo(_dragFrom) < 6f;
     }
+
+    /// <summary>A right button press and release on the widget it began on, without moving: a right click (it splits a stack).</summary>
+    public bool RightClick(string id, Rect2 r) =>
+        !Drawing && DragRight && RightReleased && DragId == id && Over(r) && Mouse.DistanceTo(_dragFrom) < 6f;
+
+    /// <summary>Is the pointer over this widget while something is being dragged (hover to open a tab)?</summary>
+    public bool DragOver(Rect2 r) => !Drawing && DragId != null && Over(r);
 
     /// <summary>A drop target: true on the input pass when something being dragged was let go over it (not onto itself).</summary>
     public bool DropTarget(string id, Rect2 r, out object payload)
     {
         payload = null;
         Register(id, r);
-        if (Drawing || !Released || DragId == null || DragId == id || !Over(r)) return false;
+        if (Drawing || !LetGo || DragId == null || DragId == id || !Over(r)) return false;
         payload = DragPayload;
         DragId = null;
         DragPayload = null;
@@ -173,7 +248,7 @@ public sealed class Gui
     public bool DroppedOutside(Rect2 window, out object payload)
     {
         payload = null;
-        if (Drawing || !Released || DragId == null || window.HasPoint(Mouse)) return false;
+        if (Drawing || !LetGo || DragId == null || window.HasPoint(Mouse)) return false;
         payload = DragPayload;
         DragId = null;
         DragPayload = null;
@@ -188,6 +263,8 @@ public sealed class Gui
         var r = new Rect2(Mouse - new Vector2(30, 30), new Vector2(60, 60));
         Canvas.Block(r, new Color(DragColour, 0.85f));
         Canvas.TextIn(UiTheme.Label, 13, r.Grow(-4), DragLabel ?? "", C.Glass, HorizontalAlignment.Center);
+        if (DragPayload is IDragAmount da && da.Shown is string shown)
+            Canvas.TextIn(UiTheme.Mono, 15, new Rect2(r.Position + new Vector2(2, r.Size.Y - 22), new Vector2(r.Size.X - 6, 20)), shown, C.Glass, HorizontalAlignment.Right);
     }
 
     /// <summary>A right click on a widget's rectangle this pass.</summary>
@@ -275,4 +352,19 @@ public sealed class Gui
         float y = Math.Clamp(anchor.Position.Y, bounds.Position.Y, bounds.End.Y - h);
         return new Rect2(x, y, w, h);
     }
+}
+
+/// <summary>A dragged stack whose amount can be chosen: all of it, half (right-drag), one (Ctrl + right-drag), and the wheel adjusts.</summary>
+public interface IDragAmount
+{
+    /// <summary>How many are being carried (int.MaxValue: the whole stack).</summary>
+    int Amount { get; set; }
+    /// <summary>The stack's size at the start of the drag.</summary>
+    int Max { get; }
+    /// <summary>Right button began the drag: half, or one with Ctrl.</summary>
+    void Begin(bool ctrl);
+    /// <summary>The mouse wheel changed the amount.</summary>
+    void Step(int by);
+    /// <summary>The amount to draw by the pointer, or null for the whole stack.</summary>
+    string Shown { get; }
 }

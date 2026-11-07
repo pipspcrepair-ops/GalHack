@@ -29,6 +29,9 @@ public sealed class GroundPalette
     /// </summary>
     public readonly List<(double X, double Z, float Dead, float Fade)> DeadZones = new();
 
+    /// <summary>Flora set down on purpose (trees through ruins), by the scatter id each takes; null where there is none.</summary>
+    public Dictionary<long, PlantedFlora> Planted;
+
     /// <summary>How dead the land is at a point: 1 inside a blast's dead zone, easing to 0 at its fade, 0 elsewhere.</summary>
     public float Deadness(double x, double z)
     {
@@ -171,9 +174,16 @@ public sealed class GroundPalette
                 Rgb oreColour = DepositLook.Color(ore);
                 float speck = SmoothStep(0.55f, 0.85f, ValueNoise(x * 1.7, z * 1.7 + height * 0.9, 41));
                 float streak = MathF.Abs(ValueNoise(x * 0.45 + height * 0.3, z * 0.45, 43) - 0.5f) < 0.1f ? 1f : 0f;
-                c = Rgb.Lerp(Rock, oreColour, 0.22f + 0.38f * speck + 0.25f * streak);
+                c = Rgb.Lerp(Rock, oreColour, 0.14f + 0.26f * speck + 0.18f * streak);
                 flags.X = DepositLook.Glow(ore) * 0.12f;
                 rock = 0.8f;
+                // Where a body breaks the surface it shows through the soil in broken patches, never a slab of its own.
+                if (Map.Sample(Map.Elevation, x, z) - height < 2.5f)
+                {
+                    float showing = SmoothStep(0.45f, 0.68f, ValueNoise(x * 0.33, z * 0.33, 53));
+                    c = Rgb.Lerp(SoilAt(x, z, out _), c, showing * 0.8f);
+                    rock *= showing;
+                }
                 break;
             }
             case CellMaterial.Bedrock:
@@ -196,6 +206,16 @@ public sealed class GroundPalette
                 break;
         }
         return new Color(c.R, c.G, c.B, rock);
+    }
+
+    /// <summary>What a chip of a cell looks like: its own colour here, soil dulled by the stones in it, a little varied by the caller.</summary>
+    public Color Chip(CellMaterial material, double x, double z, float height, DepositKind ore)
+    {
+        Color c = Vertex(material, x, z, height, out _, ore);
+        Rgb rgb = new(c.R, c.G, c.B);
+        if (material is CellMaterial.Ore or CellMaterial.Rock or CellMaterial.DeepRock or CellMaterial.Bedrock) return new Color(rgb.R, rgb.G, rgb.B);
+        rgb = Rgb.Lerp(rgb, Rock, 0.35f);
+        return new Color(rgb.R, rgb.G, rgb.B);
     }
 
     /// <summary>

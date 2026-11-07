@@ -101,6 +101,7 @@ public sealed class Decor
                 if (pl.Support >= 0 && dropped.Contains(pl.Support)) { dropped.Add(i); continue; }
                 foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, pl), placeRoom.Corner, 0.05f))
                     if (reserved.Contains(c) || reserved.Contains(c + Int3.Up)) { dropped.Add(i); break; }
+                if (!dropped.Contains(i) && pl.Support < 0 && !Held(inst, pl, DecoLayout.Footprint(Forge, pl), placeRoom.Corner)) dropped.Add(i);
             }
             var kept = memory.DecoTaken.GetValueOrDefault(m.Index) ?? new HashSet<int>();
             foreach (int i in dropped) kept.Add(i);
@@ -126,6 +127,29 @@ public sealed class Decor
         }
         KeepWaysOpen(memory, rooms);
         return rooms;
+    }
+
+    /// <summary>
+    /// Whether a piece has something to hold it: one on the floor needs floor under all of it (decay leaves
+    /// holes), one up a wall or under a ceiling needs that wall or ceiling still there.
+    /// </summary>
+    static bool Held(PoiInstance inst, DecoPlacement pl, DecoRect foot, Int3 corner)
+    {
+        var nav = inst.Nav();
+        if (pl.Y < 0.2f)
+        {
+            foreach (Int3 c in CellsOf(foot, corner, 0.2f))
+                if (!nav.Solid(c + Int3.Down)) return false;
+            return true;
+        }
+        int up = (int)MathF.Floor(pl.Y);
+        foreach (Int3 c in CellsOf(foot, corner, 0f))
+        {
+            Int3 at = c + Int3.Up * up;
+            foreach (Dir d in Dirs.All)
+                if (nav.Solid(at + d.Vec())) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -258,14 +282,19 @@ public sealed class Decor
         return r;
     }
 
-    /// <summary>The floor cells whose middles a footprint covers: what a walking route (which runs through cell middles) must go round.</summary>
+    /// <summary>
+    /// The floor cells a body can't stand in the middle of for a footprint: what a walking route (which runs
+    /// through cell middles) must go round. The footprint is grown by the body's radius, so a piece reaching
+    /// nearly to a cell's middle takes that cell too, and one narrowing a corridor below a body's width closes it.
+    /// </summary>
     public static IEnumerable<Int3> CentresOf(DecoRect rect, Int3 corner)
     {
-        foreach (Int3 c in CellsOf(rect, corner, 0f))
+        DecoRect grown = rect.Shrink(-(Slice.Player.Survivor.Radius + 0.02f));
+        foreach (Int3 c in CellsOf(grown, corner, 0f))
         {
-            var p = new NV2(c.X - corner.X + 0.5f, c.Z - corner.Z + 0.5f) - rect.Centre;
-            float u = rect.U.LengthSquared(), v = rect.V.LengthSquared();
-            if (u > 0f && v > 0f && MathF.Abs(NV2.Dot(p, rect.U)) <= u && MathF.Abs(NV2.Dot(p, rect.V)) <= v) yield return c;
+            var p = new NV2(c.X - corner.X + 0.5f, c.Z - corner.Z + 0.5f) - grown.Centre;
+            float u = grown.U.LengthSquared(), v = grown.V.LengthSquared();
+            if (u > 0f && v > 0f && MathF.Abs(NV2.Dot(p, grown.U)) <= u && MathF.Abs(NV2.Dot(p, grown.V)) <= v) yield return c;
         }
     }
 

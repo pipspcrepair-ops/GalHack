@@ -93,14 +93,31 @@ public partial class SkyTest : Node
         {
             Pose(rig, slice, time, cover);
             await Frames(8);
-            int failures = SkySeams.Report($"the slice's sky {what}", await SkySeams.LookAround(stage, eye, SkySeams.Probes()));
+            // The bodies stand where the system has them this moment, and a disc in the middle of a
+            // picture is a real thing, not a seam: a direction with one in view is left out, by name.
+            bool Clear(SkySeams.Probe p)
+            {
+                const float View = 0.4f; // half a probe picture's diagonal, radians
+                foreach (var (body, direction, angular) in rig.Drawn)
+                    if (direction.AngleTo(p.Direction) < View + angular * (body.Rings ? 2.5f : 1f))
+                    {
+                        GD.Print($"({what}: {p.Name} left out, {body.Name} is in view there)");
+                        return false;
+                    }
+                if (rig.ToSun.AngleTo(p.Direction) >= View) return true;
+                GD.Print($"({what}: {p.Name} left out, the sun is in view there)");
+                return false;
+            }
+            int failures = SkySeams.Report($"the slice's sky {what}", await SkySeams.LookAround(stage, eye, SkySeams.Probes().Where(Clear).ToList()));
             _failures += failures;
         }
 
-        // Night under a nebula, the stars' own frame lined up with the world's (midnight): the
-        // backdrop's pole and wrap, if it had them, would be straight up and behind.
-        PlanetWorld alien = PlanetWorld.Build(PlanetSpec.Roll(1, Archetype.Alien, 0), Main.Catalog);
+        // Night under the galaxy's own stars and nebulae: a cube's faces and the like, if they showed,
+        // would be straight up and behind. Fresh every run, as every sky is.
+        SkySeams.RealStars = true;
+        PlanetWorld alien = PlanetWorld.Build(PlanetSpec.Roll((ulong)System.Random.Shared.NextInt64(), Archetype.Alien, 0), Main.Catalog);
         rig.SetWorld(alien);
+        rig.Stars.Finish();
         Pose(rig, alien, 0.0, 0.1f);
         await Frames(8);
         _failures += SkySeams.Report("a nebula world's sky at midnight", await SkySeams.LookAround(stage, eye, SkySeams.Probes()));
@@ -192,10 +209,22 @@ public partial class SkyTest : Node
 
             double dawn = 0.27, dusk = 0.735;
             var noon = new Dictionary<WeatherKind, Frame>();
+            Frame? clearNoon = null;
+            static bool Bright(Frame f) => f.Median > 0.25f && f.Median < 0.8f && !f.WashedOut && f.Spread > 0.15f;
             foreach (WeatherKind weather in new[] { WeatherKind.Clear, WeatherKind.Fog })
-                noon[weather] = await Shot(0.5, SunHeading(dawn), -3f, weather);
-            Frame clear = noon[WeatherKind.Clear];
-            Check(clear.Median > 0.25f && clear.Median < 0.8f && !clear.WashedOut && clear.Spread > 0.15f,
+            {
+                // Noon's sky, not whatever stands in the way: four headings, as a canyon wall can fill any one of them.
+                Frame best = default;
+                for (int k = 0; k < 4; k++)
+                {
+                    Frame f = await Shot(0.5, SunHeading(dawn) + k * MathF.PI / 2f, -3f, weather);
+                    if (f.Median > best.Median) best = f;
+                    if (weather == WeatherKind.Clear && Bright(f)) clearNoon = f;
+                }
+                noon[weather] = best;
+            }
+            Frame clear = clearNoon ?? noon[WeatherKind.Clear];
+            Check(Bright(clear),
                 $"{place} at noon in clear air: bright and clear ({clear}); in fog, {noon[WeatherKind.Fog]}");
             foreach (var (when, time) in new[] { ("at dawn", dawn), ("at dusk", dusk) })
             {

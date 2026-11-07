@@ -84,6 +84,8 @@ public abstract partial class MenuPanel : Control
     public override void _Process(double delta)
     {
         if (!IsVisibleInTree()) return;
+        // A drag in progress keeps the layout running, so hovering a tab long enough opens it even with the mouse still.
+        if (Gui.DragId != null && Gui.Canvas == null) Feed(Gui.Mouse, false, false, _held, false, false, false, false, _rightHeld);
         // Straight on a canvas layer (the Tab menu), it fills the view; in a container or on a screen, the container sizes it.
         if (GetParent() is not Control && Size != GetViewportRect().Size)
         {
@@ -104,31 +106,39 @@ public abstract partial class MenuPanel : Control
         QueueRedraw();
     }
 
-    /// <summary>Real mouse input: buttons and motion, in this control's pixels.</summary>
+    /// <summary>Real mouse input: buttons, wheel and motion, in this control's pixels.</summary>
     public override void _GuiInput(InputEvent e)
     {
         switch (e)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } b:
                 _held = b.Pressed;
-                Feed(ToDesign(b.Position), pressed: b.Pressed, released: !b.Pressed, held: b.Pressed, right: false, shift: b.ShiftPressed);
+                Feed(ToDesign(b.Position), pressed: b.Pressed, released: !b.Pressed, held: b.Pressed, right: false, shift: b.ShiftPressed, ctrl: b.CtrlPressed, rightHeld: _rightHeld);
                 AcceptEvent();
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true } r:
-                Feed(ToDesign(r.Position), false, false, _held, right: true, shift: r.ShiftPressed);
+            case InputEventMouseButton { ButtonIndex: MouseButton.Right } r:
+                _rightHeld = r.Pressed;
+                Feed(ToDesign(r.Position), false, false, _held, right: r.Pressed, shift: r.ShiftPressed, ctrl: r.CtrlPressed, rightReleased: !r.Pressed, rightHeld: r.Pressed);
+                AcceptEvent();
+                break;
+            case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown, Pressed: true } w:
+                Gui.Mouse = ToDesign(w.Position);
+                Feed(Gui.Mouse, false, false, _held, false, w.ShiftPressed, w.CtrlPressed, rightHeld: _rightHeld, wheel: w.ButtonIndex == MouseButton.WheelUp ? 1 : -1);
                 AcceptEvent();
                 break;
             case InputEventMouseMotion m:
                 Gui.Mouse = ToDesign(m.Position);
-                if (LaysOutOnHover) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed);
+                if (LaysOutOnHover || Gui.DragId != null || _held) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed, m.CtrlPressed, rightHeld: _rightHeld);
                 break;
         }
     }
 
+    bool _rightHeld;
+
     /// <summary>One input pass with the pointer at a design-space point (the game's mouse, or a test's).</summary>
-    public void Feed(Vector2 mouse, bool pressed, bool released, bool held, bool right, bool shift)
+    public void Feed(Vector2 mouse, bool pressed, bool released, bool held, bool right, bool shift, bool ctrl = false, bool rightReleased = false, bool rightHeld = false, int wheel = 0)
     {
-        Gui.BeginInput(mouse, pressed, released, held, right, shift);
+        Gui.BeginInput(mouse, pressed, released, held, right, shift, ctrl, rightReleased, rightHeld, wheel);
         Build(Gui, new Rect2(Vector2.Zero, DesignSize));
         Gui.EndInput();
         if (Gui.Sound != null) Sounded?.Invoke(Gui.Sound);

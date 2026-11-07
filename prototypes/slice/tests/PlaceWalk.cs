@@ -183,7 +183,7 @@ public sealed class PlaceWalk
             {
                 bool rode = true;
                 foreach (int x in Ride(p, b, r => rode = r)) yield return x;
-                if (!rode) { Stuck++; Notes.Add($"the lift didn't bring us to {b}"); done(false); Release(); yield break; }
+                if (!rode) { Stuck++; Notes.Add($"the lift didn't bring us to {b} (feet {p.FromWorld(_game.Survivor.WorldFeet)}, shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, climb {_game.Survivor.Legs.Climb}, floor {_game.Survivor.Body.OnFloor}, from {a})"); done(false); Release(); yield break; }
                 continue;
             }
             // Merge a straight run on the level.
@@ -260,16 +260,30 @@ public sealed class PlaceWalk
             foreach (int x in _drive.LookAt(centre, 6)) yield return x;
             foreach (int x in _drive.Tap(Key.E)) yield return x;
             for (int t = 0; t < 120 && d.Open < 0.9f; t++) yield return 0;
+            // A shaft door: E called the car from wherever it stood; wait for it, and E again opens the door on it.
+            for (int t = 0; d.Lift >= 0 && t < 1800 && d.Open < 0.9f; t++)
+            {
+                if (t % 60 == 59 && d.Target < 0.5f) foreach (int x in _drive.Tap(Key.E)) yield return x;
+                yield return 0;
+            }
             if (d.Open < 0.9f)
             {
-                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")})");
+                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")}, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
                 done(false);
                 yield break;
             }
             DoorsOpened++;
         }
-        foreach (int x in Step(far, 0.3f, 8f, r => ok = r)) yield return x;
-        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2})");
+        // A jammed door's gap has little to spare: line up on it, and back off and line up again if a leaf catches you.
+        for (int tries = 0; tries < 3; tries++)
+        {
+            if (tries > 0 || d.Jammed) foreach (int x in Step(near, 0.1f, 3f, _ => { })) yield return x;
+            foreach (int x in Step(far, 0.3f, tries == 0 ? 8f : 5f, r => ok = r)) yield return x;
+            if (ok) break;
+        }
+        string Across() => string.Join(" ", new[] { -0.4f, -0.2f, 0f, 0.2f, 0.4f }.Select(o => { Vector3 s = near + d.Along.Normalized() * o + Vector3.Up * 1f; var r = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(s, s + n * 2.3f)); return r.Count == 0 ? "clear" : $"{((Vector3)r["position"]).DistanceTo(s):F2}:{(r["collider"].AsGodotObject() as Node)?.Name}"; }));
+        if (!ok) Notes.Add($"blocked across the gap: {Across()}; door cells {string.Join(" ", d.Cells.Select(c => $"{c}={p.Inst.Blocks.Get(c).Type}"))}");
+        if (!ok) Notes.Add($"could not get through door {d.Index} (jammed {d.Jammed}, open {d.Open:F2}, {d.Width:F1} m wide, leaves at {d.Leaves[0].GlobalPosition} and {d.Leaves[1].GlobalPosition} round {centre}, feet {_game.Survivor.WorldFeet}, from {near} to {far})");
         done(ok);
     }
 
@@ -278,6 +292,7 @@ public sealed class PlaceWalk
     {
         float target = Feet(p, b).Y;
         Key key = target > _game.Survivor.WorldFeet.Y ? Key.Space : Key.Ctrl;
+        Controls.Hold(Key.W, false); // the last step leaves it held: on it would walk you out of the shaft on the way up
         for (int t = 0; t < 1800 && MathF.Abs(_game.Survivor.WorldFeet.Y - target) > 0.5f; t++)
         {
             Controls.Hold(key, true);

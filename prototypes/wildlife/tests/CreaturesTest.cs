@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -74,7 +74,13 @@ public partial class CreaturesTest : Node
             Mutations();
             Settlements();
             DomesticAnimals();
+            SensesAreReal();
+            CrouchingIsQuieter();
+            WeightShows();
+            NothingClipsThePlayer();
+            WoundsShow();
             DeepPerformance();
+            CrowdedPlaceCost();
         }
         catch (Exception e)
         {
@@ -330,7 +336,7 @@ public partial class CreaturesTest : Node
             {
                 _recent.Enqueue($"pos {c.Position} centre {center} n {c.Facing.Y} falling {c.Falling} phase {c.Phase} state {c.State} vel {c.Velocity} desired {c.Desired}");
                 if (_recent.Count > 8) _recent.Dequeue();
-                if (inside > 0.05f && !_told)
+                if (inside > 0f && !_told)
                 {
                     _told = true;
                     Trace($"{c.Species.CommonName} body inside ({inside:F2}); last frames:");
@@ -603,7 +609,7 @@ public partial class CreaturesTest : Node
         sim.Targets.Add(walker);
         HashSet<Vector3I> reach = SpaceNav.Reach(space, floor + Vector3.Up * 0.5f, false, 2, 8000);
         var stops = reach.Where(c => (SpaceMath.Center(c) - floor).Length() < 14f).OrderBy(c => c.X * 7919 + c.Z * 31 + c.Y).Where((_, i) => i % 37 == 0).Select(c => new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f)).Take(8).ToList();
-        var watches = made.ToDictionary(c => c, _ => new Watch());
+        var watches = made.ToDictionary(c => c, _ => new Watch { Trace = _trace ? Trace : null });
         int stop = 0, hits = 0, told = 0;
         var firstTell = new Dictionary<Creature, float>();
         float worstLead = float.MaxValue;
@@ -699,6 +705,9 @@ public partial class CreaturesTest : Node
         var creatures = new Dictionary<PlaceState, int>();
         int nestsOk = 0, nestsAll = 0, chains = 0, chainsPossible = 0, derelictOk = 0, derelictAll = 0, roles = 0;
         var seenRoles = new HashSet<DeepRole>();
+        int worstPlace = 0, worstRoom = 0, unfit = 0, placedBig = 0;
+        string tight = "";
+        int Most = _data.Deep.Population.PlaceCap["Infested"] * 2, RoomMost = 12; // the biggest hall RandomPlan rolls
         for (int i = 0; i < 400; i++)
         {
             PlaceState state = (PlaceState)(i % 4);
@@ -708,11 +717,19 @@ public partial class CreaturesTest : Node
             total[state] = total.GetValueOrDefault(state) + 1;
             if (pop.Silent) silent[state] = silent.GetValueOrDefault(state) + 1;
             creatures[state] = creatures.GetValueOrDefault(state) + pop.Spawns.Count;
+            worstPlace = Math.Max(worstPlace, pop.Spawns.Count);
+            foreach (var room in pop.Spawns.GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
             int maxDepth = plan.Rooms.Max(r => r.Depth);
             foreach (PoiSpawn s in pop.Spawns)
             {
                 seenRoles.Add(s.Role);
-                if (s.Nest < 0) continue;
+                PoiRoom home = plan.Rooms.Find(r => r.Index == s.Room);
+                if (s.Species.TurnCircle > home.Width + 0.01f || s.Species.BodyHeight + DeepFauna.HeadClearance > home.Size.Y + 0.01f)
+                {
+                    unfit++;
+                    tight = $"{s.Species.CommonName} ({s.Species.TurnCircle:F1} m circle, {s.Species.BodyHeight:F1} m tall) in a {home.Kind} {home.Width:F1} m wide, {home.Size.Y:F1} m high";
+                }
+                else if (s.Species.TurnCircle > 2.5f) placedBig++;
             }
             foreach (Nest n in pop.Nests)
             {
@@ -735,6 +752,12 @@ public partial class CreaturesTest : Node
             $"some places are empty and silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
         Check(Per(PlaceState.Infested) > Per(PlaceState.Abandoned) * 1.6f && Per(PlaceState.Active) < Per(PlaceState.Abandoned) * 0.5f,
             $"infested places are overrun ({Per(PlaceState.Infested):F1} creatures a place against {Per(PlaceState.Abandoned):F1} in abandoned ones, {Per(PlaceState.Active):F1} in active ones)");
+        Check(worstPlace <= Most && worstRoom <= Math.Max(_data.Deep.Population.NestCap, RoomMost), $"places keep to their caps: at most {worstPlace} creatures in a place (cap {Most}), {worstRoom} in a room");
+        Check(unfit == 0 && placedBig > 0, unfit == 0 ? $"every creature fits where it is put and can turn there ({placedBig} of the bigger ones placed)" : $"{unfit} creatures put where they don't fit: {tight}");
+        var strider = new Species { Rig = RigKind.Legged, Body = new Proportions { Size = 5.5f, Width = 1.6f, LegLength = 2.2f, Height = 1.5f } };
+        var roster = new DeepFauna(_data, 1, 0.5f);
+        Check(MathF.Abs(strider.TurnCircle - 6.5f) < 0.3f && roster.Fitted(strider, 2f, 3f) == null && roster.Fitted(strider, 7f, 4f) == strider,
+            $"a 5.5 m strider needs a {strider.TurnCircle:F1} m turning circle: not in a 2 m corridor under a 3 m ceiling, at home in a 7 by 4 m hall");
         Check(nestsAll > 20 && nestsOk == nestsAll, $"nests are in the deepest levels (or a wreck's holds, or an infested place's lower levels): {nestsOk} of {nestsAll}");
         Check(chainsPossible > 20 && chains == chainsPossible, $"every place with hunters and subsisters has a food chain ({chains} of {chainsPossible})");
         Check(derelictAll > 5 && derelictOk == derelictAll, $"derelict ships have their own nesters in holds, ducts and engine rooms ({derelictOk} of {derelictAll})");
@@ -982,13 +1005,33 @@ public partial class CreaturesTest : Node
         Check(allDodged, "and every one can be escaped: run when you hear or see an ambush's tell and it never lands; step back when a hunter commits and its lunge misses");
     }
 
+    /// <summary>
+    /// The population rules with their caps off, so a test can watch every role at once in one small
+    /// place: what the behaviours are tested on, not what a place is really allowed to hold.
+    /// </summary>
+    public static DeepTables Packed(WildlifeData data)
+    {
+        DeepTables d = data.Deep;
+        PopulationRules p = d.Population;
+        return new DeepTables
+        {
+            Roles = d.Roles, Themes = d.Themes, Depth = d.Depth, Crawl = d.Crawl,
+            Population = new PopulationRules
+            {
+                Silent = p.Silent, Lurker = p.Lurker, Ambusher = p.Ambusher, Prowler = p.Prowler, Subsister = p.Subsister, Food = p.Food, Cracks = p.Cracks,
+                Density = new() { ["Active"] = 0.25f, ["Abandoned"] = 1f, ["Ruined"] = 0.8f, ["Infested"] = 2.2f },
+                RoomCap = 99, NestCap = 99, PlaceCap = new() { ["Active"] = 999, ["Abandoned"] = 999, ["Ruined"] = 999, ["Infested"] = 999 },
+            },
+        };
+    }
+
     /// <summary>The rich showroom population of the outpost: a seed that gives it everything.</summary>
     public static ulong RichSeed(WildlifeData data, DeepFauna fauna)
     {
         for (ulong s = 41; s < 400; s++)
         {
             BlockPlace p = BlockPlace.Outpost(s);
-            PoiPopulation pop = PoiFauna.Populate(p.Plan, fauna, data.Deep);
+            PoiPopulation pop = PoiFauna.Populate(p.Plan, fauna, Packed(data));
             if (pop.Silent) continue;
             if (pop.Count(DeepRole.Lurker) >= 1 && pop.Count(DeepRole.Ambusher) >= 2 && pop.Count(DeepRole.Subsister) >= 4 && pop.Count(DeepRole.Prowler) >= 1 && pop.Nests.Count >= 1) return s;
         }
@@ -1000,7 +1043,7 @@ public partial class CreaturesTest : Node
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         ulong seed = RichSeed(_data, fauna);
         BlockPlace place = BlockPlace.Outpost(seed);
-        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, _data.Deep);
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, Packed(_data));
         WildSim sim = PlaceSim(place);
         List<Creature> made = PoiFauna.Spawn(sim, pop, place.Space);
         var walker = new DummyTarget { Name = "Explorer", Health = new Health(1e7f) };
@@ -1079,13 +1122,34 @@ public partial class CreaturesTest : Node
         sim.Slipped += (c, k, entering) => { if (entering && c.Species.Role == DeepRole.Subsister) slipped++; };
         int watcherHits = 0;
         sim.Attacked += e => { if (e.Target == watcher && e.Hit) watcherHits++; };
-        for (float t = 0f; t < 420f; t += Dt) sim.Step(Dt);
-        int ate = sim.Creatures.Count(c => c.Species.HuntsPrey && c.Hunger < 0.3f);
+        int stillBeside = 5, ate, grazing = 0;
+        bool colonyShut = true;
+        int cameBack = 0;
+        sim.Spawned += c => { if (c.Species == grub) cameBack++; };
+        var fed = new HashSet<Creature>();
+        for (float t = 0f; t < 720f; t += Dt)
+        {
+            // Nothing comes out of a crack under a watcher's nose: it takes their going for the colony to come back.
+            if (t < 300f)
+            {
+                int now = sim.Creatures.Count(c => c.Alive && c.Species == grub);
+                colonyShut &= now <= stillBeside;
+                stillBeside = now;
+            }
+            else if (watcher.Position.X < 100f)
+            {
+                grazing = stillBeside;
+                watcher.Position = new Vector3(200f, 9f, 200f);
+            }
+            sim.Step(Dt);
+            foreach (Creature c in sim.Creatures) if (c.Species.HuntsPrey && c.State == CState.Eat) fed.Add(c);
+        }
+        ate = fed.Count;
         Check(kills >= 2 && unnoticed >= 1 && toldOnWindup == kills && minWindup >= 0.9f,
-            $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 7 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
-        Check(slipped >= 1 && sim.Creatures.Count(c => c.Alive && c.Species == grub) >= 2,
-            $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony keeps coming back ({sim.Creatures.Count(c => c.Alive && c.Species == grub)} grazing at the end)");
-        Check(watcherHits == 0 && ate >= 1, $"the hunters feed on their kills ({ate} fed) and leave the still watcher alone ({watcherHits} hits)");
+            $"the place's food chain runs while you watch, crouched and unnoticed: {kills} subsisters taken in 12 minutes ({unnoticed} with nobody noticing the watcher), each after a full wind-up (shortest {minWindup:F2} s)");
+        Check(slipped >= 1 && cameBack >= 2,
+            $"subsisters run from the hunters into cracks ({slipped} slipped in) and their colony comes back once the watcher has gone ({grazing} left as they went, {cameBack} came back)");
+        Check(watcherHits == 0 && ate >= 1 && colonyShut, $"the hunters feed on their kills ({ate} fed) and leave the still watcher alone ({watcherHits} hits); nothing came out beside them meanwhile");
     }
 
     void WreckNesters()
@@ -1097,7 +1161,7 @@ public partial class CreaturesTest : Node
         for (; seed < 200; seed++)
         {
             hold = BlockPlace.Hold(seed);
-            pop = PoiFauna.Populate(hold.Plan, fauna, _data.Deep);
+            pop = PoiFauna.Populate(hold.Plan, fauna, Packed(_data));
             if (!pop.Silent && pop.Nests.Count >= 2) break;
         }
         WildSim sim = PlaceSim(hold);
@@ -1153,6 +1217,7 @@ public partial class CreaturesTest : Node
         var sim = new WildSim(_data, new Terrain(5, 40f), new NavGrid(40f, 3f));
         int species = 0, same0 = 0, determ = 0, extras = 0, patches = 0, quality = 0, bounded = 0, animated = 0;
         float maxAsym = 0f, maxAdded = 0f;
+        string maxAddedOn = "";
         var growthsAt = new Dictionary<float, int>();
         foreach (ulong seed in new ulong[] { 7041, 7042, 7043, 7044, 7045, 7046 })
         {
@@ -1179,6 +1244,7 @@ public partial class CreaturesTest : Node
                     if (FaunaQuality.Problems(_data.Fauna, m).Count == 0) quality++;
                     maxAsym = MathF.Max(maxAsym, r.Asymmetry);
                     float added = r.BodyVolume > 0f ? r.AddedVolume / r.BodyVolume : 0f;
+                    if (added > maxAdded) maxAddedOn = $"{m.CommonName}, {m.Form}, {m.Body.Size:F2} m";
                     maxAdded = MathF.Max(maxAdded, added);
                     if (r.Asymmetry <= Mutation.MaxAsymmetry + 1e-3f && added < 0.25f && r.Growths <= Mutation.MaxGrowths) bounded++;
                     // And it still moves like an animal: 20 s of animation, nothing broken.
@@ -1198,7 +1264,7 @@ public partial class CreaturesTest : Node
         Check(growthsAt[0.25f] < growthsAt[0.5f] && growthsAt[0.5f] < growthsAt[1f] && extras >= species / 2 && patches >= species / 2,
             $"it grows with strength: {growthsAt[0.25f]}, {growthsAt[0.5f]} and {growthsAt[1f]} growths at 0.25, 0.5 and 1; at full strength {extras} of {species} have an extra part and {patches} a patch of off-palette skin");
         Check(quality == species && bounded == species && animated == species,
-            $"silhouettes stay believable: every fully mutated species passes every body rule ({quality} of {species}), stays within bounds (heavier side at most {maxAsym:F2}x, growths at most {maxAdded:P0} of the body) and animates cleanly ({animated} of {species})");
+            $"silhouettes stay believable: every fully mutated species passes every body rule ({quality} of {species}), stays within bounds (heavier side at most {maxAsym:F2}x, growths at most {maxAdded:P0} of the body, on a {maxAddedOn}) and animates cleanly ({animated} of {species})");
     }
 
     // ---- Settlements -------------------------------------------------------------------------
@@ -1224,6 +1290,8 @@ public partial class CreaturesTest : Node
         var rng = new Rng(2);
         for (int i = 0; i < 60 * 60 * 15; i++)
         {
+            // Walking about: nothing comes back round someone who stays put.
+            player.Position = new Vector3(150f + MathF.Sin(i * Dt * 0.02f) * 80f, 0f, 150f);
             sim.Step(Dt);
             spawner.Step(Dt);
             if (i % 240 == 0)
@@ -1260,8 +1328,10 @@ public partial class CreaturesTest : Node
         var sim3 = new WildSim(_data, new Terrain(1977), new NavGrid(240f, 3f));
         sim3.AddSettlement("Hollowmere", Vector3.Zero, 30f);
         var farmer = new DummyTarget { Name = "Townsperson", Position = new Vector3(60f, 0f, 0f), Health = new Health(1e6f) };
+        farmer.Position = new Vector3(60f, sim3.Terrain.Height(60f, 0f), 0f); // on the road, where it can be seen
         sim3.Targets.Add(farmer);
         Creature p3 = sim3.Spawn(hunter, new Vector3(75f, 0f, 6f));
+        p3.Yaw = MathF.Atan2(-(farmer.Position.X - p3.Position.X), -(farmer.Position.Z - p3.Position.Z)); // the farmer is in front of it: a hunter sees what it faces
         int outsideHits = 0;
         float firstWindup = -1f;
         sim3.Telegraph += e => { if (e.Target == farmer && firstWindup < 0f) firstWindup = e.Windup; };
@@ -1275,6 +1345,7 @@ public partial class CreaturesTest : Node
         {
             Vector3 to = new Vector3(5f, 0f, 0f) - farmer.Position;
             if (to.Length() > 0.2f) farmer.Position += to.Normalized() * 4.5f * Dt;
+            farmer.Position = new Vector3(farmer.Position.X, sim3.Terrain.Height(farmer.Position.X, farmer.Position.Z), farmer.Position.Z);
             sim3.Step(Dt);
             if (WildSim.Flat(farmer.Position).Length() < 30f) predatorDeepest = MathF.Min(predatorDeepest, WildSim.Flat(p3.Position).Length() - 30f);
         }
@@ -1359,7 +1430,7 @@ public partial class CreaturesTest : Node
     {
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         BlockPlace place = BlockPlace.Outpost(RichSeed(_data, fauna));
-        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, _data.Deep);
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, Packed(_data));
         WildSim sim = PlaceSim(place);
         PoiFauna.Spawn(sim, pop, place.Space);
         TD.ChunkStore store = NewStore();
@@ -1379,6 +1450,323 @@ public partial class CreaturesTest : Node
         }
         double best = windows.Min();
         Check(best < 2.0, $"{n} cave and place creatures, every one posed every frame, cost {best:F2} ms/frame (budget 2 ms, best of three windows: {string.Join(", ", windows.Select(x => x.ToString("F2")))})");
+    }
+
+    /// <summary>Line of sight, the cone, memory, hearing apart from sight, the meter; and nothing alerted by what it can't sense.</summary>
+    void SensesAreReal()
+    {
+        // Two rooms with a solid wall between them, a doorway at one end.
+        var cells = new HashSet<Vector3I>();
+        for (int x = 0; x < 30; x++)
+        for (int z = 0; z < 12; z++)
+        for (int y = 0; y < 6; y++)
+        {
+            bool wall = x == 15 && z > 1;
+            if (x == 0 || x == 29 || z == 0 || z == 11 || y == 0 || y == 5 || wall) cells.Add(new Vector3I(x, y, z));
+        }
+        var space = new BlockSpace((x, y, z) => cells.Contains(new Vector3I(x, y, z)), Vector3I.Zero, new Vector3I(30, 6, 12));
+        var fauna = new DeepFauna(_data, 2024, 0.5f);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        Species sighted = fauna.For(DeepRole.Prowler, PoiTheme.Industrial, 0), blind = fauna.For(DeepRole.Prowler, PoiTheme.Industrial, 3);
+        Vector3 at = new(8f, 1f, 6f);
+        Creature Put(Species s, Vector3 target)
+        {
+            Creature c = sim.SpawnIn(s, space, at);
+            Vector3 to = (target - c.Position).Normalized();
+            c.Facing = SpaceMath.Frame(to, Vector3.Up);
+            return c;
+        }
+        var p = new DummyTarget { Name = "Quiet", Health = new Health(1e7f) };
+        sim.Targets.Add(p);
+        void Run(float seconds, Creature c, Action each = null)
+        {
+            for (float t = 0f; t < seconds; t += Dt)
+            {
+                each?.Invoke();
+                // Only its senses: it stays where it is, facing the way it was put.
+                Basis facing = c.Facing;
+                sim.Step(Dt);
+                c.Position = at;
+                c.Velocity = Vector3.Zero;
+                c.Facing = facing;
+            }
+        }
+        // Behind the wall, in plain range, with it looking straight at the wall.
+        p.Position = new Vector3(19f, 1f, 6f);
+        Creature c1 = Put(sighted, p.Position);
+        bool alerted = false;
+        Run(4f, c1, () => alerted |= c1.Alert > 0f);
+        Check(!alerted && c1.Noticed == null, $"through a wall a {sighted.CommonName} senses nothing at {sighted.NoticeRadius:F0} m range: not alerted, awareness {c1.Awareness:F2}");
+        sim.Remove(c1);
+        // In the open behind it, standing still: outside the cone, outside a still target's noise.
+        p.Position = at + new Vector3(-6f, 0f, 0f);
+        Creature c2 = Put(sighted, at + Vector3.Right * 5f);
+        Run(3f, c2);
+        bool blindSide = c2.Noticed == null;
+        // In front of it, the same distance: it notices, but not at once.
+        p.Position = at + new Vector3(6f, 0f, 0f);
+        float noticedAfter = -1f, elapsed = 0f;
+        Run(5f, c2, () => { elapsed += Dt; if (noticedAfter < 0f && c2.Noticed != null) noticedAfter = elapsed; });
+        Check(blindSide && noticedAfter > 0.4f, $"a sighted creature sees in a cone (nothing from behind) and notices by degrees: {noticedAfter:F2} s to place someone in plain view");
+        sim.Remove(c2);
+        // Memory: gone behind the wall, it knows for a few seconds where they went, then forgets.
+        Creature c3 = Put(sighted, at + Vector3.Right * 5f);
+        p.Position = at + new Vector3(6f, 0f, 0f);
+        Run(4f, c3);
+        bool had = c3.Noticed == p;
+        p.Position = new Vector3(19f, 1f, 6f);
+        Run(2f, c3);
+        bool held = c3.Noticed == p, lastAtRoom = c3.LastSeen.X < 16f;
+        Run(5f, c3);
+        Check(had && held && lastAtRoom && c3.Noticed == null, $"out of sight it holds on {Senses.Memory:F0} s and goes by where it last knew you, then forgets");
+        sim.Remove(c3);
+        // Blind: hears a walker in the room, nothing behind a wall, nothing of someone standing still.
+        Creature c4 = Put(blind, at + Vector3.Right * 5f);
+        p.Position = at + new Vector3(4f, 0f, 0f);
+        Run(3f, c4);
+        bool stillUnheard = !blind.Blind || c4.Noticed == null || 4f < blind.NoticeRadius * Senses.BlindHearing * 0.45f;
+        float step = 1f;
+        Run(5f, c4, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
+        bool heard = c4.Noticed == p;
+        sim.Remove(c4);
+        Creature c5 = Put(blind, at + Vector3.Right * 5f);
+        p.Position = new Vector3(19f, 1f, 6f);
+        Run(4f, c5, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
+        Check(blind.Blind && heard && stillUnheard && c5.Noticed == null, $"something blind goes by ear alone: a walker in its room heard, nothing through a wall ({blind.NoticeRadius * Senses.BlindHearing:F1} m earshot)");
+    }
+
+    /// <summary>
+    /// Crouching, as the senses tell it (a fresh random species every run): a crouch-walker is heard from
+    /// a shorter distance than a walker, someone crouched still from a shorter one than someone standing
+    /// still, and a crouched target is a smaller one for the eye, so low cover hides it.
+    /// </summary>
+    void CrouchingIsQuieter()
+    {
+        var rng = new Random();
+        Species species = null;
+        float hearing = 0f, sight = 0f;
+        for (int tries = 0; tries < 200 && species == null; tries++)
+        {
+            ulong seed = (ulong)rng.NextInt64(1, 1L << 40);
+            foreach (Species s in _gen.Generate(seed, (float)rng.NextDouble(), false).Species)
+            {
+                Stats st = s.Stats;
+                float ear = MathF.Max(st.Perception * Senses.Hearing, MathF.Max(st.AmbushRadius, st.AttackRange + 1f));
+                // One that sees and hears the plain way, with its ears inside its eyes (so the two can be told apart).
+                if (s.Flies || s.IsDeep || s.Behaviour is Behaviour.Ambusher or Behaviour.Swarm || s.Tumbles || s.Domestic != DomesticKind.None || ear * 0.5f > st.Perception * 0.7f) continue;
+                (species, hearing, sight) = (s, ear, st.Perception);
+                break;
+            }
+        }
+        if (species == null)
+        {
+            Fail("no species with ears inside its eyes in 200 random worlds");
+            return;
+        }
+
+        // A creature held in place, its back to a target at this distance, which paces to and fro at a steady 2 m/s (or stands).
+        // Whether it senses it in the last three seconds of four, and (for the sight case) with the creature facing it behind a low wall.
+        bool Senses_(float distance, bool crouched, bool moving, bool facing, bool lowWall)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 240f), new NavGrid(240f, 3f));
+            if (lowWall)
+            {
+                // A wall 1.15 m high just short of the target: a standing head clears it, a crouched one doesn't.
+                sim.SightLine = (a, b) =>
+                {
+                    float wallZ = distance * 0.95f;
+                    if ((a.Z - wallZ) * (b.Z - wallZ) > 0f) return true;
+                    float t = (wallZ - a.Z) / (b.Z - a.Z);
+                    return a.Y + (b.Y - a.Y) * t > 1.15f;
+                };
+            }
+            Creature c = sim.Spawn(species, Vector3.Zero);
+            var who = new DummyTarget { Name = "Sneak", Health = new Health(1e7f), Position = new Vector3(0f, 0f, distance), Crouched = crouched };
+            sim.Targets.Add(who);
+            float yaw = facing ? MathF.PI : 0f, dir = 1f;
+            bool sensed = false;
+            for (float t = 0f; t < 4f; t += Dt)
+            {
+                if (moving)
+                {
+                    who.Position += new Vector3(dir * 2f * Dt, 0f, 0f);
+                    if (MathF.Abs(who.Position.X) > 3f) dir = -dir;
+                }
+                sim.Step(Dt);
+                c.Position = Vector3.Zero;
+                c.Velocity = Vector3.Zero;
+                c.Yaw = yaw;
+                sensed |= t > 1f && c.Sensing; // once its measure of how fast the target goes has settled
+            }
+            return sensed;
+        }
+
+        float walkRange = hearing * 0.8f, stillRange = hearing * 0.35f;
+        bool walker = Senses_(walkRange, false, true, false, false), creeper = Senses_(walkRange, true, true, false, false);
+        bool standStill = Senses_(stillRange, false, false, false, false), crouchStill = Senses_(stillRange, true, false, false, false);
+        var probe = new WildSim(_data, new Terrain((x, z) => 0f, 240f), new NavGrid(240f, 3f));
+        var pace = new DummyTarget { Name = "Pace" };
+        probe.Targets.Add(pace);
+        for (int i = 0; i < 120; i++)
+        {
+            pace.Position += new Vector3(2f * Dt, 0f, 0f);
+            probe.Step(Dt);
+        }
+        float walkNoise = probe.NoiseOf(pace);
+        pace.Crouched = true;
+        float creepNoise = probe.NoiseOf(pace);
+        Check(walker && !creeper && walkNoise > creepNoise,
+            $"a {species.CommonName} (ears {hearing:F1} m) hears a walker at {walkRange:F1} m but not a crouch-walker (noise {walkNoise:F2} against {creepNoise:F2})");
+        float stillNoise = 0.45f;
+        for (int i = 0; i < 240; i++) probe.Step(Dt);
+        pace.Crouched = false;
+        stillNoise = probe.NoiseOf(pace);
+        pace.Crouched = true;
+        Check(standStill && !crouchStill && probe.NoiseOf(pace) < stillNoise && probe.NoiseOf(pace) < creepNoise,
+            $"it hears someone standing still at {stillRange:F1} m but not someone crouched still, the quietest of all (noise {probe.NoiseOf(pace):F2} against {stillNoise:F2} standing still, {creepNoise:F2} crouch-walking){(standStill && !crouchStill ? "" : $" [stood {standStill}, crouched {crouchStill}]")}");
+
+        float seeRange = sight * 0.7f;
+        bool seenStanding = Senses_(seeRange, false, false, true, true), seenCrouched = Senses_(seeRange, true, false, true, true);
+        bool seenCrouchedOpen = Senses_(seeRange, true, false, true, false);
+        Check(seenStanding && !seenCrouched && seenCrouchedOpen,
+            $"it sees a standing head over a 1.15 m wall at {seeRange:F0} m but not a crouched one, which it sees plainly in the open");
+    }
+
+    /// <summary>Heads, necks and bodies stop at a person's body, and bites land where they can see them.</summary>
+    void NothingClipsThePlayer()
+    {
+        PlanetFauna planet = _gen.Generate(4242, 0.3f, false);
+        var hunters = planet.Species.Where(s => s.Rig == RigKind.Legged && !s.Flies).Take(3).ToList();
+        float worst = 0f;
+        int hits = 0, front = 0, sized = 0;
+        string who = "";
+        foreach (float size in new[] { 0.8f, 2f, 5.5f })
+        foreach (Species model in hunters)
+        {
+            Species s = model.Copy();
+            s.Stats.Damage = 1f;
+            s.Stats.Hunts = true;
+            s.Behaviour = Behaviour.Predator;
+            float k = size / s.Body.Size;
+            s.Body.Size *= k; s.Body.Width *= k; s.Body.Height *= k; s.Body.LegLength *= k; s.Body.NeckLength *= k; s.Body.HeadSize *= k;
+            s.Stats.Radius *= k;
+            sized++;
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            var p = new DummyTarget { Name = "Person", Health = new Health(1e7f), Forward = Vector3.Forward };
+            sim.Targets.Add(p);
+            Creature c = sim.Spawn(s, new Vector3(1f, 0f, 14f)); // behind them
+            c.Yaw = 0f;
+            sim.Attacked += e =>
+            {
+                if (!e.Hit) return;
+                hits++;
+                if (WildSim.Flat(c.Position - p.Position).Normalized().Dot(p.Forward) > -0.3f) front++;
+            };
+            for (float t = 0f; t < 25f; t += Dt)
+            {
+                sim.Step(Dt);
+                if (c.Phase == AttackPhase.Lunge) continue; // still in flight; where it lands is checked below
+                for (int i = 0; i < c.Rig.HitCount; i++)
+                {
+                    Vector4 h = c.Rig.Hits[i];
+                    if (h.Y - h.W > Attacks.BodyHeight) continue;
+                    float into = h.W + Attacks.BodyRadius - WildSim.Flat(new Vector3(h.X, 0f, h.Z) - p.Position).Length();
+                    if (into > worst) { worst = into; who = $"{size:F1} m {s.CommonName}, part {i} of {c.Rig.HitCount}, state {c.State} phase {c.Phase}"; }
+                }
+            }
+        }
+        Check(worst < 0.25f, $"heads and bodies stop at the player's body: at worst {worst:F2} m into it, over {sized} sizes of hunter ({who})");
+        Check(hits >= sized && front >= hits * 0.6f, $"they still bite ({hits} bites), and the bite lands from in front of the player where it can: {front} of {hits} from a hunter that came up from behind");
+    }
+
+    /// <summary>A hit shows: it flinches, the small ones more; blood is the species' own and stays so.</summary>
+    void WoundsShow()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        PlanetFauna planet = _gen.Generate(4242, 0.3f, false);
+        Species sp = planet.Species.Find(s => s.Rig == RigKind.Legged && s.Stats.MaxHealth > 10f);
+        Creature c = sim.Spawn(sp, Vector3.Zero);
+        c.Velocity = c.Forward * 4f;
+        sim.Damage(c, 1f, null);
+        bool flinched = c.Rear > 0.1f && c.Velocity.Length() < 3f;
+        var colours = new HashSet<string>();
+        foreach (Species s in planet.Species.Concat(_gen.Generate(99, 0.8f, true).Species)) colours.Add(s.Blood.ToHtml());
+        Check(flinched && sp.Blood == sp.Blood && colours.Count >= 4, $"a hit flinches a creature, and blood goes by species ({colours.Count} colours on two worlds)");
+    }
+
+    /// <summary>A big body takes its time to get going, stop and turn; a small one doesn't.</summary>
+    void WeightShows()
+    {
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 300f), new NavGrid(300f, 3f));
+        Species Body(float size)
+        {
+            Species s = _gen.Generate(4242, 0.3f, false).Species.Find(x => x.Rig == RigKind.Legged && !x.Flies).Copy();
+            s.Body.Size = size;
+            s.Stats.RunSpeed = 7f;
+            s.Stats.WalkSpeed = 2f;
+            return s;
+        }
+        (float start, float stop, float radius) Measure(float size)
+        {
+            Creature c = sim.Spawn(Body(size), Vector3.Zero);
+            c.Yaw = 0f;
+            float start = 0f, stop = 0f;
+            for (; c.Velocity.Length() < 6.3f && start < 10f; start += Dt)
+            {
+                c.Desired = c.Forward * 7f;
+                Locomotion.Move(sim, c, Dt);
+            }
+            // At speed it is told to go off at a right angle: how far sideways does it get before it is heading there?
+            Vector3 from = c.Position;
+            Vector3 right = c.Forward.Rotated(Vector3.Up, -MathF.PI / 2f), ahead = c.Forward;
+            float over = 0f;
+            for (float t = 0f; t < 8f && c.Forward.Dot(right) < 0.95f; t += Dt)
+            {
+                c.Desired = right * 7f;
+                Locomotion.Move(sim, c, Dt);
+                over = (c.Position - from).Dot(ahead);
+            }
+            for (; c.Velocity.Length() > 0.1f && stop < 10f; stop += Dt)
+            {
+                c.Desired = Vector3.Zero;
+                Locomotion.Move(sim, c, Dt);
+            }
+            sim.Remove(c);
+            return (start, stop, over);
+        }
+        var small = Measure(0.8f);
+        var big = Measure(5.5f);
+        Check(big.start > small.start * 2.5f && big.stop > small.stop * 2.5f && big.radius > small.radius * 3f,
+            $"weight shows: a 5.5 m body takes {big.start:F1} s to get going and {big.stop:F1} s to stop and swings {big.radius:F1} m wide of a right-angle turn; a 0.8 m one {small.start:F1} s, {small.stop:F1} s, {small.radius:F1} m");
+    }
+
+    /// <summary>An overrun place with someone walking its halls, timed by part: the crowded case the owner plays.</summary>
+    void CrowdedPlaceCost()
+    {
+        CrowdedPlaceCost("as allowed", _data.Deep);
+        CrowdedPlaceCost("packed, uncapped", Packed(_data));
+    }
+
+    void CrowdedPlaceCost(string label, DeepTables rules)
+    {
+        var fauna = new DeepFauna(_data, 2024, 0.5f);
+        BlockPlace place = BlockPlace.Outpost(RichSeed(_data, fauna));
+        place.Plan.State = PlaceState.Infested;
+        PoiPopulation pop = PoiFauna.Populate(place.Plan, fauna, rules);
+        WildSim sim = PlaceSim(place);
+        PoiFauna.Spawn(sim, pop, place.Space);
+        var walker = new DummyTarget { Name = "Explorer", Position = new Vector3(20f, 9f, 6f), Health = new Health(1e7f) };
+        sim.Targets.Add(walker);
+        for (int i = 0; i < 600; i++) sim.Step(Dt);
+        sim.Profile = true;
+        double best = double.MaxValue;
+        for (int w = 0; w < 3; w++)
+        {
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < 300; i++) sim.Step(Dt);
+            best = Math.Min(best, sw.Elapsed.TotalMilliseconds / 300.0);
+        }
+        GD.Print($"PERF  crowded place, {label}: {sim.Creatures.Count(c => !c.Removed)} creatures, {best:F2} ms/frame; brains {sim.ThinkMs / 900:F2}, moving {sim.MoveMs / 900:F2}, rigs {sim.RigMs / 900:F2}");
     }
 
     // ---- Plumbing -----------------------------------------------------------------------

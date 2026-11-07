@@ -640,27 +640,22 @@ public partial class ProductionTest : TestBase
         var rules = new WorldRules();
         var placer = new BlockPlacer(_items, rules, new CrateYard(_items));
         SharedStorage storage = Storage();
-        storage.TryAdd(Bill.Of((ItemOf("steel", true), 4), (ItemOf("decon"), 1), (ItemOf("concrete"), 2), (ItemOf("thruster"), 1), (ItemOf("steel"), 2)));
+        storage.TryAdd(Bill.Of((ItemOf("steel", true), 4), (ItemOf("decon"), 1), (ItemOf("concrete"), 2), (ItemOf("thruster"), 1), (ItemOf("steel"), 2), (ItemOf("concrete"), 1)));
         Structure baseS = Base(out _);
         baseS.Mode = CoreMode.Base;
         Check(BuildingBridge.ClassOf(baseS) == StructureClass.Base, "a large grid in base mode is a base");
         Check(placer.Place(baseS, new Int3(1, 0, 0), Building.Make(baseS, _blocks.Type("concrete")), storage).Ok, "concrete goes on a base");
         Check(placer.Place(baseS, new Int3(-1, 0, 0), Building.Make(baseS, _blocks.Type("decon")), storage).Ok, "a deconstructor goes on a base");
-        PlaceResult thr = placer.Place(baseS, new Int3(0, 0, 1), Building.Make(baseS, _blocks.Type("thruster")), storage);
-        Check(thr.Status == PlaceStatus.WrongClass, $"a large thruster is refused on a base: {placer.ClassProblem(baseS, Building.Make(baseS, _blocks.Type("thruster")))}");
+        Check(placer.Place(baseS, new Int3(0, 0, 1), Building.Make(baseS, _blocks.Type("thruster")), storage).Ok, "a large thruster goes on a base, idle until the core is switched");
+        Check(Building.ToggleCoreMode(baseS) && BuildingBridge.ClassOf(baseS) == StructureClass.Capital, "a large grid in Capital Mode is a capital vessel, with every block as it was");
         Structure capital = Base(out _);
-        Check(BuildingBridge.ClassOf(capital) == StructureClass.Capital, "a large grid in capital mode is a capital vessel");
-        Check(placer.Place(capital, new Int3(0, 0, 1), Building.Make(capital, _blocks.Type("thruster")), storage).Ok, "the thruster goes on a capital vessel");
-        Check(placer.Place(capital, new Int3(1, 0, 0), Building.Make(capital, _blocks.Type("concrete")), storage).Status == PlaceStatus.WrongClass, "concrete is base-only, as in Empyrion");
+        Check(BuildingBridge.ClassOf(capital) == StructureClass.Capital, "a new large grid reads as Capital Mode until set");
+        Check(placer.Place(capital, new Int3(1, 0, 0), Building.Make(capital, _blocks.Type("concrete")), storage).Ok, "concrete goes on a capital vessel: bases and capital vessels share every block");
         var small = new Structure(_blocks, _blocks.Grid(GridSize.Small));
         Building.Place(small, Int3.Zero, Building.Make(small, _blocks.CoreType));
-        Check(BuildingBridge.ClassOf(small) == StructureClass.Small, "a small grid is a small vessel");
+        Check(BuildingBridge.ClassOf(small) == StructureClass.Small, "a small grid in Vessel Mode is a small vessel");
         Check(placer.Place(small, new Int3(1, 0, 0), Building.Make(small, _blocks.Type("steel")), storage).Ok, "small steel goes on a small vessel");
-        Check(_items.BlockItem("steel", true).PlacesOn(StructureClass.Hover) && !_items.BlockItem("steel", true).PlacesOn(StructureClass.Base), "small-grid families go on small and hover vessels, not on a base");
-        Check(_items.BlockItem("hover", true).PlacesOn(StructureClass.Hover) && !_items.BlockItem("hover", true).PlacesOn(StructureClass.Small), "hover pads only go on hover vessels");
-        Check(placer.ClassProblem(small, Building.Make(small, _blocks.Type("hover")), StructureClass.Small) is string why && why.Contains("hover vessel blocks only"),
-            "a hover pad is refused on a small vessel: \"hover vessel blocks only\"");
-        Check(_items.BlockItem("decon", true).PlacesOn(StructureClass.Small) && !_items.BlockItem("decon", false).PlacesOn(StructureClass.Capital), "the large deconstructor is base-only");
+        Check(Building.ToggleCoreMode(small) && BuildingBridge.ClassOf(small) == StructureClass.Hover, "a small grid in Hover Mode is a hover vessel");
     }
 
     void TestSpill()

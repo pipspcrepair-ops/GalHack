@@ -62,7 +62,12 @@ public partial class Place
             if (doorCells.Count == 0) continue; // blown out of a ruin: an open doorway
             Block b0 = Inst.Blocks.Get(doorCells[0]);
             bool lift = index >= 0 && liftDoor.ContainsKey(index);
-            if (b0.Variant == DoorState.Open && !lift) continue; // standing open: nothing to draw
+            // A jammed door's gap has just the room for a body, straight on: with a block crowding either side
+            // of it there is no getting through, so what the years left in a doorway like that is a door forced wide.
+            bool pinched = b0.Variant == DoorState.Jammed && !lift && cells.Any(c => c.Y <= cells.Min(o => o.Y) + 1
+                && (BlockInfo.Collides(Inst.Blocks.Get(c + facing.Vec()).Type) || BlockInfo.Collides(Inst.Blocks.Get(c - facing.Vec()).Type)));
+            if (pinched) foreach (Int3 c in doorCells) Inst.Blocks.At(c).Variant = DoorState.Open;
+            if ((b0.Variant == DoorState.Open || pinched) && !lift) continue; // standing open: nothing to draw
             Int3 min = cells.Aggregate(Int3.Min), max = cells.Aggregate(Int3.Max);
             var lo = new Vector3(min.X, min.Y, min.Z);
             var hi = new Vector3(max.X + 1, max.Y + 1, max.Z + 1);
@@ -197,7 +202,7 @@ public partial class Place
         public CollisionShape3D Shape;
         public Vector3 Centre;            // local x, z middle of the shaft
         public float Y, Target;            // the car floor's walk height now, and where it is going
-        public bool Ridden;
+        public bool Ridden, Climbing;
         public float Bottom => Shaft.StopWalkY[0];
         public float Top => Shaft.StopWalkY[^1];
     }
@@ -228,8 +233,9 @@ public partial class Place
         }
     }
 
+    /// <summary>The car stands level with a stop: empty, or carrying someone who has stopped there (and may want out), not someone riding past.</summary>
     bool CarAt(int lift, int stop) => lift < _cars.Count && stop >= 0 && stop < _cars[lift].Shaft.StopWalkY.Count
-                                      && !_cars[lift].Ridden && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
+                                      && !_cars[lift].Climbing && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
 
     void CallLift(int lift, int stop)
     {
@@ -268,13 +274,16 @@ public partial class Place
             bool riding = i == lift;
             if (riding)
             {
-                c.Y = Mathf.Clamp(feetY, c.Bottom, c.Top);
+                float y = Mathf.Clamp(feetY, c.Bottom, c.Top);
+                c.Climbing = c.Ridden && MathF.Abs(y - c.Y) > 0.004f;
+                c.Y = y;
                 c.Target = c.Y;
             }
             else if (c.Ridden)
             {
                 // Got off: the car settles at the nearest stop.
                 c.Target = NearestStop(i, c.Y);
+                c.Climbing = false;
             }
             c.Ridden = riding;
             c.Shape.Disabled = riding; // the rider floats in the shaft; the car only shows under them

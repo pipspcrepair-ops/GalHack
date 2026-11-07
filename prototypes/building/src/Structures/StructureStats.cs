@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace GalHack.Structures;
 
@@ -19,6 +20,8 @@ public sealed class StructureStats
     public double CpuUsed;
     public long CpuLimit;
     public int Tier, Extenders;
+    /// <summary>Extenders aboard by their own tier (index 2 to 4).</summary>
+    public readonly int[] ExtendersOfTier = new int[5];
     public double Efficiency;
 
     public double PowerOut, PowerUse; // MW, generation after efficiency and full-load use
@@ -52,7 +55,11 @@ public sealed class StructureStats
             if (t.IsArmor) continue;
 
             st.Components++;
-            if (t.IsCpuExtender) st.Extenders++;
+            if (t.IsCpuExtender)
+            {
+                st.Extenders++;
+                st.ExtendersOfTier[t.ExtenderTier]++;
+            }
             if (t.IsContainer)
             {
                 st.Containers++;
@@ -70,7 +77,7 @@ public sealed class StructureStats
             }
         }
 
-        (st.Tier, st.CpuLimit) = TierFor(s.Catalogue, grid, st.Extenders, st.HasCore);
+        (st.Tier, st.CpuLimit) = TierFor(s.Catalogue, grid, st.ExtendersOfTier, st.HasCore);
         st.Efficiency = EfficiencyFor(st.CpuUsed, st.CpuLimit);
         st.PowerOut = powerOut * st.Efficiency;
 
@@ -78,8 +85,8 @@ public sealed class StructureStats
         st.Mass = st.BlockMass + st.CargoMass;
         st.StorageCapacity = Math.Min(st.StorageRaw, grid.StorageCap);
 
-        // Bases never fly; small-grid cores are always vessels.
-        st.Flies = st.HasCore && (s.Mode == CoreMode.Capital || grid.Size == GridSize.Small) && st.Powered;
+        // Only Base Mode doesn't fly: its thrusters sit idle until the core is switched.
+        st.Flies = st.HasCore && s.Mode != CoreMode.Base && st.Powered;
         for (int i = 0; i < 6; i++) st.Thrust[i] = st.Flies ? thrust[i] * st.Efficiency : 0;
         double weight = st.Mass * G; // kN
         if (weight > 0)
@@ -96,14 +103,15 @@ public sealed class StructureStats
 
     /// <summary>
     /// The core gives tier 1; CPU extenders unlock the rest (data: extendersPerTier, e.g. 0/1/2/4).
-    /// A wreck has no core, so no CPU at all.
+    /// A tier counts only extenders of that tier or better, so tiers 3 and 4 need the lattice
+    /// extenders (design 883). A wreck has no core, so no CPU at all.
     /// </summary>
-    public static (int tier, long limit) TierFor(Catalogue c, GridDef grid, int extenders, bool hasCore)
+    public static (int tier, long limit) TierFor(Catalogue c, GridDef grid, int[] extendersOfTier, bool hasCore)
     {
         if (!hasCore) return (0, 0);
         int tier = 1;
         for (int i = 0; i < c.ExtendersPerTier.Length && i < grid.CpuTiers.Length; i++)
-            if (extenders >= c.ExtendersPerTier[i]) tier = i + 1;
+            if (extendersOfTier.Skip(i + 1).Sum() >= c.ExtendersPerTier[i]) tier = i + 1;
         return (tier, grid.CpuTiers[tier - 1]);
     }
 

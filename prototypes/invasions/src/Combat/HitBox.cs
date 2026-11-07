@@ -6,7 +6,7 @@ namespace Invasions.Combat;
 
 /// <summary>
 /// A shootable collision shape that forwards hits to whatever owns it: a base block, a vehicle crew
-/// seat, a turret head, an enemy base core. An AnimatableBody so it can ride on moving vehicles.
+/// seat, a turret head, an enemy Big Core. An AnimatableBody so it can ride on moving vehicles.
 /// </summary>
 public partial class HitBox : AnimatableBody3D, IDamageable
 {

@@ -35,7 +35,10 @@ public enum ModuleKind : byte { Entrance, Corridor, Room, Hall, Vault, Tower, De
 /// <summary>Spots a module offers to the dressing pass. All are air in the template.</summary>
 public enum SlotKind : byte { Loot, Terminal, Core, Spawn, Boss, Prop }
 
-/// <summary>One palette symbol: the block it stamps. Several colours give a patchwork.</summary>
+/// <summary>
+/// One palette symbol: the block it stamps. The first colour is the main one; on walls, roofs and
+/// floors the others show as whole sheets (see <see cref="Kit.PanelWidth"/>), never cell by cell.
+/// </summary>
 public sealed class PaletteEntry
 {
     public char Symbol;
@@ -43,13 +46,27 @@ public sealed class PaletteEntry
     public Material Material;
     public Rgb[] Colors = Array.Empty<Rgb>();
     public Role Role;
+    public Kit? Kit;
 
-    /// <summary>Picks the colour from the world cell, so patchwork differs between spawns of one module.</summary>
-    public Block Make(Int3 worldCell, Dir facing = Dir.North)
+    public Block Make(Int3 worldCell, Dir facing = Dir.North) => new(Type, Material, ColorAt(worldCell), Role, facing);
+
+    /// <summary>The colour at a world cell, so the sheets differ between spawns of one module.</summary>
+    public Rgb ColorAt(Int3 p)
     {
-        Rgb c = Colors.Length == 1 ? Colors[0] : Colors[Hash.Cell(worldCell, 17) % (uint)Colors.Length];
-        return new Block(Type, Material, c, Role, facing);
+        if (Colors.Length == 1) return Colors[0];
+        // Trim of several colours is a painted stripe, regular enough to read as meant.
+        if (Type == BlockType.Cube && Role == Role.Decor)
+            return Colors[((p.X + p.Y + p.Z) >> 1 & 0xffff) % Colors.Length];
+        if (Role is not (Role.Wall or Role.Roof or Role.Floor)) return Colors[Hash.Cell(p, 17) % (uint)Colors.Length];
+        int w = Kit?.PanelWidth ?? 8, h = Kit?.PanelHeight ?? 4;
+        int course = Across(p.Y, h);
+        int shift = (int)(Hash.Cell(new Int3(course, 0, 0), 19) % (uint)w); // courses don't line up, like laid sheets
+        uint sheet = Hash.Cell(new Int3(Across(p.X + shift, w), course, Across(p.Z + shift, w)), 17);
+        if (sheet % 1000 >= (Kit?.PanelShare ?? 0.2f) * 1000f) return Colors[0];
+        return Colors[1 + (sheet >> 10) % (uint)(Colors.Length - 1)];
     }
+
+    static int Across(int a, int size) => a >= 0 ? a / size : (a - size + 1) / size;
 }
 
 /// <summary>
@@ -147,6 +164,11 @@ public sealed class Kit
     public short CapEntry = -1;   // seals sockets nobody connected to
     public short RampEntry = -1;  // what ^ v < > are made of
     public short FloorEntry = -1; // floors laid under props
+    /// <summary>How the second and later colours of a wall, roof or floor show: as sheets this wide and tall (cells), on this share of them.</summary>
+    public int PanelWidth = 8, PanelHeight = 4;
+    public float PanelShare = 0.2f;
+    /// <summary>What a building of this kit wears outside: the course at the ground, the top of its walls, the frame of a door. See <see cref="Facade"/>.</summary>
+    public Rgb? BaseCourse, Coping, DoorFrame;
 
     public PaletteEntry Entry(short i) => Palette[i];
     public PaletteEntry? BySymbol(char c) => Symbols.TryGetValue(c, out short i) ? Palette[i] : null;
@@ -158,6 +180,8 @@ public sealed class Kit
 ///
 ///   kit vharn
 ///   faction vharn
+///   panels 8 4 0.25              (sheets of a wall's other colours: wide, tall, share)
+///   facade 1a0c18 cdb98f cdb98f  (base course, coping, door frame)
 ///   palette
 ///     #  cube  chitin  3d1d36|46213e  wall
 ///   module vh_gullet
@@ -253,6 +277,16 @@ public static class KitParser
                 case "faction": kit.Faction = ParseEnum<Faction>(parts[1], Error); break;
                 case "light": kit.Light = Rgb.Parse(parts[1]); break;
                 case "palette": inPalette = true; break;
+                case "panels":
+                    kit.PanelWidth = int.Parse(parts[1], CultureInfo.InvariantCulture);
+                    kit.PanelHeight = int.Parse(parts[2], CultureInfo.InvariantCulture);
+                    kit.PanelShare = float.Parse(parts[3], CultureInfo.InvariantCulture);
+                    break;
+                case "facade":
+                    kit.BaseCourse = Rgb.Parse(parts[1]);
+                    kit.Coping = Rgb.Parse(parts[2]);
+                    kit.DoorFrame = Rgb.Parse(parts[3]);
+                    break;
                 case "cap": kit.CapEntry = Symbol(kit, parts[1][0], Error); break;
                 case "module":
                     draft = new ModuleDraft { Line = lineNo };
@@ -306,6 +340,7 @@ public static class KitParser
             Material = ParseEnum<Material>(parts[2], error),
             Colors = parts[3].Split('|').Select(Rgb.Parse).ToArray(),
             Role = ParseEnum<Role>(parts[4], error),
+            Kit = kit,
         };
         kit.Symbols[sym] = (short)kit.Palette.Count;
         kit.Palette.Add(entry);

@@ -456,6 +456,7 @@ public sealed class Playthrough
     {
         TechNode node = Game.Progress.Node(nodeId);
         foreach (int x in OpenMenu(MenuTab.Tech)) yield return x;
+        Game.Menu.Root.Tech.Reveal(nodeId); // the tree scrolls: bring the node into the window
         foreach (int x in Drive.ClickWidget($"tech:tab:{node.Tab}")) yield return x;
         foreach (int x in Drive.ClickWidget($"tech:{nodeId}")) yield return x;
     }
@@ -595,7 +596,8 @@ public sealed class Playthrough
             if (plant.Id == 0) yield break;
             tried.Add(plant.Id);
             foreach (int x in Drive.WalkTo(plant.Root, 1.8f, 40f)) yield return x;
-            for (int i = 0; i < 6 && Game.Tool.PlantsCut == cut; i++)
+            // Gathering chips: a plant takes a pulse or two, a tree some seconds.
+            for (int i = 0; i < 900 && Game.Tool.PlantsCut == cut; i++)
             {
                 Drive.Face(plant.Root + Vector3.Up * 0.9f);
                 Controls.Primary = true;
@@ -854,9 +856,30 @@ public sealed class Playthrough
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
-                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
+                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f)) && !RuinAt(g, span);
                 if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
     }
+
+    /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
+    bool RuinAt(Vector3 ground, float span)
+    {
+        var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new SphereShape3D { Radius = span },
+            Transform = new Transform3D(Basis.Identity, ground + Vector3.Up * (span + 0.5f)),
+            CollisionMask = PlanetSurface.Poi.PoiLayer.PlaceLayer,
+        };
+        foreach (var hit in Game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(query))
+            if (hit["collider"].AsGodotObject() is Node { Name: var name } body && name == "Collision")
+            {
+                if (!_ruinSaid) GD.Print($"  (no pad near {ground}: {body.GetPath()} stands there)");
+                _ruinSaid = true;
+                return true;
+            }
+        return false;
+    }
+
+    bool _ruinSaid;
 }

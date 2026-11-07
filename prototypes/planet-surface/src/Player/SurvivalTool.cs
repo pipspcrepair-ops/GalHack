@@ -166,7 +166,7 @@ public partial class SurvivalTool : Node
         if (result.Headline == Verdict.Bedrock)
         {
             Main.Hud.Toast($"BEDROCK · {PlanetTerrainSource.BedrockDepth:F0} m under the valley floors the tool can't cut", Hud.Warning);
-            Main.Debris.Sparks(TargetPoint, normal, new Color("9d8cff"));
+            Main.Debris.Sparks(TargetPoint, normal, Main.World.Grit(TargetPoint));
             Main.Sfx.Play(Sfx.Sound.Clank, TargetPoint);
             Player.Kick(0.25f, 0.7f);
         }

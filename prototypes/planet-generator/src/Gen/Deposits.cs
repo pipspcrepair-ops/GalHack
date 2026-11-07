@@ -1,17 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Planets.Gen;
 
 /// <summary>
-/// What a deposit yields. The first five are the common materials a small spacefaring vessel needs
-/// (hull, wiring, electronics, composites and fuel or life support); every planet guarantees them
-/// near any starting point. The rest are each archetype's signature resource.
+/// What a deposit yields. The first six are the common materials a small spacefaring vessel needs
+/// (hull, wiring, electronics, composites, life support and fuel); every planet guarantees them
+/// near any starting point. Magnesium to gravium are the uncommon ores, on every planet in small,
+/// scattered deposits. The last are only ever an archetype's signature resource.
 /// </summary>
 public enum DepositKind : byte
 {
-    Iron, Copper, Silicon, Carbon, Water,
-    Titanium, Cobalt, Sulfur, Thorium, Crystal, Resin,
+    Iron, Copper, Silicon, Carbon, Water, Burnstone,
+    Magnesium, Cobalt, Neodymium, Gold, Gravium,
+    Crystal, Resin,
 }
 
 /// <summary>One deposit: a surface outcrop (Depth 0) or a shallow one a few metres down.</summary>
@@ -20,14 +23,44 @@ public readonly record struct Deposit(double X, double Y, DepositKind Kind, floa
 /// <summary>
 /// Resource deposits laid out so the early game stays short. The planet is cut into 200 m cells and
 /// every cell with usable land gets one deposit of each common material, so from any walkable spot
-/// the nearest of each is at most a cell diagonal (about 280 m) away, on every archetype. Each
-/// archetype also scatters its signature resource, more sparsely and without that promise.
+/// the nearest of each is at most a cell diagonal (about 280 m) away, on every archetype. The
+/// uncommon ores are smaller and fewer but never absent (design 626): one deposit to each block of
+/// a few cells, so they are spread evenly and a walk finds them. Each archetype also scatters its
+/// signature resource, in full-sized deposits, without that promise.
 /// </summary>
 public sealed class DepositField
 {
-    public const int CommonKinds = 5;
+    public const int CommonKinds = 6;
     public const double CellSize = 200;
     public const float MaxShallowDepth = 3f;
+
+    /// <summary>A signature resource that is a common material: these cells hold more of it.</summary>
+    const float RichCommon = 1.4f;
+
+    /// <summary>
+    /// The uncommon ores: one deposit in each block of this many cells a side, at this share of a
+    /// common deposit's size. Gravium belongs on high-gravity worlds, but no world has its gravity
+    /// yet and a system is one world, so the Capital guarantee (design 627, "it adds the missing
+    /// deposit") puts a few on every planet until those worlds exist.
+    /// </summary>
+    static readonly (DepositKind Kind, int Block, float Size)[] Scarce =
+    {
+        (DepositKind.Magnesium, 3, 0.6f),
+        (DepositKind.Cobalt, 3, 0.6f),
+        (DepositKind.Neodymium, 3, 0.6f),
+        (DepositKind.Gold, 4, 0.6f),
+        (DepositKind.Gravium, 5, 0.5f),
+    };
+
+    /// <summary>The kinds every planet holds, in the design's guarantee: the commons and the uncommon ores.</summary>
+    public static IEnumerable<DepositKind> EveryPlanet()
+    {
+        for (int k = 0; k < CommonKinds; k++) yield return (DepositKind)k;
+        foreach (var s in Scarce) yield return s.Kind;
+    }
+
+    /// <summary>The ores that are smaller and fewer than the commons.</summary>
+    public static bool IsScarce(DepositKind kind) => kind >= DepositKind.Magnesium && kind <= DepositKind.Gravium;
 
     readonly WorldMap _map;
     readonly int _nx, _ny;
@@ -48,14 +81,52 @@ public sealed class DepositField
         for (int cj = 0; cj < _ny; cj++)
         for (int ci = 0; ci < _nx; ci++)
         {
-            var list = new List<Deposit>(CommonKinds + 1);
+            var list = new List<Deposit>(CommonKinds + 2);
             for (int kind = 0; kind < CommonKinds; kind++)
-                if (Place(ci, cj, (DepositKind)kind, out Deposit d)) list.Add(d);
+                if (Place(ci, cj, (DepositKind)kind, out Deposit d, (DepositKind)kind == signature && Rich(ci, cj) ? RichCommon : 1f)) list.Add(d);
             // Signature resources: roughly one cell in four.
-            if (Hash.Unit(Hash.Of(map.Spec.Seed, ci, cj, 0x51C), 0) < 0.25f && Place(ci, cj, signature, out Deposit s)) list.Add(s);
+            if ((int)signature >= CommonKinds && Rich(ci, cj) && Place(ci, cj, signature, out Deposit s)) list.Add(s);
             _cells[cj * _nx + ci] = list;
-            Count += list.Count;
         }
+        foreach (var (kind, block, size) in Scarce) Scatter(kind, block, size);
+        foreach (DepositKind kind in EveryPlanet())
+            if (!_cells.Any(c => c.Exists(d => d.Kind == kind))) AddMissing(kind);
+        Count = _cells.Sum(c => c.Count);
+    }
+
+    bool Rich(int ci, int cj) => Hash.Unit(Hash.Of(_map.Spec.Seed, ci, cj, 0x51C), 0) < 0.25f;
+
+    /// <summary>One deposit in each block of cells (none if a signature already put one there): the first cell of the block, in a rolled order, with land for it.</summary>
+    void Scatter(DepositKind kind, int block, float size)
+    {
+        for (int bj = 0; bj < _ny; bj += block)
+        for (int bi = 0; bi < _nx; bi += block)
+        {
+            int w = Math.Min(block, _nx - bi), h = Math.Min(block, _ny - bj), n = w * h;
+            bool has = false;
+            for (int k = 0; k < n && !has; k++) has = _cells[(bj + k / w) * _nx + bi + k % w].Exists(d => d.Kind == kind);
+            if (has) continue;
+            int start = (int)(Hash.Of(_map.Spec.Seed, bi, bj, 0x5CA7 + (int)kind) % (ulong)n);
+            for (int k = 0; k < n; k++)
+            {
+                int at = (start + k) % n, ci = bi + at % w, cj = bj + at / w;
+                if (!Place(ci, cj, kind, out Deposit d, size)) continue;
+                _cells[cj * _nx + ci].Add(d);
+                break;
+            }
+        }
+    }
+
+    /// <summary>The generator's guarantee (design 621): a kind the planet came up short of is added, wherever there is land, however little.</summary>
+    void AddMissing(DepositKind kind)
+    {
+        for (int cj = 0; cj < _ny; cj++)
+        for (int ci = 0; ci < _nx; ci++)
+            if (Place(ci, cj, kind, out Deposit d))
+            {
+                _cells[cj * _nx + ci].Add(d);
+                return;
+            }
     }
 
     /// <summary>Deposits go on ground at least this high where the cell has any (metres above sea level).</summary>
@@ -65,10 +136,10 @@ public sealed class DepositField
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
-    bool Place(int ci, int cj, DepositKind kind, out Deposit deposit)
+    bool Place(int ci, int cj, DepositKind kind, out Deposit deposit, float size = 1f)
     {
         ulong h = Hash.Of(_map.Spec.Seed, ci, cj, 0xDE90 + (int)kind);
-        float amount = Mathx.Lerp(0.6f, 1.6f, Hash.Unit(h, 40));
+        float amount = Mathx.Lerp(0.6f, 1.6f, Hash.Unit(h, 40)) * size;
         float depth = Hash.Unit(h, 41) < 0.6f ? 0f : Mathx.Lerp(0.5f, MaxShallowDepth, Hash.Unit(h, 42));
 
         // Try jittered spots, near the middle of the cell first so neighbouring cells stay close,

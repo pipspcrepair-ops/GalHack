@@ -74,6 +74,9 @@ public sealed class PoiInstance
     public Townsfolk? Townsfolk;
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
+    /// <summary>Where something could have rooted, best first, and how many trees it wants at most (see <see cref="GrowthSpot"/>).</summary>
+    public readonly List<GrowthSpot> Growth = new();
+    public int GrowthWanted;
     /// <summary>The world it stands on, when placed on one: its tech levels decide the living's animals and gear.</summary>
     public WorldProfile? World;
     /// <summary>"New on old": held by people of a higher level than the ruins round it (the world round it shows the old level).</summary>
@@ -136,15 +139,16 @@ public sealed class PoiInstance
 public static class PoiFactory
 {
     /// <summary>A family's authored layout, or a fresh one from <paramref name="customSeed"/>.</summary>
-    public static Layout BuildLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong? customSeed = null)
+    public static Layout BuildLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong? customSeed = null, LayoutHints? hints = null)
     {
         var v = family.Variants[variant % family.Variants.Count];
         Layout layout;
         using (Prof.Time("assemble"))
             layout = family.Generator == Generator.Kit
                 ? Assembler.Build(lib, family, v, rarity, customSeed ?? v.Seed)
-                : Architect.Build(lib, family, v, rarity, customSeed ?? v.Seed);
+                : Architect.Build(lib, family, v, rarity, customSeed ?? v.Seed, hints);
         if (customSeed != null) layout.Name = $"{v.Name} (seed {customSeed})";
+        Facade.Apply(layout, lib);
         return layout;
     }
 
@@ -283,8 +287,12 @@ public static class PoiFactory
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
         // ruin, a wall stub after the timber rotted) comes down. The flood fill in Spawn then checks the way in.
         var anchors = layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null;
-        foreach (Int3 p in Structure.Floating(inst.Blocks, layout.Occupied, anchors)) inst.Blocks.Set(p, Block.Air);
+        foreach (Int3 p in Structure.Floating(inst.Blocks, layout.Occupied, anchors, layout.Extras.Plain.Count > 0)) inst.Blocks.Set(p, Block.Air);
         Structure.DropUntethered(inst.Blocks);
+        // A plain ruin's weeds and moss come last, on what's left.
+        if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
+        if (state != PoiState.Active) StateTransforms.Rest(inst);
+        inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
         return inst;
     }
 
@@ -364,7 +372,7 @@ public static class Fixtures
             byte state = locks.TryGetValue(i, out var lk) ? (lk.Blast ? DoorState.Blast : DoorState.Locked) : vaultDoor ? (byte)1 : (byte)0;
             if (vaultDoor && state == 1 && layout.Family.Generator != Generator.Kit) state = DoorState.Locked;
             var color = lk != null ? (lk.Blast ? new Rgb(0x5a, 0x5c, 0x58) : ClearanceColor(lk.Clearance)) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
-            var b = new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
+            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
             foreach (Int3 c in d.Cells) g.Set(c, b);
         }
         foreach (Int3 c in layout.ExitCells)

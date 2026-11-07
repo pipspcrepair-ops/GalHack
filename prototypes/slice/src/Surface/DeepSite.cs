@@ -74,6 +74,7 @@ public partial class DeepSite : Node3D
     {
         Player = new FrameTarget(Patch.Player, () => GlobalPosition, () => Patch.PlayerWorld());
         if (!Sim.Targets.Contains(Player)) Sim.Targets.Add(Player);
+        Sim.SightLine = (a, b) => Patch.SightClear(ToGlobal(a), ToGlobal(b));
         Tells.Bind(Sim);
         Tells.Shown += OnTold;
         Sim.Telegraph += OnTelegraph;
@@ -91,6 +92,7 @@ public partial class DeepSite : Node3D
         Sim.Attacked -= OnAttacked;
         Sim.Died -= OnDied;
         Sim.Targets.Remove(Player);
+        Sim.SightLine = null;
         Patch.Sites.Remove(this);
     }
 
@@ -254,4 +256,5 @@ public sealed class FrameTarget : ITarget
     /// <summary>What lives in a place or a cave can reach you there, under its roof: only on foot and alive.</summary>
     public bool Attackable => _inner is Slice.Game.PlayerTarget p ? p.OnFoot : _inner.Attackable;
     public float ThreatScale => _inner.ThreatScale;
+    public bool Crouched => _inner.Crouched;
 }

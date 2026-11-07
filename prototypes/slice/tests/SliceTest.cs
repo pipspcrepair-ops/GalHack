@@ -120,6 +120,8 @@ public partial class SliceTest : Node
             foreach (int x in Gather()) yield return x;
             foreach (int x in CutPlant()) yield return x;
             foreach (int x in OreRock()) yield return x;
+            foreach (int x in HoverBike()) yield return x;
+            foreach (int x in Chipping()) yield return x;
         }
         // SYSTEMS TEST SHORTCUT: this test checks building, flying and creatures, so it hands over
         // the parts the Skiff's bill needs and opens the tech tree. The real-player test
@@ -188,9 +190,11 @@ public partial class SliceTest : Node
             $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
-            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} Â°C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
-        Check(zone.Wildlife.Sim.Creatures.Count > 20 && zone.Wildlife.Fauna.Species.Count >= 6,
-            $"the planet's own wildlife lives around the start: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species");
+            $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
+        // Few by design, and fewer on a harsher world: from half a species' natural groups down by how livable it is.
+        int most = (int)MathF.Ceiling(zone.Data.Rules.Wildlife.MostPerPatch * zone.Wildlife.Livable);
+        Check((zone.Wildlife.Sim.Creatures.Count > 0 || zone.Wildlife.Livable < 0.5f) && zone.Wildlife.Sim.Creatures.Count <= most + 8 && zone.Wildlife.Fauna.Species.Count >= 6,
+            $"the planet's own wildlife lives around the start, thinly: {zone.Wildlife.Sim.Creatures.Count} creatures of {zone.Wildlife.Fauna.Species.Count} species, at most {most} on a world {zone.Wildlife.Livable:P0} livable");
     }
 
     IEnumerable<int> Locker()
@@ -243,8 +247,10 @@ public partial class SliceTest : Node
                 if (first && got > 0)
                 {
                     first = false;
-                    Check(got > 0 && got == cells * yield1 + tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
-                        $"digging ore fills the pack: {cells} {material} ore cells dug, {tellOre} off the rock over it, {got} {material} in the pack ({yield1} a cell)");
+                    // Gathering chips and ore trickles in as the beam works (a cell gives its yield over its durability), so the
+                    // pack holds what the beam earned, whole items as the shares add up, not a whole cell's yield per pulse.
+                    Check(got > 0 && got >= tellOre && _game.Tool.Gathered[material] - gatheredBefore == got,
+                        $"digging ore fills the pack as it chips: {got} {material} in the pack, {tellOre} off the rock over it, about {got / (float)yield1:F1} cells' worth ({yield1} a cell)");
                     Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
                         $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
@@ -260,6 +266,135 @@ public partial class SliceTest : Node
     }
 
     /// <summary>A rock over a deposit stops the ray and the walker, and the tool breaks it down: a little ore a pulse, then it digs on through.</summary>
+    /// <summary>The hover bike: set down from the toolbar, F to ride, fast and hovering above the ground, over water as if it were ground, F to get off, E to pick it up.</summary>
+    IEnumerable<int> HoverBike()
+    {
+        GD.Print("-- the hover bike --");
+        var surf = _game.Zone;
+        Vector3 spot = default;
+        for (int i = 0; i < 80; i++)
+        {
+            float a = i * 0.7f, r = 14f + i * 2.5f;
+            var p = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
+            float h = surf.GroundAt(p.X, p.Z).Y, spread = 0f;
+            for (int k = 0; k < 8; k++)
+                spread = MathF.Max(spread, MathF.Abs(surf.GroundAt(p.X + MathF.Cos(k * 0.785f) * 12f, p.Z + MathF.Sin(k * 0.785f) * 12f).Y - h));
+            if (h > 1f && spread < 0.5f) { spot = surf.GroundAt(p.X, p.Z); break; }
+        }
+        if (spot == default) spot = surf.GroundAt(_game.Survivor.WorldFeet.X + 20f, _game.Survivor.WorldFeet.Z);
+        _game.Survivor.PlaceOutside((spot + Vector3.Up * 0.2f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        // A clear run ahead, or the first trunk stops the speed check: as a rider picks a line.
+        Vector3 chest = _game.Survivor.WorldFeet + Vector3.Up * 1.4f;
+        for (int k = 0; k < 16; k++)
+        {
+            Vector3 way = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, k * Mathf.Tau / 16f);
+            if (_game.Bikes.Blocked(chest, way, 32f)) continue;
+            foreach (int x in _drive.LookAt(chest + way * 10f, 3)) yield return x;
+            break;
+        }
+        _game.Pack.Storage.Add("hover-bike", 1);
+        _game.Pack.Grid[1].Item = "hover-bike";
+        _game.Pack.Grid[1].Count = 1;
+        _game.Pack.Grid.Reconcile();
+        foreach (int x in new Playthrough(_game).Select(1)) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Vehicle, "the hover bike on the toolbar is in hand as a vehicle");
+        foreach (int x in _drive.LookAt(_game.Survivor.WorldFeet + new Vector3(0f, -1f, 0f) + new Vector3(0f, 0f, -2.5f).Rotated(Vector3.Up, _game.Survivor.Yaw), 6)) yield return x;
+        foreach (int x in _drive.Click()) yield return x;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Check(_game.Bikes.All.Count == 1 && _game.Pack["hover-bike"] == 0, "clicking sets the hover bike down and takes it from the pack");
+        Slice.Vehicles.HoverBike bike = _game.Bikes.All.Count > 0 ? _game.Bikes.All[0] : null;
+        if (bike == null) yield break;
+        float ground = surf.GroundAt(bike.Position.X, bike.Position.Z).Y;
+        Check(MathF.Abs(bike.Position.Y - ground - Slice.Vehicles.HoverBike.Hover) < 0.3f, $"it hovers above the ground ({bike.Position.Y - ground:F2} m up)");
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        Check(_game.Survivor.OnBike == bike, "F gets on the hover bike");
+        Vector3 from = bike.Position;
+        float top = 0f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 100; i++) { yield return 0; top = MathF.Max(top, bike.Speed); }
+        _game.Controls.Hold(Key.W, false);
+        float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
+        Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
+        Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
+        foreach (int x in _drive.Wait(90)) yield return x;
+        foreach (int x in _drive.Tap(Key.F)) yield return x;
+        Check(_game.Survivor.OnBike == null && _game.Survivor.WorldFeet.DistanceTo(bike.Position) < 4f && _game.Survivor.Body.Asleep == false, "F again gets off, beside the bike");
+        foreach (int x in _drive.LookAt(bike.Seat, 6)) yield return x;
+        foreach (int x in _drive.Tap(Key.E)) yield return x;
+        Check(_game.Bikes.All.Count == 0 && _game.Pack["hover-bike"] == 1, "E at the bike picks it up again");
+
+        // Over water: any lake or sea within reach, found in the terrain's own height field.
+        var source = _game.Zone.Planet.Source;
+        Vector3? lake = null;
+        for (int ring = 1; ring <= 30 && lake == null; ring++)
+            for (int k = 0; k < 24 && lake == null; k++)
+            {
+                float a = k * MathF.Tau / 24f, r = ring * 25f;
+                float wx = _game.Survivor.WorldFeet.X + MathF.Cos(a) * r, wz = _game.Survivor.WorldFeet.Z + MathF.Sin(a) * r;
+                bool deep = true;
+                for (int d = 0; d < 8 && deep; d++)
+                    deep = source.SurfaceHeight(wx + MathF.Cos(d * 0.785f) * 40f, wz + MathF.Sin(d * 0.785f) * 40f) < source.WaterLevel - 1f;
+                if (deep) lake = new Vector3(wx, source.WaterLevel, wz);
+            }
+        if (lake is not Vector3 water) { GD.Print("  (no lake within 750 m of the castaway on this world: the water ride is not tried)"); yield break; }
+        Slice.Vehicles.HoverBike boat = _game.Bikes.Place(water, 0f);
+        boat.Ridden = true;
+        boat.Throttle = 1f;
+        float lowest = float.MaxValue, highest = float.MinValue;
+        Vector3 start = boat.Position;
+        for (int i = 0; i < 150; i++)
+        {
+            yield return 0;
+            lowest = MathF.Min(lowest, boat.Position.Y);
+            highest = MathF.Max(highest, boat.Position.Y);
+        }
+        float skimmed = new Vector2(boat.Position.X - start.X, boat.Position.Z - start.Z).Length();
+        Check(boat.OnWater && lowest > source.WaterLevel + 0.4f && highest < source.WaterLevel + 1.6f && skimmed > 15f,
+            $"over a lake the hover bike skims it as ground: {skimmed:F0} m, riding {lowest - source.WaterLevel:F2} to {highest - source.WaterLevel:F2} m above the water");
+        _game.Bikes.Remove(boat);
+    }
+
+    /// <summary>Gathering chips: a pulse wears the ground without taking it, sustained work sinks it a cell at a time, and the better drills do it faster.</summary>
+    IEnumerable<int> Chipping()
+    {
+        GD.Print("-- chipping --");
+        foreach (int x in new Playthrough(_game).Tool(Slice.Player.ToolMode.Gather)) yield return x;
+        var store = _game.Zone.Planet.Terrain.Store;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        Vector3 fwd = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, _game.Survivor.Yaw);
+        Vector3 Ground(float along, float across)
+        {
+            Vector3 q = feet + fwd * along + fwd.Rotated(Vector3.Up, Mathf.Pi / 2f) * across;
+            return _game.Zone.GroundAt(q.X, q.Z);
+        }
+        Vector3 a = Ground(2.6f, -3f), b = Ground(2.6f, 3f);
+        int before = store.RemovedCount;
+        foreach (int x in _drive.HoldPrimary(a, 2)) yield return x;
+        Check(store.RemovedCount == before && _game.Tool.ChippedCells > 0, $"one pulse of the beam chips the ground without taking a cell ({store.RemovedCount - before} cells gone, {_game.Tool.ChippedCells} worn)");
+        // Soil goes in a second, bare rock takes a few: how long depends on what this world has underfoot.
+        long held = 0;
+        for (int i = 0; i < 6 && store.RemovedCount == before; i++, held++)
+            foreach (int x in _drive.HoldPrimary(a, 60)) yield return x;
+        int mid = store.RemovedCount - before;
+        foreach (int x in _drive.HoldPrimary(a, 200)) yield return x;
+        int late = store.RemovedCount - before;
+        Check(mid > 0 && late > mid, $"sustained work sinks the ground a cell at a time: {mid} cells after {held} s, {late} after four more (the store holds whole cells, so it steps in stages)");
+
+        // The better drill, on the other spot, in the same time.
+        _game.Pack.Storage.Add("plasma-drill", 1);
+        _game.Pack.Grid[2].Item = "plasma-drill";
+        _game.Pack.Grid[2].Count = 1;
+        _game.Pack.Grid.Reconcile();
+        foreach (int x in new Playthrough(_game).Select(2)) yield return x;
+        Check(_game.Pack.Hand == Slice.Items.HandKind.Tool, "the plasma drill is a hand tool");
+        int plain = store.RemovedCount;
+        foreach (int x in _drive.HoldPrimary(b, 60)) yield return x;
+        int fast = store.RemovedCount - plain;
+        Check(fast > mid * 1.4f, $"the plasma drill gathers faster: {fast} cells in a second against {mid} for the survival tool");
+        foreach (int x in new Playthrough(_game).Select(0)) yield return x;
+    }
+
     IEnumerable<int> OreRock()
     {
         GD.Print("-- an ore rock --");
@@ -267,7 +402,7 @@ public partial class SliceTest : Node
         Vector3 from = _game.Survivor.WorldFeet;
         var source = zone.Planet.Source;
         var rocks = zone.Planet.Map.Deposits.InRect(from.X - 400, from.Z - 400, from.X + 400, from.Z + 400)
-            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null
+            .Where(d => PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Fracture && _game.Tool.OreOf(d.Kind) != null && PlanetSurface.Infra.InfraLayer.HasTell(zone.Planet, d)
                 && source.StampWeight(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height)) <= 0f
                 && !source.WaterSurfaceAt(Mathx.WrapX(d.X, zone.Planet.Width), Mathx.Wrap(d.Y, zone.Planet.Height), out _))
             .Select(d => (d, at: zone.Planet.NearestCopy(new Vector3((float)d.X, from.Y, (float)d.Y), from)))
@@ -292,12 +427,15 @@ public partial class SliceTest : Node
                 if (_game.Tool.OnTell) { aim = look; break; }
             }
             if (aim == null) continue;
-            string ore = _game.Tool.OreOf(d.Kind).Id;
-            int before = _game.Tool.TellOre, pack = _game.Pack[ore], all = Slice.Player.SurvivalTool.TellPulses * Slice.Player.SurvivalTool.TellOrePerPulse;
+            // The rock the tool is really on: deposits overlap, and digging for ore may have worked it already.
+            Deposit rock = _game.Tool.Tell.Value;
+            string ore = _game.Tool.OreOf(rock.Kind).Id;
+            int left = _game.Tool.TellLeft(rock), before = _game.Tool.TellOre, pack = _game.Pack[ore], all = left * Slice.Player.SurvivalTool.TellOrePerPulse;
             foreach (int x in _drive.HoldPrimary(aim, 600, () => _game.Tool.TellOre - before >= all)) yield return x;
             foreach (int x in _drive.Wait(2)) yield return x;
-            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && !_game.Tool.OnTell,
-                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} {ore} over {Slice.Player.SurvivalTool.TellPulses} pulses, then it digs on through");
+            bool gone = _game.Tool.Tell is not Deposit still || still.X != rock.X || still.Y != rock.Y;
+            Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && gone,
+                $"an ore rock breaks down under the tool: {_game.Pack[ore] - pack} of {all} {ore} over the {left} of {Slice.Player.SurvivalTool.TellPulses} pulses it had left, then it digs on through (still on it: {!gone})");
             yield break;
         }
         GD.Print($"  (no ore rock to aim at among the {rocks.Count} nearest deposits)");
@@ -389,6 +527,11 @@ public partial class SliceTest : Node
         Vector3 p = default;
         long id = 0;
         float reach = _game.Zone.Data.Rules.Tool.CutReach - 0.5f;
+        // What was in hand before the walk: the walk digs its own way past what is in it, and the tool
+        // (in gather mode, trigger held) can take the plant on the way (that once left +0 against a
+        // baseline read after it), so the baseline comes first.
+        double organics = _game.Suit.Kit.Organics;
+        int biomass = _game.Pack["biomass"];
         for (int attempt = 0; attempt < 4; attempt++)
         {
             var found = NearestPlant(_game.Survivor.WorldFeet, 200f, trees: true, tried) ?? NearestPlant(_game.Survivor.WorldFeet, 200f, trees: false, tried);
@@ -409,12 +552,12 @@ public partial class SliceTest : Node
         }
         bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
         bool trunkBefore = TrunkCollider(p, id);
-        double organics = _game.Suit.Kit.Organics;
-        int biomass = _game.Pack["biomass"];
+        bool takenEnRoute = _game.Zone.Planet.Felled.Contains(id);
         bool cutThisFrame = false, colliderGoneThatFrame = false;
         if (_game.Pack.Selected != 0) foreach (int x in _drive.Tap(Key.Key1)) yield return x;
         if (_game.Tool.Mode != Slice.Player.ToolMode.Gather) foreach (int x in _drive.Tap(Key.Q)) yield return x;
-        for (int i = 0; i < 6 && !cutThisFrame; i++)
+        // Gathering chips: a plant takes a pulse or two, a tree a few seconds, each pulse paying a share.
+        for (int i = 0; i < 1500 && !cutThisFrame && !takenEnRoute; i++)
         {
             _drive.Face(p + Vector3.Up * 0.9f);
             _game.Controls.Primary = true;
@@ -426,16 +569,21 @@ public partial class SliceTest : Node
             }
         }
         _game.Controls.Primary = false;
-        if (!cutThisFrame)
+        if (!cutThisFrame && !takenEnRoute)
             GD.Print($"  (the cut: plant {id} at {p}, {(tree ? "a tree" : "a plant")}; eye {_game.Survivor.WorldEye()} {_game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f):F1} m from it; hand {_game.Pack.Hand}, mode {_game.Tool.Mode}, on a block {_game.Tool.OnBlock})");
         foreach (int x in _drive.Wait(90)) yield return x;
-        Check(_game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
+        Check(_game.Zone.Planet.Felled.Contains(id) && _game.Suit.Kit.Organics > organics && _game.Pack["biomass"] > biomass && _game.Tool.PlantsCut >= 1,
             $"cutting a plant gives organics (+{_game.Suit.Kit.Organics - organics:F1} kg) and biomass (+{_game.Pack["biomass"] - biomass})");
         bool gone = !_game.Zone.Streamer.FloraNear(p, 0.3f).Any();
         Check(gone && _game.Zone.Planet.Felled.Contains(id), "the cut plant is gone from the ground, and on the planet's felled list (kept through streaming and saves)");
-        if (tree)
+        if (tree && takenEnRoute) GD.Print("  (the walk's own digging took this tree on the way: its collider is checked in the next plant)");
+        else if (tree)
+        {
             Check(trunkBefore && cutThisFrame && colliderGoneThatFrame && !TrunkCollider(p, id),
                 $"the tree's trunk was solid, and its collider went in the frame it was cut (before {trunkBefore}, gone that frame {colliderGoneThatFrame})");
+            Check(_game.Tool.TreesFelled >= 1 && _game.Tool.Trees != null && _game.Tool.Trees.Stumps >= 1,
+                $"the felled tree leaves a stump ({_game.Tool.Trees?.Stumps ?? 0}) and falls over");
+        }
         else GD.Print("  (no tree near: the plant cut was not a solid one)");
     }
 
@@ -518,7 +666,7 @@ public partial class SliceTest : Node
         GalHack.Items.Bill cost = _game.Builder.TotalCost(plan);
         GalHack.Items.Bill packBefore = _game.Pack.Storage.Contents;
         _game.Builder.Project();
-        Vector3 pad = FlatSpot(_game.Start, 16f);
+        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 16f, span: 10f); // room for you to stand off it and see it
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.LookAt(pad, 6)) yield return x;
@@ -609,6 +757,11 @@ public partial class SliceTest : Node
             GD.Print($"  (the sky was {sky.Dominant}: cleared for the flight)");
             sky.Snap(WeatherKind.Clear);
         }
+        // The Creative twin may stand between its pad and the Skiff, on legs low enough to wedge you under: this check is about flying.
+        GD.Print("  (TEST: the castaway is set down beside the Skiff, clear of the Creative twin)");
+        Vector3 beside = v.Body.Position.ToGodot() + new Vector3(6f, 0f, 6f);
+        _game.Survivor.PlaceOutside(_game.Zone.GroundAt(beside.X, beside.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
+        foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
@@ -792,7 +945,7 @@ public partial class SliceTest : Node
         for (int i = 0; i < 600 && Away() > w.Sim.Terrain.HalfSize * 0.5f; i++) yield return 0;
         w.FinishFollowing();
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f && w.Sim.Creatures.Count > 10,
+        Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f,
             $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
         // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,

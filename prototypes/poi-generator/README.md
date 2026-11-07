@@ -95,6 +95,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
 ### Places, states and loot
 
+- **Plain ruins** (`src/Gen/Arch/Homes.cs`, `PlainRuin.cs`; families `flavour_*`) are the small roadside buildings, drawn by hand rather than planned. They are real size against a 1.8 m person and built as a player builds: a 2 m lattice in plan and storey (POI cells are 1 m, the player's large block 2 m), walls and slabs as large half blocks, 45 degree slope roofs, thin plate floors, 2 m doors, panes in the windows. `LayoutHints` turns a lot to face its road and picks its materials by tech level. Nothing goes below ground, and their decay takes everything above smooth collapses, so walls end in broken tops. Overgrowth runs last. They have no block trees (the big places still grow them).
 - **Cores** appear only where a faction owns the place (`FamilyDef.HasCore(state)`). Wrecks, ruins, the old world's abandoned places and gang forts never have one.
 - **States**:
   - *Active*: power and guards.
@@ -108,7 +109,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - `AgeOf(module)`: a sealed vault, cryo bay or hidden room keeps its own age.
   - `ExposureOf(module)`: indoors, outdoors, or breached (open to the sky).
 
-  Old-world places hold no food outside sealed rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. Trees, many of them mature, grow through courtyards and breaches.
+  Old-world places hold no food outside sealed rooms. Unsheltered timber has rotted and fallen in, while concrete, stone and steel stand as shells. The generator leaves spots where trees could root in courtyards and breaches (`Growth.cs`); the planet plants its own flora there (planet-surface `RuinGrowth`), so a ruin's trees are the trees round it and a treeless world grows none.
 - **Repair after decay.** Anything left floating comes down. Every spawn is then flood-filled from the way in, and rolled again from a new sub-seed if decay cut the way to the vault or the core.
 - **Loot** comes from real `shared/Items` ids (`loot.txt`). The cache tier rises with rarity, depth and wrongness, and is higher for vaults, hidden stashes and infested places.
 - **Frozen moments** replace text logs: an abandoned meal, welded doors scratched from the inside, drag marks leading deeper, a last stand by the core. Terminals are props.
@@ -136,7 +137,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
 ## Authoring a kit module as data
 
-A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; several colours make a patchwork, picked per cell. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
+A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives the three colours `Facade` adds outside: the course at the ground, the top of the walls and the frame of a door to the outside. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
 
 ```
 kit vharn

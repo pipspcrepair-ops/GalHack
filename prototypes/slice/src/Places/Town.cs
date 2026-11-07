@@ -62,6 +62,11 @@ public sealed partial class Town
         public List<Vector3> Path;
         public int Step;
         public float Wait, Speed = 1.3f, Hurt, Aim = -1f, Cooldown;
+        /// <summary>How fast they are going now (they ease into it), how far through a stride, how far down into a seat; time since their last full update.</summary>
+        public float Now, Gait, Seated, Saved;
+        /// <summary>Their head, turned as they glance about.</summary>
+        public Node3D Head;
+        public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
         public Person Partner;
         public Node3D Body;
@@ -240,15 +245,28 @@ public sealed partial class Town
         return t < 0.24f || t > 0.8f;
     }
 
-    void Tick(float dt)
+    /// <summary>Beyond this someone updates a few times a second; beyond the second, their body isn't posed at all.</summary>
+    const float NearPeople = 40f, FarPeople = 90f;
+    int _tick;
+
+    void Tick(float tickDt)
     {
         if (_place == null || !_place.Ready || _place.Dormant) return;
         bool night = Night();
         Mood mood = Memory.Mood;
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
-        foreach (Person p in People)
+        _tick++;
+        for (int who = 0; who < People.Count; who++)
         {
+            Person p = People[who];
             if (p.Dead) continue;
+            // Far from you a town needn't move every tick: each in their turn, with the time they missed.
+            p.Saved += tickDt;
+            float away = (player - p.Pos).Length();
+            if (away > NearPeople && (_tick + who) % 6 != 0) continue;
+            float dt = p.Saved;
+            p.Saved = 0f;
+            _posing = away < FarPeople;
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
             // Hostile: the people go indoors; the guards turn on you.
@@ -288,23 +306,35 @@ public sealed partial class Town
     /// <summary>Walks a person along their path; true once they are there (or have no path).</summary>
     bool Move(Person p, float dt)
     {
-        if (p.Path == null || p.Step >= p.Path.Count) return true;
+        if (p.Path == null || p.Step >= p.Path.Count)
+        {
+            p.Now = 0f;
+            return true;
+        }
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
-        float step = p.Speed * dt;
-        if (flat < step || flat < 0.05f)
+        // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
+        bool last = p.Step >= p.Path.Count - 1;
+        float wanted = last ? MathF.Min(p.Speed, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : p.Speed;
+        p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
+        float step = p.Now * dt;
+        p.Gait += step;
+        // Turns a corner a stride early, not on the spot.
+        if (flat < step || flat < (last ? 0.05f : 0.4f))
         {
-            p.Pos = to;
+            if (last) p.Pos = to;
             p.Step++;
             return p.Step >= p.Path.Count;
         }
         p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
-        p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 8f));
+        p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;
     }
+
+    const float PeopleAccel = 3f;
 
     void GoTo(Person p, int spot)
     {
@@ -482,17 +512,36 @@ public sealed partial class Town
         return root;
     }
 
+    bool _posing = true;
+
     void Pose(Person p)
     {
         if (p.Body == null) return;
         p.Body.Visible = !p.Indoors;
-        if (p.Indoors) return;
-        bool moving = p.Path != null && p.Step < p.Path.Count;
-        float t = (float)_places.Zone.Sky.TimeOfDay * 86400f / 60f + People.IndexOf(p);
-        float bob = moving ? MathF.Abs(MathF.Sin(t * p.Speed * 5f)) * 0.05f : 0f;
-        float sit = p.Sitting ? -0.45f : 0f;
+        if (p.Indoors || !_posing) return;
+        bool moving = p.Now > 0.05f;
+        int who = People.IndexOf(p);
+        float t = (float)_places.Zone.Sky.TimeOfDay * 86400f / 60f + who;
+        // The bob and sway go by the ground covered, so they keep step with the walk.
+        float stride = p.Gait * 3.2f;
+        float bob = moving ? MathF.Abs(MathF.Sin(stride)) * 0.05f : 0f;
+        float sway = moving ? MathF.Sin(stride) * 0.03f : MathF.Sin(t * 0.7f) * 0.012f; // at rest, a slow shift of weight
+        float lean = Math.Clamp(p.Now / 3f, 0f, 1f) * 7f;
+        p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f / 60f);
         float work = !moving && p.Role == "worker" ? MathF.Max(0f, MathF.Sin(t * 1.7f)) * 18f : 0f;
-        p.Body.Position = p.Pos + Vector3.Up * (bob + sit);
-        p.Body.Rotation = new Vector3(Mathf.DegToRad(-work), p.Yaw, 0f);
+        p.Body.Position = p.Pos + Vector3.Up * (bob - p.Seated * 0.45f);
+        p.Body.Rotation = new Vector3(Mathf.DegToRad(-work - lean), p.Yaw, sway);
+        p.Head ??= p.Body.GetNodeOrNull<Node3D>("Head");
+        if (p.Head == null) return;
+        // Looks at you if you're close and in front of them; otherwise glances about now and then.
+        float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
+        Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
+        if (toPlayer.LengthSquared() < 100f)
+        {
+            float off = Mathf.AngleDifference(p.Yaw, MathF.Atan2(-toPlayer.X, -toPlayer.Z));
+            if (MathF.Abs(off) < 1.25f) look = off;
+        }
+        p.HeadYaw = Mathf.Lerp(p.HeadYaw, look, 0.08f);
+        p.Head.Rotation = new Vector3(0f, p.HeadYaw, 0f);
     }
 }

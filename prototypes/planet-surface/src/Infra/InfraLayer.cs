@@ -24,8 +24,11 @@ namespace PlanetSurface.Infra;
 public partial class InfraLayer : Node3D
 {
     public const float TileSize = 256f;
-    /// <summary>Tiles within this distance of the camera are built; past it plus a margin they are freed.</summary>
-    public static float Radius = 900f;
+    /// <summary>
+    /// Tiles within this distance of the camera are built; past it plus a margin they are freed. As far as
+    /// the far rings reach, corners included: a pad shows in the far ground, and what stands on it must be there already.
+    /// </summary>
+    public static float Radius = 1320f;
 
     /// <summary>One thing to draw, in the tile its middle falls in.</summary>
     public abstract class Piece
@@ -43,10 +46,20 @@ public partial class InfraLayer : Node3D
         /// <summary>What is still to be made of it on the main thread: its mesh, its collision, each extra (a wreck site, a ruin).</summary>
         public Queue<Func<Node3D>> Steps;
         public bool Done => Node != null && Steps != null && Steps.Count == 0;
+        /// <summary>A tell here was broken: its rocks are built again, and this is that job.</summary>
+        public bool TellsStale;
+        public Task<TileBuilder> TellJob;
     }
 
     /// <summary>Main-thread time a frame may spend making tiles' nodes, ms (at least one step a frame).</summary>
     public static double FrameBudgetMs = 1.5;
+    /// <summary>The same with an unfinished tile close enough to see into, and how close that is: one step a frame there is seconds of buildings arriving in view.</summary>
+    public static double NearBudgetMs = 6;
+    public const float NearTiles = 600f;
+    /// <summary>The same with nobody watching: the game holds its loading screen until everything near the start stands.</summary>
+    public const double HurryBudgetMs = 14;
+    /// <summary>Behind a loading screen: tiles take what they need.</summary>
+    public bool Hurry;
     /// <summary>The slowest frame of this layer's own main-thread work, ms, and the most it made in one frame (tests).</summary>
     public double WorstMainMs;
 
@@ -67,6 +80,7 @@ public partial class InfraLayer : Node3D
     public void Build(PlanetWorld world)
     {
         Clear();
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // nothing here moves but by whole planets at a seam
         _world = world;
         _tilesX = (int)Math.Ceiling(world.Width / TileSize);
         _tilesZ = (int)Math.Ceiling(world.Height / TileSize);
@@ -137,14 +151,16 @@ public partial class InfraLayer : Node3D
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var drop = new List<long>();
         int steps = 0;
+        double budget = Hurry ? HurryBudgetMs : FrameBudgetMs;
         foreach (var (key, tile) in _tiles.OrderBy(t => TileDistance(t.Value.Ix, t.Value.Iz, cx, cz)))
         {
+            if (!tile.Done && TileDistance(tile.Ix, tile.Iz, cx, cz) < NearTiles) budget = Math.Max(budget, NearBudgetMs);
             if (TileDistance(tile.Ix, tile.Iz, cx, cz) > Radius + TileSize)
             {
                 drop.Add(key);
                 continue;
             }
-            if (!tile.Done && tile.Building.IsCompleted && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
+            if (!tile.Done && tile.Building.IsCompleted && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
             {
                 if (tile.Node == null)
                 {
@@ -152,13 +168,20 @@ public partial class InfraLayer : Node3D
                     tile.Steps = tile.Building.Result.Steps();
                     AddChild(tile.Node);
                 }
-                while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < FrameBudgetMs))
+                while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
                 {
                     Node3D part = tile.Steps.Dequeue()();
                     if (part != null) tile.Node.AddChild(part);
+                    if (part is DecoPlanView wreck && wreck.HasMeta("wreck"))
+                    {
+                        foreach (DecoNode gone in wreck.Nodes.Where(n => !n.Visible)) gone.QueueFree();
+                        wreck.Nodes.RemoveAll(n => !n.Visible);
+                        WreckStood?.Invoke(_world.Infra.Wrecks[(int)wreck.GetMeta("wreck")], wreck);
+                    }
                     steps++;
                 }
             }
+            if (tile.Done) UpdateTells(tile, key);
             if (tile.Node != null)
             {
                 // Written only when it changes: a same-spot write still tells every body and mesh under the node.
@@ -172,6 +195,25 @@ public partial class InfraLayer : Node3D
             _tiles[key].Node?.QueueFree();
             _tiles.Remove(key);
         }
+    }
+
+    /// <summary>Swaps a tile's tells for a build without the ones broken since, and starts that build when one is due.</summary>
+    void UpdateTells(Tile tile, long key)
+    {
+        if (tile.TellJob is { IsCompleted: true })
+        {
+            TileBuilder built = tile.TellJob.Result;
+            tile.TellJob = null;
+            if (tile.Node.GetNodeOrNull("Tells") is Node old)
+            {
+                old.Name = "Tells gone"; // the old node stays in the tree to the end of the frame
+                old.QueueFree();
+            }
+            if (built.HasContent) tile.Node.AddChild(built.ToNode("Tells"));
+        }
+        if (!tile.TellsStale || tile.TellJob != null || !_pieces.TryGetValue(key, out var pieces)) return;
+        tile.TellsStale = false;
+        tile.TellJob = Task.Run(() => TellsOf(tile, pieces));
     }
 
     double TileDistance(int ix, int iz, double cx, double cz)
@@ -221,6 +263,13 @@ public partial class InfraLayer : Node3D
             yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
         foreach (PowerWire wire in power.Wires)
             yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
+        foreach (InfraRoute r in net.Routes)
+        {
+            if (r.Kind != RouteKind.Rail || r.Count < 16) continue;
+            if (r.From != null) yield return new Station { Route = r, AtStart = true, X = r.X[0], Z = r.Z[0] };
+            if (r.To != null) yield return new Station { Route = r, AtStart = false, X = r.X[^1], Z = r.Z[^1] };
+        }
         // A train standing on the line brings its own track: the line's is left out under it.
         var underTrains = new HashSet<(int, int)>();
         foreach (WreckSite w in net.Wrecks)
@@ -291,14 +340,8 @@ public partial class InfraLayer : Node3D
             }
             else
             {
-                // The fallen deck lies broken on the ground below, two slabs tilted against each other.
-                float g0 = b.Ground(r.X[K], r.Z[K]), g1 = b.Ground(r.X[K + 1], r.Z[K + 1]);
-                NV p0 = new(a.X, g0 + thick * 0.5f + 0.1f, a.Z), p1 = new(c.X, g1 + thick * 0.5f + 0.1f, c.Z);
-                NV m = (p0 + p1) * 0.5f;
-                NV tilt = NV.Normalize(dir + up * 0.25f);
-                NV tUp = NV.Normalize(NV.Cross(side, tilt));
-                if (tUp.Y < 0) tUp = -tUp;
-                b.Box(m + up * 0.6f, tilt * (len * 0.45f), tUp * (thick * 0.5f), side * (half * 0.9f), deck, surface, collide: true);
+                // The fallen deck lies broken on the ground below, draped over whatever it came down on.
+                b.Drape((a + c) * 0.5f, new NV(dir.X, 0, dir.Z) * (len * 0.46f), side * (half * 0.9f), thick, deck, surface);
             }
             // A pier every fifth point (20 m), standing on the ground below (under a fallen span too).
             if ((K - Structure.First) % 5 == 0 && K > Structure.First)
@@ -451,22 +494,27 @@ public partial class InfraLayer : Node3D
             float h = p.Height;
             if (p.Fallen)
             {
-                // Lying along the line, its foot snapped off at the stump.
+                // Lying along the line, its foot snapped off at the stump, and along the ground, however it falls away.
                 b.Box(foot + NV.UnitY * 0.4f, NV.UnitX * 0.14f, NV.UnitY * 0.4f, NV.UnitZ * 0.14f, p.Pylon ? PylonSteel : PoleWood, DecoSurface.Matte, collide: true);
-                NV lieDir = NV.Normalize(along + side * 0.25f);
-                NV mid = foot + lieDir * (h * 0.5f) + NV.UnitY * 0.2f;
-                if (p.Pylon) b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.9f, side * 1.4f, PylonSteel, DecoSurface.Metal, collide: true);
+                NV flat = NV.Normalize(along + side * 0.25f);
+                NV top = foot + flat * h;
+                top.Y = b.Ground(p.X + flat.X * h, p.Z + flat.Z * h);
+                NV lieDir = NV.Normalize(top - foot), lieSide = NV.Normalize(NV.Cross(NV.UnitY, lieDir)), lieUp = NV.Normalize(NV.Cross(lieDir, lieSide));
+                if (lieUp.Y < 0) lieUp = -lieUp;
+                NV mid = foot + lieDir * (h * 0.5f) + lieUp * (p.Pylon ? 0.7f : 0.1f);
+                float length = (top - foot).Length();
+                if (p.Pylon) b.Box(mid, lieDir * (length * 0.5f), lieUp * 0.9f, lieSide * 1.4f, PylonSteel, DecoSurface.Metal, collide: true);
                 else
                 {
-                    b.Box(mid, lieDir * (h * 0.5f), NV.UnitY * 0.13f, side * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
-                    b.Box(foot + lieDir * (h - 0.4f) + NV.UnitY * 0.3f, lieDir * 0.07f, NV.UnitY * 0.07f, side * 1.25f, PoleWood, DecoSurface.Matte, collide: false);
+                    b.Box(mid, lieDir * (length * 0.5f), lieUp * 0.13f, lieSide * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
+                    b.Box(foot + lieDir * (length - 0.4f) + lieUp * 0.3f, lieDir * 0.07f, lieUp * 0.07f, lieSide * 1.25f, PoleWood, DecoSurface.Matte, collide: true);
                 }
                 return;
             }
             if (!p.Pylon)
             {
                 b.Box(foot + NV.UnitY * (h * 0.5f - 0.6f), NV.UnitX * 0.13f, NV.UnitY * (h * 0.5f + 0.6f), NV.UnitZ * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
-                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: false);
+                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: true);
                 for (int k = 0; k < Lines.WiresOn(p); k++)
                 {
                     var a = p.Anchor(k, Lines.WiresOn(p));
@@ -475,16 +523,17 @@ public partial class InfraLayer : Node3D
                 return;
             }
             // A lattice pylon: four legs tapering up, braced in tiers, and two crossarms.
-            float baseHalf = 3.2f, topHalf = 0.8f;
+            float baseHalf = h * 0.13f, topHalf = 0.9f;
+            int tiers = Math.Max(4, (int)(h / 6f));
             NV[] bottom = { foot + (side + along) * baseHalf, foot + (side - along) * baseHalf, foot + (-side - along) * baseHalf, foot + (-side + along) * baseHalf };
             NV TopOf(NV c) => foot + (c - foot) * (topHalf / baseHalf) + NV.UnitY * h;
             for (int i = 0; i < 4; i++)
             {
-                b.Beam(bottom[i] - NV.UnitY * 1f, TopOf(bottom[i]), 0.12f, PylonSteel);
+                b.Beam(bottom[i] - NV.UnitY * 1.5f, TopOf(bottom[i]), 0.16f, PylonSteel, collide: true);
                 NV n0 = bottom[i], n1 = bottom[(i + 1) % 4];
-                for (int tier = 0; tier < 4; tier++)
+                for (int tier = 0; tier < tiers; tier++)
                 {
-                    float t0 = tier / 4f, t1 = (tier + 1) / 4f;
+                    float t0 = tier / (float)tiers, t1 = (tier + 1) / (float)tiers;
                     NV a0 = NV.Lerp(n0, TopOf(n0), t0), b1 = NV.Lerp(n1, TopOf(n1), t1);
                     b.Beam(a0, b1, 0.05f, PylonSteel);
                     b.Beam(NV.Lerp(n0, TopOf(n0), t1), NV.Lerp(n1, TopOf(n1), t1), 0.05f, PylonSteel);
@@ -493,7 +542,7 @@ public partial class InfraLayer : Node3D
             for (int arm = 0; arm < 2; arm++)
             {
                 NV at = foot + NV.UnitY * (h - 2f - arm * 4f);
-                b.Box(at, along * 0.25f, NV.UnitY * 0.25f, side * (Lines.WiresOn(p) / 2 * 4.2f + 0.6f), PylonSteel, DecoSurface.Metal, collide: false);
+                b.Box(at, along * 0.25f, NV.UnitY * 0.25f, side * (Lines.WiresOn(p) / 2 * 4.2f + 0.6f), PylonSteel, DecoSurface.Metal, collide: true);
             }
             for (int k = 0; k < Lines.WiresOn(p); k++)
             {
@@ -549,6 +598,43 @@ public partial class InfraLayer : Node3D
         }
     }
 
+    /// <summary>The end of a line: the track stops at a buffer, beside a platform with a roof over part of it. All of it stands in the ground.</summary>
+    sealed class Station : Piece
+    {
+        public InfraRoute Route;
+        public bool AtStart;
+
+        public override void Emit(TileBuilder b)
+        {
+            InfraRoute r = Route;
+            int k = AtStart ? 0 : r.Count - 1, step = AtStart ? 1 : -1, far = Math.Clamp(k + step * 12, 0, r.Count - 1);
+            NV a = b.Local(r.X[k], r.Y[k], r.Z[k]), c = b.Local(r.X[far], r.Y[far], r.Z[far]);
+            NV along = new(c.X - a.X, 0, c.Z - a.Z);
+            float length = along.Length();
+            if (length < 1f) return;
+            NV dir = along / length, side = new(-dir.Z, 0, dir.X);
+            DecoRgb body = r.Tech == TechLevel.Low ? Timber : r.Tech == TechLevel.Mid ? Concrete : Composite, dark = r.Tech == TechLevel.Low ? TimberDark : ConcreteDark;
+            float deck = (r.Y[k] + r.Y[far]) * 0.5f;
+            // Buffers across the end of the track.
+            b.Box(a + NV.UnitY * 0.45f, dir * 0.3f, NV.UnitY * 1.2f, side * 1.5f, dark, DecoSurface.Matte, collide: true);
+            foreach (int s in new[] { -1, 1 })
+            {
+                // The platform beside the track on the one side, its back wall on the other way.
+                if (s < 0) continue;
+                NV mid = a + dir * (length * 0.5f) + side * (r.HalfWidth + 2.2f);
+                float low = MathF.Min(deck, b.Ground(b.OriginX + mid.X, b.OriginZ + mid.Z)) - 1.5f, top = deck + 0.9f;
+                mid.Y = (low + top) * 0.5f;
+                b.Box(mid, dir * (length * 0.5f), NV.UnitY * ((top - low) * 0.5f), side * 2.2f, body, DecoSurface.Matte, collide: true);
+                // The shelter: posts on the platform, and a roof on them.
+                NV foot = new(mid.X, top, mid.Z);
+                foreach (float along2 in new[] { -9f, -3f, 3f, 9f })
+                    foreach (float across in new[] { -1.6f, 1.6f })
+                        b.Box(foot + dir * along2 + side * across + NV.UnitY * 1.5f, dir * 0.12f, NV.UnitY * 1.5f, side * 0.12f, dark, DecoSurface.Matte, collide: true);
+                b.Box(foot + NV.UnitY * 3.1f, dir * 10.5f, NV.UnitY * 0.12f, side * 2.3f, body, DecoSurface.Matte, collide: true);
+            }
+        }
+    }
+
     /// <summary>A maglev's guideway: a beam high on pylons over everything between its stations.</summary>
     sealed class Guideway : Piece
     {
@@ -585,6 +671,9 @@ public sealed partial class TileBuilder
     public readonly List<Vector3> Collision = new();
     /// <summary>Godot nodes a piece wants added as they are (deco placements and the like): made on the main thread.</summary>
     public readonly List<Func<Node3D>> Extra = new();
+    /// <summary>The tile's ore tells, on their own: a broken one takes its rock and collider with it, and the rest of the tile stands.</summary>
+    public TileBuilder Tells;
+    public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0;
 
     public TileBuilder(PlanetWorld world, double ox, double oz)
     {
@@ -614,6 +703,31 @@ public sealed partial class TileBuilder
         }
     }
 
+    /// <summary>
+    /// A flat slab laid on the ground, bending with it: a grid of points each on the ground under it, its
+    /// top a thickness above and its edges down into the ground, solid on top.
+    /// </summary>
+    public void Drape(NV centre, NV along, NV across, float thick, DecoRgb color, DecoSurface surface)
+    {
+        int nx = Math.Clamp((int)MathF.Ceiling(along.Length()), 1, 8), nz = Math.Clamp((int)MathF.Ceiling(across.Length()), 1, 8);
+        NV Top(int i, int j)
+        {
+            NV p = centre + along * (2f * i / nx - 1f) + across * (2f * j / nz - 1f);
+            p.Y = Ground(OriginX + p.X, OriginZ + p.Z) + thick * 0.5f;
+            return p;
+        }
+        for (int j = 0; j < nz; j++)
+        for (int i = 0; i < nx; i++)
+            Quad(Top(i, j), Top(i + 1, j), Top(i + 1, j + 1), Top(i, j + 1), color, surface, collide: true);
+        void Edge(NV p, NV q)
+        {
+            NV m = (p + q) * 0.5f;
+            Quad(p, q, q - NV.UnitY * (thick + 0.3f), p - NV.UnitY * (thick + 0.3f), color, surface, 1f, new NV(centre.X, m.Y, centre.Z));
+        }
+        for (int i = 0; i < nx; i++) { Edge(Top(i, 0), Top(i + 1, 0)); Edge(Top(i, nz), Top(i + 1, nz)); }
+        for (int j = 0; j < nz; j++) { Edge(Top(0, j), Top(0, j + 1)); Edge(Top(nx, j), Top(nx, j + 1)); }
+    }
+
     /// <summary>A cable along a polyline (drawn as thin tubes), in the tile's frame.</summary>
     public void Cable(List<NV> pts, float radius, DecoRgb color)
     {
@@ -637,7 +751,7 @@ public sealed partial class TileBuilder
     }
 
     /// <summary>A thin square beam between two points.</summary>
-    public void Beam(NV from, NV to, float half, DecoRgb color)
+    public void Beam(NV from, NV to, float half, DecoRgb color, bool collide = false)
     {
         NV d = to - from;
         float len = d.Length();
@@ -645,7 +759,7 @@ public sealed partial class TileBuilder
         NV y = d / len;
         NV helper = MathF.Abs(y.Y) < 0.95f ? NV.UnitY : NV.UnitX;
         NV x = NV.Normalize(NV.Cross(helper, y)), z = NV.Cross(x, y);
-        Box((from + to) * 0.5f, y * (len * 0.5f), x * half, z * half, color, DecoSurface.Matte, collide: false);
+        Box((from + to) * 0.5f, y * (len * 0.5f), x * half, z * half, color, DecoSurface.Matte, collide);
     }
 
     /// <summary>A quad (two triangles), wound to face away from <paramref name="inside"/> when given.</summary>
@@ -678,6 +792,7 @@ public sealed partial class TileBuilder
                 return body;
             });
         }
+        if (Tells is { HasContent: true }) steps.Enqueue(() => Tells.ToNode("Tells"));
         foreach (var make in Extra) steps.Enqueue(make);
         return steps;
     }

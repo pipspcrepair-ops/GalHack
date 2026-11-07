@@ -35,7 +35,7 @@ All of it runs cheaply enough for a world full of creatures on a low-end PC.
 ## How it works
 
 **The generator** (`src/Core/FaunaGenerator.cs`) is plain C# with no nodes. Its inputs are the planet seed, alienness (0 to 1) and a Bloom flag; its output is 6 to 10 species, identical on every machine. Each species gets:
-- a body plan and form (walkers, crawlers and slitherers, leapers, fliers and floaters, swarms, giants, oddities: 19 forms in all)
+- a body plan and form (walkers, crawlers and slitherers, leapers, fliers and floaters, swarms, giants, oddities: 20 forms in all)
 - a behaviour and a temperament, rolled first so the body is built for the job
 - swappable parts (heads, horns, backs, tails, extra limbs, tendrils)
 - proportions, palette, skin pattern and glow
@@ -80,7 +80,7 @@ Alienness pulls every roll towards options of matching weirdness, so temperate w
 | Legged | walkers, giants, walking plants, crystal grazers | IK foot stepping with a diagonal gait for 2 to 8 legs, the body sagging onto planted feet; FK necks, tails, tendrils, extra limbs |
 | Chain | crawlers, slitherers, burrowers | follow-the-leader segments, a travelling wave, rowing legs, sinking to burrow, cobra rear, mantis scythes |
 | Hopper | leapers, living boulders | spring hops with squash and stretch; boulders tumble a quarter turn per hop |
-| Winged | fliers | flapping with the outer panel lagging, gliding, banking, folding wings to land and eat |
+| Winged | fliers | flapping with the outer panel lagging, wings held out on a glide and swept back in a dive, rolling into turns, folding wings to land; on a hoverer, an upright body under a blur of wings |
 | Gas bag | floaters | breathing bladders, a bobbing drift on the wind, trailing stinging tendrils |
 | Swarm | insect clouds, skitter packs | boids round one shared brain and health pool |
 
@@ -117,9 +117,19 @@ Movement is simple steering over the terrain. It goes straight at the goal when 
 | Swarm | Sting cloud | cloud pulls in tight | 1.0 s | buzz |
 | Territorial giant | Trample | rears right up | 1.8 s | roar |
 
-Rig adaptations: fliers turn their attack into a dive, crawlers coil and strike like a snake, leapers leap, and floaters lash with their tendrils.
+Rig adaptations: gliders turn their attack into a swoop, hoverers into a dart and a sting, crawlers coil and strike like a snake, leapers leap, and floaters lash with their tendrils.
+
+**How flyers fly** (`src/Sim/Flight.cs`, numbers in `Heft`). Every winged species is one of two kinds, decided by its body (`Species.Flight`): up to 0.55 m long it is a hoverer, past that a glider. Gas bags and swarm clouds are neither and drift as they always did.
+
+- **Gliders** are always flying forward along their heading. They never fall below a stall speed that grows with their size, turn only by banking, round a radius that grows with size and weight, flap to climb and to gain speed, and glide the rest. They land on a gliding approach with a flare and a short run-out, refusing rock, trees, water and a steep slope, and take off with a run. The brain's `Desired` is only where they would like to go.
+- **Swoops** (`Swoop`) are the ordinary wind-up, commit and strike, on the wing. A glider comes in at height, lines up, gives its tell in flight, commits to where you stand, stoops down the line with its wings back, strikes in passing over your head, climbs away and comes round. Everything scales with the body, so a big one comes slower, from further out, and swings wider.
+- **Hoverers** (the darter form) stay small, light and upright, with wings too fast to see drawn as a blur that never stops while they are up, and a hum. Only they may stop, hold, back up and dart. They sting from the hover.
+- **Looking ahead:** near a player, flyers cast a few rays through `WildSim.SightLine` (about 15 a second each), bank away from walls, and break off a dive that has something in its way. The ground is handled by height, not by rays. No place or cave role uses a winged form, so no flyer is put in a room it can't turn in.
 
 The rules that keep it fair:
+- **Senses** (`src/Sim/Senses.cs`): sight needs range, a cone and a clear line through the ground and the world's own collision; hearing is shorter, works all round, depends on how much noise you make and barely passes a wall; the blind have only hearing. An awareness meter fills while something is sensed and it only notices at the top, then holds on to where it last knew you for 5 s. Brains run on a staggered 0.2 to 0.5 s timer with the target scan inside, and paths are followed between thinks.
+- **Weight** (`src/Sim/Heft.cs`): acceleration, braking and turning go by body size. Bodies go where they face, so a big one swings wide and overshoots.
+- **Reach:** a body stops so its jaws meet your skin, however long its neck, and nothing passes through you (`Locomotion.KeepOff`). A lunge from your blind side swings round to land in front of you.
 - **First attack:** a creature's first attack on a player always uses the full telegraph, with its pose and its sound swelling until the lunge.
 - **Commit:** part way through the wind-up the creature commits to where you stood. The lunge flies at that spot, so stepping aside dodges it.
 - **Later attacks** use the short normal wind-up. A creature that hasn't attacked you for 20 s must telegraph again.
@@ -149,7 +159,8 @@ Holding Q on a creature still scans it at any time: name, form, behaviour, tempe
 - **No spawning near bases.** No creature spawns or respawns within **80 m** of any base, measured from the structure's footprint edge, so a big base keeps a bigger zone. A base is a structure whose core is in base mode; a capital-mode structure (a ship) blocks nothing. A group is only placed where its whole spread stays outside every zone, and any member whose spot still lands inside one is left out.
 - **Why 80 m.** It is past the longest perception any creature rolls (67 m: a giant scavenger, over 200 test planets), so nothing new appears already close enough to notice you at home. The radius is `spawning.baseClearance` in `data/wildlife.json`.
 - **Only spawning is blocked.** Creatures already outside may wander in, and a creature with a reason to come (you shot at it from the base) comes all the way. Nothing in the zone pushes wildlife out, and the zone doesn't touch anything else that attacks bases: invasions are their own system.
-- **Respawns stay out of sight.** They also land at least 90 m from every player and outside the view cone of anyone within 220 m.
+- **Respawns stay out of sight.** They also land at least 90 m from every player and outside the view cone of anyone within 220 m. Nothing comes back round someone who has stayed within 30 m of one spot for a minute, and a colony's cracks stay shut while a player is within 25 m or can see them.
+- **Thinned by the world.** `spawning.density` keeps half of a species' natural groups at most, and the slice scales that by how livable the world is (`wildlife.livable` in its data: temperate 1, alien 0.6, arid 0.35, ice 0.3, lava 0.08).
 - **The playable outpost.** The planet has a small outpost of placeholder blocks with a cyan core in base mode, about 90 m behind you and to the right at the start. The status line says when you are inside its zone.
 
 ![The players' outpost: no wildlife spawns within 80 m of its deck](screenshots/outpost.png)
@@ -213,7 +224,7 @@ Empyrion was a reference: its creatures have separate night speeds (`NightWander
 
 **Frightening, but fair.** No creature of a cave or place may start an attack on a player until it has given itself away with a tell that has run for its species' tell time (1 to 1.4 s, never under a second). Then the attack begins with its own telegraphed wind-up on top, so a tell always comes at least about 2 s before anything lands (2.67 s at the tightest in the tests). An ambush's drop or burst can be escaped by running when the tell comes; a hunter's committed lunge, by stepping back. Creatures notice a player inside their notice radius, which crouching shrinks and sprinting grows, by sight (a clear line) or, blind, by sound; until then the place's hunters go after its subsisters, creeping in and pouncing through the same telegraphed attacks: a food chain you can watch, crouched in a doorway.
 
-**The population function** (`PoiFauna.Populate(plan, deepFauna, data.Deep)`): a place describes its rooms (a box each, its kind, its depth, whether it is dark, its links, vents and doors), its theme, its state and whether it is a derelict ship; it gets back the creatures (role, species, spot, how each hides), nests, food patches, cracks and the food chain, or `Silent` for an empty, silent place. Deterministic from the place's seed. By state: active places are kept clear by their garrison (at most vermin down in the dark; 100% silent in the tests), about a quarter of abandoned and a third of ruined places are empty and silent, and infested places are overrun (39.5 creatures a place against 17 in abandoned ones) with nests on every lower level. `PoiFauna.Spawn(sim, population, space)` puts it into a sim. `CaveFauna.Populate` does the same for a voxel cave round a point (and `CaveFauna.FindChamber` finds one).
+**The population function** (`PoiFauna.Populate(plan, deepFauna, data.Deep)`): a place describes its rooms (a box each, its kind, its depth, whether it is dark, its links, vents and doors), its theme, its state and whether it is a derelict ship; it gets back the creatures (role, species, spot, how each hides), nests, food patches, cracks and the food chain, or `Silent` for an empty, silent place. Deterministic from the place's seed. By state: active places are kept clear by their garrison (at most vermin down in the dark; 100% silent in the tests), about a third of abandoned places and two in five ruined ones are empty and silent, and infested places hold about twice what an abandoned place does (9 creatures against 5) with nests on some of their lower levels. A place holds a few things you hear before you see: `population` in the data caps each room and each place, and a room only takes what fits and can turn in it (`Species.TurnCircle`; `DeepFauna.Fitted` puts a young one where the grown one can't turn, and nothing at all where even that won't do). `PoiFauna.Spawn(sim, population, space)` puts it into a sim. `CaveFauna.Populate` does the same for a voxel cave round a point (and `CaveFauna.FindChamber` finds one).
 
 Empyrion was a reference: there, a POI's creatures come from spawner blocks its builder places by hand (`EntitySpawner` blocks with a `SpawnClass`, a `SpawnCount` and `AllowWander` in BlocksConfig.ecf); GalHack places asks a function with the place's rooms instead, so every generated place is populated. Its cave crawler tilts to the ground it stands on (`RotateToGround: true` in EClassConfig.ecf); GalHack's hold walls and ceilings. Its configs also warn that spawned creatures "might clip/vanish into walls" without room behind them, which is the thing the tests here rule out. Nothing was copied.
 
@@ -302,6 +313,8 @@ From the repo root, in PowerShell:
 You start on the alien world with a herd on the plain ahead and a grove to the left to drive the harvester into. Packs roam 50 to 120 m out.
 
 ## Test it
+
+`tests/FlightTest.tscn` measures how winged animals fly on fresh random worlds: the two kinds, airspeed and heading over long stretches, wings against flight, swoops across species and sizes, dodging, buildings and ridges, landings, roosting, deaths in the air, and hoverers. `prototypes/slice/tests/FlightShots.tscn` (windowed, not in the gate) films them from the player's eyes.
 
 ```powershell
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/WildlifeTest.tscn

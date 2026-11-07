@@ -30,7 +30,7 @@ namespace Slice.Tests;
 /// mapping (the map point under you and your heading), the ledger, that everything on the surface
 /// waited exactly as it was left, and the frame cost in orbit.
 ///
-/// Setting up is the one shortcut, printed when it happens: the Skiff's parts and a base core
+/// Setting up is the one shortcut, printed when it happens: the Skiff's parts and the Big Core
 /// are handed over and the tech tree opened (the real-player test earns all of that). From there
 /// on, only the game's inputs: no teleports, no grants.
 ///
@@ -98,6 +98,7 @@ public partial class OrbitTest : Node
     void WatchZones()
     {
         if (_game?.Survivor == null) return;
+        WatchSky();
         SurfaceZone surface = _game.Surface, orbit = _game.Orbit;
         void Look(Body b, SurfaceZone said, string what)
         {
@@ -176,14 +177,14 @@ public partial class OrbitTest : Node
     {
         GD.Print("-- the Skiff, built by hand --");
         foreach (int x in new Playthrough(_game).MakeTool()) yield return x; // you wake empty-handed: the tool is made first, for what the boarding wants of it
-        // SETUP SHORTCUT (printed): the Skiff's parts and a base core handed over, the tech tree
+        // SETUP SHORTCUT (printed): the Skiff's parts and the Big Core handed over, the tech tree
         // opened. The real-player test makes and earns all of it; this test is about orbit.
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
-        _game.Pack.Add("base-core", 1);
+        _game.Pack.Add("big-core", 1);
         _game.Progress.Creative = true;
-        GD.Print($"  (setup: handed over the Skiff's parts and a base core, and opened the tech tree)");
+        GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vector3 pad = FlatSpot(_game.Start, 18f);
+        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f, span: 10f); // room for you to stand off it and see it
         Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
         foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
         foreach (int x in _drive.Tap(Key.Key4)) yield return x;
@@ -195,7 +196,7 @@ public partial class OrbitTest : Node
         Vessel skiff = _game.Builder.Underway;
         if (skiff == null)
         {
-            Fail("the blueprint projector set nothing down");
+            Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict}; shown {_game.Builder.PlanShown}, plan {_game.Builder.Plan != null}; pad {pad}, feet {_game.Survivor.WorldFeet}, slot {_game.Pack.Selected}, in hand {_game.Pack.InHand}, wish yaw {_game.Survivor.Yaw:F2})");
             yield break;
         }
         int stalls = 0;
@@ -221,6 +222,7 @@ public partial class OrbitTest : Node
         Vessel v = _skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at the seat: at the Skiff's controls");
+        HoldSkyForTheClimb();
         _left = _game.Spaceflight.Holders().ToList();
         float ceiling = _game.Surface.Physics.Zone.Ceiling;
         Vector3 start = v.Body.Position.ToGodot();
@@ -228,10 +230,13 @@ public partial class OrbitTest : Node
         _game.Controls.Hold(Key.Space);
         bool preloaded = false;
         int ticks = 0;
-        float lastAir = 0f, airStep = 0f;
+        float lastAir = 0f, airStep = 0f, highestFlying = 0f, shroudAtCap = 0f;
+        Check(ceiling == 1060f, $"orbit starts at the cap on this world: {ceiling:F0} m (its highest ground {_game.Spaceflight.Highest:F0} m)");
         while (!_game.InOrbit && ticks++ < 60 * 150)
         {
             preloaded |= _game.Orbit != null && v.Body.Position.Y < ceiling;
+            highestFlying = MathF.Max(highestFlying, v.Body.Position.Y);
+            shroudAtCap = _game.Spaceflight.Shrouded;
             airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
             lastAir = _game.Spaceflight.AirGone;
             yield return 0;
@@ -243,6 +248,11 @@ public partial class OrbitTest : Node
             lastAir = _game.Spaceflight.AirGone;
             yield return 0;
         }
+        Check(highestFlying <= 1060f + 0.01f && _game.Spaceflight.HighestInAir <= 1060f + 0.01f,
+            $"nothing flew over the cap in the atmosphere: {highestFlying:F2} m at the most before the crossing, 1,060 m the limit");
+        Check(_game.Spaceflight.TicksHeldAtCap == 0, $"the orbit was ready before the ship got there: it waited {_game.Spaceflight.TicksHeldAtCap} ticks at the cap");
+        Check(shroudAtCap > 0.25f, $"the air's shroud was closed in at the cap: {shroudAtCap:P0} (this world's air: {_game.Surface.Planet.Sky.Air}, density {_game.Surface.Planet.Sky.Density:F2})");
+        Check(_game.InOrbit && !_game.Surface.Streamer.Visible && !_game.Surface.Sea.Visible, "the land and the sea are gone from over the cap: the sheet is all the ground there is");
         Check(airAtCrossing is > 0.05f and < 0.5f && airStep < 0.02f,
             $"the atmosphere fades with height alone, through the crossing with no step: {airAtCrossing:P0} gone at the crossing, at most {airStep:P1} a tick");
         _game.Controls.ReleaseAll();
@@ -280,6 +290,8 @@ public partial class OrbitTest : Node
     Vector3 Door => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, _door));
     Vector3 Outward => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitX * Math.Sign(_door.X)).ToGodot();
     Vector3 CellAt(int x, int y, int z) => _wreck.ToWorld(StructureBridge.CellCenter(_wreck.Structure, new Int3(x, y, z)));
+    /// <summary>Where the eye goes to bring the middle of the body to a cell: a suit floats at any tilt to a drifting hull, and only its middle fits a door's.</summary>
+    Vector3 BodyAt(int x, int y, int z) => CellAt(x, y, z) + (_game.Survivor.WorldEye() - _game.Survivor.WorldFeet) * 0.5f;
     /// <summary>Half a metre up the hull's own axis: the suit's eye over a door's middle, so the legs clear its sill.</summary>
     Vector3 Lift => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitY * 0.5f).ToGodot();
 
@@ -352,11 +364,13 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         Check(shut && ship.Get(_door).Open, "E forces its dead door open by hand");
         int sx = Math.Sign(_door.X);
-        foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z) + Lift, 0.8f, 25f)) yield return x;
+        // Lined up square on the opening first: a suit has a tenth of a metre to spare in a hull door, and thrusters only push it where it looks.
+        foreach (int x in _pilot.FloatTo(() => BodyAt(_door.X + 2 * sx, _door.Y, _door.Z), 0.25f, 15f)) yield return x;
+        foreach (int x in _pilot.FloatTo(() => BodyAt(_door.X - 2 * sx, _door.Y, _door.Z), 0.5f, 25f)) yield return x;
         Vector3 inside = _wreck.Body.ToLocal(_game.Survivor.WorldFeet.ToNumerics()).ToGodot();
         var (min, max) = ship.Bounds();
         Check(inside.X / 2f > min.X && inside.X / 2f < max.X && _game.Survivor.Binding.Floating && _game.Surface.Physics != null,
-            $"in through the door and floating: no core, no gravity in a dead hull (at cell {inside / 2f})");
+            $"in through the door and floating: no core, no gravity in a dead hull (at cell {inside / 2f}, hull x {min.X}..{max.X}, door {_door}, floating {_game.Survivor.Binding.Floating}, in space {_game.Surface.Physics != null})");
         foreach (int x in _drive.Tap(Key.L)) yield return x;
         Check(_game.Torch.Visible, "dark in there: the head torch on");
 
@@ -364,8 +378,11 @@ public partial class OrbitTest : Node
         Int3 box = ship.Blocks().Where(b => ship.TypeOf(b.block).IsContainer).Select(b => b.pos).OrderBy(p => p.Z).First();
         Int3 bulkhead = ship.Blocks().Where(b => ship.TypeOf(b.block).IsDoor && b.block.Open && b.pos.Z > 0).Select(b => b.pos).First();
         foreach (int x in _pilot.FloatTo(() => CellAt(0, 1, _door.Z), 0.9f, 25f)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.9f, 25f)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
+
+        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.4f, 25f)) yield return x;
+
+        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
+
         Vector3 BoxAt() => CellAt(box.X, box.Y, box.Z); // read live: a dead hull drifts
         // Up off the deck first: the suit's thrusters don't slide along a floor they press into, and a wide hold's box is out of arm's reach from the middle.
         foreach (int x in _pilot.FloatTo(() => CellAt(box.X - Math.Sign(box.X), 2, box.Z), 1.0f, 15f)) yield return x;
@@ -373,9 +390,10 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.Stop()) yield return x;
         foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
         Bill hold = _wreck.Storage.Contents;
+        string boxPrompt = _game.UsePrompt();
         foreach (int x in _drive.Tap(Key.E)) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(_game.Opened?.Vessel == _wreck && !hold.IsEmpty, $"E on a cargo box opens the wreck's hold beside the bag: {_game.Zone.Data.Items.Describe(hold, 5)}");
+        Check(_game.Opened?.Vessel == _wreck && !hold.IsEmpty, $"E on a cargo box ('{boxPrompt}', {_game.Survivor.WorldEye().DistanceTo(BoxAt()):F1} m off) opens the wreck's hold beside the bag: {_game.Zone.Data.Items.Describe(hold, 5)}");
         Bill before = _game.Pack.Storage.Contents;
         foreach (int x in _drive.ClickWidget("box:take-all")) yield return x;
         foreach (int x in _drive.Tap(Key.Tab)) yield return x;
@@ -396,14 +414,14 @@ public partial class OrbitTest : Node
         _salvagedTo = ship.Count;
         _lootedFrom = hold.Total;
 
-        // Out by the way in, and claim it from outside with a base core.
+        // Out by the way in, and claim it from outside with the Big Core.
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z + 1), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 3f, 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 5f, "back out through its door");
-        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "base-core");
+        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "big-core");
         ItemGrid.Move(_game.Pack.Grid, coreSlot, _game.Pack.Grid, 4);
         foreach (int x in _drive.Tap(Key.Key5)) yield return x;
         Vector3 hull = CellAt(_door.X, 1, _door.Z + 2); // the flat of the hull beside the door
@@ -412,8 +430,8 @@ public partial class OrbitTest : Node
         _game.Spaceflight.Claimed += _ => claimed = true;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["base-core"] == 0,
-            $"a base core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["base-core"]}, said: {_said})");
+        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["big-core"] == 0,
+            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["big-core"]}, said: {_said})");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
 
@@ -430,7 +448,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
         _pilot.Seated();
-        Check(_game.Survivor.Seated == v, $"floated back and into the seat (F); {_game.Suit.Vitals.Oxygen:F0} of {_game.Suit.Sim.OxygenCapacity:F0} oxygen left");
+        Check(_game.Survivor.Seated == v, $"floated back and into the seat (F); {_game.Suit.Vitals.Oxygen:F0} of {_game.Suit.Sim.OxygenCapacity:F0} oxygen left (the eye {_game.Survivor.WorldEye().DistanceTo(Seat()):F1} m from it, standing on {(_game.Survivor.Body.Frame == null ? "nothing" : _game.Survivor.Body.Frame == v.Body ? "the Skiff" : "another hull")}, floating {_game.Survivor.Binding.Floating}, moving {_game.Survivor.Body.WorldVelocity.Length():F1} m/s)");
     }
 
     // ---- Down ----------------------------------------------------------------------------------
@@ -506,6 +524,7 @@ public partial class OrbitTest : Node
         Check(v.Controller.Frozen && v.Body.Damage == 0f, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage:F1}, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
         Check(landed < 150, $"the landing point is the point it came down over ({landed:F0} m off)");
         Check(HeadingError(finalHeading, heading) < 8, $"and its heading is the one it had over the globe: {finalHeading:F1}°");
+        TheSkyCameBack();
     }
 
     // ---- Everything still there -----------------------------------------------------------------
@@ -540,6 +559,7 @@ public partial class OrbitTest : Node
         float gap = _game.Orbit.Rules.Crossing.Gap;
         var probe = new FrameProbe(this);
         var worst = new List<double>();
+        _game.Spaceflight.WorstSeamMs = _game.Spaceflight.WorstSkyMs = 0;
         for (int round = 0; round < 3; round++)
         {
             _game.Controls.Hold(Key.Space);
@@ -576,6 +596,7 @@ public partial class OrbitTest : Node
         }
         probe.Remove();
         double best = worst.Min();
+        GD.Print($"  (the seam and the skies took at most {_game.Spaceflight.WorstSeamMs:F2} ms of any frame across those crossings, the skies {_game.Spaceflight.WorstSkyMs:F2} ms of that)");
         Check(best < 33.4, $"no frame over 33 ms across a hand-over up and down, best of three: {best:F1} ms ({string.Join(", ", worst.Select(w => w.ToString("F1")))})");
         Check(_game.Spaceflight.Crossings.All(c => c.Audit.Count == 0 && c.PositionBefore == c.PositionAfter && c.VelocityBefore == c.VelocityAfter),
             $"all {_game.Spaceflight.Crossings.Count} crossings carried everything straight across");

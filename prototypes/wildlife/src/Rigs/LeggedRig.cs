@@ -133,7 +133,8 @@ public sealed class LeggedRig : Rig
     }
 
     public override int FootCount => _legs.Length;
-    public override bool FootPlanted(int i) => !_legs[i].Stepping;
+    public override bool FootPlanted(int i) => !_leaping && !_legs[i].Stepping;
+    bool _leaping; // in a lunge the feet have left the ground
     public override Vector3 FootTarget(int i) => _legs[i].Foot;
     public override Vector3 FootDrawn(int i) => _legs[i].Drawn;
 
@@ -172,6 +173,7 @@ public sealed class LeggedRig : Rig
         float groundMid = (gF + gB) * 0.5f;
 
         // Body: lowered by crouching, hiding and death, bobbing twice per stride.
+        _leaping = c.Phase == AttackPhase.Lunge || (c.Phase == AttackPhase.Recover && c.PhaseTime < 0.25f);
         _gait += speed * dt / MathF.Max(0.15f, legLen * 0.9f);
         float hip = _hipRest * (1f - 0.38f * Crouch - 0.3f * Hidden - 0.08f * Bracing);
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);

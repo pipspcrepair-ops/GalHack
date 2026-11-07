@@ -48,6 +48,9 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>The world this orbit is round.</summary>
     public PlanetWorld Below { get; private set; }
 
+    /// <summary>What every other body looks like from afar: the surface's sky paints them, and both skies show them.</summary>
+    public PlanetSurface.Skies.BodySurfaces Surfaces { get; init; }
+
     /// <summary>The globe's mapping between its directions and the map's points.</summary>
     public GlobeMap Map { get; private set; }
 
@@ -124,8 +127,6 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>The globe's paint (once prepared): its look is the sky's look too.</summary>
     public GlobePaint Paint => Prepared ? _preparing.Result.paint : null;
 
-    /// <summary>The sun has its place in space (the first crossing has happened).</summary>
-    public bool SunPlaced => _placed;
 
     /// <summary>The wreck plans (once prepared): where every wreck floats.</summary>
     public IReadOnlyList<DerelictPlan> Plans => Prepared ? _preparing.Result.wrecks : Array.Empty<DerelictPlan>();
@@ -153,10 +154,13 @@ public partial class OrbitZone : SurfaceZone
         // The globe and the moons stand in the globe's frame; the sky turns with it.
         _sphere = new Node3D { Name = "Sphere" };
         AddChild(_sphere);
-        Space = new SpaceSky { Name = "Sky", Bodies = _sphere };
+        Space = new SpaceSky { Name = "Sky" };
         AddChild(Space);
+        // Under a plain node, so a parked orbit's hidden zone doesn't hide it: it is the far land from the surface too.
+        var apart = new Node { Name = "Apart" };
+        AddChild(apart);
         Globe = new Globe { Name = "Globe" };
-        _sphere.AddChild(Globe);
+        apart.AddChild(Globe);
         _building = Build().GetEnumerator();
     }
 
@@ -182,9 +186,9 @@ public partial class OrbitZone : SurfaceZone
     IEnumerable<int> Build()
     {
         var (paint, wrecks) = _preparing.Result;
-        Space.Setup(paint.Look, Below.Sky, Rules.Space);
+        Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces);
         yield return 0;
-        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe)) yield return x;
+        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
         foreach (DerelictPlan p in wrecks)
         {
             yield return 0;
@@ -199,22 +203,6 @@ public partial class OrbitZone : SurfaceZone
         }
     }
 
-    /// <summary>
-    /// The sun and the moons, placed once, at the first crossing: the sun where the surface's sky
-    /// has it (so the side you climbed out over is lit as you left it), and each moon where that
-    /// sky shows it. Call it aligned to the crossing point: <paramref name="toSun"/> is in the world.
-    /// </summary>
-    public void Arrive(Vector3 toSun)
-    {
-        if (_placed) return;
-        _placed = true;
-        Vector3 sun = N.Vector3.Transform(toSun.ToNumerics(), N.Quaternion.Conjugate(Turn)).ToGodot().Normalized();
-        Space.Place(sun, N.Quaternion.Conjugate(Turn).ToBasis());
-        Space.Align(Turn.ToBasis());
-        Globe.SetSun(sun, toSun.Normalized());
-    }
-
-    bool _placed;
     Node3D _sphere;
 
     /// <summary>
@@ -248,11 +236,7 @@ public partial class OrbitZone : SurfaceZone
         Turn = turn;
         Shift = shift;
         _sphere.Transform = new Transform3D(turn.ToBasis(), shift.ToGodot());
-        if (_placed)
-        {
-            Space.Align(turn.ToBasis());
-            Globe.SetSun(Space.ToSun, N.Vector3.Transform(Space.ToSun.ToNumerics(), turn).ToGodot());
-        }
+        Globe.PlaceRing(_sphere.Transform);
     }
 
     public override void _Process(double delta) { }

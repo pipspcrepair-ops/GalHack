@@ -32,11 +32,14 @@ public sealed class PlaceFauna
         public readonly WildlifeData Data;
         public readonly object Lock = new();
         public readonly PlanetSurface.World.PlanetWorld Planet;
+        /// <summary>How livable the world is, 0..1.</summary>
+        public readonly float Livable;
 
-        public Deep(WildlifeData data, PlanetFauna surface, PlanetSurface.World.PlanetWorld planet)
+        public Deep(WildlifeData data, PlanetFauna surface, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
         {
             Data = data;
             Planet = planet;
+            Livable = livable;
             Fauna = new DeepFauna(data, surface);
         }
     }
@@ -58,6 +61,7 @@ public sealed class PlaceFauna
             State = (PlaceState)(int)inst.State,
             Theme = ship ? PoiTheme.Derelict : ThemeOf(inst.Kit?.Faction ?? Faction.None, inst.Family),
             Derelict = ship,
+            Livable = deep.Livable,
         };
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
@@ -217,16 +221,19 @@ public sealed class PlaceFauna
 }
 
 /// <summary>
-/// The planet's caves: when the survivor is underground (in a cave, or down a hole of their own),
-/// the roomiest chamber within reach is filled once with crawlers on its walls and ceiling and
-/// grazers at its moss (wildlife's <see cref="CaveFauna"/>), living in the planet's own rock. Each
-/// cave keeps its creatures for the game; its sim stands only while you are near it.
+/// The planet's caves: as the survivor walks, on the surface or underground, the roomiest chamber
+/// ahead of them is filled once with crawlers on its walls and ceiling and grazers at its moss
+/// (wildlife's <see cref="CaveFauna"/>), living in the planet's own rock, so a cave is lived in
+/// before you get there and nothing turns up behind you. Each cave keeps its creatures for the
+/// game; its sim stands only while you are near it.
 /// </summary>
 public partial class Caves : Node3D
 {
     public SurfaceZone Zone;
     public Func<Vector3> Feet;
     public Func<bool> OnFoot;
+    /// <summary>Which way the survivor is looking.</summary>
+    public Func<Vector3> Look = () => Vector3.Forward;
     /// <summary>In somewhere that isn't a cave: a place's rooms, the bunker.</summary>
     public Func<bool> Indoors = () => false;
     public PlaceFauna.Deep Deep;
@@ -243,6 +250,10 @@ public partial class Caves : Node3D
 
     readonly Dictionary<(int, int, int), Cave> _caves = new();
     double _timer;
+    Vector3? _searchedFrom;
+
+    /// <summary>How far ahead of you the search looks, and how far you walk between searches, m.</summary>
+    const float Ahead = 14f, SearchEvery = 12f;
 
     /// <summary>Caves found and filled so far (tests).</summary>
     public int Found => _caves.Count;
@@ -278,20 +289,24 @@ public partial class Caves : Node3D
             return;
         }
         if (!OnFoot() || Indoors()) return;
+        if (_searchedFrom is { } from && from.DistanceTo(feet) < SearchEvery) return;
+        _searchedFrom = feet;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
-        if (feet.Y > surface - 4f) return; // only underground
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
         var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z));
         float time = Zone.Wildlife.Sim?.Time ?? 0f;
-        _search = Task.Run(() => Search(planet, space, anchor, surface, time));
+        Vector3 look = Look();
+        look.Y = 0f;
+        look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
+        _search = Task.Run(() => Search(planet, space, anchor, feet - anchor, look, surface, time));
     }
 
     /// <summary>Looks for the roomiest chamber round a point and fills it, off the main thread (a private sim, its rock only read).</summary>
-    (Cave, (int, int, int)) Search(PlanetSurface.World.PlanetWorld planet, LoadedVoxels space, Vector3 anchor, float surface, float time)
+    (Cave, (int, int, int)) Search(PlanetSurface.World.PlanetWorld planet, LoadedVoxels space, Vector3 anchor, Vector3 feet, Vector3 look, float surface, float time)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         float Height(float x, float z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(anchor.X + x, planet.Width), Planets.Gen.Mathx.Wrap(anchor.Z + z, planet.Height)) - anchor.Y;
-        bool found = CaveFauna.FindChamber(space, Vector3.Zero, 16f, out Vector3 floor, Height);
+        bool found = CaveFauna.FindChamber(space, look * Ahead, 16f, out Vector3 floor, Height);
         WorstMs = Math.Max(WorstMs, clock.Elapsed.TotalMilliseconds);
         if (!found) return (null, default);
         Vector3 chamber = planet.Canonical(anchor + floor);
@@ -302,7 +317,18 @@ public partial class Caves : Node3D
         cave.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = time };
         ulong seed = (ulong)(key.Item1 * 73856093L ^ key.Item2 * 19349663L ^ key.Item3 * 83492791L) ^ planet.Spec.Seed;
         int depth = Math.Max(1, (int)((surface - (anchor.Y + floor.Y)) / 12f) + 1);
-        lock (Deep.Lock) CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth);
+        SpawnRules rules = Deep.Data.Spawning;
+        Vector3 eye = feet + Vector3.Up * 1.6f;
+        float cone = MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees));
+        bool Unseen(Vector3 p)
+        {
+            Vector3 to = p - eye;
+            float d = to.Length();
+            return d >= rules.CaveClearance && !(look.Dot(to / d) > cone && SpaceMath.Clear(space, eye, p, 0f));
+        }
+        List<Creature> made;
+        lock (Deep.Lock) made = CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth, crawlers: 1, subsisters: (int)MathF.Round(3f * Deep.Livable), allow: Unseen);
+        if (made.Count == 0) return (null, default); // nowhere out of your sight: the next search may do better
         return (cave, key);
     }
 

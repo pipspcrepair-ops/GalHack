@@ -53,6 +53,44 @@ public sealed partial class Staging
         foreach (int x in _drive.LookAt(gate + Vector3.Up * 3f, 20)) yield return x;
     }
 
+    /// <summary>
+    /// A small ruin as you come on it: on foot, on its road, at a person's eye height, looking at it.
+    /// --what=house, farmstead, wayside, shed, shop or street (the middle of a street of houses, looking down it);
+    /// --along=metres along the road from the nearest point to the ruin; --index=which of them, nearest first.
+    /// </summary>
+    IEnumerable<int> RuinView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.38);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        var planet = _game.Zone.Planet;
+        string what = _args.GetValueOrDefault("what", "house");
+        Vector3 from = _game.Survivor.WorldFeet;
+        float Away(PlanetSurface.Infra.FlavourRuin r) => planet.NearestCopy(new Vector3((float)r.Center.X, from.Y, (float)r.Center.Z), from).DistanceTo(from);
+        var ruins = planet.Infra.Ruins.Where(r => r.Route != null && r.Blast < 0.05f && r.Family.Tags.Contains(what == "street" ? "house" : what)).ToList();
+        if (what == "street") ruins = ruins.Where(r => planet.Infra.Ruins.Count(o => o.Route == r.Route && o.Family.Tags.Contains("house")) >= 4).ToList();
+        ruins = ruins.OrderBy(Away).ToList();
+        PlanetSurface.Infra.FlavourRuin ruin = ruins[Math.Min(ruins.Count - 1, (int)Num("index", 0))];
+        GD.Print($"ruin view: {ruin.Layout.Name} ({ruin.State}) at {ruin.Center}, {ruins.Count} to choose from");
+        PlanetSurface.Infra.InfraRoute road = ruin.Route;
+        int near = Enumerable.Range(0, road.Count).OrderBy(i => Mathf.Abs((float)Planets.Gen.Mathx.WrapDelta(road.X[i] - ruin.Center.X, planet.Width)) + Mathf.Abs((float)Planets.Gen.Mathx.WrapDelta(road.Z[i] - ruin.Center.Z, planet.Height))).First();
+        int at = Math.Clamp(near + (int)(Num("along", what == "street" ? -24 : 18) / PlanetSurface.Infra.InfraNetwork.Spacing), 0, road.Count - 1);
+        Vector3 stand = planet.NearestCopy(new Vector3((float)road.X[at], road.Y[at], (float)road.Z[at]), from);
+        // A farmstead is seen from its own track, where the trees open out.
+        if (what == "farmstead" && ruin.Drive != null)
+        {
+            var (px, pz, py) = ruin.Drive.PathPoint(Math.Min(ruin.Drive.PathCount - 1, (int)(Num("track", 60) / 4)));
+            stand = planet.NearestCopy(new Vector3((float)ruin.Drive.CenterX + px, py, (float)ruin.Drive.CenterZ + pz), from);
+        }
+        stand.Y = _game.Zone.GroundAt(stand.X, stand.Z).Y + 0.2f;
+        _game.Survivor.PlaceOutside(stand.ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(600)) yield return x;
+        stand = _game.Survivor.WorldFeet;
+        Vector3 look = planet.NearestCopy(new Vector3((float)ruin.Center.X, ruin.OriginY + 3f, (float)ruin.Center.Z), stand);
+        if (what == "street") { int o = Math.Clamp(near + 24 / 4, 0, road.Count - 1); look = planet.NearestCopy(new Vector3((float)road.X[o], road.Y[o] + 3f, (float)road.Z[o]), stand); }
+        foreach (int x in _drive.LookAt(look, 20)) yield return x;
+    }
+
     /// <summary>A room's corner: pick the fullest dressed room above ground or near the way in, the camera in one corner at eye height.</summary>
     (PlaceRoom Room, Vector3 Eye, Vector3 Look) RoomView(Place p)
     {
@@ -60,7 +98,11 @@ public sealed partial class Staging
         PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.RoomId == want ? 1000 : 0) + r.Plan.Placements.Count - MathF.Abs(r.Corner.Y) * 2f).First();
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = p.ToWorld(new Vector3(room.Corner.X, room.Corner.Y, room.Corner.Z));
-        return (room, corner + size + new Vector3(-0.5f, 1.55f, -0.5f), corner + size * 0.25f + Vector3.Up * 0.6f);
+        Vector3 eye = corner + size + new Vector3(-0.5f, 1.55f, -0.5f), middle = corner + size * 0.5f + Vector3.Up * 1.55f;
+        // A dressed room's box can run into a wall. Inside a block every face is seen from behind and the
+        // place reads as see-through (a gallery shot was taken from one): step back into the room.
+        for (int i = 0; i < 16 && BlockInfo.Collides(p.Inst.Blocks.Get(p.CellAt(eye)).Type); i++) eye = eye.MoveToward(middle, 0.5f);
+        return (room, eye, corner + size * 0.25f + Vector3.Up * 0.6f);
     }
 
     /// <summary>A dressed room, its age and state on it.</summary>

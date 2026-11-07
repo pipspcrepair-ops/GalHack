@@ -427,17 +427,23 @@ public partial class DamageTest : Node
     IEnumerable<int> BiteAndLightning()
     {
         Wildlife.Creature c = Zone.Wildlife.Sim.Creatures.Where(x => !x.Dead).OrderByDescending(x => x.Stats.Damage).FirstOrDefault();
-        Check(c != null && c.Stats.Damage > 10f, $"a creature that bites harder than small steel's armour of 10 ({c?.Species.CommonName}: {c?.Stats.Damage:F0})");
+        Check(c != null, "the world has a creature");
         if (c == null) yield break;
-        Vector3 at = Zone.Wildlife.FromPatch(c.Position);
+        // Not every world's fauna out-bites steel, and it may be anywhere, this test's own walls included: stage one in the open.
+        if (c.Stats.Damage <= 10f) c.Stats.Damage = 20f;
+        N.Vector3 open = Enumerable.Range(1, 12).Select(i => Spot(-90f - 30f * i, 0f))
+            .OrderByDescending(p => Zone.Vessels.Select(o => N.Vector3.Distance(o.Body.Position, p)).DefaultIfEmpty(1e6f).Min()).First();
+        Vector3 at = open.ToGodot(), local = at - Zone.Wildlife.Origin;
         var wallAt = new N.Vector3(at.X + 1.5f, at.Y - 1f, at.Z - 2f);
         Vessel wall = Wall(2, 8, wallAt, depth: 8);
         foreach (int x in _drive.Wait(3)) yield return x;
         float before = wall.Structure.Blocks().Sum(b => b.block.Hp);
         Vector3 beyond = at + new Vector3(8f, 0.8f, 0f);
+        c.Position = local; // the simulation sends a creature home between ticks: this is where it lunges from
         bool struck = VesselDamage.Struck(Zone, c, beyond);
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(struck && wall.Structure.Blocks().Sum(b => b.block.Hp) < before, $"a creature's lunge at someone behind a wall lands on the wall ({before - wall.Structure.Blocks().Sum(b => b.block.Hp):F1} hit points, {c.Species.CommonName})");
+        c.Position = local;
         Check(!VesselDamage.Struck(Zone, c, at + new Vector3(-6f, 0.8f, 0f)), "with nothing in the way it lands where it was going");
 
         Vessel target = Wall(8, 8, Spot(-250f, 1f));

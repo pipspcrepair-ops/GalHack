@@ -47,8 +47,8 @@ public sealed record Crossing(bool Up, double MapX, double MapZ, double HeadingD
 /// the surface's frame. Landing: you come down where you crossed into the atmosphere; to land
 /// somewhere, fly over it in orbit first (the design's rule).</para>
 ///
-/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: over an overlap band above the ceiling
-/// the surface stays on screen, and turns into the globe and space as you climb.</para>
+/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: the air thickens to the cap, the land hands over behind it,
+/// and it thins to black space with the world curving away below.</para>
 ///
 /// <para><b>In space</b> the suit breathes from its own oxygen (in vacuum the helmet seals and the
 /// air runs down; a cockpit refills it), the survival tool's gather mode salvages a wreck's blocks
@@ -102,6 +102,15 @@ public partial class Spaceflight : Node
 
     float Ceiling => Game.Surface.Physics.Zone.Ceiling;
 
+    /// <summary>The world's highest ground, m.</summary>
+    public float Highest { get; private set; }
+
+    /// <summary>The highest anything you were in stood on the surface, m: the cap holds it (tests read this).</summary>
+    public float HighestInAir { get; private set; }
+
+    /// <summary>Ticks spent waiting at the cap for the orbit to be ready (tests read this).</summary>
+    public int TicksHeldAtCap { get; private set; }
+
     /// <summary>
     /// The planet is made: orbit starts just over its cloud tops. This is the physics' one altitude
     /// switch, so weight, the air and the handling model's space rules end where the crossing is.
@@ -109,11 +118,11 @@ public partial class Spaceflight : Node
     internal void PlanetBuilt()
     {
         SurfaceZone s = Game.Surface;
-        float highest = s.Planet.Map.Elevation.Max();
-        float altitude = Rules.OrbitAltitude(s.Planet.Sky.Air.ToString(), highest);
+        Highest = s.Planet.Map.Elevation.Max();
+        float altitude = Rules.OrbitAltitude(s.Planet.Sky.Air.ToString());
         s.Physics.Zone.Ceiling = altitude;
         s.Ground.Ceiling = altitude;
-        GD.Print($"orbit starts at {altitude:F0} m on this world ({s.Planet.Sky.Air} air, highest ground {highest:F0} m)");
+        GD.Print($"orbit starts at {altitude:F0} m on this world ({s.Planet.Sky.Air} air, highest ground {Highest:F0} m)");
     }
 
     /// <summary>What crosses with you: the vessel you sit in or ride in its cabin (null: you alone).</summary>
@@ -137,7 +146,8 @@ public partial class Spaceflight : Node
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
         if (_pending != null)
         {
-            if (!Ledger.Committing) FinishCrossing();
+            if (Ledger.Committing) HoldAtCap(Carrier());
+            else FinishCrossing();
         }
         else if (g.InOrbit) WatchOrbit();
         else WatchSurface();
@@ -160,6 +170,8 @@ public partial class Spaceflight : Node
     {
         GameNode g = Game;
         Vector3 at = g.Survivor.WorldFeet;
+        // Where you are is charted, and with it everything a jump away.
+        if (g.Surface.Sky.Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
@@ -174,6 +186,10 @@ public partial class Spaceflight : Node
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
+        // The place in view from the bunker's way out is known from the start; every other place waits to be come near.
+        if (g.Bunker?.Poi is { } seen && g.Bunker.Landmark != null)
+            for (int i = 0; i < planet.Pois.Count; i++)
+                if (planet.Pois[i] == seen) Charts.Find($"poi{i}", seen.Name, seen.Origin.X, seen.Origin.Z, "place");
         foreach (var (kind, d) in _deposits.Near(g.Surface, at))
             Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
     }
@@ -188,9 +204,9 @@ public partial class Spaceflight : Node
         float cover = MathF.Max(s.Sky.Air.CloudCover, (float)Rules.Globe.CloudCoverAtLeast), w = (float)s.Planet.Width, h = (float)s.Planet.Height;
         Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
-        Orbit = new OrbitZone(s.Planet, s.Data, Rules, SystemSeed(s.Spec), Ceiling, coverage)
+        Orbit = new OrbitZone(s.Planet, s.Data, Rules, s.Planet.StarSystem.StarKey, Ceiling, coverage)
         {
-            ProcessMode = ProcessModeEnum.Disabled, Visible = false,
+            ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
         };
         Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
     }
@@ -205,7 +221,29 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         float y = carrier != null ? carrier.Body.Position.Y : Game.Survivor.WorldFeet.Y;
         if (y > Ceiling * Rules.Crossing.PreloadAt) StartOrbit();
-        if (y > Ceiling && Orbit?.Ready == true) BeginCrossing(carrier, up: true);
+        if (y < Ceiling)
+        {
+            HighestInAir = MathF.Max(HighestInAir, y);
+            return;
+        }
+        // The cap: nothing stands in the atmosphere over it, ever. It crosses here.
+        HoldAtCap(carrier);
+        // Hover only works close to the ground: a craft in Hover Mode never crosses, however it got up here.
+        if (carrier?.Structure.Mode == CoreMode.Hover) return;
+        if (Orbit?.Ready == true) BeginCrossing(carrier, up: true);
+        else TicksHeldAtCap++;
+    }
+
+    /// <summary>What you are in stands at the cap, moving on: it keeps its speed for the crossing, which carries it on over.</summary>
+    void HoldAtCap(Vessel carrier)
+    {
+        Body b = carrier?.Body ?? Game.Survivor.Body;
+        if (b.Position.Y > Ceiling)
+        {
+            b.Position = b.Position with { Y = Ceiling };
+            (carrier?.Binding as BodyBinding ?? Game.Survivor.Binding).Teleport();
+        }
+        HighestInAir = MathF.Max(HighestInAir, b.Position.Y);
     }
 
     void Ascend(Vessel carrier)
@@ -224,7 +262,6 @@ public partial class Spaceflight : Node
         _leftSurfaceAt = new Vector3(p.X, p.Y, p.Z);
         to.Align(x, z, p.X, p.Z);
         _aligned = true;
-        to.Arrive(from.Sky.ToSun);
         HoldSurfaceBehind();
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
@@ -413,7 +450,7 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         foreach (Vessel v in g.Zone.Vessels)
         {
-            if (v == carrier || v.Flight == null || v.Controller?.Frozen != false) continue;
+            if (v == carrier && v.Structure.Mode != CoreMode.Hover || v.Flight == null || v.Controller?.Frozen != false) continue;
             if (g.Zone is OrbitZone orbit)
             {
                 Vector3 p = v.Body.Position.ToGodot();

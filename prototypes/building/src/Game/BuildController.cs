@@ -515,7 +515,7 @@ public partial class BuildController : Node
 
         if (s.Core == aim.Cell && s.Count > 1)
         {
-            Refuse("The core holds this structure together");
+            Refuse("The core can't be removed, only destroyed or hijacked");
             return;
         }
 
@@ -648,16 +648,16 @@ public partial class BuildController : Node
             Refuse("A wreck has no core. Place one (9) to claim it.");
             return;
         }
-        if (!Building.ToggleCoreMode(s))
-        {
-            Refuse("Small-grid cores are always vessels");
-            return;
-        }
+        if (!Building.ToggleCoreMode(s)) return;
         view.Sync();
         Sfx.Play("upgrade", view.CellToGlobal(s.Core.Value), 0.7f);
-        Hud.Toast(s.Mode == CoreMode.Base
-            ? "Core set to BASE: every block stays, it just won't fly"
-            : "Core set to CAPITAL SHIP: same blocks, thrusters live", Hud.Good);
+        Hud.Toast(s.Mode switch
+        {
+            CoreMode.Base => "Core set to BASE MODE: every block stays, it just won't fly",
+            CoreMode.Capital => "Core set to CAPITAL MODE: same blocks, thrusters live",
+            CoreMode.Hover => "Core set to HOVER MODE: hover plates lift, thrusters only push it along",
+            _ => "Core set to VESSEL MODE: thrusters fly it, hover plates idle",
+        }, Hud.Good);
     }
 
     // ---- Paint ----------------------------------------------------------------------------

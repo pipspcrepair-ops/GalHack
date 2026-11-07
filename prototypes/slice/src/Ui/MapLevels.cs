@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using GalHack.Physics.Engine;
+using GalHack.Stars;
 using DiegeticUi.Theme;
 using Palette = DiegeticUi.Theme.Palette;
 using Godot;
+using N = System.Numerics;
 using Planets.Look;
 using Slice.Orbit;
 using Slice.Surface;
@@ -13,21 +15,27 @@ using Slice.Vessels;
 
 namespace Slice.Ui;
 
-/// <summary>Which level the Map tab shows.</summary>
-public enum MapLevel { Local, World, System, Stars }
-
 /// <summary>
-/// The Map tab's three further levels: the world (the generator's map, wrapping both ways, dragged
-/// and zoomed), the system (the star's bodies and the wrecks found, with a destination and a route
-/// line) and the stars (home and its neighbours). Each shows only what has been discovered
-/// (<see cref="Charts"/>), in the suit terminal's look.
+/// The Map tab's levels over one set of data (<see cref="MapTrail"/>): the galaxy (a 3D map turned by
+/// dragging, of the stars charted and the nebulae, any star there can be picked and opened), a star's
+/// system (its bodies and the wrecks found, with a destination and a route line), high orbit (the
+/// world as a globe, painted from its own map, with what is round it) and the world (the generator's
+/// map, wrapping both ways, dragged and zoomed). The wheel runs through them all: past the end of
+/// one level's zoom is the next level, in and back out. Each shows only what has been discovered
+/// (<see cref="Charts"/>), and where you are, in the suit terminal's look.
 /// </summary>
 public sealed class MapLevels
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
-    public MapLevel Level = MapLevel.Local;
+    public readonly MapTrail Trail = new();
+    public MapLevel Level
+    {
+        get => Trail.Level;
+        set => Trail.Open(value);
+    }
     public WorldMapView View { get; private set; }
+    public GalaxyMapView Sky { get; private set; }
     Task<Image> _painting;
     ImageTexture _chart;
     Vector2? _dragFrom;
@@ -35,14 +43,41 @@ public sealed class MapLevels
     public MapLevels(Game.Game game) => _game = game;
 
     /// <summary>What the panel's picture depends on, so dragging and zooming redraw it at once.</summary>
-    public string Signature => $"{Level}|{View?.CentreX:F0}|{View?.CentreZ:F0}|{View?.MetresPerPixel:F2}|{_chart != null}|{_game.Spaceflight.Charts.Marks.Count()}|{_game.Spaceflight.Charts.Wrecks.Count}|{_game.Spaceflight.Charts.Destination}";
+    public string Signature => $"{Level}|{View?.CentreX:F0}|{View?.CentreZ:F0}|{View?.MetresPerPixel:F2}|{_chart != null}|{_game.Spaceflight.Charts.Marks.Count()}|{_game.Spaceflight.Charts.Wrecks.Count}|{_game.Spaceflight.Charts.Destination}|{Trail.Star}|{_game.Spaceflight.Charts.ChosenStar}|{Sky?.Yaw:F3}|{Sky?.Pitch:F3}|{Sky?.Distance:F1}|{Sky?.Focus}|{_orbitX:F0}|{_orbitZ:F0}|{_body}|{(Level is MapLevel.System or MapLevel.HighOrbit ? _game.Surface.Sky.Days : 0.0):F3}";
 
-    /// <summary>The level tabs (under the legend): true if a level was changed.</summary>
+    GalaxySky Stars => _game.Surface.Sky.Stars;
+    Galaxy Catalogue => Stars?.Galaxy;
+
+    /// <summary>The level tabs (under the legend), and the way up and down the trail.</summary>
     public void Tabs(Gui g, Vector2 at)
     {
-        (string id, string label, MapLevel level)[] tabs = { ("map:local", "HERE", MapLevel.Local), ("map:world", "WORLD", MapLevel.World), ("map:system", "SYSTEM", MapLevel.System), ("map:stars", "STARS", MapLevel.Stars) };
-        for (int i = 0; i < tabs.Length; i++)
-            if (g.Tab(tabs[i].id, new Rect2(at + new Vector2(i % 2 * 156, i / 2 * 38), new Vector2(150, 34)), tabs[i].label, Level == tabs[i].level, C.Accent2)) Level = tabs[i].level;
+        Galaxy galaxy = Catalogue;
+        if (galaxy != null && Stars.Here >= 0 && Trail.You != Stars.Here)
+        {
+            Trail.You = Trail.Star = Stars.Here;
+            _game.Spaceflight.Charts.Visited.Add(Stars.Here);
+        }
+        MapLevel[] levels = { MapLevel.Local, MapLevel.World, MapLevel.HighOrbit, MapLevel.System, MapLevel.Galaxy };
+        for (int i = 0; i < levels.Length; i++)
+            if (g.Tab($"map:{levels[i]}", new Rect2(at + new Vector2(i % 2 * 156, i / 2 * 38), new Vector2(150, 34)), MapTrail.Name(levels[i]), Level == levels[i], C.Accent2)) Level = levels[i];
+        // The trail: where this level sits, from the galaxy down.
+        string star = galaxy != null && Trail.Star >= 0 ? galaxy.Name(Trail.Star) : "star";
+        g.Text(string.Join(" > ", Trail.Crumbs(star).Select(c => c.name)), at + new Vector2(0, 122), C.Dim, 13);
+        var up = new Rect2(at + new Vector2(0, 146), new Vector2(150, 34));
+        var down = new Rect2(at + new Vector2(156, 146), new Vector2(150, 34));
+        if (g.Button("map:up", up, "UP", C.Accent2, enabled: Level != MapLevel.Galaxy)) Trail.Up();
+        if (g.Button("map:down", down, "DOWN", C.Accent2, enabled: Trail.CanGoDown)) Trail.Down();
+    }
+
+    ulong _wheelMs;
+
+    /// <summary>The wheel past the end of a level's zoom: one level in or out, a moment apart, so a spin doesn't run down all of them.</summary>
+    public void WheelPast(int wheel)
+    {
+        if (wheel == 0 || Time.GetTicksMsec() - _wheelMs < 350) return;
+        _wheelMs = Time.GetTicksMsec();
+        if (wheel > 0) Trail.Up();
+        else Trail.Down();
     }
 
     /// <summary>Draws the level that isn't the local map. False for the local map (the section draws it).</summary>
@@ -53,17 +88,61 @@ public sealed class MapLevels
         g.Fill(panel, new Color(C.Panel, 0.8f));
         g.Outline(panel, C.Rule, 2f);
         var side = new Rect2(panel.End.X + 30, area.Position.Y, 320, area.Size.Y);
+        // These two have no zoom of their own: the wheel goes straight to the next level.
+        if (!g.Drawing && Level is MapLevel.System or MapLevel.HighOrbit && g.Over(panel)) WheelPast(_game.Controls.Wheel);
         switch (Level)
         {
             case MapLevel.World: World(g, panel, side); break;
-            case MapLevel.System: SystemView(g, panel, side); break;
-            default: Stars(g, panel, side); break;
+            case MapLevel.HighOrbit: HighOrbit(g, panel, side); break;
+            case MapLevel.System:
+                if (Trail.AtYourStar) SystemView(g, panel, side);
+                else Uncharted(g, panel, side);
+                break;
+            default: GalaxyLevel(g, panel, side); break;
         }
         Tabs(g, side.Position + new Vector2(0, 330));
         return true;
     }
 
     // ---- The world --------------------------------------------------------------------------
+
+    /// <summary>How close, in pixels, a right click must be to take down one of your marks.</summary>
+    public const float MarkHit = 12f;
+
+    /// <summary>The generator's terrain colours behind the local map: <paramref name="halfMetres"/> each way from you. False while it is still being charted.</summary>
+    public bool Terrain(Gui g, Rect2 panel, float halfMetres)
+    {
+        Paint();
+        if (_chart == null || !g.Drawing) return false;
+        var (ux, uz) = You();
+        var planet = _game.Surface.Planet;
+        Tiles(g, panel, ux, uz, 2.0 * halfMetres / panel.Size.X, planet.Width, planet.Height);
+        return true;
+    }
+
+    /// <summary>The map point of a spot on the local map, and the other way: where a place is, as a point near you in world coordinates (the nearest copy on the torus).</summary>
+    public Vector3 NearYou(double x, double z)
+    {
+        Vector3 me = _game.Survivor.WorldFeet;
+        var planet = _game.Surface.Planet;
+        var (ux, uz) = You();
+        double dx = x - ux, dz = z - uz;
+        if (dx > planet.Width / 2) dx -= planet.Width; else if (dx < -planet.Width / 2) dx += planet.Width;
+        if (dz > planet.Height / 2) dz -= planet.Height; else if (dz < -planet.Height / 2) dz += planet.Height;
+        return new Vector3(me.X + (float)dx, me.Y, me.Z + (float)dz);
+    }
+
+    /// <summary>The local map's right click: on a mark of yours, take it down; anywhere else, make one there.</summary>
+    public void LocalRightClick(Vector2 mouse, Func<Vector3, Vector2> project, Func<Vector2, Vector3> unproject)
+    {
+        if (_game.InOrbit) return;
+        Charts charts = _game.Spaceflight.Charts;
+        ChartMark hit = charts.OfKind("mark").FirstOrDefault(m => project(NearYou(m.X, m.Z)).DistanceTo(mouse) <= MarkHit);
+        if (hit != null) { charts.Unmark(hit.Key); return; }
+        Vector3 at = unproject(mouse);
+        var planet = _game.Surface.Planet;
+        charts.Mark(Planets.Gen.Mathx.WrapX(at.X, planet.Width), Planets.Gen.Mathx.Wrap(at.Z, planet.Height));
+    }
 
     (double x, double z) You()
     {
@@ -76,7 +155,7 @@ public sealed class MapLevels
         var planet = _game.Surface.Planet;
         _painting ??= Task.Run(() =>
         {
-            ColorMap colors = ColorMap.Build(planet.Map, ArchetypeLook.For(planet.Spec), 1024);
+            ColorMap colors = ColorMap.Build(planet.Map, ArchetypeLook.For(planet.Spec), 2048);
             return Image.CreateFromData(colors.Width, colors.Height, false, Image.Format.Rgb8, colors.Composite());
         });
         if (_chart == null && _painting.IsCompletedSuccessfully) _chart = ImageTexture.CreateFromImage(_painting.Result);
@@ -97,7 +176,12 @@ public sealed class MapLevels
         // Drag to move, the wheel to zoom, a right click to mark.
         if (!g.Drawing)
         {
-            if (g.Over(panel) && _game.Controls.Wheel != 0) View.Zoom(_game.Controls.Wheel);
+            int wheel = _game.Controls.Wheel;
+            if (g.Over(panel) && wheel != 0)
+            {
+                if ((wheel < 0 && View.AtClosest) || (wheel > 0 && View.AtWidest)) WheelPast(wheel);
+                else View.Zoom(wheel);
+            }
             if (g.Pressed && g.Over(panel)) _dragFrom = g.Mouse;
             if (_dragFrom is Vector2 from && g.Held)
             {
@@ -107,33 +191,42 @@ public sealed class MapLevels
             if (g.Released) _dragFrom = null;
             if (g.RightClicked(panel))
             {
-                var (mx, mz) = View.FromView(g.Mouse.X - c.X, g.Mouse.Y - c.Y);
-                _game.Spaceflight.Charts.Mark(mx, mz);
+                // On one of your own marks: take it down. Anywhere else: make one.
+                Charts own = _game.Spaceflight.Charts;
+                ChartMark hit = own.OfKind("mark").FirstOrDefault(m => Screen(m.X, m.Z).DistanceTo(g.Mouse) <= MarkHit);
+                if (hit != null) own.Unmark(hit.Key);
+                else
+                {
+                    var (mx, mz) = View.FromView(g.Mouse.X - c.X, g.Mouse.Y - c.Y);
+                    own.Mark(mx, mz);
+                }
             }
         }
         if (g.Drawing)
         {
-            if (_chart != null) Tiles(g, panel);
+            if (_chart != null) Tiles(g, panel, View.CentreX, View.CentreZ, View.MetresPerPixel, View.Width, View.Height);
             else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
-            void Mark(double x, double z, string label, Color colour, float r)
+            var labels = new MapLabels();
+            void Mark(double x, double z, string label, Color colour, float r, int priority)
             {
                 Vector2 q = Screen(x, z);
                 if (!panel.HasPoint(q)) return;
                 g.Canvas.DrawCircle(q, r, colour);
-                if (label != null) g.Text(label, q + new Vector2(r + 3, -9), colour, 13);
+                labels.Add(q, r, label, colour, priority);
             }
             Charts charts = _game.Spaceflight.Charts;
             foreach (ChartMark m in charts.Marks)
-                Mark(m.X, m.Z, m.Kind == "deposit" ? m.Label.ToUpperInvariant() : m.Label, m.Kind switch { "mark" => C.Danger, "deposit" => C.Holo, _ => C.Accent2 }, m.Kind == "mark" ? 6f : 4f);
+                Mark(m.X, m.Z, m.Kind == "deposit" ? m.Label.ToUpperInvariant() : m.Label.ToUpperInvariant(), m.Kind switch { "mark" => C.Danger, "deposit" => C.Holo, _ => C.Accent2 }, m.Kind == "mark" ? 6f : 4f, m.Kind switch { "place" => 2, "mark" => 3, _ => 4 });
             foreach (Vessel v in _game.Surface.Vessels)
             {
                 Vector3 p = v.IsRuin ? _game.Start : v.Body.Position.ToGodot();
-                Mark(p.X, p.Z, v.IsRuin ? "BUNKER" : v.Name.ToUpperInvariant(), v.IsRuin ? C.Accent : v.IsBase ? C.Good : C.Text, 6f);
+                Mark(p.X, p.Z, v.IsRuin ? "BUNKER" : v.Name.ToUpperInvariant(), v.IsRuin ? C.Accent : v.IsBase ? C.Good : C.Text, 6f, 1);
             }
-            Mark(ux, uz, "YOU", C.Accent, 7f);
+            Mark(ux, uz, "YOU", C.Accent, 7f, 0);
+            labels.Flush(g, panel);
         }
         g.Caption("WORLD MAP", side.Position, side.Size.X);
-        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place", "it wraps both ways", "found places, deposits and", "your marks show here,", "shared with everyone" };
+        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place, or", "take down a mark of yours", "it wraps both ways", "found places and deposits", "show here, with your marks" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         g.Text($"{View.MetresPerPixel * panel.Size.X / 1000:F1} KM ACROSS", side.Position + new Vector2(0, 216), C.Text, 15, UiTheme.Mono);
         if (g.Button("map:home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2))
@@ -144,11 +237,11 @@ public sealed class MapLevels
     }
 
     /// <summary>The map's picture, as many wrapped copies as it takes to fill the panel.</summary>
-    void Tiles(Gui g, Rect2 panel)
+    void Tiles(Gui g, Rect2 panel, double centreX, double centreZ, double metresPerPixel, double width, double height)
     {
-        float w = (float)(View.Width / View.MetresPerPixel), h = (float)(View.Height / View.MetresPerPixel);
+        float w = (float)(width / metresPerPixel), h = (float)(height / metresPerPixel);
         Vector2 c = panel.GetCenter();
-        float ox = c.X - (float)(View.CentreX / View.MetresPerPixel), oy = c.Y - (float)(View.CentreZ / View.MetresPerPixel);
+        float ox = c.X - (float)(centreX / metresPerPixel), oy = c.Y - (float)(centreZ / metresPerPixel);
         for (int i = -2; i <= 2; i++)
             for (int j = -2; j <= 2; j++)
             {
@@ -162,41 +255,97 @@ public sealed class MapLevels
 
     // ---- The system -------------------------------------------------------------------------
 
+    string _body;
+
+    /// <summary>A dot's size on the system map, pixels: by kind, not to scale, or the giants would hide the rest.</summary>
+    static float DotOf(SystemEntry e) => e.Kind switch { "star" => 15f, "giant" => 8f + e.Size * 8f, "world" => 7f, "planet" => 4f + e.Size * 8f, "moon" => 2.5f, _ => 0f };
+
+    /// <summary>
+    /// The whole system from the model, on the shared clock: the star, every world on its orbit at
+    /// its true bearing, the belts as bands, and each moon round its world at its true bearing, as
+    /// they stand this moment. Labels go through <see cref="MapLabels"/>, so none lands on another.
+    /// </summary>
     void SystemView(Gui g, Rect2 panel, Rect2 side)
     {
         Charts charts = _game.Spaceflight.Charts;
-        List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.Sky, "Your world");
-        // The outermost orbit fits the panel; nothing is drawn past its edge.
+        string star = Catalogue != null && Trail.You >= 0 ? Catalogue.Name(Trail.You) : "Star";
+        List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.StarSystem, "Your world", _game.Surface.Sky.Days, star);
         Vector2 c = panel.GetCenter();
-        float far = bodies.Where(e => e.Kind != "moon").Select(e => e.Orbit).DefaultIfEmpty(0f).Max();
-        float unit = far > 0f ? panel.Size.Y * 0.47f / far : panel.Size.Y * 0.47f;
-        var places = new Dictionary<string, Vector2>();
-        Vector2 At(SystemEntry e, Vector2 about) => about + new Vector2(MathF.Cos(e.Bearing), MathF.Sin(e.Bearing)) * e.Orbit * unit;
-        Vector2 world = c;
+        float unit = panel.Size.Y * 0.49f;
+        var places = new Dictionary<string, Vector2> { ["star"] = c };
+        var byKey = bodies.ToDictionary(e => e.Key);
+        Vector2 Round(SystemEntry e, float reach, Vector2 about) => about + new Vector2(MathF.Cos(e.Bearing), MathF.Sin(e.Bearing)) * reach;
         foreach (SystemEntry e in bodies)
+            if (e.Parent == null && e.Kind != "star") places[e.Key] = Round(e, e.Orbit * unit, c);
+        // A moon of a moon's parent may come after it in the list: moons are placed once every world is.
+        foreach (SystemEntry e in bodies.Where(e => e.Parent != null).OrderBy(e => byKey[e.Parent].Parent == null ? 0 : 1))
+            places[e.Key] = Round(e, DotOf(byKey[e.Parent]) + 7f + e.Orbit * 6f, places[e.Parent]);
+        if (!g.Drawing && g.Pressed && g.Over(panel))
         {
-            Vector2 about = e.Kind == "moon" ? world : c;
-            Vector2 q = e.Kind == "star" ? c : At(e, about);
-            if (e.Kind == "world") world = q;
-            places[e.Key] = q;
-            if (!g.Drawing) continue;
-            if (e.Orbit > 0f) g.Canvas.DrawArc(about, e.Orbit * unit, 0, Mathf.Tau, 96, new Color(C.Rule, 0.6f), 1f);
-            float r = e.Size * 70f + 3f;
-            g.Canvas.DrawCircle(q, r, e.Kind switch { "star" => C.Accent, "world" => C.Holo, "giant" => C.Accent2, _ => C.Text });
-            g.Text(e.Label.ToUpperInvariant(), q + new Vector2(r + 4, -9), C.Text, 13);
+            SystemEntry hit = null;
+            float nearest = 14f * 14f;
+            foreach (SystemEntry e in bodies)
+                if (e.Kind != "belt" && places[e.Key].DistanceSquaredTo(g.Mouse) < nearest) (nearest, hit) = (places[e.Key].DistanceSquaredTo(g.Mouse), e);
+            if (hit?.Kind == "world") Trail.Down(); // your world opens high orbit
+            else if (hit != null) _body = hit.Key;
         }
-        foreach (SystemEntry w in charts.Wrecks)
+        Vector2 world = places["world"];
+        if (g.Drawing)
         {
-            Vector2 q = world + new Vector2(MathF.Cos(w.Bearing), MathF.Sin(w.Bearing)) * (0.07f + w.Orbit * 0.08f) * unit;
-            places[w.Key] = q;
-            if (g.Drawing) g.Canvas.DrawCircle(q, 3f, C.Danger);
+            var labels = new MapLabels();
+            foreach (SystemEntry e in bodies)
+            {
+                if (e.Parent == null && e.Kind == "belt")
+                {
+                    // A belt: a broad scatter of rock, with what it is at its own place on it.
+                    float across = MathF.Max(e.Width * unit, 3f);
+                    g.Canvas.DrawArc(c, e.Orbit * unit, 0, Mathf.Tau, 128, new Color(C.Accent2, 0.05f), across);
+                    var rocks = new GalaxyRng((ulong)e.Key.GetHashCode(StringComparison.Ordinal) ^ 0x524F434BUL);
+                    for (int i = 0; i < 320; i++)
+                    {
+                        float a = rocks.Range(0f, Mathf.Tau), r = e.Orbit * unit + (rocks.Float() + rocks.Float() - 1f) * across * 0.5f;
+                        g.Canvas.DrawRect(new Rect2(c + new Vector2(MathF.Cos(a), MathF.Sin(a)) * r, new Vector2(1.5f, 1.5f)), new Color(C.Accent2, 0.5f));
+                    }
+                    labels.Add(places[e.Key], 2f, e.Label.ToUpperInvariant(), C.Dim, 4);
+                }
+                else if (e.Parent == null && e.Orbit > 0f) g.Canvas.DrawArc(c, e.Orbit * unit, 0, Mathf.Tau, 128, new Color(C.Rule, 0.55f), 1f);
+                // A world that is a moon reads as one: its orbit round its giant, not a neighbour on the giant's.
+                else if (e.Kind == "world" && e.Parent != null) g.Canvas.DrawArc(places[e.Parent], places[e.Key].DistanceTo(places[e.Parent]), 0, Mathf.Tau, 48, new Color(C.Holo, 0.55f), 1f);
+            }
+            foreach (SystemEntry e in bodies)
+            {
+                Vector2 q = places[e.Key];
+                float r = DotOf(e);
+                if (e.Kind == "belt") continue;
+                if (e.Kind == "star")
+                {
+                    g.Canvas.DrawCircle(q, r, StarColour(Trail.You));
+                    labels.Add(q, r, e.Label.ToUpperInvariant(), C.Text, 1);
+                    continue;
+                }
+                g.Canvas.DrawCircle(q, r, e.Kind switch { "world" => C.Holo, "giant" => C.Accent2, "moon" => C.Text, _ => new Color(C.Text, 0.8f) });
+                if (e.Key == _body) g.Canvas.DrawArc(q, r + 5f, 0, Mathf.Tau, 24, C.Holo, 1.5f);
+                bool moonOfYours = e.Kind == "moon" && e.Parent == "world";
+                if (e.Kind == "world") labels.Add(q, r + 7f, "YOUR WORLD: YOU ARE HERE", C.Accent, 0);
+                else if (e.Kind != "moon" || moonOfYours || e.Key == _body) labels.Add(q, r, e.Label.ToUpperInvariant(), moonOfYours ? C.Dim : C.Text, moonOfYours ? 3 : 2);
+                else labels.Add(q, r, null, C.Dim, 6);
+            }
+            g.Canvas.DrawArc(world, DotOf(byKey["world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
+            foreach (SystemEntry w in charts.Wrecks)
+            {
+                Vector2 q = world + new Vector2(MathF.Cos(w.Bearing), MathF.Sin(w.Bearing)) * (20f + w.Orbit * 16f);
+                places[w.Key] = q;
+                g.Canvas.DrawCircle(q, 2.5f, C.Danger);
+                labels.Add(q, 2.5f, null, C.Danger, 6);
+            }
+            labels.Flush(g, panel);
         }
         g.Caption("SYSTEM MAP", side.Position, side.Size.X);
-        g.Text("travel between planets: warp drive", side.Position + new Vector2(0, 40), C.Dim, 14);
-        g.Text("(not fitted). Wrecks by the world:", side.Position + new Vector2(0, 62), C.Dim, 14);
-        g.Text("fly there on the route line.", side.Position + new Vector2(0, 84), C.Dim, 14);
-        float y = 116;
-        foreach (SystemEntry e in charts.Wrecks.Take(7))
+        g.Text($"{bodies.Count(e => e.Kind is "planet" or "giant" or "world")} worlds, {bodies.Count(e => e.Kind == "moon")} moons, {bodies.Count(e => e.Kind == "belt")} belts", side.Position + new Vector2(0, 40), C.Dim, 14);
+        g.Text("travel between planets: warp drive", side.Position + new Vector2(0, 62), C.Dim, 14);
+        g.Text("(not fitted). Wrecks by your world:", side.Position + new Vector2(0, 84), C.Dim, 14);
+        float y = 112;
+        foreach (SystemEntry e in charts.Wrecks.Take(6))
         {
             bool picked = charts.Destination == e.Key;
             if (g.Button($"map:go:{e.Key}", new Rect2(side.Position + new Vector2(0, y), new Vector2(310, 28)), e.Label.ToUpperInvariant(), C.Accent2, lit: picked, size: 13)) charts.Destination = picked ? null : e.Key;
@@ -208,35 +357,438 @@ public sealed class MapLevels
             g.Canvas.DrawDashedLine(world, to, C.Accent, 2f, 8f);
             g.Canvas.DrawCircle(world, 5f, C.Accent);
         }
+        // What the model knows of the body you picked (or of the star).
+        SystemEntry shown = _body != null && byKey.TryGetValue(_body, out SystemEntry b) ? b : bodies[0];
+        g.Text(shown.Label.ToUpperInvariant(), side.Position + new Vector2(0, 530), C.Text, 15);
+        int line = 0;
+        foreach (string part in shown.Note.Split(", "))
+            g.Text(part, side.Position + new Vector2(0, 554 + line++ * 22), C.Dim, 14);
     }
 
-    // ---- The stars --------------------------------------------------------------------------
-
-    void Stars(Gui g, Rect2 panel, Rect2 side)
+    /// <summary>A star not yet visited: all that is known is its catalogue entry. Its system is generated on the first visit.</summary>
+    void Uncharted(Gui g, Rect2 panel, Rect2 side)
     {
-        List<StarEntry> stars = Charts.Stars(_game.Surface.Spec.Seed, _game.Surface.Planet.Sky);
         Vector2 c = panel.GetCenter();
-        float scale = panel.Size.Y * 0.44f / 30f; // pixels a light year
         if (g.Drawing)
         {
-            g.Canvas.DrawArc(c, 30f * scale, 0, Mathf.Tau, 96, new Color(C.Rule, 0.7f), 1f);
-            foreach (StarEntry s in stars)
+            g.Canvas.DrawCircle(c, 26f, StarColour(Trail.Star));
+            for (int k = 1; k <= 3; k++) g.Canvas.DrawArc(c, 90f * k, 0, Mathf.Tau, 64, new Color(C.Rule, 0.35f), 1f);
+            g.TextIn("NOT VISITED: SYSTEM NOT SURVEYED", new Rect2(c + new Vector2(-300, 40), new Vector2(600, 30)), C.Dim, 16, HorizontalAlignment.Center);
+        }
+        g.Caption("SYSTEM MAP", side.Position, side.Size.X);
+        StarFacts(g, side.Position + new Vector2(0, 40), Trail.Star);
+    }
+
+    /// <summary>What the catalogue says of a star on the chart.</summary>
+    void StarFacts(Gui g, Vector2 at, int id)
+    {
+        Galaxy galaxy = Catalogue;
+        Star s = galaxy.Stars[id];
+        float light = N.Vector3.Distance(s.Position, galaxy.Stars[Trail.You].Position);
+        var lines = new List<string> { galaxy.Name(id).ToUpperInvariant() };
+        lines.Add(GalaxyNames.Kind(s.Kind) + (s.Companions == 1 ? ", double" : s.Companions > 1 ? ", triple" : ""));
+        lines.Add(GalaxyNames.Of(s.Region));
+        if (s.Nebula >= 0) lines.Add("in the " + galaxy.Nebulae[s.Nebula].Name);
+        lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Galaxy.JumpT1 ? ", one jump" : "")}");
+        if (id != Trail.You && Stars.View != null)
+        {
+            Vector3 look = _game.Spaceflight.LookToward(id);
+            lines.Add($"in your sky: {(MathF.Atan2(look.X, -look.Z) * 180f / MathF.PI + 360f) % 360f:000} deg, {MathF.Asin(Math.Clamp(look.Y, -1f, 1f)) * 180f / MathF.PI:+00;-00} up");
+        }
+        for (int i = 0; i < lines.Count; i++) g.Text(lines[i], at + new Vector2(0, i * 24), i == 0 ? C.Text : C.Dim, 15);
+    }
+
+    Color StarColour(int id)
+    {
+        if (Catalogue == null || id < 0) return C.Accent;
+        N.Vector3 tint = SkyView.Colour(Catalogue.Stars[id].Kind);
+        return new Color(tint.X, tint.Y, tint.Z);
+    }
+
+    // ---- High orbit -----------------------------------------------------------------------------
+
+    double _orbitX = double.NaN, _orbitZ;
+
+    /// <summary>
+    /// The world as a globe, painted from its own map (a place on it is the same place on the world
+    /// map) and lit by the star where it stands this moment, with the moons on their real orbits and
+    /// the wrecks found at their real places. Distances out from the globe are eased to fit; every
+    /// direction is true. It can be turned by dragging, and a click opens the world map there.
+    /// </summary>
+    void HighOrbit(Gui g, Rect2 panel, Rect2 side)
+    {
+        var planet = _game.Surface.Planet;
+        Paint();
+        var (ux, uz) = You();
+        if (double.IsNaN(_orbitX)) (_orbitX, _orbitZ) = (ux, uz);
+        Vector2 c = panel.GetCenter();
+        float R = panel.Size.Y * 0.3f;
+        var map = new GlobeMap(planet.Width, planet.Height, R);
+        PlanetSurface.Skies.StarSystem model = planet.StarSystem;
+        double days = _game.Surface.Sky.Days;
+        PlanetSurface.Skies.StarSystem.Orientation turned = model.Orient(days);
+        N.Vector3 G(PlanetSurface.Skies.D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
+        // Toward the star from the world's centre, and each thing round the world, in the globe's frame.
+        N.Vector3 toStar = G(turned.ToGlobe((model.Position(model.Star, days) - model.Position(model.Home, days)).Normalized));
+        N.Vector3 Round(PlanetSurface.Skies.Orbiter b, double at) => G(turned.ToGlobe(model.Position(b, at) - model.Position(model.Home, at)));
+        System.Numerics.Quaternion frame = map.Frame(_orbitX, _orbitZ);
+        System.Numerics.Vector3 east = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitX, frame), up = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitY, frame), south = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitZ, frame);
+        System.Numerics.Vector3 Globe(Vector2 q) => up * MathF.Sqrt(MathF.Max(1f - q.LengthSquared(), 0f)) + east * q.X + south * q.Y;
+        if (!g.Drawing && g.Over(panel))
+        {
+            Vector2 q = (g.Mouse - c) / R;
+            if (g.Pressed)
             {
-                Vector2 q = c + new Vector2(s.X, s.Y) * scale;
-                if (!s.Home) g.Canvas.DrawDashedLine(c, q, new Color(C.Rule, 0.8f), 1f, 6f);
-                g.Canvas.DrawCircle(q, s.Home ? 7f : 4.5f, s.Home ? C.Accent : s.Class switch
+                _dragFrom = g.Mouse;
+                _dragged = false;
+            }
+            if (_dragFrom is Vector2 from && g.Held && from.DistanceTo(g.Mouse) > 3f)
+            {
+                _dragged = true;
+                _orbitX = Planets.Gen.Mathx.WrapX(_orbitX - (g.Mouse.X - from.X) / (R * Mathf.Tau) * planet.Width, planet.Width);
+                _orbitZ = Math.Clamp(_orbitZ - (g.Mouse.Y - from.Y) / (R * Mathf.Pi) * planet.Height, planet.Height * 0.02, planet.Height * 0.98);
+                _dragFrom = g.Mouse;
+            }
+            if (g.Released)
+            {
+                if (!_dragged && q.LengthSquared() < 1f)
                 {
-                    PlanetSurface.Skies.StarClass.RedDwarf => new Color("e85d04"),
-                    PlanetSurface.Skies.StarClass.Orange => new Color("f4a100"),
-                    PlanetSurface.Skies.StarClass.Yellow => new Color("ffe8c2"),
-                    PlanetSurface.Skies.StarClass.White => new Color("f5f3ee"),
-                    _ => new Color("6ff2e0"),
-                });
-                g.Text(s.Home ? "HOME" : $"{s.Name}  {s.Light:F0} LY", q + new Vector2(9, -9), s.Home ? C.Accent : C.Text, 13);
+                    var (mx, mz) = map.MapPoint(Globe(q));
+                    View ??= new WorldMapView(planet.Width, planet.Height, planet.Width / panel.Size.X);
+                    (View.CentreX, View.CentreZ) = (mx, mz);
+                    Level = MapLevel.World;
+                }
+                _dragFrom = null;
             }
         }
-        g.Caption("STAR MAP", side.Position, side.Size.X);
-        string[] lines = { "the galaxy's rim: only the", "stars one jump away are known", "travel between stars: hyperdrive", "(capital vessels, fold crystal)", "not fitted", $"{stars.Count - 1} neighbours" };
+        if (g.Drawing)
+        {
+            if (_chart != null)
+            {
+                g.Canvas.TextureRepeat = CanvasItem.TextureRepeatEnum.Enabled;
+                const int Rings = 26, Sectors = 72;
+                var q = new Vector2[4];
+                var uv = new Vector2[4];
+                var lit = new Color[4];
+                Vector2 Point(int ring, int sector) => new Vector2(MathF.Cos(sector * Mathf.Tau / Sectors), MathF.Sin(sector * Mathf.Tau / Sectors)) * MathF.Sin(ring / (float)Rings * Mathf.Pi * 0.5f);
+                for (int ring = 0; ring < Rings; ring++)
+                for (int sector = 0; sector < Sectors; sector++)
+                {
+                    q[0] = Point(ring, sector);
+                    q[1] = Point(ring + 1, sector);
+                    q[2] = Point(ring + 1, sector + 1);
+                    q[3] = Point(ring, sector + 1);
+                    float first = 0f;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        N.Vector3 d = Globe(q[k]);
+                        var (mx, mz) = map.MapPoint(d);
+                        float u = (float)(mx / planet.Width), v = (float)(mz / planet.Height);
+                        if (k == 0) first = u;
+                        else if (u - first > 0.5f) u -= 1f;
+                        else if (first - u > 0.5f) u += 1f;
+                        uv[k] = new Vector2(u + 1f, v);
+                        float day = Math.Clamp(N.Vector3.Dot(d, toStar) * 4f + 0.5f, 0f, 1f);
+                        lit[k] = new Color(0.14f + 0.86f * day, 0.15f + 0.85f * day, 0.22f + 0.78f * day);
+                    }
+                    var points = new[] { c + q[0] * R, c + q[1] * R, c + q[2] * R, c + q[3] * R };
+                    g.Canvas.DrawPolygon(points, lit, uv, _chart);
+                }
+            }
+            else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
+            g.Canvas.DrawArc(c, R, 0, Mathf.Tau, 96, new Color(C.Holo, 0.7f), 2f);
+            var labels = new MapLabels();
+            // Out from the world's centre in true directions, the distances eased: the farthest moon stands at the panel's edge.
+            float rh = (float)model.Home.Radius;
+            float Reach(float metres) => R * (1.08f + 0.42f * MathF.Sqrt(Math.Clamp((metres / rh - 1f) / 39f, 0f, 1f)));
+            bool Place(N.Vector3 g3, out Vector2 at, out bool behind)
+            {
+                float d = g3.Length();
+                N.Vector3 n = g3 / d;
+                float reach = Reach(d);
+                at = c + new Vector2(N.Vector3.Dot(n, east), N.Vector3.Dot(n, south)) * reach;
+                behind = N.Vector3.Dot(n, up) < 0f && at.DistanceTo(c) < R;
+                return panel.HasPoint(at);
+            }
+            // The star's side.
+            var sunward = new Vector2(N.Vector3.Dot(toStar, east), N.Vector3.Dot(toStar, south));
+            if (sunward.LengthSquared() > 1e-4f)
+            {
+                Vector2 q = c + sunward.Normalized() * (R * 1.56f);
+                g.Canvas.DrawCircle(q, 7f, StarColour(Trail.You));
+                labels.Add(q, 7f, "TO THE STAR", C.Dim, 3);
+            }
+            if (model.Neighbour is { } giant && Place(Round(giant, days), out Vector2 big, out bool hidden) && !hidden)
+            {
+                g.Canvas.DrawCircle(big, 12f, C.Accent2);
+                labels.Add(big, 12f, Charts.Tidy(giant.Name).ToUpperInvariant(), C.Text, 2);
+            }
+            foreach (PlanetSurface.Skies.Orbiter m in model.Under(model.Home))
+            {
+                // Its true orbit, drawn from its own positions over one month.
+                const int Steps = 64;
+                Vector2 last = default;
+                bool had = false;
+                for (int i = 0; i <= Steps; i++)
+                {
+                    bool ok = Place(Round(m, days + m.Period * i / Steps), out Vector2 p, out bool back) && !back;
+                    if (ok && had) g.Canvas.DrawLine(last, p, new Color(C.Rule, 0.6f), 1f);
+                    (last, had) = (p, ok);
+                }
+                if (!Place(Round(m, days), out Vector2 at, out bool behind) || behind) continue;
+                bool fuel = m == model.FuelMoon;
+                g.Canvas.DrawCircle(at, 5f, fuel ? C.Holo : C.Text);
+                labels.Add(at, 5f, Charts.Tidy(m.Name).ToUpperInvariant() + (fuel ? ": WARP FUEL" : ""), fuel ? C.Holo : C.Text, 1);
+            }
+            foreach (DerelictPlan w in _game.Orbit?.Plans ?? Array.Empty<DerelictPlan>())
+                if (_game.Spaceflight.Charts.Wrecks.Any(e => e.Key == w.Id) && Place(w.Position, out Vector2 at, out bool behind) && !behind)
+                {
+                    g.Canvas.DrawCircle(at, 2.5f, C.Danger);
+                    labels.Add(at, 2.5f, null, C.Danger, 6);
+                }
+            // Your spot, if it is on this side of the globe.
+            N.Vector3 you = map.Direction(ux, uz);
+            if (N.Vector3.Dot(you, up) > 0f)
+            {
+                Vector2 at = c + new Vector2(N.Vector3.Dot(you, east), N.Vector3.Dot(you, south)) * R;
+                g.Canvas.DrawCircle(at, 6f, C.Accent);
+                g.Canvas.DrawArc(at, 11f, 0, Mathf.Tau, 24, C.Accent, 2f);
+                labels.Add(at, 11f, "YOU", C.Accent, 0);
+            }
+            labels.Flush(g, panel);
+        }
+        g.Caption("HIGH ORBIT", side.Position, side.Size.X);
+        string[] lines = { "drag to turn the world", "click: the world map there", $"{planet.Width / 1000:F0} by {planet.Height / 1000:F0} km of map", $"day {Math.Floor(days) + 1:0}, {(days - Math.Floor(days)) * 24:00.0} hours" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
+        int row = 0;
+        foreach (PlanetSurface.Skies.Orbiter m in model.Under(model.Home).OrderBy(m => m.Orbit).Take(3))
+            g.Text($"{Charts.Tidy(m.Name)}: {Round(m, days).Length() / 1000f:F0} km", side.Position + new Vector2(0, 150 + row++ * 24), m == model.FuelMoon ? C.Holo : C.Text, 14);
+        if (g.Button("map:orbit-home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2)) (_orbitX, _orbitZ) = (ux, uz);
+    }
+
+    // ---- The galaxy -----------------------------------------------------------------------------
+
+    bool _dragged;
+    Vector2 _mapMiddle;
+    float _mapFocal;
+
+    /// <summary>Where a star is on the galaxy map just now, on the screen, or null.</summary>
+    public Vector2? ScreenOf(int star)
+    {
+        if (Sky == null || !Sky.Project(Catalogue.Stars[star].Position, _mapFocal, out N.Vector2 at, out _)) return null;
+        return _mapMiddle + new Vector2(at.X, at.Y);
+    }
+
+    /// <summary>Soft torn wisps: every nebula on the map is built of these, drawn at points of its own density.</summary>
+    ImageTexture[] Wisps()
+    {
+        if (_wisps != null) return _wisps;
+        const int Size = 128;
+        _wisps = new ImageTexture[3];
+        for (int t = 0; t < _wisps.Length; t++)
+        {
+            var bytes = new byte[Size * Size * 2];
+            for (int y = 0; y < Size; y++)
+            for (int x = 0; x < Size; x++)
+            {
+                float dx = (x + 0.5f) / Size * 2f - 1f, dy = (y + 0.5f) / Size * 2f - 1f;
+                float k = MathF.Max(1f - (dx * dx + dy * dy), 0f);
+                float n = LatticeNoise.Fractal(new N.Vector3(dx * 2.3f + t * 5.1f, dy * 2.3f, t * 3.7f), 4);
+                float torn = Math.Clamp((n - 0.36f) / 0.3f, 0f, 1f);
+                bytes[(x + y * Size) * 2] = 255;
+                bytes[(x + y * Size) * 2 + 1] = (byte)(255f * k * k * torn);
+            }
+            _wisps[t] = ImageTexture.CreateFromImage(Image.CreateFromData(Size, Size, false, Image.Format.La8, bytes));
+        }
+        return _wisps;
+    }
+
+    ImageTexture[] _wisps;
+    Task<(N.Vector3 at, float size, Color colour, int wisp)[][]> _clouds;
+
+    /// <summary>
+    /// The galaxy in 3D, turned by dragging, zoomed by the wheel. The disc's plane is drawn as rings,
+    /// and each star charted hangs over it on a thin line, so its depth reads at a glance. Nebulae
+    /// stand at their real place and size. The sphere round you is a jump's true 3D reach. A click
+    /// picks a star, the sky marks it, and the wheel zooms in on it and on down into its system.
+    /// </summary>
+    void GalaxyLevel(Gui g, Rect2 panel, Rect2 side)
+    {
+        Galaxy galaxy = Catalogue;
+        Charts charts = _game.Spaceflight.Charts;
+        g.Caption("GALAXY MAP", side.Position, side.Size.X);
+        if (galaxy == null || Trail.You < 0)
+        {
+            g.TextIn("Charting the galaxy…", panel, C.Dim, 18, HorizontalAlignment.Center);
+            return;
+        }
+        Star you = galaxy.Stars[Trail.You];
+        Sky ??= new GalaxyMapView { Focus = you.Position };
+        Vector2 c = _mapMiddle = panel.GetCenter();
+        float focal = _mapFocal = panel.Size.Y * 1.1f;
+        bool At(N.Vector3 p, out Vector2 q, out float depth)
+        {
+            bool front = Sky.Project(p, focal, out N.Vector2 v, out depth);
+            q = c + new Vector2(v.X, v.Y);
+            return front;
+        }
+        List<int> shown = charts.Shown(galaxy);
+        if (!g.Drawing)
+        {
+            int wheel = _game.Controls.Wheel;
+            if (g.Over(panel) && wheel != 0)
+            {
+                int aim = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
+                if (wheel < 0 && Sky.AtClosest)
+                {
+                    if (Time.GetTicksMsec() - _wheelMs >= 350)
+                    {
+                        _wheelMs = Time.GetTicksMsec();
+                        Trail.OpenStar(aim);
+                    }
+                    return;
+                }
+                if (wheel < 0) Sky.Focus = N.Vector3.Lerp(Sky.Focus, galaxy.Stars[aim].Position, 0.35f);
+                Sky.Zoom(wheel);
+            }
+            if (g.Pressed && g.Over(panel))
+            {
+                _dragFrom = g.Mouse;
+                _dragged = false;
+            }
+            if (_dragFrom is Vector2 from && g.Held && (_dragged || from.DistanceTo(g.Mouse) > 3f))
+            {
+                Sky.Turn(g.Mouse.X - from.X, g.Mouse.Y - from.Y);
+                _dragged = true;
+                _dragFrom = g.Mouse;
+            }
+            if (g.Released)
+            {
+                if (_dragFrom != null && !_dragged && g.Over(panel))
+                {
+                    int picked = -1;
+                    float nearest = 14f * 14f;
+                    foreach (int id in shown)
+                        if (At(galaxy.Stars[id].Position, out Vector2 q, out _) && q.DistanceSquaredTo(g.Mouse) < nearest) (nearest, picked) = (q.DistanceSquaredTo(g.Mouse), id);
+                    if (picked >= 0)
+                    {
+                        charts.ChosenStar = picked;
+                        Trail.Star = picked;
+                    }
+                }
+                _dragFrom = null;
+            }
+        }
+        if (g.Drawing)
+        {
+            g.Fill(panel, new Color(0.008f, 0.01f, 0.025f, 0.92f));
+            DrawPlane(g, panel, you, At);
+            DrawNebulae(g, panel, galaxy, shown, At);
+            var labels = new MapLabels();
+            // The jump's reach: the sphere's outline, and its ring through you, level with the disc.
+            if (At(you.Position, out Vector2 home, out float homeDepth))
+            {
+                float reach = Galaxy.JumpT1 * focal / homeDepth;
+                if (reach > 6f) g.Canvas.DrawArc(home, reach, 0, Mathf.Tau, 96, new Color(C.Accent, 0.6f), 1.5f);
+                Ring(g, panel, you.Position, Galaxy.JumpT1, new Color(C.Accent, 0.28f), 1f, At);
+            }
+            foreach (int id in shown.OrderByDescending(id => { At(galaxy.Stars[id].Position, out _, out float d); return d; }))
+            {
+                Star s = galaxy.Stars[id];
+                if (!At(s.Position, out Vector2 q, out float depth) || !panel.HasPoint(q)) continue;
+                // The thin line down to the plane: its length and side are the star's height.
+                if (At(s.Position with { Y = 0f }, out Vector2 foot, out _) && panel.HasPoint(foot))
+                {
+                    Color line = s.Position.Y >= 0f ? new Color(C.Holo, 0.5f) : new Color(C.Warn, 0.5f);
+                    g.Canvas.DrawLine(q, foot, line, 1f);
+                    g.Canvas.DrawCircle(foot, 1.5f, line);
+                }
+                float r = Math.Clamp((3.2f + 0.8f * MathF.Log10(s.Light + 0.01f)) * MathF.Sqrt(96f / depth), 2.4f, 8f);
+                g.Canvas.DrawCircle(q, r, StarColour(id));
+                if (id != Trail.You && id != charts.ChosenStar) labels.Add(q, r, depth < 220f ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);
+            }
+            if (At(you.Position, out Vector2 me, out _) && panel.HasPoint(me))
+            {
+                g.Canvas.DrawArc(me, 9f, 0, Mathf.Tau, 24, C.Accent, 2f);
+                labels.Add(me, 9f, "YOU", C.Accent, 0);
+            }
+            if (charts.ChosenStar >= 0 && At(galaxy.Stars[charts.ChosenStar].Position, out Vector2 chosen, out _) && panel.HasPoint(chosen))
+            {
+                g.Canvas.DrawArc(chosen, 12f, 0, Mathf.Tau, 24, C.Holo, 2f);
+                if (panel.HasPoint(me)) g.Canvas.DrawDashedLine(me, chosen, new Color(C.Holo, 0.8f), 1f, 6f);
+                labels.Add(chosen, 12f, galaxy.Name(charts.ChosenStar).ToUpperInvariant(), C.Holo, 1);
+            }
+            if (At(N.Vector3.Zero, out Vector2 core, out _) && panel.HasPoint(core)) labels.Add(core, 4f, "CORE", C.Dim, 3);
+            labels.Flush(g, panel);
+        }
+        int facts = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
+        StarFacts(g, side.Position + new Vector2(0, 40), facts);
+        if (g.Button("map:open-star", new Rect2(side.Position + new Vector2(0, 208), new Vector2(150, 34)), "OPEN SYSTEM", C.Accent2)) Trail.OpenStar(facts);
+        if (g.Button("map:clear-star", new Rect2(side.Position + new Vector2(156, 208), new Vector2(150, 34)), "CLEAR MARK", C.Accent2, enabled: charts.ChosenStar >= 0)) charts.ChosenStar = -1;
+        if (g.Button("map:on-me", new Rect2(side.Position + new Vector2(0, 248), new Vector2(150, 34)), "ON ME", C.Accent2))
+        {
+            Sky.Focus = you.Position;
+            Sky.Distance = 96;
+        }
+        if (g.Button("map:whole", new Rect2(side.Position + new Vector2(156, 248), new Vector2(150, 34)), "WHOLE GALAXY", C.Accent2, size: 15))
+        {
+            Sky.Focus = N.Vector3.Zero;
+            Sky.Distance = GalaxyMapView.Widest;
+        }
+        g.Text($"{shown.Count} stars charted, drag to turn", side.Position + new Vector2(0, 294), C.Dim, 14);
+    }
+
+    delegate bool Projects(N.Vector3 p, out Vector2 q, out float depth);
+
+    /// <summary>A ring level with the galaxy's disc, as far as it stands inside the panel.</summary>
+    static void Ring(Gui g, Rect2 panel, N.Vector3 centre, float radius, Color colour, float width, Projects at)
+    {
+        const int Steps = 96;
+        Vector2 last = default;
+        bool had = false;
+        for (int i = 0; i <= Steps; i++)
+        {
+            float a = i * Mathf.Tau / Steps;
+            bool ok = at(centre + new N.Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * radius, out Vector2 q, out _) && panel.HasPoint(q);
+            if (ok && had) g.Canvas.DrawLine(last, q, colour, width);
+            (last, had) = (q, ok);
+        }
+    }
+
+    /// <summary>The galaxy's plane: rings every hundred light years round the core, and finer ones under you.</summary>
+    static void DrawPlane(Gui g, Rect2 panel, Star you, Projects at)
+    {
+        for (int r = 100; r <= 500; r += 100) Ring(g, panel, N.Vector3.Zero, r, new Color(C.Rule, r == 500 ? 0.9f : 0.55f), 1f, at);
+        var under = you.Position with { Y = 0f };
+        for (int r = 10; r <= 40; r += 10) Ring(g, panel, under, r, new Color(C.Rule, 0.4f), 1f, at);
+    }
+
+    /// <summary>
+    /// Every nebula at its real place and size, as a cloud of wisps drawn at points of its own density,
+    /// so it has the shape it has in the sky and turns with the map. Those with charted stars in them are named.
+    /// </summary>
+    void DrawNebulae(Gui g, Rect2 panel, Galaxy galaxy, List<int> shown, Projects at)
+    {
+        _clouds ??= Task.Run(() => galaxy.Nebulae.Select(n => n.Wisps(34).Select((w, i) =>
+        {
+            Color c = n.Kind == NebulaKind.Dark ? new Color(0.13f, 0.1f, 0.09f, 0.3f) : new Color(w.colour.X, w.colour.Y, w.colour.Z, 0.05f + 0.13f * MathF.Min(w.density * 1.6f, 1f));
+            return (w.at, n.Radius * (0.2f + 0.26f * w.size), c, i % 3);
+        }).ToArray()).ToArray());
+        if (!_clouds.IsCompletedSuccessfully) return;
+        ImageTexture[] wisps = Wisps();
+        foreach ((N.Vector3 place, float size, Color colour, int wisp)[] cloud in _clouds.Result)
+            foreach (var (place, size, colour, wisp) in cloud)
+            {
+                if (!at(place, out Vector2 q, out float depth)) continue;
+                float r = size * _mapFocal / depth;
+                var box = new Rect2(q - new Vector2(r, r), new Vector2(r * 2f, r * 2f));
+                Rect2 seen = box.Intersection(panel);
+                if (seen.Size.X <= 0f || seen.Size.Y <= 0f) continue;
+                var source = new Rect2((seen.Position - box.Position) / box.Size * 128f, seen.Size / box.Size * 128f);
+                g.Canvas.DrawTextureRectRegion(wisps[wisp], seen, source, colour);
+            }
+        var known = new HashSet<int>(shown.Select(id => (int)galaxy.Stars[id].Nebula));
+        foreach (Nebula n in galaxy.Nebulae)
+            if (known.Contains(n.Id) && at(n.Centre, out Vector2 middle, out _) && panel.HasPoint(middle)) g.Text(n.Name.ToUpperInvariant(), middle, new Color(n.Colour.X, n.Colour.Y, n.Colour.Z), 12);
     }
 }

@@ -45,16 +45,72 @@ public sealed partial class PlanetWorld
     public readonly double BuildMs;
 
     public double Width => Map.WidthMeters;
+
+    /// <summary>This world's star and everything round it: the one source of truth for the sky, in every view.</summary>
+    public StarSystem StarSystem
+    {
+        get
+        {
+            if (_system != null) return _system;
+            ulong seed = 0;
+            SystemSeedOf(ref seed);
+            return _system = StarSystem.For(Spec, Sky, Width, seed);
+        }
+    }
+    StarSystem _system;
+
+    /// <summary>The seed the galaxy's catalogue has for this world's star, when that code is compiled in (see PlanetWorld.Galaxy.cs).</summary>
+    partial void SystemSeedOf(ref ulong seed);
     public double Height => Map.HeightMeters;
 
     /// <summary>
     /// Trees felled on this planet, by scatter id (<see cref="Terrain.FarBuilder.ScatterId"/>): gone
-    /// at every level of detail, through streaming, saves and loads, as terrain edits are.
+    /// at every level of detail, through streaming, saves and loads, as terrain edits are. Broken ore
+    /// tell rocks keep their (negative) ids here too.
     /// </summary>
     public readonly HashSet<long> Felled = new();
 
     /// <summary>Where the felled trees are saved: beside the terrain's save, written the same moment.</summary>
     public string FelledPath => SavePath + ".felled";
+
+    /// <summary>The colour a place's rubble takes: the planet's own rock.</summary>
+    public PoiGenerator.Gen.Rgb RubbleRock => new(Rgb.Byte(Palette.Rock.R), Rgb.Byte(Palette.Rock.G), Rgb.Byte(Palette.Rock.B));
+
+    PoiGenerator.Gen.Rgb? _weed;
+    bool _weedKnown;
+
+    /// <summary>The colour weeds take in a place's cracks: the planet's own low growth, or null on a world where nothing grows.</summary>
+    public PoiGenerator.Gen.Rgb? Weed
+    {
+        get
+        {
+            if (_weedKnown) return _weed;
+            _weedKnown = true;
+            foreach (byte b in new HashSet<byte>(Map.Biome))
+                foreach (FloraRule r in BiomeLook.FloraOf((Biome)b))
+                    if (r.Kind == Flora.Shrub)
+                    {
+                        Rgb c = r.Color.Saturate(0.6f) * 0.8f;
+                        return _weed = new PoiGenerator.Gen.Rgb(Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B));
+                    }
+            return null;
+        }
+    }
+
+    /// <summary>The colour of what the tool knocks off a cell of ground at a point (frame coordinates): what that cell is made of, here.</summary>
+    public Color ChipColor(CellMaterial material, Vector3 at)
+    {
+        double x = Mathx.WrapX(at.X, Width), z = Mathx.Wrap(at.Z, Height);
+        var cell = new TerrainDigging.Terrain.Int3((int)Math.Floor(x), (int)Math.Floor(at.Y), (int)Math.Floor(z));
+        return Palette.Chip(material, x, z, at.Y, material == CellMaterial.Ore ? Source.OreKindAt(cell) : DepositKind.Iron);
+    }
+
+    /// <summary>Grit off the land at a point: its rock, half clear.</summary>
+    public Color Grit(Vector3 at)
+    {
+        Color c = ChipColor(CellMaterial.Rock, at);
+        return new Color(c.R, c.G, c.B, 0.5f);
+    }
 
     /// <summary>Writes the felled trees atomically (a temporary file renamed over the old one).</summary>
     public void SaveFelled()
@@ -106,6 +162,9 @@ public sealed partial class PlanetWorld
         foreach (PoiSite p in pois)
             if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
                 Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
+        // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
+        Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
+        foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
         Sky = SkySystem.For(spec);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
@@ -133,8 +192,18 @@ public sealed partial class PlanetWorld
         PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, ref around);
         var source = new PlanetTerrainSource(map, stamps, anchors);
         FinishAround(spec, source, pois, around);
-        return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        // What stands off a place's footprint goes by the real ground, now that it's known.
+        foreach (PoiSite p in pois)
+            PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        world.ChartStars();
+        return world;
     }
+
+    /// <summary>Finds this world in the galaxy, off the main thread with the rest of the world (nothing when that isn't compiled in).</summary>
+    public void ChartStars() => FindHomeStar();
+
+    partial void FindHomeStar();
 
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);

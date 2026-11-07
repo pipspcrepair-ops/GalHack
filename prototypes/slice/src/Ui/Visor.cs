@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DiegeticUi.Theme;
+using GalHack.Physics;
 using GalHack.Physics.Engine;
+using GalHack.Structures;
 using Godot;
 using Slice.Items;
 using Slice.Game;
@@ -149,7 +152,9 @@ public partial class Visor : CanvasLayer
         if (survivor == null) return;
         if (Game.Menu.IsOpen) return; // the Tab menu covers the view: the visor waits behind it
         DrawTracers();
+        DrawHurtEdge();
         DrawCompass(survivor);
+        DrawChosenStar();
         DrawLines();
         DrawWarnings();
         DrawProgress();
@@ -164,7 +169,24 @@ public partial class Visor : CanvasLayer
         {
             DrawCrosshair();
             DrawHand();
+            DrawJetpack(survivor);
         }
+    }
+
+    /// <summary>The star picked on the galaxy map, bracketed where it stands in the sky.</summary>
+    void DrawChosenStar()
+    {
+        Slice.Orbit.Charts charts = Game.Spaceflight.Charts;
+        GalHack.Stars.GalaxySky stars = Game.Surface.Sky.Stars;
+        if (charts.ChosenStar < 0 || stars?.View == null) return;
+        Camera3D camera = Game.Camera;
+        Vector3 point = camera.GlobalPosition + Game.Spaceflight.LookToward(charts.ChosenStar) * 1000f;
+        if (camera.IsPositionBehind(point)) return;
+        float s = S;
+        Vector2 at = camera.UnprojectPosition(point), r = new(13f * s, 13f * s);
+        _hud.Frame(new Rect2(at - r, r * 2f), C.Holo, 1.5f);
+        string name = charts.Charted(stars.Galaxy, charts.ChosenStar) ? stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant() : "UNCHARTED STAR";
+        _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(at + new Vector2(18f * s, -10f * s), new Vector2(260f * s, 22f * s)), name, C.Holo, HorizontalAlignment.Left);
     }
 
     void Banner(string title, string detail, Color colour)
@@ -187,7 +209,6 @@ public partial class Visor : CanvasLayer
         VitalsRules r = suit.Sim.Data.Vitals;
         Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
         double air = suit.Sim.Here.Temperature;
-        double fuel = Game.Survivor.Legs.JetpackFuel, fuelMax = Game.Survivor.Legs.JetpackFuelMax;
         var items = new (string label, string value, double share, Alert alert)[]
         {
             ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
@@ -196,7 +217,6 @@ public partial class Visor : CanvasLayer
             ("TEMP", $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
             ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
-            ("JET", $"{fuel:0.0}s", fuel / Math.Max(0.01, fuelMax), Alert.None), // the jetpack's fuel: seconds of thrust, refilled on the ground
         };
         HudLayout layout = Layout;
         float s = layout.Scale;
@@ -226,6 +246,60 @@ public partial class Visor : CanvasLayer
             string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
             _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
         }
+    }
+
+    /// <summary>
+    /// The jetpack's charge: a slim upright bar at the right edge with its name above, no numbers. It
+    /// shows while the pack is in use or filling and fades out once it is full and idle; it turns
+    /// to the warning colour when nearly empty and to the danger colour while it is spent and recharging.
+    /// </summary>
+    void DrawJetpack(Survivor survivor)
+    {
+        WalkController legs = survivor.Legs;
+        float share = Math.Clamp(legs.JetpackFuel / Math.Max(0.01f, legs.JetpackFuelMax), 0f, 1f);
+        bool busy = legs.JetpackFiring || legs.JetpackSpent || share < 0.995f;
+        _jetIdle = busy ? 0f : _jetIdle + (float)GetProcessDeltaTime();
+        _jetAlpha = Mathf.MoveToward(_jetAlpha, busy || _jetIdle < 1.2f ? 1f : 0f, (float)GetProcessDeltaTime() * (busy ? 6f : 1.2f));
+        if (_jetAlpha <= 0.01f) return;
+        float a = _jetAlpha, s = S;
+        Rect2 box = Layout.Jet;
+        bool low = share < 0.2f || legs.JetpackSpent;
+        Color tone = legs.JetpackSpent ? C.Danger : low ? C.Warn : C.Good;
+        _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(box.Position, new Vector2(box.Size.X, 20 * s)), "JETPACK", new Color(low ? tone : C.Text, a * 0.9f), HorizontalAlignment.Center);
+        float w = 14 * s;
+        var bar = new Rect2(box.Position.X + (box.Size.X - w) / 2f, box.Position.Y + 28 * s, w, box.Size.Y - 28 * s);
+        _hud.Block(bar, new Color(C.Glass, 0.6f * a));
+        float h = bar.Size.Y * share;
+        if (h > 0.5f) _hud.Block(new Rect2(bar.Position.X, bar.End.Y - h, w, h), new Color(tone, 0.9f * a));
+        _hud.Frame(bar, new Color(tone, 0.55f * a), 1.5f * s);
+    }
+
+    float _jetAlpha, _jetIdle;
+
+    /// <summary>A blow landed: the edge of the view reddens on the side it came from, in soft bands, and fades.</summary>
+    void DrawHurtEdge()
+    {
+        if (_time >= _hurtUntil) return;
+        float strength = (float)((_hurtUntil - _time) / 0.6);
+        Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
+        var dir = new Vector2(local.X, local.Z); // on screen: right is right, ahead is the top edge
+        dir = dir.LengthSquared() > 1e-4f ? dir.Normalized() : new Vector2(0f, -1f);
+        Vector2 size = _hud.Size;
+        float depth = size.Y * 0.16f;
+        const int Bands = 7;
+        void Edge(float share, Func<float, float, Rect2> band)
+        {
+            if (share <= 0.05f) return;
+            for (int i = 0; i < Bands; i++)
+            {
+                float from = depth * i / Bands, across = depth / Bands;
+                _hud.Block(band(from, across), new Color(C.Danger, 0.5f * strength * share * (1f - i / (float)Bands)));
+            }
+        }
+        Edge(dir.Dot(Vector2.Right), (f, w) => new Rect2(size.X - f - w, 0, w, size.Y));
+        Edge(dir.Dot(Vector2.Left), (f, w) => new Rect2(f, 0, w, size.Y));
+        Edge(dir.Dot(Vector2.Up), (f, w) => new Rect2(0, f, size.X, w));
+        Edge(dir.Dot(Vector2.Down), (f, w) => new Rect2(0, size.Y - f - w, size.X, w));
     }
 
     // ---- Compass ---------------------------------------------------------------------------------
@@ -269,8 +343,12 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
-        // The place seen from the bunker's way out, on the compass until you have been there.
-        if (Game.Bunker?.Landmark is Vector3 seen && Game.Bunker.Poi != null && survivor.WorldFeet.DistanceTo(seen) > 60f) Mark(seen, Game.Bunker.Poi.Name.ToUpperInvariant(), C.Accent);
+        // Places you have found (coming near one finds it for good; the one seen from the bunker's way out starts found): the nearest few.
+        if (!Game.InOrbit)
+            foreach (var (label, at) in Game.Spaceflight.Charts.OfKind("place")
+                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
+                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(NearestPlaces).ToList())
+                Mark(at, label.ToUpperInvariant(), C.Accent);
         foreach (Vessel v in Game.Zone.Vessels)
             if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
         if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
@@ -293,6 +371,9 @@ public partial class Visor : CanvasLayer
             y += 26 * s;
         }
     }
+
+    /// <summary>How many found places the compass shows (the nearest).</summary>
+    public const int NearestPlaces = 3;
 
     float _compassBottom;
 
@@ -345,6 +426,7 @@ public partial class Visor : CanvasLayer
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
+            HandKind.Vehicle => "click to set it down",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
@@ -356,12 +438,13 @@ public partial class Visor : CanvasLayer
     {
         var items = Game.Zone.Data.Items;
         Slice.Items.PlayerInventory pack = Game.Pack;
-        if (pack.OnStructureBar)
+        if (pack.ShowRemote)
         {
-            string id = pack.StructureBar[i];
+            if (pack.Remote[i] is not RemoteSlot rs) return ("", "", true);
+            string id = rs.ItemId;
             if (id == null) return ("", "", true);
-            int n = pack.Linked.Count(id);
-            return (items.Item(id).ShortName, $"{n}", n == 0);
+            int n = rs.Count;
+            return (items.Item(id).ShortName, $"{n}", n == 0 || !pack.RemoteReady(i));
         }
         Slice.Items.Slot slot = pack.Grid[i];
         if (slot.Block == Slice.Items.PlayerInventory.BlueprintBlock) return ("SKIFF", "", false);
@@ -376,21 +459,26 @@ public partial class Visor : CanvasLayer
         Slice.Items.PlayerInventory pack = Game.Pack;
         if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
-        string bar = pack.OnStructureBar ? $"{pack.LinkedName.ToUpperInvariant()} TOOLBAR · " : "";
+        string bar = pack.OnRemoteBar ? $"REMOTE · {pack.HandRemote?.Origin.ToUpperInvariant()} · " : "";
+        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE: step back into the core's area to use it";
         HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
             case HandKind.Tool:
+                string toolName = Game.Zone.Data.Rules.Tool.TierOf(pack.HandItem).Name.ToUpperInvariant();
                 return Game.Tool.Mode switch
                 {
-                    ToolMode.Shoot => "SURVIVAL TOOL · SHOOT",
-                    ToolMode.Deconstruct => "SURVIVAL TOOL · DECONSTRUCT",
-                    _ => "SURVIVAL TOOL · GATHER",
+                    ToolMode.Shoot => $"{toolName} · SHOOT",
+                    ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
+                    _ => $"{toolName} · GATHER",
                 };
+            case HandKind.Vehicle:
+                return "HOVER BIKE · click to set it down";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : "";
+                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
-                    : pack.OnStructureBar ? $"{pack.Linked.Count(id)} in {pack.LinkedName}"
+                    : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
                     : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
             case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
@@ -408,10 +496,11 @@ public partial class Visor : CanvasLayer
         string keys = hand switch
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
+            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
-        string bar = Game.Pack.Linked != null ? "[Y] TOOLBAR   " : "";
+        string bar = Game.Pack.OnRemoteBar ? "[Y] YOUR TOOLBAR   " : "[Y] REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
         return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
     }
@@ -423,21 +512,46 @@ public partial class Visor : CanvasLayer
         float s = layout.Scale;
         float cell = HudLayout.Cell * s, gap = HudLayout.CellGap * s;
         Slice.Items.PlayerInventory pack = Game.Pack;
-        bool structure = pack.OnStructureBar;
+        bool remote = pack.ShowRemote;
+        var items = Game.Zone.Data.Items;
         for (int i = 0; i < Slice.Items.PlayerInventory.ToolbarSlots; i++)
         {
-            bool on = pack.Selected == i;
+            bool on = pack.Selected == i && (pack.Bar == (remote ? BarSource.Remote : BarSource.Personal));
             var box = new Rect2(layout.Toolbar.Position + new Vector2(i * (cell + gap), 0), new Vector2(cell, cell));
             var (label, count, empty) = SlotText(i);
-            _hud.Block(box, new Color(on ? (structure ? C.Holo : C.Accent) : C.Glass, on ? 0.9f : 0.55f));
-            if (structure && !on) _hud.Frame(box, new Color(C.Holo, 0.6f), 1.5f * s);
-            _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, on ? C.Glass : empty ? C.Dim : C.Text, HorizontalAlignment.Center);
-            if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : C.Accent2, HorizontalAlignment.Right);
+            // A remote slot is tinted, carries a pip in its core's colour, and greys out of reach.
+            RemoteSlot rs = remote ? pack.Remote[i] : null;
+            bool out_ = rs != null && !pack.RemoteReady(i);
+            _hud.Block(box, new Color(on ? (remote ? C.Holo : C.Accent) : remote ? C.Holo.Darkened(0.55f) : C.Glass, on ? 0.9f : 0.55f));
+            if (remote && !on) _hud.Frame(box, new Color(C.Holo, 0.6f), 1.5f * s);
+            string iconId = remote ? rs?.ItemId : pack.Grid[i].Block is string blk && blk != PlayerInventory.BlueprintBlock ? blk : pack.Grid[i].Item;
+            Texture2D icon = iconId == null ? null : ItemIcons.Shared?.Get(iconId);
+            Color ink = on ? C.Glass : empty || out_ ? C.Dim : C.Text;
+            if (icon != null)
+            {
+                float side = cell - 14 * s;
+                _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cell - side) / 2, 2 * s), new Vector2(side, side)), false, new Color(1, 1, 1, out_ || empty ? 0.4f : 1f));
+                _hud.TextIn(UiTheme.Label, (int)(9 * s), new Rect2(box.Position + new Vector2(1, cell - 14 * s), new Vector2(cell - 2, 13 * s)), HudLayout.Fit(UiTheme.Label, (int)(9 * s), label, cell - 3), ink, HorizontalAlignment.Center);
+                if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, 2), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : out_ ? C.Dim : C.Accent2, HorizontalAlignment.Right);
+            }
+            else
+            {
+                _hud.TextIn(UiTheme.Label, (int)(11 * s), new Rect2(box.Position + new Vector2(2, 14 * s), new Vector2(cell - 4, 16 * s)), label, ink, HorizontalAlignment.Center);
+                if (count.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(12 * s), new Rect2(box.Position + new Vector2(2, cell - 18 * s), new Vector2(cell - 5, 16 * s)), count, on ? C.Glass : out_ ? C.Dim : C.Accent2, HorizontalAlignment.Right);
+            }
             _hud.Text(UiTheme.Mono, (int)(11 * s), box.Position + new Vector2(3, 1), $"{i + 1}", on ? C.Glass : C.Dim);
+            if (rs != null)
+            {
+                _hud.Block(new Rect2(box.Position + new Vector2(3 * s, cell - 10 * s), new Vector2(8 * s, 8 * s)), out_ ? new Color(YouSection.PipOf(pack.ColourOf(rs.Source)), 0.4f) : YouSection.PipOf(pack.ColourOf(rs.Source)));
+                if (out_) _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(box.Position + new Vector2(0, cell * 0.38f), new Vector2(cell, 12 * s)), "OUT", C.Danger, HorizontalAlignment.Center);
+            }
         }
+        // Which bar this is: a label and the tint, at the toolbar's left.
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
+        if (pack.Hand == HandKind.Block && pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem) DrawGallery(layout);
         // The shape picker: the family's shapes, the current one lit (the wheel steps through them).
         if (pack.Hand == HandKind.Block && pack.HandItem is string id && Game.Zone.Data.Items.TryGet(id, out var item) && item.Family == GalHack.Items.BlockFamily.Armour)
         {
@@ -445,12 +559,55 @@ public partial class Visor : CanvasLayer
             float w = layout.Shapes.Size.X / shapes.Count;
             for (int i = 0; i < shapes.Count; i++)
             {
-                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, 0), new Vector2(w - 2 * s, layout.Shapes.Size.Y));
+                var box = new Rect2(layout.Shapes.Position + new Vector2(i * w, layout.Shapes.Size.Y - 26 * s), new Vector2(w - 2 * s, 26 * s));
                 bool on = shapes[i] == Game.Builder.Shape;
                 _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.9f : 0.5f));
                 _hud.TextIn(UiTheme.Label, (int)(11 * s), box, HudLayout.Fit(UiTheme.Label, (int)(11 * s), shapes[i].Name.ToUpperInvariant(), box.Size.X - 4), on ? C.Glass : C.Dim, HorizontalAlignment.Center);
             }
         }
+    }
+
+    /// <summary>
+    /// The deco gallery, in the shape picker's place above the toolbar: the pieces on offer as small
+    /// 3D icons with their names, the chosen one lit (the wheel steps through them), and the theme
+    /// they are filtered to at the left (G changes it).
+    /// </summary>
+    void DrawGallery(HudLayout layout)
+    {
+        float s = layout.Scale;
+        var builder = Game.Builder;
+        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
+        var choices = builder.DecoChoices(small);
+        var cur = builder.CurrentDeco(small);
+        Rect2 r = layout.Shapes;
+        var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
+        string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
+        _hud.Block(chip, new Color(C.Holo, 0.85f));
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
+        if (cur == null)
+        {
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            return;
+        }
+        float cw = 46 * s, gap = 3 * s;
+        int fit = Math.Max(1, (int)((r.Size.X - 98 * s) / (cw + gap)));
+        int at = Math.Max(0, choices.FindIndex(p => p.Id == cur.Id));
+        int start = Math.Clamp(at - fit / 2, 0, Math.Max(0, choices.Count - fit));
+        for (int i = 0; i < fit && start + i < choices.Count; i++)
+        {
+            var p = choices[start + i];
+            var box = new Rect2(r.Position + new Vector2(98 * s + i * (cw + gap), 0), new Vector2(cw, r.Size.Y));
+            bool on = p.Id == cur.Id;
+            _hud.Block(box, new Color(on ? C.Accent2 : C.Glass, on ? 0.92f : 0.55f));
+            Texture2D icon = ItemIcons.Shared?.GetPiece(p.Id);
+            float side = r.Size.Y - 16 * s;
+            if (icon != null) _hud.DrawTextureRect(icon, new Rect2(box.Position + new Vector2((cw - side) / 2, 1 * s), new Vector2(side, side)), false);
+            _hud.TextIn(UiTheme.Label, (int)(8 * s), new Rect2(box.Position + new Vector2(1, r.Size.Y - 14 * s), new Vector2(cw - 2, 13 * s)),
+                HudLayout.Fit(UiTheme.Label, (int)(8 * s), p.Name.ToUpperInvariant(), cw - 3), on ? C.Glass : C.Text, HorizontalAlignment.Center);
+        }
+        string more = choices.Count > fit ? $"{at + 1}/{choices.Count}" : "";
+        if (more.Length > 0) _hud.TextIn(UiTheme.Mono, (int)(10 * s), new Rect2(r.End.X - 60 * s, r.Position.Y - 12 * s, 60 * s, 12 * s), more, C.Dim, HorizontalAlignment.Right);
     }
 
     // ---- Flying --------------------------------------------------------------------------------
@@ -459,6 +616,7 @@ public partial class Visor : CanvasLayer
     {
         float s = S;
         Vector2 size = _hud.Size;
+        DrawMode(v);
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
@@ -468,9 +626,69 @@ public partial class Visor : CanvasLayer
         var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
             _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(0, band.End.Y + 8 * s, size.X, 26 * s), message, C.Warn, HorizontalAlignment.Center);
+    }
+
+    /// <summary>
+    /// While seated, always: the mode the core is in, as a lit plate with a picture of what it does.
+    /// It sits left of the flight line and shows on a base too, where there is no flight line.
+    /// </summary>
+    void DrawMode(Vessel v)
+    {
+        float s = S;
+        Vector2 size = _hud.Size;
+        CoreMode mode = v.Structure.Mode;
+        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
+        var box = new Rect2(size.X / 2 - 560 * s, 128 * s, 192 * s, 34 * s);
+        _hud.Block(box, new Color(C.Glass, 0.75f));
+        _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
+        _hud.Frame(box, new Color(tone, 0.8f), 1.5f * s);
+        Vector2 at = box.Position + new Vector2(30 * s, box.Size.Y / 2);
+        DrawModeGlyph(mode, at, tone, s);
+        _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(box.Position + new Vector2(54 * s, 0), new Vector2(box.Size.X - 58 * s, box.Size.Y)), ModeFit.Name(mode), tone, HorizontalAlignment.Left);
+    }
+
+    /// <summary>A little picture of the mode: a hull on hover lines, a craft climbing, an anchored block, a long hull under way.</summary>
+    void DrawModeGlyph(CoreMode mode, Vector2 at, Color tone, float s)
+    {
+        void Line(float x0, float y0, float x1, float y1) => _hud.DrawLine(at + new Vector2(x0, y0) * s, at + new Vector2(x1, y1) * s, tone, 2.2f * s);
+        switch (mode)
+        {
+            case CoreMode.Hover:
+                Line(-11, -6, 11, -6);
+                Line(-11, -6, -7, -1);
+                Line(11, -6, 7, -1);
+                Line(-7, -1, 7, -1);
+                Line(-10, 3, -4, 3);
+                Line(4, 3, 10, 3);
+                Line(-6, 8, 6, 8);
+                break;
+            case CoreMode.Vessel:
+                Line(0, -9, -9, 8);
+                Line(0, -9, 9, 8);
+                Line(-9, 8, 0, 3);
+                Line(9, 8, 0, 3);
+                break;
+            case CoreMode.Base:
+                Line(-8, -8, 8, -8);
+                Line(-8, -8, -8, 3);
+                Line(8, -8, 8, 3);
+                Line(-12, 3, 12, 3);
+                Line(-8, 3, -11, 9);
+                Line(0, 3, 0, 9);
+                Line(8, 3, 11, 9);
+                break;
+            default:
+                Line(-12, -4, 8, -4);
+                Line(-12, 4, 8, 4);
+                Line(8, -4, 13, 0);
+                Line(8, 4, 13, 0);
+                Line(-12, -4, -12, 4);
+                Line(-12, 0, -16, 0);
+                break;
+        }
     }
 
     void DrawTracers()

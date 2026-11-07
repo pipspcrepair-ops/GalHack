@@ -39,12 +39,14 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus, Holds = HoldsClearance,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs,
-            Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet),
+            Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet, Zone.Wildlife.Livable),
         };
         Zone.AddChild(Places);
+        Zone.Infra.WreckStood += Places.WreckStood;
+        Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
         Caves = new Caves
         {
-            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Deep = Places.Fauna,
+            Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
             Indoors = () => Places.PlaceAt(Survivor.WorldFeet) != null || Bunker.Inside(Survivor.WorldFeet, Zone),
         };
@@ -52,6 +54,7 @@ public partial class Game
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
         Tool.Places = Places;
+        Zone.Light.Places = () => Places.Standing;
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;

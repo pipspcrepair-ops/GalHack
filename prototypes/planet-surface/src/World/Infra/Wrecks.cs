@@ -91,7 +91,7 @@ public static class Wrecks
             if (r.Kind == RouteKind.Track) continue;
             if (r.Kind == RouteKind.Rail && r.Maglev) continue;
             // How often: highways out of cities jam; roads now and then; lines carry a train every few kilometres.
-            float every = r.Kind switch { RouteKind.Highway => 700f, RouteKind.Road => profile.Before == TechLevel.Low ? 2600f : 1500f, _ => 2400f };
+            float every = r.Kind switch { RouteKind.Highway => 320f, RouteKind.Road => profile.Before == TechLevel.Low ? 1200f : 600f, _ => 2400f };
             double next = every * (0.3 + 0.7 * rng.Float());
             double run = 0;
             for (int i = 0; i + 1 < r.Count; i++)

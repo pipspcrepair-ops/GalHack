@@ -294,11 +294,14 @@ public sealed class DecoForge
             if (rng.Chance(0.8f)) { m.Parts.Remove(p); Stain(s, p); }
             else Shrivel(p, 0.22f);
         }
+        // What a piece is made of stays in some form: a suitcase keeps its bag, a lamp its shade, a sofa its seat. Only the trim goes.
+        DecoPart main = m.Parts.Where(p => p.Is(PartFlags.Soft) && !p.Is(PartFlags.Perishable)).OrderByDescending(p => p.Volume).FirstOrDefault();
         foreach (DecoPart p in m.Parts.Where(p => p.Is(PartFlags.Soft) && !p.Is(PartFlags.Perishable)).ToList())
         {
             if (exposed)
             {
-                if (rng.Chance(0.65f)) { m.Parts.Remove(p); Stain(s, p); }
+                if (p == main) continue;
+                else if (rng.Chance(0.65f)) { m.Parts.Remove(p); Stain(s, p); }
                 else Shrivel(p, 0.5f);
             }
             else if (rng.Chance(0.2f)) p.M = Matrix4x4.CreateScale(0.94f, 0.82f, 0.94f) * DecoGeo.Move(0, -0.09f, 0) * p.M;
@@ -320,12 +323,12 @@ public sealed class DecoForge
         else Shatter(m, s, 0.4f);
     }
 
-    /// <summary>An outdoor vehicle gone to a hulk: tyres rotted off so it sits on its hubs, soft trim gone, most glass gone.</summary>
+    /// <summary>An outdoor vehicle gone to a hulk: tyres rotted off so it sits on its wheel rims, soft trim gone, most glass gone.</summary>
     static void Hulk(DecoModel m, Shape s)
     {
         if (m.Parts.Any(p => p.Is(PartFlags.Tyre)))
         {
-            FlatTyres(m, 0.55f);
+            FlatTyres(m, 0.39f); // down onto its rims, which stand 0.6 of a wheel's height
             m.Parts.RemoveAll(p => p.Is(PartFlags.Tyre));
         }
         foreach (DecoPart p in m.Parts.Where(p => p.Is(PartFlags.Soft)).ToList()) { m.Parts.Remove(p); Stain(s, p); }
