@@ -57,12 +57,18 @@ struct Road {
 	float pad;      // a place's pad over it: markings stop
 	float core;     // on a place's footprint: the road stops
 	float other;    // how far another road's deck edge is (junctions), m
+	float other_hw; // that road's half width
+	float other_id; // and which road it is
+	float id;       // which road this is
 };
 
 Road nearest_road(vec2 at, float y) {
 	Road r;
 	r.edge = 1e9;
 	r.other = 1e9;
+	r.other_hw = 0.0;
+	r.other_id = -1.0;
+	r.id = -1.0;
 	if (road_grid.w < 0.5) return r;
 	vec2 c = mod(at, planet_size);
 	ivec2 cell = ivec2(min(floor(c / road_grid.x), road_grid.yz - 1.0));
@@ -92,7 +98,7 @@ Road nearest_road(vec2 at, float y) {
 		// give way there, so where two stretches overlap they make one surface with one set of lines.
 		bool apart = id != best_id || abs(along - r.along) > 2.0 * t2.x + 6.0;
 		if (edge < r.edge) {
-			if (apart) r.other = min(r.other, r.edge);
+			if (apart && r.edge < r.other) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; }
 			vec4 t3 = texelFetch(road_segments, b + ivec2(3, 0), 0);
 			r.edge = edge;
 			r.across = d;
@@ -108,8 +114,11 @@ Road nearest_road(vec2 at, float y) {
 			r.pad = mix(t3.x, t3.y, u);
 			r.core = mix(t3.z, t3.w, u);
 			best_id = id;
-		} else if (apart) {
-			r.other = min(r.other, edge);
+			r.id = id;
+		} else if (apart && edge < r.other) {
+			r.other = edge;
+			r.other_hw = t2.x;
+			r.other_id = id;
 		}
 	}
 	return r;
@@ -160,14 +169,6 @@ float crazing(vec2 p, float size) {
 	return md * size;
 }
 
-// Noise stretched along the wind: long streaks lying the way it blows.
-float wind_streak(vec2 p) {
-	vec2 q = abs(road_wind.x) > 0.5 ? p : p.yx;
-	vec2 period = abs(road_wind.x) > 0.5 ? planet_size : planet_size.yx;
-	return pnoise(vec3(q.x * 0.02, 0.0, q.y * 0.25), period * vec2(0.02, 0.25)) * 0.75
-		+ pnoise(vec3(q.x * 0.06, 3.0, q.y * 0.6), period * vec2(0.06, 0.6)) * 0.25;
-}
-
 // The road over the land: its albedo and how much of it shows (x: deck, y: shoulder), and roughness.
 vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover, out float rough) {
 	float wear = r.wear;
@@ -178,7 +179,12 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	float wander = (pn2(p, 0.25) - 0.5) * (hard ? 0.25 + 0.6 * wear : 0.9)
 		+ (pn2(p, 1.0) - 0.5) * (hard ? 0.3 * wear : 0.45) * near
 		+ (pn2(p, 3.7) - 0.5) * (hard ? 0.18 * wear : 0.15) * near;
-	float edge = r.edge + wander;
+	// Where two roads meet, their decks join in one surface with curved kerb corners, a tighter curve for
+	// smaller roads (a smooth union of the two decks).
+	float kerb = clamp(max(r.half_width, r.other_hw) * 1.4, 3.0, 12.0);
+	float h_k = max(kerb - abs(r.edge - r.other), 0.0) / kerb;
+	float joined = min(r.edge, r.other) - h_k * h_k * kerb * 0.25;
+	float edge = joined + wander;
 	float soft = hard ? 0.05 + 0.2 * wear : 0.35 + (r.surface > 3.5 ? 0.5 : 0.0);
 	float deck = 1.0 - smoothstep(-soft - fw * 0.5, soft + fw * 0.5, edge);
 	// The shoulder: a strip of grit and dust past the deck, fading into the land.
@@ -306,7 +312,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	}
 	// Markings: painted lines on laid roads, worn away in flakes, and not where it meets another road or a place.
 	if (hard && r.style < 1.5 && r.half_width >= 3.5) {
-		float keep = (1.0 - smoothstep(0.2, 0.6, r.pad)) * smoothstep(0.5, 3.0, r.other) * (1.0 - 0.7 * wear);
+		// The way with priority keeps its lines through a junction: the wider road, or the older of two alike.
+		bool gives_way = r.other_id == r.id || r.other_hw > r.half_width + 0.1 || abs(r.other_hw - r.half_width) <= 0.1 && r.other_id < r.id;
+		float keep = (1.0 - smoothstep(0.2, 0.6, r.pad)) * (gives_way ? smoothstep(0.3, 1.2, r.other) : 1.0) * (1.0 - 0.7 * wear);
 		keep *= smoothstep(0.25, 0.7, pn2(p, 0.8) + 0.45 - 0.35 * wear);
 		float paint = 0.0;
 		float dash = band(fract(r.along / 9.0) * 9.0 - 1.5, 1.5, fw);
@@ -323,15 +331,14 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// The land takes it back from the edges in: grass and soil creep in along both, sand blows in from the
 	// side the wind comes from in long tapering tongues, and the middle goes last. It lies over the markings.
 	vec2 n = vec2(-r.dir.y, r.dir.x);
-	float from_plus = r.half_width - r.side, from_minus = r.half_width + r.side;   // inward from each edge, m
+	float inward = -joined;   // metres in from the nearest edge of the joined surface
 	float creep = r.half_width * (0.06 + 0.3 * wear * wear) * (0.45 + 0.9 * pn2(p, 0.15)) + (pn2(p, 1.1) - 0.5) * 0.3 * near;
-	float streak = smoothstep(0.42, 0.8, wind_streak(p));
-	float tongue = 1.3 * r.half_width * wear * streak * streak;
-	float reach_plus = creep + tongue * max(0.0, -dot(n, road_wind));
-	float reach_minus = creep + tongue * max(0.0, dot(n, road_wind));
+	// Tongues lie along the road's own line, swelling and tapering as it goes: smooth at any angle to the map.
+	float streak = smoothstep(0.45, 0.85, along_noise(r.along * 0.035, 51.0 + r.half_width) * 0.75 + pn2(p, 0.08) * 0.25);
+	float windward = max(0.0, (r.side > 0.0 ? -1.0 : 1.0) * dot(n, road_wind));
+	float reach = creep + 1.3 * r.half_width * wear * streak * streak * windward;
 	float ruffle = (pn2(p, 2.7) - 0.5) * 0.12 * near;
-	float over = max(1.0 - smoothstep(reach_plus - 0.2 - fw, reach_plus + fw, from_plus + ruffle),
-		1.0 - smoothstep(reach_minus - 0.2 - fw, reach_minus + fw, from_minus + ruffle));
+	float over = 1.0 - smoothstep(reach - 0.25 - fw, reach + fw, inward + ruffle);
 	over *= 0.92;
 	c = mix(c, land, over);
 	cover = deck * (1.0 - smoothstep(0.5, 1.0, r.core));
