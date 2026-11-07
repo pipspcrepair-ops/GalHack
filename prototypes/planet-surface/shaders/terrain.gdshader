@@ -65,6 +65,7 @@ Road nearest_road(vec2 at, float y) {
 	vec2 list = texelFetch(road_cells, cell, 0).xy;
 	int first = int(list.x), count = min(int(list.y), 48);
 	float best_id = -1.0;
+	r.along = 0.0;
 	for (int k = 0; k < count; k++) {
 		int e = first + k;
 		int s = int(texelFetch(road_index, ivec2(e % 4096, e / 4096), 0).r);
@@ -82,12 +83,16 @@ Road nearest_road(vec2 at, float y) {
 		// Banks fall away past the deck: the further out, the further off it the ground may lie.
 		if (off > road_tolerance + max(edge, 0.0) * 1.2) continue;
 		float id = floor(t2.w / 8.0);
+		float along = mix(t1.z, t1.w, u);
+		// Another road, or the same one coming back past itself (a hairpin, a loop): its own markings
+		// give way there, so where two stretches overlap they make one surface with one set of lines.
+		bool apart = id != best_id || abs(along - r.along) > 2.0 * t2.x + 6.0;
 		if (edge < r.edge) {
-			if (id != best_id) r.other = min(r.other, r.edge);
+			if (apart) r.other = min(r.other, r.edge);
 			vec4 t3 = texelFetch(road_segments, b + ivec2(3, 0), 0);
 			r.edge = edge;
 			r.across = d;
-			r.along = mix(t1.z, t1.w, u);
+			r.along = along;
 			r.half_width = t2.x;
 			r.wear = t2.y;
 			r.surface = t2.z;
@@ -95,7 +100,7 @@ Road nearest_road(vec2 at, float y) {
 			r.pad = mix(t3.x, t3.y, u);
 			r.core = mix(t3.z, t3.w, u);
 			best_id = id;
-		} else if (id != best_id) {
+		} else if (apart) {
 			r.other = min(r.other, edge);
 		}
 	}
@@ -113,33 +118,17 @@ float pn2(vec2 p, float freq) {
 	return pnoise(vec3(p.x * freq, 0.0, p.y * freq), planet_size * freq);
 }
 
-// How far a point is from the nearest edge of an irregular block pattern `size` metres across: a
-// jittered grid's cells, each the ground nearest its own point (the crazing of old tarmac and concrete).
-vec2 cell_point(vec2 cell, vec2 period) {
-	vec2 w = mod(cell, period);
-	return vec2(hash3(vec3(w, 17.0)), hash3(vec3(w, 41.0))) * 0.8 + 0.1;
+// Smooth noise along a road (s in metres times a frequency), one stream per salt.
+float along_noise(float s, float salt) {
+	return pnoise(vec3(s, salt, 0.5), vec2(1048576.0));
 }
 
-float crack_edge(vec2 p, float size) {
-	vec2 q = p / size, i = floor(q), f = q - i, period = floor(planet_size / size);
-	vec2 mr = vec2(0.0), mg = vec2(0.0);
-	float md = 8.0;
-	for (int y = -1; y <= 1; y++)
-	for (int x = -1; x <= 1; x++) {
-		vec2 g = vec2(float(x), float(y));
-		vec2 rr = g + cell_point(i + g, period) - f;
-		float d = dot(rr, rr);
-		if (d < md) { md = d; mr = rr; mg = g; }
-	}
-	md = 8.0;
-	for (int y = -1; y <= 1; y++)
-	for (int x = -1; x <= 1; x++) {
-		vec2 g = mg + vec2(float(x), float(y));
-		vec2 rr = g + cell_point(i + g, period) - f;
-		vec2 dd = rr - mr;
-		if (dot(dd, dd) > 1e-5) md = min(md, dot(0.5 * (mr + rr), normalize(dd)));
-	}
-	return md * size;
+// How far a point is from a contour of noise, in metres: an irregular line that wanders and closes
+// on itself, never a grid (the network of a small patch of alligator cracking).
+float contour(vec2 p, float freq) {
+	float n = pn2(p, freq) - 0.5;
+	vec2 g = vec2(pn2(p + vec2(0.05, 0.0), freq) - 0.5 - n, pn2(p + vec2(0.0, 0.05), freq) - 0.5 - n) / 0.05;
+	return abs(n) / max(length(g), 0.05);
 }
 
 // The road over the land: its albedo and how much of it shows (x: deck, y: shoulder), and roughness.
@@ -150,7 +139,8 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	bool rail = r.style > 2.5 && r.style < 3.5;
 	// The edge wanders smoothly (a laid edge barely, a crumbling or trodden one more), never in steps.
 	float wander = (pn2(p, 0.25) - 0.5) * (hard ? 0.25 + 0.6 * wear : 0.9)
-		+ (pn2(p, 1.0) - 0.5) * (hard ? 0.25 * wear : 0.45) * near;
+		+ (pn2(p, 1.0) - 0.5) * (hard ? 0.3 * wear : 0.45) * near
+		+ (pn2(p, 3.7) - 0.5) * (hard ? 0.18 * wear : 0.15) * near;
 	float edge = r.edge + wander;
 	float soft = hard ? 0.05 + 0.2 * wear : 0.35 + (r.surface > 3.5 ? 0.5 : 0.0);
 	float deck = 1.0 - smoothstep(-soft - fw * 0.5, soft + fw * 0.5, edge);
@@ -192,15 +182,57 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// Cracks, with the land growing or blowing into them: grass on a green world, sand on a desert.
 	// Blocks a metre or two across where the surface has crazed, and a crack across the road every few
 	// metres; only up close, where they are more than a blur.
-	if (hard && fw < 0.3) {
-		float block = r.surface < 1.5 ? 2.6 : 1.4;
-		// Crazed only in patches, and each crack broken along its length: a few hairlines, not a net.
-		float crazed = smoothstep(0.6, 0.8, pn2(p, 0.12) + 0.15 * wear) * smoothstep(0.35, 0.55, pn2(p, 0.7));
-		float crack = crazed > 0.0 ? band(crack_edge(p, block), 0.004 + 0.008 * wear, fw) * crazed : 0.0;
-		float cut = fract(r.along / 6.1 + 0.08 * pn2(p, 1.0));
-		crack = max(crack, band((cut - 0.5) * 6.1, 0.004 + 0.01 * wear, fw) * step(0.6, hash3(vec3(floor(r.along / 6.1), 3.0, r.style))) * smoothstep(0.3, 0.5, pn2(p, 0.5)));
-		crack *= (0.35 + 0.65 * wear) * (1.0 - smoothstep(0.08, 0.3, fw));
-		c = mix(c, mix(c * 0.35, land, 0.1 + 0.4 * wear), crack);
+	if (hard && fw < 0.6) {
+		// Wear: a road's age shows in a few long cracks, repairs and holes, more of them the older it is,
+		// fewer on concrete. Each salt of noise is the road's own, so no two stretches crack alike.
+		float detail = 1.0 - smoothstep(0.1, 0.35, fw);   // hairlines only up close
+		float many = wear * (r.surface < 1.5 ? 0.6 : 1.0);
+		float hw = r.half_width;
+		float crack = 0.0;
+		float thin = 0.004 + 0.006 * wear;
+		// Long cracks running with the road, wandering across it, broken here and there.
+		for (int k = 0; k < 2; k++) {
+			float salt = float(k) * 31.0 + r.style * 7.0;
+			float off = hw * (0.12 + 0.7 * along_noise(r.along * 0.013, salt)) + (pn2(p, 0.45) - 0.5) * 0.7 + (pn2(p, 2.3) - 0.5) * 0.08;
+			float there = smoothstep(0.56 - 0.3 * many, 0.62 - 0.3 * many, along_noise(r.along * 0.021, salt + 11.0)) * smoothstep(0.32, 0.45, pn2(p, 0.55 + 0.2 * float(k)));
+			crack = max(crack, band(x - off, thin, fw) * there);
+		}
+		// Cracks across it, every so often, reaching part way over.
+		float span = 11.0;
+		float cell = floor(r.along / span);
+		float h = hash3(vec3(cell, 5.0, r.style + r.half_width));
+		float at = (cell + 0.2 + 0.6 * fract(h * 13.7)) * span + (pn2(p, 0.4) - 0.5) * 1.6 + (pn2(p, 2.1) - 0.5) * 0.1;
+		float reach = hw * (0.35 + 0.65 * fract(h * 7.3));
+		crack = max(crack, band(r.along - at, thin, fw) * step(h, 0.15 + 0.55 * many) * (1.0 - smoothstep(reach - 0.4, reach, x)));
+		// Alligator cracking, only in small patches that have broken up.
+		float broken = smoothstep(0.7, 0.76, pn2(p, 0.08) + 0.12 * many);
+		if (broken > 0.0) {
+			float net = min(contour(p, 1.1), contour(p + vec2(17.3, 5.1), 2.3));
+			crack = max(crack, band(net, thin * 0.8, fw) * broken);
+			c *= 1.0 - 0.08 * broken;
+		}
+		crack *= detail * (0.4 + 0.6 * wear);
+		// Dark hairlines with the land blown into them: sand on a desert, soil and grass on a green world.
+		c = mix(c, mix(c * 0.25, land * 0.6, 0.1 + 0.25 * wear), crack);
+		// Repairs: a strip of sealant along an old crack, and patches laid square across a lane.
+		float seal_off = hw * (0.2 + 0.6 * along_noise(r.along * 0.009, 71.0 + r.style)) + (pn2(p, 0.3) - 0.5) * 0.4;
+		float sealed = band(x - seal_off, 0.07, fw) * smoothstep(0.66, 0.7, along_noise(r.along * 0.017, 83.0 + r.style)) * step(1.5, r.surface);
+		float pcell = floor(r.along / 17.0);
+		float ph = hash3(vec3(pcell, 9.0, r.half_width));
+		float p0 = (pcell + 0.15 + 0.4 * fract(ph * 5.1)) * 17.0, p1 = p0 + 2.5 + 5.0 * fract(ph * 9.7);
+		float lane_lo = fract(ph * 3.3) < 0.5 ? 0.0 : hw * 0.5, lane_hi = lane_lo + hw * 0.5;
+		float patch = band(r.along - (p0 + p1) * 0.5, (p1 - p0) * 0.5, fw) * band(x - (lane_lo + lane_hi) * 0.5, (lane_hi - lane_lo) * 0.5, fw) * step(ph, 0.2 * many);
+		c = mix(c, c * 0.62, max(sealed * 0.8, patch * 0.7) * (1.0 - smoothstep(0.3, 0.8, fw)));
+		// Potholes, now and then on an old road: ragged, dark, with sand or water lying in them.
+		vec2 hole_cell = floor(p / 5.0);
+		vec3 hh = vec3(hash3(vec3(mod(hole_cell, floor(planet_size / 5.0)), 23.0)), hash3(vec3(mod(hole_cell, floor(planet_size / 5.0)), 29.0)), hash3(vec3(mod(hole_cell, floor(planet_size / 5.0)), 37.0)));
+		if (hh.x < 0.07 * many * many && x < hw - 0.6) {
+			vec2 centre = (hole_cell + 0.3 + 0.4 * hh.yz) * 5.0;
+			float radius = 0.2 + 0.3 * fract(hh.x * 91.0);
+			float dist = length(p - centre) + (pn2(p, 3.1) - 0.5) * 0.35;
+			float pit = 1.0 - smoothstep(radius - fw * 0.5, radius + 0.04 + fw * 0.5, dist);
+			c = mix(c, mix(c * 0.3, land * 0.45, 0.3), pit * (1.0 - smoothstep(0.3, 0.8, fw)));
+		}
 	}
 	// Markings: painted lines on laid roads, worn away in flakes, and not where it meets another road or a place.
 	if (hard && r.style < 1.5 && r.half_width >= 3.5) {
@@ -220,7 +252,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	}
 	// The weather takes it back in drifts: the land's own sand, soil or grass over it, most along its edges.
 	float drift = pn2(p, 0.06) * 0.65 + pn2(p, 0.3) * 0.35 + smoothstep(-2.5, 0.0, edge) * 0.25;
-	float over = smoothstep(0.6 - 0.1 * wear, 0.85 - 0.1 * wear, drift) * (0.15 + 0.3 * wear);
+	// Drifts lie in clean tongues with a wind-ruffled edge, not a haze over the road.
+	drift += (pn2(p, 1.3) - 0.5) * 0.06 * near;
+	float over = smoothstep(0.7 - 0.12 * wear, 0.74 - 0.12 * wear + fw * 0.02, drift) * (0.2 + 0.45 * wear);
 	c = mix(c, land, over);
 	cover = deck * (1.0 - smoothstep(0.5, 1.0, r.core));
 	rough = mix(r.surface < 2.5 ? 0.82 : 0.95, 0.93, over);
@@ -300,14 +334,18 @@ void fragment() {
 	// Roads, painted from their exact lines (on level ground facing up, not a dug wall).
 	float road_cover = 0.0;
 	float road_rough = 0.93;
-	if (road_grid.w > 0.5 && up > 0.45) {
+	if (road_grid.w > 0.5 && up > (far_ring ? 0.0 : 0.45)) {
 		Road r = nearest_road(wpos.xz, wpos.y);
 		if (r.edge < 4.0) {
 			float fw = length(fwidth(wpos.xz)) * 0.7;
 			vec4 road = paint_road(r, wpos.xz, soil, fw, near, road_cover, road_rough);
+			// Up close only level ground takes it (not the wall of a pit dug in it). A far grid is too
+			// coarse to hold a deck's level through a tight bend, so there the deck is painted whole
+			// and only its shoulders keep off steep ground: one clean surface, not a smear.
 			float flat_ = smoothstep(0.45, 0.7, up);
-			albedo = mix(albedo, road.rgb, road.a * flat_);
-			road_cover *= flat_;
+			float keep = far_ring ? max(road_cover, flat_) : flat_;
+			albedo = mix(albedo, road.rgb, road.a * keep);
+			road_cover *= keep;
 		}
 	}
 

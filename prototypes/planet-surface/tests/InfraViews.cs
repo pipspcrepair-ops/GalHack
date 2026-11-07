@@ -347,6 +347,29 @@ public static class InfraViews
             Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
         }
         else GD.Print("ROADS: no country road found");
+        // A junction out in the country: two roads (not railways) meeting, the nearest to the landing.
+        var grid = new System.Collections.Generic.Dictionary<(long, long), InfraRoute>();
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail))
+            for (int i = 0; i < r.Count; i++)
+                grid.TryAdd(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), r);
+        InfraRoute jr = null;
+        int ji = 0;
+        double joinAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 0; i + 1 < r.Count; i += 2)
+            {
+                if (r.Span[i] != RoadSpan.Ground) continue;
+                if (!grid.TryGetValue(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), out InfraRoute o) || o == r) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d < joinAway) { joinAway = d; jr = r; ji = i; }
+            }
+        if (jr != null)
+        {
+            GD.Print($"ROADS: junction of {jr.Kind} {jr.Id} at {jr.X[ji]:F0}, {jr.Z[ji]:F0}");
+            Add("junction-low", jr.X[ji] + 60, jr.Z[ji] + 45, jr.Y[ji] + 40f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-high", jr.X[ji] + 330, jr.Z[ji] + 250, jr.Y[ji] + 400f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+        }
+        else GD.Print("ROADS: no junction found");
         return shots;
     }
 
