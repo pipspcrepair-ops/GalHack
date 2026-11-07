@@ -25,6 +25,9 @@ public sealed class StormCell
     /// <summary>The funnel it has let down, or null.</summary>
     public Tornado Funnel { get; internal set; }
 
+    /// <summary>What its strength is heading for this step: 1 while the weather keeps it, 0 as it dies away.</summary>
+    internal float Target;
+
     /// <summary>How much of it lies over a point, 0 to 1: all of it in the core, nothing past its edge.</summary>
     public float Cover(Vector3 p)
     {
@@ -44,8 +47,11 @@ public sealed class CellRules
     public float RadiusMin { get; set; } = 420f;
     public float RadiusMax { get; set; } = 800f;
 
-    /// <summary>Cells form upwind out to this far and are gone past it, metres.</summary>
+    /// <summary>Cells form upwind out to this far, metres; a storm this near counts toward the weather's cells.</summary>
     public float Range { get; set; } = 2800f;
+
+    /// <summary>A storm that has passed stays in sight, drifting off, until this far away, metres: a curtain of rain on the horizon.</summary>
+    public float Keep { get; set; } = 9000f;
 
     /// <summary>A cell's speed as a share of the wind's.</summary>
     public float DriftShare { get; set; } = 0.7f;

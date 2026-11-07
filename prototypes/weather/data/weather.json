@@ -86,6 +86,7 @@
     "radiusMin": 420,
     "radiusMax": 800,
     "range": 2800,
+    "keep": 9000,
     "driftShare": 0.7,
     "growSeconds": 30,
     "spawnEvery": 12

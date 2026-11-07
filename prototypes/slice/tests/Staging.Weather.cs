@@ -297,8 +297,24 @@ public partial class Staging
         _game.Survivor.PlaceOutside(hill.ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         sky.ClearCells();
+        sky.HoldCells = true; // just the one storm put here, however far off: none forms over the camera meanwhile
         float ang = (float)Num("ang", 0) * Mathf.Pi / 180f;
         Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized().Rotated(Vector3.Up, ang);
+        if (_args.ContainsKey("sun"))
+        {
+            // The sun this high (--sun, the y of the way to it), in the evening or (--evening=0) the morning,
+            // and --facing=sun or away puts the storm before it or behind you.
+            float want = (float)Num("sun", 0.8);
+            bool evening = Num("evening", 1) != 0;
+            double best = 0.5;
+            for (double t = evening ? 0.5 : 0.2; t < (evening ? 0.8 : 0.5); t += 0.0005)
+                if (MathF.Abs(_game.Zone.Sky.SunAt(t).Y - want) < MathF.Abs(_game.Zone.Sky.SunAt(best).Y - want)) best = t;
+            _game.Zone.Sky.TimeOfDay = best;
+            foreach (int x in _drive.Wait(5)) yield return x;
+            Vector3 sun = _game.Zone.Sky.ToSun;
+            if (_args.TryGetValue("facing", out string facing) && new Vector2(sun.X, sun.Z).Length() > 0.01f)
+                toward = new Vector3(sun.X, 0f, sun.Z).Normalized() * (facing == "away" ? -1f : 1f);
+        }
         float off = (float)Num("off", 1500);
         float eyeUp = ridge ? 1.7f : Num("clear", 0) != 0 ? 2f : (float)Num("up", 16);
         if (ridge)
@@ -352,6 +368,23 @@ public partial class Staging
             }
             GD.Print($"staging: {(ridge ? "ridge rise" : "slope relief")} {best:F0} m, cell {off:F0} m out");
         }
+        if (Num("open", 0) != 0)
+        {
+            // The way with the clearest view out to the storm: the land along it stands lowest under the eye
+            // (within 40 degrees of the sun's way when that was asked for).
+            Vector3 from = hill + Vector3.Up * eyeUp, start = toward;
+            float clearest = float.MaxValue;
+            for (int k = -12; k < 12; k++)
+            {
+                float turn = k * (_args.ContainsKey("facing") ? 40f / 12f : 15f);
+                Vector3 dir = start.Rotated(Vector3.Up, Mathf.DegToRad(turn));
+                float block = -1f;
+                for (float d = 60f; d <= off; d += 60f)
+                    block = MathF.Max(block, (_game.Zone.GroundAt(from.X + dir.X * d, from.Z + dir.Z * d).Y - from.Y) / d);
+                if (block < clearest) { clearest = block; toward = dir; }
+            }
+            GD.Print($"staging: clearest way out rises {Mathf.RadToDeg(MathF.Atan(clearest)):F1} degrees at most");
+        }
         var cell = sky.AddCell(_game.Zone.GroundAt(hill.X + toward.X * off, hill.Z + toward.Z * off), 1f);
         Vector3 eye = hill + Vector3.Up * eyeUp;
         if (Num("mound", 0) != 0)
@@ -386,7 +419,7 @@ public partial class Staging
             foreach (int x in _drive.Wait(30)) yield return x;
             foreach (int x in Shot(_args["out"].Replace(".png", "-without.png"))) yield return x;
         }
-        GD.Print($"storm cell: radius {cell.Radius:F0} m, {sky.Cells.Count} in the sky, rain here {_game.Zone.Weather.RainHere:F2} of {sky.Current.Rain:F2}, under it {sky.RainAt(cell.Position):F2}");
+        GD.Print($"storm cell: radius {cell.Radius:F0} m, {new Vector2(cell.Position.X - eye.X, cell.Position.Z - eye.Z).Length():F0} m off, cloud base {_game.Zone.Weather.CloudBaseY - eye.Y:F0} m over the eye, sun up {_game.Zone.Sky.ToSun.Y:F2}, fog {_game.Zone.Sky.Environment.FogDensity:F5}, {sky.Cells.Count} in the sky, rain here {_game.Zone.Weather.RainHere:F2} of {sky.Current.Rain:F2}, under it {sky.RainAt(cell.Position):F2}");
     }
 
     /// <summary>A clear or clouded sky for the cloud types: --kind=Clear, Clouds, Rain.</summary>

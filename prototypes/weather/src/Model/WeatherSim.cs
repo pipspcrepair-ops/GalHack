@@ -347,12 +347,23 @@ public sealed class WeatherSim
     /// </summary>
     void StepCells(float dt, Vector3 observer)
     {
+        if (HoldCells) return;
         CellRules r = Data.Cells;
         Conditions c = Current;
         float storm = MathF.Max(c.Rain, MathF.Min(1f, c.LightningPerMinute / 4f));
         if (c.TornadoesPerMinute > 0.05f) storm = 1f;
         int want = storm < r.From ? 0 : 1 + (int)MathF.Round(storm * (r.MaxCells - 1));
         Vector3 drift = new Vector3(c.Wind.X, 0f, c.Wind.Y) * r.DriftShare;
+        // Only the cells about you count as the weather's: one that has drifted on keeps raining over
+        // there, in sight, until it is far off or the weather calms.
+        float near = r.Range * 1.25f;
+        int counted = 0, nearby = 0;
+        for (int i = 0; i < _cells.Count; i++)
+        {
+            StormCell cell = _cells[i];
+            bool close = Flat(cell.Position - observer).Length() <= near;
+            cell.Target = close ? (counted++ < want ? 1f : 0f) : (want > 0 ? 1f : 0f);
+        }
         for (int i = _cells.Count - 1; i >= 0; i--)
         {
             StormCell cell = _cells[i];
@@ -361,17 +372,20 @@ public sealed class WeatherSim
             {
                 cell.Position = Flat(cell.Funnel.Position);
                 cell.Strength = MathF.Min(1f, cell.Strength + dt / r.GrowSeconds);
+                if (Flat(cell.Position - observer).Length() <= near) nearby++;
                 continue;
             }
             cell.Position += drift * dt;
-            float target = i < want ? 1f : 0f;
+            float target = cell.Target;
             cell.Strength += Math.Clamp(target - cell.Strength, -dt / r.GrowSeconds, dt / r.GrowSeconds);
             bool spent = target == 0f && cell.Strength <= 0f;
-            if (spent || Flat(cell.Position - observer).Length() > r.Range) _cells.RemoveAt(i);
+            float away = Flat(cell.Position - observer).Length();
+            if (spent || away > r.Keep) _cells.RemoveAt(i);
+            else if (away <= near && target > 0f) nearby++;
         }
         _cellTimer -= dt;
-        if (_cells.Count >= want) return;
-        if (_cells.Count == 0 && storm >= 0.7f)
+        if (nearby >= want || _cells.Count >= r.MaxCells * 2) return;
+        if (nearby == 0 && storm >= 0.7f)
         {
             AddCell(observer + RandomOffset(r.RadiusMin * 0.3f), 1f);
             return;
@@ -391,6 +405,9 @@ public sealed class WeatherSim
         _cells.Add(cell);
         return cell;
     }
+
+    /// <summary>Tests and screenshots: the cells stay just as they were placed, none forming, drifting or fading.</summary>
+    public bool HoldCells;
 
     /// <summary>Empties the sky of cells at once (tests, screenshots).</summary>
     public void ClearCells() => _cells.Clear();

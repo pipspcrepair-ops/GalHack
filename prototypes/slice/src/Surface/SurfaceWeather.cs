@@ -83,6 +83,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// <summary>For tests: draw the towers without their rain shafts.</summary>
     public bool ShaftsHidden;
     readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
+    readonly List<StormCell> _nearest = new();
     const int MostTowers = 4;
     float _flicker = 4f;
     readonly RandomNumberGenerator _rng = new() { Seed = 90125 };
@@ -125,7 +126,12 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         int count = 0;
         Conditions c = Sim.Current;
-        foreach (StormCell cell in Sim.Cells)
+        // The nearest storms first: the sky draws only so many, and one passing over outranks one on the horizon.
+        _nearest.Clear();
+        _nearest.AddRange(Sim.Cells);
+        float Away(StormCell s) => (_planet.NearestCopy(_planet.Canonical(s.Position), camera) - camera).Length();
+        _nearest.Sort((a, b) => Away(a).CompareTo(Away(b)));
+        foreach (StormCell cell in _nearest)
         {
             if (count >= MostTowers) break;
             float strength = cell.Strength * c.Cellular;
@@ -135,7 +141,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _funnels[count] = cell.Funnel != null ? 1f : 0f;
             if (count >= _shafts.Count) _shafts.Add(AddShaft());
             var (node, draw) = _shafts[count];
-            float baseY = at.Y - 10f, height = CloudBaseY + 100f - baseY, reach = cell.Radius * 0.85f; // up into the cloud: the shader ends the veil at the sky's own base
+            float baseY = at.Y - 10f, height = CloudBaseY + 100f - baseY, reach = cell.Radius; // up into the cloud: the shader ends the veil at the sky's own base
             Vector2 wind2 = Sim.Current.Wind;
             Vector2 lean = wind2 * 6f; if (lean.Length() > height * 0.3f) lean = lean.Normalized() * height * 0.3f;
             float bound = reach * 1.9f + lean.Length();
@@ -158,9 +164,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
             draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
             draw.SetShaderParameter("to_sun", ToSun);
-            draw.SetShaderParameter("sun_glow", new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
+            // Toward the sun it glows with the air's own light and the sun's, warm when the sun is low.
             draw.SetShaderParameter("sun_amount", Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
-            draw.SetShaderParameter("tint", new Color(0.3f, 0.33f, 0.38f) * (0.12f + 0.88f * Zone.Sky.Daylight));
+            // Rain is lit as the air's haze is: the fog's own light, a shade greyer.
+            Color haze = Zone.Sky.Environment.FogLightColor;
+            float grey = (haze.R + haze.G + haze.B) / 3f;
+            draw.SetShaderParameter("tint", haze.Lerp(new Color(grey, grey, grey), 0.4f) * 0.9f);
+            draw.SetShaderParameter("fog_color", haze);
+            draw.SetShaderParameter("sun_glow", haze.Lerp(Zone.Sky.Sun.LightColor, 0.5f) * 1.4f);
+            draw.SetShaderParameter("fog_density", Zone.Sky.Environment.FogDensity);
             count++;
         }
         Zone.Sky.SetCells(_towers, count, _funnels);
@@ -178,7 +190,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         var node = new MeshInstance3D
         {
             Name = "RainShaft", MaterialOverride = draw, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
-            Mesh = new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, CapTop = false, CapBottom = false, RadialSegments = 24, Rings = 1 },
+            // Closed, so every view ray that crosses it meets exactly one far face (the shader draws only those).
+            Mesh = new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 1f, CapTop = true, CapBottom = true, RadialSegments = 24, Rings = 1 },
         };
         AddChild(node);
         return (node, draw);
