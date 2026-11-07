@@ -84,8 +84,14 @@ public sealed partial class Staging
     (Vector3 Way, Vector3 Wall) WallFrom(Vector3 target, float bearing)
     {
         Vector3 way = new(MathF.Cos(bearing), 0f, MathF.Sin(bearing));
-        var face = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(target + way * 200f + Vector3.Up * 2f, target + Vector3.Up * 2f, GalHack.Physics.Layers.World));
-        return (way, face.Count > 0 && ((Vector3)face["position"]).DistanceTo(target) < 60f ? (Vector3)face["position"] : target);
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 wall = target; // the outermost of a few heights, so a doorway or a hole doesn't count as the wall
+        foreach (float up in new[] { 1f, 3f, 5f, 7f })
+        {
+            var face = space.IntersectRay(PhysicsRayQueryParameters3D.Create(target + way * 200f + Vector3.Up * up, target + Vector3.Up * up, GalHack.Physics.Layers.World));
+            if (face.Count > 0 && ((Vector3)face["position"]).DistanceTo(target) < 60f && ((Vector3)face["position"] - wall).Dot(way) > 0f) wall = (Vector3)face["position"];
+        }
+        return (way, wall);
     }
 
     /// <summary>How many of ten points along a wall an eye can see.</summary>
