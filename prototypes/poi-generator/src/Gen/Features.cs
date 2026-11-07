@@ -151,6 +151,8 @@ public sealed class LayoutExtras
     public HashSet<Int3> Lasting = new();
     /// <summary>The colour of a plain building's doors (a plain timber leaf, not a steel door).</summary>
     public Rgb? PlainDoor;
+    /// <summary>Plain doors are steel leaves, as a works has, not timber.</summary>
+    public bool PlainDoorSteel;
     /// <summary>Where a plain lot meets the road: the cell its path or forecourt ends at, on the lot's front edge.</summary>
     public Int3 Gate;
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>

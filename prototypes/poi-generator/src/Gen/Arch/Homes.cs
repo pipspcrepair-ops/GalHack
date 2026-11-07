@@ -462,6 +462,21 @@ public static class Homes
         c.VaultModule = l.Loot;
     }
 
+    /// <summary>A real house set down on a larger place's plan, its rooms and stair its own, walked to from <paramref name="yard"/>.</summary>
+    public static void Farmhouse(Canvas c, Rng rng, TechLevel tech, Int3 at, Dir front, int yard)
+    {
+        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)front, at.X, at.Z) };
+        int module = c.EntranceModule;
+        Int3 cell = c.EntranceCell, gate = c.X.Gate;
+        Dir facing = c.EntranceFacing;
+        House(l, l.F, tech switch { TechLevel.Low => "cottage", TechLevel.High => "prefab", _ => "twostorey" });
+        c.Link(yard, c.EntranceModule);
+        c.EntranceModule = module;
+        c.EntranceCell = cell;
+        c.EntranceFacing = facing;
+        c.X.Gate = gate;
+    }
+
     static void Upper(Lot l, Hut h) => l.C.X.Levels.Add(new LevelInfo { Storey = 1, WalkY = h.Walk(1), Name = "upper" });
 
     // ---- houses ------------------------------------------------------------------------------

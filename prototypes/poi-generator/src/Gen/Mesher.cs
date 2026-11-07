@@ -84,6 +84,15 @@ public sealed class MeshOptions
         Doors = true, Collision = true, Detail = true, Rock = true, Mottle = 0.3f,
         RockMin = new Int3(min.X + 1, 0, min.Z + 1), RockMax = new Int3(min.X, 0, min.Z), RockBottom = min.Y, GroundShow = AllGround,
     };
+
+    /// <summary>
+    /// Runs of full cubes merge into big flat quads, of a colour rounded a little, with no per-corner
+    /// shading: a place seen from further off, and its collision. Small things are left out of the
+    /// drawing (never out of the collision), and what's left of the rest is a few boxes each.
+    /// </summary>
+    public bool Merged;
+    /// <summary>Nothing drawn: collision only.</summary>
+    public bool Drawn = true;
 }
 
 /// <summary>
@@ -124,6 +133,7 @@ public static class Mesher
                         var p = new Int3(x, y, z);
                         if (ctx.IsRock(p)) ctx.Rock(p);
                     }
+        ctx.Flush();
         var list = new List<ChunkMesh>(chunks.Values);
         list.Sort((a, b) => (a.Chunk.Y, a.Chunk.Z, a.Chunk.X).CompareTo((b.Chunk.Y, b.Chunk.Z, b.Chunk.X)));
         return list;
@@ -151,6 +161,60 @@ public static class Mesher
     }
 
     static int FloorDiv(int a, int b) => a >= 0 ? a / b : (a - b + 1) / b;
+
+    /// <summary>
+    /// A whole place as one small mesh for the far distance: cells of <paramref name="step"/> blocks a side,
+    /// solid where enough stands in them, their mean colour, merged flat. It keeps the silhouette and the
+    /// colours of the walls and little else. In the grid's own units.
+    /// </summary>
+    public static ChunkMesh Coarse(BlockGrid g, CellMask occupied, int step = 4, int minimum = 7)
+    {
+        Int3 size = new((g.Size.X + step - 1) / step, (g.Size.Y + step - 1) / step, (g.Size.Z + step - 1) / step);
+        var count = new int[size.X * size.Y * size.Z];
+        var sum = new long[count.Length * 3];
+        foreach (var (c, b) in g.Blocks())
+        {
+            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
+            if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
+            Int3 l = c - g.Min;
+            int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
+            count[i] += weight;
+            sum[i * 3] += b.Color.R * weight;
+            sum[i * 3 + 1] += b.Color.G * weight;
+            sum[i * 3 + 2] += b.Color.B * weight;
+        }
+        var coarse = new BlockGrid(new Int3(0, 0, 0), size);
+        for (int y = 0, i = 0; y < size.Y; y++)
+            for (int z = 0; z < size.Z; z++)
+                for (int x = 0; x < size.X; x++, i++)
+                {
+                    int n = count[i];
+                    if (n < minimum * 2) continue;
+                    var color = new Rgb((byte)(sum[i * 3] / n), (byte)(sum[i * 3 + 1] / n), (byte)(sum[i * 3 + 2] / n));
+                    coarse.Set(new Int3(x, y, z), new Block(BlockType.Cube, Material.Concrete, color, Role.Wall));
+                }
+        var built = Build(coarse, occupied, new MeshOptions { ChunkSize = Math.Max(size.X, Math.Max(size.Y, size.Z)) + 1, Rock = false, Collision = false, Detail = false, Doors = false, Merged = true });
+        var all = new ChunkMesh();
+        foreach (ChunkMesh m in built)
+        {
+            all.Quads += m.Quads;
+            for (int k = 0; k < m.Surfaces.Length; k++)
+            {
+                MeshBuffer from = m.Surfaces[k], to = all.Surfaces[k];
+                int first = to.VertexCount;
+                for (int v = 0; v < from.VertexCount; v++)
+                {
+                    to.Positions.Add(from.Positions[v * 3] * step + g.Min.X);
+                    to.Positions.Add(from.Positions[v * 3 + 1] * step + g.Min.Y);
+                    to.Positions.Add(from.Positions[v * 3 + 2] * step + g.Min.Z);
+                }
+                to.Normals.AddRange(from.Normals);
+                to.Colors.AddRange(from.Colors);
+                foreach (int i in from.Indices) to.Indices.Add(first + i);
+            }
+        }
+        return all;
+    }
 
     sealed class Ctx
     {
@@ -243,13 +307,23 @@ public static class Mesher
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
             if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains) return;
-            if (BlockInfo.IsFullCube(b.Type)) { Cube(p, b); return; }
+            if (BlockInfo.IsFullCube(b.Type))
+            {
+                if (_o.Merged) Mark(p, b);
+                else Cube(p, b);
+                return;
+            }
             var chunk = Chunk(p);
-            var boxes = Shapes.For(b, p, _g);
-            foreach (var box in boxes) AddBox(chunk, p, box, b);
-            if (b.Type == BlockType.Ramp) Ramp(chunk, p, b, draw: true);
+            int boxes = !_o.Drawn ? 0 : _o.Merged ? BoxesWhenMerged(b.Type) : int.MaxValue;
+            if (boxes > 0)
+            {
+                var shape = Shapes.For(b, p, _g);
+                for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i], b);
+            }
+            // A stair is steps up close; from further off, a slope.
+            if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: _o.Drawn);
             else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
-            else if (b.Type == BlockType.Spike) Spike(chunk, p, b);
+            else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
 
             if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type))
             {
@@ -257,6 +331,145 @@ public static class Mesher
                 var (lo, hi) = Shapes.CollisionBox(b);
                 CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
             }
+        }
+
+        /// <summary>How many of a block's boxes are drawn from further off (the structural ones first in each shape); none for the small things.</summary>
+        static int BoxesWhenMerged(BlockType t) => t switch
+        {
+            BlockType.Pillar or BlockType.Pane or BlockType.Door or BlockType.SealedDoor or BlockType.Tank => 1,
+            BlockType.Rib or BlockType.Machine or BlockType.Pipe or BlockType.Barricade or BlockType.Statue or BlockType.Pump => 2,
+            BlockType.Rail or BlockType.Lattice => 4,
+            _ => 0,
+        };
+
+        // ---- Merged faces --------------------------------------------------------------------------
+
+        /// <summary>The faces of one chunk, by plane: a colour key per cell of each plane, then merged into rectangles.</summary>
+        sealed class Planes
+        {
+            public readonly Dictionary<int, int[]> Drawn = new(), Solid = new();
+        }
+
+        readonly Dictionary<Int3, Planes> _planes = new();
+
+        static int[] Plane(Dictionary<int, int[]> planes, int key, int side)
+        {
+            if (!planes.TryGetValue(key, out int[] m)) planes[key] = m = new int[side * side];
+            return m;
+        }
+
+        /// <summary>A colour rounded to 32 levels a channel, and its surface: what may merge. Never 0.</summary>
+        static int Key(Rgb c, Surface s) => 1 + (c.R >> 3 | (c.G >> 3) << 5 | (c.B >> 3) << 10 | (int)s << 15);
+
+        /// <summary>A full cube's open faces, as the plain mesher would pick them, into the planes.</summary>
+        void Mark(Int3 p, Block b)
+        {
+            int side = _o.ChunkSize;
+            Int3 ch = new(FloorDiv(p.X, side), FloorDiv(p.Y, side), FloorDiv(p.Z, side));
+            Int3 l = p - ch * side;
+            bool glass = BlockInfo.IsTransparent(b.Material);
+            bool glyph = b.Material == Material.Glyph;
+            Rgb body = glyph ? b.Color.Lerp(new Rgb(0x1a, 0x1b, 0x22), 0.88f) : b.Color;
+            int key = Key(body, glyph ? Surface.Matte : Shapes.SurfaceOf(b.Material));
+            Planes planes = null!;
+            for (int f = 0; f < 6; f++)
+            {
+                Int3 n = p + Dirs.All[f].Vec();
+                var nb = _g.Get(n);
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
+                    continue;
+                bool solid = _o.Collision && (!CollidesFull(n) || IsRock(n));
+                if (!_o.Drawn && !solid) continue;
+                planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
+                var (u, v, k) = Face2(f, l);
+                int plane = f * side + k;
+                if (_o.Drawn) Plane(planes.Drawn, plane, side)[v * side + u] = key;
+                if (solid) Plane(planes.Solid, plane, side)[v * side + u] = 1;
+            }
+        }
+
+        /// <summary>A cell in a face's plane: across the face, up it, and which plane.</summary>
+        static (int U, int V, int Plane) Face2(int f, Int3 l) => f switch
+        {
+            0 or 2 => (l.X, l.Y, l.Z),
+            1 or 3 => (l.Z, l.Y, l.X),
+            _ => (l.X, l.Z, l.Y),
+        };
+
+        /// <summary>Back from a plane's cell to the cell, and the size of a w by h rectangle on it along x, y and z.</summary>
+        static (Int3 Cell, V3 Size) Back(int f, int u, int v, int k, int w, int h) => f switch
+        {
+            0 or 2 => (new Int3(u, v, k), new V3(w, h, 1)),
+            1 or 3 => (new Int3(k, v, u), new V3(1, h, w)),
+            _ => (new Int3(u, k, v), new V3(w, 1, h)),
+        };
+
+        /// <summary>Turns the marked faces into rectangles, the fewest a greedy sweep finds.</summary>
+        public void Flush()
+        {
+            if (!_o.Merged) return;
+            int side = _o.ChunkSize;
+            foreach (var (ch, planes) in _planes)
+            {
+                if (!_chunks.TryGetValue(ch, out ChunkMesh chunk)) _chunks[ch] = chunk = new ChunkMesh { Chunk = ch };
+                V3 origin = V3.Of(ch * side);
+                foreach (var (plane, mask) in planes.Drawn) Sweep(mask, plane, side, (f, cell, size, key) => DrawRect(chunk, f, origin + V3.Of(cell), size, key));
+                foreach (var (plane, mask) in planes.Solid) Sweep(mask, plane, side, (f, cell, size, _) => SolidRect(chunk, f, origin + V3.Of(cell), size));
+            }
+            _planes.Clear();
+        }
+
+        static void Sweep(int[] mask, int plane, int side, Action<int, Int3, V3, int> emit)
+        {
+            int f = plane / side, k = plane % side;
+            for (int v = 0; v < side; v++)
+                for (int u = 0; u < side; u++)
+                {
+                    int key = mask[v * side + u];
+                    if (key == 0) continue;
+                    int w = 1;
+                    while (u + w < side && mask[v * side + u + w] == key) w++;
+                    int h = 1;
+                    for (; v + h < side; h++)
+                    {
+                        bool same = true;
+                        for (int x = 0; x < w && same; x++) same = mask[(v + h) * side + u + x] == key;
+                        if (!same) break;
+                    }
+                    for (int y = 0; y < h; y++) Array.Clear(mask, (v + y) * side + u, w);
+                    var (cell, size) = Back(f, u, v, k, w, h);
+                    emit(f, cell, size, key);
+                }
+        }
+
+        void DrawRect(ChunkMesh chunk, int f, V3 at, V3 size, int key)
+        {
+            key--;
+            Surface surf = (Surface)(key >> 15 & 7);
+            var buf = chunk.Surfaces[(int)surf];
+            float shade = surf == Surface.Glow ? 1f : FaceShade[f] * 0.92f; // a little of the corners' shading, on the flat
+            float r = ((key & 31) * 8 + 4) / 255f * shade, g = ((key >> 5 & 31) * 8 + 4) / 255f * shade, b = ((key >> 10 & 31) * 8 + 4) / 255f * shade;
+            float alpha = surf == Surface.Glass ? 0.35f : 1f;
+            Corners(f, out V3 c0, out V3 c1, out V3 c2, out V3 c3);
+            V3 At(V3 c) => new(at.X + c.X * size.X, at.Y + c.Y * size.Y, at.Z + c.Z * size.Z);
+            int i0 = buf.VertexCount;
+            V3 n = Normals[f];
+            buf.Vertex(At(c0), n, r, g, b, alpha);
+            buf.Vertex(At(c1), n, r, g, b, alpha);
+            buf.Vertex(At(c2), n, r, g, b, alpha);
+            buf.Vertex(At(c3), n, r, g, b, alpha);
+            var idx = buf.Indices;
+            idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
+            chunk.Quads++;
+        }
+
+        void SolidRect(ChunkMesh chunk, int f, V3 at, V3 size)
+        {
+            Corners(f, out V3 c0, out V3 c1, out V3 c2, out V3 c3);
+            V3 At(V3 c) => new(at.X + c.X * size.X, at.Y + c.Y * size.Y, at.Z + c.Z * size.Z);
+            V3 a = At(c0), b = At(c1), c = At(c2), d = At(c3);
+            Tri(chunk, a, b, c);
+            Tri(chunk, a, c, d);
         }
 
         void Cube(Int3 p, Block b)
@@ -611,8 +824,37 @@ public static class Shapes
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
         BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
         BlockType.Pump => (new V3(0.2f, 0, 0.25f), new V3(0.8f, 1.7f, 0.75f)),
+        BlockType.Pipe when b.Variant == 1 => PipeBounds(b, 0.08f, 1.92f),
+        BlockType.Pipe => PipeBounds(b, 0.1f, 0.9f),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
+
+    static (V3 lo, V3 hi) PipeBounds(Block b, float lo, float hi) => b.Facing switch
+    {
+        Dir.Up or Dir.Down => (new V3(lo, 0, lo), new V3(hi, 1, hi)),
+        Dir.East or Dir.West => (new V3(0, lo, lo), new V3(1, hi, hi)),
+        _ => (new V3(lo, lo, 0), new V3(hi, hi, 1)),
+    };
+
+    /// <summary>A round pipe of eight flats along its axis, with a flange every few metres; a main (Variant 1) is 2 m across, drawn from its corner cell.</summary>
+    static void Pipe(List<ShapeBox> l, Block b, Int3 p, Rgb c)
+    {
+        float k = b.Variant == 1 ? 2f : 1f;
+        float a = 0.05f * k, d = 0.22f * k, e = 1f * k - a, f = 1f * k - d;
+        bool flange = (b.Facing is Dir.Up or Dir.Down ? p.Y : b.Facing is Dir.East or Dir.West ? p.X : p.Z) % (b.Variant == 1 ? 8 : 6) == 0;
+        void Add(float x0, float y0, float x1, float y1, float s0, float s1, Rgb col)
+        {
+            switch (b.Facing)
+            {
+                case Dir.Up or Dir.Down: l.Add(new ShapeBox(new V3(x0, s0, y0), new V3(x1, s1, y1), col, Surface.Metal)); break;
+                case Dir.East or Dir.West: l.Add(new ShapeBox(new V3(s0, y0, x0), new V3(s1, y1, x1), col, Surface.Metal)); break;
+                default: l.Add(new ShapeBox(new V3(x0, y0, s0), new V3(x1, y1, s1), col, Surface.Metal)); break;
+            }
+        }
+        Add(d, a, f, e, 0, 1, c);
+        Add(a, d, e, f, 0, 1, c);
+        if (flange) Add(0, 0, k, k, 0.35f, 0.65f, c.Scale(0.7f));
+    }
 
     public static List<ShapeBox> For(Block b, Int3 p, IBlockStructure g)
     {
@@ -920,6 +1162,9 @@ public static class Shapes
                 l.Add(Box(0.8f, 0.45f, 0.45f, 0.85f, 1.1f, 0.5f, new Rgb(0x20, 0x20, 0x20), Surface.Matte, b.Facing));
                 break;
             }
+            case BlockType.Pipe:
+                Pipe(l, b, p, c);
+                break;
             case BlockType.Ramp:
             case BlockType.Spike:
                 break;

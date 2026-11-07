@@ -133,12 +133,14 @@ public partial class CreatureView : Node3D
         {
             foreach (Piece piece in c.Rig.Layout.Pieces)
             {
+                Mesh mesh = MeshBuilder.For(piece);
                 var mi = new MeshInstance3D
                 {
-                    Mesh = MeshBuilder.For(piece),
+                    Mesh = mesh,
                     MaterialOverride = piece.Blur ? CreatureMaterials.Blur : material,
                     CastShadow = piece.Shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                    VisibilityRangeEnd = range,
+                    // The small pieces go first: a body keeps its shape from afar and draws a fraction of the meshes.
+                    VisibilityRangeEnd = MathF.Min(range, 36f + 160f * mesh.GetAabb().GetLongestAxisSize()),
                 };
                 AddChild(mi);
                 _parts.Add(mi);
@@ -174,6 +176,17 @@ public partial class CreatureView : Node3D
             if (humming) _hum.Play();
             else _hum.Stop();
         }
+    }
+
+    /// <summary>The same body for a creature carried into a new sim: its meshes stay, so nothing is built or freed. False if it isn't the same body.</summary>
+    public bool Rebind(Creature c)
+    {
+        if (_swarm != null || c.Rig.Layout.Pieces.Count != _parts.Count) return false;
+        Creature = c;
+        Sync();
+        ResetPhysicsInterpolation();
+        foreach (var p in _parts) p.ResetPhysicsInterpolation();
+        return true;
     }
 
     /// <summary>Copies the rig's pose onto the meshes.</summary>
@@ -239,9 +252,24 @@ public partial class WildlifeView : Node3D
 
     public int ViewCount => _views.Count;
 
-    public void Bind(WildSim sim, Node unused)
+    /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
+    public int MostNew = int.MaxValue;
+
+    /// <summary>Takes up a new sim. Creatures carried into it from the last (old to new) keep their bodies.</summary>
+    public void Bind(WildSim sim, Node unused, IReadOnlyDictionary<Creature, Creature> carried = null)
     {
-        Clear();
+        if (carried != null)
+        {
+            var kept = new List<(Creature, CreatureView)>();
+            foreach (var (c, v) in _views)
+            {
+                if (carried.TryGetValue(c, out Creature next) && v.Rebind(next)) kept.Add((next, v));
+                else v.QueueFree();
+            }
+            _views.Clear();
+            foreach (var (c, v) in kept) _views[c] = v;
+        }
+        else Clear();
         _sim = sim;
     }
 
@@ -256,11 +284,14 @@ public partial class WildlifeView : Node3D
     public void Sync(Vector3 camera)
     {
         if (_sim == null) return;
+        int built = 0;
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
+                if (built >= MostNew) continue;
+                built++;
                 view = new CreatureView();
                 AddChild(view);
                 view.Build(c);

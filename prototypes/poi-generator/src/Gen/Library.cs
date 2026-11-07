@@ -46,6 +46,8 @@ public sealed class PoiLibrary
     public Dictionary<string, ProgramDef> Programs = new();
     public Dictionary<string, SiteDef> Sites = new();
     public List<ThemeDef> Themes = new();
+    /// <summary>World types, themes, features and presences (data/world-layers.txt): a world rolls one of each kind it can and they combine.</summary>
+    public List<WorldLayer> Layers = new();
     /// <summary>Places in space and how a system's space is filled (data and siting only for now).</summary>
     public List<SpaceSiteDef> SpaceSites = new();
     public List<OrbitTheme> OrbitThemes = new();
@@ -71,6 +73,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("programs.txt", StringComparison.Ordinal)) lib.Programs = ArchParser.Programs(text, name);
             else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
+            else if (name.EndsWith("world-layers.txt", StringComparison.Ordinal)) lib.Layers = LayerParser.Parse(text, name);
             else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
         }
         lib.Check();

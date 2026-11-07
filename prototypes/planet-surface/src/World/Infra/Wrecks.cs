@@ -85,7 +85,7 @@ public static class Wrecks
                     if (TryOnRoute(main, i, kind, source, net, rng, profile.Before, out WreckSite jam, steep: 0.12f, town: true)) { sites.Add(jam); laid = true; }
         }
         // An exodus: every road to a port jammed, thicker the nearer the port.
-        if (profile.Exodus) ExodusJams(net, source, sites, rng);
+        if (profile.Exodus || net.RegionPlan?.Roll.Road == "jammed") ExodusJams(net, source, sites, rng);
         foreach (InfraRoute r in net.Routes)
         {
             if (r.Kind == RouteKind.Track) continue;

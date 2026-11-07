@@ -25,8 +25,12 @@ public static partial class StateTransforms
         // Each building takes one through the roof; then more, biggest first, until enough is down.
         var order = boxes.OrderByDescending(b => (b.Max.X - b.Min.X) * (b.Max.Z - b.Min.Z)).ToList();
         foreach (PlainBox b in order) RoofHole(inst, b, rng, fallen);
-        for (int k = 0; before - PoiFactory.CountStructure(g) < target && k < 24; k++)
+        // A big works takes more collapses than a house, each a bigger one.
+        int collapses = Math.Max(24, (int)MathF.Sqrt(before));
+        for (int k = 0; k < collapses; k++)
         {
+            // Counting a whole works is slow: a look every few falls is enough.
+            if (k % 8 == 0 && before - PoiFactory.CountStructure(g) >= target) break;
             PlainBox b = order[k % order.Count];
             if (walls && k % 2 == 0) Breach(inst, b, rng, fallen);
             else RoofHole(inst, b, rng, fallen);
@@ -69,15 +73,16 @@ public static partial class StateTransforms
         float cx = mx + toFront.X * out_ * halfFront + toSide.X * along * halfSide, cz = mz + toFront.Z * out_ * halfFront + toSide.Z * along * halfSide;
         // Upper storeys fall first; a ground floor keeps its sills.
         int low = b.Eave > 6 ? 5 : rng.Between(2, 3);
-        Cut(inst, b, cx, cz, rng.Float(4f, 7f), rng.Float(4f, 7f), low, fallen);
+        float big = MathF.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) * 0.14f;
+        Cut(inst, b, cx, cz, rng.Float(4f, 7f) + big, rng.Float(4f, 7f) + big, low, fallen);
     }
 
     /// <summary>Takes everything above a smooth bowl: <paramref name="low"/> at its centre, rising to clear the roof at its rim, ragged by a metre or two a column.</summary>
     static void Cut(PoiInstance inst, PlainBox b, float cx, float cz, float rx, float rz, int low, List<(Int3, Block)> fallen)
     {
         var g = inst.Blocks;
-        for (int z = b.Min.Z; z <= b.Max.Z; z++)
-            for (int x = b.Min.X; x <= b.Max.X; x++)
+        for (int z = Math.Max(b.Min.Z, (int)(cz - rz) - 1); z <= Math.Min(b.Max.Z, (int)(cz + rz) + 1); z++)
+            for (int x = Math.Max(b.Min.X, (int)(cx - rx) - 1); x <= Math.Min(b.Max.X, (int)(cx + rx) + 1); x++)
             {
                 float dx = (x + 0.5f - cx) / rx, dz = (z + 0.5f - cz) / rz, d = dx * dx + dz * dz;
                 if (d >= 1f) continue;
@@ -86,7 +91,7 @@ public static partial class StateTransforms
                 {
                     var p = new Int3(x, y, z);
                     Block s = g.Get(p);
-                    if (s.IsAir || inst.Extras.Lasting.Contains(p) || s.Role is Role.Loot or Role.Debris) continue;
+                    if (s.IsAir || inst.Extras.Lasting.Contains(p) || s.Role is Role.Loot or Role.Debris || inst.Protected[p]) continue;
                     g.Set(p, Block.Air);
                     fallen.Add((p, s));
                 }
@@ -198,7 +203,7 @@ public static partial class StateTransforms
                 Int3 c = p + d.Vec();
                 if (Firm(c) && !inst.Protected[c] && Hash.Cell(new Int3(c.X / 3, 0, c.Z / 3), 97) % 100 < 45 && rng.Chance(0.4f)) Put(inst, c, BlockType.Plant, Material.Plant, Weed(), Role.Debris);
             }
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.IsAir || b.Role is not (Role.Roof or Role.Wall) || !g.Get(p + Int3.Up).IsAir) continue;

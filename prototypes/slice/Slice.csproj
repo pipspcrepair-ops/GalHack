@@ -57,8 +57,10 @@
     <Compile Include="..\planet-surface\src\Sky\**\*.cs" />
     <Compile Include="..\planet-surface\src\World\**\*.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiSiting.Plan.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayerDeco.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiLayer.Tiers.cs" />
     <Compile Include="..\planet-surface\src\Infra\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
     <Compile Include="..\..\shared\Flora\**\*.cs" />

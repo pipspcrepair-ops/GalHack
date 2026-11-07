@@ -21,6 +21,15 @@ public partial class PoiLayer : Node3D
     {
         public PoiSite Site;
         public Node3D Node;
+        // By distance (PoiLayer.Tiers.cs): the far mesh, the merged cubes, and which cubes a structure has taken over.
+        public Task<ChunkMesh> LowMesh;
+        public MeshInstance3D Low;
+        public Node3D Mid;
+        public Task<List<ChunkMesh>> MidMeshes;
+        public int MidNext;
+        public bool Whole;
+        public readonly Dictionary<Int3, MeshInstance3D> Cells = new();
+        public readonly HashSet<Int3> Hidden = new();
     }
 
     readonly List<Place> _places = new();
@@ -43,6 +52,11 @@ public partial class PoiLayer : Node3D
         Clear();
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
+        if (Tiered)
+        {
+            BuildTiered(world);
+            return;
+        }
         foreach (PoiSite site in world.Pois)
         {
             var place = new Place { Site = site };
@@ -73,6 +87,7 @@ public partial class PoiLayer : Node3D
         _time += delta;
         Animate(_time);
         Vector3 camera = GetViewport().GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
+        if (Tiered) TickTiers(camera);
         foreach (Place p in _places)
         {
             if (p.Node == null) continue;
@@ -86,8 +101,7 @@ public partial class PoiLayer : Node3D
     Node3D BuildNode(PoiSite site, List<ChunkMesh> meshes)
     {
         PoiInstance inst = site.Instance;
-        float glow = inst.State switch { PoiState.Active => 2.4f, PoiState.Infested => 2.0f, _ => 1.6f };
-        var materials = new BlockMaterials(glow);
+        BlockMaterials materials = MaterialsFor(inst);
         var node = new Node3D { Name = site.Family.Id };
         var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlaceLayer, CollisionMask = 0 };
         node.AddChild(body);
@@ -263,6 +277,7 @@ public partial class PoiLayer : Node3D
         _places.Clear();
         _building.Clear();
         _animated.Clear();
+        _midJob = null;
         _world = null;
     }
 }

@@ -315,6 +315,8 @@ public partial class TerrainStreamer
     public Vector3? OutOfSolids(Vector3 feet, float height, float radius)
     {
         if (World == null) return null;
+        // Trunks and boulders stand on the ground: a room dug under one is no reason to be thrown out onto it.
+        if (feet.Y < World.GroundHeight(Mathx.WrapX(feet.X, World.Width), Mathx.Wrap(feet.Z, World.Height)) - 2.5f) return null;
         foreach (var (s, offset) in SolidsNear(feet, 8f))
         {
             for (int k = 0; k <= 2; k++)
