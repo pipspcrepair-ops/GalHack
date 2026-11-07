@@ -35,6 +35,8 @@ public static class Senses
     public const float NoticeOutside = 0.45f, NoticeInside = 1.1f;
     /// <summary>Awareness at which it pricks up and looks, though it hasn't placed you yet.</summary>
     public const float Curious = 0.35f;
+    /// <summary>How high above its feet a crouched target is sighted, m: low cover hides it.</summary>
+    public const float CrouchedHead = 0.95f;
 
     /// <summary>A surface creature: its sight and hearing, by its perception.</summary>
     public static void Surface(WildSim w, Creature c, ITarget t, float d, float dt)
@@ -116,7 +118,7 @@ public static class Senses
         float noise = w.NoiseOf(t);
         float ear = hearing * noise;
         if (d > sight && d > ear) return 0f; // nothing to work out: what keeps an unaware creature cheap
-        Vector3 head = t.Position + Vector3.Up * 1.4f;
+        Vector3 head = t.Position + Vector3.Up * (t.Crouched ? CrouchedHead : 1.4f); // crouched, there is less of you to see
         bool clear = false, looked = false;
         if (d <= sight)
         {

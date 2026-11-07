@@ -122,10 +122,14 @@ public sealed class WildSim
 
     readonly Dictionary<ITarget, (Vector3 at, float speed)> _moved = new();
 
-    /// <summary>How much noise a target is making: a share of its threat by how fast it is going.</summary>
+    /// <summary>Noise of a crouch-walker and of someone crouched still, against 1 for a walker and 0.45 for standing still.</summary>
+    public const float CrouchWalkNoise = 0.6f, CrouchStillNoise = 0.25f;
+
+    /// <summary>How much noise a target is making: a share of its threat by how fast it is going, and less crouched.</summary>
     public float NoiseOf(ITarget t)
     {
         float speed = _moved.TryGetValue(t, out var m) ? m.speed : 2f;
+        if (t.Crouched) return speed < 0.4f ? CrouchStillNoise : CrouchWalkNoise;
         return speed < 0.4f ? 0.45f : speed > 4.5f ? 1.3f : 1f;
     }
 

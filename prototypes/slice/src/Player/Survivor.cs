@@ -21,6 +21,9 @@ public sealed class Survivor
 {
     public const float Mass = 100f, Radius = 0.35f, Height = 1.8f, EyeHeight = 1.6f;
 
+    /// <summary>Crouched, the capsule and the eye drop: low enough for a 1.2 m gap.</summary>
+    public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
+
     /// <summary>The zone the castaway is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
     public SurfaceZone Zone { get; internal set; }
     public readonly Body Body;
@@ -44,6 +47,18 @@ public sealed class Survivor
     /// <summary>The hover bike being ridden, or null.</summary>
     public HoverBike OnBike { get; private set; }
 
+    /// <summary>Hold-to-crouch, set every tick by the game while on foot (Ctrl). Swimming, climbing and floating ignore it: there Ctrl goes down.</summary>
+    public bool WantCrouch;
+
+    /// <summary>Crouched: the capsule is short and the walk slow. It stays so until there is <see cref="CanStand">room to stand</see>, whatever is wanted.</summary>
+    public bool Crouched { get; private set; }
+
+    /// <summary>The capsule's height now, m.</summary>
+    public float CapsuleHeight => Crouched ? CrouchHeight : Height;
+
+    /// <summary>How high the eye is above the feet now: it eases between standing and crouched, so the view glides.</summary>
+    public float EyeAbove => _eye;
+
     /// <summary>The structure whose cabin world the survivor is in (inside or on its hull), or null.</summary>
     public Vessel Aboard => Body.Frame == null ? null : Zone.VesselOf(Body.Frame);
 
@@ -66,13 +81,25 @@ public sealed class Survivor
     Body _letGoOf;
     float _rejoinBlocked;
     bool _wasOutside;
+    float _eye = EyeHeight;
+    readonly CollisionShape3D _shape;
+    readonly CapsuleShape3D _capsule;
+    readonly PhysicsShapeQueryParameters3D _standing;
 
-    Survivor(SurfaceZone zone, Body body, CharacterBinding binding)
+    Survivor(SurfaceZone zone, Body body, CharacterBinding binding, CollisionShape3D shape)
     {
         Zone = zone;
         Body = body;
         Binding = binding;
         body.Controller = Legs;
+        _shape = shape;
+        _capsule = (CapsuleShape3D)shape.Shape;
+        // The room to stand: the standing capsule, a hair smaller and off the floor so the floor and walls it already touches don't count.
+        _standing = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new CapsuleShape3D { Radius = Radius - 0.02f, Height = Height - 0.03f },
+            Exclude = new Godot.Collections.Array<Rid> { binding.Character.GetRid() },
+        };
     }
 
     public static Survivor Spawn(SurfaceZone zone, N.Vector3 feet)
@@ -83,9 +110,10 @@ public sealed class Survivor
             Shape = new StuckShape(Height, Radius), Position = feet,
         });
         var c = new CharacterBody3D { Name = "Survivor", CollisionLayer = Layers.Player, CollisionMask = Layers.PlayerMask };
-        c.AddChild(new CollisionShape3D { Shape = new CapsuleShape3D { Radius = Radius, Height = Height }, Position = Vector3.Up * (Height / 2f) });
+        var shape = new CollisionShape3D { Shape = new CapsuleShape3D { Radius = Radius, Height = Height }, Position = Vector3.Up * (Height / 2f) };
+        c.AddChild(shape);
         zone.AddChild(c);
-        var survivor = new Survivor(zone, body, zone.Host.Bind(body, new CharacterBinding(c)));
+        var survivor = new Survivor(zone, body, zone.Host.Bind(body, new CharacterBinding(c)), shape);
         // Sprinting tops out just under the safe impact speed, so running into a rock never hurts;
         // only airborne speed (falls, flings, the jetpack) can, and the visor warns of that.
         survivor.Legs.SprintSpeed = MathF.Min(survivor.Legs.SprintSpeed, zone.Physics.Rules.Contacts.SafeSpeed - 0.1f);
@@ -100,6 +128,7 @@ public sealed class Survivor
     {
         PhysicsRules.RidingData rules = Zone.Physics.Rules.Riding;
         _rejoinBlocked -= dt;
+        UpdateCrouch(dt);
         if (Body.OnFloor) Zone.Weather.Bridge?.Landed(Body); // a fling's protection ends on touching down
 
         if (OnBike != null)
@@ -163,6 +192,47 @@ public sealed class Survivor
         Legs.Yaw = Yaw;
         Legs.Pitch = Pitch;
         ViewFrame = N.Quaternion.Normalize(N.Quaternion.Slerp(ViewFrame, Body.Rotation, 1f - MathF.Exp(-rules.ViewEase * dt)));
+    }
+
+    // ---- Crouching ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Holding crouch shortens the capsule at once and lowers the eye smoothly. Letting go stands up
+    /// only where the standing capsule fits; under a low ceiling it stays crouched until it does. In
+    /// a seat or on a bike, or swimming, climbing or floating (where Ctrl is down), it stands.
+    /// </summary>
+    void UpdateCrouch(float dt)
+    {
+        bool carried = OnBike != null || Seated != null;
+        bool want = !carried && WantCrouch && !Legs.Swimming && !Legs.Floating && Legs.Climb == ClimbMode.None;
+        if (carried) SetCrouched(false); // nothing collides while it is carried, so there is nothing to make room for
+        else if (want) SetCrouched(true);
+        else if (Crouched && CanStand()) SetCrouched(false);
+        Legs.Crouch = Crouched;
+        float eye = Crouched ? CrouchEyeHeight : EyeHeight;
+        _eye = carried ? eye : Mathf.Lerp(_eye, eye, 1f - MathF.Exp(-12f * dt));
+        // Seen from outside, the figure squats with it.
+        if (Node.GetNodeOrNull<Node3D>("Castaway") is Node3D figure)
+            figure.Scale = new Vector3(1f, Mathf.Lerp(CrouchHeight / Height, 1f, Mathf.Clamp((_eye - CrouchEyeHeight) / (EyeHeight - CrouchEyeHeight), 0f, 1f)), 1f);
+    }
+
+    void SetCrouched(bool crouched)
+    {
+        if (Crouched == crouched) return;
+        Crouched = crouched;
+        float height = crouched ? CrouchHeight : Height;
+        _capsule.Height = height;
+        _shape.Position = Vector3.Up * (height / 2f);
+        Body.Shape = new StuckShape(height, Radius);
+    }
+
+    /// <summary>Whether the standing capsule would fit where the survivor is: nothing solid overhead or alongside.</summary>
+    public bool CanStand()
+    {
+        if (!Crouched) return true;
+        _standing.CollisionMask = Node.CollisionMask;
+        _standing.Transform = Node.GlobalTransform * new Transform3D(Basis.Identity, Vector3.Up * (0.03f + (Height - 0.03f) / 2f));
+        return Node.GetWorld3D().DirectSpaceState.IntersectShape(_standing, 1).Count == 0;
     }
 
     // ---- Changing frames ----------------------------------------------------------------------
@@ -341,7 +411,7 @@ public sealed class Survivor
         if (OnBike != null)
             return new Transform3D(look, OnBike.Node.GetGlobalTransformInterpolated() * HoverBike.EyeAt);
         Basis frame = ViewFrame.ToBasis();
-        var local = new Transform3D(frame * look, feet + frame.Y * EyeHeight);
+        var local = new Transform3D(frame * look, feet + frame.Y * _eye);
         Vessel aboard = Aboard;
         return aboard == null ? local : aboard.DrawTransform * local;
     }
@@ -369,6 +439,6 @@ public sealed class Survivor
     {
         if (Seated is Vessel seat) return seat.Body.ToParent(seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot();
         N.Vector3 up = Body.Frame == null ? Body.Up : MathX.Rotate(Body.Frame.Rotation, Body.Up);
-        return (Body.WorldPosition + up * EyeHeight).ToGodot();
+        return (Body.WorldPosition + up * _eye).ToGodot();
     }
 }
