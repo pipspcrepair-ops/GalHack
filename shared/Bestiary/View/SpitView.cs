@@ -1,0 +1,52 @@
+using System;
+using Godot;
+
+namespace Wildlife;
+
+/// <summary>
+/// What's in the air from their throats: a few wet blobs on one multimesh, each gob a blob and
+/// the drops strung out behind it, in the colour of what it is.
+/// </summary>
+public partial class SpitView : Node3D
+{
+    const int MostGobs = 12, DropsEach = 5;
+    MultiMeshInstance3D _blobs;
+
+    public override void _Ready()
+    {
+        var mesh = new SphereMesh { Radius = 0.09f, Height = 0.18f, RadialSegments = 7, Rings = 4 };
+        mesh.Material = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.25f };
+        var mm = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors = true,
+            Mesh = mesh,
+            InstanceCount = MostGobs * DropsEach,
+            VisibleInstanceCount = 0,
+        };
+        _blobs = new MultiMeshInstance3D { Multimesh = mm, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        AddChild(_blobs);
+    }
+
+    /// <summary>Draws what's in the air now (positions in the sim's frame: this node sits at its origin).</summary>
+    public void Sync(WildSim sim)
+    {
+        if (_blobs == null) return;
+        MultiMesh mm = _blobs.Multimesh;
+        int n = 0;
+        foreach (Gob g in sim.Gobs)
+        {
+            if (n / DropsEach >= MostGobs) break;
+            for (int i = 0; i < DropsEach; i++)
+            {
+                float back = i * 0.045f;
+                float scale = 1f - i * 0.17f;
+                Vector3 at = g.Position - g.Velocity * back + Vector3.Up * 4.5f * back * back;
+                mm.SetInstanceTransform(n, new Transform3D(Basis.Identity.Scaled(Vector3.One * scale), at));
+                mm.SetInstanceColor(n, g.Colour);
+                n++;
+            }
+        }
+        if (mm.VisibleInstanceCount != n) mm.VisibleInstanceCount = n;
+    }
+}

@@ -68,6 +68,9 @@ public partial class DecoNode : Node3D
         return node;
     }
 
+    // A node with _Process is switched on when it joins the tree, whatever was said before: only what moves stays on.
+    public override void _Ready() => SetProcess(_anim != null);
+
     void AddSparks(Vector3 at)
     {
         _sparks = new CpuParticles3D

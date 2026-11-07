@@ -39,7 +39,7 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus, Holds = HoldsClearance,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
-            Fauna = new PlaceFauna.Deep(Zone.Data.Wildlife, Zone.Wildlife.Fauna, Zone.Planet, Zone.Wildlife.Livable),
+            Fauna = new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable),
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;

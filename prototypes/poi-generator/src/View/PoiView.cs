@@ -93,6 +93,7 @@ public partial class PoiView : Node3D
         view.BuildDoors();
         view.BuildLifts();
         if (opt.Lights) view.BuildLights();
+        if (opt.Lights) view.BuildLitFaces();
         if (opt.Figures) view.BuildFigures();
         view.BuildInteractables();
         view.DressFromDecoLibrary();
@@ -556,6 +557,12 @@ public partial class PoiView : Node3D
                     LightMode.Flicker => 3, LightMode.Emergency => 4, LightMode.Bloom or LightMode.Pulse => 1, LightMode.Beacon => 2, _ => 0,
                 };
                 l.LightEnergy = s.Spot.Energy * Mathf.Max(0f, Wave(mode, t));
+                if (s.Spot.Style is GalHack.Structures.LightSettings st)
+                {
+                    l.LightEnergy = s.Spot.Energy * st.Intensity(Time);
+                    uint c = st.ColorAt(Time);
+                    l.LightColor = new Color(((c >> 16) & 255) / 255f, ((c >> 8) & 255) / 255f, (c & 255) / 255f);
+                }
             }
         }
         if (Poi.State == PoiState.Active) glow *= 0.94f + 0.06f * Mathf.Sin(Time * 9.3f) - (Mathf.Sin(Time * 0.83f) > 0.95f ? 0.5f : 0f);

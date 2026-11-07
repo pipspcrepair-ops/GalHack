@@ -110,6 +110,9 @@
     // Nothing spawns this close to the pod.
     "safeRadius": 60,
     "alienness": 0.25,
+    // Server setting: block-breaking creatures (rams, burrowers, corroders, siege beasts) may damage
+    // players' bases. false keeps bases whole; anything else still takes their blows.
+    "breakBases": true,
     // The most wild creatures a patch holds on the most livable world.
     "mostPerPatch": 40,
     // How much life a world of each archetype carries: lush worlds busiest, lava all but dead.

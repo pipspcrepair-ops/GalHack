@@ -150,6 +150,7 @@ public partial class SurfaceZone : Node3D
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
         PlanetSurface.Poi.PoiLayer.PlaceLayer = GalHack.Physics.Layers.World;
+        PlanetSurface.Poi.PoiLayer.Tiered = true; // places are drawn by distance; a near one stands as a structure (Places/PoiPlaces)
         PlanetSurface.Infra.InfraLayer.OreTellsCollide = true; // ore rocks are solid; the survival tool breaks them down for a little ore
         Pois = new PlanetSurface.Poi.PoiLayer { Name = "Pois" };
         AddChild(Pois);

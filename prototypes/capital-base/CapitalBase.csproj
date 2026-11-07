@@ -23,6 +23,7 @@
     <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
     <Compile Include="..\planet-generator\src\Look\**\*.cs" />
     <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
+    <Compile Include="..\..\shared\Flora\**\*.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\saves\src\Persistence\**\*.cs" />
     <!-- The bridges that tie building and the handling model to shared physics (physics-sandbox's). -->
@@ -42,7 +43,10 @@
     <!-- The streamer's other half (solid flora colliders) and the rules it reads: compiled so the
          streamer compiles; with no flora-solids data loaded here, nothing is solid. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Solids.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Cover.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\PlanetFlora.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\CoverBuilder.cs" />
     <Compile Include="..\planet-surface\src\World\Layers.cs" />
     <Compile Include="..\planet-surface\src\Terrain\VoxelMeshing.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FarBuilder.cs" />
@@ -50,5 +54,6 @@
     <Compile Include="..\planet-surface\src\Sky\SkySystem.cs" />
     <Compile Include="..\planet-surface\src\Sky\StarSystem.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiSiting.Plan.cs" />
   </ItemGroup>
 </Project>

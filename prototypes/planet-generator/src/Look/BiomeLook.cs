@@ -5,7 +5,10 @@ namespace Planets.Look;
 /// <summary>Low-poly scatter kinds. Meshes are built in Surface.FloraMeshes.</summary>
 public enum Flora { Conifer, Broadleaf, JungleTree, Palm, Shrub, Rock, Cactus, Crystal, Mushroom, GiantMushroom, LavaRock, IceShard }
 
-/// <summary>One kind of scatter in a biome: how many per 1000 m², and its colour.</summary>
+/// <summary>
+/// One kind of scatter in a biome: how many per 1000 m², and its colour. For plants this says only what
+/// a biome wants: what each actually looks like is rolled per world by the flora module.
+/// </summary>
 public readonly record struct FloraRule(Flora Kind, float Density, Rgb Color);
 
 /// <summary>
@@ -68,34 +71,34 @@ public static class BiomeLook
         void Set(Biome b, params FloraRule[] rules) => t[(int)b] = rules;
         FloraRule R(Flora kind, float density, string hex) => new(kind, density, Rgb.Hex(hex));
 
-        Set(Biome.Grassland, R(Flora.Shrub, 1.4f, "4f8f2f"), R(Flora.Broadleaf, 0.35f, "3f8a34"), R(Flora.Rock, 0.25f, "8a8078"));
-        Set(Biome.Meadow, R(Flora.Shrub, 2.4f, "6f8a3c"), R(Flora.Shrub, 0.8f, "8c8f52"), R(Flora.Broadleaf, 0.25f, "3f8a34"));
+        Set(Biome.Grassland, R(Flora.Shrub, 2.4f, "4f8f2f"), R(Flora.Broadleaf, 0.6f, "3f8a34"), R(Flora.Rock, 0.25f, "8a8078"));
+        Set(Biome.Meadow, R(Flora.Shrub, 4f, "6f8a3c"), R(Flora.Shrub, 1.2f, "8c8f52"), R(Flora.Broadleaf, 0.4f, "3f8a34"));
         Set(Biome.Forest, R(Flora.Broadleaf, 9f, "2f7f2f"), R(Flora.Broadleaf, 2f, "5a9a2a"), R(Flora.Shrub, 1f, "3a7030"));
         Set(Biome.PineForest, R(Flora.Conifer, 10f, "1f5a40"), R(Flora.Rock, 0.4f, "7a7470"));
-        Set(Biome.Tundra, R(Flora.Rock, 1.2f, "8a8580"), R(Flora.Shrub, 0.6f, "7a8a50"));
+        Set(Biome.Tundra, R(Flora.Rock, 1.2f, "8a8580"), R(Flora.Shrub, 1.6f, "7a8a50"), R(Flora.Conifer, 0.4f, "2a5a48"));
         Set(Biome.Snow, R(Flora.Rock, 0.2f, "6a6670"));
         Set(Biome.Cliff, R(Flora.Rock, 1.5f, "7a6a60"));
-        Set(Biome.Beach, R(Flora.Rock, 0.15f, "a89a88"), R(Flora.Palm, 0.15f, "3a8a3a"));
+        Set(Biome.Beach, R(Flora.Rock, 0.15f, "a89a88"), R(Flora.Palm, 0.5f, "3a8a3a"));
         Set(Biome.Riverbank, R(Flora.Shrub, 4f, "3f9a3a"), R(Flora.Broadleaf, 1.6f, "2f8a3a"));
         Set(Biome.Jungle, R(Flora.JungleTree, 9f, "1f9a40"), R(Flora.Palm, 1.5f, "2aa040"), R(Flora.Shrub, 3f, "2a8a30"));
         Set(Biome.Rainforest, R(Flora.JungleTree, 7f, "146a34"), R(Flora.Broadleaf, 5f, "1f7a3a"));
-        Set(Biome.Swamp, R(Flora.JungleTree, 1.5f, "4a6a2a"), R(Flora.Shrub, 3f, "5a6a2a"));
+        Set(Biome.Swamp, R(Flora.JungleTree, 5f, "4a6a2a"), R(Flora.Shrub, 4f, "5a6a2a"));
         Set(Biome.CloudForest, R(Flora.Conifer, 4f, "2a6a5a"), R(Flora.Broadleaf, 4f, "3a8a6a"));
 
-        Set(Biome.Dunes, R(Flora.Rock, 0.04f, "a0583a"));
+        Set(Biome.Dunes, R(Flora.Rock, 0.04f, "a0583a"), R(Flora.Cactus, 0.1f, "5a8a3a"));
         Set(Biome.SaltFlat, R(Flora.Rock, 0.05f, "d8d0c0"));
-        Set(Biome.Scrub, R(Flora.Shrub, 1.4f, "8a8a3a"), R(Flora.Cactus, 0.7f, "5a8a3a"));
-        Set(Biome.RedRock, R(Flora.Rock, 0.8f, "a0442a"));
-        Set(Biome.Badlands, R(Flora.Rock, 0.6f, "b8603a"), R(Flora.Cactus, 0.12f, "5a8a3a"));
-        Set(Biome.MesaTop, R(Flora.Shrub, 0.4f, "9a8a4a"), R(Flora.Rock, 0.3f, "c0804a"));
+        Set(Biome.Scrub, R(Flora.Shrub, 2.6f, "8a8a3a"), R(Flora.Cactus, 1.4f, "5a8a3a"), R(Flora.Palm, 0.5f, "6a8a3a"));
+        Set(Biome.RedRock, R(Flora.Rock, 0.8f, "a0442a"), R(Flora.Cactus, 0.25f, "5a8a3a"), R(Flora.Shrub, 0.2f, "8a8a3a"));
+        Set(Biome.Badlands, R(Flora.Rock, 0.6f, "b8603a"), R(Flora.Cactus, 0.4f, "5a8a3a"), R(Flora.Shrub, 0.3f, "8a8a3a"));
+        Set(Biome.MesaTop, R(Flora.Shrub, 1f, "9a8a4a"), R(Flora.Rock, 0.3f, "c0804a"), R(Flora.Cactus, 0.3f, "5a8a3a"));
         Set(Biome.Oasis, R(Flora.Palm, 3f, "2f9a3a"), R(Flora.Shrub, 3f, "4a9a3a"));
 
-        Set(Biome.Glacier, R(Flora.IceShard, 0.3f, "bfe4fa"));
-        Set(Biome.Snowfield, R(Flora.IceShard, 0.2f, "cfeafa"), R(Flora.Rock, 0.15f, "5a5a6a"));
-        Set(Biome.IceTundra, R(Flora.Rock, 1f, "6a6a7a"), R(Flora.Shrub, 0.5f, "7a8a8a"));
+        Set(Biome.Glacier, R(Flora.IceShard, 0.3f, "bfe4fa"), R(Flora.Conifer, 0.3f, "3a5a58"));
+        Set(Biome.Snowfield, R(Flora.IceShard, 0.2f, "cfeafa"), R(Flora.Rock, 0.15f, "5a5a6a"), R(Flora.Conifer, 2.4f, "3a5a58"), R(Flora.Shrub, 0.6f, "7a8a8a"));
+        Set(Biome.IceTundra, R(Flora.Rock, 1f, "6a6a7a"), R(Flora.Shrub, 1.4f, "7a8a8a"), R(Flora.Conifer, 2.2f, "3a5a58"));
         Set(Biome.BlueIce, R(Flora.IceShard, 1.5f, "8fd0f5"));
-        Set(Biome.HotSpring, R(Flora.Rock, 0.3f, "c0a080"));
-        Set(Biome.Sinter, R(Flora.Rock, 0.4f, "d08040"));
+        Set(Biome.HotSpring, R(Flora.Rock, 0.3f, "c0a080"), R(Flora.Shrub, 2.4f, "4a8a5a"), R(Flora.Palm, 2f, "3a8a5a"), R(Flora.Mushroom, 1f, "c0a060"));
+        Set(Biome.Sinter, R(Flora.Rock, 0.4f, "d08040"), R(Flora.Shrub, 0.6f, "6a8a5a"));
 
         Set(Biome.Basalt, R(Flora.LavaRock, 1.2f, "2a2628"));
         Set(Biome.Ash, R(Flora.LavaRock, 0.5f, "4a4446"));
@@ -103,13 +106,13 @@ public static class BiomeLook
         Set(Biome.Obsidian, R(Flora.Crystal, 0.8f, "151020"));
         Set(Biome.Sulfur, R(Flora.Crystal, 0.6f, "f0d040"));
 
-        Set(Biome.CrystalPlain, R(Flora.Crystal, 2f, "a070f0"));
+        Set(Biome.CrystalPlain, R(Flora.Crystal, 2f, "a070f0"), R(Flora.Palm, 2.4f, "7a60a0"), R(Flora.Shrub, 1.6f, "7a60a0"));
         Set(Biome.CrystalSpires, R(Flora.Crystal, 6f, "e080ff"), R(Flora.Crystal, 1.5f, "60e0e0"));
-        Set(Biome.Chalk, R(Flora.Crystal, 0.4f, "f0a0e0"), R(Flora.Rock, 0.4f, "d0b0c8"));
-        Set(Biome.GlowMoss, R(Flora.Mushroom, 0.6f, "40e0b0"), R(Flora.Crystal, 0.4f, "60f0d0"));
+        Set(Biome.Chalk, R(Flora.Crystal, 0.4f, "f0a0e0"), R(Flora.Rock, 0.4f, "d0b0c8"), R(Flora.Palm, 1.2f, "a080a0"), R(Flora.Shrub, 1.2f, "a080a0"));
+        Set(Biome.GlowMoss, R(Flora.Mushroom, 1.2f, "40e0b0"), R(Flora.Crystal, 0.4f, "60f0d0"), R(Flora.JungleTree, 2.5f, "30a080"));
         Set(Biome.FungalForest, R(Flora.GiantMushroom, 5f, "e0602a"), R(Flora.GiantMushroom, 1.5f, "f0c040"), R(Flora.Mushroom, 3f, "c04a8a"));
-        Set(Biome.SporeMarsh, R(Flora.Mushroom, 4f, "a0a030"));
-        Set(Biome.Mycelium, R(Flora.Mushroom, 0.8f, "e08a5a"), R(Flora.GiantMushroom, 0.3f, "e0602a"));
+        Set(Biome.SporeMarsh, R(Flora.Mushroom, 4f, "a0a030"), R(Flora.JungleTree, 3f, "6a7a30"), R(Flora.Shrub, 2f, "7a8a30"));
+        Set(Biome.Mycelium, R(Flora.Mushroom, 1.6f, "e08a5a"), R(Flora.GiantMushroom, 1.2f, "e0602a"));
         return t;
     }
 }

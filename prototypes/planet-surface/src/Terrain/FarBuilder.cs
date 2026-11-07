@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using GalHack.Plants;
 using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
@@ -10,7 +11,21 @@ using Planets.Surface;
 namespace PlanetSurface.Terrain;
 
 /// <summary>A plant set down on purpose rather than rolled (a tree through a ruin): canonical metres, its foot's height, its size, its turn and its colour.</summary>
-public readonly record struct PlantedFlora(Flora Kind, double X, double Z, float Foot, float Scale, float Angle, Rgb Tint);
+public readonly record struct PlantedFlora(Flora Kind, double X, double Z, float Foot, float Scale, float Angle, Rgb Tint, Plant Species);
+
+/// <summary>
+/// One mesh's instances in a far chunk. Plant is the species' index in the world's herbarium (-1:
+/// a rock, drawn with its kind's fixed mesh) and Variant which of its near meshes (-1: its far mesh).
+/// </summary>
+public readonly record struct FloraBatch(Flora Kind, int Plant, int Variant, float[] Buffer, int Count)
+{
+    public void Deconstruct(out Flora kind, out float[] buffer, out int count)
+    {
+        kind = Kind;
+        buffer = Buffer;
+        count = Count;
+    }
+}
 
 /// <summary>One far-ring heightfield chunk: plain arrays built off the main thread.</summary>
 public sealed class FarJob
@@ -27,7 +42,7 @@ public sealed class FarJob
     public Vector3[] WaterVertices;
     public Color[] WaterColors;     // alpha 1 on the channel, 0 on the ring past it: the shader frays the edge there
     public int[] WaterIndices;
-    public readonly List<(Flora Kind, float[] Buffer, int Count)> Flora = new();
+    public readonly List<FloraBatch> Flora = new();
 
     /// <summary>The solid flora (trunks, boulders) of a level-0 chunk, for the colliders near the player. Null at coarser levels.</summary>
     public List<FloraSolid> Solids;
@@ -372,13 +387,14 @@ public static class FarBuilder
         if (solids != null) job.Solids = new List<FloraSolid>();
         var rng = new Rng(Hash.Of(pal.Map.Spec.Seed, job.Fx, job.Fz, 0x5CA7));
         var clump = new Fractal(Hash.Of(pal.Map.Spec.Seed, 0x636C756D), 70, 3);
-        var buffers = new Dictionary<Flora, List<float>>();
+        var buffers = new Dictionary<(Flora Kind, int Plant, int Variant), List<float>>();
+        PlanetFlora book = pal.Flora;
         double x0 = job.Fx * (double)Size, z0 = job.Fz * (double)Size;
         for (int gj = 0; gj < cellsZ; gj++)
         for (int gi = 0; gi < cellsX; gi++)
         {
             float lx = (gi + rng.NextFloat()) * ScatterCell, lz = (gj + rng.NextFloat()) * ScatterCell;
-            float pick = rng.NextFloat(), chance = rng.NextFloat(), size = rng.NextFloat(), turn = rng.NextFloat(), shade = rng.NextFloat();
+            float pick = rng.NextFloat(), chance = rng.NextFloat(), size = rng.NextFloat(), turn = rng.NextFloat(), shade = rng.NextFloat(), kin = rng.NextFloat();
             double x = x0 + lx, z = z0 + lz;
             long id = ScatterId(job.Fx, job.Fz, gi, gj);
             if (felled != null && felled.Contains(id)) continue; // felled: gone, at every level of detail
@@ -388,18 +404,18 @@ public static class FarBuilder
             {
                 if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
                 float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
-                Add(tree.Kind, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
-                if (solids != null && solids.TryMake(tree.Kind, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, out FloraSolid trunk))
+                Add(tree.Kind, tree.Species, job.Lod > 0 ? -1 : 0, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
+                if (solids != null && solids.TryMake(tree.Kind, tree.Species, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, out FloraSolid trunk))
                     job.Solids.Add(trunk);
                 continue;
             }
 
             Biome biome = pal.BiomeAt(x, z);
-            FloraRule[] rules = BiomeLook.FloraOf(biome);
+            FloraRule[] rules = book?.RulesOf(biome) ?? BiomeLook.FloraOf(biome);
             if (rules.Length == 0) continue;
             float total = 0f;
             foreach (FloraRule r in rules) total += r.Density;
-            float groves = Math.Clamp(1f + 1.4f * clump.Fbm(pal.Map.Model.Torus.At(x, z), 4), 0.2f, 1.8f);
+            float groves = Math.Clamp(1f + 2f * clump.Fbm(pal.Map.Model.Torus.At(x, z), 4), 0.12f, 1.8f); // thick stands and sunlit glades
             if (chance >= total * ScatterCell * ScatterCell / 1000f * groves) continue;
 
             FloraRule rule = rules[^1];
@@ -413,6 +429,10 @@ public static class FarBuilder
                 }
             }
             if (job.Lod > 0 && (!FloraMeshes.IsLarge(rule.Kind) || shade > 0.6f)) continue;
+
+            // What grows here: the world's own species of this kind, for this biome and region. Rocks stay rocks.
+            Plant plant = book?.Pick(rule.Kind, biome, x, z, kin);
+            if (book != null && plant == null && book.Rolled(rule.Kind)) continue;
 
             int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
             int s = grid.Sample(i, j);
@@ -430,17 +450,18 @@ public static class FarBuilder
             float h = source.SurfaceHeight(x, z);
             if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue; // a cave mouth or overhang: nothing to root in
 
-            float scale = Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
+            float scale = plant != null ? Mathx.Lerp(0.78f, 1.24f, size) : Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
             float angle = turn * Mathf.Tau;
-            float cos = MathF.Cos(angle) * scale, sin = MathF.Sin(angle) * scale;
-            Rgb tint = Tint(rule, shade, pal, x, z);
+            Rgb tint = plant != null && !plant.Mineral ? book.Tint(plant, shade, x, z) : Tint(rule, shade, pal, x, z);
+            // A wide crown keeps out of what's built, as its trunk does: a road's verge, a wall, a yard.
+            if (plant is { Large: true } && CrownOver(source, pal, x, z, plant.CrownRadius * scale * 0.75f)) continue;
             float glow = rule.Kind == Flora.Crystal && biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.GlowMoss ? 0.12f
                 : rule.Kind == Flora.Mushroom && biome is Biome.GlowMoss or Biome.SporeMarsh ? 0.3f : 0f;
 
             // On a slope nothing hangs over the low side: a stem is sunk by the drop across its foot, and a
             // rock lies along the ground (it would slide if it stood level), sunk by what's left of the slope.
             bool rock = rule.Kind is Flora.Rock or Flora.LavaRock;
-            float foot = FootRadius(rule.Kind) * scale;
+            float foot = MathF.Max(plant?.FootRadius ?? 0f, FootRadius(rule.Kind)) * scale;
             float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
             float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
             float rootY = h - FloraSolidRules.Sink - (slope - lean) * foot;
@@ -448,17 +469,19 @@ public static class FarBuilder
             if (lean > 0.01f && slope > 0f)
                 basis = new Basis(new Vector3(-gz, 0f, gx) / slope, -MathF.Atan(lean)) * basis;
 
-            Add(rule.Kind, lx, rootY, lz, basis, tint, glow);
+            int variant = plant == null ? 0 : job.Lod > 0 ? -1 : (int)(kin * 977f) % plant.Near.Length;
+            Add(rule.Kind, plant, variant, lx, rootY, lz, basis, tint, glow);
 
             // Trunks and boulders are solid: their colliders, in planet coordinates.
-            if (solids != null && solids.TryMake(rule.Kind, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
+            if (solids != null && solids.TryMake(rule.Kind, plant, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
                 job.Solids.Add(solid);
         }
-        foreach (var (kind, list) in buffers) job.Flora.Add((kind, list.ToArray(), list.Count / 16));
+        foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16));
 
-        void Add(Flora kind, float lx, float y, float lz, Basis basis, Rgb tint, float glow)
+        void Add(Flora kind, Plant plant, int variant, float lx, float y, float lz, Basis basis, Rgb tint, float glow)
         {
-            if (!buffers.TryGetValue(kind, out List<float> list)) buffers[kind] = list = new List<float>();
+            var key = (kind, plant?.Index ?? -1, plant == null ? 0 : variant);
+            if (!buffers.TryGetValue(key, out List<float> list)) buffers[key] = list = new List<float>();
             // MultiMesh layout: a 3x4 row-major transform, then four custom floats (tint and glow).
             list.Add(basis.X.X); list.Add(basis.Y.X); list.Add(basis.Z.X); list.Add(lx);
             list.Add(basis.X.Y); list.Add(basis.Y.Y); list.Add(basis.Z.Y); list.Add(y);
@@ -490,8 +513,16 @@ public static class FarBuilder
         }
     }
 
+    /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim.</summary>
+    static bool CrownOver(PlanetTerrainSource source, GroundPalette pal, double x, double z, float reach)
+    {
+        double w = pal.Map.WidthMeters, h = pal.Map.HeightMeters;
+        return source.StampWeight(Mathx.WrapX(x + reach, w), z) > 0f || source.StampWeight(Mathx.WrapX(x - reach, w), z) > 0f
+            || source.StampWeight(x, Mathx.Wrap(z + reach, h)) > 0f || source.StampWeight(x, Mathx.Wrap(z - reach, h)) > 0f;
+    }
+
     /// <summary>Whether the ground has been dug under a root or beside it.</summary>
-    static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
+    internal static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
 
     const float MaxRockLean = 0.8f;
 

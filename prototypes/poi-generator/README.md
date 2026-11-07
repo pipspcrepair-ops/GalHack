@@ -135,6 +135,28 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
   - Families say which levels they belong to (`tech low mid high` before any variant; none means any). `WorldPlacement.Place(..., profile:)` then places a family only in a state whose level it fits, weights the set by the trade and the old population (farms on agricultural worlds, mines on mining worlds, labs on research worlds, more towns where many lived), puts no old-world place on a world never inhabited (wrecks, alien and Precursor sites still appear), and picks the layout built for that level.
   - The old starport sets the spaceport ruins: none below a field, then a landing field, the port, and a grand yard with two pads (`port` on a spaceport's variants).
 
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, a player's door in a 2 m opening. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
+## Worlds, regions and the large places
+
+A world that was ever lived in is laid out in this order, all deterministic from its seed:
+
+1. **Layers** (`data/world-layers.txt`, `src/Gen/WorldLayers.cs`): a world type, a theme, features and presences are rolled and their tables added together. Nothing in the generators names a theme.
+2. **Region plan** (`src/Gen/Regions.cs`): towns first, each with what it needed (a sewage works downhill, water uphill), what it lived on, the plant that fed it, the depot its railway ended at and its farmland; then the port, camps, wrecks, and a share of places that break from the theme out in the wilds. Every place carries its reason, and most a link (road, rail, power). The planet's roads, railways, power lines and small ruins follow the plan; most of the land stays empty.
+3. **Places**: the three large plans (`src/Gen/Arch/SewageWorks.cs`, `FarmEstate.cs`, `BrutalComplex.cs`) each have their own layout logic, and are drawn with `Plot`, in the player's 2 m blocks: walls a block thick, half-block decks, large slopes, a player's door in a 2 m opening. A corridor is 8 m wide and 6 m high; a narrow passage is an exception. Each is built per tech level (variants' `tech`).
+4. **Occupancy** (`src/Gen/Occupancy.cs`): who's in a place is its own layer, last of all: the same layout empty, nested, camped in, held by a gang, lived in, or two of those at once by floors or across a front line. The theme's mix sets the odds.
+
+`BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
+
 ## Authoring a kit module as data
 
 A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives the three colours `Facade` adds outside: the course at the ground, the top of the walls and the frame of a door to the outside. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
@@ -215,6 +237,28 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 - **Dig anywhere.** Stamps are shape only. Faction places lay armoured foundations (`Material.Armour`), so tunnelling in is slow but a valid way in.
 - **Far rings.** `FarBuilder` samples `SurfaceHeight`, which already includes the stamps, so pads show in the distance. Underground carves and crater bowls below the pad don't show in the far heightfield. To show a crater there, the far ring's height sampling needs its bowl (a stamp target below the pad), not only the voxel carve mask.
 - **Screenshots and caps.** `PoiSiting.ForceFamily` seats one family near the landing site, for screenshots. `MaxSites` caps how many places are seated: the nearest half first, then an even spread to the far side.
+
+## Light colour and animation (PoiLights)
+
+Every light has a `LightSettings` (colour, second colour for fades, mode, speed, seed): modes
+`Steady, Pulse, Flicker, Strobe, Fade`. The record lives in `prototypes/building/src/Structures/LightSettings.cs`
+and is the same one the player's light blocks and glowing paint use. Call these from the generator or the rollout
+(all in `PoiGenerator.Gen.PoiLights`, `src/Gen/PoiLights.cs`):
+
+```csharp
+var red = LightSettings.Make(0xff3322, LightAnim.Pulse, 1f, seed);   // colour, mode, hertz, seed (0..127)
+PoiLights.Set(spot, red);                                            // style an existing LightSpot  <-- the call
+PoiLights.Add(poi, cell, red, energy: 1.4f, range: 8f);              // add a styled lamp
+PoiLights.SetMood(poi, LightMood.Dying);                             // every lamp: Warm, Dying, Hostile, Cold, Sealed
+PoiLights.PaintFace(poi, cell, Dir.North, LampShape.Border, style);  // glowing paint on a block face (shape Full/Strip/Panel/Border)
+PoiLights.PaintStrip(poi, from, to, Dir.Up, style);                  // a strip along a run of cells
+```
+
+`PoiLights.Set(LightSpot, LightSettings)` is the single call for a lamp. A painted face only glows (no real light).
+A kit file may carry `mood warm|dying|hostile|cold|sealed`; `Decay.Apply` then calls `ApplyKitMood`, and
+`PoiLights.MoodFor(poi)` gives the default by state (Active warm, Infested hostile, otherwise dying) for callers that want it.
+`PoiView` draws styled lamps (real light follows the animation) and `poi.LitFaces` (quads). Lamps with no style keep the
+old per-mode behaviour. planet-surface's `PoiLayer` does not read `Style` or `LitFaces` yet: the rollout should add that.
 
 ## Test it
 

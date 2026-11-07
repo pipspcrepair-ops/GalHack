@@ -433,6 +433,8 @@ public partial class Screenshot : Node
         if (storey == "deep") rooms = rooms.Where(md => md.Storey == rooms.Min(r => r.Storey)).ToList();
         else if (storey == "top") rooms = rooms.Where(md => md.Storey == rooms.Max(r => r.Storey)).ToList();
         else if (int.TryParse(storey, out int n) && rooms.Any(md => md.Storey == n)) rooms = rooms.Where(md => md.Storey == n).ToList();
+        // Or a room by what it's for: market-hall, ward, filter-hall, main-tunnel.
+        else if (poi.Layout.Modules.Any(md => md.Purpose == storey)) rooms = poi.Layout.Modules.Where(md => md.Purpose == storey).ToList();
         bool Roofed(PlacedModule md)
         {
             Int3 c = new((md.Min.X + md.Max.X) / 2, md.Min.Y + 1, (md.Min.Z + md.Max.Z) / 2);

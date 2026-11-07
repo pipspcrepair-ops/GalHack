@@ -77,6 +77,9 @@ public sealed class PowerLines
         WorldProfile profile = net.Profile;
         if (profile == null || !profile.Inhabited) return lines;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x90E7UL));
+        // A world's plan says who had power: nobody, only the port, or its towns, from the plants that fed them.
+        string style = net.RegionPlan?.Roll.Power;
+        if (style == "none") return lines;
         foreach (InfraRoute r in net.Routes)
         {
             // Along roads and highways (railways carry their own catenary or none); a frontier world
@@ -85,9 +88,15 @@ public sealed class PowerLines
             bool industrial(PoiSite p) => p != null && (p.Family.Tags.Contains("mine") || p.Family.Tags.Contains("industry"));
             if (profile.Before == TechLevel.Low && !industrial(r.From) && !industrial(r.To)) continue;
             if (r.Length < 120 || r.Kind == RouteKind.Highway && profile.Before != TechLevel.Low) continue;
+            if (style == "port_only" && !(r.From?.Primary == true || r.To?.Primary == true)) continue;
             lines.Lay(r, source, net, false, rng);
         }
-        if (profile.Before != TechLevel.Low) lines.Grid(net, source, rng);
+        if (net.RegionPlan != null)
+        {
+            foreach (PlannedLink l in net.RegionPlan.Links.Where(l => l.Kind == "power"))
+                if (net.RegionPlan.Places[l.A].Seated is PoiSite a && net.RegionPlan.Places[l.B].Seated is PoiSite b) lines.Line(a, b, net, source, rng);
+        }
+        else if (profile.Before != TechLevel.Low) lines.Grid(net, source, rng);
         return lines;
     }
 
@@ -137,6 +146,8 @@ public sealed class PowerLines
         {
             double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
             if (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _)) return false;
+            // A pylon's whole footing stands clear of every road and railway, shoulders and junctions too.
+            if (!net.OffRoad(x, z, 9)) return false;
             float h = ground(x, z);
             return MathF.Abs(ground(x + 8, z) - h) < 7f && MathF.Abs(ground(x, z + 8) - h) < 7f;
         }
@@ -239,7 +250,7 @@ public sealed class PowerLines
             double nx = -sz / len * side, nz = sx / len * side;
             double px = r.X[i] + nx * offset, pz = r.Z[i] + nz * offset;
             double cx = Mathx.WrapX(px, net.Width), cz = Mathx.Wrap(pz, net.Height);
-            if (ok && (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _))) ok = false;
+            if (ok && (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _) || !net.OffRoad(px, pz, 1.5))) ok = false;
             spots.Add(ok ? new PowerPole { X = px, Z = pz, Ground = ground(px, pz), SideX = (float)nx, SideZ = (float)nz, Pylon = pylons } : null);
         }
         int prev = -1;

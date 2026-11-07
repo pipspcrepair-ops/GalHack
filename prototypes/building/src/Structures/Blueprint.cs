@@ -14,6 +14,7 @@ public sealed class BlueprintBlock
     public string[] Paint; // six face paint names (+x -x +y -y +z -z), "-" for unpainted; null when unpainted
     public float? Hp;
     public BlockFlags Flags;
+    public LightSettings? Light;
     public int Line;
 }
 
@@ -142,6 +143,14 @@ public static class Blueprint
                     if (v.Length == 1 && char.IsAsciiDigit(v[0])) p = p with { Stencil = (byte)v[0] };
                     else error($"stencil must be one digit, not '{v}'");
                     break;
+                case "lamp":
+                    if (Enum.TryParse(v, true, out LampShape shape) && shape != LampShape.None && !int.TryParse(v, out _)) p = p with { Shape = shape };
+                    else error($"unknown lamp shape '{v}' (full strip panel border)");
+                    break;
+                case "light":
+                    if (LightSettings.TryParse(v, out LightSettings ls)) p = p with { Lamp = ls };
+                    else error($"bad light '{v}'");
+                    break;
                 case "grime":
                     if (byte.TryParse(v, out byte g) && g <= 3) p = p with { Grime = g };
                     else error("grime must be 0 to 3");
@@ -183,6 +192,11 @@ public static class Blueprint
                 if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float hp)) proto.Hp = hp;
                 else error($"bad hp '{v}'");
             }
+            else if (key == "light")
+            {
+                if (LightSettings.TryParse(v, out LightSettings ls)) proto.Light = ls;
+                else error($"bad light '{v}' (use rrggbb:mode:speed:seed, modes steady pulse flicker strobe fade)");
+            }
             else if (key == "paint")
             {
                 string[] names = v.Split(',');
@@ -207,7 +221,7 @@ public static class Blueprint
                     data.Blocks.Add(new BlueprintBlock
                     {
                         Pos = new Int3(x, y, z), Type = proto.Type, Shape = proto.Shape, Rot = proto.Rot,
-                        Paint = proto.Paint, Hp = proto.Hp, Flags = proto.Flags, Line = line,
+                        Paint = proto.Paint, Hp = proto.Hp, Flags = proto.Flags, Light = proto.Light, Line = line,
                     });
         return (int)count;
     }
@@ -294,6 +308,7 @@ public static class Blueprint
             if (b.Paint != null)
                 foreach (Dir d in Dirs.All) block.Paint[d] = slots[b.Paint[(int)d]];
             s.Set(b.Pos, block);
+            if (b.Light is LightSettings light) s.SetLight(b.Pos, light);
         }
         if (s.Core == null) s.Owner = null;
         // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
@@ -312,7 +327,7 @@ public static class Blueprint
         void Line(string text) => sb.Append(text).Append('\n');
 
         Line("# GalHack blueprint. One statement per line; '#' starts a comment.");
-        Line("# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off]");
+        Line("# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]");
         Line("# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.");
         Line($"schema {SchemaName}");
         Line($"version {CurrentVersion}");
@@ -333,7 +348,7 @@ public static class Blueprint
         // Runs merge on the written text, so blocks that print the same always merge the same way
         // (two damaged blocks rounding to the same hp merge on the first save, not only the second).
         Line("");
-        string[] tails = blocks.Select(x => BlockTail(s, x.block)).ToArray();
+        string[] tails = blocks.Select(x => BlockTail(s, x.block, x.pos)).ToArray();
         for (int i = 0; i < blocks.Count;)
         {
             Int3 start = blocks[i].pos;
@@ -355,11 +370,12 @@ public static class Blueprint
         if (p.Texture != FaceTexture.Panel) sb.Append($" texture={p.Texture.ToString().ToLowerInvariant()}");
         if (p.Stencil != 0) sb.Append($" stencil={(char)p.Stencil}");
         if (p.Grime != 0) sb.Append($" grime={p.Grime}");
+        if (p.IsLamp) sb.Append($" lamp={p.Shape.ToString().ToLowerInvariant()} light={p.Lamp.Value.ToText()}");
         return sb.ToString();
     }
 
     /// <summary>Everything on a block line after its coordinates.</summary>
-    static string BlockTail(Structure s, Block b)
+    static string BlockTail(Structure s, Block b, Int3 pos)
     {
         BlockType t = s.TypeOf(b);
         var sb = new StringBuilder(t.Id);
@@ -373,6 +389,7 @@ public static class Blueprint
         if (b.Hp < s.StatsOf(b).MaxHp - 0.05f) sb.Append(" hp=").Append(Num(Math.Round(b.Hp, 1)));
         if (b.Open) sb.Append(" open");
         if (b.Off) sb.Append(" off");
+        if (s.LightStyles.TryGetValue(pos, out LightSettings light)) sb.Append(" light=").Append(light.ToText());
         return sb.ToString();
     }
 

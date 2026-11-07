@@ -70,7 +70,7 @@ family water_works
   pitch Settling tanks gone green, the pump hall below still dripping.
   faction none
   roster raiders
-  site water_works
+  site water_works_block
   core none
   owner none
   rarity common
@@ -80,7 +80,7 @@ family water_works
   reveal 400
   ominous 0.3
   wrong 0.05
-  tags utility water industry
+  tags utility water industry grand
   states active 0 abandoned 6 infested 2 ruined 2
   variant Clearwater Works
     seed 9821
@@ -92,29 +92,39 @@ family water_works
 family sewage_works
   tier site
   siting flat
-  rise 10
+  rise 22
   name Sewage Works
-  pitch Foul basins and digesters, and the pumps that kept the town clean.
+  pitch Settling tanks in rows, a pump hall over a deep pit, digesters against the sky, and the pipe gallery under it all.
   faction none
   roster raiders
-  site sewage_works
+  site works_sewage_mid
   core none
   owner none
   rarity common
   biomes desert rock ash steppe ice fungal
   territory any
   spacing 14
-  reveal 300
+  reveal 700
   ominous 0.4
   wrong 0.05
-  tags utility industry
-  states active 0 abandoned 6 infested 3 ruined 1
+  tags utility industry grand
+  states active 0 abandoned 6 infested 2 ruined 3
   variant Outfall Works
     seed 9831
+    site works_sewage_mid
+    tech mid
   variant Low Lane Treatment
     seed 9832
-  variant Pumping Station Nine
+    site works_sewage_low
+    tech low
+  variant Reclamation Plant Nine
     seed 9833
+    site works_sewage_high
+    tech high
+  variant Eastside Water Treatment
+    seed 9834
+    site works_sewage_mid
+    tech mid
 
 family fusion_plant
   tier base
@@ -249,6 +259,7 @@ family grain_elevator
   ominous 0.2
   wrong 0.05
   tags farm industry
+  is open
   states active 0 abandoned 6 infested 1 ruined 3
   variant Prairie Pool Four
     seed 9853
@@ -445,6 +456,7 @@ family evacuation_camp
   ominous 0.6
   wrong 0
   tags evacuation fallen
+  is open
   states active 0 abandoned 7 infested 1 ruined 2
   variant Holding Camp Four
     seed 9884

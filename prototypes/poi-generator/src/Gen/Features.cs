@@ -109,6 +109,8 @@ public sealed class LightSpot
     public float Range = 8f;
     public int Module = -1;
     public int Storey;
+    /// <summary>Colour and animation set through PoiLights; null keeps the place's own behaviour for this lamp's Mode.</summary>
+    public GalHack.Structures.LightSettings? Style;
 }
 
 /// <summary>A sound hook the view (or the slice) plays: drips, hums, distant knocks, wind.</summary>
@@ -151,6 +153,8 @@ public sealed class LayoutExtras
     public HashSet<Int3> Lasting = new();
     /// <summary>The colour of a plain building's doors (a plain timber leaf, not a steel door).</summary>
     public Rgb? PlainDoor;
+    /// <summary>Plain doors are steel leaves, as a works has, not timber.</summary>
+    public bool PlainDoorSteel;
     /// <summary>Where a plain lot meets the road: the cell its path or forecourt ends at, on the lot's front edge.</summary>
     public Int3 Gate;
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>

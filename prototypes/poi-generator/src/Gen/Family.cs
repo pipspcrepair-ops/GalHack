@@ -110,6 +110,8 @@ public sealed class FamilyDef
     /// <summary>A space POI: placed in orbit zones, never on a planet's surface.</summary>
     public bool Space;
     /// <summary>One line for the catalogue and the discovery card.</summary>
+    /// <summary>What it is made of, in the words of the world layers' rules: <c>open</c> stands under open sky, so it needs the air people built under to be breathable.</summary>
+    public List<string> Is = new();
     public string Pitch = "";
     /// <summary>
     /// The ground it wants on a planet: peak, ridge, hillside, valley, flat, open or any (planet
@@ -219,6 +221,7 @@ public static class FamilyParser
                 case "ominous": F().Ominous = Num(p[1]); break;
                 case "wrong": F().Wrong = Num(p[1]); break;
                 case "tags": F().Tags = p.Skip(1).ToList(); break;
+                case "is": F().Is = p.Skip(1).ToList(); break;
                 case "landmark": F().Landmark = true; break;
                 case "space": F().Space = true; break;
                 case "reveal":

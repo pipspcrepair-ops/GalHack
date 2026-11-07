@@ -6,6 +6,7 @@ using GalHack.Items;
 using GalHack.Items.Production;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
+using GalHack.Structures.Presentation;
 using Godot;
 using ShipHandling.Handling;
 using Slice.Game;
@@ -238,7 +239,7 @@ public sealed class StructureSection : IMenuSection
         _modeSwitch = modeSwitch;
     }
 
-    public Vector2 PreferredSize => new(500, 780);
+    public Vector2 PreferredSize => new(500, 900);
 
     /// <summary>The switch, in its stripes: one button a mode, the one it is in lit, and what each mode still lacks. Returns the y below it.</summary>
     float ModeSwitch(Gui g, Vessel v, Vector2 at, float width)
@@ -275,6 +276,41 @@ public sealed class StructureSection : IMenuSection
         string warning = v.ModeWarning;
         string said = v.Unanchored ? $"{v.Name}: {ModeFit.Name(mode)}. ENGINES OFF: IT FALLS UNTIL IT LANDS, THEN ANCHORS" : warning ?? $"{v.Name}: {ModeFit.Name(mode)}";
         _game.Say(said, warning != null || v.Unanchored ? Tones.Caution : Tones.Text);
+    }
+
+    /// <summary>Colour, mode and speed for the structure's lights: the one picked with Shift+E, else all of them. Quiet: three short rows.</summary>
+    float LightStyle(Gui g, Vessel v, Vector2 at, float width)
+    {
+        bool any = v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).IsLight);
+        if (!any) return at.Y;
+        Int3? one = _game.LightEdit is Int3 c && v.Structure.TryGet(c, out Block lb) && v.Structure.TypeOf(lb).IsLight ? c : null;
+        LightSettings cur = one is Int3 cell ? v.Structure.LightAt(cell) : v.Structure.Blocks().Where(b => v.Structure.TypeOf(b.block).IsLight).Select(b => v.Structure.LightAt(b.pos)).First();
+        float y = at.Y;
+        if (g.Button("light:target", new Rect2(at.X, y, width, 24), one != null ? "STYLING ONE LIGHT (CLICK FOR ALL)" : "STYLING ALL LIGHTS (SHIFT+E ON A LIGHT FOR ONE)", C.Dim, size: 12) && one != null) _game.LightEdit = null;
+        y += 28;
+        uint[] pal = LightSettings.Palette;
+        float sw = (width - (pal.Length - 1) * 4) / pal.Length;
+        for (int i = 0; i < pal.Length; i++)
+            if (g.Button($"light:col:{i}", new Rect2(at.X + i * (sw + 4), y, sw, 26), "", ChunkMesher.Rgb(pal[i]), lit: cur.Color == pal[i], size: 12))
+                v.StyleLights(one, s => s.WithColor(pal[i]));
+        y += 32;
+        LightAnim[] modes = Enum.GetValues<LightAnim>();
+        float mw = (width - (modes.Length - 1) * 4) / modes.Length;
+        for (int i = 0; i < modes.Length; i++)
+        {
+            LightAnim m = modes[i];
+            if (g.Button($"light:mode:{i}", new Rect2(at.X + i * (mw + 4), y, mw, 28), m.ToString().ToUpperInvariant(), C.Accent2, lit: cur.Anim == m, size: 12))
+                v.StyleLights(one, s => (m == LightAnim.Fade && s.With(m).Color2 == LightSettings.Steady(s.Color).Color2 ? s.With(m).WithColor2(pal[(Array.IndexOf(pal, s.Color) + 5) % pal.Length]) : s.With(m)).WithSeed(one is Int3 p ? (p.X * 7 + p.Y * 13 + p.Z * 29) : 0));
+        }
+        y += 34;
+        for (int i = 0; i < LightSettings.Speeds.Length; i++)
+        {
+            float sp = LightSettings.Speeds[i];
+            float spw = (width - 8) / 3;
+            if (g.Button($"light:speed:{i}", new Rect2(at.X + i * (spw + 4), y, spw, 26), LightSettings.SpeedNames[i], C.Accent2, lit: MathF.Abs(cur.Speed - sp) < 0.01f, size: 12))
+                v.StyleLights(one, s => s.WithSpeed(sp));
+        }
+        return y + 36;
     }
 
     public void Build(Gui g, Rect2 area)
@@ -314,6 +350,7 @@ public sealed class StructureSection : IMenuSection
         }
         if (Toggle("core:power", "POWER", v.PowerOn)) v.PowerOn = !v.PowerOn;
         if (Toggle("core:lights", "LIGHTS", v.LightsOn)) v.LightsOn = !v.LightsOn;
+        y = LightStyle(g, v, new Vector2(o.X, y), area.Size.X);
         if (large && Toggle("core:home", "HOME", v.Home))
         {
             bool now = !v.Home;

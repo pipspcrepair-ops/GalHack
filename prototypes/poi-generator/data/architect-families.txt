@@ -19,7 +19,7 @@ family deep_bunker
   pitch A concrete hatch in the wild, and stairs going down further than they should.
   faction none
   roster oldworld
-  program bunker
+  site bunker_deep
   core none
   owner none
   rarity uncommon
@@ -29,7 +29,7 @@ family deep_bunker
   reveal 200
   ominous 0.95
   wrong 0.12
-  tags fallen military underground
+  tags fallen military underground grand
   states active 1 abandoned 5 infested 3 ruined 1
   variant Site Nine
     seed 8101
@@ -136,7 +136,7 @@ family hospital
   pitch Wards, a helipad on the roof, and a quarantine level sealed under the mortuary.
   faction none
   roster oldworld
-  program hospital
+  site hospital_block
   core none
   owner none
   rarity uncommon
@@ -145,7 +145,7 @@ family hospital
   spacing 12
   reveal 400
   ominous 0.85
-  tags medical fallen city
+  tags medical fallen city grand
   states active 0 abandoned 4 infested 4 ruined 2
   variant Saint Orla General
     seed 8501
@@ -594,37 +594,36 @@ family abandoned_factory
 family old_farm
   tier site
   siting flat
-  rise 10
+  rise 32
   name Old Farm
-  pitch Fields gone wild, empty pens, silos against the sky, and a cellar nobody opened.
+  pitch A great barn across the yard, silos against the sky, fields gone wild to the fence line.
   faction none
   roster raiders
-  site farm_mid
+  site estate_farm_mid
   core none
   owner none
   rarity common
   biomes steppe desert fungal rock
   territory any
   spacing 14
-  reveal 400
-  ominous 0.4
+  reveal 900
+  ominous 0.3
   wrong 0.05
-  tags farm fuel
-  states active 1 abandoned 6 infested 2 ruined 2
+  tags farm fuel grand
+  is open
+  states active 1 abandoned 6 infested 1 ruined 3
   variant Old Homestead
     seed 9501
-    site farm_low
+    site estate_farm_low
     tech low
-  variant Harlow Farmstead
+  variant Mixed Farm
     seed 9502
+    site estate_farm_mid
     tech mid
-  variant Greenline Agri-Complex
+  variant Agri-Station
     seed 9503
-    site agri_complex
+    site estate_farm_high
     tech high
-
-# ---- Faction working sites: most of what a faction holds is working ground, with defenders and
-# a core. Old-world versions turn up abandoned or ruined anywhere.
 
 family vharn_sam_site
   tier base
@@ -803,8 +802,7 @@ family exchange_market
   pitch Stalls, shops and a canteen, lit and busy. The guards keep the peace.
   faction exchange
   roster meridian
-  program market
-  style spaceport
+  site market_hall
   core owned
   owner faction
   rarity common
@@ -814,7 +812,8 @@ family exchange_market
   reveal 500
   ominous 0.3
   wrong 0
-  tags civilian working trade
+  tags civilian working trade grand
+  is open
   states active 8 abandoned 1 ruined 1
   variant Market
     seed 9661
@@ -873,6 +872,7 @@ family survivor_hamlet
   ominous 0.3
   wrong 0
   tags settlement
+  is open
   states active 8 abandoned 2 ruined 1
   variant Hamlet
     seed 9681
@@ -900,6 +900,7 @@ family survivor_town
   ominous 0.3
   wrong 0
   tags settlement
+  is open
   states active 8 abandoned 1 ruined 1
   variant Town
     seed 9691
@@ -907,3 +908,36 @@ family survivor_town
     seed 9692
   variant Town West
     seed 9693
+
+family works_complex
+  tier base
+  siting flat
+  rise 80
+  name Industrial Complex
+  pitch A walled precinct of concrete and pipework, its stack and tower seen from kilometres off, and nobody left to say what it made.
+  faction none
+  roster oldworld
+  site complex_mid
+  core none
+  owner none
+  rarity uncommon
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 40
+  reveal 2600
+  ominous 0.55
+  wrong 0.1
+  tags industry grand
+  states active 0 abandoned 6 infested 1 ruined 3
+  variant Consolidated Works Seven
+    seed 9901
+    site complex_mid
+    tech mid
+  variant Processing Complex Four
+    seed 9902
+    site complex_mid
+    tech mid
+  variant Tessel Heavy Materials
+    seed 9903
+    site complex_high
+    tech high

@@ -52,7 +52,7 @@ public partial class WildlifeTest
         Check(builds.Values.All(set => set.Count >= 6),
             $"swappable parts really vary: distinct builds per kind over 300 regions: {string.Join(", ", builds.Select(kv => $"{kv.Key} {kv.Value.Count}"))}");
 
-        string bad = DataFilesText("res://data/space_fauna.json").Replace("\"material\": \"Starsilver\", \"rarity\": \"Rare\", \"amount\": [1, 3]", "\"material\": \"Iron\", \"rarity\": \"Common\", \"amount\": [1, 3]");
+        string bad = DataFiles.Text("data", "space_fauna.json").Replace("\"material\": \"Starsilver\", \"rarity\": \"Rare\", \"amount\": [1, 3]", "\"material\": \"Iron\", \"rarity\": \"Common\", \"amount\": [1, 3]");
         bool refused = false;
         try { SpaceFaunaData.FromJson(bad); }
         catch (InvalidOperationException) { refused = true; }
@@ -61,8 +61,6 @@ public partial class WildlifeTest
 
     static string SpaceSignature(Species s) =>
         string.Join("|", SpaceFaunaData.Slots.Select(s.Part)) + $"|{s.Body.Segments}|{s.Colors.Pattern}";
-
-    static string DataFilesText(string path) => Godot.FileAccess.GetFileAsString(path);
 
     // ---- Drops --------------------------------------------------------------------------
 

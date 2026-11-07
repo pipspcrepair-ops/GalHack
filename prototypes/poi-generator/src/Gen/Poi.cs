@@ -68,6 +68,8 @@ public sealed class PoiInstance
     /// <summary>Out in the weather: a yard, or a room open to the sky (a collapse breach, a ruin that lost its roof).</summary>
     /// <summary>A lived-in place's temper (settlements roll it; faction civilian places are peaceful until provoked).</summary>
     public Mood Mood;
+    /// <summary>Who's in it, where the world's theme decided (null: whoever its state left there).</summary>
+    public OccupancyRoll? Occupancy;
     /// <summary>Not hostile by default: its guards keep order and turn on you only if you start shooting (the standing system).</summary>
     public bool Friendly;
     /// <summary>Townsfolk as data for the ambient routine to come; null where nobody lives.</summary>
@@ -121,6 +123,8 @@ public sealed class PoiInstance
     public List<StoryProp> Story = new();
     public List<Int3> Growths = new();
     public List<LightSpot> Lights = new();
+    /// <summary>Faces painted to glow (a strip, a panel, a border): see PoiLights.PaintFace.</summary>
+    public List<LitFace> LitFaces = new();
     public List<SoundHook> Sounds = new();
     /// <summary>Tags for the view and a later pass: smoke, vents, spawn and patrol points.</summary>
     public List<Marker> Markers = new();
@@ -148,6 +152,7 @@ public static class PoiFactory
                 ? Assembler.Build(lib, family, v, rarity, customSeed ?? v.Seed)
                 : Architect.Build(lib, family, v, rarity, customSeed ?? v.Seed, hints);
         if (customSeed != null) layout.Name = $"{v.Name} (seed {customSeed})";
+        RoofSlopes.Smooth(layout.Blocks);
         Facade.Apply(layout, lib);
         return layout;
     }
@@ -160,13 +165,13 @@ public static class PoiFactory
     /// vault or the core (it shouldn't: those paths are protected), the spawn is rolled again from a
     /// new sub-seed, up to three times.
     /// </summary>
-    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null)
+    public static PoiInstance Spawn(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world = null, OccupancyRoll? occupancy = null)
     {
-        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world);
+        PoiInstance inst = SpawnOnce(lib, layout, state, spawnSeed, world, occupancy);
         for (int attempt = 1; attempt <= 3 && !Reaches(inst); attempt++)
         {
             System.Threading.Interlocked.Increment(ref Respawns);
-            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world);
+            inst = SpawnOnce(lib, layout, state, Hash.Combine(spawnSeed, (ulong)attempt, 0x5EEDUL), world, occupancy);
         }
         return inst;
     }
@@ -258,7 +263,7 @@ public static class PoiFactory
         return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
     }
 
-    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world)
+    static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
     {
         var inst = new PoiInstance
         {
@@ -293,6 +298,9 @@ public static class PoiFactory
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
         inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
+        // Who's in it comes last, on the place as the years left it: the layout is whoever's.
+        if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        PlaceLights.Tune(inst);
         return inst;
     }
 
@@ -372,7 +380,7 @@ public static class Fixtures
             byte state = locks.TryGetValue(i, out var lk) ? (lk.Blast ? DoorState.Blast : DoorState.Locked) : vaultDoor ? (byte)1 : (byte)0;
             if (vaultDoor && state == 1 && layout.Family.Generator != Generator.Kit) state = DoorState.Locked;
             var color = lk != null ? (lk.Blast ? new Rgb(0x5a, 0x5c, 0x58) : ClearanceColor(lk.Clearance)) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
-            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
+            var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, layout.Extras.PlainDoorSteel ? Material.Steel : Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
             foreach (Int3 c in d.Cells) g.Set(c, b);
         }
         foreach (Int3 c in layout.ExitCells)

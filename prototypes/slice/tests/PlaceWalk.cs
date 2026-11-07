@@ -191,9 +191,10 @@ public sealed class PlaceWalk
             while (j + 1 < path.Count && path[j + 1].Y == b.Y && path[j].Y == a.Y && Same(path[j + 1] - path[j], b - a)
                    && p.Inst.Blocks.Get(path[j + 1]).Type is not (BlockType.Stair or BlockType.Ladder)
                    && !p.Doors.Any(d => d.Cells.Contains(path[j + 1]) || d.Cells.Contains(path[j + 1] + Int3.Up))) j++;
+            int run = j - i; // a large place's halls are long: the time allowed goes by the length of the run
             i = j;
             bool reached = true;
-            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + (j - i) * 0.5f, r => reached = r)) yield return x;
+            foreach (int x in Step(Feet(p, path[j]), 0.3f, 6f + run * 0.5f, r => reached = r)) yield return x;
             if (!reached)
             {
                 Stuck++;
