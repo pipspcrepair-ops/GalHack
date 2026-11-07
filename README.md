@@ -1,4 +1,4 @@
-![GalHack: the world ended, you didn't](docs/social-preview.png)
+![GalHack: post-collapse adventure across the fallen worlds of the Spiral Arm](docs/social-preview.png)
 
 # GalHack
 
