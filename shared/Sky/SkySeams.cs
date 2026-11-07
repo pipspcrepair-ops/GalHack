@@ -126,8 +126,11 @@ public static class SkySeams
             }
             counts.Add(n);
         }
+        // A probe on the horizon has the horizon itself level through its middle: a real line, not a seam.
+        bool onHorizon = MathF.Abs(probe.Direction.Normalized().Y) < 0.02f;
         int most = 0;
-        foreach (int n in counts) most = Math.Max(most, n);
+        for (int a = 0; a < counts.Count; a++)
+            if (!onHorizon || (a > 3 && a < 87)) most = Math.Max(most, counts[a]);
         var sorted = new List<int>(counts);
         sorted.Sort();
         float line = most / (sorted[sorted.Count / 2] + 3f);
@@ -187,11 +190,12 @@ public static class SkySeams
 
     /// <summary>Whether a look shows a seam: a line, a crowd of jumps or a swirl scoring high and big enough to see.</summary>
     public static bool Seam(Look look) =>
-        (look.Line > SeamScore && look.LinePixels >= SeamPixels) || (look.Pinch > SeamScore && look.PinchPixels >= SeamPixels) || look.Swirl > SwirlScore;
+        (look.Line > SeamScore && look.LinePixels >= SeamPixels) || (look.Pinch > SeamScore * (RealStars ? 3f : 1f) && look.PinchPixels >= SeamPixels) || look.Swirl > SwirlScore;
 
     /// <summary>
     /// A sky drawn from the real galaxy: its stars crowd along the band on purpose, so the even-density
-    /// check (which catches a lattice) doesn't apply to it. Lines and pinches still do.
+    /// check (which catches a lattice) doesn't apply to it. Lines still do, and a pinch must be far
+    /// stronger: real gas and clusters can stand dead centre, and these skies have no pole to pinch.
     /// </summary>
     public static bool RealStars;
 

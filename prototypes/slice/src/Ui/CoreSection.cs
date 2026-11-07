@@ -216,20 +216,65 @@ public sealed class CoreSection : IMenuSection
     }
 }
 
-/// <summary>A structure's settings and numbers: core mode, gravity, Home, auto-transmit, power, lights; mass, power, CPU, storage, and a vessel's four numbers.</summary>
+/// <summary>
+/// A structure's settings and numbers: core mode, gravity, Home, auto-transmit, power, lights; mass,
+/// power, CPU, storage, and a vessel's four numbers. The mode switch is here on the Tab menu's CORE
+/// tab and nowhere else, in its warning stripes: it works at any time, even in flight, and nothing
+/// refuses it. It warns about missing parts and leaves the choice to the player.
+/// </summary>
 public sealed class StructureSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
     readonly Func<Vessel> _vessel;
+    readonly bool _modeSwitch;
 
-    public StructureSection(Game.Game game, Func<Vessel> vessel)
+    /// <param name="modeSwitch">Show the mode switch: true on the Tab menu only (a screen in the world just says the mode).</param>
+    public StructureSection(Game.Game game, Func<Vessel> vessel, bool modeSwitch = true)
     {
         _game = game;
         _vessel = vessel;
+        _modeSwitch = modeSwitch;
     }
 
-    public Vector2 PreferredSize => new(500, 740);
+    public Vector2 PreferredSize => new(500, 780);
+
+    /// <summary>The switch, in its stripes: one button a mode, the one it is in lit, and what each mode still lacks. Returns the y below it.</summary>
+    float ModeSwitch(Gui g, Vessel v, Vector2 at, float width)
+    {
+        const float Band = 14, Rows = 122;
+        Structure s = v.Structure;
+        var panel = new Rect2(at, new Vector2(width, Rows));
+        g.Stripes(panel, Band, C.Warn);
+        Rect2 inner = panel.Grow(-Band);
+        g.Fill(inner, new Color(C.Glass, 0.92f));
+        CoreMode[] modes = ModeFit.ModesOf(s);
+        float half = (inner.Size.X - 18) / 2;
+        for (int i = 0; i < modes.Length; i++)
+        {
+            CoreMode m = modes[i];
+            var r = new Rect2(inner.Position.X + 6 + i * (half + 6), inner.Position.Y + 6, half, 36);
+            if (g.Button($"core:mode:{m.ToString().ToLowerInvariant()}", r, ModeFit.Name(m), C.Warn, lit: s.Mode == m, size: 16) && s.Mode != m) Switch(v, m);
+        }
+        float y = inner.Position.Y + 48;
+        foreach (CoreMode m in modes)
+        {
+            string warning = ModeFit.Warning(m, v.MissingFor(m));
+            string line = warning ?? $"{ModeFit.Name(m)}: READY";
+            g.TextIn(line, new Rect2(inner.Position.X + 8, y, inner.Size.X - 16, 16), warning == null ? C.Good : C.Warn, 12);
+            y += 18;
+        }
+        return panel.End.Y + 8;
+    }
+
+    /// <summary>Whatever the structure is doing, it switches. The console says what that will mean.</summary>
+    void Switch(Vessel v, CoreMode mode)
+    {
+        v.SwitchMode(mode);
+        string warning = v.ModeWarning;
+        string said = v.Unanchored ? $"{v.Name}: {ModeFit.Name(mode)}. ENGINES OFF: IT FALLS UNTIL IT LANDS, THEN ANCHORS" : warning ?? $"{v.Name}: {ModeFit.Name(mode)}";
+        _game.Say(said, warning != null || v.Unanchored ? Tones.Caution : Tones.Text);
+    }
 
     public void Build(Gui g, Rect2 area)
     {
@@ -238,8 +283,7 @@ public sealed class StructureSection : IMenuSection
         if (v == null) return;
         Structure s = v.Structure;
         bool large = s.Grid.Size == GridSize.Large;
-        string kind = v.IsBase ? "BASE" : large ? "CAPITAL VESSEL" : "SMALL VESSEL";
-        g.Caption($"{v.Name.ToUpperInvariant()} · {kind}", o, area.Size.X);
+        g.Caption($"{v.Name.ToUpperInvariant()} · {(large ? "BIG CORE" : "SMALL CORE")} · {ModeFit.Name(s.Mode)}", o, area.Size.X);
         float y = o.Y + 36;
 
         // ---- Settings ---------------------------------------------------------------------------
@@ -249,17 +293,7 @@ public sealed class StructureSection : IMenuSection
             y += 38;
             return clicked;
         }
-        if (large)
-        {
-            bool capitalOk = _game.Progress.BlockAllowed("thruster", small: false);
-            if (g.Button("core:mode", new Rect2(o.X, y, area.Size.X, 32), $"CORE MODE: {(s.Mode == CoreMode.Base ? "BASE" : "CAPITAL")}", C.Accent, enabled: s.Mode == CoreMode.Capital || capitalOk, size: 15))
-            {
-                Building.ToggleCoreMode(s);
-                _game.Say(s.Mode == CoreMode.Capital ? $"{v.Name}: capital mode (it stays anchored until it has the thrust to lift off)" : $"{v.Name}: base mode, anchored", Tones.Text);
-            }
-            if (!capitalOk && s.Mode == CoreMode.Base) g.Text("capital mode: " + _game.Progress.LockReason("thruster@large"), new Vector2(o.X + 8, y + 34), C.Warn, 11);
-            y += 50;
-        }
+        if (_modeSwitch) y = ModeSwitch(g, v, new Vector2(o.X, y), area.Size.X);
         // The pilot role: whoever holds it flies, and their seat is forward. It can go to anyone in a seat.
         if (v.Flight != null && v.Roles.Seated.Count > 0)
         {

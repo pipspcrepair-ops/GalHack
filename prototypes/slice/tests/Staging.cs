@@ -79,6 +79,8 @@ public sealed partial class Staging
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "decogallery" => DecoGalleryView(),
+            "faces" => FacesView(),
+            "cores" => CoresView(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;
@@ -137,18 +139,22 @@ public sealed partial class Staging
         _game.Progress.Creative = true;
         _game.Builder.Project();
         Vector3 pod = _game.Start;
-        Vector3 pad = FlatSpot(pod, 16f);
-        Vector3 stand = pad + (pad - pod).Normalized() * 8f;
-        foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
-        // The walk stops anywhere within its tolerance, which can leave the pad just past the tool's
-        // reach: a step nearer each try.
-        for (int i = 0; i < 4 && _game.Builder.Underway == null; i++)
+        Vector3 pad = default;
+        Vessel v = null;
+        for (int attempt = 0; attempt < 3 && v == null; attempt++)
         {
-            if (i > 0) foreach (int x in _drive.WalkTo(pad + (pad - pod).Normalized() * (7f - i * 1.5f), 0.5f, 10f)) yield return x;
+            pad = FlatSpot(pod, 16f + attempt * 14f);
+            Vector3 stand = pad + (pad - pod).Normalized() * 8f;
+            foreach (int x in _drive.WalkTo(stand, 1.2f, 30f)) yield return x;
             foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+            // The ground's collision may still be coming in where you look: a click before the ghost shows sets nothing down.
+            for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+                foreach (int x in _drive.LookAt(pad, 1)) yield return x;
             foreach (int x in _drive.Click()) yield return x;
+            v = _game.Builder.Underway;
+            if (v == null) GD.Print($"(the blueprint set nothing down at {pad}, feet {_game.Survivor.WorldFeet}: {_game.Builder.Verdict})");
         }
-        Vessel v = _game.Builder.Underway;
+        if (v == null) throw new InvalidOperationException("the blueprint would not go down anywhere near the start: see the lines above");
         int stop = half ? _game.StarterPlan.Count * 11 / 20 : int.MaxValue;
         foreach (int x in _drive.HoldPrimary(v.Body.Position.ToGodot(), 3000, () => _game.Builder.Underway == null || v.Structure.Count >= stop)) yield return x;
         foreach (int x in _drive.UntilSettled()) yield return x;
@@ -218,23 +224,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(40)) yield return x;
     }
 
-    Vector3 FlatSpot(Vector3 near, float distance)
-    {
-        SurfaceZone zone = _game.Zone;
-        for (int i = 0; i < 64; i++)
-        {
-            float a = i * 0.61f, r = distance + (i / 16) * 6f;
-            var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-            float h0 = zone.GroundAt(p.X, p.Z).Y, spread = 0f;
-            for (int k = 0; k < 8; k++)
-            {
-                float b = k * MathF.Tau / 8f;
-                spread = MathF.Max(spread, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 4f, p.Z + MathF.Sin(b) * 4f).Y - h0));
-            }
-            if (h0 > 1f && spread < 0.35f) return zone.GroundAt(p.X, p.Z);
-        }
-        return zone.GroundAt(near.X + distance, near.Z);
-    }
+    Vector3 FlatSpot(Vector3 near, float distance) => Play.FlatSpot(near, distance, span: 10f);
 
     double Num(string key, double fallback) => _args.TryGetValue(key, out string s) ? double.Parse(s, CultureInfo.InvariantCulture) : fallback;
 }

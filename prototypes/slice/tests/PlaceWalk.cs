@@ -183,7 +183,7 @@ public sealed class PlaceWalk
             {
                 bool rode = true;
                 foreach (int x in Ride(p, b, r => rode = r)) yield return x;
-                if (!rode) { Stuck++; Notes.Add($"the lift didn't bring us to {b}"); done(false); Release(); yield break; }
+                if (!rode) { Stuck++; Notes.Add($"the lift didn't bring us to {b} (feet {p.FromWorld(_game.Survivor.WorldFeet)}, shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, climb {_game.Survivor.Legs.Climb}, floor {_game.Survivor.Body.OnFloor}, from {a})"); done(false); Release(); yield break; }
                 continue;
             }
             // Merge a straight run on the level.
@@ -292,6 +292,7 @@ public sealed class PlaceWalk
     {
         float target = Feet(p, b).Y;
         Key key = target > _game.Survivor.WorldFeet.Y ? Key.Space : Key.Ctrl;
+        Controls.Hold(Key.W, false); // the last step leaves it held: on it would walk you out of the shaft on the way up
         for (int t = 0; t < 1800 && MathF.Abs(_game.Survivor.WorldFeet.Y - target) > 0.5f; t++)
         {
             Controls.Hold(key, true);

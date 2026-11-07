@@ -180,8 +180,8 @@ static class GalaxyGen
                 Radius = radius,
                 Axes = new Vector3(rng.Range(0.6f, 1f), rng.Range(0.45f, 0.85f), rng.Range(0.6f, 1f)),
                 Turn = rng.Turn(), Colour = hue, Rim = rimHue,
-                Glow = kind switch { NebulaKind.Emission => 0.045f, NebulaKind.Reflection => 0.036f, NebulaKind.Remnant => 0.07f, _ => 0.002f } * rng.Range(0.7f, 1.25f),
-                Dust = kind switch { NebulaKind.Dark => 0.32f * 16f / radius + 0.1f, NebulaKind.Emission => 0.006f, NebulaKind.Reflection => 0.012f, _ => 0f },
+                Glow = kind switch { NebulaKind.Emission => 0.12f, NebulaKind.Reflection => 0.09f, NebulaKind.Remnant => 0.16f, _ => 0.004f } * rng.Range(0.7f, 1.25f),
+                Dust = kind switch { NebulaKind.Dark => 0.6f * 16f / radius + 0.2f, NebulaKind.Emission => 0.006f, NebulaKind.Reflection => 0.012f, _ => 0f },
                 Offset = new Vector3(rng.Range(0f, 32f), rng.Range(0f, 32f), rng.Range(0f, 32f)), Lobes = lobes,
             };
         }

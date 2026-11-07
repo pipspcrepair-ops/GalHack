@@ -6,8 +6,8 @@ namespace Wildlife;
 /// <summary>
 /// Moves creatures over the terrain with simple steering: accelerate towards the velocity
 /// the brain wants, slide around rocks and trunks, stay on the height function. One mover
-/// per kind of body: walkers and crawlers, hoppers, fliers, drifting gas bags. Lunges move
-/// along a straight line from where the creature launched to where it committed.
+/// per kind of body: walkers and crawlers, hoppers, winged flyers (<see cref="Flight"/>), drifting
+/// gas bags. Lunges move along a straight line from where the creature launched to where it committed.
 /// </summary>
 public static class Locomotion
 {
@@ -26,7 +26,7 @@ public static class Locomotion
             Fall(w, c, dt);
             return;
         }
-        if (c.Phase == AttackPhase.Lunge)
+        if (c.Phase == AttackPhase.Lunge && c.Species.Flight != FlightKind.Glide)
         {
             Lunge(w, c);
             return;
@@ -42,7 +42,7 @@ public static class Locomotion
         switch (c.Species.Rig)
         {
             case RigKind.Hopper: Hop(w, c, dt); break;
-            case RigKind.Winged: Fly(w, c, dt); break;
+            case RigKind.Winged: Flight.Move(w, c, dt); break;
             case RigKind.GasBag: Drift(w, c, dt); break;
             case RigKind.Swarm when c.Species.Flies: Hover(w, c, dt); break;
             default: Ground(w, c, dt); break;
@@ -141,53 +141,6 @@ public static class Locomotion
         }
     }
 
-    /// <summary>Fliers hold a height above ground, bank into turns and land to eat or rest.</summary>
-    static void Fly(WildSim w, Creature c, float dt)
-    {
-        float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
-        if (c.Landed)
-        {
-            if (c.Altitude > 0.5f)
-            {
-                c.Landed = false;
-                c.Velocity = new Vector3(c.Velocity.X, 4f, c.Velocity.Z);
-            }
-            else
-            {
-                Vector3 vg = WildSim.Flat(c.Velocity).MoveToward(WildSim.Flat(c.Desired) * 0.3f, 4f * dt);
-                Vector3 pg = Bound(w, c.Position + vg * dt, ref vg);
-                pg.Y = w.Terrain.Height(pg.X, pg.Z);
-                c.Velocity = vg;
-                c.Position = pg;
-                Turn(c, vg, dt);
-                if (c.FacePoint is { } face) Turn(c, WildSim.Flat(face - c.Position), dt);
-                return;
-            }
-        }
-
-        Vector3 flat = WildSim.Flat(c.Velocity);
-        Vector3 want = WildSim.Flat(c.Desired);
-        if (want.Length() < c.Stats.WalkSpeed * 0.4f && c.Altitude > 0.5f)
-            want = c.Forward * c.Stats.WalkSpeed * 0.6f + c.Forward.Cross(Vector3.Up) * 1.2f; // idle: lazy circles
-        flat = flat.MoveToward(want, MathF.Min(6f, Heft.Accel(c) * 1.2f) * dt);
-        float targetY = ground + c.Altitude;
-        float vy = Math.Clamp((targetY - c.Position.Y) * 1.2f, -5f, 3.5f);
-        float vertical = Mathf.MoveToward(c.Velocity.Y, vy, 8f * dt);
-        Vector3 p = c.Position + (flat + Vector3.Up * vertical) * dt;
-        p = Bound(w, p, ref flat);
-        float g = w.Terrain.Height(p.X, p.Z);
-        if (p.Y < g + 0.1f) p.Y = g + 0.1f;
-        c.Velocity = flat + Vector3.Up * vertical;
-        c.Position = p;
-        Turn(c, flat, dt);
-        if (c.Altitude <= 0.5f && p.Y - g < 0.35f)
-        {
-            c.Landed = true;
-            c.Position = new Vector3(p.X, g, p.Z);
-            c.Velocity = Vector3.Zero;
-        }
-    }
-
     /// <summary>Gas bags go where the wind takes them, nudged towards where they want to be.</summary>
     static void Drift(WildSim w, Creature c, float dt)
     {
@@ -224,6 +177,7 @@ public static class Locomotion
         Vector3 p = c.LungeFrom.Lerp(c.LungeTo, eased);
         float ground = w.Terrain.Height(p.X, p.Z);
         if (c.Species.Rig == RigKind.Hopper) p.Y = ground + MathF.Sin(t * MathF.PI) * c.Species.Body.LegLength * 0.6f;
+        else if (c.Species.Flight == FlightKind.Hover) p.Y = Mathf.Lerp(c.LungeFrom.Y, c.AimPoint.Y + 1.3f, eased); // a dart at your chest, wherever you stand
         else if (c.Species.Flies) p.Y = Mathf.Lerp(c.LungeFrom.Y, ground + 1f, eased);
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
@@ -260,7 +214,8 @@ public static class Locomotion
     public static void KeepOff(WildSim w, Creature c)
     {
         Rig rig = c.Rig;
-        if (rig == null || c.Dead || c.InWalls || c.Falling || c.Phase == AttackPhase.Lunge || c.Species.Rig == RigKind.Swarm) return;
+        bool glider = c.Species.Flight == FlightKind.Glide && !c.Landed; // it can't step aside: it lifts over you, and a dive is held to this too
+        if (rig == null || c.Dead || c.InWalls || c.Falling || (c.Phase == AttackPhase.Lunge && !glider) || c.Species.Rig == RigKind.Swarm) return;
         if (c.Space != null && c.Facing.Y.Y < -0.3f) return; // on a ceiling: over your head, whatever the headroom
         foreach (ITarget t in w.Targets)
         {
@@ -281,6 +236,11 @@ public static class Locomotion
                 push = d > 1e-3f ? away / d : -c.Forward;
             }
             if (worst <= 0f) continue;
+            if (glider)
+            {
+                c.Position += Vector3.Up * MathF.Min(worst, 0.2f);
+                continue;
+            }
             // No faster than it can move itself: a push is still walking, feet and all.
             Vector3 moved = c.Position + push * MathF.Min(worst, MathF.Max(c.Stats.RunSpeed * 1.2f, 3f) / 60f);
             if (c.Space != null)
@@ -304,7 +264,7 @@ public static class Locomotion
     }
 
     /// <summary>Push out of rocks and trunks, and stop pushing into them.</summary>
-    static void Avoid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
+    internal static void Avoid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
     {
         var near = w.Nav.Near(p);
         if (near == null) return;
@@ -321,7 +281,7 @@ public static class Locomotion
         }
     }
 
-    static Vector3 Bound(WildSim w, Vector3 p, ref Vector3 v)
+    internal static Vector3 Bound(WildSim w, Vector3 p, ref Vector3 v)
     {
         float limit = w.Terrain.HalfSize - 6f;
         if (MathF.Abs(p.X) > limit) { p.X = Math.Clamp(p.X, -limit, limit); v.X = 0f; }
@@ -330,7 +290,7 @@ public static class Locomotion
     }
 
     /// <summary>Turn towards the way it is moving, or towards what it faces when standing still.</summary>
-    static void Turn(Creature c, Vector3 v, float dt, float speed = 0f)
+    internal static void Turn(Creature c, Vector3 v, float dt, float speed = 0f)
     {
         float rate = Heft.TurnRate(c, speed);
         Vector3 dir = v;

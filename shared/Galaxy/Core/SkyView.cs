@@ -6,39 +6,41 @@ using System.Threading.Tasks;
 namespace GalHack.Stars;
 
 /// <summary>
-/// One sky's frame of reference: how a direction in a place's own frame turns into a direction in
-/// the catalogue. Everything above the air and past the system is the same sky, so the ground,
-/// the climb and space all read this one rotation; a world differs only in how it stands.
+/// How a sky stands against the catalogue. The star field hangs in the system's own frame, and the
+/// system says how the world turns in that (<c>StarSystem.Orient</c>): all a sky needs from here is
+/// the fixed tilt between that frame and the galaxy, and a way past the map's seam.
 /// </summary>
 public static class SkyFrame
 {
-    /// <summary>How a world's axis stands against the galaxy: seeded, so its own band crosses its sky its own way.</summary>
+    /// <summary>How a system's frame stands against the galaxy: seeded, so its band crosses its sky its own way.</summary>
     public static Quaternion Tilt(ulong seed)
     {
         var rng = new GalaxyRng(Mix.Of(seed, 0x54494C54));
         return rng.Turn();
     }
 
-    /// <summary>
-    /// The world's turn: a globe direction to where it faces among the stars. The world spins
-    /// eastward, once a day, so the stars rise in the east.
-    /// </summary>
-    public static Quaternion Spin(double timeOfDay) => Quaternion.CreateFromAxisAngle(Vector3.UnitY, (float)(timeOfDay % 1.0 * Math.Tau));
+    /// <summary>How near the map's north and south edges, m, the sky starts making its way round.</summary>
+    public const double SeamBand = 240;
 
     /// <summary>
-    /// The globe's frame over a map point: east +X, up +Y, south +Z of the surface to the same at
-    /// that point of the globe. The same mapping as the orbit's <c>GlobeMap.Frame</c>; a test holds them together.
+    /// The colatitude a sky is seen from, radians, for a map row (<paramref name="z"/> of
+    /// <paramref name="height"/>). The map wraps north to south but the globe's two poles are opposite
+    /// each other, so the true sky would flip end over end at the edge. Near each edge the sky swings
+    /// back toward the equator on its own longitude instead, a quarter turn each side, and both sides
+    /// meet in the same sky: the same longitude, so night stays night. Away from the edges it is the
+    /// true colatitude, and it is the same at a row whichever way you came.
     /// </summary>
-    public static Quaternion Map(double x, double z, double width, double height)
+    public static double SeamColatitude(double z, double height)
     {
-        double lon = ((x % width + width) % width) / width * Math.Tau, col = Math.Clamp(z, 0, height) / height * Math.PI;
-        double sl = Math.Sin(lon), cl = Math.Cos(lon), sc = Math.Sin(col), cc = Math.Cos(col);
-        var m = new Matrix4x4(
-            (float)cl, 0f, (float)-sl, 0f,
-            (float)(sc * sl), (float)cc, (float)(sc * cl), 0f,
-            (float)(cc * sl), (float)-sc, (float)(cc * cl), 0f,
-            0f, 0f, 0f, 1f);
-        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(m));
+        double north = Math.Min(z, height - z);
+        double trueAt = north / height * Math.PI;
+        double at = trueAt;
+        if (north < SeamBand)
+        {
+            double t = north / SeamBand, edge = SeamBand / height * Math.PI;
+            at = Math.PI / 2.0 + (edge - Math.PI / 2.0) * (t * t * (3.0 - 2.0 * t));
+        }
+        return z <= height / 2.0 ? at : Math.PI - at;
     }
 }
 
@@ -59,7 +61,7 @@ public sealed class SkyView
     public const int Grid = 192, MostInCell = 15;
 
     /// <summary>Texels across a face of the soft light.</summary>
-    public const int GlowSize = 256;
+    public const int GlowSize = 384;
 
     /// <summary>The width of the stars' data texture.</summary>
     public const int StarsWide = 1024;
@@ -138,7 +140,9 @@ public sealed class SkyView
             float d = to.Length();
             if (d < 1e-3f) return;
             Direction[i] = to / d;
-            float flux = stars[i].Light / (d * d) * g.Clear(Eye, stars[i].Position);
+            float clear = g.Clear(Eye, stars[i].Position);
+            if (stars[i].Region == Region.Core) clear = MathF.Max(clear, 0.5f); // their massed glow reads through any cloud
+            float flux = stars[i].Light / (d * d) * clear;
             float shown = Tone(flux);
             if (d <= Galaxy.JumpT2) shown = MathF.Max(shown, ChartFloor);
             Shown[i] = shown;
@@ -304,7 +308,8 @@ public sealed class SkyView
             float d = Vector3.Distance(g.Stars[i].Position, Eye);
             if (d < NearestSpread) continue;
             bool core = g.Stars[i].Region == Region.Core;
-            float amount = MathF.Min(Shown[i], 0.45f) * SoftGain * (core ? CoreShare : Resolved[i] ? SoftShare : 1f) / Samples;
+            // Per texel: a finer cube spreads the same light over more of them.
+            float amount = MathF.Min(Shown[i], 0.45f) * SoftGain * (GlowSize / 256f) * (GlowSize / 256f) * (core ? CoreShare : Resolved[i] ? SoftShare : 1f) / Samples;
             Vector3 tint = Vector3.Lerp(TintOf(g, i), Vector3.One, 0.35f) * amount;
             Vector3 dir = Direction[i];
             Vector3 a = Vector3.Normalize(Vector3.Cross(dir, MathF.Abs(dir.Y) > 0.8f ? Vector3.UnitX : Vector3.UnitY)), b = Vector3.Cross(dir, a);
@@ -383,16 +388,20 @@ public sealed class SkyView
                     float t = t0 + dt * (i + 0.5f);
                     float d = n.Density(Eye + dir * t);
                     if (d <= 0f) continue;
-                    light += Vector3.Lerp(n.Rim, n.Colour, MathF.Min(d * 1.4f, 1f)) * (d * n.Glow * dt * through * veil);
+                    // Thick gas shines far more than thin: the wisps stand out of the veil, and a long look through doesn't even it out.
+                    light += n.ColourAt(Eye + dir * t, d) * (d * MathF.Sqrt(d) * 2f * n.Glow * dt * through * veil);
                     through *= MathF.Exp(-d * n.Dust * dt);
                 }
             }
             // A long way through it adds up to a veil, not daylight: the sky from inside stays a night sky.
-            light /= 1f + 3f * MathF.Max(light.X, MathF.Max(light.Y, light.Z));
+            float most = MathF.Max(light.X, MathF.Max(light.Y, light.Z));
+            if (most > 1e-4f) light *= (1f - MathF.Exp(-most * 2.4f)) / (most * 2.4f);
             int k = (x + y * GlowSize) * 3;
-            glow[k] = glow[k] * through + light.X;
-            glow[k + 1] = glow[k + 1] * through + light.Y;
-            glow[k + 2] = glow[k + 2] * through + light.Z;
+            // Dust dims the massed light behind it and takes the stars themselves, but never all of it: the core must read from every system.
+            float behind = MathF.Max(through, 0.4f);
+            glow[k] = glow[k] * behind + light.X;
+            glow[k + 1] = glow[k + 1] * behind + light.Y;
+            glow[k + 2] = glow[k + 2] * behind + light.Z;
         }
     }
 }

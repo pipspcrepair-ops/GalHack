@@ -35,7 +35,7 @@ All of it runs cheaply enough for a world full of creatures on a low-end PC.
 ## How it works
 
 **The generator** (`src/Core/FaunaGenerator.cs`) is plain C# with no nodes. Its inputs are the planet seed, alienness (0 to 1) and a Bloom flag; its output is 6 to 10 species, identical on every machine. Each species gets:
-- a body plan and form (walkers, crawlers and slitherers, leapers, fliers and floaters, swarms, giants, oddities: 19 forms in all)
+- a body plan and form (walkers, crawlers and slitherers, leapers, fliers and floaters, swarms, giants, oddities: 20 forms in all)
 - a behaviour and a temperament, rolled first so the body is built for the job
 - swappable parts (heads, horns, backs, tails, extra limbs, tendrils)
 - proportions, palette, skin pattern and glow
@@ -80,7 +80,7 @@ Alienness pulls every roll towards options of matching weirdness, so temperate w
 | Legged | walkers, giants, walking plants, crystal grazers | IK foot stepping with a diagonal gait for 2 to 8 legs, the body sagging onto planted feet; FK necks, tails, tendrils, extra limbs |
 | Chain | crawlers, slitherers, burrowers | follow-the-leader segments, a travelling wave, rowing legs, sinking to burrow, cobra rear, mantis scythes |
 | Hopper | leapers, living boulders | spring hops with squash and stretch; boulders tumble a quarter turn per hop |
-| Winged | fliers | flapping with the outer panel lagging, gliding, banking, folding wings to land and eat |
+| Winged | fliers | flapping with the outer panel lagging, wings held out on a glide and swept back in a dive, rolling into turns, folding wings to land; on a hoverer, an upright body under a blur of wings |
 | Gas bag | floaters | breathing bladders, a bobbing drift on the wind, trailing stinging tendrils |
 | Swarm | insect clouds, skitter packs | boids round one shared brain and health pool |
 
@@ -117,7 +117,14 @@ Movement is simple steering over the terrain. It goes straight at the goal when 
 | Swarm | Sting cloud | cloud pulls in tight | 1.0 s | buzz |
 | Territorial giant | Trample | rears right up | 1.8 s | roar |
 
-Rig adaptations: fliers turn their attack into a dive, crawlers coil and strike like a snake, leapers leap, and floaters lash with their tendrils.
+Rig adaptations: gliders turn their attack into a swoop, hoverers into a dart and a sting, crawlers coil and strike like a snake, leapers leap, and floaters lash with their tendrils.
+
+**How flyers fly** (`src/Sim/Flight.cs`, numbers in `Heft`). Every winged species is one of two kinds, decided by its body (`Species.Flight`): up to 0.55 m long it is a hoverer, past that a glider. Gas bags and swarm clouds are neither and drift as they always did.
+
+- **Gliders** are always flying forward along their heading. They never fall below a stall speed that grows with their size, turn only by banking, round a radius that grows with size and weight, flap to climb and to gain speed, and glide the rest. They land on a gliding approach with a flare and a short run-out, refusing rock, trees, water and a steep slope, and take off with a run. The brain's `Desired` is only where they would like to go.
+- **Swoops** (`Swoop`) are the ordinary wind-up, commit and strike, on the wing. A glider comes in at height, lines up, gives its tell in flight, commits to where you stand, stoops down the line with its wings back, strikes in passing over your head, climbs away and comes round. Everything scales with the body, so a big one comes slower, from further out, and swings wider.
+- **Hoverers** (the darter form) stay small, light and upright, with wings too fast to see drawn as a blur that never stops while they are up, and a hum. Only they may stop, hold, back up and dart. They sting from the hover.
+- **Looking ahead:** near a player, flyers cast a few rays through `WildSim.SightLine` (about 15 a second each), bank away from walls, and break off a dive that has something in its way. The ground is handled by height, not by rays. No place or cave role uses a winged form, so no flyer is put in a room it can't turn in.
 
 The rules that keep it fair:
 - **Senses** (`src/Sim/Senses.cs`): sight needs range, a cone and a clear line through the ground and the world's own collision; hearing is shorter, works all round, depends on how much noise you make and barely passes a wall; the blind have only hearing. An awareness meter fills while something is sensed and it only notices at the top, then holds on to where it last knew you for 5 s. Brains run on a staggered 0.2 to 0.5 s timer with the target scan inside, and paths are followed between thinks.
@@ -306,6 +313,8 @@ From the repo root, in PowerShell:
 You start on the alien world with a herd on the plain ahead and a grove to the left to drive the harvester into. Packs roam 50 to 120 m out.
 
 ## Test it
+
+`tests/FlightTest.tscn` measures how winged animals fly on fresh random worlds: the two kinds, airspeed and heading over long stretches, wings against flight, swoops across species and sizes, dodging, buildings and ridges, landings, roosting, deaths in the air, and hoverers. `prototypes/slice/tests/FlightShots.tscn` (windowed, not in the gate) films them from the player's eyes.
 
 ```powershell
 .\tools\test.ps1 -Project prototypes/wildlife -Scene res://tests/WildlifeTest.tscn

@@ -94,11 +94,11 @@ public sealed class ItemView
             BlockFamily.Deco => ItemGroup.Deco,
             _ => ItemGroup.Devices,
         },
-        ItemCategory.Component => ItemGroup.Devices, // the hover and capital cores
+        ItemCategory.Component => ItemGroup.Devices,
         _ => ItemGroup.Other,
     };
 
-    static bool IsCore(ItemDef item) => item.Id is "base-core" or "vessel-core" or "hover-core" or "capital-core";
+    static bool IsCore(ItemDef item) => System.Array.IndexOf(PlayerInventory.CoreItems, item.Id) >= 0;
 
     /// <summary>The category words the text filter also matches: "raw ore", "block armour", "deco office".</summary>
     public static string CategoryWords(ItemDef item) =>

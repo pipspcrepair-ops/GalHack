@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
 using GalHack.Physics.Engine;
+using GalHack.Structures;
 using Godot;
 using Slice.Items;
 using Slice.Game;
@@ -587,6 +588,7 @@ public partial class Visor : CanvasLayer
     {
         float s = S;
         Vector2 size = _hud.Size;
+        DrawMode(v);
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";
@@ -596,9 +598,69 @@ public partial class Visor : CanvasLayer
         var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
             _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(0, band.End.Y + 8 * s, size.X, 26 * s), message, C.Warn, HorizontalAlignment.Center);
+    }
+
+    /// <summary>
+    /// While seated, always: the mode the core is in, as a lit plate with a picture of what it does.
+    /// It sits left of the flight line and shows on a base too, where there is no flight line.
+    /// </summary>
+    void DrawMode(Vessel v)
+    {
+        float s = S;
+        Vector2 size = _hud.Size;
+        CoreMode mode = v.Structure.Mode;
+        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
+        var box = new Rect2(size.X / 2 - 560 * s, 128 * s, 192 * s, 34 * s);
+        _hud.Block(box, new Color(C.Glass, 0.75f));
+        _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
+        _hud.Frame(box, new Color(tone, 0.8f), 1.5f * s);
+        Vector2 at = box.Position + new Vector2(30 * s, box.Size.Y / 2);
+        DrawModeGlyph(mode, at, tone, s);
+        _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(box.Position + new Vector2(54 * s, 0), new Vector2(box.Size.X - 58 * s, box.Size.Y)), ModeFit.Name(mode), tone, HorizontalAlignment.Left);
+    }
+
+    /// <summary>A little picture of the mode: a hull on hover lines, a craft climbing, an anchored block, a long hull under way.</summary>
+    void DrawModeGlyph(CoreMode mode, Vector2 at, Color tone, float s)
+    {
+        void Line(float x0, float y0, float x1, float y1) => _hud.DrawLine(at + new Vector2(x0, y0) * s, at + new Vector2(x1, y1) * s, tone, 2.2f * s);
+        switch (mode)
+        {
+            case CoreMode.Hover:
+                Line(-11, -6, 11, -6);
+                Line(-11, -6, -7, -1);
+                Line(11, -6, 7, -1);
+                Line(-7, -1, 7, -1);
+                Line(-10, 3, -4, 3);
+                Line(4, 3, 10, 3);
+                Line(-6, 8, 6, 8);
+                break;
+            case CoreMode.Vessel:
+                Line(0, -9, -9, 8);
+                Line(0, -9, 9, 8);
+                Line(-9, 8, 0, 3);
+                Line(9, 8, 0, 3);
+                break;
+            case CoreMode.Base:
+                Line(-8, -8, 8, -8);
+                Line(-8, -8, -8, 3);
+                Line(8, -8, 8, 3);
+                Line(-12, 3, 12, 3);
+                Line(-8, 3, -11, 9);
+                Line(0, 3, 0, 9);
+                Line(8, 3, 11, 9);
+                break;
+            default:
+                Line(-12, -4, 8, -4);
+                Line(-12, 4, 8, 4);
+                Line(8, -4, 13, 0);
+                Line(8, 4, 13, 0);
+                Line(-12, -4, -12, 4);
+                Line(-12, 0, -16, 0);
+                break;
+        }
     }
 
     void DrawTracers()

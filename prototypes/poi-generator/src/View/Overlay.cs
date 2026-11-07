@@ -162,7 +162,7 @@ public partial class Overlay : Control
         }
         Row(PathColor, "critical path to the vault", 2);
         Row(VaultColor, "vault and its caches", 0);
-        Row(CoreColor, "base core", 0);
+        Row(CoreColor, "Big Core", 0);
         Row(new Color("d0a050"), "side cache", 0);
         Row(new Color("7cffb0"), "terminal", 0);
         Row(new Color("ff3030"), "defender spawn", 1);

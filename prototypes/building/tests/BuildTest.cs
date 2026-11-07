@@ -466,7 +466,7 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         Place(s, 0, 0, 1, _thruster);
         Place(s, 0, 1, 0, _generator);
-        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Flies, "a capital core flies");
+        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Flies, "a Big Core in Capital Mode flies");
         Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "B switches the core to base");
         StructureStats st = StructureStats.Compute(s);
         Check(!st.Flies && st.Thrust.Sum() == 0 && st.Blocks == 3, "a base keeps every block but does not fly");
@@ -476,7 +476,10 @@ public partial class BuildTest : Node
 
         var small = new Structure(_cat, _cat.Grid(GridSize.Small));
         Building.Place(small, Int3.Zero, Block(small, _core));
-        Check(!Building.ToggleCoreMode(small), "small-grid cores are always vessels");
+        Check(small.Mode == CoreMode.Vessel && Building.ToggleCoreMode(small) && small.Mode == CoreMode.Hover, "a Small Core switches between Vessel Mode and Hover Mode");
+        Check(Blueprint.Load(Blueprint.Save(small), _cat, out _)?.Mode == CoreMode.Hover, "the Small Core's mode is saved in the blueprint");
+        Check(Building.ToggleCoreMode(small) && small.Mode == CoreMode.Vessel, "and switches back");
+        Check(Blueprint.Load(Blueprint.Save(small).Replace("mode vessel", "mode capital"), _cat, out _)?.Mode == CoreMode.Vessel, "an old blueprint's \"mode capital\" on a small grid is Vessel Mode");
     }
 
     /// <summary>

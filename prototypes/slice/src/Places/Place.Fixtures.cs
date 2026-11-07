@@ -202,7 +202,7 @@ public partial class Place
         public CollisionShape3D Shape;
         public Vector3 Centre;            // local x, z middle of the shaft
         public float Y, Target;            // the car floor's walk height now, and where it is going
-        public bool Ridden;
+        public bool Ridden, Climbing;
         public float Bottom => Shaft.StopWalkY[0];
         public float Top => Shaft.StopWalkY[^1];
     }
@@ -233,9 +233,9 @@ public partial class Place
         }
     }
 
-    /// <summary>The car stands level with a stop: empty, or carrying someone who has come to it and wants out.</summary>
+    /// <summary>The car stands level with a stop: empty, or carrying someone who has stopped there (and may want out), not someone riding past.</summary>
     bool CarAt(int lift, int stop) => lift < _cars.Count && stop >= 0 && stop < _cars[lift].Shaft.StopWalkY.Count
-                                      && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
+                                      && !_cars[lift].Climbing && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
 
     void CallLift(int lift, int stop)
     {
@@ -274,13 +274,16 @@ public partial class Place
             bool riding = i == lift;
             if (riding)
             {
-                c.Y = Mathf.Clamp(feetY, c.Bottom, c.Top);
+                float y = Mathf.Clamp(feetY, c.Bottom, c.Top);
+                c.Climbing = c.Ridden && MathF.Abs(y - c.Y) > 0.004f;
+                c.Y = y;
                 c.Target = c.Y;
             }
             else if (c.Ridden)
             {
                 // Got off: the car settles at the nearest stop.
                 c.Target = NearestStop(i, c.Y);
+                c.Climbing = false;
             }
             c.Ridden = riding;
             c.Shape.Disabled = riding; // the rider floats in the shaft; the car only shows under them

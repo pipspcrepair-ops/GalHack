@@ -544,6 +544,13 @@ public partial class WildlifeTest : Node
                 Creature c = w.Spawn(s, Vector3.Zero);
                 c.Yaw = 0f;
                 var target = new DummyTarget { Position = Ground(w, c.Forward * (c.Stats.AttackRange * 0.8f)) };
+                // A glider opens from the air, from where it would line up its run.
+                if (s.Flight == FlightKind.Glide)
+                {
+                    target.Position = Ground(w, c.Forward * Swoop.RunIn(c));
+                    c.Position = new Vector3(c.Position.X, target.Position.Y + Swoop.Height(s), c.Position.Z);
+                    c.Altitude = Swoop.Height(s);
+                }
                 w.Targets.Add(target);
                 float telegraphAt = -1f, contactAt = -1f, windup = 0f;
                 bool first = false, hit = false;
@@ -578,7 +585,7 @@ public partial class WildlifeTest : Node
                     w.Telegraph += e => { if (!e.First) second = e.Windup; };
                     for (int step = 0; step < 300 && c.Attacking; step++) w.Step(Dt);
                     Attacks.Start(w, c, target);
-                    if (second < 0f || second > telegraph) problem ??= $"{s.Name}: second attack wind-up {second:F2} s is not the normal rate";
+                    if (second < 0f || second > (s.Flight == FlightKind.Glide ? MathF.Max(telegraph, Swoop.LeastTell(s)) : telegraph)) problem ??= $"{s.Name}: second attack wind-up {second:F2} s is not the normal rate";
                 }
             }
         }

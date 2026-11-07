@@ -19,6 +19,8 @@ namespace Wildlife;
 ///   skin (<see cref="BodyRadius"/>), however long its neck, and nothing passes through you
 ///   (<see cref="Locomotion.KeepOff"/>). A lunge from your blind side swings round, as far as it can,
 ///   to land in front of you, so you see what bit you.
+/// - A glider can't stop to do any of this: the same wind-up, commit and strike happen on the wing,
+///   as a swoop (<see cref="Swoop"/>). A hoverer stops and stings from the hover, the ordinary way.
 /// - Pack members take turns: one may wind up at a time, and each commit comes at least a
 ///   telegraph after the last, so a pack never lands several lunges at once.
 /// </summary>
@@ -79,6 +81,7 @@ public static class Attacks
         CombatRules r = w.Combat;
         bool first = c.MustTelegraph(target, w.Time, r);
         float windup = first ? c.Species.TelegraphWindup(r) : r.NormalWindup;
+        if (c.Species.Flight == FlightKind.Glide) windup = MathF.Max(windup, Swoop.LeastTell(c.Species));
         if (c.Pack is { } pack)
         {
             // Wait for the pack's turn: nobody else winding up, and this commit a full
@@ -104,6 +107,16 @@ public static class Attacks
         c.ThinkEvery = 0f;
         c.Rear = 0f;
         c.Brace = 0f;
+        c.AirAimOn = false;
+    }
+
+    /// <summary>Part way through a wind-up it locks onto where you stand, and says so.</summary>
+    internal static void CommitIfDue(WildSim w, Creature c, ITarget t)
+    {
+        if (c.Committed || c.PhaseTime < w.Combat.CommitFraction * c.PhaseLength) return;
+        c.Committed = true;
+        c.AimPoint = t.Position;
+        w.RaiseCommitted(new AttackEvent { Creature = c, Target = t, First = c.FirstAttack, Windup = c.WindupLength, Time = w.Time });
     }
 
     public static void Update(WildSim w, Creature c, float dt)
@@ -119,6 +132,11 @@ public static class Attacks
         CombatRules r = w.Combat;
         ITarget t = c.AttackTarget;
         c.PhaseTime += dt;
+        if (c.Species.Flight == FlightKind.Glide && c.Space == null)
+        {
+            Swoop.Update(w, c, t, dt);
+            return;
+        }
         switch (c.Phase)
         {
             case AttackPhase.Windup:
@@ -131,12 +149,7 @@ public static class Attacks
                 if (!c.Committed) c.AimPoint = t.Position;
                 c.FacePoint = c.AimPoint;
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
-                if (!c.Committed && c.PhaseTime >= r.CommitFraction * c.PhaseLength)
-                {
-                    c.Committed = true;
-                    c.AimPoint = t.Position;
-                    w.RaiseCommitted(new AttackEvent { Creature = c, Target = t, First = c.FirstAttack, Windup = c.WindupLength, Time = w.Time });
-                }
+                CommitIfDue(w, c, t);
                 if (c.PhaseTime >= c.PhaseLength) Launch(w, c);
                 break;
 
@@ -211,7 +224,7 @@ public static class Attacks
         c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
         c.Phase = AttackPhase.Lunge;
         c.PhaseTime = 0f;
-        c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f));
+        c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
         c.Rear = 0f;
         c.Brace = 0f;
     }
@@ -238,6 +251,26 @@ public static class Attacks
                   && WildSim.Flat(off).Length() <= r.ContactRadius + c.Radius * 0.4f
                   && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
         }
+        Deliver(w, c, t, hit);
+        if (c.Species.Flight == FlightKind.Hover) c.Velocity = Vector3.Zero; // a sting stops dead at the skin: what carried it in doesn't carry it through
+        if (c.Space != null)
+        {
+            Crawl.Release(w, c);
+            // A drop has spent itself on what it hit: it falls the rest of the way straight.
+            if (c.Species.Attack.Style == AttackStyle.Drop)
+            {
+                c.Velocity = new Vector3(0f, c.Velocity.Y, 0f);
+                c.Dropping = true;
+            }
+        }
+        c.Phase = AttackPhase.Recover;
+        c.PhaseTime = 0f;
+        c.PhaseLength = r.AttackCooldown;
+    }
+
+    /// <summary>A blow lands or doesn't: the damage, and everyone told. What the body does next is its own business.</summary>
+    internal static void Deliver(WildSim w, Creature c, ITarget t, bool hit)
+    {
         float dealt = 0f;
         if (hit)
         {
@@ -250,23 +283,10 @@ public static class Attacks
             }
             else dealt = t.Health.Apply(c.Stats.Damage);
         }
-        if (c.Space != null)
-        {
-            Crawl.Release(w, c);
-            // A drop has spent itself on what it hit: it falls the rest of the way straight.
-            if (c.Species.Attack.Style == AttackStyle.Drop)
-            {
-                c.Velocity = new Vector3(0f, c.Velocity.Y, 0f);
-                c.Dropping = true;
-            }
-        }
         c.RememberAttack(t, w.Time);
         w.RaiseAttacked(new AttackEvent
         {
             Creature = c, Target = t, First = c.FirstAttack, Windup = c.WindupLength, Hit = hit, Damage = dealt, Time = w.Time,
         });
-        c.Phase = AttackPhase.Recover;
-        c.PhaseTime = 0f;
-        c.PhaseLength = r.AttackCooldown;
     }
 }

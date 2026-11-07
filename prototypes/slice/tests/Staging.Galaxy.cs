@@ -30,6 +30,7 @@ public sealed partial class Staging
         "galaxy-jump" => GalaxyJump(),
         "galaxy-nebula" => GalaxyNebula(),
         "galaxy-trail" => GalaxyTrail(),
+        "galaxy-seam" => GalaxySeam(),
         "galaxy-perf" => GalaxyPerf(),
         _ => throw new ArgumentException($"no view '{view}'"),
     };
@@ -172,8 +173,37 @@ public sealed partial class Staging
         foreach (int x in Seated()) yield return x;
         foreach (int x in Midnight()) yield return x;
         foreach (int x in UpAndOut()) yield return x;
-        Face(ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere)));
+        Face(_game.Spaceflight.LookAlong(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position)));
         foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>
+    /// The sky over the map's north and south seam: the castaway set down row by row across it
+    /// (STAGING: the walk is long; the sky is what is looked at), the camera fixed on one direction.
+    /// </summary>
+    IEnumerable<int> GalaxySeam()
+    {
+        foreach (int x in Midnight()) yield return x;
+        _game.Visor.Visible = false;
+        var planet = _game.Surface.Planet;
+        double H = planet.Height;
+        float px = _game.Survivor.WorldFeet.X;
+        int watch = Stars.Galaxy.Neighbours(Stars.Here)[0];
+        Vector3 last = default;
+        (string tag, double z)[] rows = { ("a-300-before", 300), ("b-120-before", 120), ("c-10-before", 10), ("d-10-after", H - 10), ("e-120-after", H - 120), ("f-300-after", H - 300) };
+        foreach (var (tag, z) in rows)
+        {
+            var feet = _game.Zone.GroundAt(px, (float)z);
+            _game.Survivor.PlaceOutside(new N.Vector3(px, MathF.Max(feet.Y, 0f) + 1f, (float)z));
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Vector3 eye = _game.Survivor.WorldEye();
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(0.1f, 1f, -0.5f).Normalized(), Vector3.Forward), eye + Vector3.Up * 2f);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Vector3 d = _game.Spaceflight.LookToward(watch);
+            GD.Print($"(galaxy: row {z:F0} of {H:F0}: a neighbour stands at {d}, {(tag[0] == 'a' ? 0f : Mathf.RadToDeg(last.AngleTo(d))):F1} degrees from the last row)");
+            last = d;
+            Snap(tag);
+        }
     }
 
     /// <summary>A jump, as far as the sky goes: there is no drive yet, so the catalogue is simply asked for the sky from a neighbour.</summary>
@@ -280,11 +310,11 @@ public sealed partial class Staging
             GD.Print($"(perf: {where}: frame {Middle(times[0]):F2} ms with the galaxy, {Middle(times[1]):F2} ms without, cost {Middle(times[0]) - Middle(times[1]):F2} ms; rounds on {string.Join(" ", times[0].Select(t => t.ToString("F2")))}, off {string.Join(" ", times[1].Select(t => t.ToString("F2")))})");
         }
         N.Vector3 core = N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position);
-        Vector3 band = ToGodot(Stars.Toward(core, _game.Spaceflight.ToGlobeHere));
+        Vector3 band = _game.Spaceflight.LookAlong(core);
         Face(band.Y > 0.1f ? band : new Vector3(0.2f, 0.8f, -0.5f).Normalized());
         foreach (int x in Rounds(_game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial, "ground at night")) yield return x;
         foreach (int x in UpAndOut()) yield return x;
-        Face(ToGodot(Stars.Toward(core, _game.Spaceflight.ToGlobeHere)));
+        Face(_game.Spaceflight.LookAlong(core));
         foreach (int x in Rounds(_game.Orbit.Space.Environment.Sky.SkyMaterial as ShaderMaterial, "space, looking at the core")) yield return x;
     }
 }

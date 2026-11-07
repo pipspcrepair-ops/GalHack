@@ -50,13 +50,14 @@ public static class BuildingBridge
     /// <summary>The block family item a placed block is made from (any shape of an armour material is its family's item), or null.</summary>
     public static ItemDef ItemOf(ItemCatalogue items, Structure s, in Block b) => items.BlockItem(s.TypeOf(b).Id, IsSmall(s));
 
-    /// <summary>
-    /// A structure's class as building's model can tell it: a large grid in base mode is a base,
-    /// any other large grid a capital vessel, a small grid a small vessel (a hover vessel looks the
-    /// same to it: the caller says so).
-    /// </summary>
-    public static StructureClass ClassOf(Structure s) =>
-        !IsSmall(s) ? (s.Mode == CoreMode.Base ? StructureClass.Base : StructureClass.Capital) : StructureClass.Small;
+    /// <summary>A structure's class: its core and that core's mode, nothing else.</summary>
+    public static StructureClass ClassOf(Structure s) => s.Mode switch
+    {
+        CoreMode.Base => StructureClass.Base,
+        CoreMode.Capital => StructureClass.Capital,
+        CoreMode.Hover => StructureClass.Hover,
+        _ => StructureClass.Small,
+    };
 
     /// <summary>Names the block items after building's blocks: "Steel block (large)", "Thruster (small)".</summary>
     public static void NameBlockItems(ItemCatalogue items, Catalogue blocks) =>

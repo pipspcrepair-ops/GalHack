@@ -38,8 +38,9 @@ public sealed class GlobePaint
                 int pixel = i / 4;
                 float u = (pixel % rules.CloudWidth + 0.5f) / rules.CloudWidth, v = (pixel / rules.CloudWidth + 0.5f) / cloudHeight;
                 float c = coverage(u, v);
-                // The sky's noise doesn't wrap at the map's edge: the last stretch blends into the first.
+                // The sky's noise doesn't wrap at the map's edges: the last stretch blends into the first.
                 if (u > 1f - SeamBlend) c += (coverage(u - 1f, v) - c) * (u - (1f - SeamBlend)) / SeamBlend;
+                if (v > 1f - SeamBlend) c += (coverage(u, v - 1f) - c) * (v - (1f - SeamBlend)) / SeamBlend;
                 alpha = Math.Clamp(c / 0.16f, 0f, 1f) * 0.9f;
             }
             clouds[i] = (byte)(alpha * 255f);
@@ -124,7 +125,9 @@ public readonly record struct WorldView
 /// height under you is always your height, so the land keeps the size it had. Directions from the
 /// globe's centre stay places on the map (<see cref="GlobeMap"/>): the map lookup follows the great
 /// circle out from the place under you, and low down it eases into the surface's own flat map
-/// (away from the equator the two differ in width).
+/// (away from the equator the two differ in width). The lookup round the sphere is stereographic,
+/// so what shows keeps its shape on a sheet much wider than the globe; past the far side, where
+/// no lookup round a sphere could fill the sheet's rim, it goes back to the repeating flat map.
 ///
 /// Nothing it draws touches the game: it has no collider, and every point is drawn somewhere else
 /// along its own eye ray, which changes nothing you see and only sets what it stands in front of
@@ -160,19 +163,51 @@ public partial class Globe : Node3D
         uniform vec3 fog_color : source_color = vec3(0.5);
         uniform float whole = 1.0;
         uniform float over_land = 1.0;
+        uniform float sphere_out = 100000.0;
         varying vec2 offset;
         varying float distance;
 
-        vec2 map_uv(vec2 o) {
+        // One point of the sheet on the map: mostly where uv says, with up to two other looks over it.
+        struct MapPoint {
+            vec2 uv;
+            vec2 cap_uv;
+            vec2 tile_uv;
+            float cap;
+            float tile;
+        };
+
+        // How far round the globe a point at arc s stands, radians: the globe laid on the sheet's own
+        // sphere stereographically, at the map's scale under you. Land keeps its shape, nothing is
+        // drawn twice, and the far side of the globe never closes up on the sheet. Where the sheet
+        // is the true sphere this is s / radius.
+        float round_angle(float s) {
+            return 2.0 * atan(tan(s * bend * 0.5) / (bend * radius));
+        }
+
+        MapPoint map_point(vec2 o) {
             float s = max(length(o), 0.01);
-            float a = s / radius;
+            float a = round_angle(s);
             vec3 d = map_up * cos(a) + (map_east * o.x + map_south * o.y) * sin(a) / s;
             vec2 globe = vec2(atan(d.x, d.z) / 6.2831853, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927);
-            vec2 flat_uv = (nadir + o) / map_size;
-            vec2 gap = flat_uv - globe;
+            MapPoint m;
+            m.tile_uv = (nadir + o) / map_size;
+            vec2 gap = m.tile_uv - globe;
             gap -= round(gap);
-            float keep = 1.0 - taper * smoothstep(local * 0.35, local, s);
-            return globe + gap * flat_map * keep;
+            // The flat map hands over to the sphere near you by moving; further out the two are too far
+            // apart, and over the pole the sphere's map jumps a half turn, so there they cross-fade.
+            float keep = flat_map * (1.0 - taper * smoothstep(local * 0.35, local, s)) * (1.0 - smoothstep(local, local * 1.3, s));
+            m.uv = globe + gap * keep;
+            // The map is a torus, so wrapped on the sphere its columns close to a point at each pole
+            // and the land fans out from there like spokes. Over the poles it is laid flat instead:
+            // a piece of the map well clear of the map's edges, at its own scale.
+            m.cap = smoothstep(0.80, 0.93, abs(d.y)) * (1.0 - keep);
+            m.cap_uv = (d.y > 0.0 ? vec2(0.25) : vec2(0.75)) + vec2(d.x, d.z) * radius / map_size;
+            // Low down the sheet runs on far past the far side of the globe, and the rim of a sheet
+            // that wide is many times the globe's own girth: anything of the sphere there is smeared
+            // round it. So past the sphere's reach it is the flat map that stood there under the cap,
+            // which repeats both ways with no seam.
+            m.tile = max(smoothstep(sphere_out, sphere_out * 1.35, s), (1.0 - taper) * smoothstep(local * 0.8, local, s));
+            return m;
         }
 
         // Metres of the map a grid point stands from the point under you.
@@ -194,18 +229,42 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>A map as the sheet shows it at a point, filtered by how the lookup really moves across the screen: the sphere's map swells on the sheet.</summary>
+    const string Paint = """
+        vec4 paint(sampler2D map, MapPoint m) {
+            vec2 dx = dFdx(m.uv), dy = dFdy(m.uv);
+            dx -= round(dx); // over the map's edge uv jumps a whole turn
+            dy -= round(dy);
+            vec2 cx = dFdx(m.cap_uv), cy = dFdy(m.cap_uv), tx = dFdx(m.tile_uv), ty = dFdy(m.tile_uv);
+            vec4 c = m.tile < 1.0 ? textureGrad(map, m.uv, dx, dy) : vec4(0.0);
+            if (m.cap > 0.0) c = mix(c, textureGrad(map, m.cap_uv, cx, cy), m.cap);
+            if (m.tile > 0.0) c = mix(c, textureGrad(map, m.tile_uv, tx, ty), m.tile);
+            return c;
+        }
+        """;
+
     const string GroundSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-        uniform sampler2D glow_map : source_color, filter_linear_mipmap, repeat_enable;
+        uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
         uniform float relief = 1.0;
         {{SheetCode}}
+        {{Paint}}
         varying vec3 round_normal;
+
+        float ground_at(vec2 o, float lod) {
+            MapPoint m = map_point(o);
+            float e = m.tile < 1.0 ? textureLod(relief_map, m.uv, lod).r : 0.0;
+            if (m.cap > 0.0) e = mix(e, textureLod(relief_map, m.cap_uv, lod).r, m.cap);
+            if (m.tile > 0.0) e = mix(e, textureLod(relief_map, m.tile_uv, lod).r, m.tile);
+            return e * relief;
+        }
+
         void vertex() {
             float s = arc(VERTEX.y);
             vec3 t = eye_east * VERTEX.x + eye_south * VERTEX.z;
@@ -213,32 +272,28 @@ public partial class Globe : Node3D
             // The relief at the grid's own spacing there, or it stands up as spikes.
             float step_m = max(32.0, s * 0.0375);
             float lod = log2(step_m / 32.0);
-            float e = textureLod(relief_map, map_uv(offset), lod).r * relief;
+            float e = ground_at(offset, lod);
             vec3 n;
             vec3 p = sheet_point(s, t, e, n);
             // The ground's slope, from the same map.
-            float ex = textureLod(relief_map, map_uv(offset + vec2(step_m, 0.0)), lod).r * relief;
-            float ez = textureLod(relief_map, map_uv(offset + vec2(0.0, step_m)), lod).r * relief;
+            float ex = ground_at(offset + vec2(step_m, 0.0), lod);
+            float ez = ground_at(offset + vec2(0.0, step_m), lod);
             vec3 slope = (eye_east * (ex - e) + eye_south * (ez - e)) / step_m;
             // Lit as the sheet lies low down, as the sphere it stands for high up: the night side comes in with the curve.
-            float a = s / radius;
+            float a = round_angle(s);
             round_normal = t * sin(a) + eye_up * cos(a);
             distance = length(p);
             VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance);
             NORMAL = normalize(mix(round_normal, n, flat_map) - slope);
         }
         void fragment() {
-            vec2 uv = map_uv(offset);
-            // The flat map closes to a point at a pole: its colours run together there, or they'd pinch into a pinwheel.
-            float v = fract(uv.y);
-            float pole = 1.0 + 96.0 * (1.0 - flat_map) * smoothstep(0.1, 0.01, min(v, 1.0 - v));
-            vec2 dx = dFdx(offset) / map_size * pole, dy = dFdy(offset) / map_size * pole;
-            vec4 a = textureGrad(albedo_map, uv, dx, dy);
+            MapPoint m = map_point(offset);
+            vec4 a = paint(albedo_map, m);
             ALBEDO = a.rgb;
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
-            EMISSION = textureGrad(glow_map, uv, dx, dy).rgb * (day_glow + night * night_glow);
+            EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
             ALPHA = whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
@@ -250,6 +305,7 @@ public partial class Globe : Node3D
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
         uniform float cloud_lift = 30.0;
         {{SheetCode}}
+        {{Paint}}
         void vertex() {
             float s = arc(VERTEX.y);
             offset = VERTEX.xz * s;
@@ -261,7 +317,7 @@ public partial class Globe : Node3D
             NORMAL = n;
         }
         void fragment() {
-            vec4 c = textureGrad(cloud_map, map_uv(offset), dFdx(offset) / map_size, dFdy(offset) / map_size);
+            vec4 c = paint(cloud_map, map_point(offset));
             ALBEDO = c.rgb;
             ALPHA = c.a * whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
@@ -332,6 +388,37 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// The world's ring, a real thing at its true place, drawn the way the surface's sky draws it. It
+    /// writes no depth, or everything behind it would be cut out at its rim, gaps and all, and it goes
+    /// after the ground and clouds, whose depth hides it where it passes behind. The sheet stands
+    /// elsewhere along its eye rays until it is the true globe, so that is worked here too.
+    /// </summary>
+    const string RingSource = """
+        shader_type spatial;
+        render_mode world_vertex_coords, unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
+        uniform vec3 color : source_color;
+        uniform vec3 axis = vec3(0.0, 1.0, 0.0);
+        uniform vec3 to_sun = vec3(0.0, 1.0, 0.0);
+        uniform vec3 eye_up = vec3(0.0, 1.0, 0.0);
+        uniform float height = 1000.0;
+        uniform float sheet_radius = 2546.0;
+        varying vec3 place;
+        void vertex() { place = VERTEX; }
+        void fragment() {
+            vec3 ro = CAMERA_POSITION_WORLD, to = place - ro;
+            float far_off = length(to);
+            vec3 rd = to / far_off, oc = eye_up * (height + sheet_radius);
+            float b = dot(oc, rd), past = b * b - dot(oc, oc) + sheet_radius * sheet_radius;
+            if (past > 0.0 && -b - sqrt(past) > 0.0 && -b - sqrt(past) < far_off) discard;
+            float r = UV.x; // 0 at the inner edge, 1 at the outer
+            float bands = 0.55 + 0.25 * sin(r * 61.0) + 0.2 * sin(r * 23.0 + 1.0);
+            float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
+            ALBEDO = color * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs(dot(axis, to_sun)) * 1.5, 0.0, 1.0));
+            ALPHA = clamp(bands, 0.0, 1.0) * gap * 0.75;
+        }
+        """;
+
     const float AirStrength = 1.1f;
     const float ShroudShell = 40f;
 
@@ -341,7 +428,7 @@ public partial class Globe : Node3D
     ShaderMaterial _ground, _clouds, _air, _shroud, _ringMaterial;
     MeshInstance3D _airMesh, _shroudMesh, _ring;
     bool _hasRing;
-    float _airThickness;
+    float _airThickness, _sphereReach;
 
     public float Radius { get; private set; }
 
@@ -353,6 +440,7 @@ public partial class Globe : Node3D
     {
         Radius = radius;
         _airThickness = atmosphereRadius - radius;
+        _sphereReach = Mathf.DegToRad((float)rules.SphereReach);
         ArchetypeLook look = paint.Look;
         ArrayMesh grid = PolarGrid(rules.Rings, rules.Segments);
         _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource } };
@@ -383,13 +471,19 @@ public partial class Globe : Node3D
         _shroudMesh = Instance("Shroud", shell, _shroud);
         _shroudMesh.Visible = false;
         AddChild(_shroudMesh);
-        _ringMaterial = new ShaderMaterial { Shader = Planets.Shaders.Ring };
+        _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 3 };
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
         _hasRing = look.Ring;
         _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * 1.45f, radius * 2.3f, 160), MaterialOverride = _ringMaterial, Visible = false };
         AddChild(_ring);
         Visible = false;
     }
+
+    /// <summary>How far along the sheet its rim stands, m: out to the limb and a little past it, for the back of the sphere is never in view.</summary>
+    public static float RimOf(float rho, float height) => MathF.Min(rho * MathF.Acos(rho / (rho + height + 700f)) * 1.04f, 60000f);
+
+    /// <summary>The arc on a sheet of curve radius <paramref name="rho"/> that stands <paramref name="angle"/> radians round a globe of <paramref name="radius"/>: the inverse of the shader's <c>round_angle</c>.</summary>
+    public static float ArcAt(float angle, float rho, float radius) => 2f * rho * MathF.Atan(MathF.Tan(angle * 0.5f) * radius / rho);
 
     static readonly Aabb Everywhere = new(new Vector3(-1e6f, -1e6f, -1e6f), new Vector3(2e6f, 2e6f, 2e6f));
 
@@ -399,12 +493,10 @@ public partial class Globe : Node3D
         if (_ring != null) _ring.Transform = globe;
     }
 
-    /// <summary>The ring shows only where the globe is drawn true, faded in by <paramref name="fade"/>.</summary>
-    public void FadeRing(float fade)
+    /// <summary>The ring drawn here or not: under the top of the band the surface's sky draws it, at the same place.</summary>
+    public void ShowRing(bool shown)
     {
-        if (_ring == null) return;
-        _ring.Visible = _hasRing && fade > 0.01f;
-        _ring.Transparency = 1f - fade;
+        if (_ring != null) _ring.Visible = _hasRing && shown;
     }
 
     /// <summary>Lays the sheet out for this frame.</summary>
@@ -414,9 +506,8 @@ public partial class Globe : Node3D
         Visible = v.Whole > 0.002f;
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
-        // Out to the limb and a little past it: the back of the sphere is never in view.
-        float limb = rho * MathF.Acos(rho / (rho + v.Height + 700f));
-        Reach = MathF.Min(limb * 1.04f, 60000f);
+        Reach = RimOf(rho, v.Height);
+        float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
             m.SetShaderParameter("eye_up", v.Up);
@@ -432,6 +523,7 @@ public partial class Globe : Node3D
             m.SetShaderParameter("taper", v.Taper);
             m.SetShaderParameter("local", v.Local);
             m.SetShaderParameter("reach", Reach);
+            m.SetShaderParameter("sphere_out", sphereOut);
             m.SetShaderParameter("near_at", v.Near);
             m.SetShaderParameter("far_at", v.Far);
             m.SetShaderParameter("fog_density", v.FogDensity);
@@ -446,6 +538,11 @@ public partial class Globe : Node3D
         _ground.SetShaderParameter("sun_dir", v.ToSun);
         _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
         _air.SetShaderParameter("sun_dir", v.ToSun);
+        _ringMaterial.SetShaderParameter("to_sun", v.ToSun);
+        _ringMaterial.SetShaderParameter("axis", _ring.GlobalBasis.Y.Normalized());
+        _ringMaterial.SetShaderParameter("eye_up", v.Up);
+        _ringMaterial.SetShaderParameter("height", v.Height);
+        _ringMaterial.SetShaderParameter("sheet_radius", rho);
         _air.SetShaderParameter("eye_up", v.Up);
         _air.SetShaderParameter("ground", rho);
         _air.SetShaderParameter("thickness", _airThickness);
@@ -505,7 +602,7 @@ public partial class Globe : Node3D
     }
 
     /// <summary>A flat annulus in the equatorial plane; UV.x runs from the inner to the outer edge (as OrbitView's).</summary>
-    static ArrayMesh RingMesh(float inner, float outer, int segments)
+    public static ArrayMesh RingMesh(float inner, float outer, int segments)
     {
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);

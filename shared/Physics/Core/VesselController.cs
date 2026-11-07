@@ -51,7 +51,7 @@ public interface IFlightRules
     /// <summary>The pilot is asking for thrust: wakes a landed vessel.</summary>
     bool AnyThrust { get; }
 
-    /// <summary>Hover vessels: hop this tick.</summary>
+    /// <summary>Hover Mode: hop this tick.</summary>
     bool Jump { get; }
 
     /// <summary>The vessel has landed: drop cruise and boost.</summary>
@@ -172,7 +172,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     public void ToggleGear()
     {
-        if (Gear == null) Say("No landing gear on a hover vessel");
+        if (Gear == null) Say(Stats.IsHover ? "No landing gear in Hover Mode" : "No landing gear fitted");
         else Gear.Toggle();
     }
 
@@ -227,6 +227,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
             bool canHover = Stats.CanLiftOff || Zone.Gravity <= 0f;
             Hover.Step(world, body, ref v, ref rotation, Stats.RideHeight, canHover, Zone.Gravity, Flight.Seated && Flight.Jump, dt);
         }
+        else if (Stats.IsHover) v.Y -= Zone.Gravity * dt; // Hover Mode with no plates fitted: nothing holds it up
         body.Rotation = rotation;
         body.AngularVelocity = AngularVelocity(before, rotation, dt);
         Gear?.Step(world, body, ref v, dt);

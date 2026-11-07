@@ -640,12 +640,22 @@ public static class Structure
     /// </summary>
     public static bool Carved(BlockGrid g, CellMask occupied, Int3 c) => occupied[c] && !OuterWall(g, occupied, c);
 
-    /// <summary>A course of an outer wall with more wall above it: the ground it stands in comes right up to it, and into it.</summary>
+    /// <summary>
+    /// A solid block on the edge of a place, to whatever height: the ground comes right up to it and into it,
+    /// a sill, a floor's edge or the top course of a wall as much as the wall under it. Only an opening
+    /// (a doorway, a window, a gap decay left) is carved, as glass is: the ground in it would show.
+    /// </summary>
     public static bool OuterWall(BlockGrid g, CellMask occupied, Int3 c)
     {
-        if (!occupied[c] || !BlockInfo.IsFullCube(g.Get(c).Type) || !BlockInfo.IsFullCube(g.Get(c + Int3.Up).Type)) return false;
-        foreach (Dir d in Dirs.Horizontal)
-            if (!occupied[c + d.Vec()]) return true;
+        Block b = g.Get(c);
+        if (!occupied[c] || !BlockInfo.IsFullCube(b.Type) || BlockInfo.IsTransparent(b.Material)) return false;
+        // Round it, corners too; and where a wall stands on it, round that: where a storey steps in, the ground comes to the wall above. (A roof under the ground is no edge: held back, the ground would fillet the room's corners.)
+        Block over = g.Get(c + Int3.Up);
+        bool walled = BlockInfo.IsFullCube(over.Type) && !BlockInfo.IsTransparent(over.Material);
+        for (int dy = 0; dy <= (walled ? 1 : 0); dy++)
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (!occupied[c + new Int3(dx, dy, dz)] && (dx != 0 || dz != 0)) return true;
         return false;
     }
 

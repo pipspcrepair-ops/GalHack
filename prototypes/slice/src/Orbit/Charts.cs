@@ -13,7 +13,7 @@ namespace Slice.Orbit;
 public sealed record ChartMark(string Key, string Label, double X, double Z, string Kind);
 
 /// <summary>A body or a place on the system map.</summary>
-public sealed record SystemEntry(string Key, string Label, string Kind, float Size, float Orbit, float Bearing, string Note = "");
+public sealed record SystemEntry(string Key, string Label, string Kind, float Size, float Orbit, float Bearing, string Note = "", string Parent = null, float Width = 0f);
 
 /// <summary>A catalogue star on the galaxy map: where it lies from you on the map (ly, east along the disc and south), how far off the plane, how far in all, and its direction in the sky.</summary>
 public sealed record StarEntry(int Id, string Name, StarKind Kind, float X, float Z, float Height, float Light, bool Home, System.Numerics.Vector3 Direction);
@@ -98,22 +98,65 @@ public sealed class Charts
         return true;
     }
 
-    /// <summary>The star's bodies that show on the system map: the star, the world you are on, its moons and any giant, their sizes as its sky shows them.</summary>
-    public static List<SystemEntry> Bodies(SkySystem sky, string world)
+    /// <summary>
+    /// Everything in a system at a moment, from the model on the shared clock: the star, every
+    /// world, belt and moon. A body round the star stands at its true bearing, its distance out
+    /// eased so the inner worlds don't all sit on the star, and <see cref="SystemEntry.Width"/> is
+    /// a belt's width on the same scale. A moon names what it circles (<see cref="SystemEntry.Parent"/>):
+    /// its true bearing round that, and for <see cref="SystemEntry.Orbit"/> its place out, nearest first.
+    /// </summary>
+    public static List<SystemEntry> Bodies(StarSystem system, string world, double days, string star = "Star")
     {
-        var list = new List<SystemEntry>
+        double farthest = 0;
+        foreach (Orbiter b in system.Bodies)
+            if (b.Parent == system.Star) farthest = Math.Max(farthest, b.Orbit + b.BeltWidth * 0.5);
+        float Out(double r) => (float)Math.Sqrt(Math.Max(r, 0.0) / farthest) * 0.95f;
+        var keys = new Dictionary<Orbiter, string> { [system.Star] = "star", [system.Home] = "world" };
+        foreach (Orbiter b in system.Bodies)
+            if (!keys.ContainsKey(b)) keys[b] = $"body{keys.Count}";
+        var list = new List<SystemEntry> { new("star", star, "star", 0.5f, 0f, 0f, $"{system.Luminosity:0.##} suns, {system.Bodies.Count - 1} bodies") };
+        foreach (Orbiter b in system.Bodies)
         {
-            new("star", $"{sky.Star} star", "star", 0.5f, 0f, 0f),
-            new("world", world, "world", 0.12f, 0.55f, 0.6f, "you started here"),
-        };
-        int moon = 0;
-        foreach (SkyBody b in sky.Bodies)
-        {
-            bool giant = b.Kind == PlanetSurface.Skies.BodyKind.GasGiant;
-            string name = string.IsNullOrEmpty(b.Name) ? (giant ? "Giant" : $"Moon {++moon}") : b.Name;
-            list.Add(new SystemEntry(name.ToLowerInvariant().Replace(' ', '-'), name, giant ? "giant" : "moon", Math.Clamp(b.Radius * 2f, 0.03f, 0.3f), giant ? 0.85f : 0.12f + 0.05f * moon, b.Azimuth));
+            if (b.Kind == OrbiterKind.Star) continue;
+            string kind = b == system.Home ? "world" : b.Kind switch { OrbiterKind.GasGiant => "giant", OrbiterKind.Moon => "moon", OrbiterKind.Belt => "belt", _ => "planet" };
+            string label = b == system.Home ? world : Tidy(b.Name);
+            float size = (float)Math.Clamp(b.Radius / 12000.0, 0.03, 0.3);
+            if (b.Parent == system.Star)
+            {
+                D3 p = system.Position(b, days);
+                float out0 = Out(Math.Sqrt(p.X * p.X + p.Z * p.Z));
+                float width = b.Kind == OrbiterKind.Belt ? Out(b.Orbit + b.BeltWidth * 0.5) - Out(b.Orbit - b.BeltWidth * 0.5) : 0f;
+                list.Add(new SystemEntry(keys[b], label, kind, size, out0, (float)Math.Atan2(p.Z, p.X), Facts(b, system), null, width));
+            }
+            else
+            {
+                D3 p = system.Position(b, days) - system.Position(b.Parent, days);
+                int place = 0;
+                foreach (Orbiter o in system.Under(b.Parent))
+                    if (o.Orbit < b.Orbit) place++;
+                list.Add(new SystemEntry(keys[b], label, kind, size, place, (float)Math.Atan2(p.Z, p.X), Facts(b, system), keys[b.Parent]));
+            }
         }
         return list;
+    }
+
+    /// <summary>A body's name for a chart: the model's "moon 2 of 3" is just Moon 2 there.</summary>
+    public static string Tidy(string name)
+    {
+        string n = name;
+        foreach (string lead in new[] { "the ", "a " })
+            if (n.StartsWith(lead, StringComparison.Ordinal)) n = n[lead.Length..];
+        int of = n.IndexOf(" of ", StringComparison.Ordinal);
+        if (of > 0 && !n.StartsWith("moon of", StringComparison.Ordinal)) n = n[..of];
+        return char.ToUpperInvariant(n[0]) + n[1..];
+    }
+
+    /// <summary>What the model knows of a body, for the side of the map.</summary>
+    static string Facts(Orbiter b, StarSystem system)
+    {
+        string where = b.Parent == system.Star ? $"{b.Orbit / StarSystem.AuMetres:0.0} AU, {b.Period:0}-day year" : $"{b.Orbit / 1000.0:0} km out, {b.Period:0.0}-day month";
+        string held = b.Deposits.Count == 0 ? "" : ", " + string.Join(", ", b.Deposits.ConvertAll(d => d.Replace('-', ' ')));
+        return $"{where}, {b.Temperature:0} K{held}";
     }
 
     /// <summary>Every star on the galaxy map: those been to, and their neighbours in jump range.</summary>

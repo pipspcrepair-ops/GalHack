@@ -47,6 +47,7 @@
     <Compile Include="..\planet-surface\src\Terrain\FarBuilder.cs" />
     <Compile Include="..\planet-surface\src\Terrain\GroundPalette.cs" />
     <Compile Include="..\planet-surface\src\Sky\SkySystem.cs" />
+    <Compile Include="..\planet-surface\src\Sky\StarSystem.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
   </ItemGroup>
 </Project>

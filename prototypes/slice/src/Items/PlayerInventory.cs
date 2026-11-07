@@ -47,11 +47,12 @@ public sealed class PlayerInventory
     /// <summary>Toolbar shortcut for the starter vessel's blueprint (the blueprint projector).</summary>
     public const string BlueprintBlock = "@blueprint";
 
-    /// <summary>Items that found a new structure when set down.</summary>
     /// <summary>The hand tools, plainest first: each is the survival tool's gather, shoot and deconstruct, faster.</summary>
     public static readonly string[] ToolItems = { "survival-tool", "mining-drill", "plasma-drill" };
 
-    public static readonly string[] CoreItems = { "base-core", "vessel-core", "hover-core", "capital-core" };
+    /// <summary>The two cores' items: the Big Core runs a base or a capital vessel, the Small Core a small or hover vessel.</summary>
+    public const string BigCore = "big-core", SmallCore = "small-core";
+    public static readonly string[] CoreItems = { BigCore, SmallCore };
 
     public readonly SharedStorage Storage;
     public readonly ItemGrid Grid;

@@ -92,9 +92,12 @@ public partial class ChartTest : Node
     {
         PlanetSpec spec = WorldChoice.Tested.Spec();
         SkySystem sky = SkySystem.For(spec);
-        var bodies = Charts.Bodies(sky, "Your world");
-        Check(bodies[0].Kind == "star" && bodies.Count(b => b.Kind == "world") == 1 && bodies.Count == 2 + sky.Bodies.Count,
-            $"the system map lists the star, the world and its {sky.Bodies.Count} other bodies: {string.Join(", ", bodies.Select(b => b.Label))}");
+        StarSystem system = StarSystem.For(spec, sky, 16000);
+        var bodies = Charts.Bodies(system, "Your world", 3.25);
+        Check(bodies[0].Kind == "star" && bodies.Count(b => b.Kind == "world") == 1 && bodies.Count(b => b.Kind is "planet" or "giant" or "world" or "moon") >= 8 && bodies.Any(b => b.Kind == "belt"),
+            $"the system map lists the star, the world and the rest of its system: {string.Join(", ", bodies.Select(b => b.Label))}");
+        var later = Charts.Bodies(system, "Your world", 13.25);
+        Check(bodies.Zip(later).Any(p => p.First.Bearing != p.Second.Bearing), "the system map reads the moment: its worlds move on along their orbits");
         // The stars are the galaxy's own: GalaxyTest holds the map to the sky.
         Galaxy galaxy = Galaxy.Make(spec.Seed);
         int home = galaxy.Home(PlanetSurface.Skies.SkyRig.KindOf(sky.Star), spec.Seed, false);

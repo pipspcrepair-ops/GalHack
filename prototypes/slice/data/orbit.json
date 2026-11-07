@@ -21,6 +21,16 @@
     // The share of the map's relief the true globe draws (it is a small world: at full height its
     // peaks would stand a quarter of its radius high). All of it at the cap, thinning up the climb.
     "reliefFar": 0.12,
+    // How far round the globe the sheet shows the sphere's map, degrees from the point under you.
+    // Past it (only low down, where the sheet is far wider than the globe) it is the flat map.
+    "sphereReach": 105,
+    // How many days' worth of sun a trip round the map's equator is. 1 is the true globe: the same
+    // sun in the sky from the ground and from space. Under 1 softens the time zones on the surface,
+    // and the sun then jumps at the crossing by what was softened away.
+    "mapDaysPerTurn": 1.0,
+    // A temperate world's year, game days: every orbit's period follows from it, so this one number
+    // is how fast the system runs. Short enough that planets can be seen to move in play.
+    "temperateYearDays": 24,
     // The globe is painted once, from the sky's clouds as they stand, but a clear spell under you
     // shouldn't leave the whole world bare: its share of cloud is at least this.
     "cloudCoverAtLeast": 0.38,

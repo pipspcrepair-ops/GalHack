@@ -72,7 +72,7 @@ public partial class Game : Node3D
     public Visor Visor { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
-    /// <summary>The in-world screens on constructors and base cores (looked at to use).</summary>
+    /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
     public MachineScreens MachineScreens { get; private set; }
     public DebugHud Debug { get; private set; }
     public Hands Hands { get; private set; }
@@ -116,6 +116,7 @@ public partial class Game : Node3D
 
     public override void _Ready()
     {
+        PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
         // The command line pins the world and the mode: -- --seed 123 --planet ice --creative

@@ -56,7 +56,7 @@ public sealed class HandlingStats
     public float TopSpeedSpace { get; init; }
     public bool InAtmosphere { get; init; }
 
-    /// <summary>Upward thrust plus hover lift, kN.</summary>
+    /// <summary>What holds it up, kN: hover lift on a hover vessel, upward thrust on anything else.</summary>
     public float UpwardThrust { get; init; }
 
     /// <summary>Weight on the planet, kN.</summary>
@@ -80,7 +80,7 @@ public sealed class HandlingStats
 
     /// <summary>The console's warning, shown before anyone tries to take off. Null when all is well.</summary>
     public string LiftWarning => CanLiftOff ? null : IsHover
-        ? $"TOO HEAVY TO HOVER: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t"
+        ? UpwardThrust <= 0f ? "NO HOVER LIFT: no hover plates fitted" : $"TOO HEAVY TO HOVER: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t"
         : $"TOO HEAVY TO TAKE OFF: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t";
 
     /// <summary>The four numbers as console lines, the same wherever they are shown.</summary>
@@ -159,7 +159,8 @@ public static class HandlingModel
             TopSpeedSpace = cls.TopSpeedSpace,
             TopSpeed = where.InAtmosphere ? cls.TopSpeedAir : cls.TopSpeedSpace,
             InAtmosphere = where.InAtmosphere,
-            UpwardThrust = thrust[(int)Direction.Up] + hoverLift,
+            // One mode lifts on plates, the other on thrusters: in Hover Mode thrusters only push the craft along.
+            UpwardThrust = s.Class == VesselClass.Hover ? hoverLift : thrust[(int)Direction.Up],
             Weight = mass * where.PlanetGravity,
             PlanetGravity = where.PlanetGravity,
             RideHeight = ride,

@@ -124,7 +124,7 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
-    /// <summary>A structure in base mode, anchored where it was placed: never moves (shared physics' fixed body).</summary>
+    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). A Big Core switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
@@ -205,6 +205,7 @@ public sealed partial class Vessel
         });
         body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
         var vessel = new Vessel(zone, s, body);
+        body.Class = StructureBridge.ClassOf(vessel.Spec);
         vessel._legsKey = vessel.LegsKey();
         body.Controller = new VesselController(vessel.Flight, vessel.Spec.HoverPoints, vessel.Spec.Legs);
 
@@ -226,6 +227,7 @@ public sealed partial class Vessel
     /// </summary>
     public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading)
     {
+        s.Mode = CoreMode.Base;
         MassProperties mass = MassOf(s);
         Body body = zone.Physics.Register(new BodySpec
         {
@@ -363,8 +365,8 @@ public sealed partial class Vessel
     }
 
     /// <summary>
-    /// Landing legs and hover pads belong to the vessel's controller: when they change (a leg
-    /// built on), a parked vessel gets a new controller standing where it stood.
+    /// Landing legs and hover plates belong to the vessel's controller: when they change (a leg
+    /// built on, or the core's mode switched), it gets a new one, standing where it stood if parked.
     /// </summary>
     void RefreshLegs()
     {
@@ -372,11 +374,15 @@ public sealed partial class Vessel
         string key = LegsKey();
         if (key == _legsKey) return;
         _legsKey = key;
-        bool landed = Controller?.Frozen ?? true;
+        VesselController old = Controller;
         Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
-        float heading = MathX.Heading(Body.Rotation);
-        if (landed) Controller.PlaceLanded(Body, Body.Position, heading);
-        else Controller.Place(Body, Body.Position, heading);
+        if (old?.Frozen ?? true)
+        {
+            N.Quaternion rotation = Body.Rotation;
+            Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
+            Body.Rotation = rotation;
+        }
+        else Controller.LocalSpin = old.LocalSpin; // in flight it carries on as it was: speed, attitude and spin
     }
 
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);

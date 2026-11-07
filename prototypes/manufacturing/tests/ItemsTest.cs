@@ -88,7 +88,7 @@ public partial class ItemsTest : TestBase
                 ItemDef item = b.ItemFor(small);
                 families++;
                 bool ok = item != null && item.Category == ItemCategory.Block && item.Recipe != null && item.StackSize > 0 && item.MassKg > 0 && item.VolumeSu > 0
-                          && item.Unlock != null && item.Places.Count > 0 && item.BlockId == b.BlockId && item.SmallGrid == small && item.Recipe.InputsFor(1).Equals(b.For(small));
+                          && item.Unlock != null && item.BlockId == b.BlockId && item.SmallGrid == small && item.Recipe.InputsFor(1).Equals(b.For(small));
                 if (!ok) Check(false, $"block {b.BlockId} on the {(small ? "small" : "large")} grid is a block item with recipe, stack, mass, volume, unlock and classes");
             }
         Check(_items.BlockItems.Count() == families, $"every block family on both grids is an item: {families} block items, each with a recipe, stack, mass, volume, unlock and classes");
@@ -97,14 +97,22 @@ public partial class ItemsTest : TestBase
         Check(steelL.StackSize > _items.BlockItem("thruster", false).StackSize, $"armour stacks deep ({steelL.StackSize}), devices don't ({_items.BlockItem("thruster", false).StackSize})");
         Check(Math.Abs(steelL.MassKg - _items.MassOf(_items.Blocks.For("steel", false))) < 1e-9 && Math.Abs(steelL.VolumeSu - _items.VolumeOf(_items.Blocks.For("steel", false))) < 1e-9,
             $"a block item weighs and packs as what it is made of ({steelL.MassKg} kg, {steelL.VolumeSu} SU)");
-        Check(_items.BlockItem("core", false).Id == "base-core" && _items.BlockItem("core", true).Id == "vessel-core", "the core block's items are the base core and the small-vessel core");
+        Check(_items.BlockItem("core", false).Id == "big-core" && _items.BlockItem("core", false).Name == "Big Core" && _items.BlockItem("core", true).Id == "small-core" && _items.BlockItem("core", true).Name == "Small Core", "the core block's items are the Big Core and the Small Core");
+        var cores = _items.Items.Where(i => i.BlockId == "core" || i.Id.EndsWith("-core") && i.Category != ItemCategory.Part && i.Name.EndsWith("Core", StringComparison.OrdinalIgnoreCase) && i.Id != "fusion-core" && i.Id != "lattice-core").Select(i => i.Id).OrderBy(i => i).ToList();
+        Check(cores.SequenceEqual(new[] { "big-core", "small-core" }), $"there are exactly two cores: {string.Join(", ", cores)}");
+        foreach (var (old, now) in new[] { ("base-core", "big-core"), ("capital-core", "big-core"), ("vessel-core", "small-core"), ("hover-core", "small-core") })
+            Check(_items.Item(old).Id == now && _items.TryGet(old, out ItemDef item) && item.Id == now, $"the old id {old} loads as {now}");
+        var kept = new SharedStorage(_items, "old save", 500);
+        kept.Add("hover-core", 1);
+        kept.Add("vessel-core", 1);
+        Check(kept.Count("small-core") == 2 && kept.Count("hover-core") == 2 && kept.Stacks.Count() == 1, "stacks saved under old ids land on the one core's stack");
         Check(_items.BlockItem("container", false).Unlock?.Level == 1, "devices (containers) are items too, unlocked in the tech tree");
         // The two drives (data only): warp on small and capital vessels, hyperdrive on capital only, each with its own fuel and tank.
         ItemDef warp = _items.BlockItem("warpdrive", true), hyper = _items.BlockItem("hyperdrive1", false);
-        Check(warp.PlacesOn(StructureClass.Small) && _items.BlockItem("warpdrive", false).PlacesOn(StructureClass.Capital) && _items.BlockItem("warptank", true) != null,
-            "a warp drive and its warp cell tank fit small and capital vessels");
-        Check(hyper.Places.SequenceEqual(new[] { StructureClass.Capital }) && _items.BlockItem("hyperdrive1", true) == null && _items.BlockItem("hyperdrive2", false) != null && _items.BlockItem("foldtank", true) == null,
-            "hyperdrives T1 and T2 and the fold crystal tank are capital vessels only");
+        Check(warp != null && _items.BlockItem("warpdrive", false) != null && _items.BlockItem("warptank", true) != null,
+            "a warp drive and its warp cell tank come on both grids");
+        Check(hyper != null && _items.BlockItem("hyperdrive1", true) == null && _items.BlockItem("hyperdrive2", false) != null && _items.BlockItem("foldtank", true) == null,
+            "hyperdrives T1 and T2 and the fold crystal tank are large-grid only");
         Check(_items.Item("warp-cell").Recipe.Tier <= 1 && _items.Item("warp-cell").Recipe.Inputs.All(i => i.Item.Rarity == Rarity.Common), "warp cells are made in constructors from common materials");
         Check(_items.Item("fold-crystal").Uses.Contains("Hyperdrive") && _items.Item("fold-crystal").Uses.Contains("shields"), "fold crystal is hyperdrive fuel and still feeds shields");
         // The constructor tiers make the right blocks.
@@ -112,7 +120,7 @@ public partial class ItemsTest : TestBase
         Constructor survival = Make("survival"), smallFab = Make("small"), large = Make("large");
         foreach (string id in new[] { "steel", "glass", "concrete", "container", "generator", "fueltank", "smallfab", "light", "ladder" })
             Check(survival.Knows(_items.BlockItem(id, false)), $"the survival constructor makes {_items.BlockItem(id, false).Name}");
-        Check(survival.Knows(_items.BlockItem("core", false)), "the survival constructor makes the base core");
+        Check(survival.Knows(_items.BlockItem("core", false)), "the survival constructor makes the Big Core");
         foreach (string id in new[] { "thruster", "chair", "gyro", "gear", "core" })
             Check(!survival.Knows(_items.BlockItem(id, true)) && smallFab.Knows(_items.BlockItem(id, true)), $"{_items.BlockItem(id, true).Name} needs the small constructor");
         foreach (string id in new[] { "hardened", "combat", "thruster" })

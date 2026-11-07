@@ -24,6 +24,19 @@ public partial class ProceduralAudio : Node3D
     public AudioStreamWav HoverLoop { get; private set; }
     public AudioStreamWav GrindLoop { get; private set; }
 
+    static AudioStreamWav _hum;
+
+    /// <summary>A hoverer's wings: a soft, breathy hum at the beat and its octave, on one shared loop.</summary>
+    public static AudioStreamWav Hum => _hum ??= Make(1f, (t, n) =>
+        (Saw(t * 54f) * 0.2f + MathF.Sin(MathF.Tau * 108f * t) * 0.32f + MathF.Sin(MathF.Tau * 216f * t) * 0.1f + n * 0.14f) * (0.85f + 0.15f * MathF.Sin(MathF.Tau * 9f * t)), new Rng(53), loop: true);
+
+    /// <summary>Lets the hum go at shutdown, on the main thread.</summary>
+    public static void ReleaseHum()
+    {
+        _hum?.Dispose();
+        _hum = null;
+    }
+
     public override void _Ready()
     {
         var rng = new Rng(77);

@@ -101,6 +101,20 @@ public sealed class Creature
     public float Altitude;
     public bool Landed;
 
+    // Winged bodies in the air (see Flight). A bank's turn, in radians a second, and the roll that
+    // goes with it; whether the wings are working (the rig follows this); on the take-off run.
+    public float TurnRate, Bank;
+    public bool Flapping, Climbing, TakingOff;
+    public float FlapFor, LandedAt = -999f;
+    /// <summary>A dive's aim, and when the next pass may start.</summary>
+    public Vector3 AirAim;
+    public bool AirAimOn;
+    public float NextPass = -999f;
+    /// <summary>Something ahead: when next to look, how long to keep clear of it, which way, and whether up.</summary>
+    public float ProbeIn, AvoidFor, AvoidSide;
+    public Vector3 AvoidFrom;
+    public bool AvoidClimb;
+
     // Hoppers.
     public HopPhase Hop;
     public float HopTime, HopCooldown;

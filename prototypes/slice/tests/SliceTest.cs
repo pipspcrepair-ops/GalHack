@@ -284,6 +284,15 @@ public partial class SliceTest : Node
         if (spot == default) spot = surf.GroundAt(_game.Survivor.WorldFeet.X + 20f, _game.Survivor.WorldFeet.Z);
         _game.Survivor.PlaceOutside((spot + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
+        // A clear run ahead, or the first trunk stops the speed check: as a rider picks a line.
+        Vector3 chest = _game.Survivor.WorldFeet + Vector3.Up * 1.4f;
+        for (int k = 0; k < 16; k++)
+        {
+            Vector3 way = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, k * Mathf.Tau / 16f);
+            if (_game.Bikes.Blocked(chest, way, 32f)) continue;
+            foreach (int x in _drive.LookAt(chest + way * 10f, 3)) yield return x;
+            break;
+        }
         _game.Pack.Storage.Add("hover-bike", 1);
         _game.Pack.Grid[1].Item = "hover-bike";
         _game.Pack.Grid[1].Count = 1;
@@ -748,6 +757,11 @@ public partial class SliceTest : Node
             GD.Print($"  (the sky was {sky.Dominant}: cleared for the flight)");
             sky.Snap(WeatherKind.Clear);
         }
+        // The Creative twin may stand between its pad and the Skiff, on legs low enough to wedge you under: this check is about flying.
+        GD.Print("  (TEST: the castaway is set down beside the Skiff, clear of the Creative twin)");
+        Vector3 beside = v.Body.Position.ToGodot() + new Vector3(6f, 0f, 6f);
+        _game.Survivor.PlaceOutside(_game.Zone.GroundAt(beside.X, beside.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
+        foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;

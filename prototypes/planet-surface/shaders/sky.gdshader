@@ -30,13 +30,19 @@ uniform float overcast = 0.0;          // weather greying the whole sky
 uniform vec3 overcast_color : source_color = vec3(0.5);
 
 uniform int moon_count = 0;
-uniform vec3 moon_dir[3];
-uniform float moon_radius[3];
-uniform vec3 moon_color[3] : source_color;
+uniform vec3 moon_dir[10];
+uniform float moon_radius[10];
+uniform vec3 moon_color[10] : source_color;
+uniform vec3 moon_light[10];
 
 uniform bool giant = false;
 uniform vec3 giant_dir = vec3(0.0, 1.0, 0.0);
 uniform float giant_radius = 0.1;
+uniform vec3 giant_light = vec3(0.0, 1.0, 0.0);
+uniform bool home_ring = false;
+uniform vec3 home_ring_color : source_color = vec3(0.8);
+uniform mat3 sky_to_globe = mat3(1.0);
+uniform vec3 home_ring_eye = vec3(0.0, 1.0, 0.0); // the eye in the globe's frame, in globe radii
 uniform vec3 giant_color : source_color = vec3(0.8, 0.7, 0.5);
 uniform vec3 giant_band : source_color = vec3(0.5, 0.4, 0.3);
 uniform bool rings = false;
@@ -110,9 +116,9 @@ vec4 over(vec4 front, vec4 back) {
 
 vec4 lit_disc(vec3 dir, vec3 centre, float radius, vec3 sun, out vec3 normal) {
 	float c = dot(dir, centre);
-	float r = acos(clamp(c, -1.0, 1.0));
 	normal = -centre;
-	if (r >= radius) return vec4(0.0);
+	if (c <= cos(radius)) return vec4(0.0);
+	float r = acos(clamp(c, -1.0, 1.0));
 	vec3 helper = abs(centre.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
 	vec3 east = normalize(cross(helper, centre));
 	vec3 north = cross(centre, east);
@@ -123,8 +129,27 @@ vec4 lit_disc(vec3 dir, vec3 centre, float radius, vec3 sun, out vec3 normal) {
 	return vec4(vec3(clamp(dot(normal, sun), 0.0, 1.0)), edge);
 }
 
+// This world's own ring, a real thing in its equator's plane, 1.45 to 2.3 globe radii from its centre:
+// the same bands the ring shows from space.
+vec4 own_ring(vec3 dir, vec3 sun) {
+	if (!home_ring) return vec4(0.0);
+	vec3 d = sky_to_globe * dir;
+	if (abs(d.y) < 1e-5) return vec4(0.0);
+	float t = -home_ring_eye.y / d.y;
+	if (t <= 0.0) return vec4(0.0);
+	float b = dot(home_ring_eye, d), past = b * b - dot(home_ring_eye, home_ring_eye) + 1.0;
+	if (past > 0.0 && -b - sqrt(past) > 0.0 && -b - sqrt(past) < t) return vec4(0.0); // the globe is in the way
+	float r = (length(home_ring_eye.xz + d.xz * t) - 1.45) / 0.85;
+	if (r <= 0.0 || r >= 1.0) return vec4(0.0);
+	float bands = 0.55 + 0.25 * sin(r * 61.0) + 0.2 * sin(r * 23.0 + 1.0);
+	float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
+	float a = clamp(bands, 0.0, 1.0) * gap * 0.75;
+	vec3 lit = home_ring_color * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs((sky_to_globe * sun).y) * 1.5, 0.0, 1.0));
+	return vec4(lit * a, a);
+}
+
 vec4 bodies(vec3 dir, vec3 sun) {
-	vec4 result = vec4(0.0);
+	vec4 result = own_ring(dir, sun);
 	if (giant) {
 		vec3 axis = normalize(ring_normal);
 		vec4 back = vec4(0.0), front = vec4(0.0);
@@ -137,24 +162,24 @@ vec4 bodies(vec3 dir, vec3 sun) {
 				float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(2.35, 2.42, rr));
 				ring *= 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
 				ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85; // a dark gap
-				float lit = 0.6 + 0.4 * clamp(abs(dot(axis, sun)) * 1.5, 0.0, 1.0);
+				float lit = 0.6 + 0.4 * clamp(abs(dot(axis, giant_light)) * 1.5, 0.0, 1.0);
 				vec4 rc = vec4(ring_color * lit * ring * 0.85, ring * 0.85);
 				if (t < 1.0) front = rc; else back = rc;
 			}
 		}
 		vec3 n;
-		vec4 disc = lit_disc(dir, giant_dir, giant_radius, sun, n);
+		vec4 disc = lit_disc(dir, giant_dir, giant_radius, giant_light, n);
 		if (disc.a > 0.0) {
 			float lat = dot(n, axis);
 			float bands = sin(lat * 19.0 + sin(lat * 7.0) * 1.6) * 0.5 + 0.5;
 			vec3 surface = mix(giant_color, giant_band, bands * 0.7);
 			disc.rgb = surface * (0.03 + 0.97 * disc.r) * disc.a;
 		}
-		result = over(front, over(disc, back));
+		result = over(front, over(disc, over(back, result)));
 	}
 	for (int i = 0; i < moon_count; i++) {
 		vec3 n;
-		vec4 m = lit_disc(dir, moon_dir[i], moon_radius[i], sun, n);
+		vec4 m = lit_disc(dir, moon_dir[i], moon_radius[i], moon_light[i], n);
 		if (m.a <= 0.0) continue;
 		float craters = 0.82 + 0.18 * texture(cloud_noise, n.xz * 0.7 + float(i) * 0.31).r;
 		m.rgb = moon_color[i] * craters * (0.025 + 1.1 * m.r) * m.a;
@@ -303,7 +328,7 @@ void sky() {
 
 		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
 		float sd = dot(dir, sun);
-		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd);
+		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd) * (1.0 - b.a); // what crosses the sun hides it
 		float through = sun_air(sun.y);
 		vec3 disc_color = mix(sunset, star_color, smoothstep(0.0, 0.3, sun.y)) * through * through;
 		col += disc_color * disc * sun_energy * 18.0 * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
@@ -327,8 +352,12 @@ void sky() {
 		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
 		// The air under the level goes first: nothing is left there to light but the world's own rim.
 		if (space_fade > 0.0) {
+			float gone = mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y));
 			float dark = smoothstep(0.78, 1.0, space_fade);
-			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS), mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y)));
+			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS), gone);
+			// The air goes; the sun and everything else up there stays. They are not part of the sky.
+			col = col * (1.0 - b.a * gone) + b.rgb * gone;
+			col += star_color * disc * sun_energy * 18.0 * gone;
 		}
 		COLOR = col;
 	}

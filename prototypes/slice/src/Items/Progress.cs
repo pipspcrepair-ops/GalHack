@@ -13,6 +13,8 @@ public sealed class ProgressRules
     public int[] Levels { get; set; } = Array.Empty<int>();
     public int[] Points { get; set; } = Array.Empty<int>();
     public int PastCap { get; set; } = 1500;
+    /// <summary>Unlock points a new character starts with (the Small Core and the hover plate open at level 1).</summary>
+    public int StartPoints { get; set; }
     public XpRules Xp { get; set; } = new();
 
     /// <summary>The level cap: level 1 plus one per entry in <see cref="Levels"/>.</summary>
@@ -72,7 +74,7 @@ public sealed record TechNode(string Id, string Name, Unlock Unlock, string Item
 {
     /// <summary>A sub-group on its tab (a deco piece's theme set), or null.</summary>
     public string Group { get; init; }
-    public string Tab => Unlock.Tab;
+    public string Tab => Progress.TabOf(Unlock.Tab);
     public int Level => Unlock.Level;
     public int Cost => Unlock.Cost;
 }
@@ -108,14 +110,19 @@ public sealed class Progress
     /// <summary>A node was unlocked.</summary>
     public event Action<TechNode> Unlocked;
 
-    public static readonly string[] Tabs = { "base", "capital", "small", "hover", "tools", "weapons", "deco", "misc" };
+    /// <summary>
+    /// The tabs: Base &amp; Capital (the large grid; one tab since they share every block and
+    /// component), Small &amp; Hover (the small grid, likewise), then tools, weapons, deco and misc.
+    /// </summary>
+    public static readonly string[] Tabs = { "base", "small", "tools", "weapons", "deco", "misc" };
+
+    /// <summary>The tab a data name lands on: the old capital and hover tabs are part of base and small.</summary>
+    public static string TabOf(string tab) => tab switch { "capital" => "base", "hover" => "small", _ => tab };
 
     public static string TabName(string tab) => tab switch
     {
-        "base" => "BASE",
-        "capital" => "CAPITAL VESSEL",
-        "small" => "SMALL VESSEL",
-        "hover" => "HOVER VESSEL",
+        "base" => "BASE & CAPITAL",
+        "small" => "SMALL & HOVER",
         "tools" => "TOOLS",
         "weapons" => "WEAPONS",
         "deco" => "DECO",
@@ -125,10 +132,10 @@ public sealed class Progress
     public Progress(ProgressRules rules, ItemCatalogue items, GalHack.Structures.Catalogue blocks, ProgressState state = null)
     {
         Rules = rules;
-        State = state ?? new ProgressState();
+        State = state ?? new ProgressState { PointsEarned = rules.StartPoints };
         Nodes = Build(items, blocks);
         _byId = Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
-        _unlocked = new HashSet<string>(State.Unlocked, StringComparer.Ordinal);
+        _unlocked = new HashSet<string>(State.Unlocked.Select(items.Current), StringComparer.Ordinal);
         _found = new HashSet<string>(State.Found, StringComparer.Ordinal);
         // The starting essentials: every node at level 1 that costs nothing.
         GrantFree();
@@ -137,7 +144,7 @@ public sealed class Progress
     /// <summary>
     /// Nodes that cost nothing unlock themselves as soon as their level and parent are reached:
     /// the starting essentials at level 1, and later the free blocks under a node you bought
-    /// (the small vessel's hull and legs once its core is unlocked).
+    /// (the small vessel's hull and legs once the Small Core is unlocked and its level reached).
     /// </summary>
     void GrantFree()
     {
@@ -264,7 +271,7 @@ public sealed class Progress
         return UnlockState.Affordable;
     }
 
-    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL-VESSEL CORE".</summary>
+    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL CORE".</summary>
     public string Needs(TechNode n) => StateOf(n) switch
     {
         UnlockState.Unlocked => "UNLOCKED",

@@ -110,6 +110,15 @@ public sealed class Species
         }
     }
 
+    /// <summary>The largest winged body that can hold still in the air, m: past this it has to keep flying.</summary>
+    public const float HoverMostSize = 0.55f;
+
+    /// <summary>
+    /// How it stays up, by its body alone: anything winged and small and light hovers, on rapid
+    /// wings; everything winged and bigger glides and can never stop in the air. There is no third way.
+    /// </summary>
+    public FlightKind Flight => Rig != RigKind.Winged ? FlightKind.None : Body.Size <= HoverMostSize ? FlightKind.Hover : FlightKind.Glide;
+
     /// <summary>Nose to rump, m.</summary>
     public float BodyLength => Body.Size + Body.NeckLength * 0.5f + Body.HeadSize * 0.5f;
     /// <summary>Across the body and its splayed legs, m.</summary>

@@ -53,6 +53,9 @@ public sealed class Galaxy
         }
     }
 
+    /// <summary>What picks among the rim stars for a home of this kind.</summary>
+    public static ulong HomeKey(ulong seed, StarKind kind, bool inNebula) => Mix.Of(seed, (long)kind, inNebula ? 1 : 0);
+
     /// <summary>Makes the galaxy for a seed. Same seed, same galaxy.</summary>
     public static Galaxy Make(ulong seed) => GalaxyGen.Make(seed);
 
@@ -205,18 +208,25 @@ public sealed class Nebula
         return t1 > t0;
     }
 
-    /// <summary>How thick it is at a point, 0 to 1: lobes broken up by noise, or a remnant's torn shell.</summary>
+    static Vector3 Warp(Vector3 p) => new Vector3(LatticeNoise.Value(p), LatticeNoise.Value(p + new Vector3(5.2f, 1.3f, 7.7f)), LatticeNoise.Value(p + new Vector3(2.8f, 9.1f, 3.4f))) - new Vector3(0.5f);
+
+    /// <summary>
+    /// How thick it is at a point, 0 to 1. The lobes only say roughly where it is: space is folded
+    /// twice over before they are read, so they have no clean edge, and the gas itself is thin
+    /// wisps and bright filaments that fade away to nothing at the rim.
+    /// </summary>
     public float Density(Vector3 p)
     {
         Vector3 v = p - Centre;
         float d2 = v.LengthSquared(), r2 = Radius * Radius;
         if (d2 >= r2) return 0f;
         Vector3 q = Vector3.Transform(v, Quaternion.Conjugate(Turn)) / (Axes * Radius);
-        Vector3 w = q + new Vector3(LatticeNoise.Value(q * 2.1f + Offset), LatticeNoise.Value(q * 2.1f + Offset + new Vector3(5.2f, 1.3f, 7.7f)), LatticeNoise.Value(q * 2.1f + Offset + new Vector3(2.8f, 9.1f, 3.4f))) * 0.7f - new Vector3(0.35f);
+        Vector3 w = q + Warp(q * 1.5f + Offset) * 1.1f;
+        w += Warp(w * 3.7f + Offset * 1.3f) * 0.34f;
         float body;
         if (Kind == NebulaKind.Remnant)
         {
-            float shell = (w.Length() - 0.68f) / 0.11f;
+            float shell = (w.Length() - 0.66f) / 0.13f;
             body = MathF.Exp(-shell * shell);
         }
         else
@@ -224,16 +234,41 @@ public sealed class Nebula
             body = 0f;
             foreach (var (at, radius) in Lobes)
             {
-                float k = 1f - Vector3.DistanceSquared(w, at) / (radius * radius);
+                float k = 1f - Vector3.DistanceSquared(w, at) / (radius * radius * 1.6f);
                 if (k > 0f) body += k * k;
             }
-            body = MathF.Min(body, 1f);
+            body = 1f - MathF.Exp(-body * 1.5f);
         }
         if (body <= 0f) return 0f;
-        float grain = LatticeNoise.Fractal(w * 2.6f + Offset * 1.7f, 3);
-        float wisps = Math.Clamp((grain - 0.34f) / 0.3f, 0f, 1f);
+        float grain = LatticeNoise.Fractal(w * 2.4f + Offset * 1.7f, 4);
+        float wisps = Math.Clamp((grain - 0.33f) / 0.34f, 0f, 1f);
+        wisps = wisps * wisps * (3f - 2f * wisps);
+        float fold = 1f - MathF.Abs(2f * LatticeNoise.Fractal(w * 3.1f + Offset, 3) - 1f);
+        float filaments = fold * fold * fold * fold;
         float fade = 1f - d2 / r2;
-        return body * wisps * wisps * (3f - 2f * wisps) * MathF.Min(fade * 3f, 1f);
+        // It thins out long before its sphere ends, so the sphere never shows as an outline.
+        return MathF.Min(body * body * (0.55f * wisps + 0.75f * filaments * wisps), 1f) * fade * fade;
+    }
+
+    /// <summary>Its colour at a point where it has a given thickness: thick gas and thin gas differ, and drift across it.</summary>
+    public Vector3 ColourAt(Vector3 p, float density)
+    {
+        float drift = LatticeNoise.Value((p - Centre) / Radius * 1.4f + Offset);
+        return Vector3.Lerp(Rim, Colour, Math.Clamp(density * 2.2f + (drift - 0.5f) * 1.1f, 0f, 1f));
+    }
+
+    /// <summary>Points of its own density, the same every time: how the map draws it.</summary>
+    public (Vector3 at, float density, float size, Vector3 colour)[] Wisps(int count)
+    {
+        var rng = new GalaxyRng(Mix.Of(0x57495350, (long)(Offset.X * 1000f), Id));
+        var list = new System.Collections.Generic.List<(Vector3, float, float, Vector3)>(count);
+        for (int tries = 0; tries < count * 600 && list.Count < count; tries++)
+        {
+            Vector3 p = Centre + rng.InBall() * Radius;
+            float d = Density(p);
+            if (d > 0.04f && rng.Float() < d * 3f) list.Add((p, d, rng.Float(), ColourAt(p, d)));
+        }
+        return list.ToArray();
     }
 }
 

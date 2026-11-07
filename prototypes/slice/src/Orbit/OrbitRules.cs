@@ -24,6 +24,9 @@ public sealed class OrbitRules
         public int CloudWidth { get; set; } = 1024;
         public double CloudHeight { get; set; } = 0.012;
         public double ReliefFar { get; set; } = 0.12;
+        public double SphereReach { get; set; } = 105;
+        public double MapDaysPerTurn { get; set; } = 1.0;
+        public double TemperateYearDays { get; set; } = 24.0;
         public double CloudOpacity { get; set; } = 0.55;
         public double CloudCoverAtLeast { get; set; } = 0.38;
     }

@@ -38,9 +38,11 @@ public sealed class GalaxySky
     /// <summary>The longest one frame spent putting the sky on the graphics card, ms.</summary>
     public double UploadMs { get; private set; }
 
-    /// <summary>How the world stands against the galaxy, and its turn with the day.</summary>
+    /// <summary>How the system's frame stands against the galaxy.</summary>
     public N.Quaternion Tilt { get; private set; } = N.Quaternion.Identity;
-    public double TimeOfDay;
+
+    /// <summary>That tilt, for a shader: the star field's directions into the catalogue's.</summary>
+    public Basis Field => Basis(Tilt);
 
     readonly List<ShaderMaterial> _bound = new();
     Task<(Galaxy galaxy, int home)> _making;
@@ -50,10 +52,20 @@ public sealed class GalaxySky
     ImageTexture _cells, _stars;
     Cubemap _glow;
 
+    /// <summary>The sky of a world whose star is already found (see PlanetWorld): only the sky itself is left to bake.</summary>
+    public GalaxySky(Galaxy galaxy, int home, ulong seed)
+    {
+        Tilt = SkyFrame.Tilt(seed);
+        Galaxy = galaxy;
+        Home = home;
+        MoveTo(home);
+    }
+
+    /// <summary>A sky with no world of its own: the catalogue is made here, on a worker thread.</summary>
     public GalaxySky(ulong seed, StarKind kind, bool inNebula)
     {
         Tilt = SkyFrame.Tilt(seed);
-        ulong key = Mix.Of(seed, (long)kind, inNebula ? 1 : 0);
+        ulong key = Galaxy.HomeKey(seed, kind, inNebula);
         _making = Task.Run(() =>
         {
             var watch = Stopwatch.StartNew();
@@ -172,16 +184,7 @@ public sealed class GalaxySky
 
     // ---- Directions -----------------------------------------------------------------------------
 
-    /// <summary>A globe direction into the catalogue's, now.</summary>
-    public N.Quaternion FromGlobe => N.Quaternion.Normalize(Tilt * SkyFrame.Spin(TimeOfDay));
-
-    /// <summary>A place's directions into the catalogue's: <paramref name="toGlobe"/> takes them to the globe's.</summary>
-    public N.Quaternion From(N.Quaternion toGlobe) => N.Quaternion.Normalize(FromGlobe * toGlobe);
-
     public static Basis Basis(N.Quaternion q) => new(new Quaternion(q.X, q.Y, q.Z, q.W));
-
-    /// <summary>The direction to look in, in a place's own frame, to see a catalogue direction.</summary>
-    public N.Vector3 Toward(N.Vector3 catalogue, N.Quaternion toGlobe) => N.Vector3.Transform(catalogue, N.Quaternion.Conjugate(From(toGlobe)));
 
     /// <summary>Tells a sky how wide a pixel is, so a star stays a point at any window size or field of view.</summary>
     public static void SetPixel(ShaderMaterial sky, Viewport viewport)

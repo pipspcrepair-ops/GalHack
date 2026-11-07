@@ -6,6 +6,7 @@ using GalHack.Stars;
 using Godot;
 using Planets.Gen;
 using PlanetSurface.Skies;
+using PlanetSurface.World;
 using Slice.Game;
 using Slice.Orbit;
 using Slice.Ui;
@@ -306,22 +307,31 @@ public partial class GalaxyTest : Node
         Check(g.Clear(dark.Centre - N.Vector3.UnitX * dark.Radius * 2f, dark.Centre + N.Vector3.UnitX * dark.Radius * 2f) < 0.97f || g.Clear(dark.Centre - N.Vector3.UnitZ * dark.Radius * 2f, dark.Centre + N.Vector3.UnitZ * dark.Radius * 2f) < 0.97f, "a dark nebula blocks the light of what lies behind it");
     }
 
+    /// <summary>The sky over the map's north and south seam: one sky on both sides, and no jump on the way.</summary>
     void Frames()
     {
-        double worst = 0;
-        for (int i = 0; i < 500; i++)
+        const double H = 8000;
+        Check(Math.Abs(SkyFrame.SeamColatitude(2000, H) - Math.PI / 4) < 1e-9 && Math.Abs(SkyFrame.SeamColatitude(6500, H) - 6500 / H * Math.PI) < 1e-9, "away from the seam the sky is the true one");
+        N.Vector3 Up(double z)
         {
-            double w = 16000, h = 8000, x = _rng.NextDouble() * w, z = _rng.NextDouble() * h;
-            N.Quaternion a = SkyFrame.Map(x, z, w, h), b = new GlobeMap(w, h, 2500).Frame(x, z);
-            worst = Math.Max(worst, Angle(N.Vector3.Transform(N.Vector3.UnitX, a), N.Vector3.Transform(N.Vector3.UnitX, b)) + Angle(N.Vector3.Transform(N.Vector3.UnitY, a), N.Vector3.Transform(N.Vector3.UnitY, b)));
+            var (_, up, _) = StarSystem.FrameAt(1.2, SkyFrame.SeamColatitude(z, H));
+            return new N.Vector3((float)up.X, (float)up.Y, (float)up.Z);
         }
-        Check(worst < 0.01, $"the sky's frame on the map is the orbit's own globe frame (worst {worst:E1} degrees)");
-        // At the equator a star past the zenith moves west, as the world turns east under it.
-        N.Vector3 up = N.Vector3.UnitY;
-        N.Quaternion place = SkyFrame.Map(4000, 4000, 16000, 8000);
-        N.Vector3 star = N.Vector3.Transform(up, place);
-        N.Vector3 Seen(double t) => N.Vector3.Transform(star, N.Quaternion.Conjugate(N.Quaternion.Normalize(SkyFrame.Spin(t) * place)));
-        Check(Seen(0.05).X < -0.1f, $"stars set in the west: {Seen(0.05)} a little after they stood overhead");
+        N.Vector3 South(double z)
+        {
+            var (_, _, south) = StarSystem.FrameAt(1.2, SkyFrame.SeamColatitude(z, H));
+            return new N.Vector3((float)south.X, (float)south.Y, (float)south.Z);
+        }
+        Check(Angle(Up(0.01), Up(H - 0.01)) < 0.01 && Angle(South(0.01), South(H - 0.01)) < 0.01, $"both sides of the seam are one sky ({Angle(Up(0.01), Up(H - 0.01)):F3} degrees apart)");
+        double worst = 0, last = SkyFrame.SeamColatitude(0, H);
+        for (double z = 1; z <= H; z += 1)
+        {
+            double c = SkyFrame.SeamColatitude(z, H);
+            worst = Math.Max(worst, Math.Abs(c - last) * 180.0 / Math.PI);
+            last = c;
+        }
+        Check(worst < 1.0, $"walking the whole way round, the sky never turns faster than {worst:F2} degrees a metre");
+        Check(Math.Abs(SkyFrame.SeamColatitude(0, H) - Math.PI / 2) < 1e-9, "and the seam's sky stands on the same longitude, so night stays night there");
     }
 
     void Trail()
@@ -437,6 +447,9 @@ public partial class GalaxyTest : Node
         foreach (var (where, angle) in _truth) Check(angle < 0.5, $"{where}: the sky's own uniforms agree with the map's direction to a star, worst {angle:F3} degrees");
         GalaxySky s = _game.Surface.Sky.Stars;
         Check(s.Galaxy.Stars[s.Home].Kind == SkyRig.KindOf(_game.Surface.Planet.Sky.Star), $"this world's home star is a {s.Galaxy.Stars[s.Home].Kind}, the class of its own sun; id {s.Home}, {s.Galaxy.Name(s.Home)}");
+        StarSystem system = _game.Surface.Planet.StarSystem;
+        Check(system.StarKey == s.Galaxy.SystemSeed(s.Home), "and the system model is built from that star's own catalogue seed");
+        Check(system.Bodies.Count(b => b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant or OrbiterKind.Moon) >= 8 && system.StartFault() == null, "with all a start system promises");
         GD.Print($"timings: galaxy made in {s.MakeMs:F0} ms and sky baked in {s.BakeMs:F0} ms on workers; {s.UploadMs:F1} ms on the main thread to upload {s.TextureBytes / 1024} KB");
         Check(s.UploadMs < 12.0, "the upload is no visible hitch: one texture a frame");
         Report();

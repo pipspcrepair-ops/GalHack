@@ -3,8 +3,12 @@ using System.Collections.Generic;
 
 namespace GalHack.Structures;
 
-/// <summary>A large-grid core runs a base (it never flies) or a capital vessel. Everything else is shared.</summary>
-public enum CoreMode { Base, Capital }
+/// <summary>
+/// What a core is set to run as. There are two cores: a Big Core (large grid) in Base Mode or Capital
+/// Mode, and a Small Core (small grid) in Vessel Mode or Hover Mode. Every block works in both of its
+/// core's modes; only what the blocks do changes.
+/// </summary>
+public enum CoreMode { Base, Capital, Vessel, Hover }
 
 [Flags]
 public enum BlockFlags : byte
@@ -65,7 +69,16 @@ public sealed class Structure
     /// <summary>Who owns it, set by placing the core. Null for an unowned wreck.</summary>
     public string Owner;
 
-    public CoreMode Mode = CoreMode.Capital;
+    /// <summary>
+    /// The core's mode, always one its grid's core has: a value from the other grid reads as the
+    /// flying mode (old data said "capital" on a small grid, which is Vessel Mode).
+    /// </summary>
+    public CoreMode Mode
+    {
+        get => Grid.Size == GridSize.Small ? (_mode == CoreMode.Hover ? CoreMode.Hover : CoreMode.Vessel) : (_mode == CoreMode.Base ? CoreMode.Base : CoreMode.Capital);
+        set => _mode = value;
+    }
+    CoreMode _mode = CoreMode.Capital;
 
     /// <summary>The core's artificial gravity switch. It also needs power to work (see <see cref="StructureStats"/>).</summary>
     public bool GravityOn = true;

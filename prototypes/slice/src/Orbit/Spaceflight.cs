@@ -204,7 +204,7 @@ public partial class Spaceflight : Node
         float cover = MathF.Max(s.Sky.Air.CloudCover, (float)Rules.Globe.CloudCoverAtLeast), w = (float)s.Planet.Width, h = (float)s.Planet.Height;
         Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
-        Orbit = new OrbitZone(s.Planet, s.Data, Rules, SystemSeed(s.Spec), Ceiling, coverage)
+        Orbit = new OrbitZone(s.Planet, s.Data, Rules, s.Planet.StarSystem.StarKey, Ceiling, coverage)
         {
             ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };
@@ -228,6 +228,8 @@ public partial class Spaceflight : Node
         }
         // The cap: nothing stands in the atmosphere over it, ever. It crosses here.
         HoldAtCap(carrier);
+        // Hover only works close to the ground: a craft in Hover Mode never crosses, however it got up here.
+        if (carrier?.Structure.Mode == CoreMode.Hover) return;
         if (Orbit?.Ready == true) BeginCrossing(carrier, up: true);
         else TicksHeldAtCap++;
     }
@@ -260,7 +262,6 @@ public partial class Spaceflight : Node
         _leftSurfaceAt = new Vector3(p.X, p.Y, p.Z);
         to.Align(x, z, p.X, p.Z);
         _aligned = true;
-        to.Arrive(from.Sky.ToSun);
         HoldSurfaceBehind();
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
@@ -449,7 +450,7 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         foreach (Vessel v in g.Zone.Vessels)
         {
-            if (v == carrier || v.Flight == null || v.Controller?.Frozen != false) continue;
+            if (v == carrier && v.Structure.Mode != CoreMode.Hover || v.Flight == null || v.Controller?.Frozen != false) continue;
             if (g.Zone is OrbitZone orbit)
             {
                 Vector3 p = v.Body.Position.ToGodot();

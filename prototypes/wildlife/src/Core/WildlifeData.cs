@@ -18,6 +18,9 @@ public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Od
 /// caves, tunnels and places: a body that lies against whatever surface it holds (floor, wall
 /// or ceiling) on legs that plant on it.
 /// </summary>
+/// <summary>How a winged body stays up (see <see cref="Species.Flight"/>). Gas bags and swarms are neither: they drift.</summary>
+public enum FlightKind { None, Glide, Hover }
+
 public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger, Crawler }
 
 /// <summary>Where a species lives. Planet wildlife lives on the surface; space fauna in the rest.</summary>

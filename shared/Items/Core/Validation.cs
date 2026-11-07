@@ -81,9 +81,6 @@ public static class Validation
                 if (item.StackSize <= 0) problems.Add($"{item.Id}: no stack size");
                 if (item.MassKg <= 0 || item.VolumeSu <= 0) problems.Add($"{item.Id}: no mass or volume");
                 if (item.Unlock == null) problems.Add($"{item.Id}: no tech-tree node");
-                if (item.Places.Count == 0) problems.Add($"{item.Id}: it goes on no class of structure");
-                foreach (StructureClass sc in item.Places)
-                    if (StructureClasses.IsSmallGrid(sc) != small) problems.Add($"{item.Id}: a {grid}-grid block on a {StructureClasses.Name(sc)}");
             }
         // The foothold base's blocks come out of the carried survival constructor.
         foreach (BlockCount f in c.Machines.Reference.Foothold)

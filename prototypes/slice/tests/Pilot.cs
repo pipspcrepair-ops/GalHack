@@ -50,24 +50,10 @@ public sealed class Pilot
     /// <summary>A new seat: the stick starts centred.</summary>
     public void Seated() => _stick = Vector2.Zero;
 
-    /// <summary>
-    /// Walks up to a vessel's seat and takes it (F). If the walk ends out of reach (on top of the
-    /// hull, say), it steps down beside the seat, on the ground, and tries again.
-    /// </summary>
+    /// <summary>Walks up to a vessel's seat and takes it (F).</summary>
     public IEnumerable<int> Board(Vessel v)
     {
         foreach (int x in _drive.Board(v)) yield return x;
-        for (int attempt = 0; attempt < 3 && _game.Survivor.Seated != v; attempt++)
-        {
-            Vector3 seat = v.ToWorld(v.Seat.Value);
-            Vector3 side = MathX.Rotate(v.Body.Rotation, N.Vector3.UnitX).ToGodot() * (attempt % 2 == 0 ? 1f : -1f);
-            Vector3 beside = seat + side * 2.2f;
-            beside.Y = _game.Zone.GroundAt(beside.X, beside.Z).Y;
-            foreach (int x in _drive.WalkTo(beside, 0.5f, 20f, sprint: false, dig: false, hop: false)) yield return x;
-            foreach (int x in _drive.LookAt(seat, 4)) yield return x;
-            foreach (int x in _drive.Tap(Key.F)) yield return x;
-            for (int i = 0; i < 5; i++) yield return 0;
-        }
         Seated();
     }
 
