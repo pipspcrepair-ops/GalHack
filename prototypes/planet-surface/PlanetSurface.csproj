@@ -35,5 +35,7 @@
     <Compile Include="..\..\shared\Deco\**\*.cs" />
     <!-- Every plant in the game: the flora module. -->
     <Compile Include="..\..\shared\Flora\**\*.cs" />
+    <!-- A place's lights take the building prototype's light settings (as the POI generator does). -->
+    <Compile Include="..\building\src\Structures\LightSettings.cs" />
   </ItemGroup>
 </Project>

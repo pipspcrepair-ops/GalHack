@@ -40,6 +40,11 @@ public static class InfraViews
                 return Look(w, vx, vz, eye, px, pz, target);
             }, 0.4, WeatherKind.Clear);
         }
+        if (what == "roads")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: RoadSeries);
+        }
         if (what == "pylon") PylonBearing = a.Length > 4 ? float.Parse(a[4]) : 20f;
         bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -281,6 +286,112 @@ public static class InfraViews
         if (best == null) return (new Vector3((float)lx, w.GroundHeight(lx, lz) + 20f, (float)lz), 0f, -8f);
         int ahead = Math.Min(best.Count - 1, bestI + 14);
         return Look(w, best.X[bestI], best.Z[bestI], best.Y[bestI] + 2.2f, best.X[ahead], best.Z[ahead], best.Y[ahead] + 1f);
+    }
+
+    /// <summary>
+    /// infra:roads: the start town's street grid and a road bending across open country, each from the
+    /// ground, from low flight and from about 400 m up: how roads read at every distance.
+    /// </summary>
+    static System.Collections.Generic.List<Screenshot.Shot> RoadSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        double ox = w.Landing.X, oz = w.Landing.Y;
+        if (w.StartTown is StartTown town)
+        {
+            ox = town.CenterX;
+            oz = town.CenterZ;
+            float c = G(town.CenterX, town.CenterZ);
+            // On the main street near its end, looking down it into the town.
+            double gx = town.CenterX - town.AlongX * (town.MainHalf - 12) + town.AlongZ * 1.5, gz = town.CenterZ - town.AlongZ * (town.MainHalf - 12) - town.AlongX * 1.5;
+            Add("town-ground", gx, gz, G(gx, gz) + 1.8f, town.CenterX + town.AlongX * 30, town.CenterZ + town.AlongZ * 30, c + 0.5f);
+            double bx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 150, bz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 150;
+            Add("town-low", bx, bz, c + 45f, town.CenterX, town.CenterZ, c);
+            double hx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 520, hz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 520;
+            Add("town-high", hx, hz, c + 400f, town.CenterX, town.CenterZ, c);
+        }
+        else GD.Print("ROADS: no start town on this world");
+        // A ground stretch that bends and runs off the map's axes, a little way from the town.
+        InfraRoute best = null;
+        int at = 0;
+        double bestScore = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway or RouteKind.Track))
+            for (int i = 40; i + 40 < r.Count; i += 4)
+            {
+                bool ground = true;
+                for (int k = i - 40; k < i + 40 && ground; k++) ground = r.Span[k] == RoadSpan.Ground;
+                if (!ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
+                if (d < 400 || d > 4000) continue;
+                double a0 = Math.Atan2(r.Z[i] - r.Z[i - 30], r.X[i] - r.X[i - 30]), a1 = Math.Atan2(r.Z[i + 30] - r.Z[i], r.X[i + 30] - r.X[i]);
+                double bend = Math.Abs(Mathf.Wrap((float)(a1 - a0), -Mathf.Pi, Mathf.Pi)) * 180 / Math.PI;
+                double diag = Math.Abs(((a0 + a1) * 0.5 * 180 / Math.PI % 90 + 90) % 90 - 45);
+                double score = Math.Abs(bend - 35) + diag * 0.8 + d * 0.004 + (r.Kind == RouteKind.Track ? 15 : 0);
+                if (score < bestScore) { bestScore = score; best = r; at = i; }
+            }
+        if (best != null)
+        {
+            GD.Print($"ROADS: country {best.Kind} {best.Id} ({best.Surface}, wear {best.Wear:F2}) at {best.X[at]:F0}, {best.Z[at]:F0}");
+            double dx = best.X[at + 12] - best.X[at - 12], dz = best.Z[at + 12] - best.Z[at - 12], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= len; dz /= len;
+            int from = at - 16;
+            double sx = best.X[from] + dz * best.HalfWidth * 0.5, sz = best.Z[from] - dx * best.HalfWidth * 0.5;
+            Add("road-ground", sx, sz, best.Y[from] + 1.8f, best.X[at + 14], best.Z[at + 14], best.Y[at + 14] + 0.5f);
+            Add("road-low", best.X[at] - dx * 70 + dz * 55, best.Z[at] - dz * 70 - dx * 55, best.Y[at] + 40f, best.X[at], best.Z[at], best.Y[at]);
+            Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
+        }
+        else GD.Print("ROADS: no country road found");
+        // The tightest bend on a paved road near the landing, close up from above its inside.
+        InfraRoute bent = null;
+        int bentAt = 0;
+        double bentTurn = 0;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 12; i + 12 < r.Count; i += 2)
+            {
+                if (r.Span[i - 12] != RoadSpan.Ground || r.Span[i + 11] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d > 3000) continue;
+                double a0 = Math.Atan2(r.Z[i] - r.Z[i - 12], r.X[i] - r.X[i - 12]), a1 = Math.Atan2(r.Z[i + 12] - r.Z[i], r.X[i + 12] - r.X[i]);
+                double turn = Math.Abs(Mathf.Wrap((float)(a1 - a0), -Mathf.Pi, Mathf.Pi));
+                if (turn > bentTurn) { bentTurn = turn; bent = r; bentAt = i; }
+            }
+        if (bent != null)
+        {
+            GD.Print($"ROADS: tightest bend on {bent.Kind} {bent.Id}: {bentTurn * 180 / Math.PI:F0} degrees over 96 m");
+            double mx = (bent.X[bentAt - 12] + bent.X[bentAt + 12]) * 0.5, mz = (bent.Z[bentAt - 12] + bent.Z[bentAt + 12]) * 0.5;
+            double ix = mx - bent.X[bentAt], iz = mz - bent.Z[bentAt], il = Math.Max(1e-6, Math.Sqrt(ix * ix + iz * iz));
+            Add("bend-close", bent.X[bentAt] + ix / il * 45, bent.Z[bentAt] + iz / il * 45, bent.Y[bentAt] + 22f, bent.X[bentAt], bent.Z[bentAt], bent.Y[bentAt]);
+        }
+        // A junction out in the country: two roads (not railways) meeting, the nearest to the landing.
+        var grid = new System.Collections.Generic.Dictionary<(long, long), InfraRoute>();
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail))
+            for (int i = 0; i < r.Count; i++)
+                grid.TryAdd(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), r);
+        InfraRoute jr = null;
+        int ji = 0;
+        double joinAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 0; i + 1 < r.Count; i += 2)
+            {
+                if (r.Span[i] != RoadSpan.Ground) continue;
+                if (!grid.TryGetValue(((long)Math.Floor(Mathx.WrapX(r.X[i], w.Width) / 4), (long)Math.Floor(Mathx.Wrap(r.Z[i], w.Height) / 4)), out InfraRoute o) || o == r) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d < joinAway) { joinAway = d; jr = r; ji = i; }
+            }
+        if (jr != null)
+        {
+            GD.Print($"ROADS: junction of {jr.Kind} {jr.Id} at {jr.X[ji]:F0}, {jr.Z[ji]:F0}");
+            Add("junction-low", jr.X[ji] + 60, jr.Z[ji] + 45, jr.Y[ji] + 40f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-high", jr.X[ji] + 330, jr.Z[ji] + 250, jr.Y[ji] + 400f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+        }
+        else GD.Print("ROADS: no junction found");
+        return shots;
     }
 
     static (Vector3, float, float) Look(World.PlanetWorld w, double x, double z, float y, double tx, double tz, float ty)

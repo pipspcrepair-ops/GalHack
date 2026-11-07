@@ -32,7 +32,13 @@ public partial class Screenshot : Node
     /// <summary>One named view: the planet, where to stand, when, and in what weather.</summary>
     public sealed record ViewSpec(PlanetSpec Planet, Func<Main, (Vector3 pos, float heading, float pitch)> Place, double Time,
         WeatherKind? Weather = null, GroundCover? Ground = null, Action<Main> Prepare = null, Action<Main> BeforeCapture = null,
-        Func<Main, double> TimeFor = null, string Force = null);
+        Func<Main, double> TimeFor = null, string Force = null, Func<Main, List<Shot>> Series = null);
+
+    /// <summary>One frame of a series: a name for its file (FILE-name.png) and where the camera stands.</summary>
+    public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
+
+    List<Shot> _series;
+    int _shot;
 
     public override void _Ready()
     {
@@ -130,7 +136,8 @@ public partial class Screenshot : Node
             case 0:
                 if (_main.World == null) return;
                 _spec.Prepare?.Invoke(_main);
-                var (pos, heading, pitch) = _spec.Place(_main);
+                _series = _spec.Series?.Invoke(_main);
+                var (pos, heading, pitch) = _series is { Count: > 0 } ? (_series[0].Pos, _series[0].Heading, _series[0].Pitch) : _spec.Place(_main);
                 _main.Fly.Begin(pos, -Mathf.DegToRad(heading), Mathf.DegToRad(pitch));
                 _main.Player.ProcessMode = ProcessModeEnum.Disabled;
                 _main.Sky.TimeOfDay = _spec.TimeFor?.Invoke(_main) ?? _spec.Time;
@@ -138,6 +145,9 @@ public partial class Screenshot : Node
                 if (_spec.Weather is WeatherKind kind) _main.Weather.Snap(kind, _spec.Ground);
                 if (!_args.TryGetValue("hud", out string hud) || hud != "1") _main.Hud.HideAll();
                 if (_args.TryGetValue("debug", out string debug)) _main.Sky.DebugView(int.Parse(debug));
+                // The ground without its roads drawn, to weigh what drawing them costs.
+                if (_args.ContainsKey("noroads"))
+                    foreach (ShaderMaterial m in new[] { _main.Streamer.VoxelMaterial, _main.Streamer.FarMaterial }) m.SetShaderParameter("road_grid", Vector4.Zero);
                 RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
                 _stage = 1;
                 break;
@@ -161,7 +171,8 @@ public partial class Screenshot : Node
     {
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
         Image image = GetViewport().GetTexture().GetImage();
-        Error result = image.SavePng(_out);
+        string file = _series is { Count: > 0 } ? _out.Replace(".png", $"-{_series[_shot].Name}.png") : _out;
+        Error result = image.SavePng(file);
         Vector3 p = _main.Camera.GlobalPosition;
         GD.Print($"{_main.World.Spec} · {_main.World.Sky.Summary} · camera {p.X:F0}, {p.Y:F0}, {p.Z:F0} · " +
                  $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame) / 1000} k primitives, " +
@@ -170,7 +181,17 @@ public partial class Screenshot : Node
         Vector3 fwd = -_main.Camera.GlobalBasis.Z;
         GD.Print($"time {_main.Sky.TimeOfDay:F3} · sun {_main.Sky.ToSun.X:F2}, {_main.Sky.ToSun.Y:F2}, {_main.Sky.ToSun.Z:F2} · facing {fwd.X:F2}, {fwd.Y:F2}, {fwd.Z:F2}");
         if (_main.Pois.DecoRooms > 0) GD.Print($"rooms dressed from the decorations library: {_main.Pois.DecoRooms}");
-        GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
+        GD.Print(result == Error.Ok ? $"saved {file}" : $"could not save {file}: {result}");
+        // A series: on to its next frame, the world kept.
+        if (result == Error.Ok && _series != null && ++_shot < _series.Count)
+        {
+            Shot next = _series[_shot];
+            _main.Fly.Begin(next.Pos, -Mathf.DegToRad(next.Heading), Mathf.DegToRad(next.Pitch));
+            _elapsed = 0;
+            _settled = 0;
+            _stage = 1;
+            return;
+        }
         GetTree().Quit(result == Error.Ok ? 0 : 1);
     }
 }

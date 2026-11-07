@@ -945,6 +945,65 @@ public partial class SurfaceTest
         return false;
     }
 
+    // ---- roads as the ground draws them ---------------------------------------------------------
+
+    /// <summary>
+    /// The terrain shader paints roads from their own lines (RoadField), not the mesh's vertices: on fresh
+    /// worlds, every ground stretch of every road is found from the cell it lies in, its middle within a few
+    /// centimetres of the line and its whole width on the deck, at any angle; bridges and tunnels are not
+    /// painted on the ground.
+    /// </summary>
+    async Task RoadLineChecks()
+    {
+        var rand = new Random();
+        int worlds = 0, samples = 0, offLine = 0, narrow = 0, missing = 0, segments = 0, points = 0, spans = 0, spanPainted = 0;
+        var notes = new List<string>();
+        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid })
+        {
+            var spec = PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0);
+            PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
+            if (!w.Profile.Inhabited) continue;
+            worlds++;
+            RoadField field = RoadField.Build(w.Source, w.Width, w.Height);
+            segments += field.SegmentCount;
+            foreach (TerrainStamp t in w.Source.Stamps)
+            {
+                if (t.Shape != StampShape.Road) continue;
+                for (int i = 0; i + 1 < t.PathCount; i++)
+                {
+                    points++;
+                    var (ax, az, ay) = t.PathPoint(i);
+                    var (bx, bz, by) = t.PathPoint(i + 1);
+                    float f = (float)rand.NextDouble(), ex = bx - ax, ez = bz - az, len = MathF.Max(1e-4f, MathF.Sqrt(ex * ex + ez * ez));
+                    double x = t.CenterX + ax + ex * f, z = t.CenterZ + az + ez * f;
+                    float y = ay + (by - ay) * f;
+                    if (t.PathSpan(i) != RoadSpan.Ground)
+                    {
+                        // Only a long way over the ground: a bridge's deck over a gorge, a tunnel deep in a hill.
+                        float ground = w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+                        if (Math.Abs(ground - y) < 8f) continue;
+                        spans++;
+                        if (field.EdgeAt(x, z, ground, 1.2f, out _) < -0.5f) spanPainted++;
+                        continue;
+                    }
+                    samples++;
+                    float edge = field.EdgeAt(x, z, y, 1.2f, out float across);
+                    if (float.IsInfinity(edge)) { missing++; if (notes.Count < 3) notes.Add($"no road found on {t.Name} at {x:F0}, {z:F0}"); continue; }
+                    // Its middle is as deep in a deck as its own line puts it (a wider road it joins may claim it).
+                    if (edge > 0.06f - t.HalfWidth) { offLine++; if (notes.Count < 3) notes.Add($"{t.Name} at {x:F0}, {z:F0} is {edge + t.HalfWidth:F2} m off its line ({across:F2} m from the nearest)"); }
+                    // Just inside each edge, square to the line: still on a deck.
+                    float nx = -ez / len, nz = ex / len, side = t.HalfWidth - 0.25f;
+                    if (field.EdgeAt(x + nx * side, z + nz * side, y, 1.2f, out _) >= 0f || field.EdgeAt(x - nx * side, z - nz * side, y, 1.2f, out _) >= 0f) narrow++;
+                }
+            }
+            await Frames(1);
+        }
+        Check(worlds > 0 && samples > 1000 && missing == 0 && offLine <= samples / 2000 && narrow <= samples / 200,
+            $"roads are drawn from their lines: {segments} segments for {points} road points on {worlds} fresh worlds; of {samples} points on the ground {missing} not found, {offLine} off the line by over 6 cm, {narrow} narrower than the deck{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
+        Check(spanPainted <= spans / 50,
+            $"no road painted on the ground far under a bridge or over a tunnel: {spanPainted} of {spans} points");
+    }
+
     // ---- the start: the edge of a ruined town -----------------------------------------------------
 
     async Task StartTownChecks()
