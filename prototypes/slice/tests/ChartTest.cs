@@ -32,6 +32,7 @@ public partial class ChartTest : Node
             Listings();
             Routes();
             GalaxyView();
+            Profiles();
         }
         catch (Exception e) { Check(false, $"threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
@@ -107,6 +108,23 @@ public partial class ChartTest : Node
         Check(Math.Abs(view.Focus.Y) < 1e-6 && view.Focus.Length() > 1f, "middle drag slides along the galaxy's plane");
         view.Slide(100000, 0, 900);
         Check(new System.Numerics.Vector2(view.Focus.X, view.Focus.Z).Length() <= 561f, "and stays over the galaxy");
+    }
+
+    /// <summary>Any star's summary: built on demand from its own seed, cached, with bodies.</summary>
+    void Profiles()
+    {
+        Galaxy galaxy = Galaxy.Make((ulong)new Random().NextInt64());
+        var profile = new StarProfile(galaxy);
+        var rng = new Random();
+        int withBodies = 0;
+        for (int i = 0; i < 12; i++)
+        {
+            int id = rng.Next(galaxy.Stars.Length);
+            var system = profile.System(id);
+            if (system != null && system.Bodies.Count > 2 && profile.Lines(id).Length > 1) withBodies++;
+            Check(ReferenceEquals(profile.System(id), system) && ReferenceEquals(profile.Lines(id), profile.Lines(id)), "a star's summary is built once and kept");
+        }
+        Check(withBodies >= 10, $"stars anywhere in the catalogue have a system to read ({withBodies} of 12)");
     }
 
     /// <summary>The route planner: a route uses only legal jumps, and no shorter chain of lanes exists.</summary>
