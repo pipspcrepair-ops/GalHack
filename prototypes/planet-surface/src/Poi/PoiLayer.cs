@@ -35,6 +35,8 @@ public partial class PoiLayer : Node3D
     readonly List<Place> _places = new();
     readonly List<Task<(Place, List<ChunkMesh>)>> _building = new();
     readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase, MeshInstance3D Glow)> _animated = new();
+    /// <summary>Lamps with a colour and an animation of their own (PoiLights): their light and glow follow it.</summary>
+    readonly List<(OmniLight3D Light, float Energy, GalHack.Structures.LightSettings Style, MeshInstance3D Glow)> _styled = new();
     double _time;
     PlanetWorld _world;
 
@@ -140,9 +142,12 @@ public partial class PoiLayer : Node3D
             };
             node.AddChild(light);
             MeshInstance3D glow = Glow(node, inst, spot);
-            if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
+            if (spot.Style is { } style) _styled.Add((light, spot.Energy, style, glow));
+            else if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
                 _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f, glow));
         }
+        // Glowing paint: strips and panels that only glow.
+        PoiLitFaces.Build(node, inst);
         if (inst.HasCore)
         {
             Int3 core = inst.CoreCell;
@@ -269,6 +274,12 @@ public partial class PoiLayer : Node3D
             };
             if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
         }
+        foreach (var (light, energy, style, glow) in _styled)
+        {
+            if (!IsInstanceValid(light)) continue;
+            (light.LightEnergy, light.LightColor) = PoiLitFaces.At(style, energy, t);
+            if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
+        }
     }
 
     public void Clear()
@@ -277,6 +288,7 @@ public partial class PoiLayer : Node3D
         _places.Clear();
         _building.Clear();
         _animated.Clear();
+        _styled.Clear();
         _midJob = null;
         _world = null;
     }

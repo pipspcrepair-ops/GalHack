@@ -24,7 +24,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Grand", GrandPlaces), ("Roofs", Roofs), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -106,6 +106,37 @@ public partial class PoiTest : Node
         Architect.Rejected = null;
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
         Check(bad == 0 && built > 0, $"large places: {built} layouts and {spawned} spawns pass the layout checks and validation, in {sw.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>Lights keep a place's feel: dying places mostly burn with a few flickering or failed, hostile ones pulse red, high-tech ones paint some light on as strips.</summary>
+    void LightMoods()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        int steady = 0, flicker = 0, dead = 0, red = 0, hostile = 0, strips = 0, unstyled = 0;
+        foreach (FamilyDef f in _lib.Families.Where(f => !f.Space && f.Faction == Faction.None))
+        {
+            Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed);
+            if (f.StateWeights[(int)PoiState.Abandoned] > 0f)
+                foreach (LightSpot l in PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 1).Lights.Where(l => l.Mode is not (LightMode.Bloom or LightMode.Beacon)))
+                {
+                    if (l.Mode == LightMode.Dead) dead++;
+                    else if (l.Style is not { } st) unstyled++;
+                    else if (st.Anim == GalHack.Structures.LightAnim.Flicker) flicker++;
+                    else steady++;
+                }
+            if (f.StateWeights[(int)PoiState.Infested] > 0f)
+            {
+                var inf = PoiFactory.Spawn(_lib, layout, PoiState.Infested, seed + 2);
+                foreach (LightSpot l in inf.Lights.Where(l => l.Style != null)) { hostile++; if (l.Style!.Value.Anim == GalHack.Structures.LightAnim.Pulse && l.Style.Value.Color == 0xff3322) red++; }
+            }
+            if (f.Techs.Contains("high") || f.Techs.Count == 0)
+                strips += PoiFactory.Spawn(_lib, layout, PoiState.Active, seed + 3, new WorldProfile { Before = TechLevel.High, Now = TechLevel.High }).LitFaces.Count;
+        }
+        int lit = steady + flicker + dead;
+        Check(lit > 50 && unstyled == 0 && steady > flicker && flicker > 0 && dead > 0 && dead < lit / 4,
+            $"dying places: of {lit} lamps {steady} still burn, {flicker} flicker and {dead} have failed; {unstyled} without a style");
+        Check(hostile > 0 && red == hostile, $"hostile places pulse red: {red} of {hostile} lamps");
+        Check(strips > 0, $"high-tech places paint light on as strips: {strips} glowing faces");
     }
 
     /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>
