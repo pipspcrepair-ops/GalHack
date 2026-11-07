@@ -78,6 +78,7 @@ family freeholder_farm
   name Freeholder Farm
   faction freeholders
   tags farm recovery
+  is open
   pitch Survivors farming the ruins of the old world.
   kit freeholder farm
   rarity common

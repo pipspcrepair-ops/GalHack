@@ -147,6 +147,23 @@ public static partial class PoiSiting
     const double SearchRadius = 140;
     const double SeamMargin = 320;           // keeps POIs clear of the ghost band either side of a seam
 
+    /// <summary>What the planet already is, for its world roll: the type its terrain was made as, and the air its sky has.</summary>
+    static WorldRoll.Given Given(PoiLibrary lib, PlanetSpec spec, string variant)
+    {
+        var given = new WorldRoll.Given();
+        string arch = $"{spec.Archetype.ToString().ToLowerInvariant()}.{variant.Replace(' ', '_')}";
+        if (lib.Layers.FirstOrDefault(l => l.Kind == LayerKind.Type && l.Arch == arch) is { } type) given.Set(LayerKind.Type, type.Id);
+        string air = PlanetSurface.Skies.SkySystem.For(spec).Air switch
+        {
+            PlanetSurface.Skies.AirKind.Thin => "thin",
+            PlanetSurface.Skies.AirKind.Ash or PlanetSurface.Skies.AirKind.Sulfurous => "foul",
+            PlanetSurface.Skies.AirKind.Exotic => null,
+            _ => "open",
+        };
+        if (air != null) given.Set(LayerKind.Air, air);
+        return given;
+    }
+
     public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
     {
         bool start = startWorld ?? StartWorld;
@@ -157,7 +174,8 @@ public static partial class PoiSiting
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
-        WorldRoll roll = profile is { Inhabited: true } ? WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, start) : null;
+        WorldRoll roll = profile is { Inhabited: true } ? WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, start, Given(lib, spec, map.Def.VariantName)) : null;
+        if (roll != null) profile = profile with { Barred = roll.Barred };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
         var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);

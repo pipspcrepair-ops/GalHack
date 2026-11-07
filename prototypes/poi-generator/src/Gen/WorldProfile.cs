@@ -53,6 +53,8 @@ public sealed record WorldProfile
     public TechLevel Before { get; init; } = TechLevel.Mid;
     /// <summary>The post-collapse tech level: the living.</summary>
     public TechLevel Now { get; init; } = TechLevel.Low;
+    /// <summary>The words of a family's <c>is</c> line this world's facts rule out, from its roll: no open streets or farms where the air was never fit to build under.</summary>
+    public IReadOnlySet<string> Barred { get; init; } = new HashSet<string>();
 
     /// <summary>The data tag of a level (low, mid, high), as families' variants and the deco library name them.</summary>
     public static string Tag(TechLevel t) => t switch { TechLevel.Low => "low", TechLevel.High => "high", _ => "mid" };
@@ -83,6 +85,7 @@ public sealed record WorldProfile
     public bool Fits(FamilyDef f, PoiState state)
     {
         if (Unbuilt(f)) return true;
+        if (f.Is.Any(Barred.Contains)) return false;
         bool living = Living(f, state);
         if (!living && !Inhabited) return false;
         if (f.Tier == PoiTier.Spaceport && !living && Starport == Starport.None) return false;

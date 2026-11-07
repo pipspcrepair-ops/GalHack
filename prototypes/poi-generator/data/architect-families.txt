@@ -610,6 +610,7 @@ family old_farm
   ominous 0.3
   wrong 0.05
   tags farm fuel grand
+  is open
   states active 1 abandoned 6 infested 1 ruined 3
   variant Old Homestead
     seed 9501
@@ -813,6 +814,7 @@ family exchange_market
   ominous 0.3
   wrong 0
   tags civilian working trade
+  is open
   states active 8 abandoned 1 ruined 1
   variant Market
     seed 9661
@@ -871,6 +873,7 @@ family survivor_hamlet
   ominous 0.3
   wrong 0
   tags settlement
+  is open
   states active 8 abandoned 2 ruined 1
   variant Hamlet
     seed 9681
@@ -898,6 +901,7 @@ family survivor_town
   ominous 0.3
   wrong 0
   tags settlement
+  is open
   states active 8 abandoned 1 ruined 1
   variant Town
     seed 9691

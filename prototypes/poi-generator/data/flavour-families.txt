@@ -22,6 +22,7 @@ family flavour_house
   ominous 0.2
   wrong 0
   tags flavour house
+  is open
   states active 0 abandoned 2 infested 0 ruined 6
   variant Bungalow
     seed 9701
@@ -66,6 +67,7 @@ family flavour_farmstead
   ominous 0.2
   wrong 0
   tags flavour farmstead farm
+  is open
   states active 0 abandoned 2 infested 0 ruined 6
   variant Homestead
     seed 9711
@@ -96,6 +98,7 @@ family flavour_shed
   ominous 0.2
   wrong 0
   tags flavour shed
+  is open
   states active 0 abandoned 2 infested 0 ruined 6
   variant Tool Shed
     seed 9721
@@ -126,6 +129,7 @@ family flavour_wayside
   ominous 0.2
   wrong 0
   tags flavour wayside
+  is open
   states active 0 abandoned 2 infested 0 ruined 6
   variant Coaching Inn
     seed 9731
@@ -170,6 +174,7 @@ family flavour_shop
   ominous 0.2
   wrong 0
   tags flavour shop
+  is open
   states active 0 abandoned 2 infested 0 ruined 6
   variant Corner Shop
     seed 9741

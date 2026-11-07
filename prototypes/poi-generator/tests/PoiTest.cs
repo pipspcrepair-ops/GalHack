@@ -45,6 +45,8 @@ public partial class PoiTest : Node
         catch (Exception e)
         {
             Fail($"exception: {e}");
+            Finish();
+            return;
         }
         // The walks run on physics ticks, so they go last; see _PhysicsProcess.
         if (only == null || only.Split(',').Contains("Walk")) NextWalk();
@@ -112,12 +114,13 @@ public partial class PoiTest : Node
     void WorldLayers()
     {
         var kinds = _lib.Layers.GroupBy(l => l.Kind).ToDictionary(g => g.Key, g => g.Count());
-        Check(kinds.GetValueOrDefault(LayerKind.Theme) >= 4 && kinds.GetValueOrDefault(LayerKind.Type) >= 3 && kinds.GetValueOrDefault(LayerKind.Feature) >= 2 && kinds.GetValueOrDefault(LayerKind.Presence) >= 2,
-            $"world layers as data: {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}");
+        Check(kinds.GetValueOrDefault(LayerKind.Theme) == 44 && kinds.GetValueOrDefault(LayerKind.Type) == 39 && kinds.GetValueOrDefault(LayerKind.Fall) == 82 && kinds.GetValueOrDefault(LayerKind.Dress) == 189,
+            $"every table of the layers doc loads: {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}");
         string[] worlds = { "Temperate", "Arid", "Ice", "Lava", "Alien" };
         var themes = new Dictionary<string, int>();
         var combos = new HashSet<string>();
-        int rolls = 0, same = 0, withExtra = 0, startOk = 0, starts = 0;
+        int rolls = 0, same = 0, plain = 0, falling = 0, roughStarts = 0, starts = 0, lowHusks = 0, lows = 0, openFoul = 0, foul = 0;
+        var fams = new HashSet<string>();
         ulong baseSeed = (ulong)Random.Shared.NextInt64();
         for (ulong i = 0; i < 2000; i++)
         {
@@ -131,28 +134,47 @@ public partial class PoiTest : Node
             if (a.ToString() == b.ToString()) same++;
             themes[a.Theme.Id] = themes.GetValueOrDefault(a.Theme.Id) + 1;
             combos.Add(a.ToString());
-            if (a.Features.Count + a.Presences.Count > 0) withExtra++;
-            if (start) { starts++; if (a.Theme.Start) startOk++; }
+            fams.UnionWith(a.Poi.Keys);
+            if (a.Theme.Blank) plain++;
+            if (a.Fact("phase") == "falling") falling++;
+            if (start) { starts++; if (a.Rolled.Any(l => l.Is.Contains("rough")) || a.Occupancy.ContainsKey("FAC")) roughStarts++; }
+            if (a.Fact("pre") == "L") { lows++; if (a.Occupancy.ContainsKey("HSK")) lowHusks++; }
+            if (a.Fact("air0") is "foul" or "none")
+            {
+                foul++;
+                profile = profile with { Barred = a.Barred };
+                if (profile.Fits(_lib.Family("old_farm"), PoiState.Ruined)) openFoul++;
+            }
         }
         Check(same == rolls, $"the same seed rolls the same world ({same} of {rolls})");
-        Check(themes.Count >= 4 && themes.Values.Min() > rolls / 40, $"every theme turns up: {string.Join(", ", themes.Select(t => $"{t.Key} {t.Value}"))}");
-        Check(combos.Count >= 60 && withExtra > rolls / 5, $"worlds come from combinations: {combos.Count} different worlds in {rolls} rolls, {withExtra} with a feature or a presence");
-        Check(startOk == starts && starts > 0, $"start worlds only roll start themes ({startOk} of {starts})");
-        // A presence changes what's in places, a feature what stands there, with the theme still there underneath.
-        WorldLayer queue = _lib.Layers.First(l => l.Id == "long_queue"), raiders = _lib.Layers.First(l => l.Id == "raiders");
-        WorldRoll? plain = null, gangs = null;
-        for (ulong i = 0; i < 4000 && (plain == null || gangs == null); i++)
+        Check(themes.Count >= 25 && themes.Values.Max() < rolls / 2, $"themes come up by how they fit: {themes.Count} of them, the top {themes.OrderByDescending(t => t.Value).First()}");
+        Check(combos.Count == rolls, $"no two worlds the same: {combos.Count} in {rolls} rolls");
+        Check(plain > rolls / 5 && plain < rolls * 2 / 5, $"about three settled worlds in ten have no mood at all: {plain * 100 / rolls}%");
+        Check(falling > 0 && falling < rolls / 12, $"mid-collapse worlds stay rare: {falling * 100f / rolls:F1}%");
+        Check(roughStarts == 0 && starts > 0, $"start worlds roll nothing rough and no faction holding ground ({roughStarts} of {starts})");
+        Check(lowHusks == 0 && lows > 0, $"husks need mid or high tech: none on {lows} low-tech worlds");
+        Check(openFoul == 0 && foul > 0, $"air filters families: a farm stands on none of {foul} worlds built under bad air ({openFoul} did)");
+
+        // The first themes to build: each old world's parts hold together on a roll, and show in what it adds up to.
+        WorldProfile mid = new() { Before = TechLevel.Mid, Now = TechLevel.Low, Starport = Starport.C, Current = PopulationNow.Survivors };
+        foreach (var (id, family) in new[] { ("long_queue", "evacuation_camp"), ("road_warrens", "scrap_fort"), ("glass_plains", "blast_crater"), ("fever_jungle", "biolab"), ("hush_suburbs", ""), ("quarantine", "hospital"), ("last_train", ""), ("salt_and_bone", ""), ("sentry_world", ""), ("folded_town", "") })
         {
-            ulong seed = Hash.Combine(baseSeed, i, 77);
-            WorldProfile profile = WorldProfile.Roll(seed, "Temperate");
-            if (!profile.Inhabited) continue;
-            WorldRoll r = WorldRoll.Roll(_lib, seed, "Temperate", profile, false)!;
-            if (r.Theme != queue) continue;
-            if (r.Presences.Contains(raiders)) gangs ??= r;
-            else if (r.Presences.Count == 0) plain ??= r;
+            WorldLayer old = _lib.Layers.First(l => l.Kind == LayerKind.Old && l.Id == id);
+            var given = new WorldRoll.Given();
+            var kindOf = Enum.GetValues<LayerKind>().ToDictionary(k => k.ToString().ToLowerInvariant());
+            foreach (var part in old.Parts.Select(p => p.Split('.')).Where(p => kindOf.ContainsKey(p[0])).GroupBy(p => kindOf[p[0]]))
+                given.Set(part.Key, part.Select(p => p[1]).ToArray());
+            WorldRoll r = WorldRoll.Roll(_lib, Hash.Combine(baseSeed, Hash.Of(id)), "Temperate", mid, false, given)!;
+            bool holds = old.Parts.Where(p => !p.StartsWith("scar.") && !p.StartsWith("pre.") && !p.StartsWith("post.") && !p.StartsWith("unsettled.")).All(p => r.Rolled.Any(l => $"{l.Kind.ToString().ToLowerInvariant()}.{l.Id}" == p));
+            var table = r.Poi.Keys.Concat(r.Hub.Keys).Concat(r.Industry.Keys).Concat(r.Farm.Keys).ToHashSet();
+            Check(holds && (family == "" || table.Contains(family)), $"{id}: its parts make a world, theme {r.Theme.Id}, {string.Join(", ", r.Occupancy.OrderByDescending(o => o.Value).Take(4).Select(o => $"{o.Key} {o.Value:F0}"))}, places {string.Join(" ", table.Take(6))}");
         }
-        Check(plain != null && gangs != null && gangs.Occupancy["GNG"] > plain.Occupancy["GNG"] && gangs.Occupancy["EMP"] == plain.Occupancy["EMP"],
-            $"layers add up: a raider presence on The Long Queue takes gangs from {plain?.Occupancy["GNG"]} to {gangs?.Occupancy["GNG"]} and leaves the rest of its mix");
+
+        // Layers add up: a presence changes who's in places, and leaves the rest of the mix as it was.
+        ulong one = Hash.Combine(baseSeed, 77);
+        WorldRoll quiet = WorldRoll.Roll(_lib, one, "Temperate", mid, false, new WorldRoll.Given().Set(LayerKind.Presence, "hermits").Set(LayerKind.Theme, "long_queue"))!;
+        WorldRoll gangs = WorldRoll.Roll(_lib, one, "Temperate", mid, false, new WorldRoll.Given().Set(LayerKind.Presence, "hermits", "gangs").Set(LayerKind.Theme, "long_queue"))!;
+        Check(gangs.Occupancy.GetValueOrDefault("GNG") > quiet.Occupancy.GetValueOrDefault("GNG"), $"layers add up: a gang presence takes gangs from {quiet.Occupancy.GetValueOrDefault("GNG")} to {gangs.Occupancy.GetValueOrDefault("GNG")}");
     }
 
     /// <summary>The same layout, different people: what each occupant leaves is theirs, nobody's plan changes, and it all still validates.</summary>

@@ -259,6 +259,7 @@ family grain_elevator
   ominous 0.2
   wrong 0.05
   tags farm industry
+  is open
   states active 0 abandoned 6 infested 1 ruined 3
   variant Prairie Pool Four
     seed 9853
@@ -455,6 +456,7 @@ family evacuation_camp
   ominous 0.6
   wrong 0
   tags evacuation fallen
+  is open
   states active 0 abandoned 7 infested 1 ruined 2
   variant Holding Camp Four
     seed 9884

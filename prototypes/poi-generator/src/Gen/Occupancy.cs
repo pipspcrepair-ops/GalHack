@@ -6,7 +6,7 @@ using System.Linq;
 namespace PoiGenerator.Gen;
 
 /// <summary>Who is in a place: a layer of its own, separate from its layout (docs/world-themes.md, Occupancy).</summary>
-public enum Occupant : byte { Empty, Nesters, Turned, Scavengers, Squatters, Gang, Machines, Hollow, Prowlers }
+public enum Occupant : byte { Empty, Nesters, Turned, Scavengers, Squatters, Gang, Machines, Hollow, Prowlers, Faction, Cyborgs, Robots, Cult, Keepers, Sleepers, Guardians, Mimics }
 
 /// <summary>How two groups share a mixed place.</summary>
 public enum Sharing : byte { Alone, Floors, FrontLine, Layers }
@@ -24,16 +24,59 @@ public sealed record OccupancyRoll(Occupant Main, Occupant? Second = null, Shari
 }
 
 /// <summary>
+/// The one way people come into a place, so what makes them can change without touching what they
+/// leave behind. Today's people are the townsfolk and the rosters; the bestiary takes this over.
+/// </summary>
+public interface ISurvivors
+{
+    /// <summary>People who are nobody's enemy, settled at these spots.</summary>
+    void Settle(PoiInstance inst, IReadOnlyList<Int3> spots, int module, int count, bool lookout);
+    /// <summary>Those who'd fight for a place, by the roster it draws on.</summary>
+    IReadOnlyList<EnemyDef> Fighters(PoiLibrary lib, string roster);
+}
+
+/// <summary>The people there are for now: townsfolk who keep to their spots, and the rosters.</summary>
+public sealed class Townspeople : ISurvivors
+{
+    public void Settle(PoiInstance inst, IReadOnlyList<Int3> free, int module, int count, bool lookout)
+    {
+        Townsfolk town = inst.Townsfolk ??= new Townsfolk();
+        int first = town.Spots.Count;
+        town.Spots.Add(new ActivitySpot("home", free[0], module));
+        town.Spots.Add(new ActivitySpot("chat", free[1], module));
+        town.Spots.Add(new ActivitySpot("work", free[2], module));
+        town.Links.Add((first, first + 1));
+        town.Links.Add((first + 1, first + 2));
+        town.Links.Add((first, first + 2));
+        for (int i = 0; i < count; i++)
+        {
+            int spot = first + i % 3;
+            town.People.Add(i == 0 && lookout ? new CitizenSpawn("guard", "patrol", free[spot - first], spot)
+                : i % 2 == 0 ? new CitizenSpawn("worker", "steady", free[spot - first], spot) : new CitizenSpawn("wanderer", "amble", free[spot - first], spot));
+        }
+        town.AreaCenter = new Int3((int)town.Spots.Average(s => s.Cell.X), 0, (int)town.Spots.Average(s => s.Cell.Z));
+        town.AreaRadius = MathF.Min(64f, town.Spots.Max(s => s.Cell.FlatDistance(town.AreaCenter)) + 10f);
+    }
+
+    public IReadOnlyList<EnemyDef> Fighters(PoiLibrary lib, string roster) => lib.Roster(roster);
+}
+
+/// <summary>
 /// The same layout, different people. Works on any place: it clears who the state put there, then fills
 /// the rooms with what this occupant leaves: nests, bodies, camp fires, barricades, bunks. It never
 /// touches a protected cell, so the way to the loot stays open, and it can't change the plan.
 /// </summary>
 public static class OccupancyLayer
 {
+    /// <summary>Who makes the people. One place to swap them.</summary>
+    public static ISurvivors Survivors = new Townspeople();
+
     static Occupant? Code(string code) => code switch
     {
-        "EMP" => Occupant.Empty, "NST" => Occupant.Nesters, "SHB" => Occupant.Turned, "SCV" => Occupant.Scavengers, "SQT" => Occupant.Squatters,
-        "GNG" => Occupant.Gang, "MCH" => Occupant.Machines, "HOL" => Occupant.Hollow, "MUT" => Occupant.Prowlers, _ => null,
+        "EMP" => Occupant.Empty, "NST" => Occupant.Nesters, "HSK" => Occupant.Turned, "SCV" => Occupant.Scavengers, "SQT" => Occupant.Squatters,
+        "GNG" => Occupant.Gang, "MCH" => Occupant.Machines, "HOL" => Occupant.Hollow, "MUT" => Occupant.Prowlers,
+        "FAC" => Occupant.Faction, "CYB" => Occupant.Cyborgs, "BOT" => Occupant.Robots, "CLT" => Occupant.Cult,
+        "KPR" => Occupant.Keepers, "SLP" => Occupant.Sleepers, "GRD" => Occupant.Guardians, "MIM" => Occupant.Mimics, _ => null,
     };
 
     /// <summary>Whether a place takes the layer: the living and the Bloom keep who they have, wrecks and alien sites are their own stories.</summary>
@@ -124,17 +167,17 @@ public static class OccupancyLayer
     /// <summary>What a world's last days left in its rooms, keyed on its theme's tags: luggage on a queue world, dinner still on the tables in the hush, shift boards at the works.</summary>
     static void Left(Ctx x, IReadOnlyList<string> tags, List<PlacedModule> rooms)
     {
-        if (tags.Contains("luggage"))
+        if (tags.Contains("queue_slips"))
             foreach (PlacedModule m in Settled(x, rooms, 4))
                 if (Patch(x, m, 4f) is { } p)
                     foreach (Int3 c in p.Near.Where(_ => x.R.Chance(0.35f)))
                         x.Put(c, BlockType.Crate, Material.Cloth, x.R.Pick(new[] { new Rgb(0x6a, 0x4a, 0x38), new Rgb(0x3e, 0x4a, 0x5a), new Rgb(0x7a, 0x70, 0x52), new Rgb(0x5c, 0x3a, 0x3a) }));
-        if (tags.Contains("dinner"))
+        if (tags.Contains("set_tables"))
             foreach (PlacedModule m in Settled(x, rooms, 4))
                 if (Patch(x, m, 3f) is { } p)
                     foreach (Int3 c in p.Near.Where(c => (c.X + c.Z) % 3 == 0 && x.R.Chance(0.5f)))
                         x.Put(c, BlockType.Meal, Material.Ceramic, new Rgb(0xb4, 0xac, 0x98));
-        if (tags.Contains("shifts"))
+        if (tags.Contains("shift_boards"))
             foreach (PlacedModule m in Settled(x, rooms, 3))
                 foreach (Int3 c in Floor(x, m).Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type))).Take(10))
                     x.Put(c, BlockType.Locker, Material.Steel, new Rgb(0x4e, 0x5a, 0x5e));
@@ -152,7 +195,26 @@ public static class OccupancyLayer
             case Occupant.Machines: Machines(x, rooms, full); break;
             case Occupant.Hollow: Wrong(x, rooms, full); break;
             case Occupant.Prowlers: Den(x, rooms, full); break;
+            // Those who hold a place by force leave what a gang does; machines of any kind keep it as machines do.
+            case Occupant.Faction: Held(x, rooms, full); break;
+            case Occupant.Cyborgs or Occupant.Robots or Occupant.Guardians: Machines(x, rooms, full); break;
+            // People who live by a rule: lived in, kept up, and at peace with you.
+            case Occupant.Cult or Occupant.Keepers: Lived(x, rooms, full); break;
+            case Occupant.Sleepers: Sleepers(x, rooms, full); break;
+            case Occupant.Mimics: Wrong(x, rooms, full); break;
         }
+    }
+
+    /// <summary>Beds in rows, someone in each, and nobody stirring.</summary>
+    static void Sleepers(Ctx x, List<PlacedModule> rooms, bool full)
+    {
+        Rgb frame = new(0x62, 0x60, 0x5c), body = new(0x6a, 0x5e, 0x54);
+        foreach (PlacedModule m in Settled(x, rooms, full ? 3 : 1))
+            foreach (Int3 c in Floor(x, m).Where(c => (c.X % 3 == 0) && (c.Z % 2 == 0) && x.R.Chance(0.6f)).Take(14))
+            {
+                x.Put(c, BlockType.Bunk, Material.Steel, frame);
+                if (x.R.Chance(0.5f)) x.Put(c + Dir.East.Vec(), BlockType.Remains, Material.Cloth, body);
+            }
     }
 
     static List<Int3> Floor(Ctx x, PlacedModule m) => StateTransforms.FloorCells(x.Inst, m, x.Nav).Where(c => !x.Inst.Protected[c]).ToList();
@@ -271,22 +333,7 @@ public static class OccupancyLayer
     {
         var free = near.Where(c => x.Inst.Blocks.Get(c).IsAir && x.Nav.Standable(c) && c.FlatDistance(mid) > 1.5f).OrderBy(c => Hash.Cell(c, 211)).ToList();
         if (free.Count < 3) return;
-        Townsfolk town = x.Inst.Townsfolk ??= new Townsfolk();
-        int first = town.Spots.Count;
-        town.Spots.Add(new ActivitySpot("home", free[0], module));
-        town.Spots.Add(new ActivitySpot("chat", free[1], module));
-        town.Spots.Add(new ActivitySpot("work", free[2], module));
-        town.Links.Add((first, first + 1));
-        town.Links.Add((first + 1, first + 2));
-        town.Links.Add((first, first + 2));
-        for (int i = 0; i < count; i++)
-        {
-            int spot = first + i % 3;
-            town.People.Add(i == 0 && lookout ? new CitizenSpawn("guard", "patrol", free[spot - first], spot)
-                : i % 2 == 0 ? new CitizenSpawn("worker", "steady", free[spot - first], spot) : new CitizenSpawn("wanderer", "amble", free[spot - first], spot));
-        }
-        town.AreaCenter = new Int3((int)town.Spots.Average(s => s.Cell.X), 0, (int)town.Spots.Average(s => s.Cell.Z));
-        town.AreaRadius = MathF.Min(64f, town.Spots.Max(s => s.Cell.FlatDistance(town.AreaCenter)) + 10f);
+        Survivors.Settle(x.Inst, free, module, count, lookout);
         if (mood > x.Inst.Mood) x.Inst.Mood = mood;
         x.Inst.Friendly = true;
     }
@@ -354,7 +401,7 @@ public static class OccupancyLayer
     /// <summary>The old security still walking its rounds: sentries, the floors swept where they pass, a few lights still on.</summary>
     static void Machines(Ctx x, List<PlacedModule> rooms, bool full)
     {
-        var frames = x.Lib.Roster("oldworld");
+        var frames = Survivors.Fighters(x.Lib, "oldworld");
         var guards = frames.Where(e => e.Kind == EnemyKind.Guard).ToList();
         foreach (PlacedModule m in Settled(x, rooms, full ? Math.Clamp(rooms.Count / 2, 2, 6) : 1))
         {
