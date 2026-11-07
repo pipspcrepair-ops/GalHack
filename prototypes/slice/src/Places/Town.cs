@@ -181,8 +181,7 @@ public sealed partial class Town
             }
             return;
         }
-        var gen = new FaunaGenerator(_places.Zone.Data.Wildlife.Fauna, _places.Zone.Data.Wildlife.Activity);
-        float alien = _places.Zone.Data.Rules.Wildlife.Alienness;
+        WorldLife life = patch.Life;
         int n = 0;
         foreach (var (kindName, cell) in Data.Animals)
         {
@@ -191,7 +190,7 @@ public sealed partial class Town
             if (kind == DomesticKind.None || kind == DomesticKind.Working && _tech != "low"
                 || kind == DomesticKind.Stock && _tech != "low" && !Memory.Inst.Family.Tags.Contains("farm")) continue;
             Species s;
-            try { s = gen.RollDomestic(_places.Zone.Planet.Spec.Seed + (ulong)n++, kind, alien); }
+            try { s = life.Domestic(kind, n++); }
             catch (Exception) { continue; }
             Vector3 pen = World(Walk(cell));
             int count = kind == DomesticKind.Stock ? 3 : 1;

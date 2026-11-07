@@ -12,7 +12,7 @@ public static class CreatureMaterials
     static StandardMaterial3D _blur;
     static readonly ConditionalWeakTable<Species, ShaderMaterial> Cache = new();
 
-    public static Shader Shader => _shader ??= GD.Load<Shader>("res://shaders/creature.gdshader");
+    public static Shader Shader => _shader ??= DataFiles.Shader("creature.gdshader");
 
     public static ShaderMaterial For(Species s) => Cache.GetValue(s, sp =>
     {

@@ -80,7 +80,7 @@ public sealed class GameData
             Consumables = consumables,
             Progress = Slice.Items.ProgressRules.Parse(File.ReadAllText(Own("data/progress.json"))),
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
-            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("wildlife", "data", "wildlife.json"))),
+            Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("..", "shared", "Bestiary", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
         };
     }

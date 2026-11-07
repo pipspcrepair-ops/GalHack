@@ -29,7 +29,9 @@ public partial class WildlifePatch : Node3D
     public SurfaceZone Zone;
 
     public WildSim Sim { get; private set; }
-    public PlanetFauna Fauna { get; private set; }
+    /// <summary>Everything that moves on this world, from the bestiary.</summary>
+    public WorldLife Life { get; private set; }
+    public PlanetFauna Fauna => Life?.Fauna;
     public WildlifeView View { get; private set; }
 
     /// <summary>Wildlife's own synthesised calls: every wind-up is heard before it lands.</summary>
@@ -88,7 +90,7 @@ public partial class WildlifePatch : Node3D
         _planet = planet;
         var rules = Zone.Data.Rules.Wildlife;
         Livable = rules.LivableOn(planet.Spec);
-        Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
+        Life = Bestiary.Roll(Zone.Data.Wildlife, planet.Spec.Seed, rules.Alienness);
         View = new WildlifeView { Name = "Creatures" };
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
