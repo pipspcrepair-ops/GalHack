@@ -19,6 +19,12 @@ public partial class LightningFx : Node3D
     public float Flash { get; private set; }
     public Vector3 FlashDirection { get; private set; } = Vector3.Up;
 
+    /// <summary>How much of a strike's real light reaches the eye's surroundings, 0 to 1: a game with rooms says none in a sealed one.</summary>
+    public Func<float> LightShare = () => 1f;
+
+    /// <summary>How bright the strike's real light is now.</summary>
+    public float StrikeEnergy => _strikeLight.Visible ? _strikeLight.LightEnergy : 0f;
+
     const float BoltLife = 0.55f;
     static readonly Color Core = new(1f, 1f, 1f, 1f);
 
@@ -63,7 +69,7 @@ public partial class LightningFx : Node3D
         _boltMesh = new ImmediateMesh();
         _bolt = new MeshInstance3D { Mesh = _boltMesh, MaterialOverride = _boltMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, TopLevel = true };
         AddChild(_bolt);
-        _strikeLight = new OmniLight3D { LightColor = new Color("d8ccff"), OmniRange = 120f, LightEnergy = 0f, ShadowEnabled = false, TopLevel = true };
+        _strikeLight = new OmniLight3D { LightColor = new Color("d8ccff"), OmniRange = 120f, LightEnergy = 0f, ShadowEnabled = true, Visible = false, TopLevel = true }; // walls stop it
         AddChild(_strikeLight);
 
         for (int i = 0; i < 3; i++) _charges.Add(MakeCharge());
@@ -79,7 +85,7 @@ public partial class LightningFx : Node3D
             MaterialOverride = _glowMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         root.AddChild(ball);
-        var light = new OmniLight3D { LightColor = new Color("b8a6ff"), OmniRange = 26f, ShadowEnabled = false };
+        var light = new OmniLight3D { LightColor = new Color("b8a6ff"), OmniRange = 26f, ShadowEnabled = true };
         root.AddChild(light);
         var crackle = new ImmediateMesh();
         var crackleNode = new MeshInstance3D { Mesh = crackle, MaterialOverride = _boltMaterial, TopLevel = true, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
@@ -123,7 +129,8 @@ public partial class LightningFx : Node3D
         float distance = camera.DistanceTo(_boltTarget);
         float near = 1f / (1f + distance / 350f);
         Flash = Mathf.Max(stroke * (0.25f + 0.6f * near), Flash - dt * 4f);
-        _strikeLight.LightEnergy = stroke * 14f;
+        _strikeLight.LightEnergy = stroke * 14f * LightShare();
+        _strikeLight.Visible = _strikeLight.LightEnergy > 0.01f;
         _bolt.Visible = _boltAge < BoltLife;
         if (_bolt.Visible)
         {
@@ -158,7 +165,7 @@ public partial class LightningFx : Node3D
             float pulse = 0.75f + 0.25f * Mathf.Sin(h.Age * (8f + 30f * p));
             float size = Mathf.Lerp(0.3f, 1.6f, p * p) * pulse;
             c.Ball.Scale = Vector3.One * size;
-            c.Light.LightEnergy = (0.5f + 5f * p * p) * pulse;
+            c.Light.LightEnergy = (0.5f + 5f * p * p) * pulse * LightShare();
             c.Sparks.AmountRatio = Mathf.Clamp(p * 1.4f - 0.2f, 0f, 1f);
             c.NextCrackle -= dt;
             if (c.NextCrackle <= 0f)
@@ -198,6 +205,13 @@ public partial class LightningFx : Node3D
         Jag(_segments, cloud, target, 7, 1.1f, 1f, 0);
     }
 
+    /// <summary>Lightning inside a cloud: no bolt, just the tower lighting up from within.</summary>
+    public void CloudFlash(Vector3 at, float brightness)
+    {
+        FlashDirection = (at - Fx.Camera.GlobalPosition).Normalized();
+        Flash = Mathf.Max(Flash, brightness);
+    }
+
     /// <summary>Midpoint displacement: a jagged path, with branches forking off and fading.</summary>
     void Jag(List<(Vector3 a, Vector3 b, float width, float alpha)> into, Vector3 from, Vector3 to, int levels, float width, float alpha, int depth)
     {
@@ -221,7 +235,7 @@ public partial class LightningFx : Node3D
         {
             float taper = Mathf.Lerp(0.6f, 1f, i / (float)points.Count);
             into.Add((points[i], points[i + 1], width * taper, alpha));
-            if (depth < 2 && levels > 3 && _rng.Randf() < 0.05f)
+            if (depth < 2 && levels > 3 && _rng.Randf() < (depth == 0 ? 0.09f : 0.05f))
             {
                 Vector3 down = (to - from).Normalized();
                 float length = from.DistanceTo(to) * _rng.RandfRange(0.15f, 0.35f);

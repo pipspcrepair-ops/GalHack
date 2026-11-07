@@ -136,7 +136,7 @@ public partial class SkyLight : Node
     IEnumerable<Place> Standing() => Places?.Invoke() ?? Array.Empty<Place>();
 
     /// <summary>Stood still in the world: a flying vessel moves faster than the field does, and carries its own dark (<see cref="StructureSky"/>).</summary>
-    static bool Stands(Vessel v) => v.IsBase || v.Body.Velocity.LengthSquared() < 0.25f;
+    public static bool Stands(Vessel v) => v.IsBase || v.Body.Velocity.LengthSquared() < 0.25f;
 
     // ---- The worker -----------------------------------------------------------------------------
 

@@ -37,6 +37,9 @@ public sealed class WeatherBridge : IForceProvider
     /// <summary>Weather off: no wind, no tornadoes (the force module still steps, so fling floors keep working).</summary>
     public bool Calm;
 
+    /// <summary>The game's own shelter (a hole deep enough, a place's roof): no wind or tornado reaches such a body.</summary>
+    public System.Func<Body, bool> Shelter;
+
     readonly Dictionary<Body, Pushed> _tracked = new();
     PhysicsWorld _world;
 
@@ -100,7 +103,8 @@ public sealed class WeatherBridge : IForceProvider
         /// </summary>
         public float DragArea => Sheltered || InSpace ? 0f : _body.DragArea;
 
-        bool Sheltered => _bridge._world?.IsSheltered(_body) ?? false;
+        bool Sheltered => (_bridge._world?.IsSheltered(_body) ?? false) || InShelter;
+        bool InShelter => _bridge.Shelter?.Invoke(_body) ?? false;
         bool InSpace => _bridge._world != null && !_bridge._world.Zone.InAtmosphere(_body.WorldPosition);
 
         public GVector3 Position
@@ -133,9 +137,15 @@ public sealed class WeatherBridge : IForceProvider
         }
 
         // The world itself drops weather on sheltered bodies, tornado pulls and flings included.
-        public void ApplyForce(GVector3 force) => _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
+        public void ApplyForce(GVector3 force)
+        {
+            if (!InShelter) _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
+        }
 
-        public void ApplyImpulse(GVector3 impulse) => _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
+        public void ApplyImpulse(GVector3 impulse)
+        {
+            if (!InShelter) _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
+        }
 
         /// <summary>A world push in the axes the body integrates in (its ship's, out on a hull).</summary>
         N.Vector3 IntoFrame(GVector3 v) => _body.Frame == null ? v.ToNumerics() : MathX.Unrotate(_body.Frame.Rotation, v.ToNumerics());

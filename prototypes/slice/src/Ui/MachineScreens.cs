@@ -73,6 +73,7 @@ public partial class MachineScreens : Node3D
         var want = new HashSet<(object, Int3)>();
         foreach (Device d in Game.Zone.Devices)
         {
+            if (d.Constructor == null) continue;
             var key = ((object)d, Int3.Zero);
             want.Add(key);
             if (!_screens.ContainsKey(key)) _screens[key] = OnDevice(d);

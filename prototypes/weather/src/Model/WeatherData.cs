@@ -59,6 +59,9 @@ public sealed class WeatherState
     public float Exposure { get; set; }
     public string ExposureLabel { get; set; } = "";
 
+    /// <summary>How much of its rain falls only under storm cells, 0..1.</summary>
+    public float Cellular { get; set; }
+
     public float DurationMin { get; set; } = 120f;
     public float DurationMax { get; set; } = 200f;
 
@@ -149,6 +152,7 @@ public sealed class WeatherData
     public StrikeRules Lightning { get; set; } = new();
     public StrikeRules Debris { get; set; } = new();
     public TornadoRules Tornado { get; set; } = new();
+    public CellRules Cells { get; set; } = new();
     public List<WeatherState> States { get; set; } = new();
     public List<Archetype> Archetypes { get; set; } = new();
 

@@ -360,10 +360,11 @@ public sealed partial class BuildTool
             Verdict = from ?? $"{Items.Item(itemId).Name}: click to set it down";
             if (place && from == null && TakeHand(itemId, slotIndex))
             {
-                MachineDef machine = Items.Machines.All.First(m => m.ItemId == itemId);
-                Device d = Device.Place(_zone, machine, machine.ItemId, at.Origin, _survivor.Yaw + YawOfFrame());
+                bool climate = itemId == Device.ClimateItem;
+                MachineDef machine = climate ? null : Items.Machines.All.First(m => m.ItemId == itemId);
+                Device d = climate ? Device.PlaceClimate(_zone, at.Origin, _survivor.Yaw + YawOfFrame()) : Device.Place(_zone, machine, machine.ItemId, at.Origin, _survivor.Yaw + YawOfFrame());
                 _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, at.Origin, 0.8f, -2f);
-                Said?.Invoke($"{machine.Name} set down: its panel is in the Tab menu (Core) when you stand by it", Tones.Good);
+                Said?.Invoke(climate ? "Climate node set down: E to feed it biomass or fuel" : $"{machine.Name} set down: its panel is in the Tab menu (Core) when you stand by it", Tones.Good);
                 DeviceSet?.Invoke(d);
             }
             else if (place && from != null) Said?.Invoke(from, Tones.Caution);

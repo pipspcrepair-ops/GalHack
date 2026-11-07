@@ -218,6 +218,15 @@ public sealed class WildSim
         return c;
     }
 
+    /// <summary>Something throws a creature: it flies, whatever it was doing, and lands hard (<see cref="Locomotion"/>).</summary>
+    public void Throw(Creature c, Vector3 velocity)
+    {
+        if (c.Space != null || c.Removed || c.Thrown) return;
+        c.Thrown = true;
+        c.Velocity = velocity;
+        c.Position += Vector3.Up * 0.3f;
+    }
+
     /// <summary>
     /// Puts one creature down exactly where asked. This is the raw primitive the tests and the
     /// screenshot staging use; natural spawning goes through <see cref="SpawnGroup"/>, which keeps

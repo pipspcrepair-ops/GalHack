@@ -84,6 +84,7 @@
     { "make": "plasma-charge",    "count": 1, "from": { "emberite": 1, "magnet": 1 },     "seconds": 6,   "tier": 3 },
 
     // ---- Tools ----------------------------------------------------------------------------------
-    { "make": "survival-constructor", "count": 1, "from": { "iron-bar": 4, "copper-wire": 4, "winding": 1 }, "seconds": 10, "tier": 0 }
+    { "make": "survival-constructor", "count": 1, "from": { "iron-bar": 4, "copper-wire": 4, "winding": 1 }, "seconds": 10, "tier": 0 },
+    { "make": "climate-node", "count": 1, "from": { "iron-bar": 3, "copper-wire": 3, "winding": 1 }, "seconds": 8, "tier": 0 }
   ]
 }

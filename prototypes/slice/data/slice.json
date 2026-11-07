@@ -42,7 +42,17 @@
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
     // A sealed room aboard a structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
-    "sealedRoomC": 20
+    "sealedRoomC": 20,
+    // Out in the weather: from stormWarnFrom of its exposure (weather.json) the visor warns, from
+    // stormHarmFrom health drains at stormHealthPerSecond x exposure. Only a blizzard or a fire storm
+    // reaches that (about 5 health a second). Any shelter or cover stops it at once.
+    "stormWarnFrom": 0.5,
+    "stormHarmFrom": 1,
+    "stormHealthPerSecond": 3,
+    // In water at or below iceWaterC the visor warns at once and, iceWaterWarnSeconds later, health drains.
+    "iceWaterC": 2,
+    "iceWaterHealthPerSecond": 7,
+    "iceWaterWarnSeconds": 1.5
   },
 
   "tool": {
@@ -83,6 +93,10 @@
     // wireless block; GalHack's margin stands in for both.
     "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
   },
+
+  // The climate node: burning, it holds the air within radius metres inside lowC to highC. Each
+  // fuel in its hopper burns for so many seconds, the first found in this order.
+  "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "fuels": { "energy-cell": 300, "biofuel": 200, "biomass": 60 } },
 
   // The head torch (L): a cone from the helmet.
   "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },

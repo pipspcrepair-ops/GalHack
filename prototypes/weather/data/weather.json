@@ -24,7 +24,8 @@
       "Tornadoes": 0.1,
       "Debris": 1.0,
       "MoveSpeed": 0.05,
-      "Exposure": 0.15
+      "Exposure": 0.15,
+      "Cellular": 0.1
     }
   },
 
@@ -79,6 +80,17 @@
     "visualHeight": 170
   },
 
+  "cells": {
+    "maxCells": 4,
+    "from": 0.15,
+    "radiusMin": 420,
+    "radiusMax": 800,
+    "range": 2800,
+    "driftShare": 0.7,
+    "growSeconds": 30,
+    "spawnEvery": 12
+  },
+
   "states": [
     {
       "kind": "Clear", "name": "Clear skies",
@@ -97,7 +109,7 @@
     {
       "kind": "Rain", "name": "Rain",
       "cloudCover": 0.85, "cloudDarkness": 0.35, "rain": 0.5, "groundFog": 0.1, "visibility": 1800,
-      "windSpeed": 9, "gustiness": 0.4, "temperature": -4, "solar": 0.35,
+      "windSpeed": 9, "gustiness": 0.4, "temperature": -4, "solar": 0.35, "cellular": 0.6,
       "creatureActivity": 0.6, "creatureHint": "Sheltering under canopy",
       "durationMin": 120, "durationMax": 220, "forecastLead": 90
     },
@@ -148,7 +160,7 @@
       "cloudCover": 1.0, "cloudDarkness": 0.85, "rain": 0.8, "groundFog": 0.1, "visibility": 700,
       "windSpeed": 14, "gustiness": 0.7, "temperature": -6, "solar": 0.15,
       "creatureActivity": 0.4, "creatureHint": "Fleeing the high ground",
-      "lightning": 9,
+      "lightning": 9, "cellular": 0.85,
       "durationMin": 150, "durationMax": 240, "forecastLead": 150, "warningLead": 120
     },
     {
@@ -175,7 +187,7 @@
       "cloudCover": 1.0, "cloudDarkness": 0.75, "rain": 0.3, "visibility": 2500,
       "windSpeed": 16, "gustiness": 0.7, "temperature": -3, "solar": 0.2,
       "creatureActivity": 0.35, "creatureHint": "Agitated, scattering",
-      "lightning": 3, "tornadoes": 1.2,
+      "lightning": 3, "tornadoes": 1.2, "cellular": 1,
       "durationMin": 150, "durationMax": 240, "forecastLead": 180, "warningLead": 150
     }
   ],
