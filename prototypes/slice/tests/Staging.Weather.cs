@@ -35,7 +35,13 @@ public partial class Staging
         Tornado t = sim.SpawnTornado(eye + new Vector3(dist, 0f, 0f), eye);
         t.Homing = false;
         Hurry(6);
-        for (int i = 0; i < 60 * 60 && !t.Touchdown; i++) yield return 0; // until it is down
+        string stage = _args.GetValueOrDefault("stage", "mature");
+        for (int i = 0; i < 60 * 60 && (stage == "forming" ? t.Formation < 0.55f : !t.Touchdown); i++) yield return 0; // until it is down
+        if (stage == "decay")
+        {
+            t.Dissipate();
+            for (int i = 0; i < 60 * 60 && t.Strength > 0.45f; i++) yield return 0;
+        }
         Hurry(1);
         GD.Print($"(funnel touchdown {t.Touchdown}, formation {t.Formation:F2})");
         foreach (int x in _drive.Wait(60)) yield return x;
@@ -48,6 +54,7 @@ public partial class Staging
         if (Num("hide", 0) == 3) foreach (Node n in _game.Zone.Sky.GetChildren()) GD.Print($"SKYKID {n.Name} {n.GetType().Name} {(n as Node3D)?.Visible}");
         foreach (int x in _drive.Wait(5)) yield return x;
         GD.Print($"funnel at {t.Position}, formation {t.Formation:F2}");
+        foreach (Tornado o in sim.Tornadoes) GD.Print($"(tornado {o.Id} {new Vector2(o.Position.X - eye.X, o.Position.Z - eye.Z).Length():F0} m from the camera, touchdown {o.Touchdown})");
         foreach (Node n in _game.GetTree().Root.FindChildren("*", "MeshInstance3D", true, false))
             if (n is MeshInstance3D m && m.IsVisibleInTree() && m.Mesh is BoxMesh or CylinderMesh && m.GetAabb().Size.Length() > 2f)
                 GD.Print($"BOX {m.GetPath()} {m.Mesh.GetType().Name} rel {m.GlobalPosition - eye} size {m.GetAabb().Size * m.GlobalTransform.Basis.Scale}");
@@ -73,10 +80,10 @@ public partial class Staging
         float far = Num("under", 0) == 1 ? 0f : (float)Num("dist", 3000);
         Vector3 toward = new Vector3(cell.Position.X - start.X, 0f, cell.Position.Z - start.Z);
         float away = toward.Length();
-        Vector3 dir = toward.Normalized();
+        Vector3 dir = toward.Normalized().Rotated(Vector3.Up, Mathf.DegToRad((float)Num("bearing", 0)));
         Vector3 eye = Num("under", 0) == 1 ? new Vector3(cell.Position.X, 0f, cell.Position.Z) + dir * 150f : new Vector3(cell.Position.X, 0f, cell.Position.Z) - dir * far;
         float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
-        eye.Y = MathF.Max(groundY, 0f) + (float)Num("up", 40);
+        eye.Y = MathF.Max(MathF.Max(groundY, start.Y + 150f), 0f) + (float)Num("up", 40); // well clear of any hill
         GD.Print($"(storm: strength {cell.Strength:F2}, radius {cell.Radius:F0}, camera {(new Vector2(eye.X - cell.Position.X, eye.Z - cell.Position.Z)).Length():F0} m from it, {eye.Y - groundY:F0} m over the ground; start {away:F0} m from it)");
         Vector3 look = (dir * MathF.Cos((float)Num("lookup", 0.15)) + Vector3.Up * MathF.Sin((float)Num("lookup", 0.15)));
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
@@ -126,6 +133,21 @@ public partial class Staging
             _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
             foreach (int x in _drive.Wait(40)) yield return x;
             Snap($"up{deg:0}");
+        }
+        // Horizon check: no hard horizontal cloud edge, nor a bright gap under a sheet, in the sky just above the land.
+        Vector3 level = new Vector3(1f, MathF.Tan(Mathf.DegToRad(6f)), 0f).Normalized();
+        foreach (float yaw in new[] { 0f, 90f, 180f, 270f })
+        {
+            Vector3 dir = level.Rotated(Vector3.Up, Mathf.DegToRad(yaw));
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(dir, Vector3.Up), eye);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Image img = _game.GetViewport().GetTexture().GetImage();
+            int w = img.GetWidth(), h = img.GetHeight(), r0 = (int)(h * 0.12f), r1 = (int)(h * 0.5f);
+            float worst = 0f; int worstRow = 0;
+            float Row(int y) { float s = 0; for (int xx = 0; xx < w; xx += 8) { Color c = img.GetPixel(xx, y); s += 0.3f * c.R + 0.59f * c.G + 0.11f * c.B; } return s / (w / 8); }
+            float prev = Row(r0);
+            for (int y = r0 + 2; y < r1; y += 2) { float cur = Row(y); if (MathF.Abs(cur - prev) > worst) { worst = MathF.Abs(cur - prev); worstRow = y; } prev = cur; }
+            GD.Print($"HORIZON CHECK yaw {yaw:0}: biggest step between sky rows {worst:F3} at row {worstRow} of {h} {(worst > 0.04f ? "FAIL" : "ok")}");
         }
     }
 
