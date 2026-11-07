@@ -471,6 +471,9 @@ public partial class Globe : Node3D
     float _airThickness, _sphereReach;
     Basis _ringBasis = Basis.Identity;
 
+    /// <summary>Not drawn at all (screenshots of other bodies, from far from here).</summary>
+    public bool Hidden;
+
     public float Radius { get; private set; }
 
     /// <summary>How far along the map the sheet reaches this frame, m.</summary>
@@ -539,7 +542,7 @@ public partial class Globe : Node3D
     public void Draw(in WorldView v)
     {
         if (_ground == null) return;
-        Visible = v.Whole > 0.002f;
+        Visible = v.Whole > 0.002f && !Hidden;
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
         Reach = RimOf(rho, v.Height);

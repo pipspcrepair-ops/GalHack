@@ -559,7 +559,7 @@ public partial class OrbitTest : Node
         float gap = _game.Orbit.Rules.Crossing.Gap;
         var probe = new FrameProbe(this);
         var worst = new List<double>();
-        _game.Spaceflight.WorstSeamMs = 0;
+        _game.Spaceflight.WorstSeamMs = _game.Spaceflight.WorstSkyMs = 0;
         for (int round = 0; round < 3; round++)
         {
             _game.Controls.Hold(Key.Space);
@@ -596,7 +596,7 @@ public partial class OrbitTest : Node
         }
         probe.Remove();
         double best = worst.Min();
-        GD.Print($"  (the seam and the skies took at most {_game.Spaceflight.WorstSeamMs:F2} ms of any frame across those crossings)");
+        GD.Print($"  (the seam and the skies took at most {_game.Spaceflight.WorstSeamMs:F2} ms of any frame across those crossings, the skies {_game.Spaceflight.WorstSkyMs:F2} ms of that)");
         Check(best < 33.4, $"no frame over 33 ms across a hand-over up and down, best of three: {best:F1} ms ({string.Join(", ", worst.Select(w => w.ToString("F1")))})");
         Check(_game.Spaceflight.Crossings.All(c => c.Audit.Count == 0 && c.PositionBefore == c.PositionAfter && c.VelocityBefore == c.VelocityAfter),
             $"all {_game.Spaceflight.Crossings.Count} crossings carried everything straight across");

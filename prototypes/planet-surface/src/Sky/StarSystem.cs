@@ -38,7 +38,11 @@ public sealed record Orbiter
     /// <summary>What it circles; null for the star.</summary>
     public Orbiter Parent { get; init; }
     /// <summary>Its own radius, m. A belt has none: it is a band of rock at <see cref="Orbit"/>.</summary>
-    public double Radius { get; init; }
+    public double Radius { get; internal set; }
+    /// <summary>Its own seed, from the system's: the same for everyone.</summary>
+    public ulong Seed { get; internal set; }
+    /// <summary>The world you would land on: its type read from its zone. Null for what has no ground (the star, giants, belts).</summary>
+    public PlanetSpec Spec { get; internal set; }
     /// <summary>The radius of its orbit round <see cref="Parent"/>, m.</summary>
     public double Orbit { get; init; }
     /// <summary>Days per orbit, in the home world's days.</summary>
@@ -183,6 +187,16 @@ public sealed class StarSystem
 
     /// <summary>How far a body has turned on its axis at a moment, radians.</summary>
     public static double SpinOf(Orbiter b, double days) => days / b.DayLength * Math.Tau;
+
+    /// <summary>A body's axis and the way its map's zero longitude faces at a moment, in the system's frame.</summary>
+    public (D3 Axis, D3 Zero) Turned(Orbiter b, double days)
+    {
+        D3 axis = b.RingNormal;
+        D3 side = Math.Abs(axis.Y) > 0.9 ? new D3(1, 0, 0) : new D3(0, 1, 0);
+        side = (side - axis * side.Dot(axis)).Normalized;
+        double spin = SpinOf(b, days);
+        return (axis, side * Math.Cos(spin) + axis.Cross(side) * Math.Sin(spin));
+    }
 
     /// <summary>The home globe's axes in the system's frame.</summary>
     public readonly record struct Orientation(D3 X, D3 Y, D3 Z)
@@ -458,10 +472,11 @@ public sealed class StarSystem
         }
         void belt(string name, double from, double to)
         {
-            double h = (from + to) * 0.5;
+            // The band's true edges on the chart: its middle there isn't the middle of h.
+            double orbit = (chart(from) + chart(to)) * 0.5, h = Math.Pow(orbit / chart(1.0), 1.0 / 0.7);
             s._bodies.Add(new Orbiter
             {
-                Name = name, Kind = OrbiterKind.Belt, Parent = star, Habitable = h, Orbit = chart(h), BeltWidth = chart(to) - chart(from), Period = year(h),
+                Name = name, Kind = OrbiterKind.Belt, Parent = star, Habitable = h, Orbit = orbit, BeltWidth = chart(to) - chart(from), Period = year(h),
                 Temperature = TemperatureAt(h), Zone = ZoneAt(h),
             });
         }
@@ -530,7 +545,58 @@ public sealed class StarSystem
         Orbiter cold = far(b => b.Kind == OrbiterKind.Planet && b.Zone >= 5) ?? world(freeOrbit(Math.Max(homeH * 1.5, 1.8)), false, false);
         cold.Deposits.Add(Deposit.HyperdriveMaterials);
         s._bodies.Find(b => b.Kind == OrbiterKind.Belt).Deposits.Add(Deposit.CapitalMaterials);
+        s.Dress(seed, spec);
         return s;
+    }
+
+    /// <summary>Gives every body its seed, and every body with ground the world its zone makes it: one zone table, for what you see from afar and what you land on.</summary>
+    void Dress(ulong seed, PlanetSpec home)
+    {
+        for (int i = 0; i < _bodies.Count; i++)
+        {
+            Orbiter b = _bodies[i];
+            b.Seed = Hash.Of(seed, 0x424F4459, i);
+            if (b == Home)
+            {
+                b.Spec = home;
+                continue;
+            }
+            if (b.Kind is not (OrbiterKind.Planet or OrbiterKind.Moon)) continue;
+            var (type, variant) = TypeOf(b);
+            int width = b.Kind == OrbiterKind.Planet ? PlanetSpec.RollWidthKm(b.Seed)
+                : b.Parent.Kind == OrbiterKind.GasGiant ? PlanetSpec.RollWidthKm(b.Seed, WorldKind.Moon)
+                : b.Parent.Radius * Math.Tau > 20000.0 ? 16 : 8;
+            b.Spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            b.Radius = width * 1000.0 / Math.Tau;
+        }
+    }
+
+    /// <summary>The type a world's place makes it, from the zone table in docs/solar-systems.md, in the types the generator has.</summary>
+    public static (Archetype Type, int Variant) TypeOf(Orbiter b)
+    {
+        var rng = new Rng(Hash.Of(b.Seed, 0x54595045));
+        float roll = rng.NextFloat();
+        int variant = rng.NextFloat() < 0.5f ? 0 : 1;
+        if (b.Kind == OrbiterKind.Moon)
+        {
+            if (b.Parent.Kind == OrbiterKind.GasGiant)
+            {
+                double radii = b.Orbit / b.Parent.Radius;
+                if (radii < 6.0) return (Archetype.Lava, variant); // tides
+                if (radii < 12.0) return (Archetype.Ice, 1); // warmed ice, geysers, hot springs
+            }
+            if (b.Zone <= 2) return (Archetype.Arid, 0);
+            return b.Zone >= 6 ? (Archetype.Ice, 0) : (Archetype.Arid, 0); // too small to hold air
+        }
+        return b.Zone switch
+        {
+            1 => (Archetype.Lava, variant),
+            2 => (Archetype.Arid, variant),
+            3 => roll < 0.08f ? (Archetype.Alien, 1) : roll < 0.55f ? (Archetype.Arid, variant) : (Archetype.Temperate, 1),
+            4 => roll < 0.08f ? (Archetype.Alien, variant) : (Archetype.Temperate, variant),
+            5 => roll < 0.08f ? (Archetype.Alien, variant) : roll < 0.4f ? (Archetype.Temperate, 1) : (Archetype.Ice, 1),
+            _ => (Archetype.Ice, 0),
+        };
     }
 
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>

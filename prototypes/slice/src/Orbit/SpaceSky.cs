@@ -44,6 +44,7 @@ public partial class SpaceSky : Node3D
     public float SunEnergy { get; private set; }
 
     ShaderMaterial _sky;
+    BodySurfaces _surfaces;
     readonly List<(MeshInstance3D node, Orbiter body, ShaderMaterial material)> _bodies = new();
     OrbitRules.SpaceRules _rules;
     bool _bodiesShown;
@@ -75,6 +76,9 @@ public partial class SpaceSky : Node3D
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
         uniform bool banded = false;
+        uniform sampler2DArray surfaces : source_color, filter_linear_mipmap, repeat_enable;
+        uniform int layer = -1;
+        uniform vec3 zero = vec3(1.0, 0.0, 0.0);
         varying vec3 normal_w;
         void vertex() {
             normal_w = NORMAL;
@@ -92,7 +96,16 @@ public partial class SpaceSky : Node3D
                 float lat = dot(n, axis);
                 surface = mix(color, band, (sin(lat * 19.0 + sin(lat * 7.0) * 1.6) * 0.5 + 0.5) * 0.7);
             }
-            ALBEDO = surface * (banded ? 0.03 + 0.97 * lit : 0.025 + 1.1 * lit);
+            float glows = 0.0;
+            if (layer >= 0) {
+                vec2 uv = vec2(atan(dot(n, cross(axis, zero)), dot(n, zero)) / 6.2831853, acos(clamp(dot(n, axis), -1.0, 1.0)) / 3.1415927);
+                // By the normal's own change across the pixel: the longitude jumps a turn at its seam.
+                float across = length(fwidth(n));
+                vec4 own = textureLod(surfaces, vec3(uv, float(layer)), log2(max(across * 40.7, 1.0)));
+                surface = own.rgb;
+                glows = own.a;
+            }
+            ALBEDO = surface * (banded ? 0.03 + 0.97 * lit : 0.025 + 1.1 * lit + glows * 0.8);
             ALPHA = 1.0; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
@@ -122,8 +135,9 @@ public partial class SpaceSky : Node3D
         }
         """;
 
-    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules)
+    public void Setup(ArchetypeLook look, SkySystem system, StarSystem model, OrbitRules.SpaceRules rules, BodySurfaces surfaces)
     {
+        _surfaces = surfaces;
         _rules = rules;
         _sky = new ShaderMaterial { Shader = Planets.Shaders.Space };
         _sky.SetShaderParameter("sun_radius", model.See(model.Star, 0.0, new D3(0, model.Home.Radius, 0)).Angular);
@@ -167,6 +181,7 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter("color", C(b.Color));
             material.SetShaderParameter("band", C(b.Band));
             material.SetShaderParameter("banded", b.Kind == OrbiterKind.GasGiant);
+            material.SetShaderParameter("surfaces", surfaces?.Texture);
             var node = new MeshInstance3D
             {
                 Name = b.Name.Replace(" ", ""), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
@@ -239,9 +254,12 @@ public partial class SpaceSky : Node3D
             node.Scale = Vector3.One * d * sine;
             material.SetShaderParameter("to_light", light);
             material.SetShaderParameter("behind", behind);
-            if (body.Kind != OrbiterKind.GasGiant) continue;
-            Vector3 axis = W(o.ToGlobe(body.RingNormal)).Normalized();
+            var (bodyAxis, bodyZero) = model.Turned(body, days);
+            Vector3 axis = W(o.ToGlobe(bodyAxis)).Normalized();
             material.SetShaderParameter("axis", axis);
+            material.SetShaderParameter("zero", W(o.ToGlobe(bodyZero)).Normalized());
+            material.SetShaderParameter("layer", _surfaces?.LayerOf(body) ?? -1);
+            if (body.Kind != OrbiterKind.GasGiant) continue;
             if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
             {
                 ring.Basis = new Basis(new Quaternion(Vector3.Up, axis));
