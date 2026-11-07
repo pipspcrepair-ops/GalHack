@@ -122,6 +122,7 @@ render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 varying flat vec2 v_paint;
 varying vec3 v_local;
 varying float v_plane;
+varying float v_dark;
 
 const int GLYPH_A[10] = { " + a + @" };
 const int GLYPH_B[10] = { " + b + @" };
@@ -138,6 +139,7 @@ void vertex() {
     v_paint = UV2;
     v_local = VERTEX;
     v_plane = dot(VERTEX, NORMAL);
+    v_dark = CUSTOM0.r;
 }
 
 // Metal dents and scorches: scratches through the paint, then bare metal and cracks, then soot and hot tears.
@@ -289,6 +291,7 @@ void fragment() {
         ALBEDO = col * 0.4;
     }
     EMISSION = emission;
+    AO = 1.0 - v_dark;
 }
 ";
     }

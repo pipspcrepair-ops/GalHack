@@ -109,6 +109,9 @@ public sealed class ChunkStore
 
     // ---- Queries ----------------------------------------------------------------------
 
+    /// <summary>The chunk's removed cells, or null: never changed once published, so a worker can keep it.</summary>
+    public ulong[] RemovedMask(Int3 chunk) => _removed.TryGetValue(chunk, out ulong[] m) ? m : null;
+
     public bool IsRemoved(Int3 cell) => _removed.TryGetValue(ChunkOf(cell), out ulong[] m) && Bit(m, LocalIndex(cell));
 
     public CellMaterial BaseMaterialAt(Int3 cell) => Base.Get(ChunkOf(cell)).MaterialAt(LocalIndex(cell));

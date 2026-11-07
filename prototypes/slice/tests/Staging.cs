@@ -83,6 +83,7 @@ public sealed partial class Staging
             "faces" => FacesView(),
             "cores" => CoresView(),
             "natural" => Natural(),
+            "dark" => Dark(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

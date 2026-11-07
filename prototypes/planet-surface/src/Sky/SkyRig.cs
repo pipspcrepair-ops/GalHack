@@ -185,7 +185,11 @@ public partial class SkyRig : Node3D
             DirectionalShadowMaxDistance = 320f,
         };
         AddChild(Sun);
-        NightLight = new DirectionalLight3D { Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly };
+        NightLight = new DirectionalLight3D
+        {
+            Name = "NightLight", ShadowEnabled = false, LightEnergy = 0f, SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
+            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits, DirectionalShadowMaxDistance = 320f,
+        };
         AddChild(NightLight);
         Air = Atmosphere.Compute(SkySystem.For(new Planets.Gen.PlanetSpec(1, Planets.Gen.Archetype.Temperate, 0, 0)), Atmosphere.Clear(), 0.5f);
     }
@@ -353,7 +357,10 @@ public partial class SkyRig : Node3D
         Sun.ShadowEnabled = toSun.Y > -0.03f;
 
         // Night light: the brightest moon (or the giant's reflected light, or starlight), so night is dark but playable.
-        NightLight.LightEnergy = (1f - day) * Math.Clamp(_brightestEnergy, 0.06f, 0.35f) * air.SunScale;
+        // It takes over the sun's shadows once the sun has none, so it stops at walls and roofs too: one
+        // shadowed light at a time, and it stays out until the sun has gone so the two never leak past each other.
+        NightLight.ShadowEnabled = !Sun.ShadowEnabled;
+        NightLight.LightEnergy = Smooth(-0.03f, -0.08f, toSun.Y) * Math.Clamp(_brightestEnergy, 0.06f, 0.35f) * air.SunScale;
         NightLight.LightColor = new Color(0.62f, 0.7f, 0.95f);
         NightLight.LookAt(NightLight.GlobalPosition - (_brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
         Stars.Poll();

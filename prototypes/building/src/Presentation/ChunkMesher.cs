@@ -18,6 +18,9 @@ public sealed class MeshBuffers
     public readonly List<Vector2> UV2s = new();
     public readonly List<int> Indices = new();
 
+    /// <summary>How dark each vertex is, 0 open to 1 cut off from the sky: left empty unless a game bakes it. See the opaque shader's AO.</summary>
+    public readonly List<float> Dark = new();
+
     public int VertexCount => Vertices.Count;
 
     static readonly Vector3[] Rights = new Vector3[6], Ups = new Vector3[6];
@@ -42,6 +45,7 @@ public sealed class MeshBuffers
         UVs.Clear();
         UV2s.Clear();
         Indices.Clear();
+        Dark.Clear();
     }
 
     /// <summary>
@@ -102,8 +106,12 @@ public sealed class MeshBuffers
         arrays[(int)Mesh.ArrayType.TexUV] = UVs.ToArray();
         arrays[(int)Mesh.ArrayType.TexUV2] = UV2s.ToArray();
         arrays[(int)Mesh.ArrayType.Index] = Indices.ToArray();
+        if (Dark.Count == VertexCount) arrays[(int)Mesh.ArrayType.Custom0] = Dark.ToArray();
         return arrays;
     }
+
+    /// <summary>The surface format flags these arrays need.</summary>
+    public Mesh.ArrayFormat Format => Dark.Count == VertexCount ? (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift) : 0;
 
     public static Vector3 ToGodot(NVec v) => new(v.X, v.Y, v.Z);
 }
@@ -668,7 +676,7 @@ public static class ChunkMesher
         var mesh = new ArrayMesh();
         if (data.Opaque.VertexCount > 0)
         {
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, data.Opaque.ToArrays());
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, data.Opaque.ToArrays(), null, null, data.Opaque.Format);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, BlockMaterials.Opaque);
         }
         if (data.Glass.VertexCount > 0)

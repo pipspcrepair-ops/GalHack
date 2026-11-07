@@ -240,6 +240,7 @@ public sealed class SliceRules
         public float Range { get; set; } = 45f;
         public float Angle { get; set; } = 32f;
         public float Energy { get; set; } = 5.5f;
+        public float Attenuation { get; set; } = 1f;
     }
 
     public sealed class ContainerRules

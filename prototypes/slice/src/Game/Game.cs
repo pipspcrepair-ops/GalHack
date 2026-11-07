@@ -260,7 +260,7 @@ public partial class Game : Node3D
         SliceRules.TorchRules torch = data.Rules.Torch;
         Torch = new SpotLight3D
         {
-            Name = "HeadTorch", Visible = false, SpotRange = torch.Range, SpotAngle = torch.Angle, LightEnergy = torch.Energy,
+            Name = "HeadTorch", Visible = false, SpotRange = torch.Range, SpotAngle = torch.Angle, LightEnergy = torch.Energy, SpotAttenuation = torch.Attenuation,
             SpotAngleAttenuation = 0.8f, LightColor = new Color(1f, 0.95f, 0.85f), ShadowEnabled = true, Position = new Vector3(0.12f, 0.05f, 0f),
         };
         Camera.AddChild(Torch);
