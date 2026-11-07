@@ -206,8 +206,11 @@ public partial class SurfaceTest
         var kinds = new Dictionary<string, int>();
         string first = "";
         var rand = new Random();
-        foreach (Archetype kind in new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice })
+        // Some worlds have few mouths: fresh ones until there are enough to judge.
+        Archetype[] sorts = { Archetype.Temperate, Archetype.Arid, Archetype.Ice };
+        for (int roll = 0; roll < 12 && (roll < sorts.Length || mouths < 12); roll++)
         {
+            Archetype kind = sorts[roll % sorts.Length];
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), kind, 0), Main.Catalog);
             PlanetTerrainSource s = w.Source;
             foreach (CaveMouth m in s.CaveMouths(0, 0, w.Width, w.Height))
