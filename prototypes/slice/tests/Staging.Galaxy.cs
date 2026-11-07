@@ -27,6 +27,7 @@ public sealed partial class Staging
         "night-space" => NightSpace(),
         "galaxy-map" => GalaxyMap(),
         "world-map" => WorldMapShots(),
+        "galaxy-lanes" => GalaxyLanes(),
         "galaxy-core" => GalaxyCore(),
         "galaxy-jump" => GalaxyJump(),
         "galaxy-nebula" => GalaxyNebula(),
@@ -111,6 +112,34 @@ public sealed partial class Staging
         Face(_game.Spaceflight.LookToward(id));
         Choose(id);
         foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The lane network round you, a picked star several jumps off with its route, and the whole galaxy.</summary>
+    IEnumerable<int> GalaxyLanes()
+    {
+        foreach (int x in Midnight()) yield return x;
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        _game.Menu.OpenMap(MapLevel.Galaxy);
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        var lanes = new Lanes(Stars.Galaxy, Stars.Here);
+        for (int i = 0; i < 90; i++) yield return 0;
+        levels.Sky.Distance = 260;
+        for (int i = 0; i < 30; i++) yield return 0;
+        Snap("a-network");
+        int pick = -1;
+        foreach (int id in lanes.Connected)
+        {
+            var r = Lanes.Route(Stars.Galaxy, Stars.Here, id, Lanes.Range);
+            if (r != null && r.Count == 5 && (pick < 0 || id % 7 == 0)) pick = id;
+        }
+        if (pick < 0) pick = lanes.Connected.Skip(5).FirstOrDefault();
+        _game.Spaceflight.Charts.ChosenStar = pick;
+        levels.Trail.Star = pick;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("b-route");
+        foreach (int x in _drive.ClickWidget("map:whole")) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("c-whole");
     }
 
     /// <summary>The World map opened from a start put at --lat (0 north pole .. 1 south pole): poles top and bottom; then a close look at a sea ice edge.</summary>

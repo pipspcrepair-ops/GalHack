@@ -55,7 +55,7 @@ public sealed class Charts
     public bool Charted(Galaxy galaxy, int star)
     {
         foreach (int v in Visited)
-            if (v == star || System.Numerics.Vector3.Distance(galaxy.Stars[v].Position, galaxy.Stars[star].Position) <= Galaxy.JumpT1) return true;
+            if (v == star || System.Numerics.Vector3.Distance(galaxy.Stars[v].Position, galaxy.Stars[star].Position) <= Lanes.Range) return true;
         return false;
     }
 
@@ -163,7 +163,7 @@ public sealed class Charts
     public List<int> Shown(Galaxy galaxy)
     {
         var shown = new HashSet<int>(Visited);
-        foreach (int v in Visited) shown.UnionWith(galaxy.Neighbours(v));
+        foreach (int v in Visited) shown.UnionWith(galaxy.Neighbours(v, Lanes.Range));
         return shown.ToList();
     }
 
@@ -218,6 +218,18 @@ public sealed class GalaxyMapView
     }
 
     public void Zoom(int steps) => Distance = Math.Clamp(Distance * Math.Pow(1.25, steps), Closest, Widest);
+
+    /// <summary>Free move along the galaxy's plane: the map follows the pointer by pixels (middle drag), whatever the turn.</summary>
+    public void Slide(float dx, float dy, float focal)
+    {
+        float sp = (float)Math.Sin(Pitch);
+        if (Math.Abs(sp) < 0.15f) sp = sp < 0f ? -0.15f : 0.15f;
+        float g = -dx * (float)Distance / focal, f = -dy * (float)Distance / (focal * sp);
+        float cy = (float)Math.Cos(Yaw), sy = (float)Math.Sin(Yaw);
+        Focus += new System.Numerics.Vector3(cy, 0f, -sy) * g + new System.Numerics.Vector3(sy, 0f, cy) * f;
+        float r = new System.Numerics.Vector2(Focus.X, Focus.Z).Length();
+        if (r > 560f) Focus = new System.Numerics.Vector3(Focus.X * 560f / r, Focus.Y, Focus.Z * 560f / r);
+    }
 }
 
 /// <summary>
