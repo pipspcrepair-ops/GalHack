@@ -1,4 +1,0 @@
-{
-  "_read": "Chosen tracks. A track is a file at assets/music/<mood>/ and a row here; delete both to remove it. file starts with the mood's folder: temperate, arid, ice, lava, swamp, ocean, airless, deep-space or hollow. Every track is credited whatever its licence: title, author, source and licence, and for CC-BY, attribution holds the credit word for word. Copy the same line into CREDITS.md at the repo root.",
-  "tracks": []
-}

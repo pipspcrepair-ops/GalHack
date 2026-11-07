@@ -29,7 +29,7 @@ public partial class SliceAudio : Node
     /// <summary>The four volumes, as they are saved.</summary>
     public AudioSettings Settings { get; private set; }
 
-    /// <summary>The drones and the chosen tracks.</summary>
+    /// <summary>The music.</summary>
     public SliceMusic Music { get; private set; }
 
     static string SettingsPath => ProjectSettings.GlobalizePath("user://audio-settings.json");

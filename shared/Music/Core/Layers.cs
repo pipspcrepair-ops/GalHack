@@ -69,7 +69,7 @@ internal sealed class Stratum
 
     float _returnSeconds;
 
-    public void Control(float dt, float wrong, DroneRng rng)
+    public void Control(float dt, float wrong, float density, DroneRng rng)
     {
         if (_fadeStep != 0f)
         {
@@ -92,11 +92,11 @@ internal sealed class Stratum
         float hz = _hz * MathF.Pow(2f, (wrong * _sag * (0.8f + 0.2f * sag) + 2.5f * wow) / 1200f);
         for (int i = 0; i < Oscs; i++) _inc[i] = Wavetable.Step(hz + Spread[i] * _detune * (1f + 0.65f * _detuneDrift[i].Tick(dt, rng)), _rate);
         _subInc = Wavetable.Step(hz, _rate);
-        float cut = _bright * MathF.Pow(2f, _sweep * sweep);
+        float cut = _bright * MathF.Pow(2f, _sweep * sweep) * (0.72f + 0.45f * density);
         _filterL.Set(cut, 0.8f, _rate);
         _filterR.Set(cut, 0.8f, _rate);
         float eased = _fade * _fade * (3f - 2f * _fade);
-        _gainNext = _base * (1f - _depth * (0.5f - 0.5f * amp)) * eased;
+        _gainNext = _base * (1f - _depth * (0.5f - 0.5f * amp)) * eased * (1f - _depth * 0.8f * (1f - density));
     }
 
     public void Render(float[] busL, float[] busR, int frames)

@@ -1,5 +1,5 @@
 {
-  "_read": "What the Stats tab's credits show, besides the tracks in music.json. Each row is also in CREDITS.md at the repo root; MusicTest checks that they match.",
+  "_read": "What the Stats tab's credits show. Each row is also in CREDITS.md at the repo root; MusicTest checks that they match.",
   "sections": [
     {
       "name": "MUSIC AND SOUND",

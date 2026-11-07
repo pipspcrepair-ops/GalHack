@@ -1,96 +1,68 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using GalHack.Music;
 using Godot;
-using Planets.Gen;
 
 namespace Slice.Game;
 
 /// <summary>
-/// The music: shared/Music's drones for this world and its seed, handing over to deep space across
-/// the climb, with the chosen tracks laid sparsely over them. Everything it follows is the place
-/// you are in; nothing about what you are doing reaches it.
+/// The music, all of it generated: shared/Music's drones for this world, following where you are
+/// on it (<see cref="MusicScenes"/>) and handing over to space across the climb. Everything it
+/// follows is the world, the place and the time of day; what you are doing never reaches it.
 ///
 /// The synthesis runs on its own low-priority thread, which also pushes straight to the engine's
-/// two-second generator buffer, so a stall on the main thread can't reach the sound. Everything
-/// plays on the Music bus, under the music and master volumes.
+/// two-second generator buffer, so a stall on the main thread can't reach the sound. It plays on the
+/// Music bus, under the music and master volumes.
 /// </summary>
 public partial class SliceMusic : Node
 {
     public const int Rate = 44100;
     const int Chunk = 2048;
-    const float DroneDb = -2f, TrackDb = -7f;
-
-    /// <summary>How far the drones go down under a full-level track, so the two don't argue.</summary>
-    const float Duck = 0.5f;
+    const float DroneDb = -2f, ReadEvery = 1f;
 
     public Game Game;
 
-    /// <summary>Set while somewhere the Hollow Bloom has taken: nothing plays its set anywhere else.</summary>
-    public bool InHollow;
+    /// <summary>A test's world, with no game behind it: set before adding the node.</summary>
+    public MusicWorld World;
 
-    /// <summary>How far the air has gone, for a test with no game behind it.</summary>
+    /// <summary>A test's place and height, with no game behind it.</summary>
+    public MusicScene Scene;
     public float Space;
 
-    DroneMood _world;
-    ulong _seed;
     DroneMix _mix;
-    TrackDirector _director;
-    string _folder;
-    AudioStreamPlayer _drone, _track;
+    SceneDwell _ground, _sky;
+    AudioStreamPlayer _drone;
     AudioStreamGeneratorPlayback _playback;
     Thread _worker;
     volatile bool _running;
     long _pushed;
-    Task<AudioStream> _loading;
+    float _read;
 
     /// <summary>The frames handed to the engine so far.</summary>
     public long Pushed => Interlocked.Read(ref _pushed);
 
-    /// <summary>The drones running: one, or two across the climb.</summary>
+    /// <summary>The drones running: one, or two across a change of scene, more across the climb.</summary>
     public int Running => _mix?.Running ?? 0;
 
-    public TrackDirector Director => _director;
+    /// <summary>The scene playing on the ground.</summary>
+    public MusicScene GroundScene => _mix?.Ground ?? default;
 
-    /// <summary>A world's mood. Worlds in the data that are neither airless nor Bloom-taken yet read as their type; those two come from the caller.</summary>
-    public static DroneMood MoodOf(PlanetSpec spec, bool airless = false, bool bloom = false)
-    {
-        if (bloom) return DroneMood.Hollow;
-        if (airless) return DroneMood.Airless;
-        return spec.Archetype switch
-        {
-            Archetype.Arid => DroneMood.Arid,
-            Archetype.Ice => DroneMood.Ice,
-            Archetype.Lava => DroneMood.Lava,
-            Archetype.Alien => spec.Variant == 1 ? DroneMood.Swamp : DroneMood.Ice,
-            _ => spec.Has(Modifier.Archipelago) ? DroneMood.Ocean : DroneMood.Temperate,
-        };
-    }
+    /// <summary>The game's world is generated after this node exists, so a game's music starts when there is a world to read.</summary>
+    bool WorldReady => Game == null || (Game.Surface?.Planet != null && Game.Survivor != null && Game.Places != null);
 
-    /// <summary>Plays this mood from this seed, for when no game is setting it: call before adding the node.</summary>
-    public void Configure(DroneMood world, ulong seed, IEnumerable<MusicTrack> tracks, string folder)
+    void Start()
     {
-        _world = world;
-        _seed = seed;
-        _director = new TrackDirector(tracks, seed);
-        _folder = folder;
-    }
-
-    public override void _Ready()
-    {
-        if (_director == null) Configure(MoodOf(Game.World.Spec()), Game.World.Seed, Credits.Shared.Tracks, Credits.Shared.MusicFolder);
-        _mix = new DroneMix(_world, _seed, Rate, Chunk);
+        World ??= MusicScenes.WorldOf(Game);
+        MusicScene start = Game != null ? MusicScenes.Ground(Game) : Scene;
+        _ground = new SceneDwell(start);
+        _sky = new SceneDwell(new MusicScene(MusicPlace.HighOrbit));
+        _mix = new DroneMix(World, Rate, Chunk) { Ground = start };
         _drone = new AudioStreamPlayer
         {
             Name = "Drones", Bus = "Music", VolumeDb = DroneDb,
             Stream = new AudioStreamGenerator { MixRate = Rate, BufferLength = 2f },
         };
-        _track = new AudioStreamPlayer { Name = "Track", Bus = "Music", VolumeDb = -80f };
         AddChild(_drone);
-        AddChild(_track);
         _drone.Play();
         _playback = (AudioStreamGeneratorPlayback)_drone.GetStreamPlayback();
         _running = true;
@@ -98,7 +70,7 @@ public partial class SliceMusic : Node
         _worker.Start();
     }
 
-    /// <summary>The worker: tops the buffer up, then sleeps. Nothing here allocates once the drones exist.</summary>
+    /// <summary>The worker: tops the buffer up, then sleeps. A new scene's engine is made here, off the main thread.</summary>
     void Work()
     {
         var left = new float[Chunk];
@@ -119,52 +91,25 @@ public partial class SliceMusic : Node
 
     public override void _Process(double delta)
     {
-        float space = Game?.Spaceflight?.AirGone ?? Space;
-        _mix.Space = space;
-        DroneMood here = space >= 0.5f ? DroneMood.DeepSpace : InHollow ? DroneMood.Hollow : _world;
-
-        switch (_director.Tick((float)delta, DroneMoods.Key(here)))
+        if (_mix == null)
         {
-            case TrackCue.Start:
-                string path = Path.Combine(_folder, _director.Current.File);
-                _loading = Task.Run(() => LoadTrack(path)); // reading and parsing a long file is no job for a frame
-                break;
-            case TrackCue.Stop:
-                _track.Stop();
-                _track.Stream = null;
-                break;
+            if (WorldReady) Start();
+            return;
         }
-        if (_loading is { IsCompleted: true })
+        _mix.Space = Game?.Spaceflight?.AirGone ?? Space;
+        _read -= (float)delta;
+        if (_read > 0f) return;
+        _read = ReadEvery;
+        if (Game == null)
         {
-            AudioStream stream = _loading.IsCompletedSuccessfully ? _loading.Result : null;
-            _loading = null;
-            if (stream == null) _director.Failed();
-            else
-            {
-                _track.Stream = stream;
-                _track.VolumeDb = -80f;
-                _track.Play();
-                _director.Began((float)stream.GetLength());
-            }
+            _mix.Ground = Scene;
+            return;
         }
-        float level = _director.Level;
-        _track.VolumeDb = level > 0f ? Mathf.LinearToDb(level) + TrackDb : -80f;
-        _mix.Duck = 1f - Duck * level;
+        if (!Game.InOrbit) _mix.Ground = _ground.Feed(MusicScenes.Ground(Game), ReadEvery);
+        if (_mix.Space > 0f) _mix.Sky = _sky.Feed(MusicScenes.Sky(Game), ReadEvery);
     }
 
-    static AudioStream LoadTrack(string path) => Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".ogg" => AudioStreamOggVorbis.LoadFromFile(path),
-        ".mp3" => AudioStreamMP3.LoadFromFile(path),
-        ".wav" => AudioStreamWav.LoadFromFile(path),
-        _ => null,
-    };
-
-    public void StopAll()
-    {
-        _drone?.Stop();
-        _track?.Stop();
-    }
+    public void StopAll() => _drone?.Stop();
 
     /// <summary>The worker goes first, then the playback handle, or the engine reports it leaked at exit.</summary>
     public override void _ExitTree()

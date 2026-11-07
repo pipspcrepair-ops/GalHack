@@ -15,10 +15,7 @@ GalHack credits every asset it uses, including CC0 ones. Add a row for each asse
 | Generated ambient drones (shared/Music), written for this game, no samples | The GalHack project | https://github.com/pipspcrepair-ops/GalHack | PolyForm Noncommercial, as the rest of this repository |
 | All sound effects, synthesised in code | The GalHack project | https://github.com/pipspcrepair-ops/GalHack | PolyForm Noncommercial, as the rest of this repository |
 
-Chosen tracks are listed here, one row each, as they come in. Each also has a row in `prototypes/slice/data/music.json`, and shows in the game under Stats > Credits. CC0 tracks are credited too.
-
-| Track | Author | Source | Licence | Attribution |
-| --- | --- | --- | --- | --- |
+All of the game's music is generated. It uses no recordings or samples.
 
 ## Libraries
 
