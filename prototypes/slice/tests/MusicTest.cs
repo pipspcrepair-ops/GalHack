@@ -8,14 +8,16 @@ using Godot;
 using Planets.Gen;
 using Slice.Game;
 using Slice.Ui;
+using Biome = Planets.Gen.Biome;
 
 namespace Slice.Tests;
 
 /// <summary>
-/// The music and its settings: a drone is the same for a seed and different between seeds and
-/// moods, it never clips or sits off centre, it fades in from nothing, the climb crossfades, the
-/// tracks keep to their moods and their long gaps, every credit is complete and matches CREDITS.md,
-/// the volumes are remembered, and the real worker feeds the real engine. It rolls fresh seeds.
+/// The music and its settings: a drone is the same for a seed and different between seeds, moods
+/// and scenes, it never clips or sits off centre, it fades in from nothing, a world keeps its key
+/// wherever you stand on it, the layers each change the result, scenes and the climb crossfade, a
+/// piece has a long shape with quiet in it, every credit is complete and matches CREDITS.md, the
+/// volumes are remembered, and the real worker feeds the real engine. It rolls fresh seeds.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/MusicTest.tscn
 /// </summary>
@@ -35,16 +37,16 @@ public partial class MusicTest : Node
         {
             Drones(seed);
             Climb(seed);
-            Tracks(seed);
+            Layers(seed);
+            Places(seed);
+            Shape(seed);
             CreditsData();
             Volumes();
             Slider();
             Moods();
             SliceAudio.MakeBuses();
-            _music = new SliceMusic { Name = "Music" };
-            _music.Configure(DroneMood.Temperate, seed, Array.Empty<MusicTrack>(), Path.GetTempPath());
+            _music = new SliceMusic { Name = "Music", World = new MusicWorld(DroneMood.Temperate, seed) };
             AddChild(_music);
-            Check(AudioServer.GetBusIndex("Music") > 0 && _music.GetNode<AudioStreamPlayer>("Drones").Bus == "Music", "the drones play on the Music bus");
         }
         catch (Exception e)
         {
@@ -58,6 +60,7 @@ public partial class MusicTest : Node
         if (_music == null) return;
         _waited += delta;
         if (_waited < 1.5) return;
+        Check(AudioServer.GetBusIndex("Music") > 0 && _music.GetNode<AudioStreamPlayer>("Drones").Bus == "Music", "the drones play on the Music bus");
         Check(_music.Pushed >= Rate, $"the worker filled the engine's buffer without the main thread ({_music.Pushed} frames in {_waited:F1} s)");
         SetProcess(false);
         Finish();
@@ -69,9 +72,11 @@ public partial class MusicTest : Node
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
 
-    static (float[] L, float[] R) Render(DroneMood mood, ulong seed, int seconds)
+    static (float[] L, float[] R) Render(DroneMood mood, ulong seed, int seconds) => Render(new MusicWorld(mood, seed), default, seconds);
+
+    static (float[] L, float[] R) Render(MusicWorld world, MusicScene scene, int seconds)
     {
-        var engine = new DroneEngine(mood, seed, Rate);
+        var engine = new DroneEngine(world, scene, Rate);
         int frames = seconds * Rate;
         var l = new float[frames];
         var r = new float[frames];
@@ -141,7 +146,7 @@ public partial class MusicTest : Node
     void Climb(ulong seed)
     {
         const int Chunk = 2048;
-        var mix = new DroneMix(DroneMood.Lava, seed, Rate, Chunk);
+        var mix = new DroneMix(new MusicWorld(DroneMood.Lava, seed), Rate, Chunk);
         var l = new float[Chunk];
         var r = new float[Chunk];
         double Seconds(int s, float space)
@@ -165,58 +170,93 @@ public partial class MusicTest : Node
         Check(mix.Running == 1 && space > 0.003, "in space the world's drone has gone and deep space plays on");
         Seconds(1, 0f);
         Check(mix.Running == 2, "coming back down starts the world again");
+        Seconds(30, 0f);
+        Check(mix.Running == 1, "back on the ground space has gone");
+        mix.Ground = new MusicScene(MusicPlace.Cave);
+        Seconds(4, 0f);
+        Check(mix.Running == 2, "a new scene crossfades from the last");
+        mix.Ground = new MusicScene(MusicPlace.Bunker);
+        Seconds(2, 0f);
+        Check(mix.Running == 2, "another change waits its turn: never more than two");
+        Seconds(40, 0f);
+        Check(mix.Running == 1, "and when it has settled, one drone runs again");
+
+        var dwell = new SceneDwell(default);
+        var cave = new MusicScene(MusicPlace.Cave);
+        var forest = new MusicScene(MusicPlace.Open, MusicGround.Forest);
+        bool flicker = false;
+        for (int i = 0; i < 40; i++) flicker |= dwell.Feed(i % 3 == 0 ? cave : default, 1f) != default;
+        Check(!flicker, "walking along a border doesn't flicker the music");
+        for (int i = 0; i < 6; i++) dwell.Feed(cave, 1f);
+        Check(dwell.Scene == cave, "going underground counts within seconds");
+        dwell = new SceneDwell(default);
+        for (int i = 0; i < 10; i++) dwell.Feed(forest, 1f);
+        bool early = dwell.Scene == forest;
+        for (int i = 0; i < 25; i++) dwell.Feed(forest, 1f);
+        Check(!early && dwell.Scene == forest, "a change of ground takes longer, a region and not a patch");
     }
 
-    void Tracks(ulong seed)
+    void Layers(ulong seed)
     {
-        MusicTrack Track(string mood, string name) => new(mood, $"{mood}/{name}.ogg", name, "someone", "https://example.invalid", "CC0", "");
-        var all = new[] { Track("temperate", "a"), Track("temperate", "b"), Track("hollow", "c"), Track("deep-space", "d") };
+        var plain = new MusicWorld(DroneMood.Temperate, seed);
+        WorldVoice voice = WorldVoice.Of(plain), again = WorldVoice.Of(plain), other = WorldVoice.Of(plain with { Seed = seed + 1 });
+        Check(voice.Scale.SequenceEqual(again.Scale) && voice.Motif.SequenceEqual(again.Motif) && voice.Root == again.Root, "a world's voice is fixed by its seed");
+        var voices = Enumerable.Range(1, 60).Select(i => WorldVoice.Of(plain with { Seed = seed + (ulong)i })).ToList();
+        int scales = voices.Select(v => string.Join(",", v.Scale.Select(x => x.ToString("F3")))).Distinct().Count();
+        int leads = voices.Select(v => v.Lead).Distinct().Count();
+        Check(scales >= 6 && leads >= 3, $"worlds of one type roll their own scales ({scales}) and instruments ({leads})");
+        Check(voices.Select(v => v.Pace).Max() > voices.Select(v => v.Pace).Min() * 1.4f, "and their own pace");
+        Check(WorldVoice.Of(plain with { Star = 0f }).Root < WorldVoice.Of(plain with { Star = 1f }).Root, "a redder star sits lower");
 
-        var quiet = new TrackDirector(Array.Empty<MusicTrack>(), seed);
-        bool anything = false;
-        for (int i = 0; i < 36000; i++) anything |= quiet.Tick(1f, "temperate") != TrackCue.None;
-        Check(!anything, "with no tracks at all the drones just go on");
-
-        var director = new TrackDirector(all, seed);
-        int played = 0;
-        double lastEnd = -1.0, shortest = double.MaxValue, clock = 0.0;
-        bool keptMood = true;
-        for (int i = 0; i < 36000 * 2; i++)
+        float[] Sound(MusicWorld w, MusicScene s) => Render(w, s, 12).L;
+        float[] home = Sound(plain, default);
+        foreach (var (name, world, scene) in new (string, MusicWorld, MusicScene)[]
         {
-            clock += 1.0;
-            TrackCue cue = director.Tick(1f, "temperate");
-            if (cue == TrackCue.Start)
-            {
-                played++;
-                keptMood &= director.Current.Mood == "temperate";
-                if (lastEnd >= 0.0) shortest = Math.Min(shortest, clock - lastEnd);
-                director.Began(200f);
-            }
-            else if (cue == TrackCue.Stop) lastEnd = clock;
-        }
-        Check(played > 10 && keptMood, $"only the mood's own tracks play: the Hollow's and space's never reach a temperate world ({played} in 20 hours)");
-        Check(shortest >= 240.0, $"long quiet between tracks (shortest {shortest:F0} s)");
+            ("the ground", plain, new MusicScene(Ground: MusicGround.Stone)),
+            ("the time of day", plain, new MusicScene(Day: DayPart.Night)),
+            ("the climate", plain with { Heat = 1f, Damp = 0f }, default),
+            ("the star", plain with { Star = 0f }, default),
+            ("the tech level", plain with { Tech = 1f }, default),
+            ("what became of it", plain with { Theme = MusicTheme.Nuclear }, default),
+            ("the Hollow", plain, new MusicScene(Hollow: 1f)),
+        })
+            Check(!home.SequenceEqual(Sound(world, scene)), $"{name} changes the result");
 
-        var climbing = new TrackDirector(all, seed);
-        for (int i = 0; i < 400 && climbing.Current == null; i++) climbing.Tick(1f, "temperate");
-        climbing.Began(300f);
-        for (int i = 0; i < 20; i++) climbing.Tick(1f, "temperate");
-        float full = climbing.Level;
-        bool stopped = false;
-        float lowest = full;
-        for (int i = 0; i < 20 && !stopped; i++)
+        MoodProfile wild = Composer.Compose(plain with { Inhabited = false }, default, voice);
+        Check(!wild.Tones.Any(t => t is ToneKind.Horn or ToneKind.Bell or ToneKind.Beacon), "a world nobody settled has no horns or bells");
+    }
+
+    void Places(ulong seed)
+    {
+        var world = new MusicWorld(DroneMood.Arid, seed) { Heat = 0.8f };
+        foreach (MusicPlace place in (MusicPlace[])Enum.GetValues(typeof(MusicPlace)))
         {
-            stopped = climbing.Tick(1f, "deep-space") == TrackCue.Stop;
-            lowest = Math.Min(lowest, climbing.Level);
+            var (l, _) = Render(world, new MusicScene(place), 20);
+            float peak = l.Max(Math.Abs);
+            double level = 20.0 * Math.Log10(Rms(l, 12 * Rate, l.Length) + 1e-12);
+            Check(l.All(float.IsFinite) && peak < 0.72f, $"{place}: clean, peak {peak:F2}");
+            Check(level is > -46.0 and < -16.0, $"{place}: sits under the game at {level:F1} dBFS");
         }
-        Check(full > 0.9f && stopped && lowest == 0f, "leaving the mood's place fades its track out, slowly");
+    }
 
-        var broken = new TrackDirector(new[] { Track("ice", "gone") }, seed);
-        for (int i = 0; i < 400 && broken.Current == null; i++) broken.Tick(1f, "ice");
-        broken.Failed();
-        bool retried = false;
-        for (int i = 0; i < 3000; i++) retried |= broken.Tick(1f, "ice") == TrackCue.Start;
-        Check(!retried, "a track that won't load is dropped and the quiet goes on");
+    void Shape(ulong seed)
+    {
+        // Half an hour at a low rate: density and quiet are the Arc's, and it is the same at any rate.
+        var engine = new DroneEngine(new MusicWorld(DroneMood.Temperate, seed), new MusicScene(), 8000);
+        var l = new float[8000 * 10];
+        var r = new float[8000 * 10];
+        var levels = new List<double>();
+        for (int i = 0; i < 240; i++)
+        {
+            engine.Render(l, r, 0, l.Length);
+            levels.Add(Rms(l, 0, l.Length));
+        }
+        double loud = levels.Max(), quiet = levels.Min(), largest = 0.0;
+        // Steps only count outside the rests: down there, one faint tone passing is a big ratio of nothing.
+        for (int i = 1; i < levels.Count; i++)
+            if (Math.Min(levels[i], levels[i - 1]) > loud * 0.2) largest = Math.Max(largest, Math.Abs(20.0 * Math.Log10((levels[i] + 1e-9) / (levels[i - 1] + 1e-9))));
+        Check(loud / Math.Max(quiet, 1e-6) > 2.0, $"over 40 minutes it thins and fills ({20.0 * Math.Log10(loud / Math.Max(quiet, 1e-6)):F1} dB)");
+        Check(largest < 9.0, $"and never moves suddenly (largest step {largest:F1} dB in 10 s)");
     }
 
     void CreditsData()
@@ -228,24 +268,6 @@ public partial class MusicTest : Node
         string text = File.ReadAllText(Path.Combine(GameData.PrototypesRoot, "..", "CREDITS.md"));
         var missing = shared.Rows.Where(r => !text.Contains(r.Author) || !text.Contains(r.Source)).Select(r => r.What).ToList();
         Check(missing.Count == 0, $"CREDITS.md holds every row {string.Join(", ", missing)}");
-        Check(shared.Tracks.All(t => (t.Licence.Contains("CC0") || !string.IsNullOrWhiteSpace(t.Attribution))), "a licence that needs attribution has it word for word");
-
-        var moods = ((DroneMood[])Enum.GetValues(typeof(DroneMood))).Select(DroneMoods.Key).ToHashSet();
-        Check(shared.Tracks.All(t => moods.Contains(t.Mood)), "every track's folder is a mood");
-        var listed = shared.Tracks.Select(t => Path.GetFullPath(Path.Combine(shared.MusicFolder, t.File))).ToHashSet();
-        var files = Directory.GetFiles(shared.MusicFolder, "*", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != ".gdignore").Select(Path.GetFullPath).ToList();
-        Check(files.All(listed.Contains), $"no track file without a row: {string.Join(", ", files.Where(f => !listed.Contains(f)))}");
-
-        string folder = Path.Combine(Path.GetTempPath(), $"galhack-music-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(folder, "ice"));
-        string music = Path.Combine(folder, "music.json");
-        string row(string name) => $"{{\"file\":\"ice/{name}\",\"title\":\"{name}\",\"author\":\"x\",\"source\":\"y\",\"licence\":\"CC0\"}}";
-        File.WriteAllText(music, $"{{\"tracks\":[{row("here.ogg")},{row("gone.ogg")},{row("flac.flac")}]}}");
-        File.WriteAllBytes(Path.Combine(folder, "ice", "here.ogg"), new byte[4]);
-        File.WriteAllBytes(Path.Combine(folder, "ice", "flac.flac"), new byte[4]);
-        Credits local = Credits.Load(music, GameData.Own("data/credits.json"), folder);
-        Check(local.Tracks.Count == 1 && local.Tracks[0].Mood == "ice" && local.Rows.Count(r => r.Section.StartsWith("MUSIC (")) == 1, "a deleted file, or a format the engine can't play, leaves the player and the credits alike");
-        Directory.Delete(folder, true);
     }
 
     void Volumes()
@@ -298,11 +320,13 @@ public partial class MusicTest : Node
     void Moods()
     {
         ulong seed = WorldChoice.Tested.Seed;
-        Check(SliceMusic.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.None)) == DroneMood.Temperate, "a temperate world plays temperate");
-        Check(SliceMusic.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.Archipelago)) == DroneMood.Ocean, "an island world plays ocean");
-        Check(SliceMusic.MoodOf(new PlanetSpec(seed, Archetype.Alien, 1, Modifier.None)) == DroneMood.Swamp, "the alien swamp plays swamp");
-        Check(SliceMusic.MoodOf(new PlanetSpec(seed, Archetype.Lava, 0, Modifier.None)) == DroneMood.Lava, "lava plays lava");
-        Check(SliceMusic.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.None), bloom: true) == DroneMood.Hollow, "a Bloom-taken world plays the Hollow");
+        Check(MusicScenes.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.None)) == DroneMood.Temperate, "a temperate world plays temperate");
+        Check(MusicScenes.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.Archipelago)) == DroneMood.Ocean, "an island world plays ocean");
+        Check(MusicScenes.MoodOf(new PlanetSpec(seed, Archetype.Alien, 1, Modifier.None)) == DroneMood.Swamp, "the alien swamp plays swamp");
+        Check(MusicScenes.MoodOf(new PlanetSpec(seed, Archetype.Lava, 0, Modifier.None)) == DroneMood.Lava, "lava plays lava");
+        Check(MusicScenes.MoodOf(new PlanetSpec(seed, Archetype.Temperate, 0, Modifier.None), bloom: true) == DroneMood.Hollow, "a Bloom-taken world plays the Hollow");
+        Check(MusicScenes.GroundOf(Biome.Forest) == MusicGround.Forest && MusicScenes.GroundOf(Biome.Dunes) == MusicGround.Dry && MusicScenes.GroundOf(Biome.Glacier) == MusicGround.Snow, "biomes fall into their ground families");
+        Check(MusicScenes.DayOf(0.5) == DayPart.Day && MusicScenes.DayOf(0.0) == DayPart.Night && MusicScenes.DayOf(0.25) == DayPart.Dawn && MusicScenes.DayOf(0.77) == DayPart.Dusk, "the clock falls into parts of the day");
     }
 
     void Check(bool ok, string what)

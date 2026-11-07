@@ -3,7 +3,7 @@ namespace GalHack.Music;
 /// <summary>What a drone plays, by the place it belongs to.</summary>
 public enum DroneMood { Temperate, Arid, Ice, Lava, Swamp, Ocean, Airless, DeepSpace, Hollow }
 
-/// <summary>The moods' names in data, and as folders of chosen tracks.</summary>
+/// <summary>The moods' names, as data and logs show them.</summary>
 public static class DroneMoods
 {
     public static string Key(DroneMood mood) => mood switch
@@ -20,7 +20,7 @@ public enum Wave { Sine, Warm, Reed, Dark, Glass, Choir, Bare }
 public enum BedKind { Still, Wind, Surf, Rumble, Murk }
 
 /// <summary>The kinds of distant event a world's silence is broken by.</summary>
-public enum ToneKind { Bell, Horn, Flute, Glass, Groan, Call, Beacon }
+public enum ToneKind { Bell, Horn, Flute, Glass, Groan, Call, Beacon, Bowed, Choir, Pluck, Wire, Drip }
 
 /// <summary>
 /// One mood as data: its tuning, its layers and its room. A seed picks within these bounds (root,
@@ -30,7 +30,8 @@ public enum ToneKind { Bell, Horn, Flute, Glass, Groan, Call, Beacon }
 public sealed class MoodProfile
 {
     public float RootLow, RootHigh;
-    public float[] Scale;
+    /// <summary>The tetrachords a world of this mood may build its scale from (see <see cref="WorldVoice"/>).</summary>
+    public int[] Lower, Upper;
     public float[] Registers;
     public float[] Gains;
     public Wave[] Waves;
@@ -38,6 +39,9 @@ public sealed class MoodProfile
     public float ChangeMin = 45f, ChangeMax = 110f;
     public float Sub;
     public float StrataSend = 0.7f;
+
+    /// <summary>Set by a place that sits below the world's own register.</summary>
+    public float RootScale = 1f;
 
     public float PartialGain;
     public int PartialLow = 3, PartialHigh = 16;
@@ -56,8 +60,18 @@ public sealed class MoodProfile
 
     public float Rt60 = 9f, RoomSize = 1f, Damp = 3500f, Wet = 0.7f, PredelayMs = 40f;
 
-    /// <summary>The Hollow only: how far its wrongness goes.</summary>
+    /// <summary>How far wrongness goes: cents of sag, ring depth, breath. Mostly the Hollow's.</summary>
     public float Sag, Ring, Breath;
+
+    /// <summary>The world's theme: who plays it, how loud, how often, how long a beat is, and how slow everything runs.</summary>
+    public ToneKind Lead = ToneKind.Bowed, Second = ToneKind.Bell;
+    public float MelodyGain = 0.12f, MelodyMin = 80f, MelodyMax = 190f, MelodyRegister = 4f, BeatSeconds = 3f, Beat = 1f;
+
+    /// <summary>How often a long section ends in quiet, 0 to 1.</summary>
+    public float Rest = 0.5f;
+
+    /// <summary>A lid on the whole sound in hertz, for being inside something; 0 for none.</summary>
+    public float Muffle;
 
     /// <summary>The long-term level this mood is held at, in dB under full scale. All of them are quiet: music sits under the game.</summary>
     public float LevelDb = -25f;
@@ -66,15 +80,13 @@ public sealed class MoodProfile
     /// <summary>How much of everything under about 160 Hz the master takes off: enough to leave room for the game, and for the notes to be heard on small speakers.</summary>
     public float Tilt = 0.65f;
 
-    static float R(float a, float b) => a / b;
-
     public static MoodProfile Of(DroneMood mood) => mood switch
     {
         // Lonely and warm, faded: a minor mode, a far horn over the ruins, wind in what is left of them.
         DroneMood.Temperate => new MoodProfile
         {
             RootLow = 49f, RootHigh = 73f,
-            Scale = new[] { 1f, R(9, 8), R(6, 5), R(4, 3), R(3, 2), R(8, 5), R(9, 5) },
+            Lower = new[] { 0, 0, 6 }, Upper = new[] { 0, 1, 2 },
             Registers = new[] { 1f, 1f, 2f, 2f, 4f }, Gains = new[] { 0.36f, 0.3f, 0.36f, 0.28f, 0.2f },
             Waves = new[] { Wave.Warm, Wave.Warm, Wave.Choir, Wave.Choir, Wave.Warm },
             Bright = 820f, Sweep = 1.1f, Detune = 0.25f, Sub = 0.12f,
@@ -88,7 +100,7 @@ public sealed class MoodProfile
         DroneMood.Arid => new MoodProfile
         {
             RootLow = 55f, RootHigh = 82f,
-            Scale = new[] { 1f, R(16, 15), R(5, 4), R(4, 3), R(3, 2), R(8, 5), R(16, 9) },
+            Lower = new[] { 1, 4 }, Upper = new[] { 0, 2 },
             Registers = new[] { 1f, 2f, 2f, 4f }, Gains = new[] { 0.3f, 0.32f, 0.26f, 0.2f },
             Waves = new[] { Wave.Reed, Wave.Reed, Wave.Bare, Wave.Reed },
             Bright = 1250f, Sweep = 1.3f, SweepMin = 24f, SweepMax = 60f, Detune = 0.4f, Sub = 0.06f, StrataSend = 0.55f,
@@ -102,7 +114,7 @@ public sealed class MoodProfile
         DroneMood.Ice => new MoodProfile
         {
             RootLow = 82f, RootHigh = 123f,
-            Scale = new[] { 1f, R(9, 8), R(4, 3), R(3, 2), R(27, 16), R(16, 9) },
+            Lower = new[] { 5, 6 }, Upper = new[] { 6, 5, 1 },
             Registers = new[] { 1f, 2f, 4f, 4f, 8f }, Gains = new[] { 0.2f, 0.3f, 0.3f, 0.22f, 0.1f },
             Waves = new[] { Wave.Glass, Wave.Sine, Wave.Glass, Wave.Glass, Wave.Sine },
             Bright = 1700f, Sweep = 0.8f, SweepMin = 40f, SweepMax = 90f, Detune = 0.12f, StrataSend = 1f,
@@ -116,7 +128,7 @@ public sealed class MoodProfile
         DroneMood.Lava => new MoodProfile
         {
             RootLow = 29f, RootHigh = 41f,
-            Scale = new[] { 1f, R(16, 15), R(6, 5), R(7, 5), R(3, 2), R(8, 5) },
+            Lower = new[] { 1, 0 }, Upper = new[] { 3 },
             Registers = new[] { 1f, 1f, 2f, 2f, 4f }, Gains = new[] { 0.5f, 0.4f, 0.42f, 0.34f, 0.26f },
             Waves = new[] { Wave.Dark, Wave.Dark, Wave.Dark, Wave.Reed, Wave.Dark },
             Bright = 380f, Sweep = 1.4f, SweepMin = 20f, SweepMax = 55f, Detune = 0.5f, Sub = 0.35f, StrataSend = 0.45f,
@@ -130,7 +142,7 @@ public sealed class MoodProfile
         DroneMood.Swamp => new MoodProfile
         {
             RootLow = 44f, RootHigh = 62f,
-            Scale = new[] { 1f, R(7, 6), R(4, 3), R(3, 2), R(14, 9), R(7, 4) },
+            Lower = new[] { 3 }, Upper = new[] { 7, 4 },
             Registers = new[] { 1f, 2f, 2f, 3f }, Gains = new[] { 0.36f, 0.36f, 0.32f, 0.26f },
             Waves = new[] { Wave.Dark, Wave.Choir, Wave.Choir, Wave.Choir },
             Bright = 620f, Sweep = 1.2f, Detune = 0.7f, Sub = 0.14f, StrataSend = 0.6f,
@@ -144,7 +156,7 @@ public sealed class MoodProfile
         DroneMood.Ocean => new MoodProfile
         {
             RootLow = 41f, RootHigh = 58f,
-            Scale = new[] { 1f, R(9, 8), R(6, 5), R(3, 2), R(8, 5), R(9, 5) },
+            Lower = new[] { 0, 6 }, Upper = new[] { 0, 5 },
             Registers = new[] { 1f, 2f, 2f, 4f }, Gains = new[] { 0.34f, 0.32f, 0.32f, 0.22f },
             Waves = new[] { Wave.Warm, Wave.Warm, Wave.Choir, Wave.Warm },
             Bright = 820f, Sweep = 1f, SweepMin = 30f, SweepMax = 70f, Detune = 0.2f, Sub = 0.16f, StrataSend = 0.8f,
@@ -158,7 +170,7 @@ public sealed class MoodProfile
         DroneMood.Airless => new MoodProfile
         {
             RootLow = 36f, RootHigh = 50f,
-            Scale = new[] { 1f, R(4, 3), R(3, 2) },
+            Lower = new[] { 5 }, Upper = new[] { 5 },
             Registers = new[] { 1f, 2f, 4f }, Gains = new[] { 0.3f, 0.28f, 0.16f },
             Waves = new[] { Wave.Bare, Wave.Bare, Wave.Sine },
             Bright = 540f, Sweep = 0.7f, SweepMin = 50f, SweepMax = 120f, Detune = 0.06f, Sub = 0.1f, StrataSend = 0.8f,
@@ -173,7 +185,7 @@ public sealed class MoodProfile
         DroneMood.DeepSpace => new MoodProfile
         {
             RootLow = 32f, RootHigh = 44f,
-            Scale = new[] { 1f, R(9, 8), R(4, 3), R(3, 2), R(5, 3), R(16, 9) },
+            Lower = new[] { 6, 2, 0 }, Upper = new[] { 1, 6 },
             Registers = new[] { 1f, 2f, 2f, 4f, 4f, 8f }, Gains = new[] { 0.32f, 0.32f, 0.32f, 0.28f, 0.2f, 0.12f },
             Waves = new[] { Wave.Warm, Wave.Warm, Wave.Choir, Wave.Choir, Wave.Glass, Wave.Sine },
             Bright = 960f, Sweep = 1.5f, SweepMin = 40f, SweepMax = 110f, Detune = 0.15f, Sub = 0.2f, StrataSend = 1f,
@@ -189,7 +201,7 @@ public sealed class MoodProfile
         _ => new MoodProfile
         {
             RootLow = 46f, RootHigh = 61f,
-            Scale = new[] { 1f, R(16, 15), R(6, 5), R(45, 32), R(3, 2), R(8, 5) },
+            Lower = new[] { 1 }, Upper = new[] { 3 },
             Registers = new[] { 1f, 2f, 2f, 4f, 4f }, Gains = new[] { 0.34f, 0.3f, 0.32f, 0.24f, 0.17f },
             Waves = new[] { Wave.Choir, Wave.Bare, Wave.Choir, Wave.Bare, Wave.Glass },
             Bright = 760f, Sweep = 1.2f, Detune = 0.3f, Sub = 0.14f, StrataSend = 0.8f,
@@ -198,7 +210,6 @@ public sealed class MoodProfile
             Tones = new[] { ToneKind.Horn }, ToneGain = 0.24f, ToneMin = 20f, ToneMax = 36f, ToneRegister = 2f,
             Bed = BedKind.Still, BedGain = 0.16f, BedLow = 90f, BedHigh = 1200f,
             Rt60 = 10f, RoomSize = 1.1f, Damp = 2800f, Wet = 0.8f, LevelDb = -26.5f,
-            Sag = 46f, Ring = 0.5f, Breath = 0.75f,
         },
     };
 }
