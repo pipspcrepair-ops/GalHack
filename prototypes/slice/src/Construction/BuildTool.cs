@@ -204,8 +204,9 @@ public sealed partial class BuildTool
         }
         Structure s = TargetVessel.Structure;
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
-        ItemDef back = s.TypeOf(b).IsCore && s.Count == 1 ? Items.Item(StructureArea.CoreItem(StructureArea.ClassOf(TargetVessel))) : BuildingBridge.ItemOf(Items, s, b);
-        Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name}: +1 {back?.Name ?? "nothing"}";
+        ItemDef back = BuildingBridge.ItemOf(Items, s, b);
+        if (s.TypeOf(b).IsCore) Verdict = CoreStays;
+        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name}: +1 {back?.Name ?? "nothing"}";
         if (pressed) Remove(TargetVessel, TargetCell);
     }
 
@@ -729,10 +730,13 @@ public sealed partial class BuildTool
 
     static TerrainDigging.Terrain.VolumeKey BlockKey(Vessel v, Int3 cell) => new(v.Body.Id, cell.X, cell.Y, cell.Z);
 
+    /// <summary>What the tool says on a core: design 693, with no exception for the last block.</summary>
+    public const string CoreStays = "The core can't be removed, only destroyed or hijacked";
+
     /// <summary>
     /// Takes a block down: Survival gives its item back, whole, and sets down whatever has nowhere
-    /// to go; sections it cuts loose become wrecks. The last block, the core, comes back as the
-    /// core item of the structure's class, and the structure's storage comes with it.
+    /// to go; sections it cuts loose become wrecks. The core stays: it can only be destroyed or
+    /// hijacked, even when it is the last block.
     /// </summary>
     public void Remove(Vessel v, Int3 cell)
     {
@@ -742,11 +746,10 @@ public sealed partial class BuildTool
         var before = v.IsBase ? s.Blocks().Select(x => x.pos).ToList() : null;
         ItemDef item = BuildingBridge.ItemOf(Items, s, b);
         Bill back = Creative || item == null ? new Bill() : Bill.Of((item.Id, 1));
-        StructureClass cls = StructureArea.ClassOf(v);
         RemoveResult r = Building.Remove(s, cell, null);
         if (r.Status == RemoveStatus.CoreHoldsStructure)
         {
-            Said?.Invoke("The core holds the structure together: take the rest down first", Tones.Caution);
+            Said?.Invoke(CoreStays, Tones.Caution);
             return;
         }
         if (r.Status != RemoveStatus.Removed) return;
@@ -755,22 +758,6 @@ public sealed partial class BuildTool
                 if (!s.Has(p)) _zone.Edits.ReleaseStructure(BlockKey(v, p));
         TakenDown++;
         Vector3 at = v.ToWorld(StructureBridge.CellCenter(s, cell));
-        if (s.TypeOf(b).IsCore && s.Count == 0)
-        {
-            // The last block, its core: it goes back as the core item it was founded with.
-            back = Creative ? new Bill() : Bill.Of((StructureArea.CoreItem(cls), 1));
-            GiveBack(back, null, at);
-            Bill held = v.Storage.Contents;
-            v.Storage.TryTake(held);
-            if (!held.IsEmpty) Spilled?.Invoke(held, at);
-            if (_pack.Linked == v.Storage) _pack.Link(null, null);
-            _zone.Physics.Unregister(v.Body);
-            _zone.Physics.StuckFields.Remove(v.Field);
-            _zone.Untrack(v);
-            v.Node.QueueFree();
-            Said?.Invoke($"{v.Name} taken down", Tones.Text);
-            return;
-        }
         GiveBack(back, v, at);
         foreach (Structure piece in r.Wrecks) v.Sever(piece);
         // A container gone shrinks storage: what no longer fits is set down, never lost.

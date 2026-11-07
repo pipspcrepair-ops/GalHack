@@ -137,6 +137,9 @@ public partial class BuildTest : Node
         Place(s, 1, 0, 0, _steel);
         Check(Building.Remove(s, Int3.Zero, inventory).Status == RemoveStatus.CoreHoldsStructure && s.Core != null,
             "the core cannot be taken down while blocks hang off it");
+        Building.Remove(s, new Int3(1, 0, 0), inventory);
+        Check(s.Count == 1 && Building.Remove(s, Int3.Zero, inventory).Status == RemoveStatus.CoreHoldsStructure && s.Core != null,
+            "nor as the last block: a core is only ever destroyed or hijacked");
     }
 
     // ---- Severing -------------------------------------------------------------------------

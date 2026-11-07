@@ -720,6 +720,12 @@ public partial class BuildTest : Node
     {
         GD.Print("-- taking down: nothing is lost --");
         string steel = Item("steel", false);
+        // The core stays, however little is left on it.
+        var (coreCell, coreBlock) = _base.Structure.Blocks().First(c => _base.Structure.TypeOf(c.block).IsCore);
+        int vessels = _game.Zone.Vessels.Count, coreItems = PlayerInventory.CoreItems.Sum(id => Pack[id]);
+        _game.Builder.Remove(_base, coreCell);
+        Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && PlayerInventory.CoreItems.Sum(id => Pack[id]) == coreItems,
+            $"deconstruct refuses a core ({_base.Structure.TypeOf(coreBlock).Name}): it can only be destroyed or hijacked");
         foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
         N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(1f, 0, 0);
         foreach (int x in StandByBase(6, 4)) yield return x;
