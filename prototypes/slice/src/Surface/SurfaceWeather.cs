@@ -474,7 +474,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
-            fx.ReachTo(CloudBaseY + 25f - fx.GlobalPosition.Y); // up into the tower's dark base, at any distance and as it lowers
+            fx.ReachTo(CloudBaseY - 50f - fx.GlobalPosition.Y); // up into the storm's lowered dark base, at any distance and as it lowers
             Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();

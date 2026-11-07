@@ -70,6 +70,7 @@ uniform float stratus = 0.0;     // cumulus heaps (0) to flat layers of grey (1)
 uniform float cirrus = 0.0;      // thin high streaks
 uniform int tower_count = 0;      // storm towers: their deck is thick and dark, whatever the sky around them
 uniform vec4 tower[4];           // x, z, radius, strength
+uniform vec2 storm_wind = vec2(1.0, 0.0);  // which way the anvils spread
 uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
 
 // How much of the sun's light gets through the air, by its height: all of it from about 17° up,
@@ -226,13 +227,25 @@ uniform sampler3D cloud_detail : filter_linear_mipmap, repeat_enable;
 // Cloud density at a point: a coverage map from 2D noise (where clouds are, and how tall), a
 // height profile with flat bases and rounded tops that rise higher where the cloud is denser,
 // and 3D noise eroding the edges into billows so nothing reads as an extruded pillar.
-float storm_at(vec2 xz) {
-	float s = 0.0;
+// One storm: a single big mass several kilometres across that grows with the cell's strength: a
+// modest heap in the deck when weak, a tower well above it when severe, spreading into a broad
+// flat anvil downwind at the top, with a dark lowered base. x: how much cloud is here (0..1, soft
+// at the edge so it merges into the deck), y: how tall it stands here, in layer thicknesses.
+vec2 storm_at(vec3 p) {
+	float h = (p.y - cloud_base) / cloud_thick;
+	vec2 best = vec2(0.0);
 	for (int i = 0; i < tower_count; i++) {
-		float d = length(xz - tower[i].xy);
-		s = max(s, tower[i].w * smoothstep(tower[i].z, tower[i].z * 0.5, d));
+		float w = tower[i].w;
+		float reach = tower[i].z * (2.0 + 4.0 * w);
+		float topH = 0.9 + 3.0 * w;
+		float ah = smoothstep(topH * 0.5, topH * 0.85, h);          // the anvil: up near the top it spreads
+		vec2 centre = tower[i].xy + storm_wind * ah * reach * 1.1;
+		float r = reach * (1.0 + 0.9 * ah);
+		float d = length(p.xz - centre);
+		float s = w * smoothstep(r, r * 0.25, d);
+		if (s > best.x) best = vec2(s, topH);
 	}
-	return s;
+	return best;
 }
 
 float cloud_density(vec3 p, bool cheap) {
@@ -242,15 +255,16 @@ float cloud_density(vec3 p, bool cheap) {
 	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
 	float st = stratus > 0.001 ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
 	if (st > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, st);
-	float storm = tower_count > 0 ? storm_at(p.xz) : 0.0;
+	vec2 st_ = tower_count > 0 ? storm_at(p) : vec2(0.0);
+	float storm = st_.x;
 	float cover = mix(0.12, 1.05, cloud_cover);
 	float coverage = n - (1.0 - cover) + storm * 0.55;
 	if (coverage <= 0.0) return 0.0;
-	float h = (p.y - cloud_base) / cloud_thick;
+	float h = (p.y - cloud_base + storm * 110.0) / cloud_thick; // a dark lowered base under the storm
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
 	top = mix(top, 0.4, st);
-	top = mix(top, 2.8, storm); // the tower stands up through the deck
-	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * 0.55, top, h));
+	top = mix(top, st_.y, storm); // the storm stands up through the deck
+	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * mix(0.55, 0.82, storm), top, h)); // flat topped
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
 		vec3 q = (p + vec3(cloud_drift.x, 0.0, cloud_drift.y) * 1.3) / (cloud_scale.x * 0.125);
@@ -272,7 +286,7 @@ float march_jitter(vec2 pixel) {
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
 vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
-	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 2.8 : 1.0);
+	float base = cloud_base - (tower_count > 0 ? 110.0 : 0.0), top = cloud_base + cloud_thick * (tower_count > 0 ? 4.0 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
@@ -314,7 +328,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 				float hgt = clamp((p.y - cloud_base) / cloud_thick, 0.0, 1.0);
 				vec3 lum = ambient * (0.4 + 0.6 * hgt) + cloud_lit * sun_light * beer * mix(0.55, 1.0, powder);
 				float dark = cloud_dark;
-				if (tower_count > 0) dark = max(dark, 0.92 * storm_at(p.xz));
+				if (tower_count > 0) { vec2 sd = storm_at(p); dark = max(dark, mix(0.4, 0.92, sd.x) * smoothstep(0.0, 0.3, sd.x)); }
 				lum *= 1.0 - dark * 0.78 * (1.0 - hgt * 0.4);
 				lum += cloud_underglow * (1.0 - hgt) * (1.0 - hgt);
 				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
