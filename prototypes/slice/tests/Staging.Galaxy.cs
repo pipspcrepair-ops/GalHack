@@ -26,6 +26,8 @@ public sealed partial class Staging
         "night-ground" => NightGround(),
         "night-space" => NightSpace(),
         "galaxy-map" => GalaxyMap(),
+        "world-map" => WorldMapShots(),
+        "galaxy-lanes" => GalaxyLanes(),
         "galaxy-core" => GalaxyCore(),
         "galaxy-jump" => GalaxyJump(),
         "galaxy-nebula" => GalaxyNebula(),
@@ -110,6 +112,74 @@ public sealed partial class Staging
         Face(_game.Spaceflight.LookToward(id));
         Choose(id);
         foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The lane network round you, a picked star several jumps off with its route, and the whole galaxy.</summary>
+    IEnumerable<int> GalaxyLanes()
+    {
+        foreach (int x in Midnight()) yield return x;
+        foreach (int x in _drive.Tap(Key.Tab)) yield return x;
+        _game.Menu.OpenMap(MapLevel.Galaxy);
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        var lanes = new Lanes(Stars.Galaxy, Stars.Here);
+        for (int i = 0; i < 90; i++) yield return 0;
+        levels.Sky.Distance = 260;
+        for (int i = 0; i < 30; i++) yield return 0;
+        Snap("a-network");
+        int pick = -1;
+        foreach (int id in lanes.Connected)
+        {
+            var r = Lanes.Route(Stars.Galaxy, Stars.Here, id, Lanes.Range);
+            if (r != null && r.Count == 5 && (pick < 0 || id % 7 == 0)) pick = id;
+        }
+        if (pick < 0) pick = lanes.Connected.Skip(5).FirstOrDefault();
+        _game.Spaceflight.Charts.ChosenStar = pick;
+        levels.Trail.Star = pick;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("b-route");
+        foreach (int x in _drive.ClickWidget("map:whole")) yield return x;
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("c-whole");
+        foreach (int x in _drive.ClickWidget("map:on-me")) yield return x;
+        levels.Trail.OpenStar(pick);
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("d-their-system");
+        levels.Trail.Open(MapLevel.Galaxy);
+        for (int i = 0; i < 20; i++) yield return 0;
+        Snap("e-picked-details");
+    }
+
+    /// <summary>The World map opened from a start put at --lat (0 north pole .. 1 south pole): poles top and bottom; then a close look at a sea ice edge.</summary>
+    IEnumerable<int> WorldMapShots()
+    {
+        var planet = _game.Surface.Planet;
+        double lat = Num("lat", 0.5);
+        Vector3 at = _game.Survivor.WorldFeet;
+        _game.Survivor.PlaceOutside(new System.Numerics.Vector3(at.X, at.Y + 5f, (float)(planet.Height * lat)));
+        foreach (int x in _drive.Wait(20)) yield return x;
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        _game.Menu.OpenMap(MapLevel.World);
+        for (int i = 0; i < 150; i++) yield return 0;
+        Snap("world-lat" + (int)(lat * 100));
+        // A sea ice edge: a frozen cell beside open water.
+        var map = planet.Map;
+        int best = -1;
+        for (int k = 0; k < map.Count && best < 0; k++)
+        {
+            if (map.Biome[k] != (byte)Planets.Gen.Biome.FrozenSea) continue;
+            int i = k % map.Width, j = k / map.Width;
+            if (j > 2 && j < map.Height - 3 && map.Biome[map.Index(i + 1, j)] != (byte)Planets.Gen.Biome.FrozenSea && map.Elevation[map.Index(i + 1, j)] < 0f) best = k;
+        }
+        if (best >= 0 && levels.View != null)
+        {
+            levels.View.CentreX = map.CellX(best % map.Width);
+            levels.View.CentreZ = map.CellY(best / map.Width);
+            levels.View.MetresPerPixel = 6;
+            levels.View.Settle();
+            for (int i = 0; i < 40; i++) yield return 0;
+            Snap("ice-edge");
+        }
+        else GD.Print("(no sea ice edge on this world)");
     }
 
     /// <summary>The 3D map through the game's own mouse: turned by a drag, a star picked by a click.</summary>

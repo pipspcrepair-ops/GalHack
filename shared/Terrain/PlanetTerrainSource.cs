@@ -447,6 +447,10 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         }
         if (MouthsNear(ox, oz) != null) deepest = CaveBottom + 6f;
         float bottom = column.Min - deepest;
+        // A mouth's passage runs as deep as it needs to reach the caves: its floor has to be there too.
+        if (MouthsNear(ox, oz) is { } mouths)
+            foreach (CaveMouth m in mouths)
+                foreach (var p in m.Path) bottom = MathF.Min(bottom, m.Y + p.Y - p.R - 2f);
         List<TerrainStamp> stamps = StampsNear(ox, oz);
         if (stamps != null) foreach (TerrainStamp t in stamps) bottom = Math.Min(bottom, t.CarveBottom - 2);
         return (FloorDiv((int)MathF.Floor(bottom), S), FloorDiv((int)MathF.Ceiling(column.Max + 2f), S));

@@ -2,7 +2,7 @@
 // ore) with alpha saying how bare it is; UV carries glow (x) and bedrock (y). On top: soil and
 // rock detail from periodic noise (seamless across the planet's edges), horizontal strata on
 // rock faces, snow settling on flat ground, rain darkening and glossing everything, dust.
-// The far rings cut a hole where voxel chunks are loaded, so the two never overlap.
+// The far rings cut a hole where voxel chunks are loaded, so the two never overlap (see hole_sink).
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
@@ -13,9 +13,9 @@ global uniform vec4 weather_ground;   // wetness, settled snow, dust, solar
 
 uniform bool far_ring = false;
 uniform vec4 hole = vec4(0.0);        // x0, z0, x1, z1: where the finer level covers the ground
-// The horizon: its vertices at least hole_sink_from inside the hole drop hole_sink metres, and it is
-// only cut hole_cut inside it. Where the coarse horizon sits above the finer ground's edge, its
-// ground then dives under that edge as a wall instead of leaving a gap the sky shows through.
+// Far rings and horizon: vertices at least hole_sink_from inside the hole drop hole_sink metres, and it
+// is only cut hole_cut inside it. Where the coarser ground sits above the finer ground's edge, it
+// then dives under that edge as a wall instead of leaving a gap the sky shows through.
 uniform float hole_sink = 0.0;
 uniform float hole_sink_from = 0.0;
 uniform float hole_cut = 0.0;
@@ -45,10 +45,35 @@ void fragment() {
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;
+	float faces_up = up;
+	// A coarse grid across a cliff makes long thin triangles whose corners have nothing to do with
+	// the wall between them: on a spur or in a gully the normal says flat, or it turns away from the
+	// camera, and at that grazing angle it catches the sky as a pale streak, like a tear in the rock.
+	// So on a steep far triangle a normal that says flat takes the triangle's true facing, and the
+	// sheen goes where the normal turns from the eye. A wall keeps the normals that light it smoothly.
+	// (Not curtains, which are upright and painted as they should be, nor the wall a far ring dives
+	// under the voxels by: those stay the ground whose small step they close.)
+	float sheen = 1.0;
+	if (far_ring && inside_hole(wpos.xz) <= 0.0) {
+		vec3 facing = normalize(cross(dFdx(wpos), dFdy(wpos)));
+		vec3 to_eye = normalize(CAMERA_POSITION_WORLD - wpos);
+		if (dot(facing, to_eye) < 0.0) facing = -facing;
+		if (facing.y >= 0.01 && facing.y < 0.5) {
+			vec3 n = normalize(wnormal);
+			float says_flat = smoothstep(0.6, 0.85, n.y) * (1.0 - smoothstep(0.2, 0.4, facing.y));
+			if (says_flat > 0.0) n = normalize(mix(n, facing, says_flat));
+			float seen = dot(n, to_eye);
+			if (seen < 0.05) n = normalize(n + to_eye * (0.05 - seen));
+			if (says_flat > 0.0 || seen < 0.05) NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+			sheen = smoothstep(0.0, 0.4, seen);
+			up = n.y;
+			faces_up = min(up, facing.y);
+		}
+	}
 	// The vertex alpha already says how bare the ground is from its slope (soil thins out from
 	// about 30 degrees). The pixel's own normal only adds rock on real cliffs, over a wide band:
 	// voxel normals wobble at the metre scale, and a narrow band turned slopes into blotches.
-	float bare = max(COLOR.a, 1.0 - smoothstep(0.3, 0.62, up));
+	float bare = max(COLOR.a, 1.0 - smoothstep(0.3, 0.62, faces_up));
 
 	float fine = pfbm(wpos, 0.5, planet_size);
 	float broad = pfbm(wpos, 0.0625, planet_size);
@@ -86,7 +111,7 @@ void fragment() {
 	albedo *= 1.0 - wet * 0.35;
 	ALBEDO = albedo;
 	ROUGHNESS = mix(0.93, 0.45, wet * (0.4 + 0.6 * bare));
-	SPECULAR = 0.3 + wet * 0.3;
+	SPECULAR = (0.3 + wet * 0.3) * sheen;
 
 	if (UV.x > 0.01) {
 		// Glowing ground: lava cracks run in veins, glow moss and ore shine softly.

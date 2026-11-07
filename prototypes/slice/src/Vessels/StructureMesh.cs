@@ -42,6 +42,9 @@ public partial class StructureMesh : Node3D
     readonly ChunkMeshData _scratch = new();
     readonly List<OmniLight3D> _lights = new();
     string _lightKey = "";
+    readonly Slice.Surface.StructureSky _sky = new();
+    int _litVersion = -1;
+    double _sinceLit;
 
     public void Setup(Structure structure)
     {
@@ -54,6 +57,8 @@ public partial class StructureMesh : Node3D
             AddChild(Fx);
         }
         Fx.Setup(structure);
+        _sky.Flood(structure);
+        _litVersion = structure.Version;
         Rebuild(structure.Chunks.Keys);
     }
 
@@ -65,6 +70,8 @@ public partial class StructureMesh : Node3D
         long start = Stopwatch.GetTimestamp();
         int rebuilt = Rebuilt, queued = _waiting.Count;
         BeforeDraw?.Invoke();
+        // Blocks shot away let daylight in: redone a few times a second, not once a hit.
+        if ((_sinceLit += delta) > 0.25) Relight();
         if (_waiting.Count > 0) DrainQueue();
         if (Rebuilt != rebuilt || queued > 0) LastFrameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
@@ -85,8 +92,18 @@ public partial class StructureMesh : Node3D
         }
     }
 
+    /// <summary>If the structure changed, floods it again and queues the chunks whose light moved.</summary>
+    void Relight()
+    {
+        _sinceLit = 0;
+        if (Structure == null || Structure.Version == _litVersion) return;
+        _litVersion = Structure.Version;
+        _waiting.UnionWith(_sky.Flood(Structure));
+    }
+
     public void Rebuild(IEnumerable<Int3> chunks)
     {
+        Relight();
         foreach (Int3 c in chunks)
         {
             _waiting.Remove(c);
@@ -112,6 +129,7 @@ public partial class StructureMesh : Node3D
             _chunks[chunk] = mesh;
         }
         ChunkMesher.Build(Structure, chunk, _scratch, colliders);
+        _sky.Bake(_scratch.Opaque);
         mesh.Mesh = ChunkMesher.ToMesh(_scratch);
         Fx?.Smoke(chunk, _scratch.Smoking);
     }

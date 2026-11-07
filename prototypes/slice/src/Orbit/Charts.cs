@@ -55,7 +55,7 @@ public sealed class Charts
     public bool Charted(Galaxy galaxy, int star)
     {
         foreach (int v in Visited)
-            if (v == star || System.Numerics.Vector3.Distance(galaxy.Stars[v].Position, galaxy.Stars[star].Position) <= Galaxy.JumpT1) return true;
+            if (v == star || System.Numerics.Vector3.Distance(galaxy.Stars[v].Position, galaxy.Stars[star].Position) <= Lanes.Range) return true;
         return false;
     }
 
@@ -163,7 +163,7 @@ public sealed class Charts
     public List<int> Shown(Galaxy galaxy)
     {
         var shown = new HashSet<int>(Visited);
-        foreach (int v in Visited) shown.UnionWith(galaxy.Neighbours(v));
+        foreach (int v in Visited) shown.UnionWith(galaxy.Neighbours(v, Lanes.Range));
         return shown.ToList();
     }
 
@@ -218,6 +218,18 @@ public sealed class GalaxyMapView
     }
 
     public void Zoom(int steps) => Distance = Math.Clamp(Distance * Math.Pow(1.25, steps), Closest, Widest);
+
+    /// <summary>Free move along the galaxy's plane: the map follows the pointer by pixels (middle drag), whatever the turn.</summary>
+    public void Slide(float dx, float dy, float focal)
+    {
+        float sp = (float)Math.Sin(Pitch);
+        if (Math.Abs(sp) < 0.15f) sp = sp < 0f ? -0.15f : 0.15f;
+        float g = -dx * (float)Distance / focal, f = -dy * (float)Distance / (focal * sp);
+        float cy = (float)Math.Cos(Yaw), sy = (float)Math.Sin(Yaw);
+        Focus += new System.Numerics.Vector3(cy, 0f, -sy) * g + new System.Numerics.Vector3(sy, 0f, cy) * f;
+        float r = new System.Numerics.Vector2(Focus.X, Focus.Z).Length();
+        if (r > 560f) Focus = new System.Numerics.Vector3(Focus.X * 560f / r, Focus.Y, Focus.Z * 560f / r);
+    }
 }
 
 /// <summary>
@@ -256,21 +268,40 @@ public sealed class WorldMapView
         return d > span / 2 ? d - span : d;
     }
 
-    /// <summary>A map point in panel pixels from the panel's centre: the copy of it nearest the centre.</summary>
-    public (double px, double py) ToView(double x, double z) => (Nearest(x - CentreX, Width) / MetresPerPixel, Nearest(z - CentreZ, Height) / MetresPerPixel);
+    /// <summary>The panel's height in pixels: north-south the view stops at the poles (the map's top and bottom edges), so it needs to know how tall it shows.</summary>
+    public double PanelHeight;
 
-    /// <summary>The map point under a pixel from the panel's centre.</summary>
-    public (double x, double z) FromView(double px, double py) => (Wrap(CentreX + px * MetresPerPixel, Width), Wrap(CentreZ + py * MetresPerPixel, Height));
+    /// <summary>Keeps the view between the poles: a map shorter than the panel sits with the equator across the middle.</summary>
+    public void Settle()
+    {
+        double half = PanelHeight * MetresPerPixel / 2;
+        CentreZ = half * 2 >= Height ? Height / 2 : Math.Clamp(CentreZ, half, Height - half);
+        CentreX = Wrap(CentreX, Width);
+    }
+
+    /// <summary>A map point in panel pixels from the panel's centre: east-west the copy of it nearest the centre, north-south the one map (the poles are its ends).</summary>
+    public (double px, double py) ToView(double x, double z) => (Nearest(x - CentreX, Width) / MetresPerPixel, (z - CentreZ) / MetresPerPixel);
+
+    /// <summary>The map point under a pixel from the panel's centre (north-south it may fall past a pole: <see cref="Past"/>).</summary>
+    public (double x, double z) FromView(double px, double py) => (Wrap(CentreX + px * MetresPerPixel, Width), CentreZ + py * MetresPerPixel);
+
+    /// <summary>Whether a north-south map position is off the map, past a pole.</summary>
+    public bool Past(double z) => z < 0 || z > Height;
 
     /// <summary>Drags the map by pixels.</summary>
     public void Drag(double px, double py)
     {
-        CentreX = Wrap(CentreX - px * MetresPerPixel, Width);
-        CentreZ = Wrap(CentreZ - py * MetresPerPixel, Height);
+        CentreX = CentreX - px * MetresPerPixel;
+        CentreZ -= py * MetresPerPixel;
+        Settle();
     }
 
     /// <summary>Zooms in (a step of the wheel up) or out, holding the middle.</summary>
-    public void Zoom(int steps) => MetresPerPixel = Math.Clamp(MetresPerPixel * Math.Pow(1.25, steps), Closest, _widest);
+    public void Zoom(int steps)
+    {
+        MetresPerPixel = Math.Clamp(MetresPerPixel * Math.Pow(1.25, steps), Closest, _widest);
+        Settle();
+    }
 
     public bool AtClosest => MetresPerPixel <= Closest * 1.001;
     public bool AtWidest => MetresPerPixel >= _widest * 0.999;

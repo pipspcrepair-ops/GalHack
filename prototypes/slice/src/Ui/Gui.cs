@@ -28,6 +28,8 @@ public sealed class Gui
     public bool Pressed, Released, Held, RightPressed, Shift, Ctrl, RightReleased, RightHeld;
     /// <summary>Wheel ticks this pass (positive: up).</summary>
     public int Wheel;
+    /// <summary>The middle button is down (maps pan freely with it).</summary>
+    public bool MiddleHeld;
     /// <summary>The clock double clicks are timed on, seconds (real time; tests may set it).</summary>
     public Func<double> Clock = () => Time.GetTicksMsec() / 1000.0;
 

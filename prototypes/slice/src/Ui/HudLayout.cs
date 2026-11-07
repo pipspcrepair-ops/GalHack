@@ -10,23 +10,24 @@ namespace Slice.Ui;
 /// UI scale. From the bottom of the glass up, centred: the vitals row, the nine-slot toolbar,
 /// the selected item's line (name, mode or shape, count, source), the key hints on one quiet
 /// line, the shape strip with a block family in hand, and above them the suit's lines. The right
-/// and left of the bottom band stay clear for the held tool.
+/// and left of the bottom band stay clear for the held tool. The jetpack's gauge stands alone at
+/// the right edge, a little above the middle, and the suit's lines stop short of it.
 /// </summary>
-public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar, Rect2 ItemLine, Rect2 Hints, Rect2 Shapes, Rect2 Lines)
+public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar, Rect2 ItemLine, Rect2 Hints, Rect2 Shapes, Rect2 Lines, Rect2 Jet)
 {
     public const int Slots = 9;
-    public const float VitalW = 150, VitalH = 54, VitalGap = 14, Cell = 52, CellGap = 4, WideRow = 760;
+    public const float VitalW = 150, VitalH = 54, VitalGap = 14, Cell = 52, CellGap = 4, WideRow = 760, JetW = 84, JetH = 150;
 
     /// <summary>Every box, by name, for the overlap check.</summary>
     public IEnumerable<(string Name, Rect2 Box)> Boxes => new[]
     {
-        ("vitals", Vitals), ("toolbar", Toolbar), ("item line", ItemLine), ("hints", Hints), ("shapes", Shapes), ("lines", Lines),
+        ("vitals", Vitals), ("toolbar", Toolbar), ("item line", ItemLine), ("hints", Hints), ("shapes", Shapes), ("lines", Lines), ("jetpack gauge", Jet),
     };
 
     /// <summary>The layout for a window size and a UI scale (1 is the default; it shrinks to fit a narrow window).</summary>
     public static HudLayout Compute(Vector2 size, float uiScale = 1f)
     {
-        float vitalsW = 7 * VitalW + 6 * VitalGap;
+        float vitalsW = 6 * VitalW + 5 * VitalGap;
         float s = MathF.Min(size.Y / 900f * uiScale, MathF.Min(size.X / (vitalsW + 40f), size.Y / 520f));
         float cx = size.X / 2f;
         Rect2 Row(float y, float w, float h) => new(cx - w * s / 2f, y, w * s, h * s);
@@ -37,8 +38,9 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         Rect2 hints = Row(item.Position.Y - (2 + 16) * s, WideRow, 16);
         Rect2 shapes = Row(hints.Position.Y - (4 + 58) * s, barW, 58);
         float linesH = 5 * 26 * s;
-        var lines = new Rect2(40 * s, shapes.Position.Y - 8 * s - linesH, size.X - 80 * s, linesH);
-        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines);
+        var jet = new Rect2(size.X - (24 + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
+        var lines = new Rect2(40 * s, shapes.Position.Y - 8 * s - linesH, jet.Position.X - 12 * s - 40 * s, linesH);
+        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet);
     }
 
     /// <summary>The first two boxes that overlap or leave the window, or null if the layout is sound.</summary>

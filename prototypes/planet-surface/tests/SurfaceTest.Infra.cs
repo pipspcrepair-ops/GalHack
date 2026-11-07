@@ -335,7 +335,8 @@ public partial class SurfaceTest
     /// <summary>Pylons on fresh worlds: 30 to 50 m tall, striding on their own straight legs rather than along a road, and pylons and poles alike solid.</summary>
     async Task PylonChecks()
     {
-        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0;
+        int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0, floating = 0, feetChecked = 0;
+        float worst = 0;
         var rand = new Random();
         for (int k = 0; k < 6 && pylons < 60; k++)
         {
@@ -352,6 +353,13 @@ public partial class SurfaceTest
                 pylons++;
                 if (p.Tall < 30f || p.Tall > 50f) wrongHeight++;
                 if (w.Infra.Nearest(p.X, p.Z, 40, out _, out _) != null) byRoad++;
+                // Every foot reaches the ground under it (its lower end a little below, never above or far under).
+                foreach (var f in PlanetSurface.Infra.InfraLayer.PylonFeet(p, (x, z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height))))
+                {
+                    float g = w.Source.SurfaceHeight(Mathx.WrapX(f.X, w.Width), Mathx.Wrap(f.Z, w.Height));
+                    feetChecked++;
+                    if (f.Y > g + 0.1f || f.Y < g - 2f) { floating++; worst = Math.Max(worst, f.Y - g); }
+                }
             }
             foreach (var (first, last) in power.Legs)
             {
@@ -378,8 +386,9 @@ public partial class SurfaceTest
             }
             await Frames(1);
         }
+        Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");
         Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
-            $"pylons stride on their own: {pylons} on {legs} lines, {wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
+            $"pylons stride on their own: {pylons} on {legs} lines,{wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
     }
 
     /// <summary>Every place people built and every ruin or cluster of them is on a road, on fresh worlds, and the network has its highways and bridges.</summary>
