@@ -427,7 +427,7 @@ public sealed class Driver
         string Hit(Vector3 a, Vector3 b)
         {
             var h = space.IntersectRay(PhysicsRayQueryParameters3D.Create(a, b, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props));
-            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).Name} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
+            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).GetPath()} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
         }
         Vector3 q = feet + look * 0.6f;
         var store = Game.Zone.Planet.Terrain.Store;
@@ -471,7 +471,7 @@ public sealed class Driver
         foreach (float up in new[] { 0.3f, 1.2f })
         {
             var r = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(feet + Vector3.Up * up, feet + Vector3.Up * up + look.Normalized() * 2f));
-            yield return r.Count == 0 ? "clear" : $"{r["collider"]} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
+            yield return r.Count == 0 ? "clear" : $"{((Node)r["collider"].AsGodotObject()).GetPath()} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
         }
     }
 
@@ -495,6 +495,19 @@ public sealed class Driver
         if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat}; feet {Game.Survivor.WorldFeet}, ground {Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y:F2}, on the floor {Game.Survivor.Body.OnFloor}, bike {Game.Survivor.OnBike != null}, seated {Game.Survivor.Seated?.Name}, menu {Game.Menu.IsOpen}, dead {Game.Suit.Dead}, hit {string.Join(" / ", Blockers())})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
+        // The walk ended out of reach (on a hull or a ruin, or walled off from the seat): back down beside
+        // the seat on one side or the other, over what's in the way on the jetpack, and again.
+        for (int attempt = 0; attempt < 3 && Game.Survivor.Seated != v; attempt++)
+        {
+            seat = v.ToWorld(v.Seat.Value);
+            Vector3 side = MathX.Rotate(v.Body.Rotation, N.Vector3.UnitX).ToGodot() * (attempt % 2 == 0 ? 1f : -1f);
+            Vector3 beside = seat + side * 2.2f;
+            beside.Y = Game.Zone.GroundAt(beside.X, beside.Z).Y;
+            foreach (int x in WalkTo(beside, 0.5f, 20f, sprint: false, dig: false)) yield return x;
+            foreach (int x in LookAt(seat, 4)) yield return x;
+            foreach (int x in Tap(Key.F)) yield return x;
+            for (int i = 0; i < 5; i++) yield return 0;
+        }
     }
 
     public void ReleaseAll() => Controls.ReleaseAll();

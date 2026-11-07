@@ -45,6 +45,10 @@ public sealed partial class PlanetWorld
     public readonly double BuildMs;
 
     public double Width => Map.WidthMeters;
+
+    /// <summary>This world's star and everything round it: the one source of truth for the sky, in every view.</summary>
+    public StarSystem StarSystem => _system ??= StarSystem.For(Spec, Sky, Width);
+    StarSystem _system;
     public double Height => Map.HeightMeters;
 
     /// <summary>

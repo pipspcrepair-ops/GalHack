@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics;
@@ -33,6 +33,8 @@ public sealed partial class Staging
         "derelict" => DerelictView(),
         "landing" => LandingView(),
         "seam" => SeamView(),
+        "ascent" => ClimbView(),
+        "rings" => RingsView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
         "map-system" => MapView(Slice.Ui.MapLevel.System),
         "map-stars" => MapView(Slice.Ui.MapLevel.Stars),
@@ -180,6 +182,147 @@ public sealed partial class Staging
         {
             Follow();
             yield return 0;
+        }
+    }
+
+    /// <summary>
+    /// The whole climb and back, frames at fixed heights from a real flight: --cam=cabin (the seat's
+    /// own view) or --cam=out (over the hull, --pitch degrees below level, one frame for each of
+    /// --yaws, degrees from north, and with --straight=1 one more straight down, from under the
+    /// hull). --body=1 stops the clock at a moment with the biggest body well up, and every frame
+    /// looks one way, at it. --down=1 flies back down through them. Prints what each frame cost to draw.
+    /// </summary>
+    IEnumerable<int> ClimbView()
+    {
+        foreach (int x in Seated()) yield return x;
+        Vessel v = Skiff;
+        _game.Visor.Visible = false;
+        if (_args.TryGetValue("time", out string clock)) _game.Zone.Sky.TimeOfDay = double.Parse(clock, System.Globalization.CultureInfo.InvariantCulture);
+        bool cabin = _args.GetValueOrDefault("cam", "cabin") == "cabin";
+        float pitch = (float)Num("pitch", 8) * Mathf.Pi / 180f;
+        float[] yaws = _args.GetValueOrDefault("yaws", "0").Split(',').Select(y => float.Parse(y, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        _game.Survivor.Pitch = (float)Num("seatpitch", -0.3);
+        Vector3? atBody = null;
+        if (_args.GetValueOrDefault("body") == "1")
+        {
+            var sky = _game.Zone.Sky;
+            sky.Paused = true;
+            float best = -2f;
+            double when = sky.TimeOfDay;
+            for (double t = 0.0; t < 1.0; t += 0.01)
+            {
+                sky.TimeOfDay = t;
+                sky.Track();
+                float up = sky.Drawn.Count == 0 ? -2f : sky.Drawn[0].Direction.Y - MathF.Abs(sky.ToSun.Y - 0.35f);
+                if (up > best) (best, when) = (up, t);
+            }
+            sky.TimeOfDay = when;
+            sky.Track();
+            atBody = sky.Drawn[0].Direction;
+            GD.Print($"(sky: looking at {sky.Drawn[0].Body.Name}, radius {Mathf.RadToDeg(sky.Drawn[0].Angular):F2} degrees, at time {when:F2}; direction {atBody})");
+        }
+        Rid viewport = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
+        void Look(float yaw)
+        {
+            if (cabin) return;
+            Vector3 at = v.Body.Position.ToGodot();
+            if (float.IsNaN(yaw))
+            {
+                _game.FixedCamera = new Transform3D(Basis.LookingAt(Vector3.Down, Vector3.Forward), at + new Vector3(0f, -3f, 12f));
+                return;
+            }
+            Vector3 eye = at + Vector3.Up * 5f;
+            Vector3 ahead = atBody ?? new Vector3(MathF.Sin(yaw), 0f, -MathF.Cos(yaw)) * MathF.Cos(pitch) + Vector3.Down * MathF.Sin(pitch);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(ahead, Vector3.Up), eye);
+        }
+        IEnumerable<int> Frames(string tag)
+        {
+            foreach (float yaw in _args.GetValueOrDefault("straight") == "1" ? yaws.Append(float.NaN) : yaws)
+            {
+                Look(yaw * Mathf.Pi / 180f);
+                for (int i = 0; i < 7; i++)
+                {
+                    Look(yaw * Mathf.Pi / 180f);
+                    yield return 0;
+                }
+                string name = float.IsNaN(yaw) ? $"{tag}-down" : yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
+                Snap(name);
+                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
+            }
+        }
+        float[] heights = _args.GetValueOrDefault("heights", "500,700,850,950,1000,1040,1058,1062,1100,1160,1250,1405,1600,1800,2100,2600,3300,4300,5600,7500")
+            .Split(',').Select(h => float.Parse(h, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        float Up() => _game.InOrbit ? _game.Orbit.SurfaceHeight(_game.Orbit.ToGlobe(v.Body.Position).Length()) : v.Body.Position.Y;
+        _game.Controls.Hold(Key.Space);
+        foreach (float height in heights)
+        {
+            Hurry(height > 1900 || height < 900 ? 3 : 1);
+            for (int i = 0; i < 60 * 90 && Up() < height; i++)
+            {
+                Look(yaws[0] * Mathf.Pi / 180f);
+                yield return 0;
+            }
+            Hurry(1);
+            foreach (int x in Frames($"up{height:0}")) yield return x;
+        }
+        _game.Controls.ReleaseAll();
+        Hurry(1);
+        if (_args.GetValueOrDefault("down") != "1")
+        {
+            Wildlife.Shutdown.Quit(_game, 0);
+            yield break;
+        }
+        _game.Controls.Hold(Key.Ctrl);
+        foreach (float height in heights.Reverse())
+        {
+            if (height > 3300) continue;
+            Hurry(height > 1900 || height < 950 ? 3 : 1);
+            for (int i = 0; i < 60 * 90 && Up() > height; i++)
+            {
+                Look(yaws[0] * Mathf.Pi / 180f);
+                yield return 0;
+            }
+            Hurry(1);
+            foreach (int x in Frames($"dn{height:0}")) yield return x;
+            GD.Print($"(descent at {height:0}: {(_game.InOrbit ? "orbit" : "surface")})");
+        }
+        _game.Controls.ReleaseAll();
+        Wildlife.Shutdown.Quit(_game, 0);
+    }
+
+    /// <summary>
+    /// A ringed world from a flight round it, frames looking at the globe's centre: inside the ring
+    /// (--ringed=1 picks a world that has one), then well out, north of the ring's plane, south of
+    /// it, and in it, and from far off.
+    /// </summary>
+    IEnumerable<int> RingsView()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        Vessel v = Skiff;
+        OrbitZone o = _game.Orbit;
+        _game.Visor.Visible = false;
+        Rid viewport = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
+        Vector3 centre = o.ToWorld(N.Vector3.Zero).ToGodot(), north = (o.ToWorld(N.Vector3.UnitY).ToGodot() - centre).Normalized();
+        Vector3 out0 = v.Body.Position.ToGodot() - centre;
+        Vector3 east = (out0 - north * out0.Dot(north)).Normalized();
+        foreach (var (tag, height, latitude) in new (string, float, float)[]
+        {
+            ("inside", 3000f, 0f), ("north", 9000f, 32f), ("south", 9000f, -32f), ("cross", 9000f, 9f), ("under", 9000f, -9f), ("edge", 9000f, 0f), ("edge-near", 7600f, 1.5f), ("far", 30000f, 18f),
+        })
+        {
+            float lat = Mathf.DegToRad(latitude);
+            Vector3 over = centre + (east * MathF.Cos(lat) + north * MathF.Sin(lat)) * (o.GlobeRadius + height);
+            Hurry(3);
+            foreach (int x in FlyRound(v, over, 150f, 120f)) yield return x;
+            Hurry(1);
+            Vector3 at = v.Body.Position.ToGodot(), eye = at + (centre - at).Normalized() * 12f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(centre - eye, north), eye);
+            for (int i = 0; i < 12; i++) yield return 0;
+            Snap(tag);
+            GD.Print($"(frame {tag}: {at.DistanceTo(centre) - o.GlobeRadius:F0} m up, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu)");
+            _game.FixedCamera = null;
         }
     }
 

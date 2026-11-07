@@ -98,6 +98,7 @@ public partial class OrbitTest : Node
     void WatchZones()
     {
         if (_game?.Survivor == null) return;
+        WatchSky();
         SurfaceZone surface = _game.Surface, orbit = _game.Orbit;
         void Look(Body b, SurfaceZone said, string what)
         {
@@ -221,6 +222,7 @@ public partial class OrbitTest : Node
         Vessel v = _skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at the seat: at the Skiff's controls");
+        HoldSkyForTheClimb();
         _left = _game.Spaceflight.Holders().ToList();
         float ceiling = _game.Surface.Physics.Zone.Ceiling;
         Vector3 start = v.Body.Position.ToGodot();
@@ -228,10 +230,13 @@ public partial class OrbitTest : Node
         _game.Controls.Hold(Key.Space);
         bool preloaded = false;
         int ticks = 0;
-        float lastAir = 0f, airStep = 0f;
+        float lastAir = 0f, airStep = 0f, highestFlying = 0f, shroudAtCap = 0f;
+        Check(ceiling == 1060f, $"orbit starts at the cap on this world: {ceiling:F0} m (its highest ground {_game.Spaceflight.Highest:F0} m)");
         while (!_game.InOrbit && ticks++ < 60 * 150)
         {
             preloaded |= _game.Orbit != null && v.Body.Position.Y < ceiling;
+            highestFlying = MathF.Max(highestFlying, v.Body.Position.Y);
+            shroudAtCap = _game.Spaceflight.Shrouded;
             airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
             lastAir = _game.Spaceflight.AirGone;
             yield return 0;
@@ -243,6 +248,11 @@ public partial class OrbitTest : Node
             lastAir = _game.Spaceflight.AirGone;
             yield return 0;
         }
+        Check(highestFlying <= 1060f + 0.01f && _game.Spaceflight.HighestInAir <= 1060f + 0.01f,
+            $"nothing flew over the cap in the atmosphere: {highestFlying:F2} m at the most before the crossing, 1,060 m the limit");
+        Check(_game.Spaceflight.TicksHeldAtCap == 0, $"the orbit was ready before the ship got there: it waited {_game.Spaceflight.TicksHeldAtCap} ticks at the cap");
+        Check(shroudAtCap > 0.25f, $"the air's shroud was closed in at the cap: {shroudAtCap:P0} (this world's air: {_game.Surface.Planet.Sky.Air}, density {_game.Surface.Planet.Sky.Density:F2})");
+        Check(_game.InOrbit && !_game.Surface.Streamer.Visible && !_game.Surface.Sea.Visible, "the land and the sea are gone from over the cap: the sheet is all the ground there is");
         Check(airAtCrossing is > 0.05f and < 0.5f && airStep < 0.02f,
             $"the atmosphere fades with height alone, through the crossing with no step: {airAtCrossing:P0} gone at the crossing, at most {airStep:P1} a tick");
         _game.Controls.ReleaseAll();
@@ -514,6 +524,7 @@ public partial class OrbitTest : Node
         Check(v.Controller.Frozen && v.Body.Damage == 0f, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage:F1}, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
         Check(landed < 150, $"the landing point is the point it came down over ({landed:F0} m off)");
         Check(HeadingError(finalHeading, heading) < 8, $"and its heading is the one it had over the globe: {finalHeading:F1}°");
+        TheSkyCameBack();
     }
 
     // ---- Everything still there -----------------------------------------------------------------

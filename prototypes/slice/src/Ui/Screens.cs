@@ -117,8 +117,11 @@ public partial class CockpitConsole : Node3D
             this.Block(new Rect2(0, y, w, 4), C.Rule);
             y += 18;
             VesselController c = Vessel.Controller;
-            string state = c == null ? "" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
-            this.Text(UiTheme.Mono, 28, new Vector2(30, y), $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {Vessel.Body.Position.Y:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}", C.Text);
+            // Over the cap you are in space, and "up" is away from the globe.
+            var space = Vessel.Zone as Slice.Orbit.OrbitZone;
+            string state = c == null ? "" : space != null ? "IN SPACE" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
+            float altitude = space != null ? space.SurfaceHeight(space.ToGlobe(Vessel.Body.Position).Length()) : Vessel.Body.Position.Y;
+            this.Text(UiTheme.Mono, 28, new Vector2(30, y), $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {altitude:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}", C.Text);
             string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : st.LiftWarning;
             if (!string.IsNullOrEmpty(message)) this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(30, y + 44), message, C.Warn);
         }

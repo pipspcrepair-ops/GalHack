@@ -108,7 +108,7 @@ Build a small vessel and fly up. There is no loading screen, fade or effect: onl
 
 ### How the seam works
 
-Orbit starts at **1,060 m** on Empyrion's scale (`data/orbit.json`, per kind of air, and clear of the world's highest ground), which is also the physics' one altitude switch: weight, air and the handling model's air rules end there. The clouds sit under it, 600 to 1,000 m.
+Orbit starts at **1,060 m** on every world, a hard cap on Empyrion's scale (`data/orbit.json`, per kind of air; the land stands under it, the tallest of 464 logged worlds at 815 m), which is also the physics' one altitude switch: weight, air and the handling model's air rules end there, and nothing stands in the atmosphere over it (the orbit starts being made from 212 m up; a climb that beat it would wait at the cap). The clouds sit under it, 600 to 1,000 m.
 
 | What | How |
 | --- | --- |
@@ -117,7 +117,7 @@ Orbit starts at **1,060 m** on Empyrion's scale (`data/orbit.json`, per kind of 
 | The frame | The surface can't be moved or turned: its terrain and water are drawn from world coordinates. So the orbit is laid out to fit it (`OrbitZone.Align`): its bodies use the surface's own coordinates, with the globe set under the crossing point, tangent to sea level there, its local east, up and south along the world's axes. **A crossing changes no number at all**: position, rotation and velocity carry across to the last bit. Aligning elsewhere (on the way into the band, coming down) moves everything rigidly, the sky too, so nothing shows |
 | One mapping | `GlobeMap` (a direction from the globe's centre is a map point) and the globe's ground being sea level. Godot's own SphereMesh is checked against it (the globe test) |
 | The air | From 700 m up to 1,000 m over the crossing, by height alone, both ways. planet-surface's sky fades into space's own backdrop (the same stars, nebula and glare, its code copied into `sky.gdshader`), so when the orbit's sky takes over at the top nothing changes. Haze thins to nothing and the wind's sound with it |
-| The overlap band | The flat map and the small round globe can't match, so over the 1,000 m above the crossing one becomes the other: the surface stays on screen, frozen, while the globe, showing the same map at the same scale under you, fades in over it (drawn pulled in along each eye ray, so it is in front of the terrain and still behind your vessel) and the land fades out behind it. The star's light takes over from the planet's sun |
+| The shroud and the sheet | The map is 16 km round, and a true globe that size would be a small ball at 1 km. So what is drawn is a sheet (`Globe.cs`): a polar grid centred under you showing the map, at your own height, along a sphere whose curve tightens with height, almost flat at the crossing and the true globe by 7 km, so the land keeps its size and place and curves away. From 220 m up it is the far land past the surface's own, so the land never ends at an edge in any direction. The air thickens round you in the world's own sky colours from 760 m to the cap; behind it the sheet comes over the land from 960 m and at the cap the land is gone. It thins away over the next 650 m. Thin air has a thin shroud, and the sheet is the same land in the same place. The star's light takes over from the planet's sun up the 1,000 m band over the cap, where the surface's sky turns into space's own, stars last |
 | The record | `ZoneLedger`, on saves' persistence core: every holder's record brought up to date and the crosser's new zone committed on a worker thread (one atomic rename); only once that landed does anything move, in one tick (`Handover`: shared physics' `Release` and `Adopt`, so bodies keep their identity and riders stay aboard). The move is audited: counts before against counts after, and zones against the ledger |
 | Edges | A vessel nobody is in waits at a zone's edge rather than crossing alone |
 
@@ -356,7 +356,7 @@ The owner asked "how did Empyrion do it?" for the inventory, the tech tree and t
 - **Machines stop in a parked zone:** a base's constructors wait while you are in orbit.
 - **No creatures in derelicts yet**, and shooting in space hurts nothing.
 - **The crossing's handling** is the physics' one altitude switch: weight goes and the top speed changes at 1,060 m; thrust doesn't yet thin on the way up.
-- **Lateral flight in the overlap band** is flat: you arrive over what you see under you, which drifts from the globe's point if you fly sideways through the band. A straight descent lands exactly on it.
+- **Lateral flight in the band** is flat: you arrive over what you see under you, which drifts from the globe's point if you fly sideways through it; the sheet's nadir eases from one to the other up the band. A straight descent lands exactly on it.
 - **Loose containers** aren't carried with a vessel across a crossing (they never ride one).
 - **Lava and ice worlds** start like any other (the test climbs out and walks 50 m on each), but the slice hasn't tuned survival on them beyond that.
 - **Deco items** craft and unlock but can't be placed by hand yet: the slice's build tool places building's blocks, and deco pieces aren't among them.

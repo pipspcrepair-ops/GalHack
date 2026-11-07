@@ -24,6 +24,17 @@ public partial class Screenshot : Node
     Staging _staging;
     string _pending;
 
+    /// <summary>A fresh world with rings: the next one rolled that has them.</summary>
+    static WorldChoice RingedWorld()
+    {
+        for (int i = 0; i < 4096; i++)
+        {
+            WorldChoice w = WorldChoice.Fresh("random");
+            if (w.Spec().Has(Planets.Gen.Modifier.RingedSky)) return w;
+        }
+        throw new InvalidOperationException("no ringed world in 4,096 rolls");
+    }
+
     public override void _Ready()
     {
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
@@ -34,7 +45,7 @@ public partial class Screenshot : Node
         }
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };
         _script = _staging.Run(_view).GetEnumerator();

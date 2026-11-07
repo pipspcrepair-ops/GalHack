@@ -212,7 +212,7 @@ public sealed class MapLevels
     void SystemView(Gui g, Rect2 panel, Rect2 side)
     {
         Charts charts = _game.Spaceflight.Charts;
-        List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.Sky, "Your world");
+        List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.StarSystem, "Your world", _game.Surface.Sky.Days);
         // The outermost orbit fits the panel; nothing is drawn past its edge.
         Vector2 c = panel.GetCenter();
         float far = bodies.Where(e => e.Kind != "moon").Select(e => e.Orbit).DefaultIfEmpty(0f).Max();

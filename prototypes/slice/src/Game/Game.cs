@@ -116,6 +116,7 @@ public partial class Game : Node3D
 
     public override void _Ready()
     {
+        PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
         // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
