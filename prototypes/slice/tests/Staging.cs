@@ -74,6 +74,7 @@ public sealed partial class Staging
             "tell" => PlaceTell(),
             "cache" => PlaceCache(),
             "town" => TownView(),
+            "facades" => FacadeView(),
             "salvage" => Salvage(),
             "hoverbike" => HoverBikeView(),
             "bunkerclose" => BunkerClose(),

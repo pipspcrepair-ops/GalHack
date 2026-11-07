@@ -81,7 +81,7 @@ public sealed class MeshOptions
     /// </summary>
     public static MeshOptions OnPlanet(Int3 min) => new()
     {
-        Doors = true, Collision = true, Detail = true, Rock = true,
+        Doors = true, Collision = true, Detail = true, Rock = true, Mottle = 0.3f,
         RockMin = new Int3(min.X + 1, 0, min.Z + 1), RockMax = new Int3(min.X, 0, min.Z), RockBottom = min.Y, GroundShow = AllGround,
     };
 }

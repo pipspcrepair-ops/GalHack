@@ -125,6 +125,7 @@ public partial class PoiView : Node3D
             RockMin = new Int3(PlugMin.X, 0, PlugMin.Y),
             RockMax = new Int3(PlugMax.X, 0, PlugMax.Y),
             RockBottom = Math.Min(g.Min.Y, -3),
+            Mottle = 0.3f,
             GroundColor = Look.Ground(_biome),
             GroundColorAt = _groundAt == null ? null : (x, z) => Look.ToRgb(Terrain.Shaded(_groundAt(x + _offset.X, z + _offset.Y), x + _offset.X, z + _offset.Y)),
             RockColor = Look.Rock(_biome),

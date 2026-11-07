@@ -832,11 +832,14 @@ public sealed partial class Building
         var b = S.Wall.Make(p);
         b.Role = role;
         b.Material = Material.Armour;
-        b.Color = b.Color.Lerp(new Rgb(0x2a, 0x30, 0x3a), 0.55f);
+        b.Color = Facade.Armoured(b.Color);
         return b;
     }
 
     Block InnerWall(Int3 p) => S.InnerWall.Make(p);
+
+    /// <summary>Cells from one pilaster to the next along an outer wall.</summary>
+    const int Bay = 5;
 
     /// <summary>Slabs (each storey's floor covers its outline and the one below), outer walls, roofs and parapets.</summary>
     void Shell(int s)
@@ -866,18 +869,22 @@ public sealed partial class Building
                     if (!ring) { C.Clear(p); continue; }
                     int open = (InFoot(s, x - 1, z) ? 0 : 1) + (InFoot(s, x + 1, z) ? 0 : 1) + (InFoot(s, x, z - 1) ? 0 : 1) + (InFoot(s, x, z + 1) ? 0 : 1);
                     bool corner = open >= 2 || open == 0;
-                    bool pilaster = above && !corner && (x + z) % 5 == 0 && !(Hut && s == 0);
+                    // A wall is laid out in bays along its own length: a pilaster, then a window pair
+                    // in the middle of the bay, on as many bays as the program wants windows.
+                    bool runsX = InFoot(s, x - 1, z) && InFoot(s, x + 1, z);
+                    int along = runsX ? x : z, bay = along % Bay;
+                    bool pilaster = above && !corner && open == 1 && bay == 0 && !(Hut && s == 0);
+                    bool glazed = above && !corner && open == 1 && bay is 2 or 3 && k >= 1
+                                  && (Hash.Cell(new Int3(along / Bay, s, runsX ? z : x), 31) % 1000) / 1000f < 1f - (1f - P.Windows) * (1f - P.Windows);
                     if (P.Cab && s == Top && above && !corner && !pilaster) C.Set(p, S.Window.Make(p));
                     else if (pilaster)
                     {
                         var pb = S.Wall.Make(p);
-                        pb.Color = pb.Color.Scale(0.82f);
+                        pb.Color = Facade.Pilaster(pb.Color);
                         C.Set(p, pb);
                     }
                     else if (!above && Fam.Core == CoreRule.Owned) C.Set(p, Armoured(p));
-                    else if (above && k == 1 && !corner && P.Windows > 0f && (Hash.Cell(new Int3(x, s, z), 31) % 1000) / 1000f < P.Windows && (x + z) % 3 != 0)
-                        C.Set(p, S.Window.Make(p));
-                    else if (above && k == 2 && !corner && S.Accent != S.Wall && s % 2 == 0) C.Set(p, S.Accent.Make(p));
+                    else if (glazed) C.Set(p, S.Window.Make(p));
                     else C.Set(p, S.Wall.Make(p));
                 }
                 // The roof over whatever has no storey above it, with a parapet round its edge.
@@ -959,7 +966,8 @@ public sealed partial class Building
             foreach (Dir d in Dirs.Horizontal)
             {
                 Int3 sc = c + d.Vec() + Int3.Up * 2;
-                if (C.Get(sc).Role == Role.Wall && C.Get(sc).Type == BlockType.Cube) { C.Set(sc, S.Light.Make(sc)); break; }
+                // A lamp in the outer wall would show outside as one bright tile.
+                if (C.Get(sc).Role == Role.Wall && C.Get(sc).Type == BlockType.Cube && C.Occ.Contains(sc + d.Vec())) { C.Set(sc, S.Light.Make(sc)); break; }
             }
         }
     }
