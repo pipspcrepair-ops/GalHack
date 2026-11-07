@@ -54,7 +54,7 @@ public sealed partial class Staging
         if (_game.Zone.Devices.FirstOrDefault() is Device fab)
         {
             fab.Storage.AddAll(new Bill().Add("iron-ore", 60).Add("carbon-ore", 40).Add("copper-ore", 30));
-            fab.Constructor.Order("base-core", 1);
+            fab.Constructor.Order("big-core", 1);
             fab.Tick(3); // under way
         }
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
@@ -174,8 +174,8 @@ public sealed partial class Staging
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         if (!survival) _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
         else Hand((Play.BlockItem("container", false), 3), (Play.BlockItem("generator", false), 2), (Play.BlockItem("smallfab", false), 2), (Play.BlockItem("steel", false), 40), (Play.BlockItem("glass", false), 12));
-        Hand(("base-core", 1), ("survival-constructor", 1));
-        foreach (int x in Play.ToToolbar("base-core", 3)) yield return x;
+        Hand(("big-core", 1), ("survival-constructor", 1));
+        foreach (int x in Play.ToToolbar("big-core", 3)) yield return x;
         foreach (int x in Play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (var (b, s) in new[] { ("container", 4), ("generator", 5), ("smallfab", 6), ("steel", 7), ("glass", 8) })
             foreach (int x in Play.BlockToToolbar(b, false, s)) yield return x;
@@ -224,8 +224,8 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = Num("time", 0.37);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Mode = GameMode.Creative; // STAGING: free blocks, everything unlocked
-        Hand(("vessel-core", 1));
-        foreach (int x in Play.ToToolbar("vessel-core", 3)) yield return x;
+        Hand(("small-core", 1));
+        foreach (int x in Play.ToToolbar("small-core", 3)) yield return x;
         var slots = new Dictionary<string, int> { ["chair"] = 4, ["generator"] = 5, ["fueltank"] = 6, ["gyro"] = 7, ["thruster"] = 8, ["steel"] = 1, ["gear"] = 2 };
         foreach (var (b, s) in slots) foreach (int x in Play.BlockToToolbar(b, true, s)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
@@ -234,6 +234,7 @@ public sealed partial class Staging
         foreach (int x in Play.PlaceOnGround(3, pad)) yield return x;
         Vessel v = _game.Zone.Vessels.FirstOrDefault(x => !x.IsBase && !x.IsRuin);
         if (v == null) yield break;
+        v.SwitchMode(CoreMode.Vessel);
         foreach (int x in Play.BuildVessel(v, slots, _ => { })) yield return x;
         Vector3 ground = v.Body.Position.ToGodot();
         foreach (int x in _drive.Board(v)) yield return x;

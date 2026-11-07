@@ -18,7 +18,7 @@ namespace Invasions.Combat;
 /// </summary>
 public enum Team { Defenders, Invaders }
 
-/// <summary>Anything a shot can hurt: players, soldiers, crew, turrets, base blocks, enemy base cores.</summary>
+/// <summary>Anything a shot can hurt: players, soldiers, crew, turrets, base blocks, enemy Big Cores.</summary>
 public interface IDamageable
 {
     Team Team { get; }

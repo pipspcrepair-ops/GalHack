@@ -72,7 +72,7 @@ public partial class Game : Node3D
     public Visor Visor { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
-    /// <summary>The in-world screens on constructors and base cores (looked at to use).</summary>
+    /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
     public MachineScreens MachineScreens { get; private set; }
     public DebugHud Debug { get; private set; }
     public Hands Hands { get; private set; }

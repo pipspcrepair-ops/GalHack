@@ -221,9 +221,9 @@ public partial class Spaceflight
             return;
         }
         bool large = s.Grid.Id == "large";
-        if (large != (item == "base-core"))
+        if (large != (item == PlayerInventory.BigCore))
         {
-            Game.Say(large ? "A big wreck takes a base core (large grid)" : "A small wreck takes a small-vessel core", Tones.Caution);
+            Game.Say(large ? "A big wreck takes a Big Core" : "A small wreck takes a Small Core", Tones.Caution);
             return;
         }
         N.Vector3 n = MathX.Unrotate(v.Body.Rotation, look.Normal.ToNumerics());

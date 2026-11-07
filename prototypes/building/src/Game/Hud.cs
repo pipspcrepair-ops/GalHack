@@ -247,7 +247,7 @@ public partial class Hud : CanvasLayer
         StructureStats st = view.Stats;
         RoomReport rooms = RoomsFor(view);
 
-        string mode = s.IsWreck ? "WRECK" : s.Grid.Size == GridSize.Small ? "VESSEL" : s.Mode == CoreMode.Base ? "BASE" : "CAPITAL";
+        string mode = s.IsWreck ? "WRECK" : s.Mode.ToString().ToUpperInvariant();
         _statsTitle.Text = $"{s.Name.ToUpperInvariant()}   [{mode}]";
         string owner = s.Owner ?? "unowned";
         string cpu = st.CpuLimit > 0 ? $"{st.CpuUsed:N0} / {st.CpuLimit:N0}   T{st.Tier}   {st.Efficiency:P0}" : "no core, no CPU";

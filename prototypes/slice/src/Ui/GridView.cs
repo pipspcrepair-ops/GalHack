@@ -365,7 +365,7 @@ public static class Tooltips
             lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s a run", C.Text));
         }
         else lines.Add((Found(item), C.Text));
-        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "small" : "large")} grid, on {string.Join(", ", item.Places.Select(StructureClasses.Name))}" : "";
+        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "small" : "large")} grid" : "";
         lines.Add(($"Stacks to {item.StackSize}{fits}", C.Text));
         Progress p = game.Progress;
         if (item.Unlock != null)

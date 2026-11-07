@@ -80,6 +80,7 @@ public sealed partial class Staging
             "remotebar" => RemoteBarView(),
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
+            "cores" => CoresView(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

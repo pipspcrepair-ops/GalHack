@@ -1,3 +1,4 @@
+using GalHack.Items.Bridge;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
@@ -51,15 +52,19 @@ public sealed partial class Vessel
 
     /// <summary>
     /// A core placed in a wreck claims it (design: any wreck with no core can be claimed): it is
-    /// yours, a station in base mode holding still in space, and its core's gravity holds whoever
-    /// is aboard to its floor.
+    /// yours, and its core's gravity holds whoever is aboard to its floor. A Big Core makes it a
+    /// station in Base Mode, holding still in space; a Small Core a craft in Vessel Mode, ready to fly.
     /// </summary>
     public void Claimed(float gravity)
     {
         Structure.GravityOn = true;
-        Structure.Mode = CoreMode.Base;
-        Body.Kind = BodyKind.Base;
         Body.Core = new CoreGravity { On = true, Strength = gravity };
         Cabin.SetGravity(Body.Core);
+        if (BuildingBridge.IsSmall(Structure)) TakeFlight();
+        else
+        {
+            Structure.Mode = CoreMode.Base;
+            Body.Kind = BodyKind.Base;
+        }
     }
 }

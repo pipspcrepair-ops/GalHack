@@ -11,8 +11,6 @@ public enum PlaceStatus
     NotEnoughMaterials,
     /// <summary>Survival: the block has no item, so it can't be placed.</summary>
     NoBill,
-    /// <summary>The block's family doesn't go on this class of structure (small-grid blocks on a base, say).</summary>
-    WrongClass,
 }
 
 public readonly record struct PlaceResult(PlaceStatus Status, PlaceError Rule, Bill Paid, Bill Missing)
@@ -54,25 +52,14 @@ public sealed class BlockPlacer
     public Bill CostOf(Structure s, in Block b) =>
         Rules.Creative || BuildingBridge.ItemOf(Items, s, b) is not ItemDef item ? new Bill() : Bill.Of((item.Id, 1));
 
-    /// <summary>Why a block can't go on this structure's class, or null if it can (blocks without an item go anywhere their grid allows).</summary>
-    public string ClassProblem(Structure s, in Block b, StructureClass? cls = null)
-    {
-        ItemDef item = BuildingBridge.ItemOf(Items, s, b);
-        StructureClass c = cls ?? BuildingBridge.ClassOf(s);
-        if (item == null || item.PlacesOn(c)) return null;
-        return $"{item.Name}: {StructureClasses.Only(item.Places)}";
-    }
-
     /// <summary>
-    /// Places a block, using one of its item from <paramref name="source"/> in survival. The
-    /// structure's class is worked out from it unless given (building's model can't tell a hover
-    /// vessel from a small one). Call <see cref="Sync"/> after placing a container.
+    /// Places a block, using one of its item from <paramref name="source"/> in survival. Call
+    /// <see cref="Sync"/> after placing a container.
     /// </summary>
-    public PlaceResult Place(Structure s, Int3 p, Block b, SharedStorage source, StructureClass? cls = null)
+    public PlaceResult Place(Structure s, Int3 p, Block b, SharedStorage source)
     {
         PlaceError rule = Building.Check(s, p, b);
         if (rule != PlaceError.None) return new(PlaceStatus.Blocked, rule, new Bill(), new Bill());
-        if (ClassProblem(s, b, cls) != null) return new(PlaceStatus.WrongClass, PlaceError.None, new Bill(), new Bill());
 
         Bill paid = new();
         if (Rules.Survival)

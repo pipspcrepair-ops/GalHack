@@ -320,6 +320,7 @@ public partial class Game
             // A vessel on its build stand holds there until its pilot first takes its seat.
             if (v.Stand != null && Survivor.Seated == v) v.Stand = null;
             v.HoldOnStand();
+            v.TickMode();
             if (v.Machines.Count == 0) continue;
             foreach (Constructor c in v.Machines.Values) Snapshot(c);
             v.TickMachines(t);

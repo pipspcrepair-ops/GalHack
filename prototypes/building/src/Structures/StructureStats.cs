@@ -78,8 +78,8 @@ public sealed class StructureStats
         st.Mass = st.BlockMass + st.CargoMass;
         st.StorageCapacity = Math.Min(st.StorageRaw, grid.StorageCap);
 
-        // Bases never fly; small-grid cores are always vessels.
-        st.Flies = st.HasCore && (s.Mode == CoreMode.Capital || grid.Size == GridSize.Small) && st.Powered;
+        // Only Base Mode doesn't fly: its thrusters sit idle until the core is switched.
+        st.Flies = st.HasCore && s.Mode != CoreMode.Base && st.Powered;
         for (int i = 0; i < 6; i++) st.Thrust[i] = st.Flies ? thrust[i] * st.Efficiency : 0;
         double weight = st.Mass * G; // kN
         if (weight > 0)

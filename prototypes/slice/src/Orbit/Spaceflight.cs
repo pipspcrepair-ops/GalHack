@@ -226,6 +226,8 @@ public partial class Spaceflight : Node
         }
         // The cap: nothing stands in the atmosphere over it, ever. It crosses here.
         HoldAtCap(carrier);
+        // Hover only works close to the ground: a craft in Hover Mode never crosses, however it got up here.
+        if (carrier?.Structure.Mode == CoreMode.Hover) return;
         if (Orbit?.Ready == true) BeginCrossing(carrier, up: true);
         else TicksHeldAtCap++;
     }
@@ -446,7 +448,7 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         foreach (Vessel v in g.Zone.Vessels)
         {
-            if (v == carrier || v.Flight == null || v.Controller?.Frozen != false) continue;
+            if (v == carrier && v.Structure.Mode != CoreMode.Hover || v.Flight == null || v.Controller?.Frozen != false) continue;
             if (g.Zone is OrbitZone orbit)
             {
                 Vector3 p = v.Body.Position.ToGodot();

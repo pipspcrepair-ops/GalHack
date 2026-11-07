@@ -93,9 +93,8 @@ public static class Blueprint
                 case "name": data.Name = Arg(1) ?? ""; break;
                 case "grid": data.Grid = Arg(1); break;
                 case "mode":
-                    if (Arg(1) == "base") data.Mode = CoreMode.Base;
-                    else if (Arg(1) == "capital") data.Mode = CoreMode.Capital;
-                    else Error($"mode must be base or capital, not '{Arg(1)}'");
+                    if (Enum.TryParse(Arg(1), true, out CoreMode mode) && !int.TryParse(Arg(1), out _)) data.Mode = mode;
+                    else Error($"mode must be base, capital, vessel or hover, not '{Arg(1)}'");
                     break;
                 case "gravity":
                     if (Arg(1) is "on" or "off") data.Gravity = Arg(1) == "on";
@@ -297,6 +296,10 @@ public static class Blueprint
             s.Set(b.Pos, block);
         }
         if (s.Core == null) s.Owner = null;
+        // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
+        // vessel: they load in Hover Mode. A blueprint saved since says "vessel" or "hover" itself.
+        if (data.Mode == CoreMode.Capital && s.Grid.Size == GridSize.Small && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
+            s.Mode = CoreMode.Hover;
         return s;
     }
 
@@ -315,7 +318,7 @@ public static class Blueprint
         Line($"version {CurrentVersion}");
         Line($"name {Quote(s.Name)}");
         Line($"grid {s.Grid.Id}");
-        Line($"mode {(s.Mode == CoreMode.Base ? "base" : "capital")}");
+        Line($"mode {s.Mode.ToString().ToLowerInvariant()}");
         Line($"gravity {(s.GravityOn ? "on" : "off")}");
         if (s.CargoSu > 0) Line($"cargo {Num(s.CargoSu)}");
 
