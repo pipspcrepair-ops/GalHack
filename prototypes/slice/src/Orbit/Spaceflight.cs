@@ -170,6 +170,8 @@ public partial class Spaceflight : Node
     {
         GameNode g = Game;
         Vector3 at = g.Survivor.WorldFeet;
+        // Where you are is charted, and with it everything a jump away.
+        if (g.Surface.Sky.Stars is { Here: >= 0 } stars) Charts.Visited.Add(stars.Here);
         if (g.InOrbit)
         {
             OrbitZone o = Orbit;
@@ -202,7 +204,7 @@ public partial class Spaceflight : Node
         float cover = MathF.Max(s.Sky.Air.CloudCover, (float)Rules.Globe.CloudCoverAtLeast), w = (float)s.Planet.Width, h = (float)s.Planet.Height;
         Vector2 drift = s.Sky.CloudDrift, scale = s.Sky.CloudScale;
         Func<float, float, float> coverage = clouds == null ? null : (u, v) => clouds.Coverage(u * w, v * h, cover, drift, scale);
-        Orbit = new OrbitZone(s.Planet, s.Data, Rules, SystemSeed(s.Spec), Ceiling, coverage)
+        Orbit = new OrbitZone(s.Planet, s.Data, Rules, s.Planet.StarSystem.StarKey, Ceiling, coverage)
         {
             ProcessMode = ProcessModeEnum.Disabled, Visible = false,
         };

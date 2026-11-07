@@ -540,15 +540,15 @@ public partial class SurfaceTest : Node
         // The nearest outcrop: its tile holds it, a ray meets it, and once broken nothing's there.
         var infra = _main.Infra;
         await Until(() => infra.Built, 30);
-        Deposit? near = null;
+        Planets.Gen.Deposit? near = null;
         double best = double.MaxValue;
-        foreach (Deposit d in w.Map.Deposits.InRect(w.Width * 0.5 - 2500, w.Height * 0.5 - 2500, w.Width * 0.5 + 2500, w.Height * 0.5 + 2500))
+        foreach (Planets.Gen.Deposit d in w.Map.Deposits.InRect(w.Width * 0.5 - 2500, w.Height * 0.5 - 2500, w.Width * 0.5 + 2500, w.Height * 0.5 + 2500))
         {
             if (PlanetSurface.Infra.InfraLayer.TellOf(d) != GalHack.Deco.DecoTellKind.Outcrop || !PlanetSurface.Infra.InfraLayer.HasTell(w, d) || PlanetTerrainSource.OreRadius(d) < 2f) continue;
             double dist = Math.Abs(Mathx.WrapDelta(d.X - player.GlobalPosition.X, w.Width)) + Math.Abs(Mathx.WrapDelta(d.Y - player.GlobalPosition.Z, w.Height));
             if (dist < best) { best = dist; near = d; }
         }
-        if (near is not Deposit tell) { Fail("no outcrop to break"); return; }
+        if (near is not Planets.Gen.Deposit tell) { Fail("no outcrop to break"); return; }
         var rockAt = w.NearestCopy(new Vector3((float)tell.X, w.GroundHeight(tell.X, tell.Y), (float)tell.Y), player.GlobalPosition);
         player.Teleport(rockAt + new Vector3(0, 12, 0));
         await Until(() => infra.Built, 30);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using GalHack.Stars;
 using Godot;
 using Planets.Gen;
 using Planets.Look;
@@ -23,6 +24,7 @@ public partial class OrbitView : Node3D
     MeshInstance3D _ring;
     ShaderMaterial _planet, _clouds, _atmosphere, _ringMaterial, _space;
     public Camera3D Camera { get; private set; }
+    GalaxySky _galaxy;
 
     public override void _Ready()
     {
@@ -79,6 +81,7 @@ public partial class OrbitView : Node3D
 
     public override void _Process(double delta)
     {
+        _galaxy?.Poll();
         if (Still) return;
         _spin.RotateY((float)delta * SpinSpeed);
         _cloudSpin.RotateY((float)delta * SpinSpeed * 1.25f);
@@ -93,8 +96,10 @@ public partial class OrbitView : Node3D
         _planet.SetShaderParameter("night_glow", look.GlowingNights ? 2.5f : 1.4f);
         _clouds.SetShaderParameter("cloud_map", clouds);
         _atmosphere.SetShaderParameter("color", C(look.Atmosphere));
-        _space.SetShaderParameter("nebula", C(look.Nebula));
-        _space.SetShaderParameter("nebula_b", C(look.Atmosphere * 0.6f));
+        // The planet viewer's sky is drawn from the seed's galaxy too.
+        _galaxy = new GalaxySky(spec.Seed, StarKind.YellowDwarf, false);
+        _galaxy.Bind(_space);
+        _space.SetShaderParameter("star_turn", GalaxySky.Basis(_galaxy.Tilt));
         _ring.Visible = look.Ring;
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
     }

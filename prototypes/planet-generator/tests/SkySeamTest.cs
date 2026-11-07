@@ -1,3 +1,4 @@
+using GalHack.Stars;
 using System.Collections.Generic;
 using GalHack.SkyCheck;
 using Godot;
@@ -14,7 +15,11 @@ public partial class SkySeamTest : SkySeamCheck
 {
     protected override IEnumerable<(string name, Material sky)> Skies()
     {
+        SkySeams.RealStars = true;
+        var galaxy = new GalaxySky((ulong)System.Random.Shared.NextInt64(), StarKind.YellowDwarf, false);
+        galaxy.Finish();
         var ground = new ShaderMaterial { Shader = Shaders.Sky };
+        galaxy.Bind(ground);
         ground.SetShaderParameter("top_color", new Color(0.22f, 0.42f, 0.78f));
         ground.SetShaderParameter("horizon_color", new Color(0.75f, 0.82f, 0.9f));
         ground.SetShaderParameter("ground_color", new Color(0.35f, 0.32f, 0.28f));
@@ -24,8 +29,7 @@ public partial class SkySeamTest : SkySeamCheck
         ground.SetShaderParameter("stars", 1f);
         yield return ("the sky from the ground, its stars out", ground);
         var space = new ShaderMaterial { Shader = Shaders.Space };
-        space.SetShaderParameter("nebula", new Color(0.6f, 0.25f, 0.55f));
-        space.SetShaderParameter("nebula_b", new Color(0.2f, 0.45f, 0.6f));
+        galaxy.Bind(space);
         yield return ("deep space", space);
     }
 }
