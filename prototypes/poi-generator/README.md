@@ -216,6 +216,28 @@ A family names a `style` to re-skin its program or site. That is how the alien f
 - **Far rings.** `FarBuilder` samples `SurfaceHeight`, which already includes the stamps, so pads show in the distance. Underground carves and crater bowls below the pad don't show in the far heightfield. To show a crater there, the far ring's height sampling needs its bowl (a stamp target below the pad), not only the voxel carve mask.
 - **Screenshots and caps.** `PoiSiting.ForceFamily` seats one family near the landing site, for screenshots. `MaxSites` caps how many places are seated: the nearest half first, then an even spread to the far side.
 
+## Light colour and animation (PoiLights)
+
+Every light has a `LightSettings` (colour, second colour for fades, mode, speed, seed): modes
+`Steady, Pulse, Flicker, Strobe, Fade`. The record lives in `prototypes/building/src/Structures/LightSettings.cs`
+and is the same one the player's light blocks and glowing paint use. Call these from the generator or the rollout
+(all in `PoiGenerator.Gen.PoiLights`, `src/Gen/PoiLights.cs`):
+
+```csharp
+var red = LightSettings.Make(0xff3322, LightAnim.Pulse, 1f, seed);   // colour, mode, hertz, seed (0..127)
+PoiLights.Set(spot, red);                                            // style an existing LightSpot  <-- the call
+PoiLights.Add(poi, cell, red, energy: 1.4f, range: 8f);              // add a styled lamp
+PoiLights.SetMood(poi, LightMood.Dying);                             // every lamp: Warm, Dying, Hostile, Cold, Sealed
+PoiLights.PaintFace(poi, cell, Dir.North, LampShape.Border, style);  // glowing paint on a block face (shape Full/Strip/Panel/Border)
+PoiLights.PaintStrip(poi, from, to, Dir.Up, style);                  // a strip along a run of cells
+```
+
+`PoiLights.Set(LightSpot, LightSettings)` is the single call for a lamp. A painted face only glows (no real light).
+A kit file may carry `mood warm|dying|hostile|cold|sealed`; `Decay.Apply` then calls `ApplyKitMood`, and
+`PoiLights.MoodFor(poi)` gives the default by state (Active warm, Infested hostile, otherwise dying) for callers that want it.
+`PoiView` draws styled lamps (real light follows the animation) and `poi.LitFaces` (quads). Lamps with no style keep the
+old per-mode behaviour. planet-surface's `PoiLayer` does not read `Style` or `LitFaces` yet: the rollout should add that.
+
 ## Test it
 
 ```powershell
