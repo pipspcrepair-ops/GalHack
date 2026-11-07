@@ -168,6 +168,7 @@ public partial class WildlifePatch : Node3D
         View.Bind(sim, null);
         Tells.Bind(sim);
         Swapped?.Invoke(old, oldOrigin, sim);
+        SyncBases();
         Populate(keepClear - origin, clear, carriedOver: old != null);
         Patches++;
     }
@@ -197,11 +198,40 @@ public partial class WildlifePatch : Node3D
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
                     // A patch taking over from another is seen arriving: only where nobody is near or looking.
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && (!carriedOver || Sim.ClearOfPlayers(at, spread));
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && !Sim.InBaseZone(at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread));
                 }
                 if (!found) continue;
                 Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
             }
+        }
+    }
+
+    /// <summary>
+    /// Tells the sim where the bases stand, so nothing spawns within the data's clearance of one,
+    /// measured from each footprint's edge (design 310). A structure counts while its core is in
+    /// base mode; a capital vessel blocks nothing. Run on every new patch and once a second.
+    /// </summary>
+    public void SyncBases()
+    {
+        if (Sim == null || _planet == null) return;
+        Sim.Structures.Clear();
+        foreach (Vessels.Vessel v in Zone.Vessels)
+        {
+            GalHack.Structures.Structure s = v.Structure;
+            if (!v.IsBase || s.Core == null || s.Count == 0) continue;
+            var (min, max) = s.Bounds();
+            float half = s.Grid.CellSize * 0.5f;
+            System.Numerics.Vector3 lo = PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, min), hi = PhysicsSandbox.Bridges.StructureBridge.CellCenter(s, max);
+            System.Numerics.Vector3 middle = (lo + hi) * 0.5f;
+            Vector3 centre = v.ToWorld(middle), along = v.ToWorld(middle + System.Numerics.Vector3.UnitX) - centre;
+            Sim.Structures.Add(new Wildlife.Structure
+            {
+                Name = v.Name,
+                Mode = CoreMode.Base,
+                Center = PatchLocal(_planet.NearestCopy(centre, Origin)),
+                HalfExtents = new Vector2(MathF.Abs(hi.X - lo.X) * 0.5f + half, MathF.Abs(hi.Z - lo.Z) * 0.5f + half),
+                Yaw = MathF.Atan2(-along.Z, along.X),
+            });
         }
     }
 
@@ -341,10 +371,17 @@ public partial class WildlifePatch : Node3D
     internal void RaiseAttacked(AttackEvent e) => Attacked?.Invoke(e);
     internal void RaiseDied(Creature c, ITarget killer) => Died?.Invoke(c, killer);
 
+    float _baseSync;
+
     public override void _PhysicsProcess(double delta)
     {
         if (Sim == null) return;
         Sim.Clock.Time01 = (float)Zone.Sky.TimeOfDay;
+        if ((_baseSync += (float)delta) >= 1f)
+        {
+            _baseSync = 0f;
+            SyncBases();
+        }
         Sim.Step((float)delta);
     }
 

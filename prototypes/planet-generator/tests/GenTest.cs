@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using Planets.Gen;
 using Planets.Look;
@@ -47,6 +48,7 @@ public partial class GenTest : Node
         Run("LandformCharacter", LandformCharacter);
         Run("FlatLand", FlatLand);
         Run("Globe", GlobeChecks);
+        Run("EveryOreOnEveryPlanet", EveryOreOnEveryPlanet);
         Run("SizeClasses", SizeClasses);
         Run("SizedWorlds", SizedWorlds);
         Run("TerrainCeiling", TerrainCeiling);
@@ -390,9 +392,37 @@ public partial class GenTest : Node
             }
             float dryShare = dry / (float)Math.Max(deposits, 1);
             Check(worst <= Reach && worstLanding <= Reach && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
-                $"starter materials {a}/{v}: iron, copper, silicon, carbon and water all within {worst:F0} m of any walkable spot " +
+                $"starter materials {a}/{v}: iron, copper, silicon, carbon, water and burnstone all within {worst:F0} m of any walkable spot " +
                 $"({worstLanding:F0} m from landing sites); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m");
         }
+    }
+
+    /// <summary>
+    /// Every planet has deposits of every ore on the way to the first capital vessel, on fresh worlds
+    /// of every archetype: uncommon ores smaller and fewer than commons, never absent, on dry ground.
+    /// </summary>
+    void EveryOreOnEveryPlanet()
+    {
+        foreach (var (a, v) in Variants())
+        {
+            ulong seed = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
+            var map = PlanetGenerator.Generate(PlanetSpec.Roll(seed, a, v, 16));
+            DepositField field = map.Deposits;
+            var deposits = field.All().ToList();
+            var counts = deposits.GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Count());
+            var missing = DepositField.EveryPlanet().Where(k => !counts.ContainsKey(k)).ToList();
+            float Size(DepositKind k) => deposits.Where(d => d.Kind == k).Average(d => d.Amount);
+            double far = 0;
+            var site = Landing.Find(map, map.WidthMeters / 2, map.HeightMeters / 2);
+            foreach (DepositKind k in DepositField.EveryPlanet()) far = Math.Max(far, field.Nearest(k, site.X, site.Y));
+            bool fewer = missing.Count == 0 && DepositField.EveryPlanet().Where(k => DepositField.IsScarce(k) && k != map.Def.Signature)
+                .All(k => counts[k] < counts[DepositKind.Iron] / 4 && Size(k) < Size(DepositKind.Iron));
+            bool dry = deposits.All(d => DepositField.Usable(map, map.CellAt(d.X, d.Y)) && d.Depth <= DepositField.MaxShallowDepth);
+            Check(missing.Count == 0 && fewer && dry && far < 3000,
+                $"ores {a}/{v} seed {seed}: {string.Join(", ", counts.OrderBy(c => c.Key).Select(c => $"{c.Value} {c.Key}"))}; all within {far:F0} m of a landing" +
+                (missing.Count > 0 ? $"; MISSING {string.Join(", ", missing)}" : ""));
+        }
+        Check(Enum.GetValues<DepositKind>().Select(k => DepositLook.Color(k)).Distinct().Count() == Enum.GetValues<DepositKind>().Length, "every ore has its own colour");
     }
 
     /// <summary>

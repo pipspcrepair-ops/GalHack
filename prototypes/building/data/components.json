@@ -12,6 +12,8 @@
 //   covers     faces that may hide the cell face behind them (for culling). Only ever a limit:
 //              a face hides nothing unless an opaque part really covers the whole of it
 //   collide    cell, parts (the part boxes) or none
+//   extenderTier  cpu-extender only: the highest CPU tier it counts towards (default 2). Tiers 3
+//              and 4 take extenders built round lattice parts found in POIs (design 883)
 //   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
 //              glass; closedOnly parts belong to a door leaf
 {
@@ -153,7 +155,7 @@
     },
     {
       "id": "ladder", "name": "Ladder", "function": "ladder",
-      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 20, "color": "f4a100",
+      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 0, "color": "f4a100",
       "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
       "cost": { "iron": 3 }, "smallCost": { "iron": 1 },
       "parts": [
@@ -163,6 +165,32 @@
         { "box": [-0.32, -0.15, 0.38, 0.32, -0.1, 0.44], "style": "body" },
         { "box": [-0.32, 0.1, 0.38, 0.32, 0.15, 0.44], "style": "body" },
         { "box": [-0.32, 0.35, 0.38, 0.32, 0.4, 0.44], "style": "body" }
+      ]
+    },
+    {
+      "id": "cpuext3", "name": "CPU extender T3", "function": "cpu-extender", "extenderTier": 3,
+      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
+      "mass": 2, "cpu": 0, "power": -0.3, "color": "1b263b", "glow": "b98cff",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
+        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" },
+        { "box": [-0.505, -0.05, -0.505, 0.505, 0.05, 0.505], "style": "glow" }
+      ]
+    },
+    {
+      "id": "cpuext4", "name": "CPU extender T4", "function": "cpu-extender", "extenderTier": 4,
+      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
+      "mass": 2, "cpu": 0, "power": -0.4, "color": "1b263b", "glow": "ffc46b",
+      "attach": "all", "airtight": "all", "covers": "all",
+      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
+        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" },
+        { "box": [-0.505, -0.05, -0.505, 0.505, 0.05, 0.505], "style": "glow" }
       ]
     }
   ]

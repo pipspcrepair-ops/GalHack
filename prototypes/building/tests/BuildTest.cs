@@ -137,6 +137,9 @@ public partial class BuildTest : Node
         Place(s, 1, 0, 0, _steel);
         Check(Building.Remove(s, Int3.Zero, inventory).Status == RemoveStatus.CoreHoldsStructure && s.Core != null,
             "the core cannot be taken down while blocks hang off it");
+        Building.Remove(s, new Int3(1, 0, 0), inventory);
+        Check(s.Count == 1 && Building.Remove(s, Int3.Zero, inventory).Status == RemoveStatus.CoreHoldsStructure && s.Core != null,
+            "nor as the last block: a core is only ever destroyed or hijacked");
     }
 
     // ---- Severing -------------------------------------------------------------------------
@@ -195,9 +198,10 @@ public partial class BuildTest : Node
         s.CargoSu = 2000;
         Check(Near(StructureStats.Compute(s).Mass, mass + 2), "cargo adds to the mass (2000 SU = 2 t)");
         s.CargoSu = 0;
-        double cpu = 0 + 10 * 20 + 2 * 45 + 2500 + 4000 + 800;
+        double cpu = 0 + 2500 + 4000 + 800; // the devices; armour costs none
         Check(Near(st.CpuUsed, cpu) && st.Tier == 1 && st.CpuLimit == 200_000 && st.Efficiency == 1,
             $"CPU is summed ({st.CpuUsed}) and the core alone gives tier 1 (200,000)");
+        Check(_cat.Types.Skip(1).Where(t => t.IsArmor).All(t => t.Cpu == 0) && _ladder.Cpu == 0, "plain armour and structural blocks cost no CPU: steel, hardened, combat, glass, concrete, a ladder");
         Check(Near(st.Thrust[(int)Dir.NegZ], _thruster.Thrust) && Near(st.ThrustToWeightForward, _thruster.Thrust / (mass * 9.81)),
             $"thrust-to-mass is right ({st.ThrustToWeightForward:0.00} g forward)");
 
@@ -220,11 +224,24 @@ public partial class BuildTest : Node
             StructureStats e = StructureStats.Compute(ext);
             tiers.Add((n, e.Tier, e.CpuLimit));
         }
-        Check(tiers[1].tier == 2 && tiers[1].limit == 500_000 && tiers[2].tier == 3 && tiers[2].limit == 1_500_000
-              && tiers[3].tier == 3 && tiers[4].tier == 4 && tiers[4].limit == 10_000_000,
-            "extenders unlock tiers: 1 → T2 500k, 2 → T3 1.5M, 3 stays T3, 4 → T4 10M");
+        Check(tiers[1].tier == 2 && tiers[1].limit == 500_000 && tiers.Skip(1).All(t => t.tier == 2),
+            "a plain extender unlocks T2 500k, and however many are placed, no more: T3 and T4 are gated by exploration");
+        int TierWith(string type, int count)
+        {
+            Structure lattice = NewShip();
+            for (int n = 1; n <= count; n++) Place(lattice, -n, 0, 0, _cat.Type(type));
+            return StructureStats.Compute(lattice).Tier;
+        }
+        Check(TierWith("cpuext3", 1) == 2 && TierWith("cpuext3", 2) == 3 && TierWith("cpuext3", 4) == 3,
+            "T3 extenders: one counts as T2, two reach T3 1.5M, and they never reach T4");
+        Check(TierWith("cpuext4", 2) == 3 && TierWith("cpuext4", 3) == 3 && TierWith("cpuext4", 4) == 4,
+            "T4 extenders: four reach T4 10M");
+        Structure mixed = NewShip();
+        Place(mixed, -1, 0, 0, _extender);
+        Place(mixed, -2, 0, 0, _cat.Type("cpuext3"));
+        Check(StructureStats.Compute(mixed).Tier == 2, "a plain extender doesn't count towards T3");
         GridDef small = _cat.Grid(GridSize.Small);
-        long[] smallLimits = new[] { 0, 1, 2, 4 }.Select(n => StructureStats.TierFor(_cat, small, n, true).limit).ToArray();
+        long[] smallLimits = new[] { 0, 1, 2, 4 }.Select(n => StructureStats.TierFor(_cat, small, new[] { 0, 0, 0, 0, n }, true).limit).ToArray();
         Check(smallLimits.SequenceEqual(new long[] { 6000, 15000, 40000, 100000 }), "small-grid tiers are 6k / 15k / 40k / 100k");
 
         var hit = new DamageReport();

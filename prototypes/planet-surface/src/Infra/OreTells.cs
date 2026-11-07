@@ -110,7 +110,7 @@ public partial class InfraLayer
             // The world's own rock, with a little of the ground it lies in: the ore shows in its grain.
             PlanetWorld world = b.World;
             Rgb ore = DepositLook.Color(d.Kind), land = world.Palette.SoilAt(Mathx.WrapX(d.X, world.Width), Mathx.Wrap(d.Y, world.Height), out _), rock = Rgb.Lerp(world.Palette.Rock, land, 0.12f);
-            bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Titanium or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Silicon;
+            bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Magnesium or DepositKind.Cobalt or DepositKind.Neodymium or DepositKind.Gold or DepositKind.Gravium or DepositKind.Crystal or DepositKind.Silicon;
             ulong seed = Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind);
             float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.5f : 0.7f);
             // Stunted growth on scree only where the biome grows anything low, in its own colour.

@@ -207,14 +207,14 @@ public static class Building
     }
 
     /// <summary>
-    /// The multi-tool's take-down: the block's materials go to the inventory. The core can only
-    /// be picked up when it is the last block, since it holds the structure together. Anything
-    /// the removal cuts off becomes a wreck (returned), never lost.
+    /// The multi-tool's take-down: the block's materials go to the inventory. The core is never
+    /// taken down, not even as the last block: it can only be destroyed or hijacked (design 693).
+    /// Anything the removal cuts off becomes a wreck (returned), never lost.
     /// </summary>
     public static RemoveResult Remove(Structure s, Int3 p, Inventory inventory)
     {
         if (!s.TryGet(p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
-        if (s.TypeOf(b).IsCore && s.Count > 1) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
+        if (s.TypeOf(b).IsCore) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
         inventory?.Add(s.Catalogue.CostOf(b, s.Grid));
         s.Clear(p);
         return new RemoveResult(RemoveStatus.Removed, b, Connectivity.SplitOff(s));

@@ -69,7 +69,7 @@ public sealed record ArchetypeDef
     public string Resources { get; init; } = "";
 
     /// <summary>The resource this variant is known for, scattered on top of the common materials.</summary>
-    public DepositKind Signature { get; init; } = DepositKind.Titanium;
+    public DepositKind Signature { get; init; } = DepositKind.Magnesium;
 
     // Landforms (see LANDFORMS.md): which this variant's worlds can roll and how likely each is,
     // which may make up a whole world on their own, and how often a world is one landform throughout.
@@ -119,7 +119,7 @@ public static class Archetypes
             Roughness = 2.2f, RiverArea = 0.22f, Rain = 1f,
             PlateauHeight = 58f, PlateauCover = 0.3f, CanyonDepth = 70f, CanyonWidth = 0.05f, CanyonWavelength = 2800f,
             BaseTemperature = 0.62f, LatitudeRange = 0.6f, BaseHumidity = 0.5f,
-            Hazard = "mild: thunderstorms, predators", Resources = "timber, iron, copper, fresh water, titanium", Signature = DepositKind.Titanium,
+            Hazard = "mild: thunderstorms, predators", Resources = "timber, iron, copper, fresh water", Signature = DepositKind.Iron,
             Landforms = Odds((Landform.Plains, 3.2f), (Landform.Hills, 1.8f), (Landform.Mountains, 2f), (Landform.Steppe, 1.6f),
                 (Landform.RiverValleys, 1.2f), (Landform.LakeDistrict, 0.9f), (Landform.Delta, 0.9f), (Landform.Plateau, 0.7f),
                 (Landform.CoastalCliffs, 0.8f), (Landform.Fjords, 0.6f), (Landform.Wetlands, 0.5f), (Landform.Archipelago, 0.4f),
@@ -151,7 +151,7 @@ public static class Archetypes
             PlateauHeight = 30f, PlateauCover = 0.2f, PlateauWavelength = 1800f,
             RiverArea = 1.2f, Rain = 0.3f, SeaFreezes = false,
             BaseTemperature = 0.88f, LatitudeRange = 0.35f, BaseHumidity = 0.1f, RiverbankBiome = Biome.Oasis,
-            Hazard = "heat, sandstorms, dehydration", Resources = "silicon, salt, titanium sand", Signature = DepositKind.Titanium,
+            Hazard = "heat, sandstorms, dehydration", Resources = "silicon, salt, magnesium sand", Signature = DepositKind.Magnesium,
             Landforms = Odds((Landform.DuneSea, 4f), (Landform.RockyDesert, 2.5f), (Landform.Steppe, 1f), (Landform.Mesas, 1f),
                 (Landform.Badlands, 0.8f), (Landform.Plateau, 0.8f), (Landform.Mountains, 0.8f), (Landform.Canyonlands, 0.4f),
                 (Landform.CoastalCliffs, 0.4f), (Landform.Delta, 0.35f), (Landform.Plains, 0.4f)),
@@ -167,7 +167,7 @@ public static class Archetypes
             PlateauHeight = 60f, PlateauCover = 0.4f,
             RiverArea = 0.45f, Rain = 0.45f, SeaFreezes = false,
             BaseTemperature = 0.8f, LatitudeRange = 0.35f, BaseHumidity = 0.16f, RiverbankBiome = Biome.Oasis,
-            Hazard = "heat, rockfalls, flash floods", Resources = "copper, iron oxide, gemstones", Signature = DepositKind.Crystal,
+            Hazard = "heat, rockfalls, flash floods", Resources = "copper, iron oxide, magnesium", Signature = DepositKind.Magnesium,
             Landforms = Odds((Landform.Canyonlands, 3f), (Landform.Mesas, 3f), (Landform.Plateau, 2f), (Landform.Badlands, 1.5f),
                 (Landform.RockyDesert, 1.5f), (Landform.Steppe, 1.2f), (Landform.DuneSea, 0.8f), (Landform.Mountains, 0.8f),
                 (Landform.CoastalCliffs, 0.6f), (Landform.RiverValleys, 0.5f), (Landform.Delta, 0.3f)),
@@ -199,7 +199,7 @@ public static class Archetypes
             RiverArea = 0.4f, Rain = 0.8f,
             BaseTemperature = 0.2f, LatitudeRange = 0.35f, BaseHumidity = 0.5f,
             RiverbankBiome = Biome.IceTundra,
-            Hazard = "cold, scalding geysers, steam", Resources = "geothermal energy, sulfur, minerals, ice", Signature = DepositKind.Sulfur,
+            Hazard = "cold, scalding geysers, steam", Resources = "geothermal energy, burnstone, minerals, ice", Signature = DepositKind.Burnstone,
             Landforms = Odds((Landform.IcePlain, 2f), (Landform.Hills, 2f), (Landform.VolcanicField, 2f), (Landform.Mountains, 1.5f),
                 (Landform.LakeDistrict, 1.2f), (Landform.Plains, 1f), (Landform.Fjords, 1f), (Landform.Plateau, 0.8f),
                 (Landform.Wetlands, 0.6f), (Landform.CoastalCliffs, 0.6f)),
@@ -216,7 +216,7 @@ public static class Archetypes
             RiverArea = 0.6f, Rain = 0.6f, SeaFreezes = false,
             BaseTemperature = 0.95f, LatitudeRange = 0.2f, BaseHumidity = 0.1f,
             Liquid = Liquid.Lava, RiverbankBiome = Biome.Obsidian,
-            Hazard = "heat, eruptions, toxic air", Resources = "iron, sulfur, obsidian, thorium", Signature = DepositKind.Thorium,
+            Hazard = "heat, eruptions, toxic air", Resources = "iron, burnstone, obsidian, gold", Signature = DepositKind.Gold,
             Landforms = Odds((Landform.VolcanicField, 4f), (Landform.BasaltPlains, 3f), (Landform.Mountains, 1f), (Landform.Badlands, 1f),
                 (Landform.Plateau, 1f), (Landform.Canyonlands, 0.6f), (Landform.RockyDesert, 0.5f), (Landform.Mesas, 0.5f),
                 (Landform.CoastalCliffs, 0.5f)),
@@ -232,7 +232,7 @@ public static class Archetypes
             RiverArea = 0.5f, Rain = 0.5f, SeaFreezes = false,
             BaseTemperature = 0.98f, LatitudeRange = 0.15f, BaseHumidity = 0.08f,
             Liquid = Liquid.Lava, RiverbankBiome = Biome.Obsidian,
-            Hazard = "extreme heat, lava surges", Resources = "rare metals, obsidian, heat", Signature = DepositKind.Titanium,
+            Hazard = "extreme heat, lava surges", Resources = "rare metals, obsidian, heat", Signature = DepositKind.Gold,
             Landforms = Odds((Landform.Archipelago, 3f), (Landform.VolcanicField, 3f), (Landform.BasaltPlains, 2f), (Landform.CoastalCliffs, 1.5f),
                 (Landform.Plateau, 0.5f), (Landform.Badlands, 0.5f)),
             SingleLandforms = new[] { Landform.Archipelago }, SingleChance = 0.22f,

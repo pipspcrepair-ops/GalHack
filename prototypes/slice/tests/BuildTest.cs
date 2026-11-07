@@ -123,6 +123,7 @@ public partial class BuildTest : Node
         foreach (int x in Machines()) yield return x;
         TechTabs();
         foreach (int x in CpuExtender()) yield return x;
+        LatticeGate();
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in Creative()) yield return x;
     }
@@ -722,6 +723,12 @@ public partial class BuildTest : Node
     {
         GD.Print("-- taking down: nothing is lost --");
         string steel = Item("steel", false);
+        // The core stays, however little is left on it.
+        var (coreCell, coreBlock) = _base.Structure.Blocks().First(c => _base.Structure.TypeOf(c.block).IsCore);
+        int vessels = _game.Zone.Vessels.Count, coreItems = PlayerInventory.CoreItems.Sum(id => Pack[id]);
+        _game.Builder.Remove(_base, coreCell);
+        Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && PlayerInventory.CoreItems.Sum(id => Pack[id]) == coreItems,
+            $"deconstruct refuses a core ({_base.Structure.TypeOf(coreBlock).Name}): it can only be destroyed or hijacked");
         foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
         N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(1f, 0, 0);
         foreach (int x in StandByBase(6, 4)) yield return x;
@@ -756,9 +763,33 @@ public partial class BuildTest : Node
         foreach (int x in _play.Tool(ToolMode.Gather)) yield return x;
     }
 
+    /// <summary>No creature spawns within the clearance of a base, from its footprint's edge; a vessel keeps nothing away.</summary>
+    void NoSpawnsByBases()
+    {
+        if (_base == null) return;
+        GD.Print("-- no creature spawns near a base --");
+        var patch = _game.Zone.Wildlife;
+        patch.SyncBases();
+        Wildlife.WildSim sim = patch.Sim;
+        float clearance = sim.Data.Spawning.BaseClearance;
+        Check(clearance > 0 && sim.Structures.Count(s => s.IsBase) == _game.Zone.Vessels.Count(v => v.IsBase && v.Structure.Core != null),
+            $"the wildlife sim knows every base ({sim.Structures.Count}), and keeps {clearance:F0} m clear of each");
+        var (min, max) = _base.Structure.Bounds();
+        Vector3 Edge(float past) => patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, max) + new N.Vector3(_base.Structure.Grid.CellSize * 0.5f + past, 0, 0)));
+        Check(sim.InBaseZone(patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, min)))) && sim.InBaseZone(Edge(clearance - 2f)) && !sim.InBaseZone(Edge(clearance + 2f)),
+            "the zone runs from the footprint's edge, so a bigger base has a bigger zone");
+        Wildlife.Species species = patch.Fauna.Species.First(s => s.Domestic == Wildlife.DomesticKind.None);
+        int creatures = sim.Creatures.Count;
+        var spawned = sim.SpawnGroup(species, Edge(4f), 6, null);
+        Check(spawned.Count == 0 && sim.Creatures.Count == creatures, "a group set down by the base doesn't spawn");
+        if (_capital != null)
+            Check(!sim.Structures.Any(s => s.Name == _capital.Name), "a capital vessel keeps nothing away");
+    }
+
     IEnumerable<int> Areas()
     {
         GD.Print("-- a structure's storage works inside its area --");
+        NoSpawnsByBases();
         var rules = _game.Zone.Data.Rules.Build.Area;
         foreach (Vessel v in new[] { _base, _capital, _small, _hover })
         {
@@ -907,6 +938,17 @@ public partial class BuildTest : Node
         // The tiers climb with the count (one extender is the second tier); add the rest until it does.
         Check(_base.StructureStats.Tier > tier || _base.StructureStats.Extenders < _base.Structure.Catalogue.ExtendersPerTier[Math.Min(tier, _base.Structure.Catalogue.ExtendersPerTier.Length - 1)],
             $"CPU tier {tier} -> {_base.StructureStats.Tier}, limit {_base.StructureStats.CpuLimit}");
+    }
+
+    /// <summary>The lattice extenders are real blocks, but no amount of ore pays for one: the parts are found in places.</summary>
+    void LatticeGate()
+    {
+        foreach (string block in new[] { "cpuext3", "cpuext4" })
+        {
+            ItemDef def = Items.Item(Item(block, false));
+            Check(def.Recipe.InputsFor(1).Ids.Any(id => Items.Item(id).IsUnique && Items.Item(id).Recipe == null), $"{def.Name} needs a part found in places");
+            Check(_base.Structure.Catalogue.Type(block).IsCpuExtender, $"{def.Name} is a CPU extender on the structure");
+        }
     }
 
     IEnumerable<int> MenuChecks()

@@ -202,6 +202,15 @@ public partial class PlayerTest : Node
         Check(_game.Visor.Deposits.Near(_game.Zone, _game.Survivor.WorldFeet).All(d => !DepositFinder.Depleted(_game.Zone, KindOf(d.kind), d.at.X, d.at.Y, d.at.Z)),
             "a deposit dug out drops off the compass: every label shown still holds ore");
 
+        // The uncommon ores are real in the ground: the scanner knows them, each digs out as its own item.
+        Check(DepositFinder.Kinds.All(k => _game.Tool.OreOf(k) != null), "every ore the planet guarantees is a raw item the tool can give");
+        foreach (DepositKind scarce in new[] { DepositKind.Burnstone, DepositKind.Neodymium })
+        {
+            string ore = _game.Tool.OreOf(scarce).Id;
+            foreach (int x in _play.Gather(scarce, 3, 1800f)) yield return x;
+            Check(_game.Pack[ore] >= 3, $"walked to the nearest {scarce} and dug it out: {_game.Pack[ore]} {ore}");
+        }
+
         int plants = _game.Tool.PlantsCut, biomass = _game.Pack["biomass"];
         foreach (int x in _play.CutPlant()) yield return x;
         Check(_game.Tool.PlantsCut > plants && _game.Pack["biomass"] > biomass, $"cutting a plant: +{_game.Pack["biomass"] - biomass} biomass");
@@ -861,6 +870,20 @@ public partial class PlayerTest : Node
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(30)) yield return x;
         Bill carried = _game.Pack.Storage.Contents;
+        // What stays on the body: every toolbar stack, and the survival tool wherever it sits.
+        _game.Pack.Grid.Reconcile();
+        var onBar = new List<string>();
+        var stays = new Bill();
+        for (int i = 0; i < _game.Pack.Grid.Toolbar; i++)
+        {
+            Slot bar = _game.Pack.Grid[i];
+            onBar.Add(bar.ToString());
+            if (bar.Item != null) stays.Add(bar.Item, bar.Count);
+        }
+        string toolId = Slice.Items.PlayerInventory.SurvivalTool;
+        if (carried[toolId] > stays[toolId]) stays.Add(toolId, carried[toolId] - stays[toolId]);
+        Bill drops = new();
+        foreach (var (id, n) in carried) if (n > stays[id]) drops.Add(id, n - stays[id]);
         float high = v.AboveGround;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
@@ -887,10 +910,13 @@ public partial class PlayerTest : Node
             _game.Controls.ReleaseAll();
             foreach (int x in _play.WaitFor(() => _game.Suit.Dead, 12)) yield return x;
         }
-        if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(carried))
+        if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(drops))
             GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
-        Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(carried) && _game.Pack.Storage.IsEmpty,
-            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: everything carried is in a backpack where they fell ({_game.Zone.Data.Items.Describe(carried, 4)})");
+        Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(drops),
+            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
+        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
+        Check(_game.Pack.Storage.Contents.Equals(stays) && Enumerable.Range(0, _game.Pack.Grid.Toolbar).All(i => _game.Pack.Grid[i].ToString() == onBar[i]),
+            $"everything on the toolbar stays, slot for slot ({_game.Zone.Data.Items.Describe(stays, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;
         foreach (int x in _drive.Tap(Key.R)) yield return x;
         foreach (int x in _drive.Wait(10)) yield return x;
@@ -918,6 +944,11 @@ public partial class PlayerTest : Node
     void Summary()
     {
         GD.Print("-- throughout --");
+        var oxygen = _game.Suit.Sim.Data.Vitals.Oxygen;
+        Check(_game.Zone.Data.Consumables["o2-bottle"].Oxygen == oxygen.SmallBottle && _game.Zone.Data.Consumables["air-cell"].Oxygen == oxygen.LargeBottle
+              && _game.Zone.Data.Items.Item("o2-bottle").Name == "O2 bottle", "oxygen items give the design's +75 and +250, in suit oxygen");
+        Check(WorldChoice.Types.All(t => t.Name.StartsWith(t.Archetype.ToString(), StringComparison.Ordinal) || t.Archetype == Archetype.Alien && t.Key == "swamp"),
+            "the start screen's planet types carry their archetype's name");
         Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the castaway never needed rescuing from the ground ({_rescues.Count} rescues of anything)");
         GD.Print($"  game time at each step (min): {string.Join(", ", _gameTimeAt.Select(kv => $"{kv.Key} {kv.Value / 60:F1}"))}");
         GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP; {_game.Stats.Crafted} items crafted, {_game.Builder.Placed} blocks placed, {_game.Tool.OreCells} ore cells dug, {_game.Stats.Kills} kills");

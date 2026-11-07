@@ -260,7 +260,7 @@ public static class PoiSiting
             {
                 if (Math.Abs(Mathx.WrapDelta(dep.X - wx, map.WidthMeters)) > cell / 2 || Math.Abs(Mathx.WrapDelta(dep.Y - wz, map.HeightMeters)) > cell / 2) continue;
                 all++;
-                if (dep.Kind >= DepositKind.Titanium) signature++;
+                if (dep.Kind >= DepositKind.Magnesium) signature++;
             }
             pmap.Deposit[k] = signature > 0 || all >= 3;
         }
