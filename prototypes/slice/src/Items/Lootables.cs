@@ -12,7 +12,7 @@ public enum LootKind
 {
     /// <summary>A creature's body: its meat, hide and parts.</summary>
     Corpse,
-    /// <summary>A dead player's backpack: everything they carried. Marked on the compass and map.</summary>
+    /// <summary>A dead player's backpack: their bag (the toolbar and the survival tool stay with them). Marked on the compass and map.</summary>
     Backpack,
     /// <summary>Things set down (dropped out of the inventory, or what a full storage couldn't take).</summary>
     Drop,

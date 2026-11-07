@@ -221,17 +221,14 @@ public partial class Game
     /// <summary>The backpack your last death left, if it still holds anything.</summary>
     public Lootable Backpack { get; private set; }
 
-    /// <summary>On death everything you carry goes into a backpack where you fell, marked on the compass; nothing is lost.</summary>
+    /// <summary>On death the bag goes into a backpack where you fell, marked on the compass; the toolbar and the survival tool stay with you, and nothing is lost.</summary>
     void CheckDeath()
     {
         if (Suit.Dead && !_wasDead)
         {
             _wasDead = true;
             if (Survivor.Seated != null) Survivor.StandUp();
-            Bill all = Pack.Storage.Contents;
-            Pack.Storage.TryTake(all);
-            foreach (Slot s in Pack.Grid.Slots) if (s.Item != null) s.Clear();
-            Pack.Grid.Reconcile();
+            Bill all = Pack.TakeBagForDeath();
             int[] size = Zone.Data.Rules.Containers.Backpack;
             Vector3 feet = Survivor.WorldFeet;
             if (!all.IsEmpty) Backpack = Zone.Loot.Create(LootKind.Backpack, "Your backpack", feet, size[0], size[1], all);

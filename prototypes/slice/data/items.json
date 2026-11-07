@@ -51,7 +51,7 @@
       "where": "Some creatures", "uses": "Research (later)" }
   ],
   "recipes": [
-    // Free, always: you wake empty-handed and make it first, and a lost tool can always be replaced.
+    // Free, always: you wake empty-handed and make it first. Once made it is never dropped on death.
     { "make": "survival-tool", "count": 1, "from": {}, "free": true,                                     "seconds": 3,  "tier": -1 },
     // The hover bike is basic metals and silicon, made in the suit fabricator: getting about is quick from early on.
     { "make": "hover-bike",    "count": 1, "from": { "iron-ore": 30, "copper-ore": 12, "silicon-ore": 8 }, "seconds": 20, "tier": -1 },
