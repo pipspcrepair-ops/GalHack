@@ -15,7 +15,7 @@ namespace PoiGenerator.Gen;
 public static class Civic
 {
     /// <summary>A building's materials from its kit: the first colour of each, so a wall is one wall.</summary>
-    static void Wear(Plot p)
+    internal static void Wear(Plot p)
     {
         Style s = p.C.Style;
         Fab f = p.F;

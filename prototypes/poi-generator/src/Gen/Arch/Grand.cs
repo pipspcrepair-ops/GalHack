@@ -9,7 +9,7 @@ namespace PoiGenerator.Gen;
 /// </summary>
 public static class Grand
 {
-    public static void Compose(Canvas c, SiteDef site, Rng rng, LayoutHints? hints)
+    public static void Compose(Canvas c, PoiLibrary lib, SiteDef site, Rng rng, LayoutHints? hints)
     {
         SitePart part = site.Parts[0];
         TechLevel tech = WorldProfile.Parse(part.Arg("tech", "mid"));
@@ -22,6 +22,7 @@ public static class Grand
             case "hospital": Civic.Hospital(c, rng, hints, tech); break;
             case "water": Civic.WaterWorks(c, rng, hints, tech); break;
             case "bunker": Civic.Bunker(c, rng, hints, tech); break;
+            case "lab" or "hull" or "hive" or "relay" or "homestead" or "minehead": FactionPlaces.Compose(c, lib, rng, hints, tech, part.Arg("what")); break;
             default: throw new ArgumentException($"site {site.Id}: no large plan '{part.Arg("what")}'");
         }
     }

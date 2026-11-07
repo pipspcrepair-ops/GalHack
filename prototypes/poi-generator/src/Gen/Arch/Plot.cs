@@ -535,7 +535,8 @@ public sealed class Plot
                 foreach (var (d, du, dv) in new[] { (Dir.East, 1, 0), (Dir.West, -1, 0), (Dir.South, 0, 1), (Dir.North, 0, -1) })
                     if (Height(u + du, v + dv) > best) { best = Height(u + du, v + dv); up = d; }
                 Put(u, low + h, v, up is { } facing ? new Block(BlockType.Ramp, s.M, s.C, Role.Roof, facing) : Cube(s, Role.Roof));
-                if (h > 0) Put(u, low + h - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+                // Solid under the slope: a steep cone rises more than a cell a cell, and nothing shows between columns.
+                for (int y = low; y < low + h; y++) Put(u, y, v, Cube(s.Scale(0.8f), Role.Roof));
             }
     }
 
