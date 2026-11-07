@@ -259,6 +259,11 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
         // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
         int wind = (int)(World.Spec.Seed % 4);
+        // The world's road paint: yellow or white centre lines, dashed or solid, by its culture; none where
+        // the old world never painted its roads.
+        ulong paint = World.Spec.Seed / 4;
+        bool painted = World.Profile?.Before is not PoiGenerator.Gen.TechLevel.Low;
+        m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
         m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
         return m;
     }
