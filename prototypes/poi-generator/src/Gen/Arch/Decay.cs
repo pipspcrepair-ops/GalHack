@@ -97,6 +97,13 @@ public static class Decay
                 inst.Lights.Add(l);
                 continue;
             }
+            // Abandoned but whole: the lights still mostly burn on whatever feeds them, and the place's feel
+            // (PlaceLights) sets a few flickering or failed. Deep wrongness still eats them.
+            if (inst.State == PoiState.Abandoned && !rng.Chance(0.1f + w * 0.6f))
+            {
+                inst.Lights.Add(l);
+                continue;
+            }
             // Without power: most lights are dead. Battery emergency lamps hang on near the top,
             // fewer and redder the deeper you go; the deepest levels are black.
             float emergency = Math.Clamp(0.42f - 0.38f * w, 0.02f, 0.5f);

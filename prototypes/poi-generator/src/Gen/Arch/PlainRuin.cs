@@ -25,8 +25,8 @@ public static partial class StateTransforms
         // Each building takes one through the roof; then more, biggest first, until enough is down.
         var order = boxes.OrderByDescending(b => (b.Max.X - b.Min.X) * (b.Max.Z - b.Min.Z)).ToList();
         foreach (PlainBox b in order) RoofHole(inst, b, rng, fallen);
-        // A big works takes more collapses than a house, each a bigger one.
-        int collapses = Math.Max(24, (int)MathF.Sqrt(before));
+        // A big works takes more collapses than a house, each a bigger one, until its share is down.
+        int collapses = 2 * Math.Max(24, (int)MathF.Sqrt(before));
         for (int k = 0; k < collapses; k++)
         {
             // Counting a whole works is slow: a look every few falls is enough.
@@ -84,9 +84,12 @@ public static partial class StateTransforms
         for (int z = Math.Max(b.Min.Z, (int)(cz - rz) - 1); z <= Math.Min(b.Max.Z, (int)(cz + rz) + 1); z++)
             for (int x = Math.Max(b.Min.X, (int)(cx - rx) - 1); x <= Math.Min(b.Max.X, (int)(cx + rx) + 1); x++)
             {
-                float dx = (x + 0.5f - cx) / rx, dz = (z + 0.5f - cz) / rz, d = dx * dx + dz * dz;
+                // On the 2 m lattice: a hole's edge is jagged a whole block at a time, never pinholes a metre wide.
+                int bx = x >> 1, bz = z >> 1;
+                float dx = (bx * 2 + 1 - cx) / rx, dz = (bz * 2 + 1 - cz) / rz, d = dx * dx + dz * dz;
                 if (d >= 1f) continue;
-                int keep = Math.Max(1, low + (int)(d * d * 16f) + (int)(Hash.Cell(new Int3(x, 0, z), 91) % 3));
+                int keep = Math.Max(1, low + (int)(d * d * 16f) + 2 * (int)(Hash.Cell(new Int3(bx, 0, bz), 91) % 2));
+                keep += keep & 1;
                 for (int y = keep; y <= b.Max.Y + 2; y++)
                 {
                     var p = new Int3(x, y, z);

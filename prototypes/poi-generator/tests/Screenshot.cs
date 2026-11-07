@@ -27,6 +27,7 @@ public partial class Screenshot : Node
         {
             if (arg.StartsWith("--view=")) _view = arg["--view=".Length..];
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
+            else if (arg == "--day") Main.Daylight = true;
         }
         ProcessPhysicsPriority = 100;
         // Debanding dithers every pixel, which PNG can't compress; screenshots don't need it.

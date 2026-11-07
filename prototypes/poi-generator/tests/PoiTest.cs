@@ -21,6 +21,12 @@ public partial class PoiTest : Node
 
     public override void _Ready()
     {
+        // Its own time limit: a run that hangs quits by itself and says so (nobody has to end it by hand).
+        GetTree().CreateTimer(1800.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
+        {
+            GD.PrintErr("PoiTest timed out after 30 minutes");
+            GetTree().Quit(2);
+        };
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {

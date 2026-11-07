@@ -100,7 +100,7 @@ public partial class Main : Node3D
         }
         else
         {
-            Sky.Apply(Look.For(_state), 110f);
+            Sky.Apply(Daylight ? Look.Day : Look.For(_state), 110f);
             if (mode == Mode.Walk)
             {
                 var (pos, yaw) = Stage.EntranceStand();
@@ -127,6 +127,9 @@ public partial class Main : Node3D
         SetMode(Mode.Inspect);
     }
 
+    /// <summary>Plain daylight whatever the state (proof frames): otherwise each state keeps its own hour.</summary>
+    public static bool Daylight;
+
     void Rebuild()
     {
         foreach (Node n in _stageRoot.GetChildren()) n.QueueFree();
@@ -136,7 +139,7 @@ public partial class Main : Node3D
         Stage = PoiView.Build(poi, _biome, new PoiView.Options(), (x, z) => ground);
         _stageRoot.AddChild(Stage);
         Player.LadderQuery = Stage.LadderAt;
-        _atmosphere = Look.For(_state);
+        _atmosphere = Daylight ? Look.Day : Look.For(_state);
 
         // Ground all round, with the place's own plug of rock in the middle.
         var hole = new Rect2I(Stage.PlugMin, Stage.PlugMax - Stage.PlugMin + Vector2I.One);
@@ -144,7 +147,7 @@ public partial class Main : Node3D
         _stageRoot.AddChild(Terrain.Build(new Vector2I(-half, -half), new Vector2I(52, 52), (x, z) => ground, new List<Rect2I> { hole }, true, 4000f));
         _stageRoot.AddChild(Terrain.Mesas(poi.SpawnSeed ^ 77, Vector2.Zero, 170f, 1400f, 70, Look.ToColor(Look.Rock(_biome)).Lightened(0.15f), new()));
         Map.SetPlace(poi);
-        if (CurrentMode != Mode.Aerial) Sky.Apply(Look.For(_state), 110f);
+        if (CurrentMode != Mode.Aerial) Sky.Apply(Daylight ? Look.Day : Look.For(_state), 110f);
         Player.Lamp.Visible = CurrentMode == Mode.Walk && _state != PoiState.Active;
         if (CurrentMode == Mode.Walk)
         {
