@@ -30,7 +30,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Grand", GrandPlaces), ("FactionRolls", FactionRolls), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("FactionRolls", FactionRolls), ("CityLots", CityLots), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -98,7 +98,7 @@ public partial class PoiTest : Node
                 Int3 size = layout.Blocks.Size;
                 long t1 = sw.ElapsedMilliseconds;
                 GD.Print($"      {f.Id} '{v.Name}' {size.X} x {size.Z} x {size.Y} m, {layout.Modules.Count} rooms, {layout.Blocks.CountBlocks()} cells, layout {t1 - t0} ms, {layout.Attempts} attempts");
-                if (Math.Max(size.X, size.Z) < 100) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
+                if (Math.Max(size.X, size.Z) < 100 && !f.Tags.Contains("city")) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
                 foreach (PoiState s in Enum.GetValues<PoiState>())
                 {
                     if (f.StateWeights[(int)s] <= 0f) continue;
@@ -185,6 +185,40 @@ public partial class PoiTest : Node
         catch (Exception) { threw = true; }
         finally { part.Args["what"] = what; }
         Check(!threw && none == null && reason != null, $"a place that can't lay out is left out, not thrown: {(threw ? "threw" : reason ?? "laid out")}");
+    }
+
+    /// <summary>Every city lot the planner can ask for lays out: each kind, its sizes, storeys, styles, falls and turns, with no failure.</summary>
+    void CityLots()
+    {
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        int rolls = 0, failed = 0;
+        var why = new Dictionary<string, int>();
+        var rng = new Rng(fresh);
+        foreach (string kind in new[] { "tower", "midrise", "terrace", "works", "civic" })
+        {
+            FamilyDef f = _lib.Families.First(x => x.Id == "city_" + kind);
+            for (int k = 0; k < 60; k++)
+            {
+                var lot = kind switch
+                {
+                    "tower" => new CityLot(kind, rng.Range(15, 18), rng.Range(12, 15), rng.Range(2, 31), rng.Range(0, 1000), rng.Float()),
+                    "midrise" => new CityLot(kind, rng.Range(11, 15), rng.Range(12, 15), rng.Range(2, 9), rng.Range(0, 1000), rng.Float()),
+                    "terrace" => new CityLot(kind, rng.Range(6, 9), rng.Range(8, 11), rng.Range(1, 4), rng.Range(0, 1000), rng.Float()),
+                    "works" => new CityLot(kind, rng.Range(16, 20), rng.Range(12, 15), 1, rng.Range(0, 1000), rng.Float()),
+                    _ => new CityLot(kind, 25, 23, 1, rng.Range(0, 1000), rng.Float()),
+                };
+                rolls++;
+                try { PoiFactory.BuildLayout(_lib, f, k % f.Variants.Count, f.Rarity, rng.NextU64(), new LayoutHints(Dirs.Horizontal[k % 4], (TechLevel)(k % 3), lot)); }
+                catch (Exception e)
+                {
+                    failed++;
+                    string key = $"{kind} {lot.W}x{lot.D}x{lot.Storeys}: {e.Message.Split("last: ").Last().Split(" @ ")[0]}";
+                    why[key] = why.GetValueOrDefault(key) + 1;
+                }
+            }
+        }
+        foreach (var (k, n) in why.OrderByDescending(w => w.Value).Take(8)) GD.Print($"      {n} x {k}");
+        Check(failed == 0, $"city lots lay out on every roll: {rolls - failed} of {rolls} ({failed} failed)");
     }
 
     /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>

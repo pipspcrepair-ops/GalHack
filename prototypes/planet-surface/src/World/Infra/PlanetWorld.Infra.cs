@@ -25,6 +25,15 @@ public sealed partial class PlanetWorld
         var ruins = new List<FlavourRuin>();
         if (PlanetSurface.Poi.PoiSiting.StartWorld)
             infra.Town = StartTown.Plan(infra, catalog?.Library, map, bare, pois, profile, landing, Hash.Of(spec.Seed, 0x57A2), ruins);
+        // A city on a world whose layers built one: its streets are the network's, its buildings places of their own.
+        infra.City = CityPlan.Plan(infra, catalog?.Library, map, bare, pois, profile, landing, Hash.Of(spec.Seed, 0xC171));
+        if (infra.City != null)
+        {
+            pois.AddRange(infra.City.Sites);
+            stamps.AddRange(infra.City.Stamps);
+            foreach (PoiSite p in infra.City.Sites) stamps.Add(p.Stamp);
+            Godot.GD.Print($"city: {infra.City.Streets.Count} streets, {infra.City.Lots.Count} lots, {infra.City.Sites.Count} buildings, fall {infra.City.Fall:F2}, {infra.City.BridgeAnchors.Count} bridge anchors, {infra.City.PlanMs:F0} ms {infra.City.Why}");
+        }
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);

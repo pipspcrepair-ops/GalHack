@@ -71,8 +71,45 @@ public partial class Screenshot : Node
         _args.TryGetValue("force", out string force);
         if (_args.TryGetValue("state", out string state)) PlanetSurface.Poi.PoiSiting.ForceState = Enum.Parse<PoiGenerator.Gen.PoiState>(state, true);
         if (_args.ContainsKey("forcevariant")) PlanetSurface.Poi.PoiSiting.ForceVariant = Int("forcevariant", 0);
+        if (_args.ContainsKey("tiered")) PlanetSurface.Poi.PoiLayer.Tiered = true;
+        _args.TryGetValue("city", out string cityView);
+        if (cityView != null) PlanetSurface.Infra.CityPlan.Force = true;
         return new ViewSpec(planet, m =>
         {
+            // A city's frames: its skyline from far and near, a street, a floor inside a tower, from the air.
+            if (cityView != null && m.World.Infra.City is { Sites.Count: > 0 } city)
+            {
+                float turn = (float)Num("heading", 0), cxf = (float)city.CenterX, czf = (float)city.CenterZ, g0 = m.World.GroundHeight(city.CenterX, city.CenterZ);
+                var tall = city.Lots.Where(l => l.Site != null).OrderByDescending(l => l.Lot.Storeys).First();
+                GD.Print($"city at {city.CenterX:F0},{city.CenterZ:F0} radius {city.Radius:F0}; tallest {tall.Lot.Storeys} storeys at {tall.Crossover.X:F0},{tall.Crossover.Z:F0}");
+                Vector3 Out(float dist, float up) => new(cxf - Mathf.Sin(Mathf.DegToRad(turn)) * dist, g0 + up, czf + Mathf.Cos(Mathf.DegToRad(turn)) * dist);
+                (Vector3, float, float) Toward(Vector3 from, Vector3 at)
+                {
+                    Vector3 d = at - from;
+                    return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+                }
+                var centre = new Vector3(cxf, g0 + (float)Num("look", 50), czf);
+                switch (cityView)
+                {
+                    case "far": return Toward(Out((float)Num("dist", 2000), (float)Num("up", 90)), centre);
+                    case "mid": return Toward(Out((float)Num("dist", 500), (float)Num("up", 40)), centre);
+                    case "aerial": return Toward(Out((float)Num("dist", 900), (float)Num("up", 650)), new Vector3(cxf, g0, czf));
+                    case "street":
+                    {
+                        float sy = m.World.GroundHeight(tall.Crossover.X, tall.Crossover.Z) + 1.7f;
+                        var from = new Vector3((float)tall.Crossover.X + (float)Num("dx", -40), sy, (float)tall.Crossover.Z);
+                        return Toward(from, new Vector3((float)(tall.X0 + tall.X1) / 2, sy + (float)Num("look", 30), (float)(tall.Z0 + tall.Z1) / 2));
+                    }
+                    default:
+                    {
+                        var site = tall.Site;
+                        var o = PoiGenerator.Gen.Dirs.Vec(site.Instance.Layout.EntranceFacing);
+                        var e = new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y + 1.7f + (float)Num("floor", 0) * 6, site.Entrance.Z + 0.5f);
+                        var from = e - new Vector3(o.X, 0, o.Z) * (float)Num("in", 7);
+                        return Toward(from, from - new Vector3(o.X, 0, o.Z) * 10 + new Vector3((float)Num("side", 6), -0.6f, 0));
+                    }
+                }
+            }
             // A place's own frame: the camera and what it looks at, in the place's cells.
             if (force != null && _args.TryGetValue("cam", out string cam))
             {

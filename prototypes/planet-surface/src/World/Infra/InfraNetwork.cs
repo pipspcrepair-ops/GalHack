@@ -107,6 +107,8 @@ public sealed class InfraNetwork
     public readonly List<LandingSpot> LandingSpots = new();
     /// <summary>A start world's ruined town by the landing site, where the start begins (null elsewhere).</summary>
     public StartTown Town;
+    /// <summary>A ruined city, on a world whose layers built one (null otherwise; see CityPlan).</summary>
+    public CityPlan City;
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
     /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>

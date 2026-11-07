@@ -23,6 +23,7 @@ public static class Grand
             case "water": Civic.WaterWorks(c, rng, hints, tech); break;
             case "bunker": Civic.Bunker(c, rng, hints, tech); break;
             case "lab" or "hull" or "hive" or "relay" or "homestead" or "minehead": FactionPlaces.Compose(c, lib, rng, hints, tech, part.Arg("what")); break;
+            case "city": CityBlocks.Compose(c, rng, hints, tech, part); break;
             default: throw new ArgumentException($"site {site.Id}: no large plan '{part.Arg("what")}'");
         }
     }

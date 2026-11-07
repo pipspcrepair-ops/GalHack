@@ -1,0 +1,142 @@
+# A city's buildings: laid lot by lot by the city planner (planet-surface World/City), never by a theme.
+# Each is a grand site whose plan reads its lot (kind, size, storeys, style, fall) from the planner.
+
+family city_tower
+  tier city
+  siting flat
+  rise 0
+  tech low mid high
+  name Office Tower
+  pitch A tower of floors gone dark, glass out on the windward side.
+  faction none
+  roster raiders
+  site city_tower_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Office Tower One
+    seed 7301
+  variant Office Tower Two
+    seed 7302
+  variant Office Tower Three
+    seed 7307
+
+
+family city_midrise
+  tier city
+  siting flat
+  rise 0
+  tech low mid high
+  name City Block
+  pitch A mid-rise of flats and offices, the stairs still sound.
+  faction none
+  roster raiders
+  site city_midrise_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant City Block One
+    seed 7311
+  variant City Block Two
+    seed 7312
+  variant City Block Three
+    seed 7317
+
+
+family city_terrace
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Terrace Row
+  pitch Narrow houses shoulder to shoulder, each front its own colour once.
+  faction none
+  roster raiders
+  site city_terrace_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Terrace Row One
+    seed 7321
+  variant Terrace Row Two
+    seed 7322
+  variant Terrace Row Three
+    seed 7327
+
+
+family city_works
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Works Shed
+  pitch A tall shed of rusting plant on the city's edge.
+  faction none
+  roster raiders
+  site city_works_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Works Shed One
+    seed 7331
+  variant Works Shed Two
+    seed 7332
+  variant Works Shed Three
+    seed 7337
+
+
+family city_civic
+  tier city
+  siting flat
+  rise 0
+  tech low mid high
+  name Domed Hall
+  pitch A domed hall that the city once gathered under.
+  faction none
+  roster raiders
+  site city_civic_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Domed Hall One
+    seed 7341
+  variant Domed Hall Two
+    seed 7342
+  variant Domed Hall Three
+    seed 7347
+
