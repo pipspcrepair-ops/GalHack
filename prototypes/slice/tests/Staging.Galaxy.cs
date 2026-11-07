@@ -251,45 +251,40 @@ public sealed partial class Staging
         foreach (int x in Until(MapLevel.Local, -1, "down-6-here")) yield return x;
     }
 
-    /// <summary>What the sky costs on the graphics card: the same frame with the galaxy on and off, on the ground and in space.</summary>
+    /// <summary>
+    /// What the sky costs: whole frames, with the galaxy on and off in turn, on the ground and in space.
+    /// Under --fixed-fps frames run flat out, so the wall clock per frame drawn is the true cost; rounds
+    /// alternate because other work shares the machine.
+    /// </summary>
     IEnumerable<int> GalaxyPerf()
     {
         foreach (int x in Seated()) yield return x;
         foreach (int x in Midnight()) yield return x;
-        Rid viewport = _game.GetViewport().GetViewportRid();
-        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
         _game.Visor.Visible = false;
-        Face(Vector3.Up);
-        Vector3 band = ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere));
-        Face(band.Y > 0.1f ? band : new Vector3(0.2f, 0.8f, -0.5f).Normalized());
-        var ground = _game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial;
-        double on = 0, off = 0, cpuOn = 0, cpuOff = 0;
-        IEnumerable<int> Measure(ShaderMaterial m, bool show, Action<double, double> done)
+        IEnumerable<int> Rounds(ShaderMaterial m, string where)
         {
-            m.SetShaderParameter("galaxy_on", show);
-            foreach (int x in _drive.Wait(40)) yield return x;
-            double gpu = 0, cpu = 0;
-            const int Frames = 90;
-            for (int i = 0; i < Frames; i++)
+            var times = new[] { new List<double>(), new List<double>() };
+            for (int round = 0; round < 8; round++)
             {
-                int drawn = Engine.GetFramesDrawn();
-                while (Engine.GetFramesDrawn() == drawn) yield return 0;
-                gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
-                cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
+                bool on = round % 2 == 0;
+                m.SetShaderParameter("galaxy_on", on);
+                foreach (int x in _drive.Wait(30)) yield return x;
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                int first = Engine.GetFramesDrawn();
+                const int Frames = 150;
+                while (Engine.GetFramesDrawn() < first + Frames) yield return 0;
+                times[on ? 0 : 1].Add(watch.Elapsed.TotalMilliseconds / Frames);
             }
-            done(gpu / Frames, cpu / Frames);
+            m.SetShaderParameter("galaxy_on", true);
+            double Middle(List<double> v) => v.OrderBy(t => t).ElementAt(v.Count / 2);
+            GD.Print($"(perf: {where}: frame {Middle(times[0]):F2} ms with the galaxy, {Middle(times[1]):F2} ms without, cost {Middle(times[0]) - Middle(times[1]):F2} ms; rounds on {string.Join(" ", times[0].Select(t => t.ToString("F2")))}, off {string.Join(" ", times[1].Select(t => t.ToString("F2")))})");
         }
-        foreach (int x in Measure(ground, true, (g, c) => (on, cpuOn) = (g, c))) yield return x;
-        foreach (int x in Measure(ground, false, (g, c) => (off, cpuOff) = (g, c))) yield return x;
-        ground.SetShaderParameter("galaxy_on", true);
-        GD.Print($"(perf: ground, looking along the band: galaxy on {on:F2} ms gpu, off {off:F2} ms gpu, cost {on - off:F2} ms; render thread {cpuOn:F2} and {cpuOff:F2} ms)");
+        N.Vector3 core = N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position);
+        Vector3 band = ToGodot(Stars.Toward(core, _game.Spaceflight.ToGlobeHere));
+        Face(band.Y > 0.1f ? band : new Vector3(0.2f, 0.8f, -0.5f).Normalized());
+        foreach (int x in Rounds(_game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial, "ground at night")) yield return x;
         foreach (int x in UpAndOut()) yield return x;
-        Vector3 inSpace = ToGodot(Stars.Toward(N.Vector3.Normalize(-Stars.Galaxy.Stars[Stars.Here].Position), _game.Spaceflight.ToGlobeHere));
-        Face(inSpace);
-        var space = _game.Orbit.Space.Environment.Sky.SkyMaterial as ShaderMaterial;
-        foreach (int x in Measure(space, true, (g, c) => (on, cpuOn) = (g, c))) yield return x;
-        foreach (int x in Measure(space, false, (g, c) => (off, cpuOff) = (g, c))) yield return x;
-        space.SetShaderParameter("galaxy_on", true);
-        GD.Print($"(perf: space, looking at the core: galaxy on {on:F2} ms gpu, off {off:F2} ms gpu, cost {on - off:F2} ms; render thread {cpuOn:F2} and {cpuOff:F2} ms)");
+        Face(ToGodot(Stars.Toward(core, _game.Spaceflight.ToGlobeHere)));
+        foreach (int x in Rounds(_game.Orbit.Space.Environment.Sky.SkyMaterial as ShaderMaterial, "space, looking at the core")) yield return x;
     }
 }
