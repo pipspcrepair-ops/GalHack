@@ -209,6 +209,7 @@ public partial class SliceAudio : Node
                 _stepTimer = 1.6f;
                 _step.GlobalPosition = g.Survivor.WorldFeet;
                 _step.PitchScale = 0.85f + (float)GD.RandRange(0, 0.3);
+                _step.VolumeDb = g.Survivor.Crouched ? -28f : -20f; // creeping is softer
                 _step.Play();
             }
         }
