@@ -96,6 +96,8 @@ public partial class BuildTest : Node
         SpeedChecks();
         GD.Print("-- devices work whichever way they face --");
         OrientationChecks();
+        GD.Print("-- lights: colour, animation and glowing paint --");
+        LightChecks();
 
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);

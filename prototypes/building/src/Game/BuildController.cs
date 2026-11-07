@@ -60,6 +60,9 @@ public partial class BuildController : Node
     public int PaintBase, PaintAccent = 6, Grime, Stencil = -1;
     public Pattern PaintPattern = Pattern.None;
     public FaceTexture PaintTexture = FaceTexture.Panel;
+    /// <summary>Glowing paint (L cycles the shape, Shift+L the mode): lit in the base colour, drifting to the accent colour in Fade.</summary>
+    public LampShape PaintLamp = LampShape.None;
+    public LightAnim PaintLampAnim = LightAnim.Steady;
 
     /// <summary>What the crosshair is on. Updated every physics tick.</summary>
     public struct AimInfo
@@ -88,7 +91,9 @@ public partial class BuildController : Node
 
     public BlockType SelectedType => Main.Catalogue.Type(Slots[Slot][Variant[Slot] % Slots[Slot].Length]);
     public ShapeDef SelectedShape => SelectedType.IsArmor ? Main.Catalogue.Shapes[ShapeIndex] : null;
-    public Paint CurrentPaint => new(PaintColors[PaintBase], PaintColors[PaintAccent], PaintPattern, PaintTexture,
+    public Paint CurrentPaint => PaintLamp != LampShape.None
+        ? Paint.Lit(PaintLamp, LightSettings.Make(PaintColors[PaintBase], PaintLampAnim, 0.5f, 0, PaintColors[PaintAccent]))
+        : new(PaintColors[PaintBase], PaintColors[PaintAccent], PaintPattern, PaintTexture,
         Stencil < 0 ? (byte)0 : (byte)('0' + Stencil), (byte)Grime);
 
     public override void _Ready()
@@ -161,6 +166,11 @@ public partial class BuildController : Node
             case Key.Y when Mode == Tool.Build: Turn(2, shift); break;
             case Key.R when Mode == Tool.Paint:
                 PaintTexture = (FaceTexture)(((int)PaintTexture + 1) % 4);
+                Sfx.PlayUi("click");
+                break;
+            case Key.L when Mode == Tool.Paint:
+                if (shift) PaintLampAnim = (LightAnim)(((int)PaintLampAnim + 1) % 5);
+                else PaintLamp = (LampShape)(((int)PaintLamp + 1) % 5);
                 Sfx.PlayUi("click");
                 break;
             case Key.X: ToggleSymmetry(0); break;
@@ -702,6 +712,8 @@ public partial class BuildController : Node
         PaintBase = Nearest(p.Base);
         PaintAccent = Nearest(p.Accent);
         PaintPattern = p.Pattern;
+        PaintLamp = p.IsLamp ? p.Shape : LampShape.None;
+        if (p.IsLamp) PaintLampAnim = p.Lamp.Value.Anim;
         PaintTexture = p.Texture;
         Stencil = p.Stencil == 0 ? -1 : p.Stencil - '0';
         Grime = p.Grime;

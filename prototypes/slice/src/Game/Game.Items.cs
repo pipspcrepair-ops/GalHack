@@ -31,6 +31,9 @@ public sealed class OpenContainer
 
 public partial class Game
 {
+    /// <summary>The light block the CORE tab is styling (Shift+E on it), or null for every light.</summary>
+    public Int3? LightEdit;
+
     /// <summary>The container open beside your bag in the inventory view (E on it), or null.</summary>
     public OpenContainer Opened { get; private set; }
 
@@ -104,6 +107,12 @@ public partial class Game
                 Say("F to take the command chair", Tones.Text);
                 return;
             }
+            if (type.IsLight && Godot.Input.IsKeyPressed(Godot.Key.Shift))
+            {
+                LightEdit = look.Cell; // Shift+E: style this one light on the CORE tab
+                Menu.OpenCore(v, 0);
+                return;
+            }
             if (type.IsLight && v.ToggleLight(look.Cell))
             {
                 Say(v.Structure.Get(look.Cell).Off ? "Light off" : "Light on", Tones.Text);
@@ -141,7 +150,7 @@ public partial class Game
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
             if (type.IsCommandChair) return "F  Take the command chair";
-            if (type.IsLight) return b.Off ? "E  Switch the light on" : "E  Switch the light off";
+            if (type.IsLight) return (b.Off ? "E  Switch the light on" : "E  Switch the light off") + "   ·   Shift+E  Colour and animation";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";

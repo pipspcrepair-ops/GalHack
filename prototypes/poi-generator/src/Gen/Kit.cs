@@ -158,6 +158,8 @@ public sealed class Kit
     public string Name = "";
     public Faction Faction;
     public Rgb Light = new(255, 220, 170);
+    /// <summary>The mood this kit's lights keep (warm, dying, hostile, cold, sealed), or empty to leave them as built. See PoiLights.</summary>
+    public string Mood = "";
     public List<PaletteEntry> Palette = new();
     public Dictionary<char, short> Symbols = new();
     public List<ModuleTemplate> Modules = new();
@@ -276,6 +278,7 @@ public static class KitParser
                 case "name": kit.Name = string.Join(' ', parts.Skip(1)); break;
                 case "faction": kit.Faction = ParseEnum<Faction>(parts[1], Error); break;
                 case "light": kit.Light = Rgb.Parse(parts[1]); break;
+                case "mood": kit.Mood = parts[1]; break;
                 case "palette": inPalette = true; break;
                 case "panels":
                     kit.PanelWidth = int.Parse(parts[1], CultureInfo.InvariantCulture);

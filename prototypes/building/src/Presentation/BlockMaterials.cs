@@ -18,6 +18,9 @@ public static class BlockMaterials
     static ShaderMaterial _opaque, _glass;
 
     public static ShaderMaterial Opaque => _opaque ??= new ShaderMaterial { Shader = new Shader { Code = OpaqueCode() } };
+    /// <summary>Seconds on the shader's TIME clock (it wraps each hour), so a lamp's real light stays in step with its glow.</summary>
+    public static double LampClock => (Godot.Time.GetTicksMsec() / 1000.0) % 3600.0;
+
     public static ShaderMaterial Glass => _glass ??= new ShaderMaterial { Shader = new Shader { Code = GlassCode } };
 
     /// <summary>A translucent hologram for the ghost preview, tinted per use. Fill 0 draws only the edges.</summary>
@@ -64,6 +67,7 @@ public static class BlockMaterials
     const string Common = @"
 vec3 to_linear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 unpack_rgb(int c) { return vec3(float((c >> 16) & 255), float((c >> 8) & 255), float(c & 255)) / 255.0; }
+float lamp_hash(float p) { return fract(sin(p * 127.1) * 43758.5453); }
 float aastep(float edge, float x) { float w = max(fwidth(x) * 0.7, 1e-4); return smoothstep(edge - w, edge + w, x); }
 float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float noise3(vec3 x) {
@@ -221,6 +225,10 @@ void fragment() {
     int painted = (flags >> 16) & 1;
     int wear = (flags >> 17) & 3;
     bool holed = ((flags >> 19) & 1) == 1;
+    int lamp = (flags >> 20) & 7;
+    bool lampPaint = glow == 1 && painted == 1;
+    int lampShape = pattern;
+    if (lampPaint) { pattern = 0; stencil = 0; }
 
     vec3 base = COLOR.rgb;
     vec3 accent = unpack_rgb(accent_rgb);
@@ -261,6 +269,14 @@ void fragment() {
         shade *= mix(0.5, 1.0, aastep(0.022, edge));
     }
     col *= shade;
+    float gm = 1.0;
+    if (lampPaint) {
+        // Glowing paint: the whole face, a strip across it, an inset panel or a border; the rest is dark housing.
+        if (lampShape == 2) gm = aastep(0.4, f.y) * (1.0 - aastep(0.6, f.y));
+        else if (lampShape == 3) gm = aastep(0.18, f.x) * (1.0 - aastep(0.82, f.x)) * aastep(0.18, f.y) * (1.0 - aastep(0.82, f.y));
+        else if (lampShape == 4) gm = (1.0 - aastep(0.14, edge)) * aastep(0.05, edge);
+        col = mix(vec3(0.012), col * 0.4, gm);
+    }
 
     // Grime: blotches and streaks that gather low on each block.
     if (grime > 0) {
@@ -287,8 +303,21 @@ void fragment() {
     ROUGHNESS = mix(painted == 1 ? 0.6 : mix(0.72, 0.38, float(metal) / 3.0), 0.95, grit);
     METALLIC = (painted == 1 ? 0.04 : float(metal) * 0.17) * (1.0 - grit);
     if (glow == 1) {
-        emission += to_linear(base) * 3.2;
-        ALBEDO = col * 0.4;
+        vec3 lit = base;
+        float k = 1.0;
+        if (lamp > 0) {
+            // A lamp that moves: the same formulas as LightSettings.Intensity and Blend, on the shared TIME.
+            float x = TIME * float((accent_rgb >> 12) & 31) / 8.0 + float((accent_rgb >> 17) & 127) / 128.0;
+            if (lamp == 1) k = 0.12 + 0.88 * (0.5 + 0.5 * sin(6.2831853 * x));
+            else if (lamp == 2) {
+                float v = lamp_hash(floor(x * 7.0)) * 0.6 + lamp_hash(floor(x * 3.1) + 31.0) * 0.4;
+                k = v < 0.28 ? 0.06 : 0.45 + 0.55 * v;
+            }
+            else if (lamp == 3) k = fract(x * 2.0) < 0.14 ? 1.0 : 0.03;
+            else if (lamp == 4) lit = mix(base, vec3(float((accent_rgb >> 8) & 15), float((accent_rgb >> 4) & 15), float(accent_rgb & 15)) / 15.0, 0.5 + 0.5 * sin(6.2831853 * x));
+        }
+        emission += to_linear(lit) * 3.2 * k * gm;
+        ALBEDO = lampPaint ? col : col * 0.4;
     }
     EMISSION = emission;
     AO = 1.0 - v_dark;

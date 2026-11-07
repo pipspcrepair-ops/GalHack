@@ -132,6 +132,7 @@ public partial class Hud : CanvasLayer
             string stencil = p.Stencil == 0 ? "none" : ((char)p.Stencil).ToString();
             _tool.Text = $"PAINT SPRAYER   {BuildController.PaintColorNames[Build.PaintBase].ToUpperInvariant()}" +
                          $"   ·   {p.Pattern.ToString().ToLowerInvariant()} in {BuildController.PaintColorNames[Build.PaintAccent].ToLowerInvariant()}" +
+                         (p.IsLamp ? $"   ·   GLOWING {p.Shape.ToString().ToUpperInvariant()} {p.Lamp.Value.Anim.ToString().ToUpperInvariant()}  (L shape, Shift+L mode)" : "") +
                          $"   ·   stencil {stencil}   ·   {p.Texture.ToString().ToLowerInvariant()}   ·   grime {p.Grime}{sym}";
         }
     }

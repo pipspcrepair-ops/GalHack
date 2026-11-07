@@ -11,6 +11,7 @@
     <!-- The terrain stamp planet-surface seats places with: the tests check that it carves
          every underground room out of the ground and leaves solid walls around them. -->
     <Compile Include="..\..\shared\Terrain\TerrainStamp.cs" />
+    <Compile Include="..\building\src\Structures\LightSettings.cs" />
     <!-- The decorations library (alien rooms are dressed from it) and the item catalogue it reads its pieces from. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />

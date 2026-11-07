@@ -142,6 +142,7 @@ public sealed class Structure
         }
 
         ref Block cell = ref chunk.Cells[Chunk.Index(p.X, p.Y, p.Z)];
+        if (_lights.Count > 0 && (block.IsEmpty || !Catalogue.Types[block.Type].IsLight)) _lights.Remove(p);
         bool was = !cell.IsEmpty, now = !block.IsEmpty;
         if (was && Core == p) Core = null;
         cell = block;
@@ -158,6 +159,24 @@ public sealed class Structure
     }
 
     public void Clear(Int3 p) => Set(p, default);
+
+    readonly Dictionary<Int3, LightSettings> _lights = new();
+
+    /// <summary>The lights given a colour or animation (the rest glow their block's own colour, steady).</summary>
+    public IReadOnlyDictionary<Int3, LightSettings> LightStyles => _lights;
+
+    /// <summary>A light block's colour and animation: what was set, else its type's glow colour, steady.</summary>
+    public LightSettings LightAt(Int3 p) =>
+        _lights.TryGetValue(p, out LightSettings s) ? s : TryGet(p, out Block b) ? LightSettings.Steady(Catalogue.Types[b.Type].GlowColor) : LightSettings.Steady(0xffffff);
+
+    /// <summary>Sets a light block's colour and animation. False if the cell is not a light.</summary>
+    public bool SetLight(Int3 p, LightSettings settings)
+    {
+        if (!TryGet(p, out Block b) || !Catalogue.Types[b.Type].IsLight) return false;
+        if (settings == LightSettings.Steady(Catalogue.Types[b.Type].GlowColor)) _lights.Remove(p); else _lights[p] = settings;
+        MarkDirty(p);
+        return true;
+    }
 
     /// <summary>
     /// Changes only a block's hit points: damage that doesn't destroy it, or a repair. Nothing
