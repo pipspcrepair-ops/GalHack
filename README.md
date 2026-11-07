@@ -2,6 +2,12 @@
 
 # GalHack
 
+I love and hate Empyrion. Every time I play it co-op with friends, the game lets us down in some way with a game-ruining bug, including deleting our stuff. When it's good, it's amazing. When it sucks, it's the worst.
+
+So, thanks to Ralph, I now get to have Empyrion@Home, which has the things I like about Empyrion +more! And the things I don't like aren't even in this game at all!
+
+Can Ralph do it? Only time will tell. This software is free, you can do whatever you want with it, I don't own it, it's vibe slop.
+
 A first-person space survival sandbox for one group of friends: wake from cryosleep in a buried bunker on a ruined world long after the collapse, build your way up from a hover rover to a capital ship, and explore a procedurally generated galaxy full of strange worlds, ruins and wrecks.
 
 GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.md).
