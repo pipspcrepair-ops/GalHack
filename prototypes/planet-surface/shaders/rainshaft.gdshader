@@ -44,7 +44,7 @@ float density(vec3 p) {
 	float curtain = vnoise(vec3(q * (5.5 / reach), h * 1.3 + 3.0));
 	curtain = smoothstep(0.28, 0.75, curtain);
 	float body = 1.0 - smoothstep(0.15, 1.0, r + (edge - 0.5) * 0.95);
-	float fade = smoothstep(1.0, 0.8, h) * smoothstep(0.0, 0.07, h) * (0.55 + 0.45 * h);
+	float fade = (1.0 - smoothstep(0.6, 1.0, h)) * smoothstep(0.0, 0.07, h) * (0.55 + 0.45 * h);
 	return body * (0.25 + 0.75 * curtain) * fade;
 }
 

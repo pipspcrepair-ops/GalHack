@@ -173,6 +173,13 @@ public partial class Staging
             _game.Zone.Weather.StrikeAt(_game.Zone.GroundAt(cell.Position.X - toward.Z * cell.Radius * 0.3f, cell.Position.Z + toward.X * cell.Radius * 0.3f));
             foreach (int x in _drive.Wait(1)) yield return x;
         }
+        if (Num("compare", 0) != 0)
+        {
+            foreach (int x in Shot(_args["out"].Replace(".png", "-with.png"))) yield return x;
+            _game.Zone.Weather.ShaftsHidden = true;
+            foreach (int x in _drive.Wait(30)) yield return x;
+            foreach (int x in Shot(_args["out"].Replace(".png", "-without.png"))) yield return x;
+        }
         GD.Print($"storm cell: radius {cell.Radius:F0} m, {sky.Cells.Count} in the sky, rain here {_game.Zone.Weather.RainHere:F2} of {sky.Current.Rain:F2}, under it {sky.RainAt(cell.Position):F2}");
     }
 

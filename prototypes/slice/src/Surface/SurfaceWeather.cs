@@ -79,6 +79,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     /// <summary>The storm towers this frame, and their rain shafts.</summary>
     readonly Vector4[] _towers = new Vector4[MostTowers];
+    /// <summary>For tests: draw the towers without their rain shafts.</summary>
+    public bool ShaftsHidden;
     readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
     const int MostTowers = 4;
     float _flicker = 4f;
@@ -135,8 +137,9 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             Vector2 wind2 = Sim.Current.Wind;
             Vector2 lean = wind2 * 6f; if (lean.Length() > height * 0.3f) lean = lean.Normalized() * height * 0.3f;
             float bound = reach * 1.9f + lean.Length();
-            node.Visible = true;
-            node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(bound * 1.2f, height, bound * 1.2f)), new Vector3(at.X + lean.X * 0.5f, baseY + height / 2f, at.Z + lean.Y * 0.5f));
+            node.Visible = !ShaftsHidden;
+            node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(bound * 1.2f, height * 1.3f, bound * 1.2f)), new Vector3(at.X + lean.X * 0.5f, baseY + height * 0.6f, at.Z + lean.Y * 0.5f));
+            // The mesh stands taller than the volume, so a view ray can never skirt its rim and still cross the veil.
             draw.SetShaderParameter("axis_base", new Vector3(at.X, baseY, at.Z));
             draw.SetShaderParameter("shaft_height", height);
             draw.SetShaderParameter("reach", reach);
