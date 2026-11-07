@@ -155,8 +155,11 @@ public partial class OrbitZone : SurfaceZone
         AddChild(_sphere);
         Space = new SpaceSky { Name = "Sky", Bodies = _sphere };
         AddChild(Space);
+        // Under a plain node, so a parked orbit's hidden zone doesn't hide it: it is the far land from the surface too.
+        var apart = new Node { Name = "Apart" };
+        AddChild(apart);
         Globe = new Globe { Name = "Globe" };
-        _sphere.AddChild(Globe);
+        apart.AddChild(Globe);
         _building = Build().GetEnumerator();
     }
 
@@ -184,7 +187,7 @@ public partial class OrbitZone : SurfaceZone
         var (paint, wrecks) = _preparing.Result;
         Space.Setup(paint.Look, Below.Sky, Rules.Space);
         yield return 0;
-        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe)) yield return x;
+        foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
         foreach (DerelictPlan p in wrecks)
         {
             yield return 0;
@@ -211,7 +214,6 @@ public partial class OrbitZone : SurfaceZone
         Vector3 sun = N.Vector3.Transform(toSun.ToNumerics(), N.Quaternion.Conjugate(Turn)).ToGodot().Normalized();
         Space.Place(sun, N.Quaternion.Conjugate(Turn).ToBasis());
         Space.Align(Turn.ToBasis());
-        Globe.SetSun(sun, toSun.Normalized());
     }
 
     bool _placed;
@@ -248,11 +250,8 @@ public partial class OrbitZone : SurfaceZone
         Turn = turn;
         Shift = shift;
         _sphere.Transform = new Transform3D(turn.ToBasis(), shift.ToGodot());
-        if (_placed)
-        {
-            Space.Align(turn.ToBasis());
-            Globe.SetSun(Space.ToSun, N.Vector3.Transform(Space.ToSun.ToNumerics(), turn).ToGodot());
-        }
+        Globe.PlaceRing(_sphere.Transform);
+        if (_placed) Space.Align(turn.ToBasis());
     }
 
     public override void _Process(double delta) { }

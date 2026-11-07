@@ -47,8 +47,8 @@ public sealed record Crossing(bool Up, double MapX, double MapZ, double HeadingD
 /// the surface's frame. Landing: you come down where you crossed into the atmosphere; to land
 /// somewhere, fly over it in orbit first (the design's rule).</para>
 ///
-/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: over an overlap band above the ceiling
-/// the surface stays on screen, and turns into the globe and space as you climb.</para>
+/// <para><b>The seam</b> is in <c>Spaceflight.Seam.cs</c>: the air thickens to the cap, the land hands over behind it,
+/// and it thins to black space with the world curving away below.</para>
 ///
 /// <para><b>In space</b> the suit breathes from its own oxygen (in vacuum the helmet seals and the
 /// air runs down; a cockpit refills it), the survival tool's gather mode salvages a wreck's blocks
@@ -102,6 +102,15 @@ public partial class Spaceflight : Node
 
     float Ceiling => Game.Surface.Physics.Zone.Ceiling;
 
+    /// <summary>The world's highest ground, m.</summary>
+    public float Highest { get; private set; }
+
+    /// <summary>The highest anything you were in stood on the surface, m: the cap holds it (tests read this).</summary>
+    public float HighestInAir { get; private set; }
+
+    /// <summary>Ticks spent waiting at the cap for the orbit to be ready (tests read this).</summary>
+    public int TicksHeldAtCap { get; private set; }
+
     /// <summary>
     /// The planet is made: orbit starts just over its cloud tops. This is the physics' one altitude
     /// switch, so weight, the air and the handling model's space rules end where the crossing is.
@@ -109,11 +118,11 @@ public partial class Spaceflight : Node
     internal void PlanetBuilt()
     {
         SurfaceZone s = Game.Surface;
-        float highest = s.Planet.Map.Elevation.Max();
-        float altitude = Rules.OrbitAltitude(s.Planet.Sky.Air.ToString(), highest);
+        Highest = s.Planet.Map.Elevation.Max();
+        float altitude = Rules.OrbitAltitude(s.Planet.Sky.Air.ToString());
         s.Physics.Zone.Ceiling = altitude;
         s.Ground.Ceiling = altitude;
-        GD.Print($"orbit starts at {altitude:F0} m on this world ({s.Planet.Sky.Air} air, highest ground {highest:F0} m)");
+        GD.Print($"orbit starts at {altitude:F0} m on this world ({s.Planet.Sky.Air} air, highest ground {Highest:F0} m)");
     }
 
     /// <summary>What crosses with you: the vessel you sit in or ride in its cabin (null: you alone).</summary>
@@ -137,7 +146,8 @@ public partial class Spaceflight : Node
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
         if (_pending != null)
         {
-            if (!Ledger.Committing) FinishCrossing();
+            if (Ledger.Committing) HoldAtCap(Carrier());
+            else FinishCrossing();
         }
         else if (g.InOrbit) WatchOrbit();
         else WatchSurface();
@@ -209,7 +219,27 @@ public partial class Spaceflight : Node
         Vessel carrier = Carrier();
         float y = carrier != null ? carrier.Body.Position.Y : Game.Survivor.WorldFeet.Y;
         if (y > Ceiling * Rules.Crossing.PreloadAt) StartOrbit();
-        if (y > Ceiling && Orbit?.Ready == true) BeginCrossing(carrier, up: true);
+        if (y < Ceiling)
+        {
+            HighestInAir = MathF.Max(HighestInAir, y);
+            return;
+        }
+        // The cap: nothing stands in the atmosphere over it, ever. It crosses here.
+        HoldAtCap(carrier);
+        if (Orbit?.Ready == true) BeginCrossing(carrier, up: true);
+        else TicksHeldAtCap++;
+    }
+
+    /// <summary>What you are in stands at the cap, moving on: it keeps its speed for the crossing, which carries it on over.</summary>
+    void HoldAtCap(Vessel carrier)
+    {
+        Body b = carrier?.Body ?? Game.Survivor.Body;
+        if (b.Position.Y > Ceiling)
+        {
+            b.Position = b.Position with { Y = Ceiling };
+            (carrier?.Binding as BodyBinding ?? Game.Survivor.Binding).Teleport();
+        }
+        HighestInAir = MathF.Max(HighestInAir, b.Position.Y);
     }
 
     void Ascend(Vessel carrier)

@@ -367,12 +367,14 @@ vec3 star_shell(vec3 d, float shell, float chance, float radius) {
 	return col;
 }
 
+// Space behind the sky; the stars only come out once the sky has gone dark enough to show them.
 vec3 space_backdrop(vec3 d) {
 	vec3 col = vec3(0.012, 0.012, 0.03);
 	float n = fbm3(d * 2.2 + vec3(fbm3(d * 3.0) * 1.2));
 	float neb = smoothstep(0.42, 0.85, n);
 	col += space_nebula * neb * 0.55 + space_nebula_b * smoothstep(0.6, 0.95, fbm3(d * 4.5 + 3.0)) * neb * 0.35;
-	col += star_shell(d, 150.0, 0.16, 0.27) * 1.6;
+	float dark = smoothstep(0.78, 1.0, space_fade);
+	col += star_shell(d, 150.0, 0.16, 0.27) * 1.6 * dark * dark;
 	float s = max(dot(d, space_sun), 0.0);
 	col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
 	return col;
@@ -426,7 +428,8 @@ void sky() {
 		if (debug_view == 3) col = night_sky(dir, sun) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
 		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
-		if (space_fade > 0.0) col = mix(col, space_backdrop(space_turn * dir), space_fade);
+		// The air under the level goes first: nothing is left there to light but the world's own rim.
+		if (space_fade > 0.0) col = mix(col, space_backdrop(space_turn * dir), mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y)));
 		COLOR = col;
 	}
 }

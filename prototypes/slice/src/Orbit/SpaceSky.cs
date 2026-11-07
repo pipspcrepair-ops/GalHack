@@ -17,7 +17,7 @@ namespace Slice.Orbit;
 /// the sun is two lights: one lights the scene from the sun's direction in the world, and the
 /// other, never lighting anything, tells the sky's shader where the sun stands in the sky.
 ///
-/// Its environment is only active over the top of the overlap band; below that the surface's own
+/// Its environment is only active over the top of the band; below that the surface's own
 /// sky is what you see. The tone mapping and glow are the surface's, so nothing shifts when one
 /// sky gives way to the other.
 /// </summary>

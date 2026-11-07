@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using Slice.Orbit;
 using N = System.Numerics;
@@ -26,6 +27,8 @@ public partial class GlobeTest : Node
         const double width = 16000, height = 8000;
         foreach (var (ok, text) in GlobeChecks.Run(width, height)) Check(ok, text);
         SphereMeshAgrees(width, height);
+        SheetLooksUpTheMap(width, height);
+        TheCap();
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
@@ -63,6 +66,37 @@ public partial class GlobeTest : Node
         Check(quarter.X > 0.99f, $"globe: a quarter of the map east of the seam, on the equator, is the globe's +X side ({quarter.X:F3}, {quarter.Y:F3}, {quarter.Z:F3})");
         N.Vector3 north = globe.Direction(width / 3, 0);
         Check(north.Y > 0.999f, $"globe: the map's top row is the north pole ({north.Y:F4} up)");
+    }
+
+    /// <summary>The sheet's shader finds the map point of a direction by this same sum: it must be the mapping's own inverse.</summary>
+    void SheetLooksUpTheMap(double width, double height)
+    {
+        var globe = new GlobeMap(width, height, width / Math.Tau);
+        var rng = new Random();
+        double worst = 0;
+        for (int i = 0; i < 400; i++)
+        {
+            double x = rng.NextDouble() * width, z = (0.01 + 0.98 * rng.NextDouble()) * height;
+            N.Vector3 d = globe.Direction(x, z);
+            double u = Math.Atan2(d.X, d.Z) / Math.Tau, v = Math.Acos(Math.Clamp(d.Y, -1f, 1f)) / Math.PI;
+            double dx = Math.Abs(u - Math.Round(u - x / width) - x / width) * width;
+            worst = Math.Max(worst, Math.Max(dx, Math.Abs(v * height - z)));
+        }
+        Check(worst < 3, $"globe: the sheet's lookup of a direction is the map point it came from, within {worst:F2} m at 400 random places");
+    }
+
+    /// <summary>The cap: orbit starts at 1,060 m on every world, and the land stands under it on fresh worlds of every type, tall or not.</summary>
+    void TheCap()
+    {
+        OrbitRules rules = OrbitRules.Shared;
+        foreach (string air in Enum.GetNames<PlanetSurface.Skies.AirKind>())
+            Check(rules.OrbitAltitude(air) == 1060f, $"globe: orbit starts at 1,060 m under {air} air ({rules.OrbitAltitude(air):F0} m), whatever the world's peaks");
+        var worlds = new Slice.Game.WorldChoice[20];
+        for (int i = 0; i < worlds.Length; i++) worlds[i] = Slice.Game.WorldChoice.Fresh(Slice.Game.WorldChoice.Types[i % Slice.Game.WorldChoice.Types.Count].Key);
+        var highest = new float[worlds.Length];
+        System.Threading.Tasks.Parallel.For(0, worlds.Length, i => highest[i] = Planets.Gen.PlanetGenerator.Generate(worlds[i].Spec()).Elevation.Max());
+        int tallest = Array.IndexOf(highest, highest.Max());
+        Check(highest.Max() < 1060f - 60f, $"globe: the land on {worlds.Length} fresh worlds stands well under the cap: the tallest peak {highest[tallest]:F0} m ({worlds[tallest]}), the average {highest.Average():F0} m");
     }
 
     void Check(bool ok, string what)

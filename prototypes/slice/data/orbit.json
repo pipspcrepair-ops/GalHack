@@ -9,41 +9,62 @@
     // How high the rim of air drawn round the globe reaches, as a share of its radius. It thins
     // away to nothing by there, and has to stay under the orbit's lowest height.
     "atmosphere": 0.15,
-    "segments": 192,
-    "rings": 96,
+    // The sheet's polar grid: bearings and rings, spread closest under you.
+    "segments": 256,
+    "rings": 160,
     // The colour map's width in pixels (planet-generator's ColorMap; half as tall) and the clouds'.
     "textureWidth": 2048,
     "cloudWidth": 1024,
     // Clouds sit this share of the radius over the ground, at this share of the generator's
     // cover (its cloud map is a stormy day's; thinned, the land under it reads from orbit).
     "cloudHeight": 0.012,
+    // The share of the map's relief the true globe draws (it is a small world: at full height its
+    // peaks would stand a quarter of its radius high). All of it at the cap, thinning up the climb.
+    "reliefFar": 0.12,
     // The globe is painted once, from the sky's clouds as they stand, but a clear spell under you
     // shouldn't leave the whole world bare: its share of cloud is at least this.
     "cloudCoverAtLeast": 0.38,
     "cloudOpacity": 0.55
   },
 
-  // Crossing between the surface and orbit is seamless: nothing shows. Orbit is made ahead of a
-  // climb, the surface streamed in ahead of a descent, position, heading and velocity carried
-  // straight across, and just over the edge the surface is still what you see (the overlap band):
-  // a flat map and a small round globe can't match, so over the band one becomes the other.
+  // Crossing between the surface and orbit is seamless: no loading, position, heading and velocity
+  // carried straight across. What you see is set from your height alone, the same both ways: the
+  // air thickens to the cap in the world's own colours, the land hands over to the globe's sheet
+  // behind it, and it thins away to black space with the world curving away below.
   "crossing": {
-    // Where orbit starts on a world, m: low, on Empyrion's scale, just over the clouds (their tops
-    // are about 1,000 m), by the kind of air. It also stands clear of the world's highest ground.
+    // The cap, m: orbit starts here on every world, low, on Empyrion's scale, just over the clouds
+    // (their tops are about 1,000 m). The design keeps the land under it (peaks to about 900 m).
+    // Nothing stands in the atmosphere over it.
     "altitude": { "default": 1060 },
-    "clearOfGround": 150,
-    // Orbit starts being made once a climb passes this share of that height.
-    "preloadAt": 0.5,
-    // The gap between the two edges, m: a climb crosses at the ceiling and a descent this far
+    // Orbit starts being made once a climb passes this share of the cap, so it is ready long before.
+    "preloadAt": 0.2,
+    // The gap between the two edges, m: a climb crosses at the cap and a descent this far
     // under it, so a crossing never bounces straight back.
     "gap": 80,
-    // The air fades away with height from here (m): the sky darkens into space's own backdrop,
-    // the haze thins and the stars come out, over this and the overlap band.
+    // The air fades away with height from here (m): the sky darkens into space's own backdrop and
+    // the wind dies away, over this and the band.
     "fadeFrom": 700,
-    // The overlap band, m over the crossing: at its foot the surface fills the view; by its top
-    // it has faded out and the globe and space are all there is.
+    // The band, m over the cap: the surface's sky turning into space's, the star's light taking over.
+    // The land is already gone: at its foot the sheet is all the ground there is.
     "band": 1000,
-    // A descent starts streaming the ground under it this many bands over the ceiling.
+    // From this height (m) the sheet is the far land past the surface's own, in every direction.
+    "farLandFrom": 220,
+    // The shroud: the air round you, from this height up to the cap (m), holding a little over it
+    // and thinning away over this many metres. Its thickness is this share at the most, times the
+    // share the world's air allows.
+    "shroudFrom": 760,
+    "shroudHolds": 30,
+    "shroudThins": 620,
+    "shroudThickness": 0.9,
+    // The swap, m: the sheet comes over the land from here up to the cap, behind the shroud.
+    "swapFrom": 960,
+    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening with height to the
+    // true globe at this height, m. The map wraps from the flat map onto the sphere over this many
+    // metres above the cap.
+    "flatCurve": 300000,
+    "trueGlobeAt": 7000,
+    "mapWrapsBy": 2400,
+    // A descent starts streaming the ground under it this many bands over the cap.
     "streamAhead": 1.5
   },
 
@@ -51,7 +72,7 @@
     // The POI generator's start-system sites (poi-generator/data/orbit.txt, OrbitPlacement) are
     // placed by its bearing and its distance, brought in close: its "near" band (200 to 2,000 km
     // from the world) maps to these metres above the crossing, and its "orbit" band (1,000 to
-    // 30,000 km) to the next, all clear of the overlap band. Moon, belt and deep sites belong to
+    // 30,000 km) to the next, all clear of the band. Moon, belt and deep sites belong to
     // other zones.
     "near": [ 1300, 2600 ],
     "orbit": [ 2600, 5400 ],

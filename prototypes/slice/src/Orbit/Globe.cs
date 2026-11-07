@@ -19,6 +19,9 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
+    /// <summary>The ground's height over the sea, m, on the map's own grid: the sheet's relief.</summary>
+    public Image Relief { get; private init; }
+
     const float SeamBlend = 0.08f;
 
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
@@ -47,7 +50,18 @@ public sealed class GlobePaint
             Albedo = Mipmapped(colors.Width, colors.Height, Image.Format.Rgba8, colors.Albedo),
             Glow = Mipmapped(colors.Width, colors.Height, Image.Format.Rgb8, colors.Glow),
             Clouds = Mipmapped(rules.CloudWidth, cloudHeight, Image.Format.Rgba8, clouds),
+            Relief = ReliefOf(map),
         };
+    }
+
+    static Image ReliefOf(WorldMap map)
+    {
+        var bytes = new byte[map.Count * 4];
+        for (int k = 0; k < map.Count; k++) BitConverter.TryWriteBytes(bytes.AsSpan(k * 4), Math.Max(map.Elevation[k], 0f));
+        Image image = Image.CreateFromData(map.Width, map.Height, false, Image.Format.Rf, bytes);
+        image.Convert(Image.Format.Rh); // half floats filter on every card
+        image.GenerateMipmaps();
+        return image;
     }
 
     static Image Mipmapped(int width, int height, Image.Format format, byte[] data)
@@ -58,174 +72,437 @@ public sealed class GlobePaint
     }
 }
 
+/// <summary>How the world below stands for one drawn frame, all of it worked out from your height.</summary>
+public readonly record struct WorldView
+{
+    /// <summary>The drawing frame at the point under you, in the world.</summary>
+    public Vector3 Up { get; init; }
+    public Vector3 East { get; init; }
+    public Vector3 South { get; init; }
+    /// <summary>The same place's frame on the globe, for the map lookup.</summary>
+    public Vector3 MapUp { get; init; }
+    public Vector3 MapEast { get; init; }
+    public Vector3 MapSouth { get; init; }
+    /// <summary>The map point under you, m.</summary>
+    public Vector2 Nadir { get; init; }
+    /// <summary>The eye's height over the sheet, m.</summary>
+    public float Height { get; init; }
+    /// <summary>The sheet's curvature, 1 / m.</summary>
+    public float Bend { get; init; }
+    /// <summary>1: the map laid out flat, as the surface has it. 0: wrapped on the sphere.</summary>
+    public float Flat { get; init; }
+    /// <summary>1: past <see cref="Local"/> m from under you the map is the sphere's whatever <see cref="Flat"/> is (a pole has no flat map round it). 0: flat out to the rim of the sheet.</summary>
+    public float Taper { get; init; }
+    public float Local { get; init; }
+    /// <summary>Share of the map's relief drawn.</summary>
+    public float Relief { get; init; }
+    /// <summary>The height of the cloud layer, m.</summary>
+    public float CloudLift { get; init; }
+    /// <summary>The sheet over the land that's still drawn (0 to 1).</summary>
+    public float OverLand { get; init; }
+    /// <summary>The whole sheet (0 to 1).</summary>
+    public float Whole { get; init; }
+    /// <summary>The nearest and farthest the sheet is drawn along each eye ray, m; 0: where it really is.</summary>
+    public float Near { get; init; }
+    public float Far { get; init; }
+    public Vector3 ToSun { get; init; }
+    public float FogDensity { get; init; }
+    public Color FogColor { get; init; }
+    /// <summary>The rim of air seen from outside, 0 to 1.</summary>
+    public float Rim { get; init; }
+}
+
 /// <summary>
-/// The world below, seen from its orbit: planet-generator's globe (its planet and ring shaders, as
-/// its OrbitView draws them, with air of its own) at the orbit zone's scale, centred on the zone's frame, so
-/// a direction from the centre is always the same place on the map. It has no collider: a descent
-/// crosses into the atmosphere well above the ground it shows.
+/// The world below, drawn: one sheet that is the far land past the surface's own, the land itself
+/// at the crossing, and the globe from orbit. The map stays 16 km round; what changes is how it
+/// is laid out on the eye's view, so at the crossing it is exactly the flat map you were flying
+/// over, and it curves away smoothly from there.
 ///
-/// Over the overlap band it fades in over the surface's terrain (<see cref="Fade"/>). The ground
-/// and clouds use planet-generator's shaders with two additions: a fade, and a pull toward the
-/// camera. The surface's terrain stands between you and the globe, so while they overlap the globe
-/// is drawn pulled in along each eye ray to a few hundred metres: the same on screen, in front of
-/// the terrain, still behind your vessel.
+/// It is a polar grid centred under the eye, moved with it. A grid point is a point on the map a
+/// known distance and bearing from the place under you, drawn at that same distance along a sphere
+/// whose curvature grows with height: almost flat at the crossing, the true globe far out. The
+/// height under you is always your height, so the land keeps the size it had. Directions from the
+/// globe's centre stay places on the map (<see cref="GlobeMap"/>): the map lookup follows the great
+/// circle out from the place under you, and low down it eases into the surface's own flat map
+/// (away from the equator the two differ in width).
+///
+/// Nothing it draws touches the game: it has no collider, and every point is drawn somewhere else
+/// along its own eye ray, which changes nothing you see and only sets what it stands in front of
+/// (<see cref="WorldView.Near"/>): behind the surface's land while it is the far field, in front
+/// of it for the swap, and between the wrecks and the moons in space. So its fog is its own too,
+/// from the distance it stands for.
+///
+/// The shroud (<see cref="Shroud"/>) is the air itself thickening round the eye, in the world's
+/// own sky colours: the swap happens behind it, at the crossing.
 /// </summary>
 public partial class Globe : Node3D
 {
-    const string PullVertex = """
-        uniform float pull = 1.0;
-        void vertex() {
-            vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-            world = CAMERA_POSITION_WORLD + (world - CAMERA_POSITION_WORLD) * pull;
-            VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
+    /// <summary>The sheet's geometry and map lookup, shared by the ground and the clouds.</summary>
+    const string SheetCode = """
+        uniform vec3 eye_up = vec3(0.0, 1.0, 0.0);
+        uniform vec3 eye_east = vec3(1.0, 0.0, 0.0);
+        uniform vec3 eye_south = vec3(0.0, 0.0, 1.0);
+        uniform vec3 map_up = vec3(0.0, 1.0, 0.0);
+        uniform vec3 map_east = vec3(1.0, 0.0, 0.0);
+        uniform vec3 map_south = vec3(0.0, 0.0, 1.0);
+        uniform vec2 map_size = vec2(16000.0, 8000.0);
+        uniform vec2 nadir = vec2(0.0);
+        uniform float radius = 2546.0;
+        uniform float height = 1000.0;
+        uniform float bend = 0.0;
+        uniform float flat_map = 1.0;
+        uniform float taper = 0.0;
+        uniform float local = 3000.0;
+        uniform float reach = 20000.0;
+        uniform float near_at = 0.0;
+        uniform float far_at = 0.0;
+        uniform float fog_density = 0.0;
+        uniform vec3 fog_color : source_color = vec3(0.5);
+        uniform float whole = 1.0;
+        uniform float over_land = 1.0;
+        varying vec2 offset;
+        varying float distance;
+
+        vec2 map_uv(vec2 o) {
+            float s = max(length(o), 0.01);
+            float a = s / radius;
+            vec3 d = map_up * cos(a) + (map_east * o.x + map_south * o.y) * sin(a) / s;
+            vec2 globe = vec2(atan(d.x, d.z) / 6.2831853, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927);
+            vec2 flat_uv = (nadir + o) / map_size;
+            vec2 gap = flat_uv - globe;
+            gap -= round(gap);
+            float keep = 1.0 - taper * smoothstep(local * 0.35, local, s);
+            return globe + gap * flat_map * keep;
+        }
+
+        // Metres of the map a grid point stands from the point under you.
+        float arc(float t) { return reach * (exp(6.0 * t) - 1.0) / 402.43; }
+
+        // A point at arc s on bearing t, lifted, as seen from the eye; the sheet's own normal is n.
+        vec3 sheet_point(float s, vec3 t, float lift, out vec3 n) {
+            float x = s * bend;
+            float along = x > 0.0001 ? sin(x) / bend : s;
+            float drop = x > 0.0001 ? (1.0 - cos(x)) / bend : s * x * 0.5;
+            n = t * sin(x) + eye_up * cos(x);
+            return t * along - eye_up * (height + drop) + n * lift;
+        }
+
+        // How far along its own eye ray a point at distance d is drawn.
+        float stand(float d) {
+            if (far_at <= 0.0) return d;
+            return near_at + (far_at - near_at) * d / (d + height);
         }
         """;
 
     const string GroundSource = $$"""
         shader_type spatial;
-        render_mode blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx;
+        render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap, repeat_enable;
-        uniform vec3 sun_dir = vec3(1.0, 0.0, 0.0);
+        uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
         uniform float night_glow = 1.6;
-        uniform float fade = 1.0;
-        {{PullVertex}}
+        uniform float relief = 1.0;
+        {{SheetCode}}
+        varying vec3 round_normal;
+        void vertex() {
+            float s = arc(VERTEX.y);
+            vec3 t = eye_east * VERTEX.x + eye_south * VERTEX.z;
+            offset = VERTEX.xz * s;
+            // The relief at the grid's own spacing there, or it stands up as spikes.
+            float step_m = max(32.0, s * 0.0375);
+            float lod = log2(step_m / 32.0);
+            float e = textureLod(relief_map, map_uv(offset), lod).r * relief;
+            vec3 n;
+            vec3 p = sheet_point(s, t, e, n);
+            // The ground's slope, from the same map.
+            float ex = textureLod(relief_map, map_uv(offset + vec2(step_m, 0.0)), lod).r * relief;
+            float ez = textureLod(relief_map, map_uv(offset + vec2(0.0, step_m)), lod).r * relief;
+            vec3 slope = (eye_east * (ex - e) + eye_south * (ez - e)) / step_m;
+            // Lit as the sheet lies low down, as the sphere it stands for high up: the night side comes in with the curve.
+            float a = s / radius;
+            round_normal = t * sin(a) + eye_up * cos(a);
+            distance = length(p);
+            VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance);
+            NORMAL = normalize(mix(round_normal, n, flat_map) - slope);
+        }
         void fragment() {
-            vec4 a = texture(albedo_map, UV);
+            vec2 uv = map_uv(offset);
+            // The flat map closes to a point at a pole: its colours run together there, or they'd pinch into a pinwheel.
+            float v = fract(uv.y);
+            float pole = 1.0 + 96.0 * (1.0 - flat_map) * smoothstep(0.1, 0.01, min(v, 1.0 - v));
+            vec2 dx = dFdx(offset) / map_size * pole, dy = dFdy(offset) / map_size * pole;
+            vec4 a = textureGrad(albedo_map, uv, dx, dy);
             ALBEDO = a.rgb;
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
-            vec3 n = normalize(mat3(transpose(MODEL_MATRIX)) * (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
-            float night = smoothstep(0.15, -0.25, dot(n, sun_dir));
-            EMISSION = texture(glow_map, UV).rgb * (day_glow + night * night_glow);
-            ALPHA = fade;
+            float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
+            EMISSION = textureGrad(glow_map, uv, dx, dy).rgb * (day_glow + night * night_glow);
+            ALPHA = whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
 
     const string CloudSource = $$"""
         shader_type spatial;
-        render_mode blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled;
+        render_mode world_vertex_coords, blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled, shadows_disabled;
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
-        uniform float fade = 1.0;
-        {{PullVertex}}
+        uniform float cloud_lift = 30.0;
+        {{SheetCode}}
+        void vertex() {
+            float s = arc(VERTEX.y);
+            offset = VERTEX.xz * s;
+            vec3 n;
+            vec3 p = sheet_point(s, eye_east * VERTEX.x + eye_south * VERTEX.z, cloud_lift, n);
+            distance = length(p);
+            // Just nearer along the ray than the ground, whose hills would otherwise poke through it.
+            VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance) * 0.92;
+            NORMAL = n;
+        }
         void fragment() {
-            vec4 c = texture(cloud_map, UV);
+            vec4 c = textureGrad(cloud_map, map_uv(offset), dFdx(offset) / map_size, dFdy(offset) / map_size);
             ALBEDO = c.rgb;
-            ALPHA = c.a * fade;
+            ALPHA = c.a * whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
 
     /// <summary>
-    /// The air seen from outside, worked out from each eye ray rather than the shell's normal (the
-    /// generator's rim reads as a solid band from close to): over the limb the glow thins away with
-    /// the height of the ray's lowest point, and over the disc it thins toward the middle, meeting
-    /// at the ground's edge, so there is no line there and none at the top.
+    /// The air seen from outside, worked out from each eye ray against the sheet's own sphere, so
+    /// it fits whatever the curve is: over the limb the glow thins away with the height of the
+    /// ray's lowest point, over the disc it thins toward the middle, meeting at the ground's edge.
     /// </summary>
     const string AirSource = """
         shader_type spatial;
-        render_mode unshaded, blend_add, depth_draw_never, cull_back;
+        render_mode world_vertex_coords, unshaded, blend_add, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
         uniform vec3 color : source_color;
-        uniform vec3 sun_dir = vec3(1.0, 0.0, 0.0);
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+        uniform vec3 eye_up = vec3(0.0, 1.0, 0.0);
         uniform float strength = 1.0;
         uniform float ground = 1.0;
-        uniform float top = 1.1;
+        uniform float thickness = 0.1;
+        uniform float eye_height = 1.0;
+        uniform float shell = 15000.0;
+        varying vec3 ray;
+        void vertex() {
+            ray = VERTEX;
+            VERTEX = CAMERA_POSITION_WORLD + VERTEX * shell;
+        }
         void fragment() {
-            vec3 centre = MODEL_MATRIX[3].xyz;
-            vec3 point = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-            vec3 ray = normalize(point - CAMERA_POSITION_WORLD);
-            vec3 eye = CAMERA_POSITION_WORLD - centre;
-            float lowest = length(eye + ray * max(-dot(eye, ray), 0.0));
-            float h = (lowest - ground) / (top - ground);
-            float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : pow(lowest / ground, 10.0);
-            float day = smoothstep(-0.3, 0.35, dot(normalize(point - centre), sun_dir));
+            vec3 r = normalize(ray);
+            vec3 eye = eye_up * (ground + eye_height);
+            vec3 low = eye + r * max(-dot(eye, r), 0.0);
+            float lowest = length(low);
+            float h = (lowest - ground) / thickness;
+            // Past the limb it thins away with height; over the ground, with how steeply the ray goes down through the air.
+            float x = lowest / ground;
+            float graze = sqrt(2.0 * thickness / ground) / max(sqrt(max(1.0 - x * x, 0.0)), 0.0001);
+            float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : min(graze * graze, 1.0) * x * x;
+            float day = smoothstep(-0.3, 0.35, dot(low / lowest, sun_dir));
             ALBEDO = color * thick * day * strength;
         }
         """;
 
-    /// <summary>How far off the globe's nearest point is drawn while it overlaps the terrain, m.</summary>
-    const float PulledTo = 450f;
+    /// <summary>
+    /// The shroud: the world's own sky round the eye, thicker the more air the eye looks through.
+    /// It stands just off the vessel, over the land and the sheet alike, so what happens behind it
+    /// is hidden the same for both; it never quite closes, and it keeps the sky's gradient.
+    /// </summary>
+    const string ShroudSource = """
+        shader_type spatial;
+        render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
+        uniform vec3 low : source_color;
+        uniform vec3 high : source_color;
+        uniform vec3 glow : source_color;
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+        uniform float amount = 0.0;
+        uniform float shell = 40.0;
+        varying vec3 ray;
+        void vertex() {
+            ray = VERTEX;
+            VERTEX = CAMERA_POSITION_WORLD + VERTEX * shell;
+        }
+        void fragment() {
+            vec3 r = normalize(ray);
+            float rise = smoothstep(-0.05, 0.75, r.y);
+            float toward = max(dot(r, sun_dir), 0.0);
+            ALBEDO = mix(low, high, rise) + glow * pow(toward, 6.0) * 0.5;
+            ALPHA = amount * mix(1.0, 0.72, rise);
+        }
+        """;
 
     const float AirStrength = 1.1f;
+    const float ShroudShell = 40f;
 
-    ShaderMaterial _ground, _clouds, _air, _ringMaterial;
-    MeshInstance3D _ring;
+    /// <summary>Where the rim of air's shell stands off the eye, m: in front of the sheet in space, behind what you fly near.</summary>
+    const float AirShell = 15000f;
+
+    ShaderMaterial _ground, _clouds, _air, _shroud, _ringMaterial;
+    MeshInstance3D _airMesh, _shroudMesh, _ring;
     bool _hasRing;
+    float _airThickness;
 
     public float Radius { get; private set; }
 
-    /// <summary>Sets the globe up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
-    public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules)
+    /// <summary>How far along the map the sheet reaches this frame, m.</summary>
+    public float Reach { get; private set; }
+
+    /// <summary>Sets the sheet up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
+    public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules, Vector2 mapSize)
     {
         Radius = radius;
+        _airThickness = atmosphereRadius - radius;
         ArchetypeLook look = paint.Look;
-        _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource }, RenderPriority = 0 };
+        ArrayMesh grid = PolarGrid(rules.Rings, rules.Segments);
+        _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource } };
         _ground.SetShaderParameter("albedo_map", ImageTexture.CreateFromImage(paint.Albedo));
         yield return 0;
         _ground.SetShaderParameter("glow_map", ImageTexture.CreateFromImage(paint.Glow));
+        _ground.SetShaderParameter("relief_map", ImageTexture.CreateFromImage(paint.Relief));
         _ground.SetShaderParameter("day_glow", look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter("night_glow", look.GlowingNights ? 2.5f : 1.4f);
-        AddChild(Sphere("Ground", radius, rules.Segments, rules.Rings, _ground));
+        _ground.SetShaderParameter("radius", radius);
+        _ground.SetShaderParameter("map_size", mapSize);
+        AddChild(Instance("Ground", grid, _ground));
         yield return 0;
-        _clouds = new ShaderMaterial { Shader = new Shader { Code = CloudSource }, RenderPriority = 1 };
+        _clouds = new ShaderMaterial { Shader = new Shader { Code = CloudSource } };
         _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
-        AddChild(Sphere("Clouds", radius * (1f + (float)rules.CloudHeight), rules.Segments * 2 / 3, rules.Rings * 2 / 3, _clouds));
+        _clouds.SetShaderParameter("radius", radius);
+        _clouds.SetShaderParameter("map_size", mapSize);
+        AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
+        var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
         _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
         _air.SetShaderParameter("color", C(look.Atmosphere));
-        _air.SetShaderParameter("ground", radius);
-        _air.SetShaderParameter("top", atmosphereRadius);
-        AddChild(Sphere("Atmosphere", atmosphereRadius, rules.Segments / 2, rules.Rings / 2, _air));
+        _air.SetShaderParameter("shell", AirShell);
+        _airMesh = Instance("Atmosphere", shell, _air);
+        AddChild(_airMesh);
+        _shroud = new ShaderMaterial { Shader = new Shader { Code = ShroudSource }, RenderPriority = 100 };
+        _shroud.SetShaderParameter("shell", ShroudShell);
+        _shroudMesh = Instance("Shroud", shell, _shroud);
+        _shroudMesh.Visible = false;
+        AddChild(_shroudMesh);
         _ringMaterial = new ShaderMaterial { Shader = Planets.Shaders.Ring };
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
         _hasRing = look.Ring;
         _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * 1.45f, radius * 2.3f, 160), MaterialOverride = _ringMaterial, Visible = false };
         AddChild(_ring);
-        Fade(0f, 0f);
+        Visible = false;
     }
 
-    /// <summary>Where the sun is, toward it: in the globe's frame for the night side's glow, in the world for the rim of air's day side.</summary>
-    public void SetSun(Vector3 inGlobe, Vector3 inWorld)
+    static readonly Aabb Everywhere = new(new Vector3(-1e6f, -1e6f, -1e6f), new Vector3(2e6f, 2e6f, 2e6f));
+
+    /// <summary>The ring stands in the globe's frame.</summary>
+    public void PlaceRing(Transform3D globe)
     {
-        _ground?.SetShaderParameter("sun_dir", inGlobe);
-        _air?.SetShaderParameter("sun_dir", inWorld);
+        if (_ring != null) _ring.Transform = globe;
     }
 
-    /// <summary>The globe's fade over the band: the ground and clouds (0 to 1), and the rim of air and ring, which stand clear of the ground and come in later.</summary>
-    public void Fade(float ground, float rim)
+    /// <summary>The ring shows only where the globe is drawn true, faded in by <paramref name="fade"/>.</summary>
+    public void FadeRing(float fade)
     {
-        if (_clouds == null || _air == null) return;
-        _ground.SetShaderParameter("fade", ground);
-        _clouds.SetShaderParameter("fade", ground);
-        _air.SetShaderParameter("strength", AirStrength * rim);
-        _ring.Visible = _hasRing && rim > 0.95f;
-        Visible = ground > 0.002f;
+        if (_ring == null) return;
+        _ring.Visible = _hasRing && fade > 0.01f;
+        _ring.Transparency = 1f - fade;
     }
 
-    /// <summary>Draws the globe pulled in along each eye ray, in front of the terrain (eye: where the camera is), or where it really is (null).</summary>
-    public void Pull(Vector3? eye)
+    /// <summary>Lays the sheet out for this frame.</summary>
+    public void Draw(in WorldView v)
     {
-        float pull = 1f;
-        if (eye is Vector3 e)
+        if (_ground == null) return;
+        Visible = v.Whole > 0.002f;
+        if (!Visible) return;
+        float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
+        // Out to the limb and a little past it: the back of the sphere is never in view.
+        float limb = rho * MathF.Acos(rho / (rho + v.Height + 700f));
+        Reach = MathF.Min(limb * 1.04f, 60000f);
+        foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
-            float near = MathF.Max(1f, e.DistanceTo(GlobalPosition) - Radius);
-            pull = MathF.Min(1f, PulledTo / near);
+            m.SetShaderParameter("eye_up", v.Up);
+            m.SetShaderParameter("eye_east", v.East);
+            m.SetShaderParameter("eye_south", v.South);
+            m.SetShaderParameter("map_up", v.MapUp);
+            m.SetShaderParameter("map_east", v.MapEast);
+            m.SetShaderParameter("map_south", v.MapSouth);
+            m.SetShaderParameter("nadir", v.Nadir);
+            m.SetShaderParameter("height", v.Height);
+            m.SetShaderParameter("bend", v.Bend);
+            m.SetShaderParameter("flat_map", v.Flat);
+            m.SetShaderParameter("taper", v.Taper);
+            m.SetShaderParameter("local", v.Local);
+            m.SetShaderParameter("reach", Reach);
+            m.SetShaderParameter("near_at", v.Near);
+            m.SetShaderParameter("far_at", v.Far);
+            m.SetShaderParameter("fog_density", v.FogDensity);
+            m.SetShaderParameter("fog_color", v.FogColor);
+            m.SetShaderParameter("whole", v.Whole);
+            m.SetShaderParameter("over_land", v.OverLand);
         }
-        if (Mathf.IsEqualApprox(pull, _pull)) return;
-        _pull = pull;
-        _ground.SetShaderParameter("pull", pull);
-        _clouds.SetShaderParameter("pull", pull);
+        // Over the cloud deck for the swap, under it as the far field.
+        _ground.RenderPriority = v.OverLand > 0f && v.OverLand < 1f ? 1 : -2;
+        _clouds.RenderPriority = _ground.RenderPriority + 1;
+        _ground.SetShaderParameter("relief", v.Relief);
+        _ground.SetShaderParameter("sun_dir", v.ToSun);
+        _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
+        _air.SetShaderParameter("sun_dir", v.ToSun);
+        _air.SetShaderParameter("eye_up", v.Up);
+        _air.SetShaderParameter("ground", rho);
+        _air.SetShaderParameter("thickness", _airThickness);
+        _air.SetShaderParameter("eye_height", v.Height);
+        _air.SetShaderParameter("strength", AirStrength * v.Rim);
+        _airMesh.Visible = v.Rim > 0.002f;
     }
 
-    float _pull = 1f;
-
-    static MeshInstance3D Sphere(string name, float radius, int segments, int rings, Material material) => new()
+    /// <summary>The shroud over everything past the vessel: how thick (0 to 1), the air's colour low in the view and overhead, and its glow toward the sun.</summary>
+    public void Shroud(float amount, Color low, Color high, Color glow, Vector3 toSun)
     {
-        Name = name,
-        Mesh = new SphereMesh { Radius = radius, Height = radius * 2f, RadialSegments = segments, Rings = rings },
-        MaterialOverride = material,
+        if (_shroud == null) return;
+        _shroudMesh.Visible = amount > 0.002f;
+        if (!_shroudMesh.Visible) return;
+        _shroud.SetShaderParameter("amount", amount);
+        _shroud.SetShaderParameter("low", low);
+        _shroud.SetShaderParameter("high", high);
+        _shroud.SetShaderParameter("glow", glow);
+        _shroud.SetShaderParameter("sun_dir", toSun);
+    }
+
+    static MeshInstance3D Instance(string name, Mesh mesh, Material material) => new()
+    {
+        Name = name, Mesh = mesh, MaterialOverride = material,
         CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
     };
+
+    /// <summary>A polar grid: x and z the bearing's unit direction, y how far out (0 to 1). The shader does the rest.</summary>
+    static ArrayMesh PolarGrid(int rings, int segments)
+    {
+        int n = (segments + 1) * (rings + 1);
+        var points = new Vector3[n];
+        var indices = new int[segments * rings * 6];
+        int at = 0;
+        for (int r = 0; r <= rings; r++)
+            for (int s = 0; s <= segments; s++)
+            {
+                float a = s * MathF.Tau / segments;
+                points[at++] = new Vector3(MathF.Cos(a), r / (float)rings, MathF.Sin(a));
+            }
+        at = 0;
+        for (int r = 0; r < rings; r++)
+            for (int s = 0; s < segments; s++)
+            {
+                int a = r * (segments + 1) + s, b = a + 1, c = a + segments + 1, d = c + 1;
+                indices[at++] = a; indices[at++] = c; indices[at++] = b;
+                indices[at++] = b; indices[at++] = c; indices[at++] = d;
+            }
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = points;
+        arrays[(int)Mesh.ArrayType.Index] = indices;
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.CustomAabb = Everywhere;
+        return mesh;
+    }
 
     /// <summary>A flat annulus in the equatorial plane; UV.x runs from the inner to the outer edge (as OrbitView's).</summary>
     static ArrayMesh RingMesh(float inner, float outer, int segments)

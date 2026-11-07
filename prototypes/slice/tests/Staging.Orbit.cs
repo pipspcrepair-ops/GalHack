@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics;
@@ -33,6 +33,7 @@ public sealed partial class Staging
         "derelict" => DerelictView(),
         "landing" => LandingView(),
         "seam" => SeamView(),
+        "ascent" => ClimbView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
         "map-system" => MapView(Slice.Ui.MapLevel.System),
         "map-stars" => MapView(Slice.Ui.MapLevel.Stars),
@@ -181,6 +182,87 @@ public sealed partial class Staging
             Follow();
             yield return 0;
         }
+    }
+
+    /// <summary>
+    /// The whole climb and back, frames at fixed heights from a real flight: --cam=cabin (the seat's
+    /// own view) or --cam=out (over the hull, --pitch degrees below level, one frame for each of
+    /// --yaws, degrees from north). --down=1 flies back down through them. Prints what each frame
+    /// cost to draw.
+    /// </summary>
+    IEnumerable<int> ClimbView()
+    {
+        foreach (int x in Seated()) yield return x;
+        Vessel v = Skiff;
+        _game.Visor.Visible = false;
+        if (_args.TryGetValue("time", out string clock)) _game.Zone.Sky.TimeOfDay = double.Parse(clock, System.Globalization.CultureInfo.InvariantCulture);
+        bool cabin = _args.GetValueOrDefault("cam", "cabin") == "cabin";
+        float pitch = (float)Num("pitch", 8) * Mathf.Pi / 180f;
+        float[] yaws = _args.GetValueOrDefault("yaws", "0").Split(',').Select(y => float.Parse(y, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        _game.Survivor.Pitch = (float)Num("seatpitch", -0.3);
+        Rid viewport = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
+        void Look(float yaw)
+        {
+            if (cabin) return;
+            Vector3 at = v.Body.Position.ToGodot();
+            Vector3 eye = at + Vector3.Up * 5f;
+            Vector3 ahead = new Vector3(MathF.Sin(yaw), 0f, -MathF.Cos(yaw)) * MathF.Cos(pitch) + Vector3.Down * MathF.Sin(pitch);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(ahead, Vector3.Up), eye);
+        }
+        IEnumerable<int> Frames(string tag)
+        {
+            foreach (float yaw in yaws)
+            {
+                Look(yaw * Mathf.Pi / 180f);
+                for (int i = 0; i < 7; i++)
+                {
+                    Look(yaw * Mathf.Pi / 180f);
+                    yield return 0;
+                }
+                string name = yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
+                Snap(name);
+                GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
+            }
+        }
+        float[] heights = _args.GetValueOrDefault("heights", "500,700,850,950,1000,1040,1058,1062,1100,1160,1250,1405,1600,1800,2100,2600,3300,4300,5600,7500")
+            .Split(',').Select(h => float.Parse(h, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        float Up() => _game.InOrbit ? _game.Orbit.SurfaceHeight(_game.Orbit.ToGlobe(v.Body.Position).Length()) : v.Body.Position.Y;
+        _game.Controls.Hold(Key.Space);
+        foreach (float height in heights)
+        {
+            Hurry(height > 1900 || height < 900 ? 3 : 1);
+            for (int i = 0; i < 60 * 90 && Up() < height; i++)
+            {
+                Look(yaws[0] * Mathf.Pi / 180f);
+                yield return 0;
+            }
+            Hurry(1);
+            foreach (int x in Frames($"up{height:0}")) yield return x;
+        }
+        _game.Controls.ReleaseAll();
+        Hurry(1);
+        if (_args.GetValueOrDefault("down") != "1")
+        {
+            Wildlife.Shutdown.Quit(_game, 0);
+            yield break;
+        }
+        _game.Controls.Hold(Key.Ctrl);
+        foreach (float height in heights.Reverse())
+        {
+            if (height > 3300) continue;
+            Hurry(height > 1900 || height < 950 ? 3 : 1);
+            for (int i = 0; i < 60 * 90 && Up() > height; i++)
+            {
+                Look(yaws[0] * Mathf.Pi / 180f);
+                yield return 0;
+            }
+            Hurry(1);
+            foreach (int x in Frames($"dn{height:0}")) yield return x;
+            GD.Print($"(descent at {height:0}: {(_game.InOrbit ? "orbit" : "surface")})");
+        }
+        _game.Controls.ReleaseAll();
+        Wildlife.Shutdown.Quit(_game, 0);
     }
 
     /// <summary>The Skiff climbing, the land far below.</summary>
