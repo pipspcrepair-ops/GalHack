@@ -34,6 +34,7 @@ public partial class GlobeTest : Node
         RingsCrossInOrder();
         OrbitsStandApart();
         RingsFitTheirSpheres();
+        BodiesWearTheirOwnWorlds();
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
@@ -201,6 +202,67 @@ public partial class GlobeTest : Node
         Check(moved == moving, $"globe: everything moves along its orbit from one day to the next ({moved} of {moving})");
         Check(unfit == 0, $"globe: every start has a moon in reach of thrusters with warp fuel and the drive's materials, and hyperdrive fuel, hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
         Check(unresolved == 0, $"globe: any point on a world resolves up to its orbit, its place in the system and its star ({unresolved} did not)");
+    }
+
+    /// <summary>
+    /// What you see from afar is what you would land on: every world's type is what its zone makes
+    /// it, a coarse map shows the land and seas of the full one, and the surfaces are cheap, and
+    /// bounded whatever the system.
+    /// </summary>
+    void BodiesWearTheirOwnWorlds()
+    {
+        const double width = 16000;
+        int bare = 0, unfit = 0, worlds = 0, most = 0;
+        string unfitAt = "";
+        var picked = new System.Collections.Generic.List<PlanetSurface.Skies.Orbiter>();
+        foreach (var (key, _, _, _) in Slice.Game.WorldChoice.Types)
+            for (int i = 0; i < 40; i++)
+            {
+                var world = Slice.Game.WorldChoice.Fresh(key);
+                Planets.Gen.PlanetSpec spec = world.Spec();
+                var s = PlanetSurface.Skies.StarSystem.For(spec, PlanetSurface.Skies.SkySystem.For(spec), width);
+                most = Math.Max(most, s.Bodies.Count(b => b != s.Home && (b.Spec != null || b.Kind == PlanetSurface.Skies.OrbiterKind.GasGiant)));
+                foreach (var b in s.Bodies)
+                {
+                    if (b == s.Home || b.Kind is not (PlanetSurface.Skies.OrbiterKind.Planet or PlanetSurface.Skies.OrbiterKind.Moon)) continue;
+                    worlds++;
+                    if (b.Spec == null) { bare++; continue; }
+                    bool fits = b.Kind == PlanetSurface.Skies.OrbiterKind.Moon || b.Spec.Archetype switch
+                    {
+                        Planets.Gen.Archetype.Lava => b.Zone == 1,
+                        Planets.Gen.Archetype.Arid => b.Zone is 2 or 3,
+                        Planets.Gen.Archetype.Temperate => b.Zone is 3 or 4 or 5,
+                        Planets.Gen.Archetype.Alien => b.Zone is 3 or 4 or 5,
+                        _ => b.Zone >= 5,
+                    };
+                    if (!fits) { unfit++; unfitAt = $"{b.Name}: {b.Spec.Archetype} in zone {b.Zone}"; }
+                    if (i == 0 && picked.Count < 6 && b.Spec.WidthKm <= 16 && picked.TrueForAll(p => p.Spec.Archetype != b.Spec.Archetype)) picked.Add(b);
+                }
+            }
+        Check(bare == 0 && unfit == 0, $"globe: all {worlds} worlds of fresh systems have the type their zone makes them ({bare} with none, {unfit} out of place{(unfit > 0 ? ": " + unfitAt : "")})");
+        Check(most <= PlanetSurface.Skies.BodySurfaces.Layers, $"globe: {PlanetSurface.Skies.BodySurfaces.MemoryBytes / 1048576.0:F1} MB holds every surface: the most any system wanted was {most} of {PlanetSurface.Skies.BodySurfaces.Layers}");
+        double worstMatch = 1, worstMs = 0, totalMs = 0;
+        string matchAt = "";
+        foreach (var b in picked)
+        {
+            var clock = Stopwatch.StartNew();
+            PlanetSurface.Skies.BodySurfaces.Paint(b);
+            double ms = clock.Elapsed.TotalMilliseconds;
+            worstMs = Math.Max(worstMs, ms);
+            totalMs += ms;
+            Planets.Gen.WorldMap coarse = PlanetSurface.Skies.BodySurfaces.Coarse(b.Spec), full = Planets.Gen.PlanetGenerator.Generate(b.Spec);
+            int same = 0, count = 0;
+            for (int j = 0; j < coarse.Height; j += 3)
+                for (int i = 0; i < coarse.Width; i += 3)
+                {
+                    int fx = (int)((i + 0.5) / coarse.Width * full.Width), fz = (int)((j + 0.5) / coarse.Height * full.Height);
+                    count++;
+                    if (coarse.Elevation[j * coarse.Width + i] > 0f == full.Elevation[fz * full.Width + fx] > 0f) same++;
+                }
+            if ((double)same / count < worstMatch) (worstMatch, matchAt) = ((double)same / count, $"{b.Spec.Archetype} on {b.Spec.WidthKm} km");
+        }
+        Check(picked.Count >= 3 && worstMatch > 0.85, $"globe: {picked.Count} coarse maps show the land and seas of the full ones: {worstMatch:P0} of points agree at worst ({matchAt})");
+        Check(worstMs < 3000, $"globe: a surface takes {totalMs / Math.Max(picked.Count, 1):F0} ms on its own thread, {worstMs:F0} ms at worst");
     }
 
     /// <summary>

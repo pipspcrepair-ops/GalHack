@@ -50,6 +50,9 @@ public partial class SkyRig : Node3D
     /// <summary>The radius of the sphere this world's own ring stands round, m: 0 for the true globe. Over the cap that is the curved sheet you can see.</summary>
     public float RingRadius;
 
+    /// <summary>What every other body looks like from afar.</summary>
+    public BodySurfaces Surfaces { get; private set; }
+
     /// <summary>The ring plane's normal of the giant this world circles, in this sky.</summary>
     public Vector3 NeighbourRing { get; private set; } = Vector3.Up;
 
@@ -73,6 +76,8 @@ public partial class SkyRig : Node3D
     readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
     readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
     readonly float[] _bodyRadii = new float[BodySlots];
+    readonly int[] _bodyLayers = new int[BodySlots];
+    readonly Vector3[] _bodyAxes = new Vector3[BodySlots], _bodyZeros = new Vector3[BodySlots];
     Vector3 _brightest = Vector3.Up;
     float _brightestEnergy = 0.06f;
     Vector2 _cloudDrift = new(1370f, 620f); // where the cloud pattern starts: its first cloud edges don't fall on the sky checks' sight lines
@@ -227,6 +232,8 @@ public partial class SkyRig : Node3D
             _sky.SetShaderParameter("rings", giant.Rings);
             _sky.SetShaderParameter("ring_color", C(giant.RingColor));
         }
+        Surfaces = new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
+        _sky.SetShaderParameter("surfaces", Surfaces.Texture);
         _sky.SetShaderParameter("home_ring", world.StarSystem.Home.Rings);
         _sky.SetShaderParameter("home_ring_color", C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
@@ -287,6 +294,12 @@ public partial class SkyRig : Node3D
         StarSystem m = Model;
         double days = Days;
         StarSystem.Orientation o = m.Orient(days);
+        Surfaces?.Pump();
+        (Vector3 Axis, Vector3 Zero) Turned(Orbiter b)
+        {
+            var (axis, zero) = m.Turned(b, days);
+            return (InSky(o.ToGlobe(axis)), InSky(o.ToGlobe(zero)));
+        }
         Basis system = new Basis(V(o.X), V(o.Y), V(o.Z)); // the globe's axes in the system's frame
         SkyToStars = system * _skyToGlobe;
         Vector3 toSun = InSky(m.See(m.Star, days, _eye, o).Direction);
@@ -320,7 +333,10 @@ public partial class SkyRig : Node3D
             _sky.SetShaderParameter("giant_dir", dir);
             _sky.SetShaderParameter("giant_radius", s.Angular);
             _sky.SetShaderParameter("giant_light", light);
-            NeighbourRing = InSky(o.ToGlobe(s.Body.RingNormal));
+            var (giantAxis, giantZero) = Turned(s.Body);
+            _sky.SetShaderParameter("giant_layer", Surfaces?.LayerOf(s.Body) ?? -1);
+            _sky.SetShaderParameter("giant_zero", giantZero);
+            NeighbourRing = giantAxis;
             _sky.SetShaderParameter("ring_normal", NeighbourRing);
             float lit = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f);
             if (dir.Y > 0f && 0.25f * lit > _brightestEnergy) (_brightestEnergy, _brightest) = (0.25f * lit, dir);
@@ -335,6 +351,8 @@ public partial class SkyRig : Node3D
             _bodyDirs[slot] = dir;
             _bodyLights[slot] = light;
             _bodyRadii[slot] = s.Angular;
+            (_bodyAxes[slot], _bodyZeros[slot]) = Turned(s.Body);
+            _bodyLayers[slot] = Surfaces?.LayerOf(s.Body) ?? -1;
             _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
             float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
             float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
@@ -347,6 +365,9 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("moon_light", _bodyLights);
         _sky.SetShaderParameter("moon_radius", _bodyRadii);
         _sky.SetShaderParameter("moon_color", _bodyColors);
+        _sky.SetShaderParameter("moon_layer", _bodyLayers);
+        _sky.SetShaderParameter("moon_axis", _bodyAxes);
+        _sky.SetShaderParameter("moon_zero", _bodyZeros);
     }
 
     /// <summary>Recomputes lights and the sky from the current time and air (screenshots call it directly).</summary>
