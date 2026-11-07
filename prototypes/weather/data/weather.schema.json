@@ -87,6 +87,7 @@
           "moveSpeed": { "$ref": "#/$defs/unit" },
           "exposure": { "type": "number", "minimum": 0, "description": "Extra suit drain, % per second." },
           "exposureLabel": { "type": "string" },
+          "cellular": { "type": "number", "minimum": 0, "maximum": 1, "description": "How much of the rain falls only under storm cells." },
           "durationMin": { "$ref": "#/$defs/positive" },
           "durationMax": { "$ref": "#/$defs/positive" },
           "forecastLead": { "$ref": "#/$defs/positive" },

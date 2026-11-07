@@ -76,6 +76,23 @@ public partial class VesselFx : Node3D
 
     public override void _PhysicsProcess(double delta) => Refresh();
 
+    float _kick;
+    static readonly RandomNumberGenerator Scatter = new() { Seed = 77 };
+
+    /// <summary>Engines near the ground blow up a ring of dust under the vessel as it lands or lifts off.</summary>
+    void Kick(float dt, float lift)
+    {
+        lift = Mathf.Max(lift, Burn);
+        if (lift < 0.15f || (_kick -= dt) > 0f || _vessel.Zone?.Dust == null || _vessel.AboveGround > 9f) return;
+        _kick = 0.09f;
+        Vector3 at = _vessel.Body.WorldPosition.ToGodot();
+        float angle = Scatter.Randf() * Mathf.Tau, reach = 2f + Scatter.Randf() * 3f;
+        Vector3 spot = _vessel.Zone.GroundAt(at.X + Mathf.Cos(angle) * reach, at.Z + Mathf.Sin(angle) * reach);
+        if (_vessel.Zone.Water.LiquidAt(spot.X, spot.Z, out _)) return;
+        Color tint = _vessel.Zone.Planet.Look.Dust;
+        _vessel.Zone.Dust.Puff(spot + Vector3.Up * 0.3f, new Color(tint.R, tint.G, tint.B, 1f), 2.4f);
+    }
+
     void Refresh()
     {
         if (_vessel?.Flight == null) return;
@@ -83,6 +100,7 @@ public partial class VesselFx : Node3D
         // A retro burn draws flames longer than any thruster's, and from a sleeping body too.
         Vector3 thrust = _vessel.Flight.State.ThrustLocal;
         float boost = _vessel.Flight.State.Boosting ? 1.5f : 1f;
+        Kick((float)GetPhysicsProcessDeltaTime(), live ? Mathf.Clamp(thrust.Y / 10f, 0f, 1f) : 0f);
         foreach (var (flame, nozzle, exhaust, push) in _flames)
         {
             float effort = live ? Mathf.Clamp(thrust.Dot(push) / 10f, 0f, 1f) : 0f;

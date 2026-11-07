@@ -66,6 +66,10 @@ uniform vec2 cloud_drift = vec2(0.0);
 uniform vec3 cloud_lit : source_color = vec3(1.0);
 uniform vec3 cloud_shade : source_color = vec3(0.5, 0.55, 0.62);
 uniform vec3 cloud_underglow : source_color = vec3(0.0);   // light from the ground: lava under ash
+uniform float stratus = 0.0;     // cumulus heaps (0) to flat layers of grey (1)
+uniform float cirrus = 0.0;      // thin high streaks
+uniform int tower_count = 0;      // storm towers: their deck is thick and dark, whatever the sky around them
+uniform vec4 tower[4];           // x, z, radius, strength
 uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
 
 // How much of the sun's light gets through the air, by its height: all of it from about 17° up,
@@ -99,7 +103,10 @@ vec3 sky_color(vec3 dir, vec3 sun) {
 	// (sun_through): the wide halo dims with it, so a low sun is a contained glow, not a white sky.
 	float sd = dot(dir, sun);
 	float sun_through = sun_air(sun_h);
-	col += star_color * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5) * day * density;
+	// Low down both halos thin with the same path and take the sunset's colour, so a setting sun
+	// sits in a warm contained glow you can look at, never a white blaze.
+	vec3 halo = mix(sunset, star_color, smoothstep(0.03, 0.38, sun_h));
+	col += halo * (pow(max(sd, 0.0), 8.0) * 0.18 * sun_through + pow(max(sd, 0.0), 90.0) * 0.5 * sun_through * sun_through) * day * density;
 
 	// Below the horizon: the haze, darker downward.
 	if (up < 0.0) col = mix(col, haze * bright * day * 0.55 + zenith_night, clamp(-up * 6.0, 0.0, 1.0));
@@ -219,14 +226,28 @@ uniform sampler3D cloud_detail : filter_linear_mipmap, repeat_enable;
 // Cloud density at a point: a coverage map from 2D noise (where clouds are, and how tall), a
 // height profile with flat bases and rounded tops that rise higher where the cloud is denser,
 // and 3D noise eroding the edges into billows so nothing reads as an extruded pillar.
+float storm_at(vec2 xz) {
+	float s = 0.0;
+	for (int i = 0; i < tower_count; i++) {
+		float d = length(xz - tower[i].xy);
+		s = max(s, tower[i].w * smoothstep(tower[i].z, tower[i].z * 0.5, d));
+	}
+	return s;
+}
+
 float cloud_density(vec3 p, bool cheap) {
 	vec2 uv = (p.xz + cloud_drift) / cloud_scale;
 	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
+	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
+	if (stratus > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, stratus);
+	float storm = tower_count > 0 ? storm_at(p.xz) : 0.0;
 	float cover = mix(0.12, 1.05, cloud_cover);
-	float coverage = n - (1.0 - cover);
+	float coverage = n - (1.0 - cover) + storm * 0.55;
 	if (coverage <= 0.0) return 0.0;
 	float h = (p.y - cloud_base) / cloud_thick;
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
+	top = mix(top, 0.4, stratus);
+	top = mix(top, 1.9, storm); // the tower stands up through the deck
 	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * 0.55, top, h));
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
@@ -249,7 +270,7 @@ float march_jitter(vec2 pixel) {
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
 vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
-	float base = cloud_base, top = cloud_base + cloud_thick;
+	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 1.9 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
@@ -274,7 +295,8 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	vec3 sun_tint = mix(vec3(1.0), star_color, 0.4);
 	vec3 sun_light = mix(sunset, sun_tint, smoothstep(0.0, 0.3, sun.y)) * day * sun_energy * 1.1;
 	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day);
-	float flash = weather_flash.w;
+	// A strike lights the cloud round it most, and the rest of the sky a little.
+	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
 	for (int i = 0; i < steps; i++) {
 		vec3 p = ro + rd * t;
 		float d = cloud_density(p, false);
@@ -289,7 +311,9 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 				float powder = 1.0 - exp(-d * 3.0);
 				float hgt = clamp((p.y - cloud_base) / cloud_thick, 0.0, 1.0);
 				vec3 lum = ambient * (0.4 + 0.6 * hgt) + cloud_lit * sun_light * beer * mix(0.55, 1.0, powder);
-				lum *= 1.0 - cloud_dark * 0.78 * (1.0 - hgt * 0.4);
+				float dark = cloud_dark;
+				if (tower_count > 0) dark = max(dark, 0.92 * storm_at(p.xz));
+				lum *= 1.0 - dark * 0.78 * (1.0 - hgt * 0.4);
 				lum += cloud_underglow * (1.0 - hgt) * (1.0 - hgt);
 				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
 				light += trans * lum * (1.0 - exp(-ext));
@@ -359,7 +383,9 @@ void sky() {
 		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd) * (1.0 - b.a); // what crosses the sun hides it
 		float through = sun_air(sun.y);
 		vec3 disc_color = mix(sunset, star_color, smoothstep(0.0, 0.3, sun.y)) * through * through;
-		col += disc_color * disc * sun_energy * 18.0 * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
+		// Well under the glow threshold near the horizon: there it's a coloured disc, it doesn't bloom.
+		float disc_energy = mix(1.5, 18.0, smoothstep(0.02, 0.4, sun.y));
+		col += disc_color * disc * sun_energy * disc_energy * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
 
 		float cover;
 		if (AT_CUBEMAP_PASS) {
@@ -373,6 +399,16 @@ void sky() {
 			clouded = clouded * clouded * 4.0;
 			cover = clamp(QUARTER_RES_COLOR.r, 0.0, 1.0);
 			col = clouded + (col - plain) * (1.0 - cover);
+		}
+		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
+		// wind's way; they sit on top of the clouds below them only where those let the sky through.
+		if (cirrus > 0.01 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
+			vec2 q = dir.xz / (dir.y + 0.16) + cloud_drift * 0.00002;
+			vec2 r = vec2(q.x * 0.82 + q.y * 0.57, q.y * 0.82 - q.x * 0.57);
+			float s = texture(cloud_noise, r * vec2(0.07, 0.42)).r * 0.7 + texture(cloud_noise, r * vec2(0.19, 1.3) + 0.2).r * 0.3;
+			float wisps = smoothstep(0.5, 0.78, s) * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover);
+			vec3 lit = mix(sunset * 1.4, cloud_lit, smoothstep(0.02, 0.32, sun.y)) * (0.08 + 0.92 * day);
+			col = mix(col, lit, wisps * cirrus * 0.5);
 		}
 		if (debug_view == 1) col = vec3(cover);
 		if (debug_view == 3) col = night_sky(dir, true) * 6.0;

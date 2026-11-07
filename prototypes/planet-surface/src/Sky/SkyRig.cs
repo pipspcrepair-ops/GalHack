@@ -243,6 +243,13 @@ public partial class SkyRig : Node3D
         Sun.LightColor = C(s.StarColor);
     }
 
+    /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
+    public void SetCells(Vector4[] cells, int count)
+    {
+        _sky.SetShaderParameter("tower", cells);
+        _sky.SetShaderParameter("tower_count", count);
+    }
+
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
     public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
 
@@ -412,6 +419,8 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("cloud_thick", air.CloudThickness);
         _sky.SetShaderParameter("cloud_drift", _cloudDrift);
         _sky.SetShaderParameter("overcast", air.Overcast);
+        _sky.SetShaderParameter("stratus", air.Stratus);
+        _sky.SetShaderParameter("cirrus", air.Cirrus);
         Rgb grey = Rgb.Lerp(Rgb.Lerp(s.Horizon, new Rgb(0.62f, 0.64f, 0.66f), 0.7f), new Rgb(0.2f, 0.21f, 0.24f), air.CloudDarkness);
         _sky.SetShaderParameter("overcast_color", C(grey));
         _sky.SetShaderParameter("cloud_lit", C(Rgb.Lerp(new Rgb(1f, 1f, 1f), s.StarColor, 0.12f) * s.CloudTint));
@@ -429,7 +438,11 @@ public partial class SkyRig : Node3D
         Environment.FogLightColor = C(fog);
         Environment.FogDensity = air.FogDensity;
         Environment.FogSkyAffect = air.FogSkyAffect;
-        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast);
+        // The scatter toward the sun and the glitter off water are the sun's own light: a low sun has
+        // little left to give them, or the haze and the sea go white under it.
+        float climbed = Smooth(0.02f, 0.38f, toSun.Y);
+        Environment.FogSunScatter = (0.08f + 0.12f * s.Density) * (1f - air.Overcast) * (0.25f + 0.75f * climbed);
+        Sun.LightSpecular = 0.2f + 0.8f * climbed;
         // Ash worlds are lit as much by their lava as their sun: never quite black.
         float floor = s.Air == AirKind.Ash ? 0.45f : 0.25f;
         Environment.AmbientLightEnergy = (floor + (1f - floor) * day) * air.AmbientScale;
