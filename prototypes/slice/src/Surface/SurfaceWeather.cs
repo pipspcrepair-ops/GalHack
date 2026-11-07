@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GalHack.Physics.Engine;
 using Godot;
@@ -79,6 +79,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     /// <summary>The storm towers this frame, and their rain shafts.</summary>
     readonly Vector4[] _towers = new Vector4[MostTowers];
+    /// <summary>For tests: draw the towers without their rain shafts.</summary>
+    public bool ShaftsHidden;
     readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
     const int MostTowers = 4;
     float _flicker = 4f;
@@ -131,9 +133,20 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _towers[count] = new Vector4(at.X, at.Z, cell.Radius, strength);
             if (count >= _shafts.Count) _shafts.Add(AddShaft());
             var (node, draw) = _shafts[count];
-            float height = CloudBaseY - at.Y + 80f, reach = cell.Radius * 0.62f;
-            node.Visible = true;
-            node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(reach, height, reach)), new Vector3(at.X, height / 2f - 80f, at.Z));
+            float baseY = at.Y - 10f, height = CloudBaseY - baseY, reach = cell.Radius * 0.85f;
+            Vector2 wind2 = Sim.Current.Wind;
+            Vector2 lean = wind2 * 6f; if (lean.Length() > height * 0.3f) lean = lean.Normalized() * height * 0.3f;
+            float bound = reach * 1.9f + lean.Length();
+            node.Visible = !ShaftsHidden;
+            node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(bound * 1.2f, height * 1.3f, bound * 1.2f)), new Vector3(at.X + lean.X * 0.5f, baseY + height * 0.6f, at.Z + lean.Y * 0.5f));
+            // The mesh stands taller than the volume, so a view ray can never skirt its rim and still cross the veil.
+            draw.SetShaderParameter("axis_base", new Vector3(at.X, baseY, at.Z));
+            draw.SetShaderParameter("shaft_height", height);
+            draw.SetShaderParameter("reach", reach);
+            draw.SetShaderParameter("bound", bound);
+            draw.SetShaderParameter("lean", lean);
+            draw.SetShaderParameter("drift", wind2 * 0.04f);
+            draw.SetShaderParameter("seed", (cell.Id * 0.6180339f) % 1f);
             // Standing in it there's nothing to see of it: the falling rain has taken over.
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
             draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
@@ -595,3 +608,4 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         e.Node.GlobalPosition = camera + e.Offset - horizontal * ((float)e.Node.Lifetime * 0.5f);
     }
 }
+

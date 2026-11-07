@@ -1,4 +1,4 @@
-// Seas and rivers: water, lava or an exotic liquid. The sea plane follows the camera and is
+﻿// Seas and rivers: water, lava or an exotic liquid. The sea plane follows the camera and is
 // masked by the world map's depth texture, so a pit dug below sea level inland stays dry (water
 // is static, as in terrain-digging). Ripples move with the weather's wind and rain roughens them.
 shader_type spatial;
@@ -22,28 +22,41 @@ uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the sea ends with the land's own me
 
 varying vec3 wpos;
 
-// Rain rings: a drop lands in each cell of a grid at its own moment, and a ring runs out from it.
-// Only close to the camera (the fine rain roughening takes over further off).
-vec2 rain_rings(vec2 p, float t, float amount) {
-	const float CELL = 1.5;
+// Rain rings: a drop lands in each small cell of a grid at its own moment. Its ripple starts tight
+// at the point of impact, runs out quickly while fading, and is a short packet of two or three thin
+// rings (a gradient that swings both ways, so it tilts the surface softly and never raises an edge).
+// Many small short-lived drops overlap and add. xy: the surface slope; z: a tiny splash at the landing.
+vec3 rain_rings(vec2 p, float t, float amount) {
+	const float CELL = 0.55;
 	vec2 cell = floor(p / CELL);
-	vec2 g = vec2(0.0);
+	vec3 g = vec3(0.0);
 	for (int j = -1; j <= 1; j++)
 	for (int i = -1; i <= 1; i++) {
 		vec2 c = cell + vec2(float(i), float(j));
 		vec2 m = mod(c, 257.0);
 		float h = fract(sin(dot(m, vec2(127.1, 311.7))) * 43758.5453);
+		float h2 = fract(h * 91.7 + 0.37);
 		if (h > 0.25 + 0.75 * amount) continue; // lighter rain, fewer drops
-		vec2 centre = (c + 0.5 + 0.38 * vec2(sin(h * 57.0), cos(h * 91.0))) * CELL;
-		float age = fract(t * (0.8 + 0.5 * h) + h * 7.0);
+		vec2 centre = (c + 0.5 + 0.4 * vec2(sin(h * 57.0), cos(h * 91.0))) * CELL;
+		float life = 0.55 + 0.5 * h2;           // a drop's ripple lasts about half a second
+		float age = fract(t / life + h * 7.0);
 		vec2 d = p - centre;
 		float r = length(d);
-		float off = (r - age * 1.5) * 10.0;
-		g += d / max(r, 0.001) * exp(-off * off) * (1.0 - age) * (1.0 - age);
+		// A few drops are big and slow, most are small.
+		float size = h2 > 0.9 ? 1.0 : 0.55;
+		float R = size * 0.42 * sqrt(age) * (0.8 + 0.4 * h);
+		float x = r - R;
+		float w = 0.045 + 0.05 * age;           // the packet loosens as it spreads
+		float f = 3.14159 / (w * 0.8);
+		float env = exp(-x * x / (w * w * 2.0));
+		float slope = env * (f * cos(f * x) - x / (w * w) * sin(f * x)) * w;
+		float fade = (1.0 - age) * (1.0 - age) * smoothstep(0.0, 0.04, age) * size;
+		g.xy += d / max(r, 0.001) * slope * fade * 0.7;
+		// the splash: a bright speck at the landing, gone in a moment
+		g.z += exp(-r * r / 0.0009) * (1.0 - smoothstep(0.0, 0.12, age)) * step(0.02, age);
 	}
 	return g;
 }
-
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
@@ -89,13 +102,14 @@ void fragment() {
 	} else {
 		vec2 wind = weather_wind.xy * (0.3 + min(weather_wind.z, 25.0) * 0.04);
 		vec2 g = vec2(0.0);
+		float splash = 0.0;
 		g += vec2(0.6, 0.8) * cos(dot(p, vec2(0.6, 0.8)) * 0.12 + t * 0.9) * 0.05;
 		g += vec2(-0.9, 0.3) * cos(dot(p, vec2(-0.9, 0.3)) * 0.21 + t * 1.3) * 0.035;
 		g += wind * cos(dot(p, normalize(weather_wind.xy + 0.001)) * 0.5 - t * 2.1) * 0.03;
 		g += (vec2(pnoise(vec3(p.x * 4.0, t * 6.0, p.y * 4.0), planet_size * 4.0), pnoise(vec3(p.y * 4.0, t * 6.0 + 3.0, p.x * 4.0), planet_size.yx * 4.0)) - 0.5) * weather_ground.x * 0.15;
 		if (rain > 0.01) {
-			float near = 1.0 - smoothstep(14.0, 34.0, length(p - CAMERA_POSITION_WORLD.xz));
-			if (near > 0.0) g += rain_rings(p, t, rain) * near * 0.18;
+			float near = 1.0 - smoothstep(10.0, 26.0, length(p - CAMERA_POSITION_WORLD.xz));
+			if (near > 0.0) { vec3 rr = rain_rings(p, t, rain); g += rr.xy * near * 0.2; splash = rr.z * near; }
 		}
 		// Ripples a pixel can't hold beat against the screen as rings across the whole sea: they lie down with distance.
 		g *= 1.0 - smoothstep(120.0, 700.0, length(wpos - CAMERA_POSITION_WORLD));
@@ -106,5 +120,7 @@ void fragment() {
 		METALLIC = 0.0;
 		SPECULAR = 0.5;
 		if (glow > 0.0) EMISSION = shallow * glow * 0.3;
+		EMISSION += vec3(0.8, 0.88, 0.95) * splash * 0.5 * daylight;
 	}
 }
+

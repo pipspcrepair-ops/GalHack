@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -122,10 +122,16 @@ public partial class Staging
             Vector3 stand = water + new Vector3(0f, 1.1f, 0f);
             _game.Survivor.PlaceOutside((stand + Vector3.Up * 3f).ToNumerics());
             foreach (int x in _drive.UntilSettled()) yield return x;
-            Vector3 eye = water + Vector3.Up * 2.4f + Vector3.Right * 3f;
-            _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(0.8f, -0.22f, 0.5f).Normalized(), Vector3.Up), eye);
+            Vector3 eye = water + Vector3.Up * (float)Num("eyeh", 2.4) + Vector3.Right * 3f;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(0.8f, (float)Num("pitch", -0.22), 0.5f).Normalized(), Vector3.Up), eye);
         }
         foreach (int x in _drive.Wait(150)) yield return x;
+        if (_args.TryGetValue("burst", out string burst))
+            for (int i = 0; i < int.Parse(burst); i++)
+            {
+                foreach (int x in Shot(_args["out"].Replace(".png", $"-{i:D2}.png"))) yield return x;
+                foreach (int x in _drive.Wait(4)) yield return x;
+            }
         GD.Print($"rain shot: eye open {_game.Zone.Light.EyeOpen:F2}, sky at eye {_game.Zone.Weather.SkyAtEye:F2}, drops {_game.Zone.Weather.RainShown}, splashes {_game.Zone.Weather.SplashShown}");
     }
 
@@ -188,7 +194,8 @@ public partial class Staging
         _game.Survivor.PlaceOutside(hill.ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         sky.ClearCells();
-        Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized();
+        float ang = (float)Num("ang", 0) * Mathf.Pi / 180f;
+        Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized().Rotated(Vector3.Up, ang);
         var cell = sky.AddCell(hill + toward * (float)Num("off", 1500), 1f);
         Vector3 eye = hill + Vector3.Up * 16f;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(toward + Vector3.Up * (float)Num("pitch", 0.12), Vector3.Up), eye);
@@ -199,6 +206,13 @@ public partial class Staging
             for (int i = 0; i < 1800 && !sky.Events.Any(e => e.Kind == WeatherEventKind.LightningStrike); i++) yield return 0;
             _game.Zone.Weather.StrikeAt(_game.Zone.GroundAt(cell.Position.X - toward.Z * cell.Radius * 0.3f, cell.Position.Z + toward.X * cell.Radius * 0.3f));
             foreach (int x in _drive.Wait(1)) yield return x;
+        }
+        if (Num("compare", 0) != 0)
+        {
+            foreach (int x in Shot(_args["out"].Replace(".png", "-with.png"))) yield return x;
+            _game.Zone.Weather.ShaftsHidden = true;
+            foreach (int x in _drive.Wait(30)) yield return x;
+            foreach (int x in Shot(_args["out"].Replace(".png", "-without.png"))) yield return x;
         }
         GD.Print($"storm cell: radius {cell.Radius:F0} m, {sky.Cells.Count} in the sky, rain here {_game.Zone.Weather.RainHere:F2} of {sky.Current.Rain:F2}, under it {sky.RainAt(cell.Position):F2}");
     }
@@ -322,3 +336,4 @@ public sealed class FrameCost
 
     public override string ToString() => $"render cpu {RenderCpuMs:F2} ms, gpu {RenderGpuMs:F2} ms, process {ProcessMs:F2} ms, physics {PhysicsMs:F2} ms over {_frames} frames";
 }
+
