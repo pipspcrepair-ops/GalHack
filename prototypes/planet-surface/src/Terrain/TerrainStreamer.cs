@@ -232,6 +232,9 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_index", _roads.Index);
         m.SetShaderParameter("road_grid", _roads.Grid);
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
+        // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
+        int wind = (int)(World.Spec.Seed % 4);
+        m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
         return m;
     }
 

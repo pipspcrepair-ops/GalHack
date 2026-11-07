@@ -347,6 +347,27 @@ public static class InfraViews
             Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
         }
         else GD.Print("ROADS: no country road found");
+        // The tightest bend on a paved road near the landing, close up from above its inside.
+        InfraRoute bent = null;
+        int bentAt = 0;
+        double bentTurn = 0;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 12; i + 12 < r.Count; i += 2)
+            {
+                if (r.Span[i - 12] != RoadSpan.Ground || r.Span[i + 11] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - w.Landing.Y, w.Height), 2));
+                if (d > 3000) continue;
+                double a0 = Math.Atan2(r.Z[i] - r.Z[i - 12], r.X[i] - r.X[i - 12]), a1 = Math.Atan2(r.Z[i + 12] - r.Z[i], r.X[i + 12] - r.X[i]);
+                double turn = Math.Abs(Mathf.Wrap((float)(a1 - a0), -Mathf.Pi, Mathf.Pi));
+                if (turn > bentTurn) { bentTurn = turn; bent = r; bentAt = i; }
+            }
+        if (bent != null)
+        {
+            GD.Print($"ROADS: tightest bend on {bent.Kind} {bent.Id}: {bentTurn * 180 / Math.PI:F0} degrees over 96 m");
+            double mx = (bent.X[bentAt - 12] + bent.X[bentAt + 12]) * 0.5, mz = (bent.Z[bentAt - 12] + bent.Z[bentAt + 12]) * 0.5;
+            double ix = mx - bent.X[bentAt], iz = mz - bent.Z[bentAt], il = Math.Max(1e-6, Math.Sqrt(ix * ix + iz * iz));
+            Add("bend-close", bent.X[bentAt] + ix / il * 45, bent.Z[bentAt] + iz / il * 45, bent.Y[bentAt] + 22f, bent.X[bentAt], bent.Z[bentAt], bent.Y[bentAt]);
+        }
         // A junction out in the country: two roads (not railways) meeting, the nearest to the landing.
         var grid = new System.Collections.Generic.Dictionary<(long, long), InfraRoute>();
         foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail))
