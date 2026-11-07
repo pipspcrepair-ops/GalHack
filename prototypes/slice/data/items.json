@@ -10,7 +10,8 @@
 //   replaceRecipes recipes the slice makes differently: the placeable survival constructor comes
 //                  out of the suit fabricator, from ore
 //   constructors   the suit fabricator itself, below the catalogue's survival tier
-//   consumables    what using one does (food and oxygen as a share of full, health in points)
+//   consumables    what using one does (food as a share of full, oxygen and health in points;
+//                  the design's O2 bottles are small +75 and large +250)
 {
   "schema": "galhack.slice-items",
   "version": 1,
@@ -28,7 +29,7 @@
     { "id": "patch-kit", "name": "Patch kit", "short": "PATCH", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.5,
       "uses": "Heals a little", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "air-cell", "name": "Air cell", "short": "AIR", "category": "consumable", "rarity": "common", "mass": 1.2, "volume": 1,
-      "uses": "Refills half the suit's oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+      "uses": "+250 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "hover-core", "name": "Hover core", "short": "HV-CORE", "category": "component", "rarity": "common", "mass": 6, "volume": 2, "stack": 4,
       "uses": "Set down on open ground: a new hover vessel", "unlock": { "level": 1, "cost": 1, "tab": "small" } },
     { "id": "capital-core", "name": "Capital core", "short": "CV-CORE", "category": "component", "rarity": "common", "mass": 48, "volume": 14, "stack": 4,
@@ -77,7 +78,7 @@
     "meat":         { "food": 0.12 },
     "patch-kit":    { "health": 25 },
     "medkit":       { "health": 60 },
-    "air-cell":     { "oxygen": 0.5 },
-    "o2-bottle":    { "oxygen": 1.0 }
+    "air-cell":     { "oxygen": 250 },
+    "o2-bottle":    { "oxygen": 75 }
   }
 }

@@ -929,6 +929,11 @@ public partial class PlayerTest : Node
     void Summary()
     {
         GD.Print("-- throughout --");
+        var oxygen = _game.Suit.Sim.Data.Vitals.Oxygen;
+        Check(_game.Zone.Data.Consumables["o2-bottle"].Oxygen == oxygen.SmallBottle && _game.Zone.Data.Consumables["air-cell"].Oxygen == oxygen.LargeBottle
+              && _game.Zone.Data.Items.Item("o2-bottle").Name == "O2 bottle", "oxygen items give the design's +75 and +250, in suit oxygen");
+        Check(WorldChoice.Types.All(t => t.Name.StartsWith(t.Archetype.ToString(), StringComparison.Ordinal) || t.Archetype == Archetype.Alien && t.Key == "swamp"),
+            "the start screen's planet types carry their archetype's name");
         Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the castaway never needed rescuing from the ground ({_rescues.Count} rescues of anything)");
         GD.Print($"  game time at each step (min): {string.Join(", ", _gameTimeAt.Select(kv => $"{kv.Key} {kv.Value / 60:F1}"))}");
         GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP; {_game.Stats.Crafted} items crafted, {_game.Builder.Placed} blocks placed, {_game.Tool.OreCells} ore cells dug, {_game.Stats.Kills} kills");

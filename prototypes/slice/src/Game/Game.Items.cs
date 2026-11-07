@@ -182,7 +182,7 @@ public partial class Game
         if (remote ? Pack.HandSource.Remove(s.Item, 1) != 1 : !Pack.Grid.TakeOne(slot)) return false;
         if (e.Food > 0) v.Food = Math.Min(r.Food.Max, v.Food + e.Food * r.Food.Max);
         if (e.Health > 0) v.Heal(e.Health);
-        if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen * Suit.Sim.OxygenCapacity);
+        if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen);
         Say($"Used a {name}", Tones.Good);
         Stats.Used++;
         return true;

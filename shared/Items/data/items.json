@@ -132,7 +132,7 @@
     { "id": "charge-plating", "name": "Charge plating", "short": "CHRGPLT", "category": "component", "rarity": "unique", "mass": 8.0, "volume": 2 },
 
     // ---- Consumables ------------------------------------------------------------------------
-    { "id": "o2-bottle", "name": "Oxygen bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "o2-bottle", "name": "O2 bottle", "short": "O2", "category": "consumable", "rarity": "common", "mass": 3.0, "volume": 2, "uses": "+75 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "medkit", "name": "Medkit", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "unlock": { "level": 2, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "unlock": { "level": 2, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
     // Warp drive fuel, about 1 per AU from a warp cell tank. The name is data: the owner may rename it.
