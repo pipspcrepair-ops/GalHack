@@ -248,8 +248,9 @@ public partial class SkyRig : Node3D
     }
 
     /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
-    public void SetCells(Vector4[] cells, int count)
+    public void SetCells(Vector4[] cells, int count, float[] funnels = null)
     {
+        _sky.SetShaderParameter("tower_wall", funnels ?? new float[4]);
         _sky.SetShaderParameter("tower", cells);
         _sky.SetShaderParameter("tower_count", count);
     }
