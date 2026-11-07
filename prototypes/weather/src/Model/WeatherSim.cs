@@ -77,6 +77,18 @@ public sealed class WeatherSim
     /// <summary>The storms in the sky: where the rain, strikes and funnels come from.</summary>
     public IReadOnlyList<StormCell> Cells => _cells;
 
+    /// <summary>The front the weather is arriving on (or has arrived on), or null: a storm's line, or a dust wall.</summary>
+    public Front Front => _front;
+
+    /// <summary>No fronts: storms come as loose cells (single-cell views, tests).</summary>
+    public bool FrontsOff { get; set; }
+
+    /// <summary>The world's size, metres, for what is measured across it (a front's line): zero for no wrap.</summary>
+    public Vector2 WorldSize { get; set; }
+
+    /// <summary>The ground can be lifted as dust here (dry loose ground): a dust storm comes as a wall. Null: everywhere.</summary>
+    public Func<bool> LooseGround { get; set; }
+
     /// <summary>What happened during the last <see cref="Step"/>.</summary>
     public IReadOnlyList<WeatherEvent> Events => _events;
 
@@ -85,6 +97,7 @@ public sealed class WeatherSim
     readonly List<Tornado> _tornadoes = new();
     readonly List<StormCell> _cells = new();
     float _cellTimer;
+    Front _front;
     readonly List<WeatherEvent> _events = new();
     readonly Rng _timelineRng, _hazardRng;
     readonly uint _gustSeed;
@@ -128,6 +141,7 @@ public sealed class WeatherSim
         EnsureTimeline(Time + Horizon);
         Current = ConditionsAt(Time);
         UpdateGround(dt);
+        StepFront(dt, observer);
         StepCells(dt, observer);
         StepStrikes(dt, observer);
         StepTornadoes(dt, observer);
@@ -347,6 +361,11 @@ public sealed class WeatherSim
     /// </summary>
     void StepCells(float dt, Vector3 observer)
     {
+        if (_front is { Kind: FrontKind.Storm } f && f.Strength > 0.02f)
+        {
+            StepFrontCells(dt, observer, f);
+            return;
+        }
         CellRules r = Data.Cells;
         Conditions c = Current;
         float storm = MathF.Max(c.Rain, MathF.Min(1f, c.LightningPerMinute / 4f));
@@ -384,24 +403,203 @@ public sealed class WeatherSim
         AddCell(observer - down * _hazardRng.Range(0.45f, 0.9f) * r.Range + across * _hazardRng.Range(-0.4f, 0.4f) * r.Range, 0f);
     }
 
-    /// <summary>A storm cell at a place, this strong (a jump, tests, screenshots: the weather makes its own).</summary>
-    public StormCell AddCell(Vector3 at, float strength)
+    /// <summary>A storm cell at a place, this strong (a jump, tests, screenshots: the weather makes its own). <paramref name="first"/>: drawn before any other (a funnel's).</summary>
+    public StormCell AddCell(Vector3 at, float strength, bool first = false)
     {
         var cell = new StormCell { Id = _nextId++, Position = Flat(at), Strength = strength, Radius = _hazardRng.Range(Data.Cells.RadiusMin, Data.Cells.RadiusMax) };
-        _cells.Add(cell);
+        if (first) _cells.Insert(0, cell);
+        else _cells.Add(cell);
         return cell;
     }
 
     /// <summary>Empties the sky of cells at once (tests, screenshots).</summary>
     public void ClearCells() => _cells.Clear();
 
-    /// <summary>How much storm hangs over a point, 0 to 1.</summary>
+    /// <summary>How much storm hangs over a point, 0 to 1: its cells', and the deck trailing behind a front's edge.</summary>
     public float CellCover(Vector3 p)
     {
-        float cover = 0f;
+        float cover = _front is { Kind: FrontKind.Storm } f ? f.Cover(p) : 0f;
         foreach (StormCell c in _cells) cover = MathF.Max(cover, c.Cover(p));
         return cover;
     }
+
+    // ---- Fronts -----------------------------------------------------------------------
+
+    /// <summary>How long a front takes to grow as it comes into sight, and to fade once its weather has gone, seconds.</summary>
+    const float FrontGrowSeconds = 40f, FrontFadeSeconds = 90f;
+
+    /// <summary>
+    /// Storms arrive on a front. It forms once its weather is near enough to be in sight, upwind by
+    /// as far as it will travel before that weather is half in, so its shelf is seen for minutes
+    /// before it arrives; it advances on the storm's wind and fades once its weather has gone. A
+    /// jump straight into the weather puts the observer under it, its edge already past.
+    /// </summary>
+    void StepFront(float dt, Vector3 observer)
+    {
+        CellRules r = Data.Cells;
+        EnsureTimeline(Time + r.FrontSight / 7f);
+        Segment coming = FrontSegment(r.FrontSight / 7f, out FrontKind kind);
+        if (_front != null)
+        {
+            _front.Centre += _front.Velocity * dt;
+            bool wanted = coming != null && kind == _front.Kind;
+            float target = wanted ? 1f : 0f;
+            _front.Strength += Math.Clamp(target - _front.Strength, -dt / FrontFadeSeconds, dt / FrontGrowSeconds);
+            if (!wanted && _front.Strength <= 0f) _front = null;
+            return;
+        }
+        if (coming == null || FrontsOff) return;
+        Conditions to = coming.To;
+        float speed = FrontSpeed(kind, to.WindSpeed);
+        float distance = (float)(coming.Start + coming.Transition * 0.5 - Time) * speed;
+        bool jumped = coming.Forced && Blend(coming, Time) >= 0.5f;
+        if (jumped) distance = -1500f;
+        else if (distance > r.FrontSight) return; // not in sight yet
+        var line = Front.Lattice(to.Wind, WorldSize, MinFrontSpacing);
+        // On a small world it comes into sight no farther off than its copies allow.
+        if (!jumped && distance > line.spacing * 0.5f - 1500f) return;
+        _front = MakeFront(kind, observer, distance, to.Wind, speed, jumped ? 1f : 0f);
+    }
+
+    /// <summary>Copies of a front stand at least this far apart across the world, metres: room for its storm and the open air ahead of it.</summary>
+    const float MinFrontSpacing = 5500f;
+
+    /// <summary>A front advances a little slower than its storm's wind (a dust wall slower still), m/s.</summary>
+    static float FrontSpeed(FrontKind kind, float wind) => MathF.Max(7f, wind * (kind == FrontKind.Dust ? 0.8f : 0.9f));
+
+    /// <summary>What kind of front a weather comes on, if any: thunderstorms and tornado storms on a storm's line, dust storms over dry loose ground as a wall.</summary>
+    public bool FrontOf(in Conditions to, out FrontKind kind)
+    {
+        kind = FrontKind.Storm;
+        if (to.Cellular > 0.3f && (to.LightningPerMinute >= 1f || to.TornadoesPerMinute > 0.05f)) return true;
+        kind = FrontKind.Dust;
+        return to.Dust >= 0.5f && (LooseGround?.Invoke() ?? true) && Ground.Wetness < 0.4f && Ground.Snow < 0.3f;
+    }
+
+    /// <summary>The weather now in, or the next one due within <paramref name="ahead"/> seconds, that comes on a front; null for none.</summary>
+    Segment FrontSegment(float ahead, out FrontKind kind)
+    {
+        kind = FrontKind.Storm;
+        int lo = 0, hi = _segments.Count - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (_segments[mid].Start <= Time) lo = mid;
+            else hi = mid - 1;
+        }
+        for (int i = lo; i < _segments.Count && _segments[i].Start <= Time + ahead; i++)
+            if (_segments[i].End > Time && FrontOf(_segments[i].To, out kind)) return _segments[i];
+        return null;
+    }
+
+    Front MakeFront(FrontKind kind, Vector3 observer, float distance, Vector2 wind, float speed, float strength, bool? roll = null)
+    {
+        var (heading, period, spacing, shear) = Front.Lattice(wind, WorldSize, MinFrontSpacing);
+        float bow = MathF.Min(_hazardRng.Range(500f, 1400f), spacing * 0.12f);
+        float reach = spacing * 0.5f - bow;
+        float seed = _hazardRng.NextFloat(), along = _hazardRng.Range(0f, period);
+        var f = new Front
+        {
+            Id = _nextId++, Kind = kind, Heading = heading, Speed = speed, Period = period, Spacing = spacing, Shear = shear, Bow = bow,
+            Bows = Math.Max(1, (int)MathF.Round(period / 22000f)), Bays = Math.Max(2, (int)MathF.Round(period / 5000f)),
+            Depth = MathF.Min(kind == FrontKind.Dust ? _hazardRng.Range(5000f, 10000f) : _hazardRng.Range(7000f, 14000f), reach * 0.85f),
+            Severity = _hazardRng.Range(0.5f, 1f), Roll = roll ?? (kind == FrontKind.Storm && _hazardRng.NextFloat() < 0.3f),
+            Seed = seed, Strength = strength,
+        };
+        // Its edge passes the observer's stretch of it `distance` upwind of them.
+        distance = Math.Clamp(distance, -reach + 300f, reach - 300f);
+        var perp = new Vector2(-heading.Y, heading.X);
+        Vector2 c = new Vector2(observer.X, observer.Z) - heading * (distance - f.Lag(along)) - perp * along;
+        f.Centre = new Vector3(c.X, 0f, c.Y);
+        return f;
+    }
+
+    /// <summary>
+    /// A front this far upwind of a point, fully grown, its cells already standing (tests, screenshots).
+    /// <paramref name="wind"/> sets the way it advances (the weather's wind if not given); <paramref name="roll"/> gives it a roll cloud.
+    /// </summary>
+    public Front StartFront(FrontKind kind, Vector3 observer, float distance, Vector2? wind = null, bool? roll = null)
+    {
+        _front = MakeFront(kind, observer, distance, wind ?? Current.Wind, FrontSpeed(kind, Current.WindSpeed), 1f, roll);
+        _cells.RemoveAll(c => c.Funnel == null);
+        if (kind == FrontKind.Storm) StepFrontCells(0f, observer, _front);
+        return _front;
+    }
+
+    /// <summary>Takes the front away at once, and its cells (tests, screenshots).</summary>
+    public void ClearFront()
+    {
+        _front = null;
+        _cells.RemoveAll(c => c.OnFront && c.Funnel == null);
+    }
+
+    /// <summary>
+    /// A front's cells: lined up along the edge nearest the observer just behind it, one to each
+    /// stretch of the line, riding the front as it advances. Loose cells, and a copy's cells once
+    /// the observer is nearer the next copy, die away.
+    /// </summary>
+    void StepFrontCells(float dt, Vector3 observer, Front f)
+    {
+        CellRules r = Data.Cells;
+        int slots = Math.Max(1, (int)MathF.Round(f.Period / r.FrontSpacing));
+        float spacing = f.Period / slots, here = f.Along(observer);
+        int copy = f.Copy(observer);
+        float Apart(float u) => MathF.Abs(u - here - f.Period * MathF.Round((u - here) / f.Period));
+        Vector3 rides = f.Velocity, drift = new Vector3(Current.Wind.X, 0f, Current.Wind.Y) * r.DriftShare;
+        int onFront = 0;
+        for (int i = _cells.Count - 1; i >= 0; i--)
+        {
+            StormCell cell = _cells[i];
+            if (cell.Funnel is { Done: true })
+            {
+                cell.Funnel = null;
+                cell.OnFront = false; // its funnel took it off the line: it dies away, and the line grows another
+            }
+            if (cell.Funnel != null)
+            {
+                cell.Position = Flat(cell.Funnel.Position);
+                cell.Strength = MathF.Min(1f, cell.Strength + dt / r.GrowSeconds);
+                continue;
+            }
+            cell.Position += (cell.OnFront ? rides : drift) * dt;
+            bool kept = cell.OnFront && f.Copy(cell.Position) == copy && Apart(f.Along(cell.Position)) <= spacing * 2.6f;
+            float target = kept ? f.Strength : 0f;
+            cell.Strength += Math.Clamp(target - cell.Strength, -dt / r.GrowSeconds, dt / r.GrowSeconds);
+            if (target == 0f && cell.Strength <= 0f) _cells.RemoveAt(i);
+            else if (kept) onFront++;
+        }
+        int want = (int)MathF.Round(f.Strength * r.MaxCells) - (_cells.Count - onFront);
+        bool grown = f.Strength >= 0.99f;
+        _cellTimer -= dt;
+        while (onFront < want && (grown || _cellTimer <= 0f))
+        {
+            _cellTimer = r.SpawnEvery * 0.5f;
+            // The free stretch of the line nearest the observer's.
+            float best = float.MaxValue, slot = 0f;
+            int n0 = (int)MathF.Floor(here / spacing);
+            for (int k = n0 - 2; k <= n0 + 2; k++)
+            {
+                int key = ((k % slots) + slots) % slots;
+                float u = (k + 0.5f) * spacing + (Fract(MathF.Sin(key * 12.9898f + f.Id * 78.233f) * 43758.547f) - 0.5f) * spacing * 0.35f;
+                float d = Apart(u);
+                if (d > spacing * 2.2f || d >= best) continue;
+                bool taken = false;
+                foreach (StormCell c in _cells)
+                {
+                    float gap = f.Along(c.Position) - u;
+                    if (c.OnFront && f.Copy(c.Position) == copy && MathF.Abs(gap - f.Period * MathF.Round(gap / f.Period)) < spacing * 0.5f) { taken = true; break; }
+                }
+                if (!taken) (best, slot) = (d, u);
+            }
+            if (best == float.MaxValue) break;
+            float radius = _hazardRng.Range(r.RadiusMin, r.RadiusMax);
+            Vector3 at = f.EdgeAt(slot, observer) - new Vector3(f.Heading.X, 0f, f.Heading.Y) * radius * _hazardRng.Range(0.55f, 0.85f);
+            _cells.Add(new StormCell { Id = _nextId++, Position = Flat(at), Strength = grown ? 1f : 0f, Radius = radius, OnFront = true });
+            onFront++;
+        }
+    }
+
+    static float Fract(float x) => x - MathF.Floor(x);
 
     /// <summary>The rain falling at a point: the weather's, as much of it as its cells' share lets through there.</summary>
     public float RainAt(Vector3 p) => Current.Rain * (1f - Current.Cellular * (1f - CellCover(p)));
@@ -564,7 +762,7 @@ public sealed class WeatherSim
         StormCell parent = null;
         foreach (StormCell c in _cells)
             if (c.Funnel == null && Flat(c.Position - at).Length() < c.Radius && (parent == null || c.Strength > parent.Strength)) parent = c;
-        parent ??= AddCell(at, 1f);
+        parent ??= AddCell(at, 1f, first: true); // drawn whatever else is in the sky
         parent.Funnel = tornado;
         return tornado;
     }

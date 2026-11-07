@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -88,6 +88,60 @@ public partial class Staging
         Vector3 look = (dir * MathF.Cos((float)Num("lookup", 0.15)) + Vector3.Up * MathF.Sin((float)Num("lookup", 0.15)));
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
         foreach (int x in _drive.Wait(90)) yield return x;
+    }
+
+    /// <summary>
+    /// A storm front coming in, from open ground --dist metres ahead of its edge, looking up the wind at its
+    /// shelf. --sunback=1 brings it from the side away from the sun (a low sun at your back lights the land
+    /// against it: --time picks the hour); --bolt=1 catches a strike out from under the shelf; --roll=0/1 forces its roll cloud.
+    /// </summary>
+    IEnumerable<int> FrontShot()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        sky.TimeOfDay = Num("time", 0.42);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        var sim = _game.Zone.Weather.Sim;
+        sim.Snap(WeatherKind.Thunderstorm);
+        sim.ClearTornadoes();
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        if (_args.ContainsKey("sunheight"))
+        {
+            // The morning hour with the sun this high: a low sun to light the land against the front.
+            double best = 0.5, want = Num("sunheight", 0.12);
+            for (double t = 0.5; t > 0.1; t -= 0.0005)
+                if (Math.Abs(sky.SunAt(t).Y - want) < Math.Abs(sky.SunAt(best).Y - want)) best = t;
+            sky.TimeOfDay = best;
+            foreach (int x in _drive.Wait(5)) yield return x;
+        }
+        Vector2 wind = sim.Current.Wind;
+        if (Num("sunback", 0) != 0) { Vector3 s = sky.ToSun; wind = new Vector2(s.X, s.Z).Normalized(); }
+        Vector2 way = Front.Lattice(wind, sim.WorldSize, 5500f).heading;
+        Vector3 toward = new Vector3(-way.X, 0f, -way.Y).Rotated(Vector3.Up, Mathf.DegToRad((float)Num("bearing", 0)));
+        float up = (float)Num("up", 24); // over the trees
+        Vector3 eye = Lookout(_game.Survivor.WorldFeet, toward, up);
+        // The castaway stands there too: the weather happens around them, so the front's cells line up along their stretch of it.
+        _game.Survivor.PlaceOutside((eye + Vector3.Up).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + up;
+        bool? roll = Num("roll", -1) < 0 ? null : Num("roll", 0) != 0;
+        Front f = sim.StartFront(FrontKind.Storm, eye, (float)Num("dist", 3000), wind, roll);
+        float pitch = (float)Num("lookup", 0.1);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(toward * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), eye);
+        float before = f.Ahead(eye);
+        double started = sim.Time;
+        _game.Zone.Sky.DebugView((int)Num("debug", 0));
+        foreach (int x in _drive.Wait(90)) yield return x;
+        if (Num("bolt", 0) != 0)
+        {
+            Vector3 under = f.EdgeAt(f.Along(eye) + (float)Num("boltside", 300), eye) - new Vector3(f.Heading.X, 0f, f.Heading.Y) * 450f;
+            _game.Zone.Weather.StrikeAt(_game.Zone.GroundAt(under.X, under.Z));
+            foreach (int x in _drive.Wait(2)) yield return x;
+        }
+        float moved = before - f.Ahead(eye), seconds = (float)(sim.Time - started);
+        GD.Print($"front: {f.Ahead(eye):F0} m ahead of its edge, {f.Period / 1000f:F0} km long, copies {f.Spacing / 1000f:F1} km apart, heading {f.Heading} against wind {sim.Current.Wind.Normalized()}, roll cloud {f.Roll}; came {moved:F0} m in {seconds:F1} s ({moved / MathF.Max(seconds, 0.01f):F1} m/s, wind {sim.Current.WindSpeed:F1} m/s); " +
+            $"{sim.Cells.Count(c => c.OnFront)} cells on it, storm over the camera {sim.CellCover(eye):F2}, rain here {_game.Zone.Weather.RainHere:F2}, sun y {sky.ToSun.Y:F2}");
     }
 
     /// <summary>Prints the cirrus and stratus weights over 40 rolled world and weather pairs.</summary>
@@ -235,6 +289,31 @@ public partial class Staging
                 foreach (int x in _drive.Wait(4)) yield return x;
             }
         GD.Print($"rain shot: eye open {_game.Zone.Light.EyeOpen:F2}, sky at eye {_game.Zone.Weather.SkyAtEye:F2}, drops {_game.Zone.Weather.RainShown}, splashes {_game.Zone.Weather.SplashShown}");
+    }
+
+    /// <summary>
+    /// The nearest open dry ground with a clear view one way: nothing of the land rises over the eye's
+    /// line that way for a couple of kilometres, and no tree or place stands near.
+    /// </summary>
+    Vector3 Lookout(Vector3 near, Vector3 toward, float eyeUp = 1.8f)
+    {
+        toward = new Vector3(toward.X, 0f, toward.Z).Normalized();
+        for (int i = 1; i < 400; i++)
+        {
+            float r = 18f + i * 6f;
+            Vector3 g = _game.Zone.GroundAt(near.X + MathF.Cos(i * 0.39f) * r, near.Z + MathF.Sin(i * 0.39f) * r);
+            if (g.Y < 1.5f || _game.Zone.Water.LiquidAt(g.X, g.Z, out _) || _game.Places?.PlaceAt(g) != null || _game.Zone.Streamer.SolidsNear(g, 20f).Any()) continue;
+            bool open = true;
+            for (float d = 6f; d < 2400f && open; d *= 1.35f)
+            {
+                Vector3 ahead = g + toward * d;
+                if (_game.Zone.GroundAt(ahead.X, ahead.Z).Y > g.Y + eyeUp - 1.2f + d * 0.02f) open = false;
+                if (d < 120f && _game.Zone.Streamer.SolidsNear(ahead, 8f).Any()) open = false;
+            }
+            if (open) return g;
+        }
+        GD.Print("(no open lookout that way: using the nearest clearing)");
+        return Clearing(near);
     }
 
     /// <summary>The nearest dry ground with no tree or place within a dozen metres or so of it.</summary>

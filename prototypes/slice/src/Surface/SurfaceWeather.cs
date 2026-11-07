@@ -172,6 +172,20 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _lightning.CloudFlash(new Vector3(tower.X, CloudBaseY + 120f, tower.Y), _rng.RandfRange(0.25f, 0.6f));
     }
 
+    /// <summary>Tells the sky where the front is: the copy of its line nearest the camera, the way it advances, its shape.</summary>
+    void SyncFront(Vector3 camera)
+    {
+        Front f = Sim.Front;
+        if (f == null || f.Strength < 0.005f)
+        {
+            Zone.Sky.SetFront(Vector4.Zero, Vector4.Zero, Vector4.Zero, Vector4.Zero);
+            return;
+        }
+        Vector3 c = _planet.NearestCopy(_planet.Canonical(f.Centre), camera);
+        Zone.Sky.SetFront(new Vector4(c.X, c.Z, f.Heading.X, f.Heading.Y), new Vector4(f.Strength, f.Period, f.Spacing, f.Depth),
+            new Vector4(f.Shear, f.Bow, f.Bows, f.Bays), new Vector4(f.Kind == FrontKind.Storm ? 1f : 0f, f.Roll ? 1f : 0f, f.Seed, f.Severity));
+    }
+
     (MeshInstance3D, ShaderMaterial) AddShaft()
     {
         var draw = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/rainshaft.gdshader") };
@@ -349,6 +363,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             if (calm) break;
         }
         sim.GroundHeight = (x, z) => planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
+        sim.WorldSize = new Vector2((float)planet.Width, (float)planet.Height);
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
@@ -365,7 +380,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     Conditions AirHere()
     {
         Conditions c = Sim.Current;
-        if (c.Cellular <= 0.01f || Camera == null) return c;
+        if (Camera == null) return c;
+        // Ahead of a storm's front the sky is still the fair one: its deck stands over there, dark against it.
+        if (Sim.Front is { Kind: FrontKind.Storm } f)
+        {
+            float clear = f.Clear(Camera.GlobalPosition);
+            c[Param.CloudCover] = Mathf.Lerp(c.CloudCover, MathF.Min(c.CloudCover, 0.4f), clear);
+            c[Param.CloudDarkness] = Mathf.Lerp(c.CloudDarkness, MathF.Min(c.CloudDarkness, 0.2f), clear);
+        }
+        if (c.Cellular <= 0.01f) return c;
         float open = c.Cellular * (1f - Sim.CellCover(Camera.GlobalPosition));
         c[Param.VisibilityLog] = Mathf.Lerp(c[Param.VisibilityLog], MathF.Max(c[Param.VisibilityLog], 3.95f), open);
         c[Param.GroundFog] *= 1f - open;
@@ -533,6 +556,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _motes.Draw.AlbedoColor = new Color(dust.R * 1.1f, dust.G * 1.05f, dust.B, 0.55f);
         KeepStops(camera, dt);
         SyncCells(dt, camera);
+        SyncFront(camera);
         Rumble(dt, camera);
 
         Vector2 w = c.Wind;
