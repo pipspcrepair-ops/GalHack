@@ -31,6 +31,9 @@ public partial class GlobeTest : Node
         TheCap();
         TheSheetNeverWraps();
         OneSystem();
+        RingsCrossInOrder();
+        OrbitsStandApart();
+        RingsFitTheirSpheres();
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
@@ -198,6 +201,110 @@ public partial class GlobeTest : Node
         Check(moved == moving, $"globe: everything moves along its orbit from one day to the next ({moved} of {moving})");
         Check(unfit == 0, $"globe: every start has a moon in reach of thrusters with warp fuel and the drive's materials, and hyperdrive fuel, hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
         Check(unresolved == 0, $"globe: any point on a world resolves up to its orbit, its place in the system and its star ({unresolved} did not)");
+    }
+
+    /// <summary>
+    /// A ring stands on its sphere: same centre, its inner edge clear of the surface. For a world's
+    /// ring that is the sphere you can see at every height through the crossing and the sheet's
+    /// curve, and the true globe from the true globe's height; for a giant's, one mesh and the
+    /// sky's shader, from the same radii.
+    /// </summary>
+    void RingsFitTheirSpheres()
+    {
+        OrbitRules.CrossingRules c = OrbitRules.Shared.Crossing;
+        const float radius = 16000f / MathF.Tau, cap = 1060f;
+        float worst = float.MaxValue, trueOff = 0f, under = 0f;
+        for (float y = cap + Globe.RingFitsBy; y <= 12000f; y += 20f)
+        {
+            float climb = Mathf.Clamp((y - cap) / (c.TrueGlobeAt - cap), 0f, 1f);
+            float sheet = 1f / Mathf.Lerp(1f / c.FlatCurve, 1f / radius, climb), ring = Globe.RingSphere(sheet, radius, y - cap);
+            worst = MathF.Min(worst, Globe.RingInner * ring / sheet);
+            if (y >= c.TrueGlobeAt) trueOff = MathF.Max(trueOff, MathF.Abs(ring - radius));
+        }
+        for (float y = 0f; y <= cap; y += 20f) under = MathF.Max(under, MathF.Abs(Globe.RingSphere(300000f, radius, y - cap) - radius));
+        Check(worst > 1.4f, $"globe: from {cap + Globe.RingFitsBy:F0} m up a world's ring stands round the sheet you can see: its inner edge at {worst:F2} radii at the least, never inside the disc");
+        Check(trueOff < 0.01f && under < 0.01f, $"globe: and it is the true globe's ring on the ground and in true orbit ({under:F2}, {trueOff:F2} m off)");
+        foreach (var (inner, outer, what) in new[] { (Globe.RingInner, Globe.RingOuter, "a world's"), (SpaceSky.RingInner, SpaceSky.RingOuter, "a giant's") })
+        {
+            var vertices = Globe.RingMesh(inner, outer, 160).GetFaces();
+            float least = vertices.Min(v => v.Length()), most = vertices.Max(v => v.Length());
+            Vector3 middle = vertices.Aggregate(Vector3.Zero, (sum, v) => sum + v) / vertices.Length;
+            Check(least > 1f && most <= outer * 1.001f && middle.Length() < 1e-3f, $"globe: {what} ring mesh is centred on its body ({middle.Length():F4} off) and clear of it: {least:F2} to {most:F2} radii");
+        }
+        string sky = Godot.FileAccess.GetFileAsString("res://../planet-surface/shaders/sky.gdshader");
+        Check(sky.Contains($"smoothstep({SpaceSky.RingInner:F2}, ") && sky.Contains($"smoothstep(2.35, {SpaceSky.RingOuter:F2}, rr)"), "globe: the sky's shader and space's mesh draw a giant's ring from the same radii");
+    }
+
+    /// <summary>
+    /// No two worlds share an orbit: on fresh worlds of every type, neighbours round the star stand a
+    /// clear step apart (a giant that near is the one this world is a moon of), a moon holds no moons,
+    /// moons of one parent keep apart, and no world sits in a belt but in the temperate band.
+    /// </summary>
+    void OrbitsStandApart()
+    {
+        const double width = 16000;
+        double closest = double.MaxValue, closestMoons = double.MaxValue;
+        string closestAt = "", moonAt = "";
+        int moonsOfMoons = 0, inBelts = 0, asMoons = 0, cases = 0;
+        foreach (string key in Slice.Game.WorldChoice.Types.Select(t => t.Key))
+            for (int i = 0; i < 80; i++)
+            {
+                cases++;
+                var world = Slice.Game.WorldChoice.Fresh(key);
+                Planets.Gen.PlanetSpec spec = world.Spec();
+                var s = PlanetSurface.Skies.StarSystem.For(spec, PlanetSurface.Skies.SkySystem.For(spec), width);
+                asMoons += s.Home.Parent != s.Star ? 1 : 0;
+                var round = s.Bodies.Where(b => b.Parent == s.Star && b.Kind != PlanetSurface.Skies.OrbiterKind.Belt).OrderBy(b => b.Habitable).ToList();
+                for (int k = 1; k < round.Count; k++)
+                {
+                    double step = round[k].Habitable / round[k - 1].Habitable;
+                    if (step < closest) (closest, closestAt) = (step, $"{round[k - 1].Name} and {round[k].Name} on {world}");
+                }
+                foreach (var b in s.Bodies)
+                {
+                    if (b.Kind == PlanetSurface.Skies.OrbiterKind.Moon && b.Parent.Kind == PlanetSurface.Skies.OrbiterKind.Moon) moonsOfMoons++;
+                    if (b.Kind == PlanetSurface.Skies.OrbiterKind.Belt)
+                        inBelts += round.Count(w => w.Habitable is < 0.95 or > 1.7 && Math.Abs(w.Orbit - b.Orbit) < b.BeltWidth * 0.5);
+                    var moons = s.Under(b).Where(m => m.Kind == PlanetSurface.Skies.OrbiterKind.Moon && m != s.FuelMoon || (m == s.FuelMoon && m.Orbit != s.Home.Orbit)).OrderBy(m => m.Orbit).ToList();
+                    for (int k = 1; k < moons.Count; k++)
+                        if (moons[k].Orbit / moons[k - 1].Orbit < closestMoons) (closestMoons, moonAt) = (moons[k].Orbit / moons[k - 1].Orbit, $"{moons[k - 1].Name} and {moons[k].Name} on {world}");
+                }
+            }
+        Check(closest >= PlanetSurface.Skies.StarSystem.LeastOrbitStep * 0.999, $"globe: no two worlds share an orbit round the star in {cases} fresh systems: the closest neighbours stand {closest:F2} times apart ({closestAt}); {asMoons} homes are a giant's moon");
+        Check(closestMoons >= PlanetSurface.Skies.StarSystem.LeastMoonStep * 0.999, $"globe: moons of one parent keep apart, the closest {closestMoons:F2} times ({moonAt}), and only a start's sister moon shares its orbit");
+        Check(moonsOfMoons == 0, $"globe: a moon holds no moons of its own ({moonsOfMoons} did)");
+        Check(inBelts == 0, $"globe: no world sits in a belt outside the temperate band ({inBelts} did)");
+    }
+
+    /// <summary>
+    /// The sky's order for a giant's rings, against the true solid: from random eyes on both sides of
+    /// the plane and nearly in it, a ring seen over the disc must truly be nearer than the giant, and
+    /// one drawn behind it truly further. Only the near arc crosses in front.
+    /// </summary>
+    void RingsCrossInOrder()
+    {
+        var rng = new Random();
+        int wrong = 0, front = 0, behind = 0;
+        for (int i = 0; i < 40000; i++)
+        {
+            // A giant one away, its radius small against that; a ring plane at any tilt to the view.
+            var centre = new N.Vector3(0, 0, 1);
+            float radius = 0.05f + 0.15f * (float)rng.NextDouble(), tilt = i % 4 == 0 ? (float)(rng.NextDouble() - 0.5) * 0.1f : (float)(rng.NextDouble() - 0.5) * 3f;
+            var axis = N.Vector3.Normalize(new N.Vector3((float)(rng.NextDouble() - 0.5) * 0.5f, MathF.Cos(tilt), MathF.Sin(tilt)));
+            var dir = N.Vector3.Normalize(centre + new N.Vector3((float)(rng.NextDouble() - 0.5), (float)(rng.NextDouble() - 0.5), 0) * 2f * radius);
+            float t = N.Vector3.Dot(centre, axis) / N.Vector3.Dot(dir, axis);
+            float rr = (dir * t - centre).Length() / radius;
+            if (t <= 0f || rr is < 1.45f or > 2.42f) continue;
+            // The ray into the solid sphere: where it first touches, if it does.
+            float b = N.Vector3.Dot(dir, centre), past = b * b - 1f + radius * radius;
+            if (past <= 0f) continue;
+            float surface = b - MathF.Sqrt(past);
+            bool drawnInFront = t < 1f, trulyNearer = t < surface;
+            if (drawnInFront != trulyNearer) wrong++;
+            if (drawnInFront) front++;
+            else behind++;
+        }
+        Check(wrong == 0 && front > 100 && behind > 100, $"globe: over a giant's disc only the near arc is drawn in front, from both sides of the ring plane and nearly in it ({front} in front, {behind} behind, {wrong} wrong)");
     }
 
     static Vector3 G(PlanetSurface.Skies.D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);

@@ -111,6 +111,11 @@ public readonly record struct WorldView
     public Color FogColor { get; init; }
     /// <summary>The rim of air seen from outside, 0 to 1.</summary>
     public float Rim { get; init; }
+    /// <summary>Where the eye is, in the world.</summary>
+    public Vector3 Eye { get; init; }
+    /// <summary>The radius of the sphere the world's ring stands round, m (<see cref="Globe.RingSphere"/>), and how much of it shows (0 to 1).</summary>
+    public float RingRadius { get; init; }
+    public float RingShown { get; init; }
 }
 
 /// <summary>
@@ -389,10 +394,13 @@ public partial class Globe : Node3D
         """;
 
     /// <summary>
-    /// The world's ring, a real thing at its true place, drawn the way the surface's sky draws it. It
-    /// writes no depth, or everything behind it would be cut out at its rim, gaps and all, and it goes
-    /// after the ground and clouds, whose depth hides it where it passes behind. The sheet stands
-    /// elsewhere along its eye rays until it is the true globe, so that is worked here too.
+    /// The world's ring, always round the sphere you can see: over the cap that is the sheet, whose
+    /// curve runs from nearly flat to the true globe, so the ring stands on the sheet's centre at
+    /// the sheet's scale (<see cref="RingSphere"/>). Every pixel works out its own ray against the
+    /// ring's plane and that sphere, as the surface's sky does, so what the mesh is only covers the
+    /// ring: while the sheet is drawn elsewhere along its eye rays the mesh stands just in front of
+    /// it, behind what you fly near. It writes no depth, or everything behind it would be cut out at
+    /// its rim, gaps and all.
     /// </summary>
     const string RingSource = """
         shader_type spatial;
@@ -400,24 +408,56 @@ public partial class Globe : Node3D
         uniform vec3 color : source_color;
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
         uniform vec3 to_sun = vec3(0.0, 1.0, 0.0);
+        uniform vec3 centre = vec3(0.0);
+        uniform float ring_radius = 2546.0;
         uniform vec3 eye_up = vec3(0.0, 1.0, 0.0);
         uniform float height = 1000.0;
         uniform float sheet_radius = 2546.0;
-        varying vec3 place;
-        void vertex() { place = VERTEX; }
+        uniform float stand_at = 0.0;
+        uniform float fade = 1.0;
+        void vertex() {
+            if (stand_at > 0.0) {
+                vec3 to = VERTEX - CAMERA_POSITION_WORLD;
+                float d = length(to);
+                VERTEX = CAMERA_POSITION_WORLD + to / d * stand_at * (1.0 + 0.05 * d / (d + stand_at));
+            }
+        }
         void fragment() {
-            vec3 ro = CAMERA_POSITION_WORLD, to = place - ro;
-            float far_off = length(to);
-            vec3 rd = to / far_off, oc = eye_up * (height + sheet_radius);
+            vec3 ro = CAMERA_POSITION_WORLD, rd = normalize(mat3(INV_VIEW_MATRIX) * VERTEX);
+            float denom = dot(rd, axis);
+            float t = dot(centre - ro, axis) / (abs(denom) > 1e-5 ? denom : 1e-5);
+            if (t <= 0.0) discard;
+            float r = (length(ro + rd * t - centre) / ring_radius - 1.45) / 0.85; // 0 at the inner edge, 1 at the outer
+            if (r <= 0.0 || r >= 1.0) discard;
+            vec3 oc = eye_up * (height + sheet_radius);
             float b = dot(oc, rd), past = b * b - dot(oc, oc) + sheet_radius * sheet_radius;
-            if (past > 0.0 && -b - sqrt(past) > 0.0 && -b - sqrt(past) < far_off) discard;
-            float r = UV.x; // 0 at the inner edge, 1 at the outer
+            if (past > 0.0 && -b - sqrt(past) > 0.0 && -b - sqrt(past) < t) discard;
             float bands = 0.55 + 0.25 * sin(r * 61.0) + 0.2 * sin(r * 23.0 + 1.0);
             float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
-            ALBEDO = color * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs(dot(axis, to_sun)) * 1.5, 0.0, 1.0));
-            ALPHA = clamp(bands, 0.0, 1.0) * gap * 0.75;
+            ALBEDO = color * (0.45 + 0.55 * clamp(bands, 0.0, 1.0)) * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs(dot(axis, to_sun)) * 1.5, 0.0, 1.0));
+            ALPHA = gap * mix(0.95, 1.0, clamp(bands, 0.0, 1.0)) * fade;
         }
         """;
+
+    /// <summary>The ring's edges, in radii of the sphere it stands round.</summary>
+    public const float RingInner = 1.45f, RingOuter = 2.3f;
+
+    /// <summary>How far over the cap the ring has moved onto the sheet, m.</summary>
+    public const float RingFitsBy = 400f;
+
+    /// <summary>
+    /// The radius of the sphere a world's ring stands round: the true globe's under the cap, where
+    /// the sky shows it from the ground, and the sheet's from a little over it, so the ring never
+    /// lands inside the disc you can see.
+    /// </summary>
+    public static float RingSphere(float sheetRadius, float radius, float overCap)
+    {
+        float k = Mathf.Clamp(overCap / RingFitsBy, 0f, 1f);
+        return Mathf.Lerp(radius, sheetRadius, k * k * (3f - 2f * k));
+    }
+
+    /// <summary>How the ring stands against the sheet this frame: its centre's distance from the sheet's, m, and its inner edge in radii of the sheet.</summary>
+    public (float Off, float Inner) RingFit { get; private set; }
 
     const float AirStrength = 1.1f;
     const float ShroudShell = 40f;
@@ -429,6 +469,7 @@ public partial class Globe : Node3D
     MeshInstance3D _airMesh, _shroudMesh, _ring;
     bool _hasRing;
     float _airThickness, _sphereReach;
+    Basis _ringBasis = Basis.Identity;
 
     public float Radius { get; private set; }
 
@@ -471,10 +512,11 @@ public partial class Globe : Node3D
         _shroudMesh = Instance("Shroud", shell, _shroud);
         _shroudMesh.Visible = false;
         AddChild(_shroudMesh);
-        _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 3 };
+        _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 5 }; // nearer than anything else up there
         _ringMaterial.SetShaderParameter("color", C(look.RingColor));
         _hasRing = look.Ring;
-        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * 1.45f, radius * 2.3f, 160), MaterialOverride = _ringMaterial, Visible = false };
+        // The mesh only covers the ring: a shade wider than it, so its straight sides never cut the round edge.
+        _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), MaterialOverride = _ringMaterial, Visible = false, CustomAabb = Everywhere };
         AddChild(_ring);
         Visible = false;
     }
@@ -490,13 +532,7 @@ public partial class Globe : Node3D
     /// <summary>The ring stands in the globe's frame.</summary>
     public void PlaceRing(Transform3D globe)
     {
-        if (_ring != null) _ring.Transform = globe;
-    }
-
-    /// <summary>The ring drawn here or not: under the top of the band the surface's sky draws it, at the same place.</summary>
-    public void ShowRing(bool shown)
-    {
-        if (_ring != null) _ring.Visible = _hasRing && shown;
+        _ringBasis = globe.Basis;
     }
 
     /// <summary>Lays the sheet out for this frame.</summary>
@@ -538,11 +574,24 @@ public partial class Globe : Node3D
         _ground.SetShaderParameter("sun_dir", v.ToSun);
         _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
         _air.SetShaderParameter("sun_dir", v.ToSun);
-        _ringMaterial.SetShaderParameter("to_sun", v.ToSun);
-        _ringMaterial.SetShaderParameter("axis", _ring.GlobalBasis.Y.Normalized());
-        _ringMaterial.SetShaderParameter("eye_up", v.Up);
-        _ringMaterial.SetShaderParameter("height", v.Height);
-        _ringMaterial.SetShaderParameter("sheet_radius", rho);
+        _ring.Visible = _hasRing && v.RingShown > 0.002f;
+        if (_ring.Visible)
+        {
+            // One centre and one scale for the ring, its shader and the sheet: nothing of it is placed apart.
+            Vector3 centre = v.Eye - v.Up * (v.Height + v.RingRadius);
+            _ring.GlobalTransform = new Transform3D(_ringBasis.Scaled(Vector3.One * (v.RingRadius / Radius)), centre);
+            _ringMaterial.SetShaderParameter("to_sun", v.ToSun);
+            _ringMaterial.SetShaderParameter("axis", _ringBasis.Y.Normalized());
+            _ringMaterial.SetShaderParameter("centre", centre);
+            _ringMaterial.SetShaderParameter("ring_radius", v.RingRadius);
+            _ringMaterial.SetShaderParameter("eye_up", v.Up);
+            _ringMaterial.SetShaderParameter("height", v.Height);
+            _ringMaterial.SetShaderParameter("sheet_radius", rho);
+            _ringMaterial.SetShaderParameter("stand_at", v.Near * 0.9f);
+            _ringMaterial.SetShaderParameter("fade", v.RingShown);
+            Vector3 sheetCentre = v.Eye - v.Up * (v.Height + rho);
+            RingFit = (_ring.GlobalPosition.DistanceTo(sheetCentre), RingInner * v.RingRadius / rho);
+        }
         _air.SetShaderParameter("eye_up", v.Up);
         _air.SetShaderParameter("ground", rho);
         _air.SetShaderParameter("thickness", _airThickness);
