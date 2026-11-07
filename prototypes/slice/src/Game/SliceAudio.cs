@@ -10,8 +10,10 @@ namespace Slice.Game;
 /// in from where they live (planet-surface's digging, ore, clank, place, boom, thunder and its
 /// wind and rain; building's place, remove, upgrade and UI clicks; diegetic-ui's chirp; wildlife's
 /// calls), plus three small loops of the slice's own (the jetpack's hiss, a vessel's engines,
-/// footsteps). One master volume, set in the Stats tab's options; everything is mixed well under
-/// it, so nothing is harsh. Players are stopped before quitting (wildlife's shutdown drains them).
+/// footsteps), and the music (<see cref="SliceMusic"/>). Four volumes in the Stats tab's settings,
+/// remembered between runs: master, and music, effects and ambience as buses under it. Every player
+/// that joins the tree is routed to its bus here, so nothing needs to know about them, wherever
+/// the code that made it lives. Players are stopped before quitting (wildlife's shutdown drains them).
 /// </summary>
 public partial class SliceAudio : Node
 {
@@ -22,16 +24,77 @@ public partial class SliceAudio : Node
     AudioStreamWav _chirp;
     float _stepTimer;
     int _shots, _placed, _taken;
+    float _saveIn;
 
-    /// <summary>The master volume, 0 to 1 (the options).</summary>
-    public float Master
+    /// <summary>The four volumes, as they are saved.</summary>
+    public AudioSettings Settings { get; private set; }
+
+    /// <summary>The drones and the chosen tracks.</summary>
+    public SliceMusic Music { get; private set; }
+
+    static string SettingsPath => ProjectSettings.GlobalizePath("user://audio-settings.json");
+
+    /// <summary>A volume, 0 to 1, by its key in <see cref="AudioSettings.Volumes"/>: applied now, saved a moment later.</summary>
+    public void SetVolume(string key, float value)
     {
-        get => Mathf.DbToLinear(AudioServer.GetBusVolumeDb(0));
-        set => AudioServer.SetBusVolumeDb(0, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+        Settings.Set(key, value);
+        Apply(key);
+        _saveIn = 1f;
+    }
+
+    /// <summary>The bus a volume sets (master is the engine's own bus 0).</summary>
+    static int Bus(string key) => key == AudioSettings.Master ? 0 : AudioServer.GetBusIndex(AudioSettings.BusName(key));
+
+    void Apply(string key)
+    {
+        int bus = Bus(key);
+        float value = Settings.Get(key);
+        AudioServer.SetBusMute(bus, value <= 0f);
+        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+    }
+
+    public static void MakeBuses()
+    {
+        foreach (string key in AudioSettings.Volumes)
+        {
+            if (key == AudioSettings.Master || AudioServer.GetBusIndex(AudioSettings.BusName(key)) >= 0) continue;
+            AudioServer.AddBus();
+            int bus = AudioServer.BusCount - 1;
+            AudioServer.SetBusName(bus, AudioSettings.BusName(key));
+            AudioServer.SetBusSend(bus, "Master");
+        }
+    }
+
+    /// <summary>A player still on the default bus goes to ambience if it is the wind or the rain, and to effects otherwise.</summary>
+    public static void Route(Node n)
+    {
+        if (n is AudioStreamPlayer p)
+        {
+            if (p.Bus == "Master") p.Bus = AudioSettings.BusName(n.Name == "Wind" || n.Name == "Rain" ? AudioSettings.Ambience : AudioSettings.Effects);
+        }
+        else if (n is AudioStreamPlayer3D p3)
+        {
+            if (p3.Bus == "Master") p3.Bus = AudioSettings.BusName(AudioSettings.Effects);
+        }
+        else if (n is AudioStreamPlayer2D p2)
+        {
+            if (p2.Bus == "Master") p2.Bus = AudioSettings.BusName(AudioSettings.Effects);
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        GetTree().NodeAdded -= Route;
+        if (_saveIn > 0f) Settings.Save(SettingsPath);
     }
 
     public override void _Ready()
     {
+        MakeBuses();
+        Settings = AudioSettings.Load(SettingsPath);
+        foreach (string key in AudioSettings.Volumes) Apply(key);
+        foreach (Node n in Game.FindChildren("*", "", true, false)) Route(n);
+        GetTree().NodeAdded += Route;
         _ui = new BlockBuilding.Sfx { Name = "BuildingSfx" };
         AddChild(_ui);
         _chirp = DiegeticUi.World.Sfx.WarningChirp();
@@ -39,7 +102,8 @@ public partial class SliceAudio : Node
         _engine = Loop("Engines", Noise(0.8f, 420f, 0.3f), -14f);
         _step = new AudioStreamPlayer3D { Name = "Steps", Stream = Tap(), VolumeDb = -20f, MaxDistance = 20f };
         AddChild(_step);
-        Master = 0.8f;
+        Music = new SliceMusic { Name = "Music", Game = Game };
+        AddChild(Music);
         Game.Menu.Sounded += OnMenu;
     }
 
@@ -79,6 +143,11 @@ public partial class SliceAudio : Node
 
     public override void _Process(double delta)
     {
+        if (_saveIn > 0f)
+        {
+            _saveIn -= (float)delta;
+            if (_saveIn <= 0f) Settings.Save(SettingsPath);
+        }
         Game g = Game;
         if (g?.Survivor == null || g.Phase != Phase.Playing) return;
         float dt = (float)delta;
@@ -128,6 +197,7 @@ public partial class SliceAudio : Node
         _jet.Stop();
         _engine.Stop();
         _step.Stop();
+        Music.StopAll();
     }
 
     // ---- The slice's own small synths ----------------------------------------------------------

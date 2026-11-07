@@ -3,6 +3,16 @@ namespace GalHack.Music;
 /// <summary>What a drone plays, by the place it belongs to.</summary>
 public enum DroneMood { Temperate, Arid, Ice, Lava, Swamp, Ocean, Airless, DeepSpace, Hollow }
 
+/// <summary>The moods' names in data, and as folders of chosen tracks.</summary>
+public static class DroneMoods
+{
+    public static string Key(DroneMood mood) => mood switch
+    {
+        DroneMood.DeepSpace => "deep-space",
+        _ => mood.ToString().ToLowerInvariant(),
+    };
+}
+
 /// <summary>The single-cycle timbres a drone is built from.</summary>
 public enum Wave { Sine, Warm, Reed, Dark, Glass, Choir, Bare }
 

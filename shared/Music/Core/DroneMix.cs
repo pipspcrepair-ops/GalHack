@@ -19,7 +19,8 @@ public sealed class DroneMix
     readonly ulong _seed;
     readonly float[] _a, _b;
     DroneEngine _worldDrone, _spaceDrone;
-    float _at, _target;
+    float _target, _duckTarget = 1f;
+    double _at, _duck = 1.0; // doubles: an ease this slow moves by less than a float can hold near 1, and would stall short
 
     public DroneMix(DroneMood world, ulong seed, int sampleRate, int maxFrames)
     {
@@ -38,17 +39,24 @@ public sealed class DroneMix
         set => Volatile.Write(ref _target, Math.Clamp(value, 0f, 1f));
     }
 
+    /// <summary>How loud the drones are under a recorded track, 0 to 1 (eased here, so it can be set from any thread, in steps).</summary>
+    public float Duck
+    {
+        get => Volatile.Read(ref _duckTarget);
+        set => Volatile.Write(ref _duckTarget, Math.Clamp(value, 0f, 1f));
+    }
+
     /// <summary>The drones running right now, for tests and for the cost report.</summary>
     public int Running => (_worldDrone != null ? 1 : 0) + (_spaceDrone != null ? 1 : 0);
 
     /// <summary>Writes the next frames. No more than the <c>maxFrames</c> it was made with.</summary>
     public void Render(float[] left, float[] right, int frames)
     {
-        float target = Space;
+        float target = Space, duckTarget = Duck;
         if (target > 0f) _spaceDrone ??= new DroneEngine(_space, _seed ^ 0x51ACE51ACE5UL, Rate);
         if (target < 1f) _worldDrone ??= new DroneEngine(_world, _seed, Rate);
 
-        float step = 1f - MathF.Exp(-1f / (FollowSeconds * Rate));
+        double step = 1.0 - Math.Exp(-1.0 / (FollowSeconds * Rate));
         Array.Clear(left, 0, frames);
         Array.Clear(right, 0, frames);
         _worldDrone?.Render(_a, _b, 0, frames);
@@ -56,8 +64,9 @@ public sealed class DroneMix
         for (int i = 0; i < frames; i++)
         {
             _at += (target - _at) * step;
+            _duck += (duckTarget - _duck) * step;
             // Equal power: the middle of the climb is as loud as either end.
-            float angle = _at * MathF.PI / 2f, ground = MathF.Cos(angle), sky = MathF.Sin(angle);
+            float angle = (float)_at * MathF.PI / 2f, ground = MathF.Cos(angle) * (float)_duck, sky = MathF.Sin(angle) * (float)_duck;
             if (_worldDrone != null)
             {
                 left[i] += _a[i] * ground;

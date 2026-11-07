@@ -18,6 +18,7 @@
     <Compile Include="..\..\shared\Physics\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
     <Compile Include="..\..\shared\Galaxy\**\*.cs" />
+    <Compile Include="..\..\shared\Music\Core\**\*.cs" />
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Items\Production\**\*.cs" />
     <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
