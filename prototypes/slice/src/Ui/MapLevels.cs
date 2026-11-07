@@ -239,7 +239,7 @@ public sealed class MapLevels
             labels.Flush(g, panel);
         }
         g.Caption("WORLD MAP", side.Position, side.Size.X);
-        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place, or", "take down a mark of yours", "it wraps both ways", "found places and deposits", "show here, with your marks" };
+        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place, or", "take down a mark of yours", "it wraps east to west", "found places and deposits", "show here, with your marks" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         g.Text($"{View.MetresPerPixel * panel.Size.X / 1000:F1} KM ACROSS", side.Position + new Vector2(0, 216), C.Text, 15, UiTheme.Mono);
         if (g.Button("map:home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2))
