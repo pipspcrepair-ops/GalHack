@@ -15,6 +15,29 @@ namespace Slice.Tests;
 /// </summary>
 public partial class Staging
 {
+    /// <summary>A tornado under its storm tower: --dist metres away, looking up at its top at the cloud base (the shot is taken while it is forming and lowers).</summary>
+    IEnumerable<int> FunnelShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        var sim = _game.Zone.Weather.Sim;
+        sim.Snap(WeatherKind.Tornado);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 eye = _game.Survivor.WorldEye();
+        float dist = (float)Num("dist", 500);
+        sim.ClearTornadoes();
+        Tornado t = sim.SpawnTornado(eye + new Vector3(dist, 0f, 0f), eye);
+        t.Homing = false;
+        foreach (int x in _drive.Wait(240)) yield return x;
+        float pitch = (float)Num("lookup", 0.35);
+        Vector3 look = new Vector3(1f, MathF.Tan(pitch) , 0f).Normalized();
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        GD.Print($"funnel at {t.Position}, formation {t.Formation:F2}");
+    }
+
     /// <summary>Stands in a monsoon and prints the frame's cost, with the rain, over a few hundred drawn frames.</summary>
     IEnumerable<int> MonsoonCost()
     {

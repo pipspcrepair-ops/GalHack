@@ -22,6 +22,7 @@ public partial class TornadoFx : Node3D
     GpuParticles3D _debris, _dust;
     Vector3 _lastPosition;
     Vector2 _lean;
+    MeshInstance3D _outerMesh, _innerMesh;
 
     public override void _Ready()
     {
@@ -29,8 +30,8 @@ public partial class TornadoFx : Node3D
         float height = Rules.VisualHeight;
         _outer = FunnelMaterial(funnel, spin: 0.9f, opacity: 0.85f, new Color("4a3e32"), new Color("6a6e66"));
         _inner = FunnelMaterial(funnel, spin: 1.6f, opacity: 0.95f, new Color("261c14"), new Color("3c3e3a"));
-        AddChild(new MeshInstance3D { Mesh = Lathe(height, 1f), MaterialOverride = _outer, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
-        AddChild(new MeshInstance3D { Mesh = Lathe(height, 0.62f), MaterialOverride = _inner, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        AddChild(_outerMesh = new MeshInstance3D { Mesh = Lathe(height, 1f), MaterialOverride = _outer, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        AddChild(_innerMesh = new MeshInstance3D { Mesh = Lathe(height, 0.62f), MaterialOverride = _inner, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
         Shader orbit = GD.Load<Shader>("res://shaders/vortex_particles.gdshader");
         _debrisProcess = new ShaderMaterial { Shader = orbit };
@@ -85,6 +86,21 @@ public partial class TornadoFx : Node3D
     }
 
     public int ActiveParticles() => (int)(_debris.Amount * _debris.AmountRatio) + (int)(_dust.Amount * _dust.AmountRatio);
+
+    /// <summary>
+    /// Stretches the funnel so its top stands at <paramref name="top"/> metres over the ground: the
+    /// dark base of the storm tower above it, whatever height that cloud hangs at. It widens a little as it lengthens.
+    /// </summary>
+    public void ReachTo(float top)
+    {
+        if (_outerMesh == null) return;
+        float k = Mathf.Max(top, 20f) / Mathf.Max(Rules.VisualHeight, 1f);
+        float wide = Mathf.Clamp(MathF.Sqrt(k), 0.6f, 2.5f);
+        var scale = new Vector3(wide, k, wide);
+        _outerMesh.Scale = scale;
+        _innerMesh.Scale = scale;
+        // The lean and snake are in the funnel's own metres: they stretch with it, so its top still sits over the tower.
+    }
 
     /// <summary>Called every physics tick, so the node rides physics interpolation like everything else.</summary>
     public void Follow(Tornado t)

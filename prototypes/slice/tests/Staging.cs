@@ -88,6 +88,7 @@ public sealed partial class Staging
             "crouch" => CrouchView(),
             "dark" => Dark(),
             "monsoon" => MonsoonCost(),
+            "funnel" => FunnelShot(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),
             "rain" => RainShot(),

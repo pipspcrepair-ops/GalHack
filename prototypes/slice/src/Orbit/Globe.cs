@@ -100,6 +100,8 @@ public readonly record struct WorldView
     public float Relief { get; init; }
     /// <summary>The height of the cloud layer, m.</summary>
     public float CloudLift { get; init; }
+    /// <summary>The cloud sheet's curvature, 1 / m: flat until the climb bends the ground, then the same. Callers set it: the ground's own bend for a sheet with no flat stretch.</summary>
+    public float CloudBend { get; init; }
     /// <summary>The sheet over the land that's still drawn (0 to 1).</summary>
     public float OverLand { get; init; }
     /// <summary>The nearest and farthest the sheet is drawn along each eye ray, m; 0: where it really is.</summary>
@@ -567,6 +569,8 @@ public partial class Globe : Node3D
             m.SetShaderParameter("fog_color", v.FogColor);
             m.SetShaderParameter("over_land", v.OverLand);
         }
+        // Clouds stay flat on the way up from the ground: only the climb's own bend curves them.
+        _clouds.SetShaderParameter("bend", MathF.Max(v.CloudBend, 1e-7f));
         // Over the cloud deck for the swap, under it as the far field.
         _ground.RenderPriority = v.OverLand > 0f && v.OverLand < 1f ? 1 : -2;
         _clouds.RenderPriority = _ground.RenderPriority + 1;

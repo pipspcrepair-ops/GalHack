@@ -377,6 +377,8 @@ public partial class Spaceflight
 
         float climb = Mathf.Clamp((y - cap) / (r.TrueGlobeAt - cap), 0f, 1f);
         float bend = Mathf.Lerp(1f / r.FlatCurve, 1f / R, climb);
+        float cloudBend = Mathf.Lerp(0f, 1f / R, climb); // what the climb adds to the ground's curve: the clouds take that and not the flat land's own
+        s.Sky.CloudBend = cloudBend;
         float ringRadius = Globe.RingSphere(1f / bend, R, y - cap);
         s.Sky.RingRadius = ringRadius;
         Godot.Environment env = s.Sky.Environment;
@@ -403,6 +405,7 @@ public partial class Spaceflight
             Taper = Smooth((y - cap) / 60f),
             Local = Mathf.Clamp(MathF.Min((float)nz, (float)(h - nz)) * 0.8f, 300f, 3000f),
             Relief = Mathf.Lerp(1f, (float)Rules.Globe.ReliefFar, climb),
+            CloudBend = cloudBend,
             CloudLift = Mathf.Lerp(s.Sky.Air.CloudBase + s.Sky.Air.CloudThickness * 0.45f, (float)Rules.Globe.CloudHeight * R, Smooth((y - cap) / 400f)),
             OverLand = over,
             Near = near, Far = far,
