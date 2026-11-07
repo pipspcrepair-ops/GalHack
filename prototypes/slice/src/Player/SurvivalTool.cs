@@ -583,11 +583,14 @@ public static class FloraFinder
         {
             Vector3 root = seen.Root;
             float s = seen.Scale;
-            // A plant is a column from its root up to about twice its scale.
+            // A plant is a column from its root up to about twice its scale, as wide as it really is:
+            // a plant you aren't pointing at never takes the pulse from the ground you are.
             Vector3 mid = root + Vector3.Up * Mathf.Min(1.2f, s);
             float along = (mid - eye).Dot(dir);
             if (along < 0f || along > reach + 0.5f) continue;
-            if ((eye + dir * along - mid).Length() > 0.6f + 0.4f * s) continue;
+            var book = streamer.World.Flora.Book.Plants;
+            float trunk = seen.Plant >= 0 && seen.Plant < book.Count ? book[seen.Plant].TrunkRadius * s : 0f;
+            if ((eye + dir * along - mid).Length() > Mathf.Max(0.35f + 0.3f * s, trunk + 0.3f)) continue;
             if (along < best)
             {
                 best = along;

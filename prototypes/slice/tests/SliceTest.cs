@@ -370,6 +370,11 @@ public partial class SliceTest : Node
             return _game.Zone.GroundAt(q.X, q.Z);
         }
         Vector3 a = Ground(2.6f, -3f), b = Ground(2.6f, 3f);
+        // Bare ground to work: a plant under the crosshair rightly takes the tool first, and this is about the ground.
+        foreach (Vector3 spot in new[] { a, b })
+            foreach (var plant in _game.Zone.Streamer.FloraNear(spot, 4f).ToList())
+                if (_game.Zone.Planet.Felled.Add(plant.Id)) _game.Zone.Streamer.Fell(plant.Id);
+        foreach (int x in _drive.Wait(2)) yield return x;
         int before = store.RemovedCount;
         foreach (int x in _drive.HoldPrimary(a, 2)) yield return x;
         Check(store.RemovedCount == before && _game.Tool.ChippedCells > 0, $"one pulse of the beam chips the ground without taking a cell ({store.RemovedCount - before} cells gone, {_game.Tool.ChippedCells} worn)");
@@ -432,7 +437,19 @@ public partial class SliceTest : Node
             Deposit rock = _game.Tool.Tell.Value;
             string ore = _game.Tool.OreOf(rock.Kind).Id;
             int left = _game.Tool.TellLeft(rock), before = _game.Tool.TellOre, pack = _game.Pack[ore], all = left * Slice.Player.SurvivalTool.TellOrePerPulse;
-            foreach (int x in _drive.HoldPrimary(aim, 600, () => _game.Tool.TellOre - before >= all)) yield return x;
+            bool lost = false;
+            foreach (int x in _drive.HoldPrimary(aim, 600, () =>
+            {
+                if (!lost && !_game.Tool.OnTell && _game.Tool.TellOre - before < all)
+                {
+                    lost = true;
+                    Vector3 eye = _game.Survivor.WorldEye();
+                    var hit = zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, aim.Value, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Props));
+                    string what = hit.Count == 0 ? "nothing" : hit["collider"].AsGodotObject() is Node n ? n.Name : "a trunk or boulder";
+                    GD.Print($"  (the tool came off the rock after {_game.Tool.TellOre - before} ore: eye {eye}, aim {aim}, ray meets {what}, plants within 3 m {zone.Streamer.SolidsNear(aim.Value, 3f).Count()})");
+                }
+                return _game.Tool.TellOre - before >= all;
+            })) yield return x;
             foreach (int x in _drive.Wait(2)) yield return x;
             bool gone = _game.Tool.Tell is not Deposit still || still.X != rock.X || still.Y != rock.Y;
             Check(_game.Tool.TellOre - before == all && _game.Pack[ore] - pack == all && gone,
