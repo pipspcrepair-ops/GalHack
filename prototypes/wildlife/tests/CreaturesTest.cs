@@ -1216,6 +1216,7 @@ public partial class CreaturesTest : Node
         var sim = new WildSim(_data, new Terrain(5, 40f), new NavGrid(40f, 3f));
         int species = 0, same0 = 0, determ = 0, extras = 0, patches = 0, quality = 0, bounded = 0, animated = 0;
         float maxAsym = 0f, maxAdded = 0f;
+        string maxAddedOn = "";
         var growthsAt = new Dictionary<float, int>();
         foreach (ulong seed in new ulong[] { 7041, 7042, 7043, 7044, 7045, 7046 })
         {
@@ -1242,6 +1243,7 @@ public partial class CreaturesTest : Node
                     if (FaunaQuality.Problems(_data.Fauna, m).Count == 0) quality++;
                     maxAsym = MathF.Max(maxAsym, r.Asymmetry);
                     float added = r.BodyVolume > 0f ? r.AddedVolume / r.BodyVolume : 0f;
+                    if (added > maxAdded) maxAddedOn = $"{m.CommonName}, {m.Form}, {m.Body.Size:F2} m";
                     maxAdded = MathF.Max(maxAdded, added);
                     if (r.Asymmetry <= Mutation.MaxAsymmetry + 1e-3f && added < 0.25f && r.Growths <= Mutation.MaxGrowths) bounded++;
                     // And it still moves like an animal: 20 s of animation, nothing broken.
@@ -1261,7 +1263,7 @@ public partial class CreaturesTest : Node
         Check(growthsAt[0.25f] < growthsAt[0.5f] && growthsAt[0.5f] < growthsAt[1f] && extras >= species / 2 && patches >= species / 2,
             $"it grows with strength: {growthsAt[0.25f]}, {growthsAt[0.5f]} and {growthsAt[1f]} growths at 0.25, 0.5 and 1; at full strength {extras} of {species} have an extra part and {patches} a patch of off-palette skin");
         Check(quality == species && bounded == species && animated == species,
-            $"silhouettes stay believable: every fully mutated species passes every body rule ({quality} of {species}), stays within bounds (heavier side at most {maxAsym:F2}x, growths at most {maxAdded:P0} of the body) and animates cleanly ({animated} of {species})");
+            $"silhouettes stay believable: every fully mutated species passes every body rule ({quality} of {species}), stays within bounds (heavier side at most {maxAsym:F2}x, growths at most {maxAdded:P0} of the body, on a {maxAddedOn}) and animates cleanly ({animated} of {species})");
     }
 
     // ---- Settlements -------------------------------------------------------------------------

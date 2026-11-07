@@ -102,6 +102,8 @@ public sealed class Piece
     public readonly List<Prim> Prims = new();
     /// <summary>Thin bits (tendrils, whiskers, toes) don't cast shadows: cheap and nobody notices.</summary>
     public bool Shadow = true;
+    /// <summary>Not a surface but a blur: drawn see-through, with its vertex alpha as its strength (<see cref="CreatureMaterials.Blur"/>).</summary>
+    public bool Blur;
 
     public Piece(string name) => Name = name;
 

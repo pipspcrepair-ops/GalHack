@@ -125,12 +125,15 @@ public static partial class Brain
 
         Vector3 spot = Rests.Spot(c);
         float d = WildSim.Flat(spot - c.Position).Length();
-        bool flier = s.Rig == RigKind.Winged;
-        if (c.State != CState.Rest && d > (flier ? 2.5f : 1.2f))
+        bool flier = s.Rig == RigKind.Winged, glider = s.Flight == FlightKind.Glide;
+        // A glider can't set down on a spot: it comes down a long approach towards it, lands where that ends, and walks the rest if it has to.
+        bool arrived = glider && c.Landed && d < 14f;
+        if (c.State != CState.Rest && !arrived && d > (flier ? 2.5f : 1.2f))
         {
             c.SetState(CState.ReturnHome);
             Steer(w, c, spot, d > 20f ? s.Stats.WalkSpeed * 1.3f : s.Stats.WalkSpeed);
-            if (flier) c.Altitude = d < 8f ? 0f : 6f;
+            if (glider) c.Altitude = c.Landed || d < Flight.ApproachFrom(c, 6f) ? 0f : 6f;
+            else if (flier) c.Altitude = d < 1.5f ? 0f : 3f;
             else if (s.Rig == RigKind.GasBag) c.Altitude = d < 8f ? 1.4f : 6f;
             else if (s.Rig == RigKind.Swarm && s.Flies) c.Altitude = 1.8f;
             return true;

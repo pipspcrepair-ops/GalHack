@@ -103,24 +103,15 @@ public static partial class Brain
             default: Oddity(w, c, near, dist, dt); break;
         }
 
-        // Fliers land to eat and to rest, and drop low to bite.
-        if (c.Species.Rig == RigKind.Winged)
-        {
-            bool low = c.State is CState.Chase or CState.Eat || (c.State == CState.Graze && c.Species.Behaviour != Behaviour.Scavenger);
-            c.Altitude = c.State == CState.Eat || c.State == CState.Graze ? 0f : c.State == CState.Chase ? 1.4f : low ? 1.4f : CruiseAltitude(c);
-        }
+        // Fliers land to eat and to rest; how they hunt from the air is their own.
+        if (c.Species.Rig == RigKind.Winged) Flight.PickAltitude(w, c, near);
         else if (c.Species.Rig == RigKind.GasBag) c.Altitude = c.State == CState.Chase ? 1.8f : CruiseAltitude(c);
 
         // Wild things keep out of settlements: they steer round them, whatever they are doing.
         if (w.Settlements.Count > 0) AvoidTowns(w, c);
     }
 
-    static float CruiseAltitude(Creature c) => c.Species.Rig switch
-    {
-        RigKind.GasBag => 6f + (c.Id % 5) * 1.3f,
-        RigKind.Swarm => 1.8f,
-        _ => 9f + (c.Id % 4) * 2f,
-    };
+    static float CruiseAltitude(Creature c) => c.Species.Rig == RigKind.GasBag ? 6f + (c.Id % 5) * 1.3f : 1.8f;
 
     // ---- Behaviours -------------------------------------------------------------------
 
@@ -241,6 +232,8 @@ public static partial class Brain
         {
             case CState.Stalk:
                 if (!prey) { c.SetState(CState.Wander); break; }
+                // Nothing on the wing creeps up on you: it goes straight to circling.
+                if (c.Species.Flight == FlightKind.Glide) { c.SetState(CState.Chase); break; }
                 // A shy hunter breaks off when you turn and stare it down.
                 if (c.Species.Temperament == Temperament.Skittish && Watched(near, c, 0.85f) && dist < 18f)
                 {
@@ -649,7 +642,7 @@ public static partial class Brain
             Creature corpse = w.NearestCorpse(c.Goal, 2f);
             if (corpse == null) { c.SetState(CState.Wander); return; }
             float d = WildSim.Flat(corpse.Position - c.Position).Length();
-            if (d < c.Radius + corpse.Radius + 0.6f)
+            if (d < c.Radius + corpse.Radius + 0.6f && (c.Landed || c.Species.Flight != FlightKind.Glide))
             {
                 c.SetState(CState.Eat);
                 c.Desired = Vector3.Zero;
@@ -826,6 +819,25 @@ public static partial class Brain
         dist = WildSim.Flat(t.Position - c.Position).Length();
         if (c.State != CState.Chase) c.SetState(CState.Chase);
         c.FacePoint = t.Position;
+        if (c.Species.Flight == FlightKind.Glide)
+        {
+            Swoop.Hunt(w, c, t);
+            return;
+        }
+        if (c.Species.Flight == FlightKind.Hover)
+        {
+            // It darts up to a spot a little way off, not at you, and stops there to do the rest.
+            float hold = Attacks.Range(c);
+            Vector3 back = WildSim.Flat(c.Position - t.Position);
+            back = back.LengthSquared() > 0.01f ? back.Normalized() : -c.Forward;
+            if (dist <= hold + 0.6f)
+            {
+                c.Desired = dist < hold - 0.7f ? back * c.Stats.WalkSpeed : Vector3.Zero;
+                if (dist >= hold - 0.7f) Attacks.Start(w, c, t);
+            }
+            else Steer(w, c, t.Position + back * hold, c.Stats.RunSpeed * 0.7f);
+            return;
+        }
         if (dist <= Attacks.Range(c))
         {
             c.Desired = Vector3.Zero;
@@ -852,7 +864,9 @@ public static partial class Brain
                 float a = c.Yaw + c.IdleLook;
                 c.LookAt ??= c.Position + new Vector3(-MathF.Sin(a), 0.2f, -MathF.Cos(a)) * 6f + Vector3.Up * c.Species.BodyHeight;
             }
-            if (c.StateTime > c.IdleFor)
+            // A glider's rest starts when it is down; it can take its time getting there, but not for ever.
+            float since = c.Species.Flight != FlightKind.Glide ? c.StateTime : c.Landed ? w.Time - c.LandedAt : c.StateTime - 30f;
+            if (since > c.IdleFor)
             {
                 c.IdleFor = 0f;
                 c.SetState(CState.Wander);
@@ -865,7 +879,7 @@ public static partial class Brain
             // On the way it was going, give or take: a point on a circle ahead of it, drifting, and
             // turned for home if that would take it out of its range.
             c.WanderTurn = Math.Clamp(c.WanderTurn + c.Rng.Range(-0.5f, 0.5f), -0.9f, 0.9f);
-            float a = c.Yaw + c.WanderTurn, ahead = MathF.Min(radius, c.Rng.Range(5f, 11f) + c.Species.Body.Size);
+            float a = c.Yaw + c.WanderTurn, ahead = MathF.Min(radius, (c.Rng.Range(5f, 11f) + c.Species.Body.Size) * (c.Species.Flight == FlightKind.Glide ? 3f : 1f));
             Vector3 g = c.Position + new Vector3(-MathF.Sin(a), 0f, -MathF.Cos(a)) * ahead;
             if (WildSim.Flat(g - c.Home).Length() > radius) g = c.Home + (WildSim.Flat(g - c.Home).Normalized() * radius * 0.5f).Rotated(Vector3.Up, c.Rng.Range(-1f, 1f));
             c.Goal = w.FreeSpot(g, c.Rng);
@@ -873,13 +887,16 @@ public static partial class Brain
         }
         float d = WildSim.Flat(c.Goal - c.Position).Length();
         bool flier = c.Species.Rig is RigKind.Winged or RigKind.GasBag || (c.Species.Rig == RigKind.Swarm && c.Species.Flies);
-        if (d < (flier ? 4f : 1.5f) || c.StateTime > 25f)
+        bool glider = c.Species.Flight == FlightKind.Glide;
+        if (d < (glider ? MathF.Max(4f, Heft.TurnRadius(c.Species) * 1.2f) : c.Species.Flight == FlightKind.Hover ? 1f : flier ? 4f : 1.5f) || c.StateTime > 25f)
         {
-            if (c.Species.Rig == RigKind.Winged) c.HasGoal = false; // fliers keep circling
+            // Gliders mostly fly on, and every so often come down to feed or perch.
+            if (glider && (w.Time - c.LandedAt < 40f || !c.Rng.Chance(c.Species.Behaviour is Behaviour.Grazer or Behaviour.HarmlessOddity ? 0.12f : 0.04f))) c.HasGoal = false;
             else c.SetState(CState.Graze);
             return;
         }
-        Steer(w, c, c.Goal, c.Stats.WalkSpeed);
+        // A hoverer darts from one place to the next and holds; everything else ambles.
+        Steer(w, c, c.Goal, c.Species.Flight == FlightKind.Hover ? c.Stats.RunSpeed * 0.8f : c.Stats.WalkSpeed);
     }
 
     static void Steer(WildSim w, Creature c, Vector3 goal, float speed)

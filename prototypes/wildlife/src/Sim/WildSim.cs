@@ -238,8 +238,10 @@ public sealed class WildSim
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame
         if (species.Flies)
         {
-            c.Altitude = species.Rig == RigKind.Swarm ? c.Rng.Range(1.2f, 2.5f) : species.Rig == RigKind.GasBag ? c.Rng.Range(5f, 11f) : c.Rng.Range(8f, 15f);
+            c.Altitude = species.Rig == RigKind.Swarm ? c.Rng.Range(1.2f, 2.5f) : species.Rig == RigKind.GasBag ? c.Rng.Range(5f, 11f)
+                : species.Flight == FlightKind.Hover ? c.Rng.Range(1.8f, 4.5f) : c.Rng.Range(8f, 15f);
             c.Position += Vector3.Up * c.Altitude;
+            if (species.Flight == FlightKind.Glide) c.Velocity = c.Forward * Heft.CruiseAirspeed(c); // already flying, as a glider has to be
         }
         if (herd != null)
         {
@@ -461,7 +463,8 @@ public sealed class WildSim
         {
             float heft = 1f - 0.7f * Heft.Bulk(c.Species);
             c.Rear = MathF.Max(c.Rear, 0.5f * heft);
-            c.Velocity *= 1f - 0.7f * heft;
+            // A glider on the wing keeps its way on: it can't stop, and if this kills it, it falls along the line it was flying.
+            if (c.Species.Flight != FlightKind.Glide || c.Landed) c.Velocity *= 1f - 0.7f * heft;
             c.CrawlSpeed *= 1f - 0.7f * heft;
             c.ThinkEvery = 0f;
         }
@@ -486,6 +489,8 @@ public sealed class WildSim
         c.Phase = AttackPhase.None;
         c.Lunge = 0f;
         c.Rear = 0f;
+        c.AirAimOn = false;
+        c.Flapping = false;
         c.Falling = c.Space != null;
         Died?.Invoke(c, killer);
         if (killer is CreatureTarget predator) RaisePreyed(predator.Creature, c);

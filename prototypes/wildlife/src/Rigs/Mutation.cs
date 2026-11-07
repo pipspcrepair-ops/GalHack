@@ -61,7 +61,9 @@ public static class Mutation
             if (report.BodyVolume > 0f && report.AddedVolume > report.BodyVolume * 0.11f) break;
             float roll = rng.Float();
             Piece on = roll < 0.6f || (head == null && limbs.Count == 0) ? body : roll < 0.8f && head != null ? head : limbs.Count > 0 ? limbs[rng.Int(0, limbs.Count - 1)] : body;
-            report.AddedVolume += Growth(on, paint, rng, k, s.Body.Width * (on == body ? 1f : 0.6f));
+            // Sized by its width, or by the body piece's bulk where the animal's width isn't that piece's (a gas bag's).
+            float across = MathF.Min(s.Body.Width, report.BodyVolume > 0f ? MathF.Cbrt(report.BodyVolume) * 0.75f : s.Body.Width);
+            report.AddedVolume += Growth(on, paint, rng, k, across * (on == body ? 1f : 0.6f));
             report.Growths++;
         }
 
