@@ -515,7 +515,7 @@ public partial class BuildController : Node
 
         if (s.Core == aim.Cell && s.Count > 1)
         {
-            Refuse("The core holds this structure together");
+            Refuse("The core can't be removed, only destroyed or hijacked");
             return;
         }
 

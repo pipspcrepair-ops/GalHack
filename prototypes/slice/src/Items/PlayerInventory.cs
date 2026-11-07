@@ -88,6 +88,31 @@ public sealed class PlayerInventory
         Grid = new ItemGrid(Storage, Columns, Rows, ToolbarSlots);
     }
 
+    /// <summary>The survival tool, which is never dropped, wherever it sits.</summary>
+    public const string SurvivalTool = "survival-tool";
+
+    /// <summary>
+    /// What a death leaves on the body: the bag goes, the toolbar and the survival tool stay with you
+    /// (design: the survival tool is never dropped; the owner: nor is anything on the toolbar).
+    /// Takes the rest out of the pack and returns it, for the backpack.
+    /// </summary>
+    public Bill TakeBagForDeath()
+    {
+        Grid.Reconcile();
+        var keep = new Bill();
+        for (int i = 0; i < Grid.Toolbar; i++)
+            if (Grid[i].Item != null) keep.Add(Grid[i].Item, Grid[i].Count);
+        var drop = new Bill();
+        foreach (var (id, count) in Storage.Contents)
+        {
+            int kept = id == SurvivalTool ? count : Math.Min(count, keep[id]);
+            if (count > kept) drop.Add(id, count - kept);
+        }
+        Storage.TryTake(drop);
+        Grid.Reconcile(); // takes the bag's stacks first, so a stack on the toolbar stays whole
+        return drop;
+    }
+
     public int this[string id] => Storage.Count(id);
 
     /// <summary>Links to a structure's storage (null: none in range). Building and the menu read it.</summary>

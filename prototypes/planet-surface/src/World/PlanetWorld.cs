@@ -51,8 +51,20 @@ public sealed partial class PlanetWorld
     public double Width => Map.WidthMeters;
 
     /// <summary>This world's star and everything round it: the one source of truth for the sky, in every view.</summary>
-    public StarSystem StarSystem => _system ??= StarSystem.For(Spec, Sky, Width);
+    public StarSystem StarSystem
+    {
+        get
+        {
+            if (_system != null) return _system;
+            ulong seed = 0;
+            SystemSeedOf(ref seed);
+            return _system = StarSystem.For(Spec, Sky, Width, seed);
+        }
+    }
     StarSystem _system;
+
+    /// <summary>The seed the galaxy's catalogue has for this world's star, when that code is compiled in (see PlanetWorld.Galaxy.cs).</summary>
+    partial void SystemSeedOf(ref ulong seed);
     public double Height => Map.HeightMeters;
 
     /// <summary>
@@ -183,8 +195,15 @@ public sealed partial class PlanetWorld
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        return new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        world.ChartStars();
+        return world;
     }
+
+    /// <summary>Finds this world in the galaxy, off the main thread with the rest of the world (nothing when that isn't compiled in).</summary>
+    public void ChartStars() => FindHomeStar();
+
+    partial void FindHomeStar();
 
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);

@@ -247,7 +247,7 @@ public partial class SurfaceZone : Node3D
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
         // The sky is the system's, seen from where you stand: the sun goes down as you go east.
         double east = Mathx.WrapDelta(focus.X - Planet.Width * 0.5, Planet.Width) / Planet.Width * Math.Tau * Slice.Orbit.OrbitRules.Shared.Globe.MapDaysPerTurn;
-        Sky.Stand(PlanetSurface.Skies.StarSystem.NoonLongitude + east, Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * Math.PI, focus.Y);
+        Sky.Stand(PlanetSurface.Skies.StarSystem.NoonLongitude + east, GalHack.Stars.SkyFrame.SeamColatitude(Mathx.Wrap(focus.Z, Planet.Height), Planet.Height), focus.Y);
         Sky.Advance(delta, latitude, Weather.Air(Sky.ToSun.Y), Weather.Wind2D);
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;

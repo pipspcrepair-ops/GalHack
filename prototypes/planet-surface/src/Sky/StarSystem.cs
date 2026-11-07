@@ -256,12 +256,14 @@ public sealed class StarSystem
 
     /// <summary>The system of a world: the same for everyone, from its spec.</summary>
     /// <param name="width">The map's width, m: its equator's length, so the home globe's size.</param>
-    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width)
+    /// <param name="seed">The galaxy catalogue's seed for this star; 0: the world's own, where there is no galaxy.</param>
+    public static StarSystem For(PlanetSpec spec, SkySystem sky, double width, ulong seed = 0)
     {
-        var rng = new Rng(Hash.Of(spec.Seed, 0x535953, (long)spec.Archetype, spec.Variant));
+        if (seed == 0) seed = spec.Seed;
+        var rng = new Rng(Hash.Of(seed, 0x535953, (long)spec.Archetype, spec.Variant));
         float next() => rng.NextFloat();
         double L = LuminosityOf(sky.Star), homeRadius = width / Math.Tau, spread = Math.Clamp(Math.Pow(L, 0.1), 0.75, 1.6);
-        var s = new StarSystem { Luminosity = L, StarKey = spec.Seed, Spread = spread };
+        var s = new StarSystem { Luminosity = L, StarKey = seed, Spread = spread };
         double chart(double h) => spread * Math.Pow(h, 0.7) * AuMetres;
         double year(double h) => TemperateYearDays * Math.Pow(h, 1.5);
         double rockMonth(double radii) => 3.8 * Math.Pow(radii / 16.0, 1.5);

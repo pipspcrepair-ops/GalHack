@@ -18,7 +18,7 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant)
         ("temperate", "Temperate (easy)", Archetype.Temperate, 0),
         ("ice", "Ice", Archetype.Ice, 0),
         ("swamp", "Alien swamp", Archetype.Alien, 1),
-        ("barren", "Barren", Archetype.Arid, 0),
+        ("arid", "Arid", Archetype.Arid, 0),
         ("lava", "Lava", Archetype.Lava, 0),
     };
 

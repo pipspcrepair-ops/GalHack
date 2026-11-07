@@ -128,7 +128,7 @@ public abstract partial class MenuPanel : Control
                 break;
             case InputEventMouseMotion m:
                 Gui.Mouse = ToDesign(m.Position);
-                if (LaysOutOnHover || Gui.DragId != null) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed, m.CtrlPressed, rightHeld: _rightHeld);
+                if (LaysOutOnHover || Gui.DragId != null || _held) Feed(Gui.Mouse, false, false, _held, false, m.ShiftPressed, m.CtrlPressed, rightHeld: _rightHeld);
                 break;
         }
     }

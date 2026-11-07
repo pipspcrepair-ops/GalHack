@@ -15,10 +15,12 @@ public static class DepositLook
         DepositKind.Silicon => Rgb.Hex("b4b0a6"),   // quartz
         DepositKind.Carbon => Rgb.Hex("35323a"),    // graphite
         DepositKind.Water => Rgb.Hex("a2b6bc"),     // ice
-        DepositKind.Titanium => Rgb.Hex("8a8c8e"),
+        DepositKind.Burnstone => Rgb.Hex("a3945a"), // dull sulphur
+        DepositKind.Magnesium => Rgb.Hex("9a9ca4"), // dull silver
         DepositKind.Cobalt => Rgb.Hex("50586c"),
-        DepositKind.Sulfur => Rgb.Hex("a3945a"),
-        DepositKind.Thorium => Rgb.Hex("6e7a60"),
+        DepositKind.Neodymium => Rgb.Hex("8a6a74"), // dusty rose
+        DepositKind.Gold => Rgb.Hex("9a8048"),
+        DepositKind.Gravium => Rgb.Hex("625678"),   // heavy violet
         DepositKind.Crystal => Rgb.Hex("7c6a86"),
         _ => Rgb.Hex("957548"),                     // resin
     };
@@ -27,8 +29,8 @@ public static class DepositLook
     public static float Glow(DepositKind kind) => kind switch
     {
         DepositKind.Carbon => 0f,
-        DepositKind.Thorium or DepositKind.Crystal => 0.2f,
-        < DepositKind.Titanium => 0.04f,
+        DepositKind.Gravium or DepositKind.Crystal => 0.2f,
+        < DepositKind.Burnstone => 0.04f,
         _ => 0.08f,
     };
 }

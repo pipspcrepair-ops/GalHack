@@ -11,6 +11,8 @@
   <ItemGroup>
     <!-- Shared terrain: the planet as diggable voxels, streaming plans, stamps. -->
     <Compile Include="..\..\shared\Terrain\**\*.cs" />
+    <!-- The galaxy: the catalogue its sky is drawn from. -->
+    <Compile Include="..\..\shared\Galaxy\**\*.cs" />
     <!-- The shared physics module's rules (plain C# only): the walker swims by its water rules and
          numbers. And the one engine helper the walker uses as it is: the step-up. -->
     <Compile Include="..\..\shared\Physics\Core\**\*.cs" />

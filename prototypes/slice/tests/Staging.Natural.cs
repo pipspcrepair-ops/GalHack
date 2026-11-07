@@ -87,7 +87,7 @@ public sealed partial class Staging
         {
             Deposit? pick = null;
             foreach (Deposit t in tells)
-                if (InfraLayer.TellOf(t) == kind && (pick == null || kind != GalHack.Deco.DecoTellKind.Outcrop || t.Kind is DepositKind.Copper or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Sulfur)) { pick = t; if (kind != GalHack.Deco.DecoTellKind.Outcrop || t.Kind != DepositKind.Iron) break; }
+                if (InfraLayer.TellOf(t) == kind && (pick == null || kind != GalHack.Deco.DecoTellKind.Outcrop || t.Kind is DepositKind.Copper or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Burnstone)) { pick = t; if (kind != GalHack.Deco.DecoTellKind.Outcrop || t.Kind != DepositKind.Iron) break; }
             if (pick is not Deposit d) continue;
             Vector3 at = planet.NearestCopy(new Vector3((float)d.X, 0f, (float)d.Y), start);
             at = Feet(at);

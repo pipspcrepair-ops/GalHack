@@ -166,6 +166,33 @@ public sealed class Gui
         return clicked;
     }
 
+    string _sliding;
+
+    /// <summary>A slider from 0 to 1. True on the input passes where a drag changed it.</summary>
+    public bool Slider(string id, Rect2 r, ref float value, Color colour)
+    {
+        Register(id, r);
+        if (Drawing)
+        {
+            var track = new Rect2(r.Position + new Vector2(0, r.Size.Y / 2f - 3f), new Vector2(r.Size.X, 6f));
+            Canvas.Block(track, new Color(C.Glass, 0.85f));
+            Canvas.Block(new Rect2(track.Position, new Vector2(r.Size.X * value, 6f)), colour);
+            Canvas.Block(new Rect2(r.Position + new Vector2(r.Size.X * value - 5f, 0f), new Vector2(10f, r.Size.Y)), Over(r) || _sliding == id ? C.Text : colour);
+            return false;
+        }
+        if (Pressed && Over(r) && DragId == null) _sliding = id;
+        if (_sliding != id) return false;
+        if (!Pressed && !Held)
+        {
+            _sliding = null;
+            return false;
+        }
+        float next = Mathf.Clamp((Mouse.X - r.Position.X) / r.Size.X, 0f, 1f);
+        if (next == value) return false;
+        value = next;
+        return true;
+    }
+
     /// <summary>A tab header: lit when current. True when clicked.</summary>
     public bool Tab(string id, Rect2 r, string label, bool current, Color colour)
     {

@@ -10,5 +10,7 @@
   <ItemGroup>
     <!-- The sky seam check every prototype with a sky of its own runs (tests/SkySeamTest). -->
     <Compile Include="..\..\shared\Sky\**\*.cs" />
+    <!-- The galaxy: the catalogue its skies are drawn from. -->
+    <Compile Include="..\..\shared\Galaxy\**\*.cs" />
   </ItemGroup>
 </Project>

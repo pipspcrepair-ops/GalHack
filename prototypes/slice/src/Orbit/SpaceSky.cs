@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using GalHack.Stars;
 using Godot;
 using Planets.Look;
 using PlanetSurface.Skies;
@@ -7,10 +8,11 @@ using PlanetSurface.Skies;
 namespace Slice.Orbit;
 
 /// <summary>
-/// Space round the start world: planet-generator's space sky (stars, the world's nebula, the sun's
-/// glare), the sun as the one light (hard shadows, so a dead hull's inside is dark), a faint
-/// ambient, and every body in the system, read from the same <see cref="StarSystem"/> as the
-/// surface's sky at the same moment, so nothing moves or changes at the top of the band.
+/// Space round the start world: planet-generator's space sky (the galaxy's stars and nebulae, from
+/// the one catalogue, and the sun's glare), the sun as the one light (hard shadows, so a dead hull's
+/// inside is dark), a faint ambient, and every body in the system, read from the same
+/// <see cref="StarSystem"/> as the surface's sky at the same moment, so nothing moves or changes at
+/// the top of the band.
 ///
 /// The bodies are drawn at their true place when it is near, and otherwise along the true direction
 /// at the distance the camera reaches, at the true apparent size. Each is lit by the star at its own
@@ -107,8 +109,6 @@ public partial class SpaceSky : Node3D
     {
         _rules = rules;
         _sky = new ShaderMaterial { Shader = Planets.Shaders.Space };
-        _sky.SetShaderParameter("nebula", C(look.Nebula));
-        _sky.SetShaderParameter("nebula_b", C(look.Atmosphere * 0.6f));
         _sky.SetShaderParameter("sun_radius", model.See(model.Star, 0.0, new D3(0, model.Home.Radius, 0)).Angular);
         Environment = new Godot.Environment
         {
@@ -216,6 +216,17 @@ public partial class SpaceSky : Node3D
     static Vector3 V(D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
 
     static Basis Facing(Vector3 toSun) => Basis.LookingAt(-toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
+
+    /// <summary>The galaxy as it stands from here: the same catalogue, in the same frame, as the surface's sky.</summary>
+    public void Galaxy(GalaxySky stars)
+    {
+        if (!_galaxyBound) stars.Bind(_sky);
+        _galaxyBound = true;
+        _sky.SetShaderParameter("star_turn", stars.Field); // this sky's eye directions are the star field's already
+        GalaxySky.SetPixel(_sky, GetViewport());
+    }
+
+    bool _galaxyBound;
 
     /// <summary>The star's share of the light, 0 to 1 (the surface's sun has the rest).</summary>
     public void Light(float share) => Sun.LightEnergy = SunEnergy * share;

@@ -37,8 +37,8 @@ public sealed partial class Staging
         "rings" => RingsView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
         "map-system" => MapView(Slice.Ui.MapLevel.System),
-        "map-stars" => MapView(Slice.Ui.MapLevel.Stars),
-        _ => throw new ArgumentException($"no view '{view}'"),
+        "map-stars" => MapView(Slice.Ui.MapLevel.Galaxy),
+        _ => GalaxyViews(view),
     };
 
     Vessel Skiff => BuiltSkiff();

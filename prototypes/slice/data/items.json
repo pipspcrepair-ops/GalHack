@@ -9,7 +9,8 @@
 //   replaceRecipes recipes the slice makes differently: the placeable survival constructor comes
 //                  out of the suit fabricator, from ore
 //   constructors   the suit fabricator itself, below the catalogue's survival tier
-//   consumables    what using one does (food and oxygen as a share of full, health in points)
+//   consumables    what using one does (food as a share of full, oxygen and health in points;
+//                  the design's O2 bottles are small +75 and large +250)
 {
   "schema": "galhack.slice-items",
   "version": 1,
@@ -17,7 +18,7 @@
     { "id": "survival-tool", "name": "Survival tool", "short": "TOOL", "category": "tool", "rarity": "common", "mass": 2.5, "volume": 3,
       "uses": "Digs ore and rock, cuts plants, shoots", "unlock": { "level": 1, "cost": 0, "tab": "tools" } },
     { "id": "hover-bike", "name": "Hover bike", "short": "HV-BIKE", "category": "component", "rarity": "common", "mass": 40, "volume": 12, "stack": 2,
-      "uses": "Set it down, F to ride: fast, a little above the ground, and over water", "unlock": { "level": 2, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+      "uses": "Set it down, F to ride: fast, a little above the ground, and over water", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "mining-drill", "name": "Mining drill", "short": "DRILL", "category": "tool", "rarity": "uncommon", "mass": 4, "volume": 4, "stack": 1,
       "uses": "The survival tool, gathering 2.5 times as fast", "unlock": { "level": 4, "cost": 2, "parent": "survival-tool", "tab": "tools" } },
     { "id": "plasma-drill", "name": "Plasma drill", "short": "PLASMA", "category": "tool", "rarity": "rare", "mass": 5, "volume": 4, "stack": 1,
@@ -27,7 +28,7 @@
     { "id": "patch-kit", "name": "Patch kit", "short": "PATCH", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.5,
       "uses": "Heals a little", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "air-cell", "name": "Air cell", "short": "AIR", "category": "consumable", "rarity": "common", "mass": 1.2, "volume": 1,
-      "uses": "Refills half the suit's oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
+      "uses": "+250 suit oxygen", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "meat", "name": "Raw meat", "short": "MEAT", "category": "raw", "rarity": "common", "source": "harvest", "mass": 0.5, "volume": 0.5, "stack": 50,
       "where": "Creatures", "uses": "Food" },
     { "id": "hide", "name": "Hide", "short": "HIDE", "category": "raw", "rarity": "common", "source": "harvest", "mass": 1.0, "volume": 1, "stack": 50,
@@ -46,7 +47,7 @@
       "where": "Some creatures", "uses": "Research (later)" }
   ],
   "recipes": [
-    // Free, always: you wake empty-handed and make it first, and a lost tool can always be replaced.
+    // Free, always: you wake empty-handed and make it first. Once made it is never dropped on death.
     { "make": "survival-tool", "count": 1, "from": {}, "free": true,                                     "seconds": 3,  "tier": -1 },
     // The hover bike is basic metals and silicon, made in the suit fabricator: getting about is quick from early on.
     { "make": "hover-bike",    "count": 1, "from": { "iron-ore": 30, "copper-ore": 12, "silicon-ore": 8 }, "seconds": 20, "tier": -1 },
@@ -68,7 +69,7 @@
     "meat":         { "food": 0.12 },
     "patch-kit":    { "health": 25 },
     "medkit":       { "health": 60 },
-    "air-cell":     { "oxygen": 0.5 },
-    "o2-bottle":    { "oxygen": 1.0 }
+    "air-cell":     { "oxygen": 250 },
+    "o2-bottle":    { "oxygen": 75 }
   }
 }
