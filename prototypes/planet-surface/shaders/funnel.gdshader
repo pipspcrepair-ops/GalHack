@@ -32,7 +32,9 @@ void fragment() {
 	float rope = texture(noise_tex, vec2(a * 2.0, TIME * 0.2)).r * 0.08;
 	if (h < reach - rope) discard;
 
-	vec2 uv = vec2(a * 3.0 + TIME * spin / (0.35 + h), h * 2.2 - TIME * 0.35);
+	// A twist, not rings: the streaks wind up the funnel as it turns. (They turn as one: a turn that grew with height
+	// times a running clock sheared the pattern into stacked rings.)
+	vec2 uv = vec2(a * 3.0 + h * 2.5 + TIME * spin * 0.4, h * 1.1 - TIME * 0.25);
 	float n = texture(noise_tex, uv).r;
 	float n2 = texture(noise_tex, uv * 2.3 + vec2(0.3, TIME * 0.1)).r;
 	float streaks = smoothstep(0.25, 0.75, n * 0.65 + n2 * 0.35);

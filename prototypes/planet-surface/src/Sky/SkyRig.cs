@@ -265,6 +265,7 @@ public partial class SkyRig : Node3D
         Air = air;
         RunClock(delta);
         _cloudDrift += wind * (float)delta * 1.8f;
+        if (wind.LengthSquared() > 0.01f) _sky.SetShaderParameter("storm_wind", wind.Normalized());
         Apply();
     }
 
