@@ -146,6 +146,8 @@ public sealed class PowerLines
         {
             double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
             if (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _)) return false;
+            // A pylon's whole footing stands clear of every road and railway, shoulders and junctions too.
+            if (!net.OffRoad(x, z, 9)) return false;
             float h = ground(x, z);
             return MathF.Abs(ground(x + 8, z) - h) < 7f && MathF.Abs(ground(x, z + 8) - h) < 7f;
         }
@@ -248,7 +250,7 @@ public sealed class PowerLines
             double nx = -sz / len * side, nz = sx / len * side;
             double px = r.X[i] + nx * offset, pz = r.Z[i] + nz * offset;
             double cx = Mathx.WrapX(px, net.Width), cz = Mathx.Wrap(pz, net.Height);
-            if (ok && (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _))) ok = false;
+            if (ok && (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _) || !net.OffRoad(px, pz, 1.5))) ok = false;
             spots.Add(ok ? new PowerPole { X = px, Z = pz, Ground = ground(px, pz), SideX = (float)nx, SideZ = (float)nz, Pylon = pylons } : null);
         }
         int prev = -1;

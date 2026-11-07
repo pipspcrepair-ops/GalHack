@@ -31,6 +31,8 @@ public sealed class InfraRoute
     public RoadSpan[] Span = Array.Empty<RoadSpan>();
     /// <summary>Half the deck's width: carriageway and shoulders, or the rail bed.</summary>
     public float HalfWidth;
+    /// <summary>How its line was found: surveyed in straights and arcs, or the land's line eased (tests).</summary>
+    public string Laid = "";
     public StampSurface Surface;
     /// <summary>0 kept up, 1 a century of weather.</summary>
     public float Wear;
@@ -787,7 +789,9 @@ public sealed class InfraNetwork
         List<(double X, double Z)> smooth = Resample(Smooth(pts, keepStart, keepEnd), Spacing);
         if (kind is not (RouteKind.Highway or RouteKind.Road) || pts.Count < 4) return smooth;
         bool highway = kind == RouteKind.Highway;
-        double radius = highway ? 150 : 60, least = 2;
+        // Paved roads never hairpin: a crowded corner gives way only to its class's least radius, and a run
+        // that can't keep it takes the next fit, or the land's own line smoothed below.
+        double radius = highway ? 150 : 60, least = highway ? LeastRadius(RouteKind.Highway) : LeastRadius(RouteKind.Road);
         // The straightest the land allows: closer to its way only where the long straights ran into something.
         foreach (double fit in new[] { 1.0, 0.5, 0.25 })
         {
@@ -806,14 +810,58 @@ public sealed class InfraNetwork
             List<(double X, double Z)> path = Resample(sweep, Spacing);
             if (path.Count < 2 || CrossesItself(path) || path.Skip(12).Take(Math.Max(0, path.Count - 24)).Any(q => router.Blocked(q.X, q.Z))) continue;
             Surveyed++;
+            _laid = "surveyed";
             return path;
         }
         Wandered++;
-        return smooth;
+        _laid = "eased";
+        return Ease(router, smooth, least, keepStart, keepEnd);
+    }
+
+    /// <summary>The tightest curve a paved road of a class takes; tracks may switch back as tight as they like.</summary>
+    public static double LeastRadius(RouteKind k) => k switch { RouteKind.Highway => 90, RouteKind.Road => 35, _ => 0 };
+
+    /// <summary>
+    /// A paved road that had to follow the land's line, eased until no bend is tighter than its least
+    /// radius: each point drawn toward the middle of its neighbours where the curve through them is too
+    /// tight, never onto blocked ground, the fixed ends left alone.
+    /// </summary>
+    static List<(double X, double Z)> Ease(Router router, List<(double X, double Z)> p, double least, int keepStart, int keepEnd)
+    {
+        var pts = p.ToList();
+        const int Gap = 5;
+        int lo = Math.Max(4, keepStart + 2), hi = pts.Count - Math.Max(4, keepEnd + 2);
+        int window = Math.Max(2, (int)(least / Spacing));
+        bool Tight() => Enumerable.Range(lo + Gap, Math.Max(0, hi - lo - 2 * Gap)).Any(i => Radius(pts[i - Gap], pts[i], pts[i + Gap]) < least);
+        for (int pass = 0; pass < 48 && hi - lo > 2 * Gap && Tight(); pass++)
+        {
+            var next = pts.ToList();
+            for (int i = lo; i < hi; i++)
+            {
+                int a = Math.Max(lo - 1, i - window), b = Math.Min(hi, i + window);
+                double x = 0, z = 0;
+                for (int k = a; k <= b; k++) { x += pts[k].X; z += pts[k].Z; }
+                x /= b - a + 1;
+                z /= b - a + 1;
+                if (!router.Blocked(x, z)) next[i] = (x, z);
+            }
+            pts = Resample(next, Spacing);
+            hi = pts.Count - Math.Max(4, keepEnd + 2);
+        }
+        return pts;
+    }
+
+    /// <summary>The radius of the circle through three points.</summary>
+    public static double Radius((double X, double Z) a, (double X, double Z) b, (double X, double Z) c)
+    {
+        double area = Math.Abs((b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X)) * 0.5;
+        double ab = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Z - a.Z) * (b.Z - a.Z)), bc = Math.Sqrt((c.X - b.X) * (c.X - b.X) + (c.Z - b.Z) * (c.Z - b.Z)), ca = Math.Sqrt((a.X - c.X) * (a.X - c.X) + (a.Z - c.Z) * (a.Z - c.Z));
+        return area < 1e-6 ? 1e9 : ab * bc * ca / (4 * area);
     }
 
     /// <summary>Roads laid out in straights, and those that had to follow the land's way as it is (tests).</summary>
     public int Surveyed, Wandered;
+    string _laid = "";
 
     /// <summary>Whether a path runs over itself.</summary>
     static bool CrossesItself(List<(double X, double Z)> p)
@@ -1056,8 +1104,9 @@ public sealed class InfraNetwork
             Id = Routes.Count, Kind = kind, Tech = Profile.Before, HalfWidth = HalfWidthOf(kind), Surface = SurfaceOf(kind, Profile.Before),
             Kept = kept, Wear = kept ? 0.18f : 0.75f + rng.Float() * 0.2f, Maglev = maglev,
             X = path.Select(p => p.X).ToArray(), Z = path.Select(p => p.Z).ToArray(), Y = deck, Span = spans,
-            FromGate = gateA, ToGate = gateB,
+            FromGate = gateA, ToGate = gateB, Laid = _laid,
         };
+        _laid = "";
         for (int i = 0; i + 1 < n; i++) route.Length += Math.Sqrt((route.X[i + 1] - route.X[i]) * (route.X[i + 1] - route.X[i]) + (route.Z[i + 1] - route.Z[i]) * (route.Z[i + 1] - route.Z[i]));
         Routes.Add(route);
 
@@ -1251,6 +1300,56 @@ public sealed class InfraNetwork
     }
 
     /// <summary>The route nearest a world point within a distance, its point index and the distance (x, z wrap).</summary>
+    /// <summary>
+    /// Whether a spot is clear of every road, track and railway bed: its half width plus a margin from
+    /// the line, so nothing stands on a road, its shoulder or a junction. Wires may cross over; this is
+    /// for what stands on the ground.
+    /// </summary>
+    public bool OffRoad(double x, double z, double margin)
+    {
+        const double Cell = 16;
+        int points = Routes.Sum(r => r.Count);
+        if (_roadCells == null || _roadPoints != points)
+        {
+            _roadCells = new Dictionary<(int, int), List<(InfraRoute R, int I)>>();
+            _roadPoints = points;
+            foreach (InfraRoute r in Routes)
+                for (int i = 0; i < r.Count; i++)
+                {
+                    var key = ((int)Math.Floor(Mathx.WrapX(r.X[i], _w) / Cell), (int)Math.Floor(Mathx.Wrap(r.Z[i], _h) / Cell));
+                    if (!_roadCells.TryGetValue(key, out var list)) _roadCells[key] = list = new();
+                    list.Add((r, i));
+                }
+            _roadReach = Routes.Count == 0 ? 0 : Routes.Max(r => r.HalfWidth);
+        }
+        double cx = Mathx.WrapX(x, _w), cz = Mathx.Wrap(z, _h);
+        int span = (int)Math.Ceiling((_roadReach + margin + Spacing) / Cell);
+        int gx = (int)Math.Floor(cx / Cell), gz = (int)Math.Floor(cz / Cell), nx = (int)Math.Ceiling(_w / Cell), nz = (int)Math.Ceiling(_h / Cell);
+        for (int dz = -span; dz <= span; dz++)
+            for (int dx = -span; dx <= span; dx++)
+            {
+                var key = (((gx + dx) % nx + nx) % nx, ((gz + dz) % nz + nz) % nz);
+                if (!_roadCells.TryGetValue(key, out var list)) continue;
+                foreach (var (r, i) in list)
+                {
+                    // The bed between this point and the next: the distance to the segment, not just to its points.
+                    int j = Math.Min(i + 1, r.Count - 1);
+                    double ax = Mathx.WrapDelta(r.X[i] - cx, _w), az = Mathx.WrapDelta(r.Z[i] - cz, _h);
+                    double bx = ax + (r.X[j] - r.X[i]), bz = az + (r.Z[j] - r.Z[i]);
+                    double sx = bx - ax, sz = bz - az, len2 = sx * sx + sz * sz;
+                    double t = len2 < 1e-9 ? 0 : Math.Clamp(-(ax * sx + az * sz) / len2, 0, 1);
+                    double px = ax + sx * t, pz = az + sz * t;
+                    double reach = r.HalfWidth + margin;
+                    if (px * px + pz * pz < reach * reach) return false;
+                }
+            }
+        return true;
+    }
+
+    Dictionary<(int, int), List<(InfraRoute R, int I)>> _roadCells;
+    int _roadPoints;
+    double _roadReach;
+
     public InfraRoute Nearest(double x, double z, double within, out int index, out double distance)
     {
         index = -1;

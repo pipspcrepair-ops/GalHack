@@ -336,14 +336,51 @@ public partial class SurfaceTest
     async Task PylonChecks()
     {
         int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0, floating = 0, feetChecked = 0;
+        int standing = 0, onRoad = 0, paved = 0, tight = 0;
+        double pavedKm = 0, tightest = double.MaxValue;
+        string firstOnRoad = "", firstTight = ""; var tightHow = new Dictionary<string, int>();
         float worst = 0;
         var rand = new Random();
         // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood.
         for (int k = 0; k < 16 && pylons < 60; k++)
         {
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+            // Paved roads bend no tighter than their class allows (tracks may switch back); the first and last
+            // stretch, 60 m or the class's least radius, is the swing out of a gate or into a junction.
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind is RouteKind.Road or RouteKind.Highway))
+            {
+                paved++;
+                pavedKm += r.Length / 1000;
+                double least = InfraNetwork.LeastRadius(r.Kind);
+                int ends = (int)(Math.Max(60, least) / InfraNetwork.Spacing);
+                for (int i = ends; i + ends < r.Count; i++)
+                {
+                    double radius = InfraNetwork.Radius((r.X[i - 5], r.Z[i - 5]), (r.X[i], r.Z[i]), (r.X[i + 5], r.Z[i + 5]));
+                    tightest = Math.Min(tightest, radius);
+                    if (radius < least * 0.8)
+                    {
+                        tight++;
+                        if (firstTight.Length == 0) firstTight = $" (first: a {r.Kind}, {r.Laid}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {radius:F0} m)";
+                        tightHow[r.Laid] = tightHow.GetValueOrDefault(r.Laid) + 1;
+                        i += 10;
+                    }
+                }
+            }
             PowerLines power = w.Infra?.Power;
             if (power == null) continue;
+            // Nothing that stands on the ground stands on a road bed: poles and every pylon foot (wires may cross over).
+            foreach (PowerPole p in power.Poles.Where(p => !p.Fallen))
+            {
+                standing++;
+                var feet = p.Pylon ? p.FeetXZ() : new[] { (p.X, p.Z) };
+                foreach (var (fx, fz) in feet)
+                    if (w.Infra.Nearest(fx, fz, 40, out _, out double d) is { } road && d < road.HalfWidth + 0.5)
+                    {
+                        onRoad++;
+                        if (firstOnRoad.Length == 0) firstOnRoad = $" (first: a {(p.Pylon ? "pylon foot" : "pole")} {d:F1} m from a {road.Kind}'s line, {road.HalfWidth:F1} m half wide)";
+                        break;
+                    }
+            }
             foreach (PowerPole p in power.Poles)
             {
                 if (!p.Pylon)
@@ -387,6 +424,8 @@ public partial class SurfaceTest
             }
             await Frames(1);
         }
+        Check(paved > 0 && tight == 0, $"paved roads sweep: {paved} roads and highways, {pavedKm:F1} km, none tighter than its class's least (road {InfraNetwork.LeastRadius(RouteKind.Road)} m, highway {InfraNetwork.LeastRadius(RouteKind.Highway)} m; tightest {Math.Min(tightest, 1e6):F0} m), {tight} too tight ({string.Join(", ", tightHow.Select(k => $"{k.Value} {(k.Key.Length > 0 ? k.Key : "unlaid")}"))}){firstTight}");
+        Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");
         Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
             $"pylons stride on their own: {pylons} on {legs} lines,{wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
@@ -506,7 +545,7 @@ public partial class SurfaceTest
         var stopKinds = new Dictionary<string, int>();
         double ruinRoadKm = 0;
         int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
-        int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
+        int airless = 0, openWorlds = 0, ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
         var ruinKinds = new Dictionary<string, int>();
         int tells = 0, glowingTells = 0, tellsChecked = 0, planted = 0, strangers = 0, unrooted = 0, clipped = 0, unplaced = 0;
         int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
@@ -695,7 +734,9 @@ public partial class SurfaceTest
             // and yields salvage.
             ruinWorlds++;
             ruinRoadKm += net.Routes.Where(r => r.Kind != RouteKind.Rail).Sum(r => r.Count * InfraNetwork.Spacing) / 1000.0;
-            if (net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
+            // Where the air was never fit to build under, nothing open stands (the layers' air rule); elsewhere, plenty.
+            if (net.Profile.Barred.Contains("open")) airless += net.Ruins.Count(r => r.Family.Is.Contains("open"));
+            else if (++openWorlds > 0 && net.Ruins.Count < 10) { fewRuins++; notes.Add($"{net.Ruins.Count} ruins on {spec.Archetype} {spec.Seed}"); }
             foreach (FlavourRuin ruin in net.Ruins)
             {
                 ruins++;
@@ -790,7 +831,8 @@ public partial class SurfaceTest
         Check(same, "the same planet plans the same network, point for point");
         Check(wreckSites > 10 && wreckPieces > 100 && blockedLanes == 0 && wreckOnPad == 0,
             $"abandoned vehicles keep the way open: {wreckSites} sites ({string.Join(", ", wreckKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}), {wreckPieces} pieces in the forty dressed; {blockedLanes} with the lane blocked, {wreckOnPad} on a place's pad{firstBlocked}");
-        Check(ruins > 100 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
+        Check(airless == 0, $"no open houses or farms stand on a world whose air was never fit to build under ({airless} did)");
+        Check(ruins >= openWorlds * 10 && openWorlds > 0 && fewRuins == 0 && ruinOnRoad == 0 && ruinOnPad == 0 && ruinsTouching == 0 && ruinsYielding == ruinsSpawned,
             $"flavour ruins: {ruins} on {ruinWorlds} inhabited worlds ({string.Join(", ", ruinKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))}; {blastedRuins} flattened by a blast), every world with ten or more ({fewRuins} with fewer); {ruinOnRoad} on a road bed, {ruinOnPad} on a place's pad, {ruinsTouching} on another ruin; {ruinsYielding} of {ruinsSpawned} spawned yield salvage");
         Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
             $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} stops of the wrong age ({string.Join(", ", stopKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))})");
