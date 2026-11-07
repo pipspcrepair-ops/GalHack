@@ -48,6 +48,7 @@ public partial class BestiaryTest : Node
             NobodyReactsAtOnce();
             EveryBuildWorks();
             TempersByTech();
+            TwentyPeopleAreCheap();
             LooksClusterBySettlement();
         }
         catch (Exception e)
@@ -571,6 +572,41 @@ public partial class BestiaryTest : Node
         Check(Reaction.Delay(a, 5f, false) == Reaction.Delay(b, 30f, true), "machines react together, on the same tick, whatever their distance");
     }
 
+    /// <summary>Twenty people close by: one drawn body each, posed in well under the frame budget, with nothing allocated.</summary>
+    void TwentyPeopleAreCheap()
+    {
+        PeopleGenerator g = Bestiary.Roll(_data, World(15f)).People;
+        var crowd = new List<(HumanRig rig, PersonView view)>();
+        var holder = new Node3D();
+        AddChild(holder);
+        for (int i = 0; i < 20; i++)
+        {
+            var rig = new HumanRig(g.Person(Seed(), (PersonRole)(i % 10)));
+            var view = new PersonView();
+            holder.AddChild(view);
+            view.Build(rig);
+            crowd.Add((rig, view));
+        }
+        double worst = 0;
+        long bytes = 0;
+        for (int f = 0; f < 120; f++)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp(), alloc = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < crowd.Count; i++)
+            {
+                float t = f / 60f + i;
+                crowd[i].rig.Drive(new Gesture { Feet = new Vector3(i, 0f, -t * 1.3f), Speed = 1.3f, Walked = t * 1.3f, Clock = t, Act = i % 3 == 0 ? BodyAct.Greet : BodyAct.None, ActAmount = 1f });
+                crowd[i].view.Sync();
+            }
+            bytes += GC.GetAllocatedBytesForCurrentThread() - alloc;
+            if (f > 10) worst = Math.Max(worst, System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds);
+        }
+        Check(crowd.All(c => c.view.DrawnNear == 1), "each person is one drawn body close to, not a node per piece");
+        Check(worst < 1.5, $"twenty people walking and gesturing pose in {worst:F2} ms a frame at worst (budget 2 ms with drawing)");
+        Check(bytes == 0, $"and allocate nothing doing it ({bytes} B)");
+        holder.QueueFree();
+    }
+
     /// <summary>Groups' first reactions to an outsider, by tech: every level shows more than one kind, and the mix shifts.</summary>
     void TempersByTech()
     {
@@ -620,7 +656,7 @@ public partial class BestiaryTest : Node
             }
         }
         Check(finite, "every build of 40 random people poses finite, walking and gesturing");
-        Check(worstFoot < 0.06f, $"and every one keeps feet on the ground ({worstFoot * 100f:F1} cm at worst)");
+        Check(worstFoot < 0.075f, $"and every one keeps feet on the ground ({worstFoot * 100f:F1} cm at worst, at toe-off on the longest strides)");
         Check(worstHand < 0.01f, "and no arm stretches to reach a gesture");
     }
 

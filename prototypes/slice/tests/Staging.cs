@@ -88,6 +88,7 @@ public sealed partial class Staging
             "folk" => FolkView(),
             "crowd" => CrowdView(),
             "fauna" => FaunaView(),
+            "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
             _ => OrbitViews(view),
         };

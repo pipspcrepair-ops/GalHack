@@ -70,7 +70,77 @@ public sealed class MeshBuilder
         }
     }
 
-    public ArrayMesh Commit()
+    /// <summary>
+    /// Every piece in one mesh, each vertex bound whole to its piece's bone: one draw call for a
+    /// whole body, posed by a skeleton instead of a node per piece.
+    /// </summary>
+    public static ArrayMesh Skinned(IReadOnlyList<Piece> pieces) => Skinning(pieces).Commit();
+
+    /// <summary>The vertex work of <see cref="Skinned"/>, with no engine calls: safe off the main thread. <see cref="Prepared.Commit"/> on the main thread is quick.</summary>
+    public static Prepared Skinning(IReadOnlyList<Piece> pieces)
+    {
+        var b = new MeshBuilder();
+        var bones = new List<int>();
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            foreach (Prim prim in pieces[i].Prims) b.Add(prim);
+            while (bones.Count < b._v.Count) bones.Add(i);
+        }
+        return b.Prepare(bones);
+    }
+
+    /// <summary>A plain piece's vertex work, off the main thread.</summary>
+    public static Prepared Plain(Piece piece)
+    {
+        var b = new MeshBuilder();
+        foreach (Prim prim in piece.Prims) b.Add(prim);
+        return b.Prepare(null);
+    }
+
+    /// <summary>A mesh's arrays, built and wound, waiting for the main thread to hand them to the engine.</summary>
+    public sealed class Prepared
+    {
+        public Vector3[] V, N;
+        public Color[] C;
+        public Vector2[] Uv;
+        public int[] I, Bones;
+        public float[] Weights;
+
+        public ArrayMesh Commit()
+        {
+            var mesh = new ArrayMesh();
+            if (V.Length == 0) return mesh;
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = V;
+            arrays[(int)Mesh.ArrayType.Normal] = N;
+            arrays[(int)Mesh.ArrayType.Color] = C;
+            arrays[(int)Mesh.ArrayType.TexUV] = Uv;
+            arrays[(int)Mesh.ArrayType.Index] = I;
+            if (Bones != null)
+            {
+                arrays[(int)Mesh.ArrayType.Bones] = Bones;
+                arrays[(int)Mesh.ArrayType.Weights] = Weights;
+            }
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+            return mesh;
+        }
+    }
+
+    Prepared Prepare(List<int> bones)
+    {
+        for (int i = 0; i + 2 < _i.Count; i += 3) (_i[i + 1], _i[i + 2]) = (_i[i + 2], _i[i + 1]);
+        var p = new Prepared { V = _v.ToArray(), N = _n.ToArray(), C = _c.ToArray(), Uv = _uv.ToArray(), I = _i.ToArray() };
+        if (bones != null)
+        {
+            p.Bones = new int[_v.Count * 4];
+            p.Weights = new float[_v.Count * 4];
+            for (int i = 0; i < _v.Count; i++) { p.Bones[i * 4] = bones[i]; p.Weights[i * 4] = 1f; }
+        }
+        return p;
+    }
+
+    public ArrayMesh Commit(List<int> bones = null)
     {
         var mesh = new ArrayMesh();
         if (_v.Count == 0) return mesh;
@@ -84,6 +154,14 @@ public sealed class MeshBuilder
         arrays[(int)Mesh.ArrayType.Color] = _c.ToArray();
         arrays[(int)Mesh.ArrayType.TexUV] = _uv.ToArray();
         arrays[(int)Mesh.ArrayType.Index] = _i.ToArray();
+        if (bones != null)
+        {
+            var b = new int[_v.Count * 4];
+            var w = new float[_v.Count * 4];
+            for (int i = 0; i < _v.Count; i++) { b[i * 4] = bones[i]; w[i * 4] = 1f; }
+            arrays[(int)Mesh.ArrayType.Bones] = b;
+            arrays[(int)Mesh.ArrayType.Weights] = w;
+        }
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }

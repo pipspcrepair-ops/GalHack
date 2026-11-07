@@ -301,4 +301,77 @@ public sealed partial class Staging
             foreach (int x in Shot(Path.Combine(dir, $"close-{i}.png"))) yield return x;
         }
     }
+
+    /// <summary>
+    /// --view=peopleperf: what people cost to draw and pose. Nobody, 6 and 20 people walking close to
+    /// the camera, drawn as a node per piece and as one skinned body each: frame time on the CPU and
+    /// GPU, draw calls, posing time and allocation, over 4 s each.
+    /// </summary>
+    IEnumerable<int> PeoplePerf()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
+        WorldLife life = _game.Zone.Wildlife.Life;
+        Vector3 spot = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 14f));
+        _game.Visor.Visible = false;
+        Look(spot + new Vector3(0f, 1.6f, 12f), spot + Vector3.Up * 0.9f);
+        Rid vp = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+        var stage = new Node3D { Name = "PerfStage" };
+        _game.Zone.AddChild(stage);
+        var lines = new List<string>();
+        foreach (bool merged in new[] { false, true })
+        foreach (int count in new[] { 0, 6, 20 })
+        {
+            if (count == 0 && merged) continue;
+            PersonView.Merged = merged;
+            foreach (Node n in stage.GetChildren()) n.QueueFree();
+            var crowd = new List<(HumanRig rig, PersonView view, float phase)>();
+            // What the game does on a worker (who they are, their meshes) is left out: the main thread's share is timed.
+            var rigs = Enumerable.Range(0, count).Select(i => new HumanRig(life.People.Person(Rng.Mix(77, (ulong)i), (PersonRole)(i % 10)))).ToList();
+            var ready = rigs.Select(rg => merged ? PersonView.Prepare(rg) : null).ToList();
+            long built = System.Diagnostics.Stopwatch.GetTimestamp();
+            for (int i = 0; i < count; i++)
+            {
+                var rig = rigs[i];
+                var view = new PersonView();
+                stage.AddChild(view);
+                view.Build(rig, ready[i]);
+                crowd.Add((rig, view, i * 0.7f));
+            }
+            double buildMs = System.Diagnostics.Stopwatch.GetElapsedTime(built).TotalMilliseconds / Math.Max(1, count);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            double cpu = 0, gpu = 0, pose = 0;
+            long draws = 0, bytes = 0;
+            int frames = 240;
+            for (int f = 0; f < frames; f++)
+            {
+                long from = System.Diagnostics.Stopwatch.GetTimestamp();
+                long allocated = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < crowd.Count; i++)
+                {
+                    float t = f / 60f + crowd[i].phase;
+                    float a = t * 0.25f;
+                    Vector3 at = spot + new Vector3(MathF.Cos(a) * (3f + i % 5), 0f, MathF.Sin(a) * (3f + i % 5) - 2f);
+                    crowd[i].rig.Drive(new Gesture { Feet = at, Yaw = -a, Speed = 1.3f, Walked = t * 1.3f, Clock = t });
+                    crowd[i].view.Sync();
+                    crowd[i].view.SyncFar(at, -a);
+                }
+                bytes += GC.GetAllocatedBytesForCurrentThread() - allocated;
+                pose += System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+                yield return 0;
+                cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp) + RenderingServer.GetFrameSetupTimeCpu();
+                gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp);
+                draws += (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame);
+            }
+            string line = $"PERF {(merged ? "one body" : "per piece")} x{count}: render cpu {cpu / frames:F2} ms, gpu {gpu / frames:F2} ms, draw calls {draws / frames}, posing {pose / frames:F3} ms, alloc {bytes / frames} B a frame, building {buildMs:F2} ms a person, nodes near {(crowd.Count > 0 ? crowd[0].view.DrawnNear : 0)} each";
+            GD.Print(line);
+            lines.Add(line);
+            if (count == 20) foreach (int x in Shot(Path.Combine(Folder("perf"), $"/perf-{(merged ? "merged" : "pieces")}.png"))) yield return x;
+        }
+        PersonView.Merged = true;
+        File.WriteAllLines(Path.Combine(Folder("perf"), "people-perf.txt"), lines);
+    }
 }

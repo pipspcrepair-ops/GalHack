@@ -16,17 +16,48 @@ public partial class PersonView : Node3D
     /// <summary>Beyond this a person isn't drawn at all, m.</summary>
     public const float FarRange = 340f;
 
+    /// <summary>Draw a body as one skinned mesh (one draw call) rather than a node per piece. The old way stays for measuring.</summary>
+    public static bool Merged = true;
+
     readonly List<MeshInstance3D> _parts = new();
+    Skeleton3D _skeleton;
+    MeshInstance3D _body;
     MeshInstance3D _far;
     HumanRig _rig;
     float _hurtShown;
 
-    public void Build(HumanRig rig)
+    /// <summary>Nodes drawn close to (tests: one body, not a node per piece).</summary>
+    public int DrawnNear => _body != null ? 1 : _parts.Count;
+
+    /// <summary>A body's meshes, worked out ahead (safe on a worker thread): <see cref="Build"/> then only hands them over.</summary>
+    public sealed class Ready
+    {
+        public MeshBuilder.Prepared Body, Far;
+    }
+
+    public static Ready Prepare(HumanRig rig) => new() { Body = MeshBuilder.Skinning(rig.Layout.Pieces), Far = MeshBuilder.Plain(HumanBody.Far(rig.Species)) };
+
+    public void Build(HumanRig rig, Ready ready = null)
     {
         _rig = rig;
         Species s = rig.Species;
         ShaderMaterial material = CreatureMaterials.Clothed;
-        foreach (Piece piece in rig.Layout.Pieces)
+        if (Merged)
+        {
+            var pieces = rig.Layout.Pieces;
+            _skeleton = new Skeleton3D { Name = "Bones" };
+            var skin = new Skin();
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                _skeleton.AddBone(pieces[i].Name);
+                skin.AddBind(i, Transform3D.Identity);
+            }
+            AddChild(_skeleton);
+            _body = new MeshInstance3D { Mesh = ready != null ? ready.Body.Commit() : Bodies.GetValue(s, _ => MeshBuilder.Skinned(rig.Layout.Pieces)), Skin = skin, MaterialOverride = material, VisibilityRangeEnd = NearRange, VisibilityRangeEndMargin = 2f };
+            _skeleton.AddChild(_body);
+            _body.Skeleton = new NodePath("..");
+        }
+        else foreach (Piece piece in rig.Layout.Pieces)
         {
             var mi = new MeshInstance3D
             {
@@ -41,7 +72,7 @@ public partial class PersonView : Node3D
         }
         _far = new MeshInstance3D
         {
-            Mesh = MeshBuilder.For(FarPiece(s)),
+            Mesh = ready != null ? ready.Far.Commit() : MeshBuilder.For(FarPiece(s)),
             MaterialOverride = material,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             VisibilityRangeBegin = NearRange,
@@ -67,6 +98,7 @@ public partial class PersonView : Node3D
         return new QuadMesh { Size = new Vector2(0.9f, 0.9f), Orientation = PlaneMesh.OrientationEnum.Y, Material = mat };
     }
 
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Species, ArrayMesh> Bodies = new();
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Species, Piece> FarPieces = new();
     static Piece FarPiece(Species s) => FarPieces.GetValue(s, HumanBody.Far);
 
@@ -74,6 +106,11 @@ public partial class PersonView : Node3D
     public void Sync()
     {
         Transform3D[] pose = _rig.Pose;
+        if (_skeleton != null)
+        {
+            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+            return;
+        }
         for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = pose[i];
     }
 
@@ -90,5 +127,6 @@ public partial class PersonView : Node3D
         if (MathF.Abs(hurt - _hurtShown) < 0.01f) return;
         _hurtShown = hurt;
         foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("hurt", hurt);
+        _body?.SetInstanceShaderParameter("hurt", hurt);
     }
 }
