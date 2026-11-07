@@ -1353,8 +1353,8 @@ public partial class SurfaceTest : Node
             foreach (FloraBatch b in job.Flora)
                 for (int i = 0; i < b.Count; i++)
                 {
-                    double x = fx * (double)FarBuilder.Size + b.Buffer[i * 16 + 3], z = lastRow * (double)FarBuilder.Size + b.Buffer[i * 16 + 11] - seamWorld.Height;
-                    if (Math.Abs(Mathx.WrapDelta(x - seamX, seamWorld.Width)) <= 120.0 && z >= -64.0 && z < 0.0) expected++;
+                    double fxm = fx * (double)FarBuilder.Size + b.Buffer[i * 16 + 3], fzm = lastRow * (double)FarBuilder.Size + b.Buffer[i * 16 + 11] - seamWorld.Height;
+                    if (Math.Abs(Mathx.WrapDelta(fxm - seamX, seamWorld.Width)) <= 120.0 && fzm >= -64.0 && fzm < 0.0) expected++;
                 }
         }
         Check(farGround == farSamples && beyond == expected,
