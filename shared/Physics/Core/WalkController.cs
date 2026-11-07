@@ -64,7 +64,19 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// </summary>
     public float Grip = 60f;
 
-    public float JetpackFuel { get; private set; } = 3f;
+    public float JetpackFuel { get; internal set; } = 3f;
+
+    /// <summary>
+    /// A pack that has run dry stays off until it has taken back this much (seconds of thrust) on the
+    /// ground: it cannot stutter on and off at empty, one tick of fuel at a time.
+    /// </summary>
+    public float JetpackMinRefill = 0.5f;
+
+    /// <summary>The pack ran dry and has not yet taken back <see cref="JetpackMinRefill"/>.</summary>
+    public bool JetpackSpent { get; private set; }
+
+    /// <summary>The pack fired this tick.</summary>
+    public bool JetpackFiring { get; private set; }
 
     /// <summary>The legs pushed off this tick (a deliberate jump: it lets go of a hull at once).</summary>
     public bool Jumped { get; private set; }
@@ -83,6 +95,7 @@ public sealed class WalkController : IBodyController, IForceReactor
     public void React(PhysicsWorld world, Body body, float dt)
     {
         Jumped = false;
+        JetpackFiring = false;
         if (body.Asleep) return;
         Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
@@ -130,7 +143,13 @@ public sealed class WalkController : IBodyController, IForceReactor
         }
 
         bool onFloor = body.OnFloor;
-        if (onFloor) JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
+        // Refilled on the ground, but not while the pack is held on: a body that touches down and lifts
+        // off every tick (wedged under a ceiling, on an edge) must not earn back the fuel it burns.
+        if (onFloor && !Jetpack)
+        {
+            JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
+            if (JetpackSpent && JetpackFuel >= MathF.Min(JetpackMinRefill, JetpackFuelMax)) JetpackSpent = false;
+        }
         float speed = Crouch ? CrouchSpeed : Sprint ? SprintSpeed : WalkSpeed;
         Vector2 move = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
         Vector3 wishDir = MathX.Rotate(heading, new Vector3(move.X, 0f, move.Y));
@@ -162,10 +181,12 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed * (Crouch ? CrouchJumpShare : 1f) - Vector3.Dot(v, up)), ForceKind.Walk);
             Jumped = true;
         }
-        else if (Jetpack && !onFloor && JetpackFuel > 0f && Vector3.Dot(v, up) < 8f)
+        else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f && Vector3.Dot(v, up) < 8f)
         {
             world.AddForce(body, up * m * JetpackAccel, ForceKind.Walk);
-            JetpackFuel -= dt;
+            JetpackFiring = true;
+            JetpackFuel = MathF.Max(0f, JetpackFuel - dt);
+            if (JetpackFuel <= 0f) JetpackSpent = true;
         }
     }
 

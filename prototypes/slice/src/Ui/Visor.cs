@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using DiegeticUi.Theme;
+using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
@@ -168,6 +169,7 @@ public partial class Visor : CanvasLayer
         {
             DrawCrosshair();
             DrawHand();
+            DrawJetpack(survivor);
         }
     }
 
@@ -207,7 +209,6 @@ public partial class Visor : CanvasLayer
         VitalsRules r = suit.Sim.Data.Vitals;
         Alert warn = suit.Last.Warnings, harm = suit.Last.Harm;
         double air = suit.Sim.Here.Temperature;
-        double fuel = Game.Survivor.Legs.JetpackFuel, fuelMax = Game.Survivor.Legs.JetpackFuelMax;
         var items = new (string label, string value, double share, Alert alert)[]
         {
             ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
@@ -216,7 +217,6 @@ public partial class Visor : CanvasLayer
             ("TEMP", $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
             ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
-            ("JET", $"{fuel:0.0}s", fuel / Math.Max(0.01, fuelMax), Alert.None), // the jetpack's fuel: seconds of thrust, refilled on the ground
         };
         HudLayout layout = Layout;
         float s = layout.Scale;
@@ -247,6 +247,34 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
         }
     }
+
+    /// <summary>
+    /// The jetpack's charge: a slim upright bar at the right edge with its name above, no numbers. It
+    /// shows while the pack is in use or filling and fades out once it is full and idle; it turns
+    /// to the warning colour when nearly empty and to the danger colour while it is spent and recharging.
+    /// </summary>
+    void DrawJetpack(Survivor survivor)
+    {
+        WalkController legs = survivor.Legs;
+        float share = Math.Clamp(legs.JetpackFuel / Math.Max(0.01f, legs.JetpackFuelMax), 0f, 1f);
+        bool busy = legs.JetpackFiring || legs.JetpackSpent || share < 0.995f;
+        _jetIdle = busy ? 0f : _jetIdle + (float)GetProcessDeltaTime();
+        _jetAlpha = Mathf.MoveToward(_jetAlpha, busy || _jetIdle < 1.2f ? 1f : 0f, (float)GetProcessDeltaTime() * (busy ? 6f : 1.2f));
+        if (_jetAlpha <= 0.01f) return;
+        float a = _jetAlpha, s = S;
+        Rect2 box = Layout.Jet;
+        bool low = share < 0.2f || legs.JetpackSpent;
+        Color tone = legs.JetpackSpent ? C.Danger : low ? C.Warn : C.Good;
+        _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(box.Position, new Vector2(box.Size.X, 20 * s)), "JETPACK", new Color(low ? tone : C.Text, a * 0.9f), HorizontalAlignment.Center);
+        float w = 14 * s;
+        var bar = new Rect2(box.Position.X + (box.Size.X - w) / 2f, box.Position.Y + 28 * s, w, box.Size.Y - 28 * s);
+        _hud.Block(bar, new Color(C.Glass, 0.6f * a));
+        float h = bar.Size.Y * share;
+        if (h > 0.5f) _hud.Block(new Rect2(bar.Position.X, bar.End.Y - h, w, h), new Color(tone, 0.9f * a));
+        _hud.Frame(bar, new Color(tone, 0.55f * a), 1.5f * s);
+    }
+
+    float _jetAlpha, _jetIdle;
 
     /// <summary>A blow landed: the edge of the view reddens on the side it came from, in soft bands, and fades.</summary>
     void DrawHurtEdge()

@@ -832,6 +832,42 @@ public partial class PlayerTest : Node
         _game.Controls.Hold(Key.Space, false);
         foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
         Check(!warnedRising && top > 2f, $"lifting off on the jetpack (up to {top:F1} m/s) never flashes IMPACT");
+
+        // An empty pack with Space held: fuel never dips below nothing, the pack does not stutter on and
+        // off a tick at a time, and it stays off until it has taken a little back on the ground.
+        var legs = _game.Survivor.Legs;
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
+        legs.JetpackFuel = 0.02f;
+        float lowest = legs.JetpackFuel, mostFuel = 0f;
+        int bursts = 0, firingTicks = 0, airTicks = 0;
+        bool wasFiring = false;
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 300 && !_game.Suit.Dead; i++)
+        {
+            yield return 0;
+            lowest = MathF.Min(lowest, legs.JetpackFuel);
+            mostFuel = MathF.Max(mostFuel, legs.JetpackFuel);
+            if (legs.JetpackFiring) { firingTicks++; if (!wasFiring) bursts++; }
+            wasFiring = legs.JetpackFiring;
+            if (!_game.Survivor.Body.OnFloor) airTicks++;
+        }
+        _game.Controls.Hold(Key.Space, false);
+        Check(lowest >= 0f && mostFuel <= 0.021f && firingTicks <= 2 && bursts <= 1,
+            $"an empty pack with Space held 5 s: fuel never below zero ({lowest:0.000}) and never refilled while held ({mostFuel:0.000}); it fired {firingTicks} ticks in {bursts} burst, then stayed off ({airTicks} airborne ticks, hops only)");
+        Check(legs.JetpackSpent && string.Format("{0:0.00}", MathF.Max(0f, legs.JetpackFuel)) == "0.00", "and the spent pack reads 0.00, never -0.00");
+        foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
+        foreach (int x in _drive.Wait(12)) yield return x; // 0.2 s on the ground: not yet enough
+        bool stillOff = true;
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 30; i++)
+        {
+            yield return 0;
+            stillOff &= !legs.JetpackFiring;
+        }
+        _game.Controls.Hold(Key.Space, false);
+        Check(legs.JetpackFuel < legs.JetpackMinRefill && legs.JetpackSpent && stillOff, $"a spent pack stays off until it has taken back {legs.JetpackMinRefill:0.0} s of fuel (has {legs.JetpackFuel:0.00})");
+        foreach (int x in _play.WaitFor(() => legs.JetpackFuel >= legs.JetpackFuelMax, 12)) yield return x;
+        Check(!legs.JetpackSpent && legs.JetpackFuel >= legs.JetpackFuelMax, "left alone on the ground it fills again and is ready");
     }
 
     IEnumerable<int> Death()
