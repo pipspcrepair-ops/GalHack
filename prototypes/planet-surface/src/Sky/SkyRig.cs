@@ -255,6 +255,15 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("tower_count", count);
     }
 
+    /// <summary>Hands a rain shaft the sky's own cloud-base inputs, so its top meets the underside the sky draws.</summary>
+    public void ShareCloudBase(ShaderMaterial m)
+    {
+        m.SetShaderParameter("cloud_noise", _noise);
+        m.SetShaderParameter("cloud_scale", _sky.GetShaderParameter("cloud_scale"));
+        m.SetShaderParameter("cloud_drift", _sky.GetShaderParameter("cloud_drift"));
+        m.SetShaderParameter("cloud_base", _sky.GetShaderParameter("cloud_base"));
+    }
+
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
     public void DebugView(int view) => _sky.SetShaderParameter("debug_view", view);
 

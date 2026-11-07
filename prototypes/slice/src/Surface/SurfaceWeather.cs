@@ -135,7 +135,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _funnels[count] = cell.Funnel != null ? 1f : 0f;
             if (count >= _shafts.Count) _shafts.Add(AddShaft());
             var (node, draw) = _shafts[count];
-            float baseY = at.Y - 10f, height = CloudBaseY - baseY, reach = cell.Radius * 0.85f;
+            float baseY = at.Y - 10f, height = CloudBaseY + 100f - baseY, reach = cell.Radius * 0.85f; // up into the cloud: the shader ends the veil at the sky's own base
             Vector2 wind2 = Sim.Current.Wind;
             Vector2 lean = wind2 * 6f; if (lean.Length() > height * 0.3f) lean = lean.Normalized() * height * 0.3f;
             float bound = reach * 1.9f + lean.Length();
@@ -148,10 +148,17 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             draw.SetShaderParameter("bound", bound);
             draw.SetShaderParameter("lean", lean);
             draw.SetShaderParameter("drift", wind2 * 0.04f);
+            Zone.Sky.ShareCloudBase(draw);
+            draw.SetShaderParameter("towers", _towers);
+            draw.SetShaderParameter("tower_n", Mathf.Min(MostTowers, 4));
+            draw.SetShaderParameter("tower_wall", _funnels);
             draw.SetShaderParameter("seed", (cell.Id * 0.6180339f) % 1f);
             // Standing in it there's nothing to see of it: the falling rain has taken over.
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
             draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
+            draw.SetShaderParameter("to_sun", ToSun);
+            draw.SetShaderParameter("sun_glow", new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
+            draw.SetShaderParameter("sun_amount", Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
             draw.SetShaderParameter("tint", new Color(0.24f, 0.26f, 0.3f) * (0.2f + 0.8f * Zone.Sky.Daylight));
             count++;
         }

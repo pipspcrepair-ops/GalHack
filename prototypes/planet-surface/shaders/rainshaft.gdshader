@@ -14,6 +14,17 @@ uniform float bound = 600.0;        // radius of the clipping cylinder
 uniform vec2 lean = vec2(0.0);      // sideways offset of the top, metres
 uniform vec2 drift = vec2(0.0);     // metres per second the pattern slides
 uniform float seed = 0.0;
+uniform vec3 to_sun = vec3(0.0, 1.0, 0.0);
+uniform vec3 sun_glow : source_color = vec3(1.0, 0.9, 0.7);
+uniform float sun_amount = 1.0;
+// The sky's own cloud base (mirrors storm_at and base_sag in sky.gdshader: keep them in step).
+uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
+uniform float cloud_base = 1600.0;
+uniform vec2 cloud_scale = vec2(8000.0);
+uniform vec2 cloud_drift = vec2(0.0);
+uniform vec4 towers[4];
+uniform float tower_wall[4];
+uniform int tower_n = 0;
 uniform sampler2D scene_depth : hint_depth_texture, repeat_disable, filter_nearest;
 uniform float soft_metres = 12.0;   // how far in front of a surface the veil thins out
 
@@ -33,33 +44,59 @@ float vnoise(vec3 x) {
 		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
 
+float lump(vec2 xz, float y, float k) {
+	vec2 uv = (xz + cloud_drift * 0.35) / cloud_scale * k + vec2(y, -y) * 0.0009;
+	return texture(cloud_noise, uv).r * 0.6 + texture(cloud_noise, uv * 2.3 + 0.2).r * 0.4;
+}
+
+// Where the sky's cloud underside is above this spot, metres: its flat base less the sag the sky gives a storm.
+float cloud_underside(vec2 xz) {
+	float lp = lump(xz, cloud_base, 3.5);
+	float s = 0.0;
+	for (int i = 0; i < 4; i++) {
+		if (i >= tower_n) break;
+		float w = towers[i].w;
+		float sreach = towers[i].z * (2.0 + 4.0 * w);
+		float r = sreach * (0.65 + 0.7 * lp);
+		s = max(s, w * smoothstep(r, r * 0.2, length(xz - towers[i].xy)));
+	}
+	float sag = s * (60.0 + 90.0 * lp);
+	for (int i = 0; i < 4; i++) {
+		if (i >= tower_n) break;
+		float rw = towers[i].z * (0.45 + 0.5 * lp);
+		sag += tower_wall[i] * 130.0 * smoothstep(rw, rw * 0.15, length(xz - towers[i].xy)) * (0.6 + 0.8 * lp);
+	}
+	return cloud_base - sag;
+}
+
 float density(vec3 p) {
-	float h = (p.y - axis_base.y) / shaft_height;
-	if (h < 0.0 || h > 1.0) return 0.0;
+	vec2 c0 = axis_base.xz;
+	float under = cloud_underside(p.xz);
+	float topY = under + 90.0;                         // up inside the cloud, so there is no gap under it
+	float span = max(topY - axis_base.y, 1.0);
+	float g = clamp((topY - p.y) / span, 0.0, 1.0);    // 0 at the cloud, 1 at the ground
+	if (p.y > topY || p.y < axis_base.y) return 0.0;
 	float up = p.y - axis_base.y;
 	vec2 wdir = normalize(lean + vec2(0.0001, 0.0));
-	// The pattern slides with the wind and slants with it: the lower rain trails the upper.
 	vec2 slant = wdir * (0.12 + 0.2 * length(lean) / max(shaft_height, 1.0)) * 3.0;
-	vec2 c = axis_base.xz + lean * h;
+	vec2 c = c0 + lean * (1.0 - g);
 	vec2 q = p.xz - c + drift * TIME - slant * up * 0.25;
 	vec2 d = p.xz - c;
-	float width = reach * (1.35 - 0.6 * h);       // wider low down, narrowing into the cloud
+	float width = reach * (0.75 + 0.75 * g);          // spreads as it falls
 	float r = length(d) / width;
-	// The footprint is noise, not a radius: lobes, bays and gaps at several sizes. The radius only
-	// keeps the whole thing from wandering off, and never makes an edge.
 	float field = vnoise(vec3(q * (1.6 / reach), up * 0.0012)) * 0.5
 		+ vnoise(vec3(q * (4.0 / reach) + 5.0, up * 0.0025 + 3.0)) * 0.3
 		+ vnoise(vec3(q * (11.0 / reach) + 9.0, up * 0.004 + 7.0)) * 0.2;
 	float env = 1.0 - smoothstep(0.3, 1.2, r);
 	float cover = env * 1.3 + (field - 0.5) * 0.95 - 0.15;
-	float body = smoothstep(0.3, 0.85, cover);
-	// Fine slanted streaks, uneven: stretched along the fall, never an even comb.
+	float body = smoothstep(0.3 + 0.22 * g, 0.85, cover); // more gaps and raggedness the further it falls
 	vec2 sq = q + slant * up;
 	float s1 = vnoise(vec3(sq * (38.0 / reach), up * 0.0016 + TIME * 0.08));
 	float s2 = vnoise(vec3(sq * (95.0 / reach) + 4.0, up * 0.0022 - TIME * 0.12 + 2.0));
 	float streak = 0.5 + 0.9 * (s1 * 0.6 + s2 * 0.4 - 0.5);
-	// Densest just under the cloud base, thinning toward the ground into a haze with no end line.
-	float vert = (0.1 + 0.9 * smoothstep(0.0, 0.8, h)) * (1.0 - smoothstep(0.93, 1.0, h));
+	// Full under the cloud, thinning as it falls into a haze with no end line; a soft run into the cloud itself.
+	float vert = mix(1.0, 0.22, smoothstep(0.0, 0.95, g));
+	vert *= 1.0 - smoothstep(under + 20.0, topY, p.y);
 	return body * clamp(streak, 0.15, 1.3) * vert;
 }
 
@@ -111,6 +148,10 @@ void fragment() {
 		sum += density(cam + dir * t) * dt * smoothstep(0.0, soft_metres, scene_t - t);
 	}
 	float optical = sum / (reach * 1.6);
-	ALBEDO = tint;
-	ALPHA = clamp((1.0 - exp(-optical * 4.0)) * amount, 0.0, 1.0);
+	// Lit by the sun behind it: toward the sun the veil glows (pale gold at a low sun), with the sun at
+	// your back it is a plain dark grey one.
+	float toward = max(dot(dir, normalize(to_sun)), 0.0);
+	float glow = pow(toward, 5.0) * sun_amount;
+	ALBEDO = mix(tint, sun_glow * 1.1, clamp(glow, 0.0, 0.85));
+	ALPHA = clamp((1.0 - exp(-optical * 6.0)) * amount, 0.0, 1.0);
 }
