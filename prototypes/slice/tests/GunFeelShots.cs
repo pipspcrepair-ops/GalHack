@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Godot;
 using Slice.Game;
@@ -16,7 +16,7 @@ public partial class GunFeelShots : Node
     Game.Game _game;
     Playthrough _play;
     IEnumerator<int> _run;
-    string _feel = "bullet", _where = "outside", _out = "gunfeel.png";
+    string _feel = "bullet", _where = "outside", _out = "gunfeel.png", _light = "day";
     bool _capturing;
 
     public override void _Ready()
@@ -31,6 +31,7 @@ public partial class GunFeelShots : Node
                 case "feel": _feel = v; break;
                 case "where": _where = v; break;
                 case "out": _out = v; break;
+                case "light": _light = v; break;
                 case "size": GunFeel.FlashScale = float.Parse(v, System.Globalization.CultureInfo.InvariantCulture); break;
             }
         }
@@ -61,7 +62,8 @@ public partial class GunFeelShots : Node
         foreach (int x in drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
-        _game.Zone.Sky.TimeOfDay = 0.33;
+        _game.Zone.Sky.TimeOfDay = _light == "torch" ? 0.0 : 0.33;
+        if (_light == "torch") _game.Torch.Visible = true;
         _game.Zone.Wildlife.Frozen = true;
         foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         if (_where == "outside")
@@ -69,7 +71,7 @@ public partial class GunFeelShots : Node
             foreach (int x in drive.ClimbOut(_game.Bunker)) yield return x;
             foreach (int x in drive.UntilSettled()) yield return x;
         }
-        foreach (int x in _play.Tool(_feel == "gather" ? ToolMode.Gather : ToolMode.Shoot)) yield return x;
+        foreach (int x in _play.Tool(_feel is "gather" or "hold" ? ToolMode.Gather : ToolMode.Shoot)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 target = _where == "outside"
             ? _game.Zone.GroundAt(feet.X + 7f, feet.Z + 4f)
@@ -83,6 +85,8 @@ public partial class GunFeelShots : Node
         }
         foreach (int x in drive.LookAt(target, 8)) yield return x;
         foreach (int x in drive.Wait(20)) yield return x;
+
+        if (_feel == "hold") { _game.Hands.SetProcess(false); yield break; } // the tool in hand, nothing firing
 
         // The flash and the kick, then freeze them where they stand and let the smoke come out.
         if (_feel == "gather")
