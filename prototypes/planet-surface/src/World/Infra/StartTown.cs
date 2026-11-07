@@ -103,11 +103,13 @@ public sealed class StartTown
             if (s != null) town.Streets.Add(s);
         }
         Lay(At(-mainHalf, 0), At(mainHalf, 0));
+        int backSide = rng.Chance(0.5f) ? 1 : -1;
+        // On the back street's side the outer cross streets and the back street are one street round two
+        // rounded corners; the rest meet the main street square, at junctions with rounded kerbs.
         for (int c = -1; c <= 1; c++)
             foreach (int side in new[] { -1, 1 })
-                Lay(At(c * block, 0), At(c * block, side * arm));
-        int backSide = rng.Chance(0.5f) ? 1 : -1;
-        Lay(At(-block, backSide * arm), At(block, backSide * arm));
+                if (side != backSide || c == 0) Lay(At(c * block, 0), At(c * block, side * arm));
+        Lay(At(-block, 0), At(-block, backSide * arm), At(block, backSide * arm), At(block, 0));
         town.BackSide = backSide;
         // Joined to the old network: a spur from the town's far end to the nearest road.
         net.Spur(At(-mainHalf, 0), kind, 2500);

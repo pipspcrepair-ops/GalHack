@@ -339,20 +339,57 @@ public partial class SurfaceTest
         int standing = 0, onRoad = 0, paved = 0, tight = 0;
         double pavedKm = 0, tightest = double.MaxValue;
         string firstOnRoad = "", firstTight = ""; var tightHow = new Dictionary<string, int>();
+        int sharp = 0, sweepWorlds = 0, elbows = 0, elbowRoutes = 0, elbowsAtEnds = 0;
+        var elbowNotes = new List<string>();
+        double worstElbow = 0;
+        string firstElbow = "";
+        double sharpest = 0;
+        string firstSharp = "";
         float worst = 0;
         var rand = new Random();
-        // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood.
-        for (int k = 0; k < 16 && pylons < 60; k++)
+        // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood (ten at least, for the roads).
+        for (int k = 0; k < 16 && (pylons < 60 || k < 10); k++)
         {
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+            sweepWorlds++;
             // Paved roads bend no tighter than their class allows (tracks may switch back); the first and last
             // stretch, 60 m or the class's least radius, is the swing out of a gate or into a junction.
+            // No hard elbow anywhere, town streets and tracks included: over any 8 m a road turns no more than a
+            // town corner's curve does (a switchback's hairpin is still a curve of 9 m or more).
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind != RouteKind.Rail))
+            {
+                elbowRoutes++;
+                for (int i = 3; i + 4 < r.Count; i++)
+                {
+                    double a0 = Math.Atan2(r.Z[i] - r.Z[i - 2], r.X[i] - r.X[i - 2]), a1 = Math.Atan2(r.Z[i + 2] - r.Z[i], r.X[i + 2] - r.X[i]);
+                    double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                    worstElbow = Math.Max(worstElbow, turn);
+                    if (turn <= 60) continue;
+                    elbows++;
+                    if (i < 10 || i > r.Count - 11) elbowsAtEnds++;
+                    if (elbowNotes.Count < 6) elbowNotes.Add($"{r.Kind}{(r.Laid.Length == 0 ? " street" : "")} {i}/{r.Count} {turn:F0}");
+                    if (firstElbow.Length == 0) firstElbow = $" (first: a {r.Kind}{(r.Laid.Length == 0 ? " street" : "")}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees)";
+                    i += 4;
+                }
+            }
             foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind is RouteKind.Road or RouteKind.Highway))
             {
                 paved++;
                 pavedKm += r.Length / 1000;
-                double least = InfraNetwork.LeastRadius(r.Kind);
+                double least = r.Laid.Length == 0 ? InfraNetwork.TownRadius(r.Kind) : InfraNetwork.LeastRadius(r.Kind);
                 int ends = (int)(Math.Max(60, least) / InfraNetwork.Spacing);
+                // Outside a town's grid a paved road sweeps: no 50 m of it turns more than its class allows.
+                if (r.Laid.Length > 0)
+                    for (int i = ends; i + ends + 12 < r.Count; i++)
+                    {
+                        double a0 = Math.Atan2(r.Z[i + 1] - r.Z[i - 1], r.X[i + 1] - r.X[i - 1]), a1 = Math.Atan2(r.Z[i + 13] - r.Z[i + 11], r.X[i + 13] - r.X[i + 11]);
+                        double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                        sharpest = Math.Max(sharpest, turn);
+                        if (turn <= InfraNetwork.MostTurn50(r.Kind)) continue;
+                        sharp++;
+                        if (firstSharp.Length == 0) firstSharp = $" (first: a {r.Kind}, {r.Laid}, point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees)";
+                        i += 12;
+                    }
                 for (int i = ends; i + ends < r.Count; i++)
                 {
                     double radius = InfraNetwork.Radius((r.X[i - 5], r.Z[i - 5]), (r.X[i], r.Z[i]), (r.X[i + 5], r.Z[i + 5]));
@@ -425,6 +462,8 @@ public partial class SurfaceTest
             await Frames(1);
         }
         Check(paved > 0 && tight == 0, $"paved roads sweep: {paved} roads and highways, {pavedKm:F1} km, none tighter than its class's least (road {InfraNetwork.LeastRadius(RouteKind.Road)} m, highway {InfraNetwork.LeastRadius(RouteKind.Highway)} m; tightest {Math.Min(tightest, 1e6):F0} m), {tight} too tight ({string.Join(", ", tightHow.Select(k => $"{k.Value} {(k.Key.Length > 0 ? k.Key : "unlaid")}"))}){firstTight}");
+        Check(elbows == 0, $"no road has a hard elbow: {elbowRoutes} roads, streets and tracks on {sweepWorlds} fresh worlds, none turning more than 60 degrees over 8 m (a town corner's curve); sharpest {worstElbow:F0}, {elbows} over ({elbowsAtEnds} within 40 m of an end: {string.Join("; ", elbowNotes)}){firstElbow}");
+        Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
         Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");
         Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,

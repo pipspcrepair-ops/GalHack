@@ -27,9 +27,9 @@ public sealed class RoadField
     public const int SegmentsPerRow = 1024, IndexRow = 4096;
 
     /// <summary>How far past a road's deck the shader can paint (its shoulder and the edge's wander), m.</summary>
-    public const float Reach = 4f;
+    public const float Reach = 8f;
 
-    /// <summary>Road styles: how its markings run.</summary>
+    /// <summary>Road styles: how its markings run (plus <see cref="Town"/> on a town's street).</summary>
     public const int Street = 0, Highway = 1, Track = 2, Rail = 3, Drive = 4;
 
     public ImageTexture Segments, Cells, Index;
@@ -87,8 +87,12 @@ public sealed class RoadField
         return Pack(segs, n, width, height);
     }
 
+    /// <summary>A town's street: its stamp's name says so (InfraNetwork names them), and its style is raised by <see cref="Town"/>.</summary>
+    public const int Town = 5;
+
     static int StyleOf(string name, float halfWidth)
     {
+        if (name.EndsWith(" street")) return StyleOf(name[..^7], halfWidth) + Town;
         if (name.StartsWith("Highway")) return Highway;
         if (name.StartsWith("Rail")) return Rail;
         if (name.StartsWith("Track")) return Track;
