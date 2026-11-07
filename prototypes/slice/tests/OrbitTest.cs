@@ -98,6 +98,7 @@ public partial class OrbitTest : Node
     void WatchZones()
     {
         if (_game?.Survivor == null) return;
+        WatchSky();
         SurfaceZone surface = _game.Surface, orbit = _game.Orbit;
         void Look(Body b, SurfaceZone said, string what)
         {
@@ -221,6 +222,7 @@ public partial class OrbitTest : Node
         Vessel v = _skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "F at the seat: at the Skiff's controls");
+        HoldSkyForTheClimb();
         _left = _game.Spaceflight.Holders().ToList();
         float ceiling = _game.Surface.Physics.Zone.Ceiling;
         Vector3 start = v.Body.Position.ToGodot();
@@ -522,6 +524,7 @@ public partial class OrbitTest : Node
         Check(v.Controller.Frozen && v.Body.Damage == 0f, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage:F1}, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
         Check(landed < 150, $"the landing point is the point it came down over ({landed:F0} m off)");
         Check(HeadingError(finalHeading, heading) < 8, $"and its heading is the one it had over the globe: {finalHeading:F1}°");
+        TheSkyCameBack();
     }
 
     // ---- Everything still there -----------------------------------------------------------------

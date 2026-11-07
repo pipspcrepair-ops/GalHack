@@ -856,9 +856,30 @@ public sealed class Playthrough
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
-                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
+                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f)) && !RuinAt(g, span);
                 if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
     }
+
+    /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
+    bool RuinAt(Vector3 ground, float span)
+    {
+        var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new SphereShape3D { Radius = span },
+            Transform = new Transform3D(Basis.Identity, ground + Vector3.Up * (span + 0.5f)),
+            CollisionMask = PlanetSurface.Poi.PoiLayer.PlaceLayer,
+        };
+        foreach (var hit in Game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(query))
+            if (hit["collider"].AsGodotObject() is Node { Name: var name } body && name == "Collision")
+            {
+                if (!_ruinSaid) GD.Print($"  (no pad near {ground}: {body.GetPath()} stands there)");
+                _ruinSaid = true;
+                return true;
+            }
+        return false;
+    }
+
+    bool _ruinSaid;
 }

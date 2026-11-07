@@ -87,8 +87,28 @@ public partial class Spaceflight
     public override void _Process(double delta)
     {
         if (Game.Phase != Slice.Game.Phase.Playing || Game.Survivor == null) return;
-        if (Game.InOrbit) PlaceSeam();
+        if (Game.InOrbit)
+        {
+            // The surface waits, but the clock and the sky above it don't.
+            Game.Surface.Sky.RunClock(delta);
+            TrackSky();
+            PlaceSeam();
+        }
         else ThinTheAir();
+    }
+
+    /// <summary>Puts both skies' bodies where the system has them this moment, from your eye in orbit: the surface's own sky drew itself while it was running.</summary>
+    void TrackSky()
+    {
+        OrbitZone o = Orbit;
+        SurfaceZone s = Game.Surface;
+        Vector3 eye = Game.Camera.GlobalPosition;
+        N.Vector3 q = o.ToGlobe(eye.ToNumerics());
+        var inGlobe = new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
+        Basis turn = o.Turn.ToBasis();
+        s.Sky.Stand(turn.Transposed(), inGlobe);
+        s.Sky.Track();
+        o.Space.Track(s.Planet.StarSystem, s.Sky.Days, turn, inGlobe, eye);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>
@@ -117,22 +137,17 @@ public partial class Spaceflight
         Vessel carrier = Carrier();
         Vector3 p = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         AirGone = AirGoneAt(p.Y);
-        if (Orbit != null && AirGone > 0f)
-        {
-            // The backdrop as it will stand from here: it joins the orbit's sky at the crossing point.
-            N.Quaternion frame = Orbit.Map.Frame(Planets.Gen.Mathx.WrapX(p.X, s.Planet.Width), Planets.Gen.Mathx.Wrap(p.Z, s.Planet.Height));
-            SkyTurn(frame, Orbit.SunPlaced ? Orbit.Space.ToSun : MathX.Rotate(frame, s.Sky.ToSun.ToNumerics()).ToGodot());
-        }
+        if (Orbit != null && AirGone > 0f) SkyTurn();
         if (AirGone > 0f || _sky != null) SetSurfaceAir(AirGone, p.Y);
         DrawWorld(p.Y);
     }
 
-    /// <summary>Tells the surface's sky how space's backdrop stands: <paramref name="frame"/> takes the world's directions to the globe's.</summary>
-    void SkyTurn(N.Quaternion frame, Vector3 sunInGlobe)
+    /// <summary>Tells the surface's sky how space's backdrop stands: it hangs in the system's own frame, as the star field does.</summary>
+    void SkyTurn()
     {
         _sky ??= Game.Surface.Sky.Environment.Sky.SkyMaterial as ShaderMaterial;
-        _sky.SetShaderParameter("space_turn", frame.ToBasis());
-        _sky.SetShaderParameter("space_sun", sunInGlobe);
+        _sky.SetShaderParameter("space_turn", Game.Surface.Sky.SkyToStars);
+        _sky.SetShaderParameter("space_sun", Game.Surface.Sky.StarInField);
         if (_skyLookSet || !Orbit.Prepared) return;
         _skyLookSet = true;
         var look = Orbit.Paint.Look;
@@ -295,12 +310,11 @@ public partial class Spaceflight
             OverLand = over,
             Whole = Smooth((y - r.FarLandFrom) / 200f),
             Near = near, Far = far,
-            ToSun = orbit ? N.Vector3.Transform(o.Space.ToSun.ToNumerics(), o.Turn).ToGodot() : s.Sky.ToSun,
+            ToSun = s.Sky.ToSun,
             FogDensity = _surfaceShown ? env.FogDensity : 0f,
             FogColor = env.FogLightColor,
             Rim = Smooth((y - cap) / 600f) * share,
         });
-        o.Globe.FadeRing(Smooth((y - r.TrueGlobeAt) / 500f));
 
         // The shroud, in this world's own air as it is lit now.
         var sky = s.Planet.Sky;
@@ -338,7 +352,7 @@ public partial class Spaceflight
         ShowSurface(true);
         ShowGround(y < Ceiling);
         o.Space.Show(false, 0f);
-        SkyTurn(N.Quaternion.Conjugate(o.Turn), o.Space.ToSun);
+        SkyTurn();
         s.Sky.PlaceCloudDeck(at); // it sets the height fog, so it goes before the air is thinned
         SetSurfaceAir(AirGone, y);
         s.Sea.GlobalPosition = new Vector3(at.X, 0f, at.Z);
@@ -347,7 +361,8 @@ public partial class Spaceflight
         s.Sky.Sun.LightEnergy = _sunEnergy * (1f - k);
         s.Sky.NightLight.LightEnergy = _nightEnergy * (1f - k);
         o.Space.Light(k);
-        o.Space.FadeBodies(Smooth((f - 0.6f) / 0.4f));
+        o.Space.ShowBodies(false);
+        o.Globe.ShowRing(false);
         FadeWrecks(Smooth((f - 0.5f) / 0.5f));
         DrawWorld(y);
     }
@@ -360,7 +375,8 @@ public partial class Spaceflight
         ShowSurface(false);
         o.Space.Show(true, 1f);
         o.Space.Light(1f);
-        o.Space.FadeBodies(1f);
+        o.Space.ShowBodies(true);
+        o.Globe.ShowRing(true);
         FadeWrecks(1f);
     }
 

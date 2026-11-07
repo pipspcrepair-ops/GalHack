@@ -402,7 +402,7 @@ static class Shaders
 
     const string RingSource = """
         shader_type spatial;
-        render_mode blend_mix, cull_disabled, depth_draw_always, diffuse_lambert_wrap;
+        render_mode blend_mix, cull_disabled, depth_draw_never, diffuse_lambert_wrap;
         uniform vec3 color : source_color;
         void fragment() {
             float r = UV.x; // 0 at the inner edge, 1 at the outer
@@ -419,6 +419,7 @@ static class Shaders
         render_mode use_debanding;
         uniform vec3 nebula : source_color;
         uniform vec3 nebula_b : source_color;
+        uniform float sun_radius = 0.0;
         {{Noise3D}}
         {{Stars}}
         void sky() {
@@ -430,7 +431,7 @@ static class Shaders
             // About 0.0018 rad across, as before: 0.27 cells of a shell 150 cells out.
             col += star_shell(d, 150.0, 0.16, 0.27, true) * 1.6;
             float s = max(dot(d, LIGHT0_DIRECTION), 0.0);
-            col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
+            col += vec3(1.0, 0.92, 0.8) * (pow(s, 40.0) * 0.25 + (sun_radius > 0.0 ? smoothstep(cos(sun_radius * 1.15), cos(sun_radius), s) * 30.0 : pow(s, 900.0) * 30.0));
             COLOR = col;
         }
         """;

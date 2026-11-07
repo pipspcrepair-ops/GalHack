@@ -84,19 +84,21 @@ public sealed class Charts
     }
 
     /// <summary>The star's bodies that show on the system map: the star, the world you are on, its moons and any giant, their sizes as its sky shows them.</summary>
-    public static List<SystemEntry> Bodies(SkySystem sky, string world)
+    public static List<SystemEntry> Bodies(StarSystem system, string world, double days)
     {
-        var list = new List<SystemEntry>
+        // Each at its true bearing this moment, its distance out eased so the inner worlds don't all sit on the star.
+        double farthest = 0;
+        foreach (Orbiter b in system.Bodies)
+            if (b.Parent == system.Star) farthest = Math.Max(farthest, b.Orbit);
+        var list = new List<SystemEntry> { new("star", system.Star.Name, "star", 0.5f, 0f, 0f) };
+        foreach (Orbiter b in system.Bodies)
         {
-            new("star", $"{sky.Star} star", "star", 0.5f, 0f, 0f),
-            new("world", world, "world", 0.12f, 0.55f, 0.6f, "you started here"),
-        };
-        int moon = 0;
-        foreach (SkyBody b in sky.Bodies)
-        {
-            bool giant = b.Kind == PlanetSurface.Skies.BodyKind.GasGiant;
-            string name = string.IsNullOrEmpty(b.Name) ? (giant ? "Giant" : $"Moon {++moon}") : b.Name;
-            list.Add(new SystemEntry(name.ToLowerInvariant().Replace(' ', '-'), name, giant ? "giant" : "moon", Math.Clamp(b.Radius * 2f, 0.03f, 0.3f), giant ? 0.85f : 0.12f + 0.05f * moon, b.Azimuth));
+            if (b.Kind == OrbiterKind.Star || (b.Kind == OrbiterKind.Moon && b != system.Home && b.Parent != system.Home)) continue;
+            D3 p = system.Position(b, days);
+            float orbit = (float)Math.Sqrt(Math.Sqrt(p.X * p.X + p.Z * p.Z) / farthest) * 0.95f;
+            string key = b == system.Home ? "world" : b.Name.ToLowerInvariant().Replace(' ', '-');
+            string kind = b == system.Home ? "world" : b.Kind switch { OrbiterKind.GasGiant => "giant", OrbiterKind.Moon => "moon", OrbiterKind.Belt => "belt", _ => "planet" };
+            list.Add(new SystemEntry(key, b == system.Home ? world : b.Name, kind, Math.Clamp((float)(b.Radius / 12000.0), 0.03f, 0.3f), orbit, (float)Math.Atan2(p.Z, p.X), b == system.Home ? "you started here" : string.Join(", ", b.Deposits)));
         }
         return list;
     }

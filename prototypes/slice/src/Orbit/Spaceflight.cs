@@ -258,7 +258,6 @@ public partial class Spaceflight : Node
         _leftSurfaceAt = new Vector3(p.X, p.Y, p.Z);
         to.Align(x, z, p.X, p.Z);
         _aligned = true;
-        to.Arrive(from.Sky.ToSun);
         HoldSurfaceBehind();
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
