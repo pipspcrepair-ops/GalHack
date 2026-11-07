@@ -30,6 +30,10 @@ public sealed partial class PlanetWorld
     public readonly IReadOnlyList<PoiSite> Pois;
     public readonly SkySystem Sky;
     public readonly WorldLook Look;
+
+    /// <summary>Every plant on this world, rolled from its seed, climate, air and star: scatter, ruins, cover and weeds all read it.</summary>
+    public readonly PlanetFlora Flora;
+
     /// <summary>
     /// The world's profile, rolled first from its seed: whether it was ever inhabited, its old
     /// population, starport and trade, and two tech levels (low, mid or high): before the collapse
@@ -86,14 +90,9 @@ public sealed partial class PlanetWorld
         {
             if (_weedKnown) return _weed;
             _weedKnown = true;
-            foreach (byte b in new HashSet<byte>(Map.Biome))
-                foreach (FloraRule r in BiomeLook.FloraOf((Biome)b))
-                    if (r.Kind == Flora.Shrub)
-                    {
-                        Rgb c = r.Color.Saturate(0.6f) * 0.8f;
-                        return _weed = new PoiGenerator.Gen.Rgb(Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B));
-                    }
-            return null;
+            if (Flora.AnyLowGrowth() is not Rgb low) return null;
+            Rgb c = low.Saturate(0.8f) * 0.85f;
+            return _weed = new PoiGenerator.Gen.Rgb(Rgb.Byte(c.R), Rgb.Byte(c.G), Rgb.Byte(c.B));
         }
     }
 
@@ -157,7 +156,9 @@ public sealed partial class PlanetWorld
         Pois = pois;
         Source = source;
         Terrain = new PlanetTerrain(source);
-        Palette = new GroundPalette(map);
+        Sky = SkySystem.For(spec);
+        Flora = PlanetFlora.For(map, Sky);
+        Palette = new GroundPalette(map, Flora);
         // Blast sites' dead zones show in the ground's colour, fading back to the land's own.
         foreach (PoiSite p in pois)
             if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
@@ -165,7 +166,6 @@ public sealed partial class PlanetWorld
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
-        Sky = SkySystem.For(spec);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
     }

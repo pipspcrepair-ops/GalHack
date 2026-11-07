@@ -1341,9 +1341,25 @@ public partial class SurfaceTest : Node
                 if (f.Origin.Z >= -64f && f.Origin.Z < 0f) beyond++;
                 else if (f.Origin.Z >= 0f && f.Origin.Z < 64f) before++;
             }
-        Check(farGround == farSamples && beyond > 0 && beyond > before / 3,
+        // The strip holds exactly what the chunk cut short at the seam scatters: what the far builder lays out there on its own.
+        PlanetWorld seamWorld = _main.World;
+        int expected = 0, lastRow = FarBuilder.Count(seamWorld.Terrain.Height) - 1, columns = FarBuilder.Count(seamWorld.Terrain.Width);
+        double seamX = Mathx.WrapX(p.X, seamWorld.Width);
+        for (int dfx = -2; dfx <= 2; dfx++)
+        {
+            int fx = ((int)(seamX / FarBuilder.Size) + dfx + columns) % columns;
+            var job = new FarJob { Fx = fx, Fz = lastRow, Lod = 0, SpanX = FarBuilder.Span(fx, seamWorld.Terrain.Width), SpanZ = FarBuilder.Span(lastRow, seamWorld.Terrain.Height) };
+            FarBuilder.Build(job, seamWorld.Source, seamWorld.Palette, new HashSet<long>(), seamWorld.Felled);
+            foreach (FloraBatch b in job.Flora)
+                for (int i = 0; i < b.Count; i++)
+                {
+                    double fxm = fx * (double)FarBuilder.Size + b.Buffer[i * 16 + 3], fzm = lastRow * (double)FarBuilder.Size + b.Buffer[i * 16 + 11] - seamWorld.Height;
+                    if (Math.Abs(Mathx.WrapDelta(fxm - seamX, seamWorld.Width)) <= 120.0 && fzm >= -64.0 && fzm < 0.0) expected++;
+                }
+        }
+        Check(farGround == farSamples && beyond == expected,
             $"the far grid tiles the planet across the north-south seam: far ground under all {farSamples} points of the last 64 m strip before it, " +
-            $"and {beyond} flora there beside {before} in the 64 m just past it");
+            $"and its flora is all there, {beyond} of {expected} scattered, beside {before} in the 64 m just past it");
 
         // An edit straddling the seam shows on both sides, and survives a save and load.
         var centre = new TInt3((int)MathF.Floor(p.X) + 3, (int)MathF.Floor(w.GroundHeight(p.X + 3, 0)) - 1, 0);

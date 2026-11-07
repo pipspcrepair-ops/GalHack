@@ -533,6 +533,7 @@ public sealed class Bunker
         if (field >= 0) zone.Physics.StuckFields[field] = new RampField(bunker.Ruin.Field);
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
+        bunker.ClearWayOut(zone);
         bunker.Furnish(zone);
         return bunker;
     }
@@ -592,6 +593,23 @@ public sealed class Bunker
         float tread = site.Steps * Cell + 0.25f;
         Box(new N.Vector3(-outer, tread, StepZ(site.Steps) - 5f), new N.Vector3(outer, GroundOver(zone, site, site.Steps) - floorY + 3f, StepZ(site.Steps)));
         return cells;
+    }
+
+    /// <summary>
+    /// Nothing stands in the doorway: every plant and rock within a few metres of the way out goes, for
+    /// good, by the felling rule, so a trunk can't block a castaway's first steps however thick the woods.
+    /// </summary>
+    void ClearWayOut(SurfaceZone zone)
+    {
+        var planet = zone.Planet;
+        foreach (Vector3 at in new[] { StairTop, Outside })
+            for (float dz = -10f; dz <= 10f; dz += 2f)
+            for (float dx = -10f; dx <= 10f; dx += 2f)
+            {
+                if (dx * dx + dz * dz > 100f) continue;
+                long id = PlanetSurface.Terrain.FarBuilder.ScatterIdAt(Planets.Gen.Mathx.WrapX(at.X + dx, planet.Width), Planets.Gen.Mathx.Wrap(at.Z + dz, planet.Height));
+                if (planet.Felled.Add(id)) zone.Streamer.Fell(id);
+            }
     }
 
     /// <summary>The cells the dig could not take (bedrock, anchors): the bunker's rooms must be clear of all of them.</summary>

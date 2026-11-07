@@ -63,6 +63,7 @@
     <Compile Include="..\planet-surface\src\Poi\PoiLayerDeco.cs" />
     <Compile Include="..\planet-surface\src\Infra\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
+    <Compile Include="..\..\shared\Flora\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
     <Compile Include="..\planet-surface\src\Fx\**\*.cs" />
     <Compile Include="..\planet-surface\src\WeatherView\IWeatherScene.cs" />

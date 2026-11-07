@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using GalHack.Plants;
 using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
@@ -66,6 +67,10 @@ public partial class TerrainStreamer : Node3D
     Material _waterMaterial;
     Dictionary<Flora, Mesh> _floraMeshes;
 
+    /// <summary>The world's species as meshes, by herbarium index: near variants, and the far one.</summary>
+    Mesh[][] _plantNear = System.Array.Empty<Mesh[]>();
+    Mesh[] _plantFar = System.Array.Empty<Mesh>();
+
     // ---- Voxel state ----
     sealed class Column
     {
@@ -122,7 +127,7 @@ public partial class TerrainStreamer : Node3D
         public bool InFlight;
         public int Version;
         public Node3D Node;
-        public List<(Flora Kind, float[] Buffer, int Count)> Flora;
+        public List<FloraBatch> Flora;
 
         /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
         public List<FloraSolid> Solids;
@@ -210,7 +215,27 @@ public partial class TerrainStreamer : Node3D
         FarMaterial.SetShaderParameter("hole_sink_from", 0.25f);
         FarMaterial.SetShaderParameter("hole_cut", FarHoleCut);
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
+        BuildPlantMeshes();
     }
+
+    /// <summary>The world's plants, once, as meshes: a bounded set every chunk then instances, so nothing is built at chunk load.</summary>
+    void BuildPlantMeshes()
+    {
+        IReadOnlyList<Plant> plants = World.Flora.Book.Plants;
+        _plantNear = new Mesh[plants.Count][];
+        _plantFar = new Mesh[plants.Count];
+        foreach (Plant p in plants)
+        {
+            _plantNear[p.Index] = new Mesh[p.Near.Length];
+            for (int i = 0; i < p.Near.Length; i++) _plantNear[p.Index][i] = PlantMeshes.ToGodot(p.Near[i]);
+            _plantFar[p.Index] = p.Far == p.Near[0] ? _plantNear[p.Index][0] : PlantMeshes.ToGodot(p.Far);
+        }
+        StartCover();
+    }
+
+    /// <summary>The mesh of one species' variant (-1: its far one), or null for what the world's herbarium doesn't hold.</summary>
+    public Mesh PlantMesh(int plant, int variant) =>
+        plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant] : _plantNear[plant][variant];
 
     ShaderMaterial TerrainMaterial(bool far)
     {
@@ -351,6 +376,7 @@ public partial class TerrainStreamer : Node3D
         _sections[0] = Stopwatch.GetElapsedTime(start).TotalMilliseconds - _sections[4];
         long t = Stopwatch.GetTimestamp();
         StreamFar();
+        StreamCover();
         _sections[1] = Stopwatch.GetElapsedTime(t).TotalMilliseconds - _sections[2];
         t = Stopwatch.GetTimestamp();
         if (++_evictTimer >= 30)
@@ -678,7 +704,10 @@ public partial class TerrainStreamer : Node3D
             _dugSnapshot = new HashSet<long>(_dug);
             _felledSnapshot = new HashSet<long>(World.Felled);
             foreach (var (fx, fz) in _floraDirty)
+            {
                 if (_far.TryGetValue((fx, fz), out FarChunk f)) { f.Lod = -1; f.Version++; }
+                CoverDug(fx, fz);
+            }
             _floraDirty.Clear();
         }
 
@@ -841,7 +870,7 @@ public partial class TerrainStreamer : Node3D
     /// and <see cref="Fell"/> take). Read from the far chunks' own scatter, so it works with or
     /// without a renderer; felled plants are left out at once.
     /// </summary>
-    public IEnumerable<(Flora Kind, Vector3 Root, float Scale, long Id)> FloraNear(Vector3 at, float radius)
+    public IEnumerable<PlantSighting> FloraNear(Vector3 at, float radius)
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
         foreach (FarChunk f in _far.Values)
@@ -850,16 +879,30 @@ public partial class TerrainStreamer : Node3D
             float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, at.X, w);
             float z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, at.Z, h);
             if (at.X < x0 - radius || at.X > x0 + FarBuilder.Size + radius || at.Z < z0 - radius || at.Z > z0 + FarBuilder.Size + radius) continue;
-            foreach (var (kind, buffer, count) in f.Flora)
-                for (int i = 0; i < count; i++)
+            foreach (FloraBatch b in f.Flora)
+                for (int i = 0; i < b.Count; i++)
                 {
                     int o = i * 16;
+                    float[] buffer = b.Buffer;
                     var root = new Vector3(x0 + buffer[o + 3], buffer[o + 7], z0 + buffer[o + 11]);
                     if (new Vector2(root.X - at.X, root.Z - at.Z).Length() > radius) continue;
                     // The scatter cell it was rolled in: its offset in the chunk, a cell to a ScatterCell.
                     long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(buffer[o + 3] / FarBuilder.ScatterCell), (int)(buffer[o + 11] / FarBuilder.ScatterCell));
-                    if (!World.Felled.Contains(id)) yield return (kind, root, buffer[o + 5], id);
+                    var turn = new Basis(new Vector3(buffer[o], buffer[o + 4], buffer[o + 8]), new Vector3(buffer[o + 1], buffer[o + 5], buffer[o + 9]), new Vector3(buffer[o + 2], buffer[o + 6], buffer[o + 10]));
+                    if (!World.Felled.Contains(id)) yield return new PlantSighting(b.Kind, root, buffer[o + 5], id, b.Plant, b.Variant, turn);
                 }
+        }
+    }
+
+    /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, and its turn.</summary>
+    public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn)
+    {
+        public void Deconstruct(out Flora kind, out Vector3 root, out float scale, out long id)
+        {
+            kind = Kind;
+            root = Root;
+            scale = Scale;
+            id = Id;
         }
     }
 
@@ -902,11 +945,11 @@ public partial class TerrainStreamer : Node3D
             waterMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, water);
             node.AddChild(new MeshInstance3D { Mesh = waterMesh, MaterialOverride = _waterMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
-        foreach (var (kind, buffer, count) in job.Flora)
+        foreach (FloraBatch b in job.Flora)
         {
-            var multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = _floraMeshes[kind] };
-            multimesh.InstanceCount = count;
-            multimesh.Buffer = buffer;
+            var multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = PlantMesh(b.Plant, b.Variant) ?? _floraMeshes[b.Kind] };
+            multimesh.InstanceCount = b.Count;
+            multimesh.Buffer = b.Buffer;
             node.AddChild(new MultiMeshInstance3D
             {
                 Multimesh = multimesh, MaterialOverride = _floraMaterial,
@@ -1026,6 +1069,7 @@ public partial class TerrainStreamer : Node3D
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
         if (World != null) ClearSolids();
+        ClearCover();
         _chunks.Clear();
         _columns.Clear();
         _far.Clear();

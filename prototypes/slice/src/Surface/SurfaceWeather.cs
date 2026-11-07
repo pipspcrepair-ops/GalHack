@@ -461,6 +461,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
+            Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();
         foreach (int id in _tornadoes.Keys) if (!alive.Contains(id)) gone.Add(id);
@@ -469,6 +470,21 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _tornadoes[id].QueueFree();
             _tornadoes.Remove(id);
         }
+    }
+
+    /// <summary>
+    /// A tornado leaves a trail: every tree in its core goes, whatever the species, by the same felling
+    /// as the tool's, so it stays gone. Only what's loaded near the player is touched, and a few a pass.
+    /// </summary>
+    void Uproot(Tornado t, Vector3 at)
+    {
+        if (t.Age < t.Rules.FormSeconds) return;
+        // Listed first: felling changes the very lists being read.
+        var inCore = new List<long>();
+        foreach (var (solid, _) in Zone.Streamer.SolidsNear(at, t.Rules.CoreRadius))
+            if (solid.Fellable && inCore.Count < 3) inCore.Add(solid.Id);
+        foreach (long id in inCore)
+            if (_planet.Felled.Add(id)) Zone.Streamer.Fell(id);
     }
 
     // ---- Each frame: what you see -----------------------------------------------------------

@@ -115,13 +115,11 @@ public partial class InfraLayer
             float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.5f : 0.7f);
             // Stunted growth on scree only where the biome grows anything low, in its own colour.
             DecoRgb? growth = null;
-            foreach (FloraRule f in BiomeLook.FloraOf(world.Palette.BiomeAt(Mathx.WrapX(d.X, world.Width), Mathx.Wrap(d.Y, world.Height))))
-                if (f.Kind == Flora.Shrub)
-                {
-                    Rgb c = f.Color.Saturate(0.6f);
-                    growth = new DecoRgb(c.R, c.G, c.B);
-                    break;
-                }
+            if (world.Flora.LowGrowth(world.Palette.BiomeAt(Mathx.WrapX(d.X, world.Width), Mathx.Wrap(d.Y, world.Height))) is Rgb low)
+            {
+                Rgb c = low.Saturate(0.8f);
+                growth = new DecoRgb(c.R, c.G, c.B);
+            }
             DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B), growth: growth);
             // Laid along the slope and sunk in by whatever the ground still falls away under its rim.
             Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * b.Seat(d.X, d.Y, radius);

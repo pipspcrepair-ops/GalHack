@@ -84,6 +84,7 @@ public sealed partial class Staging
             "faces" => FacesView(),
             "cores" => CoresView(),
             "natural" => Natural(),
+            "flora" => FloraProof(),
             "crouch" => CrouchView(),
             "dark" => Dark(),
             "monsoon" => MonsoonCost(),

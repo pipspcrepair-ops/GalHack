@@ -73,11 +73,11 @@ public sealed partial class TreeFx : Node3D
     /// A tree felled: the trunk and crown topple away along <paramref name="away"/>, lie, and fade;
     /// a stump stays.
     /// </summary>
-    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown)
+    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default)
     {
         away.Y = 0f;
         away = away.LengthSquared() < 1e-4f ? Vector3.Forward : away.Normalized();
-        var bark = new Color(0.36f, 0.25f, 0.16f);
+        Color bark = barkColour ?? new Color(0.36f, 0.25f, 0.16f);
         var stump = new MeshInstance3D
         {
             Mesh = new CylinderMesh { TopRadius = radius * 0.85f, BottomRadius = radius * 1.15f, Height = 0.5f },
@@ -85,7 +85,7 @@ public sealed partial class TreeFx : Node3D
             Position = root + Vector3.Up * 0.2f,
         };
         _stumps.AddChild(stump);
-        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown));
+        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn));
     }
 }
 
@@ -95,12 +95,21 @@ public sealed partial class FallingTree : Node3D
     const float FallTime = 1.5f, LieTime = 5f, FadeTime = 2.5f;
     readonly Vector3 _axis;
     readonly StandardMaterial3D _bark, _leaf;
+    readonly ShaderMaterial _body;
     float _t;
 
-    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown)
+    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default)
     {
         Position = root;
         _axis = Vector3.Up.Cross(away).Normalized();
+        if (body != null)
+        {
+            // The tree itself goes over, its own shape and colours.
+            _body = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
+            _body.SetShaderParameter("tint", new Vector3(leaf.R, leaf.G, leaf.B));
+            AddChild(new MeshInstance3D { Mesh = body, MaterialOverride = _body, Basis = turn });
+            return;
+        }
         _bark = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha };
         _leaf = new StandardMaterial3D { AlbedoColor = leaf, Roughness = 0.9f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha };
         AddChild(new MeshInstance3D
@@ -128,8 +137,9 @@ public sealed partial class FallingTree : Node3D
         if (_t > FallTime + LieTime)
         {
             float a = 1f - (_t - FallTime - LieTime) / FadeTime;
-            _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
-            _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
+            _body?.SetShaderParameter("fade", MathF.Max(0f, a));
+            if (_bark != null) _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
+            if (_leaf != null) _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
             if (a <= 0f) QueueFree();
         }
     }
