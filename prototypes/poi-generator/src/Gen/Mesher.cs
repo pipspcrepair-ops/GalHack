@@ -174,7 +174,7 @@ public static class Mesher
         var sum = new long[count.Length * 3];
         foreach (var (c, b) in g.Blocks())
         {
-            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
+            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
             if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
             Int3 l = c - g.Min;
             int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
@@ -324,8 +324,9 @@ public static class Mesher
             if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: _o.Drawn);
             else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
             else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
+            else if (BlockInfo.IsCornerSlope(b.Type)) CornerSlope(chunk, p, b, _o.Drawn);
 
-            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type))
+            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type))
             {
                 // Props collide as their bounding box.
                 var (lo, hi) = Shapes.CollisionBox(b);
@@ -728,6 +729,57 @@ public static class Mesher
                 Tri(chunk, sLL, sLR, sHR); Tri(chunk, sLL, sHR, sHL);
                 Tri(chunk, sBR, sBL, sHL); Tri(chunk, sBR, sHL, sHR);
                 Tri(chunk, sBL, sLL, sHL); Tri(chunk, sLR, sBR, sHR);
+            }
+        }
+
+        /// <summary>
+        /// The player's corner slopes, built in the cell's own frame with north at z 0 and turned to the block's
+        /// facing like a ramp. Corner: the tetrahedron under one raised corner (north-west, unturned). Inverted
+        /// corner: the cube less the tetrahedron at the opposite top corner. A face on the cell's boundary is
+        /// left out where a full neighbour hides it.
+        /// </summary>
+        void CornerSlope(ChunkMesh chunk, Int3 p, Block b, bool draw)
+        {
+            V3 o = V3.Of(p);
+            V3 R(float x, float y, float z) => o + Shapes.Turn(new V3(x, y, z), b.Facing);
+            var buf = chunk.Surfaces[(int)Shapes.SurfaceOf(b.Material)];
+            float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
+            V3 centre = b.Type == BlockType.Corner ? R(0.25f, 0.25f, 0.25f) : R(0.45f, 0.45f, 0.45f);
+            void Face(V3[] pts, Int3? side, float shade)
+            {
+                if (side is { } s && Hides(p + s)) return;
+                V3 n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized();
+                // Wound to face away from the piece's middle, whatever the turn did.
+                if (V3.Dot(n, pts[0] - centre) < 0) { Array.Reverse(pts); n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized(); }
+                if (draw)
+                {
+                    int i0 = buf.VertexCount;
+                    foreach (V3 v in pts) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
+                    for (int k = 1; k + 1 < pts.Length; k++) buf.Indices.AddRange(new[] { i0, i0 + k + 1, i0 + k });
+                    chunk.Quads++;
+                }
+                if (_o.Collision)
+                    for (int k = 1; k + 1 < pts.Length; k++) Tri(chunk, pts[0], pts[k], pts[k + 1]);
+            }
+            Int3 Side(float x, float z) => Shapes.Turn(new V3(x, 0.5f, z), b.Facing) is var v ? new Int3(v.X < 0.01f ? -1 : v.X > 0.99f ? 1 : 0, 0, v.Z < 0.01f ? -1 : v.Z > 0.99f ? 1 : 0) : default;
+            if (b.Type == BlockType.Corner)
+            {
+                V3 a = R(0, 0, 0), bb = R(1, 0, 0), c = R(0, 0, 1), apex = R(0, 1, 0);
+                Face(new[] { a, bb, c }, Int3.Down, 0.62f);
+                Face(new[] { a, bb, apex }, null, 0.82f);
+                Face(new[] { a, c, apex }, null, 0.78f);
+                Face(new[] { bb, c, apex }, null, 0.97f);
+            }
+            else
+            {
+                V3 a = R(0, 0, 0), bb = R(1, 0, 0), c = R(0, 0, 1), d = R(1, 0, 1), e = R(0, 1, 0), f = R(1, 1, 0), g = R(0, 1, 1);
+                Face(new[] { a, bb, d, c }, Int3.Down, 0.62f);
+                Face(new[] { a, bb, f, e }, Side(0.5f, 0f), 0.82f);
+                Face(new[] { a, c, g, e }, Side(0f, 0.5f), 0.78f);
+                Face(new[] { bb, d, f }, null, 0.8f);
+                Face(new[] { c, d, g }, null, 0.8f);
+                Face(new[] { e, f, g }, Int3.Up, 1f);
+                Face(new[] { f, g, d }, null, 0.97f);
             }
         }
 
@@ -1167,6 +1219,8 @@ public static class Shapes
                 break;
             case BlockType.Ramp:
             case BlockType.Spike:
+            case BlockType.Corner:
+            case BlockType.InvCorner:
                 break;
             default:
                 l.Add(Box(0.1f, 0, 0.1f, 0.9f, 0.9f, 0.9f, c, s));

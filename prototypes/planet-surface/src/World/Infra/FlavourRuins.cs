@@ -104,10 +104,14 @@ public static class FlavourRuins
     public static float BlastAt(BlastZone zone, float d) =>
         d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
 
-    /// <summary>A family's layout, turned to face a road, in the world's tech level's materials.</summary>
+    /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
     public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0) =>
         Layouts.GetOrAdd((f.Id, variant, front, tech, salt), _ =>
-            PoiFactory.BuildLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech)));
+        {
+            Layout l = PoiFactory.TryLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech), out string why);
+            if (l == null) Godot.GD.PushWarning($"lot left empty: {why}");
+            return l;
+        });
 
     /// <summary>
     /// Which of a family's layouts a world of a tech level builds: its own, or any that fit all. A family's
@@ -198,6 +202,7 @@ public static class FlavourRuins
                     double nx = Math.Abs(dx) > Math.Abs(dz) ? 0 : side, nz = Math.Abs(dx) > Math.Abs(dz) ? side : 0;
                     Dir front = Facing(-nx, -nz);
                     Layout layout = Lot(fuel, front);
+                    if (layout == null) continue;
                     double deep = LotSize(layout, front).Deep * 0.5, back = deep + r.HalfWidth + 6;
                     FlavourRuin ruin = Try(lib, fuel, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng, spacing: 12, maxCut: 5f, clearance: back - 3);
                     // The forecourt lies level with the road it opens on.
@@ -242,6 +247,7 @@ public static class FlavourRuins
                 if (!Farmed(r.X[i] + nx * off, r.Z[i] + nz * off)) continue;
                 Dir front = Facing(-nx, -nz);
                 Layout layout = Lot(farm, front);
+                if (layout == null) continue;
                 FlavourRuin ruin = Try(lib, farm, layout, r.X[i] + nx * off, r.Z[i] + nz * off, bare, net, pois, ruins, w, h, rng, spacing: 40);
                 if (ruin == null || !Connect(ruin, r, 2.2f, profile.Before == TechLevel.Low ? StampSurface.Dirt : StampSurface.Gravel, bare, w, h)) continue;
                 ruin.Route = r;
@@ -268,6 +274,7 @@ public static class FlavourRuins
                 double nx = -dz / len * side, nz = dx / len * side;
                 Dir front = Facing(-nx, -nz);
                 Layout layout = Lot(f, front);
+                if (layout == null) continue;
                 var size = layout.Occupied.Size;
                 double back = Math.Sqrt(size.X * size.X + size.Z * size.Z) * 0.5 + 12 + rng.Float() * 16;
                 FlavourRuin ruin = Try(lib, f, layout, r.X[i] + nx * back, r.Z[i] + nz * back, bare, net, pois, ruins, w, h, rng);
@@ -286,6 +293,7 @@ public static class FlavourRuins
             FamilyDef f = Pick(!rough && (farmland || rng.Chance(0.5f)) ? "farmstead" : "house") ?? Pick("house");
             if (f == null) break;
             Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)]);
+            if (layout == null) continue;
             FlavourRuin ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
             if (ruin != null) ruins.Add(ruin);
         }
@@ -295,6 +303,7 @@ public static class FlavourRuins
             {
                 if (!rng.Chance(0.7f)) continue;
                 Layout layout = LayoutFor(lib, clearing, rng.Range(0, clearing.Variants.Count));
+                if (layout == null) continue;
                 // Clear of the town's square reach whichever way round it lands.
                 double start = rng.Float() * Math.PI * 2, reach = (Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 50) * 1.45;
                 for (int k = 0; k < 36; k++)
@@ -324,6 +333,7 @@ public static class FlavourRuins
                 FamilyDef f = Pick("house");
                 if (f == null) break;
                 Layout layout = LayoutFor(lib, f, VariantFor(f, profile.Before, rng), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
+                if (layout == null) continue;
                 var ruin = Try(lib, f, layout, gx + Math.Cos(a) * d, gz + Math.Sin(a) * d, bare, net, pois, ruins, w, h, rng);
                 if (ruin == null) continue;
                 ruins.Add(ruin);
@@ -379,6 +389,7 @@ public static class FlavourRuins
                     FamilyDef f = shopFront ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                     Dir front = Facing(-sx * side, -sz * side);
                     Layout layout = LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
+                    if (layout == null) continue;
                     var (wide, deep) = LotSize(layout, front);
                     along += wide * 0.5;
                     double back = StreetHalf + deep * 0.5 + 6.5, cx = px + ux * along + sx * side * back, cz = pz + uz * along + sz * side * back;

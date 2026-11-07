@@ -130,6 +130,9 @@ public partial class Main : Node3D
     /// <summary>Plain daylight whatever the state (proof frames): otherwise each state keeps its own hour.</summary>
     public static bool Daylight;
 
+    /// <summary>No backdrop of rock mesas round the stage (proof frames): nothing but the place and its ground.</summary>
+    public static bool Bare;
+
     void Rebuild()
     {
         foreach (Node n in _stageRoot.GetChildren()) n.QueueFree();
@@ -145,7 +148,8 @@ public partial class Main : Node3D
         var hole = new Rect2I(Stage.PlugMin, Stage.PlugMax - Stage.PlugMin + Vector2I.One);
         int half = 26 * PoiView.Tile;
         _stageRoot.AddChild(Terrain.Build(new Vector2I(-half, -half), new Vector2I(52, 52), (x, z) => ground, new List<Rect2I> { hole }, true, 4000f));
-        _stageRoot.AddChild(Terrain.Mesas(poi.SpawnSeed ^ 77, Vector2.Zero, 170f, 1400f, 70, Look.ToColor(Look.Rock(_biome)).Lightened(0.15f), new()));
+        // The viewer's backdrop: rock mesas and pillars out to 1.4 km, only here, never in the game. Proof frames leave them out (--bare).
+        if (!Bare) _stageRoot.AddChild(Terrain.Mesas(poi.SpawnSeed ^ 77, Vector2.Zero, 170f, 1400f, 70, Look.ToColor(Look.Rock(_biome)).Lightened(0.15f), new()));
         Map.SetPlace(poi);
         if (CurrentMode != Mode.Aerial) Sky.Apply(Daylight ? Look.Day : Look.For(_state), 110f);
         Player.Lamp.Visible = CurrentMode == Mode.Walk && _state != PoiState.Active;
