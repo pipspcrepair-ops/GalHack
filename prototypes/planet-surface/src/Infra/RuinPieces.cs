@@ -19,6 +19,15 @@ public partial class InfraLayer
         }
     }
 
+    /// <summary>A ruin's blocks as they are drawn.</summary>
+    public static List<ChunkMesh> RuinMesh(PoiInstance inst)
+    {
+        BlockGrid g = inst.Blocks;
+        MeshOptions options = MeshOptions.OnPlanet(g.Min);
+        options.Mottle = 0.2f;
+        return Mesher.Build(g, inst.Layout.Occupied, options);
+    }
+
     /// <summary>A flavour ruin: its century of decay spawned from its seed on a worker, meshed by the POI generator's mesher like any place.</summary>
     sealed class RuinPiece : Piece
     {
@@ -27,14 +36,7 @@ public partial class InfraLayer
         public override void Emit(TileBuilder b)
         {
             PoiInstance inst = Ruin.Spawn(b.World.Profile, b.World.Source);
-            BlockGrid g = inst.Blocks;
-            var options = new MeshOptions
-            {
-                Doors = true, Collision = true, Detail = true, Rock = true,
-                // An empty plug: every outer face is drawn; the terrain is the ground round it.
-                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround, Mottle = 0.2f,
-            };
-            List<ChunkMesh> meshes = Mesher.Build(g, inst.Layout.Occupied, options);
+            List<ChunkMesh> meshes = RuinMesh(inst);
             NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);
             string name = Ruin.Family.Id;
             b.Extra.Add(() =>

@@ -81,18 +81,13 @@ public partial class Place : Node3D
     // ---- Blocks ---------------------------------------------------------------------------------
 
     /// <summary>The mesher's options for a near place: doors are the view's own; buried ground hides faces (an empty plug, as the planet's far drawing does).</summary>
-    public static MeshOptions Options(Int3 min) => new()
+    public static MeshOptions Options(Int3 min)
     {
-        ChunkSize = ChunkSize,
-        Doors = false,
-        Collision = true,
-        Detail = true,
-        Rock = true,
-        RockMin = new Int3(min.X + 1, 0, min.Z + 1),
-        RockMax = new Int3(min.X, 0, min.Z),
-        GroundShow = MeshOptions.AllGround,
-        RockBottom = min.Y,
-    };
+        MeshOptions o = MeshOptions.OnPlanet(min);
+        o.ChunkSize = ChunkSize;
+        o.Doors = false;
+        return o;
+    }
 
     /// <summary>Puts one chunk's mesh and collision in (or replaces them).</summary>
     public void SetChunk(ChunkMesh chunk)
@@ -128,17 +123,9 @@ public partial class Place : Node3D
     public void Remesh(IEnumerable<Int3> cells)
     {
         Memory.Fauna?.Forget(cells);
-        var chunks = new HashSet<Int3>();
-        foreach (Int3 c in cells)
-            for (int dz = -1; dz <= 1; dz++)
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-                chunks.Add(ChunkOf(c + new Int3(dx, dy, dz)));
-        foreach (Int3 ch in chunks)
+        foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize))
         {
-            var window = new ChunkWindow(Inst.Blocks, ch * ChunkSize, ChunkSize);
-            List<ChunkMesh> built = Mesher.Build(window, Inst.Layout.Occupied, Options(window.Min));
-            ChunkMesh mesh = built.FirstOrDefault(m => m.Chunk == ch);
+            ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, Options);
             if (mesh == null || mesh.Surfaces.All(s => s.Indices.Count == 0) && mesh.Collision.Count == 0) DropChunk(ch);
             else SetChunk(mesh);
         }
@@ -222,30 +209,3 @@ public partial class Place
     }
 }
 
-/// <summary>
-/// One chunk's box of a place's grid, read through to the whole grid, so the mesher builds that
-/// chunk alone with its neighbours' faces and shading seen exactly as in the whole build.
-/// </summary>
-public sealed class ChunkWindow : IBlockStructure
-{
-    readonly IBlockStructure _grid;
-    public Int3 Min { get; }
-    public Int3 Size { get; }
-
-    public ChunkWindow(IBlockStructure grid, Int3 min, int size)
-    {
-        _grid = grid;
-        Min = min;
-        Size = new Int3(size, size, size);
-    }
-
-    public bool InBounds(Int3 p)
-    {
-        Int3 l = p - Min;
-        return (uint)l.X < (uint)Size.X && (uint)l.Y < (uint)Size.Y && (uint)l.Z < (uint)Size.Z;
-    }
-
-    public Block Get(Int3 p) => _grid.Get(p);
-    public void Set(Int3 p, Block b) => _grid.Set(p, b);
-    public int CountBlocks() => 0;
-}

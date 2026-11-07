@@ -1440,7 +1440,8 @@ public partial class PoiTest : Node
     static int Faces(BlockGrid g, CellMask occ, ref int faces, ref int missing, ref string first)
     {
         var drawn = new HashSet<(int, int, int)>();
-        var options = new MeshOptions { Doors = true, Collision = false, Detail = true, Rock = true, RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround };
+        MeshOptions options = MeshOptions.OnPlanet(g.Min);
+        options.Collision = false;
         foreach (ChunkMesh chunk in Mesher.Build(g, occ, options))
             foreach (MeshBuffer s in chunk.Surfaces)
                 for (int i = 0; i + 2 < s.Indices.Count; i += 3)

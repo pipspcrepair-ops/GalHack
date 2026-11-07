@@ -98,7 +98,11 @@ public sealed partial class Staging
         PlaceRoom room = p.Memory.Rooms.Values.OrderByDescending(r => (r.Room.RoomId == want ? 1000 : 0) + r.Plan.Placements.Count - MathF.Abs(r.Corner.Y) * 2f).First();
         var size = new Vector3(room.Room.Width, 0f, room.Room.Depth);
         Vector3 corner = p.ToWorld(new Vector3(room.Corner.X, room.Corner.Y, room.Corner.Z));
-        return (room, corner + size + new Vector3(-0.5f, 1.55f, -0.5f), corner + size * 0.25f + Vector3.Up * 0.6f);
+        Vector3 eye = corner + size + new Vector3(-0.5f, 1.55f, -0.5f), middle = corner + size * 0.5f + Vector3.Up * 1.55f;
+        // A dressed room's box can run into a wall. Inside a block every face is seen from behind and the
+        // place reads as see-through (a gallery shot was taken from one): step back into the room.
+        for (int i = 0; i < 16 && BlockInfo.Collides(p.Inst.Blocks.Get(p.CellAt(eye)).Type); i++) eye = eye.MoveToward(middle, 0.5f);
+        return (room, eye, corner + size * 0.25f + Vector3.Up * 0.6f);
     }
 
     /// <summary>A dressed room, its age and state on it.</summary>
