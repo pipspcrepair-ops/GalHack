@@ -31,5 +31,7 @@
     <!-- The decorations library: alien places are dressed from its alien set, as in the POI viewer. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
+    <!-- Every plant in the game: the flora module. -->
+    <Compile Include="..\..\shared\Flora\**\*.cs" />
   </ItemGroup>
 </Project>

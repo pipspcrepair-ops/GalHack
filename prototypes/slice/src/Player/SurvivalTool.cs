@@ -396,18 +396,16 @@ public sealed class SurvivalTool
     static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
     static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
 
-    /// <summary>What flies off a plant: its own colour, as its biome tints it.</summary>
-    Color LeafOf(Flora kind, Vector3 at)
+    /// <summary>The species a plant is, in the world's herbarium, or null for a rock.</summary>
+    GalHack.Plants.Plant SpeciesOf(int index)
     {
-        var planet = _zone.Planet;
-        foreach (FloraRule rule in BiomeLook.FloraOf(planet.Palette.BiomeAt(Mathx.WrapX(at.X, planet.Width), Mathx.Wrap(at.Z, planet.Height))))
-            if (rule.Kind == kind)
-            {
-                Rgb c = FarBuilder.Tint(rule, 0.8f);
-                return new Color(c.R, c.G, c.B);
-            }
-        return TreeFx.LeafColour(kind);
+        var plants = _zone.Planet.Flora.Book.Plants;
+        return index >= 0 && index < plants.Count ? plants[index] : null;
     }
+
+    /// <summary>What flies off a plant: its own colour.</summary>
+    static Color LeafOf(Flora kind, GalHack.Plants.Plant species) =>
+        species != null ? new Color(species.Leaf.R, species.Leaf.G, species.Leaf.B) : TreeFx.LeafColour(kind);
 
     /// <summary>
     /// Chips the plant nearest the crosshair within reach: each pulse wears it down and gives a share
@@ -418,8 +416,13 @@ public sealed class SurvivalTool
     /// </summary>
     public bool CutPlant()
     {
-        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out Vector3 plant, out float scale, out long id, out Flora kind))
+        if (!FloraFinder.Nearest(_zone.Streamer, _survivor.WorldEye(), _survivor.WorldLook(), _rules.CutReach, out TerrainStreamer.PlantSighting sighting))
             return false;
+        Vector3 plant = sighting.Root;
+        float scale = sighting.Scale;
+        long id = sighting.Id;
+        Flora kind = sighting.Kind;
+        GalHack.Plants.Plant species = SpeciesOf(sighting.Plant);
         if (_zone.Planet.Felled.Contains(id)) return false;
         bool tree = IsTree(kind), boulder = IsBoulder(kind);
         float size = Math.Clamp(scale, 0.5f, 3f);
@@ -438,8 +441,8 @@ public sealed class SurvivalTool
             Earn("biomass", Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
         }
         Trees ??= AddTrees();
-        Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, 2.2f * size + 1f) : 0.6f * size);
-        Color leaf = LeafOf(kind, plant);
+        Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
+        Color leaf = LeafOf(kind, species);
         if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
         else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
@@ -460,7 +463,8 @@ public sealed class SurvivalTool
             float height = 3.2f * size, radius = 0.28f * size;
             foreach (var (solid, _) in _zone.Streamer.SolidsNear(plant, 2.5f))
                 if (solid.Id == id && solid.IsTrunk) { height = MathF.Max(2f, solid.Extents.Y * 2f); radius = solid.Extents.X; }
-            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true);
+            Color bark = species == null ? new Color(0.36f, 0.25f, 0.16f) : new Color(species.Bark.R, species.Bark.G, species.Bark.B);
+            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true, bark, _zone.Streamer.PlantMesh(sighting.Plant, sighting.Variant), sighting.Turn);
             Trees.Leaves(plant + Vector3.Up * height, leaf, 30, 1.8f);
             Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
         }
@@ -571,15 +575,14 @@ public sealed class SurvivalTool
 /// <summary>Finds the plant nearest a look ray, from the planet streamer's own flora scatter.</summary>
 public static class FloraFinder
 {
-    public static bool Nearest(TerrainStreamer streamer, Vector3 eye, Vector3 dir, float reach, out Vector3 at, out float scale, out long id, out Flora kind)
+    public static bool Nearest(TerrainStreamer streamer, Vector3 eye, Vector3 dir, float reach, out TerrainStreamer.PlantSighting found)
     {
-        at = default;
-        kind = default;
-        scale = 0f;
-        id = 0;
+        found = default;
         float best = float.MaxValue;
-        foreach (var (plantKind, root, s, plantId) in streamer.FloraNear(eye, reach + 2f))
+        foreach (TerrainStreamer.PlantSighting seen in streamer.FloraNear(eye, reach + 2f))
         {
+            Vector3 root = seen.Root;
+            float s = seen.Scale;
             // A plant is a column from its root up to about twice its scale.
             Vector3 mid = root + Vector3.Up * Mathf.Min(1.2f, s);
             float along = (mid - eye).Dot(dir);
@@ -588,10 +591,7 @@ public static class FloraFinder
             if (along < best)
             {
                 best = along;
-                at = root;
-                scale = s;
-                id = plantId;
-                kind = plantKind;
+                found = seen;
             }
         }
         return best < float.MaxValue;

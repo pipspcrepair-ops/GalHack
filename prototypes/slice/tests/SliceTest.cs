@@ -306,6 +306,7 @@ public partial class SliceTest : Node
         Slice.Vehicles.HoverBike bike = _game.Bikes.All.Count > 0 ? _game.Bikes.All[0] : null;
         if (bike == null) yield break;
         float ground = surf.GroundAt(bike.Position.X, bike.Position.Z).Y;
+        GD.Print($"  (the bike at {bike.Position}, survivor's feet {_game.Survivor.WorldFeet}, natural ground {ground:F2})");
         Check(MathF.Abs(bike.Position.Y - ground - Slice.Vehicles.HoverBike.Hover) < 0.3f, $"it hovers above the ground ({bike.Position.Y - ground:F2} m up)");
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         Check(_game.Survivor.OnBike == bike, "F gets on the hover bike");

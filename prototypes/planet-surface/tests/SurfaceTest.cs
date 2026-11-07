@@ -16,6 +16,7 @@ using PoiGenerator.Gen;
 using TerrainDigging.Terrain;
 using Weather.Model;
 using Archetype = Planets.Gen.Archetype;
+using Deposit = Planets.Gen.Deposit;
 using TInt3 = TerrainDigging.Terrain.Int3;
 using PInt3 = PoiGenerator.Gen.Int3;
 using PoiSite = PlanetSurface.Poi.PoiSite;

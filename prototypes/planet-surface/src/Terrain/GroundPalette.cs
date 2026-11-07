@@ -32,6 +32,9 @@ public sealed class GroundPalette
     /// <summary>Flora set down on purpose (trees through ruins), by the scatter id each takes; null where there is none.</summary>
     public Dictionary<long, PlantedFlora> Planted;
 
+    /// <summary>The world's plants (shared/Flora, through its planet adapter). Null only for a palette made without a world's flora.</summary>
+    public readonly PlanetFlora Flora;
+
     /// <summary>How dead the land is at a point: 1 inside a blast's dead zone, easing to 0 at its fade, 0 elsewhere.</summary>
     public float Deadness(double x, double z)
     {
@@ -53,17 +56,21 @@ public sealed class GroundPalette
     readonly float[] _glow;
     readonly Fractal _jitter, _tone;
 
-    public GroundPalette(WorldMap map)
+    public GroundPalette(WorldMap map, PlanetFlora flora = null)
     {
         Map = map;
+        Flora = flora;
         _jitter = new Fractal(Hash.Of(map.Spec.Seed, 0x6A6974), ColorMap.BorderWave, 4);
         _tone = new Fractal(Hash.Of(map.Spec.Seed, 0x746F6E), 700, 3);
         _cells = new Rgb[map.Count];
         _glow = new float[map.Count];
+        GalHack.Plants.Tone? verdure = flora?.Book.Verdure;
         for (int k = 0; k < map.Count; k++)
         {
             var biome = (Biome)map.Biome[k];
             _cells[k] = Soil(biome);
+            // Green country takes the green of whatever grows on it: russet under russet trees.
+            if (verdure is GalHack.Plants.Tone v) _cells[k] = Rgb.Lerp(_cells[k], new Rgb(v.R, v.G, v.B), Verdant(biome));
             _glow[k] = biome switch { Biome.LavaField => 1f, Biome.HotSpring => 0.12f, Biome.GlowMoss => 0.1f, _ => 0f };
         }
         _cells = ColorMap.Soften(map, _cells);
@@ -84,6 +91,17 @@ public sealed class GroundPalette
         RiverBed = Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f);
         Snow = Rgb.Hex("eef2f6");
     }
+
+    /// <summary>How much of a biome's topsoil is what grows on it.</summary>
+    static float Verdant(Biome b) => b switch
+    {
+        Biome.Grassland or Biome.Meadow => 0.55f,
+        Biome.Forest or Biome.Jungle or Biome.Rainforest or Biome.Riverbank or Biome.Oasis => 0.5f,
+        Biome.PineForest or Biome.CloudForest => 0.45f,
+        Biome.Swamp or Biome.SporeMarsh or Biome.GlowMoss => 0.35f,
+        Biome.Tundra or Biome.Scrub or Biome.HotSpring => 0.22f,
+        _ => 0f,
+    };
 
     /// <summary>A grounded colour for each biome's topsoil, sand, ash or snow.</summary>
     public static Rgb Soil(Biome b) => b switch

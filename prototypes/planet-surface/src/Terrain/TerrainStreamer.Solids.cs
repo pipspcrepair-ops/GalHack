@@ -290,16 +290,17 @@ public partial class TerrainStreamer
     /// <summary>Scatter instances of one kind near a point, as drawn at the finest level (frame coordinates), for tests.</summary>
     public IEnumerable<Transform3D> FloraNear(Flora kind, Vector3 p, float radius)
     {
-        Mesh mesh = _floraMeshes[kind];
         foreach (FarChunk f in _far.Values)
         {
-            if (f.Lod != 0 || f.Node == null) continue;
-            foreach (Node child in f.Node.GetChildren())
+            if (f.Lod != 0 || f.Node == null || f.Flora == null) continue;
+            foreach (FloraBatch b in f.Flora)
             {
-                if (child is not MultiMeshInstance3D { Multimesh: MultiMesh mm } || mm.Mesh != mesh) continue;
-                for (int i = 0; i < mm.InstanceCount; i++)
+                if (b.Kind != kind) continue;
+                float[] m = b.Buffer;
+                for (int i = 0; i < b.Count; i++)
                 {
-                    Transform3D t = f.Node.Position == Vector3.Zero ? mm.GetInstanceTransform(i) : new Transform3D(Basis.Identity, f.Node.Position) * mm.GetInstanceTransform(i);
+                    int o = i * 16;
+                    var t = new Transform3D(new Basis(new Vector3(m[o], m[o + 4], m[o + 8]), new Vector3(m[o + 1], m[o + 5], m[o + 9]), new Vector3(m[o + 2], m[o + 6], m[o + 10])), new Vector3(m[o + 3], m[o + 7], m[o + 11]) + f.Node.Position);
                     if (Mathf.Abs(t.Origin.X - p.X) <= radius && Mathf.Abs(t.Origin.Z - p.Z) <= radius) yield return t;
                 }
             }

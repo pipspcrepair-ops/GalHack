@@ -63,7 +63,8 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant)
         if (seedText == null && planet == null) return fallback;
         ulong? seed = ulong.TryParse(seedText, out ulong s) ? s : fallback?.Seed;
         if (planet == null && fallback != null) return fallback with { Seed = seed ?? fallback.Seed };
-        return Fresh(planet ?? "temperate", seed);
+        WorldChoice picked = Fresh(planet ?? "temperate", seed);
+        return int.TryParse(Value(args, "--variant"), out int variant) ? picked with { Variant = variant } : picked;
     }
 
     static string Value(IReadOnlyList<string> args, string name)

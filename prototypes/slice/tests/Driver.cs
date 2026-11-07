@@ -427,7 +427,7 @@ public sealed class Driver
         string Hit(Vector3 a, Vector3 b)
         {
             var h = space.IntersectRay(PhysicsRayQueryParameters3D.Create(a, b, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props));
-            return h.Count == 0 ? "nothing" : $"{((Node)h["collider"].AsGodotObject()).GetPath()} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
+            return h.Count == 0 ? "nothing" : $"{(h["collider"].AsGodotObject() is Node hit ? hit.GetPath() : "a server body")} at {((Vector3)h["position"]).Y - feet.Y:+0.00;-0.00}/{((Vector3)h["position"]).DistanceTo(a):F2} m";
         }
         Vector3 q = feet + look * 0.6f;
         var store = Game.Zone.Planet.Terrain.Store;

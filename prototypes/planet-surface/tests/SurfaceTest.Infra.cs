@@ -732,11 +732,11 @@ public partial class SurfaceTest
             foreach (var (id, p) in w.Palette.Planted ?? new Dictionary<long, PlantedFlora>())
             {
                 planted++;
-                if (!Planets.Look.BiomeLook.FloraOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }
+                if (!w.Flora.RulesOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }
                 
                 if (p.Foot < w.Source.SurfaceHeight(p.X, p.Z) - 1.1f) { unrooted++; notes.Add($"a tree under the land at {p.X:F0}, {p.Z:F0}"); }
                 PoiSite site = w.Pois.FirstOrDefault(s => s.Footprint.Contains(new TerrainDigging.Terrain.Int3((int)p.X, (int)p.Foot + 1, (int)p.Z)));
-                if (site != null && !RuinGrowth.Fits(site.Instance.Blocks, new PoiGenerator.Gen.Int3((int)p.X - site.Origin.X, (int)Math.Ceiling(p.Foot) - site.Origin.Y, (int)p.Z - site.Origin.Z), p.Kind, p.Scale)) clipped++;
+                if (site != null && !RuinGrowth.Fits(site.Instance.Blocks, new PoiGenerator.Gen.Int3((int)p.X - site.Origin.X, (int)Math.Ceiling(p.Foot) - site.Origin.Y, (int)p.Z - site.Origin.Z), p.Species, p.Scale)) clipped++;
             }
             if ((w.Palette.Planted?.Count ?? 0) > 0)
             {

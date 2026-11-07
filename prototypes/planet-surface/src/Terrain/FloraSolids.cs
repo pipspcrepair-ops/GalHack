@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using GalHack.Plants;
 using Godot;
 using Planets.Look;
 
@@ -59,6 +60,26 @@ public sealed class FloraSolidRules
     public KindRule Of(Flora kind) => _byKind[(int)kind];
 
     /// <summary>
+    /// The collider a rolled species' instance gets: its own trunk, read from its body, and wood by
+    /// how much trunk it has against its kind's base in data/flora-solids.json. False if you walk through it.
+    /// </summary>
+    public bool TryMake(Flora kind, Plant plant, long id, Vector3 foot, float scale, float angle, out FloraSolid solid)
+    {
+        if (plant == null) return TryMake(kind, id, foot, scale, angle, out solid);
+        solid = default;
+        KindRule rule = _byKind[(int)kind];
+        if (!plant.Solid || rule?.Trunk == null) return false;
+        var turn = new Basis(Vector3.Up, angle);
+        Vector3 axis = turn * new Vector3(plant.TrunkAxis.X, plant.TrunkAxis.Y, plant.TrunkAxis.Z).Normalized();
+        float height = plant.TrunkHeight * scale, radius = plant.TrunkRadius * scale;
+        Basis lean = new Basis(new Quaternion(Vector3.Up, axis)) * turn;
+        float mass = plant.TrunkHeight / rule.Trunk.Height * Mathf.Pow(plant.TrunkRadius / rule.Trunk.Radius, 2f);
+        int wood = rule.Wood > 0 ? Math.Max(1, Mathf.RoundToInt(rule.Wood * Math.Clamp(mass, 0.5f, 3f))) : 0;
+        solid = new FloraSolid(id, kind, true, foot + axis * (height * 0.5f), lean.Orthonormalized(), new Vector3(radius, height * 0.5f, radius), wood, plant.Index);
+        return true;
+    }
+
+    /// <summary>
     /// The collider one scatter instance gets (its mesh's foot at <paramref name="foot"/>, scaled and
     /// turned), or false if this kind is never solid or this one is too small (a pebble).
     /// </summary>
@@ -108,7 +129,10 @@ public readonly struct FloraSolid
     public readonly Vector3 Extents;
     public readonly int Wood;
 
-    public FloraSolid(long id, Flora kind, bool trunk, Vector3 center, Basis basis, Vector3 extents, int wood)
+    /// <summary>The species it is in the world's herbarium, or -1 for a rock.</summary>
+    public readonly int Plant;
+
+    public FloraSolid(long id, Flora kind, bool trunk, Vector3 center, Basis basis, Vector3 extents, int wood, int plant = -1)
     {
         Id = id;
         Kind = kind;
@@ -117,6 +141,7 @@ public readonly struct FloraSolid
         Basis = basis;
         Extents = extents;
         Wood = wood;
+        Plant = plant;
     }
 
     public bool Fellable => Wood > 0;
