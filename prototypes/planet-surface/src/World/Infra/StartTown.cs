@@ -133,6 +133,7 @@ public sealed class StartTown
                         Dir front = FlavourRuins.Facing(-nx, -nz);
                         FamilyDef type = s == main && shop != null && rng.Chance(0.75f) ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                         Layout lot = FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.Salts));
+                        if (lot == null) continue;
                         // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
                         double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;
                         double clear = s.HalfWidth + half + 2;

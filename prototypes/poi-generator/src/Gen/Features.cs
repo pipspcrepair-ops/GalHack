@@ -119,9 +119,14 @@ public sealed record SoundHook(string Kind, Int3 Cell, float Volume, int Storey)
 /// <summary>A tag for a later pass: spawn points, patrol routes, vehicles, zero-g, vacuum, water.</summary>
 public sealed record Marker(string Kind, Int3 Cell, string Note = "", int Group = 0);
 
+/// <summary>A crop sown in a plot: the game grows the world's own crop species there (its kind picks one of them), never a block.</summary>
+public readonly record struct CropSpot(Int3 Cell, byte Kind);
+
 /// <summary>Design-time extras a layout carries beyond modules and doorways.</summary>
 public sealed class LayoutExtras
 {
+    /// <summary>Where crops are sown: rows in the fields and beds in the greenhouses.</summary>
+    public List<CropSpot> Crops = new();
     public List<LevelInfo> Levels = new();
     public List<LiftShaft> Lifts = new();
     public List<SecretRoom> Secrets = new();

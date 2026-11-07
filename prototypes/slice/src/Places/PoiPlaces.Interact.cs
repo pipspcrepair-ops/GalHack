@@ -128,6 +128,8 @@ public partial class PoiPlaces
         {
             BlockType.Cube or BlockType.Breakable => 1f,
             BlockType.Ramp or BlockType.Stair => 0.5f,
+            BlockType.Corner => 1f / 6f,
+            BlockType.InvCorner => 5f / 6f,
             BlockType.Rib => 0.4f,
             BlockType.Pillar => 0.25f,
             BlockType.Lattice => 0.3f,

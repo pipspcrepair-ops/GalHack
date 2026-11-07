@@ -30,7 +30,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Grand", GrandPlaces), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("FactionRolls", FactionRolls), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -143,6 +143,48 @@ public partial class PoiTest : Node
             $"dying places: of {lit} lamps {steady} still burn, {flicker} flicker and {dead} have failed; {unstyled} without a style");
         Check(hostile > 0 && red == hostile, $"hostile places pulse red: {red} of {hostile} lamps");
         Check(strips > 0, $"high-tech places paint light on as strips: {strips} glowing faces");
+    }
+
+    /// <summary>Every faction place lays itself out on any roll: every family, many fresh seeds, every turn and rarity, with no failure at all.</summary>
+    void FactionRolls()
+    {
+        var families = _lib.Families.Where(f => f.Site is { } s && _lib.Sites[s].Parts.Count > 0 && _lib.Sites[s].Parts[0].Kind == "grand" && f.Faction != Faction.None || f.Site?.StartsWith("faction_") == true).Distinct().ToList();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        int rolls = 0, failed = 0;
+        var why = new Dictionary<string, int>();
+        foreach (FamilyDef f in families)
+            for (int k = 0; k < (f.Id == "vharn_outpost" ? 1500 : 120); k++)
+            {
+                ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)k);
+                // Each pick from its own bits, so every turn meets every variant, tech and rarity.
+                var hints = new LayoutHints(Dirs.Horizontal[(int)(seed % 4)], (TechLevel)(seed / 4 % 3));
+                int variant = (int)(seed / 12 % (ulong)f.Variants.Count);
+                Rarity rarity = seed / 97 % 2 == 0 ? f.Rarity : (Rarity)(seed / 194 % 5);
+                rolls++;
+                try { PoiFactory.BuildLayout(_lib, f, variant, rarity, seed, hints); }
+                catch (Exception e)
+                {
+                    failed++;
+                    string key = $"{f.Id}: {e.Message.Split("last: ").Last().Split(" @ ")[0]}";
+                    why[key] = why.GetValueOrDefault(key) + 1;
+                }
+            }
+        foreach (var (k, n) in why.OrderByDescending(w => w.Value).Take(8)) GD.Print($"      {n} x {k}");
+        Check(failed == 0 && rolls > 0, $"faction places lay out on every roll: {rolls - failed} of {rolls} over {families.Count} families ({failed} failed, {100.0 * failed / Math.Max(1, rolls):F1}%)");
+
+        // The crash's own case: data asking for a plan the code doesn't know (a build older than its data). The
+        // world's door must leave the place out and say why, never throw.
+        FamilyDef hive = families.First(f => f.Id == "vharn_outpost");
+        SitePart part = _lib.Sites[hive.Site!].Parts[0];
+        string what = part.Arg("what");
+        Layout? none = null;
+        string? reason = null;
+        bool threw = false;
+        part.Args["what"] = "no_such_plan";
+        try { none = PoiFactory.TryLayout(_lib, hive, 0, hive.Rarity, fresh, null, out reason); }
+        catch (Exception) { threw = true; }
+        finally { part.Args["what"] = what; }
+        Check(!threw && none == null && reason != null, $"a place that can't lay out is left out, not thrown: {(threw ? "threw" : reason ?? "laid out")}");
     }
 
     /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>

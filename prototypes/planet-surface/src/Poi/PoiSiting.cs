@@ -210,8 +210,10 @@ public static partial class PoiSiting
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             state = ForceState ?? state;
             int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
-            PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, forced, forcedVariant, forced.Rarity), state, 7, profile, ForceOccupancy);
-            for (int k = 0; k < 60 && sites.Count == 0; k++)
+            Layout forcedLayout = PoiFactory.TryLayout(lib, forced, forcedVariant, forced.Rarity, null, null, out string why);
+            if (forcedLayout == null) Godot.GD.PushWarning($"forced place skipped: {why}");
+            PoiInstance inst = forcedLayout == null ? null : PoiFactory.Spawn(lib, forcedLayout, state, 7, profile, ForceOccupancy);
+            for (int k = 0; inst != null && k < 60 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6, r = 700 + k / 12 * 240;
                 PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
