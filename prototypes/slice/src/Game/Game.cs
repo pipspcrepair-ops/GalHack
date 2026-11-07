@@ -314,6 +314,7 @@ public partial class Game : Node3D
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
+        Survivor.WantCrouch = false; // only the walk below asks for it
         if (Suit.Dead)
         {
             Survivor.Dismount();
@@ -390,6 +391,7 @@ public partial class Game : Node3D
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         s.Legs.Move = typing ? N.Vector2.Zero : new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
         s.Legs.Sprint = c.IsHeld(Key.Shift) && !Menu.IsOpen;
+        s.WantCrouch = c.IsHeld(Key.Ctrl) && !Menu.IsOpen; // hold Ctrl to crouch (where Ctrl is "down" instead, in water, on a ladder or in a shaft, the survivor ignores it)
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
@@ -804,6 +806,7 @@ public sealed class PlayerTarget : ITarget
     public string Name => "Castaway";
     public Vector3 Position => _game.Zone.Wildlife.PatchLocal(_game.Survivor.WorldFeet);
     public Vector3 Forward => _game.Survivor.WorldLook();
+    public bool Crouched => _game.Survivor.Crouched && OnFoot;
     public Health Health { get; } = new(100f);
 
     /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>

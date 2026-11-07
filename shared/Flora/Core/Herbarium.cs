@@ -43,7 +43,7 @@ public sealed class Herbarium
     public bool Barren => _plants.Count == 0;
 
     /// <summary>The colour green land takes on this world (whatever its green is), or null where nothing grows.</summary>
-    public Tone? Verdure => Barren ? null : Style.Leaves[0] * 0.78f;
+    public Tone? Verdure => Barren ? null : Style.Leaves[0] * 1.08f;
 
     readonly List<Plant> _plants = new();
     readonly Dictionary<(int, PlantFamily), Stand> _stands = new();
@@ -235,8 +235,17 @@ public sealed class Herbarium
             : warmLight > 0.3f ? new[] { (36f, 0.62f, 0.44f), (14f, 0.58f, 0.38f), (78f, 0.5f, 0.32f), (348f, 0.42f, 0.34f), (122f, 0.42f, 0.27f), (164f, 0.4f, 0.29f), (56f, 0.55f, 0.4f) }
             : warmLight < -0.12f ? new[] { (168f, 0.36f, 0.42f), (196f, 0.32f, 0.46f), (138f, 0.42f, 0.38f), (22f, 0.5f, 0.46f) }
             : new[] { (96f, 0.62f, 0.4f), (122f, 0.52f, 0.33f), (76f, 0.66f, 0.46f), (154f, 0.5f, 0.32f), (172f, 0.42f, 0.34f), (52f, 0.58f, 0.46f), (108f, 0.42f, 0.3f) };
+        // A world that suits life as we know it stays green under any ordinary sun, in a wide range of greens,
+        // warmer under a warm star and cooler under a hard one. Only a rare one goes its own way.
+        bool familiar = Familiar(c);
+        if (familiar && d.Chance(0.88f))
+        {
+            pigments = new[] { (96f, 0.62f, 0.4f), (122f, 0.52f, 0.33f), (78f, 0.66f, 0.44f), (146f, 0.5f, 0.32f), (164f, 0.44f, 0.33f), (108f, 0.42f, 0.3f), (88f, 0.5f, 0.36f), (132f, 0.58f, 0.27f) };
+            warmLight = Math.Clamp(warmLight, -0.2f, 0.3f);
+        }
+        else familiar = false;
         (float H, float S, float V) p = d.Pick(pigments);
-        p.H += d.Range(-9f, 9f);
+        p.H += d.Range(-9f, 9f) - (familiar ? warmLight * 20f : 0f);
         if (c.Alien > 0.4f)
         {
             p = (d.Range(0f, 360f), d.Range(0.34f, 0.62f), d.Range(0.34f, 0.56f));
@@ -290,6 +299,9 @@ public sealed class Herbarium
         };
     }
 
+    /// <summary>A world where life runs on the lines we know: lush, and nothing alien about it.</summary>
+    static bool Familiar(FloraClimate c) => c.Alien < 0.1f && c.Life >= 0.9f;
+
     // ---- A species ----------------------------------------------------------------------------
 
     static Plant Make(Herbarium book, PlantFamily family, PlantForm form, float warm, float wet, Dice d)
@@ -305,6 +317,8 @@ public sealed class Herbarium
         float grey = leaf.Luma;
         leaf = Tone.Lerp(leaf, new Tone(grey, grey, grey * 0.9f), Math.Clamp((0.45f - wet) * 0.8f, 0f, 0.4f));
         if (family == PlantFamily.Cactus) leaf = Tone.Lerp(leaf, Tone.Hsv(150f, 0.3f, 0.4f), 0.35f);
+        // On a green world the odd tree has turned: a species, so russet woods come and go with the region.
+        if (Familiar(book.Climate) && family == PlantFamily.Broadleaf && d.Chance(0.16f)) leaf = Tone.Hsv(d.Range(16f, 44f), d.Range(0.46f, 0.6f), d.Range(0.4f, 0.5f));
         p.Leaf = leaf;
         p.Bark = fungal ? st.Stalk : d.Pick(st.Barks);
         p.Bloom = d.Pick(st.Blooms);
@@ -340,9 +354,9 @@ public sealed class Herbarium
         {
             Top = new Vector4(0.98f, 0.97f, 0.84f, 1f),
             Mid = new Vector4(0.78f, 0.8f, 0.76f, 1f),
-            Under = new Vector4(0.46f, 0.5f, 0.54f, 1f),
+            Under = new Vector4(0.6f, 0.63f, 0.66f, 1f),
             Bark = p.Bark.Own(),
-            BarkLow = (p.Bark * 0.72f).Own(),
+            BarkLow = (p.Bark * 0.84f).Own(),
             Petal = p.Bloom.Own(),
             Heart = Tone.Lerp(p.Bloom, new Tone(1f, 0.9f, 0.5f), 0.7f).Own(),
             Stalk = Tone.Lerp(p.Leaf, st.Stalk, 0.25f).Own(),

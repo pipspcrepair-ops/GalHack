@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Planets.Gen;
 using Planets.Look;
 
@@ -107,6 +108,12 @@ public sealed class StarSystem
     /// <summary>Under this a body would be less than a pixel or so: it is drawn this size, in every view, as a point of light is.</summary>
     public const float LeastAngular = 0.0011f;
 
+    /// <summary>The least ratio between two neighbouring orbits round the star, in h: a chain's own smallest step.</summary>
+    public const double LeastOrbitStep = 1.45;
+
+    /// <summary>The least ratio between two moons' orbits round one parent.</summary>
+    public const double LeastMoonStep = 1.25;
+
     /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii: about 4 minutes at a small vessel's 130 m/s.</summary>
     public const double ThrusterReachRadii = 14.0;
 
@@ -208,7 +215,7 @@ public sealed class StarSystem
         D3 at = Position(b, days), from = Position(Home, days) + o.ToSystem(eye);
         D3 to = at - from;
         double distance = to.Length;
-        float angular = MathF.Max((float)Math.Atan2(b.Radius, distance), LeastAngular);
+        float angular = MathF.Max((float)Math.Asin(Math.Min(b.Radius / distance, 1.0)), LeastAngular); // a sphere's edge seen from outside
         D3 light = b.Kind == OrbiterKind.Star ? o.ToGlobe(to * (1.0 / distance)) : o.ToGlobe((Position(Star, days) - at).Normalized);
         return new Sighting(b, o.ToGlobe(to * (1.0 / distance)), distance, angular, light);
     }
@@ -293,12 +300,41 @@ public sealed class StarSystem
         for (int i = 0; i < inner.Count; i++) inner[i] *= scale;
         inner[nearest] = homeH;
         var outer = new List<double>();
-        double oh = 3.4 + 2.1 * next();
+        // Past the home world, and with the belt that comes of it clear of any home outside the temperate band.
+        double oh = Math.Max(3.4 + 2.1 * next(), homeH > 1.7 ? homeH * 2.75 : homeH * LeastOrbitStep);
         for (int i = 0, n = OuterSlots(sky.Star, ref rng); i < n && oh <= 18.0; i++, oh *= 1.5 + 0.7 * next()) outer.Add(oh);
 
         // The first giant out sets the rock belt, between its 4:1 and 2:1 resonances, clear of the temperate band.
         double beltFrom = outer[0] * 0.40, beltTo = outer[0] * 0.63;
-        double giantH = outer[0];
+        bool inBelt(double h) => h > beltFrom && h < beltTo && (h < 0.95 || h > 1.7);
+        var rocks = new List<double>();
+        for (int i = 0; i < inner.Count; i++)
+            if (i != nearest && inner[i] >= 0.2 && inner[i] <= 3.0 && inner[i] * LeastOrbitStep <= outer[0] && !inBelt(inner[i])) rocks.Add(inner[i]);
+
+        // A cold neighbour in reach, always: it takes its slot first, and the belt and the outer worlds stand past it.
+        if (!rocks.Exists(h => ZoneAt(h) is 5 or 6))
+        {
+            double coldH = Math.Max(homeH * 1.5, 1.8);
+            for (bool moved = true; moved;)
+            {
+                moved = false;
+                foreach (double h in rocks.Append(homeH))
+                    if (coldH < h * LeastOrbitStep && h < coldH * LeastOrbitStep)
+                    {
+                        coldH = h * LeastOrbitStep * 1.01;
+                        moved = true;
+                    }
+            }
+            rocks.Add(coldH);
+            if (coldH * 2.2 > outer[0])
+            {
+                double push = coldH * 2.2 / outer[0];
+                for (int i = 0; i < outer.Count; i++) outer[i] *= push;
+            }
+            beltFrom = Math.Max(outer[0] * 0.40, coldH * 1.15);
+            beltTo = Math.Max(outer[0] * 0.63, beltFrom * 1.25);
+            rocks.RemoveAll(inBelt);
+        }
 
         Orbiter host = null;
         SkyBody big = null;
@@ -329,14 +365,37 @@ public sealed class StarSystem
         s.Home = home;
         s._bodies.Add(home);
 
-        // Its moons, S class at the distance that gives the size its sky rolled.
+        // A clear place for a moon round a parent, out from the orbit asked for.
+        double clearOrbit(Orbiter parent, double orbit)
+        {
+            for (bool moved = true; moved;)
+            {
+                moved = false;
+                foreach (Orbiter b in s._bodies)
+                    if (b.Parent == parent && orbit < b.Orbit * LeastMoonStep && b.Orbit < orbit * LeastMoonStep)
+                    {
+                        orbit = b.Orbit * LeastMoonStep * 1.01;
+                        moved = true;
+                    }
+            }
+            return orbit;
+        }
+
+        // Its moons, S class. The first stands within reach of thrusters. A moon holds no moons (the
+        // giant's pull would strip them): on a giant's moon these are its siblings, round the giant.
+        Orbiter holder = host ?? home;
+        bool first = true;
         foreach (SkyBody b in sky.Bodies)
         {
             if (b.Kind != BodyKind.Moon) continue;
-            double r = homeRadius * 0.5, orbit = Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 12.0, homeRadius * 40.0);
+            double r = homeRadius * 0.5;
+            double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
+                : first ? homeRadius * (12.0 + next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
+            double orbit = clearOrbit(holder, wanted), month = host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius);
+            first = false;
             s._bodies.Add(new Orbiter
             {
-                Name = b.Name, Kind = OrbiterKind.Moon, Parent = home, Radius = r, Orbit = orbit, Period = rockMonth(orbit / homeRadius), DayLength = rockMonth(orbit / homeRadius),
+                Name = b.Name, Kind = OrbiterKind.Moon, Parent = holder, Radius = r, Orbit = orbit, Period = month, DayLength = month,
                 Phase0 = b.Phase0, Inclination = equator(), Node = equatorNode(), Color = b.Color, Band = b.Color, Habitable = homeH, Temperature = home.Temperature, Zone = home.Zone,
             });
         }
@@ -365,7 +424,7 @@ public sealed class StarSystem
         {
             s._bodies.Add(new Orbiter
             {
-                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Radius = homeRadius * 0.5, Orbit = parent.Radius * radii, Period = period, DayLength = period,
+                Name = $"a moon of {parent.Name}", Kind = OrbiterKind.Moon, Parent = parent, Radius = homeRadius * 0.5, Orbit = clearOrbit(parent, parent.Radius * radii), Period = period, DayLength = period,
                 Phase0 = phase(), Inclination = tilted(), Node = node(), Habitable = parent.Habitable, Temperature = parent.Temperature, Zone = parent.Zone,
                 Color = Rgb.Hex("b8b0a8"), Band = Rgb.Hex("b8b0a8"),
             });
@@ -381,13 +440,7 @@ public sealed class StarSystem
             }
         }
 
-        for (int i = 0; i < inner.Count; i++)
-        {
-            double h = inner[i];
-            if (i == nearest || h < 0.2 || h > 3.0) continue;
-            if (h > beltFrom && h < beltTo && (h < 0.95 || h > 1.7)) continue;
-            rockMoons(world(h, false, false));
-        }
+        foreach (double h in rocks) rockMoons(world(h, false, false));
         bool hasGiant = false;
         foreach (double h in outer)
         {
@@ -415,16 +468,31 @@ public sealed class StarSystem
         belt("the rock belt", beltFrom, beltTo);
         if (next() < 0.6f) belt("the ice belt", outer[^1] * 1.31, outer[^1] * 1.59);
 
+        // The nearest free orbit round the star from a place, outward.
+        double freeOrbit(double h)
+        {
+            for (bool moved = true; moved;)
+            {
+                moved = false;
+                foreach (Orbiter b in s._bodies)
+                    if (b.Parent == star && b.Kind != OrbiterKind.Belt && h < b.Habitable * LeastOrbitStep && b.Habitable < h * LeastOrbitStep)
+                    {
+                        h = b.Habitable * LeastOrbitStep * 1.01;
+                        moved = true;
+                    }
+            }
+            return h;
+        }
+
         // The guarantees: added, never rerolled.
         int worlds() => s._bodies.FindAll(b => b.Kind is OrbiterKind.Planet or OrbiterKind.GasGiant or OrbiterKind.Moon).Count;
         var hosts = s._bodies.FindAll(b => b.Kind == OrbiterKind.Planet && b.Habitable >= 0.75 && b != home);
-        if (hosts.Count == 0) hosts.Add(home);
+        if (hosts.Count == 0) hosts.Add(holder);
         while (worlds() < 8)
         {
             double radii = 12.0 + 28.0 * next();
             moonOf(hosts[rng.Next(hosts.Count)], radii, rockMonth(radii));
         }
-        if (!s._bodies.Exists(b => b != home && b.Zone is 5 or 6)) world(Math.Max(homeH * 1.5, 1.8), false, false);
 
         // A moon in reach of thrusters alone. On a world that is itself a moon, a sibling sharing its orbit a little ahead.
         Orbiter near = null;
@@ -434,6 +502,7 @@ public sealed class StarSystem
         if (near == null)
         {
             double radii = 12.0 + next(), chord = homeRadius * radii;
+            // A sister keeps one small arc ahead on the same orbit, so she is always in reach: the one shared orbit.
             near = host == null
                 ? new Orbiter
                 {
@@ -456,9 +525,9 @@ public sealed class StarSystem
         // The way on out of the system, a warp away: fuel in the first giant's moons or the giant itself,
         // hyperdrive materials on the cold rocks, capital ship materials in the rock belt.
         Orbiter far(Func<Orbiter, bool> fits) => s._bodies.Find(b => b != home && b != host && b != near && b.Parent != home && fits(b));
-        Orbiter gas = far(b => b.Kind == OrbiterKind.GasGiant) ?? world(outer[0], true, false);
+        Orbiter gas = far(b => b.Kind == OrbiterKind.GasGiant) ?? world(freeOrbit(outer[0]), true, false);
         gas.Deposits.Add(Deposit.HyperdriveFuel);
-        Orbiter cold = far(b => b.Kind == OrbiterKind.Planet && b.Zone >= 5) ?? world(Math.Max(homeH * 1.5, 1.8), false, false);
+        Orbiter cold = far(b => b.Kind == OrbiterKind.Planet && b.Zone >= 5) ?? world(freeOrbit(Math.Max(homeH * 1.5, 1.8)), false, false);
         cold.Deposits.Add(Deposit.HyperdriveMaterials);
         s._bodies.Find(b => b.Kind == OrbiterKind.Belt).Deposits.Add(Deposit.CapitalMaterials);
         return s;

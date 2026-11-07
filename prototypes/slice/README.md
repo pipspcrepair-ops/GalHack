@@ -62,7 +62,8 @@ Building by hand, block by block, is the game. Blueprints are in the menu, nowhe
 | --- | --- | --- |
 | WASD, mouse | Walk and look; W climbs a ladder, S goes down it | Thrust; the mouse moves a stick that recentres |
 | Shift | Sprint | Boost |
-| Space / Ctrl | Jump, hold in the air for the jetpack; ride a lift shaft up and down | Up / down |
+| Space | Jump, hold in the air for the jetpack; ride a lift shaft up | Up |
+| Ctrl | Hold to crouch: slower, quieter, a smaller target, and low enough for a 1.2 m gap (you stay crouched under a low ceiling until there is room); down in water, on a ladder or in a lift shaft | Down |
 | 1 to 9, wheel | The toolbar slot in your hands (a number again: switch toolbar) | |
 | Y | Your toolbar / the linked structure's | |
 | Left button | Use what is in hand: dig, cut, salvage, shoot, place, eat, deconstruct | |
@@ -153,6 +154,7 @@ Orbit starts at **1,060 m** on every world, a hard cap on Empyrion's scale (`dat
 - **OrbitTest**, the route played by the game's own controls (setup is the one shortcut, printed: the Skiff's parts and a Big Core handed over, the tech tree opened): build the Skiff, climb through the crossing, fly to a derelict, step out, float across, force its door, in (dark, no gravity), take its hold, salvage a block, out, claim it from outside, float back, fly over a chosen map point, turn to a chosen heading, descend, land. Every tick the castaway and the Skiff must be in exactly one zone, the one the game says. Then three hand-overs up and down for the frame cost.
 - **ZoneTest**: a crossing crashed at each of its commit's points and reloaded: the crosser is in exactly one zone on disk, the old one before the rename and the new one from it on, totals intact. The move audit catches a loss, a double and a wrong zone.
 - **GlobeTest**: the mapping's round trips, eight descents (both poles and the seam among them), and Godot's SphereMesh agreeing with it.
+- **CrouchTest**: holding Ctrl drops the capsule and eases the eye down, crouch-walking is slow, a 1.2 m passage stops a walker and passes a crouch-walker, letting go under the lintel stays crouched until clear, a crouched hop is low and the jetpack still lifts. (`--view=crouch` in the screenshot scene stages the passage.)
 - **SeatTest**: a two-chair hull flown by the handling model, the pilot role handed over with no jolt, hover frames level. **ChartTest**: marks appear when discovered and not before, a world-map point round-trips the wrap, the system and star listings.
 
 ## How it fits together

@@ -34,5 +34,7 @@ void fragment() {
 	c = mix(c * (1.0 - weather_ground.x * 0.25), vec3(0.85, 0.88, 0.9), snow * 0.8);
 	ALBEDO = c;
 	ROUGHNESS = 0.85;
-	if (glow > 0.0) EMISSION = srgb_to_linear(tint) * glow * 1.5;
+	// Light through the leaves: a canopy's underside glows a little by day, so a wood is shade, not black.
+	vec3 through = c * COLOR.a * 0.16 * weather_ground.w;
+	EMISSION = through + (glow > 0.0 ? srgb_to_linear(tint) * glow * 1.5 : vec3(0.0));
 }

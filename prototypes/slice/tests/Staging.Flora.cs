@@ -168,7 +168,9 @@ public sealed partial class Staging
                 return null;
             }
             Plant here = Lead(wood.Value.X, wood.Value.Z);
-            Vector3? far = Best(wood.Value, (x, z) => planet.Palette.BiomeAt(x, z) == biome && Lead(x, z) != here ? Woodedness(x, z) : 0f, 1800);
+            // Far enough for the region to have turned; the same biome if it runs that far, else any wooded land.
+            Vector3? far = Best(wood.Value, (x, z) => planet.Palette.BiomeAt(x, z) == biome && Lead(x, z) != here ? Woodedness(x, z) : 0f, 1800)
+                ?? Best(wood.Value, (x, z) => Lead(x, z) != here ? Woodedness(x, z) : 0f, 1200);
             if (far is Vector3 other)
             {
                 GD.Print($"FLORA second region {other.X:F0}, {other.Z:F0}, region {planet.Flora.RegionAt(other.X, other.Z):F2}, leading {Lead(other.X, other.Z)?.Form}, first {here?.Form}");

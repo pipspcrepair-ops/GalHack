@@ -110,7 +110,7 @@ public sealed class PlanetFlora
         _cover = new Fractal(Hash.Of(seed, 0x636F7672), 26, 2);
         _tone = new Fractal(Hash.Of(seed, 0x746F6E65), 900, 2);
         // The world's own density: lush worlds fill their forests in; dry and thin ones stay sparse.
-        float lush = Math.Clamp(0.65f + book.Climate.Life * (0.3f + wet * 0.7f), 0.6f, 1.45f);
+        float lush = Math.Clamp(0.65f + book.Climate.Life * (0.3f + wet * 0.7f), 0.6f, 1.2f);
         for (int b = 0; b < MaxBiomes; b++)
         {
             FloraRule[] rules = BiomeLook.FloraOf((Biome)b);

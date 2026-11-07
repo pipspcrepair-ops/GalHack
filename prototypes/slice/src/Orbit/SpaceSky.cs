@@ -58,7 +58,7 @@ public partial class SpaceSky : Node3D
             foreach (var (node, body, _) in _bodies)
             {
                 Vector3 to = node.GlobalPosition - eye;
-                yield return (body, to.Normalized(), MathF.Atan2(node.Scale.X, to.Length()));
+                yield return (body, to.Normalized(), MathF.Asin(MathF.Min(node.Scale.X / to.Length(), 1f)));
             }
         }
     }
@@ -68,14 +68,22 @@ public partial class SpaceSky : Node3D
     /// <summary>A world or moon: bands on a giant, a plain rock otherwise, lit exactly as the sky's shader lights them.</summary>
     const string BodySource = """
         shader_type spatial;
-        render_mode unshaded, shadows_disabled, fog_disabled;
+        render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_always, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
         uniform vec3 band : source_color;
+        uniform float behind = 0.0;
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
         uniform bool banded = false;
         varying vec3 normal_w;
-        void vertex() { normal_w = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz; }
+        void vertex() {
+            normal_w = NORMAL;
+            if (behind > 0.0) {
+                vec3 to = VERTEX - CAMERA_POSITION_WORLD;
+                float d = length(to), from = behind * 1.02;
+                VERTEX = CAMERA_POSITION_WORLD + to / d * (from + (59000.0 - from) * d / (d + 20000.0));
+            }
+        }
         void fragment() {
             vec3 n = normalize(normal_w);
             float lit = clamp(dot(n, to_light), 0.0, 1.0);
@@ -85,23 +93,32 @@ public partial class SpaceSky : Node3D
                 surface = mix(color, band, (sin(lat * 19.0 + sin(lat * 7.0) * 1.6) * 0.5 + 0.5) * 0.7);
             }
             ALBEDO = surface * (banded ? 0.03 + 0.97 * lit : 0.025 + 1.1 * lit);
+            ALPHA = 1.0; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
 
     /// <summary>A giant's rings, as the sky's shader draws them.</summary>
     const string GiantRingSource = """
         shader_type spatial;
-        render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
+        render_mode world_vertex_coords, unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
+        uniform float behind = 0.0;
+        void vertex() {
+            if (behind > 0.0) {
+                vec3 to = VERTEX - CAMERA_POSITION_WORLD;
+                float d = length(to), from = behind * 1.02;
+                VERTEX = CAMERA_POSITION_WORLD + to / d * (from + (59000.0 - from) * d / (d + 20000.0));
+            }
+        }
         void fragment() {
             float rr = mix(1.45, 2.42, UV.x);
             float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(2.35, 2.42, rr));
-            ring *= 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
             ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85;
-            ALBEDO = color * (0.6 + 0.4 * clamp(abs(dot(axis, to_light)) * 1.5, 0.0, 1.0));
-            ALPHA = ring * 0.85;
+            float tone = 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
+            ALBEDO = color * tone * (0.6 + 0.4 * clamp(abs(dot(axis, to_light)) * 1.5, 0.0, 1.0));
+            ALPHA = ring;
         }
         """;
 
@@ -154,6 +171,7 @@ public partial class SpaceSky : Node3D
             {
                 Name = b.Name.Replace(" ", ""), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 Mesh = sphere, Visible = false, CustomAabb = new Aabb(new Vector3(-3f, -3f, -3f), new Vector3(6f, 6f, 6f)),
+                ExtraCullMargin = 16384f, // the sheet's height moves it along its eye rays, past where its box stands
             };
             AddChild(node);
             _bodies.Add((node, b, material));
@@ -162,21 +180,29 @@ public partial class SpaceSky : Node3D
             ring.SetShaderParameter("color", C(b.RingColor));
             node.AddChild(new MeshInstance3D
             {
-                Name = "Rings", Mesh = Globe.RingMesh(1.45f, 2.42f, 160), MaterialOverride = ring,
+                Name = "Rings", Mesh = Globe.RingMesh(RingInner, RingOuter, 160), MaterialOverride = ring,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             });
         }
     }
 
-    /// <summary>The farthest a body is drawn, m: further off it stands here at its true apparent size.</summary>
-    const float DrawnAt = 50000f;
+    /// <summary>
+    /// Bodies past <see cref="TrueTo"/> are drawn nearer, along their true direction at their true
+    /// apparent size, up to <see cref="Squeeze"/> m further: nearer stays nearer, and every part of
+    /// a body, rings and all, stays inside the camera's reach of <see cref="DrawnWithin"/>.
+    /// </summary>
+    const float TrueTo = 20000f, Squeeze = 18000f, DrawnWithin = 58000f;
+
+    /// <summary>How far a body's widest part stands from its centre, in its radii: a giant's rings.</summary>
+    const float WidestPart = 2.5f;
 
     /// <summary>
     /// Everything where the system has it this moment, as seen from <paramref name="eye"/> (in the
     /// world) at <paramref name="eyeGlobe"/> (the same point in the globe's frame, m).
     /// <paramref name="turn"/> takes the globe's directions to the world's.
     /// </summary>
-    public void Track(StarSystem model, double days, Basis turn, D3 eyeGlobe, Vector3 eye)
+    /// <param name="behind">While the sheet is drawn elsewhere along its eye rays, the farthest it stands, m: every body is behind it from under the true globe's height, so each stands past that, unmoved to the eye. 0: where it really is.</param>
+    public void Track(StarSystem model, double days, Basis turn, D3 eyeGlobe, Vector3 eye, float behind = 0f)
     {
         _eye = eye;
         StarSystem.Orientation o = model.Orient(days);
@@ -192,14 +218,27 @@ public partial class SpaceSky : Node3D
             _skySun.Basis = Facing(field);
         }
         if (!_bodiesShown) return;
+        // A body nearer than every ring's near edge goes after the rings: they write no depth to hide it by.
+        double ringsFrom = double.MaxValue;
+        foreach (var (_, body, _) in _bodies)
+        {
+            if (!body.Rings) continue;
+            Sighting ringed = model.See(body, days, eyeGlobe, o);
+            ringsFrom = Math.Min(ringsFrom, ringed.Distance * (1.0 - WidestPart * Math.Sin(ringed.Angular)));
+        }
         foreach (var (node, body, material) in _bodies)
         {
             Sighting s = model.See(body, days, eyeGlobe, o);
-            float d = MathF.Min((float)s.Distance, DrawnAt);
+            int order = s.Distance < ringsFrom ? 4 : 2;
+            if (material.RenderPriority != order) material.RenderPriority = order;
+            float sine = MathF.Sin(s.Angular), d = (float)s.Distance;
+            if (d > TrueTo) d = TrueTo + Squeeze * (1f - TrueTo / d);
+            d = MathF.Min(d, DrawnWithin / (1f + WidestPart * sine));
             Vector3 dir = W(s.Direction).Normalized(), light = W(s.ToItsLight).Normalized();
             node.GlobalPosition = eye + dir * d;
-            node.Scale = Vector3.One * d * MathF.Tan(s.Angular);
+            node.Scale = Vector3.One * d * sine;
             material.SetShaderParameter("to_light", light);
+            material.SetShaderParameter("behind", behind);
             if (body.Kind != OrbiterKind.GasGiant) continue;
             Vector3 axis = W(o.ToGlobe(body.RingNormal)).Normalized();
             material.SetShaderParameter("axis", axis);
@@ -209,6 +248,7 @@ public partial class SpaceSky : Node3D
                 var m = (ShaderMaterial)ring.MaterialOverride;
                 m.SetShaderParameter("to_light", light);
                 m.SetShaderParameter("axis", axis);
+                m.SetShaderParameter("behind", behind);
             }
         }
     }
@@ -238,6 +278,17 @@ public partial class SpaceSky : Node3D
         _skySun.Visible = active;
         Environment.BackgroundEnergyMultiplier = brightness;
         Environment.AmbientLightEnergy = brightness;
+    }
+
+    /// <summary>A giant's rings, in its radii: the sky's shader draws the same ones.</summary>
+    public const float RingInner = 1.45f, RingOuter = 2.42f;
+
+    /// <summary>How each ring drawn here stands on its body: the distance between their centres, m, and its inner edge in radii of the body as drawn.</summary>
+    public IEnumerable<(Orbiter Body, float Off, float Inner)> RingFit()
+    {
+        foreach (var (node, body, _) in _bodies)
+            if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
+                yield return (body, ring.GlobalPosition.DistanceTo(node.GlobalPosition), RingInner * ring.GlobalBasis.Scale.X / node.GlobalBasis.Scale.X);
     }
 
     /// <summary>The bodies drawn here or not: under the top of the band the surface's sky is drawing them, at the same places.</summary>

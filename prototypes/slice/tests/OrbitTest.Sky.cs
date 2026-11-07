@@ -90,6 +90,8 @@ public partial class OrbitTest
                 _skyStep++;
                 _game.Surface.Sky.Paused = false;
                 _clockAtTop = _game.Surface.Sky.Days;
+                foreach (var (body, off, inner) in _game.Orbit.Space.RingFit().ToList())
+                    Check(off < 0.01f && inner > 1.4f, $"{body.Name}'s ring stands on it: {off:F2} m off its centre, its inner edge {inner:F2} radii out");
                 TheSkyWasOneSystem();
                 break;
         }

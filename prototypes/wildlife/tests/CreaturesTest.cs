@@ -75,6 +75,7 @@ public partial class CreaturesTest : Node
             Settlements();
             DomesticAnimals();
             SensesAreReal();
+            CrouchingIsQuieter();
             WeightShows();
             NothingClipsThePlayer();
             WoundsShow();
@@ -1532,6 +1533,103 @@ public partial class CreaturesTest : Node
         p.Position = new Vector3(19f, 1f, 6f);
         Run(4f, c5, () => { step = -step; p.Position += Vector3.Right * step * 0.1f; });
         Check(blind.Blind && heard && stillUnheard && c5.Noticed == null, $"something blind goes by ear alone: a walker in its room heard, nothing through a wall ({blind.NoticeRadius * Senses.BlindHearing:F1} m earshot)");
+    }
+
+    /// <summary>
+    /// Crouching, as the senses tell it (a fresh random species every run): a crouch-walker is heard from
+    /// a shorter distance than a walker, someone crouched still from a shorter one than someone standing
+    /// still, and a crouched target is a smaller one for the eye, so low cover hides it.
+    /// </summary>
+    void CrouchingIsQuieter()
+    {
+        var rng = new Random();
+        Species species = null;
+        float hearing = 0f, sight = 0f;
+        for (int tries = 0; tries < 200 && species == null; tries++)
+        {
+            ulong seed = (ulong)rng.NextInt64(1, 1L << 40);
+            foreach (Species s in _gen.Generate(seed, (float)rng.NextDouble(), false).Species)
+            {
+                Stats st = s.Stats;
+                float ear = MathF.Max(st.Perception * Senses.Hearing, MathF.Max(st.AmbushRadius, st.AttackRange + 1f));
+                // One that sees and hears the plain way, with its ears inside its eyes (so the two can be told apart).
+                if (s.Flies || s.IsDeep || s.Behaviour is Behaviour.Ambusher or Behaviour.Swarm || s.Tumbles || s.Domestic != DomesticKind.None || ear * 0.5f > st.Perception * 0.7f) continue;
+                (species, hearing, sight) = (s, ear, st.Perception);
+                break;
+            }
+        }
+        if (species == null)
+        {
+            Fail("no species with ears inside its eyes in 200 random worlds");
+            return;
+        }
+
+        // A creature held in place, its back to a target at this distance, which paces to and fro at a steady 2 m/s (or stands).
+        // Whether it senses it in the last three seconds of four, and (for the sight case) with the creature facing it behind a low wall.
+        bool Senses_(float distance, bool crouched, bool moving, bool facing, bool lowWall)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 240f), new NavGrid(240f, 3f));
+            if (lowWall)
+            {
+                // A wall 1.15 m high just short of the target: a standing head clears it, a crouched one doesn't.
+                sim.SightLine = (a, b) =>
+                {
+                    float wallZ = distance * 0.95f;
+                    if ((a.Z - wallZ) * (b.Z - wallZ) > 0f) return true;
+                    float t = (wallZ - a.Z) / (b.Z - a.Z);
+                    return a.Y + (b.Y - a.Y) * t > 1.15f;
+                };
+            }
+            Creature c = sim.Spawn(species, Vector3.Zero);
+            var who = new DummyTarget { Name = "Sneak", Health = new Health(1e7f), Position = new Vector3(0f, 0f, distance), Crouched = crouched };
+            sim.Targets.Add(who);
+            float yaw = facing ? MathF.PI : 0f, dir = 1f;
+            bool sensed = false;
+            for (float t = 0f; t < 4f; t += Dt)
+            {
+                if (moving)
+                {
+                    who.Position += new Vector3(dir * 2f * Dt, 0f, 0f);
+                    if (MathF.Abs(who.Position.X) > 3f) dir = -dir;
+                }
+                sim.Step(Dt);
+                c.Position = Vector3.Zero;
+                c.Velocity = Vector3.Zero;
+                c.Yaw = yaw;
+                sensed |= t > 1f && c.Sensing; // once its measure of how fast the target goes has settled
+            }
+            return sensed;
+        }
+
+        float walkRange = hearing * 0.8f, stillRange = hearing * 0.35f;
+        bool walker = Senses_(walkRange, false, true, false, false), creeper = Senses_(walkRange, true, true, false, false);
+        bool standStill = Senses_(stillRange, false, false, false, false), crouchStill = Senses_(stillRange, true, false, false, false);
+        var probe = new WildSim(_data, new Terrain((x, z) => 0f, 240f), new NavGrid(240f, 3f));
+        var pace = new DummyTarget { Name = "Pace" };
+        probe.Targets.Add(pace);
+        for (int i = 0; i < 120; i++)
+        {
+            pace.Position += new Vector3(2f * Dt, 0f, 0f);
+            probe.Step(Dt);
+        }
+        float walkNoise = probe.NoiseOf(pace);
+        pace.Crouched = true;
+        float creepNoise = probe.NoiseOf(pace);
+        Check(walker && !creeper && walkNoise > creepNoise,
+            $"a {species.CommonName} (ears {hearing:F1} m) hears a walker at {walkRange:F1} m but not a crouch-walker (noise {walkNoise:F2} against {creepNoise:F2})");
+        float stillNoise = 0.45f;
+        for (int i = 0; i < 240; i++) probe.Step(Dt);
+        pace.Crouched = false;
+        stillNoise = probe.NoiseOf(pace);
+        pace.Crouched = true;
+        Check(standStill && !crouchStill && probe.NoiseOf(pace) < stillNoise && probe.NoiseOf(pace) < creepNoise,
+            $"it hears someone standing still at {stillRange:F1} m but not someone crouched still, the quietest of all (noise {probe.NoiseOf(pace):F2} against {stillNoise:F2} standing still, {creepNoise:F2} crouch-walking){(standStill && !crouchStill ? "" : $" [stood {standStill}, crouched {crouchStill}]")}");
+
+        float seeRange = sight * 0.7f;
+        bool seenStanding = Senses_(seeRange, false, false, true, true), seenCrouched = Senses_(seeRange, true, false, true, true);
+        bool seenCrouchedOpen = Senses_(seeRange, true, false, true, false);
+        Check(seenStanding && !seenCrouched && seenCrouchedOpen,
+            $"it sees a standing head over a 1.15 m wall at {seeRange:F0} m but not a crouched one, which it sees plainly in the open");
     }
 
     /// <summary>Heads, necks and bodies stop at a person's body, and bites land where they can see them.</summary>

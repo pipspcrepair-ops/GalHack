@@ -38,6 +38,7 @@ uniform vec3 moon_light[10];
 uniform bool giant = false;
 uniform vec3 giant_dir = vec3(0.0, 1.0, 0.0);
 uniform float giant_radius = 0.1;
+uniform int giant_at = 0;              // how many of the moon slots, farthest first, stand behind the giant
 uniform vec3 giant_light = vec3(0.0, 1.0, 0.0);
 uniform bool home_ring = false;
 uniform vec3 home_ring_color : source_color = vec3(0.8);
@@ -143,13 +144,13 @@ vec4 own_ring(vec3 dir, vec3 sun) {
 	if (r <= 0.0 || r >= 1.0) return vec4(0.0);
 	float bands = 0.55 + 0.25 * sin(r * 61.0) + 0.2 * sin(r * 23.0 + 1.0);
 	float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
-	float a = clamp(bands, 0.0, 1.0) * gap * 0.75;
-	vec3 lit = home_ring_color * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs((sky_to_globe * sun).y) * 1.5, 0.0, 1.0));
+	float a = gap * mix(0.95, 1.0, clamp(bands, 0.0, 1.0));
+	vec3 lit = home_ring_color * (0.45 + 0.55 * clamp(bands, 0.0, 1.0)) * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs((sky_to_globe * sun).y) * 1.5, 0.0, 1.0));
 	return vec4(lit * a, a);
 }
 
 vec4 bodies(vec3 dir, vec3 sun) {
-	vec4 result = own_ring(dir, sun);
+	vec4 result = vec4(0.0), layer = vec4(0.0);
 	if (giant) {
 		vec3 axis = normalize(ring_normal);
 		vec4 back = vec4(0.0), front = vec4(0.0);
@@ -159,11 +160,12 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			float t = dot(giant_dir, axis) / (abs(denom) > 1e-4 ? denom : 1e-4);
 			if (t > 0.0) {
 				float rr = length(dir * t - giant_dir) / sin(giant_radius);
+				// The bands are rock in lighter and darker tones: only the gap lets through what is behind.
 				float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(2.35, 2.42, rr));
-				ring *= 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
-				ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85; // a dark gap
+				ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85;
+				float tone = 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
 				float lit = 0.6 + 0.4 * clamp(abs(dot(axis, giant_light)) * 1.5, 0.0, 1.0);
-				vec4 rc = vec4(ring_color * lit * ring * 0.85, ring * 0.85);
+				vec4 rc = vec4(ring_color * lit * tone * ring, ring);
 				if (t < 1.0) front = rc; else back = rc;
 			}
 		}
@@ -175,9 +177,11 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			vec3 surface = mix(giant_color, giant_band, bands * 0.7);
 			disc.rgb = surface * (0.03 + 0.97 * disc.r) * disc.a;
 		}
-		result = over(front, over(disc, over(back, result)));
+		layer = over(front, over(disc, back));
 	}
+	// Farthest first, whatever each one is, so a far world never crosses in front of a near moon or the giant.
 	for (int i = 0; i < moon_count; i++) {
+		if (i == giant_at) result = over(layer, result);
 		vec3 n;
 		vec4 m = lit_disc(dir, moon_dir[i], moon_radius[i], moon_light[i], n);
 		if (m.a <= 0.0) continue;
@@ -185,7 +189,9 @@ vec4 bodies(vec3 dir, vec3 sun) {
 		m.rgb = moon_color[i] * craters * (0.025 + 1.1 * m.r) * m.a;
 		result = over(m, result);
 	}
-	return result;
+	if (giant_at >= moon_count) result = over(layer, result);
+	// This world's own ring is nearer than anything else up there.
+	return over(own_ring(dir, sun), result);
 }
 
 uniform sampler3D cloud_detail : filter_linear_mipmap, repeat_enable;
@@ -321,9 +327,11 @@ void sky() {
 		vec3 plain = col;
 		// Faded out just below the horizon, not cut: seen from high up there is no hard line.
 		float starlight = max(1.0 - day, stars_by_day) * (1.0 - overcast) * smoothstep(-0.08, 0.0, dir.y);
-		if (starlight > 0.0) col += night_sky(dir, !AT_CUBEMAP_PASS) * starlight;
 		// Bodies show through a clear sky by day as well as by night, faded by the daylight's glare.
-		vec4 b = bodies(dir, sun) * (1.0 - overcast * 0.9);
+		// They stand in front of the stars, so no star shows through a world or a ring.
+		vec4 solid = bodies(dir, sun);
+		vec4 b = solid * (1.0 - overcast * 0.9);
+		if (starlight > 0.0) col += night_sky(dir, !AT_CUBEMAP_PASS) * starlight * (1.0 - solid.a);
 		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
 
 		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
@@ -354,9 +362,8 @@ void sky() {
 		if (space_fade > 0.0) {
 			float gone = mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y));
 			float dark = smoothstep(0.78, 1.0, space_fade);
-			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS), gone);
-			// The air goes; the sun and everything else up there stays. They are not part of the sky.
-			col = col * (1.0 - b.a * gone) + b.rgb * gone;
+			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars.
+			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb, gone);
 			col += star_color * disc * sun_energy * 18.0 * gone;
 		}
 		COLOR = col;

@@ -23,6 +23,8 @@ public interface ITarget
     bool Attackable { get; }
     /// <summary>Multiplies flee distances: a roaring hovercraft is scarier than someone walking.</summary>
     float ThreatScale { get; }
+    /// <summary>Low to the ground (a player holding crouch): quieter to the ear, and a smaller target to the eye.</summary>
+    bool Crouched => false;
 }
 
 /// <summary>A target the tests (and the screenshot staging) can place by hand.</summary>
@@ -34,6 +36,7 @@ public sealed class DummyTarget : ITarget
     public Health Health { get; set; } = new(100f);
     public bool Attackable { get; set; } = true;
     public float ThreatScale { get; set; } = 1f;
+    public bool Crouched { get; set; }
 }
 
 /// <summary>

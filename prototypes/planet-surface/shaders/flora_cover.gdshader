@@ -43,5 +43,6 @@ void fragment() {
 	float snow = weather_ground.y * smoothstep(0.3, 0.8, NORMAL.y);
 	c = mix(c * (1.0 - weather_ground.x * 0.2), vec3(0.85, 0.88, 0.9), snow * 0.7);
 	ALBEDO = c;
+	EMISSION = c * COLOR.a * 0.1 * weather_ground.w; // what comes down through the leaves: low growth in shade isn't black
 	ROUGHNESS = 0.9;
 }

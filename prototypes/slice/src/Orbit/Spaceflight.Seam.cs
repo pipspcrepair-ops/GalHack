@@ -83,9 +83,19 @@ public partial class Spaceflight
     /// </summary>
     float Height(Vector3 world) => Orbit.SurfaceHeight(Orbit.ToGlobe(world.ToNumerics()).Length());
 
+    /// <summary>The most a frame has spent on the seam and the skies, ms (tests read this, and reset it).</summary>
+    public double WorstSeamMs;
+
     public override void _Process(double delta)
     {
         if (Game.Phase != Slice.Game.Phase.Playing || Game.Survivor == null) return;
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        ProcessSeam(delta);
+        WorstSeamMs = Math.Max(WorstSeamMs, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    }
+
+    void ProcessSeam(double delta)
+    {
         if (Game.InOrbit)
         {
             // The surface waits, but the clock and the sky above it don't.
@@ -107,7 +117,7 @@ public partial class Spaceflight
         Basis turn = o.Turn.ToBasis();
         s.Sky.Stand(turn.Transposed(), inGlobe);
         s.Sky.Track();
-        o.Space.Track(s.Planet.StarSystem, s.Sky.Days, turn, inGlobe, eye);
+        o.Space.Track(s.Planet.StarSystem, s.Sky.Days, turn, inGlobe, eye, Height(eye) < Rules.Crossing.TrueGlobeAt ? 38000f : 0f);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>
@@ -284,6 +294,9 @@ public partial class Spaceflight
         else (near, far) = (Game.Camera.Far * 0.9f, Game.Camera.Far * 0.99f);
 
         float climb = Mathf.Clamp((y - cap) / (r.TrueGlobeAt - cap), 0f, 1f);
+        float bend = Mathf.Lerp(1f / r.FlatCurve, 1f / R, climb);
+        float ringRadius = Globe.RingSphere(1f / bend, R, y - cap);
+        s.Sky.RingRadius = ringRadius;
         Godot.Environment env = s.Sky.Environment;
         float share = AirShare;
         o.Globe.Draw(new WorldView
@@ -294,7 +307,10 @@ public partial class Spaceflight
             MapSouth = MathX.Rotate(map, N.Vector3.UnitZ).ToGodot(),
             Nadir = new Vector2((float)nx, (float)nz),
             Height = height,
-            Bend = Mathf.Lerp(1f / r.FlatCurve, 1f / R, climb),
+            Bend = bend,
+            Eye = eye,
+            RingRadius = ringRadius,
+            RingShown = orbit ? Smooth((y - cap) / 120f) : 0f, // the sky draws it too, out to the band's top: the sheet covers the sky in front of it
             Flat = 1f - Smooth((y - cap) / r.MapWrapsBy),
             Taper = Smooth((y - cap) / 60f),
             Local = Mathf.Clamp(MathF.Min((float)nz, (float)(h - nz)) * 0.8f, 300f, 3000f),
@@ -357,7 +373,6 @@ public partial class Spaceflight
         s.Sky.NightLight.LightEnergy = _nightEnergy * (1f - k);
         o.Space.Light(k);
         o.Space.ShowBodies(false);
-        o.Globe.ShowRing(false);
         FadeWrecks(Smooth((f - 0.5f) / 0.5f));
         DrawWorld(y);
     }
@@ -371,7 +386,6 @@ public partial class Spaceflight
         o.Space.Show(true, 1f);
         o.Space.Light(1f);
         o.Space.ShowBodies(true);
-        o.Globe.ShowRing(true);
         FadeWrecks(1f);
     }
 

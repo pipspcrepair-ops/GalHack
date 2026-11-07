@@ -309,7 +309,7 @@ public static class FarBuilder
             if (rules.Length == 0) continue;
             float total = 0f;
             foreach (FloraRule r in rules) total += r.Density;
-            float groves = Math.Clamp(1f + 1.4f * clump.Fbm(pal.Map.Model.Torus.At(x, z), 4), 0.2f, 1.8f);
+            float groves = Math.Clamp(1f + 2f * clump.Fbm(pal.Map.Model.Torus.At(x, z), 4), 0.12f, 1.8f); // thick stands and sunlit glades
             if (chance >= total * ScatterCell * ScatterCell / 1000f * groves) continue;
 
             FloraRule rule = rules[^1];
