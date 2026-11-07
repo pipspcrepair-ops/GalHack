@@ -791,7 +791,7 @@ public static class Sites
     }
 
     /// <summary>
-    /// A hangar: a tall shed with a stepped gable roof and its great door rolled half open on the
+    /// A hangar: a tall shed under a gable of slopes and its great door rolled half open on the
     /// apron side, a mezzanine along the back wall up a ladder with the foreman's office on it, and
     /// whatever was being worked on when everyone left still on the floor.
     /// </summary>
@@ -826,18 +826,25 @@ public static class Sites
                     }
                 }
             }
-        // The stepped gable along the hangar's length: each course steps in from both long sides.
-        for (int k = 0; k <= d / 2; k++)
+        // The gable along the hangar's length: slopes up from both long sides to the ridge, a deck under them.
+        for (int k = 0; k <= (d - 1) / 2; k++)
             for (int i = 0; i < w; i++)
             {
                 int y = h + k;
                 foreach (int j in new[] { k, d - 1 - k })
-                    x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Rust, roof.Scale(0.85f + 0.15f * (k % 2)), Role.Roof));
+                {
+                    bool ridge = k == d - 1 - k;
+                    x.C.Set(W(i, y, j), ridge ? new Block(BlockType.Cube, Material.Rust, roof, Role.Roof)
+                        : new Block(BlockType.Ramp, Material.Rust, roof, Role.Roof, j == k ? Dir.South : Dir.North));
+                }
                 for (int j = k + 1; j < d - 1 - k; j++)
                 {
                     if (i == 0 || i == w - 1) x.C.Set(W(i, y, j), new Block(BlockType.Cube, Material.Steel, wall, Role.Wall));
                     else x.C.Clear(W(i, y, j));
                 }
+                if (k > 0)
+                    foreach (int j in new[] { k, d - 1 - k })
+                        x.C.Set(W(i, y - 1, j), new Block(BlockType.Cube, Material.Rust, roof.Scale(0.8f), Role.Roof));
             }
         // The great door: one leaf rolled half open, hanging above the gap.
         for (int i = doorLo; i <= doorHi; i++)
