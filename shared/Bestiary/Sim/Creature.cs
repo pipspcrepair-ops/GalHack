@@ -247,10 +247,14 @@ public sealed class Creature
     CState _before = CState.Wander;
     /// <summary>The last quick flip, for a test to say which.</summary>
     public string LastFlip = "";
+    /// <summary>How long a calm state holds at least, s.</summary>
+    public const float CalmHold = 0.6f;
 
     public void SetState(CState state)
     {
         if (State == state) return;
+        // Calm states hold a moment before giving way to another calm state: no flicker at the edges.
+        if (StateTime < CalmHold && State is CState.Idle or CState.Wander or CState.Graze && state is CState.Idle or CState.Wander or CState.Graze) return;
         StateChanges++;
         if (state == _before && StateTime < 0.5f) { StateFlips++; LastFlip = $"{_before}>{State}>{state}"; }
         _before = State;

@@ -27,6 +27,8 @@ public sealed class WorldConditions
     public float Radiation;
     /// <summary>Fallout, a biolab agent, the Bloom's touch: how hard this world twists what lives on it, 0 to 1.</summary>
     public float Mutagen;
+    /// <summary>The colour of the ground people stand on, roughly: what their clothes must read against.</summary>
+    public Color Backdrop = new(0.32f, 0.38f, 0.22f);
 
     public ClimateBand Climate => TempC switch
     {
@@ -68,6 +70,10 @@ public sealed class WorldConditions
             Vacuum = spec.Has(Modifier.Cratered) && spec.Archetype is Archetype.Arid or Archetype.Ice or Archetype.Lava,
         };
         if (w.Vacuum) w.Oxygen = 0f;
+        w.Backdrop = w.Climate == ClimateBand.Frozen ? new Color(0.86f, 0.88f, 0.9f) : spec.Archetype switch
+        {
+            Archetype.Arid => new Color(0.74f, 0.6f, 0.4f), Archetype.Ice => new Color(0.8f, 0.83f, 0.86f), Archetype.Lava => new Color(0.18f, 0.15f, 0.14f), Archetype.Alien => new Color(0.3f, 0.32f, 0.38f), _ => new Color(0.32f, 0.38f, 0.22f),
+        };
         // A few worlds are mutagenic, most of those alien; a high background count twists things a little anyway.
         float chance = spec.Archetype == Archetype.Alien ? 0.3f : 0.08f;
         w.Mutagen = rng.Chance(chance) ? rng.Range(0.35f, 1f) : 0f;

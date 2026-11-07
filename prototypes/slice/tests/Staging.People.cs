@@ -82,6 +82,13 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(10)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "close-right.png"))) yield return x;
 
+        // At range: 30, 70 and 140 m, as the eye meets them across open ground.
+        foreach (float range in new[] { 30f, 70f, 140f })
+        {
+            Look(spot + new Vector3(0f, 1.7f, range), spot + Vector3.Up * 0.9f);
+            foreach (int x in _drive.Wait(5)) yield return x;
+            foreach (int x in Shot(Path.Combine(dir, $"at-{range:F0}m.png"))) yield return x;
+        }
         // What bodies say: hands up at a gun, a wave, a guard's warning, a trader's wares, a start, a raider's taunt; close and from 25 m.
         var acts = new[] { BodyAct.HandsUp, BodyAct.Greet, BodyAct.Warn, BodyAct.Present, BodyAct.Startle, BodyAct.Panic, BodyAct.Cower, BodyAct.Shrug, BodyAct.Beckon, BodyAct.Taunt, BodyAct.Taunt };
         for (int i = 0; i < people.Count; i++)
@@ -90,9 +97,59 @@ public sealed partial class Staging
         Look(spot + new Vector3(0f, 1.3f, 10f), spot + Vector3.Up * 0.9f);
         foreach (int x in _drive.Wait(5)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "gestures.png"))) yield return x;
-        Look(spot + new Vector3(0f, 1.7f, 25f), spot + Vector3.Up * 0.9f);
+        foreach (float range in new[] { 30f, 70f })
+        {
+            Look(spot + new Vector3(0f, 1.7f, range), spot + Vector3.Up * 0.9f);
+            foreach (int x in _drive.Wait(5)) yield return x;
+            foreach (int x in Shot(Path.Combine(dir, $"gestures-{range:F0}m.png"))) yield return x;
+        }
+        // Walking: everyone of the line-up crosses in front of the camera at their own pace, a child running, the drunk weaving.
+        string walk = Path.Combine(dir, "walk");
+        Directory.CreateDirectory(walk);
+        var paces = new float[people.Count];
+        var walked = new float[people.Count];
+        for (int i = 0; i < people.Count; i++)
+        {
+            Figure f = line[i].Figure;
+            paces[i] = f.Stage == LifeStage.Child && f.Playful ? 3.2f : f.Stage == LifeStage.Elder ? 0.9f : f.Role == PersonRole.Drunk ? 0.9f : f.Role == PersonRole.Scavenger ? 1.8f : 1.35f;
+        }
+        Look(spot + new Vector3(0f, 1.4f, 9f), spot + Vector3.Up * 0.9f);
+        for (int frame = 0; frame < 72; frame++)
+        {
+            for (int i = 0; i < people.Count; i++)
+            {
+                float dt = 1f / 30f;
+                walked[i] += paces[i] * dt;
+                float x = -8f + ((walked[i] + i * 1.7f) % 16f);
+                Vector3 at = Ground(spot + new Vector3(x, 0f, -1.5f + (i % 4) * 1.1f));
+                people[i].rig.Drive(new Gesture { Feet = at, Yaw = -MathF.PI * 0.5f, Speed = paces[i], Walked = walked[i], Clock = frame / 30f + i });
+                people[i].view.Sync();
+                people[i].view.SyncFar(at, -MathF.PI * 0.5f);
+            }
+            foreach (int x in _drive.Wait(1)) yield return x;
+            foreach (int x in Shot(Path.Combine(walk, $"f{frame:000}.png"))) yield return x;
+        }
+        // A dozen people as a place would have them: one people, every job, every build.
+        foreach (var q in people) q.view.QueueFree();
+        people.Clear();
+        Founders founders = life.People.FoundersOf((ulong)Num("seed2", 41) + 7);
+        var jobs = Enum.GetValues<PersonRole>();
+        for (int i = 0; i < 12; i++)
+        {
+            Species one = life.People.Person(Rng.Mix(seed, 500 + (ulong)i), jobs[(i * 7 + 3) % jobs.Length], founders: founders);
+            var rig = new HumanRig(one);
+            Vector3 at = Ground(spot + new Vector3((i - 5.5f) * 1.05f, 0f, (i % 3) * 0.4f));
+            rig.Drive(new Gesture { Feet = at, Yaw = MathF.PI, Clock = i * 1.3f });
+            var view = new PersonView();
+            stage.AddChild(view);
+            view.Build(rig);
+            view.Sync();
+            view.SyncFar(at, MathF.PI);
+            people.Add((rig, at, view));
+        }
+        Look(spot + new Vector3(0f, 1.25f, 9.5f), spot + Vector3.Up * 0.9f);
         foreach (int x in _drive.Wait(5)) yield return x;
-        foreach (int x in Shot(Path.Combine(dir, "gestures-25m.png"))) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "dozen.png"))) yield return x;
         // The same world's mutation: mild, strong, monstrous, and a husk beside them.
         foreach (Node n in stage.GetChildren()) n.QueueFree();
         var ones = new[]
@@ -143,7 +200,7 @@ public sealed partial class Staging
             _game.Zone.Sky.TimeOfDay = k / 24.0;
             yield return 0;
             yield return 0;
-            if (_game.Zone.Sky.Daylight > brightest) { brightest = _game.Zone.Sky.Daylight; noon = k / 24.0; }
+            if (_game.Zone.Sky.ToSun.Y > brightest) { brightest = _game.Zone.Sky.ToSun.Y; noon = k / 24.0; }
         }
         _game.Zone.Sky.TimeOfDay = noon - 0.06;
         foreach (int x in _drive.Wait(300)) yield return x;
@@ -243,5 +300,78 @@ public sealed partial class Staging
             foreach (int x in _drive.Wait(10)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, $"close-{i}.png"))) yield return x;
         }
+    }
+
+    /// <summary>
+    /// --view=peopleperf: what people cost to draw and pose. Nobody, 6 and 20 people walking close to
+    /// the camera, drawn as a node per piece and as one skinned body each: frame time on the CPU and
+    /// GPU, draw calls, posing time and allocation, over 4 s each.
+    /// </summary>
+    IEnumerable<int> PeoplePerf()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
+        WorldLife life = _game.Zone.Wildlife.Life;
+        Vector3 spot = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 14f));
+        _game.Visor.Visible = false;
+        Look(spot + new Vector3(0f, 1.6f, 12f), spot + Vector3.Up * 0.9f);
+        Rid vp = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+        var stage = new Node3D { Name = "PerfStage" };
+        _game.Zone.AddChild(stage);
+        var lines = new List<string>();
+        foreach (bool merged in new[] { false, true })
+        foreach (int count in new[] { 0, 6, 20 })
+        {
+            if (count == 0 && merged) continue;
+            PersonView.Merged = merged;
+            foreach (Node n in stage.GetChildren()) n.QueueFree();
+            var crowd = new List<(HumanRig rig, PersonView view, float phase)>();
+            // What the game does on a worker (who they are, their meshes) is left out: the main thread's share is timed.
+            var rigs = Enumerable.Range(0, count).Select(i => new HumanRig(life.People.Person(Rng.Mix(77, (ulong)i), (PersonRole)(i % 10)))).ToList();
+            var ready = rigs.Select(rg => merged ? PersonView.Prepare(rg) : null).ToList();
+            long built = System.Diagnostics.Stopwatch.GetTimestamp();
+            for (int i = 0; i < count; i++)
+            {
+                var rig = rigs[i];
+                var view = new PersonView();
+                stage.AddChild(view);
+                view.Build(rig, ready[i]);
+                crowd.Add((rig, view, i * 0.7f));
+            }
+            double buildMs = System.Diagnostics.Stopwatch.GetElapsedTime(built).TotalMilliseconds / Math.Max(1, count);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            double cpu = 0, gpu = 0, pose = 0;
+            long draws = 0, bytes = 0;
+            int frames = 240;
+            for (int f = 0; f < frames; f++)
+            {
+                long from = System.Diagnostics.Stopwatch.GetTimestamp();
+                long allocated = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < crowd.Count; i++)
+                {
+                    float t = f / 60f + crowd[i].phase;
+                    float a = t * 0.25f;
+                    Vector3 at = spot + new Vector3(MathF.Cos(a) * (3f + i % 5), 0f, MathF.Sin(a) * (3f + i % 5) - 2f);
+                    crowd[i].rig.Drive(new Gesture { Feet = at, Yaw = -a, Speed = 1.3f, Walked = t * 1.3f, Clock = t });
+                    crowd[i].view.Sync();
+                    crowd[i].view.SyncFar(at, -a);
+                }
+                bytes += GC.GetAllocatedBytesForCurrentThread() - allocated;
+                pose += System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+                yield return 0;
+                cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp) + RenderingServer.GetFrameSetupTimeCpu();
+                gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp);
+                draws += (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame);
+            }
+            string line = $"PERF {(merged ? "one body" : "per piece")} x{count}: render cpu {cpu / frames:F2} ms, gpu {gpu / frames:F2} ms, draw calls {draws / frames}, posing {pose / frames:F3} ms, alloc {bytes / frames} B a frame, building {buildMs:F2} ms a person, nodes near {(crowd.Count > 0 ? crowd[0].view.DrawnNear : 0)} each";
+            GD.Print(line);
+            lines.Add(line);
+            if (count == 20) foreach (int x in Shot(Path.Combine(Folder("perf"), $"/perf-{(merged ? "merged" : "pieces")}.png"))) yield return x;
+        }
+        PersonView.Merged = true;
+        File.WriteAllLines(Path.Combine(Folder("perf"), "people-perf.txt"), lines);
     }
 }

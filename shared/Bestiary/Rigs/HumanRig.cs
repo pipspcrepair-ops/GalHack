@@ -110,7 +110,7 @@ public sealed class HumanRig : Rig
         Figure f = _f;
         float run = Math.Clamp((g.Speed - 2f) / 1.4f, 0f, 1f);
         float moving = Math.Clamp(g.Speed / 0.45f, 0f, 1f);
-        float strideLength = f.LegLength * Mathf.Lerp(1.45f, 2.6f, run);
+        float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run);
         float phase = g.Walked / strideLength + _offset;
         float cycle = MathF.Tau * phase;
 
@@ -120,17 +120,19 @@ public sealed class HumanRig : Rig
         // Hips: over the feet, dropping as a step lands; low in a crouch, on the seat when sitting.
         float bob = moving * (0.012f + 0.024f * run) * f.Height * MathF.Cos(cycle * 2f);
         float slump = g.Act switch { BodyAct.Cower => 0.5f, BodyAct.Grieve => 0.18f, BodyAct.Startle => 0.15f, _ => 0f } * Math.Clamp(g.ActAmount, 0f, 1f);
-        float hipY = f.LegLength * (0.985f - 0.045f * moving - 0.08f * run - 0.42f * MathF.Max(g.Crouch, slump)) + bob;
+        float hipY = f.LegLength * (0.99f - 0.022f * moving - 0.07f * run - 0.42f * MathF.Max(g.Crouch, slump)) + bob;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
         float staggerSide = f.Stagger * (0.09f * MathF.Sin(phase * 2.3f + g.Clock * 0.7f) + 0.03f * MathF.Sin(g.Clock * 2.1f));
         float idle = (1f - moving) * 0.012f * MathF.Sin(g.Clock * 0.7f + _offset * 6f);
-        Vector3 hip = g.Feet + Vector3.Up * hipY + right * (sway + staggerSide + idle);
+        float keyed = g.Act == BodyAct.None ? 0f : Mathf.SmoothStep(0f, 1f, Math.Clamp(g.ActAmount, 0f, 1f)); // eased in and out, held at the top
+        Vector3 recoil = g.Act == BodyAct.Startle ? -fwd * 0.16f * keyed + Vector3.Up * 0.03f * keyed : g.Act is BodyAct.HandsUp or BodyAct.Cower ? -fwd * 0.06f * keyed : Vector3.Zero;
+        Vector3 hip = g.Feet + Vector3.Up * hipY + right * (sway + staggerSide + idle) + recoil;
 
         // The torso leans into a run and over work, bows with age and drink, rolls with the stride.
         float pitch = 0.05f + 0.26f * run + f.Stoop * 0.55f + g.Work * (0.5f + 0.2f * MathF.Sin(g.Clock * 1.7f)) + g.Crouch * 0.5f + g.Retch * 0.8f - g.Sit * 0.1f - g.Aim * 0.03f + g.Reach * 0.3f;
-        float act = g.Act == BodyAct.None ? 0f : Math.Clamp(g.ActAmount, 0f, 1f);
-        pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.18f, BodyAct.Startle => -0.2f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, _ => 0f };
+        float act = g.Act == BodyAct.None ? 0f : Mathf.SmoothStep(0f, 1f, Math.Clamp(g.ActAmount, 0f, 1f));
+        pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.22f, BodyAct.Startle => -0.28f, BodyAct.Warn => -0.08f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, _ => 0f };
         float roll = -sway * 1.2f + staggerSide * 2.2f;
         float twist = moving * (0.1f + 0.1f * run) * MathF.Sin(cycle);
         Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
@@ -159,10 +161,11 @@ public sealed class HumanRig : Rig
             float half = strideLength * duty * 0.5f;
             float forward = moving * reach * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side;
             Vector3 hipJoint = hip + torso.X * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
-            Vector3 foot = g.Feet + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f);
+            float wide = g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed : 0f; // a wide stance for a threat or a fright
+            Vector3 foot = g.Feet + recoil * 0.6f + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f + wide);
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
             // The heel comes up as a foot trails behind; the swing clears the ground.
-            float heel = stance ? MathF.Max(0f, -reach - 0.35f) * 0.16f * f.LegLength : 0f;
+            float heel = stance ? MathF.Max(0f, -reach - 0.25f) * 0.22f * f.LegLength : 0f;
             foot.Y = ground + f.Ankle + moving * (heel + lift * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run));
             _feet[i] = foot;
             bool grounded = stance || moving <= 0f;
@@ -252,21 +255,21 @@ public sealed class HumanRig : Rig
         Vector3 rest = shoulder + Vector3.Down * arm * 0.9f + out_ * 0.05f;
         switch (g.Act)
         {
-            case BodyAct.HandsUp: return shoulder + up * arm * 0.78f + out_ * 0.2f + ahead * 0.12f + up * 0.02f * MathF.Sin(t * 13f + i);
+            case BodyAct.HandsUp: return shoulder + (up * 0.9f + out_ * 0.42f).Normalized() * arm * 0.97f + ahead * 0.06f + up * 0.02f * MathF.Sin(t * 13f + i);
             case BodyAct.Cower: return neck + ahead * 0.16f + out_ * 0.07f + up * 0.06f;
             case BodyAct.WaveOff: return right ? chest + ahead * 0.42f + up * 0.05f + torso.X * (0.1f + 0.32f * MathF.Sin(t * 7f)) : rest;
-            case BodyAct.Beckon: return right ? shoulder + ahead * arm * (0.55f + 0.3f * MathF.Max(0f, MathF.Sin(t * 5f))) + Vector3.Down * 0.12f : rest;
+            case BodyAct.Beckon: return right ? shoulder + (ahead * (0.35f + 0.65f * (0.5f + 0.5f * MathF.Sin(t * 4f))) + out_ * 0.35f + Vector3.Down * 0.1f).Normalized() * arm * 0.95f : rest;
             case BodyAct.Point: return right ? shoulder + toward * arm * 0.98f : rest;
             case BodyAct.Shrug: return hip + out_ * 0.38f + ahead * 0.28f + up * (0.12f + 0.08f * MathF.Max(0f, MathF.Sin(t * 3f)));
-            case BodyAct.Warn: return right ? shoulder + (ahead * 0.85f + up * 0.45f).Normalized() * arm * 0.97f : rest;
+            case BodyAct.Warn: return right ? shoulder + (ahead * 0.8f + up * 0.6f).Normalized() * arm * 0.98f : rest;
             case BodyAct.Celebrate: return shoulder + up * arm * (0.7f + 0.25f * MathF.Max(0f, MathF.Sin(t * 8f + i * 1.3f))) + out_ * 0.28f;
             case BodyAct.Grieve: return neck + ahead * 0.14f + out_ * 0.04f + up * 0.04f;
             case BodyAct.Panic: return shoulder + up * (0.25f + 0.2f * MathF.Sin(t * 11f + i * 2f)) + out_ * (0.3f + 0.15f * MathF.Sin(t * 9f)) + ahead * 0.15f;
             case BodyAct.Fidget: return right && MathF.Sin(t * 0.4f) > 0.2f ? neck + torso.Z * 0.06f + out_ * 0.12f : hip + out_ * 0.2f + ahead * 0.02f;
-            case BodyAct.Taunt: return shoulder + out_ * arm * 0.75f + up * (0.15f + 0.25f * MathF.Max(0f, MathF.Sin(t * 6f + i * 3f))) + ahead * 0.15f;
+            case BodyAct.Taunt: return shoulder + (out_ * 0.85f + up * (0.2f + 0.6f * MathF.Max(0f, MathF.Sin(t * 5f + i * 3f))) + ahead * 0.2f).Normalized() * arm * 0.97f;
             case BodyAct.Present: return right ? shoulder + (toward * 0.6f + out_ * 0.4f).Normalized() * arm * 0.9f + Vector3.Down * 0.15f : rest;
-            case BodyAct.Greet: return right ? shoulder + up * arm * 0.82f + out_ * (0.22f + 0.16f * MathF.Sin(t * 9f)) : rest;
-            case BodyAct.Startle: return shoulder + up * 0.25f + out_ * 0.38f + ahead * 0.2f;
+            case BodyAct.Greet: return right ? shoulder + (up * 0.85f + out_ * (0.15f + 0.55f * (0.5f + 0.5f * MathF.Sin(t * 6f)))).Normalized() * arm * 0.98f : rest;
+            case BodyAct.Startle: return shoulder + (up * 0.55f + out_ * 0.7f + ahead * 0.25f).Normalized() * arm * 0.9f;
             case BodyAct.Play: return shoulder + out_ * arm * (0.45f + 0.35f * MathF.Sin(t * 4f + i * 3.1f)) + up * (0.05f + 0.3f * MathF.Max(0f, MathF.Sin(t * 4f + i * 3.1f))) + ahead * 0.2f;
             default: return rest;
         }

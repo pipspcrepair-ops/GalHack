@@ -76,6 +76,8 @@ public sealed partial class Town
         /// <summary>Their nerve (set once), and when they act on the latest upset: nobody reacts on the same instant.</summary>
         public float Nerve = 0.5f, ReactAt = -1f;
         public bool Reacted = true;
+        /// <summary>Their meshes, worked out ahead on a worker.</summary>
+        public PersonView.Ready Ready;
         /// <summary>What their body is saying, how far into it (eased), how long it holds at least, and what's next.</summary>
         public BodyAct Act, Wanted;
         public float ActAmount, ActHeld;
@@ -149,7 +151,16 @@ public sealed partial class Town
                 p.Wait = (float)_rng.NextDouble() * 6f;
                 People.Add(p);
             }
-        if (People.Count > 0 && People[0].Looks == null) RollPeople(places.Zone.Wildlife.Life);
+        // Who they are and what they're drawn with is worked out on a worker: a town coming into view costs the frame nothing.
+        if (People.Count > 0 && People[0].Looks == null && _rolling == null)
+        {
+            WorldLife life = places.Zone.Wildlife.Life;
+            _rolling = System.Threading.Tasks.Task.Run(() =>
+            {
+                RollPeople(life);
+                foreach (Person p in People) p.Ready = PersonView.Prepare(p.Rig);
+            });
+        }
         WildlifePatch patch = places.Zone.Wildlife;
         Register(patch.Sim, null, Vector3.Zero);
         patch.Swapped += OnSwapped;
@@ -269,12 +280,12 @@ public sealed partial class Town
 
     /// <summary>Beyond this someone updates a few times a second; bodies built a tick at most.</summary>
     const float NearPeople = 40f;
-    const int BodiesPerTick = 2;
+    const int BodiesPerTick = 3;
     int _tick;
 
     void Tick(float tickDt)
     {
-        if (_place == null || !_place.Ready || _place.Dormant) return;
+        if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
         bool night = Night();
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         // Where you are looking, in the place's frame: what you point at, people see.
@@ -520,6 +531,9 @@ public sealed partial class Town
 
     public event Action TurnedHostile;
     Mood _moodBefore = Mood.Peaceful;
+    Temper _temper;
+    /// <summary>The way the first to react went: the rest mostly follow it.</summary>
+    Stance? _setTone;
     float _nextAimAt;
 
     /// <summary>Whether a world point is in the town's area.</summary>
@@ -576,6 +590,11 @@ public sealed partial class Town
     {
         bool raiders = Memory.Mood == Mood.Hostile, farm = Memory.Inst.Family.Tags.Contains("farm");
         var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "townsfolk");
+        // The place's founders: most here share a look; trade hubs and spaceports mix more.
+        var tags = Memory.Inst.Family.Tags;
+        Founders founders = life.People.FoundersOf(Memory.Inst.SpawnSeed, tags.Contains("spaceport") || tags.Contains("trade") || tags.Contains("market"));
+        // How this group takes to outsiders: from its tech and its world, and then its own roll.
+        _temper = Temper.Roll(_tech, Math.Clamp(life.World.Mutagen + life.World.Radiation * 0.15f, 0f, 1f), Memory.Inst.SpawnSeed);
         float hardened = life.People.HardenedChance(raiders, People.Count(q => q.Role != "wanderer"));
         for (int i = 0; i < People.Count; i++)
         {
@@ -588,7 +607,7 @@ public sealed partial class Town
             float mutation = life.World.Mutagen * twist * twist * 1.4f;
             // Now and then, where the world forces it, the one doing this job is a child.
             bool young = role is not (PersonRole.Child or PersonRole.Elder or PersonRole.Drunk) && roll.Chance(hardened);
-            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young);
+            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young, founders: founders);
             p.Rig = new HumanRig(p.Looks);
             p.Nerve = roll.Float();
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
@@ -596,6 +615,9 @@ public sealed partial class Town
     }
 
     float _voiceIn = 2f;
+    System.Threading.Tasks.Task _rolling;
+    /// <summary>Everyone has been rolled and their meshes worked out.</summary>
+    bool Rolled => _rolling == null ? People.Count == 0 || People[0].Looks != null : _rolling.IsCompleted;
 
     /// <summary>A body's act has to hold this long before another may start, s; it eases in and out at this rate a second.</summary>
     const float ActHold = 1.4f, ActEase = 3.5f;
@@ -634,7 +656,12 @@ public sealed partial class Town
         {
             p.Greeted = true;
             p.ActHeld = 0f;
-            want = f.Approach;
+            // The first to react sets the tone; the rest mostly follow, each a little their own.
+            var own = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "stance", People.IndexOf(p));
+            Stance stance = _setTone ?? _temper?.PersonStance(own) ?? Stance.Welcoming;
+            if (_setTone != null && own.Chance(0.2f)) stance = _temper.PersonStance(own);
+            _setTone ??= stance;
+            want = Temper.ActFor(stance, f.Approach);
             Speak(p, VoiceMood.Murmur);
         }
         else if (p.Act is BodyAct.Greet or BodyAct.Present or BodyAct.Warn or BodyAct.Taunt && p.ActHeld < 2.6f && away < GreetRearm) want = p.Act;
@@ -706,7 +733,8 @@ public sealed partial class Town
     {
         p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}" };
         _view.AddChild(p.View);
-        p.View.Build(p.Rig);
+        p.View.Build(p.Rig, p.Ready);
+        p.Ready = null;
     }
 
     bool _posing = true;

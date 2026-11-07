@@ -52,6 +52,25 @@ public sealed class RoleLook
     public string Approach { get; set; } = "Greet";
     public string Aimed { get; set; } = "HandsUp";
     public string Startled { get; set; } = "Startle";
+    /// <summary>The hue range (0 to 1) of the one saturated mark the job wears.</summary>
+    public float[] Accent { get; set; } = Array.Empty<float>();
+}
+
+/// <summary>
+/// Where a settlement's people came from: the look its founders had, which most of them still
+/// share with natural variation, and how many are from elsewhere. Rolled from the world and the
+/// place, never from anyone's job, side or temper.
+/// </summary>
+public sealed class Founders
+{
+    public float SkinHue, SkinSat, SkinValue;
+    public string[] Hair = Array.Empty<string>();
+    /// <summary>A shared cast of face: brow and jaw, as small offsets.</summary>
+    public float Brow, Jaw;
+    /// <summary>The people's lean in build: longer or shorter in the leg, broader or narrower, as small offsets.</summary>
+    public float Leg, Shoulder, Hip, Build;
+    /// <summary>The share who are outsiders and travellers: more in trade hubs and spaceports.</summary>
+    public float Outsiders = 0.08f;
 }
 
 /// <summary>
@@ -121,7 +140,28 @@ public sealed class PeopleGenerator
     /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this
     /// world has twisted them, 0 to 1 (see <see cref="Mutation"/>).
     /// </summary>
-    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false)
+    /// <summary>
+    /// The founders of a place, from the world's seed and the place's: neighbouring places of
+    /// one world lean the same way more than not, and a busier place has more outsiders.
+    /// </summary>
+    public Founders FoundersOf(ulong place, bool crossroads = false)
+    {
+        var world = Rng.For(_w.Seed, "founders");
+        var here = Rng.For(Rng.Mix(_w.Seed, place), "founders");
+        float lean = world.Float();
+        float v = Mathf.Lerp(Folk.SkinVal[0], Folk.SkinVal[1], Math.Clamp(lean + here.Range(-0.35f, 0.35f), 0f, 1f));
+        var hair = new string[2];
+        for (int i = 0; i < hair.Length; i++) hair[i] = here.Pick(_t.HairColours);
+        return new Founders
+        {
+            SkinHue = here.Range(Folk.SkinHue), SkinSat = here.Range(Folk.SkinSat), SkinValue = v, Hair = hair,
+            Brow = here.Range(-0.15f, 0.15f), Jaw = here.Range(-0.08f, 0.08f),
+            Leg = here.Range(-0.03f, 0.03f), Shoulder = here.Range(-0.04f, 0.04f), Hip = here.Range(-0.04f, 0.04f), Build = here.Range(-0.1f, 0.1f),
+            Outsiders = crossroads ? here.Range(0.25f, 0.45f) : here.Range(0.03f, 0.12f),
+        };
+    }
+
+    public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false, Founders founders = null)
     {
         var rng = Rng.For(seed, "person");
         var look = occupancy == Occupancy.Feral ? _t.Feral
@@ -145,9 +185,27 @@ public sealed class PeopleGenerator
         if (husk) { f.Build = MathF.Min(f.Build, 0.2f); f.Stoop = rng.Range(0.3f, 0.6f); f.Stagger = 0.25f; }
 
         // Colours: their skin; the climate's cloth; a role's trim. A town's fashions are its own rolls.
-        float value = rng.Range(Folk.SkinVal);
-        f.Skin = Color.FromHsv(Wrap(rng.Range(Folk.SkinHue)), rng.Range(Folk.SkinSat), value);
-        if (!Folk.Hairless) f.Hair = Hex(rng.Pick(_t.HairColours));
+        // Their looks come from where their people settled, on a stream of their own: nothing about
+        // their job, side or temper reaches it.
+        var kin = Rng.For(seed, "kin");
+        bool local = founders != null && !kin.Chance(founders.Outsiders);
+        f.Skin = local
+            ? Color.FromHsv(Wrap(founders.SkinHue + kin.Range(-0.01f, 0.01f)), Math.Clamp(founders.SkinSat + kin.Range(-0.05f, 0.05f), 0f, 1f), Math.Clamp(founders.SkinValue + kin.Range(-0.07f, 0.07f), 0.15f, 0.95f))
+            : Color.FromHsv(Wrap(kin.Range(Folk.SkinHue)), kin.Range(Folk.SkinSat), kin.Range(Folk.SkinVal));
+        if (!Folk.Hairless) f.Hair = Hex(local && kin.Chance(0.85f) ? kin.Pick(founders.Hair) : kin.Pick(_t.HairColours));
+        f.Brow = local ? founders.Brow + kin.Range(-0.05f, 0.05f) : kin.Range(-0.15f, 0.15f);
+        f.Jaw = local ? founders.Jaw + kin.Range(-0.03f, 0.03f) : kin.Range(-0.08f, 0.08f);
+        // Each proportion on its own, round their people's lean: builds vary inside a place and lean a little by people.
+        float Around(float lean, float spread) => 1f + (local ? lean : 0f) + (kin.Float() + kin.Float() - 1f) * spread;
+        f.LegK = Around(founders?.Leg ?? 0f, 0.05f);
+        f.ArmK = Around(0f, 0.045f);
+        f.NeckK = Around(0f, 0.18f);
+        f.HeadK = Around(0f, 0.05f);
+        f.HandK = Around(0f, 0.12f);
+        f.FootK = Around(0f, 0.1f);
+        f.HipK = Around(founders?.Hip ?? 0f, 0.1f);
+        f.ShoulderK = Around(founders?.Shoulder ?? 0f, 0.09f);
+        if (local) f.Build = Math.Clamp(f.Build + founders.Build, 0f, 1f);
         if (f.Stage == LifeStage.Elder || f.Age > 50f && rng.Chance(0.5f)) f.Hair = new Color(0.62f, 0.6f, 0.58f).Lerp(f.Hair, 0.2f);
         ClimateDress dress = Dress;
         f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress;
@@ -155,6 +213,11 @@ public sealed class PeopleGenerator
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
         f.Cloth = f.Cloth.Darkened(rng.Range(0f, 0.2f));
         f.Trim = look.Trim.Length > 0 ? Hex(rng.Pick(look.Trim)) : f.Cloth.Darkened(0.35f);
+        // Against the ground they stand on: darker figures on bright sand and snow, lighter on dark ground.
+        f.Cloth = Apart(f.Cloth, _w.Backdrop);
+        f.Trim = Apart(f.Trim, _w.Backdrop);
+        // One saturated mark by their job, never the hue of the ground.
+        f.Accent = AccentOf(look, rng, _w.Backdrop);
         f.Leather = new Color(0.27f, 0.19f, 0.13f).Lightened(rng.Range(0f, 0.15f));
         f.Metal = new Color(0.34f, 0.34f, 0.36f);
         if (occupancy == Occupancy.Feral) f.Cloth = f.Cloth.Lerp(new Color(0.22f, 0.2f, 0.17f), 0.6f);
@@ -263,6 +326,23 @@ public sealed class PeopleGenerator
     }
 
     static float Wrap(float h) => h - MathF.Floor(h);
+
+    /// <summary>A colour moved far enough in value from the backdrop to read against it.</summary>
+    static Color Apart(Color c, Color backdrop)
+    {
+        float gap = c.V - backdrop.V;
+        if (MathF.Abs(gap) >= 0.22f) return c;
+        return backdrop.V > 0.5f ? c.Darkened(Math.Clamp((0.22f - gap) / MathF.Max(0.05f, c.V), 0f, 0.7f)) : c.Lightened(Math.Clamp((0.22f + gap) * 1.2f, 0f, 0.5f));
+    }
+
+    static Color AccentOf(RoleLook look, Rng rng, Color backdrop)
+    {
+        float hue = look.Accent.Length > 0 ? rng.Range(look.Accent) : rng.Float();
+        backdrop.ToHsv(out float bh, out float bs, out _);
+        float d = MathF.Abs(Wrap(hue - bh + 0.5f) - 0.5f);
+        if (bs > 0.15f && d < 0.12f) hue = Wrap(hue + 0.5f);
+        return Color.FromHsv(hue, rng.Range(0.65f, 0.85f), rng.Range(0.55f, 0.75f));
+    }
 
     /// <summary>The look of a town's job, as the place's own data calls it, with a roll for who the idle people are.</summary>
     /// <summary>

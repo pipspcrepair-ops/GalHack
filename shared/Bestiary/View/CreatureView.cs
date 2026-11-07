@@ -56,6 +56,8 @@ public static class CreatureMaterials
         m.SetShaderParameter("roughness_value", 0.82f);
         m.SetShaderParameter("detail_freq", 90f);
         m.SetShaderParameter("detail_strength", 0.05f);
+        m.SetShaderParameter("rim_strength", 0.45f);
+        m.SetShaderParameter("far_lift", 0.28f);
         return m;
     }
 

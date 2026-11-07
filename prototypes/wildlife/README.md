@@ -1,5 +1,7 @@
 # Prototype: procedural wildlife and the harvester hovercraft
 
+**The code now lives in `shared/Bestiary`**, the one module everything that moves comes from: wildlife, people and machines (`Bestiary.Roll(data, WorldConditions)` gives a world's `WorldLife`). Folder paths below that say `src/Core`, `Rigs`, `Sim`, `Space`, `View`, `Game/ProceduralAudio.cs` or `data/` mean the same folders under `shared/Bestiary`. This prototype is its showroom and runs its tests, including `tests/BestiaryTest.tscn` (bodies fit the world, people, mutation, spit, senses, voices, young, block-breakers, reactions, tempers). The slice stages proof with `--view=folk`, `--view=crowd` and `--view=fauna`.
+
 Proves that every planet can roll its own fauna on a handful of reliable procedural rigs, from near-familiar grazers to properly weird things, and that they come out looking like animals rather than accidents. It also covers:
 - herds and hunting packs
 - telegraphed, dodgeable attacks

@@ -52,7 +52,7 @@ public static class HumanBody
             au.Taper(Vector3.Zero, Vector3.Up * f.UpperArm, 0.05f * u * b * pad, 0.04f * u * b * pad, sleeve, 0f, 0f, Mat.Skin, 7);
             var al = new Piece($"arm{side}l");
             al.Taper(Vector3.Zero, Vector3.Up * f.Forearm * 0.86f, 0.04f * u * b * pad, 0.03f * u * pad, forearm, 0f, 0f, Mat.Skin, 7);
-            al.Add(Shape.Sphere, new Vector3(0.062f, 0.11f, 0.045f) * u * (f.Dress is "furs" or "suit" ? 1.25f : 1f), Vector3.Up * f.Forearm * 0.95f, hand, 0f, 0f, null, 7);
+            al.Add(Shape.Sphere, new Vector3(0.062f, 0.11f, 0.045f) * u * f.HandK * (f.Dress is "furs" or "suit" ? 1.25f : 1f), Vector3.Up * f.Forearm * 0.95f, hand, 0f, 0f, null, 7);
             var lu = new Piece($"leg{side}u");
             lu.Taper(Vector3.Zero, Vector3.Up * f.UpperLeg, 0.082f * u * b * pad, 0.056f * u * b * pad, trouser, 0f, 0f, Mat.Skin, 8);
             var ll = new Piece($"leg{side}l");
@@ -60,10 +60,13 @@ public static class HumanBody
             if (f.Dress is not "rags" and not "wraps") ll.Taper(Vector3.Up * f.LowerLeg * 0.6f, Vector3.Up * f.LowerLeg, 0.05f * u * pad, 0.046f * u * pad, f.Leather, 0f, 0f, Mat.Skin, 8); // boot tops
             var ft = new Piece($"leg{side}f");
             Color boot = f.Dress == "rags" ? f.Skin.Darkened(0.2f) : f.Dress == "wraps" ? f.Leather.Lightened(0.15f) : f.Leather.Darkened(0.2f);
-            ft.Add(Shape.Sphere, new Vector3(0.1f, f.Ankle * 1.5f / u, 0.27f) * u, new Vector3(0f, -f.Ankle * 0.45f, -0.055f * u), boot, 0f, 0f, null, 8);
-            ft.Add(Shape.Box, new Vector3(0.095f, 0.02f, 0.26f) * u, new Vector3(0f, -f.Ankle + 0.01f, -0.055f * u), boot.Darkened(0.4f));
+            ft.Add(Shape.Sphere, new Vector3(0.1f * f.FootK, f.Ankle * 1.5f / u, 0.27f * f.FootK) * u, new Vector3(0f, -f.Ankle * 0.45f, -0.055f * u * f.FootK), boot, 0f, 0f, null, 8);
+            ft.Add(Shape.Box, new Vector3(0.095f * f.FootK, 0.02f, 0.26f * f.FootK) * u, new Vector3(0f, -f.Ankle + 0.01f, -0.055f * u * f.FootK), boot.Darkened(0.4f));
             ft.Shadow = false;
             if (side == 0 && f.Has("medic_band")) Band(au, f);
+            // The one saturated mark: a band on the arm, where nothing else is.
+            else if (side == 0 && !f.Has("spike_pads") && f.Dress != "rags") au.Add(Shape.Cylinder, new Vector3(0.115f, 0.07f, 0.115f) * u * f.Padding, Vector3.Up * f.UpperArm * 0.52f, f.Accent, 0f, 0f, null, 8);
+            if (side == 1 && f.Has("scrap_armour")) lu.Add(Shape.Box, new Vector3(0.13f, f.UpperLeg * 0.42f, 0.04f) * new Vector3(u, 1f, u), new Vector3(0.02f, f.UpperLeg * 0.55f, -0.07f * u), f.Metal.Darkened(0.2f), 0f, 0f, new Basis(Vector3.Forward, 0.12f), 0, Mat.Carapace);
             if (f.Has("spike_pads")) Pad(au, f, side);
             layout.Add(au);
             layout.Add(al);
@@ -170,8 +173,8 @@ public static class HumanBody
                 p.Loft(shawl, f.Trim, f.Trim.Darkened(0.2f), 0f, 0f, Mat.Skin, null, upright, 11);
                 break;
             case "scarf":
-                p.Add(Shape.Cylinder, new Vector3(0.21f, 0.09f, 0.18f) * u, new Vector3(0f, T * 1.0f, 0f), f.Trim, 0f, 0f, null, 9);
-                p.Add(Shape.Box, new Vector3(0.09f, 0.3f, 0.02f) * u, new Vector3(0.05f * u, T * 0.78f, -d * 1.03f), f.Trim);
+                p.Add(Shape.Cylinder, new Vector3(0.21f, 0.09f, 0.18f) * u, new Vector3(0f, T * 1.0f, 0f), f.Accent, 0f, 0f, null, 9);
+                p.Add(Shape.Box, new Vector3(0.09f, 0.3f, 0.02f) * u, new Vector3(0.05f * u, T * 0.78f, -d * 1.03f), f.Accent.Darkened(0.1f));
                 break;
             case "satchel":
                 p.Rod(new Vector3(-W * 0.8f, T * 0.92f, -d * 0.9f), new Vector3(W * 0.95f, T * 0.28f, -d * 0.4f), 0.03f * u, f.Leather);
@@ -199,6 +202,16 @@ public static class HumanBody
             case "bandoleer":
                 Bandoleer(p, f, 1f);
                 if (f.Height > 1.7f) Bandoleer(p, f, -1f);
+                break;
+            case "trophies":
+                // Bones and a skull hung from the belt: a raider's, at a glance.
+                p.Add(Shape.Sphere, new Vector3(0.11f, 0.12f, 0.12f) * u, new Vector3(-f.WaistW * 1.05f * pad, T * 0.24f, -d * 0.4f), new Color(0.82f, 0.78f, 0.66f), 0f, 0f, null, 8, Mat.Horn);
+                p.Add(Shape.Sphere, new Vector3(0.03f, 0.03f, 0.02f) * u, new Vector3(-f.WaistW * 1.05f * pad - 0.02f * u, T * 0.25f, -d * 0.4f - 0.05f * u), new Color(0.1f, 0.08f, 0.07f));
+                for (int i = 0; i < 3; i++) p.Rod(new Vector3(f.WaistW * (0.2f + i * 0.3f) * pad, T * 0.38f, -d * 1.02f), new Vector3(f.WaistW * (0.22f + i * 0.3f) * pad, T * 0.14f, -d * 1.05f), 0.025f * u, new Color(0.8f, 0.76f, 0.64f), 0f, 0f, false, Mat.Horn);
+                break;
+            case "scrap_armour":
+                p.Add(Shape.Box, new Vector3(W * 0.9f, T * 0.24f, 0.03f), new Vector3(-W * 0.15f, T * 0.62f, -d * 1.07f), f.Metal.Darkened(0.15f), 0f, 0f, new Basis(Vector3.Back, 0.18f), 0, Mat.Carapace);
+                p.Add(Shape.Box, new Vector3(W * 0.6f, T * 0.18f, 0.03f), new Vector3(W * 0.3f, T * 0.4f, -d * 1.05f), f.Leather.Darkened(0.2f), 0f, 0f, new Basis(Vector3.Back, -0.25f), 0, Mat.Carapace);
                 break;
             case "spike_pads":
                 p.Add(Shape.Cone, new Vector3(0.06f, 0.16f, 0f) * u, new Vector3(0f, T * 0.9f, d + 0.05f * u), f.Metal.Lightened(0.2f), 0f, 0f, new Basis(Vector3.Right, MathF.PI * 0.5f), 6, Mat.Horn);
@@ -245,7 +258,7 @@ public static class HumanBody
         {
             float a = -0.6f + i * 0.6f;
             var dir = new Vector3(s * MathF.Cos(a) * 0.5f, -0.75f, MathF.Sin(a)).Normalized();
-            arm.Add(Shape.Cone, new Vector3(0.04f, 0.13f, 0f) * u, Vector3.Up * 0.0f + dir * 0.1f * u, f.Metal.Lightened(0.25f), 0f, 0f, Geo.AlongY(dir), 6, Mat.Horn);
+            arm.Add(Shape.Cone, new Vector3(0.055f, 0.22f, 0f) * u, dir * 0.13f * u, f.Metal.Lightened(0.25f), 0f, 0f, Geo.AlongY(dir), 6, Mat.Horn);
         }
     }
 
@@ -259,11 +272,11 @@ public static class HumanBody
         p.Taper(new Vector3(0f, -0.03f, 0.005f), new Vector3(0f, N + R * 0.2f, 0f), 0.052f * u * (0.8f + 0.5f * f.Build), 0.046f * u, skin, 0f, 0f, Mat.Skin, 8);
         p.Add(Shape.Sphere, new Vector3(R * 1.68f, R * 1.95f, R * 2f), c + new Vector3(0f, R * 0.08f, 0f), skin, 0f, 0f, null, 10);
         // Jaw: heavier in men, narrow in women and the young.
-        float jaw = f.Sex == Sex.Male && !child ? 1.06f : 0.92f;
+        float jaw = (f.Sex == Sex.Male && !child ? 1.06f : 0.92f) + f.Jaw;
         p.Add(Shape.Sphere, new Vector3(R * 1.34f * jaw, R * 1.15f, R * 1.42f), c + new Vector3(0f, -R * 0.56f, -R * 0.2f), skin.Darkened(0.03f), 0f, 0f, null, 9);
         p.Taper(c + new Vector3(0f, R * 0.12f, -R * 0.92f), c + new Vector3(0f, -R * 0.2f, -R * 1.05f), R * 0.1f, R * 0.13f, skin.Darkened(0.04f), 0f, 0f, Mat.Skin, 6);
         // Brows: a folk's ridge sets how far they stand out.
-        float ridge = 0.18f + 0.22f * (f.Folk?.BrowRidge ?? 0f);
+        float ridge = MathF.Max(0.08f, 0.18f + 0.22f * (f.Folk?.BrowRidge ?? 0f) + f.Brow);
         for (int s = -1; s <= 1; s += 2)
         {
             Vector3 eye = c + new Vector3(s * R * 0.36f, R * 0.14f, -R * 0.82f);
@@ -463,6 +476,12 @@ public static class HumanBody
         p.Add(Shape.Sphere, Vector3.One * f.HeadRadius * (f.Has("suit_helmet") || f.Has("fur_hood") ? 2.8f : 2f), new Vector3(0f, f.Height - f.HeadRadius, 0f), head, 0f, 0f, null, 6);
         if (f.Has("wide_hat") || f.Has("straw_hat")) p.Add(Shape.Box, new Vector3(f.HeadRadius * 4f, 0.03f, f.HeadRadius * 4f), new Vector3(0f, f.Height - f.HeadRadius * 0.7f, 0f), head);
         if (f.Has("backpack") || f.Has("air_tank")) p.Add(Shape.Box, new Vector3(0.32f, 0.44f, 0.18f) * u, new Vector3(0f, legH + chest * 0.66f, f.ChestD * pad + 0.09f * u), f.Trim.Darkened(0.2f));
+        // A raider's outline carries from far off: spikes on the shoulders and the crest.
+        if (f.Has("spike_pads"))
+            for (int side = -1; side <= 1; side += 2)
+                p.Add(Shape.Cone, new Vector3(0.08f, 0.3f, 0f) * u, new Vector3(side * (f.ShoulderW * pad + 0.06f * u), legH + chest + 0.08f * u, 0f), f.Metal.Lightened(0.2f), 0f, 0f, new Basis(Vector3.Back, -side * 0.6f), 5);
+        if (f.HairStyle == "mohawk" && !f.Has("suit_helmet")) p.Add(Shape.Box, new Vector3(0.05f, f.HeadRadius * 1.2f, f.HeadRadius * 2.2f), new Vector3(0f, f.Height + f.HeadRadius * 0.3f, 0f), new Color(0.7f, 0.12f, 0.1f));
+        p.Add(Shape.Box, new Vector3(0.1f, 0.06f, 0.1f) * u, new Vector3(-(f.ShoulderW * pad + 0.04f * u), legH + chest - f.UpperArm * 0.5f, 0f), f.Accent);
         return p;
     }
 }

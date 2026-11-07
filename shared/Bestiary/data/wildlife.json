@@ -540,26 +540,27 @@
     "roles": {
       "Worker": {
         "wear": { "tool_belt": 0.6, "apron": 0.3, "cap": 0.4, "backpack": 0.1 },
-        "trim": ["4a5a6a", "3f5060", "5a5040", "4a4a42"]
+        "trim": ["4a5a6a", "3f5060", "5a5040", "4a4a42"],
+        "accent": [0.08, 0.14]
       },
       "Trader": {
         "wear": { "apron": 0.55, "satchel": 0.7, "scarf": 0.5, "wide_hat": 0.4, "shawl": 0.25 },
         "trim": ["a8622a", "8a3f2c", "9a7a2c", "5a3f6a", "2f6a5e"],
-        "approach": "Present"
+        "approach": "Present", "accent": [0.75, 0.85]
       },
       "Guard": {
         "wear": { "vest": 0.95, "helmet": 0.8, "satchel": 0.3, "bandoleer": 0.25 },
         "trim": ["3a3f36", "2f3a3f", "45443a", "3c3430"],
-        "prop": "rifle", "build": 0.15, "approach": "Warn", "aimed": "Warn"
+        "prop": "rifle", "build": 0.15, "approach": "Warn", "aimed": "Warn", "accent": [0.55, 0.62]
       },
       "Farmer": {
         "wear": { "straw_hat": 0.75, "apron": 0.2, "wide_hat": 0.2, "tool_belt": 0.15 },
         "trim": ["5a4a2f", "6a5a38", "4f5230", "3f4a5a"],
-        "prop": "hoe", "propChance": 0.6
+        "prop": "hoe", "propChance": 0.6, "accent": [0.12, 0.17]
       },
       "Medic": {
         "wear": { "medic_band": 1.0, "shawl": 0.15, "cap": 0.3 },
-        "trim": ["bcbab0", "c8c4b6", "a8aaa4"]
+        "trim": ["bcbab0", "c8c4b6", "a8aaa4"], "accent": [0.98, 1.0]
       },
       "Scavenger": {
         "wear": { "backpack": 0.9, "goggles": 0.6, "hood": 0.3, "tool_belt": 0.4, "scarf": 0.4, "coat": 0.25 },
@@ -581,9 +582,9 @@
         "prop": "bottle", "propChance": 0.8, "stoop": 0.25, "stagger": 1.0
       },
       "Raider": {
-        "wear": { "spike_pads": 0.95, "bandoleer": 0.85, "face_paint": 0.75, "vest": 0.4, "eyepatch": 0.2, "goggles": 0.3, "helmet": 0.12 },
+        "wear": { "spike_pads": 1.0, "bandoleer": 0.85, "face_paint": 0.75, "trophies": 0.7, "scrap_armour": 0.6, "eyepatch": 0.2, "goggles": 0.3 },
         "trim": ["1f1a18", "2a2320", "33261e", "3a1f1a"],
-        "prop": "rifle", "propChance": 0.55, "build": 0.15, "hair": "mohawk", "approach": "Taunt", "aimed": "Taunt"
+        "prop": "rifle", "propChance": 0.55, "build": 0.15, "hair": "mohawk", "approach": "Taunt", "aimed": "Taunt", "accent": [0.0, 0.03]
       }
     },
     "feral": {
