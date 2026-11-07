@@ -63,7 +63,7 @@ public static class Atmosphere
         // and wind comb out high cirrus. (The shader varies them across the map and over time.)
         float humid = Math.Clamp(sky.Air switch { AirKind.Humid => 0.9f, AirKind.Breathable => 0.6f, AirKind.Exotic => 0.5f, AirKind.Sulfurous => 0.4f, AirKind.Ash => 0.3f, _ => 0.15f } + 0.5f * c.Rain + 0.3f * c.GroundFog, 0f, 1f);
         float cold = Smooth(12f, -2f, c.Temperature);
-        float wind = Smooth(2f, 18f, c.WindSpeed);
+        float wind = Smooth(3f, 16f, c.WindSpeed);
         float solar = Math.Clamp(c.Solar, 0f, 1f);
         // The cloud layer sits between the peaks and the top of the atmosphere (about 1,060 m, on
         // Empyrion's scale): its base at 600 to 650 m, its top at about 1,000 m at the most.
@@ -85,7 +85,7 @@ public static class Atmosphere
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),
             Stratus = MathF.Max(Smooth(0.5f, 0.85f, cover), cold * Smooth(0.2f, 0.6f, cover) * 0.85f) * (1f - cellular),
-            Cirrus = (0.08f + 0.92f * (1f - humid)) * (0.35f + 0.65f * wind) * (1f - Smooth(0.5f, 0.9f, cover)),
+            Cirrus = (1f - humid) * (1f - humid) * (0.15f + 0.85f * wind) * (1f - Smooth(0.3f, 0.7f, cover)), // mostly none: only dry, windy, fair skies comb it out
         };
     }
 

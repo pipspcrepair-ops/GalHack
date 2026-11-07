@@ -347,6 +347,27 @@ public static class InfraViews
             Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
         }
         else GD.Print("ROADS: no country road found");
+        // A paved road out in the country, from its own deck: its joints, cracks, patches and holes up close.
+        InfraRoute paved = null;
+        int pavedAt = 0;
+        double pavedAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 20; i + 20 < r.Count; i += 4)
+            {
+                if (r.Span[i - 20] != RoadSpan.Ground || r.Span[i + 19] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
+                if (d < 400 || d >= pavedAway) continue;
+                pavedAway = d;
+                paved = r;
+                pavedAt = i;
+            }
+        if (paved != null)
+        {
+            GD.Print($"ROADS: paved {paved.Kind} {paved.Id} ({paved.Surface}, wear {paved.Wear:F2}) at {paved.X[pavedAt]:F0}, {paved.Z[pavedAt]:F0}");
+            double dx = paved.X[pavedAt + 6] - paved.X[pavedAt - 6], dz = paved.Z[pavedAt + 6] - paved.Z[pavedAt - 6], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            double sx = paved.X[pavedAt] + dz / len * paved.HalfWidth * 0.4, sz = paved.Z[pavedAt] - dx / len * paved.HalfWidth * 0.4;
+            Add("paved-ground", sx, sz, paved.Y[pavedAt] + 1.7f, paved.X[pavedAt + 10], paved.Z[pavedAt + 10], paved.Y[pavedAt + 10] - 0.6f);
+        }
         // The tightest bend on a paved road near the landing, close up from above its inside.
         InfraRoute bent = null;
         int bentAt = 0;

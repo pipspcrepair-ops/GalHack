@@ -34,7 +34,11 @@ public partial class Staging
         sim.ClearTornadoes();
         Tornado t = sim.SpawnTornado(eye + new Vector3(dist, 0f, 0f), eye);
         t.Homing = false;
-        foreach (int x in _drive.Wait(240)) yield return x;
+        Hurry(6);
+        for (int i = 0; i < 60 * 60 && !t.Touchdown; i++) yield return 0; // until it is down
+        Hurry(1);
+        GD.Print($"(funnel touchdown {t.Touchdown}, formation {t.Formation:F2})");
+        foreach (int x in _drive.Wait(60)) yield return x;
         float pitch = (float)Num("lookup", 0.35);
         Vector3 look = new Vector3(1f, MathF.Tan(pitch) , 0f).Normalized();
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
@@ -47,6 +51,82 @@ public partial class Staging
         foreach (Node n in _game.GetTree().Root.FindChildren("*", "MeshInstance3D", true, false))
             if (n is MeshInstance3D m && m.IsVisibleInTree() && m.Mesh is BoxMesh or CylinderMesh && m.GetAabb().Size.Length() > 2f)
                 GD.Print($"BOX {m.GetPath()} {m.Mesh.GetType().Name} rel {m.GlobalPosition - eye} size {m.GetAabb().Size * m.GlobalTransform.Basis.Scale}");
+    }
+
+    /// <summary>A storm cell from outside (--under=1: from right under it), looking at the strongest one. --weather picks the strength.</summary>
+    IEnumerable<int> StormShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        var sim = _game.Zone.Weather.Sim;
+        sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Thunderstorm")));
+        _game.Zone.Weather.Sim.ClearTornadoes();
+        Hurry(6);
+        for (int i = 0; i < 60 * 25; i++) yield return 0; // the cells grow
+        Hurry(1);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 start = Clearing(_game.Survivor.WorldFeet);
+        StormCell cell = sim.Cells.OrderByDescending(c => c.Strength).FirstOrDefault();
+        if (cell == null) { GD.Print("(no cell)"); yield break; }
+        float far = Num("under", 0) == 1 ? 0f : (float)Num("dist", 3000);
+        Vector3 toward = new Vector3(cell.Position.X - start.X, 0f, cell.Position.Z - start.Z);
+        float away = toward.Length();
+        Vector3 dir = toward.Normalized();
+        Vector3 eye = Num("under", 0) == 1 ? new Vector3(cell.Position.X, 0f, cell.Position.Z) + dir * 150f : new Vector3(cell.Position.X, 0f, cell.Position.Z) - dir * far;
+        float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        eye.Y = MathF.Max(groundY, 0f) + (float)Num("up", 40);
+        GD.Print($"(storm: strength {cell.Strength:F2}, radius {cell.Radius:F0}, camera {(new Vector2(eye.X - cell.Position.X, eye.Z - cell.Position.Z)).Length():F0} m from it, {eye.Y - groundY:F0} m over the ground; start {away:F0} m from it)");
+        Vector3 look = (dir * MathF.Cos((float)Num("lookup", 0.15)) + Vector3.Up * MathF.Sin((float)Num("lookup", 0.15)));
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
+        foreach (int x in _drive.Wait(90)) yield return x;
+    }
+
+    /// <summary>Prints the cirrus and stratus weights over 40 rolled world and weather pairs.</summary>
+    IEnumerable<int> CirrusLog()
+    {
+        var rng = new Random();
+        WeatherData data = _game.Zone.Data.Weather;
+        string[] ids = { "temperate", "arid", "ice", "storm", "swamp", "ocean", "lava" };
+        var kinds = new[] { WeatherKind.Clear, WeatherKind.Clear, WeatherKind.Clear, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Rain, WeatherKind.Rain, WeatherKind.Rain, WeatherKind.Fog, WeatherKind.Snow, WeatherKind.Thunderstorm, WeatherKind.DustStorm, WeatherKind.Monsoon };
+        var cir = new List<float>();
+        for (int i = 0; i < 40; i++)
+        {
+            var arch = (Planets.Gen.Archetype)rng.Next(5);
+            var sky = PlanetSurface.Skies.SkySystem.For(Planets.Gen.PlanetSpec.Roll((ulong)rng.Next(), arch, 0));
+            var sim = new WeatherSim(data, ids[rng.Next(ids.Length)], (ulong)rng.Next());
+            WeatherKind k = kinds[rng.Next(kinds.Length)];
+            sim.Snap(k);
+            var a = PlanetSurface.Skies.Atmosphere.Compute(sky, sim.Current, 0.8f);
+            cir.Add(a.Cirrus);
+            GD.Print($"CIRRUS {i,2} {arch,-9} {sky.Air,-10} {k,-12} wind {sim.Current.WindSpeed,4:F1} temp {sim.Current.Temperature,5:F1} cover {a.CloudCover:F2} cirrus {a.Cirrus:F2} stratus {a.Stratus:F2}");
+        }
+        cir.Sort();
+        GD.Print($"CIRRUS spread: <0.1 {cir.Count(c => c < 0.1f)}, 0.1-0.3 {cir.Count(c => c >= 0.1f && c < 0.3f)}, 0.3-0.6 {cir.Count(c => c >= 0.3f && c < 0.6f)}, >=0.6 {cir.Count(c => c >= 0.6f)}; median {cir[20]:F2}");
+        yield return 0;
+    }
+
+    /// <summary>The sky at ground level: --weather, level (--lookup 0) and 30 degrees up, for the cloud ceiling.</summary>
+    IEnumerable<int> SkyLevel()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        _game.Zone.Weather.Sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Clouds")));
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 eye = Clearing(_game.Survivor.WorldFeet);
+        float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        eye.Y = MathF.Max(eye.Y, groundY) + (float)Num("up", 1.6);
+        GD.Print($"(sky camera {eye.Y - groundY:F1} m over the ground, moved out of the start bunker)");
+        foreach (float deg in new[] { 0f, 30f })
+        {
+            Vector3 look = new Vector3(1f, MathF.Tan(Mathf.DegToRad(deg)), 0f).Normalized();
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
+            foreach (int x in _drive.Wait(40)) yield return x;
+            Snap($"up{deg:0}");
+        }
     }
 
     /// <summary>Stands in a monsoon and prints the frame's cost, with the rain, over a few hundred drawn frames.</summary>
