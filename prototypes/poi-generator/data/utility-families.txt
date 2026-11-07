@@ -92,29 +92,39 @@ family water_works
 family sewage_works
   tier site
   siting flat
-  rise 10
+  rise 22
   name Sewage Works
-  pitch Foul basins and digesters, and the pumps that kept the town clean.
+  pitch Settling tanks in rows, a pump hall over a deep pit, digesters against the sky, and the pipe gallery under it all.
   faction none
   roster raiders
-  site sewage_works
+  site works_sewage_mid
   core none
   owner none
   rarity common
   biomes desert rock ash steppe ice fungal
   territory any
   spacing 14
-  reveal 300
+  reveal 700
   ominous 0.4
   wrong 0.05
-  tags utility industry
-  states active 0 abandoned 6 infested 3 ruined 1
+  tags utility industry grand
+  states active 0 abandoned 6 infested 2 ruined 3
   variant Outfall Works
     seed 9831
+    site works_sewage_mid
+    tech mid
   variant Low Lane Treatment
     seed 9832
-  variant Pumping Station Nine
+    site works_sewage_low
+    tech low
+  variant Reclamation Plant Nine
     seed 9833
+    site works_sewage_high
+    tech high
+  variant Eastside Water Treatment
+    seed 9834
+    site works_sewage_mid
+    tech mid
 
 family fusion_plant
   tier base

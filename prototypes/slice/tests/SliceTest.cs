@@ -842,7 +842,7 @@ public partial class SliceTest : Node
         Check(flown >= 2000f, $"it flew {flown:F0} m across the planet, top speed {top:F0} m/s, up to {bestAgl:F0} m above the ground");
         float worst = _impacts.Where(i => i.Body == v.Body).Select(i => i.Speed).DefaultIfEmpty(0f).Max();
         Check(v.Controller.Frozen && _landed > lands && v.Controller.Gear.Deployed && v.Body.Damage == damageBefore && worst < 8f,
-            $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s)");
+            $"it landed safely on its gear: landed and settled, no damage (hardest contact {worst:F1} m/s{(worst >= 8f ? $", {_impacts.Where(i => i.Body == v.Body).MaxBy(i => i.Speed)}, landed at {v.Body.Position}, target {target}" : "")})");
         float tilt = MathF.Acos(Math.Clamp(MathX.Up(v.Body.Rotation).Y, -1f, 1f)) * 180f / MathF.PI;
         Check(tilt <= 12.5f && !Inside(v.Body), $"it stands on its feet ({tilt:F1}Â° of tilt), not in the ground");
         Check(BodyHarm() <= harmBefore, "the pilot came through unhurt");

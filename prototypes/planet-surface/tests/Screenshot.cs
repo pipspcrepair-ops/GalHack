@@ -62,12 +62,55 @@ public partial class Screenshot : Node
         ulong seed = (ulong)Int("seed", 1);
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
+        _args.TryGetValue("force", out string force);
+        if (_args.TryGetValue("state", out string state)) PlanetSurface.Poi.PoiSiting.ForceState = Enum.Parse<PoiGenerator.Gen.PoiState>(state, true);
+        if (_args.ContainsKey("forcevariant")) PlanetSurface.Poi.PoiSiting.ForceVariant = Int("forcevariant", 0);
         return new ViewSpec(planet, m =>
         {
+            // A place's own frame: the camera and what it looks at, in the place's cells.
+            if (force != null && _args.TryGetValue("cam", out string cam))
+            {
+                var site = m.World.Pois.First(p => p.Family.Id == force);
+                GD.Print($"forced {site.Name} at {site.Origin.X},{site.Origin.Y},{site.Origin.Z}, stamp {site.Stamp.MinX}..{site.Stamp.MaxX} x {site.Stamp.MinZ}..{site.Stamp.MaxZ}, entrance {site.Entrance.X},{site.Entrance.Y},{site.Entrance.Z}");
+                Vector3 Local(string text)
+                {
+                    var n = text.Split(',').Select(t => float.Parse(t, CultureInfo.InvariantCulture)).ToArray();
+                    return new Vector3(site.Origin.X + n[0], site.Origin.Y + n[1], site.Origin.Z + n[2]);
+                }
+                Vector3 from = Local(cam), at = Local(_args["at"]), d = at - from;
+                if (_args.TryGetValue("figure", out string figure)) _figure = Local(figure);
+                return (from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+            }
+            // A region from the air: what its plan set down, listed, with the camera over its first town.
+            if (_args.ContainsKey("region") && m.World.Infra.RegionPlan is { } plan)
+            {
+                GD.Print($"{plan.Roll}: {plan.Regions.Count} regions");
+                foreach (var pp in plan.Places) GD.Print($"  {pp.Role} {pp.Family} at {pp.X:F0},{pp.Z:F0}: {pp.Why}");
+                foreach (var l in plan.Links) GD.Print($"  {l.Kind}: {plan.Places[l.A].Family} to {plan.Places[l.B].Family}: {l.Why}");
+                var hub = plan.Places.First(p => p.Role == "hub" && p.Seated != null);
+                float cx = (float)hub.X, cz = (float)hub.Z, g0 = m.World.GroundHeight(hub.X, hub.Z);
+                float back = (float)Num("back", 1400), up = (float)Num("up", 900), turn = (float)Num("heading", 0);
+                var from = new Vector3(cx - Mathf.Sin(Mathf.DegToRad(turn)) * back, g0 + up, cz + Mathf.Cos(Mathf.DegToRad(turn)) * back);
+                return (from, turn, -Mathf.RadToDeg(Mathf.Atan2(up, back)));
+            }
             double x = Num("x", m.World.Landing.X), z = Num("z", m.World.Landing.Y);
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
-        }, Num("time", 0.42), weather);
+        }, Num("time", 0.42), weather, Force: force, BeforeCapture: AddFigure);
+    }
+
+    Vector3? _figure;
+
+    /// <summary>A person for scale: 1.8 m, in a bright coat, standing where asked.</summary>
+    void AddFigure(Main main)
+    {
+        if (_figure is not Vector3 at) return;
+        var coat = new StandardMaterial3D { AlbedoColor = new Color("d8552a") };
+        var head = new StandardMaterial3D { AlbedoColor = new Color("e0c0a0") };
+        var body = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.26f, Height = 1.55f, Material = coat }, Position = at + new Vector3(0, 0.78f, 0) };
+        var top = new MeshInstance3D { Mesh = new SphereMesh { Radius = 0.14f, Height = 0.28f, Material = head }, Position = at + new Vector3(0, 1.67f, 0) };
+        main.AddChild(body);
+        main.AddChild(top);
     }
 
     int Int(string key, int fallback) => _args.TryGetValue(key, out string s) ? int.Parse(s, CultureInfo.InvariantCulture) : fallback;

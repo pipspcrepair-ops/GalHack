@@ -72,6 +72,13 @@ public partial class Place
             var lo = new Vector3(min.X, min.Y, min.Z);
             var hi = new Vector3(max.X + 1, max.Y + 1, max.Z + 1);
             bool alongX = facing is Dir.North or Dir.South;
+            // The leaves run in the wall either side: where decay took that wall, the door fell with it (a way in, not a leaf hanging in the air).
+            Int3 sideA = alongX ? min + new Int3(-1, 0, 0) : min + new Int3(0, 0, -1), sideB = alongX ? max with { Y = min.Y } + new Int3(1, 0, 0) : max with { Y = min.Y } + new Int3(0, 0, 1);
+            if (!lift && (Inst.Blocks.Get(sideA).IsAir || Inst.Blocks.Get(sideB).IsAir))
+            {
+                foreach (Int3 c in doorCells) Inst.Blocks.Set(c, Block.Air);
+                continue;
+            }
             bool blast = b0.Variant == DoorState.Blast;
             float thick = blast ? 0.4f : 0.18f;
             float width = alongX ? hi.X - lo.X : hi.Z - lo.Z, height = hi.Y - lo.Y;
@@ -131,6 +138,10 @@ public partial class Place
             door.Target = door.Open;
             PlaceLeaves(door);
             _doors.Add(door);
+            // Its leaves are drawn only while its cube is (from further off the merged drawing has it, shut).
+            Group home = GroupAt(GroupOf(ChunkOf(new Int3(Mathf.FloorToInt(centre.X), Mathf.FloorToInt(centre.Y), Mathf.FloorToInt(centre.Z)))));
+            home.Doors.Add(door);
+            root.Visible = home.Near;
             yield return 0;
         }
     }

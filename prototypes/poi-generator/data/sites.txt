@@ -688,3 +688,53 @@ site frontier_base
   part tower 32 22 h 14 size 4 crown lamp
   part tanks 4 24 count 2 r 2 h 4 gap 3 axis x
   part fence -10 -8 len 62 h 3 axis x gate 12 breaches 0.05 type wall
+
+# The large places, each with a layout logic of its own (src/Gen/Arch: SewageWorks, FarmEstate, BrutalComplex),
+# drawn on the player's 2 m blocks. tech: the materials and what each age added.
+site works_sewage_low
+  name Sewage Works
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what sewage tech low
+
+site works_sewage_mid
+  name Sewage Works
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what sewage tech mid
+
+site works_sewage_high
+  name Reclamation Plant
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what sewage tech high
+
+site estate_farm_low
+  name Old Farm
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech low
+
+site estate_farm_mid
+  name Old Farm
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech mid
+
+site estate_farm_high
+  name Agri-Station
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what farm tech high
+
+site complex_mid
+  name Industrial Complex
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what complex tech mid
+
+site complex_high
+  name Industrial Complex
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what complex tech high

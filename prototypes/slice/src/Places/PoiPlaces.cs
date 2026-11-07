@@ -81,6 +81,10 @@ public partial class PoiPlaces : Node3D
 
     public bool HasClearance(string clearance) => clearance == null || Holds(clearance);
 
+    /// <summary>Where the drawing is seen from (tests can say; otherwise the camera).</summary>
+    public Func<Vector3> Eye;
+    internal Vector3 EyeAt() => Eye?.Invoke() ?? Zone.Camera?.GlobalPosition ?? Focus();
+
     // ---- Standing places up, and taking them down -----------------------------------------------
 
     sealed class Job
@@ -177,7 +181,7 @@ public partial class PoiPlaces : Node3D
             {
                 Prepare(memory, decor, deep);
                 BlockGrid g = memory.Inst.Blocks;
-                return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Options(g.Min));
+                return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min));
             }),
         };
     }
@@ -239,9 +243,11 @@ public partial class PoiPlaces : Node3D
     {
         Place p = j.Place;
         j.Stage = "blocks";
-        foreach (ChunkMesh c in chunks)
+        int side = Place.GroupSize / Place.ChunkSize;
+        Int3 Of(Int3 c) => new(c.X >= 0 ? c.X / side : (c.X - side + 1) / side, c.Y >= 0 ? c.Y / side : (c.Y - side + 1) / side, c.Z >= 0 ? c.Z / side : (c.Z - side + 1) / side);
+        foreach (var group in chunks.GroupBy(c => Of(c.Chunk)))
         {
-            p.SetChunk(c);
+            p.SetGroupShapes(group.Key, group);
             yield return 0;
         }
         j.Stage = "fixtures";
@@ -278,19 +284,18 @@ public partial class PoiPlaces : Node3D
         Standing.Remove(p);
         _placeOf.Remove(p.Site);
         ShowFar(p.Site, true);
+        p.GiveBack();
         p.QueueFree();
     }
 
-    /// <summary>The far drawing's blocks (and its own dressing) shown or hidden; its lamps, glows and smoke always stay.</summary>
+    /// <summary>The far drawing's own dressing shown or hidden (its blocks give way cube by cube; its lamps, glows and smoke always stay).</summary>
     bool ShowFar(PoiSite site, bool show)
     {
         Node3D far = Zone.Pois.NodeOf(site);
         if (far == null) return false;
         foreach (Node n in far.GetChildren())
         {
-            string name = n.Name.ToString();
-            if (n is CollisionObject3D body) body.ProcessMode = show ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
-            else if (n is Node3D n3 && (name.StartsWith("Chunk") || name == "Deco")) n3.Visible = show;
+            if (n is Node3D n3 && n.Name.ToString() == "Deco") n3.Visible = show;
         }
         return true;
     }
@@ -309,7 +314,12 @@ public partial class PoiPlaces : Node3D
         Begin(nearest);
         _job.Meshing.Wait();
         while (_job != null && Step(_job)) { }
-        if (PlaceOf(nearest) is Place p && DistanceTo(nearest, from) > DropRadius) Drop(p);
+        if (PlaceOf(nearest) is Place p)
+        {
+            // The first full-detail cube costs the same one-off, so it is paid here too.
+            p.MeshNearNow(p.Inst.Layout.EntranceCell.Y < 0 ? new Int3(0, -1, 0) : new Int3(0, 0, 0));
+            if (DistanceTo(nearest, from) > DropRadius) Drop(p);
+        }
         WarmUpMs = clock.Elapsed.TotalMilliseconds;
         WorstStepMs = WorstFrameMs = 0;
         StageWorst.Clear();

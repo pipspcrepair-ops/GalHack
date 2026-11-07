@@ -93,6 +93,12 @@ public sealed class PoiSite
 
     /// <summary>The ways in a road can end at: the main entrance, fence gates, collapse breaches. World cells and the way out.</summary>
     public IReadOnlyList<PoiGate> Gates = Array.Empty<PoiGate>();
+
+    /// <summary>What the world's plan wanted here, and why (null where a place stands without one).</summary>
+    public PlannedPlace Planned;
+
+    /// <summary>The plan the place was set down by (null on a world without one).</summary>
+    public RegionPlan Plan;
 }
 
 /// <summary>A way into a place, for a network to connect to: where you stand outside it, and which way is out (a fence gate gives the axis through it; 0, 0 when any way is).</summary>
@@ -115,7 +121,7 @@ public readonly record struct PoiGate(string Kind, TInt3 Cell, int OutX, int Out
 ///    height (cutting high ground, filling low) and keeps rooms below ground open.
 /// Deterministic from the planet seed.
 /// </summary>
-public static class PoiSiting
+public static partial class PoiSiting
 {
     public const double RegionSize = 3200;   // metres around the landing site (kept for callers; placement now covers the planet)
     const float CellSize = 40f;
@@ -125,6 +131,11 @@ public static class PoiSiting
     public static int MaxSites = 14;
     /// <summary>Tests and screenshots: also place one of this family near the landing site.</summary>
     public static string ForceFamily;
+    /// <summary>Tests and screenshots: the state and layout of the forced family, when they matter.</summary>
+    public static PoiState? ForceState;
+    public static int? ForceVariant;
+    /// <summary>Tests: who is in the forced place.</summary>
+    public static OccupancyRoll ForceOccupancy;
     /// <summary>
     /// Start worlds: no faction holds ground (faction places only as ruins, no cores, no defenders;
     /// wrecks, abandoned and infested places, the Bloom, wildlife and gang camps stay). The slice sets
@@ -145,6 +156,10 @@ public static class PoiSiting
         int cellsX = Math.Max(8, (int)(map.WidthMeters / WorldCell)), cellsZ = Math.Max(4, (int)(map.HeightMeters / WorldCell));
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
+        // A world that was ever lived in is laid out by its plan; only the wild is scattered.
+        WorldRoll roll = profile is { Inhabited: true } ? WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, start) : null;
+        RegionPlan plan = null;
+        if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
         var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
         var placed = world.Pois.Where(p => !p.Family.Space).ToList();
         // Spread over the whole planet, but the landing site's country gets its share first.
@@ -164,15 +179,25 @@ public static class PoiSiting
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
-            // A screenshot's subject: the first spot round the landing site, 700 m out, where it can be seated.
+            // A screenshot's subject: the first spot round the landing site, from 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
-            int forcedVariant = profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0;
-            PoiInstance inst = PoiFactory.Generate(lib, forced, forcedVariant, forced.Rarity, state, 7, world: profile);
-            for (int k = 0; k < 12 && sites.Count == 0; k++)
+            state = ForceState ?? state;
+            int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
+            PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, forced, forcedVariant, forced.Rarity), state, 7, profile, ForceOccupancy);
+            for (int k = 0; k < 60 && sites.Count == 0; k++)
             {
-                double a = k * Math.PI / 6;
-                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 700, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 700, map.HeightMeters), landing, sites);
+                double a = k * Math.PI / 6, r = 700 + k / 12 * 240;
+                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
                 if (site != null) sites.Add(site);
+            }
+        }
+        if (plan is { Places.Count: >= 4 })
+        {
+            SetDown(lib, plan, roll, map, bare, landing, profile, start, sites);
+            if (sites.Count > 0)
+            {
+                Blasts(sites, map);
+                return sites;
             }
         }
         foreach (PlacedPoi p in order)
@@ -298,13 +323,16 @@ public static class PoiSiting
         float bestCut = 0;
         string bestKind = "";
         var samples = new List<float>(64);
-        for (double dz = -SearchRadius; dz <= SearchRadius; dz += 10)
-        for (double dx = -SearchRadius; dx <= SearchRadius; dx += 10)
+        // A big place looks further for its ground, a wider step at a time.
+        bool wide = Math.Max(halfX, halfZ) > 100;
+        double search = wide ? SearchRadius * 2 : SearchRadius, step = wide ? 20 : 10;
+        for (double dz = -search; dz <= search; dz += step)
+        for (double dx = -search; dx <= search; dx += step)
         {
             double cx = Mathx.WrapX(wantX + dx, width), cz = Mathx.Wrap(wantZ + dz, height);
-            if (cx < SeamMargin || cx > width - SeamMargin || cz < SeamMargin || cz > height - SeamMargin) continue;
+            if (cx - halfX * 0.3 < SeamMargin || cx + halfX * 0.3 > width - SeamMargin || cz - halfZ * 0.3 < SeamMargin || cz + halfZ * 0.3 > height - SeamMargin) continue;
             // Keep the landing spot open, and keep places from crowding each other.
-            if (Dist(cx, cz, landing.X, landing.Y, width, height) < 160) continue;
+            if (Dist(cx, cz, landing.X, landing.Y, width, height) < Math.Max(160, Math.Max(halfX, halfZ) + 80)) continue;
             bool crowded = false;
             foreach (PoiSite o in others)
                 crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)

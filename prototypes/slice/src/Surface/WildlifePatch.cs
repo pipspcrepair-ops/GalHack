@@ -89,7 +89,7 @@ public partial class WildlifePatch : Node3D
         var rules = Zone.Data.Rules.Wildlife;
         Livable = rules.LivableOn(planet.Spec);
         Fauna = new FaunaGenerator(Zone.Data.Wildlife.Fauna).Generate(planet.Spec.Seed, rules.Alienness, bloom: false);
-        View = new WildlifeView { Name = "Creatures" };
+        View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
@@ -135,6 +135,7 @@ public partial class WildlifePatch : Node3D
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         int carried = 0;
         var carriedNow = new List<Creature>();
+        var across = new Dictionary<Creature, Creature>();
         if (old != null)
         {
             sim.Time = old.Time;
@@ -144,18 +145,19 @@ public partial class WildlifePatch : Node3D
                 if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                Creature across = sim.Spawn(c.Species, local);
-                across.Health = c.Health;
-                across.Yaw = c.Yaw;
+                Creature next = sim.Spawn(c.Species, local);
+                next.Health = c.Health;
+                next.Yaw = c.Yaw;
                 if (c.Species.Flies)
                 {
                     // On the wing it stays on the wing, at its height and its speed; what stood stays standing.
-                    across.Position = local;
-                    across.Velocity = c.Velocity;
-                    across.Altitude = c.Altitude;
-                    across.Landed = c.Landed;
+                    next.Position = local;
+                    next.Velocity = c.Velocity;
+                    next.Altitude = c.Altitude;
+                    next.Landed = c.Landed;
                 }
-                carriedNow.Add(across);
+                carriedNow.Add(next);
+                across[c] = next;
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
@@ -165,7 +167,7 @@ public partial class WildlifePatch : Node3D
         Position = origin;
         Audio.Origin = origin;
         if (Player != null) sim.Targets.Add(Player);
-        View.Bind(sim, null);
+        View.Bind(sim, null, across);
         Tells.Bind(sim);
         Swapped?.Invoke(old, oldOrigin, sim);
         SyncBases();

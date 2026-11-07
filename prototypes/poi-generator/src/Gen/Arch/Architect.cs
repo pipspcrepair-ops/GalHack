@@ -15,6 +15,9 @@ public static class Architect
 {
     public const int MaxAttempts = 24;
 
+    /// <summary>For tests: a layout the checks turned down, and why.</summary>
+    public static Action<Layout, List<string>>? Rejected;
+
     /// <summary>Running totals for the tests: how many layouts were generated, failed and regenerated.</summary>
     public static class Stats
     {
@@ -67,6 +70,7 @@ public static class Architect
                     return layout;
                 }
                 last = problems[0];
+                Rejected?.Invoke(layout, problems);
             }
             catch (Exception e) when (e is InvalidOperationException or ArgumentException or KeyNotFoundException)
             {

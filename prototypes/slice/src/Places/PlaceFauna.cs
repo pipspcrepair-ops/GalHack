@@ -63,6 +63,9 @@ public sealed class PlaceFauna
             Derelict = ship,
             Livable = deep.Livable,
         };
+        // People keep a place clear of what would hunt them, as a garrison does: at most vermin, down in the dark.
+        if (inst.Occupancy is { Main: Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Machines, Second: not (Occupant.Nesters or Occupant.Prowlers) })
+            plan.State = PlaceState.Active;
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
         {

@@ -371,7 +371,7 @@ public sealed class WildSim
         for (int i = 0; i < Creatures.Count; i++)
         {
             Creature c = Creatures[i];
-            if (c.Removed) continue;
+            if (c.Removed || c.Dormant && !c.Dead) continue;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
             if (c.Dead) UpdateCorpse(c, dt);

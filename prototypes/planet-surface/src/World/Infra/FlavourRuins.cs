@@ -139,7 +139,13 @@ public static class FlavourRuins
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0xF1A7UL));
         FamilyDef Pick(string kind) => families.FirstOrDefault(f => f.Tags.Contains(kind));
         double w = map.WidthMeters, h = map.HeightMeters;
-        bool farmland = profile.Trade == Trade.Agricultural;
+        // On a planned world the small places stand where the plan's towns and farmland are, and the land between stays empty.
+        RegionPlan plan = net.RegionPlan;
+        bool farmland = plan != null ? plan.Regions.Any(r => r.Kind == RegionKind.Farmland) : profile.Trade == Trade.Agricultural;
+        bool Lived(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) != null;
+        // A street of houses runs a good way off its junction: its junction lies well inside the region.
+        bool Heart(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) is { } home && plan.Dist(home.X, home.Z, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) < home.Radius * 0.7;
+        bool Farmed(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters))?.Kind == RegionKind.Farmland;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
         Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
 
@@ -150,10 +156,10 @@ public static class FlavourRuins
         var hubs = new List<(InfraRoute R, int I, bool Junction)>();
         foreach (InfraRoute r in net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road && r.Count > 12))
         {
-            if (r.From == null) hubs.Add((r, 0, true));
-            if (r.To == null) hubs.Add((r, r.Count - 1, true));
+            if (r.From == null && Heart(r.X[0], r.Z[0])) hubs.Add((r, 0, true));
+            if (r.To == null && Heart(r.X[^1], r.Z[^1])) hubs.Add((r, r.Count - 1, true));
             foreach (var (place, end, step) in new[] { (r.From, 0, 1), (r.To, r.Count - 1, -1) })
-                if (place != null && place.Tier is PoiTier.Town or PoiTier.City)
+                if (place != null && (place.Tier is PoiTier.Town or PoiTier.City || place.Planned?.Role == "hub"))
                 {
                     int i = end + step * (int)((Math.Max(place.Stamp.ReachX, place.Stamp.ReachZ) * 0.5 + 90) / InfraNetwork.Spacing);
                     if (i > 1 && i + 2 < r.Count) hubs.Add((r, i, false));
@@ -162,13 +168,13 @@ public static class FlavourRuins
         rng.Shuffle(hubs);
 
         // Streets of houses off the hubs, a good way apart.
-        int streets = Math.Clamp((int)(roadKm / 6), 2, 7);
+        int streets = plan != null ? plan.Roll.Streets * Math.Max(1, plan.Regions.Count(r => r.Kind == RegionKind.Town)) : Math.Clamp((int)(roadKm / 6), 2, 7);
         var built = new List<(double X, double Z)>();
         foreach (var (r, i, junction) in hubs)
         {
             if (built.Count >= streets) break;
             double px = r.X[i], pz = r.Z[i];
-            if (built.Any(b => Dist(b.X, b.Z, px, pz) < 1100)) continue;
+            if (built.Any(b => Dist(b.X, b.Z, px, pz) < (plan != null ? 420 : 1100))) continue;
             if (r.Span[Math.Min(i, r.Span.Length - 1)] != RoadSpan.Ground) continue;
             int length = 3 + rng.Range(0, 4);
             if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
@@ -223,7 +229,7 @@ public static class FlavourRuins
         var feeders = net.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Track && r.Count > 20).ToList();
         if (farm != null && feeders.Count > 0)
         {
-            int want = farmland ? Math.Clamp((int)((roadKm + trackKm) / 4), 4, 12) : Math.Clamp((int)((roadKm + trackKm) / 16), 1, 3);
+            int want = plan != null ? plan.Regions.Count(r => r.Kind == RegionKind.Farmland) * 3 : farmland ? Math.Clamp((int)((roadKm + trackKm) / 4), 4, 12) : Math.Clamp((int)((roadKm + trackKm) / 16), 1, 3);
             for (int tries = 0, got = 0; tries < want * 40 && got < want; tries++)
             {
                 InfraRoute r = feeders[rng.Range(0, feeders.Count)];
@@ -233,6 +239,7 @@ public static class FlavourRuins
                 if (len < 1e-6) continue;
                 int side = rng.Chance(0.5f) ? 1 : -1;
                 double nx = -dz / len * side, nz = dx / len * side, off = 70 + 130 * rng.Float();
+                if (!Farmed(r.X[i] + nx * off, r.Z[i] + nz * off)) continue;
                 Dir front = Facing(-nx, -nz);
                 Layout layout = Lot(farm, front);
                 FlavourRuin ruin = Try(lib, farm, layout, r.X[i] + nx * off, r.Z[i] + nz * off, bare, net, pois, ruins, w, h, rng, spacing: 40);
@@ -251,7 +258,7 @@ public static class FlavourRuins
             for (int i = 2; i + 2 < r.Count; i++)
             {
                 run += InfraNetwork.Spacing;
-                if (run < next || r.Span[i] != RoadSpan.Ground) continue;
+                if (run < next || r.Span[i] != RoadSpan.Ground || !Lived(r.X[i], r.Z[i])) continue;
                 next = run + every * (0.6 + 0.8 * rng.Float());
                 FamilyDef f = (rng.Chance(0.55f) ? shed : house) ?? house;
                 if (f == null) continue;
@@ -272,7 +279,7 @@ public static class FlavourRuins
 
         // Enough to make a world with few roads look lived in once: lone houses and farms off in the country.
         int attempts = 800;
-        for (int tries = 0; ruins.Count < 12 && tries < attempts; tries++)
+        for (int tries = 0; ruins.Count < 12 && tries < attempts && plan == null; tries++)
         {
             // Rough country takes a farmstead's yard badly: late on, a lone house on what ground there is.
             bool rough = tries > attempts / 2;

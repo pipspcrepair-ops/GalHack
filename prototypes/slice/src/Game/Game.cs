@@ -149,6 +149,7 @@ public partial class Game : Node3D
         GD.Print($"world: {World}");
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), PickStart = PickStart };
         AddChild(Zone);
+        AddChild(new GcPacer { Name = "GC pacer" });
         Zone.WorldRules.Mode = _mode;
         // Placed every frame from interpolated transforms, so it is not interpolated itself.
         Camera = new Camera3D { Name = "Camera", Fov = 75f, Near = 0.05f, Far = 12000f, Current = true, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };

@@ -64,7 +64,7 @@ public static partial class StateTransforms
     static void PowerOff(PoiInstance inst)
     {
         var g = inst.Blocks;
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.Material != Material.Lumen || b.Type == BlockType.Core) continue;
@@ -360,7 +360,7 @@ public static partial class StateTransforms
     {
         var g = inst.Blocks;
         // Even glyphs fade in a ruin; they never quite go out.
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.Material is Material.Glyph or Material.Crystal) b.Color = b.Color.Scale(0.6f);
@@ -395,7 +395,7 @@ public static partial class StateTransforms
             }
         }
         // Moss on what's left of the roofs.
-        foreach (Int3 p in g.Cells())
+        foreach (var (p, _) in g.Blocks())
         {
             ref Block b = ref g.At(p);
             if (b.Role is Role.Roof or Role.Wall && g.Get(p + Int3.Up).IsAir && Hash.Cell(new Int3(p.X >> 2, p.Y >> 2, p.Z >> 2), 103 + (uint)inst.SpawnSeed % 7) % 100 < 30)
@@ -651,7 +651,7 @@ public static class Structure
     /// ground level that touch rock count as grounded.
     /// </summary>
     /// <summary>Building fabric, which holds up what joins it. Rubble, furniture and weeds only rest on what is under them.</summary>
-    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail;
+    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail or BlockType.Pipe;
 
     /// <param name="solidOnly">Only fabric holds others up, and a thin thing (a floor plate, a weed) only rests on what is under it; a wall stub standing on a floor plate is still floating.</param>
     public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null, bool solidOnly = false)

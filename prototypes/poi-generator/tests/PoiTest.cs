@@ -24,7 +24,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -51,13 +51,283 @@ public partial class PoiTest : Node
         else Finish();
     }
 
+    // ---- the large places --------------------------------------------------------------------
+
+    IEnumerable<FamilyDef> Large => _lib.Families.Where(f => f.Tags.Contains("grand"));
+
+    /// <summary>
+    /// The large places on fresh seeds: a layout per tech variant passes the layout checks, each spawned
+    /// in every state passes validation, they keep to the 2 m lattice and are far bigger than the old
+    /// shoebox. Fewer seeds than the mass runs, because each is a whole works.
+    /// </summary>
+    void GrandPlaces()
+    {
+        var sw = Stopwatch.StartNew();
+        int built = 0, spawned = 0, bad = 0;
+        var problems = new List<string>();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
+        // What a large plan got wrong, all of it at once: a big place is too slow to fix one complaint at a time.
+        int told = 0;
+        Architect.Rejected = (layout, why) =>
+        {
+            if (told++ > 0) return;
+            foreach (string w in why) GD.Print("      rejected: " + w);
+            var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+            var reach = nav.Reachable(layout.EntranceCell);
+            foreach (var m in layout.Modules)
+                if (!m.Cells.Any(reach.Contains)) GD.Print($"      unreachable {m.Purpose} storey {m.Storey} {m.Min} to {m.Max}");
+        };
+        foreach (FamilyDef f in Large)
+            foreach (VariantDef v in f.Variants.Concat(f.Variants))
+            {
+                ulong seed = Hash.Combine(fresh, Hash.Of(f.Id), (ulong)Random.Shared.NextInt64());
+                Layout layout;
+                var t0 = sw.ElapsedMilliseconds;
+                // Every way round: a place is turned to face what it served.
+                try { layout = PoiFactory.BuildLayout(_lib, f, v.Index, f.Rarity, seed, new LayoutHints(Dirs.Horizontal[Random.Shared.Next(4)])); }
+                catch (Exception e) { bad++; problems.Add($"{f.Id} {v.Name} seed {seed}: {e.Message}"); continue; }
+                built++;
+                Int3 size = layout.Blocks.Size;
+                long t1 = sw.ElapsedMilliseconds;
+                GD.Print($"      {f.Id} '{v.Name}' {size.X} x {size.Z} x {size.Y} m, {layout.Modules.Count} rooms, {layout.Blocks.CountBlocks()} cells, layout {t1 - t0} ms, {layout.Attempts} attempts");
+                if (size.X < 120 || size.Z < 120) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
+                foreach (PoiState s in Enum.GetValues<PoiState>())
+                {
+                    if (f.StateWeights[(int)s] <= 0f) continue;
+                    long t2 = sw.ElapsedMilliseconds;
+                    PoiInstance inst = PoiFactory.Spawn(_lib, layout, s, seed + (ulong)s);
+                    spawned++;
+                    foreach (string p in Validator.Check(inst).Take(3)) { bad++; problems.Add($"{f.Id} '{v.Name}' seed {seed} {s}: {p}"); }
+                    GD.Print($"        {s}: {sw.ElapsedMilliseconds - t2} ms, {inst.Enemies.Count} enemies, removed {inst.RemovedFraction:P0}");
+                }
+            }
+        Architect.Rejected = null;
+        foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
+        Check(bad == 0 && built > 0, $"large places: {built} layouts and {spawned} spawns pass the layout checks and validation, in {sw.ElapsedMilliseconds} ms");
+    }
+
+    // ---- worlds from layers ------------------------------------------------------------------
+
+    /// <summary>The layers are data: they parse, a world rolls one of each it can, the same seed the same roll, and they combine rather than replace.</summary>
+    void WorldLayers()
+    {
+        var kinds = _lib.Layers.GroupBy(l => l.Kind).ToDictionary(g => g.Key, g => g.Count());
+        Check(kinds.GetValueOrDefault(LayerKind.Theme) >= 4 && kinds.GetValueOrDefault(LayerKind.Type) >= 3 && kinds.GetValueOrDefault(LayerKind.Feature) >= 2 && kinds.GetValueOrDefault(LayerKind.Presence) >= 2,
+            $"world layers as data: {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}");
+        string[] worlds = { "Temperate", "Arid", "Ice", "Lava", "Alien" };
+        var themes = new Dictionary<string, int>();
+        var combos = new HashSet<string>();
+        int rolls = 0, same = 0, withExtra = 0, startOk = 0, starts = 0;
+        ulong baseSeed = (ulong)Random.Shared.NextInt64();
+        for (ulong i = 0; i < 2000; i++)
+        {
+            ulong seed = Hash.Combine(baseSeed, i);
+            string w = worlds[i % 5];
+            bool start = i % 7 == 0;
+            WorldProfile profile = WorldProfile.Roll(seed, w, start);
+            if (!profile.Inhabited) continue;
+            WorldRoll a = WorldRoll.Roll(_lib, seed, w, profile, start)!, b = WorldRoll.Roll(_lib, seed, w, profile, start)!;
+            rolls++;
+            if (a.ToString() == b.ToString()) same++;
+            themes[a.Theme.Id] = themes.GetValueOrDefault(a.Theme.Id) + 1;
+            combos.Add(a.ToString());
+            if (a.Features.Count + a.Presences.Count > 0) withExtra++;
+            if (start) { starts++; if (a.Theme.Start) startOk++; }
+        }
+        Check(same == rolls, $"the same seed rolls the same world ({same} of {rolls})");
+        Check(themes.Count >= 4 && themes.Values.Min() > rolls / 40, $"every theme turns up: {string.Join(", ", themes.Select(t => $"{t.Key} {t.Value}"))}");
+        Check(combos.Count >= 60 && withExtra > rolls / 5, $"worlds come from combinations: {combos.Count} different worlds in {rolls} rolls, {withExtra} with a feature or a presence");
+        Check(startOk == starts && starts > 0, $"start worlds only roll start themes ({startOk} of {starts})");
+        // A presence changes what's in places, a feature what stands there, with the theme still there underneath.
+        WorldLayer queue = _lib.Layers.First(l => l.Id == "long_queue"), raiders = _lib.Layers.First(l => l.Id == "raiders");
+        WorldRoll? plain = null, gangs = null;
+        for (ulong i = 0; i < 4000 && (plain == null || gangs == null); i++)
+        {
+            ulong seed = Hash.Combine(baseSeed, i, 77);
+            WorldProfile profile = WorldProfile.Roll(seed, "Temperate");
+            if (!profile.Inhabited) continue;
+            WorldRoll r = WorldRoll.Roll(_lib, seed, "Temperate", profile, false)!;
+            if (r.Theme != queue) continue;
+            if (r.Presences.Contains(raiders)) gangs ??= r;
+            else if (r.Presences.Count == 0) plain ??= r;
+        }
+        Check(plain != null && gangs != null && gangs.Occupancy["GNG"] > plain.Occupancy["GNG"] && gangs.Occupancy["EMP"] == plain.Occupancy["EMP"],
+            $"layers add up: a raider presence on The Long Queue takes gangs from {plain?.Occupancy["GNG"]} to {gangs?.Occupancy["GNG"]} and leaves the rest of its mix");
+    }
+
+    /// <summary>The same layout, different people: what each occupant leaves is theirs, nobody's plan changes, and it all still validates.</summary>
+    /// <summary>The merged drawing and collision of a large place are the same surfaces as the plain ones, in far fewer faces.</summary>
+    void MergedFaces()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        foreach (string id in new[] { "sewage_works", "old_farm", "works_complex" })
+        {
+            FamilyDef f = _lib.Family(id);
+            PoiInstance inst = PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed), PoiState.Ruined, seed + 1);
+            BlockGrid g = inst.Blocks;
+            MeshOptions Options(bool merged) => new()
+            {
+                ChunkSize = 32, Doors = false, Collision = true, Merged = merged, Drawn = true,
+                RockMin = new Int3(1, 0, 1), RockMax = new Int3(0, 0, 0), RockBottom = g.Min.Y, GroundShow = MeshOptions.AllGround,
+            };
+            static double Area(List<ChunkMesh> meshes)
+            {
+                double total = 0;
+                foreach (ChunkMesh m in meshes)
+                    for (int i = 0; i + 8 < m.Collision.Count; i += 9)
+                    {
+                        var a = new V3(m.Collision[i], m.Collision[i + 1], m.Collision[i + 2]);
+                        var e = new V3(m.Collision[i + 3], m.Collision[i + 4], m.Collision[i + 5]) - a;
+                        var h = new V3(m.Collision[i + 6], m.Collision[i + 7], m.Collision[i + 8]) - a;
+                        V3 c = V3.Cross(e, h);
+                        total += Math.Sqrt(V3.Dot(c, c)) * 0.5;
+                    }
+                return total;
+            }
+            List<ChunkMesh> plain = Mesher.Build(g, inst.Layout.Occupied, Options(false)), merged = Mesher.Build(g, inst.Layout.Occupied, Options(true));
+            double a0 = Area(plain), a1 = Area(merged);
+            int q0 = plain.Sum(m => m.Quads), q1 = merged.Sum(m => m.Quads);
+            int t0 = plain.Sum(m => m.Collision.Count), t1 = merged.Sum(m => m.Collision.Count);
+            Check(Math.Abs(a0 - a1) < a0 * 1e-4, $"{id}: what you touch from further off is what you touch up close: {a1:F0} m² of collision merged, {a0:F0} plain");
+            Check(q1 * 3 < q0 && t1 * 5 < t0 * 2, $"{id}: merged, {q1} faces for {q0}, {t1 / 9} collision triangles for {t0 / 9}");
+            ChunkMesh far = Mesher.Coarse(g, inst.Layout.Occupied);
+            Check(far.Quads > 0 && far.Quads * 20 < q0, $"{id}: the far mesh is {far.Quads} faces");
+        }
+    }
+
+    void Occupancy()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        FamilyDef sewage = _lib.Family("sewage_works"), hospital = _lib.Family("hospital");
+        int bad = 0;
+        string first = "";
+        foreach (FamilyDef f in new[] { sewage, hospital })
+        {
+            Layout layout = PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, seed);
+            var counts = new Dictionary<Occupant, Dictionary<BlockType, int>>();
+            var enemies = new Dictionary<Occupant, int>();
+            var people = new Dictionary<Occupant, (int Count, Mood Mood)>();
+            var walls = new HashSet<int>();
+            foreach (Occupant who in Enum.GetValues<Occupant>())
+            {
+                var inst = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 3, null, new OccupancyRoll(who));
+                foreach (string p in Validator.Check(inst).Take(2)) { bad++; if (first.Length == 0) first = $" ({f.Id}, {who}: {p})"; }
+                counts[who] = inst.Blocks.Blocks().GroupBy(b => b.Block.Type).ToDictionary(g => g.Key, g => g.Count());
+                enemies[who] = inst.Enemies.Count;
+                people[who] = (inst.Townsfolk?.People.Count ?? 0, inst.Mood);
+                walls.Add(inst.Blocks.Blocks().Count(b => b.Block.Role is Role.Wall or Role.Roof));
+            }
+            int Of(Occupant who, BlockType t) => counts[who].GetValueOrDefault(t);
+            Check(enemies[Occupant.Empty] == 0, $"{f.Id}: an empty place is empty");
+            Check(Of(Occupant.Nesters, BlockType.Pod) > Of(Occupant.Empty, BlockType.Pod) + 3 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters leave {Of(Occupant.Nesters, BlockType.Pod)} egg pods and {enemies[Occupant.Nesters]} creatures");
+            Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] == 0 && people[Occupant.Scavengers] is { Count: >= 2, Mood: Mood.Wary }, $"{f.Id}: scavengers leave a camp fire and are no one's enemies: {people[Occupant.Scavengers].Count} people, {people[Occupant.Scavengers].Mood}");
+            Check(enemies[Occupant.Squatters] == 0 && people[Occupant.Squatters].Mood == Mood.Peaceful, $"{f.Id}: squatters are at home and at peace: {people[Occupant.Squatters].Count} people");
+            Check(Of(Occupant.Gang, BlockType.Barricade) > Of(Occupant.Empty, BlockType.Barricade) + 3 && enemies[Occupant.Gang] > 0, $"{f.Id}: a gang leaves {Of(Occupant.Gang, BlockType.Barricade)} barricades and {enemies[Occupant.Gang]} of its own");
+            Check(Of(Occupant.Turned, BlockType.Remains) > Of(Occupant.Empty, BlockType.Remains) + 3, $"{f.Id}: the turned leave {Of(Occupant.Turned, BlockType.Remains)} bodies");
+            Check(Of(Occupant.Squatters, BlockType.Bunk) > 0, $"{f.Id}: squatters leave {Of(Occupant.Squatters, BlockType.Bunk)} bunks");
+            Check(walls.Count == 1, $"{f.Id}: the layout is the same whoever is in it ({walls.Count} wall counts)");
+            var both = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed + 3, null, new OccupancyRoll(Occupant.Gang, Occupant.Nesters, Sharing.Floors));
+            foreach (string p in Validator.Check(both).Take(2)) { bad++; if (first.Length == 0) first = $" ({f.Id} mixed: {p})"; }
+            Check(both.Enemies.Any(e => e.Kind == EnemyKind.Fauna) && both.Enemies.Any(e => e.Kind == EnemyKind.Guard), $"{f.Id}: a mixed place holds both groups, {both.Occupancy}");
+        }
+        Check(bad == 0, $"every occupant leaves every place walkable{first}");
+        var mix = new Dictionary<string, float> { ["EMP"] = 60, ["SCV"] = 30, ["NST"] = 10 };
+        int empty = 0, n = 4000, two = 0, traces = 0;
+        for (ulong i = 0; i < (ulong)n; i++)
+        {
+            OccupancyRoll r = OccupancyLayer.Roll(mix, sewage, Hash.Combine(seed, i));
+            if (r.Main == Occupant.Empty) empty++;
+            if (r.Second != null) two++;
+            if (r.Trace != null) traces++;
+        }
+        Check(Math.Abs(empty / (float)n - 0.6f) < 0.05f, $"a theme's mix sets the odds: {empty * 100 / n}% empty of a mix of 60");
+        Check(two > 0 && traces > 0, $"some places hold two groups ({two}), some only the trace of one ({traces})");
+    }
+
+    /// <summary>Plain land with a sea down one side and a slope across it: enough to read a plan's reasons.</summary>
+    sealed class TestLand : ILand
+    {
+        readonly ulong _seed;
+        public TestLand(ulong seed) => _seed = seed;
+        public double Width => 16000;
+        public double Depth => 8000;
+        public float Height(double x, double z) => 30f + (float)x * 0.006f + PoiGenerator.Gen.Noise.Fbm(_seed, (float)x, (float)z, 0.0015f) * 16f;
+        public bool Wet(double x, double z) => x < 900;
+        public bool Rich(double x, double z) => PoiGenerator.Gen.Noise.Fbm(_seed + 1, (float)x, (float)z, 0.003f) > 0.6f;
+    }
+
+    /// <summary>Plans on a test land: deterministic, every place with its reason, things where their reason says, and most of the land left alone.</summary>
+    void Regions()
+    {
+        int plans = 0, places = 0, reasons = 0, spaced = 0, wet = 0, sewage = 0, downhill = 0, rails = 0, unDepot = 0, powers = 0, differ = 0, breaks = 0, same = 0;
+        float wild = 0f;
+        ulong baseSeed = (ulong)Random.Shared.NextInt64();
+        for (ulong i = 0; i < 24; i++)
+        {
+            ulong seed = Hash.Combine(baseSeed, i);
+            WorldProfile profile = WorldProfile.Roll(seed, "Temperate");
+            if (!profile.Inhabited) continue;
+            WorldRoll roll = WorldRoll.Roll(_lib, seed, "Temperate", profile, false)!;
+            var land = new TestLand(seed);
+            RegionPlan plan = RegionPlan.Make(_lib, land, roll, profile, seed, (8000, 4000), false);
+            RegionPlan again = RegionPlan.Make(_lib, land, roll, profile, seed, (8000, 4000), false);
+            plans++;
+            if (plan.Places.Select(p => (p.Family, p.X, p.Z)).SequenceEqual(again.Places.Select(p => (p.Family, p.X, p.Z)))) same++;
+            foreach (PlannedPlace p in plan.Places)
+            {
+                places++;
+                if (string.IsNullOrEmpty(p.Why) || string.IsNullOrEmpty(p.Role)) reasons++;
+                if (land.Wet(p.X, p.Z)) wet++;
+                if (p.Breaks) breaks++;
+                foreach (PlannedPlace o in plan.Places)
+                    if (o.Index > p.Index && plan.Dist(o.X, o.Z, p.X, p.Z) < 150) spaced++;
+                if (p.Family == "sewage_works" && p.Serves >= 0)
+                {
+                    sewage++;
+                    if (land.Height(p.X, p.Z) <= land.Height(plan.Places[p.Serves].X, plan.Places[p.Serves].Z) + 1f) downhill++;
+                }
+            }
+            foreach (PlannedLink l in plan.Links)
+            {
+                if (l.Kind == "rail")
+                {
+                    rails++;
+                    if (plan.Places[l.A].Role != "depot" && plan.Places[l.B].Role != "depot") unDepot++;
+                }
+                if (l.Kind == "power")
+                {
+                    powers++;
+                    if (plan.Places[l.A].Role != "plant") reasons++;
+                }
+            }
+            int cells = 0, open = 0;
+            for (double z = 100; z < 8000; z += 400)
+                for (double x = 1000; x < 16000; x += 400)
+                {
+                    cells++;
+                    if (plan.RegionAt(x, z) == null) open++;
+                }
+            wild += open / (float)cells;
+        }
+        Check(same == plans && plans > 8, $"{plans} plans, each the same again from its seed ({same})");
+        Check(reasons == 0 && places > plans * 4, $"{places} planned places, every one with its reason ({reasons} not)");
+        Check(wet == 0 && spaced == 0, $"places stand on land, apart ({wet} wet, {spaced} crowded)");
+        Check(sewage > 0 && downhill >= sewage * 0.8f, $"sewage works run downhill of their towns: {downhill} of {sewage}");
+        Check(unDepot == 0, $"{rails} rail links, each ending at a depot ({unDepot} not)");
+        Check(powers > 0 || plans == 0, $"{powers} plants feed their towns");
+        Check(breaks > 0, $"{breaks} of {places} places break from the theme");
+        Check(wild / plans > 0.4f, $"most of the land is left empty: {wild / plans:P0}");
+        _ = differ;
+    }
+
     void Finish()
     {
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         GetTree().Quit(_failures == 0 ? 0 : 1);
     }
 
-    IEnumerable<FamilyDef> Arch => _lib.Families.Where(f => f.Generator != Generator.Kit);
+    /// <summary>The planned places the mass runs walk through in their hundreds. The large places are whole works and have their own check (<see cref="GrandPlaces"/>).</summary>
+    IEnumerable<FamilyDef> Arch => _lib.Families.Where(f => f.Generator != Generator.Kit && !f.Tags.Contains("grand"));
     IEnumerable<FamilyDef> Kits => _lib.Families.Where(f => f.Generator == Generator.Kit);
 
     // ---- data ---------------------------------------------------------------------------
