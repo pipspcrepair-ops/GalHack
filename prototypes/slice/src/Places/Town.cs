@@ -52,8 +52,18 @@ public sealed partial class Town
         _rng = new Random((int)(m.Inst.SpawnSeed & 0x7fffffff));
     }
 
-    public sealed class Person : ITarget
+    public sealed class Person : IHost
     {
+        /// <summary>Seized by a Husk and turned: one of them now, out in the wild sim; this one is gone.</summary>
+        public bool Gone;
+        Species IHost.Body => Looks;
+        void IHost.Taken()
+        {
+            Gone = true;
+            Health.Current = 0f;
+            if (View != null) View.Visible = false;
+        }
+
         public Town Town;
         public CitizenSpawn Spawn;
         public string Role => Spawn.Role;
@@ -300,6 +310,7 @@ public sealed partial class Town
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
+            if (p.Gone) continue;
             if (p.Dead)
             {
                 // Going down, then lying where they fell.

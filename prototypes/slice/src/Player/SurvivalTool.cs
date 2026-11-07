@@ -64,6 +64,8 @@ public sealed class SurvivalTool
     public event Action<int> OreDug;
     public event Action PlantCut;
     public event Action<Creature> CreatureHit;
+    /// <summary>A shot landed on a den's worm mass.</summary>
+    public event Action<WormMass> MassHit;
 
     /// <summary>The same hit, with where it landed and which way it was going.</summary>
     public event Action<Creature, Vector3, Vector3> CreatureStruck;
@@ -536,6 +538,18 @@ public sealed class SurvivalTool
         _zone.Wildlife.Noise(eye, ShotHeard);
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
+        // A den's worm mass in the way takes the shot (enough of them and it's dead).
+        if (_zone.Wildlife.RaycastMass(eye, dir, struck ? distance : reach, out float massAt, out WildSim massSim) is { } mass)
+        {
+            WormMasses.Damage(massSim, mass, _rules.ShotDamage * Tier.Shot);
+            struck = false;
+            c = null;
+            kind = ImpactKind.Creature;
+            reach = massAt;
+            onto = null;
+            onPlace = null;
+            MassHit?.Invoke(mass);
+        }
         // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
         float personAt = 0f;
         Town.Person person = Places == null ? null : Places.PersonAlong(eye, dir, struck ? distance : reach, out personAt);

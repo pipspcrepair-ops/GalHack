@@ -175,6 +175,9 @@ public partial class WildlifePatch : Node3D
         sim.Warned += c => Audio.Telegraph(c);
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
+        sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
+        sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
+        sim.Murmured += c => Audio.Murmur(c);
         int carried = 0;
         var carriedNow = new List<Creature>();
         var across = new Dictionary<Creature, Creature>();
@@ -409,6 +412,30 @@ public partial class WildlifePatch : Node3D
         Audio.Origin = origin;
         play(Audio);
         Audio.Origin = own;
+    }
+
+    /// <summary>A Husk has the player by the head (in whichever sim), and let them go.</summary>
+    public event Action<SeizeEvent, WildSim> Seized;
+    public event Action<SeizeEvent> LetGo;
+    internal void RaiseSeized(SeizeEvent e, WildSim sim) => Seized?.Invoke(e, sim);
+    internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
+
+    /// <summary>The first living worm mass along a ray (zone frame), within reach, in any place's sim.</summary>
+    public WormMass RaycastMass(Vector3 from, Vector3 dir, float reach, out float distance, out WildSim sim)
+    {
+        WormMass best = null;
+        distance = reach;
+        sim = null;
+        foreach (DeepSite s in Sites)
+        {
+            if (s.Sim.Masses.Count == 0) continue;
+            WormMass m = WormMasses.Raycast(s.Sim, s.Local(from), dir, distance, out float d);
+            if (m == null) continue;
+            best = m;
+            distance = d;
+            sim = s.Sim;
+        }
+        return best;
     }
 
     internal void RaiseTelegraphed(AttackEvent e) => Telegraphed?.Invoke(e);

@@ -248,6 +248,7 @@ public partial class Game : Node3D
         Target = new PlayerTarget(this);
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
+        SetUpHusks();
         Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
@@ -333,6 +334,8 @@ public partial class Game : Node3D
             Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
             return;
         }
+        // Seized by a Husk: the hold has the body until it ends.
+        if (Held(c, (float)delta)) return;
         if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
         else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
@@ -752,7 +755,7 @@ public partial class Game : Node3D
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)
-            : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : Survivor.Eye());
+            : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : CloseUpView(Survivor.Eye()));
     }
 
     Vector3 _focusWas;

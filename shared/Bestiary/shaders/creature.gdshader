@@ -34,6 +34,8 @@ instance uniform float wake = 0.0;
 // are by something moving near, 0..1. UV.x on a worm is which worm (whole part) and how far along it.
 uniform float worm_scale = 0.0;
 instance uniform float worm_stir = 0.0;
+// Which way they reach (model space) and how hard, for a mass reaching at what comes near.
+instance uniform vec4 worm_reach = vec4(0.0);
 
 varying vec3 lp;
 
@@ -48,6 +50,7 @@ void vertex() {
 		float twitch = pow(max(0.0, sin(TIME * (0.9 + mod(id, 3.0) * 0.4) + ph * 2.3)), 14.0);
 		vec3 sway = vec3(sin(TIME * f + ph + a * 4.0), 0.6 * sin(TIME * f * 0.83 + ph * 1.7 + a * 3.1), cos(TIME * f * 1.13 + ph * 0.6 + a * 3.7));
 		VERTEX += sway * a * a * worm_scale * (1.0 + 1.4 * worm_stir + 1.6 * twitch);
+		VERTEX += worm_reach.xyz * a * a * worm_scale * 2.2 * worm_reach.w;
 	}
 }
 

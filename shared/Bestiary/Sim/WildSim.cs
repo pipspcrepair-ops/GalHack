@@ -131,6 +131,11 @@ public sealed class WildSim
     public event Action<Creature> Murmured;
     internal void RaiseMurmur(Creature c) => Murmured?.Invoke(c);
 
+    /// <summary>Husk dens' worm masses on the floors and walls, and one destroyed.</summary>
+    public readonly List<WormMass> Masses = new();
+    public event Action<WormMass> MassDied;
+    internal void RaiseMassDied(WormMass m) => MassDied?.Invoke(m);
+
     /// <summary>Who a seized person becomes: the same person as a Husk. A game may hand it the world's own (<see cref="WorldLife.Turn"/>).</summary>
     public Func<Species, ulong, Species> TurnHost;
 
@@ -555,6 +560,7 @@ public sealed class WildSim
         }
 
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
+        if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
         // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
         if (Time >= _scanAt)
