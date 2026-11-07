@@ -86,8 +86,9 @@ public sealed class HumanRig : Rig
             Speed = speed,
             Walked = _walked,
             Crouch = MathF.Max(Crouch, Hidden),
-            Reach = MathF.Max(Lunging, Rearing * 0.6f),
-            Retch = c.Attacking && c.Species.Spit != SpitKind.None ? Rearing : 0f,
+            Reach = MathF.Max(Lunging, Rearing * (c.Species.Husk && Spitting.Wants(c) && c.Attacking ? 0f : 0.6f)),
+            Retch = c.Attacking && c.Species.Spit != SpitKind.None && (c.Species.Attack.Style != AttackStyle.Seize || Spitting.Wants(c)) ? Rearing : 0f,
+            // (A Husk winding up to seize reaches; one bringing its maggots up retches.)
             Look = LookYaw,
             Down = Dead,
             Clock = c.Age,
@@ -112,6 +113,15 @@ public sealed class HumanRig : Rig
         float moving = Math.Clamp(g.Speed / 0.45f, 0f, 1f);
         float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run);
         float phase = g.Walked / strideLength + _offset;
+        // A Husk is worked like a puppet on a bad string: its stride hitches (one step quick, the
+        // next dragged), and a sudden jerk runs through it now and then, each its own.
+        bool husk = f.Husk;
+        float jerk = 0f;
+        if (husk)
+        {
+            phase += 0.09f * MathF.Sin(MathF.Tau * phase * 0.5f) * moving;
+            jerk = MathF.Pow(MathF.Max(0f, MathF.Sin(g.Clock * 1.3f + _offset * 40f)), 24f) + 0.6f * MathF.Pow(MathF.Max(0f, MathF.Sin(g.Clock * 2.9f + _offset * 17f)), 30f);
+        }
         float cycle = MathF.Tau * phase;
 
         Basis turn = new(Vector3.Up, g.Yaw);
@@ -135,6 +145,13 @@ public sealed class HumanRig : Rig
         pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.22f, BodyAct.Startle => -0.28f, BodyAct.Warn => -0.08f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, _ => 0f };
         float roll = -sway * 1.2f + staggerSide * 2.2f;
         float twist = moving * (0.1f + 0.1f * run) * MathF.Sin(cycle);
+        if (husk)
+        {
+            // The jerk throws the shoulders one way and the back the other; the torso hangs off-true.
+            roll += 0.28f * jerk * MathF.Sin(_offset * 31f) + 0.06f * MathF.Sin(g.Clock * 0.7f + _offset * 9f);
+            pitch += 0.18f * jerk + 0.05f * MathF.Sin(g.Clock * 0.45f + _offset * 5f);
+            twist += 0.2f * jerk * MathF.Cos(_offset * 23f);
+        }
         Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
         Pose[_body] = new Transform3D(torso, hip);
 
@@ -166,7 +183,9 @@ public sealed class HumanRig : Rig
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
             // The heel comes up as a foot trails behind; the swing clears the ground.
             float heel = stance ? MathF.Max(0f, -reach - 0.25f) * 0.22f * f.LegLength : 0f;
-            foot.Y = ground + f.Ankle + moving * (heel + lift * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run));
+            // A Husk drags one foot and throws the other up too high.
+            float step = husk ? (i == (_offset > 0.5f ? 1 : 0) ? 0.3f : 1.7f) : 1f;
+            foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run));
             _feet[i] = foot;
             bool grounded = stance || moving <= 0f;
             if (grounded && !_planted[i]) Steps++;
@@ -182,14 +201,17 @@ public sealed class HumanRig : Rig
         // Arms: each hand has a place to be, and the elbow follows it.
         Vector3 neck = hip + torso.Y * f.Torso;
         Vector3 chest = hip + torso.Y * f.Torso * 0.9f;
-        float arm = f.UpperArm + f.Forearm;
         Vector3 down = -torso.Y, ahead = -torso.Z;
         bool longGun = f.Prop == "rifle";
         for (int i = 0; i < 2; i++)
         {
             float side = i == 0 ? -1f : 1f;
+            float upperArm = f.UpperArmOf(i), forearm = f.ForearmOf(i), arm = upperArm + forearm;
             Vector3 shoulder = chest + torso.X * side * f.ShoulderW * 0.94f;
-            float swing = (i == 0 ? 1f : -1f) * MathF.Sin(cycle) * moving * (0.38f + 0.5f * run) + 0.04f + 0.3f * run;
+            // A Husk's arms don't keep time with its legs: one swings late and loose, the other leads, reaching.
+            float lag = husk ? (i == 0 ? 1.4f : -0.5f) : 0f;
+            float swing = (i == 0 ? 1f : -1f) * MathF.Sin(cycle - lag) * moving * (0.38f + 0.5f * run) * (husk ? 1.5f : 1f) + 0.04f + 0.3f * run;
+            if (husk) swing += 0.3f * jerk * side + (i == f.LongArm ? 0.25f * moving : 0f);
             Vector3 hang = (down * MathF.Cos(swing) + ahead * MathF.Sin(swing)).Normalized();
             float bend = 0.95f - 0.28f * run;
             Vector3 hand = shoulder + hang * arm * bend + torso.X * side * (0.03f + 0.04f * (f.Padding - 1f) * 2f);
@@ -213,7 +235,8 @@ public sealed class HumanRig : Rig
                 float drink = Math.Clamp(MathF.Sin(g.Clock * 0.33f + _offset * 9f) * 5f - 3.6f, 0f, 1f) * (1f - moving);
                 hand = hand.Lerp(neck + Vector3.Up * f.HeadRadius * 1.1f + ahead * 0.16f, drink);
             }
-            if (g.Reach > 0f) hand = hand.Lerp(shoulder + ahead * arm * 0.98f + Vector3.Up * 0.05f + torso.X * side * -0.06f, g.Reach);
+            // Reaching: a Husk's hands go up and in, for a head.
+            if (g.Reach > 0f) hand = hand.Lerp(husk ? shoulder + ahead * arm * 0.8f + Vector3.Up * 0.24f + torso.X * side * -0.16f : shoulder + ahead * arm * 0.98f + Vector3.Up * 0.05f + torso.X * side * -0.06f, g.Reach);
             if (g.Sit > 0f && !longGun) hand = hand.Lerp(hip + ahead * 0.32f + torso.X * side * 0.14f + Vector3.Up * 0.03f, g.Sit);
             Vector3 pole = torso.Z + down * 0.2f + torso.X * side * 0.3f;
             if (act > 0f && !(longGun && i == 1 && g.Act is BodyAct.Warn or BodyAct.Taunt))
@@ -221,7 +244,8 @@ public sealed class HumanRig : Rig
                 hand = hand.Lerp(ActHand(g, i, side, shoulder, chest, neck, hip, torso, arm), act);
                 pole = (torso.Z * 0.6f + torso.X * side * 0.7f - Vector3.Up * 0.2f).Normalized();
             }
-            (Vector3 elbow, Vector3 wrist) = LeggedRig.SolveIK(shoulder, hand, f.UpperArm, f.Forearm, pole);
+            if (husk && g.Reach < 0.5f) pole = (pole + torso.X * side * 0.6f + Vector3.Up * 0.3f * jerk).Normalized(); // elbows out, slack
+            (Vector3 elbow, Vector3 wrist) = LeggedRig.SolveIK(shoulder, hand, upperArm, forearm, pole);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
             if (i == 1 && _prop >= 0) Pose[_prop] = PropPose(g, wrist, Pose[_armL[0]].Origin + (Pose[_armL[0]].Basis.Y.Normalized() * f.Forearm), torso, fwd, right);
@@ -229,7 +253,14 @@ public sealed class HumanRig : Rig
 
         // The head turns on its own, and stays nearer level than the back it sits on.
         float headPitch = pitch * 0.35f + g.Retch * 0.5f + (f.Prop == "rifle" ? g.Aim * 0.1f : 0f) + act * (g.Act == BodyAct.Grieve ? 0.5f : g.Act == BodyAct.Taunt ? -0.25f : 0f);
-        Basis headBasis = turn * new Basis(Vector3.Up, g.Look + staggerSide) * new Basis(Vector3.Right, -headPitch);
+        float headRoll = 0f;
+        if (husk)
+        {
+            // The head lolls: held at its wrong angle, rolling slowly round it, snapping with each jerk.
+            headRoll = f.HeadTilt + 0.22f * MathF.Sin(g.Clock * 0.8f + _offset * 13f) + 0.4f * jerk * MathF.Sin(_offset * 57f);
+            headPitch += f.HeadDroop + 0.12f * MathF.Sin(g.Clock * 0.55f + _offset * 3f) - 0.3f * g.Reach;
+        }
+        Basis headBasis = turn * new Basis(Vector3.Up, g.Look + staggerSide) * new Basis(Vector3.Right, -headPitch) * new Basis(Vector3.Back, headRoll);
         Pose[_head] = new Transform3D(headBasis, neck);
 
         if (g.Down > 0f)

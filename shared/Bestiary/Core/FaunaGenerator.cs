@@ -793,11 +793,15 @@ public sealed class FaunaGenerator
         }
     }
 
-    // ---- The Hollow Bloom -------------------------------------------------------------
+    // ---- The Hollows: wildlife taken by a parasitic fungus ------------------------------
 
     /// <summary>
-    /// Corrupts a local species: same body underneath, now dark, veined and glowing pink, with
-    /// tendrils where it had none, angrier and harder to kill.
+    /// A local species taken by the fungus (a Hollow): the same body underneath, its hide mottled
+    /// with mould and its colours gone towards the fungus's, with caps and fruiting bodies growing
+    /// out of it (<see cref="Parts.Corruption"/>). It is a lesser thing than what it was: slower,
+    /// easier to bring down, and edgy rather than angry; it keeps its own way of living. Only
+    /// animals carry it (a person never does). Common on a Hollow world and near infected patches,
+    /// scarce elsewhere (<see cref="WorldLife"/>), and it travels on boots (<see cref="FungalSpread"/>).
     /// </summary>
     void Corrupt(Rng rng, Species s)
     {
@@ -805,56 +809,22 @@ public sealed class FaunaGenerator
         s.Corrupted = true;
         s.Id += "-hollow";
         s.Name = $"{c.Prefix} {s.Name}";
-        s.CommonName = $"hollow {s.CommonName}";
+        s.CommonName = $"{c.Prefix.ToLowerInvariant()} {s.CommonName}";
 
-        Color bloomBase = Color.FromHtml(c.Base);
-        s.Colors.Base = s.Colors.Base.Lerp(bloomBase, c.Mix);
-        s.Colors.Belly = s.Colors.Belly.Lerp(bloomBase, c.Mix * 0.8f);
+        Color fungus = Color.FromHtml(c.Base);
+        s.Colors.Base = s.Colors.Base.Lerp(fungus, c.Mix * rng.Range(0.8f, 1.1f));
+        s.Colors.Belly = s.Colors.Belly.Lerp(fungus, c.Mix * 0.8f);
         s.Colors.Accent = Color.FromHtml(c.Veins);
         s.Colors.Glow = Color.FromHtml(c.Glow);
-        s.Colors.GlowStrength = Math.Max(s.Colors.GlowStrength, rng.Range(0.8f, 1f));
-        s.Colors.Pattern = Pattern.Veins;
+        s.Colors.GlowStrength = Math.Max(s.Colors.GlowStrength, rng.Range(0.25f, 0.45f));
+        s.Colors.Pattern = Pattern.Mottle;
+        s.Colors.PatternScale = rng.Range(0.8f, 1.3f);
 
-        if (!s.Has("tendrils"))
-        {
-            // The Bloom grows whatever tendrils this body can carry without them clashing.
-            string[] wanted = s.Rig switch
-            {
-                RigKind.Legged or RigKind.Hopper => new[] { "back", "chin", "whiskers" },
-                RigKind.Chain => new[] { "chin", "whiskers" },
-                RigKind.Winged => new[] { "whiskers" },
-                RigKind.GasBag => new[] { "curtain", "dangling" },
-                _ => Array.Empty<string>(),
-            };
-            foreach (string id in wanted)
-            {
-                PartDef part = _t.FindPart("tendrils", id);
-                if (part == null || !FaunaQuality.Compatible(_t, part, "tendrils", s)) continue;
-                s.Parts["tendrils"] = id;
-                break;
-            }
-        }
-
-        s.Temperament = Temperament.Aggressive;
-        if (s.Behaviour == Behaviour.HarmlessOddity && s.Rig != RigKind.GasBag)
-        {
-            s.Behaviour = Behaviour.Ambusher;
-            AssignAttack(s);
-            // The Bloom gives what was harmless a mouth to match: a grazer's snout becomes jaws.
-            if (s.Part("head") == "snout")
-            {
-                s.Parts["head"] = "jaws";
-                foreach (string slot in FaunaTables.Slots)
-                    if (slot != "head" && _t.FindPart(slot, s.Part(slot)) is { } part && !FaunaQuality.Compatible(_t, part, slot, s)) s.Parts[slot] = "none";
-            }
-        }
-        TemperamentDef angry = _t.Temperament(Temperament.Aggressive);
-        s.Stats.FleeRadius = angry.Flee;
+        // Sick, not furious: a hunter still hunts, a grazer still grazes, but nothing is bolder for it.
+        if (s.Temperament == Temperament.Aggressive && s.Behaviour is not (Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher)) s.Temperament = Temperament.Bold;
         s.Stats.Retaliates = true;
-        s.Stats.Hunts = true;
-        s.Stats.MaxHealth = MathF.Round(s.Stats.MaxHealth * c.HealthScale);
-        s.Stats.Damage = MathF.Round(Math.Max(8f, s.Stats.Damage * c.DamageScale));
-        if (s.Rig == RigKind.Swarm) s.Stats.Damage = MathF.Round(_t.Behaviour(Behaviour.Swarm).Damage * c.DamageScale);
+        s.Stats.MaxHealth = MathF.Max(5f, MathF.Round(s.Stats.MaxHealth * c.HealthScale));
+        s.Stats.Damage = MathF.Round(s.Stats.Damage * c.DamageScale);
         s.Stats.WalkSpeed *= c.SpeedScale;
         s.Stats.RunSpeed *= c.SpeedScale;
 

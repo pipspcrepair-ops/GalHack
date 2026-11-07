@@ -61,12 +61,15 @@ public sealed class MeshBuilder
             case Shape.Taper: Taper(p.Size.X * 0.5f, p.Size.Z * 0.5f, p.Size.Y, p.Sides > 0 ? p.Sides : 10); break;
         }
         Basis nb = p.Local.Basis;
+        bool worm = p.Material > Mat.Eye + 0.5f;
         for (int i = start; i < _v.Count; i++)
         {
+            // A worm carries which worm it is (whole part) and how far along it this point is (fraction) in UV.x.
+            float u = worm ? p.Worm % 64 + Math.Clamp(Mathf.Lerp(p.AlongFrom, p.AlongTo, _v[i].Y / MathF.Max(1e-4f, p.Size.Y)), 0f, 0.995f) : p.Pattern;
             _v[i] = p.Local * _v[i];
             _n[i] = (nb * _n[i]).Normalized();
             _c.Add(c);
-            _uv.Add(new Vector2(p.Pattern, p.Material));
+            _uv.Add(new Vector2(u, p.Material));
         }
     }
 

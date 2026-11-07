@@ -29,10 +29,12 @@ public static class Reaction
     public static float Delay(Creature c, float distance, bool saw)
     {
         if (c.Species.Mechanical) return Machine;
+        // A Husk doesn't hesitate: what drives it isn't afraid of anything.
+        if (c.Species.Husk) return Least + c.Rng.Range(0f, 0.12f);
         Figure f = c.Species.Figure;
         return Delay(c.Nerve, distance, saw, c.Species.Adult != null || f?.Stage == LifeStage.Child, f?.Stage == LifeStage.Elder, c.Rng);
     }
 
     /// <summary>A beat of hesitation between one member of a pack or mob committing and the next: none for machines.</summary>
-    public static float Hesitation(Creature c) => c.Species.Mechanical ? 0f : Mathf.Lerp(0.8f, 0.1f, c.Nerve) * c.Rng.Range(0.6f, 1.2f);
+    public static float Hesitation(Creature c) => c.Species.Mechanical ? 0f : c.Species.Husk ? 0.08f : Mathf.Lerp(0.8f, 0.1f, c.Nerve) * c.Rng.Range(0.6f, 1.2f);
 }

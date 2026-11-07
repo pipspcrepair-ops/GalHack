@@ -531,27 +531,54 @@ public static class Parts
         }
     }
 
-    /// <summary>The Hollow Bloom's growths: glowing pustules, bone spurs and extra eyes.</summary>
+    /// <summary>
+    /// What a Hollow (the parasitic fungus) grows out of an animal: a few caps standing on short
+    /// stalks out of its back and flanks, mould spreading in pale patches over the hide, and
+    /// clusters of thin fruiting bodies with a knob at each tip, some faintly lit. All of it sits on
+    /// the body's own surface; the animal underneath is still plainly the animal.
+    /// </summary>
     public static void Corruption(Piece p, float W, float H, float L, Paint k, Rng rng, LoftProfile body = null)
     {
         float TopAt(float z) => body != null ? Top(body, z) : Top(z, H, L);
-        int pustules = rng.Int(5, 9);
-        for (int i = 0; i < pustules; i++)
+        Color mould = k.Veins, gill = k.Veins.Darkened(0.35f);
+        // The caps: domes on stalks, tilted out from the surface, each its own size; one big one.
+        Color cap = k.Bone.Lerp(new Color(0.62f, 0.42f, 0.24f), rng.Range(0.3f, 0.8f));
+        int caps = rng.Int(3, 6);
+        for (int i = 0; i < caps; i++)
         {
-            float z = rng.Range(-0.4f, 0.4f) * L, x = rng.Range(-0.35f, 0.35f) * W, d = W * rng.Range(0.08f, 0.2f);
-            p.Add(Shape.Sphere, Vector3.One * d, new Vector3(x, TopAt(z) * rng.Range(0.55f, 0.95f), z), k.Veins, 0f, 1f, null, 0, Mat.Membrane);
+            float z = rng.Range(-0.38f, 0.32f) * L, side = rng.Range(-0.32f, 0.32f);
+            float y = TopAt(z) * rng.Range(0.7f, 0.98f);
+            var root = new Vector3(side * W, y, z);
+            var up = new Vector3(side * 1.4f, 1f, rng.Range(-0.3f, 0.3f)).Normalized();
+            float r = W * rng.Range(0.09f, 0.16f) * (i == 0 ? 1.6f : 1f), stalk = r * rng.Range(0.6f, 1.2f);
+            Vector3 top = root + up * stalk;
+            p.Taper(root, top, r * 0.28f, r * 0.22f, k.Bone.Lerp(mould, 0.4f), 0f, 0f, Mat.Membrane, 6);
+            p.Add(Shape.Sphere, new Vector3(r * 2f, r * 0.9f, r * 2f), top + up * r * 0.18f, cap.Darkened(rng.Range(0f, 0.15f)), 0.2f, 0f, Geo.AlongY(up), 10, Mat.Membrane);
+            p.Add(Shape.Sphere, new Vector3(r * 1.8f, r * 0.3f, r * 1.8f), top - up * r * 0.05f, gill, 0f, 0.25f, Geo.AlongY(up), 10, Mat.Membrane);
         }
-        for (int i = 0; i < 4; i++)
+        // Mould: flat pale patches lying on the hide.
+        int patches = rng.Int(3, 5);
+        for (int i = 0; i < patches; i++)
         {
-            float z = rng.Range(-0.3f, 0.3f) * L;
-            int s = i % 2 == 0 ? 1 : -1;
-            Vector3 a = new(s * W * 0.38f, rng.Range(-0.1f, 0.25f) * H, z);
-            Vector3 dir = new Vector3(s * 0.8f, rng.Range(0.2f, 0.8f), rng.Range(-0.4f, 0.4f)).Normalized();
-            p.Horn(k.Bone, W * 0.06f, Mat.Horn, a, a + dir * H * 0.3f, a + dir * H * 0.5f + Vector3.Up * H * 0.1f);
+            float z = rng.Range(-0.45f, 0.4f) * L, x = rng.Range(-0.3f, 0.3f) * W, d = W * rng.Range(0.25f, 0.45f);
+            p.Add(Shape.Sphere, new Vector3(d, d * 0.18f, d * rng.Range(0.8f, 1.4f)), new Vector3(x, TopAt(z) * rng.Range(0.82f, 1f), z), mould.Lerp(k.Base, rng.Range(0.1f, 0.35f)), 0.6f, 0f, null, 10, Mat.Membrane);
         }
-        int eyes = rng.Int(3, 6);
-        for (int i = 0; i < eyes; i++)
-            p.Add(Shape.Sphere, Vector3.One * W * 0.07f, new Vector3(W * 0.4f * (i % 2 == 0 ? 1 : -1), H * rng.Range(-0.05f, 0.25f), -L * rng.Range(0.1f, 0.38f)), k.Veins, 0f, 1f, null, 0, Mat.Eye);
+        // Fruiting bodies: a few clusters of thin stalks, a knob on each, the knobs faintly lit.
+        int clusters = rng.Int(1, 3);
+        for (int c = 0; c < clusters; c++)
+        {
+            float z = rng.Range(-0.3f, 0.3f) * L, x = rng.Range(-0.25f, 0.25f) * W;
+            var at = new Vector3(x, TopAt(z) * 0.95f, z);
+            int stalks = rng.Int(4, 7);
+            for (int i = 0; i < stalks; i++)
+            {
+                var dir = new Vector3(rng.Range(-0.45f, 0.45f), 1f, rng.Range(-0.45f, 0.45f)).Normalized();
+                float len = H * rng.Range(0.12f, 0.24f);
+                Vector3 tip = at + dir * len;
+                p.Taper(at, tip, W * 0.022f, W * 0.012f, k.Bone.Lerp(mould, 0.5f), 0f, 0f, Mat.Membrane, 5);
+                p.Add(Shape.Sphere, Vector3.One * W * rng.Range(0.035f, 0.055f), tip, mould, 0f, 0.7f, null, 6, Mat.Membrane);
+            }
+        }
     }
 
     // ---- Tail tips --------------------------------------------------------------------

@@ -221,6 +221,13 @@ public static class Locomotion
         else if (c.Species.Flies) p.Y = Mathf.Lerp(c.LungeFrom.Y, ground + 1f, eased);
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
+        // A lunge into a wall stops at the wall.
+        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species))
+        {
+            c.LungeTo = c.Position;
+            c.Velocity = Vector3.Zero;
+            return;
+        }
         c.Position = p;
         if (c.Species.Rig == RigKind.Hopper) c.Hop = t < 1f ? HopPhase.Air : HopPhase.Land;
     }
@@ -295,6 +302,8 @@ public static class Locomotion
             {
                 moved = Bound(w, moved, ref c.Velocity);
                 if (!c.Species.Flies && c.Hop == HopPhase.Ground) moved.Y = w.Terrain.Height(moved.X, moved.Z);
+                // Never shoved into a wall.
+                if (Interpenetration.SolidSurface(w, moved, c.Species) && !c.Species.Flies) continue;
             }
             float closing = c.Velocity.Dot(push);
             if (closing < 0f) c.Velocity -= push * closing;

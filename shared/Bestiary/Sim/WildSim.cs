@@ -122,6 +122,18 @@ public sealed class WildSim
     /// </summary>
     public Func<Vector3, bool> SolidAt;
 
+    /// <summary>A Husk has seized someone by the head; let go of them (broken free or not); turned them into one of its own.</summary>
+    public event Action<SeizeEvent> Seized, LetGo, Turned;
+    internal void RaiseSeized(SeizeEvent e) => Seized?.Invoke(e);
+    internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
+    internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+    /// <summary>A Husk murmured through its worms (a game plays it, low).</summary>
+    public event Action<Creature> Murmured;
+    internal void RaiseMurmur(Creature c) => Murmured?.Invoke(c);
+
+    /// <summary>Who a seized person becomes: the same person as a Husk. A game may hand it the world's own (<see cref="WorldLife.Turn"/>).</summary>
+    public Func<Species, ulong, Species> TurnHost;
+
     /// <summary>Creatures found inside solid geometry and freed (see <see cref="Interpenetration"/>); should stay at zero.</summary>
     public int Freed;
     float _scanAt;
@@ -235,6 +247,7 @@ public sealed class WildSim
         Terrain = terrain;
         Nav = nav;
         Clock = new DayClock(data.World);
+        TurnHost = (host, seed) => Husks.Turn(host, seed, Data.Husks);
     }
 
     // ---- Spawning ---------------------------------------------------------------------
@@ -330,6 +343,13 @@ public sealed class WildSim
             Yaw = 0f,
         };
         c.Rng = new Rng(Rng.Mix(species.Seed, (ulong)c.Id));
+        // A kind drawn from several bodies (a world's Husks) is one of them each time.
+        if (species.Hosts is { Count: > 0 } hosts)
+        {
+            species = hosts[c.Rng.Int(0, hosts.Count - 1)];
+            c.Species = species;
+            c.Health = species.Stats.MaxHealth;
+        }
         // Half of a dimorphic species is the other sex.
         if (species.Mate != null && c.Rng.Chance(0.5f))
         {
@@ -481,7 +501,17 @@ public sealed class WildSim
             if (c.Removed || c.Dormant && !c.Dead) continue;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
+            if (c.HeldBy != null && (c.HeldBy.Removed || c.HeldBy.Dead || c.HeldBy.Holding != c.AsTarget)) c.HeldBy = null;
             if (c.Dead) UpdateCorpse(c, dt);
+            else if (c.HeldBy != null)
+            {
+                // Seized face to face: it can do nothing but be held.
+                c.Desired = Vector3.Zero;
+                c.Velocity = Vector3.Zero;
+                c.FacePoint = c.HeldBy.Position;
+                c.LookAt = c.HeldBy.Position + Vector3.Up * 1.5f;
+                c.Rear = 0.6f;
+            }
             else if (Frozen)
             {
                 c.Desired = Vector3.Zero;

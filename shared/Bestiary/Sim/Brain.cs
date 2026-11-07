@@ -87,6 +87,14 @@ public static partial class Brain
         }
         else if (near != null && c.Noticed != null) near = c.Noticed;
 
+        // A Husk keeps no hours and has a mind of its own (if it is one at all).
+        if (c.Species.Husk)
+        {
+            HuskMind(w, c, near, dist, dt);
+            if (w.Settlements.Count > 0) AvoidTowns(w, c);
+            return;
+        }
+
         // Outside its hours it goes to its rest site and stays there, unless something wakes it.
         if (w.ActivityCycles && c.Rest != null && Resting(w, c, near, dist, dt)) return;
 

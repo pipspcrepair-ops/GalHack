@@ -418,15 +418,18 @@
 
     "corruption": {
       "prefix": "Hollow",
-      "base": "#24101f",
-      "veins": "#ff3cac",
-      "glow": "#ff4fd8",
-      "mix": 0.62,
-      "weirdnessBonus": 0.25,
-      "healthScale": 1.3,
-      "damageScale": 1.3,
-      "speedScale": 1.1,
-      "rare": { "name": "Hollow node", "chance": 0.5, "value": 220 }
+      "base": "#6b5a44",
+      "veins": "#d9d6b8",
+      "glow": "#c8f08a",
+      "mix": 0.38,
+      "weirdnessBonus": 0.2,
+      "healthScale": 0.75,
+      "damageScale": 0.8,
+      "speedScale": 0.85,
+      "scarceShare": 0.12,
+      "scarceChance": 0.35,
+      "spread": { "perVisit": 0.04, "patchRadius": 60, "patchShare": 0.6 },
+      "rare": { "name": "Hollow cap", "chance": 0.5, "value": 160 }
     },
 
     "syllables": {
