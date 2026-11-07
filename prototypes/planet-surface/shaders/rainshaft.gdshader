@@ -94,16 +94,21 @@ float density(vec3 p) {
 	float env = 1.0 - smoothstep(0.15, 1.15, r);
 	float cover = env * 1.25 + (field - 0.5) * 1.15 - 0.12;
 	float body = smoothstep(0.28 + 0.18 * g, 0.8, cover);
+	body *= 1.0 - smoothstep(0.5, 0.88, length(d) / bound); // nothing reaches the clip, so it never shows an edge
 	// Fingers: each column of rain runs down to its own depth and trails off in a wisp.
 	float fin = vnoise(vec3(q * (7.0 / reach) + 21.0, 4.0));
 	float end = 0.45 + 0.55 * fin;
 	body *= 1.0 - smoothstep(end - 0.3, end, g);
+	// Columns of rain of uneven width and weight, wavering as they fall; the gaps between are near clear.
+	float col = vnoise(vec3((q + warp * reach * 0.5) * (5.5 / reach) + 31.0, 0.5));
+	body *= mix(0.12, 1.0, smoothstep(0.3, 0.62, col)) * (0.7 + 0.6 * vnoise(vec3(q * (14.0 / reach), up * 0.003)));
 	vec2 sq = q + slant * up;
 	float s1 = vnoise(vec3(sq * (38.0 / reach), up * 0.0016 + TIME * 0.08));
 	float s2 = vnoise(vec3(sq * (95.0 / reach) + 4.0, up * 0.0022 - TIME * 0.12 + 2.0));
 	float streak = 0.45 + 1.0 * (s1 * 0.6 + s2 * 0.4 - 0.5);
 	float vert = mix(1.0, 0.3, smoothstep(0.0, 0.9, g));
-	vert *= 1.0 - smoothstep(under - 25.0, under + 45.0, p.y);
+	float ragged = (vnoise(vec3(q * (6.0 / reach) + 17.0, 1.5)) - 0.5) * 110.0;
+	vert *= 1.0 - smoothstep(under - 30.0 + ragged, under + 50.0 + ragged, p.y);
 	// The foot of heavy rain: a pale skirt of spray spreading out along the ground.
 	float skirt = skirt_amount * smoothstep(0.9, 1.0, g) * (1.0 - smoothstep(0.4, 1.5, length(d + warp * reach * 0.6) / width)) * (0.5 + field);
 	return body * clamp(streak, 0.1, 1.3) * vert + skirt * 1.2;
@@ -161,6 +166,8 @@ void fragment() {
 	// your back it is a plain dark grey one.
 	float toward = max(dot(dir, normalize(to_sun)), 0.0);
 	float glow = pow(toward, 5.0) * sun_amount;
-	ALBEDO = mix(tint, sun_glow * 1.1, clamp(glow, 0.0, 0.85));
-	ALPHA = clamp((1.0 - exp(-optical * 9.0)) * amount, 0.0, 1.0);
+	// Thin wisps are pale, the dense core of a finger darker.
+	vec3 body_col = mix(tint * 1.9, tint * 0.8, clamp(optical * 1.2, 0.0, 1.0));
+	ALBEDO = mix(body_col, sun_glow * 1.1, clamp(glow, 0.0, 0.85));
+	ALPHA = clamp((1.0 - exp(-optical * 11.0)) * amount, 0.0, 1.0);
 }
