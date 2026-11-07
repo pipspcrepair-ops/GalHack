@@ -275,7 +275,7 @@ float cloud_density(vec3 p, bool cheap) {
 	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
 	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
 	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
-	float st = stratus > 0.001 ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
+	float st = (stratus > 0.001 && tower_count == 0) ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
 	if (st > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, st);
 	vec4 st_ = tower_count > 0 ? storm_at(p) : vec4(0.0);
 	float storm = st_.x;
@@ -450,7 +450,7 @@ void sky() {
 		}
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
-		if (cirrus > 0.01 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
+		if (cirrus > 0.01 && tower_count == 0 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
 			// The deck's perspective is eased (the streaks used to fan out to a point on the horizon) and the
 			// combing warped, so they wander like real cirrus; patches of it come and go across the sky.
 			vec2 q = dir.xz / (dir.y + 0.55) + cloud_drift * 0.00002;
