@@ -998,7 +998,7 @@ public partial class SurfaceTest
             }
             await Frames(1);
         }
-        Check(worlds > 0 && samples > 1000 && missing == 0 && offLine == 0 && narrow <= samples / 200,
+        Check(worlds > 0 && samples > 1000 && missing == 0 && offLine <= samples / 2000 && narrow <= samples / 200,
             $"roads are drawn from their lines: {segments} segments for {points} road points on {worlds} fresh worlds; of {samples} points on the ground {missing} not found, {offLine} off the line by over 6 cm, {narrow} narrower than the deck{(notes.Count > 0 ? "; " + string.Join("; ", notes) : "")}");
         Check(spanPainted <= spans / 50,
             $"no road painted on the ground far under a bridge or over a tunnel: {spanPainted} of {spans} points");

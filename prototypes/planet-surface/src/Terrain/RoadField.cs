@@ -229,7 +229,7 @@ public sealed class RoadField
         if (SegmentCount == 0) return best;
         double cx = Mathx.WrapX(x, _width), cz = Mathx.Wrap(z, _height);
         int cellX = Math.Min((int)Grid.Y - 1, (int)(cx / Cell)), cellZ = Math.Min((int)Grid.Z - 1, (int)(cz / Cell));
-        int cell = cellZ * (int)Grid.Y + cellX, first = (int)_cells[cell * 2], count = Math.Min((int)_cells[cell * 2 + 1], 48);
+        int cell = cellZ * (int)Grid.Y + cellX, first = (int)_cells[cell * 2], count = Math.Min((int)_cells[cell * 2 + 1], 64);
         for (int k = 0; k < count; k++)
         {
             int o = (int)_index[first + k] * 16;

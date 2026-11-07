@@ -67,7 +67,7 @@ Road nearest_road(vec2 at, float y) {
 	vec2 c = mod(at, planet_size);
 	ivec2 cell = ivec2(min(floor(c / road_grid.x), road_grid.yz - 1.0));
 	vec2 list = texelFetch(road_cells, cell, 0).xy;
-	int first = int(list.x), count = min(int(list.y), 48);
+	int first = int(list.x), count = min(int(list.y), 64);
 	float best_id = -1.0;
 	r.along = 0.0;
 	for (int k = 0; k < count; k++) {
