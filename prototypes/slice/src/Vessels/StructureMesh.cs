@@ -41,6 +41,7 @@ public partial class StructureMesh : Node3D
     readonly Dictionary<Int3, MeshInstance3D> _chunks = new();
     readonly ChunkMeshData _scratch = new();
     readonly List<OmniLight3D> _lights = new();
+    readonly List<LightSettings> _lightSettings = new();
     string _lightKey = "";
     readonly Slice.Surface.StructureSky _sky = new();
     int _litVersion = -1;
@@ -67,6 +68,7 @@ public partial class StructureMesh : Node3D
 
     public override void _Process(double delta)
     {
+        AnimateLights();
         long start = Stopwatch.GetTimestamp();
         int rebuilt = Rebuilt, queued = _waiting.Count;
         BeforeDraw?.Invoke();
@@ -134,16 +136,31 @@ public partial class StructureMesh : Node3D
         Fx?.Smoke(chunk, _scratch.Smoking);
     }
 
+    /// <summary>The real lights follow their glow: the same intensity and colour the shader draws, from the same clock.</summary>
+    void AnimateLights()
+    {
+        if (_lights.Count == 0) return;
+        double now = BlockMaterials.LampClock;
+        for (int i = 0; i < _lights.Count && i < _lightSettings.Count; i++)
+        {
+            LightSettings s = _lightSettings[i];
+            if (s.Anim == LightAnim.Steady) continue;
+            _lights[i].LightEnergy = 1.4f * s.Intensity(now);
+            _lights[i].LightColor = ChunkMesher.Rgb(s.ColorAt(now));
+        }
+    }
+
     void UpdateLights()
     {
         var lights = new List<(Int3 pos, Block block)>();
         foreach (var (p, b) in Structure.Blocks())
             if (Structure.TypeOf(b).IsLight && !b.Off && lights.Count < MaxLights) lights.Add((p, b));
-        string key = string.Join(";", lights.ConvertAll(l => $"{l.pos}/{l.block.Rot}"));
+        string key = string.Join(";", lights.ConvertAll(l => $"{l.pos}/{l.block.Rot}/{Structure.LightAt(l.pos).ToText()}"));
         if (key == _lightKey) return;
         _lightKey = key;
         foreach (OmniLight3D l in _lights) l.QueueFree();
         _lights.Clear();
+        _lightSettings.Clear();
         float cell = Structure.Grid.CellSize;
         foreach (var (pos, block) in lights)
         {
@@ -151,13 +168,14 @@ public partial class StructureMesh : Node3D
             var light = new OmniLight3D
             {
                 Position = (new Vector3(pos.X, pos.Y, pos.Z) + new Vector3(out_.X, out_.Y, out_.Z)) * cell,
-                LightColor = ChunkMesher.Rgb(Structure.TypeOf(block).GlowColor),
+                LightColor = ChunkMesher.Rgb(Structure.LightAt(pos).Color),
                 LightEnergy = 1.4f,
                 OmniRange = 4f,
                 OmniAttenuation = 1.2f,
             };
             AddChild(light);
             _lights.Add(light);
+            _lightSettings.Add(Structure.LightAt(pos));
         }
     }
 }

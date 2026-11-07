@@ -16,6 +16,15 @@ public enum FaceTexture : byte { Panel, Smooth, Plates, Ribbed }
 /// </summary>
 public readonly record struct Paint(uint Base, uint Accent, Pattern Pattern, FaceTexture Texture, byte Stencil, byte Grime)
 {
+    /// <summary>Set for glowing paint: the colour, second colour, mode, speed and offset it lights with (the paint's Base is ignored for the glow). A lit paint has no pattern or stencil.</summary>
+    public LightSettings? Lamp { get; init; }
+    public LampShape Shape { get; init; }
+    public bool IsLamp => Lamp != null && Shape != LampShape.None;
+
+    /// <summary>Glowing paint: a face, strip, panel or border lit with these settings.</summary>
+    public static Paint Lit(LampShape shape, LightSettings settings) =>
+        new(settings.Color, DefaultAccent, Pattern.None, FaceTexture.Smooth, 0, 0) { Lamp = settings, Shape = shape };
+
     public const uint DefaultAccent = 0x2b2d42;
 
     public static Paint Solid(uint color) => new(color, DefaultAccent, Pattern.None, FaceTexture.Panel, 0, 0);

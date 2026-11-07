@@ -109,6 +109,8 @@ public sealed class LightSpot
     public float Range = 8f;
     public int Module = -1;
     public int Storey;
+    /// <summary>Colour and animation set through PoiLights; null keeps the place's own behaviour for this lamp's Mode.</summary>
+    public GalHack.Structures.LightSettings? Style;
 }
 
 /// <summary>A sound hook the view (or the slice) plays: drips, hums, distant knocks, wind.</summary>

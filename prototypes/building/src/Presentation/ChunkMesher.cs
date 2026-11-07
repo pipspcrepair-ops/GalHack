@@ -540,7 +540,9 @@ public static class ChunkMesher
                 _normals[i] = (basis * ToG(NVec.Normalize(radial))).Normalized();
             }
         }
-        FaceLook look = Look(s, b, slot, style, _damage[c]);
+        FaceLook look = style == PartStyle.Glow && s.Catalogue.Types[b.Type].IsLight
+            ? Look(s, b, slot, style, _damage[c], light: s.LightAt(Int3.Round(ToN(centre))))
+            : Look(s, b, slot, style, _damage[c]);
         // Every polygon of a shaped or component block carries its own seed: these faces never merge.
         if (_damage[c] > 0) look = look with { Base = WithSeed(look.Base, FaceSeed(Int3.Round(ToN(centre)), slot)) };
         target.AddPolygon(_poly.AsSpan(0, points.Length), basis * ToG(poly.Normal), slot, size, look,
@@ -553,7 +555,7 @@ public static class ChunkMesher
     // ---- Appearance ----------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage, bool holed = false)
+    public static FaceLook Look(Structure s, in Block b, Dir slot, PartStyle style, int damage, bool holed = false, LightSettings? light = null)
     {
         BlockType t = s.Catalogue.Types[b.Type];
         DamageLook wear = t.DamageLook;
@@ -566,6 +568,8 @@ public static class ChunkMesher
             case PartStyle.Glow:
                 // Smashed badly enough, a light goes out.
                 bool lit = !(t.IsLight && b.Off) && damage < 3;
+                if (lit && light is LightSettings ls)
+                    return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags(Pattern.None, 0, FaceTexture.Smooth, damage, true, 0, 0, false, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
                 return new FaceLook(Rgb(lit ? t.GlowColor : 0x3a3a3a), Paint.DefaultAccent, Flags(Pattern.None, 0, FaceTexture.Smooth, damage, lit, 0, 0, false, wear, holed));
         }
 
@@ -573,6 +577,11 @@ public static class ChunkMesher
         if (slotPaint == 0)
             return new FaceLook(Rgb(t.Color), t.Accent, Flags(Pattern.None, 0, t.Texture, damage, false, t.Metal, 0, false, wear, holed));
         Paint p = s.Palette[slotPaint];
+        if (p.IsLamp)
+        {
+            LightSettings ls = p.Lamp.Value;
+            return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags((Pattern)(int)p.Shape, 0, FaceTexture.Smooth, damage, true, 0, 0, true, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
+        }
         int stencil = p.Stencil >= '0' && p.Stencil <= '9' ? p.Stencil - '0' + 1 : 0;
         return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, p.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
     }

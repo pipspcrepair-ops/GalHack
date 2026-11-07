@@ -207,6 +207,7 @@ public static class Decay
             if (powered) inst.Sounds.Add(new SoundHook("hum", at(floor[0]), 0.5f, lvl.Storey));
         }
         inst.Sounds.AddRange(x.Sounds);
+        PoiLights.ApplyKitMood(inst);
     }
 
     static bool Touches(BlockGrid g, Int3 c)

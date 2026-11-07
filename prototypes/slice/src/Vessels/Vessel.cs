@@ -106,6 +106,19 @@ public sealed partial class Vessel
         }
     }
 
+    /// <summary>Gives one light block (or, with no cell, every light block) new colour and animation settings; <paramref name="change"/> maps what a light has now to what it should have.</summary>
+    public int StyleLights(Int3? cell, System.Func<LightSettings, LightSettings> change)
+    {
+        int n = 0;
+        foreach (var (at, block) in Structure.Blocks().ToList())
+        {
+            if (!Structure.TypeOf(block).IsLight || (cell != null && at != cell.Value)) continue;
+            if (Structure.SetLight(at, change(Structure.LightAt(at)))) n++;
+        }
+        if (n > 0) ApplyEdits();
+        return n;
+    }
+
     /// <summary>E on a light block: switches that one light. False if the cell is not a light.</summary>
     public bool ToggleLight(Int3 cell)
     {

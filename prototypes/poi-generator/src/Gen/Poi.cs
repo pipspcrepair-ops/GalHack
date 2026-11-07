@@ -121,6 +121,8 @@ public sealed class PoiInstance
     public List<StoryProp> Story = new();
     public List<Int3> Growths = new();
     public List<LightSpot> Lights = new();
+    /// <summary>Faces painted to glow (a strip, a panel, a border): see PoiLights.PaintFace.</summary>
+    public List<LitFace> LitFaces = new();
     public List<SoundHook> Sounds = new();
     /// <summary>Tags for the view and a later pass: smoke, vents, spawn and patrol points.</summary>
     public List<Marker> Markers = new();
