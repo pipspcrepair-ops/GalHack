@@ -245,7 +245,7 @@ internal static class PlantForms
         }
         s.Lump(new Vector3(top.X, centre + crown * (far ? 0f : 0.2f), top.Z), new Vector3(R * (far ? 1f : 0.7f), crown * (far ? 0.55f : 0.42f), R * (far ? 1f : 0.7f)), d, c.Top, c.Mid, 0.16f, 0.7f);
         int strips = far ? 6 : g.Fronds;
-        float width = MathF.Tau * R / strips * 1.4f;
+        float width = MathF.Tau * R / strips * 0.86f; // gaps between them: curtains, not a wall
         Vector4 fade = Vector4.Lerp(c.Mid, c.Under, 0.55f);
         for (int i = 0; i < strips; i++)
         {
@@ -253,12 +253,12 @@ internal static class PlantForms
             Vector3 dir = Ring(angle, 1f);
             Vector3 side = Ring(angle + MathF.PI / 2f, width * 0.5f);
             Vector3 hang = new Vector3(top.X, centre + crown * 0.16f, top.Z) + dir * R * 0.86f;
-            float fall = (hang.Y - H * (0.1f + g.Droop * 0.3f)) * d.Range(0.68f, 1f);
+            float fall = (hang.Y - H * (0.1f + g.Droop * 0.3f)) * d.Range(0.5f, 1f);
             Vector3 mid = hang + dir * R * 0.12f + Vector3.UnitY * -fall * 0.5f;
             Vector3 low = hang + dir * R * 0.1f + Vector3.UnitY * -fall;
             Vector3 outward = dir + Vector3.UnitY * 0.1f;
             s.Quad(hang - side, hang + side, mid + side * 0.92f, mid - side * 0.92f, outward, c.Mid, c.Mid, fade, fade);
-            s.Quad(mid - side * 0.92f, mid + side * 0.92f, low + side * 0.7f, low - side * 0.7f, outward, fade, fade, c.Under, c.Under);
+            s.Quad(mid - side * 0.92f, mid + side * 0.92f, low + side * 0.4f, low - side * 0.4f, outward, fade, fade, c.Under, c.Under);
         }
     }
 

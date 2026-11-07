@@ -211,7 +211,7 @@ public sealed partial class Staging
             {
                 foreach (int x in Arrive(meadow)) yield return x;
                 Vector3 g = _game.Survivor.WorldFeet;
-                var bushes = _game.Zone.Streamer.FloraNear(g, 110f).Where(p => p.Kind == Flora.Shrub).OrderBy(p => (planet.Flora.Book.Plants[p.Plant].Form == PlantForm.Bush ? 0f : 400f) + (planet.Flora.Book.Plants[p.Plant].Flowers ? 0f : 200f) + p.Root.DistanceTo(g)).ToList();
+                var bushes = _game.Zone.Streamer.FloraNear(g, 110f).Where(p => p.Kind == Flora.Shrub).OrderBy(p => (planet.Flora.Book.Plants[p.Plant].Form == PlantForm.Bush && planet.Flora.Book.Plants[p.Plant].Flowers ? 0f : 400f) + p.Root.DistanceTo(g)).ToList();
                 GD.Print($"FLORA {bushes.Count} shrubs in {planet.Palette.BiomeAt(meadow.X, meadow.Z)}, {bushes.Count(p => planet.Flora.Book.Plants[p.Plant].Flowers)} in flower");
                 if (bushes.Count > 0)
                 {
@@ -219,8 +219,9 @@ public sealed partial class Staging
                     Plant p = planet.Flora.Book.Plants[bush.Plant];
                     GD.Print($"FLORA bush {p.Form} {p.Height * bush.Scale:F1} m, {p.Near[bush.Variant].Triangles} tris, leaf {p.Leaf}, bloom {p.Bloom}");
                     Vector3 side = new Vector3(0.8f, 0f, 0.6f);
-                    Vector3 eyeAt = Feet(bush.Root + side * 2.6f) + Vector3.Up * 1.05f;
-                    _game.FixedCamera = new Transform3D(Basis.LookingAt(bush.Root + Vector3.Up * 0.55f - eyeAt, Vector3.Up), eyeAt);
+                    float tall = p.Height * bush.Scale;
+                    Vector3 eyeAt = Feet(bush.Root + side * (tall * 1.15f + 0.5f)) + Vector3.Up * (tall * 0.95f);
+                    _game.FixedCamera = new Transform3D(Basis.LookingAt(bush.Root + Vector3.Up * (tall * 0.6f) - eyeAt, Vector3.Up), eyeAt);
                     foreach (int x in _drive.Wait(20)) yield return x;
                     FloraShot("bush-close");
                     Vector3 backAt = Feet(bush.Root + side * 26f) + Vector3.Up * 1.9f;
