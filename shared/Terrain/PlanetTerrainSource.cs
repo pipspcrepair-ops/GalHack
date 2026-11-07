@@ -255,6 +255,22 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return road;
     }
 
+    /// <summary>Whether a point is on open ground a stamp levelled but built nothing on (<see cref="TerrainStamp.Wild"/>, a park), off every road and other pad, and how worn it is.</summary>
+    public bool OnWild(double x, double z, out float wear)
+    {
+        wear = 0f;
+        bool wild = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Weight(x, z) <= 0f) continue;
+            if (!t.Wild) return false;
+            wild = true;
+            wear = Math.Max(wear, t.Wear);
+        }
+        return wild;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {

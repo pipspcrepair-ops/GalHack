@@ -441,8 +441,10 @@ public static class FarBuilder
             if (pal.DeadZones.Count > 0 && turn < pal.Deadness(x, z)) continue;
             // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
             // through a road nobody has kept up for a century (never a tree: the way stays open).
+            // A park grows back: grass and shrubs always, trees once nobody has kept it.
             if (source.StampWeight(x, z) > 0f
-                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
+                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(source.OnWild(x, z, out float wild) && (!FloraMeshes.IsLarge(rule.Kind) || wild > 0.7f))) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);

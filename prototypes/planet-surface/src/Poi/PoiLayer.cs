@@ -124,9 +124,8 @@ public partial class PoiLayer : Node3D
     /// glow, and the core's glow only where a faction holds the place. Lights above ground and
     /// beacons come first so the place carries from a distance; the count is capped for the frame.
     /// </summary>
-    void AddLights(Node3D node, PoiInstance inst)
+    void AddLights(Node3D node, PoiInstance inst, int MaxLights = 20)
     {
-        const int MaxLights = 20;
         var chosen = inst.Lights
             .OrderByDescending(l => l.Mode == LightMode.Beacon)
             .ThenByDescending(l => l.Cell.Y >= 0)
@@ -326,6 +325,9 @@ public partial class PoiLayer : Node3D
     {
         foreach (Place p in _places) p.Node?.QueueFree();
         _places.Clear();
+        foreach (Tile t in _tiles) t.Node?.QueueFree();
+        _tiles.Clear();
+        _tileOf.Clear();
         _building.Clear();
         _animated.Clear();
         _styled.Clear();

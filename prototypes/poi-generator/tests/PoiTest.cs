@@ -187,28 +187,46 @@ public partial class PoiTest : Node
         Check(!threw && none == null && reason != null, $"a place that can't lay out is left out, not thrown: {(threw ? "threw" : reason ?? "laid out")}");
     }
 
-    /// <summary>Every city lot the planner can ask for lays out: each kind, its sizes, storeys, styles, falls and turns, with no failure.</summary>
+    /// <summary>
+    /// Every city lot the planner can ask for lays out: each kind at the lot sizes, storeys, styles, falls,
+    /// leans, topples, hillside steps and turns it rolls, with no failure; each sets its gate on its front lot
+    /// line, and nothing it builds above ground strays past the lot.
+    /// </summary>
     void CityLots()
     {
         ulong fresh = (ulong)Random.Shared.NextInt64();
-        int rolls = 0, failed = 0;
+        int rolls = 0, failed = 0, stray = 0, gates = 0;
         var why = new Dictionary<string, int>();
         var rng = new Rng(fresh);
-        foreach (string kind in new[] { "tower", "midrise", "terrace", "works", "civic" })
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (string kind in new[] { "tower", "midrise", "terrace", "house", "works", "civic", "station" })
         {
             FamilyDef f = _lib.Families.First(x => x.Id == "city_" + kind);
-            for (int k = 0; k < 60; k++)
+            for (int k = 0; k < 40; k++)
             {
+                float fall = rng.Float();
+                int Step() => rng.Chance(0.4f) ? rng.Range(1, 6) : 0;
                 var lot = kind switch
                 {
-                    "tower" => new CityLot(kind, rng.Range(15, 18), rng.Range(12, 15), rng.Range(2, 31), rng.Range(0, 1000), rng.Float()),
-                    "midrise" => new CityLot(kind, rng.Range(11, 15), rng.Range(12, 15), rng.Range(2, 9), rng.Range(0, 1000), rng.Float()),
-                    "terrace" => new CityLot(kind, rng.Range(6, 9), rng.Range(8, 11), rng.Range(1, 4), rng.Range(0, 1000), rng.Float()),
-                    "works" => new CityLot(kind, rng.Range(16, 20), rng.Range(12, 15), 1, rng.Range(0, 1000), rng.Float()),
-                    _ => new CityLot(kind, 25, 23, 1, rng.Range(0, 1000), rng.Float()),
+                    "tower" => new CityLot(kind, rng.Range(17, 19), 17, rng.Range(2, 31), rng.Range(0, 1000), fall, Lean: rng.Chance(0.3f), Toppled: rng.Chance(0.2f)),
+                    "midrise" => new CityLot(kind, rng.Range(12, 16), 17, rng.Range(2, 9), rng.Range(0, 1000), fall, Lean: rng.Chance(0.2f)),
+                    "terrace" => new CityLot(kind, new[] { 9, 10, 13, 14, 17 }[rng.Range(0, 5)], 17, rng.Range(1, 4), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
+                    "house" => new CityLot(kind, rng.Range(10, 13), 17, rng.Range(1, 3), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
+                    "works" => new CityLot(kind, rng.Range(17, 21), 17, 1, rng.Range(0, 1000), fall),
+                    _ => new CityLot(kind, 34, 34, 1, rng.Range(0, 1000), fall),
                 };
                 rolls++;
-                try { PoiFactory.BuildLayout(_lib, f, k % f.Variants.Count, f.Rarity, rng.NextU64(), new LayoutHints(Dirs.Horizontal[k % 4], (TechLevel)(k % 3), lot)); }
+                Dir front = Dirs.Horizontal[k % 4];
+                try
+                {
+                    Layout layout = PoiFactory.BuildLayout(_lib, f, k % f.Variants.Count, f.Rarity, rng.NextU64(), new LayoutHints(front, (TechLevel)(k % 3), lot));
+                    // The lot in the place's own cells: u along the front, v back from it, turned to its front (Plot.Cell).
+                    int w = 2 * lot.W, d = 2 * lot.D;
+                    (int U, int V) Frame(Int3 c) => front switch { Dir.North => (c.X, c.Z), Dir.South => (-1 - c.X, -1 - c.Z), Dir.East => (c.Z, -1 - c.X), _ => (-1 - c.Z, c.X) };
+                    bool In(Int3 c) => Frame(c) is var (u, v) && u >= 0 && u < w && v >= 0 && v < d;
+                    if (layout.Blocks.Blocks().Any(b => b.Item1.Y >= 0 && !In(b.Item1))) stray++;
+                    if (In(layout.Extras.Gate) && Frame(layout.Extras.Gate).V == 0) gates++;
+                }
                 catch (Exception e)
                 {
                     failed++;
@@ -218,7 +236,10 @@ public partial class PoiTest : Node
             }
         }
         foreach (var (k, n) in why.OrderByDescending(w => w.Value).Take(8)) GD.Print($"      {n} x {k}");
+        GD.Print($"      {rolls} city lots in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms (fresh seed {fresh})");
         Check(failed == 0, $"city lots lay out on every roll: {rolls - failed} of {rolls} ({failed} failed)");
+        Check(stray == 0, $"nothing a city lot builds above ground stands past its lot lines ({stray} of {rolls - failed} strayed)");
+        Check(gates == rolls - failed, $"every city lot's gate is on its front lot line ({gates} of {rolls - failed})");
     }
 
     /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>

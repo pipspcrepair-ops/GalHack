@@ -140,3 +140,57 @@ family city_civic
   variant Domed Hall Three
     seed 7347
 
+family city_house
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name House
+  pitch A house behind its lawn, the drive to the carport cracked through.
+  faction none
+  roster raiders
+  site city_house_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant House One
+    seed 7351
+  variant House Two
+    seed 7352
+  variant House Three
+    seed 7357
+
+
+family city_station
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Station
+  pitch A station at the edge of the city, its platforms waiting under their canopies.
+  faction none
+  roster raiders
+  site city_station_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Station One
+    seed 7361
+  variant Station Two
+    seed 7362
+  variant Station Three
+    seed 7367

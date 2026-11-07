@@ -15,8 +15,8 @@ namespace GalHack.Terrain;
 /// seed, so every machine generates the same pad, and digging rules still apply on top of it.
 /// Coordinates are world cells on the torus; distances wrap across both seams.
 /// </summary>
-/// <summary>What the ground of a stamped place is made of: its own land, or a made surface laid on it.</summary>
-public enum StampSurface : byte { Natural, Concrete, Tarmac, Gravel, Dirt }
+/// <summary>What the ground of a stamped place is made of: its own land, or a made surface laid on it. Lawn: levelled, and the land's own ground left showing (a garden, a park).</summary>
+public enum StampSurface : byte { Natural, Concrete, Tarmac, Gravel, Dirt, Lawn }
 
 /// <summary>What a stamp does to the ground: see <see cref="TerrainStamp.Shape"/>.</summary>
 public enum StampShape : byte { Pad, Bowl, Terraces, Cut, Tilt, Furrow, Road, Buried }
@@ -177,6 +177,8 @@ public sealed class TerrainStamp
     public StampSurface Surface { get; init; } = StampSurface.Natural;
     /// <summary>How long it has been left: 0 kept up, 1 a century of weather (cracked, sand and weeds drifted over).</summary>
     public float Wear { get; init; }
+    /// <summary>Open ground with nothing built on it (a park): the land's plants grow on it, grass always, trees once it's worn past keeping.</summary>
+    public bool Wild { get; init; }
 
     /// <summary>The stamp's shape: Pad (the default), Bowl, Terraces, Cut, Tilt or Furrow.</summary>
     public StampShape Shape { get; init; } = StampShape.Pad;

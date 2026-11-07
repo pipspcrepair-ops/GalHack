@@ -109,6 +109,12 @@ public sealed class InfraNetwork
     public StartTown Town;
     /// <summary>A ruined city, on a world whose layers built one (null otherwise; see CityPlan).</summary>
     public CityPlan City;
+    /// <summary>
+    /// Lots that front a street, each with its frontage, gate and crossover (<see cref="CityLotPlan"/>): what a
+    /// planner of places along streets hands the roads side, which draws the verges, footpaths, kerbs and
+    /// crossovers from them. The city's lots, today.
+    /// </summary>
+    public readonly List<CityLotPlan> Lots = new();
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
     /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>
@@ -1072,11 +1078,11 @@ public sealed class InfraNetwork
     /// <summary>Later routes go round this pad.</summary>
     public void KeepOff(TerrainStamp pad) => _router?.Block(pad, 12);
 
-    /// <summary>A spur from a point to the nearest route already laid (within a reach), found by the path engine. False if none.</summary>
-    public bool Spur((double X, double Z) from, RouteKind kind, double reach)
+    /// <summary>A spur from a point to the nearest route already laid (within a reach, leaving out some), found by the path engine. False if none.</summary>
+    public bool Spur((double X, double Z) from, RouteKind kind, double reach, ICollection<InfraRoute> except = null)
     {
         if (_router == null) return false;
-        InfraRoute near = Nearest(from.X, from.Z, reach, out int at, out _);
+        InfraRoute near = Nearest(from.X, from.Z, reach, out int at, out _, except);
         if (near == null) return false;
         List<int> cells = _router.Find(from, (near.X[at], near.Z[at]), kind, Profile.Before);
         if (cells == null || cells.Count < 2) return false;
@@ -1604,13 +1610,13 @@ public sealed class InfraNetwork
     int _roadPoints;
     double _roadReach;
 
-    public InfraRoute Nearest(double x, double z, double within, out int index, out double distance)
+    public InfraRoute Nearest(double x, double z, double within, out int index, out double distance, ICollection<InfraRoute> except = null)
     {
         index = -1;
         distance = double.MaxValue;
         InfraRoute best = null;
         foreach (InfraRoute r in Routes)
-            for (int i = 0; i < r.Count; i++)
+            for (int i = 0; i < r.Count && except?.Contains(r) != true; i++)
             {
                 double dx = Mathx.WrapDelta(r.X[i] - x, _w), dz = Mathx.WrapDelta(r.Z[i] - z, _h);
                 if (Math.Abs(dx) > within || Math.Abs(dz) > within) continue;
