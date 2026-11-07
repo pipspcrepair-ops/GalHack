@@ -233,8 +233,9 @@ public partial class Place
         }
     }
 
+    /// <summary>The car stands level with a stop: empty, or carrying someone who has come to it and wants out.</summary>
     bool CarAt(int lift, int stop) => lift < _cars.Count && stop >= 0 && stop < _cars[lift].Shaft.StopWalkY.Count
-                                      && !_cars[lift].Ridden && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
+                                      && Mathf.Abs(_cars[lift].Y - _cars[lift].Shaft.StopWalkY[stop]) < 0.25f;
 
     void CallLift(int lift, int stop)
     {

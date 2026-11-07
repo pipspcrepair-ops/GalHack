@@ -863,6 +863,7 @@ public partial class PlaceTest : Node
         foreach (int x in drive.Wait(30)) yield return x;
         foreach (int x in drive.UntilSettled()) yield return x;
         double hurtBefore = game.Suit.HealthShare;
+        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the castaway is on another copy of it
         foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
         for (int i = 0; i < 300 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         Place place = game.Places.PlaceOf(site);
@@ -881,7 +882,7 @@ public partial class PlaceTest : Node
         bool ok = false;
         foreach (int x in walk.To(place, far.Cell, r => ok = r)) yield return x;
         foreach (int x in walk.To(place, place.Inst.Layout.EntranceCell, r => ok = r)) yield return x;
-        Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace: still {place.Memory.Mood}, no guard raised a gun");
+        Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace ({(ok ? "" : $"the walk stopped: {string.Join("; ", walk.Notes.TakeLast(2))}; ")}health {game.Suit.HealthShare * 100:F0}%): still {place.Memory.Mood}, no guard raised a gun");
         // Night sends them in (the clock wound on, printed), morning brings them out.
         GD.Print("  (TEST: the clock wound on to night and back)");
         double morning = game.Zone.Sky.TimeOfDay;

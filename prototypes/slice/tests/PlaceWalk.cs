@@ -260,9 +260,15 @@ public sealed class PlaceWalk
             foreach (int x in _drive.LookAt(centre, 6)) yield return x;
             foreach (int x in _drive.Tap(Key.E)) yield return x;
             for (int t = 0; t < 120 && d.Open < 0.9f; t++) yield return 0;
+            // A shaft door: E called the car from wherever it stood; wait for it, and E again opens the door on it.
+            for (int t = 0; d.Lift >= 0 && t < 1800 && d.Open < 0.9f; t++)
+            {
+                if (t % 60 == 59 && d.Target < 0.5f) foreach (int x in _drive.Tap(Key.E)) yield return x;
+                yield return 0;
+            }
             if (d.Open < 0.9f)
             {
-                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")})");
+                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")}, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
                 done(false);
                 yield break;
             }
