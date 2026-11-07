@@ -152,6 +152,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             draw.SetShaderParameter("towers", _towers);
             draw.SetShaderParameter("tower_n", Mathf.Min(MostTowers, 4));
             draw.SetShaderParameter("tower_wall", _funnels);
+            draw.SetShaderParameter("skirt_amount", Mathf.Clamp((c.Rain - 0.5f) * 2f, 0f, 1f) * strength);
             draw.SetShaderParameter("seed", (cell.Id * 0.6180339f) % 1f);
             // Standing in it there's nothing to see of it: the falling rain has taken over.
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
@@ -159,7 +160,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             draw.SetShaderParameter("to_sun", ToSun);
             draw.SetShaderParameter("sun_glow", new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
             draw.SetShaderParameter("sun_amount", Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
-            draw.SetShaderParameter("tint", new Color(0.24f, 0.26f, 0.3f) * (0.2f + 0.8f * Zone.Sky.Daylight));
+            draw.SetShaderParameter("tint", new Color(0.3f, 0.33f, 0.38f) * (0.12f + 0.88f * Zone.Sky.Daylight));
             count++;
         }
         Zone.Sky.SetCells(_towers, count, _funnels);

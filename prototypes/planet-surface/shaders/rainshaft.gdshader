@@ -14,6 +14,7 @@ uniform float bound = 600.0;        // radius of the clipping cylinder
 uniform vec2 lean = vec2(0.0);      // sideways offset of the top, metres
 uniform vec2 drift = vec2(0.0);     // metres per second the pattern slides
 uniform float seed = 0.0;
+uniform float skirt_amount = 0.0;
 uniform vec3 to_sun = vec3(0.0, 1.0, 0.0);
 uniform vec3 sun_glow : source_color = vec3(1.0, 0.9, 0.7);
 uniform float sun_amount = 1.0;
@@ -72,7 +73,7 @@ float cloud_underside(vec2 xz) {
 float density(vec3 p) {
 	vec2 c0 = axis_base.xz;
 	float under = cloud_underside(p.xz);
-	float topY = under + 90.0;                         // up inside the cloud, so there is no gap under it
+	float topY = under + 60.0;                         // up inside the cloud, so there is no gap under it
 	float span = max(topY - axis_base.y, 1.0);
 	float g = clamp((topY - p.y) / span, 0.0, 1.0);    // 0 at the cloud, 1 at the ground
 	if (p.y > topY || p.y < axis_base.y) return 0.0;
@@ -82,22 +83,30 @@ float density(vec3 p) {
 	vec2 c = c0 + lean * (1.0 - g);
 	vec2 q = p.xz - c + drift * TIME - slant * up * 0.25;
 	vec2 d = p.xz - c;
-	float width = reach * (0.75 + 0.75 * g);          // spreads as it falls
-	float r = length(d) / width;
-	float field = vnoise(vec3(q * (1.6 / reach), up * 0.0012)) * 0.5
-		+ vnoise(vec3(q * (4.0 / reach) + 5.0, up * 0.0025 + 3.0)) * 0.3
-		+ vnoise(vec3(q * (11.0 / reach) + 9.0, up * 0.004 + 7.0)) * 0.2;
-	float env = 1.0 - smoothstep(0.3, 1.2, r);
-	float cover = env * 1.3 + (field - 0.5) * 0.95 - 0.15;
-	float body = smoothstep(0.3 + 0.22 * g, 0.85, cover); // more gaps and raggedness the further it falls
+	float width = reach * (1.0 + 0.8 * g);            // spreads as it falls
+	// Warp the ground position so no outline is straight: lobes, bays and ragged sides.
+	vec2 warp = vec2(vnoise(vec3(q * (3.0 / reach), up * 0.0015 + 11.0)), vnoise(vec3(q * (3.0 / reach) + 7.0, up * 0.0015 + 13.0))) - 0.5;
+	vec2 dw = d + warp * reach * (0.9 + 0.5 * g);
+	float r = length(dw) / width;
+	float field = vnoise(vec3(q * (1.6 / reach), up * 0.0012)) * 0.45
+		+ vnoise(vec3(q * (4.5 / reach) + 5.0, up * 0.0025 + 3.0)) * 0.3
+		+ vnoise(vec3(q * (12.0 / reach) + 9.0, up * 0.004 + 7.0)) * 0.25;
+	float env = 1.0 - smoothstep(0.15, 1.15, r);
+	float cover = env * 1.25 + (field - 0.5) * 1.15 - 0.12;
+	float body = smoothstep(0.28 + 0.18 * g, 0.8, cover);
+	// Fingers: each column of rain runs down to its own depth and trails off in a wisp.
+	float fin = vnoise(vec3(q * (7.0 / reach) + 21.0, 4.0));
+	float end = 0.45 + 0.55 * fin;
+	body *= 1.0 - smoothstep(end - 0.3, end, g);
 	vec2 sq = q + slant * up;
 	float s1 = vnoise(vec3(sq * (38.0 / reach), up * 0.0016 + TIME * 0.08));
 	float s2 = vnoise(vec3(sq * (95.0 / reach) + 4.0, up * 0.0022 - TIME * 0.12 + 2.0));
-	float streak = 0.5 + 0.9 * (s1 * 0.6 + s2 * 0.4 - 0.5);
-	// Full under the cloud, thinning as it falls into a haze with no end line; a soft run into the cloud itself.
-	float vert = mix(1.0, 0.22, smoothstep(0.0, 0.95, g));
-	vert *= 1.0 - smoothstep(under + 20.0, topY, p.y);
-	return body * clamp(streak, 0.15, 1.3) * vert;
+	float streak = 0.45 + 1.0 * (s1 * 0.6 + s2 * 0.4 - 0.5);
+	float vert = mix(1.0, 0.3, smoothstep(0.0, 0.9, g));
+	vert *= 1.0 - smoothstep(under - 25.0, under + 45.0, p.y);
+	// The foot of heavy rain: a pale skirt of spray spreading out along the ground.
+	float skirt = skirt_amount * smoothstep(0.9, 1.0, g) * (1.0 - smoothstep(0.4, 1.5, length(d + warp * reach * 0.6) / width)) * (0.5 + field);
+	return body * clamp(streak, 0.1, 1.3) * vert + skirt * 1.2;
 }
 
 void vertex() {
@@ -139,7 +148,7 @@ void fragment() {
 	t1 = min(t1, scene_t);
 	if (t1 <= t0) discard;
 	t1 = min(t1, t0 + 4000.0);
-	const int N = 14;
+	const int N = 24;
 	float dt = (t1 - t0) / float(N);
 	float jitter = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
 	float sum = 0.0;
@@ -153,5 +162,5 @@ void fragment() {
 	float toward = max(dot(dir, normalize(to_sun)), 0.0);
 	float glow = pow(toward, 5.0) * sun_amount;
 	ALBEDO = mix(tint, sun_glow * 1.1, clamp(glow, 0.0, 0.85));
-	ALPHA = clamp((1.0 - exp(-optical * 6.0)) * amount, 0.0, 1.0);
+	ALPHA = clamp((1.0 - exp(-optical * 9.0)) * amount, 0.0, 1.0);
 }
