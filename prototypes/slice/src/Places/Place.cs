@@ -130,6 +130,7 @@ public partial class Place : Node3D
             else SetChunk(mesh);
         }
         Memory.Modified = true;
+        Places.Zone.Light.Touch();
     }
 
     // ---- The rest of the place, once the blocks are in ----------------------------------------

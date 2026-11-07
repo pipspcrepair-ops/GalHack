@@ -45,6 +45,9 @@ public partial class SurfaceZone : Node3D
     public PhysicsHost Host { get; protected set; }
     public PlanetEdits Edits { get; private set; }
     public PlanetGround Ground { get; private set; }
+
+    /// <summary>What daylight reaches, and how lit any spot is.</summary>
+    public SkyLight Light { get; private set; }
     public MeshInstance3D Sea { get; private set; }
 
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
@@ -87,8 +90,11 @@ public partial class SurfaceZone : Node3D
         // Trunks and boulders are solid (planet-surface's rules): colliders in the near rings.
         PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(GameData.Proto("planet-surface", "data", "flora-solids.json"));
 
+        SkyLit.Watch(GetTree());
         Sky = new SkyRig { Name = "Sky", TimeOfDay = p.StartTimeOfDay };
         AddChild(Sky);
+        Light = new SkyLight { Name = "SkyLight", Zone = this };
+        AddChild(Light);
         Streamer = new TerrainStreamer { Name = "Terrain" };
         AddChild(Streamer);
         Sea = new MeshInstance3D
@@ -150,6 +156,7 @@ public partial class SurfaceZone : Node3D
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
+        Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
         Physics.StuckFields.Add(Ground);
@@ -253,6 +260,7 @@ public partial class SurfaceZone : Node3D
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
         Sky.PlaceCloudDeck(eye);
+        Light.DimFog(Sky.Environment);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -315,6 +323,7 @@ public partial class SurfaceZone : Node3D
         Blood.Shift(shift);
         Loot.Shift(shift);
         foreach (Device d in Devices) d.GlobalPosition += shift;
+        Light.Shift(shift);
         FrameShifts++;
         FrameShifted?.Invoke(shift);
     }

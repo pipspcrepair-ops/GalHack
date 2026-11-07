@@ -85,7 +85,7 @@
   },
 
   // The head torch (L): a cone from the helmet.
-  "torch": { "range": 45, "angle": 32, "energy": 5.5 },
+  "torch": { "range": 60, "angle": 32, "energy": 6.5, "attenuation": 0.85 },
 
   // Containers in the world, slots across and down (Empyrion's loot container is 8 x 8).
   "containers": { "corpse": [4, 4], "backpack": [8, 8], "drop": [8, 8] },

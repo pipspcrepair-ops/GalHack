@@ -210,6 +210,7 @@ public partial class Spaceflight
         if (shown == _surfaceShown) return;
         _surfaceShown = shown;
         Game.Surface.Visible = shown;
+        Game.Surface.Light.Active = shown;
         _surfaceWorld.Environment = shown ? Game.Surface.Sky.Environment : null;
     }
 

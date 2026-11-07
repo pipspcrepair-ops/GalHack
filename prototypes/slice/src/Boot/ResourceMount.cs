@@ -47,7 +47,12 @@ public static class ResourceMount
                 {
                     string relative = Path.GetRelativePath(Path.Combine(PrototypesRoot, prototype), file).Replace('\\', '/');
                     if (relative.EndsWith(".import", StringComparison.Ordinal) || relative.EndsWith(".uid", StringComparison.Ordinal)) continue;
-                    zip.CreateEntryFromFile(file, relative, CompressionLevel.NoCompression);
+                    if (relative.EndsWith(".gdshader", StringComparison.Ordinal))
+                    {
+                        using var entry = new StreamWriter(zip.CreateEntry(relative, CompressionLevel.NoCompression).Open());
+                        entry.Write(Slice.Surface.SkyLit.Inject(File.ReadAllText(file))); // every lit shader answers to the sky field
+                    }
+                    else zip.CreateEntryFromFile(file, relative, CompressionLevel.NoCompression);
                 }
             }
         }
@@ -60,6 +65,7 @@ public static class ResourceMount
         File.Move(temp, mine, overwrite: true);
         if (!ProjectSettings.LoadResourcePack(mine, replaceFiles: false))
             throw new InvalidOperationException($"could not mount {mine}");
+        Slice.Surface.SkyLit.Declare();
     }
 
     static void TryDelete(string path)
