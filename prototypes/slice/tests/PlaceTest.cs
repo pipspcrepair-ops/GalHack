@@ -462,6 +462,12 @@ public partial class PlaceTest : Node
 
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
         Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame ({WorstViews(game)})");
+        // Nothing alive inside a wall, a floor or a stair, in the place or out on the surface round it.
+        int inside = game.Zone.Wildlife.Sites.Sum(s => Wildlife.Interpenetration.Scan(s.Sim).Count) + Wildlife.Interpenetration.Scan(game.Zone.Wildlife.Sim).Count;
+        int freed = game.Zone.Wildlife.Sites.Sum(s => s.Sim.Freed) + game.Zone.Wildlife.Sim.Freed;
+        Check(inside == 0, $"no creature of the place or of the ground round it is inside a wall or a floor ({game.Zone.Wildlife.Sites.Sum(s => s.Sim.Creatures.Count)} in places; {freed} freed along the way)");
+        var bodies = game.Zone.Loot.All.Where(l => l.Kind == Slice.Items.LootKind.Corpse).ToList();
+        Check(bodies.All(l => l.Node.GetNodeOrNull("Ring") == null), $"the {bodies.Count} bodies lie with nothing drawn round them");
         GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  (build log: {string.Join("; ", game.Places.BuildLog.Select(l => $"{l.Name} {l.Seconds:F2} s, {l.Chunks} chunks"))}; slow steps: {string.Join(", ", game.Places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (GC)" : "")}"))})");
         GD.Print($"  (shot down {_shotDown} creatures that came for you, {_healed} patch kits used)");

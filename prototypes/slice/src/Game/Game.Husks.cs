@@ -35,7 +35,21 @@ public partial class Game
     {
         Zone.Wildlife.Seized += OnSeized;
         Zone.Wildlife.LetGo += OnLetGo;
+        // Its face is against yours: every shot and blow goes into it, and any one breaks contact.
+        Tool.Seizer = () => HeldBy;
+        Tool.SeizerHit += husk =>
+        {
+            if (husk != HeldBy) return;
+            Seizing.Break(_heldIn, husk);
+            HoldsBroken++;
+            ShotsFree++;
+            Say("Shot it off", Tones.Good);
+            EndHold();
+        };
     }
+
+    /// <summary>Holds broken by a shot or a blow (tests).</summary>
+    public int ShotsFree { get; private set; }
 
     void OnSeized(SeizeEvent e, WildSim sim)
     {
@@ -85,7 +99,10 @@ public partial class Game
         Survivor.Legs.Jump = Survivor.Legs.Jetpack = false;
         Survivor.Legs.Sprint = false;
         // Its face, a hand's width from yours.
-        Vector3 face = Zone.Wildlife.WorldOf(h) + Vector3.Up * h.Species.Figure.Height * 0.9f;
+        // (Its head, where its rig has it: a hunched one's is lower than its height.)
+        Vector3 face = h.Rig != null && h.Rig.HitCount > 1
+            ? Zone.Wildlife.WorldOf(h) + new Vector3(h.Rig.Hits[1].X, h.Rig.Hits[1].Y, h.Rig.Hits[1].Z) - h.Position
+            : Zone.Wildlife.WorldOf(h) + Vector3.Up * h.Species.Figure.Height * 0.9f;
         Vector3 to = face - Survivor.WorldEye();
         float yawTo = MathF.Atan2(-to.X, -to.Z);
         float pitchTo = MathF.Atan2(to.Y, new Vector2(to.X, to.Z).Length());

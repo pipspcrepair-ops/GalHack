@@ -86,8 +86,8 @@ public sealed class HumanRig : Rig
             Speed = speed,
             Walked = _walked,
             Crouch = MathF.Max(Crouch, Hidden),
-            Reach = MathF.Max(Lunging, Rearing * (c.Species.Husk && Spitting.Wants(c) && c.Attacking ? 0f : 0.6f)),
-            Retch = c.Attacking && c.Species.Spit != SpitKind.None && (c.Species.Attack.Style != AttackStyle.Seize || Spitting.Wants(c)) ? Rearing : 0f,
+            Reach = MathF.Max(Lunging, Rearing * (c.Species.Husk && c.Phase == AttackPhase.Windup && Spitting.Wants(c) ? 0f : 0.6f)),
+            Retch = c.Attacking && c.Species.Spit != SpitKind.None && (c.Species.Attack.Style != AttackStyle.Seize || c.Phase == AttackPhase.Windup && Spitting.Wants(c)) ? Rearing : 0f,
             // (A Husk winding up to seize reaches; one bringing its maggots up retches.)
             Look = LookYaw,
             Down = Dead,
@@ -151,6 +151,8 @@ public sealed class HumanRig : Rig
             roll += 0.28f * jerk * MathF.Sin(_offset * 31f) + 0.06f * MathF.Sin(g.Clock * 0.7f + _offset * 9f);
             pitch += 0.18f * jerk + 0.05f * MathF.Sin(g.Clock * 0.45f + _offset * 5f);
             twist += 0.2f * jerk * MathF.Cos(_offset * 23f);
+            // Reaching for a head, it straightens to bring its face to yours.
+            pitch = Mathf.Lerp(pitch, 0.08f, 0.8f * g.Reach);
         }
         Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
         Pose[_body] = new Transform3D(torso, hip);
@@ -258,7 +260,9 @@ public sealed class HumanRig : Rig
         {
             // The head lolls: held at its wrong angle, rolling slowly round it, snapping with each jerk.
             headRoll = f.HeadTilt + 0.22f * MathF.Sin(g.Clock * 0.8f + _offset * 13f) + 0.4f * jerk * MathF.Sin(_offset * 57f);
-            headPitch += f.HeadDroop + 0.12f * MathF.Sin(g.Clock * 0.55f + _offset * 3f) - 0.3f * g.Reach;
+            // The head is held up off the hunched back (it watches you), dropping now and then; reaching, it lifts to the face it wants.
+            headPitch = pitch * 0.15f + f.HeadDroop + 0.1f * MathF.Sin(g.Clock * 0.55f + _offset * 3f) + g.Retch * 0.5f;
+            headPitch = Mathf.Lerp(headPitch, -0.2f, g.Reach);
         }
         Basis headBasis = turn * new Basis(Vector3.Up, g.Look + staggerSide) * new Basis(Vector3.Right, -headPitch) * new Basis(Vector3.Back, headRoll);
         Pose[_head] = new Transform3D(headBasis, neck);

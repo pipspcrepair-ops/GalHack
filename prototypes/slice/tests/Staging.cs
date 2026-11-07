@@ -108,6 +108,7 @@ public sealed partial class Staging
             "farland" => FarLandView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
+            "husk-grab" => HuskGrab(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

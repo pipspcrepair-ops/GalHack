@@ -56,6 +56,8 @@ public partial class BestiaryTest : Node
             ThePlayerIsNeverInfected();
             HollowsAreLesserAndScarce();
             NothingLivesInsideWalls();
+            HuskDensHaveNoEggs();
+            ShortHusksNeverSeize();
             TwentyHusksAreCheap();
         }
         catch (Exception e)
@@ -331,7 +333,7 @@ public partial class BestiaryTest : Node
         var w = World(15f);
         w.Coreward = 1f;
         WorldLife life = Bestiary.Roll(_data, w);
-        Species husk = life.Moving.FirstOrDefault(s => s.Husk) ?? life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+        Species husk = TallHusk(life);
         int turned = 0, killed = 0, seized = 0, tries = 0;
         for (int t = 0; t < 6; t++)
         {
@@ -361,12 +363,42 @@ public partial class BestiaryTest : Node
         Check(killed > 0, $"{killed} seized animals died and none turned");
     }
 
+    /// <summary>A Husk of this world tall enough to seize a head.</summary>
+    Species TallHusk(WorldLife life)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+            if (s.Figure.Height >= _data.Husks.SeizeHeight + 0.05f) return s;
+        }
+        throw new InvalidOperationException("no tall Husk in 200 rolls");
+    }
+
+    /// <summary>Below the seize height a Husk never takes a head, whatever its victim does: it swings and retches instead.</summary>
+    void ShortHusksNeverSeize()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        int seized = 0, blows = 0;
+        for (int t = 0; t < 4; t++)
+        {
+            Species child = life.People.Person(Seed(), PersonRole.Child, Occupancy.Friendly, 0.2f, husk: true);
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            var you = new DummyTarget { Position = new Vector3(0f, 0f, -3f), Health = new Health(1e9f), Crouched = t % 2 == 1 };
+            sim.Targets.Add(you);
+            sim.Seized += _ => seized++;
+            sim.Attacked += e => { if (e.Target == you) blows++; };
+            sim.Spawn(child, Vector3.Zero);
+            for (int i = 0; i < 30 * 25; i++) sim.Step(1f / 30f);
+        }
+        Check(seized == 0 && blows > 0, $"Husked children never seize a head, standing or crouched ({blows} blows and retches instead)");
+    }
+
     /// <summary>The player is held for the game to settle (death or a struggle), and never infected: a broken hold throws the Husk back.</summary>
     void ThePlayerIsNeverInfected()
     {
         var w = World(15f);
         WorldLife life = Bestiary.Roll(_data, w);
-        Species husk = life.People.Person(Seed(), PersonRole.Guard, Occupancy.Friendly, 0.2f, husk: true);
+        Species husk = TallHusk(life);
         var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
         var you = new DummyTarget { Position = new Vector3(0f, 0f, -6f), Health = new Health(1e6f) };
         sim.Targets.Add(you);
@@ -450,6 +482,45 @@ public partial class BestiaryTest : Node
             if (i % 15 == 0) inside |= open.Creatures.Any(c => !c.Removed && !c.Dead && Interpenetration.Inside(open, c));
         }
         Check(!inside, $"{spawned} walkers spawned round a building on the surface: none spawns or walks inside it in 30 s");
+    }
+
+    /// <summary>
+    /// A Husk den spreads by the worms alone: Husks and worm masses, never an egg. A den the Turned
+    /// hold alone has no nest anywhere; one shared with others keeps their nests out of its rooms.
+    /// </summary>
+    void HuskDensHaveNoEggs()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        DeepFauna fauna = Bestiary.Roll(_data, w).Deep();
+        int dens = 0, eggs = 0, mixed = 0, husks = 0, masses = 0;
+        foreach (bool shared in new[] { false, true })
+            for (int i = 0; i < 40; i++)
+            {
+                var plan = new PoiPlan { Seed = Seed(), State = (PlaceState)_fresh.Int(1, 3), Theme = (PoiTheme)_fresh.Int(0, 2), Husks = true, Shared = shared, Derelict = _fresh.Chance(0.2f) };
+                for (int r = 0; r < 9; r++)
+                {
+                    int depth = r / 3;
+                    var room = new PoiRoom
+                    {
+                        Index = r, Depth = depth, Dark = depth > 0,
+                        Kind = r % 3 == 0 ? RoomKind.Corridor : r % 3 == 1 ? RoomKind.Room : RoomKind.Hall,
+                        Min = new Vector3(r * 12f, -depth * 4f, 0f), Max = new Vector3(r * 12f + (r % 3 == 0 ? 3f : 8f), -depth * 4f + 3f, r % 3 == 0 ? 10f : 8f),
+                    };
+                    if (r > 0) { room.Links.Add(r - 1); plan.Rooms[r - 1].Links.Add(r); }
+                    plan.Rooms.Add(room);
+                }
+                PoiPopulation pop = PoiFauna.Populate(plan, fauna, _data.Deep);
+                dens++;
+                husks += pop.Spawns.Count(s => s.Species.Husk);
+                masses += pop.Masses.Count;
+                if (!shared) eggs += pop.Nests.Count;
+                var nestRooms = pop.Spawns.Where(s => s.Nest >= 0).Select(s => s.Room).ToHashSet();
+                mixed += pop.Masses.Count(m => nestRooms.Contains(m.Room)) + pop.Spawns.Count(s => s.Species.Husk && nestRooms.Contains(s.Room));
+            }
+        Check(husks > dens && masses > dens * 2, $"{dens} dens hold {husks} Husks and {masses} worm masses");
+        Check(eggs == 0, $"a den the Turned hold alone has no egg nest ({eggs} found)");
+        Check(mixed == 0, $"and a shared den keeps others' nests out of its rooms ({mixed} Husks or masses among eggs)");
     }
 
     /// <summary>Twenty Husks in view, worms and all, cost under 2 ms a frame to think, move and pose.</summary>

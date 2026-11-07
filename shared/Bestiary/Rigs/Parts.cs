@@ -550,7 +550,7 @@ public static class Parts
             float y = TopAt(z) * rng.Range(0.7f, 0.98f);
             var root = new Vector3(side * W, y, z);
             var up = new Vector3(side * 1.4f, 1f, rng.Range(-0.3f, 0.3f)).Normalized();
-            float r = W * rng.Range(0.09f, 0.16f) * (i == 0 ? 1.6f : 1f), stalk = r * rng.Range(0.6f, 1.2f);
+            float r = W * rng.Range(0.16f, 0.26f) * (i == 0 ? 1.6f : 1f), stalk = r * rng.Range(0.6f, 1.2f);
             Vector3 top = root + up * stalk;
             p.Taper(root, top, r * 0.28f, r * 0.22f, k.Bone.Lerp(mould, 0.4f), 0f, 0f, Mat.Membrane, 6);
             p.Add(Shape.Sphere, new Vector3(r * 2f, r * 0.9f, r * 2f), top + up * r * 0.18f, cap.Darkened(rng.Range(0f, 0.15f)), 0.2f, 0f, Geo.AlongY(up), 10, Mat.Membrane);
@@ -575,8 +575,8 @@ public static class Parts
                 var dir = new Vector3(rng.Range(-0.45f, 0.45f), 1f, rng.Range(-0.45f, 0.45f)).Normalized();
                 float len = H * rng.Range(0.12f, 0.24f);
                 Vector3 tip = at + dir * len;
-                p.Taper(at, tip, W * 0.022f, W * 0.012f, k.Bone.Lerp(mould, 0.5f), 0f, 0f, Mat.Membrane, 5);
-                p.Add(Shape.Sphere, Vector3.One * W * rng.Range(0.035f, 0.055f), tip, mould, 0f, 0.7f, null, 6, Mat.Membrane);
+                p.Taper(at, tip, W * 0.03f, W * 0.018f, k.Bone.Lerp(mould, 0.5f), 0f, 0f, Mat.Membrane, 5);
+                p.Add(Shape.Sphere, Vector3.One * W * rng.Range(0.06f, 0.09f), tip, mould, 0f, 0.7f, null, 6, Mat.Membrane);
             }
         }
     }

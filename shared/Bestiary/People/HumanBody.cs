@@ -356,7 +356,7 @@ public static class HumanBody
             Vector3 normal = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
             Vector3 at = new(MathF.Cos(a) * half, T * t, MathF.Sin(a) * d);
             Basis b = Geo.AlongY(normal) * new Basis(Vector3.Up, rng.Range(0f, MathF.Tau));
-            float w = rng.Range(0.07f, 0.13f) * u, h = rng.Range(0.05f, 0.11f) * u;
+            float w = rng.Range(0.09f, 0.17f) * u, h = rng.Range(0.07f, 0.14f) * u;
             p.Add(Shape.Sphere, new Vector3(w * 1.25f, 0.014f, h * 1.25f), at + normal * 0.004f, f.Cloth.Darkened(0.55f), 0f, 0f, b, 8);
             p.Add(Shape.Sphere, new Vector3(w, 0.016f, h), at + normal * 0.008f, f.Skin.Darkened(rng.Range(0.05f, 0.2f)), 0f, 0f, b, 8);
         }

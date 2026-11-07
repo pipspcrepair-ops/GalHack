@@ -225,7 +225,7 @@ public static class Attacks
     static void Launch(WildSim w, Creature c)
     {
         // A Husk goes for the head as often as not; otherwise it swings an arm.
-        c.Seizing = c.Species.Attack.Style == AttackStyle.Seize && c.Rng.Chance(w.Data.Husks.SeizeShare);
+        c.Seizing = c.Species.Attack.Style == AttackStyle.Seize && Seizing.CanReach(w, c) && c.Rng.Chance(w.Data.Husks.SeizeShare);
         if (c.Space != null)
         {
             Crawl.Launch(w, c);

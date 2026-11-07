@@ -33,6 +33,12 @@ public static class Seizing
     /// <summary>How close the faces come, m (feet to feet).</summary>
     public const float FaceToFace = 0.5f;
 
+    /// <summary>
+    /// Whether this Husk can seize a head at all: only one standing at least <see cref="HuskRules.SeizeHeight"/>.
+    /// A short one (a child, a small build) never does, whoever it's after: it swings and retches instead.
+    /// </summary>
+    public static bool CanReach(WildSim w, Creature c) => c.Species.Figure is { } f && f.Height >= w.Data.Husks.SeizeHeight;
+
     public static void Begin(WildSim w, Creature c, ITarget t)
     {
         c.Phase = AttackPhase.Hold;

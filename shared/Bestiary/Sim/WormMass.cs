@@ -103,7 +103,7 @@ public static class WormMasses
         var rng = Rng.For(m.Seed, "worm-mass");
         var p = new Piece("mass") { Shadow = true };
         float S = m.Size;
-        Color flesh = new Color(0.55f, 0.34f, 0.32f).Lerp(new Color(0.72f, 0.58f, 0.5f), rng.Float());
+        Color flesh = new Color(0.66f, 0.42f, 0.4f).Lerp(new Color(0.8f, 0.64f, 0.56f), rng.Float());
         int lobes = rng.Int(5, 9);
         var tops = new List<(Vector3 at, float r)>();
         for (int i = 0; i < lobes; i++)

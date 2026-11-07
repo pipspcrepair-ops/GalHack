@@ -66,7 +66,7 @@ public static class Husks
         if (f.Wrongs.HasFlag(Wrong.Jaw)) f.JawDrop = rng.Range(0.4f, 0.7f);
         if (f.Wrongs.HasFlag(Wrong.Arm)) { f.LongArm = rng.Int(0, 1); f.ArmStretch = rng.Range(1.22f, 1.38f); }
         if (f.Wrongs.HasFlag(Wrong.Hunch)) f.Stoop = rng.Range(0.55f, 0.8f);
-        if (f.Wrongs.HasFlag(Wrong.Head)) { f.HeadTilt = rng.Range(0.38f, 0.62f) * (rng.Chance(0.5f) ? 1f : -1f); f.HeadDroop = rng.Range(0.1f, 0.3f); }
+        if (f.Wrongs.HasFlag(Wrong.Head)) { f.HeadTilt = rng.Range(0.38f, 0.62f) * (rng.Chance(0.5f) ? 1f : -1f); f.HeadDroop = rng.Range(0.04f, 0.14f); }
         f.Measure();
 
         // What voice is left: low, wet and slow, through the worms.

@@ -217,12 +217,12 @@ public static class PoiFauna
                 case RoomKind.Vent:
                 case RoomKind.Duct:
                     if (active) break;
-                    if (poi.Derelict && rng.Chance(0.5f * density)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
+                    if (poi.Derelict && (!poi.Husks || poi.Shared) && rng.Chance(0.5f * density)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
                     else if (rng.Chance(0.6f * density)) Hidden(pop, fauna, theme, room, rng, infested, HideKind.Vent);
                     break;
                 case RoomKind.Hold:
                 case RoomKind.EngineRoom:
-                    if (poi.Derelict && !active) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
+                    if (poi.Derelict && !active && (!poi.Husks || poi.Shared)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
                     Subsisters(pop, fauna, theme, room, rng, infested, density * 0.6f, pr);
                     break;
                 default:
@@ -233,9 +233,11 @@ public static class PoiFauna
                         break;
                     }
                     bool dark = room.Dark || d >= 1;
-                    if (deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
+                    // Husks don't breed in nests: a den the Turned hold alone has no eggs anywhere (it spreads only by the worms getting into someone).
+                    bool nests = !poi.Husks || poi.Shared;
+                    if (nests && deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, poi.Derelict ? DeepRole.DerelictNester : DeepRole.Nester, poi.Derelict);
-                    else if (infested && d >= 1 && rng.Chance(0.3f))
+                    else if (nests && infested && d >= 1 && rng.Chance(0.3f))
                         NestIn(pop, fauna, theme, room, rng, true, density, rules, DeepRole.Nester, false);
                     if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density))) Lurker(pop, fauna, theme, room, rng, infested);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
@@ -339,6 +341,8 @@ public static class PoiFauna
         foreach (PoiRoom room in poi.Rooms)
         {
             if (room.Kind is RoomKind.Vent or RoomKind.Duct || room.Size.Y < 2f) continue;
+            // A room another occupant nests in is theirs: no Husks or worms among the eggs.
+            if (pop.Spawns.Exists(s => s.Room == room.Index && s.Nest >= 0)) continue;
             bool hall = room.Kind is RoomKind.Hall or RoomKind.Hold or RoomKind.Vault;
             int husks = (int)MathF.Round((rng.Int(0, 2) + (room.Depth >= 1 ? 1 : 0) + (hall ? 1 : 0)) * share);
             for (int i = 0; i < husks; i++)

@@ -312,6 +312,12 @@ public sealed class SurvivalTool
     /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
     bool StrikeCreature()
     {
+        if (Seizer?.Invoke() is { Dead: false })
+        {
+            _cooldown = 0.4f;
+            _suit.Worked();
+            return IntoSeizer(_rules.ShotDamage * Tier.Shot * 0.5f);
+        }
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         Creature c = _zone.Wildlife.Raycast(eye, dir, _rules.CutReach, out float distance, out Vector3 point);
         if (c == null || c.Dead) return false;
@@ -500,10 +506,35 @@ public sealed class SurvivalTool
     /// <summary>How far past a voxel cube a shot looks for the drawn ground: ample for a shot along a slope, short of reaching through an unloaded hill to what stands behind it.</summary>
     const float GrazePast = 24f;
 
+    /// <summary>The Husk holding the survivor's head, if one is (set by the game): every shot and blow goes into it.</summary>
+    public Func<Creature> Seizer;
+    /// <summary>A shot or a blow went into the Husk holding you: that breaks its hold.</summary>
+    public event Action<Creature> SeizerHit;
+
+    /// <summary>
+    /// A shot or a blow with a Husk's face against yours can't miss: it goes straight into it, at
+    /// the head, no ray needed. Damage enough and it lets go (the game's hold sees to that).
+    /// </summary>
+    bool IntoSeizer(float damage)
+    {
+        if (Seizer?.Invoke() is not { Dead: false } husk) return false;
+        Vector3 eye = _survivor.WorldEye();
+        Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
+        Vector3 dir = (face - eye).LengthSquared() > 1e-4f ? (face - eye).Normalized() : _survivor.WorldLook();
+        _zone.Wildlife.Damage(husk, damage * 1.5f);
+        SeizerHit?.Invoke(husk);
+        CreatureHit?.Invoke(husk);
+        CreatureStruck?.Invoke(husk, face, dir);
+        if (Fx != null) Fx.Fire(Muzzle(), face, default, () => Fx.Impact(face, -dir, ImpactKind.Creature, null), Feel, HeldMuzzle);
+        Sfx?.Play(Sfx.Sound.Ping, face, 0.8f, -8f);
+        return true;
+    }
+
     void Shoot()
     {
         _cooldown = _rules.ShotInterval;
         Shots++;
+        if (IntoSeizer(_rules.ShotDamage * Tier.Shot)) return;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         float reach = _rules.ShotRange;
         ImpactKind kind = ImpactKind.Nothing;
