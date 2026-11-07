@@ -30,7 +30,30 @@ public sealed partial class Staging
         return dir;
     }
 
-    void Look(Vector3 eye, Vector3 at) => _game.FixedCamera = new Transform3D(Basis.LookingAt((at - eye).Normalized(), Vector3.Up), eye);
+    /// <summary>A fixed camera, never under the ground: a staged eye in rising ground is lifted clear of it.</summary>
+    void Look(Vector3 eye, Vector3 at)
+    {
+        float ground = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        if (eye.Y < ground + 1.2f) { GD.Print($"(camera lifted {ground + 1.2f - eye.Y:F1} m out of the ground)"); eye.Y = ground + 1.2f; }
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((at - eye).Normalized(), Vector3.Up), eye);
+    }
+
+    /// <summary>What in view stands well clear of the ground under it: a list to check nothing floats.</summary>
+    void ReportAloft(Vector3 eye, Vector3 at)
+    {
+        Vector3 look = (at - eye).Normalized();
+        foreach (Node n in _game.Zone.FindChildren("*", "GeometryInstance3D", true, false))
+        {
+            if (n is not GeometryInstance3D g || !g.IsVisibleInTree()) continue;
+            Aabb box = g.GlobalTransform * g.GetAabb();
+            Vector3 c = box.GetCenter();
+            Vector3 to = c - eye;
+            float d = to.Length();
+            if (d < 2f || d > 200f || to.Normalized().Dot(look) < 0.75f) continue;
+            float under = _game.Zone.GroundAt(c.X, c.Z).Y;
+            if (box.Position.Y - under > 2.5f) GD.Print($"ALOFT {n.GetPath()} ({g.GetType().Name}) {box.Position.Y - under:F1} m over the ground, {d:F0} m away, size {box.Size}");
+        }
+    }
 
     Vector3 Ground(Vector3 p)
     {
@@ -102,6 +125,7 @@ public sealed partial class Staging
             Look(spot + new Vector3(0f, 1.7f, range), spot + Vector3.Up * 0.9f);
             foreach (int x in _drive.Wait(5)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, $"gestures-{range:F0}m.png"))) yield return x;
+            if (range == 30f) ReportAloft(spot + new Vector3(0f, 1.7f, range), spot + Vector3.Up * 0.9f);
         }
         // Walking: everyone of the line-up crosses in front of the camera at their own pace, a child running, the drunk weaving.
         string walk = Path.Combine(dir, "walk");
