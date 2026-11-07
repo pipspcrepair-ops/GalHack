@@ -7,6 +7,8 @@
   // still hundreds of metres off.
   "buildRadius": 320,
   "dropRadius": 460,
+  // Moving, a place starts this many seconds of travel sooner, the way you're going first.
+  "aheadSeconds": 6,
   // Main-thread milliseconds a frame may spend standing a place up.
   "budgetMs": 2.5,
 

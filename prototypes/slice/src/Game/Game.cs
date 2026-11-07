@@ -747,10 +747,27 @@ public partial class Game : Node3D
         // A vessel in flight gets collision a column further out than someone on foot.
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
+        LoadAhead(delta);
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : Survivor.Eye());
+    }
+
+    Vector3 _focusWas;
+
+    /// <summary>What streams round you is told how you're moving, however you are: on foot, by bike, in a vessel, or carried. It loads ahead of you.</summary>
+    void LoadAhead(double delta)
+    {
+        if (!Surface.IsBuilt) return;
+        Vector3 focus = Focus();
+        Vector3 moved = (focus - _focusWas) / (float)Math.Max(delta, 0.001);
+        _focusWas = focus;
+        if (moved.Length() > 400f || InOrbit) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
+        Vector3 heading = Surface.Streamer.Heading.Lerp(moved, 0.1f);
+        Surface.Streamer.Heading = heading;
+        Surface.Infra.Heading = heading;
+        if (Places != null) Places.Heading = heading;
     }
 
     /// <summary>The survival replicators set down in the world, drawn as the kit's little cabinet.</summary>

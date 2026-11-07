@@ -17,6 +17,7 @@ public sealed class PlaceRules
     public float BuildRadius { get; set; } = 320f;
     public float DropRadius { get; set; } = 460f;
     public double BudgetMs { get; set; } = 2.5;
+    public float AheadSeconds { get; set; } = 6f;
     public SalvageRules Salvage { get; set; } = new();
 
     public sealed class SalvageRules

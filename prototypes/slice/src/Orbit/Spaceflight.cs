@@ -194,6 +194,17 @@ public partial class Spaceflight : Node
             Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
     }
 
+    /// <summary>
+    /// The orbit from the first moment of a game (the loading screen calls this until it's there): its
+    /// globe is the far land past the surface's own at every height, on foot too. True once it's ready.
+    /// </summary>
+    public bool LoadOrbit()
+    {
+        StartOrbit();
+        OrbitComing();
+        return Orbit.Ready;
+    }
+
     /// <summary>Starts making the orbit now, if it isn't already.</summary>
     public void StartOrbit()
     {
@@ -266,7 +277,8 @@ public partial class Spaceflight : Node
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        from.ProcessMode = ProcessModeEnum.Disabled; // the surface waits, exactly as it was left (still on screen: the seam)
+        from.ProcessMode = ProcessModeEnum.Disabled;
+        GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left (still on screen: the seam)
         _surfaceFar = g.Camera.Far;
         _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
@@ -328,7 +340,8 @@ public partial class Spaceflight : Node
         Wake(to);
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
-        Park(from); // orbit waits, wrecks as you left them
+        Park(from);
+        GD.Print($"[lap park {watch.Elapsed.TotalMilliseconds:F1}]"); // orbit waits, wrecks as you left them
         _aligned = false;
         if (_surfaceAir != null) g.Suit.Sim.Environment = _surfaceAir;
         Crossings.Add(new Crossing(false, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, from.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));

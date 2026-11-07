@@ -18,6 +18,7 @@ uniform bool lava = false;
 uniform float glow = 0.0;
 uniform float daylight = 1.0;   // how lit the underside is from above
 uniform float rain = 0.0;       // what's falling where the camera is
+uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the sea ends with the land's own mesh: see past_rim
 
 varying vec3 wpos;
 
@@ -48,6 +49,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
 	float depth = 0.25; // rivers: shallow
 	if (sea) {
 		depth = texture(sea_map, wpos.xz / planet_size).r;
@@ -95,6 +97,8 @@ void fragment() {
 			float near = 1.0 - smoothstep(14.0, 34.0, length(p - CAMERA_POSITION_WORLD.xz));
 			if (near > 0.0) g += rain_rings(p, t, rain) * near * 0.18;
 		}
+		// Ripples a pixel can't hold beat against the screen as rings across the whole sea: they lie down with distance.
+		g *= 1.0 - smoothstep(120.0, 700.0, length(wpos - CAMERA_POSITION_WORLD));
 		vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
 		NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 		ALBEDO = mix(shallow, deep, smoothstep(0.0, 0.6, depth));

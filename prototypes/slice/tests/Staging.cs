@@ -94,6 +94,9 @@ public sealed partial class Staging
             "puff" => PuffShot(),
             "stormcell" => StormCellShot(),
             "clouds" => CloudTypes(),
+            "farland" => FarLandView(),
+            "loadrun" => LoadRun(),
+            "approach" => ApproachView(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

@@ -45,10 +45,15 @@ public partial class InfraLayer : Node3D
         public Task<TileBuilder> Building;
         /// <summary>What is still to be made of it on the main thread: its mesh, its collision, each extra (a wreck site, a ruin).</summary>
         public Queue<Func<Node3D>> Steps;
+        /// <summary>Its colliders, made only once something could touch them.</summary>
+        public Queue<Action> Solids;
         public bool Done => Node != null && Steps != null && Steps.Count == 0;
+        /// <summary>It's close enough to touch, and its colliders aren't all in.</summary>
+        public bool SolidsDue;
         /// <summary>A tell here was broken: its rocks are built again, and this is that job.</summary>
         public bool TellsStale;
         public Task<TileBuilder> TellJob;
+        public readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
     }
 
     /// <summary>Main-thread time a frame may spend making tiles' nodes, ms (at least one step a frame).</summary>
@@ -56,12 +61,25 @@ public partial class InfraLayer : Node3D
     /// <summary>The same with an unfinished tile close enough to see into, and how close that is: one step a frame there is seconds of buildings arriving in view.</summary>
     public static double NearBudgetMs = 6;
     public const float NearTiles = 600f;
+    /// <summary>Tiles this close (or as close in <see cref="SolidSeconds"/> at the speed the camera is going) have their colliders; nothing further can touch them.</summary>
+    public const float SolidTiles = 500f, SolidSeconds = 6f;
+    /// <summary>How long ahead of a moving camera tiles are started, s, and the most that comes to, m.</summary>
+    const float LeadSeconds = 4f, LeadMost = 600f;
+    /// <summary>The camera's own speed and way, m/s (a game sets it): tiles load ahead of it.</summary>
+    public Vector3 Heading;
     /// <summary>The same with nobody watching: the game holds its loading screen until everything near the start stands.</summary>
     public const double HurryBudgetMs = 14;
     /// <summary>Behind a loading screen: tiles take what they need.</summary>
     public bool Hurry;
     /// <summary>The slowest frame of this layer's own main-thread work, ms, and the most it made in one frame (tests).</summary>
     public double WorstMainMs;
+    /// <summary>Unfinished tiles (with something in them) and how close the nearest is, m (infinity: none); each finished tile's seconds from start to standing and how far off it was by then. Measurements read these.</summary>
+    public int TilesBehind { get; private set; }
+    public double NearestBehind { get; private set; } = double.PositiveInfinity;
+    public readonly List<(double Seconds, double Distance)> TileLog = new();
+    /// <summary>The longest single step on the main thread, ms, and what it was.</summary>
+    public double WorstStepMs;
+    public string WorstStep = "";
 
     PlanetWorld _world;
     Task<Dictionary<long, List<Piece>>> _planning;
@@ -75,7 +93,7 @@ public partial class InfraLayer : Node3D
     public bool Planned => _pieces != null;
     public int TileCount => _tiles.Count;
     public int PieceCount => _pieces?.Values.Sum(l => l.Count) ?? 0;
-    public bool Built => _pieces != null && _tiles.Values.All(t => t.Done);
+    public bool Built => _pieces != null && _tiles.Values.All(t => t.Done && !t.SolidsDue);
 
     public void Build(PlanetWorld world)
     {
@@ -125,7 +143,13 @@ public partial class InfraLayer : Node3D
         }
         Vector3 camera = GetViewport().GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
         double cx = Mathx.WrapX(camera.X, _world.Width), cz = Mathx.Wrap(camera.Z, _world.Height);
-        int r = (int)Math.Ceiling(Radius / TileSize) + 1;
+        // Where the camera is heading: what stands there is in before it arrives.
+        Vector3 lead = new Vector3(Heading.X, 0f, Heading.Z) * LeadSeconds;
+        lead = lead.LimitLength(LeadMost);
+        double ax = Mathx.WrapX(cx + lead.X, _world.Width), az = Mathx.Wrap(cz + lead.Z, _world.Height);
+        double Reach(Tile t) => Math.Min(TileDistance(t.Ix, t.Iz, cx, cz), TileDistance(t.Ix, t.Iz, ax, az));
+        float solidReach = MathF.Max(SolidTiles, MathF.Min(Heading.Length() * SolidSeconds, Radius));
+        int r = (int)Math.Ceiling((Radius + lead.Length()) / TileSize) + 1;
         int ci = (int)(cx / TileSize), cj = (int)(cz / TileSize);
         // Start the tiles in reach that have something in them.
         for (int dj = -r; dj <= r; dj++)
@@ -134,7 +158,7 @@ public partial class InfraLayer : Node3D
             int ix = ((ci + di) % _tilesX + _tilesX) % _tilesX, iz = ((cj + dj) % _tilesZ + _tilesZ) % _tilesZ;
             long key = Key(ix, iz);
             if (_tiles.ContainsKey(key) || !_pieces.TryGetValue(key, out var list)) continue;
-            if (TileDistance(ix, iz, cx, cz) > Radius) continue;
+            if (Math.Min(TileDistance(ix, iz, cx, cz), TileDistance(ix, iz, ax, az)) > Radius) continue;
             var tile = new Tile { Ix = ix, Iz = iz };
             double ox = ix * TileSize, oz = iz * TileSize;
             PlanetWorld world = _world;
@@ -152,10 +176,19 @@ public partial class InfraLayer : Node3D
         var drop = new List<long>();
         int steps = 0;
         double budget = Hurry ? HurryBudgetMs : FrameBudgetMs;
-        foreach (var (key, tile) in _tiles.OrderBy(t => TileDistance(t.Value.Ix, t.Value.Iz, cx, cz)))
+        TilesBehind = 0;
+        NearestBehind = double.PositiveInfinity;
+        foreach (var (key, tile) in _tiles.OrderBy(t => Reach(t.Value)))
         {
-            if (!tile.Done && TileDistance(tile.Ix, tile.Iz, cx, cz) < NearTiles) budget = Math.Max(budget, NearBudgetMs);
-            if (TileDistance(tile.Ix, tile.Iz, cx, cz) > Radius + TileSize)
+            bool waiting = !tile.Done;
+            if (waiting)
+            {
+                TilesBehind++;
+                NearestBehind = Math.Min(NearestBehind, TileDistance(tile.Ix, tile.Iz, cx, cz));
+            }
+            double seen = Reach(tile);
+            if (!tile.Done && seen < NearTiles) budget = Math.Max(budget, NearBudgetMs);
+            if (seen > Radius + TileSize)
             {
                 drop.Add(key);
                 continue;
@@ -166,12 +199,20 @@ public partial class InfraLayer : Node3D
                 {
                     tile.Node = new Node3D { Name = $"Infra {tile.Ix},{tile.Iz}" };
                     tile.Steps = tile.Building.Result.Steps();
+                    tile.Solids = tile.Building.Result.SolidSteps();
                     AddChild(tile.Node);
                 }
                 while (tile.Steps.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
                 {
+                    long stepStart = System.Diagnostics.Stopwatch.GetTimestamp();
                     Node3D part = tile.Steps.Dequeue()();
-                    if (part != null) tile.Node.AddChild(part);
+                    if (part != null && part.GetParent() == null) tile.Node.AddChild(part);
+                    double stepMs = System.Diagnostics.Stopwatch.GetElapsedTime(stepStart).TotalMilliseconds;
+                    if (stepMs > WorstStepMs)
+                    {
+                        WorstStepMs = stepMs;
+                        WorstStep = part?.Name ?? "a block chunk";
+                    }
                     if (part is DecoPlanView wreck && wreck.HasMeta("wreck"))
                     {
                         foreach (DecoNode gone in wreck.Nodes.Where(n => !n.Visible)) gone.QueueFree();
@@ -181,6 +222,24 @@ public partial class InfraLayer : Node3D
                     steps++;
                 }
             }
+            tile.SolidsDue = tile.Solids is { Count: > 0 } && seen < solidReach;
+            if (tile.SolidsDue && tile.Done)
+            {
+                while (tile.Solids.Count > 0 && (steps == 0 || watch.Elapsed.TotalMilliseconds < budget))
+                {
+                    long stepStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                    tile.Solids.Dequeue()();
+                    double stepMs = System.Diagnostics.Stopwatch.GetElapsedTime(stepStart).TotalMilliseconds;
+                    if (stepMs > WorstStepMs)
+                    {
+                        WorstStepMs = stepMs;
+                        WorstStep = "a collider";
+                    }
+                    steps++;
+                }
+                tile.SolidsDue = tile.Solids.Count > 0;
+            }
+            if (waiting && tile.Done && TileLog.Count < 4096) TileLog.Add((tile.Clock.Elapsed.TotalSeconds, TileDistance(tile.Ix, tile.Iz, cx, cz)));
             if (tile.Done) UpdateTells(tile, key);
             if (tile.Node != null)
             {
@@ -689,6 +748,8 @@ public sealed partial class TileBuilder
     public readonly List<Vector3> Collision = new();
     /// <summary>Godot nodes a piece wants added as they are (deco placements and the like): made on the main thread.</summary>
     public readonly List<Func<Node3D>> Extra = new();
+    /// <summary>Colliders a piece wants added (made on the main thread, when something comes near enough to touch them).</summary>
+    public readonly List<Action> Solid = new();
     /// <summary>The tile's ore tells, on their own: a broken one takes its rock and collider with it, and the rest of the tile stands.</summary>
     public TileBuilder Tells;
     public bool HasContent => Mesh.Triangles > 0 || Collision.Count > 0;
@@ -793,25 +854,60 @@ public sealed partial class TileBuilder
         foreach (NV p in new[] { a, c, b, a, d, c }) Collision.Add(new Vector3(p.X, p.Y, p.Z));
     }
 
-    /// <summary>The tile's nodes as steps for the main thread: its mesh, its collision, then each extra.</summary>
+    /// <summary>
+    /// Block meshes as a node of their own, a chunk to a step, so a big ruin never stops a frame:
+    /// made one at a time on the main thread, their colliders with <see cref="Solid"/>.
+    /// </summary>
+    public void Blocks(string name, Vector3 at, List<PoiGenerator.Gen.ChunkMesh> meshes, Func<Godot.Material[]> materials)
+    {
+        Node3D node = null;
+        StaticBody3D body = null;
+        Extra.Add(() =>
+        {
+            node = new Node3D { Name = name, Position = at };
+            body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
+            node.AddChild(body);
+            return node;
+        });
+        foreach (PoiGenerator.Gen.ChunkMesh chunk in meshes)
+        {
+            Extra.Add(() =>
+            {
+                node.AddChild(new MeshInstance3D { Mesh = PoiGenerator.MeshBuild.ToMesh(chunk, materials()) });
+                return null;
+            });
+            if (chunk.Collision.Count > 0) Solid.Add(() => body.AddChild(new CollisionShape3D { Shape = PoiGenerator.MeshBuild.ToShape(chunk) }));
+        }
+    }
+
+    /// <summary>The tile's nodes as steps for the main thread: its mesh, its collision's body, then each extra. A step may return nothing (it added to a node of its own).</summary>
     public Queue<Func<Node3D>> Steps()
     {
         var steps = new Queue<Func<Node3D>>();
         if (Mesh.Triangles > 0) steps.Enqueue(() => new MeshInstance3D { Mesh = DecoGodot.ToMesh(Mesh), Name = "Mesh" });
+        if (Collision.Count > 0) steps.Enqueue(() => _body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 });
+        if (Tells is { HasContent: true }) steps.Enqueue(() => Tells.ToNode("Tells"));
+        foreach (var make in Extra) steps.Enqueue(make);
+        return steps;
+    }
+
+    StaticBody3D _body;
+
+    /// <summary>The tile's colliders as steps for the main thread, after <see cref="Steps"/>.</summary>
+    public Queue<Action> SolidSteps()
+    {
+        var steps = new Queue<Action>();
         if (Collision.Count > 0)
         {
             Vector3[] faces = Collision.ToArray();
             steps.Enqueue(() =>
             {
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
                 var shape = new ConcavePolygonShape3D { BackfaceCollision = true };
                 shape.SetFaces(faces);
-                body.AddChild(new CollisionShape3D { Shape = shape });
-                return body;
+                _body.AddChild(new CollisionShape3D { Shape = shape });
             });
         }
-        if (Tells is { HasContent: true }) steps.Enqueue(() => Tells.ToNode("Tells"));
-        foreach (var make in Extra) steps.Enqueue(make);
+        foreach (Action make in Solid) steps.Enqueue(make);
         return steps;
     }
 
@@ -819,7 +915,9 @@ public sealed partial class TileBuilder
     public Node3D ToNode(string name)
     {
         var node = new Node3D { Name = name };
-        foreach (var make in Steps()) node.AddChild(make());
+        foreach (var make in Steps())
+            if (make() is Node3D part && part.GetParent() == null) node.AddChild(part);
+        foreach (Action make in SolidSteps()) make();
         return node;
     }
 }

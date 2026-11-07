@@ -114,7 +114,7 @@ public partial class OrbitZone : SurfaceZone
         _preparing = Task.Run(() =>
         {
             var watch = Stopwatch.StartNew();
-            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage);
+            GlobePaint paint = GlobePaint.Make(below.Spec, below.Map, rules.Globe, cloudCoverage, (x, z) => below.Palette.FarGround(x, z, 64f));
             List<DerelictPlan> wrecks = Derelicts.Plan(library, systemSeed, map, shell, rules, data.Catalogue, data.Items);
             PrepareMs = watch.Elapsed.TotalMilliseconds;
             return (paint, wrecks);

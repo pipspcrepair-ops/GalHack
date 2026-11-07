@@ -33,12 +33,26 @@ public partial class TerrainStreamer : Node3D
 {
     const int S = ChunkStore.Size;
 
+    /// <summary>The focus's own speed and way, m/s (the game sets it). What lies ahead goes first, and at speed the far rings run on ahead of it.</summary>
+    public Vector3 Heading;
+
+    /// <summary>How long ahead of a moving focus the far rings stand, s, and the most that comes to, m.</summary>
+    const float FarLeadSeconds = 1.5f, FarLeadMost = 128f, FarLeadFrom = 15f;
+
     public int VoxelRadius = 5;
     public int CollisionRadius = 2;
     public bool CollisionEnabled = true;
     public double UploadBudgetMs = 3.0;
     public const int FarRadius = 7, FarLod0Radius = 1, FarLod1Radius = 3;
-    const float HorizonSpacing = 64f, HorizonReach = 7000f, HorizonRebuild = 1200f, HorizonSink = 1000f;
+    const float HorizonSpacing = 64f, HorizonRebuild = 1200f, HorizonSink = 1000f;
+
+    /// <summary>
+    /// How far the horizon mesh runs from its centre, m. Whatever lies past it is the far field a game
+    /// draws behind the land (the globe's sheet): from 600 m inside this edge land and sea thin away
+    /// into it (past_rim in noise.gdshaderinc). The mesh is at most <see cref="HorizonRebuild"/> off
+    /// the eye, so the far field has to be solid from 5,800 m out.
+    /// </summary>
+    public const float HorizonReach = 7600f;
 
     /// <summary>How far inside the voxel square the far rings still draw: a grid square of the coarsest level, the last that can be there.</summary>
     const float FarHoleCut = 8f;
@@ -75,7 +89,7 @@ public partial class TerrainStreamer : Node3D
     {
         public Int3 Key, BuiltKey;
         public int Version, BuiltVersion = -1;
-        public bool InFlight, Queued;
+        public bool InFlight, Queued, Urgent;
         public MeshInstance3D Mesh;
         public StaticBody3D Body;
         public CollisionShape3D Shape;
@@ -116,7 +130,7 @@ public partial class TerrainStreamer : Node3D
 
     readonly Dictionary<(int, int), FarChunk> _far = new();
     readonly ConcurrentQueue<FarJob> _farDone = new();
-    readonly List<(int fx, int fz, int lod, int d)> _farWanted = new();
+    readonly List<(int fx, int fz, int lod, int d, float rank)> _farWanted = new();
     readonly HashSet<(int, int)> _farKeep = new();
     int _farInFlight, _farWaited;
     /// <summary>The most frames a finished far chunk waits for an unhurried one.</summary>
@@ -284,9 +298,42 @@ public partial class TerrainStreamer : Node3D
     {
         if (c.Queued) return;
         c.Queued = true;
-        int d = Math.Max(Math.Abs(c.Key.X - FocusColumn.x), Math.Abs(c.Key.Z - FocusColumn.z));
-        _queue.Enqueue(c.Key, urgent ? -1 : d * 4 + Math.Abs(c.Key.Y - (int)MathF.Floor(Focus.Y / S)));
+        c.Urgent = urgent;
+        _queue.Enqueue(c.Key, Rank(c));
     }
+
+    /// <summary>
+    /// A chunk's place in the queue: nearest first, the layers round the focus before those over and
+    /// under them, what lies ahead of a moving focus before what it is leaving. Edits go before all of it.
+    /// </summary>
+    int Rank(VChunk c)
+    {
+        if (c.Urgent) return -1;
+        var (fx, fz) = FocusColumn;
+        int dx = c.Key.X - fx, dz = c.Key.Z - fz;
+        int rank = Math.Max(Math.Abs(dx), Math.Abs(dz)) * 4 + Math.Abs(c.Key.Y - (int)MathF.Floor(Focus.Y / S));
+        return Math.Max(0, rank - (int)(Ahead(dx, dz) * 3f));
+    }
+
+    /// <summary>How far a point lies ahead of the focus, in the units given (behind counts for nothing); a standing focus has no ahead.</summary>
+    float Ahead(float dx, float dz)
+    {
+        float speed = MathF.Sqrt(Heading.X * Heading.X + Heading.Z * Heading.Z);
+        if (speed < 1f) return 0f;
+        return MathF.Max(0f, (dx * Heading.X + dz * Heading.Z) / speed) * MathF.Min(speed / 12f, 1f);
+    }
+
+    /// <summary>The focus moved to another column: a queue ranked from where it was is stale, and at speed the chunks it just left would go first.</summary>
+    void Rerank()
+    {
+        _reranking.Clear();
+        while (_queue.TryDequeue(out Int3 key, out _))
+            if (_chunks.TryGetValue(key, out VChunk c)) _reranking.Add(c);
+        foreach (VChunk c in _reranking) _queue.Enqueue(c.Key, Rank(c));
+    }
+
+    readonly List<VChunk> _reranking = new();
+    (int x, int z) _rankedAt;
 
     (int x, int z) FocusColumn => ((int)MathF.Floor(Focus.X / S), (int)MathF.Floor(Focus.Z / S));
 
@@ -331,6 +378,11 @@ public partial class TerrainStreamer : Node3D
     {
         var (fcx, fcz) = FocusColumn;
         PlanetTerrainSource source = World.Source;
+        if (_rankedAt != (fcx, fcz))
+        {
+            _rankedAt = (fcx, fcz);
+            Rerank();
+        }
 
         // Columns wanted, nearest first; ask workers for their heights.
         if (_ring.Count == 0) BuildRing();
@@ -391,7 +443,7 @@ public partial class TerrainStreamer : Node3D
         while (_voxelInFlight < _maxInFlight && _queue.TryDequeue(out Int3 next, out _))
         {
             if (!_chunks.TryGetValue(next, out VChunk c)) continue;
-            c.Queued = false;
+            c.Queued = c.Urgent = false;
             if (c.InFlight) continue; // picked up again when the running job lands
             c.InFlight = true;
             _voxelInFlight++;
@@ -613,7 +665,12 @@ public partial class TerrainStreamer : Node3D
         double w = World.Terrain.Width, h = World.Terrain.Height;
         int nx = FarBuilder.Count(World.Terrain.Width), nz = FarBuilder.Count(World.Terrain.Height);
         double cx = Mod(Focus.X, w), cz = Mod(Focus.Z, h);
-        int ffx = (int)Math.Floor(cx / FarBuilder.Size), ffz = (int)Math.Floor(cz / FarBuilder.Size);
+        // A moving focus: the rings stand a little ahead of it, so what it is coming to is sharp when it gets there.
+        // (Not on foot: rings that shift with every step back and forth over a border rebuild for nothing.)
+        Vector3 lead = new Vector3(Heading.X, 0f, Heading.Z) * FarLeadSeconds;
+        lead = lead.Length() < FarLeadFrom * FarLeadSeconds ? Vector3.Zero : lead.LimitLength(FarLeadMost);
+        double leadX = Mod(cx + lead.X, w), leadZ = Mod(cz + lead.Z, h);
+        int ffx = (int)Math.Floor(leadX / FarBuilder.Size), ffz = (int)Math.Floor(leadZ / FarBuilder.Size);
 
         if (_floraDirty.Count > 0)
         {
@@ -625,23 +682,30 @@ public partial class TerrainStreamer : Node3D
             _floraDirty.Clear();
         }
 
-        List<(int fx, int fz, int lod, int d)> wanted = _farWanted;
+        List<(int fx, int fz, int lod, int d, float rank)> wanted = _farWanted;
         wanted.Clear();
         for (int dz = -FarRadius; dz <= FarRadius; dz++)
         for (int dx = -FarRadius; dx <= FarRadius; dx++)
         {
             int d = Math.Max(Math.Abs(dx), Math.Abs(dz));
             int lod = d <= FarLod0Radius ? 0 : d <= FarLod1Radius ? 1 : 2;
-            wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), lod, d));
+            wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), lod, d, d - Ahead(dx, dz) * 0.5f));
         }
-        wanted.Sort(static (a, b) => a.d.CompareTo(b.d));
+        wanted.Sort(static (a, b) => a.rank.CompareTo(b.rank));
         HashSet<(int, int)> keep = _farKeep;
         keep.Clear();
-        foreach (var (fx, fz, lod, _) in wanted)
+        FarBehind = 0;
+        FarBehindNearest = int.MaxValue;
+        foreach (var (fx, fz, lod, d, _) in wanted)
         {
             keep.Add((fx, fz));
             if (!_far.TryGetValue((fx, fz), out FarChunk f)) _far[(fx, fz)] = f = new FarChunk { Fx = fx, Fz = fz };
             f.WantedLod = lod;
+            if (f.Lod != lod)
+            {
+                FarBehind++;
+                FarBehindNearest = Math.Min(FarBehindNearest, d);
+            }
             if (f.Lod == lod || f.InFlight || _farInFlight >= 3) continue;
             f.InFlight = true;
             _farInFlight++;
@@ -767,6 +831,10 @@ public partial class TerrainStreamer : Node3D
 
     public bool FarComplete { get; private set; }
 
+    /// <summary>Far chunks not yet at the detail wanted of them, and the nearest ring holding one (int.MaxValue: none). Tests and measurements read these.</summary>
+    public int FarBehind { get; private set; }
+    public int FarBehindNearest { get; private set; } = int.MaxValue;
+
     /// <summary>
     /// The flora drawn within a radius of a point (frame coordinates): each plant's kind, where its
     /// trunk meets the ground, its scale and its scatter id (the one <see cref="PlanetWorld.Felled"/>
@@ -871,7 +939,11 @@ public partial class TerrainStreamer : Node3D
             _horizonJob = Task.Run(() => (BuildHorizon(world, hx, hz), hx, hz));
         }
         if (_horizon.Mesh != null)
+        {
             _horizon.Position = new Vector3((float)NearestCopy(_horizonX, 0, Focus.X, w), 0, (float)NearestCopy(_horizonZ, 0, Focus.Z, h));
+            HorizonRim = new Vector3(_horizon.Position.X, _horizon.Position.Z, HorizonReach);
+            _horizonMaterial.SetShaderParameter("rim", FarFieldBehind ? HorizonRim : NoRim);
+        }
         _sections[2] = Stopwatch.GetElapsedTime(horizonStart).TotalMilliseconds;
     }
 
@@ -903,10 +975,7 @@ public partial class TerrainStreamer : Node3D
             float hgt = height[k];
             verts[k] = new Vector3((float)(x - cx), hgt - 2f, (float)(z - cz));
             normals[k] = normal;
-            Rgb c = pal.SoilAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters), out _);
-            float bare = Math.Clamp((0.85f - normal.Y) * 4f, 0f, 1f);
-            c = Rgb.Lerp(c, pal.Rock, bare);
-            if (hgt < 0f) c = Rgb.Lerp(c, pal.Seabed, Math.Clamp(-hgt / 5f, 0f, 1f));
+            Rgb c = pal.FarGround(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters), hgt, normal.Y, out float bare);
             colors[k] = new Color(c.R, c.G, c.B, bare);
         }
         var indices = new int[(n - 1) * (n - 1) * 6];
@@ -1046,6 +1115,15 @@ public partial class TerrainStreamer : Node3D
     public (ArrayMesh Mesh, Vector3 At) DrawnHorizon() => (_horizon.Mesh as ArrayMesh, _horizon.Position);
 
     public ShaderMaterial HorizonMaterial => _horizonMaterial;
+
+    /// <summary>Where the land's own mesh ends, for what has to end with it: its centre (x, z in the frame) and how far it reaches. <see cref="NoRim"/> until it's built.</summary>
+    public Vector3 HorizonRim { get; private set; } = NoRim;
+
+    /// <summary>A rim that cuts nothing.</summary>
+    public static readonly Vector3 NoRim = new(0f, 0f, -1f);
+
+    /// <summary>A far field stands behind the land out to the horizon, so the mesh's edge thins away into it.</summary>
+    public bool FarFieldBehind;
 
     static int Mod(int v, int m) => (v % m + m) % m;
     static double Mod(double v, double m)

@@ -75,7 +75,8 @@ public partial class Game
         if (Survivor == null || !Zone.Streamer.ReadyAround(Survivor.WorldFeet, 1, needCollision: true)) return;
         _waiting ??= System.Diagnostics.Stopwatch.StartNew();
         Zone.Infra.Hurry = !WorldStanding;
-        if (Zone.Infra.Hurry && _waiting.Elapsed.TotalSeconds < MostWait) return;
+        bool orbit = Spaceflight.LoadOrbit();
+        if ((Zone.Infra.Hurry || !orbit) && _waiting.Elapsed.TotalSeconds < MostWait) return;
         Zone.Infra.Hurry = false;
         Phase = Phase.Playing;
         Say(Bunker.Mine.Open

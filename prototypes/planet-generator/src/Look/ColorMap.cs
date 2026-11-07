@@ -34,7 +34,8 @@ public sealed class ColorMap
     public const double BorderWave = 300;
     const int SoftenPasses = 8;  // about two cells of spread: past the stair-steps a 32 m grid leaves in a border
 
-    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width)
+    /// <param name="land">The ground's own colour at a map point (metres), for a map that must match the land you stand on; null: the biomes' colours.</param>
+    public static ColorMap Build(WorldMap map, ArchetypeLook look, int width, Func<double, double, Rgb> land = null)
     {
         int height = width / 2;
         var result = new ColorMap(width, height);
@@ -123,7 +124,9 @@ public sealed class ColorMap
                     else col = color[a];
 
                     float relief = shade[a] * wa + shade[b] * wb + shade[c] * wc + shade[d] * wd;
-                    col *= relief;
+                    // The ground's own colour is lit where it's drawn: only a hint of the relief goes in the paint.
+                    if (land != null) col = land(x, y) * (1f + (relief - 1f) * 0.3f);
+                    else col *= relief;
                     if (look.GlowingNights) emit += col.Saturate(1.4f) * 0.1f;
 
                     float r = rivers[py * width + px];

@@ -60,6 +60,18 @@ public partial class SurfaceZone : Node3D
     public UnderwaterView Underwater { get; protected set; }
 
     ShaderMaterial _seaMaterial, _riverMaterial;
+    Vector3 _seaRim = PlanetSurface.Terrain.TerrainStreamer.NoRim;
+
+    /// <summary>Where the sea plane ends: at the land's own rim while the far field stands behind it (<see cref="PlanetSurface.Terrain.TerrainStreamer.HorizonRim"/>).</summary>
+    public Vector3 SeaRim
+    {
+        get => _seaRim;
+        set
+        {
+            _seaRim = value;
+            (Sea.MaterialOverride as ShaderMaterial)?.SetShaderParameter("rim", value);
+        }
+    }
 
     /// <summary>Planet-surface's synthesised sounds (digging, building, thunder).</summary>
     public PlanetSurface.Fx.Sfx Sfx { get; protected set; }

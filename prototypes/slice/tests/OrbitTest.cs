@@ -228,13 +228,14 @@ public partial class OrbitTest : Node
         Vector3 start = v.Body.Position.ToGodot();
         double heading = GlobeMap.HeadingDegrees(v.Body.Rotation);
         _game.Controls.Hold(Key.Space);
-        bool preloaded = false;
+        bool preloaded = false, sheetFromTheGround = true;
         int ticks = 0;
         float lastAir = 0f, airStep = 0f, highestFlying = 0f, shroudAtCap = 0f;
         Check(ceiling == 1060f, $"orbit starts at the cap on this world: {ceiling:F0} m (its highest ground {_game.Spaceflight.Highest:F0} m)");
         while (!_game.InOrbit && ticks++ < 60 * 150)
         {
             preloaded |= _game.Orbit != null && v.Body.Position.Y < ceiling;
+            sheetFromTheGround &= _game.InOrbit || (_game.Orbit?.Ready == true && _game.Orbit.Globe.Visible && _game.Surface.SeaRim == _game.Surface.Streamer.HorizonRim);
             highestFlying = MathF.Max(highestFlying, v.Body.Position.Y);
             shroudAtCap = _game.Spaceflight.Shrouded;
             airStep = MathF.Max(airStep, MathF.Abs(_game.Spaceflight.AirGone - lastAir));
@@ -259,6 +260,8 @@ public partial class OrbitTest : Node
         Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s ({_game.Spaceflight.Crossings.Count} crossing)");
         if (!_game.InOrbit) yield break;
         Check(preloaded, "orbit started loading below the atmosphere's top, before the crossing (the seam is hidden)");
+        Check(sheetFromTheGround, "the far land stood behind the land all the way up, the sea ending with the land's own mesh: no ring of water past the land, and the sea never met the sky");
+        Check(PlanetSurface.Terrain.TerrainStreamer.HorizonReach - 600f - 1200f >= 5800f, "the land's mesh thins away only where the sheet behind it is solid, however far off its centre you are");
         Crossing up = _game.Spaceflight.Crossings[0];
         OrbitZone orbit = _game.Orbit;
         GD.Print($"  crossed at map ({up.MapX:F0}, {up.MapZ:F0}) heading {up.HeadingDegrees:F1}°, in {up.Ms:F1} ms; orbit was made in {orbit.PrepareMs:F0} ms off the main thread");
@@ -596,7 +599,7 @@ public partial class OrbitTest : Node
         }
         probe.Remove();
         double best = worst.Min();
-        GD.Print($"  (the seam and the skies took at most {_game.Spaceflight.WorstSeamMs:F2} ms of any frame across those crossings, the skies {_game.Spaceflight.WorstSkyMs:F2} ms of that)");
+        GD.Print($"  (the seam and the skies took at most {_game.Spaceflight.WorstSeamMs:F2} ms of any frame across those crossings, the skies {_game.Spaceflight.WorstSkyMs:F2} ms of that: {_game.Spaceflight.WorstSeamParts})");
         Check(best < 33.4, $"no frame over 33 ms across a hand-over up and down, best of three: {best:F1} ms ({string.Join(", ", worst.Select(w => w.ToString("F1")))})");
         Check(_game.Spaceflight.Crossings.All(c => c.Audit.Count == 0 && c.PositionBefore == c.PositionAfter && c.VelocityBefore == c.VelocityAfter),
             $"all {_game.Spaceflight.Crossings.Count} crossings carried everything straight across");

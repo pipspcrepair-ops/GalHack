@@ -148,6 +148,26 @@ public sealed class GroundPalette
         return c * ((1f / total) * (1f + 0.08f * tone));
     }
 
+    /// <summary>The ground's colour seen from far off (canonical metres): its soil, bare rock where <paramref name="up"/> (the ground normal's y) says it's steep, and the seabed under water.</summary>
+    public Rgb FarGround(double x, double z, float height, float up, out float bare)
+    {
+        Rgb c = SoilAt(x, z, out _);
+        bare = Math.Clamp((0.85f - up) * 4f, 0f, 1f);
+        c = Rgb.Lerp(c, Rock, bare);
+        if (height < 0f) c = Rgb.Lerp(c, Seabed, Math.Clamp(-height / 5f, 0f, 1f));
+        return c;
+    }
+
+    /// <summary>The same read from the world map alone, its slope over <paramref name="across"/> metres: what the globe's sheet is painted with, so the far land is the colour of the land.</summary>
+    public Rgb FarGround(double x, double z, float across)
+    {
+        double w = Map.WidthMeters, h = Map.HeightMeters;
+        float At(double px, double pz) => Map.Sample(Map.Elevation, Mathx.WrapX(px, w), Mathx.Wrap(pz, h));
+        float height = At(x, z);
+        var normal = new Vector3(At(x - across, z) - At(x + across, z), 2f * across, At(x, z - across) - At(x, z + across)).Normalized();
+        return FarGround(Mathx.WrapX(x, w), Mathx.Wrap(z, h), height, normal.Y, out _);
+    }
+
     /// <summary>The biome at a point, with the same wandering borders as the colours.</summary>
     public Biome BiomeAt(double x, double z)
     {
