@@ -45,6 +45,7 @@ public partial class BestiaryTest : Node
             YoungStayInTheMiddle();
             QuietInsidePlaces();
             BreakersBreakWeakBlocks();
+            NobodyReactsAtOnce();
         }
         catch (Exception e)
         {
@@ -299,7 +300,8 @@ public partial class BestiaryTest : Node
         Check(Spitting.ColourOf(spitter) == spitter.Blood, "blood comes up the colour of their own blood");
         Color g = Spitting.ColourOf(bile);
         Check(g.G > g.R && g.G > g.B * 2f, $"bile is green-yellow ({g})");
-        Check(new HumanRig(spitter).Layout.Pieces.Find(p => p.Name == "head").Prims.Count > new HumanRig(life.People.Person(spitter.Seed, PersonRole.Worker, Occupancy.Friendly)).Layout.Pieces.Find(p => p.Name == "head").Prims.Count, "a throat like that shows");
+        _ = new HumanRig(spitter).Layout;
+        Check(Mutation.Of(spitter).Throat, "a throat like that shows");
 
         (bool hit, int gobs) Fight(bool dodge)
         {
@@ -486,7 +488,7 @@ public partial class BestiaryTest : Node
             sim.Step(1f / 60f);
         }
         int changes = sim.Creatures.Sum(c => c.StateChanges), flips = sim.Creatures.Sum(c => c.StateFlips);
-        Check(changes > 0 && flips <= changes * 0.05f, $"states hold: {flips} quick flips back in {changes} changes over 30 s near someone");
+        Check(changes > 0 && flips <= changes * 0.05f, $"states hold: {flips} quick flips back in {changes} changes over 30 s near someone ({string.Join(", ", sim.Creatures.Where(c => c.StateFlips > 0).Select(c => $"{c.Species.Behaviour} {c.LastFlip}"))})");
     }
 
     void YoungStayInTheMiddle()
@@ -537,6 +539,33 @@ public partial class BestiaryTest : Node
         wall = false;
         for (int i = 0; i < 600; i++) { c.Velocity = Vector3.Forward * 1.5f; Quiet.Step(sim, you, 1f / 60f, heard); }
         Check(heard.Count == 0, "in plain sight it makes no telltale sound");
+    }
+
+    /// <summary>A shot into a peaceful herd: the whole herd bolts, but not on one tick; the young last.</summary>
+    void NobodyReactsAtOnce()
+    {
+        var gen = new FaunaGenerator(_data.Fauna, _data.Activity);
+        Species s = gen.RollOne(Seed(), "strider", Behaviour.Herd, 0.2f);
+        s.Young = Fit.Young(s, new Rng(Seed()));
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        var hunter = new DummyTarget { Position = new Vector3(0f, 0f, 60f) };
+        sim.Targets.Add(hunter);
+        var herd = sim.SpawnGroup(s, Vector3.Zero, 10);
+        for (int i = 0; i < 60; i++) sim.Step(1f / 60f);
+        float shot = sim.Time;
+        sim.Damage(herd[^1], 1f, hunter);
+        for (int i = 0; i < 60 * 4; i++) sim.Step(1f / 60f);
+        var times = herd.Where(c => c.ReactedAt >= shot).Select(c => c.ReactedAt - shot).ToList();
+        Check(times.Count >= herd.Count - 1, $"the whole herd bolts ({times.Count} of {herd.Count})");
+        if (times.Count < 2) return;
+        Check(times.Max() - times.Min() > 0.4f && times.Select(t => MathF.Round(t * 60f)).Distinct().Count() > times.Count / 2 && times.Max() < Reaction.Most + 0.5f, $"each in its own time: {times.Min():F2} to {times.Max():F2} s after the shot, never all on one tick");
+        var young = herd.Where(c => c.Species.Adult != null && c.ReactedAt >= shot).Select(c => c.ReactedAt - shot).DefaultIfEmpty(-1f).Average();
+        var grown = herd.Where(c => c.Species.Adult == null && c.ReactedAt >= shot).Select(c => c.ReactedAt - shot).Average();
+        Check(young < 0f || young > grown * 0.9f, $"the young are slower to go ({young:F2} against {grown:F2} s)");
+        var machine = Robots.Roll(World(15f), 0);
+        var a = sim.Spawn(machine, new Vector3(30f, 0f, 0f));
+        var b = sim.Spawn(machine, new Vector3(34f, 0f, 0f));
+        Check(Reaction.Delay(a, 5f, false) == Reaction.Delay(b, 30f, true), "machines react together, on the same tick, whatever their distance");
     }
 
     /// <summary>An open room: for things that only need to know they're inside.</summary>

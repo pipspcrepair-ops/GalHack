@@ -902,6 +902,8 @@ public partial class PlaceTest : Node
         int aims = town.GuardAims;
         foreach (int x in play.ShootAt(() => game.Survivor.WorldEye() + game.Survivor.WorldLook() * 8f + Vector3.Down * 1f)) yield return x;
         Check(place.Memory.Mood == Mood.Hostile, "a shot in a peaceful place turns it hostile");
+        var reacts = town.People.Where(q => !q.Dead).Select(q => q.ReactAt).ToList();
+        Check(reacts.Count < 3 || reacts.Max() - reacts.Min() > 0.3f && reacts.Select(t => MathF.Round(t * 60f)).Distinct().Count() > reacts.Count / 2, $"nobody reacts on the same instant: they take it in over {(reacts.Count > 0 ? reacts.Max() - reacts.Min() : 0f):F2} s");
         foreach (int x in drive.Wait(300)) yield return x;
         Check(town.People.Where(q => q.Role != "guard").All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
         Check(town.GuardShots == 0 || town.GuardAims > aims, $"its guards take aim where you can see it before they fire ({town.GuardAims - aims} aims, {town.GuardShots} shots)");

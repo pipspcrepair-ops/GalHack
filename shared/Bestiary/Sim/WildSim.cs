@@ -317,6 +317,7 @@ public sealed class WildSim
             c.Health = species.Stats.MaxHealth;
         }
         c.Yaw = c.Rng.Range(-MathF.PI, MathF.PI);
+        c.Nerve = species.Mechanical ? 1f : Rng.For(species.Seed, "nerve", c.Id).Float(); // its own stream: nothing else it rolls changes
         c.Position = new Vector3(position.X, Terrain.Height(position.X, position.Z), position.Z);
         c.SwarmAlive = species.Body.Members;
         c.ThinkEvery = c.Rng.Range(0f, 0.3f); // so a group put down together doesn't all think on one frame

@@ -31,7 +31,7 @@ public static class Mutation
         public int Growths;
         public float Asymmetry = 1f;
         public string Extra = "";
-        public bool Patch;
+        public bool Patch, Throat;
         public float AddedVolume, BodyVolume;
     }
 
@@ -112,7 +112,7 @@ public static class Mutation
             report.Patch = true;
         }
         if (s.Monstrous) Monstrous(layout, s, paint, rng, report, side, k);
-        if (s.Spit != SpitKind.None && head != null) Throat(head, s, paint);
+        if (s.Spit != SpitKind.None && head != null) { Throat(head, s, paint); report.Throat = true; }
         Reports.AddOrUpdate(s, report);
         return layout;
     }

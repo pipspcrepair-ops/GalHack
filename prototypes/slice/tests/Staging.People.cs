@@ -82,6 +82,17 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(10)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "close-right.png"))) yield return x;
 
+        // What bodies say: hands up at a gun, a wave, a guard's warning, a trader's wares, a start, a raider's taunt; close and from 25 m.
+        var acts = new[] { BodyAct.HandsUp, BodyAct.Greet, BodyAct.Warn, BodyAct.Present, BodyAct.Startle, BodyAct.Panic, BodyAct.Cower, BodyAct.Shrug, BodyAct.Beckon, BodyAct.Taunt, BodyAct.Taunt };
+        for (int i = 0; i < people.Count; i++)
+            people[i].rig.Drive(new Gesture { Feet = people[i].at, Yaw = MathF.PI, Clock = 2f + i, Act = acts[i % acts.Length], ActAmount = 1f, ActAt = people[i].at + new Vector3(1.5f, 1f, 2f) });
+        foreach (var q in people) q.view.Sync();
+        Look(spot + new Vector3(0f, 1.3f, 10f), spot + Vector3.Up * 0.9f);
+        foreach (int x in _drive.Wait(5)) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "gestures.png"))) yield return x;
+        Look(spot + new Vector3(0f, 1.7f, 25f), spot + Vector3.Up * 0.9f);
+        foreach (int x in _drive.Wait(5)) yield return x;
+        foreach (int x in Shot(Path.Combine(dir, "gestures-25m.png"))) yield return x;
         // The same world's mutation: mild, strong, monstrous, and a husk beside them.
         foreach (Node n in stage.GetChildren()) n.QueueFree();
         var ones = new[]
@@ -125,7 +136,16 @@ public sealed partial class Staging
         GD.Print($"(town: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people)");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.5); // the walk there took the day
+        // Local noon here: the hour of the brightest sky at this place.
+        double noon = 0.5, brightest = -1;
+        for (int k = 0; k < 24; k++)
+        {
+            _game.Zone.Sky.TimeOfDay = k / 24.0;
+            yield return 0;
+            yield return 0;
+            if (_game.Zone.Sky.Daylight > brightest) { brightest = _game.Zone.Sky.Daylight; noon = k / 24.0; }
+        }
+        _game.Zone.Sky.TimeOfDay = noon - 0.06;
         foreach (int x in _drive.Wait(300)) yield return x;
         Town town = p.Memory.Town;
         var people = town.People.Where(q => !q.Indoors && !q.Dead && !p.Roofed(p.ToWorld(q.Pos) + Vector3.Up * 0.1f)).ToList();
@@ -150,7 +170,9 @@ public sealed partial class Staging
         // The survivor stands where the camera is, as in play: what's near them is what's posed.
         void Stand(Vector3 eye)
         {
-            _game.Survivor.PlaceOutside(Ground(eye).ToNumerics());
+            // A step behind the camera, so their own body stays out of the picture.
+            Vector3 back = eye + (eye - at).Normalized() * 2.5f;
+            _game.Survivor.PlaceOutside(Ground(back).ToNumerics());
             Look(eye, at + Vector3.Up * 1f);
         }
         float worst = 0f;
@@ -165,7 +187,7 @@ public sealed partial class Staging
         Directory.CreateDirectory(frames);
         Vector3 eye = p.ToWorld(walker.Pos) + new Vector3(4.5f, 0f, 4.5f);
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.6f;
-        _game.Survivor.PlaceOutside(Ground(eye).ToNumerics());
+        _game.Survivor.PlaceOutside(Ground(eye + new Vector3(2.5f, 0f, 2.5f)).ToNumerics());
         for (int i = 0; i < 48; i++)
         {
             Vector3 w = p.ToWorld(walker.Pos);

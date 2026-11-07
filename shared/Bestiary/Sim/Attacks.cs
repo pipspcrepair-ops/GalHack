@@ -88,7 +88,7 @@ public static class Attacks
             // telegraph after the previous one.
             float commitAt = w.Time + r.CommitFraction * windup;
             if (pack.Busy(c) || commitAt < pack.NextCommitAt) return false;
-            pack.NextCommitAt = commitAt + c.Species.TelegraphWindup(r);
+            pack.NextCommitAt = commitAt + c.Species.TelegraphWindup(r) + Reaction.Hesitation(c); // the next waits its turn, and a beat more
         }
         c.Phase = AttackPhase.Windup;
         c.PhaseTime = 0f;

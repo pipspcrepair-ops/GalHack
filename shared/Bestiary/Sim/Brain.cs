@@ -139,6 +139,21 @@ public static partial class Brain
             else { Hunt(w, c, h.Hunting, d); return; }
         }
 
+        // A fright reaches each in its own time: until then it carries on, or freezes, or looks.
+        if (h.Alarmed && c.AlarmSeen != h.Alarms)
+        {
+            c.AlarmSeen = h.Alarms;
+            float far = WildSim.Flat(c.Position - h.ThreatPos).Length();
+            c.ReactAt = w.Time + Reaction.Delay(c, far, saw: near != null && dist < c.Stats.Perception);
+        }
+        bool alarmed = h.Alarmed && w.Time >= c.ReactAt;
+        if (alarmed && c.ReactedAt < c.ReactAt) c.ReactedAt = w.Time;
+        if (h.Alarmed && !alarmed)
+        {
+            c.LookAt = h.ThreatPos + Vector3.Up; // the head comes up and round first
+            if (c.Nerve < 0.35f) { c.Desired = Vector3.Zero; c.SetState(CState.Freeze); return; }
+        }
+
         // Everyone heads for their own slot around the herd's shared goal, keeping apart from
         // neighbours and never straying far from the middle: boids with a destination.
         float n = Math.Max(1, h.Members.Count);
@@ -146,7 +161,7 @@ public static partial class Brain
         float r = h.Spread * MathF.Sqrt((c.HerdSlot + 0.5f) / n);
         Vector3 slot = h.Goal + new Vector3(MathF.Cos(angle) * r, 0f, MathF.Sin(angle) * r);
         Vector3 toSlot = WildSim.Flat(slot - c.Position);
-        float speed = h.Alarmed ? c.Stats.RunSpeed : toSlot.Length() > 2.5f ? c.Stats.WalkSpeed : 0f;
+        float speed = alarmed ? c.Stats.RunSpeed : toSlot.Length() > 2.5f ? c.Stats.WalkSpeed : 0f;
 
         Vector3 steer = speed > 0f ? SteerDir(w, c, slot) * speed : Vector3.Zero;
         Vector3 separation = Vector3.Zero;
@@ -160,10 +175,13 @@ public static partial class Brain
         Vector3 toCenter = WildSim.Flat(h.Center - c.Position);
         Vector3 cohesion = toCenter.Length() > h.Spread * 1.4f ? toCenter.Normalized() * c.Stats.WalkSpeed * 0.8f : Vector3.Zero;
         c.Desired = steer + separation * c.Stats.WalkSpeed * 1.5f + cohesion;
-        if (h.Alarmed) c.Desired += WildSim.Flat(h.Velocity) * 0.3f; // alignment: run with the herd
+        if (alarmed) c.Desired += WildSim.Flat(h.Velocity) * 0.3f; // alignment: run with the herd
 
-        bool still = c.Desired.Length() < 0.3f;
-        c.SetState(h.Alarmed ? CState.Flee : still ? CState.Graze : CState.Wander);
+        // Two edges, not one, so a member on the line between grazing and moving doesn't flicker.
+        bool still = c.Desired.Length() < (c.State == CState.Graze ? 0.45f : 0.2f);
+        // And a calm state holds a moment before giving way to the other.
+        if (!alarmed && c.State is CState.Graze or CState.Wander && c.StateTime < 0.8f) still = c.State == CState.Graze;
+        c.SetState(alarmed ? CState.Flee : still ? CState.Graze : CState.Wander);
         if (still)
         {
             c.Desired = Vector3.Zero;

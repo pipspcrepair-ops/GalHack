@@ -199,6 +199,11 @@ public sealed class Creature
     public float QuietIn;
     /// <summary>A breaker's wind-up on the block in its way, s.</summary>
     public float BreakWind;
+    /// <summary>Its nerve, 0 to 1, set when it's born: how quick it is to react.</summary>
+    public float Nerve = 0.5f;
+    /// <summary>The herd alarm it has taken in, and when it acts on it; when it first did (tests).</summary>
+    public int AlarmSeen;
+    public float ReactAt, ReactedAt = -1f;
     /// <summary>The young at play: how long this dash lasts, when the next, which way.</summary>
     public float FriskFor, FriskIn;
     public Vector3 FriskDir;
@@ -235,12 +240,14 @@ public sealed class Creature
     /// <summary>State changes, and those straight back to the one before within half a second: flicker (tests: there should be few).</summary>
     public int StateChanges, StateFlips;
     CState _before = CState.Wander;
+    /// <summary>The last quick flip, for a test to say which.</summary>
+    public string LastFlip = "";
 
     public void SetState(CState state)
     {
         if (State == state) return;
         StateChanges++;
-        if (state == _before && StateTime < 0.5f) StateFlips++;
+        if (state == _before && StateTime < 0.5f) { StateFlips++; LastFlip = $"{_before}>{State}>{state}"; }
         _before = State;
         State = state;
         StateTime = 0f;
@@ -274,8 +281,17 @@ public sealed class Herd
         }
     }
 
+    /// <summary>How many times it has taken fright: each member reacts to each fright once, in its own time.</summary>
+    public int Alarms;
+
     public void Alarm(Vector3 threat, float now)
     {
+        if (!Alarmed)
+        {
+            Alarms++;
+            // Every member takes it in on its next step; how soon it acts is its own (Reaction).
+            foreach (Creature m in Members) m.ThinkEvery = 0f;
+        }
         Alarmed = true;
         AlarmedAt = now;
         ThreatPos = threat;

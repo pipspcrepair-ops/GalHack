@@ -159,7 +159,7 @@ public sealed class PeopleGenerator
         f.Metal = new Color(0.34f, 0.34f, 0.36f);
         if (occupancy == Occupancy.Feral) f.Cloth = f.Cloth.Lerp(new Color(0.22f, 0.2f, 0.17f), 0.6f);
 
-        f.HairStyle = Folk.Hairless ? "bald" : look.Hair.Length > 0 ? look.Hair : rng.Pick(_t.Hair);
+        f.HairStyle = look.Hair == "mohawk" ? "mohawk" : Folk.Hairless ? "bald" : look.Hair.Length > 0 ? look.Hair : rng.Pick(_t.Hair); // a raider's crest is made, not grown
         if (f.Stage == LifeStage.Elder && rng.Chance(0.4f)) f.HairStyle = "bald";
         if (f.HairStyle == "long" && f.Sex == Sex.Male && rng.Chance(0.6f)) f.HairStyle = "short";
         if (f.Sex == Sex.Female && f.HairStyle == "short" && rng.Chance(0.5f)) f.HairStyle = rng.Chance(0.5f) ? "long" : "tied";

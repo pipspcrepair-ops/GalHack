@@ -73,6 +73,9 @@ public sealed partial class Town
         /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
         public float Down, Raised, Bent;
         public bool Laid;
+        /// <summary>Their nerve (set once), and when they act on the latest upset: nobody reacts on the same instant.</summary>
+        public float Nerve = 0.5f, ReactAt = -1f;
+        public bool Reacted = true;
         /// <summary>What their body is saying, how far into it (eased), how long it holds at least, and what's next.</summary>
         public BodyAct Act, Wanted;
         public float ActAmount, ActHeld;
@@ -273,7 +276,6 @@ public sealed partial class Town
     {
         if (_place == null || !_place.Ready || _place.Dormant) return;
         bool night = Night();
-        Mood mood = Memory.Mood;
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         // Where you are looking, in the place's frame: what you point at, people see.
         Vector3 eye = player + Vector3.Up * 1.6f;
@@ -309,6 +311,13 @@ public sealed partial class Town
             if (_posing && p.Looks != null) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
+            // Until it reaches them, they carry on as they were; then a start, and they act.
+            Mood mood = Memory.Mood;
+            if (!p.Reacted)
+            {
+                if (_clock < p.ReactAt) mood = _moodBefore;
+                else { p.Reacted = true; p.Path = null; p.Step = 0; p.Partner = null; p.StartleFor = 0.7f; }
+            }
             // Hostile: the people go indoors; the guards turn on you.
             bool hide = !guard && (night || mood == Mood.Hostile);
             if (hide && !p.Indoors)
@@ -461,7 +470,9 @@ public sealed partial class Town
         p.Cooldown -= dt;
         if (p.Aim < 0f)
         {
-            if (p.Cooldown > 0f || !CanSee(p, player)) return;
+            // One raises first; the next only a beat after: never all at once.
+            if (p.Cooldown > 0f || _clock < _nextAimAt || !CanSee(p, player)) return;
+            _nextAimAt = _clock + 0.9f + (float)_rng.NextDouble() * 1.1f;
             p.Aim = 1.4f;
             GuardAims++;
             Aimed?.Invoke(_place.ToWorld(p.Pos + Vector3.Up * 1.5f));
@@ -493,12 +504,23 @@ public sealed partial class Town
     public void Provoked()
     {
         if (Memory.Mood == Mood.Hostile) return;
+        _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
-        foreach (Person p in People) { p.Path = null; p.Step = 0; p.Partner = null; }
+        // Each takes it in in their own time: the bold and the near first, children and the old later.
+        Vector3 at = _place != null ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) : Vector3.Zero;
+        var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "provoked", (long)(_clock * 100f));
+        foreach (Person p in People)
+        {
+            Figure f = p.Looks?.Figure;
+            p.ReactAt = _clock + Reaction.Delay(p.Nerve, (p.Pos - at).Length(), saw: false, f?.Stage == LifeStage.Child, f?.Stage == LifeStage.Elder, roll);
+            p.Reacted = false;
+        }
         TurnedHostile?.Invoke();
     }
 
     public event Action TurnedHostile;
+    Mood _moodBefore = Mood.Peaceful;
+    float _nextAimAt;
 
     /// <summary>Whether a world point is in the town's area.</summary>
     public bool Covers(Vector3 world)
@@ -568,6 +590,7 @@ public sealed partial class Town
             bool young = role is not (PersonRole.Child or PersonRole.Elder or PersonRole.Drunk) && roll.Chance(hardened);
             p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raider ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation, young: young);
             p.Rig = new HumanRig(p.Looks);
+            p.Nerve = roll.Float();
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
         }
     }
