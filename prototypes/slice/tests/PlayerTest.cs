@@ -908,7 +908,7 @@ public partial class PlayerTest : Node
             GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(drops),
             $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
-        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
+        Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
         Check(_game.Pack.Storage.Contents.Equals(stays) && Enumerable.Range(0, _game.Pack.Grid.Toolbar).All(i => _game.Pack.Grid[i].ToString() == onBar[i]),
             $"everything on the toolbar stays, slot for slot ({_game.Zone.Data.Items.Describe(stays, 4)})");
         foreach (int x in _drive.Wait(30)) yield return x;

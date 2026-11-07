@@ -856,7 +856,8 @@ public sealed class Playthrough
                 }
                 Vector3 g = zone.GroundAt(p.X, p.Z);
                 bool clear = zone.Vessels.All(v => v.IsWreck || v.IsRuin || v.Body.Position.ToGodot().DistanceTo(g) > 14f) && zone.Devices.All(d => d.GlobalPosition.DistanceTo(g) > 8f)
-                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f));
+                             && (Game.Bunker == null || !Game.Bunker.Over(g, 8f))
+                             && !zone.Planet.Infra.Ruins.Any(ruin => new Vector2((float)ruin.Center.Item1 - g.X, (float)ruin.Center.Item2 - g.Z).Length() < 18f); // a small ruin's walls would stand in the way
                 if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
