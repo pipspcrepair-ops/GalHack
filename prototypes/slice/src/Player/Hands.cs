@@ -15,7 +15,7 @@ public partial class Hands : Node3D
     public Game.Game Game;
 
     Node3D _rig, _tip;
-    StandardMaterial3D _glow;
+    ShaderMaterial _lens, _lensRound, _coreMat, _topCore;
     int _shotsSeen;
     float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
 
@@ -71,7 +71,6 @@ public partial class Hands : Node3D
         var glove = new StandardMaterial3D { AlbedoColor = new Color("2b2d42"), Roughness = 0.8f };
         var metal = new StandardMaterial3D { AlbedoColor = new Color("ece3c8"), Roughness = 0.4f, Metallic = 0.4f };
         var dark = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.6f };
-        _glow = new StandardMaterial3D { ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, AlbedoColor = new Color("2ec4b6") };
         // Forearm and glove.
         Add(new CylinderMesh { TopRadius = 0.045f, BottomRadius = 0.055f, Height = 0.32f }, suit, new Vector3(0.21f, -0.24f, -0.18f), new Vector3(-75, 8, 0));
         Add(new BoxMesh { Size = new Vector3(0.09f, 0.07f, 0.1f) }, glove, new Vector3(0.185f, -0.19f, -0.33f), Vector3.Zero);
@@ -83,10 +82,23 @@ public partial class Hands : Node3D
         Worn(new BoxMesh { Size = new Vector3(0.08f, 0.09f, 0.26f) }, hull, new Vector3(0.17f, -0.15f, -0.38f), Vector3.Zero, 0.5f, 0.3f, 1f);
         Worn(new BoxMesh { Size = new Vector3(0.05f, 0.11f, 0.05f) }, grip, new Vector3(0.17f, -0.21f, -0.33f), new Vector3(15, 0, 0), 0.7f, 0.05f, 2f);
         Worn(new CylinderMesh { TopRadius = 0.022f, BottomRadius = 0.026f, Height = 0.14f, RadialSegments = 8 }, grip, new Vector3(0.17f, -0.145f, -0.55f + 0.07f), new Vector3(90, 0, 0), 0.5f, 0.3f, 3f);
-        Add(new TorusMesh { InnerRadius = 0.022f, OuterRadius = 0.036f, Rings = 16, RingSegments = 6 }, _glow, new Vector3(0.17f, -0.145f, -0.545f), new Vector3(90, 0, 0));
-        Add(new BoxMesh { Size = new Vector3(0.03f, 0.02f, 0.1f) }, _glow, new Vector3(0.17f, -0.1f, -0.38f), Vector3.Zero);
-        // A dark bezel under the glowing panel, side plates, a rear cap, and a shroud round the barrel root.
-        Worn(new BoxMesh { Size = new Vector3(0.046f, 0.008f, 0.118f) }, grip, new Vector3(0.17f, -0.1055f, -0.38f), Vector3.Zero, 0.6f, 0.1f, 4f);
+        // The muzzle emitter: a dark worn bezel ring, a round translucent lens set back inside it, and a glowing core behind.
+        var tipLens = new CylinderMesh { TopRadius = 0.021f, BottomRadius = 0.021f, Height = 0.004f, RadialSegments = 12 };
+        _lensRound = HeldFinish.Emitter(tipLens, new Color("2ec4b6"));
+        Worn(new TorusMesh { InnerRadius = 0.02f, OuterRadius = 0.034f, Rings = 12, RingSegments = 6 }, grip, new Vector3(0.17f, -0.145f, -0.545f), new Vector3(90, 0, 0), 0.5f, 0.3f, 9f);
+        Add(tipLens, _lensRound, new Vector3(0.17f, -0.145f, -0.5485f), new Vector3(90, 0, 0));
+        Add(new CylinderMesh { TopRadius = 0.011f, BottomRadius = 0.011f, Height = 0.004f, RadialSegments = 8 }, _coreMat = HeldFinish.Emitter(new CylinderMesh { TopRadius = 0.011f, Height = 0.004f }, new Color("2ec4b6")), new Vector3(0.17f, -0.145f, -0.5435f), new Vector3(90, 0, 0));
+        // The top light: a bezel frame round a recessed translucent lens, with a bright core beneath.
+        var topLens = new BoxMesh { Size = new Vector3(0.028f, 0.004f, 0.098f) };
+        _lens = HeldFinish.Emitter(topLens, new Color("2ec4b6"));
+        Add(topLens, _lens, new Vector3(0.17f, -0.1035f, -0.38f), Vector3.Zero);
+        Add(new BoxMesh { Size = new Vector3(0.016f, 0.004f, 0.07f) }, _topCore = HeldFinish.Emitter(new BoxMesh { Size = new Vector3(0.016f, 0.004f, 0.07f) }, new Color("2ec4b6")), new Vector3(0.17f, -0.1085f, -0.38f), Vector3.Zero);
+        foreach (float side in new[] { -1f, 1f })
+        {
+            Worn(new BoxMesh { Size = new Vector3(0.007f, 0.012f, 0.118f) }, grip, new Vector3(0.17f + side * 0.0185f, -0.1005f, -0.38f), Vector3.Zero, 0.6f, 0.1f, 10f + side);
+            Worn(new BoxMesh { Size = new Vector3(0.044f, 0.012f, 0.007f) }, grip, new Vector3(0.17f, -0.1005f, -0.38f + side * 0.0555f), Vector3.Zero, 0.6f, 0.1f, 12f + side);
+        }
+        // Side plates, a rear cap, and a shroud round the barrel root.
         foreach (float side in new[] { -1f, 1f })
             Worn(new BoxMesh { Size = new Vector3(0.006f, 0.062f, 0.15f) }, plate, new Vector3(0.17f + side * 0.0405f, -0.15f, -0.4f), Vector3.Zero, 0.55f, 0.3f, 5f + side);
         Worn(new BoxMesh { Size = new Vector3(0.084f, 0.094f, 0.02f) }, plate, new Vector3(0.17f, -0.15f, -0.255f), Vector3.Zero, 0.55f, 0.3f, 7f);
@@ -122,7 +134,8 @@ public partial class Hands : Node3D
                     && hand is HandKind.Tool or HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         Visible = show;
         if (!show) return;
-        _glow.AlbedoColor = hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
+        Color tint = hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
+        foreach (ShaderMaterial lens in new[] { _lens, _lensRound, _coreMat, _topCore }) lens.SetShaderParameter("tint", tint);
         float speed = g.Survivor.Body.OnFloor ? new Vector2(g.Survivor.Body.Velocity.X, g.Survivor.Body.Velocity.Z).Length() : 0f;
         _bob += dt * speed * 1.6f;
         float sway = MathF.Min(speed, 6f) / 6f;
