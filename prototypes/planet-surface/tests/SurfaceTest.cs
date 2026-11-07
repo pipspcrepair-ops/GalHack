@@ -582,6 +582,22 @@ public partial class SurfaceTest : Node
         if (w == null) return;
         Walker player = _main.Player;
         ChunkStore store = w.Terrain.Store;
+        // Untouched ground, away from any ore: the nearest outcrop can lie in the ground the earlier
+        // tests dug out, and the pit below needs solid ground to be dug from.
+        Vector3 from = player.GlobalPosition;
+        bool Bare(float x, float z)
+        {
+            foreach (Deposit d in w.Map.Deposits.InRect(x - 12, z - 12, x + 12, z + 12))
+                if (Math.Abs(Mathx.WrapDelta(d.X - x, w.Width)) < 12 && Math.Abs(Mathx.WrapDelta(d.Y - z, w.Height)) < 12) return false;
+            return w.Source.StampWeight(x, z) <= 0f && w.GroundHeight(x, z) > 2f;
+        }
+        for (int i = 0; i < 400; i++)
+        {
+            float a = i * 0.61f, r = 48f + i * 0.5f, x = from.X + MathF.Cos(a) * r, z = from.Z + MathF.Sin(a) * r;
+            if (!Bare(x, z)) continue;
+            player.Teleport(new Vector3(x, w.GroundHeight(x, z) + 1f, z));
+            break;
+        }
         await Streamed();
 
         // Buried by a teleport (a bad load, a network correction): out within a few ticks.
