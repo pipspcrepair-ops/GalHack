@@ -36,18 +36,31 @@ float vnoise(vec3 x) {
 float density(vec3 p) {
 	float h = (p.y - axis_base.y) / shaft_height;
 	if (h < 0.0 || h > 1.0) return 0.0;
-	vec2 c = axis_base.xz + lean * h + drift * TIME;
-	vec2 d = p.xz - (axis_base.xz + lean * h);
-	float width = reach * (1.25 - 0.55 * h);      // wider low down
+	float up = p.y - axis_base.y;
+	vec2 wdir = normalize(lean + vec2(0.0001, 0.0));
+	// The pattern slides with the wind and slants with it: the lower rain trails the upper.
+	vec2 slant = wdir * (0.12 + 0.2 * length(lean) / max(shaft_height, 1.0)) * 3.0;
+	vec2 c = axis_base.xz + lean * h;
+	vec2 q = p.xz - c + drift * TIME - slant * up * 0.25;
+	vec2 d = p.xz - c;
+	float width = reach * (1.35 - 0.6 * h);       // wider low down, narrowing into the cloud
 	float r = length(d) / width;
-	vec2 q = p.xz - c;
-	// Ragged edge and curtains: noise over the position round the axis, stretched along the fall.
-	float edge = vnoise(vec3(q * (3.0 / reach), h * 2.5)) * 0.6 + vnoise(vec3(q * (9.0 / reach), h * 6.0 + 7.0)) * 0.4;
-	float curtain = vnoise(vec3(q * (5.5 / reach), h * 1.3 + 3.0));
-	curtain = smoothstep(0.28, 0.75, curtain);
-	float body = 1.0 - smoothstep(0.15, 1.0, r + (edge - 0.5) * 0.95);
-	float fade = (1.0 - smoothstep(0.6, 1.0, h)) * smoothstep(0.0, 0.07, h) * (0.55 + 0.45 * h);
-	return body * (0.25 + 0.75 * curtain) * fade;
+	// The footprint is noise, not a radius: lobes, bays and gaps at several sizes. The radius only
+	// keeps the whole thing from wandering off, and never makes an edge.
+	float field = vnoise(vec3(q * (1.6 / reach), up * 0.0012)) * 0.5
+		+ vnoise(vec3(q * (4.0 / reach) + 5.0, up * 0.0025 + 3.0)) * 0.3
+		+ vnoise(vec3(q * (11.0 / reach) + 9.0, up * 0.004 + 7.0)) * 0.2;
+	float env = 1.0 - smoothstep(0.3, 1.2, r);
+	float cover = env * 1.3 + (field - 0.5) * 0.95 - 0.15;
+	float body = smoothstep(0.3, 0.85, cover);
+	// Fine slanted streaks, uneven: stretched along the fall, never an even comb.
+	vec2 sq = q + slant * up;
+	float s1 = vnoise(vec3(sq * (38.0 / reach), up * 0.0016 + TIME * 0.08));
+	float s2 = vnoise(vec3(sq * (95.0 / reach) + 4.0, up * 0.0022 - TIME * 0.12 + 2.0));
+	float streak = 0.5 + 0.9 * (s1 * 0.6 + s2 * 0.4 - 0.5);
+	// Densest just under the cloud base, thinning toward the ground into a haze with no end line.
+	float vert = (0.1 + 0.9 * smoothstep(0.0, 0.8, h)) * (1.0 - smoothstep(0.93, 1.0, h));
+	return body * clamp(streak, 0.15, 1.3) * vert;
 }
 
 void vertex() {
@@ -99,5 +112,5 @@ void fragment() {
 	}
 	float optical = sum / (reach * 1.6);
 	ALBEDO = tint;
-	ALPHA = clamp((1.0 - exp(-optical * 3.2)) * amount, 0.0, 1.0);
+	ALPHA = clamp((1.0 - exp(-optical * 4.0)) * amount, 0.0, 1.0);
 }
