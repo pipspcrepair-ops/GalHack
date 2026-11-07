@@ -438,7 +438,7 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         foreach (int x in _drive.Wait(5)) yield return x;
         _pilot.Seated();
-        Check(_game.Survivor.Seated == v, $"floated back and into the seat (F); {_game.Suit.Vitals.Oxygen:F0} of {_game.Suit.Sim.OxygenCapacity:F0} oxygen left");
+        Check(_game.Survivor.Seated == v, $"floated back and into the seat (F); {_game.Suit.Vitals.Oxygen:F0} of {_game.Suit.Sim.OxygenCapacity:F0} oxygen left (the eye {_game.Survivor.WorldEye().DistanceTo(Seat()):F1} m from it, standing on {(_game.Survivor.Body.Frame == null ? "nothing" : _game.Survivor.Body.Frame == v.Body ? "the Skiff" : "another hull")}, floating {_game.Survivor.Binding.Floating}, moving {_game.Survivor.Body.WorldVelocity.Length():F1} m/s)");
     }
 
     // ---- Down ----------------------------------------------------------------------------------

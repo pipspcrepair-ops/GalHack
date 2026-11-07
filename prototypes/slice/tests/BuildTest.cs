@@ -351,11 +351,26 @@ public partial class BuildTest : Node
         GD.Print("-- every structure starts with its core --");
         // Flat right across the base and the spots to stand at round it: on a slope the ground
         // buries its lowest blocks and stands between you and them. Any slope left is cut away.
-        _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
-        foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
-        LevelSite(14f);
-        foreach (int x in _drive.UntilSettled()) yield return x;
-        _site = Ground(_site);
+        // Ground that won't be dug (a road's bed, a pad) or anything standing there (a ruin's stump, a wreck) spoils the site: then on to another.
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            _site = _play.FlatSpot(_game.Start, 70f + attempt * 30f, 0.6f + attempt * 1.7f, 0.4f, span: 14f);
+            foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
+            LevelSite(14f);
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            _site = Ground(_site);
+            float ridge = 0f;
+            bool standing = false;
+            for (int k = 0; k < 16; k++)
+            {
+                var way = new Vector3(MathF.Cos(k * 0.3927f), 0f, MathF.Sin(k * 0.3927f));
+                standing |= _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(_site + Vector3.Up * 1.2f, _site + Vector3.Up * 1.2f + way * 12f, GalHack.Physics.Layers.World)).Count > 0;
+                for (float r = 2f; r <= 12f; r += 2f)
+                    ridge = MathF.Max(ridge, MathF.Abs(_game.Zone.GroundAt(_site.X + way.X * r, _site.Z + way.Z * r).Y - _site.Y));
+            }
+            if (ridge < 0.6f && !standing) break;
+            GD.Print($"  (the site at {_site} keeps {ridge:F1} m of ground{(standing ? " and something standing on it" : "")}: on to another)");
+        }
         foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
         string steelL = Item("steel", false), steelS = Item("steel", true);
         foreach (int x in Carry(steelL, 12, 2)) yield return x;
@@ -380,7 +395,7 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(1f, 0, 0)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("blocks only"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\"");
+        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("blocks only"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
 
         // Building onto the founded structure works.
         bool on = false;
