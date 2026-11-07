@@ -26,6 +26,7 @@ public sealed partial class Staging
         "night-ground" => NightGround(),
         "night-space" => NightSpace(),
         "galaxy-map" => GalaxyMap(),
+        "world-map" => WorldMapShots(),
         "galaxy-core" => GalaxyCore(),
         "galaxy-jump" => GalaxyJump(),
         "galaxy-nebula" => GalaxyNebula(),
@@ -110,6 +111,39 @@ public sealed partial class Staging
         Face(_game.Spaceflight.LookToward(id));
         Choose(id);
         foreach (int x in _drive.Wait(30)) yield return x;
+    }
+
+    /// <summary>The World map opened from a start put at --lat (0 north pole .. 1 south pole): poles top and bottom; then a close look at a sea ice edge.</summary>
+    IEnumerable<int> WorldMapShots()
+    {
+        var planet = _game.Surface.Planet;
+        double lat = Num("lat", 0.5);
+        Vector3 at = _game.Survivor.WorldFeet;
+        _game.Survivor.PlaceOutside(new System.Numerics.Vector3(at.X, at.Y + 5f, (float)(planet.Height * lat)));
+        foreach (int x in _drive.Wait(20)) yield return x;
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        _game.Menu.OpenMap(MapLevel.World);
+        for (int i = 0; i < 150; i++) yield return 0;
+        Snap("world-lat" + (int)(lat * 100));
+        // A sea ice edge: a frozen cell beside open water.
+        var map = planet.Map;
+        int best = -1;
+        for (int k = 0; k < map.Count && best < 0; k++)
+        {
+            if (map.Biome[k] != (byte)Planets.Gen.Biome.FrozenSea) continue;
+            int i = k % map.Width, j = k / map.Width;
+            if (j > 2 && j < map.Height - 3 && map.Biome[map.Index(i + 1, j)] != (byte)Planets.Gen.Biome.FrozenSea && map.Elevation[map.Index(i + 1, j)] < 0f) best = k;
+        }
+        if (best >= 0 && levels.View != null)
+        {
+            levels.View.CentreX = map.CellX(best % map.Width);
+            levels.View.CentreZ = map.CellY(best / map.Width);
+            levels.View.MetresPerPixel = 6;
+            levels.View.Settle();
+            for (int i = 0; i < 40; i++) yield return 0;
+            Snap("ice-edge");
+        }
+        else GD.Print("(no sea ice edge on this world)");
     }
 
     /// <summary>The 3D map through the game's own mouse: turned by a drag, a star picked by a click.</summary>

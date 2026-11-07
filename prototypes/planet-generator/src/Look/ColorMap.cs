@@ -80,12 +80,17 @@ public sealed class ColorMap
                 Rgb col, emit = default;
                 if (liquid)
                 {
+                    // The pack ice is a cell-wide yes or no, so its edge is wandered and feathered like a
+                    // land border: over a few cells, not along the grid.
+                    double fx = gx + jitter.Fbm(map.Model.Torus.At(x, y), 16) * BorderWander, fy = gy + jitter.Fbm(map.Model.Torus.At(x, y).Swap, 16) * BorderWander;
+                    int fi = (int)Math.Floor(fx), fj = (int)Math.Floor(fy);
+                    float vx = (float)(fx - fi), vy = (float)(fy - fj);
                     float frozen = 0f;
-                    if (map.Biome[a] == (byte)Biome.FrozenSea) frozen += wa;
-                    if (map.Biome[b] == (byte)Biome.FrozenSea) frozen += wb;
-                    if (map.Biome[c] == (byte)Biome.FrozenSea) frozen += wc;
-                    if (map.Biome[d] == (byte)Biome.FrozenSea) frozen += wd;
-                    col = Rgb.Lerp(look.Sea(Biome.ShallowSea, -e), look.FrozenSea, Mathx.Smooth(0.35f, 0.65f, frozen));
+                    if (map.Biome[map.Index(fi, fj)] == (byte)Biome.FrozenSea) frozen += (1 - vx) * (1 - vy);
+                    if (map.Biome[map.Index(fi + 1, fj)] == (byte)Biome.FrozenSea) frozen += vx * (1 - vy);
+                    if (map.Biome[map.Index(fi, fj + 1)] == (byte)Biome.FrozenSea) frozen += (1 - vx) * vy;
+                    if (map.Biome[map.Index(fi + 1, fj + 1)] == (byte)Biome.FrozenSea) frozen += vx * vy;
+                    col = Rgb.Lerp(look.Sea(Biome.ShallowSea, -e), look.FrozenSea, Mathx.Smooth(0.1f, 0.9f, frozen));
                     // Lava glows its own colour shifted towards red: adding orange to orange would wash out to yellow.
                     if (look.LiquidGlow > 0) emit = new Rgb(col.R, col.G * 0.55f, col.B * 0.4f) * look.LiquidGlow * 0.35f;
                 }
