@@ -134,7 +134,7 @@ public static class FlavourRuins
     {
         var ruins = already ?? new List<FlavourRuin>();
         if (profile == null || !profile.Inhabited || lib == null) return ruins;
-        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before)))).ToList();
+        var families = lib.Families.Where(f => f.Tags.Contains("flavour") && f.Id.StartsWith("flavour_") && (f.Techs.Count == 0 || f.Techs.Contains(WorldProfile.Tag(profile.Before))) && !f.Is.Any(profile.Barred.Contains)).ToList();
         if (families.Count == 0) return ruins;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0xF1A7UL));
         FamilyDef Pick(string kind) => families.FirstOrDefault(f => f.Tags.Contains(kind));

@@ -338,7 +338,8 @@ public partial class SurfaceTest
         int pylons = 0, poles = 0, wrongHeight = 0, byRoad = 0, turns = 0, stretches = 0, hollow = 0, spanned = 0, legs = 0, floating = 0, feetChecked = 0;
         float worst = 0;
         var rand = new Random();
-        for (int k = 0; k < 6 && pylons < 60; k++)
+        // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood.
+        for (int k = 0; k < 16 && pylons < 60; k++)
         {
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
             PowerLines power = w.Infra?.Power;

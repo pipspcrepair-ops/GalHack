@@ -210,6 +210,7 @@ public sealed class WorldRoll
     public float[]? States;
     /// <summary>The share of a world's places that break from the theme.</summary>
     public float Break = 0.1f;
+    /// <summary>Streets of houses a town gets: every layer's add up (two where none says).</summary>
     public int Streets = 2;
     public string Road = "quiet", Rail = "none", Power = "intact";
 
@@ -487,11 +488,11 @@ public sealed class WorldRoll
             Depot = l.Depot ?? Depot;
             States = l.States ?? States;
             if (l.Break >= 0f) Break = l.Break;
-            if (l.Streets > 0) Streets = l.Streets;
             if (l.Style.TryGetValue("road", out string? road)) Road = road;
             if (l.Style.TryGetValue("rail", out string? rail)) Rail = rail;
             if (l.Style.TryGetValue("power", out string? power)) Power = power;
         }
+        if (Rolled.Any(l => l.Streets > 0)) Streets = Rolled.Sum(l => l.Streets);
         var occupants = lib.Layers.Where(l => l.Kind == LayerKind.Occ).ToDictionary(l => l.Id);
         foreach (string code in Occupancy.Keys.ToList())
             if (Occupancy[code] <= 0f || !occupants.TryGetValue(code, out WorldLayer? occ) || w.Rules(occ, false) is not (true, true)) Occupancy.Remove(code);

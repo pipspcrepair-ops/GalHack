@@ -164,6 +164,15 @@ public static partial class PoiSiting
         return given;
     }
 
+    /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
+    public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null)
+    {
+        if (profile is not { Inhabited: true } || lib == null) return profile;
+        PlanetSpec spec = map.Spec;
+        WorldRoll roll = WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName));
+        return roll == null ? profile : profile with { Barred = roll.Barred };
+    }
+
     public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
     {
         bool start = startWorld ?? StartWorld;

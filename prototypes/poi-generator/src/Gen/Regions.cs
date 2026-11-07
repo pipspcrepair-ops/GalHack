@@ -379,7 +379,8 @@ public sealed class RegionPlan
                 if (joined.Count > 0)
                 {
                     PlannedPlace near = joined.OrderBy(j => _p.Dist(j.X, j.Z, h.X, h.Z)).First();
-                    bool rural = _roll.Road == "track";
+                    // The port is the network's main node, whatever the world's roads are like.
+                    bool rural = _roll.Road == "track" && !h.Primary && !near.Primary;
                     _p.Links.Add(new PlannedLink(near.Index, h.Index, rural ? "track" : big, "between towns"));
                 }
                 joined.Add(h);
