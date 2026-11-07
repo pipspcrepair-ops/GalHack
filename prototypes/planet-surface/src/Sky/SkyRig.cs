@@ -47,6 +47,12 @@ public partial class SkyRig : Node3D
     /// <summary>Toward the star in the star field's frame.</summary>
     public Vector3 StarInField { get; private set; } = Vector3.Up;
 
+    /// <summary>The radius of the sphere this world's own ring stands round, m: 0 for the true globe. Over the cap that is the curved sheet you can see.</summary>
+    public float RingRadius;
+
+    /// <summary>The ring plane's normal of the giant this world circles, in this sky.</summary>
+    public Vector3 NeighbourRing { get; private set; } = Vector3.Up;
+
     /// <summary>What this sky is drawing right now, for checking against the model: each body and its direction in this sky.</summary>
     public IReadOnlyList<(Orbiter Body, Vector3 Direction, float Angular)> Drawn => _drawn;
     public Godot.Environment Environment { get; private set; }
@@ -63,7 +69,7 @@ public partial class SkyRig : Node3D
     D3 _eye = new(0, 1, 0);
     bool _stood;
     const int BodySlots = 10;
-    readonly List<Sighting> _seen = new();
+    readonly List<Sighting> _seen = new(), _inSlots = new();
     readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
     readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
     readonly float[] _bodyRadii = new float[BodySlots];
@@ -289,7 +295,9 @@ public partial class SkyRig : Node3D
         Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
         _sky.SetShaderParameter("star_turn", Stars.Field * SkyToStars);
         _sky.SetShaderParameter("sky_to_globe", _skyToGlobe);
-        _sky.SetShaderParameter("home_ring_eye", V(_eye * (1.0 / m.Home.Radius)));
+        // The eye against the sphere the ring stands round, at the height it really is over it.
+        double ringSphere = RingRadius > 0f ? RingRadius : m.Home.Radius;
+        _sky.SetShaderParameter("home_ring_eye", V(_eye.Normalized * (1.0 + (_eye.Length - m.Home.Radius) / ringSphere)));
 
         _seen.Clear();
         foreach (Orbiter b in m.Bodies)
@@ -298,32 +306,42 @@ public partial class SkyRig : Node3D
         _drawn.Clear();
         _brightest = Vector3.Up;
         _brightestEnergy = 0.06f; // starlight
-        int slot = 0;
+        double giantAt = -1.0;
+        _inSlots.Clear();
         foreach (Sighting s in _seen)
         {
+            if (s.Body != m.Neighbour)
+            {
+                if (_inSlots.Count < BodySlots) _inSlots.Add(s);
+                continue;
+            }
             Vector3 dir = InSky(s.Direction), light = InSky(s.ToItsLight);
-            if (s.Body == m.Neighbour)
-            {
-                _sky.SetShaderParameter("giant_dir", dir);
-                _sky.SetShaderParameter("giant_radius", s.Angular);
-                _sky.SetShaderParameter("giant_light", light);
-                _sky.SetShaderParameter("ring_normal", InSky(o.ToGlobe(s.Body.RingNormal)));
-                float lit = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f);
-                if (dir.Y > 0f && 0.25f * lit > _brightestEnergy) (_brightestEnergy, _brightest) = (0.25f * lit, dir);
-            }
-            else
-            {
-                if (slot == BodySlots) continue;
-                _bodyDirs[slot] = dir;
-                _bodyLights[slot] = light;
-                _bodyRadii[slot] = s.Angular;
-                _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
-                float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
-                float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
-                if (e > _brightestEnergy) (_brightestEnergy, _brightest) = (e, dir);
-            }
+            giantAt = s.Distance;
+            _sky.SetShaderParameter("giant_dir", dir);
+            _sky.SetShaderParameter("giant_radius", s.Angular);
+            _sky.SetShaderParameter("giant_light", light);
+            NeighbourRing = InSky(o.ToGlobe(s.Body.RingNormal));
+            _sky.SetShaderParameter("ring_normal", NeighbourRing);
+            float lit = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f);
+            if (dir.Y > 0f && 0.25f * lit > _brightestEnergy) (_brightestEnergy, _brightest) = (0.25f * lit, dir);
             _drawn.Add((s.Body, dir, s.Angular));
         }
+        _inSlots.Sort((a, b) => b.Distance.CompareTo(a.Distance));
+        int slot = 0, behindGiant = 0;
+        foreach (Sighting s in _inSlots)
+        {
+            Vector3 dir = InSky(s.Direction), light = InSky(s.ToItsLight);
+            if (s.Distance > giantAt) behindGiant++;
+            _bodyDirs[slot] = dir;
+            _bodyLights[slot] = light;
+            _bodyRadii[slot] = s.Angular;
+            _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
+            float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
+            float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
+            if (e > _brightestEnergy) (_brightestEnergy, _brightest) = (e, dir);
+            _drawn.Add((s.Body, dir, s.Angular));
+        }
+        _sky.SetShaderParameter("giant_at", behindGiant);
         _sky.SetShaderParameter("moon_count", slot);
         _sky.SetShaderParameter("moon_dir", _bodyDirs);
         _sky.SetShaderParameter("moon_light", _bodyLights);

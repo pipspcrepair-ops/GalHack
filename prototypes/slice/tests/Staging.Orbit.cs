@@ -190,7 +190,8 @@ public sealed partial class Staging
     /// own view) or --cam=out (over the hull, --pitch degrees below level, one frame for each of
     /// --yaws, degrees from north, and with --straight=1 one more straight down, from under the
     /// hull). --body=1 stops the clock at a moment with the biggest body well up, and every frame
-    /// looks one way, at it. --down=1 flies back down through them. Prints what each frame cost to draw.
+    /// looks one way, at it; --side=1 or -1 picks a moment with the eye on that side of its ring plane,
+    /// 0 one nearly in the plane. --down=1 flies back down through them. Prints what each frame cost to draw.
     /// </summary>
     IEnumerable<int> ClimbView()
     {
@@ -209,17 +210,28 @@ public sealed partial class Staging
             sky.Paused = true;
             float best = -2f;
             double when = sky.TimeOfDay;
-            for (double t = 0.0; t < 1.0; t += 0.01)
+            double from = sky.Days;
+            bool sided = _args.TryGetValue("side", out string sideText);
+            int side = sided ? int.Parse(sideText) : 0;
+            for (double t = 0.0; t < (sided ? 40.0 : 1.0); t += 0.01)
             {
-                sky.TimeOfDay = t;
+                sky.Days = from + t;
                 sky.Track();
-                float up = sky.Drawn.Count == 0 ? -2f : sky.Drawn[0].Direction.Y - MathF.Abs(sky.ToSun.Y - 0.35f);
-                if (up > best) (best, when) = (up, t);
+                if (sky.Drawn.Count == 0) continue;
+                // Which side of the ring plane the eye is on: the sign of the way to the giant along its normal.
+                float across = -sky.Drawn[0].Direction.Dot(sky.NeighbourRing);
+                bool fits = !sided || (side == 0 ? MathF.Abs(across) < 0.06f : across * side > 0.25f);
+                float up = fits && sky.Drawn[0].Direction.Y > 0.15f ? sky.Drawn[0].Direction.Y - MathF.Abs(sky.ToSun.Y - 0.35f) : -2f;
+                if (up > best) (best, when) = (up, from + t);
             }
-            sky.TimeOfDay = when;
+            sky.Days = when;
             sky.Track();
             atBody = sky.Drawn[0].Direction;
-            GD.Print($"(sky: looking at {sky.Drawn[0].Body.Name}, radius {Mathf.RadToDeg(sky.Drawn[0].Angular):F2} degrees, at time {when:F2}; direction {atBody})");
+            float over = -atBody.Value.Dot(sky.NeighbourRing);
+            // The ring's nearest point, as it falls against the giant's centre on the screen.
+            Vector3 toward = -(atBody.Value - sky.NeighbourRing * atBody.Value.Dot(sky.NeighbourRing)).Normalized();
+            float nearArc = (toward - atBody.Value * toward.Dot(atBody.Value)).Dot((Vector3.Up - atBody.Value * atBody.Value.Y).Normalized());
+            GD.Print($"(sky: looking at {sky.Drawn[0].Body.Name}, radius {Mathf.RadToDeg(sky.Drawn[0].Angular):F2} degrees, day {when:F2}; direction {atBody}; eye {over:F2} along the ring's normal, the near arc falls {(nearArc > 0f ? "above" : "below")} the centre)");
         }
         Rid viewport = _game.GetViewport().GetViewportRid();
         RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
@@ -248,6 +260,7 @@ public sealed partial class Staging
                 }
                 string name = float.IsNaN(yaw) ? $"{tag}-down" : yaws.Length > 1 || !cabin ? $"{tag}-y{yaw:0}" : tag;
                 Snap(name);
+                if (_game.InOrbit && _game.Surface.Planet.StarSystem.Home.Rings) GD.Print($"(ring fit {name}: {_game.Orbit.Globe.RingFit.Off:F1} m off the sheet's centre, inner edge {_game.Orbit.Globe.RingFit.Inner:F2} radii of the sheet)");
                 GD.Print($"(frame {name}: y {v.Body.Position.Y:F1}, {RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport):F2} ms cpu, {RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport):F2} ms gpu, shroud {_game.Spaceflight.Shrouded:F2}, screen {(_game.InOrbit ? "orbit" : "surface")})");
             }
         }

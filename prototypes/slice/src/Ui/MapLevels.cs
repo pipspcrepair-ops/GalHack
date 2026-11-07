@@ -309,6 +309,8 @@ public sealed class MapLevels
                     labels.Add(places[e.Key], 2f, e.Label.ToUpperInvariant(), C.Dim, 4);
                 }
                 else if (e.Parent == null && e.Orbit > 0f) g.Canvas.DrawArc(c, e.Orbit * unit, 0, Mathf.Tau, 128, new Color(C.Rule, 0.55f), 1f);
+                // A world that is a moon reads as one: its orbit round its giant, not a neighbour on the giant's.
+                else if (e.Kind == "world" && e.Parent != null) g.Canvas.DrawArc(places[e.Parent], places[e.Key].DistanceTo(places[e.Parent]), 0, Mathf.Tau, 48, new Color(C.Holo, 0.55f), 1f);
             }
             foreach (SystemEntry e in bodies)
             {
