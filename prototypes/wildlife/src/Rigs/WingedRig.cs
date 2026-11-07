@@ -7,18 +7,34 @@ namespace Wildlife;
 /// <summary>
 /// Fliers: a body with one or two pairs of leathery wings, each an inner and an outer panel.
 /// Wings flap with the outer panel lagging the inner (which is what makes a flap look like a
-/// flap), glide between bursts, and fold back along the body when it lands to eat. The body
-/// pitches with climb and banks into turns.
+/// flap), held out still on a glide, swept back in a dive, and folded along the body when it lands
+/// to eat. The body pitches with climb and rolls with the sim's bank, inner wing down. The wings
+/// do what <see cref="Flight"/> says they are doing: they work only when <see cref="Creature.Flapping"/>.
+///
+/// A hoverer (<see cref="Species.Flight"/>) is built and carried differently: narrow wings, a body
+/// held upright under them, tipping forward only to dart, and a beat too fast to see, drawn as a
+/// translucent blur in the stroke plane that never stops while it is in the air.
 /// </summary>
 public sealed class WingedRig : Rig
 {
     readonly int _body, _head;
     readonly int[] _neck, _tail;
-    readonly List<(int pair, int side, int inner, int outer)> _wings = new();
+    readonly List<(int pair, int side, int inner, int outer, int blur)> _wings = new();
     readonly int[] _feet = new int[2];
     readonly float _span1, _span2;
-    readonly bool _moth;
-    float _phase, _flapBlend, _fold;
+    readonly bool _moth, _hover;
+    float _phase, _flapBlend, _fold, _sweep, _upright;
+
+    /// <summary>The wing beat this body has at work, Hz (for the tests and the hum).</summary>
+    public float BeatHz { get; private set; }
+    /// <summary>How much of a beat the wings are making, 0 held still to 1 full flaps.</summary>
+    public float Beating => _flapBlend;
+    /// <summary>A hoverer's wings are a blur now rather than wings.</summary>
+    public bool Blurred { get; private set; }
+    /// <summary>The body's lean back from level, radians: most of a right angle on a hoverer holding still.</summary>
+    public float BodyPitch { get; private set; }
+    /// <summary>The body's roll, radians: positive with the left wing down.</summary>
+    public float BodyRoll { get; private set; }
 
     public WingedRig(Species s) : base(s, Build)
     {
@@ -30,18 +46,20 @@ public sealed class WingedRig : Rig
         int pairs = Math.Max(1, s.Body.Wings / 2);
         for (int pair = 0; pair < pairs; pair++)
         for (int side = 0; side < 2; side++)
-            _wings.Add((pair, side, pieces.FindIndex(p => p.Name == $"wing{pair}{side}a"), pieces.FindIndex(p => p.Name == $"wing{pair}{side}b")));
+            _wings.Add((pair, side, pieces.FindIndex(p => p.Name == $"wing{pair}{side}a"), pieces.FindIndex(p => p.Name == $"wing{pair}{side}b"), pieces.FindIndex(p => p.Name == $"blur{pair}{side}")));
         for (int side = 0; side < 2; side++) _feet[side] = pieces.FindIndex(p => p.Name == $"foot{side}");
         (_span1, _span2) = Spans(s);
         _moth = s.Body.Wings >= 4;
+        _hover = s.Flight == FlightKind.Hover;
     }
 
-    static (float, float) Spans(Species s) => (s.Body.Size * 0.62f, s.Body.Size * 0.72f);
+    static (float, float) Spans(Species s) => s.Flight == FlightKind.Hover ? (s.Body.Size * 0.5f, s.Body.Size * 0.62f) : (s.Body.Size * 0.62f, s.Body.Size * 0.72f);
 
     public override void Reset(WildSim w, Creature c)
     {
         ResetIntents(c);
         _fold = c.Landed ? 1f : 0f;
+        _upright = _hover ? 1f : 0f;
         Update(w, c, 0.016f);
     }
 
@@ -53,45 +71,73 @@ public sealed class WingedRig : Rig
         float L = b.Size, W = b.Width, H = b.Height;
         float ground = w.Terrain.Height(c.Position.X, c.Position.Z);
 
-        _fold = Geo.Smooth(_fold, c.Landed || c.Dead ? 1f : 0f, 5f, dt);
-        // Gliders flap in bursts and glide between them; moths never stop; climbing always flaps.
-        float cycle = (c.Age + c.Id * 1.3f) % 5f;
-        bool flapping = !c.Landed && !c.Dead && (_moth || c.Velocity.Y > 0.3f || cycle < 2.4f || Rearing > 0.1f);
-        _flapBlend = Geo.Smooth(_flapBlend, flapping ? 1f : 0f, 4f, dt);
-        float freq = Math.Clamp(3.4f / MathF.Sqrt(MathF.Max(0.3f, L)), 1.4f, 6f) * (_moth ? 1.6f : 1f);
-        _phase += dt * freq * MathF.Tau * MathF.Max(0.15f, _flapBlend);
+        bool down = (c.Landed && !c.TakingOff) || c.Dead;
+        _fold = Geo.Smooth(_fold, down ? 1f : 0f, 5f, dt);
+        _sweep = Geo.Smooth(_sweep, c.AirAimOn ? 1f : 0f, 7f, dt);
+        // The wings work when the flight says they do: it flaps to climb and glides the rest.
+        bool flapping = c.Flapping && !c.Dead;
+        _flapBlend = Geo.Smooth(_flapBlend, flapping ? 1f : 0f, 6f, dt);
+        BeatHz = _hover ? Math.Clamp(9f / L, 22f, 34f) : Math.Clamp(3.4f / MathF.Sqrt(MathF.Max(0.3f, L)), 1.4f, 6f) * (_moth ? 1.6f : 1f);
+        _phase += dt * BeatHz * MathF.Tau * MathF.Max(0.15f, _flapBlend);
 
         Basis yaw = new(Vector3.Up, c.Yaw);
-        float pitch = Math.Clamp(c.Velocity.Y * 0.08f, -0.45f, 0.45f) * (1f - _fold) + Rearing * 0.4f - Lunging * 0.5f;
-        float roll = Math.Clamp(-YawRate * 0.4f, -0.7f, 0.7f) * (1f - _fold) + Dead * 1.3f;
-        float bob = -MathF.Sin(_phase) * 0.05f * L * _flapBlend;
-        float bodyY = c.Landed || c.Dead ? ground + H * 0.5f + W * 0.25f * (1f - Dead) : c.Position.Y + bob;
+        float flatSpeed = WildSim.Flat(c.Velocity).Length();
+        float pitch = Math.Clamp(MathF.Atan2(c.Velocity.Y, MathF.Max(1f, flatSpeed)) * 0.8f, -0.75f, 0.6f) * (1f - _fold) + Rearing * 0.4f - Lunging * 0.5f;
+        if (_hover)
+        {
+            // Upright under its wings; going anywhere, it tips the way it goes.
+            Vector3 local = yaw.Inverse() * WildSim.Flat(c.Velocity);
+            _upright = Geo.Smooth(_upright, Math.Clamp(1f + local.Z * 0.14f, 0.15f, 1.25f), 8f, dt);
+            pitch = 1.15f * _upright * (1f - _fold) + Rearing * 0.3f - Lunging * 0.7f;
+        }
+        float roll = (_hover ? Math.Clamp(-(yaw.Inverse() * c.Velocity).X * 0.09f, -0.5f, 0.5f) : c.Bank) * (1f - _fold) + Dead * 1.3f;
+        BodyPitch = pitch;
+        BodyRoll = roll;
+        float bob = -MathF.Sin(_phase) * (_hover ? 0.004f : 0.05f) * L * _flapBlend;
+        float stand = Heft.StandHeight(Species);
+        // A body is held at its standing height on the ground, and in the air wherever the flight has it; a dead one falls where it fell.
+        float bodyY = c.Dead ? MathF.Max(c.Position.Y, ground + H * 0.5f + W * 0.25f * (1f - Dead)) : c.Landed ? ground + stand : c.Position.Y + bob;
         Basis body = yaw * new Basis(Vector3.Right, pitch) * new Basis(Vector3.Back, roll);
         var bodyT = new Transform3D(body, new Vector3(c.Position.X, bodyY, c.Position.Z));
         Pose[_body] = bodyT;
         BodyClearance = bodyY - ground;
 
+        Blurred = _hover && _fold < 0.5f && !c.Dead;
         float glideIn = 0.12f + 0.04f * MathF.Sin(c.Age * 2f), glideOut = 0.05f;
-        foreach (var (pair, side, inner, outer) in _wings)
+        foreach (var (pair, side, inner, outer, blur) in _wings)
         {
             float s = side == 0 ? -1f : 1f;
             float ph = _phase - pair * 1.2f;
-            float a1 = Mathf.Lerp(glideIn, 0.15f + 0.8f * MathF.Sin(ph), _flapBlend);
+            // Thrown up for the tell, a hard beat under it.
+            float a1 = Mathf.Lerp(glideIn, 0.15f + (0.8f + Rearing * 0.35f) * MathF.Sin(ph), _flapBlend) + Rearing * (1f - _flapBlend) * 0.8f;
             float a2 = Mathf.Lerp(glideOut, 0.55f * MathF.Sin(ph - 0.9f), _flapBlend);
             float scale = pair == 0 ? 1f : 0.7f;
             Vector3 shoulder = new(s * W * 0.42f, H * 0.2f, pair == 0 ? -L * 0.08f : L * 0.18f);
-            Vector3 d1 = new Vector3(s * MathF.Cos(a1), MathF.Sin(a1), 0f).Lerp(new Vector3(s * 0.35f, -0.25f, 0.9f).Normalized(), _fold).Normalized();
-            Vector3 d2 = new Vector3(s * MathF.Cos(a1 + a2), MathF.Sin(a1 + a2), 0.08f).Lerp(new Vector3(-s * 0.05f, -0.15f, 1f).Normalized(), _fold).Normalized();
+            Vector3 d1 = new Vector3(s * MathF.Cos(a1), MathF.Sin(a1), 0f).Lerp(new Vector3(s * 0.62f, 0.06f, 0.78f).Normalized(), _sweep).Lerp(new Vector3(s * 0.35f, -0.25f, 0.9f).Normalized(), _fold).Normalized();
+            Vector3 d2 = new Vector3(s * MathF.Cos(a1 + a2), MathF.Sin(a1 + a2), 0.08f).Lerp(new Vector3(s * 0.28f, 0f, 0.96f).Normalized(), _sweep).Lerp(new Vector3(-s * 0.05f, -0.15f, 1f).Normalized(), _fold).Normalized();
             Vector3 p0 = bodyT * shoulder;
             Vector3 w1 = body * d1, w2 = body * d2;
-            Pose[inner] = new Transform3D(WingBasis(w1, body.Z), p0);
             Vector3 p1 = p0 + w1 * _span1 * scale;
-            Pose[outer] = new Transform3D(WingBasis(w2, body.Z), p1);
+            if (Blurred)
+            {
+                // Too fast to see: the wings give way to a blur across the stroke plane, shivering as it beats.
+                Pose[inner] = Collapsed(p0);
+                Pose[outer] = Collapsed(p0);
+                float shiver = 1f + 0.05f * MathF.Sin(_phase * 0.37f + side * 2f);
+                Vector3 span = body * new Vector3(s * 0.94f, 0f, 0f) + body.Y * 0.2f;
+                Pose[blur] = new Transform3D(WingBasis(span, body.Y).Scaled(Vector3.One * shiver), p0);
+            }
+            else
+            {
+                Pose[inner] = new Transform3D(WingBasis(w1, body.Z), p0);
+                Pose[outer] = new Transform3D(WingBasis(w2, body.Z), p1);
+                if (blur >= 0) Pose[blur] = Collapsed(p0);
+            }
         }
 
         // Head on a short neck, looking about; the tail streams behind.
         Vector3 p = bodyT * new Vector3(0, H * 0.1f, -L * 0.33f);
-        float neckPitch = -0.05f + Graze * -0.8f + Rearing * 0.3f - Lunging * 0.5f;
+        float neckPitch = (_hover ? -pitch * 0.8f : -0.05f) + Graze * -0.8f + Rearing * 0.3f - Lunging * 0.5f;
         if (_neck.Length > 0)
         {
             float seg = b.NeckLength / _neck.Length;
@@ -103,7 +149,7 @@ public sealed class WingedRig : Rig
             }
         }
         if (_head >= 0)
-            Pose[_head] = new Transform3D(yaw * new Basis(Vector3.Up, LookYaw) * new Basis(Vector3.Right, neckPitch + pitch * 0.5f), p);
+            Pose[_head] = new Transform3D(yaw * new Basis(Vector3.Up, LookYaw) * new Basis(Vector3.Right, neckPitch + pitch * (_hover ? 0.8f : 0.5f)), p);
 
         if (_tail.Length > 0)
         {
@@ -124,15 +170,18 @@ public sealed class WingedRig : Rig
             if (_feet[side] < 0) continue;
             float s = side == 0 ? -1f : 1f;
             Vector3 hip = bodyT * new Vector3(s * W * 0.2f, -H * 0.35f, L * 0.08f);
-            Vector3 toe = c.Landed && !c.Dead ? new Vector3(hip.X, ground, hip.Z) : hip + body * new Vector3(0, -0.3f, 1f) * H;
+            // Tucked back in flight; down and reaching to strike, as it comes in to land, and on the ground.
+            float reach = MathF.Max(Lunging, c.Altitude <= 0.5f ? Math.Clamp(1f - (c.Position.Y - ground) / (H * 2f + 1f), 0f, 1f) : 0f);
+            Vector3 toe = c.Landed && !c.Dead ? new Vector3(hip.X, ground, hip.Z)
+                : hip + (body * new Vector3(0, -0.3f, 1f)).Lerp(Vector3.Down * 1.3f, reach) * H;
             Pose[_feet[side]] = Geo.Segment(hip, toe, body.X, H * 0.8f);
         }
 
         SetHit(0, bodyT.Origin, MathF.Max(W, H) * 0.7f);
         int h = 1;
         if (_head >= 0) SetHit(h++, Pose[_head] * new Vector3(0, 0, -b.HeadSize * 0.4f), b.HeadSize * 0.6f);
-        foreach (var (_, _, inner, _) in _wings)
-            if (h < Hits.Length) SetHit(h++, Pose[inner] * new Vector3(0, _span1 * 0.5f, L * 0.15f), L * 0.3f);
+        foreach (var (_, _, inner, _, _) in _wings)
+            if (h < Hits.Length) SetHit(h++, Blurred ? Pose[inner].Origin : Pose[inner] * new Vector3(0, _span1 * 0.5f, L * 0.15f), L * 0.3f);
         HitCount = h;
         SetBounds(bodyT.Origin, _span1 + _span2 + L * 0.5f);
     }
@@ -194,7 +243,8 @@ public sealed class WingedRig : Rig
         for (int side = 0; side < 2; side++)
         {
             float scale = pair == 0 ? 1f : 0.7f;
-            float a = span1 * scale, o = span2 * scale, chord = L * (moth ? 0.75f : 0.55f) * scale;
+            bool hover = s.Flight == FlightKind.Hover;
+            float a = span1 * scale, o = span2 * scale, chord = L * (hover ? 0.24f : moth ? 0.75f : 0.55f) * scale;
             float bone = W * 0.07f;
             var inner = new Piece($"wing{pair}{side}a");
             inner.Taper(Vector3.Zero, new Vector3(0, a, 0), bone * 1.3f, bone, k.Dark, 0.3f);
@@ -213,6 +263,19 @@ public sealed class WingedRig : Rig
                 outer.Horn(k.Horn, bone * 0.7f, Mat.Horn, Vector3.Zero, new Vector3(0, bone * 1.5f, -bone * 2f), new Vector3(0, bone * 0.5f, -bone * 3.4f));
             }
             layout.Add(outer);
+            if (hover)
+            {
+                // What a beat too fast to see leaves in the air: a soft fan, densest in the middle
+                // (alpha rides in the vertex glow; see CreatureMaterials.Blur).
+                float len = (a + o) * 1.05f;
+                var blur = new Piece($"blur{pair}{side}") { Shadow = false, Blur = true };
+                for (int ring = 0; ring < 7; ring++)
+                {
+                    float f = 1f - ring * 0.13f;
+                    blur.Add(Shape.Sphere, new Vector3(len * 0.008f, len * f, len * 1.25f * f), new Vector3(0, len * (0.5f - ring * 0.018f), 0), membrane.Lightened(0.15f - ring * 0.02f), 0f, 0.035f + ring * 0.006f, null, 16, Mat.Membrane);
+                }
+                layout.Add(blur);
+            }
         }
 
         if (b.TailLength > 0.05f)

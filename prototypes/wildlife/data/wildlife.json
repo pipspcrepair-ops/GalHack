@@ -144,6 +144,14 @@
         "flies": true,
         "behaviours": { "Scavenger": 2, "HarmlessOddity": 2, "Predator": 1 } },
 
+      // Small and light enough to hold still in the air: the only flyers that can. Upright bodies
+      // on narrow wings that beat too fast to see (Species.Flight goes by size: past 0.55 m a
+      // winged body has to keep flying, so this size range is what makes these hoverers).
+      { "id": "darter", "plan": "Flier", "rig": "Winged", "weight": 0.8, "weirdness": 0.3, "noun": "darter",
+        "size": [0.24, 0.46], "wings": [2, 2], "width": [0.26, 0.34], "height": [0.26, 0.34], "headSize": [0.3, 0.38], "neck": [0.05, 0.2], "tail": [0.3, 0.7],
+        "flies": true,
+        "behaviours": { "HarmlessOddity": 3, "Grazer": 2, "Predator": 2 } },
+
       { "id": "gasbag", "plan": "Floater", "rig": "GasBag", "weight": 0.8, "weirdness": 0.65, "noun": "drifter",
         "size": [1.6, 3.6], "bags": [1, 3], "width": [0.8, 1.1], "height": [0.8, 1.2], "headSize": [0.18, 0.26], "tail": [0.9, 1.8],
         "flies": true,

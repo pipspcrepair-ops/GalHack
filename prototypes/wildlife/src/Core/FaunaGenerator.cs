@@ -716,7 +716,8 @@ public sealed class FaunaGenerator
         AttackDef a = _t.Behaviour(s.Behaviour).Attack;
         s.Attack = s.Rig switch
         {
-            RigKind.Winged => a.With(AttackStyle.Dive, "Dive"),
+            RigKind.Winged when s.Flight == FlightKind.Hover => a.With(AttackStyle.Sting, "Dart sting"),
+            RigKind.Winged => a.With(AttackStyle.Dive, "Swoop"),
             RigKind.Swarm => a.With(AttackStyle.Sting, "Sting cloud"),
             RigKind.Chain when a.Style != AttackStyle.Burst => a.With(AttackStyle.Rear, "Coil strike"),
             RigKind.GasBag => a.With(AttackStyle.Lunge, "Tendril lash"),
@@ -739,6 +740,7 @@ public sealed class FaunaGenerator
             RigKind.Legged => (22f * MathF.Pow(size, 1.5f), Math.Clamp(b.LegLength * 1.5f, 0.6f, 3f), 0f),
             RigKind.Chain => (18f * MathF.Pow(size, 1.3f), Math.Clamp(0.8f + size * 0.3f, 0.8f, 2.4f), 0f),
             RigKind.Hopper => (16f * MathF.Pow(size, 1.5f), 1.6f + size * 0.6f, 0f),
+            RigKind.Winged when s.Flight == FlightKind.Hover => (10f, 2.4f, 10f), // quick and darting, and nothing to it
             RigKind.Winged => (14f * MathF.Pow(size, 1.4f), 4f, 9f),
             RigKind.GasBag => (20f * size, 1.0f, 1.8f),
             RigKind.Crawler => (20f * MathF.Pow(size, 1.4f), Math.Clamp(0.8f + size * 0.45f, 0.8f, 2.4f), 0f),
@@ -765,7 +767,7 @@ public sealed class FaunaGenerator
             RigKind.Swarm => 1.5f,
             _ => Math.Max(b.Width, b.Size * 0.5f) * 0.7f,
         };
-        st.AttackRange = st.Radius + 0.9f + (s.Rig == RigKind.Legged ? b.NeckLength * 0.4f : 0f);
+        st.AttackRange = s.Flight == FlightKind.Hover ? 2.6f : st.Radius + 0.9f + (s.Rig == RigKind.Legged ? b.NeckLength * 0.4f : 0f); // a hoverer darts in from a hold
         // A kill's worth: toughness and danger, so a giant or a hunter is worth far more than a critter.
         float threat = 1f + st.Damage / 10f + (st.Hunts ? 0.5f : 0f);
         st.Xp = Math.Clamp((int)MathF.Round(4f + MathF.Sqrt(st.MaxHealth) * 1.6f * threat), 5, 400);

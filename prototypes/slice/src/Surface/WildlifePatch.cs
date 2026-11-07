@@ -147,6 +147,14 @@ public partial class WildlifePatch : Node3D
                 Creature across = sim.Spawn(c.Species, local);
                 across.Health = c.Health;
                 across.Yaw = c.Yaw;
+                if (c.Species.Flies)
+                {
+                    // On the wing it stays on the wing, at its height and its speed; what stood stays standing.
+                    across.Position = local;
+                    across.Velocity = c.Velocity;
+                    across.Altitude = c.Altitude;
+                    across.Landed = c.Landed;
+                }
                 carriedNow.Add(across);
                 carried++;
             }
