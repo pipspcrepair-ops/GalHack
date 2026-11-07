@@ -140,6 +140,13 @@ public sealed partial class Staging
         foreach (int x in _drive.ClickWidget("map:whole")) yield return x;
         for (int i = 0; i < 40; i++) yield return 0;
         Snap("c-whole");
+        foreach (int x in _drive.ClickWidget("map:on-me")) yield return x;
+        levels.Trail.OpenStar(pick);
+        for (int i = 0; i < 40; i++) yield return 0;
+        Snap("d-their-system");
+        levels.Trail.Open(MapLevel.Galaxy);
+        for (int i = 0; i < 20; i++) yield return 0;
+        Snap("e-picked-details");
     }
 
     /// <summary>The World map opened from a start put at --lat (0 north pole .. 1 south pole): poles top and bottom; then a close look at a sea ice edge.</summary>

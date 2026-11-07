@@ -185,7 +185,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 at = camera.UnprojectPosition(point), r = new(13f * s, 13f * s);
         _hud.Frame(new Rect2(at - r, r * 2f), C.Holo, 1.5f);
-        string name = charts.Charted(stars.Galaxy, charts.ChosenStar) ? stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant() : "UNCHARTED STAR";
+        string name = stars.Galaxy.Name(charts.ChosenStar).ToUpperInvariant();
         _hud.TextIn(UiTheme.Label, (int)(15 * s), new Rect2(at + new Vector2(18f * s, -10f * s), new Vector2(260f * s, 22f * s)), name, C.Holo, HorizontalAlignment.Left);
     }
 
