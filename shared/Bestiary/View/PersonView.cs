@@ -49,6 +49,22 @@ public partial class PersonView : Node3D
             VisibilityRangeEnd = FarRange,
         };
         AddChild(_far);
+        // A soft dark blob under the feet: they sit on the ground, and read against it.
+        _blob = new MeshInstance3D { Mesh = Blob, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, VisibilityRangeEnd = FarRange * 0.5f };
+        AddChild(_blob);
+    }
+
+    MeshInstance3D _blob;
+    static QuadMesh _blobMesh;
+
+    static QuadMesh Blob => _blobMesh ??= MakeBlob();
+
+    static QuadMesh MakeBlob()
+    {
+        var g = new Gradient { Offsets = new[] { 0f, 1f }, Colors = new[] { new Color(0f, 0f, 0f, 0.42f), new Color(0f, 0f, 0f, 0f) } };
+        var tex = new GradientTexture2D { Gradient = g, Fill = GradientTexture2D.FillEnum.Radial, FillFrom = new Vector2(0.5f, 0.5f), FillTo = new Vector2(1f, 0.5f), Width = 64, Height = 64 };
+        var mat = new StandardMaterial3D { AlbedoTexture = tex, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled };
+        return new QuadMesh { Size = new Vector2(0.9f, 0.9f), Orientation = PlaneMesh.OrientationEnum.Y, Material = mat };
     }
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Species, Piece> FarPieces = new();
@@ -62,7 +78,11 @@ public partial class PersonView : Node3D
     }
 
     /// <summary>From a distance: the one mesh, standing where they are.</summary>
-    public void SyncFar(Vector3 feet, float yaw) => _far.Transform = new Transform3D(new Basis(Vector3.Up, yaw), feet);
+    public void SyncFar(Vector3 feet, float yaw)
+    {
+        _far.Transform = new Transform3D(new Basis(Vector3.Up, yaw), feet);
+        _blob.Transform = new Transform3D(Basis.Identity, feet + Vector3.Up * 0.03f);
+    }
 
     public void Hurt(float amount)
     {

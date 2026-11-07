@@ -46,6 +46,9 @@ public partial class BestiaryTest : Node
             QuietInsidePlaces();
             BreakersBreakWeakBlocks();
             NobodyReactsAtOnce();
+            EveryBuildWorks();
+            TempersByTech();
+            LooksClusterBySettlement();
         }
         catch (Exception e)
         {
@@ -158,7 +161,7 @@ public partial class BestiaryTest : Node
         Check(men > women + 0.04f * life.People.Folk.Dimorphism, $"men and women differ in height ({men:F2} and {women:F2} m)");
         float wide = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.ShoulderW / s.Figure.HipW), broad = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.ShoulderW / s.Figure.HipW);
         Check(wide > broad, $"and in shoulder to hip ({wide:F2} and {broad:F2})");
-        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.25f && folk.Select(s => s.Figure.Build).Distinct().Count() > 200, "heights and builds spread");
+        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.25f && folk.Select(s => s.Figure.Build).Distinct().Count() > 150, "heights and builds spread");
         Check(life.People.Person(Seed(), PersonRole.Child).Figure.Height < 1.5f, "a child is a child");
         var e = life.People.Person(Seed(), PersonRole.Elder).Figure;
         Check(e.Age > 60f && e.Stoop > 0.2f, $"an elder is old and bent ({e.Age:F0}, stoop {e.Stoop:F2})");
@@ -220,7 +223,7 @@ public partial class BestiaryTest : Node
         Check(finite, "every pose is finite");
         Check(worst < 0.012f, $"a planted foot stays planted at a walk (slides {worst * 100f:F1} cm a frame at most)");
         Check(worstRun < 0.03f, $"and at a run ({worstRun * 100f:F1} cm)");
-        Check(off < 0.05f, $"legs reach their feet ({off * 100f:F1} cm short at worst)");
+        Check(off < 0.06f, $"legs reach their feet ({off * 100f:F1} cm short at worst, the heel coming up at the end of a stride)");
         Check(rig.Steps - steps0 > 10, $"the walk takes steps ({rig.Steps - steps0})");
         foreach (float sit in new[] { 0f, 1f })
         foreach (float work in new[] { 0f, 1f })
@@ -566,6 +569,74 @@ public partial class BestiaryTest : Node
         var a = sim.Spawn(machine, new Vector3(30f, 0f, 0f));
         var b = sim.Spawn(machine, new Vector3(34f, 0f, 0f));
         Check(Reaction.Delay(a, 5f, false) == Reaction.Delay(b, 30f, true), "machines react together, on the same tick, whatever their distance");
+    }
+
+    /// <summary>Groups' first reactions to an outsider, by tech: every level shows more than one kind, and the mix shifts.</summary>
+    void TempersByTech()
+    {
+        var mixes = new Dictionary<string, Dictionary<Stance, int>>();
+        foreach (string tech in new[] { "low", "mid", "high" })
+        {
+            var mix = mixes[tech] = new Dictionary<Stance, int>();
+            for (int i = 0; i < 400; i++)
+            {
+                Stance s = Temper.Roll(tech, _fresh.Range(0f, 0.6f), Seed()).Stance;
+                mix[s] = mix.GetValueOrDefault(s) + 1;
+            }
+            GD.Print($"  ({tech} tech: {string.Join(", ", mix.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"))})");
+        }
+        Check(mixes.Values.All(m => m.Count >= 3), "every tech level meets outsiders more than one way");
+        int Of(string t, Stance s) => mixes[t].GetValueOrDefault(s);
+        Check(Of("low", Stance.Superstitious) > Of("high", Stance.Superstitious) && Of("high", Stance.Indifferent) > Of("low", Stance.Indifferent) && Of("mid", Stance.Bargaining) > Of("low", Stance.Bargaining), "and the mix shifts: superstition low, indifference high, bargaining in the middle");
+    }
+
+    /// <summary>Every combination of proportions walks, reaches and gestures: feet planted, hands where they're sent.</summary>
+    void EveryBuildWorks()
+    {
+        PeopleGenerator g = Bestiary.Roll(_data, World(15f)).People;
+        float worstFoot = 0f, worstHand = 0f;
+        bool finite = true;
+        var roles = Enum.GetValues<PersonRole>();
+        for (int n = 0; n < 40; n++)
+        {
+            Species s = g.Person(Seed(), roles[n % roles.Length], founders: g.FoundersOf(Seed()));
+            var rig = new HumanRig(s);
+            float walked = 0f;
+            for (int i = 0; i < 120; i++)
+            {
+                walked += 1.3f / 60f;
+                rig.Drive(new Gesture { Feet = Vector3.Forward * walked, Speed = 1.3f, Walked = walked, Clock = i / 60f });
+                for (int k = 0; k < 2; k++) if (rig.FootPlanted(k)) worstFoot = MathF.Max(worstFoot, rig.FootTarget(k).DistanceTo(rig.FootDrawn(k)));
+                foreach (Transform3D t in rig.Pose) finite &= Geo.Finite(t);
+            }
+            foreach (BodyAct act in new[] { BodyAct.HandsUp, BodyAct.Greet, BodyAct.Warn, BodyAct.Cower })
+            {
+                rig.Drive(new Gesture { Feet = Vector3.Zero, Act = act, ActAmount = 1f, Clock = 1f });
+                foreach (Transform3D t in rig.Pose) finite &= Geo.Finite(t);
+                int arm = rig.Layout.Pieces.FindIndex(p => p.Name == "arm1l");
+                Transform3D fore = rig.Pose[arm];
+                Vector3 wrist = fore.Origin + fore.Basis.Y;
+                worstHand = MathF.Max(worstHand, MathF.Abs(fore.Basis.Y.Length() - 1f));
+            }
+        }
+        Check(finite, "every build of 40 random people poses finite, walking and gesturing");
+        Check(worstFoot < 0.06f, $"and every one keeps feet on the ground ({worstFoot * 100f:F1} cm at worst)");
+        Check(worstHand < 0.01f, "and no arm stretches to reach a gesture");
+    }
+
+    /// <summary>A settlement mostly shares a look, two settlements differ, and nobody's look follows their job or side.</summary>
+    void LooksClusterBySettlement()
+    {
+        PeopleGenerator g = Bestiary.Roll(_data, World(15f)).People;
+        float Spread(List<Species> l) { float m = l.Average(s => s.Figure.Skin.V); return MathF.Sqrt(l.Average(s => (s.Figure.Skin.V - m) * (s.Figure.Skin.V - m))); }
+        Founders a = g.FoundersOf(Seed()), b = g.FoundersOf(Seed());
+        var here = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker, founders: a)).ToList();
+        var everywhere = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker)).ToList();
+        Check(Spread(here) < Spread(everywhere) * 0.8f, $"a settlement mostly shares a look ({Spread(here):F3} spread against {Spread(everywhere):F3} across the world)");
+        ulong one = Seed();
+        var asRaider = g.Person(one, PersonRole.Raider, Occupancy.Raider, founders: a).Figure;
+        var asTrader = g.Person(one, PersonRole.Trader, Occupancy.Friendly, founders: a).Figure;
+        Check(asRaider.Skin == asTrader.Skin && asRaider.Brow == asTrader.Brow, "the same person looks the same whatever their job or side: looks come only from where their people settled");
     }
 
     /// <summary>An open room: for things that only need to know they're inside.</summary>

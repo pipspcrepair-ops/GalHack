@@ -51,6 +51,17 @@ public sealed class Figure
     public Color Skin, Hair, Cloth, Trim, Leather, Metal;
     public string HairStyle = "short";
     public bool Beard;
+    /// <summary>
+    /// Their own proportions, each around 1 and rolled independently around their people's: legs,
+    /// arms, neck, head, hands, feet, hips and shoulders. Height stays what it is: longer legs make a
+    /// shorter body. Bounds keep every combination human.
+    /// </summary>
+    public float LegK = 1f, ArmK = 1f, NeckK = 1f, HeadK = 1f, HandK = 1f, FootK = 1f, HipK = 1f, ShoulderK = 1f;
+    /// <summary>One saturated mark that says what they do (a band, a scarf): never the colour of the ground.</summary>
+    public Color Accent = new(0.6f, 0.15f, 0.1f);
+
+    /// <summary>The cast of their face from their people: brow and jaw offsets.</summary>
+    public float Brow, Jaw;
     /// <summary>What they wear (garment ids, see <see cref="HumanBody"/>).</summary>
     public readonly HashSet<string> Wear = new();
     /// <summary>The base of their clothes: shirt, wraps, furs, hazard, suit.</summary>
@@ -79,19 +90,20 @@ public sealed class Figure
         bool child = Stage == LifeStage.Child;
         float shape = Sex == Sex.Male ? 1f : 0f;
         float limb = Folk?.LimbScale ?? 1f;
-        LegLength = H * (child ? 0.47f : 0.525f - 0.008f * Build) * Math.Clamp(limb, 0.9f, 1.08f);
+        LegLength = H * (child ? 0.47f : 0.525f - 0.008f * Build) * Math.Clamp(limb * LegK, 0.88f, 1.1f);
         Ankle = H * 0.04f;
         UpperLeg = (LegLength - Ankle) * 0.51f;
         LowerLeg = (LegLength - Ankle) * 0.51f;
-        HeadRadius = H * (child ? 0.083f : 0.066f);
-        Neck = H * 0.042f;
+        HeadRadius = H * (child ? 0.083f : 0.066f) * Math.Clamp(HeadK, 0.92f, 1.08f);
+        Neck = H * 0.042f * Math.Clamp(NeckK, 0.75f, 1.25f);
         Torso = H - LegLength - Neck - HeadRadius * 1.75f;
-        UpperArm = H * 0.176f * limb;
-        Forearm = H * 0.165f * limb;
+        float arms = limb * Math.Clamp(ArmK, 0.93f, 1.07f);
+        UpperArm = H * 0.176f * arms;
+        Forearm = H * 0.165f * arms;
         float width = H / 1.72f * (child ? 0.86f : 1f);
         // Men broader across the shoulder, women across the hip; heavy people wider everywhere, most at the waist.
-        ShoulderW = width * (0.175f + 0.035f * shape + 0.03f * Build);
-        HipW = width * (0.165f - 0.022f * shape + 0.035f * Build);
+        ShoulderW = width * (0.175f + 0.035f * shape + 0.03f * Build) * Math.Clamp(ShoulderK, 0.88f, 1.12f);
+        HipW = width * (0.165f - 0.022f * shape + 0.035f * Build) * Math.Clamp(HipK, 0.86f, 1.14f);
         WaistW = width * (0.122f + 0.022f * shape + 0.075f * Build);
         ChestD = width * (0.105f + 0.012f * shape + 0.045f * Build);
         Mass = (18f + 15f * Build) * H * H;

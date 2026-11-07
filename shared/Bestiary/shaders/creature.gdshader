@@ -20,6 +20,9 @@ uniform float pattern_freq = 2.0;
 // The Hollow Bloom: veins that pulse with light.
 uniform float veins_glow = 0.0;
 uniform float roughness_value = 0.72;
+// The outline's rim of light and the lift against haze at range (people a little more than creatures).
+uniform float rim_strength = 0.3;
+uniform float far_lift = 0.18;
 // Fine surface detail (pebbled hide, growth rings on horn) per metre, and how strong.
 uniform float detail_freq = 14.0;
 uniform float detail_strength = 0.0;
@@ -126,10 +129,13 @@ void fragment() {
 	vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	float occlusion = mix(0.55, 1.0, smoothstep(-0.85, 0.35, wn.y));
 
-	ALBEDO = albedo * occlusion;
+	// Read at any distance: a little brighter the further off, so a figure doesn't sink into the haze.
+	float far = smoothstep(25.0, 150.0, length(VERTEX));
+	ALBEDO = albedo * occlusion * (1.0 + far_lift * far);
 	ROUGHNESS = roughness_value;
 	SPECULAR = 0.3;
-	RIM = 0.2;
+	// A rim of the sun's light round the outline, stronger with distance: the silhouette holds.
+	RIM = rim_strength * (0.45 + 0.55 * far);
 	RIM_TINT = 0.6;
 	if (horn) {
 		ROUGHNESS = 0.4;
