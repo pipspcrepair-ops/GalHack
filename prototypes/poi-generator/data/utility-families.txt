@@ -70,7 +70,7 @@ family water_works
   pitch Settling tanks gone green, the pump hall below still dripping.
   faction none
   roster raiders
-  site water_works
+  site water_works_block
   core none
   owner none
   rarity common
@@ -80,7 +80,7 @@ family water_works
   reveal 400
   ominous 0.3
   wrong 0.05
-  tags utility water industry
+  tags utility water industry grand
   states active 0 abandoned 6 infested 2 ruined 2
   variant Clearwater Works
     seed 9821

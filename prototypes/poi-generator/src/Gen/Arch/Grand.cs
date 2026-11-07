@@ -18,6 +18,10 @@ public static class Grand
             case "sewage": SewageWorks.Compose(c, rng, hints, tech); break;
             case "farm": FarmEstate.Compose(c, rng, hints, tech); break;
             case "complex": BrutalComplex.Compose(c, rng, hints, tech); break;
+            case "market": Civic.Market(c, rng, hints, tech); break;
+            case "hospital": Civic.Hospital(c, rng, hints, tech); break;
+            case "water": Civic.WaterWorks(c, rng, hints, tech); break;
+            case "bunker": Civic.Bunker(c, rng, hints, tech); break;
             default: throw new ArgumentException($"site {site.Id}: no large plan '{part.Arg("what")}'");
         }
     }

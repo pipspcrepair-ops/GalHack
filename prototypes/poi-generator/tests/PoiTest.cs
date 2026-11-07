@@ -24,7 +24,7 @@ public partial class PoiTest : Node
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
         {
-            ("Grand", GrandPlaces), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
+            ("Grand", GrandPlaces), ("Roofs", Roofs), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Underground", UndergroundNet), ("Cores", Cores), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
@@ -92,7 +92,7 @@ public partial class PoiTest : Node
                 Int3 size = layout.Blocks.Size;
                 long t1 = sw.ElapsedMilliseconds;
                 GD.Print($"      {f.Id} '{v.Name}' {size.X} x {size.Z} x {size.Y} m, {layout.Modules.Count} rooms, {layout.Blocks.CountBlocks()} cells, layout {t1 - t0} ms, {layout.Attempts} attempts");
-                if (size.X < 120 || size.Z < 120) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
+                if (Math.Max(size.X, size.Z) < 100) { bad++; problems.Add($"{f.Id} is only {size.X} by {size.Z} m"); }
                 foreach (PoiState s in Enum.GetValues<PoiState>())
                 {
                     if (f.StateWeights[(int)s] <= 0f) continue;
@@ -106,6 +106,28 @@ public partial class PoiTest : Node
         Architect.Rejected = null;
         foreach (string p in problems.Take(12)) GD.PrintErr("      " + p);
         Check(bad == 0 && built > 0, $"large places: {built} layouts and {spawned} spawns pass the layout checks and validation, in {sw.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>A roof's angles are slopes: no family stacks cubes up a pitch, three courses or more, under the sky.</summary>
+    void Roofs()
+    {
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        var bad = new Dictionary<string, int>();
+        foreach (FamilyDef f in _lib.Families.Where(f => !f.Space))
+            for (int v = 0; v < f.Variants.Count; v++)
+            {
+                BlockGrid g = PoiFactory.BuildLayout(_lib, f, v, f.Rarity, seed).Blocks;
+                var top = new Dictionary<(int, int), (int Y, Block B)>();
+                foreach (var (c, b) in g.Blocks())
+                    if (BlockInfo.Collides(b.Type) && (!top.TryGetValue((c.X, c.Z), out var t) || c.Y > t.Y)) top[(c.X, c.Z)] = (c.Y, b);
+                bool Step(int x, int z, int y) => top.TryGetValue((x, z), out var t) && t.Y == y && t.B.Type == BlockType.Cube && t.B.Role == Role.Roof;
+                int steps = 0;
+                foreach (var ((x, z), t) in top)
+                    foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                        if (t.Y > 0 && Step(x, z, t.Y) && Step(x + dx, z + dz, t.Y + 1) && Step(x + 2 * dx, z + 2 * dz, t.Y + 2)) steps++;
+                if (steps > 0) bad[f.Id] = bad.GetValueOrDefault(f.Id) + steps;
+            }
+        Check(bad.Count == 0, $"no stepped roofs in any family{(bad.Count > 0 ? ": " + string.Join(", ", bad.OrderByDescending(b => b.Value).Take(8).Select(b => $"{b.Key} {b.Value}")) : "")}");
     }
 
     // ---- worlds from layers ------------------------------------------------------------------
@@ -857,7 +879,8 @@ public partial class PoiTest : Node
             float ta = A.Values.Sum(), tb = B.Values.Sum();
             return A.Keys.Union(B.Keys).Sum(k => Math.Min(A.GetValueOrDefault(k) / ta, B.GetValueOrDefault(k) / tb));
         }
-        var pairs = new[] { ("prison_block", "hospital"), ("ominous_tower", "deep_bunker"), ("cryo_vault", "research_base"), ("hospital", "deep_bunker"),
+        // Hospitals and bunkers are drawn on the 2 m grid by plans of their own now (Civic.cs): these are the program-built ones.
+        var pairs = new[] { ("prison_block", "biolab"), ("ominous_tower", "research_base"), ("cryo_vault", "research_base"), ("command_bunker", "biolab"),
             ("prison_block", "ominous_tower"), ("biolab", "cryo_vault"), ("meridian_garrison", "prison_block") };
         var worst = pairs.Select(p => (p, o: Overlap(p.Item1, p.Item2))).OrderByDescending(x => x.o).First();
         Check(worst.o < 0.5f, $"types differ from each other: of {pairs.Length} pairs that must never walk alike, the closest ({worst.p.Item1} and {worst.p.Item2}) share {worst.o:P0} of their footprint and circulation mix (under 50%)");

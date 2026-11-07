@@ -19,7 +19,7 @@ family deep_bunker
   pitch A concrete hatch in the wild, and stairs going down further than they should.
   faction none
   roster oldworld
-  program bunker
+  site bunker_deep
   core none
   owner none
   rarity uncommon
@@ -29,7 +29,7 @@ family deep_bunker
   reveal 200
   ominous 0.95
   wrong 0.12
-  tags fallen military underground
+  tags fallen military underground grand
   states active 1 abandoned 5 infested 3 ruined 1
   variant Site Nine
     seed 8101
@@ -136,7 +136,7 @@ family hospital
   pitch Wards, a helipad on the roof, and a quarantine level sealed under the mortuary.
   faction none
   roster oldworld
-  program hospital
+  site hospital_block
   core none
   owner none
   rarity uncommon
@@ -145,7 +145,7 @@ family hospital
   spacing 12
   reveal 400
   ominous 0.85
-  tags medical fallen city
+  tags medical fallen city grand
   states active 0 abandoned 4 infested 4 ruined 2
   variant Saint Orla General
     seed 8501
@@ -802,8 +802,7 @@ family exchange_market
   pitch Stalls, shops and a canteen, lit and busy. The guards keep the peace.
   faction exchange
   roster meridian
-  program market
-  style spaceport
+  site market_hall
   core owned
   owner faction
   rarity common
@@ -813,7 +812,7 @@ family exchange_market
   reveal 500
   ominous 0.3
   wrong 0
-  tags civilian working trade
+  tags civilian working trade grand
   is open
   states active 8 abandoned 1 ruined 1
   variant Market

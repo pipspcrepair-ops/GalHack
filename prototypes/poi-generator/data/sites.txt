@@ -738,3 +738,28 @@ site complex_high
   style concrete
   entrance 0 0 north
   part grand 0 0 what complex tech high
+
+# Buildings at real scale on the 2 m grid, each with its own inside: Civic.cs.
+site market_hall
+  name Market Hall
+  style spaceport
+  entrance 0 0 north
+  part grand 0 0 what market tech mid
+
+site hospital_block
+  name Hospital
+  style clinic
+  entrance 0 0 north
+  part grand 0 0 what hospital tech mid
+
+site water_works_block
+  name Water Works
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what water tech mid
+
+site bunker_deep
+  name Deep Bunker
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what bunker tech mid

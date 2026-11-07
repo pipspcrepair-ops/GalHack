@@ -331,7 +331,7 @@ public static class OccupancyLayer
     /// </summary>
     static void People(Ctx x, Int3 mid, List<Int3> near, int module, Mood mood, int count, bool lookout)
     {
-        var free = near.Where(c => x.Inst.Blocks.Get(c).IsAir && x.Nav.Standable(c) && c.FlatDistance(mid) > 1.5f).OrderBy(c => Hash.Cell(c, 211)).ToList();
+        var free = near.Where(c => x.Inst.Blocks.Get(c) is { IsAir: true } or { Type: BlockType.Plate } && x.Nav.Standable(c) && c.FlatDistance(mid) > 1.5f).OrderBy(c => Hash.Cell(c, 211)).ToList();
         if (free.Count < 3) return;
         Survivors.Settle(x.Inst, free, module, count, lookout);
         if (mood > x.Inst.Mood) x.Inst.Mood = mood;

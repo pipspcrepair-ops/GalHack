@@ -170,7 +170,9 @@ public sealed class Plot
     /// <summary>Settles the big rooms, now the small ones inside them are known. Every plan ends with this.</summary>
     public void Finish()
     {
-        foreach (var (m, i0, j0, k0, i1, j1, k1) in _pending) C.Reshape(m, BoxCells(i0, j0, k0, i1, j1, k1));
+        // The smallest first: a gallery or an office inside a hall keeps its own cells, and the hall takes the rest.
+        foreach (var (m, i0, j0, k0, i1, j1, k1) in _pending.OrderBy(q => (q.I1 - q.I0 + 1) * (q.J1 - q.J0 + 1) * (q.K1 - q.K0 + 1)).ThenBy(q => q.M))
+            C.Reshape(m, BoxCells(i0, j0, k0, i1, j1, k1));
         _pending.Clear();
         C.X.Levels = C.X.Levels.OrderBy(l => l.Storey).ToList();
     }
@@ -221,6 +223,21 @@ public sealed class Plot
         if (j == 0 && weather) Plinth(i0, k0, i1, k1, 0);
         if (weather && j >= 0) Weathers(i0 - 1, 0, k0 - 1, i1 + 1, j + h + 1, k1 + 1, j + h);
         return Room(kind, purpose, storey, i0 + 1, j, k0 + 1, i1 - 1, j + h - 1, k1 - 1);
+    }
+
+    /// <summary>A storey's walls, floor and roof with no room of its own: the rooms are drawn inside it after. Same box as <see cref="Hall"/>.</summary>
+    public void Shell(int i0, int k0, int i1, int k1, int j, int h, Stuff2 wall, Stuff2 roof)
+    {
+        for (int k = k0; k <= k1; k++)
+            for (int i = i0; i <= i1; i++)
+            {
+                bool edge = i == i0 || i == i1 || k == k0 || k == k1;
+                if (j != 0 || edge) Fill(i, j - 1, k, i, j - 1, k, Cube(j > 0 ? F.Floor : F.Plinth, Role.Floor));
+                if (edge) Fill(i, j, k, i, j + h - 1, k, Cube(wall, Role.Wall));
+                else Dig(i, j, k, i, j + h - 1, k);
+                Fill(i, j + h, k, i, j + h, k, Cube(roof, Role.Roof));
+            }
+        if (j == 0) Pave(i0 + 1, k0 + 1, i1 - 1, k1 - 1, F.Floor);
     }
 
     /// <summary>The foot of a wall in a darker course.</summary>
@@ -331,6 +348,30 @@ public sealed class Plot
             }
         var mine = cells.Where(_claimed.Add).ToList();
         return C.AddModule(ModuleKind.Stair, purpose, storey, mine);
+    }
+
+    /// <summary>Lines the shaft of a <see cref="Flight"/> going underground, whole blocks round it, on the same arguments; nothing above the ground and nothing a room already holds.</summary>
+    public void Line(int i, int k, Dir d, int j, int rise, int width, Stuff2 lining)
+    {
+        for (int t = 0; t < rise; t++)
+            for (int s = -1; s <= width; s++)
+                for (int h = -1; h <= 3; h++)
+                {
+                    bool shell = s < 0 || s >= width || h == -1 || h == 3;
+                    int bj = j + t + h;
+                    if (!shell || bj >= 0) continue;
+                    var (bi, bk) = d switch
+                    {
+                        Dir.East => (i + t, k + s),
+                        Dir.West => (i - t, k + s),
+                        Dir.South => (i + s, k + t),
+                        _ => (i + s, k - t),
+                    };
+                    for (int kk = 2 * bk; kk < 2 * bk + 2; kk++)
+                        for (int y = 2 * bj; y < 2 * bj + 2; y++)
+                            for (int ii = 2 * bi; ii < 2 * bi + 2; ii++)
+                                if (!C.Occ.Contains(Cell(ii, y, kk))) Put(ii, y, kk, Cube(lining, Role.Rock));
+                }
     }
 
     /// <summary>A ladder up a face: from y0 up through y1, rungs against the wall behind it (back: which way the wall lies).</summary>
@@ -473,10 +514,28 @@ public sealed class Plot
                 if (In(ci, ck, r, i, k)) Fill(i, j, k, i, j, k, b);
     }
 
-    /// <summary>A cap of shrinking discs on a drum: a cone at about 45 degrees.</summary>
+    /// <summary>A cone of slopes on a drum: a height for every cell, about 45 degrees, each cell a slope up toward the point and a deck under it.</summary>
     public void Cap(double ci, double ck, double r, int j, Stuff2 s, float step = 1f)
     {
-        for (float q = (float)r; q > 0.8f; q -= step, j++) Disc(ci, ck, q, j, Cube(s, Role.Roof));
+        double cu = 2 * ci, cv = 2 * ck, big = 2 * r;
+        int reach = (int)Math.Ceiling(big) + 1, low = 2 * j;
+        int Height(int u, int v)
+        {
+            double d = Math.Sqrt((u + 0.5 - cu) * (u + 0.5 - cu) + (v + 0.5 - cv) * (v + 0.5 - cv));
+            return d > big ? -1 : (int)((big - d) / step);
+        }
+        for (int v = (int)cv - reach; v <= (int)cv + reach; v++)
+            for (int u = (int)cu - reach; u <= (int)cu + reach; u++)
+            {
+                int h = Height(u, v);
+                if (h < 0) continue;
+                Dir? up = null;
+                int best = h;
+                foreach (var (d, du, dv) in new[] { (Dir.East, 1, 0), (Dir.West, -1, 0), (Dir.South, 0, 1), (Dir.North, 0, -1) })
+                    if (Height(u + du, v + dv) > best) { best = Height(u + du, v + dv); up = d; }
+                Put(u, low + h, v, up is { } facing ? new Block(BlockType.Ramp, s.M, s.C, Role.Roof, facing) : Cube(s, Role.Roof));
+                if (h > 0) Put(u, low + h - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+            }
     }
 
     // ---- paint and marks -----------------------------------------------------------------------
