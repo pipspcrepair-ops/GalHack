@@ -66,6 +66,8 @@ public sealed class PlaceRoom
     public int Module;
     /// <summary>The room's floor corner (the lowest x and z cell, walk level) in place cells.</summary>
     public Int3 Corner;
+    /// <summary>The floor's height in the corner cell's level: 0 on a bare floor, a plate's top where the room is laid with them.</summary>
+    public float Floor;
     public DecoRoom Room;
     public DecoPlan Plan;
     /// <summary>Placements that block walking (collide), by index; the rest are scenery.</summary>

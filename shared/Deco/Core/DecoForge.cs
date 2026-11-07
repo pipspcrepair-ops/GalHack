@@ -665,28 +665,32 @@ public sealed class DecoForge
         bool Free(float x, float z, float r) => !footprints.Any(f => x + r > f.min.X && x - r < f.max.X && z + r > f.min.Z && z - r < f.max.Z);
         float scale = Math.Clamp(MathF.Sqrt(piece.Width * piece.Depth) / 1.2f, 1f, 4f);
 
+        // The piece's own faces looking up near the floor: no mark is laid at their height where it would lie over one.
+        var low = LowFaces(mesh);
         if (shape.Shattered.Count > 0 && onFloor)
-            Shards(mesh, rng, shape.Shattered, floorMin, floorMax, pal[DecoSlot.Glass]);
+            Shards(mesh, rng, shape.Shattered, floorMin, floorMax, pal[DecoSlot.Glass], low);
         foreach (var (at, rx, rz) in shape.Stains)
         {
+            if (Clashes(low, at.X - rx, at.Z - rz, at.X + rx, at.Z + rz, at.Y + StainLift)) continue;
             var ring = new List<Vector3>();
             for (int i = 0; i < 10; i++)
             {
                 float a = i * MathF.Tau / 10, k = rng.Range(0.7f, 1f);
-                ring.Add(new Vector3(at.X + MathF.Cos(a) * rx * k, at.Y + 0.004f, at.Z + MathF.Sin(a) * rz * k));
+                ring.Add(new Vector3(at.X + MathF.Cos(a) * rx * k, at.Y + StainLift, at.Z + MathF.Sin(a) * rz * k));
             }
-            FloorPoly(mesh, DecoSurface.Matte, at with { Y = at.Y + 0.004f }, ring, Stain(pal));
+            FloorPoly(mesh, DecoSurface.Matte, at with { Y = at.Y + StainLift }, ring, Stain(pal));
         }
         if (look.Age == DecoAge.OldWorld && look.State is not (DecoState.Burnt or DecoState.Overgrown or DecoState.Rusted) && look.Exposed && onFloor)
             Tufts(mesh, rng, pal, floorMin, floorMax, Free, false, (int)(2 * scale), grassOnly: true);
         switch (look.State)
         {
             case DecoState.Broken when onFloor:
-                Debris(mesh, rng, floorMin, floorMax, Free, pal[DecoSlot.Body].Lerp(pal[DecoSlot.Debris], 0.4f), (int)((3 + rng.Int(3)) * scale), size: scale);
+                Debris(mesh, rng, floorMin, floorMax, Free, pal[DecoSlot.Body].Lerp(pal[DecoSlot.Debris], 0.4f), (int)((3 + rng.Int(3)) * scale), low, size: scale);
                 break;
             case DecoState.Burnt:
-                if (onFloor) Scorch(mesh, rng, floorMin, floorMax, pal[DecoSlot.Char]);
-                if (onFloor) Debris(mesh, rng, floorMin, floorMax, Free, pal[DecoSlot.Ash], (int)((2 + rng.Int(2)) * scale), flat: true, size: scale);
+                // Under a piece still standing: one lying on the floor lies where its scorch would be.
+                if (onFloor && upright) Scorch(mesh, rng, floorMin, floorMax, pal[DecoSlot.Char], low);
+                if (onFloor) Debris(mesh, rng, floorMin, floorMax, Free, pal[DecoSlot.Ash], (int)((2 + rng.Int(2)) * scale), low, flat: true, size: scale);
                 break;
             case DecoState.Overgrown:
                 Overgrow(mesh, rng, cover, pal, floorMin, floorMax, onFloor, Free, clampBox ? boxMin : (Vector3?)null, clampBox ? boxMax : (Vector3?)null, scale);
@@ -743,28 +747,67 @@ public sealed class DecoForge
         }
     }
 
-    /// <summary>Glass shards on the floor below where panes were.</summary>
-    static void Shards(DecoMeshData mesh, DecoRng rng, List<Vector3> at, Vector3 min, Vector3 max, DecoRgb glass)
+    /// <summary>
+    /// The heights of the flat marks a piece leaves on the floor, a step apart so that where they overlap
+    /// none shares a plane with another (they would flicker): scorch lowest, then stains, then glass.
+    /// </summary>
+    const float ScorchLift = 0.004f, StainLift = 0.009f, ShardLift = 0.014f;
+
+    /// <summary>Glass shards on the floor below where panes were, none lying over another.</summary>
+    static void Shards(DecoMeshData mesh, DecoRng rng, List<Vector3> at, Vector3 min, Vector3 max, DecoRgb glass, List<(float X0, float Z0, float X1, float Z1, float Y)> low)
     {
+        var laid = new List<(float X, float Z, float R)>();
         foreach (Vector3 p in at.Take(12))
             for (int i = 0; i < 3; i++)
             {
                 float x = Math.Clamp(p.X + rng.Range(-0.3f, 0.3f), min.X + 0.05f, max.X - 0.05f), z = Math.Clamp(p.Z + rng.Range(-0.3f, 0.3f), min.Z + 0.05f, max.Z - 0.05f);
                 float s = rng.Range(0.03f, 0.08f), a = rng.Range(0, MathF.Tau);
-                var c = new Vector3(x, 0.004f, z);
+                if (Overlaps(laid, x, z, s) || Clashes(low, x - s, z - s, x + s, z + s, ShardLift)) continue;
+                laid.Add((x, z, s));
+                var c = new Vector3(x, ShardLift, z);
                 var ring = new[] { c + new Vector3(MathF.Cos(a), 0, MathF.Sin(a)) * s, c + new Vector3(MathF.Cos(a + 2.2f), 0, MathF.Sin(a + 2.2f)) * s * 0.7f, c + new Vector3(MathF.Cos(a + 4f), 0, MathF.Sin(a + 4f)) * s * 0.9f };
                 FloorPoly(mesh, DecoSurface.Matte, c, ring, glass.Scale(1.1f));
             }
     }
 
-    /// <summary>Broken bits on the floor: small battered fragments in the piece's colour (or flat ash).</summary>
-    static void Debris(DecoMeshData mesh, DecoRng rng, Vector3 min, Vector3 max, Func<float, float, float, bool> free, DecoRgb col, int count, bool flat = false, float size = 1f)
+    /// <summary>The mesh's faces looking straight up within a few centimetres of the floor, as boxes seen from above with their height.</summary>
+    static List<(float X0, float Z0, float X1, float Z1, float Y)> LowFaces(DecoMeshData mesh)
     {
+        var low = new List<(float, float, float, float, float)>();
+        foreach (DecoSurfaceData s in mesh.Surfaces)
+            for (int t = 0; t + 2 < s.Positions.Count; t += 3)
+            {
+                Vector3 a = s.Positions[t], b = s.Positions[t + 1], c = s.Positions[t + 2];
+                if (s.Normals[t].Y < 0.999f || a.Y > 0.03f) continue;
+                low.Add((MathF.Min(a.X, MathF.Min(b.X, c.X)), MathF.Min(a.Z, MathF.Min(b.Z, c.Z)), MathF.Max(a.X, MathF.Max(b.X, c.X)), MathF.Max(a.Z, MathF.Max(b.Z, c.Z)), (a.Y + b.Y + c.Y) / 3f));
+            }
+        return low;
+    }
+
+    /// <summary>Whether a flat mark over a box at height y would lie within a few millimetres of one of those faces, over it (they would flicker).</summary>
+    static bool Clashes(List<(float X0, float Z0, float X1, float Z1, float Y)> low, float x0, float z0, float x1, float z1, float y) =>
+        low.Any(f => MathF.Abs(f.Y - y) < 0.0025f && x1 > f.X0 && x0 < f.X1 && z1 > f.Z0 && z0 < f.Z1);
+
+    /// <summary>Whether a round mark at (x, z) of radius r would lie over one already laid.</summary>
+    static bool Overlaps(List<(float X, float Z, float R)> laid, float x, float z, float r) =>
+        laid.Any(l => (l.X - x) * (l.X - x) + (l.Z - z) * (l.Z - z) < (l.R + r) * (l.R + r));
+
+    /// <summary>
+    /// Broken bits on the floor: small battered fragments in the piece's colour (or flat ash), each lying
+    /// on the floor clear of the others, never one inside or over another.
+    /// </summary>
+    static void Debris(DecoMeshData mesh, DecoRng rng, Vector3 min, Vector3 max, Func<float, float, float, bool> free, DecoRgb col, int count, List<(float X0, float Z0, float X1, float Z1, float Y)> low, bool flat = false, float size = 1f)
+    {
+        var laid = new List<(float X, float Z, float R)>();
         for (int i = 0, tries = 0; i < count && tries < 60; tries++)
         {
             float s = (flat ? rng.Range(0.08f, 0.18f) : rng.Range(0.05f, 0.12f)) * MathF.Sqrt(size);
             float x = rng.Range(min.X + s, max.X - s), z = rng.Range(min.Z + s, max.Z - s);
-            if (max.X - min.X < 2 * s || max.Z - min.Z < 2 * s || !free(x, z, s * 0.6f)) continue;
+            // A fragment's longest reach from its middle (its scale is at most s by s by s, turned).
+            float reach = s * 0.75f;
+            if (max.X - min.X < 2 * s || max.Z - min.Z < 2 * s || !free(x, z, s * 0.6f) || Overlaps(laid, x, z, reach)) continue;
+            if (flat && Clashes(low, x - reach, z - reach, x + reach, z + reach, s * 0.18f)) continue;
+            laid.Add((x, z, reach));
             i++;
             var part = new DecoPart
             {
@@ -778,15 +821,18 @@ public sealed class DecoForge
     }
 
     /// <summary>A scorch mark under a burnt piece.</summary>
-    static void Scorch(DecoMeshData mesh, DecoRng rng, Vector3 min, Vector3 max, DecoRgb col)
+    static void Scorch(DecoMeshData mesh, DecoRng rng, Vector3 min, Vector3 max, DecoRgb col, List<(float X0, float Z0, float X1, float Z1, float Y)> low)
     {
-        var c = new Vector3((min.X + max.X) / 2, 0.004f, (min.Z + max.Z) / 2);
+        // At the first of a few heights that no face of the piece over it shares.
+        float lift = new[] { ScorchLift, ScorchLift * 0.5f, ScorchLift * 1.6f }.FirstOrDefault(y => !Clashes(low, min.X, min.Z, max.X, max.Z, y), -1f);
+        if (lift < 0) return;
+        var c = new Vector3((min.X + max.X) / 2, lift, (min.Z + max.Z) / 2);
         float rx = (max.X - min.X) / 2, rz = (max.Z - min.Z) / 2;
         var ring = new List<Vector3>();
         for (int i = 0; i < 14; i++)
         {
             float a = i * MathF.Tau / 14, k = rng.Range(0.72f, 1f);
-            ring.Add(new Vector3(c.X + MathF.Cos(a) * rx * k, 0.004f, c.Z + MathF.Sin(a) * rz * k));
+            ring.Add(new Vector3(c.X + MathF.Cos(a) * rx * k, lift, c.Z + MathF.Sin(a) * rz * k));
         }
         FloorPoly(mesh, DecoSurface.Matte, c, ring, col);
     }
@@ -918,8 +964,12 @@ public sealed class DecoForge
         }
         foreach (DecoPart s in stems)
             DecoEmit.Part(mesh, s, (at, n, slot) => pal[slot].Scale(0.85f + 0.3f * DecoHash.At(at, 5)), slot => DecoPalette.SurfaceOf(slot), v => Clamp(v));
+        var laid = new List<(Vector3 At, float Size)>();
         foreach (var (at, n, size) in leaves)
         {
+            // No leaf lies over another: on a flat top they would share a plane and flicker.
+            if (laid.Any(l => Vector3.Distance(l.At, Clamp(at)) < (l.Size + size) * 1.05f)) continue;
+            laid.Add((Clamp(at), size));
             if (bloom)
             {
                 var nod = new DecoPart { Kind = DecoPrim.Sphere, Segments = 6, Slot = DecoSlot.Bloom, M = Matrix4x4.CreateScale(size * 0.9f) * DecoGeo.Move(Clamp(at)) };
