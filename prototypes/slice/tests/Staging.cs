@@ -83,6 +83,7 @@ public sealed partial class Staging
             "decogallery" => DecoGalleryView(),
             "faces" => FacesView(),
             "cores" => CoresView(),
+            "lightpanel" => LightPanelView(),
             "natural" => Natural(),
             "flora" => FloraProof(),
             "crouch" => CrouchView(),
