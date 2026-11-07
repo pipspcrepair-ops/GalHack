@@ -16,15 +16,30 @@ public partial class DecoPlanView : Node3D
 
     public static DecoPlanView Create(DecoMeshCache cache, DecoPlan plan, bool collide = true, bool lights = true)
     {
-        var view = new DecoPlanView { Plan = plan, Name = plan.Room?.RoomId ?? plan.Room?.Site ?? "Room" };
-        foreach (DecoPlacement pl in plan.Placements)
-        {
-            var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
-            DecoNode n = DecoNode.Create(cache, pl.Look, at, collide, lights);
-            n.Placement = pl;
-            view.Nodes.Add(n);
-            view.AddChild(n);
-        }
+        DecoPlanView view = Start(plan);
+        foreach (DecoPlacement pl in plan.Placements) view.Add(cache, pl, collide, lights);
+        view.AddWires(cache);
+        return view;
+    }
+
+    /// <summary>The view with nothing in it yet, for a caller that adds its pieces over several frames.</summary>
+    public static DecoPlanView Start(DecoPlan plan) => new() { Plan = plan, Name = plan.Room?.RoomId ?? plan.Room?.Site ?? "Room" };
+
+    /// <summary>One placement's piece.</summary>
+    public DecoNode Add(DecoMeshCache cache, DecoPlacement pl, bool collide, bool lights)
+    {
+        var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
+        DecoNode n = DecoNode.Create(cache, pl.Look, at, collide, lights);
+        n.Placement = pl;
+        Nodes.Add(n);
+        AddChild(n);
+        return n;
+    }
+
+    /// <summary>The wires strung between the placements, once they're all there.</summary>
+    public void AddWires(DecoMeshCache cache)
+    {
+        DecoPlan plan = Plan;
         if (plan.Cables.Count > 0)
         {
             var mesh = new DecoMeshData();
@@ -34,8 +49,7 @@ public partial class DecoPlanView : Node3D
                 foreach (DecoPart t in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
                     DecoEmit.Part(mesh, t, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
             }
-            view.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, cache.Materials) });
+            AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, cache.Materials) });
         }
-        return view;
     }
 }

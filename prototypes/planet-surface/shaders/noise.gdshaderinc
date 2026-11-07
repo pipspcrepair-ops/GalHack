@@ -35,3 +35,12 @@ float pfbm(vec3 p, float freq, vec2 size) {
 vec3 srgb_to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
+
+// Whether a fragment is gone past the rim (x, z of the centre, half the square's width, m; no half
+// width: no rim). The last 600 m thin away a pixel at a time, by a pattern shared by land and sea, so
+// at that distance they fade into what stands behind them with no line.
+bool past_rim(vec2 p, vec3 rim, vec2 pixel) {
+	if (rim.z <= 0.0) return false;
+	float out_by = (max(abs(p.x - rim.x), abs(p.y - rim.y)) - rim.z + 600.0) / 600.0;
+	return out_by > fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}

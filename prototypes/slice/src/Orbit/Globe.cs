@@ -9,7 +9,7 @@ namespace Slice.Orbit;
 /// <summary>
 /// The globe's paint, made off the main thread from the world's own map: planet-generator's
 /// colour map (albedo with glossy seas, and glow) and cloud map, as mipmapped images ready to
-/// upload. Its pixel (u, v) shows the map point (u·width, v·height), which is what
+/// upload. Its pixel (u, v) shows the map point (uÂ·width, vÂ·height), which is what
 /// <see cref="GlobeMap"/> assumes and the globe test checks against Godot's sphere.
 /// </summary>
 public sealed class GlobePaint
@@ -25,10 +25,11 @@ public sealed class GlobePaint
     const float SeamBlend = 0.08f;
 
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
-    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null)
+    /// <param name="land">The ground's colour at a map point, m, so the far land is the colour of the land it joins; null: the biomes'.</param>
+    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth);
+        ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth, land);
         byte[] clouds = CloudMap.Build(spec, look, rules.CloudWidth, out int cloudHeight);
         for (int i = 3; i < clouds.Length; i += 4)
         {
@@ -101,8 +102,6 @@ public readonly record struct WorldView
     public float CloudLift { get; init; }
     /// <summary>The sheet over the land that's still drawn (0 to 1).</summary>
     public float OverLand { get; init; }
-    /// <summary>The whole sheet (0 to 1).</summary>
-    public float Whole { get; init; }
     /// <summary>The nearest and farthest the sheet is drawn along each eye ray, m; 0: where it really is.</summary>
     public float Near { get; init; }
     public float Far { get; init; }
@@ -166,7 +165,6 @@ public partial class Globe : Node3D
         uniform float far_at = 0.0;
         uniform float fog_density = 0.0;
         uniform vec3 fog_color : source_color = vec3(0.5);
-        uniform float whole = 1.0;
         uniform float over_land = 1.0;
         uniform float sphere_out = 100000.0;
         varying vec2 offset;
@@ -299,7 +297,7 @@ public partial class Globe : Node3D
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
             EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
-            ALPHA = whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            ALPHA = mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
@@ -324,7 +322,7 @@ public partial class Globe : Node3D
         void fragment() {
             vec4 c = paint(cloud_map, map_point(offset));
             ALBEDO = c.rgb;
-            ALPHA = c.a * whole * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            ALPHA = c.a * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
@@ -542,7 +540,7 @@ public partial class Globe : Node3D
     public void Draw(in WorldView v)
     {
         if (_ground == null) return;
-        Visible = v.Whole > 0.002f && !Hidden;
+        Visible = !Hidden;
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
         Reach = RimOf(rho, v.Height);
@@ -567,7 +565,6 @@ public partial class Globe : Node3D
             m.SetShaderParameter("far_at", v.Far);
             m.SetShaderParameter("fog_density", v.FogDensity);
             m.SetShaderParameter("fog_color", v.FogColor);
-            m.SetShaderParameter("whole", v.Whole);
             m.SetShaderParameter("over_land", v.OverLand);
         }
         // Over the cloud deck for the swap, under it as the far field.

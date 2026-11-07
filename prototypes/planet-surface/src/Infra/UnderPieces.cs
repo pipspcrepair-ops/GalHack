@@ -77,23 +77,9 @@ public partial class InfraLayer
             // The node puts the mesh's world cells in the tile's frame, the short way round the seams.
             NV at = b.Local(lo.X, shift, lo.Z) - new NV(lo.X, 0, lo.Z);
             string name = $"Under{TileX}_{TileZ}";
-            b.Extra.Add(() =>
-            {
-                var node = new Node3D { Name = name, Position = new Vector3(at.X, at.Y, at.Z) };
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
-                node.AddChild(body);
-                void Add(List<ChunkMesh> meshes, Material[] materials)
-                {
-                    foreach (ChunkMesh chunk in meshes)
-                    {
-                        node.AddChild(new MeshInstance3D { Mesh = MeshBuild.ToMesh(chunk, materials) });
-                        if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
-                    }
-                }
-                Add(dark, DarkMaterials);
-                Add(lit, Materials.BySurface);
-                return node;
-            });
+            var place = new Vector3(at.X, at.Y, at.Z);
+            b.Blocks($"{name} dark", place, dark, () => DarkMaterials);
+            b.Blocks($"{name} lit", place, lit, () => Materials.BySurface);
         }
     }
 

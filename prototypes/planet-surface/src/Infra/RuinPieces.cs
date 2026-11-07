@@ -40,19 +40,7 @@ public partial class InfraLayer
             List<ChunkMesh> meshes = RuinMesh(inst);
             NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);
             string name = Ruin.Family.Id;
-            b.Extra.Add(() =>
-            {
-                var node = new Node3D { Name = name, Position = new Vector3(at.X, at.Y, at.Z) };
-                var materials = Materials;
-                var body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
-                node.AddChild(body);
-                foreach (ChunkMesh chunk in meshes)
-                {
-                    node.AddChild(new MeshInstance3D { Mesh = MeshBuild.ToMesh(chunk, materials.BySurface) });
-                    if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
-                }
-                return node;
-            });
+            b.Blocks(name, new Vector3(at.X, at.Y, at.Z), meshes, () => Materials.BySurface);
         }
     }
 

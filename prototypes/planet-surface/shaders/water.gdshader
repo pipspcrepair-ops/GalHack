@@ -16,6 +16,7 @@ uniform vec3 shallow : source_color = vec3(0.1, 0.45, 0.5);
 uniform vec3 deep : source_color = vec3(0.02, 0.12, 0.2);
 uniform bool lava = false;
 uniform float glow = 0.0;
+uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the sea ends with the land's own mesh: see past_rim
 
 varying vec3 wpos;
 
@@ -24,6 +25,7 @@ void vertex() {
 }
 
 void fragment() {
+	if (past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
 	float depth = 0.25; // rivers: shallow
 	if (sea) {
 		depth = texture(sea_map, wpos.xz / planet_size).r;
@@ -54,6 +56,8 @@ void fragment() {
 		g += vec2(-0.9, 0.3) * cos(dot(p, vec2(-0.9, 0.3)) * 0.21 + t * 1.3) * 0.035;
 		g += wind * cos(dot(p, normalize(weather_wind.xy + 0.001)) * 0.5 - t * 2.1) * 0.03;
 		g += (vec2(pnoise(vec3(p.x * 4.0, t * 6.0, p.y * 4.0), planet_size * 4.0), pnoise(vec3(p.y * 4.0, t * 6.0 + 3.0, p.x * 4.0), planet_size.yx * 4.0)) - 0.5) * weather_ground.x * 0.15;
+		// Ripples a pixel can't hold beat against the screen as rings across the whole sea: they lie down with distance.
+		g *= 1.0 - smoothstep(120.0, 700.0, length(wpos - CAMERA_POSITION_WORLD));
 		vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
 		NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 		ALBEDO = mix(shallow, deep, smoothstep(0.0, 0.6, depth));

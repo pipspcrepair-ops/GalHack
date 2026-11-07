@@ -43,6 +43,13 @@ public partial class PoiPlaces : Node3D
     /// <summary>Main-thread time a frame may spend standing a place up.</summary>
     public double BudgetMs = 2.5;
 
+    /// <summary>The focus's own speed and way, m/s (the game sets it). A place stands this many seconds of travel before <see cref="BuildRadius"/>, and the way you are going comes first.</summary>
+    public Vector3 Heading;
+    public float AheadSeconds = 6f;
+
+    /// <summary>The most that reach comes to, m: past it a place is only its far drawing, and flying over it needs no more.</summary>
+    const float MostReach = 760f;
+
     /// <summary>The longest single build step and the most build work in one frame so far, ms (tests).</summary>
     public double WorstStepMs { get; private set; }
     public double WorstFrameMs { get; private set; }
@@ -93,6 +100,13 @@ public partial class PoiPlaces : Node3D
     }
 
     Job _job;
+
+    /// <summary>The place being stood up just now, if any (measurements).</summary>
+    public string Building => _job?.Place.Site.Name;
+
+    /// <summary>Starts the worst-frame figures over (measurements).</summary>
+    public void ResetWorst() => WorstStepMs = WorstFrameMs = 0;
+
     /// <summary>The distance from a point to a site's footprint, on the planet (nearest copy).</summary>
     public float DistanceTo(PoiSite site, Vector3 p)
     {
@@ -137,6 +151,37 @@ public partial class PoiPlaces : Node3D
         if (_job != null) Work();
     }
 
+    /// <summary>How far off a place is started at the speed you are going.</summary>
+    float Reach => MathF.Min(BuildRadius + Heading.Length() * AheadSeconds, MostReach);
+
+    /// <summary>How much a site is worth starting now: the lower the sooner. Null: not now (out of reach, or behind you and receding).</summary>
+    float? Urgency(PoiSite site, Vector3 focus)
+    {
+        float d = DistanceTo(site, focus);
+        if (d >= Reach) return null;
+        float speed = Heading.Length();
+        if (speed < 3f) return d;
+        var lo = site.Footprint.Min;
+        var hi = site.Footprint.Max;
+        Vector3 to = Zone.Planet.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f), focus) - focus;
+        float along = (to.X * Heading.X + to.Z * Heading.Z) / speed;
+        if (along < 0f && d > BuildRadius * 0.5f) return null;
+        return d - along * 0.5f;
+    }
+
+    /// <summary>The site to start next, leaving out one (the place the worker is ahead on).</summary>
+    PoiSite Next(Vector3 focus, PoiSite besides = null)
+    {
+        PoiSite next = null;
+        float best = float.MaxValue;
+        foreach (PoiSite site in Zone.Planet.Pois)
+        {
+            if (site.Instance == null || site == besides || _placeOf.ContainsKey(site)) continue;
+            if (Urgency(site, focus) is float u && u < best) (best, next) = (u, site);
+        }
+        return next;
+    }
+
     /// <summary>Starts the nearest place within reach that isn't standing; drops the ones out of reach.</summary>
     void Scan(Vector3 focus)
     {
@@ -145,20 +190,40 @@ public partial class PoiPlaces : Node3D
             // (A place stood up while the planet was still loading: its far drawing arrived after it.)
             if (!p.FarHidden) p.FarHidden = ShowFar(p.Site, false);
             float d = DistanceTo(p.Site, focus);
-            if (d <= DropRadius) { p.SetDormant(false); continue; }
+            if (d <= MathF.Max(DropRadius, Reach + 140f)) { p.SetDormant(false); continue; }
             if (p.Memory.Modified) { p.SetDormant(true); continue; }
             Drop(p);
         }
-        if (_job != null) return;
-        PoiSite next = null;
-        float best = BuildRadius;
-        foreach (PoiSite site in Zone.Planet.Pois)
+        if (_job != null)
         {
-            if (site.Instance == null || _placeOf.ContainsKey(site)) continue;
-            float d = DistanceTo(site, focus);
-            if (d < best) { best = d; next = site; }
+            // The worker gets on with the place after this one, so it starts with its slow half done.
+            if (_ahead == null && _job.Meshing.IsCompleted && Next(focus, _job.Place.Site) is PoiSite after)
+            {
+                _ahead = after;
+                _aheadMeshing = Meshing(MemoryOf(after));
+            }
+            return;
         }
+        // One worker's job at a time: what they read of the catalogues is made once, and not for two at once.
+        if (_ahead != null && !_aheadMeshing.IsCompleted) return;
+        PoiSite next = Next(focus);
         if (next != null) Begin(next);
+        else _ahead = null;
+    }
+
+    PoiSite _ahead;
+    Task<List<ChunkMesh>> _aheadMeshing;
+
+    Task<List<ChunkMesh>> Meshing(PlaceMemory memory)
+    {
+        Decor decor = Decor.Shared; // loaded on the main thread the first time
+        PlaceFauna.Deep deep = Fauna;
+        return Task.Run(() =>
+        {
+            Prepare(memory, decor, deep);
+            BlockGrid g = memory.Inst.Blocks;
+            return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Options(g.Min));
+        });
     }
 
     void Begin(PoiSite site)
@@ -168,18 +233,9 @@ public partial class PoiPlaces : Node3D
         place.Position = Zone.Planet.NearestCopy(place.Origin, Focus());
         AddChild(place);
         _placeOf[site] = place;
-        Decor decor = Decor.Shared; // loaded on the main thread the first time
-        PlaceFauna.Deep deep = Fauna;
-        _job = new Job
-        {
-            Place = place, Clock = Stopwatch.StartNew(),
-            Meshing = Task.Run(() =>
-            {
-                Prepare(memory, decor, deep);
-                BlockGrid g = memory.Inst.Blocks;
-                return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Options(g.Min));
-            }),
-        };
+        _job = new Job { Place = place, Clock = Stopwatch.StartNew(), Meshing = _ahead == site ? _aheadMeshing : Meshing(memory) };
+        _ahead = null;
+        _aheadMeshing = null;
     }
 
     /// <summary>What a place needs worked out once, off the main thread: its rooms' dressing (clearing the generic props there) and its creatures.</summary>
@@ -265,6 +321,7 @@ public partial class PoiPlaces : Node3D
         p.FarHidden = ShowFar(p.Site, false);
         BuildLog.Add((p.Site.Name, j.Clock.Elapsed.TotalSeconds, p.ChunkCount));
         _job = null;
+        _scan = 0; // the next one starts now, not at the next look round
         Stood?.Invoke(p);
     }
 

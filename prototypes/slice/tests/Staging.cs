@@ -86,6 +86,9 @@ public sealed partial class Staging
             "natural" => Natural(),
             "crouch" => CrouchView(),
             "dark" => Dark(),
+            "farland" => FarLandView(),
+            "loadrun" => LoadRun(),
+            "approach" => ApproachView(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

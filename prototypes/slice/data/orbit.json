@@ -57,8 +57,6 @@
     // The band, m over the cap: the surface's sky turning into space's, the star's light taking over.
     // The land is already gone: at its foot the sheet is all the ground there is.
     "band": 1000,
-    // From this height (m) the sheet is the far land past the surface's own, in every direction.
-    "farLandFrom": 220,
     // The shroud: the air round you, from this height up to the cap (m), holding a little over it
     // and thinning away over this many metres. Its thickness is this share at the most, times the
     // share the world's air allows.

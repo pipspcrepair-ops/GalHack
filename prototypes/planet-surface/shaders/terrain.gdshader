@@ -26,6 +26,8 @@ uniform vec3 glow_color : source_color = vec3(1.0, 0.32, 0.06);
 uniform float glow_strength = 3.0;
 uniform vec3 dust_color : source_color = vec3(0.62, 0.5, 0.36);
 
+uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the horizon mesh's edge thins into the far field: see past_rim
+
 varying vec3 wpos;
 varying vec3 wnormal;
 
@@ -42,6 +44,7 @@ void vertex() {
 
 void fragment() {
 	if (far_ring && inside_hole(wpos.xz) > hole_cut) discard;
+	if (far_ring && past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
 
 	vec3 base = srgb_to_linear(COLOR.rgb);
 	float up = wnormal.y;
