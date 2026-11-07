@@ -19,6 +19,9 @@ public sealed class Controls
     public bool Primary, Secondary, PrimaryPressed, SecondaryPressed, PrimaryReleased, SecondaryReleased;
     public int Wheel;
 
+    /// <summary>Scripts: the middle button is held (maps pan with it).</summary>
+    public bool Middle;
+
     /// <summary>The mouse pointer over the Tab menu, in the menu's own 1600 x 900 canvas.</summary>
     public Vector2 Mouse;
 

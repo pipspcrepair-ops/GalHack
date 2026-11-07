@@ -30,6 +30,8 @@ public partial class ChartTest : Node
             Discovery();
             Wrap();
             Listings();
+            Routes();
+            GalaxyView();
         }
         catch (Exception e) { Check(false, $"threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
@@ -93,6 +95,64 @@ public partial class ChartTest : Node
         Check(view.MetresPerPixel == wide, "and out no further than the whole map");
         view.Zoom(-100);
         Check(view.MetresPerPixel == WorldMapView.Closest, "and in no closer than its closest");
+    }
+
+    /// <summary>The galaxy view zooms out to the whole disc and slides along its plane, whatever the turn.</summary>
+    void GalaxyView()
+    {
+        var view = new GalaxyMapView { Focus = System.Numerics.Vector3.Zero, Distance = 96, Yaw = 0.9, Pitch = 0.6 };
+        view.Zoom(100);
+        Check(view.Distance == GalaxyMapView.Widest && GalaxyMapView.Widest >= 3 * Galaxy.DiscRadius, "the wheel zooms all the way out to the whole galaxy");
+        view.Slide(100, 0, 900);
+        Check(Math.Abs(view.Focus.Y) < 1e-6 && view.Focus.Length() > 1f, "middle drag slides along the galaxy's plane");
+        view.Slide(100000, 0, 900);
+        Check(new System.Numerics.Vector2(view.Focus.X, view.Focus.Z).Length() <= 561f, "and stays over the galaxy");
+    }
+
+    /// <summary>The route planner: a route uses only legal jumps, and no shorter chain of lanes exists.</summary>
+    void Routes()
+    {
+        Galaxy galaxy = Galaxy.Make((ulong)new Random().NextInt64());
+        float range = Lanes.Range;
+        var rng = new Random();
+        int checkedRoutes = 0, bad = 0, notShortest = 0, longest = 0;
+        for (int t = 0; t < 12; t++)
+        {
+            int from = rng.Next(galaxy.Stars.Length);
+            var near = galaxy.Within(galaxy.Stars[from].Position, range * 3.5f);
+            if (near.Count < 4) continue;
+            int to = near[rng.Next(near.Count)];
+            var route = Lanes.Route(galaxy, from, to, range);
+            if (route == null) continue;
+            checkedRoutes++;
+            longest = Math.Max(longest, route.Count - 1);
+            bool legal = route[0] == from && route[^1] == to;
+            for (int i = 1; i < route.Count; i++) legal &= System.Numerics.Vector3.Distance(galaxy.Stars[route[i - 1]].Position, galaxy.Stars[route[i]].Position) <= range;
+            if (!legal) bad++;
+            // Every star on a shortest chain lies within its length of the start: an independent search over just those.
+            float total = Lanes.Length(galaxy, route);
+            var pool = galaxy.Within(galaxy.Stars[from].Position, total + 0.01f);
+            pool.Add(from);
+            pool = pool.Distinct().ToList();
+            var d = pool.ToDictionary(id => id, _ => float.MaxValue);
+            d[from] = 0;
+            var left = new System.Collections.Generic.HashSet<int>(pool);
+            while (left.Count > 0)
+            {
+                int u = left.OrderBy(id => d[id]).First();
+                left.Remove(u);
+                if (d[u] == float.MaxValue) break;
+                foreach (int v in left)
+                {
+                    float w = System.Numerics.Vector3.Distance(galaxy.Stars[u].Position, galaxy.Stars[v].Position);
+                    if (w <= range && d[u] + w < d[v]) d[v] = d[u] + w;
+                }
+            }
+            if (!d.TryGetValue(to, out float best) || total > best + 0.01f) notShortest++;
+        }
+        Check(checkedRoutes >= 3, $"the planner found routes to check ({checkedRoutes}, up to {longest} jumps)");
+        Check(bad == 0, "every route runs between its two stars by legal jumps only");
+        Check(notShortest == 0, "and none is beaten by another chain of lanes: it is the shortest");
     }
 
     void Listings()

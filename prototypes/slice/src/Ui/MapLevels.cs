@@ -44,7 +44,7 @@ public sealed class MapLevels
     public MapLevels(Game.Game game) => _game = game;
 
     /// <summary>What the panel's picture depends on, so dragging and zooming redraw it at once.</summary>
-    public string Signature => $"{Level}|{View?.CentreX:F0}|{View?.CentreZ:F0}|{View?.MetresPerPixel:F2}|{_chart != null}|{_game.Spaceflight.Charts.Marks.Count()}|{_game.Spaceflight.Charts.Wrecks.Count}|{_game.Spaceflight.Charts.Destination}|{Trail.Star}|{_game.Spaceflight.Charts.ChosenStar}|{Sky?.Yaw:F3}|{Sky?.Pitch:F3}|{Sky?.Distance:F1}|{Sky?.Focus}|{_orbitX:F0}|{_orbitZ:F0}|{_body}|{(Level is MapLevel.System or MapLevel.HighOrbit ? _game.Surface.Sky.Days : 0.0):F3}";
+    public string Signature => $"{Level}|{View?.CentreX:F0}|{View?.CentreZ:F0}|{View?.MetresPerPixel:F2}|{_chart != null}|{_game.Spaceflight.Charts.Marks.Count()}|{_game.Spaceflight.Charts.Wrecks.Count}|{_game.Spaceflight.Charts.Destination}|{Trail.Star}|{_game.Spaceflight.Charts.ChosenStar}|{Sky?.Yaw:F3}|{Sky?.Pitch:F3}|{Sky?.Distance:F1}|{Sky?.Focus}|{_orbitX:F0}|{_orbitZ:F0}|{_orbitZoom:F2}|{_orbitPan.X:F0},{_orbitPan.Y:F0}|{_sysZoom:F2}|{_sysPan.X:F0},{_sysPan.Y:F0}|{LocalPan.X:F0},{LocalPan.Y:F0}|{LocalRange:F0}|{_body}|{(Level is MapLevel.System or MapLevel.HighOrbit ? _game.Surface.Sky.Days : 0.0):F3}";
 
     GalaxySky Stars => _game.Surface.Sky.Stars;
     Galaxy Catalogue => Stars?.Galaxy;
@@ -89,8 +89,8 @@ public sealed class MapLevels
         g.Fill(panel, new Color(C.Panel, 0.8f));
         g.Outline(panel, C.Rule, 2f);
         var side = new Rect2(panel.End.X + 30, area.Position.Y, 320, area.Size.Y);
-        // These two have no zoom of their own: the wheel goes straight to the next level.
-        if (!g.Drawing && Level is MapLevel.System or MapLevel.HighOrbit && g.Over(panel)) WheelPast(_game.Controls.Wheel);
+        // An unsurveyed system has no zoom: the wheel goes straight to the next level.
+        if (!g.Drawing && Level == MapLevel.System && !Trail.AtYourStar && g.Over(panel)) WheelPast(Steps(g, panel));
         switch (Level)
         {
             case MapLevel.World: World(g, panel, side); break;
@@ -105,19 +105,96 @@ public sealed class MapLevels
         return true;
     }
 
+    // ---- Zoom and pan, shared by every level -------------------------------------------------
+
+    /// <summary>The wheel and the + and - keys this pass: negative zooms in, positive out. The wheel only counts over the panel.</summary>
+    public int ZoomSteps(Gui g, Rect2 panel) => Steps(g, panel);
+
+    public Vector2 SlideBy(Gui g, Rect2 panel) => MiddleDrag(g, panel);
+
+    int Steps(Gui g, Rect2 panel)
+    {
+        Game.Controls c = _game.Controls;
+        int w = g.Over(panel) ? (_game.Interactive ? -g.Wheel : c.Wheel) : 0;
+        if (c.WasPressed(Key.Equal) || c.WasPressed(Key.KpAdd)) w--;
+        if (c.WasPressed(Key.Minus) || c.WasPressed(Key.KpSubtract)) w++;
+        return w;
+    }
+
+    Vector2? _middleFrom;
+
+    /// <summary>How far the pointer moved this pass with the middle button held down over the panel (pixels), or zero.</summary>
+    Vector2 MiddleDrag(Gui g, Rect2 panel)
+    {
+        if (g.Drawing) return Vector2.Zero;
+        if (!g.MiddleHeld)
+        {
+            _middleFrom = null;
+            return Vector2.Zero;
+        }
+        if (_middleFrom is not Vector2 from)
+        {
+            if (g.Over(panel)) _middleFrom = g.Mouse;
+            return Vector2.Zero;
+        }
+        _middleFrom = g.Mouse;
+        return g.Mouse - from;
+    }
+
+    /// <summary>A line cut to a rectangle (Liang-Barsky), so a zoomed map never draws outside its panel.</summary>
+    public static void Clipped(CanvasItem canvas, Rect2 r, Vector2 a, Vector2 b, Color colour, float width)
+    {
+        float t0 = 0f, t1 = 1f;
+        Vector2 d = b - a;
+        float[] p = { -d.X, d.X, -d.Y, d.Y };
+        float[] q = { a.X - r.Position.X, r.End.X - a.X, a.Y - r.Position.Y, r.End.Y - a.Y };
+        for (int i = 0; i < 4; i++)
+        {
+            if (p[i] == 0f) { if (q[i] < 0f) return; continue; }
+            float t = q[i] / p[i];
+            if (p[i] < 0f) t0 = MathF.Max(t0, t);
+            else t1 = MathF.Min(t1, t);
+            if (t0 > t1) return;
+        }
+        canvas.DrawLine(a + d * t0, a + d * t1, colour, width);
+    }
+
+    /// <summary>A circle's outline, cut to a rectangle.</summary>
+    public static void ArcIn(Gui g, Rect2 r, Vector2 centre, float radius, Color colour, float width = 1f)
+    {
+        if (!g.Drawing || radius < 0.5f) return;
+        Vector2 nearest = new(Math.Clamp(centre.X, r.Position.X, r.End.X), Math.Clamp(centre.Y, r.Position.Y, r.End.Y));
+        if (centre.DistanceTo(nearest) > radius) return;
+        float far = MathF.Max(MathF.Max(centre.DistanceTo(r.Position), centre.DistanceTo(r.End)), MathF.Max(centre.DistanceTo(new Vector2(r.Position.X, r.End.Y)), centre.DistanceTo(new Vector2(r.End.X, r.Position.Y))));
+        if (radius > far) return;
+        int steps = Math.Clamp((int)(radius * 0.5f), 48, 600);
+        Vector2 last = centre + new Vector2(radius, 0f);
+        for (int i = 1; i <= steps; i++)
+        {
+            float a = i * Mathf.Tau / steps;
+            Vector2 next = centre + new Vector2(MathF.Cos(a), MathF.Sin(a)) * radius;
+            Clipped(g.Canvas, r, last, next, colour, width);
+            last = next;
+        }
+    }
+
+    /// <summary>Where the local map is panned to, metres from you (middle drag).</summary>
+    public Vector2 LocalPan;
+    public float LocalRange;
+
     // ---- The world --------------------------------------------------------------------------
 
     /// <summary>How close, in pixels, a right click must be to take down one of your marks.</summary>
     public const float MarkHit = 12f;
 
     /// <summary>The generator's terrain colours behind the local map: <paramref name="halfMetres"/> each way from you. False while it is still being charted.</summary>
-    public bool Terrain(Gui g, Rect2 panel, float halfMetres)
+    public bool Terrain(Gui g, Rect2 panel, float halfMetres, Vector2 pan = default)
     {
         Paint();
         if (_chart == null || !g.Drawing) return false;
         var (ux, uz) = You();
         var planet = _game.Surface.Planet;
-        Tiles(g, panel, ux, uz, 2.0 * halfMetres / panel.Size.X, planet.Width, planet.Height);
+        Tiles(g, panel, ux + pan.X, uz + pan.Y, 2.0 * halfMetres / panel.Size.X, planet.Width, planet.Height);
         return true;
     }
 
@@ -189,8 +266,8 @@ public sealed class MapLevels
         // Drag to move, the wheel to zoom, a right click to mark.
         if (!g.Drawing)
         {
-            int wheel = _game.Controls.Wheel;
-            if (g.Over(panel) && wheel != 0)
+            int wheel = Steps(g, panel);
+            if (wheel != 0)
             {
                 if ((wheel < 0 && View.AtClosest) || (wheel > 0 && View.AtWidest)) WheelPast(wheel);
                 else View.Zoom(wheel);
@@ -202,6 +279,8 @@ public sealed class MapLevels
                 _dragFrom = g.Mouse;
             }
             if (g.Released) _dragFrom = null;
+            Vector2 slide = MiddleDrag(g, panel);
+            if (slide != Vector2.Zero) View.Drag(slide.X, slide.Y);
             if (g.RightClicked(panel))
             {
                 // On one of your own marks: take it down. Anywhere else: make one.
@@ -279,13 +358,27 @@ public sealed class MapLevels
     /// its true bearing, the belts as bands, and each moon round its world at its true bearing, as
     /// they stand this moment. Labels go through <see cref="MapLabels"/>, so none lands on another.
     /// </summary>
+    float _sysZoom = 1f;
+    Vector2 _sysPan;
+
     void SystemView(Gui g, Rect2 panel, Rect2 side)
     {
+        if (!g.Drawing)
+        {
+            int wheel = Steps(g, panel);
+            if (wheel != 0)
+            {
+                if ((wheel < 0 && _sysZoom >= 6f * 0.999f) || (wheel > 0 && _sysZoom <= 0.4f * 1.001f)) WheelPast(wheel);
+                else _sysZoom = Math.Clamp(_sysZoom * MathF.Pow(1.25f, -wheel), 0.4f, 6f);
+            }
+            _sysPan += MiddleDrag(g, panel);
+            _sysPan = new Vector2(Math.Clamp(_sysPan.X, -panel.Size.X * 2f, panel.Size.X * 2f), Math.Clamp(_sysPan.Y, -panel.Size.Y * 2f, panel.Size.Y * 2f));
+        }
         Charts charts = _game.Spaceflight.Charts;
         string star = Catalogue != null && Trail.You >= 0 ? Catalogue.Name(Trail.You) : "Star";
         List<SystemEntry> bodies = Charts.Bodies(_game.Surface.Planet.StarSystem, "Your world", _game.Surface.Sky.Days, star);
-        Vector2 c = panel.GetCenter();
-        float unit = panel.Size.Y * 0.49f;
+        Vector2 c = panel.GetCenter() + _sysPan;
+        float unit = panel.Size.Y * 0.49f * _sysZoom;
         var places = new Dictionary<string, Vector2> { ["star"] = c };
         var byKey = bodies.ToDictionary(e => e.Key);
         Vector2 Round(SystemEntry e, float reach, Vector2 about) => about + new Vector2(MathF.Cos(e.Bearing), MathF.Sin(e.Bearing)) * reach;
@@ -313,24 +406,25 @@ public sealed class MapLevels
                 {
                     // A belt: a broad scatter of rock, with what it is at its own place on it.
                     float across = MathF.Max(e.Width * unit, 3f);
-                    g.Canvas.DrawArc(c, e.Orbit * unit, 0, Mathf.Tau, 128, new Color(C.Accent2, 0.05f), across);
+                    ArcIn(g, panel, c, e.Orbit * unit, new Color(C.Accent2, 0.05f), across);
                     var rocks = new GalaxyRng((ulong)e.Key.GetHashCode(StringComparison.Ordinal) ^ 0x524F434BUL);
                     for (int i = 0; i < 320; i++)
                     {
                         float a = rocks.Range(0f, Mathf.Tau), r = e.Orbit * unit + (rocks.Float() + rocks.Float() - 1f) * across * 0.5f;
-                        g.Canvas.DrawRect(new Rect2(c + new Vector2(MathF.Cos(a), MathF.Sin(a)) * r, new Vector2(1.5f, 1.5f)), new Color(C.Accent2, 0.5f));
+                        Vector2 rock = c + new Vector2(MathF.Cos(a), MathF.Sin(a)) * r;
+                        if (panel.HasPoint(rock)) g.Canvas.DrawRect(new Rect2(rock, new Vector2(1.5f, 1.5f)), new Color(C.Accent2, 0.5f));
                     }
                     labels.Add(places[e.Key], 2f, e.Label.ToUpperInvariant(), C.Dim, 4);
                 }
-                else if (e.Parent == null && e.Orbit > 0f) g.Canvas.DrawArc(c, e.Orbit * unit, 0, Mathf.Tau, 128, new Color(C.Rule, 0.55f), 1f);
+                else if (e.Parent == null && e.Orbit > 0f) ArcIn(g, panel, c, e.Orbit * unit, new Color(C.Rule, 0.55f));
                 // A world that is a moon reads as one: its orbit round its giant, not a neighbour on the giant's.
-                else if (e.Kind == "world" && e.Parent != null) g.Canvas.DrawArc(places[e.Parent], places[e.Key].DistanceTo(places[e.Parent]), 0, Mathf.Tau, 48, new Color(C.Holo, 0.55f), 1f);
+                else if (e.Kind == "world" && e.Parent != null) ArcIn(g, panel, places[e.Parent], places[e.Key].DistanceTo(places[e.Parent]), new Color(C.Holo, 0.55f));
             }
             foreach (SystemEntry e in bodies)
             {
                 Vector2 q = places[e.Key];
                 float r = DotOf(e);
-                if (e.Kind == "belt") continue;
+                if (e.Kind == "belt" || !panel.HasPoint(q)) continue;
                 if (e.Kind == "star")
                 {
                     g.Canvas.DrawCircle(q, r, StarColour(Trail.You));
@@ -344,11 +438,12 @@ public sealed class MapLevels
                 else if (e.Kind != "moon" || moonOfYours || e.Key == _body) labels.Add(q, r, e.Label.ToUpperInvariant(), moonOfYours ? C.Dim : C.Text, moonOfYours ? 3 : 2);
                 else labels.Add(q, r, null, C.Dim, 6);
             }
-            g.Canvas.DrawArc(world, DotOf(byKey["world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
+            if (panel.HasPoint(world)) g.Canvas.DrawArc(world, DotOf(byKey["world"]) + 5f, 0, Mathf.Tau, 32, C.Accent, 2f);
             foreach (SystemEntry w in charts.Wrecks)
             {
                 Vector2 q = world + new Vector2(MathF.Cos(w.Bearing), MathF.Sin(w.Bearing)) * (20f + w.Orbit * 16f);
                 places[w.Key] = q;
+                if (!panel.HasPoint(q)) continue;
                 g.Canvas.DrawCircle(q, 2.5f, C.Danger);
                 labels.Add(q, 2.5f, null, C.Danger, 6);
             }
@@ -368,8 +463,11 @@ public sealed class MapLevels
         if (charts.Wrecks.Count == 0) g.Text("No wrecks found yet: reach orbit.", side.Position + new Vector2(0, y), C.Dim, 14);
         if (g.Drawing && charts.Destination != null && places.TryGetValue(charts.Destination, out Vector2 to))
         {
-            g.Canvas.DrawDashedLine(world, to, C.Accent, 2f, 8f);
-            g.Canvas.DrawCircle(world, 5f, C.Accent);
+            if (panel.HasPoint(world) && panel.HasPoint(to))
+            {
+                g.Canvas.DrawDashedLine(world, to, C.Accent, 2f, 8f);
+                g.Canvas.DrawCircle(world, 5f, C.Accent);
+            }
         }
         // What the model knows of the body you picked (or of the star).
         SystemEntry shown = _body != null && byKey.TryGetValue(_body, out SystemEntry b) ? b : bodies[0];
@@ -400,10 +498,17 @@ public sealed class MapLevels
         Star s = galaxy.Stars[id];
         float light = N.Vector3.Distance(s.Position, galaxy.Stars[Trail.You].Position);
         var lines = new List<string> { galaxy.Name(id).ToUpperInvariant() };
+        if (!_game.Spaceflight.Charts.Charted(galaxy, id))
+        {
+            lines[0] = "UNCHARTED";
+            lines.Add($"{light:F1} LY away");
+            for (int k = 0; k < lines.Count; k++) g.Text(lines[k], at + new Vector2(0, k * 24), k == 0 ? C.Text : C.Dim, 15);
+            return;
+        }
         lines.Add(GalaxyNames.Kind(s.Kind) + (s.Companions == 1 ? ", double" : s.Companions > 1 ? ", triple" : ""));
         lines.Add(GalaxyNames.Of(s.Region));
         if (s.Nebula >= 0) lines.Add("in the " + galaxy.Nebulae[s.Nebula].Name);
-        lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Galaxy.JumpT1 ? ", one jump" : "")}");
+        lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Lanes.Range ? ", one jump" : "")}");
         if (id != Trail.You && Stars.View != null)
         {
             Vector3 look = _game.Spaceflight.LookToward(id);
@@ -422,6 +527,8 @@ public sealed class MapLevels
     // ---- High orbit -----------------------------------------------------------------------------
 
     double _orbitX = double.NaN, _orbitZ;
+    float _orbitZoom = 1f;
+    Vector2 _orbitPan;
 
     /// <summary>
     /// The world as a globe, painted from its own map (a place on it is the same place on the world
@@ -435,8 +542,20 @@ public sealed class MapLevels
         Paint();
         var (ux, uz) = You();
         if (double.IsNaN(_orbitX)) (_orbitX, _orbitZ) = (ux, uz);
-        Vector2 c = panel.GetCenter();
-        float R = panel.Size.Y * 0.3f;
+        if (!g.Drawing)
+        {
+            int wheel = Steps(g, panel);
+            if (wheel != 0)
+            {
+                if ((wheel < 0 && _orbitZoom >= 1.6f * 0.999f) || (wheel > 0 && _orbitZoom <= 0.4f * 1.001f)) WheelPast(wheel);
+                else _orbitZoom = Math.Clamp(_orbitZoom * MathF.Pow(1.2f, -wheel), 0.4f, 1.6f);
+            }
+            _orbitPan += MiddleDrag(g, panel);
+        }
+        float R = panel.Size.Y * 0.3f * _orbitZoom;
+        // The globe stays inside its panel: panned as far as the edge, no further.
+        _orbitPan = new Vector2(Math.Clamp(_orbitPan.X, -MathF.Max(panel.Size.X / 2f - R, 0f), MathF.Max(panel.Size.X / 2f - R, 0f)), Math.Clamp(_orbitPan.Y, -MathF.Max(panel.Size.Y / 2f - R, 0f), MathF.Max(panel.Size.Y / 2f - R, 0f)));
+        Vector2 c = panel.GetCenter() + _orbitPan;
         var map = new GlobeMap(planet.Width, planet.Height, R);
         PlanetSurface.Skies.StarSystem model = planet.StarSystem;
         double days = _game.Surface.Sky.Days;
@@ -649,11 +768,12 @@ public sealed class MapLevels
             q = c + new Vector2(v.X, v.Y);
             return front;
         }
-        List<int> shown = charts.Shown(galaxy);
+        Lanes lanes = Network(galaxy, you, charts);
+        List<int> shown = lanes.Stars;
         if (!g.Drawing)
         {
-            int wheel = _game.Controls.Wheel;
-            if (g.Over(panel) && wheel != 0)
+            int wheel = Steps(g, panel);
+            if (wheel != 0)
             {
                 int aim = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
                 if (wheel < 0 && Sky.AtClosest)
@@ -668,6 +788,8 @@ public sealed class MapLevels
                 if (wheel < 0) Sky.Focus = N.Vector3.Lerp(Sky.Focus, galaxy.Stars[aim].Position, 0.35f);
                 Sky.Zoom(wheel);
             }
+            Vector2 slide = MiddleDrag(g, panel);
+            if (slide != Vector2.Zero) Sky.Slide(slide.X, slide.Y, focal);
             if (g.Pressed && g.Over(panel))
             {
                 _dragFrom = g.Mouse;
@@ -701,36 +823,41 @@ public sealed class MapLevels
             g.Fill(panel, new Color(0.008f, 0.01f, 0.025f, 0.92f));
             DrawPlane(g, panel, you, At);
             DrawNebulae(g, panel, galaxy, shown, At);
+            if (Sky.Distance > 160) DrawCloud(g, panel, galaxy, At);
             var labels = new MapLabels();
             // The jump's reach: the sphere's outline, and its ring through you, level with the disc.
             if (At(you.Position, out Vector2 home, out float homeDepth))
             {
-                float reach = Galaxy.JumpT1 * focal / homeDepth;
+                float reach = Lanes.Range * focal / homeDepth;
                 if (reach > 6f) g.Canvas.DrawArc(home, reach, 0, Mathf.Tau, 96, new Color(C.Accent, 0.6f), 1.5f);
-                Ring(g, panel, you.Position, Galaxy.JumpT1, new Color(C.Accent, 0.28f), 1f, At);
+                Ring(g, panel, you.Position, Lanes.Range, new Color(C.Accent, 0.28f), 1f, At);
             }
-            // The hyperdrive's lanes: a thin line from where you are to every star in jump range (true 3D distance), brighter for the star picked or hovered.
-            if (At(you.Position, out Vector2 from3, out _))
+            // The lanes: a thin dim line between every two stars in jump range of each other, brighter for the picked or hovered star's, and the route to the picked star lit.
+            int hovered = -1;
+            float near = 14f * 14f;
+            foreach (int id in shown)
+                if (At(galaxy.Stars[id].Position, out Vector2 hq, out _) && hq.DistanceSquaredTo(g.Mouse) < near) (near, hovered) = (hq.DistanceSquaredTo(g.Mouse), id);
+            if (Sky.Distance < 450)
+            foreach (var (a, b) in lanes.Edges)
             {
-                int hovered = -1;
-                float near = 14f * 14f;
-                foreach (int id in shown)
-                    if (At(galaxy.Stars[id].Position, out Vector2 hq, out _) && hq.DistanceSquaredTo(g.Mouse) < near) (near, hovered) = (hq.DistanceSquaredTo(g.Mouse), id);
-                foreach (int id in shown)
-                {
-                    if (id == Trail.You || N.Vector3.Distance(you.Position, galaxy.Stars[id].Position) > Galaxy.JumpT1) continue;
-                    if (!At(galaxy.Stars[id].Position, out Vector2 to, out _)) continue;
-                    bool lit = id == charts.ChosenStar || id == hovered;
-                    g.Canvas.DrawLine(from3, to, new Color(C.Accent, lit ? 0.85f : 0.2f), lit ? 1.5f : 1f);
-                }
+                if (!At(galaxy.Stars[a].Position, out Vector2 qa, out _) || !At(galaxy.Stars[b].Position, out Vector2 qb, out _)) continue;
+                if (!panel.HasPoint(qa) && !panel.HasPoint(qb)) continue;
+                bool lit = a == hovered || b == hovered || a == charts.ChosenStar || b == charts.ChosenStar;
+                bool live = lanes.Connected.Contains(a);
+                g.Canvas.DrawLine(qa, qb, new Color(C.Accent, lit ? 0.5f : live ? 0.2f : 0.1f), 1f);
             }
+            if (_route != null)
+                for (int i = 1; i < _route.Count; i++)
+                    if (At(galaxy.Stars[_route[i - 1]].Position, out Vector2 ra, out _) && At(galaxy.Stars[_route[i]].Position, out Vector2 rb, out _))
+                        g.Canvas.DrawLine(ra, rb, new Color(C.Holo, 0.95f), 2.5f);
             foreach (int id in shown.OrderByDescending(id => { At(galaxy.Stars[id].Position, out _, out float d); return d; }))
             {
                 Star s = galaxy.Stars[id];
                 if (!At(s.Position, out Vector2 q, out float depth) || !panel.HasPoint(q)) continue;
                 float r = Math.Clamp((3.2f + 0.8f * MathF.Log10(s.Light + 0.01f)) * MathF.Sqrt(96f / depth), 2.4f, 8f);
                 g.Canvas.DrawCircle(q, r, StarColour(id));
-                if (id != Trail.You && id != charts.ChosenStar) labels.Add(q, r, depth < 220f ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);
+                if (!lanes.Connected.Contains(id)) g.Canvas.DrawArc(q, r + 3f, 0, Mathf.Tau, 12, new Color(C.Dim, 0.6f), 1f);
+                if (id != Trail.You && id != charts.ChosenStar && charts.Charted(galaxy, id)) labels.Add(q, r, depth < 220f ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);
             }
             if (At(you.Position, out Vector2 me, out _) && panel.HasPoint(me))
             {
@@ -740,7 +867,6 @@ public sealed class MapLevels
             if (charts.ChosenStar >= 0 && At(galaxy.Stars[charts.ChosenStar].Position, out Vector2 chosen, out _) && panel.HasPoint(chosen))
             {
                 g.Canvas.DrawArc(chosen, 12f, 0, Mathf.Tau, 24, C.Holo, 2f);
-                if (panel.HasPoint(me)) g.Canvas.DrawDashedLine(me, chosen, new Color(C.Holo, 0.8f), 1f, 6f);
                 labels.Add(chosen, 12f, galaxy.Name(charts.ChosenStar).ToUpperInvariant(), C.Holo, 1);
             }
             if (At(N.Vector3.Zero, out Vector2 core, out _) && panel.HasPoint(core)) labels.Add(core, 4f, "CORE", C.Dim, 3);
@@ -748,6 +874,7 @@ public sealed class MapLevels
         }
         int facts = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
         StarFacts(g, side.Position + new Vector2(0, 40), facts);
+        RouteFacts(g, side.Position + new Vector2(0, 160), galaxy, charts.ChosenStar);
         if (g.Button("map:open-star", new Rect2(side.Position + new Vector2(0, 208), new Vector2(150, 34)), "OPEN SYSTEM", C.Accent2)) Trail.OpenStar(facts);
         if (g.Button("map:clear-star", new Rect2(side.Position + new Vector2(156, 208), new Vector2(150, 34)), "CLEAR MARK", C.Accent2, enabled: charts.ChosenStar >= 0)) charts.ChosenStar = -1;
         if (g.Button("map:on-me", new Rect2(side.Position + new Vector2(0, 248), new Vector2(150, 34)), "ON ME", C.Accent2))
@@ -761,6 +888,67 @@ public sealed class MapLevels
             Sky.Distance = GalaxyMapView.Widest;
         }
         g.Text($"{shown.Count} stars charted, drag to turn", side.Position + new Vector2(0, 294), C.Dim, 14);
+    }
+
+    Lanes _lanes;
+    int _lanesYou = -1, _lanesVisited = -1, _lanesChosen = -2;
+    List<int> _route;
+
+    /// <summary>The lane network round you, rebuilt only when you move or chart more; and the route to the picked star.</summary>
+    Lanes Network(Galaxy galaxy, Star you, Charts charts)
+    {
+        if (_lanes == null || _lanesYou != Trail.You || _lanesVisited != charts.Visited.Count)
+        {
+            _lanes = new Lanes(galaxy, Trail.You, charts.Shown(galaxy));
+            (_lanesYou, _lanesVisited, _lanesChosen) = (Trail.You, charts.Visited.Count, -2);
+        }
+        if (_lanesChosen != charts.ChosenStar)
+        {
+            _lanesChosen = charts.ChosenStar;
+            _route = _lanesChosen >= 0 && _lanesChosen != Trail.You ? Lanes.Route(galaxy, Trail.You, _lanesChosen, Lanes.Range) : null;
+        }
+        return _lanes;
+    }
+
+    /// <summary>The picked star's route in words: jumps, light years, fold crystal.</summary>
+    void RouteFacts(Gui g, Vector2 at, Galaxy galaxy, int id)
+    {
+        if (id == Trail.You || id < 0) return;
+        if (_route == null) { g.Text("no chain of jumps reaches it", at, C.Warn, 15); return; }
+        float ly = Lanes.Length(galaxy, _route);
+        g.Text($"route: {_route.Count - 1} jump{(_route.Count == 2 ? "" : "s")}, {ly:F1} LY", at, C.Holo, 15);
+        g.Text($"fold crystal needed: {Lanes.Crystal(galaxy, _route)}", at + new Vector2(0, 24), C.Holo, 15);
+    }
+
+    Vector2[] _cloudAt;
+    Color[] _cloudColour;
+    Color[] _kindColour;
+
+    /// <summary>Every star of the catalogue as a point (one batched draw), so the whole galaxy shows its arms and core at a cost that doesn't grow with zoom.</summary>
+    void DrawCloud(Gui g, Rect2 panel, Galaxy galaxy, Projects at)
+    {
+        int n = galaxy.Stars.Length;
+        if (_cloudAt == null || _cloudAt.Length != n * 2)
+        {
+            _cloudAt = new Vector2[n * 2];
+            _cloudColour = new Color[n];
+            _kindColour = new Color[Enum.GetValues<StarKind>().Max(k => (int)k) + 1];
+            foreach (StarKind k in Enum.GetValues<StarKind>())
+            {
+                N.Vector3 t = SkyView.Colour(k);
+                _kindColour[(int)k] = new Color(t.X, t.Y, t.Z, 0.5f);
+            }
+        }
+        int count = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (!at(galaxy.Stars[i].Position, out Vector2 q, out _) || !panel.HasPoint(q)) continue;
+            _cloudAt[count * 2] = q;
+            _cloudAt[count * 2 + 1] = q + new Vector2(1.3f, 0f);
+            _cloudColour[count++] = _kindColour[(int)galaxy.Stars[i].Kind];
+        }
+        if (count == 0) return;
+        g.Canvas.DrawMultilineColors(_cloudAt[..(count * 2)], _cloudColour[..count], 1.4f);
     }
 
     delegate bool Projects(N.Vector3 p, out Vector2 q, out float depth);

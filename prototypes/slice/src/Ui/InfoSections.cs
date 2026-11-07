@@ -115,6 +115,7 @@ public sealed class MapSection : IMenuSection
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
     public float Range = 600f;
+    public const float MinRange = 40f, MaxRange = 4000f;
     /// <summary>The world, system and star levels (and which is showing).</summary>
     public readonly MapLevels Levels;
     public MapSection(Game.Game game)
@@ -131,17 +132,31 @@ public sealed class MapSection : IMenuSection
         var map = new Rect2(area.Position, new Vector2(size, size));
         g.Fill(map, new Color(C.Panel, 0.8f));
         // The generator's terrain behind the dots, a little dimmed so they read over it.
-        if (Levels.Terrain(g, map, Range)) g.Fill(map, new Color(C.Glass, 0.35f));
+        if (Levels.Terrain(g, map, Range, Levels.LocalPan)) g.Fill(map, new Color(C.Glass, 0.35f));
         g.Outline(map, C.Rule, 2f);
-        Vector3 me = _game.Survivor.WorldFeet;
+        Vector3 you = _game.Survivor.WorldFeet;
+        Vector3 me = you + new Vector3(Levels.LocalPan.X, 0f, Levels.LocalPan.Y);
         Vector2 Proj(Vector3 p) => map.GetCenter() + new Vector2(p.X - me.X, p.Z - me.Z) / Range * (size / 2f);
         bool In(Vector2 q) => map.HasPoint(q);
-        if (!g.Drawing && g.Over(map) && _game.Controls.Wheel > 0) Levels.WheelPast(_game.Controls.Wheel); // the wheel out: the level above
+        if (!g.Drawing)
+        {
+            // Zoom with the wheel or + and -, pan with the middle button; past the widest, the wheel goes up a level.
+            int steps = Levels.ZoomSteps(g, map);
+            if (steps != 0)
+            {
+                if (steps > 0 && Range >= MaxRange * 0.999f) Levels.WheelPast(steps);
+                else Range = Math.Clamp(Range * MathF.Pow(1.25f, steps), MinRange, MaxRange);
+            }
+            Levels.LocalRange = Range;
+            Vector2 slide = Levels.SlideBy(g, map);
+            if (slide != Vector2.Zero) Levels.LocalPan -= slide * (Range / (size / 2f));
+            me = you + new Vector3(Levels.LocalPan.X, 0f, Levels.LocalPan.Y);
+        }
         if (g.RightClicked(map)) Levels.LocalRightClick(g.Mouse, Proj, q => me + new Vector3(q.X - map.GetCenter().X, 0, q.Y - map.GetCenter().Y) * (Range / (size / 2f)));
         var labels = new MapLabels();
         if (g.Drawing)
         {
-            for (int k = 1; k <= 3; k++) g.Canvas.DrawArc(map.GetCenter(), size / 2f * k / 3f, 0, Mathf.Tau, 48, new Color(C.Rule, 0.7f), 1f);
+            for (int k = 1; k <= 3; k++) MapLevels.ArcIn(g, map, Proj(you), size / 2f * k / 3f, new Color(C.Rule, 0.7f));
             g.TextIn("N", new Rect2(map.GetCenter() + new Vector2(-10, -size / 2 + 4), new Vector2(20, 20)), C.Text, 16, HorizontalAlignment.Center);
         }
         // Lower priority keeps its label's place when two would collide.
@@ -173,18 +188,21 @@ public sealed class MapSection : IMenuSection
         if (g.Drawing)
         {
             Vector3 look = _game.Survivor.WorldLook();
-            Vector2 c0 = map.GetCenter(), dir = new Vector2(look.X, look.Z).Normalized();
-            g.Canvas.DrawLine(c0, c0 + dir * 22f, C.Accent, 3f);
-            g.Canvas.DrawCircle(c0, 7f, C.Accent);
-            labels.Add(c0, 7f, null, C.Accent, 0);
+            Vector2 c0 = Proj(you), dir = new Vector2(look.X, look.Z).Normalized();
+            if (map.HasPoint(c0))
+            {
+                g.Canvas.DrawLine(c0, c0 + dir * 22f, C.Accent, 3f);
+                g.Canvas.DrawCircle(c0, 7f, C.Accent);
+                labels.Add(c0, 7f, null, C.Accent, 0);
+            }
             labels.Flush(g, map);
         }
         var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
-        g.Caption("MAP · 600 M", legend.Position, legend.Size.X);
+        g.Caption($"MAP · {Range:0} M", legend.Position, legend.Size.X);
         string[] lines = { "orange: you, the bunker", "red: your marks (right click)", "green: bases", "cream: vessels", "amber: devices, places, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
-        if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 270), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) Range = 300f;
-        if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 270), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) Range = 600f;
+        if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 270), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) { Range = 300f; Levels.LocalPan = Vector2.Zero; }
+        if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 270), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) { Range = 600f; Levels.LocalPan = Vector2.Zero; }
         Levels.Tabs(g, legend.Position + new Vector2(0, 330));
     }
 }
