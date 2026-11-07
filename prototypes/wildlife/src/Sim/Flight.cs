@@ -112,8 +112,8 @@ public static class Flight
         float h1 = land.Height(from.X + ahead.X * 0.5f, from.Z + ahead.Z * 0.5f), h2 = land.Height(from.X + ahead.X * 1.2f, from.Z + ahead.Z * 1.2f);
         float risingTo = MathF.Max(ground, MathF.Max(h1, h2));
         bool landing = c.Altitude <= 0.5f && !stoop && c.AvoidFor <= 0f;
-        // Rock, a tree or the sea under the approach: it holds off and flies on till it isn't.
-        if (landing && w.Nav.Blocked(from + ahead * 1.5f)) landing = false;
+        // Rock, a tree or the sea under the approach, or a slope rising to meet it: it holds off and flies on till it isn't.
+        if (landing && (w.Nav.Blocked(from + ahead * 1.5f) || risingTo - ground > speed * 0.45f)) landing = false;
 
         float target = landing ? least * 1.1f : Math.Clamp(wantSpeed < 0.4f ? cruise : wantSpeed, least, most);
         float height = y - ground;
