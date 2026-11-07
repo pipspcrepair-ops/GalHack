@@ -36,6 +36,7 @@ public partial class InfraLayer
         public override void Emit(TileBuilder b)
         {
             PoiInstance inst = Ruin.Spawn(b.World.Profile, b.World.Source);
+            Growth.Earthen(inst, b.World.RubbleRock, b.World.Weed);
             List<ChunkMesh> meshes = RuinMesh(inst);
             NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);
             string name = Ruin.Family.Id;

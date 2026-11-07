@@ -10,7 +10,8 @@ public readonly record struct FloraRule(Flora Kind, float Density, Rgb Color);
 
 /// <summary>
 /// The colour and flora of every biome. Palettes are bold and saturated, in the spirit of 1970s
-/// paperback covers: few colours per world, strong contrast between land, liquid and sky.
+/// paperback covers: few colours per world, strong contrast between land, liquid and sky. Scatter is
+/// quieter than the land it stands on: it reads as things lying in a world, never as sweets on a lawn.
 /// </summary>
 public static class BiomeLook
 {
@@ -68,7 +69,7 @@ public static class BiomeLook
         FloraRule R(Flora kind, float density, string hex) => new(kind, density, Rgb.Hex(hex));
 
         Set(Biome.Grassland, R(Flora.Shrub, 1.4f, "4f8f2f"), R(Flora.Broadleaf, 0.35f, "3f8a34"), R(Flora.Rock, 0.25f, "8a8078"));
-        Set(Biome.Meadow, R(Flora.Shrub, 2.4f, "e0b83a"), R(Flora.Shrub, 0.8f, "e06a8a"), R(Flora.Broadleaf, 0.25f, "3f8a34"));
+        Set(Biome.Meadow, R(Flora.Shrub, 2.4f, "6f8a3c"), R(Flora.Shrub, 0.8f, "8c8f52"), R(Flora.Broadleaf, 0.25f, "3f8a34"));
         Set(Biome.Forest, R(Flora.Broadleaf, 9f, "2f7f2f"), R(Flora.Broadleaf, 2f, "5a9a2a"), R(Flora.Shrub, 1f, "3a7030"));
         Set(Biome.PineForest, R(Flora.Conifer, 10f, "1f5a40"), R(Flora.Rock, 0.4f, "7a7470"));
         Set(Biome.Tundra, R(Flora.Rock, 1.2f, "8a8580"), R(Flora.Shrub, 0.6f, "7a8a50"));

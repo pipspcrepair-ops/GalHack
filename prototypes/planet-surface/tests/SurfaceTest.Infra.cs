@@ -498,7 +498,7 @@ public partial class SurfaceTest
         int ruinsUnjoined = 0, fuelOnLow = 0, houses = 0, housesInStreets = 0;
         int ruins = 0, ruinWorlds = 0, ruinOnRoad = 0, ruinOnPad = 0, ruinsTouching = 0, ruinsYielding = 0, ruinsSpawned = 0, fewRuins = 0, blastedRuins = 0;
         var ruinKinds = new Dictionary<string, int>();
-        int tells = 0, glowingTells = 0, tellsChecked = 0;
+        int tells = 0, glowingTells = 0, tellsChecked = 0, planted = 0, strangers = 0, unrooted = 0, clipped = 0, unplaced = 0;
         int poles = 0, fallen = 0, spans = 0, hanging = 0, unanchored = 0, throughGround = 0, offRoute = 0, onBed = 0, lowWorldLines = 0;
         double planBest = double.MaxValue, planWorst = 0;
         bool same = true;
@@ -727,6 +727,27 @@ public partial class SurfaceTest
                 var y = FlavourRuin.Yields(inst);
                 if (y.GetValueOrDefault("rubble") > 0 && y.Values.Sum() > 5) ruinsYielding++;
             }
+            // The trees through its ruins: each the biome's own kind, standing on what's under it, clear of
+            // every wall, and a real scatter instance with its collider; none on ground that grows no trees.
+            foreach (var (id, p) in w.Palette.Planted ?? new Dictionary<long, PlantedFlora>())
+            {
+                planted++;
+                if (!Planets.Look.BiomeLook.FloraOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }
+                
+                if (p.Foot < w.Source.SurfaceHeight(p.X, p.Z) - 1.1f) { unrooted++; notes.Add($"a tree under the land at {p.X:F0}, {p.Z:F0}"); }
+                PoiSite site = w.Pois.FirstOrDefault(s => s.Footprint.Contains(new TerrainDigging.Terrain.Int3((int)p.X, (int)p.Foot + 1, (int)p.Z)));
+                if (site != null && !RuinGrowth.Fits(site.Instance.Blocks, new PoiGenerator.Gen.Int3((int)p.X - site.Origin.X, (int)Math.Ceiling(p.Foot) - site.Origin.Y, (int)p.Z - site.Origin.Z), p.Kind, p.Scale)) clipped++;
+            }
+            if ((w.Palette.Planted?.Count ?? 0) > 0)
+            {
+                var (id, tree) = w.Palette.Planted.First();
+                var (fx, fz) = PlanetSurface.Terrain.FarBuilder.ChunkOfScatter(id);
+                PlanetSurface.Terrain.FarBuilder.Solids ??= PlanetSurface.Terrain.FloraSolidRules.Load(ProjectSettings.GlobalizePath("res://data/flora-solids.json"));
+                var job = new PlanetSurface.Terrain.FarJob { Fx = fx, Fz = fz, Lod = 0 };
+                PlanetSurface.Terrain.FarBuilder.Build(job, w.Source, w.Palette, new HashSet<long>());
+                bool drawn = job.Flora.Any(f => f.Kind == tree.Kind && Enumerable.Range(0, f.Count).Any(i => Math.Abs(f.Buffer[i * 16 + 3] - (tree.X - fx * PlanetSurface.Terrain.FarBuilder.Size)) < 0.01 && Math.Abs(f.Buffer[i * 16 + 11] - (tree.Z - fz * PlanetSurface.Terrain.FarBuilder.Size)) < 0.01));
+                if (!drawn || job.Solids?.Any(s => s.Id == id) != true) { unplaced++; GD.PrintErr($"a planted {tree.Kind} at {tree.X:F1}, {tree.Z:F1}: drawn {drawn}, collider {job.Solids?.Any(s => s.Id == id)}, error {job.Error?.Message}"); }
+            }
             // Ore tells: a formation over every deposit not under a pad, a road or water; veins matte, never neon.
             var tellPieces = PlanetSurface.Infra.InfraLayer.OrePieces(w).ToList();
             tells += tellPieces.Count;
@@ -764,6 +785,7 @@ public partial class SurfaceTest
         Check(ruins <= ruinWorlds * 50 && ruinsUnjoined == 0 && fuelOnLow == 0 && housesInStreets * 2 >= houses,
             $"flavour ruins have reasons: {ruins / (float)ruinWorlds:F0} a world (once 150), {ruinRoadKm / Math.Max(1, ruins):F1} km of road each; {ruinsUnjoined} not joined to their road, {housesInStreets} of {houses} houses in a street, {fuelOnLow} stops of the wrong age ({string.Join(", ", stopKinds.OrderBy(k => k.Key).Select(k => $"{k.Value} {k.Key}"))})");
         Check(tells > 1000 && glowingTells == 0, $"ore tells: {tells} formations over the deposits, their veins matte ({glowingTells} of {tellsChecked} sampled glow)");
+        Check(planted > 0 && strangers == 0 && unrooted == 0 && clipped == 0 && unplaced == 0, $"trees through ruins are the world's own flora: {planted} planted, {strangers} not of their biome, {unrooted} off the ground, {clipped} into a wall, {unplaced} not in the scatter");
         Check(poles > 100 && spans > 100 && unanchored == 0 && throughGround == 0,
             $"power lines are anchored: {poles} poles and pylons ({fallen} fallen), {spans} wires strung between standing poles, {hanging} hanging from the pole that holds them; {unanchored} unanchored, {throughGround} through the ground or lying off it{firstGround}");
         Check(offRoute == 0 && onBed == 0 && lowWorldLines == 0,

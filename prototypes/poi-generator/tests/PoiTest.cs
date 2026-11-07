@@ -1012,7 +1012,7 @@ public partial class PoiTest : Node
     /// </summary>
     void Ages()
     {
-        int oldCaches = 0, rottenFood = 0, sealedFood = 0, trees = 0, ruins = 0, timberStanding = 0;
+        int oldCaches = 0, rottenFood = 0, sealedFood = 0, trees = 0, blockTrees = 0, badSpots = 0, strayBloom = 0, ruins = 0, timberStanding = 0;
         foreach (var f in _lib.Families)
             for (int s = 0; s < 3; s++)
             {
@@ -1025,8 +1025,11 @@ public partial class PoiTest : Node
                     if (p.AgeOf(c.Module) == Age.OldWorld) { oldCaches++; if (food) rottenFood++; }
                     else if (food) sealedFood++;
                 }
-                trees += p.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Pillar && b.Block.Material == Gen.Material.Timber && b.Block.Role == Role.Decor
-                                                      && p.Blocks.Get(b.Cell + Int3.Down).Type != BlockType.Pillar) ;
+                trees += p.Growth.Count;
+                badSpots += p.Growth.Count(s => !Growth.Rootable(p, s.Cell) || p.Protected[s.Cell]);
+                // No trees of blocks: the planet plants its own flora on the spots.
+                blockTrees += p.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Pillar && b.Block.Material == Gen.Material.Timber && b.Block.Role == Role.Decor && b.Block.Color == new Rgb(0x4a, 0x3a, 0x2a) && p.Blocks.Get(b.Cell + Int3.Up * 3).Type == BlockType.Pillar);
+                if (p.State != PoiState.Infested) strayBloom += p.Blocks.Blocks().Count(b => b.Block.Material == Gen.Material.Bloom);
                 timberStanding += p.Blocks.Blocks().Count(b => b.Block.Material == Gen.Material.Timber && b.Block.Role == Role.Roof && b.Cell.Y >= 0);
             }
         var farm = PoiFactory.Generate(_lib, _lib.Family("freeholder_farm"), 0, Rarity.Common, PoiState.Active, 3);
@@ -1042,9 +1045,9 @@ public partial class PoiTest : Node
                     if (p.Variant.Tech != theme.Tech && p.Family.Variants.Any(v => v.Tech == theme.Tech)) techMismatch++;
                 }
             }
-        Check(rottenFood == 0 && farm.Age == Age.New && trees > 0 && techMismatch == 0 && techPlaced > 0,
+        Check(rottenFood == 0 && farm.Age == Age.New && trees > 0 && blockTrees == 0 && badSpots == 0 && strayBloom == 0 && techMismatch == 0 && techPlaced > 0,
             $"long after the fall: {ruins} old-world places, no food in {oldCaches} of their unsealed caches ({sealedFood} sealed stores kept some), " +
-            $"{trees} trees grown through them, {timberStanding} unsheltered timber roof blocks still up; a worked freeholder farm is new ({farm.Age}); " +
+            $"{trees} spots left for trees ({badSpots} bad), {blockTrees} block trees, {strayBloom} Bloom blocks outside infested places, {timberStanding} unsheltered timber roof blocks still up; a worked freeholder farm is new ({farm.Age}); " +
             $"factories and farms match their world's tech level ({techPlaced} placed, {techMismatch} wrong)");
     }
 
@@ -1551,7 +1554,7 @@ public partial class PoiTest : Node
         ("research_base", 0, Rarity.Uncommon, PoiState.Abandoned, true, "deep"),
         ("ominous_tower", 0, Rarity.Uncommon, PoiState.Ruined, false, "top+deep"),
         ("deep_bunker", 0, Rarity.Rare, PoiState.Infested, false, "deep"),
-        ("old_mine", 0, Rarity.Common, PoiState.Abandoned, false, "deep"),
+        ("old_mine", 0, Rarity.Common, PoiState.Abandoned, true, "deep"),
         ("vharn_outpost", 0, Rarity.Common, PoiState.Active, true, "vault"),
     };
     int _walk = -1, _step, _ticks, _stuck, _waits;

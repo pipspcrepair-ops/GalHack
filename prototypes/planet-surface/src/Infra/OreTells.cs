@@ -20,18 +20,27 @@ public partial class InfraLayer
     /// planet shows itself in the rock over it, the way a prospector reads ground. A deposit that
     /// breaks the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with
     /// the ore's colour in its veins), a shallow one as scree, a deep one as a fracture. Their veins
-    /// are matte, never neon: the ore reads by its rock and texture first, its colour second. None
-    /// on a place's pad, a road or in water.
+    /// are matte, never neon: the ore reads by its rock and texture first, its colour second. Few of
+    /// them lie out in open country, where a rock stands out; rock country shows more. None on a
+    /// place's pad, a road or in water. The rest show only in the ground's speckle and on the scanner.
     /// </summary>
     public static IEnumerable<Piece> OrePieces(PlanetWorld world)
     {
-        var source = world.Source;
         foreach (Deposit d in world.Map.Deposits.InRect(0, 0, world.Width, world.Height))
-        {
-            double x = Mathx.WrapX(d.X, world.Width), z = Mathx.Wrap(d.Y, world.Height);
-            if (source.StampWeight(x, z) > 0f || source.WaterSurfaceAt(x, z, out _)) continue;
-            yield return new OreTellPiece { Deposit = d, X = x, Z = z };
-        }
+            if (HasTell(world, d)) yield return new OreTellPiece { Deposit = d, X = Mathx.WrapX(d.X, world.Width), Z = Mathx.Wrap(d.Y, world.Height) };
+    }
+
+    /// <summary>How many deposits show a rock at the surface out in open country, and in rock country.</summary>
+    public const float OpenShare = 0.12f, RockyShare = 0.28f;
+
+    /// <summary>Whether a deposit shows itself at the surface at all.</summary>
+    public static bool HasTell(PlanetWorld world, Deposit d)
+    {
+        double x = Mathx.WrapX(d.X, world.Width), z = Mathx.Wrap(d.Y, world.Height);
+        if (world.Source.StampWeight(x, z) > 0f || world.Source.WaterSurfaceAt(x, z, out _)) return false;
+        Biome biome = world.Palette.BiomeAt(x, z);
+        bool rocky = biome is Biome.Cliff or Biome.RedRock or Biome.Badlands or Biome.MesaTop or Biome.Basalt or Biome.Obsidian or Biome.Tundra or Biome.IceTundra;
+        return Hash.Unit(Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind, 0x7E11)) < (rocky ? RockyShare : OpenShare);
     }
 
     /// <summary>A tell's id among <see cref="PlanetWorld.Felled"/> (negative, so it never meets a tree's): broken tells stay gone, as felled trees do.</summary>
@@ -98,11 +107,22 @@ public partial class InfraLayer
         {
             Deposit d = Deposit;
             if (b.World.Felled.Contains(TellId(d))) return;
-            Rgb ore = DepositLook.Color(d.Kind), rock = b.World.Palette.Rock;
+            // The world's own rock, with a little of the ground it lies in: the ore shows in its grain.
+            PlanetWorld world = b.World;
+            Rgb ore = DepositLook.Color(d.Kind), land = world.Palette.SoilAt(Mathx.WrapX(d.X, world.Width), Mathx.Wrap(d.Y, world.Height), out _), rock = Rgb.Lerp(world.Palette.Rock, land, 0.12f);
             bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Titanium or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Silicon;
             ulong seed = Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind);
-            float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.7f : 1f);
-            DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B));
+            float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.5f : 0.7f);
+            // Stunted growth on scree only where the biome grows anything low, in its own colour.
+            DecoRgb? growth = null;
+            foreach (FloraRule f in BiomeLook.FloraOf(world.Palette.BiomeAt(Mathx.WrapX(d.X, world.Width), Mathx.Wrap(d.Y, world.Height))))
+                if (f.Kind == Flora.Shrub)
+                {
+                    Rgb c = f.Color.Saturate(0.6f);
+                    growth = new DecoRgb(c.R, c.G, c.B);
+                    break;
+                }
+            DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B), growth: growth);
             // Laid along the slope and sunk in by whatever the ground still falls away under its rim.
             Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * b.Seat(d.X, d.Y, radius);
             // A rock's edge can reach a place's pad, where nothing solid may stand in a way in: there it stays scenery.

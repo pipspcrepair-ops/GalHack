@@ -222,7 +222,11 @@ public partial class Game : Node3D
         Shots = new ShotFx { Name = "Shots" };
         Zone.AddChild(Shots);
         Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
-        var debris = new PlanetSurface.Fx.Debris { Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f };
+        var debris = new PlanetSurface.Fx.Debris
+        {
+            Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f,
+            ColorOf = (material, at) => Zone.Planet?.ChipColor(material, at) ?? new Color(0.5f, 0.45f, 0.4f),
+        };
         Zone.AddChild(debris);
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };

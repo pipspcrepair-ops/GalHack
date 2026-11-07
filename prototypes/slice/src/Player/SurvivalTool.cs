@@ -293,7 +293,7 @@ public sealed class SurvivalTool
         else
         {
             // Still chipping: a puff of grit and a low scrape.
-            Debris?.Puff(at, new Color(0.5f, 0.44f, 0.36f, 0.5f), 0.35f);
+            Debris?.Puff(at, _zone.Planet.Grit(at), 0.35f);
             Sfx?.Play(Sfx.Sound.Dig, at, 0.8f, -9f);
         }
         Announce(got, quietStone: got.Count > 1);
@@ -330,7 +330,7 @@ public sealed class SurvivalTool
         double px = Mathx.WrapX(point.X, world.Width), pz = Mathx.Wrap(point.Z, world.Height);
         foreach (Deposit d in world.Map.Deposits.InRect(px - 8, pz - 8, px + 8, pz + 8))
         {
-            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture) continue;
+            if (PlanetSurface.Infra.InfraLayer.TellOf(d) == GalHack.Deco.DecoTellKind.Fracture || !PlanetSurface.Infra.InfraLayer.HasTell(world, d)) continue;
             double dx = Mathx.Wrap(px - d.X, world.Width), dz = Mathx.Wrap(pz - d.Y, world.Height);
             float r = PlanetTerrainSource.OreRadius(d) + 0.6f;
             if (dx * dx + dz * dz > r * r) continue;
@@ -350,7 +350,7 @@ public sealed class SurvivalTool
         _tellsWorked[(d.X, d.Y)] = worked + pulses;
         Vector3 at = _placePoint;
         Sfx?.Play(Sfx.Sound.Clank, at, 1.1f, -8f);
-        Debris?.Puff(at, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.5f);
+        Debris?.Puff(at, _zone.Planet.Grit(at), 0.5f);
         if (OreOf(d.Kind) is ItemDef item)
         {
             Give(item.Id, TellOrePerPulse * pulses);
@@ -396,6 +396,19 @@ public sealed class SurvivalTool
     static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
     static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
 
+    /// <summary>What flies off a plant: its own colour, as its biome tints it.</summary>
+    Color LeafOf(Flora kind, Vector3 at)
+    {
+        var planet = _zone.Planet;
+        foreach (FloraRule rule in BiomeLook.FloraOf(planet.Palette.BiomeAt(Mathx.WrapX(at.X, planet.Width), Mathx.Wrap(at.Z, planet.Height))))
+            if (rule.Kind == kind)
+            {
+                Rgb c = FarBuilder.Tint(rule, 0.8f);
+                return new Color(c.R, c.G, c.B);
+            }
+        return TreeFx.LeafColour(kind);
+    }
+
     /// <summary>
     /// Chips the plant nearest the crosshair within reach: each pulse wears it down and gives a share
     /// of its biomass and organics (a boulder's stone), and when it is worked through it is gone from
@@ -426,8 +439,8 @@ public sealed class SurvivalTool
         }
         Trees ??= AddTrees();
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, 2.2f * size + 1f) : 0.6f * size);
-        Color leaf = TreeFx.LeafColour(kind);
-        if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, new Color(0.55f, 0.52f, 0.48f, 0.6f), 0.7f);
+        Color leaf = LeafOf(kind, plant);
+        if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
         else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
         if (done < durability)

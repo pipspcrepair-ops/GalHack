@@ -183,7 +183,7 @@ Each road site lies on a straight, nearly level stretch with its lane down the r
 - A ruin is spawned from its own seed when its tile comes near, and decays believably (`PlainRuin.cs`): holes through the roof, a stretch of wall gone, rubble where it fell, nothing left hanging, chimneys and foundations standing, weeds last on what's left. No block trees.
 - `FlavourRuin.Yields` is what the survival tool can salvage from one (scrap metal, wiring, glass, plastics, rubble), by what its blocks are made of. In the slice, `RuinLoot` opens its caches.
 
-**Ore tells.** Every deposit shows in the ground over it (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`):
+**Ore tells.** Deposits show in the ground over them as a rock, about one in eight in open country and more in rock country (`InfraLayer.OrePieces`, the deco library's `DecoOreTells`); the rest show only as broken patches in the soil and on the scanner:
 - a deposit breaking the surface stands as an outcrop (slabs, a bedrock knuckle or a boulder cluster with the ore's colour in its veins);
 - a shallow one shows as scree, a deep one as a fracture.
 - The veins are matte, and exposed ore cells show their colour as speckle and streaks in the rock rather than a flat stain, with only a faint glow: the ore reads by its rock and texture first.

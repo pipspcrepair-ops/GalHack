@@ -30,8 +30,9 @@ public static class DecoOreTells
     /// A tell's mesh, centred on its tell position, standing on y = 0 within <paramref name="radius"/>
     /// metres. <paramref name="glints"/> for metallic and crystal ores. <paramref name="shape"/> picks
     /// an outcrop's form (slabs, a bedrock knuckle or a boulder cluster); -1 lets the seed choose.
+    /// <paramref name="growth"/> is the colour of stunted growth on scree: none without one.
     /// </summary>
-    public static DecoMeshData Build(DecoTellKind kind, DecoRgb ore, float glow, bool glints, ulong seed, float radius, DecoRgb? rock = null, int shape = -1)
+    public static DecoMeshData Build(DecoTellKind kind, DecoRgb ore, float glow, bool glints, ulong seed, float radius, DecoRgb? rock = null, int shape = -1, DecoRgb? growth = null)
     {
         var rng = new DecoRng(DecoHash.Combine(seed, (ulong)kind * 977UL + 13));
         DecoRgb stone = rock ?? DefaultRock;
@@ -41,7 +42,7 @@ public static class DecoOreTells
         var hairlines = new List<DecoPart>();
         var crust = new List<DecoPart>();
         var plants = new List<DecoPart>();
-        DecoRgb tinted = stone.Lerp(ore, 0.25f);
+        DecoRgb tinted = stone.Lerp(ore, 0.12f);
 
         DecoPart Boulder(Vector3 c, Vector3 size, float yaw, float jitter)
         {
@@ -147,7 +148,7 @@ public static class DecoOreTells
                     var c = new Vector3(MathF.Cos(a) * d, 0, MathF.Sin(a) * d);
                     crust.Add(b.Frustum(0, c.X - sz, c.X + sz * 0.8f, c.Z - sz * 0.7f, c.Z + sz * 0.9f, 0.025f, c.X - sz * 0.8f, c.X + sz * 0.6f, c.Z - sz * 0.5f, c.Z + sz * 0.7f, DecoSlot.Node));
                 }
-                for (int i = 0; i < 2 + rng.Int(3); i++)
+                for (int i = 0; growth != null && i < 2 + rng.Int(3); i++)
                 {
                     float a = rng.Range(0, MathF.Tau), d = rng.Range(0.2f, 0.85f) * radius;
                     var c = new Vector3(MathF.Cos(a) * d, 0, MathF.Sin(a) * d);
@@ -168,35 +169,35 @@ public static class DecoOreTells
         // Emit: rock, then veins that wrap its surface, then glints, cracks, crust and plants.
         var mesh = new DecoMeshData();
         float veinGlow = Math.Clamp(glow, 0, 1);
-        DecoRgb veinCol = ore.Lerp(stone, 0.15f);
+        DecoRgb veinCol = ore.Lerp(stone, 0.6f);
         foreach (DecoPart p in b.Model.Parts.Where(p => !crust.Contains(p)))
-            DecoEmit.Part(mesh, p, (at, n, _) => (crust.Contains(p) ? tinted : stone).Scale(0.82f + 0.3f * DecoHash.At(at, seed) + (n.Y > 0.6f ? 0.08f : 0)).Lerp(ore, 0.06f), _ => DecoSurface.Matte, v => v.Y < 0 ? v with { Y = 0 } : v);
+            DecoEmit.Part(mesh, p, (at, n, _) => (crust.Contains(p) ? tinted : stone).Scale(0.82f + 0.3f * DecoHash.At(at, seed) + (n.Y > 0.6f ? 0.08f : 0)).Lerp(ore, 0.03f), _ => DecoSurface.Matte, v => v.Y < 0 ? v with { Y = 0 } : v);
         var tris = mesh.AllTriangles().ToList();
-        DecoSurface veinSurface = veinGlow > 0.45f ? DecoSurface.Glow : glints ? DecoSurface.Metal : DecoSurface.Matte;
+        DecoSurface veinSurface = veinGlow > 0.45f ? DecoSurface.Glow : DecoSurface.Matte;
         var glintAt = new List<Vector3>();
         foreach (var (c, normal, reach, width) in veins)
         {
             List<Vector3> path = WrapPath(tris, c, normal, reach);
             for (int i = 0; i + 1 < path.Count; i++)
             {
-                var strip = new DecoPart { Kind = DecoPrim.Cylinder, Segments = 4, Slot = DecoSlot.Node, M = DecoGeo.Along(path[i], path[i + 1], width * 2, width * 0.9f) };
+                var strip = new DecoPart { Kind = DecoPrim.Cylinder, Segments = 4, Slot = DecoSlot.Node, M = DecoGeo.Along(path[i], path[i + 1], width * 0.8f, width * 0.35f) };
                 DecoEmit.Part(mesh, strip, (at, n, _) => veinSurface == DecoSurface.Glow ? veinCol.Scale(0.45f + 0.4f * veinGlow) : veinCol.Scale(0.9f + 0.2f * DecoHash.At(at, seed + 3)), _ => veinSurface, v => v.Y < 0 ? v with { Y = 0 } : v);
-                if ((glints || veinGlow > 0.3f) && rng.Chance(0.35f)) glintAt.Add(path[i]);
+                if (glints && rng.Chance(0.12f)) glintAt.Add(path[i]);
             }
         }
-        foreach (Vector3 g in glintAt.Take(10))
+        foreach (Vector3 g in glintAt.Take(4))
         {
-            float s = rng.Range(0.02f, 0.045f);
+            float s = rng.Range(0.012f, 0.026f);
             var spark = new DecoPart { Kind = DecoPrim.Sphere, Segments = 4, Slot = DecoSlot.Node, M = Matrix4x4.CreateScale(s * 2) * DecoGeo.Move(g) };
-            DecoEmit.Part(mesh, spark, (_, _, _) => ore.Lerp(new DecoRgb(1, 1, 1), 0.4f).Scale(0.4f + 0.5f * MathF.Max(veinGlow, 0.3f)), _ => DecoSurface.Glow);
+            DecoEmit.Part(mesh, spark, (_, _, _) => veinCol.Lerp(new DecoRgb(1, 1, 1), 0.15f), _ => DecoSurface.Metal);
         }
         foreach (DecoPart crack in hairlines)
             DecoEmit.Part(mesh, crack, (_, _, _) => veinCol.Scale(0.35f + 0.35f * veinGlow), _ => veinGlow > 0.45f ? DecoSurface.Glow : DecoSurface.Matte);
         foreach (DecoPart p in crust)
-            DecoEmit.Part(mesh, p, (at, n, _) => (p.Slot == DecoSlot.Node ? stone.Lerp(ore, 0.45f).Lerp(new DecoRgb(0.9f, 0.88f, 0.84f), 0.25f) : tinted).Scale(0.85f + 0.3f * DecoHash.At(at, seed + 5)),
+            DecoEmit.Part(mesh, p, (at, n, _) => (p.Slot == DecoSlot.Node ? stone.Lerp(ore, 0.2f).Lerp(new DecoRgb(0.9f, 0.88f, 0.84f), 0.06f) : tinted).Scale(0.85f + 0.3f * DecoHash.At(at, seed + 5)),
                 _ => p.Slot == DecoSlot.Node && glints ? DecoSurface.Metal : DecoSurface.Matte, v => v.Y < 0 ? v with { Y = 0 } : v);
         foreach (DecoPart p in plants)
-            DecoEmit.Part(mesh, p, (at, _, _) => DecoRgb.Hex("6a7040").Lerp(DecoRgb.Hex("8a7a48"), DecoHash.At(at, seed + 9)), _ => DecoSurface.Leaf);
+            DecoEmit.Part(mesh, p, (at, _, _) => growth.Value.Scale(0.8f + 0.3f * DecoHash.At(at, seed + 9)), _ => DecoSurface.Leaf);
         mesh.RecomputeBounds();
         DecoEmit.Collision(mesh, parts.Where(x => x.solid).Select(x => x.part), 8);
         if (!parts.Any(x => x.solid)) mesh.Boxes.Clear();

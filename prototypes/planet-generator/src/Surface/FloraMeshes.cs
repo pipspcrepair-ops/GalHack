@@ -28,6 +28,24 @@ static class FloraMeshes
     public static bool IsLarge(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree
         or Flora.Palm or Flora.GiantMushroom or Flora.Cactus or Flora.IceShard;
 
+    /// <summary>What can grow up through a ruin: the kinds that stand as a tree does.</summary>
+    public static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom or Flora.Cactus;
+
+    /// <summary>
+    /// The room a tree's mesh takes up at scale 1, as bands of height (m above its foot) and how far
+    /// out from the trunk each reaches: what must be air for it to fit between a ruin's walls.
+    /// </summary>
+    public static (float From, float To, float Radius)[] Reach(Flora kind) => kind switch
+    {
+        Flora.Conifer => new[] { (0f, 1.8f, 0.4f), (1.8f, 3.5f, 2.3f), (3.5f, 5.5f, 1.75f), (5.5f, 9.1f, 1.15f) },
+        Flora.Broadleaf => new[] { (0f, 3f, 0.45f), (3f, 8.6f, 3.3f) },
+        Flora.JungleTree => new[] { (0f, 8.7f, 0.5f), (8.7f, 14.4f, 5.6f) },
+        Flora.Palm => new[] { (0f, 5.8f, 0.9f), (5.8f, 8.4f, 4.4f) },
+        Flora.GiantMushroom => new[] { (0f, 5.6f, 0.65f), (5.6f, 8f, 4.5f) },
+        Flora.Cactus => new[] { (0f, 3.9f, 1f) },
+        _ => new[] { (0f, 1f, 1f) },
+    };
+
     /// <summary>Size multiplier per kind: alien crystals tower, everything else is roughly life-size.</summary>
     public static float BaseScale(Flora kind) => kind switch
     {
