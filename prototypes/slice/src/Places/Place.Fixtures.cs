@@ -484,6 +484,13 @@ public partial class Place
             if (!l.Visible || !_poolSpot.TryGetValue(l, out int i) || i < 0) continue;
             var (spot, phase) = _spots[i];
             float t = _time + phase;
+            if (spot.Style is { } style)
+            {
+                (float energy, Color colour) = PlanetSurface.Poi.PoiLitFaces.At(style, spot.Energy, _time);
+                l.LightEnergy = energy;
+                l.LightColor = colour;
+                continue;
+            }
             float wave = spot.Mode switch
             {
                 LightMode.Flicker => Mathf.Sin(t * 3.1f) + Mathf.Sin(t * 11.7f) * 0.6f > 0.2f ? 0.9f : 0.04f,

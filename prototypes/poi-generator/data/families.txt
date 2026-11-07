@@ -30,9 +30,9 @@ family vharn_outpost
   rise 6
   name Vharn Garrison
   faction vharn
-  tags military alien fort
+  tags military alien fort grand
   pitch A Vharn garrison grown into the rock: guarded, with a core you can hijack.
-  kit vharn
+  site faction_hive
   rarity uncommon
   biomes rock ash desert fungal
   territory vharn
@@ -42,34 +42,16 @@ family vharn_outpost
   states active 6 abandoned 2 infested 2 ruined 1
   variant Brood Spine
     seed 1101
-    path entrance corridor room corridor hall vault
-    branches 1-2 room tower corridor>room
-    grow corridor room
   variant Hive Ring
     seed 1102
-    path entrance hall corridor room vault
-    branches 1-2 tower room
-    grow room corridor
   variant Twin Carapace
     seed 1103
-    path entrance corridor hall corridor hall vault
-    branches 0-1 tower
-    grow corridor room
   variant Sentinel Nest
     seed 1104
-    path entrance room corridor hall vault
-    branches 2-3 tower tower room
-    grow room
   variant Mandible Gate
     seed 1105
-    path entrance hall room vault
-    branches 1-2 corridor>room tower
-    grow corridor hall
   variant Deep Cells
     seed 1106
-    path entrance corridor*2 room corridor room hall vault
-    branches 0-1 room
-    grow room corridor
 
 family freeholder_farm
   tier outpost
@@ -77,10 +59,10 @@ family freeholder_farm
   rise 5
   name Freeholder Farm
   faction freeholders
-  tags farm recovery
+  tags farm recovery grand
   is open
   pitch Survivors farming the ruins of the old world.
-  kit freeholder farm
+  site faction_homestead
   rarity common
   biomes steppe fungal desert
   territory freeholders wild
@@ -91,29 +73,14 @@ family freeholder_farm
   states active 5 abandoned 4 infested 1 ruined 2
   variant Homestead
     seed 2101
-    path entrance corridor room hall vault
-    branches 1-2 tower room
-    grow corridor room
   variant Silo Row
     seed 2102
-    path entrance hall corridor vault
-    branches 2-3 tower tower room
-    grow room
   variant Greenhouse Lot
     seed 2103
-    path entrance room corridor room hall vault
-    branches 1 tower
-    grow corridor room
   variant Long Barn
     seed 2104
-    path entrance corridor hall corridor room vault
-    branches 1-2 room tower
-    grow hall
   variant Dust Bowl
     seed 2105
-    path entrance room hall vault
-    branches 0-1 tower
-    grow corridor room
 
 family abandoned_mine
   tier site
@@ -121,10 +88,10 @@ family abandoned_mine
   rise 6
   name Abandoned Mine
   faction freeholders
-  tags mine ore
+  tags mine ore grand
   ominous 0.5
   pitch A Freeholder mine that dug into something older two levels down.
-  kit freeholder mine
+  site faction_minehead
   deep precursor
   rarity common
   biomes rock desert ash
@@ -135,24 +102,12 @@ family abandoned_mine
   states active 1 abandoned 6 infested 3 ruined 2
   variant Drift Mine
     seed 3101
-    path entrance descent corridor room corridor deep:descent deep:corridor deep:hall deep:vault
-    branches 1 room corridor>room
-    grow deep:corridor deep:room
   variant Shaft Nine
     seed 3102
-    path entrance descent corridor*2 hall deep:descent deep:room deep:vault
-    branches 0-1 room
-    grow deep:corridor deep:hall
   variant Deep Seam
     seed 3103
-    path entrance descent room corridor hall corridor deep:descent deep:corridor deep:room deep:vault
-    branches 1-2 corridor>room room
-    grow deep:room deep:corridor
   variant Glory Hole
     seed 3104
-    path entrance descent hall deep:descent deep:corridor deep:hall deep:vault
-    branches 0-1 room
-    grow deep:corridor deep:room
 
 family research_lab
   tier outpost
@@ -161,10 +116,10 @@ family research_lab
   rise 2
   name Research Station
   faction meridian
-  tags science
+  tags science grand
   ominous 0.4
   pitch A buried Meridian lab, recovering old-world tech.
-  kit meridian lab
+  site faction_lab
   rarity uncommon
   biomes ice ash rock
   territory meridian wild
@@ -173,24 +128,12 @@ family research_lab
   states active 3 abandoned 3 infested 4 ruined 1
   variant Black Site
     seed 4101
-    path entrance descent corridor room corridor hall vault
-    branches 1-2 room corridor>room
-    grow corridor room
   variant Cryo Wing
     seed 4102
-    path entrance descent hall corridor room vault
-    branches 1 room
-    grow room corridor
   variant Bio Annex
     seed 4103
-    path entrance descent corridor*2 room room vault
-    branches 1-2 corridor>room
-    grow hall
   variant Deep Archive
     seed 4104
-    path entrance descent corridor room descent corridor hall vault
-    branches 0-1 room
-    grow corridor room
 
 family crashed_freighter
   tier wreck
@@ -200,9 +143,9 @@ family crashed_freighter
   faction meridian
   core none
   owner none
-  tags wreck salvage ship
+  tags wreck salvage ship grand
   pitch A freighter came down hard. No one holds it now: strip it, or fit a core and fly it out.
-  kit meridian ship
+  site faction_hull
   rarity common
   biomes desert ash ice rock steppe fungal
   territory any
@@ -212,24 +155,12 @@ family crashed_freighter
   states active 2 abandoned 5 infested 2 ruined 3
   variant Broken Back
     seed 5101
-    path entrance corridor hall corridor room vault
-    branches 0-1 room
-    grow corridor room
   variant Nose Down
     seed 5102
-    path entrance hall room corridor vault
-    branches 1 room
-    grow corridor
   variant Scattered Hold
     seed 5103
-    path entrance corridor room hall vault
-    branches 1-2 room corridor>room
-    grow room corridor
   variant Long Hauler
     seed 5104
-    path entrance corridor*2 hall corridor room vault
-    branches 0-1 room
-    grow corridor hall
 
 family kessari_spire
   tier outpost
@@ -238,9 +169,9 @@ family kessari_spire
   rise 12
   name Kessari Relay Spire
   faction kessari
-  tags machine
+  tags machine grand
   pitch Old-world machines, woken and independent, signalling to each other.
-  kit kessari
+  site faction_relay
   rarity uncommon
   biomes rock ice desert
   territory kessari wild
@@ -249,19 +180,10 @@ family kessari_spire
   states active 5 abandoned 2 infested 2 ruined 1
   variant Lattice Spire
     seed 6101
-    path entrance corridor hall vault
-    branches 1-2 tower room
-    grow room corridor
   variant Twin Relay
     seed 6102
-    path entrance hall corridor room vault
-    branches 2 tower tower
-    grow corridor room
   variant Array Village
     seed 6103
-    path entrance room corridor hall room vault
-    branches 1-3 tower room corridor>room
-    grow room
 
 family precursor_vault
   tier site

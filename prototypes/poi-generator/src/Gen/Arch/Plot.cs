@@ -306,7 +306,8 @@ public sealed class Plot
                 Stuff2 s = end ? gable : roof;
                 Put(u, y, v, left == right ? Cube(s, Role.Roof) : new Block(BlockType.Ramp, s.M, s.C, Role.Roof, left < right ? up : down));
                 // The deck under the slope holds it together.
-                if (n > 0) Put(u, y - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+                // At the gable ends the course under the slope wears the gable's own paint, so the verge reads as one line.
+                if (n > 0) Put(u, y - 1, v, Cube(end ? s : s.Scale(0.8f), Role.Roof));
                 // Gable walls fill up to it, two cells thick.
                 bool inside = a >= 2 * (ridgeAlongI ? k0 : i0) && a <= 2 * (ridgeAlongI ? k1 : i1) + 1;
                 if (inside && (b <= b0 + 1 || b >= b1 - 1))
@@ -534,7 +535,8 @@ public sealed class Plot
                 foreach (var (d, du, dv) in new[] { (Dir.East, 1, 0), (Dir.West, -1, 0), (Dir.South, 0, 1), (Dir.North, 0, -1) })
                     if (Height(u + du, v + dv) > best) { best = Height(u + du, v + dv); up = d; }
                 Put(u, low + h, v, up is { } facing ? new Block(BlockType.Ramp, s.M, s.C, Role.Roof, facing) : Cube(s, Role.Roof));
-                if (h > 0) Put(u, low + h - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+                // Solid under the slope: a steep cone rises more than a cell a cell, and nothing shows between columns.
+                for (int y = low; y < low + h; y++) Put(u, y, v, Cube(s.Scale(0.8f), Role.Roof));
             }
     }
 

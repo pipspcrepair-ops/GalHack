@@ -290,10 +290,18 @@ public sealed class GroundPalette
     /// a ragged edge, never a hard rectangle. A century of weather (<paramref name="wear"/>) cracks it
     /// and drifts the land's own sand, soil and weeds over it in patches.
     /// </summary>
-    public Color Made(Color land, StampSurface surface, float weight, float wear, double x, double z)
+    public Color Made(Color land, StampSurface surface, float weight, float wear, double x, double z, float spacing = 1f)
     {
         if (weight <= 0f) return land;
-        float edge = ValueNoise(x * 0.23, z * 0.23, 11) - 0.5f;
+        // Detail finer than the mesh's own vertex spacing can't be drawn there, only aliased into a blotchy
+        // mosaic: far off, each pattern gives way to its average tone, and joints and cracks to nothing.
+        float Noise(double fx, double fz, double freq, int seed)
+        {
+            float fine = Math.Clamp((float)(freq * spacing - 0.2) / 0.25f, 0f, 1f);
+            return fine >= 1f ? 0.5f : ValueNoise(fx * freq, fz * freq, seed) * (1f - fine) + 0.5f * fine;
+        }
+        bool sharp = spacing <= 1.5f;
+        float edge = Noise(x, z, 0.23, 11) - 0.5f;
         float w = SmoothStep(0.5f + edge * 0.4f, 0.92f, weight);
         if (w <= 0f) return land;
         var landRgb = new Rgb(land.R, land.G, land.B);
@@ -303,36 +311,36 @@ public sealed class GroundPalette
         {
             case StampSurface.Natural:
                 // The land's own ground, trodden and patchy: soil broken by stone and bare earth.
-                made = Rgb.Lerp(landRgb, Rgb.Lerp(Rock, Seabed, 0.3f), 0.2f + 0.35f * ValueNoise(x * 0.11, z * 0.11, 23));
+                made = Rgb.Lerp(landRgb, Rgb.Lerp(Rock, Seabed, 0.3f), 0.2f + 0.35f * Noise(x, z, 0.11, 23));
                 hard = 0.4f;
                 break;
             case StampSurface.Tarmac:
-                made = new Rgb(0.21f, 0.21f, 0.22f) * (0.88f + 0.24f * ValueNoise(x * 0.6, z * 0.6, 5));
+                made = new Rgb(0.21f, 0.21f, 0.22f) * (0.88f + 0.24f * Noise(x, z, 0.6, 5));
                 break;
             case StampSurface.Gravel:
-                made = new Rgb(0.5f, 0.47f, 0.42f) * (0.85f + 0.3f * ValueNoise(x * 1.3, z * 1.3, 7));
+                made = new Rgb(0.5f, 0.47f, 0.42f) * (0.85f + 0.3f * Noise(x, z, 1.3, 7));
                 break;
             case StampSurface.Dirt:
-                made = Rgb.Lerp(new Rgb(0.43f, 0.34f, 0.25f), landRgb, 0.25f) * (0.85f + 0.3f * ValueNoise(x * 0.4, z * 0.4, 9));
+                made = Rgb.Lerp(new Rgb(0.43f, 0.34f, 0.25f), landRgb, 0.25f) * (0.85f + 0.3f * Noise(x, z, 0.4, 9));
                 hard = 0.7f;
                 break;
             default:
             {
-                made = new Rgb(0.56f, 0.55f, 0.52f) * (0.9f + 0.18f * ValueNoise(x * 0.5, z * 0.5, 3));
-                // Slab joints every six metres.
+                made = new Rgb(0.56f, 0.55f, 0.52f) * (0.9f + 0.18f * Noise(x, z, 0.5, 3));
+                // Slab joints every six metres, where the mesh is fine enough to draw a line.
                 double jx = x / 6 - Math.Floor(x / 6), jz = z / 6 - Math.Floor(z / 6);
-                if (jx < 0.04 || jz < 0.04) made *= 0.8f;
+                if (sharp && (jx < 0.04 || jz < 0.04)) made *= 0.8f;
                 break;
             }
         }
-        if (surface is StampSurface.Concrete or StampSurface.Tarmac)
+        if (sharp && surface is StampSurface.Concrete or StampSurface.Tarmac)
         {
             // Cracks: thin dark lines along a ridge of noise, more of them the older it is.
             float ridge = MathF.Abs(ValueNoise(x * 0.19, z * 0.19, 17) - 0.5f);
             if (ridge < 0.015f + 0.035f * wear) made *= 0.55f;
         }
         // The weather takes it back in drifts: the land's own ground over it in patches.
-        float drift = ValueNoise(x * 0.07, z * 0.07, 29);
+        float drift = Noise(x, z, 0.07, 29);
         float over = SmoothStep(0.8f - 0.5f * wear, 1.05f, drift) * (0.3f + 0.7f * wear);
         made = Rgb.Lerp(made, landRgb, over);
         Rgb c = Rgb.Lerp(landRgb, made, w);

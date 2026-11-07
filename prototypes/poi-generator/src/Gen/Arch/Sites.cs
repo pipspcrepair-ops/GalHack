@@ -31,7 +31,7 @@ public static class Sites
     public static void Compose(PoiLibrary lib, Canvas c, SiteDef site, FamilyDef fam, Rarity rarity, Rng rng, LayoutHints? hints = null)
     {
         if (site.Parts.Count > 0 && site.Parts[0].Kind == "plain") { Homes.Compose(c, site, fam, rng, hints); return; }
-        if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, site, rng, hints); return; }
+        if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, lib, site, rng, hints); return; }
         var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site };
         c.X.InSpace = site.Space;
         // The approach: a patch of open ground at the site's way in.

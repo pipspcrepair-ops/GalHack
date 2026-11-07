@@ -763,3 +763,40 @@ site bunker_deep
   style concrete
   entrance 0 0 north
   part grand 0 0 what bunker tech mid
+
+# Faction places on the 2 m grid, from each faction's character: Factions.cs.
+site faction_lab
+  name Research Station
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what lab tech mid
+
+site faction_hull
+  name Crashed Freighter
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what hull tech mid
+
+site faction_hive
+  name Vharn Garrison
+  style vharn
+  entrance 0 0 north
+  part grand 0 0 what hive tech mid
+
+site faction_relay
+  name Kessari Relay Spire
+  style kessari
+  entrance 0 0 north
+  part grand 0 0 what relay tech mid
+
+site faction_homestead
+  name Freeholder Farm
+  style freeholder
+  entrance 0 0 north
+  part grand 0 0 what homestead tech mid
+
+site faction_minehead
+  name Mine
+  style freeholder
+  entrance 0 0 north
+  part grand 0 0 what minehead tech mid

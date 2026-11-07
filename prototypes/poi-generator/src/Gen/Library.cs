@@ -51,6 +51,8 @@ public sealed class PoiLibrary
     /// <summary>Places in space and how a system's space is filled (data and siting only for now).</summary>
     public List<SpaceSiteDef> SpaceSites = new();
     public List<OrbitTheme> OrbitThemes = new();
+    /// <summary>Faction sigils as painted cells (data/sigils.txt), by faction.</summary>
+    public Dictionary<string, SigilDef> Sigils = new();
 
     public FamilyDef Family(string id) => Families.First(f => f.Id == id);
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
@@ -74,6 +76,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
             else if (name.EndsWith("world-layers.txt", StringComparison.Ordinal)) lib.Layers = LayerParser.Parse(text, name);
+            else if (name.EndsWith("sigils.txt", StringComparison.Ordinal)) lib.Sigils = SigilDef.Parse(text, name);
             else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
         }
         lib.Check();
