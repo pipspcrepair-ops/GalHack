@@ -606,7 +606,7 @@ public static class Sites
                         if (wall || slab)
                         {
                             bool window = wall && y == y0 + 2 && (dx == 0 || dz == 0) && d >= decks - 2;
-                            Rgb col = (d % 3 == 1 && wall) ? band : hull.Scale(0.92f + 0.08f * ((dx + dz + y) & 1));
+                            Rgb col = (d % 3 == 1 && wall) ? band : hull.Scale(0.92f + 0.08f * (d & 1));
                             x.C.Set(c, window ? new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window) : new Block(BlockType.Cube, Material.Alloy, col, slab ? Role.Floor : Role.Wall));
                         }
                         else if (y > y0 && y < y0 + 4)

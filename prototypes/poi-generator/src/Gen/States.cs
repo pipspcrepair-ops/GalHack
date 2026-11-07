@@ -434,7 +434,7 @@ public static partial class StateTransforms
                 ref Block s = ref g.At(p);
                 if (s.IsAir || s.Role is not (Role.Wall or Role.Roof or Role.Floor)) continue;
                 float away = MathF.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Y - c.Y) * (p.Y - c.Y) + (p.Z - c.Z) * (p.Z - c.Z));
-                s.Color = s.Color.Lerp(Soot, Math.Clamp(0.75f - away / (r + 1.2f) * 0.5f, 0f, 1f)); // a burn fades outward, it isn't speckled
+                s.Color = s.Color.Lerp(Soot, 0.5f * Math.Clamp((r + 1.2f - away) / 2.4f, 0f, 1f)); // a burn is a ring round the hole that fades outward, not speckle
             }
         }
     }
