@@ -9,7 +9,7 @@
     {
       "id": "precursor", "name": "Precursor alloy",
       "hp": 2750, "armor": 60, "resist": { "kinetic": 0.4, "explosive": 0.4, "energy": 0.4 },
-      "mass": 5.0, "cpu": 110, "color": "8a7350", "metal": 3, "damageLook": "alien"
+      "mass": 5.0, "color": "8a7350", "metal": 3, "damageLook": "alien"
     }
   ]
 }

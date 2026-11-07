@@ -153,7 +153,7 @@
     },
     {
       "id": "ladder", "name": "Ladder", "function": "ladder",
-      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 20, "color": "f4a100",
+      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 0, "color": "f4a100",
       "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
       "cost": { "iron": 3 }, "smallCost": { "iron": 1 },
       "parts": [

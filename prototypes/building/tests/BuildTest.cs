@@ -198,9 +198,10 @@ public partial class BuildTest : Node
         s.CargoSu = 2000;
         Check(Near(StructureStats.Compute(s).Mass, mass + 2), "cargo adds to the mass (2000 SU = 2 t)");
         s.CargoSu = 0;
-        double cpu = 0 + 10 * 20 + 2 * 45 + 2500 + 4000 + 800;
+        double cpu = 0 + 2500 + 4000 + 800; // the devices; armour costs none
         Check(Near(st.CpuUsed, cpu) && st.Tier == 1 && st.CpuLimit == 200_000 && st.Efficiency == 1,
             $"CPU is summed ({st.CpuUsed}) and the core alone gives tier 1 (200,000)");
+        Check(_cat.Types.Where(t => t.IsArmor).All(t => t.Cpu == 0) && _ladder.Cpu == 0, "plain armour and structural blocks cost no CPU: steel, hardened, combat, glass, concrete, a ladder");
         Check(Near(st.Thrust[(int)Dir.NegZ], _thruster.Thrust) && Near(st.ThrustToWeightForward, _thruster.Thrust / (mass * 9.81)),
             $"thrust-to-mass is right ({st.ThrustToWeightForward:0.00} g forward)");
 
