@@ -398,7 +398,7 @@ public static partial class StateTransforms
         foreach (Int3 p in g.Cells())
         {
             ref Block b = ref g.At(p);
-            if (b.Role is Role.Roof or Role.Wall && g.Get(p + Int3.Up).IsAir && rng.Chance(0.3f))
+            if (b.Role is Role.Roof or Role.Wall && g.Get(p + Int3.Up).IsAir && Hash.Cell(new Int3(p.X >> 2, p.Y >> 2, p.Z >> 2), 103 + (uint)inst.SpawnSeed % 7) % 100 < 30)
                 b.Color = b.Color.Lerp(Moss, 0.55f);
         }
     }
@@ -432,7 +432,9 @@ public static partial class StateTransforms
             {
                 if (!g.InBounds(p)) continue;
                 ref Block s = ref g.At(p);
-                if (!s.IsAir && s.Role is Role.Wall or Role.Roof or Role.Floor && rng.Chance(0.5f)) s.Color = s.Color.Lerp(Soot, 0.5f);
+                if (s.IsAir || s.Role is not (Role.Wall or Role.Roof or Role.Floor)) continue;
+                float away = MathF.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Y - c.Y) * (p.Y - c.Y) + (p.Z - c.Z) * (p.Z - c.Z));
+                s.Color = s.Color.Lerp(Soot, Math.Clamp(0.75f - away / (r + 1.2f) * 0.5f, 0f, 1f)); // a burn fades outward, it isn't speckled
             }
         }
     }

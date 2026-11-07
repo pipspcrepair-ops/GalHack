@@ -91,6 +91,7 @@ public partial class Place : Node3D
         RockMin = new Int3(min.X + 1, 0, min.Z + 1),
         RockMax = new Int3(min.X, 0, min.Z),
         GroundShow = MeshOptions.AllGround,
+        Mottle = 0.3f,
         RockBottom = min.Y,
     };
 

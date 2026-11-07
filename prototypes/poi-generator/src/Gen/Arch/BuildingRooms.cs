@@ -581,7 +581,7 @@ public sealed partial class Building
                     if (inRoom.Contains((c.x + d.dx, c.z + d.dz))) continue;
                     Int3 sc = L(c.x + d.dx, y + 2, c.z + d.dz);
                     var sb = C.Get(sc);
-                    if (sb.Type == BlockType.Cube && sb.Role == Role.Wall) { C.Set(sc, S.Light.Make(sc)); done = true; break; }
+                    if (sb.Type == BlockType.Cube && sb.Role == Role.Wall && C.Occ.Contains(L(c.x + 2 * d.dx, y + 2, c.z + 2 * d.dz))) { C.Set(sc, S.Light.Make(sc)); done = true; break; }
                 }
                 if (done) break;
             }

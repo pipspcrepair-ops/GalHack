@@ -209,7 +209,7 @@ public static class Sites
                     if (hollow && d < r - 1f && y > y0 && y < y0 + h - 1) continue;
                     Int3 c = new(cx + dx, y, cz + dz);
                     var bb = b;
-                    bb.Color = b.Color.Scale(0.92f + 0.12f * ((dx + dz + y) & 1));
+                    bb.Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)); // courses round the tank
                     x.C.Set(c, bb);
                 }
     }
@@ -278,7 +278,7 @@ public static class Sites
                         Rgb col = y == 1 && Math.Abs(j) == 2 && i % 3 == 1 ? new Rgb(0x30, 0x40, 0x48) : (y == 2 ? paint : hull);
                         if (nose && y >= 1) col = new Rgb(0x30, 0x40, 0x48);
                         Material mat = col == new Rgb(0x30, 0x40, 0x48) && y >= 1 ? Material.Glass : Material.Alloy;
-                        var b = new Block(mat == Material.Glass ? BlockType.Pane : BlockType.Cube, mat, col.Scale(0.85f + 0.15f * ((i * 7 + y) % 3) / 2f), Role.Wall);
+                        var b = new Block(mat == Material.Glass ? BlockType.Pane : BlockType.Cube, mat, col, Role.Wall);
                         if (mat == Material.Glass) b = new Block(BlockType.Cube, Material.Alloy, col, Role.Window);
                         x.C.Set(c, b);
                     }
@@ -336,7 +336,7 @@ public static class Sites
                                 if (open && i == 0 && j is 1 or 2 && y < 2) shell = false;
                                 if (!shell && layer == 0 && y < 2) { if (open) inside.Add(cell); else x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
                                 if (!shell) { x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
-                                x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.85f + 0.15f * ((i + y) % 2)), Role.Wall));
+                                x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.85f + 0.15f * (i % 2)), Role.Wall)); // corrugated
                             }
                     if (open && inside.Count > 0)
                     {
@@ -1044,7 +1044,7 @@ public static class Sites
         for (int y = 0; y < 3; y++)
             for (int dz = 0; dz < 6; dz++)
                 for (int dx = 0; dx < 6; dx++)
-                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, concrete.Scale(0.9f + 0.05f * ((dx + dz + y) % 3)), Role.Wall));
+                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, concrete.Scale(0.9f + 0.05f * (y / 3 % 3)), Role.Wall));
         for (int k = 0; k < len; k++)
         {
             int bx = p.X + 3 + k, by = 3 + k;
@@ -1088,7 +1088,10 @@ public static class Sites
                     for (int y = 0; y < 3; y++)
                     {
                         Int3 c = W(i, y, j);
-                        if (edge && !door) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, col.Scale(0.85f + 0.1f * ((i + y + j) % 2)), Role.Wall));
+                        // One sheet to a wall, a plinth of darker stuff, and a window each side of the door.
+                        bool sheet = Hash.Cell(new Int3(k + p.X, j == 0 || j == d - 1 ? j : -1, i == 0 || i == w - 1 ? i : -1), 163) % 3 == 0;
+                        if (y == 1 && j == 0 && !door && (i == 1 || i == w - 2)) x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x7a, 0x70, 0x60), Role.Window));
+                        else if (edge && !door) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, y == 0 ? col.Scale(0.62f) : col.Scale(sheet ? 1.08f : 0.9f), Role.Wall));
                         else { x.C.Clear(c); if (!edge) inside.Add(c); }
                     }
                     x.C.Set(W(i, 3, j), new Block(BlockType.Cube, Material.Rust, new Rgb(0x6a, 0x4a, 0x34), Role.Roof));
@@ -1444,7 +1447,7 @@ public static class Sites
                 {
                     bool shell = Math.Abs(u) == nose || v == 2 || v == 5 || a == 0 || a == len - 1;
                     if (!shell) continue;
-                    x.C.Set(At(a, u, v), new Block(BlockType.Cube, Material.Alloy, (v == 3 && a % 4 == 1 ? dark : hull).Scale(0.92f + 0.08f * ((a + v) & 1)), Role.Wall));
+                    x.C.Set(At(a, u, v), new Block(BlockType.Cube, Material.Alloy, (v == 3 && a % 4 == 1 ? dark : hull).Scale(0.92f + 0.08f * (v & 1)), Role.Wall));
                 }
         }
         // Landing legs at the corners, standing on the field.

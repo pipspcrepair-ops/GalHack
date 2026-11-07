@@ -64,6 +64,7 @@ public partial class PoiLayer : Node3D
             RockMin = new Int3(1, 0, 1),
             RockMax = new Int3(0, 0, 0),
             RockBottom = g.Min.Y,
+            Mottle = 0.3f,
             GroundShow = MeshOptions.AllGround,
         };
         return Mesher.Build(g, site.Instance.Layout.Occupied, options);

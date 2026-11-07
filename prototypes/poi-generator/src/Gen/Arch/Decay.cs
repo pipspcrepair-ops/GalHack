@@ -121,11 +121,24 @@ public static class Decay
                 int top = windows.Max(w => w.Y);
                 var high = windows.Where(w => w.Y >= top - 4).ToList();
                 Int3 lit = high[rng.Range(0, high.Count)];
-                var wb = inst.Blocks.Get(lit);
-                wb.Material = Material.Lumen;
-                wb.Color = new Rgb(0xff, 0xc8, 0x78);
-                inst.Blocks.Set(lit, wb);
-                inst.Lights.Add(new LightSpot { Cell = lit, Color = wb.Color, Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Storey = (lit.Y + 1) / Building.Pitch });
+                // The whole window, pane by pane: one lit tile reads as a fault, not a window.
+                var window = new HashSet<Int3> { lit };
+                var next = new Queue<Int3>(window);
+                while (next.Count > 0 && window.Count < 6)
+                {
+                    Int3 pane = next.Dequeue();
+                    foreach (Dir d in Dirs.All)
+                        if (windows.Contains(pane + d.Vec()) && window.Add(pane + d.Vec())) next.Enqueue(pane + d.Vec());
+                }
+                Rgb glow = new(0xff, 0xc8, 0x78);
+                foreach (Int3 c in window)
+                {
+                    var wb = inst.Blocks.Get(c);
+                    wb.Material = Material.Lumen;
+                    wb.Color = glow;
+                    inst.Blocks.Set(c, wb);
+                }
+                inst.Lights.Add(new LightSpot { Cell = lit, Color = glow, Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Storey = (lit.Y + 1) / Building.Pitch });
             }
         }
         // No window to leave lit (a mine mouth, a hatch): a work lamp still burns over the way in.

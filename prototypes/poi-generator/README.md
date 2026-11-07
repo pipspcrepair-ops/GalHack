@@ -137,7 +137,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
 ## Authoring a kit module as data
 
-A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; several colours make a patchwork, picked per cell. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
+A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives the three colours `Facade` adds outside: the course at the ground, the top of the walls and the frame of a door to the outside. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
 
 ```
 kit vharn
