@@ -298,6 +298,7 @@ public static class PoiFactory
         inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        PlaceLights.Tune(inst);
         return inst;
     }
 
