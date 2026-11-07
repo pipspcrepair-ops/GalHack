@@ -190,14 +190,84 @@ public partial class Staging
         sky.Snap(_args.TryGetValue("kind", out string kind) ? Enum.Parse<WeatherKind>(kind) : WeatherKind.Thunderstorm);
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
-        Vector3 hill = Hilltop(_game.Survivor.WorldFeet, 300f);
+        bool ridge = Num("ridge", 0) != 0, slope = Num("slope", 0) != 0;
+        Vector3 hill = ridge ? _game.Survivor.WorldFeet : Num("clear", 0) != 0 ? Clearing(_game.Survivor.WorldFeet) : Hilltop(_game.Survivor.WorldFeet, 300f);
         _game.Survivor.PlaceOutside(hill.ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         sky.ClearCells();
         float ang = (float)Num("ang", 0) * Mathf.Pi / 180f;
         Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized().Rotated(Vector3.Up, ang);
-        var cell = sky.AddCell(hill + toward * (float)Num("off", 1500), 1f);
-        Vector3 eye = hill + Vector3.Up * 16f;
+        float off = (float)Num("off", 1500);
+        float eyeUp = ridge ? 1.7f : Num("clear", 0) != 0 ? 2f : (float)Num("up", 16);
+        if (ridge)
+        {
+            // Stand 350 m short of the highest hill about, on its lowest side, and put the cell a kilometre behind it.
+            Vector3 top = Hilltop(_game.Survivor.WorldFeet, 900f);
+            float low = -1f;
+            for (int k = 0; k < 24; k++)
+            {
+                Vector3 dir = Vector3.Right.Rotated(Vector3.Up, k * Mathf.Tau / 24f);
+                Vector3 foot = _game.Zone.GroundAt(top.X - dir.X * 350f, top.Z - dir.Z * 350f);
+                if (foot.Y < 3f || _game.Zone.Water.LiquidAt(foot.X, foot.Z, out _) || _game.Zone.Streamer.SolidsNear(foot, 12f).Any()) continue;
+                float rise = top.Y - foot.Y;
+                if (rise > low) { low = rise; toward = dir; }
+            }
+            hill = _game.Zone.GroundAt(top.X - toward.X * 350f, top.Z - toward.Z * 350f);
+            _game.Survivor.PlaceOutside(hill.ToNumerics());
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            hill = _game.Zone.GroundAt(hill.X, hill.Z);
+            off = 1350f;
+            GD.Print($"staging: hill {low:F0} m high between camera and cell");
+        }
+        if (slope)
+        {
+            // Ridge: the direction with the tallest rise to a ridge 200 m or more out, the cell a kilometre past it.
+            // Slope: the direction whose cell ground is steepest.
+            float best = -1f;
+            for (int k = 0; k < 24; k++)
+            {
+                Vector3 dir = Vector3.Right.Rotated(Vector3.Up, k * Mathf.Tau / 24f);
+                float score;
+                float at = off;
+                if (ridge)
+                {
+                    float rise = 0f, where = 300f;
+                    for (float d = 200f; d <= 800f; d += 25f)
+                    {
+                        float r = _game.Zone.GroundAt(hill.X + dir.X * d, hill.Z + dir.Z * d).Y - hill.Y - 1.7f;
+                        if (r > rise) { rise = r; where = d; }
+                    }
+                    score = rise; at = where + 1000f;
+                }
+                else
+                {
+                    Vector3 c = hill + dir * off;
+                    float s = 0f;
+                    for (float d = -150f; d <= 150f; d += 50f) s += MathF.Abs(_game.Zone.GroundAt(c.X + dir.X * d, c.Z + dir.Z * d).Y - _game.Zone.GroundAt(c.X, c.Z).Y);
+                    score = s;
+                }
+                if (score > best) { best = score; toward = dir; off = at; }
+            }
+            GD.Print($"staging: {(ridge ? "ridge rise" : "slope relief")} {best:F0} m, cell {off:F0} m out");
+        }
+        var cell = sky.AddCell(_game.Zone.GroundAt(hill.X + toward.X * off, hill.Z + toward.Z * off), 1f);
+        Vector3 eye = hill + Vector3.Up * eyeUp;
+        if (Num("mound", 0) != 0)
+        {
+            // A smooth green hill (a flattened ball) in front of the cell, or under it so the shaft stands on a slope:
+            // the same depth test as terrain, with a known shape. Never in a shipped scene.
+            bool under = Num("mound", 0) == 2;
+            float dist = under ? off : 450f, wide = under ? 260f : 380f, tall = under ? 110f : 95f;
+            Vector3 c = _game.Zone.GroundAt(hill.X + toward.X * dist, hill.Z + toward.Z * dist);
+            if (under) c = new Vector3(c.X, c.Y - 20f, c.Z);
+            var ball = new MeshInstance3D
+            {
+                Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 },
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.32f, 0.5f, 0.2f), Roughness = 1f },
+                GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(wide, tall, wide)), c),
+            };
+            _game.AddChild(ball);
+        }
         _game.FixedCamera = new Transform3D(Basis.LookingAt(toward + Vector3.Up * (float)Num("pitch", 0.12), Vector3.Up), eye);
         foreach (int x in _drive.Wait(90)) yield return x;
         if (Num("bolt", 0) != 0)

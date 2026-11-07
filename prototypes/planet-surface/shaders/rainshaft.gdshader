@@ -14,6 +14,8 @@ uniform float bound = 600.0;        // radius of the clipping cylinder
 uniform vec2 lean = vec2(0.0);      // sideways offset of the top, metres
 uniform vec2 drift = vec2(0.0);     // metres per second the pattern slides
 uniform float seed = 0.0;
+uniform sampler2D scene_depth : hint_depth_texture, repeat_disable, filter_nearest;
+uniform float soft_metres = 12.0;   // how far in front of a surface the veil thins out
 
 varying vec3 wpos;
 
@@ -77,6 +79,14 @@ void fragment() {
 	} else if (C > 0.0) {
 		discard;
 	}
+	// The veil only fills the space in front of the first surface seen through this pixel.
+	float scene_t = 1e6;
+	float raw = texture(scene_depth, SCREEN_UV).x;
+	if (raw > 1e-7) {
+		vec4 v = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, raw, 1.0);
+		scene_t = length(v.xyz / v.w);
+	}
+	t1 = min(t1, scene_t);
 	if (t1 <= t0) discard;
 	t1 = min(t1, t0 + 4000.0);
 	const int N = 14;
@@ -85,7 +95,7 @@ void fragment() {
 	float sum = 0.0;
 	for (int i = 0; i < N; i++) {
 		float t = t0 + (float(i) + jitter) * dt;
-		sum += density(cam + dir * t) * dt;
+		sum += density(cam + dir * t) * dt * smoothstep(0.0, soft_metres, scene_t - t);
 	}
 	float optical = sum / (reach * 1.6);
 	ALBEDO = tint;
