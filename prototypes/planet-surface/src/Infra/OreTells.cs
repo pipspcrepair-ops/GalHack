@@ -99,7 +99,7 @@ public partial class InfraLayer
             Deposit d = Deposit;
             if (b.World.Felled.Contains(TellId(d))) return;
             Rgb ore = DepositLook.Color(d.Kind), rock = b.World.Palette.Rock;
-            bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Titanium or DepositKind.Cobalt or DepositKind.Crystal or DepositKind.Silicon;
+            bool glints = d.Kind is DepositKind.Iron or DepositKind.Copper or DepositKind.Magnesium or DepositKind.Cobalt or DepositKind.Neodymium or DepositKind.Gold or DepositKind.Gravium or DepositKind.Crystal or DepositKind.Silicon;
             ulong seed = Hash.Of((ulong)(long)(d.X * 10), (long)(d.Y * 10), (long)d.Kind);
             float radius = GTerrain.PlanetTerrainSource.OreRadius(d) * (TellOf(d) == DecoTellKind.Fracture ? 0.7f : 1f);
             DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B));

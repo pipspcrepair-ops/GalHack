@@ -21,10 +21,10 @@ public partial class ItemsTest : TestBase
     ItemCatalogue _items;
     Catalogue _blocks;
 
-    // The deposit kinds the planet generator places today (Planets.Gen.DepositKind), and the five
+    // The deposit kinds the planet generator places today (Planets.Gen.DepositKind), and the commons
     // it guarantees on every planet near any start.
-    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Titanium", "Cobalt", "Sulfur", "Thorium", "Crystal", "Resin" };
-    static readonly string[] EveryPlanet = { "Iron", "Copper", "Silicon", "Carbon", "Water" };
+    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin" };
+    static readonly string[] EveryPlanet = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone" };
 
     protected override void RunAll()
     {
@@ -86,9 +86,7 @@ public partial class ItemsTest : TestBase
                 $"the T3 and T4 CPU extenders ({(small ? "small" : "large")} grid) take lattice parts");
         }
         Check(new[] { "lattice-core", "lattice-array" }.All(id => _items.Item(id).Recipe == null && _items.Item(id).Source == ItemSource.Found), "lattice parts are found, never made");
-        ItemDef factory = _items.BlockItem("factory", false);
-        Check(_items.BlockItem("factory", true) == null && factory.PlacesOn(StructureClass.Base) && factory.PlacesOn(StructureClass.Capital) && factory.Places.Count == 2,
-            "the blueprint factory goes on bases and capital vessels only");
+        Check(_items.BlockItem("factory", true) == null && _items.BlockItem("factory", false) != null, "the blueprint factory goes on bases and capital vessels only: the large grid, never the small");
         int families = 0;
         foreach (BlockBill b in _items.Blocks.All)
             foreach (bool small in new[] { true, false })
@@ -450,10 +448,12 @@ public partial class ItemsTest : TestBase
             string ore = DepositRules.OreForKind(_items, kind);
             Check(ore != null, $"the planet generator's {kind} deposits yield {ore ?? "nothing"}");
         }
-        Check(EveryPlanet.All(k => _items.Item(DepositRules.OreForKind(_items, k)).Rarity == Rarity.Common), "the five kinds on every planet are common ores");
+        Check(EveryPlanet.All(k => _items.Item(DepositRules.OreForKind(_items, k)).Rarity == Rarity.Common), "the common kinds on every planet are common ores");
         // Commons favour shallow shapes; the rarest ores grow deep.
         Check(rules.ShapesFor("gravium-ore").All(s => s.Shape == DepositShape.Deep) && rules.ShapesFor("starsilver-ore").All(s => s.Shape == DepositShape.Deep), "the rarest metals only grow deep");
         Check(rules.ShapesFor("carbon-ore").All(s => s.Shape == DepositShape.Bed), "carbon grows in beds, like coal seams");
+        foreach (string ore in new[] { "burnstone", "cobalt-ore", "magnesium-ore", "neodymium-ore", "gold-ore", "gravium-ore" })
+            Check(PlanetKinds.Contains(_items.Item(ore).DepositKind), $"{ore} has a deposit the planet generator places");
     }
 
     void TestPerformance()

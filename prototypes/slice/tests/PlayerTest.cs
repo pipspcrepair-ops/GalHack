@@ -202,6 +202,15 @@ public partial class PlayerTest : Node
         Check(_game.Visor.Deposits.Near(_game.Zone, _game.Survivor.WorldFeet).All(d => !DepositFinder.Depleted(_game.Zone, KindOf(d.kind), d.at.X, d.at.Y, d.at.Z)),
             "a deposit dug out drops off the compass: every label shown still holds ore");
 
+        // The uncommon ores are real in the ground: the scanner knows them, each digs out as its own item.
+        Check(DepositFinder.Kinds.All(k => _game.Tool.OreOf(k) != null), "every ore the planet guarantees is a raw item the tool can give");
+        foreach (DepositKind scarce in new[] { DepositKind.Burnstone, DepositKind.Neodymium })
+        {
+            string ore = _game.Tool.OreOf(scarce).Id;
+            foreach (int x in _play.Gather(scarce, 3, 1800f)) yield return x;
+            Check(_game.Pack[ore] >= 3, $"walked to the nearest {scarce} and dug it out: {_game.Pack[ore]} {ore}");
+        }
+
         int plants = _game.Tool.PlantsCut, biomass = _game.Pack["biomass"];
         foreach (int x in _play.CutPlant()) yield return x;
         Check(_game.Tool.PlantsCut > plants && _game.Pack["biomass"] > biomass, $"cutting a plant: +{_game.Pack["biomass"] - biomass} biomass");

@@ -40,19 +40,19 @@
       "mass": 2.4, "volume": 1, "where": "Any rock, anywhere", "uses": "Ceramic, concrete" },
     { "id": "biomass", "name": "Biomass", "short": "BIOMASS", "category": "raw", "rarity": "common", "source": "harvest", "deposit": "Resin",
       "mass": 0.5, "volume": 1, "where": "Vegetated worlds", "uses": "Biofuel, medkits" },
-    { "id": "burnstone", "name": "Burnstone", "short": "BURNSTN", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Sulfur",
+    { "id": "burnstone", "name": "Burnstone", "short": "BURNSTN", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Burnstone",
       "mass": 1.8, "volume": 1, "where": "Every planet; rich in asteroid fields", "uses": "Fuel packs" },
 
     // ---- Raw: uncommon (small deposits everywhere, rich on moons, asteroids, harsh worlds) ---
     { "id": "cobalt-ore", "name": "Cobalt ore", "short": "COBALT", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Cobalt",
       "mass": 3.4, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Machine frames, constructors" },
-    { "id": "magnesium-ore", "name": "Magnesium ore", "short": "MAGNES", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Titanium",
+    { "id": "magnesium-ore", "name": "Magnesium ore", "short": "MAGNES", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Magnesium",
       "mass": 2.0, "volume": 1, "where": "Small deposits everywhere; rich on arid worlds and asteroids", "uses": "Explosive charges: rockets, shells" },
-    { "id": "neodymium-ore", "name": "Neodymium ore", "short": "NEODYM", "category": "raw", "rarity": "uncommon", "source": "mine",
+    { "id": "neodymium-ore", "name": "Neodymium ore", "short": "NEODYM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Neodymium",
       "mass": 3.6, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Magnets for large thrusters and gyros" },
-    { "id": "gold-ore", "name": "Gold ore", "short": "GOLD", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Thorium",
+    { "id": "gold-ore", "name": "Gold ore", "short": "GOLD", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gold",
       "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
-    { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine",
+    { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gravium",
       "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
