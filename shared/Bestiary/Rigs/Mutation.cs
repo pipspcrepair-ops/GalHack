@@ -267,7 +267,8 @@ public static class Mutation
     static float SpareLimb(Piece body, Paint k, Rng rng, float side, Species s)
     {
         float W = MathF.Max(0.08f, s.Body.Width), L = MathF.Max(0.2f, s.Body.Size);
-        var root = new Vector3(side * W * 0.42f, -s.Body.Height * 0.05f, rng.Range(-0.15f, 0.1f) * L);
+        // On something upright the flank is at its ribs.
+        var root = s.Figure != null ? new Vector3(side * W * 0.46f, s.Body.Height * 0.6f, 0f) : new Vector3(side * W * 0.42f, -s.Body.Height * 0.05f, rng.Range(-0.15f, 0.1f) * L);
         float len = MathF.Min(L * 0.3f, MathF.Max(0.15f, s.Body.LegLength * 0.45f));
         float r = MathF.Max(0.012f, W * 0.07f);
         Vector3 knee = root + new Vector3(side * len * 0.45f, -len * 0.35f, len * 0.15f);

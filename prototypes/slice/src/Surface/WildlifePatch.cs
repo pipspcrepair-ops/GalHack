@@ -90,7 +90,12 @@ public partial class WildlifePatch : Node3D
         _planet = planet;
         var rules = Zone.Data.Rules.Wildlife;
         Livable = rules.LivableOn(planet.Spec);
-        Life = Bestiary.Roll(Zone.Data.Wildlife, planet.Spec.Seed, rules.Alienness);
+        var world = WorldConditions.Of(planet.Spec, rules.Alienness);
+        // What the suit reads on this world is what bodies here live with.
+        var climate = Zone.Data.Rules.Climate;
+        if (!world.Vacuum && climate.OxygenByAir.TryGetValue(planet.Sky.Air.ToString(), out double oxygen)) world.Oxygen = (float)oxygen;
+        if (climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double radiation)) world.Radiation = (float)radiation;
+        Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures" };
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };

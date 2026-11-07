@@ -53,6 +53,7 @@ public abstract class Rig
         RigKind.Finned => new SwimRig(s),
         RigKind.Clinger => new ClingRig(s),
         RigKind.Crawler => new CrawlRig(s),
+        RigKind.Humanoid => new HumanRig(s),
         _ => new SwarmRig(s, c),
     };
 

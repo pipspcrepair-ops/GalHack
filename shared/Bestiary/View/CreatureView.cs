@@ -42,6 +42,23 @@ public static class CreatureMaterials
         DisableReceiveShadows = true,
     };
 
+    static ShaderMaterial _clothed;
+
+    /// <summary>The one material every person shares: their colours are in their meshes.</summary>
+    public static ShaderMaterial Clothed => _clothed ??= MakeClothed();
+
+    static ShaderMaterial MakeClothed()
+    {
+        var m = new ShaderMaterial { Shader = Shader };
+        m.SetShaderParameter("glow_strength", 0.6f);
+        m.SetShaderParameter("glow_tint", 0f);
+        m.SetShaderParameter("pattern", 0);
+        m.SetShaderParameter("roughness_value", 0.82f);
+        m.SetShaderParameter("detail_freq", 90f);
+        m.SetShaderParameter("detail_strength", 0.05f);
+        return m;
+    }
+
     /// <summary>Drops the shared materials and shader on the main thread (at shutdown).</summary>
     public static void Release()
     {
@@ -53,6 +70,8 @@ public static class CreatureMaterials
         _shader = null;
         _blur?.Dispose();
         _blur = null;
+        _clothed?.Dispose();
+        _clothed = null;
         ProceduralAudio.ReleaseHum();
     }
 

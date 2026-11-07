@@ -85,6 +85,9 @@ public sealed partial class Staging
             "cores" => CoresView(),
             "natural" => Natural(),
             "crouch" => CrouchView(),
+            "folk" => FolkView(),
+            "crowd" => CrowdView(),
+            "fauna" => FaunaView(),
             "dark" => Dark(),
             _ => OrbitViews(view),
         };

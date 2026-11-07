@@ -75,6 +75,16 @@ public sealed class Species
     public float Mutation;
     /// <summary>A settlement's own animal (stock, working beast or pet), or None for the wild.</summary>
     public DomesticKind Domestic;
+    /// <summary>A person: their body and clothes. Null for everything else.</summary>
+    public Figure Figure;
+    /// <summary>Mutation has gone past growths: the body itself has changed shape.</summary>
+    public bool Monstrous;
+    /// <summary>What covers it: fur on the cold worlds, scale and thin skin on the hot ones.</summary>
+    public Coat Coat;
+    /// <summary>How it knows what is around it.</summary>
+    public SenseProfile Senses = new();
+    /// <summary>What its throat throws at you, if anything.</summary>
+    public SpitKind Spit;
 
     /// <summary>
     /// The landforms it lives in: it spawns only where they hold (and near their borders, as
@@ -203,7 +213,30 @@ public sealed class Species
         $"{Name} ({CommonName}) {Plan}/{Form} {Behaviour}+{Temperament} size {Body.Size:F1} m weird {Weirdness:F2}{(Corrupted ? " CORRUPTED" : "")}";
 }
 
-/// <summary>Body measurements in metres (already scaled to the species' size).</summary>
+/// <summary>What comes up a throat: nothing, blood (its own colour), or bile.</summary>
+public enum SpitKind { None, Blood, Bile }
+
+/// <summary>What covers a body.</summary>
+public enum Coat { Hide, Fur, Wool, Blubber, Scale, ThinSkin, Chitin, Shell, Plating }
+
+/// <summary>A species' senses: how it answers to light, sound and scent. Numbers are shares of the plain case.</summary>
+public sealed class SenseProfile
+{
+    /// <summary>How far it sees in good light, as a share of its perception (0 blind).</summary>
+    public float Sight { get; set; } = 1f;
+    /// <summary>0 to 1: how well it sees with no light at all.</summary>
+    public float DarkVision { get; set; }
+    /// <summary>How far it hears.</summary>
+    public float Hearing { get; set; } = 1f;
+    /// <summary>It clicks and listens: sees the shape of things in the dark, a short way, and the clicks give it away.</summary>
+    public bool Echo { get; set; }
+    /// <summary>How far downwind it smells you, as a share of its perception (0 none).</summary>
+    public float Scent { get; set; }
+
+    public override string ToString() => $"sight {Sight:F1} dark {DarkVision:F1} hearing {Hearing:F1} scent {Scent:F1}{(Echo ? " echo" : "")}";
+}
+
+/// <summary>Body measurements in metres (already scaled to the size of the species).</summary>
 public sealed class Proportions
 {
     public float Size;          // body length

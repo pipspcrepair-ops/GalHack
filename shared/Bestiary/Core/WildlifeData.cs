@@ -21,7 +21,7 @@ public enum BodyPlan { Walker, Crawler, Hopper, Flier, Floater, Swarm, Giant, Od
 /// <summary>How a winged body stays up (see <see cref="Species.Flight"/>). Gas bags and swarms are neither: they drift.</summary>
 public enum FlightKind { None, Glide, Hover }
 
-public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger, Crawler }
+public enum RigKind { Legged, Chain, Hopper, Winged, GasBag, Swarm, Finned, Clinger, Crawler, Humanoid }
 
 /// <summary>Where a species lives. Planet wildlife lives on the surface; space fauna in the rest.</summary>
 public enum Habitat { Surface, Nebula, AsteroidField, GasGiant, Derelict, Void }
@@ -76,6 +76,8 @@ public sealed class WildlifeData
     public ActivityRules Activity { get; set; } = new();
     /// <summary>The fauna of caves, tunnels and places: roles, themes, tells and how places are populated.</summary>
     public DeepTables Deep { get; set; } = new();
+    /// <summary>How people look: heights, what each climate and hazard dresses them in, what each job wears.</summary>
+    public PeopleTables People { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {

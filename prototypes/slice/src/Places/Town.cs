@@ -20,7 +20,8 @@ namespace Slice.Places;
 /// place turns it hostile and its people flee indoors. Its animals are wildlife's domestic kinds
 /// (working beasts and stock only where the tech is low, stock on farms, pets anywhere); wildlife
 /// keeps out of the town, the guards cull strays, and outside the town a predator may take one of
-/// its people. Bodies are placeholders: a capsule, a head and a colour by role.
+/// its people. Bodies come from the bestiary: each person is rolled for this world, this place and
+/// their job, walks on real legs, and from a distance is one cheap mesh.
 /// </summary>
 public sealed partial class Town
 {
@@ -64,12 +65,17 @@ public sealed partial class Town
         public float Wait, Speed = 1.3f, Hurt, Aim = -1f, Cooldown;
         /// <summary>How fast they are going now (they ease into it), how far through a stride, how far down into a seat; time since their last full update.</summary>
         public float Now, Gait, Seated, Saved;
-        /// <summary>Their head, turned as they glance about.</summary>
-        public Node3D Head;
+        /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
+        public Species Looks;
+        public HumanRig Rig;
+        public PersonView View;
+        public Figure Figure => Looks.Figure;
+        /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
+        public float Down, Raised, Bent;
+        public bool Laid;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
         public Person Partner;
-        public Node3D Body;
         public Health Health { get; } = new(60f);
         public bool Dead => Health.Current <= 0f;
 
@@ -107,15 +113,13 @@ public sealed partial class Town
         return path;
     }
 
+    /// <summary>What a tick of everyone in the town cost last time, ms.</summary>
+    public float LastTickMs { get; private set; }
+
     public Vector3 World(Vector3 local) => _place != null ? _place.ToWorld(local) : local;
 
     // ---- Standing and sitting ---------------------------------------------------------------------
 
-    static readonly Dictionary<string, Color> RoleColour = new()
-    {
-        ["vendor"] = new Color("c9862b"), ["worker"] = new Color("4a6a8a"), ["guard"] = new Color("3a3f36"),
-        ["rusher"] = new Color("8a4a3a"), ["wanderer"] = new Color("7a7462"),
-    };
 
     public void Stand(Place place, PoiPlaces places)
     {
@@ -132,7 +136,7 @@ public sealed partial class Town
                 p.Wait = (float)_rng.NextDouble() * 6f;
                 People.Add(p);
             }
-        foreach (Person p in People) p.Body = MakeBody(p);
+        if (People.Count > 0 && People[0].Looks == null) RollPeople(places.Zone.Wildlife.Life);
         WildlifePatch patch = places.Zone.Wildlife;
         Register(patch.Sim, null, Vector3.Zero);
         patch.Swapped += OnSwapped;
@@ -154,6 +158,7 @@ public sealed partial class Town
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
+        foreach (Person p in People) p.View = null;
         _view = null;
         _place = null;
     }
@@ -235,7 +240,12 @@ public sealed partial class Town
     sealed partial class Ticker : Node
     {
         public Town Town;
-        public override void _PhysicsProcess(double delta) => Town.Tick((float)delta);
+        public override void _PhysicsProcess(double delta)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            Town.Tick((float)delta);
+            Town.LastTickMs = (float)System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+        }
     }
 
     bool Night()
@@ -244,8 +254,9 @@ public sealed partial class Town
         return t < 0.24f || t > 0.8f;
     }
 
-    /// <summary>Beyond this someone updates a few times a second; beyond the second, their body isn't posed at all.</summary>
-    const float NearPeople = 40f, FarPeople = 90f;
+    /// <summary>Beyond this someone updates a few times a second; bodies built a tick at most.</summary>
+    const float NearPeople = 40f;
+    const int BodiesPerTick = 2;
     int _tick;
 
     void Tick(float tickDt)
@@ -255,17 +266,30 @@ public sealed partial class Town
         Mood mood = Memory.Mood;
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         _tick++;
+        _clock += tickDt;
+        int built = 0;
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
-            if (p.Dead) continue;
+            if (p.Dead)
+            {
+                // Going down, then lying where they fell.
+                if (p.View == null) MakeBody(p);
+                if (p.Down >= 1f && p.Laid) continue;
+                p.Laid = p.Down >= 1f;
+                p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
+                _posing = (player - p.Pos).Length() < PersonView.NearRange + 6f;
+                Pose(p, who);
+                continue;
+            }
+            if (p.View == null && built < BodiesPerTick) { MakeBody(p); built++; }
             // Far from you a town needn't move every tick: each in their turn, with the time they missed.
             p.Saved += tickDt;
             float away = (player - p.Pos).Length();
             if (away > NearPeople && (_tick + who) % 6 != 0) continue;
             float dt = p.Saved;
             p.Saved = 0f;
-            _posing = away < FarPeople;
+            _posing = away < PersonView.NearRange + 6f;
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
             // Hostile: the people go indoors; the guards turn on you.
@@ -276,7 +300,7 @@ public sealed partial class Town
                 p.Fleeing = mood == Mood.Hostile;
                 p.Speed = p.Fleeing ? 3.4f : p.Speed;
                 if (Move(p, dt)) { p.Indoors = _homes.Length > 0; }
-                Pose(p);
+                Pose(p, who);
                 continue;
             }
             if (!hide && p.Indoors)
@@ -285,11 +309,11 @@ public sealed partial class Town
                 p.Fleeing = false;
                 p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
             }
-            if (p.Indoors) { Pose(p); continue; }
+            if (p.Indoors) { Pose(p, who); continue; }
             if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
-                Pose(p);
+                Pose(p, who);
                 continue;
             }
             if (Move(p, dt))
@@ -298,7 +322,7 @@ public sealed partial class Town
                 if (p.Wait <= 0f) Next(p);
                 else Idle(p, dt);
             }
-            Pose(p);
+            Pose(p, who);
         }
     }
 
@@ -464,11 +488,12 @@ public sealed partial class Town
         foreach (Person p in People)
         {
             if (p.Dead || p.Indoors) continue;
-            Vector3 c = p.Pos + Vector3.Up * (p.Sitting ? 0.6f : 0.95f);
+            float h = p.Looks?.Figure.Height ?? 1.75f;
+            Vector3 c = p.Pos + Vector3.Up * h * (p.Sitting ? 0.34f : 0.53f);
             float along = (c - e).Dot(dir);
             if (along < 0f || along > distance) continue;
             Vector3 off = e + dir * along - c;
-            if (new Vector2(off.X, off.Z).Length() > 0.35f || MathF.Abs(off.Y) > 0.95f) continue;
+            if (new Vector2(off.X, off.Z).Length() > 0.35f || MathF.Abs(off.Y) > h * 0.53f) continue;
             distance = along;
             best = p;
         }
@@ -485,53 +510,59 @@ public sealed partial class Town
 
     void Fall(Person p)
     {
-        if (p.Body != null) p.Body.RotationDegrees = new Vector3(90f, Mathf.RadToDeg(p.Yaw), 0f);
         _places?.Zone.Wildlife.Sim?.Targets.Remove(p);
     }
 
     // ---- Bodies ---------------------------------------------------------------------------------------
 
-    Node3D MakeBody(Person p)
+    /// <summary>
+    /// Who each of them is, from the bestiary: this world's people, in this world's clothes, with
+    /// the look of their job. A hostile place's people have gone to raiding; what the world does to
+    /// bodies shows on some of them, more on some than others.
+    /// </summary>
+    void RollPeople(WorldLife life)
     {
-        var root = new Node3D { Name = $"{p.Role} {People.IndexOf(p)}" };
-        Color c = RoleColour.GetValueOrDefault(p.Role, new Color("777777"));
-        var cloth = new StandardMaterial3D { AlbedoColor = c, Roughness = 0.9f };
-        var skin = new StandardMaterial3D { AlbedoColor = new Color("b08a6a"), Roughness = 0.8f };
-        root.AddChild(new MeshInstance3D { Name = "Body", Mesh = new CapsuleMesh { Radius = 0.24f, Height = 1.35f }, Position = Vector3.Up * 0.72f, MaterialOverride = cloth });
-        root.AddChild(new MeshInstance3D { Name = "Head", Mesh = new SphereMesh { Radius = 0.14f, Height = 0.28f }, Position = Vector3.Up * 1.55f, MaterialOverride = skin });
-        // A hood or cap in a darker shade, so they don't read as mannequins.
-        root.AddChild(new MeshInstance3D { Name = "Hood", Mesh = new SphereMesh { Radius = 0.155f, Height = 0.18f, IsHemisphere = true }, Position = Vector3.Up * 1.58f, MaterialOverride = new StandardMaterial3D { AlbedoColor = c.Darkened(0.4f) } });
-        if (p.Role == "guard")
-            root.AddChild(new MeshInstance3D { Name = "Rifle", Mesh = new BoxMesh { Size = new Vector3(0.06f, 0.08f, 0.8f) }, Position = new Vector3(0.22f, 1.1f, -0.2f), RotationDegrees = new Vector3(-20, 0, 0), MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("202020") } });
-        if (p.Role == "vendor")
-            root.AddChild(new MeshInstance3D { Name = "Apron", Mesh = new BoxMesh { Size = new Vector3(0.36f, 0.6f, 0.04f) }, Position = new Vector3(0, 0.75f, -0.24f), MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color("e8d8b0") } });
-        _view.AddChild(root);
-        root.Position = p.Pos;
-        if (p.Dead) root.RotationDegrees = new Vector3(90f, 0, 0);
-        return root;
+        bool raiders = Memory.Mood == Mood.Hostile, farm = Memory.Inst.Family.Tags.Contains("farm");
+        var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "townsfolk");
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[i];
+            PersonRole role = PeopleGenerator.RoleFor(p.Role, farm, roll);
+            // Raiders keep a few who don't fight, and they don't dress for it.
+            if (raiders && role != PersonRole.Child && role != PersonRole.Elder) role = PersonRole.Raider;
+            float twist = roll.Float();
+            float mutation = life.World.Mutagen * twist * twist * 1.4f;
+            p.Looks = life.People.Person(Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)i + 1), role, raiders ? Occupancy.Raider : Occupancy.Friendly, mutation < 0.05f ? 0f : mutation);
+            p.Rig = new HumanRig(p.Looks);
+            p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, PersonRole.Child => 1.1f, _ => 1f };
+        }
+    }
+
+    /// <summary>Builds what they're drawn with: a few at a time, so a town coming into view never costs a whole frame.</summary>
+    void MakeBody(Person p)
+    {
+        p.View = new PersonView { Name = $"{p.Role} {People.IndexOf(p)}" };
+        _view.AddChild(p.View);
+        p.View.Build(p.Rig);
     }
 
     bool _posing = true;
+    float _clock;
 
-    void Pose(Person p)
+    void Pose(Person p, int who)
     {
-        if (p.Body == null) return;
-        p.Body.Visible = !p.Indoors;
-        if (p.Indoors || !_posing) return;
+        if (p.View == null) return;
+        if (p.View.Visible == p.Indoors) p.View.Visible = !p.Indoors;
+        if (p.Indoors) return;
+        // Far off they're one mesh, and only that moves.
+        p.View.SyncFar(p.Pos, p.Yaw);
+        if (!_posing) return;
         bool moving = p.Now > 0.05f;
-        int who = People.IndexOf(p);
-        float t = (float)_places.Zone.Sky.TimeOfDay * 86400f / 60f + who;
-        // The bob and sway go by the ground covered, so they keep step with the walk.
-        float stride = p.Gait * 3.2f;
-        float bob = moving ? MathF.Abs(MathF.Sin(stride)) * 0.05f : 0f;
-        float sway = moving ? MathF.Sin(stride) * 0.03f : MathF.Sin(t * 0.7f) * 0.012f; // at rest, a slow shift of weight
-        float lean = Math.Clamp(p.Now / 3f, 0f, 1f) * 7f;
-        p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f / 60f);
-        float work = !moving && p.Role == "worker" ? MathF.Max(0f, MathF.Sin(t * 1.7f)) * 18f : 0f;
-        p.Body.Position = p.Pos + Vector3.Up * (bob - p.Seated * 0.45f);
-        p.Body.Rotation = new Vector3(Mathf.DegToRad(-work - lean), p.Yaw, sway);
-        p.Head ??= p.Body.GetNodeOrNull<Node3D>("Head");
-        if (p.Head == null) return;
+        float dt = 1f / 60f;
+        float t = _clock + who * 1.7f;
+        p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
+        p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Role == "worker" ? 1f : 0f, 2f * dt);
+        p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f ? 1f : 0f, 3f * dt);
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
         Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
@@ -541,6 +572,20 @@ public sealed partial class Town
             if (MathF.Abs(off) < 1.25f) look = off;
         }
         p.HeadYaw = Mathf.Lerp(p.HeadYaw, look, 0.08f);
-        p.Head.Rotation = new Vector3(0f, p.HeadYaw, 0f);
+        p.Rig.Drive(new Gesture
+        {
+            Feet = p.Pos,
+            Yaw = p.Yaw,
+            Speed = p.Now,
+            Walked = p.Gait,
+            Sit = p.Seated,
+            Work = p.Bent,
+            Aim = p.Raised,
+            Look = p.HeadYaw,
+            Down = p.Down,
+            Clock = t,
+        });
+        p.View.Sync();
+        p.View.Hurt(p.Hurt / 0.4f);
     }
 }

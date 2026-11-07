@@ -296,7 +296,7 @@ public sealed class LeggedRig : Rig
     }
 
     /// <summary>Two-bone IK in the plane of hip, foot and pole. The foot is drawn at full reach if it is too far.</summary>
-    static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole)
+    internal static (Vector3 knee, Vector3 foot) SolveIK(Vector3 hip, Vector3 target, float a, float b, Vector3 pole)
     {
         Vector3 d = target - hip;
         float len = d.Length();
