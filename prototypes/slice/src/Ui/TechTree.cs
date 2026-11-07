@@ -111,8 +111,8 @@ public sealed class TechLayout
 }
 
 /// <summary>
-/// TECH: the tech tree, one tab per kind of thing (base, capital vessel, small vessel, hover
-/// vessel, tools, weapons, deco, misc), built from the unlock on every item and block. See
+/// TECH: the tech tree, one tab per kind of thing (base and capital vessel, small and hover vessel,
+/// tools, weapons, deco, misc), built from the unlock on every item and block. See
 /// <see cref="TechLayout"/>: nodes stand in columns by the level they open at and every branch has
 /// its own row, joined to its parent by a right-angle wire. Pointing at a node lights its path back
 /// to the root and everything it opens, and dims the rest. A tree wider or taller than the window
@@ -190,10 +190,11 @@ public sealed class TechSection : IMenuSection
     {
         Progress p = _game.Progress;
         Vector2 o = area.Position;
+        float tabW = Math.Min(262, (area.Size.X + 8) / Progress.Tabs.Length - 8);
         for (int i = 0; i < Progress.Tabs.Length; i++)
         {
             string t = Progress.Tabs[i];
-            if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * 189, 0), new Vector2(182, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
+            if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * (tabW + 8), 0), new Vector2(tabW, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
         }
         g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
         var onTab = p.Nodes.Where(n => n.Tab == Tab).ToList();
