@@ -139,7 +139,7 @@ public static class FarBuilder
                 double x = x0 + i * step, z = z0 + j * step;
                 job.Vertices[k] = new Vector3(i * step, h, j * step);
                 job.Normals[k] = normal;
-                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k]);
+                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k], step);
                 up[k] = normal.Y;
             }
 
@@ -191,11 +191,11 @@ public static class FarBuilder
     const float CliffFrom = 0.75f;
 
     /// <summary>The same soil-to-rock rule as the voxel source: soil thins out and slides off as slopes steepen.</summary>
-    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
+    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags, float spacing = 1f)
     {
         Color c = pal.Natural(x, z, h, source.SoilCover(x, z, slope2), out flags);
         StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear);
-        if (madeWeight > 0f) c = pal.Made(c, made, madeWeight, wear, x, z);
+        if (madeWeight > 0f) c = pal.Made(c, made, madeWeight, wear, x, z, spacing);
         if (inRiver)
         {
             Rgb bed = pal.RiverBed;
