@@ -21,6 +21,8 @@ public partial class SliceAudio : Node
     BlockBuilding.Sfx _ui;
     ThrusterPlayer _jet, _engine;
     Vessel _engineOf;
+    AudioStreamPlayer _under;
+    bool _muffled;
     AudioStreamPlayer3D _step;
     AudioStreamWav _chirp;
     float _stepTimer;
@@ -66,16 +68,16 @@ public partial class SliceAudio : Node
         }
     }
 
-    /// <summary>A player still on the default bus goes to ambience if it is the wind or the rain, and to effects otherwise.</summary>
+    /// <summary>A player still on the default bus goes to ambience if it is the wind, the rain, the water around you or the howl at an opening, and to effects otherwise.</summary>
     public static void Route(Node n)
     {
         if (n is AudioStreamPlayer p)
         {
-            if (p.Bus == "Master") p.Bus = AudioSettings.BusName(n.Name == "Wind" || n.Name == "Rain" ? AudioSettings.Ambience : AudioSettings.Effects);
+            if (p.Bus == "Master") p.Bus = AudioSettings.BusName(n.Name == "Wind" || n.Name == "Rain" || n.Name == "Underwater" ? AudioSettings.Ambience : AudioSettings.Effects);
         }
         else if (n is AudioStreamPlayer3D p3)
         {
-            if (p3.Bus == "Master") p3.Bus = AudioSettings.BusName(AudioSettings.Effects);
+            if (p3.Bus == "Master") p3.Bus = AudioSettings.BusName(n.Name == "Howl" ? AudioSettings.Ambience : AudioSettings.Effects);
         }
         else if (n is AudioStreamPlayer2D p2)
         {
@@ -101,6 +103,8 @@ public partial class SliceAudio : Node
         _chirp = DiegeticUi.World.Sfx.WarningChirp();
         _jet = Engine("Jetpack", VoiceProfile.Jetpack, -9f);
         _engine = Engine("Engines", VoiceProfile.Vessel(100f), -6f);
+        _under = new AudioStreamPlayer { Name = "Underwater", Stream = Noise(1.4f, 160f, 0.35f), VolumeDb = -40f };
+        AddChild(_under);
         _step = new AudioStreamPlayer3D { Name = "Steps", Stream = Tap(), VolumeDb = -20f, MaxDistance = 20f };
         AddChild(_step);
         Music = new SliceMusic { Name = "Music", Game = Game };
@@ -178,7 +182,12 @@ public partial class SliceAudio : Node
         var w = g.Zone.Weather;
         float shelter = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull ? 0.8f : g.Survivor.Seated != null ? 0.6f : 0f;
         shelter = Mathf.Max(shelter, g.Spaceflight.AirGone); // the wind thins away with the air
-        g.Zone.Sfx.SetWeather(w.Wind2D.Length(), w.Sim?.Current.Rain ?? 0f, shelter);
+        shelter = Mathf.Max(shelter, 0.9f * (1f - g.Zone.Light.EyeOpen)); // and with the walls: a sealed room hears little of it
+        // Under water everything comes through it, dull and far off; the weather not at all.
+        bool under = g.Zone.Underwater?.CameraUnder == true;
+        Muffle(under);
+        Fade(_under, under, -20f, dt);
+        g.Zone.Sfx.SetWeather(under ? 0f : w.Wind2D.Length(), under ? 0f : w.RainHere, shelter);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
         bool jetting = g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack && !g.Suit.Dead;
@@ -220,17 +229,65 @@ public partial class SliceAudio : Node
         if (g.Builder.TakenDown != _taken) { _taken = g.Builder.TakenDown; _ui.Play("remove", g.Survivor.WorldEye(), 1f, -8f); }
     }
 
+    /// <summary>A low-pass on the effects and ambience buses (the music stays clear), there once (a new game reloads the scene, the buses stay) and on only under water.</summary>
+    void Muffle(bool on)
+    {
+        if (on == _muffled) return;
+        _muffled = on;
+        foreach (string key in new[] { AudioSettings.Effects, AudioSettings.Ambience })
+        {
+            int bus = Bus(key), found = -1;
+            for (int i = 0; i < AudioServer.GetBusEffectCount(bus); i++)
+                if (AudioServer.GetBusEffect(bus, i) is AudioEffectLowPassFilter) found = i;
+            if (found < 0)
+            {
+                AudioServer.AddBusEffect(bus, new AudioEffectLowPassFilter { CutoffHz = 520f, Resonance = 0.6f });
+                found = AudioServer.GetBusEffectCount(bus) - 1;
+            }
+            AudioServer.SetBusEffectEnabled(bus, found, on);
+        }
+    }
+
+    static void Fade(AudioStreamPlayer p, bool on, float db, float dt)
+    {
+        if (on && !p.Playing) { p.VolumeDb = -40f; p.Play(); }
+        if (!p.Playing) return;
+        p.VolumeDb = Mathf.MoveToward(p.VolumeDb, on ? db : -40f, dt * 60f);
+        if (!on && p.VolumeDb <= -39f) p.Stop();
+    }
+
     public void StopAll()
     {
         _jet.Silence();
         _engine.Silence();
         _jet.StopPlayer();
         _engine.StopPlayer();
+        _under.Stop();
         _step.Stop();
         Music.StopAll();
+        Muffle(false);
     }
 
     // ---- The slice's own small synths ----------------------------------------------------------
+
+    /// <summary>A loop of filtered noise: the dull press of water round the helmet.</summary>
+    static AudioStreamWav Noise(float seconds, float cutoff, float gain)
+    {
+        int n = (int)(seconds * Rate);
+        var data = new byte[n * 2];
+        var rng = new Random(11);
+        float a = Mathf.Clamp(cutoff / Rate * Mathf.Tau, 0.001f, 1f), y = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            y += a * ((float)rng.NextDouble() * 2f - 1f - y);
+            // Ends meet: fade the last 5% into the first.
+            float fade = i > n * 0.95f ? (n - i) / (n * 0.05f) : 1f;
+            short s = (short)(Math.Clamp(y * gain * 3f * fade, -1f, 1f) * 32767);
+            data[2 * i] = (byte)s;
+            data[2 * i + 1] = (byte)(s >> 8);
+        }
+        return new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Rate, Data = data, LoopMode = AudioStreamWav.LoopModeEnum.Forward, LoopEnd = n };
+    }
 
     const int Rate = 22050;
 

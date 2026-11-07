@@ -86,6 +86,14 @@ public sealed partial class Staging
             "natural" => Natural(),
             "crouch" => CrouchView(),
             "dark" => Dark(),
+            "monsoon" => MonsoonCost(),
+            "sunset" => Sunset(),
+            "underwater" => UnderwaterShot(),
+            "rain" => RainShot(),
+            "dust" => DustShot(),
+            "puff" => PuffShot(),
+            "stormcell" => StormCellShot(),
+            "clouds" => CloudTypes(),
             _ => OrbitViews(view),
         };
         foreach (int x in script) yield return x;

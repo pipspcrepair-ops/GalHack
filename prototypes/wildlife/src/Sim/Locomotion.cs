@@ -21,6 +21,11 @@ public static class Locomotion
             Crawl.Move(w, c, dt);
             return;
         }
+        if (c.Thrown)
+        {
+            Tumble(w, c, dt);
+            return;
+        }
         if (c.Dead)
         {
             Fall(w, c, dt);
@@ -47,6 +52,24 @@ public static class Locomotion
             case RigKind.Swarm when c.Species.Flies: Hover(w, c, dt); break;
             default: Ground(w, c, dt); break;
         }
+    }
+
+    /// <summary>Thrown: a plain ballistic arc to the ground, and the landing hurts by how fast it comes down.</summary>
+    static void Tumble(WildSim w, Creature c, float dt)
+    {
+        Vector3 v = c.Velocity + Vector3.Down * Gravity * 0.6f * dt;
+        Vector3 p = w.Terrain.Clamp(c.Position + v * dt, 4f);
+        float ground = w.Terrain.Height(p.X, p.Z);
+        if (p.Y <= ground && v.Y < 0f)
+        {
+            p.Y = ground;
+            c.Thrown = false;
+            float hard = v.Length() - 8f;
+            v = Vector3.Zero;
+            if (hard > 0f && !c.Dead) w.Damage(c, hard * 3f, null);
+        }
+        c.Velocity = v;
+        c.Position = p;
     }
 
     static void Ground(WildSim w, Creature c, float dt)

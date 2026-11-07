@@ -228,6 +228,7 @@ public partial class Game : Node3D
             ColorOf = (material, at) => Zone.Planet?.ChipColor(material, at) ?? new Color(0.5f, 0.45f, 0.4f),
         };
         Zone.AddChild(debris);
+        Zone.Dust = debris;
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
         Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
@@ -249,6 +250,9 @@ public partial class Game : Node3D
         Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
+        Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Suit.UnderCover = UnderCover;
+        Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
         Zone.Weather.Happened += OnWeather;
 
         Console = new CockpitConsole { Name = "Console", Game = this };
@@ -267,6 +271,8 @@ public partial class Game : Node3D
         Paperdoll.Attach(this);
         Audio = new SliceAudio { Name = "Audio", Game = this };
         AddChild(Audio);
+        Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
+        Zone.AddChild(Howl);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Survivor.Node.AddChild(CharacterModel.Build());
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
@@ -274,6 +280,9 @@ public partial class Game : Node3D
         SetUpPlaces();
 
     }
+
+    /// <summary>Wind moaning in the openings around you.</summary>
+    public WindHowl Howl { get; private set; }
 
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }
@@ -646,9 +655,8 @@ public partial class Game : Node3D
         {
             case WeatherEventKind.LightningStrike:
                 float distance = feet.DistanceTo(e.Position);
-                Zone.Sfx.Play(PlanetSurface.Fx.Sfx.Sound.Thunder, Camera.GlobalPosition + (e.Position - Camera.GlobalPosition).Normalized() * 20f,
-                    1f, Mathf.Clamp(6f - distance / 60f, -12f, 6f));
-                if (Survivor.Seated == null && distance < e.DamageRadius)
+                Zone.Weather.Thunder(e.Position);
+                if (distance < e.DamageRadius && !UnderCover())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);
                     Say("STRUCK BY LIGHTNING: get low in a storm", Tones.Warning);

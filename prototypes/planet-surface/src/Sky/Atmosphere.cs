@@ -15,6 +15,12 @@ public readonly record struct AtmosphereState(
     /// it and the morning fog damp air holds around sunrise; by evening that has burnt off.
     /// </summary>
     public float GroundFog { get; init; }
+
+    /// <summary>Layered grey cloud instead of heaped cumulus, 0 to 1: steady damp weather, not storms.</summary>
+    public float Stratus { get; init; }
+
+    /// <summary>The thin high streaks above everything else, 0 to 1.</summary>
+    public float Cirrus { get; init; }
 }
 
 /// <summary>
@@ -34,8 +40,10 @@ public static class Atmosphere
 {
     public static AtmosphereState Compute(SkySystem sky, in Conditions c, float sunHeight)
     {
-        float cover = Math.Clamp(c.CloudCover, 0f, 1f);
-        float dark = Math.Clamp(c.CloudDarkness, 0f, 1f);
+        // Where the weather is cells, the sky between them opens: the dark is theirs, not the whole deck's.
+        float cellular = Math.Clamp(c.Cellular, 0f, 1f);
+        float cover = Math.Clamp(c.CloudCover, 0f, 1f) * (1f - 0.42f * cellular);
+        float dark = Math.Clamp(c.CloudDarkness, 0f, 1f) * (1f - 0.6f * cellular);
         float overcast = Smooth(0.6f, 0.95f, cover) * (0.55f + 0.45f * dark);
         float visibility = Math.Clamp(c.Visibility, 10f, 30000f);
 
@@ -68,6 +76,8 @@ public static class Atmosphere
             Visibility: visibility)
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),
+            Stratus = Smooth(0.5f, 0.85f, cover) * (1f - cellular),
+            Cirrus = (0.3f + 0.7f * Smooth(0.03f, 0.3f, cover)) * (1f - Smooth(0.5f, 0.9f, cover)),
         };
     }
 

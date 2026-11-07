@@ -74,12 +74,17 @@ public sealed class WeatherSim
     public IReadOnlyList<Hazard> Hazards => _hazards;
     public IReadOnlyList<Tornado> Tornadoes => _tornadoes;
 
+    /// <summary>The storms in the sky: where the rain, strikes and funnels come from.</summary>
+    public IReadOnlyList<StormCell> Cells => _cells;
+
     /// <summary>What happened during the last <see cref="Step"/>.</summary>
     public IReadOnlyList<WeatherEvent> Events => _events;
 
     readonly List<Segment> _segments = new();
     readonly List<Hazard> _hazards = new();
     readonly List<Tornado> _tornadoes = new();
+    readonly List<StormCell> _cells = new();
+    float _cellTimer;
     readonly List<WeatherEvent> _events = new();
     readonly Rng _timelineRng, _hazardRng;
     readonly uint _gustSeed;
@@ -123,6 +128,7 @@ public sealed class WeatherSim
         EnsureTimeline(Time + Horizon);
         Current = ConditionsAt(Time);
         UpdateGround(dt);
+        StepCells(dt, observer);
         StepStrikes(dt, observer);
         StepTornadoes(dt, observer);
     }
@@ -332,6 +338,94 @@ public sealed class WeatherSim
         }
     }
 
+    // ---- Storm cells ------------------------------------------------------------------
+
+    /// <summary>
+    /// Cells come and go with how stormy the weather is. They form upwind and drift over, unless the
+    /// storm is already full-grown with none in the sky (a jump in the weather): then the first
+    /// stands overhead.
+    /// </summary>
+    void StepCells(float dt, Vector3 observer)
+    {
+        CellRules r = Data.Cells;
+        Conditions c = Current;
+        float storm = MathF.Max(c.Rain, MathF.Min(1f, c.LightningPerMinute / 4f));
+        if (c.TornadoesPerMinute > 0.05f) storm = 1f;
+        int want = storm < r.From ? 0 : 1 + (int)MathF.Round(storm * (r.MaxCells - 1));
+        Vector3 drift = new Vector3(c.Wind.X, 0f, c.Wind.Y) * r.DriftShare;
+        for (int i = _cells.Count - 1; i >= 0; i--)
+        {
+            StormCell cell = _cells[i];
+            if (cell.Funnel is { Done: true }) cell.Funnel = null;
+            if (cell.Funnel != null)
+            {
+                cell.Position = Flat(cell.Funnel.Position);
+                cell.Strength = MathF.Min(1f, cell.Strength + dt / r.GrowSeconds);
+                continue;
+            }
+            cell.Position += drift * dt;
+            float target = i < want ? 1f : 0f;
+            cell.Strength += Math.Clamp(target - cell.Strength, -dt / r.GrowSeconds, dt / r.GrowSeconds);
+            bool spent = target == 0f && cell.Strength <= 0f;
+            if (spent || Flat(cell.Position - observer).Length() > r.Range) _cells.RemoveAt(i);
+        }
+        _cellTimer -= dt;
+        if (_cells.Count >= want) return;
+        if (_cells.Count == 0 && storm >= 0.7f)
+        {
+            AddCell(observer + RandomOffset(r.RadiusMin * 0.3f), 1f);
+            return;
+        }
+        if (_cellTimer > 0f) return;
+        _cellTimer = r.SpawnEvery;
+        float speed = drift.Length();
+        Vector3 down = speed > 0.01f ? drift / speed : new Vector3(1f, 0f, 0f);
+        var across = new Vector3(-down.Z, 0f, down.X);
+        AddCell(observer - down * _hazardRng.Range(0.45f, 0.9f) * r.Range + across * _hazardRng.Range(-0.4f, 0.4f) * r.Range, 0f);
+    }
+
+    /// <summary>A storm cell at a place, this strong (a jump, tests, screenshots: the weather makes its own).</summary>
+    public StormCell AddCell(Vector3 at, float strength)
+    {
+        var cell = new StormCell { Id = _nextId++, Position = Flat(at), Strength = strength, Radius = _hazardRng.Range(Data.Cells.RadiusMin, Data.Cells.RadiusMax) };
+        _cells.Add(cell);
+        return cell;
+    }
+
+    /// <summary>Empties the sky of cells at once (tests, screenshots).</summary>
+    public void ClearCells() => _cells.Clear();
+
+    /// <summary>How much storm hangs over a point, 0 to 1.</summary>
+    public float CellCover(Vector3 p)
+    {
+        float cover = 0f;
+        foreach (StormCell c in _cells) cover = MathF.Max(cover, c.Cover(p));
+        return cover;
+    }
+
+    /// <summary>The rain falling at a point: the weather's, as much of it as its cells' share lets through there.</summary>
+    public float RainAt(Vector3 p) => Current.Rain * (1f - Current.Cellular * (1f - CellCover(p)));
+
+    StormCell NearestCell(Vector3 p)
+    {
+        StormCell best = null;
+        float nearest = float.MaxValue;
+        foreach (StormCell c in _cells)
+        {
+            float d = Flat(c.Position - p).Length() - c.Radius;
+            if (d < nearest) { nearest = d; best = c; }
+        }
+        return best;
+    }
+
+    /// <summary>Where the next bolt aims: near the observer if a cell hangs over them, else out of the nearest cell.</summary>
+    Vector3 StrikeSpot(Vector3 observer)
+    {
+        StormCell cell = NearestCell(observer);
+        if (cell == null || cell.Cover(observer) > 0.2f) return observer + RandomOffset(Data.Lightning.StrikeOffset);
+        return cell.Position + RandomOffset(cell.Radius * 0.6f);
+    }
+
     // ---- Hazards: lightning and falling debris ---------------------------------------
 
     void StepStrikes(float dt, Vector3 observer)
@@ -339,7 +433,7 @@ public sealed class WeatherSim
         Conditions c = Current;
         if (Accumulate(ref _lightningCharge, ref _lightningNext, c.LightningPerMinute, dt)
             && Count(HazardKind.Lightning) < Data.Lightning.MaxConcurrent)
-            StartStrike(HazardKind.Lightning, observer + RandomOffset(Data.Lightning.StrikeOffset));
+            StartStrike(HazardKind.Lightning, StrikeSpot(observer));
 
         if (Accumulate(ref _debrisCharge, ref _debrisNext, c.DebrisPerMinute, dt)
             && Count(HazardKind.Debris) < Data.Debris.MaxConcurrent)
@@ -430,7 +524,12 @@ public sealed class WeatherSim
         if (Accumulate(ref _tornadoCharge, ref _tornadoNext, Current.TornadoesPerMinute, dt) && active < rules.MaxActive)
         {
             float angle = _hazardRng.Range(0f, MathF.Tau);
-            var at = observer + new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle)) * rules.SpawnDistance;
+            var away = new Vector3(MathF.Cos(angle), 0f, MathF.Sin(angle));
+            // Out of the nearest cell, if one is near: a funnel comes down from a cloud.
+            StormCell cell = NearestCell(observer);
+            var at = cell != null && Flat(cell.Position - observer).Length() < Data.Cells.Range * 0.6f
+                ? cell.Position + away * MathF.Min(rules.SpawnDistance, cell.Radius * 0.5f)
+                : observer + away * rules.SpawnDistance;
             // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
             Tornado born = SpawnTornado(at, observer);
             born.Homing = false;
@@ -461,6 +560,12 @@ public sealed class WeatherSim
         var tornado = new Tornado(_nextId++, Data.Tornado, at, heading, homing: true, _hazardRng.Range(0f, MathF.Tau));
         _tornadoes.Add(tornado);
         _events.Add(new WeatherEvent(WeatherEventKind.TornadoForming, tornado.Id, at, null, 0f, 0f));
+        // Every funnel hangs from a cell: the nearest that has none yet, or a new one over it.
+        StormCell parent = null;
+        foreach (StormCell c in _cells)
+            if (c.Funnel == null && Flat(c.Position - at).Length() < c.Radius && (parent == null || c.Strength > parent.Strength)) parent = c;
+        parent ??= AddCell(at, 1f);
+        parent.Funnel = tornado;
         return tornado;
     }
 
