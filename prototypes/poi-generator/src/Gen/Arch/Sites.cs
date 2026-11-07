@@ -831,11 +831,15 @@ public static class Sites
             for (int i = 0; i < w; i++)
             {
                 int y = h + k;
+                // At the gable ends the slope and the course under it are the wall's: one clean line up the verge.
+                bool verge = i == 0 || i == w - 1;
+                Material skin = verge ? Material.Steel : Material.Rust;
+                Rgb face = verge ? wall : roof;
                 foreach (int j in new[] { k, d - 1 - k })
                 {
                     bool ridge = k == d - 1 - k;
-                    x.C.Set(W(i, y, j), ridge ? new Block(BlockType.Cube, Material.Rust, roof, Role.Roof)
-                        : new Block(BlockType.Ramp, Material.Rust, roof, Role.Roof, j == k ? Dir.South : Dir.North));
+                    x.C.Set(W(i, y, j), ridge ? new Block(BlockType.Cube, skin, face, Role.Roof)
+                        : new Block(BlockType.Ramp, skin, face, Role.Roof, j == k ? Dir.South : Dir.North));
                 }
                 for (int j = k + 1; j < d - 1 - k; j++)
                 {
@@ -844,7 +848,7 @@ public static class Sites
                 }
                 if (k > 0)
                     foreach (int j in new[] { k, d - 1 - k })
-                        x.C.Set(W(i, y - 1, j), new Block(BlockType.Cube, Material.Rust, roof.Scale(0.8f), Role.Roof));
+                        x.C.Set(W(i, y - 1, j), new Block(BlockType.Cube, skin, verge ? wall : roof.Scale(0.8f), Role.Roof));
             }
         // The great door: one leaf rolled half open, hanging above the gap.
         for (int i = doorLo; i <= doorHi; i++)
