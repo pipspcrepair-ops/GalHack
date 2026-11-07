@@ -556,12 +556,12 @@ Worlds where people left, or tried to. The evidence is paperwork, queues and hal
 - Hazards/rewards: Calm; working parts and AI cores.
 - Fit: pre H > post H | ports B-D | R | S
 
-**58. The Slow Dead** (`slow_dead`) - They get up, eventually.
-- Happened: Hollow-touched bodies rise at night, slowly, and lie down at dawn.
+**58. The Husks** (`husks`) - The implants never stopped working.
+- Happened: Medical nanites and implants kept running after their owners died, and walk the bodies at night, slowly, recharging at dawn.
 - Land/sky: Fogged farmland, cold nights, church-grey light.
 - Regions/infra: Graveyards on every hill; walled churchyards; roads with gates.
 - POIs: top: hospital, survivor_hamlet, old_farm. NEW: cemetery_vault, church_chapel. Inside: stacked coffins, barricaded vestries, nailed doors with tally marks.
-- Life/people: Shamblers by night, cautious hamlets by day.
+- Life/people: Husks by night, cautious hamlets by day.
 - Hazards/rewards: Night swarms; relics, medicine.
 - Fit: pre L/M > post L | ports E | U | no
 
@@ -1188,8 +1188,8 @@ Rules:
 - Survivors and life: shelter groups, hunters, raiders.
 - Recovered world: shuttered wards, a weapons shelf in every school.
 
-**Z15. The slow dead** (`turned`) - The dead rise at night.
-- What and when: Hollow-touched bodies walk after dusk; quick onset, still present.
+**Z15. Husks** (`husks_fall`) - The bodies kept walking after the people had gone.
+- What and when: Implants and nanites keep bodies walking after dusk with nobody inside; quick onset, still present.
 - Leaves: churchyard walls, barricaded vestries, tally marks on doors, graveyards with dug-out graves.
 - Favours: cemetery_vault, church_chapel, hospital. Hazards: night swarms, rising crowds.
 - Survivors and life: day-folk who sleep in daylight, hunters, relic traders.
@@ -1618,7 +1618,7 @@ These entries from the theme list describe how a world fell, not what it is now.
 | 59 Eye of the Bloom | Z67 Bloom front | Blank |
 | 75 Power Down | Z34 Grid cascade | Maglev Spine (80) |
 | 104 Mutant World | Z12 Biohazard release | Teeth in the Trees (41) |
-| 58 Slow Dead | Z15 The slow dead | Barrow Downs (95) |
+| 58 Husks | Z15 Husks | Barrow Downs (95) |
 | 52 Folded Town | Z68 Folding | Souvenir World (83) |
 | 8 Deserted Capital | Z35 The great silence | Bureaucracy Moon (84) |
 
@@ -1648,7 +1648,7 @@ Occupancy is a layer separate from layout. The same hospital layout is built onc
 | --- | --- | --- |
 | EMP | Empty | No spawns at all. Dust, dead light, no tracks. Loot is intact but untouched, so it is often the best loot. Still gets logs and the frozen-moment dressing. |
 | NST | Nesters (creature nests) | Nests in rooms and vents, webbing and egg clusters, droppings, gnawed furniture, bones of prey, chewed doors, a smell sound-cue. Guarded brood rooms deeper in. |
-| SHB | Turned (the slow dead) | Slumped figures in beds and corridors that rise when disturbed; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
+| HSK | Husks (bodies run by leftover medical nanites or implants) | Slumped figures in beds and corridors that rise when disturbed; barricades broken from inside, scratch marks, bodies in uniform, a last stand at a stairwell. |
 | SCV | Scavengers passing | A few people, in and out: a camp fire in the ward, a tripod over ash, picked-over shelves, bedrolls, fresh boot tracks, a chalk arrow, a stash they will return for. Often neutral until threatened. |
 | SQT | Squatters / settled survivors | A lived-in place: tidy bunks, cooking stove, water barrels, boarded windows, a notice board, a barter shelf. Friendly or wary; they trade. |
 | GNG | Gang-held | Fortified: welded barricades, spikes, trophy walls, loot piles, a boss room, hostages or cages. Always hostile. |
@@ -1670,7 +1670,7 @@ A place can hold two groups at once. In the mix tables a pair written `A/B` is a
 | --- | --- | --- |
 | Floors | Split by level: one group above, one below (scavengers hold the upper floors, nesters the basement; a sealed floor between them) | Barricaded stairwell, a trap-door rigged with cans, a rope ladder, the lower floors' smell rising |
 | Front line | They face each other across a line (survivors barricaded in a wing, infested corridors beyond) | Sandbags, welded doors, scorched corridors, spent shells, a score of marks on a wall counting days |
-| Hunting | One group preys on the other (gang hunting squatters, nests preying on scavengers, turned drawn to a camp) | Bodies of the hunted, bait, snares, blood trails, a camp fire gone out in a hurry |
+| Hunting | One group preys on the other (gang hunting squatters, nests preying on scavengers, husks drawn to a camp) | Bodies of the hunted, bait, snares, blood trails, a camp fire gone out in a hurry |
 | Wary truce | Two groups avoid each other (scavengers passing through a place held by machines) | Chalk marks showing safe routes, cleared and uncleared rooms, a toll box |
 | Layers by age | The older group is gone, the newer sits on top (squatters in a dead gang's fort) | Two sets of marks, one old and rusted, one fresh |
 
@@ -1694,23 +1694,23 @@ Shares are percentages for places in that theme and sum to 100. Codes are in the
 | 6 | parade_ground | EMP 35, SCV 25, SQT 25, NST 10, GNG 5 |
 | 7 | closed_season | EMP 40, MCH 20, SCV 20, GNG 10, NST 10 |
 | 8 | deserted_capital | MCH 30, EMP 30, FAC 15, NST 10, SCV 10, GNG 5 |
-| 9 | lockin | EMP 30, SHB 20, MUT 15, SCV 15, GNG 10, NST 10 |
+| 9 | lockin | EMP 30, HSK 20, MUT 15, SCV 15, GNG 10, NST 10 |
 | 10 | walked_out | EMP 30, MCH 20, GNG 15, FAC 15, NST 10, SCV 10 |
-| 11 | quarantine | EMP 30, SHB 25, MCH 15, SQT/SHB 10, HOL 10, NST 10 |
-| 12 | fever_jungle | NST 30, MUT 20, EMP 20, SQT/MUT 10, HOL 10, SHB 10 |
-| 13 | sleepwalkers | SHB 40, SQT 25, EMP 25, HOL 10 |
+| 11 | quarantine | EMP 30, HSK 25, MCH 15, SQT/HSK 10, HOL 10, NST 10 |
+| 12 | fever_jungle | NST 30, MUT 20, EMP 20, SQT/MUT 10, HOL 10, HSK 10 |
+| 13 | sleepwalkers | HSK 40, SQT 25, EMP 25, HOL 10 |
 | 14 | pollen_wars | NST 30, EMP 30, SQT 20, MCH 10, MUT 10 |
 | 15 | blightland | SCV 30, GNG 25, SQT 25, EMP 20 |
 | 16 | bloom_drowned | HOL 35, MUT 30, EMP 15, CLT 10, SQT 10 |
 | 17 | coughing_hills | SCV 30, EMP 30, SQT 20, GNG 10, NST 10 |
-| 18 | mercy | EMP 40, SQT 25, SCV 10, SQT/SHB 10, HOL 10, SHB 5 |
+| 18 | mercy | EMP 40, SQT 25, SCV 10, SQT/HSK 10, HOL 10, HSK 5 |
 | 19 | flesh_gardens | MUT 35, NST 20, MCH 20, EMP 15, HOL 10 |
 | 20 | clinic_edge | SQT 45, EMP 20, SCV 20, FAC 15 |
 | 21 | glass_plains | EMP 40, GNG 20, MUT 15, SCV 15, HOL 10 |
 | 22 | rust_armies | MCH 30, EMP 30, SCV 20, GNG 10, FAC 10 |
 | 23 | wall_cities | SQT 35, GNG 25, FAC 15, EMP 15, SCV 10 |
 | 24 | missile_fields | EMP 40, MCH 20, SQT 15, SCV 15, GNG 10 |
-| 25 | trench_moon | EMP 35, SHB 20, SCV 20, GNG 15, HOL 10 |
+| 25 | trench_moon | EMP 35, HSK 20, SCV 20, GNG 15, HOL 10 |
 | 26 | peace_treaty | EMP 50, MCH 20, FAC 15, SCV 15 |
 | 27 | siege_orbitals | EMP 35, SCV 30, NST 15, FAC 10, GNG 10 |
 | 28 | decommissioned | EMP 40, SCV 40, MCH 10, SQT 10 |
@@ -1743,7 +1743,7 @@ Shares are percentages for places in that theme and sum to 100. Codes are in the
 | 55 | mirror_cities | EMP 50, HOL 30, SCV 10, NST 10 |
 | 56 | choir_canyon | EMP 40, CLT 30, SQT 20, HOL 10 |
 | 57 | clockwork_hours | MCH 50, EMP 30, SQT 15, SCV 5 |
-| 58 | slow_dead | SHB 35, EMP 20, SQT 20, SQT/SHB 10, SCV 5, HOL 10 |
+| 58 | slow_dead | HSK 35, EMP 20, SQT 20, SQT/HSK 10, SCV 5, HOL 10 |
 | 59 | eye_bloom | FAC 25, SQT 20, FAC/HOL 10, SQT/HOL 10, HOL 15, EMP 10, SCV 10 |
 | 60 | dream_salt | EMP 50, HOL 20, SCV 15, NST 15 |
 | 61 | black_library | EMP 40, CLT 25, MCH 20, SCV 15 |
@@ -1789,14 +1789,14 @@ Shares are percentages for places in that theme and sum to 100. Codes are in the
 | 101 | sunken_raiders | NST 25, NST/SCV 15, GNG 20, EMP 20, SQT 10, MUT 10 |
 | 102 | overgrown_metropolis | NST 25, MUT 20, EMP 20, SQT/MUT 15, SCV 10, SQT 10 |
 | 103 | waste_world | EMP 25, GNG 25, MUT 15, SQT/MUT 15, SQT 10, SCV 10 |
-| 104 | mutant_world | MUT 35, NST 20, EMP 15, MUT/SQT 10, HOL 10, SHB 10 |
+| 104 | mutant_world | MUT 35, NST 20, EMP 15, MUT/SQT 10, HOL 10, HSK 10 |
 | 105 | never_settled | EMP 70, NST 30 |
 | 106 | ocean_world | SQT 30, EMP 30, NST 20, SCV 10, GNG 10 |
 | 107 | ring_remnant | MCH 40, EMP 40, HOL 20 |
 | 108 | dome_colonies | EMP 45, SQT 25, MCH 15, SCV 15 |
 | 109 | fire_ice | EMP 40, NST 25, SQT 15, MUT 10, SCV 10 |
 | 110 | vacated_vaults | EMP 55, MCH 30, HOL 15 |
-| 111 | prison_worlds | FAC 30, MCH 20, GNG 20, EMP 20, SHB 10 |
+| 111 | prison_worlds | FAC 30, MCH 20, GNG 20, EMP 20, HSK 10 |
 | 112 | alien_shipyards | FAC 35, MCH 25, EMP 25, SCV 15 |
 
 ---
