@@ -244,6 +244,8 @@ public sealed class HomeCulture
     public readonly List<(FenceKind Kind, float Weight)> Fences = new();
     public readonly List<FenceKind> FenceOdd = new();
     public float Bare = 0.3f;
+    /// <summary>How its houses take the service drop: an insulator bracket under the eave's corner, or a short mast up through the roof's edge.</summary>
+    public bool EaveBracket;
 
     static readonly Dictionary<(int, Climate, TechLevel, int), HomeCulture> Cache = new();
 
@@ -298,6 +300,8 @@ public sealed class HomeCulture
             for (int i = 0; i < kinds; i++) c.Fences.Add((first[i].Kind, i == 0 ? 3f : 1.5f));
         }
         c.FenceOdd.AddRange(fitting.Where(x => c.Fences.All(y => y.Kind != x.Kind) && x.W >= 0.25f).Select(x => x.Kind));
+        // The service drop: an older, lower-tech street hangs it under the eave; a newer one stands a mast through the roof.
+        c.EaveBracket = rf.Chance(tech switch { TechLevel.Low => 0.75f, TechLevel.Mid => 0.3f + 0.3f * age, _ => 0.1f });
         // The materials it favours, among what its families build in.
         foreach (string key in new[] { "wall", "cover", "door", "window" })
         {
@@ -337,6 +341,7 @@ public sealed class HouseStyle
     public string Plan = "rect", Roof = "gable", Cover = "tile", Wall = "render", Ground = "", Upper = "", Window = "plain";
     public string Garage = "none", GarageDoor = "panel", Fence = "none";
     public FenceKind? FenceKind;
+    public bool EaveBracket;
     public int Storeys = 1, W = 12, D = 10, Over = 2, Units = 1, UnitW = 8;
     public bool GableFront, Bay, Dormer, Porch, Verandah, Chimney, Balcony, Double, Hoist, Vigas, Lift, Berm, Flare, Shutters;
     public float Wealth = 0.5f;
@@ -401,6 +406,7 @@ public sealed class HouseStyle
                 s.FenceKind = book.Fence(f.Pick("fence", r, "none"));
         }
         s.Fence = s.FenceKind?.Id ?? "none";
+        s.EaveBracket = c.EaveBracket;
         var (w0, w1) = f.Size("width", (12, 16));
         var (d0, d1) = f.Size("depth", (10, 14));
         float rich = Math.Clamp(s.Wealth + r.Float(-0.3f, 0.3f), 0f, 1f);
