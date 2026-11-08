@@ -98,7 +98,7 @@ public sealed partial class Town
                 {
                     Vector3 away = d / dist;
                     float pressing = MathF.Max(moved.Dot(away) / MathF.Max(dt, 1e-3f), 0f);
-                    if (pressing > 0.2f || dist < contact - 0.12f)
+                    if (pressing > 0.2f)
                     {
                         Vector3 step = away * MathF.Min(1.5f * Give(p), 1.6f) * dt;
                         if (Open(p.Pos + step)) p.Pos += step;
