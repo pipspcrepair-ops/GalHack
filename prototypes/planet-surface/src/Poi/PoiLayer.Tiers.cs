@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 using PoiGenerator;
@@ -33,15 +34,112 @@ public partial class PoiLayer
     int _tierTimer;
     Place _midJob;
 
+    /// <summary>
+    /// A city's buildings far off: a tile of the city at a time, their far meshes merged into one, one draw for
+    /// the lot. A whole skyline is a few dozen draws, not hundreds. Its buildings come in close as a tile: once
+    /// the camera is within <see cref="CityMidRadius"/> of any of them, all of them get their merged blocks
+    /// (with their floors inside), and the tile's far mesh goes once they all have.
+    /// </summary>
+    sealed class Tile
+    {
+        public readonly List<Place> Members = new();
+        public PlanetSurface.Poi.PoiSite First;
+        public Task<ChunkMesh> Mesh;
+        public Node3D Node;
+        public MeshInstance3D Low;
+        public float Distance;
+    }
+
+    readonly List<Tile> _tiles = new();
+    readonly Dictionary<Place, Tile> _tileOf = new();
+
+    /// <summary>A city tile's side, metres.</summary>
+    public const float TileSize = 256f;
+
+    /// <summary>Within this of a city tile its buildings' merged blocks are built; past <see cref="CityMidDrop"/> they go. Nearer than a lone place's: a city has hundreds.</summary>
+    public float CityMidRadius = 420f, CityMidDrop = 560f;
+
+    /// <summary>A city building's lights in the distance: a few, so a lit district glows without hundreds of lights.</summary>
+    const int CityLights = 3;
+
     void BuildTiered(PlanetSurface.World.PlanetWorld world)
     {
+        var tiles = new Dictionary<(int, int), Tile>();
         foreach (PoiSite site in world.Pois)
         {
             var place = new Place { Site = site };
             _places.Add(place);
             BlockGrid g = site.Instance.Blocks;
             CellMask occupied = site.Instance.Layout.Occupied;
-            place.LowMesh = Task.Run(() => Mesher.Coarse(g, occupied));
+            if (site.Siting != "city")
+            {
+                place.LowMesh = Task.Run(() => Mesher.Coarse(g, occupied));
+                continue;
+            }
+            var key = ((int)Mathf.Floor(site.Origin.X / TileSize), (int)Mathf.Floor(site.Origin.Z / TileSize));
+            if (!tiles.TryGetValue(key, out Tile tile)) tiles[key] = tile = new Tile { First = site };
+            tile.Members.Add(place);
+            _tileOf[place] = tile;
+        }
+        double w = world.Map.WidthMeters, h = world.Map.HeightMeters;
+        foreach (Tile tile in tiles.Values)
+        {
+            _tiles.Add(tile);
+            var members = tile.Members.Select(p => p.Site).ToList();
+            var anchor = tile.First.Origin;
+            tile.Mesh = Task.Run(() =>
+            {
+                // Each building's far mesh moved by its offset from the tile's first, the short way round the seams.
+                var all = new ChunkMesh();
+                foreach (PoiSite s in members)
+                {
+                    ChunkMesh one = Mesher.Coarse(s.Instance.Blocks, s.Instance.Layout.Occupied);
+                    float ox = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.X - anchor.X, w), oy = s.Origin.Y - anchor.Y, oz = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.Z - anchor.Z, h);
+                    all.Quads += one.Quads;
+                    for (int k = 0; k < one.Surfaces.Length; k++)
+                    {
+                        MeshBuffer from = one.Surfaces[k], to = all.Surfaces[k];
+                        int first = to.VertexCount;
+                        for (int v = 0; v < from.VertexCount; v++)
+                        {
+                            to.Positions.Add(from.Positions[v * 3] + ox);
+                            to.Positions.Add(from.Positions[v * 3 + 1] + oy);
+                            to.Positions.Add(from.Positions[v * 3 + 2] + oz);
+                        }
+                        to.Normals.AddRange(from.Normals);
+                        to.Colors.AddRange(from.Colors);
+                        foreach (int i in from.Indices) to.Indices.Add(first + i);
+                    }
+                }
+                return all;
+            });
+        }
+    }
+
+    /// <summary>Puts a finished city tile in: its merged far mesh, and each of its buildings' own node (lights, smoke, dressing; its merged blocks come later).</summary>
+    void BuildTile(Tile tile)
+    {
+        tile.Node = new Node3D { Name = $"City tile {tile.First.Origin.X / (int)TileSize},{tile.First.Origin.Z / (int)TileSize}" };
+        tile.Low = new MeshInstance3D { Name = "Low", Mesh = MeshBuild.ToMesh(tile.Mesh.Result, MaterialsFor(tile.First.Instance).BySurface), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        tile.Node.AddChild(tile.Low);
+        tile.Mesh = null;
+        AddChild(tile.Node);
+        foreach (Place p in tile.Members)
+        {
+            PoiInstance inst = p.Site.Instance;
+            p.Node = new Node3D { Name = p.Site.Family.Id };
+            AddLights(p.Node, inst, CityLights);
+            foreach (Node n in p.Node.GetChildren())
+                if (n is OmniLight3D l)
+                {
+                    l.DistanceFadeEnabled = true;
+                    l.DistanceFadeBegin = 500f;
+                    l.DistanceFadeLength = 120f;
+                }
+            // A few fires still smoking over a city, not one in every building.
+            if (Hash.Cell(new Int3(p.Site.Origin.X, 0, p.Site.Origin.Z), 0x5E0) % 6 == 0) AddSmoke(p.Node, inst);
+            DressFromDecoLibrary(p.Node, inst);
+            AddChild(p.Node);
         }
     }
 
@@ -93,23 +191,39 @@ public partial class PoiLayer
 
     void TickTiers(Vector3 camera)
     {
+        bool built = false;
         foreach (Place p in _places)
         {
             if (p.Node != null || p.LowMesh is not { IsCompleted: true }) continue;
             p.Node = BuildLow(p);
             AddChild(p.Node);
+            built = true;
             break;
+        }
+        foreach (Tile t in _tiles)
+        {
+            if (t.Node != null) { Vector3 at = _world.NearestCopy(new Vector3(t.First.Origin.X, t.First.Origin.Y, t.First.Origin.Z), camera); if (t.Node.Position != at) t.Node.Position = at; continue; }
+            if (built || t.Mesh is not { IsCompleted: true }) continue;
+            BuildTile(t);
+            built = true;
         }
         if (_midJob != null) WorkMid();
         if (--_tierTimer > 0) return;
         _tierTimer = 12;
         Place next = null;
-        float best = MidRadius;
+        float best = float.MaxValue;
+        // A city's tiles come in whole: each building in one goes by the nearest of them.
+        foreach (Tile t in _tiles)
+        {
+            t.Distance = float.MaxValue;
+            foreach (Place p in t.Members) t.Distance = Mathf.Min(t.Distance, Away(p, camera));
+        }
         foreach (Place p in _places)
         {
             if (p.Node == null) continue;
-            float d = Away(p, camera);
-            if (p.Mid != null && d > MidDrop && p != _midJob)
+            Tile tile = _tileOf.GetValueOrDefault(p);
+            float d = tile?.Distance ?? Away(p, camera), radius = tile != null ? CityMidRadius : MidRadius, drop = tile != null ? CityMidDrop : MidDrop;
+            if (p.Mid != null && d > drop && p != _midJob)
             {
                 p.Mid.QueueFree();
                 p.Mid = null;
@@ -118,13 +232,20 @@ public partial class PoiLayer
             }
             // A place you are all but in is never its far blocks, even for the moment its mid ones take.
             bool low = !p.Whole && d > 200f;
-            if (p.Low.Visible != low) p.Low.Visible = low;
-            if (p.Mid == null && p != _midJob && d < best)
+            if (p.Low != null && p.Low.Visible != low) p.Low.Visible = low;
+            if (p.Mid == null && p != _midJob && d < radius && d - radius < best)
             {
-                best = d;
+                best = d - radius;
                 next = p;
             }
         }
+        // A tile's far mesh stands until every building in it has its blocks in.
+        foreach (Tile t in _tiles)
+        {
+            bool show = t.Members.Any(p => !p.Whole);
+            if (t.Low != null && t.Low.Visible != show) t.Low.Visible = show;
+        }
+        MidPending = next != null || _midJob != null;
         if (next != null && _midJob == null)
         {
             _midJob = next;
@@ -159,7 +280,7 @@ public partial class PoiLayer
         }
         if (p.MidNext < meshes.Count) return;
         p.Mid.Visible = true;
-        p.Low.Visible = false;
+        if (p.Low != null) p.Low.Visible = false;
         p.Whole = true;
         p.MidMeshes = null;
         p.MidNext = 0;
@@ -175,6 +296,9 @@ public partial class PoiLayer
         else p.Hidden.Remove(group);
         if (p.Cells.TryGetValue(group, out MeshInstance3D cube)) cube.Visible = !hide;
     }
+
+    /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
+    public bool MidPending { get; private set; } = true;
 
     /// <summary>Whether a place's mid blocks are in (tests).</summary>
     public bool MidReady(PoiSite site) => _places.Find(x => x.Site == site)?.Whole == true;

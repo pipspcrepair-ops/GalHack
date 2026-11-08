@@ -79,7 +79,7 @@ public static class CoverBuilder
             bool reed = family == PlantFamily.Reed;
             if (reed ? s.InRiver || ground < 0.1f || (ground > 1.6f && biome is not (Biome.Swamp or Biome.SporeMarsh or Biome.HotSpring or Biome.Oasis or Biome.Riverbank)) : s.InRiver || ground < 0.6f) continue;
             if (pal.DeadZones.Count > 0 && roll < pal.Deadness(x, z)) continue;
-            if (source.StampWeight(x, z) > 0f && !(size < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
+            if (source.StampWeight(x, z) > 0f && !(size < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f) && !source.OnWild(x, z, out _)) continue;
             int gx = (int)Math.Floor(x), gz = (int)Math.Floor(z);
             if (FarBuilder.Dug(dug, gx, gz)) continue;
             float hx = (source.SurfaceHeight(Mathx.WrapX(x + 0.7, w), z) - ground) / 0.7f, hz = (source.SurfaceHeight(x, Mathx.Wrap(z + 0.7, h)) - ground) / 0.7f;
