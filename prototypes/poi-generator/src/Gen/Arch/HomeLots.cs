@@ -15,7 +15,7 @@ public static partial class Homes
     {
         HomeHints home = hints?.Home ?? Loose(rng);
         var culture = HomeCulture.Of(HomeBook.Current, home, l.Tech);
-        HouseStyle s = HouseStyle.Roll(culture, rng, family);
+        HouseStyle s = HouseStyle.Roll(culture, rng, family ?? home.Family);
         const int Side = 6;
         int front = 10 + 2 * rng.Range(0, 2);
         Built b = Dwelling(l, l.F, s, Side, front);

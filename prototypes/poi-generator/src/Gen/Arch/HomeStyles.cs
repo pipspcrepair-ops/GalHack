@@ -11,9 +11,10 @@ public enum Climate : byte { Temperate, Cold, Hot, Wet }
 
 /// <summary>
 /// What a street or a city tells its houses: whose culture built them (a seed every house on it shares), the
-/// weather they stand in and how well off the street was (0 poor to 1 rich).
+/// weather they stand in and how well off the street was (0 poor to 1 rich). Family: a house family to build
+/// whatever the culture would pick (views and proof frames), its parts still rolled by the rules.
 /// </summary>
-public sealed record HomeHints(int Culture, Climate Climate = Climate.Temperate, float Wealth = 0.5f)
+public sealed record HomeHints(int Culture, Climate Climate = Climate.Temperate, float Wealth = 0.5f, string? Family = null)
 {
     /// <summary>The climate from a world map's temperature and humidity (both 0 to 1).</summary>
     public static Climate ClimateOf(float temperature, float humidity) =>
