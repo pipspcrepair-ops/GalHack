@@ -175,6 +175,7 @@ public partial class RegionTest : Node
         Blizzards();
         Fog();
         FrontsCross();
+        CloudGrain();
     }
 
     /// <summary>A blizzard falls as snow on cold or high ground; on warm low ground the same weather is rain and wind.</summary>
@@ -275,6 +276,100 @@ public partial class RegionTest : Node
             return;
         }
         Check(false, "a storm front formed on its own on a storm world within three hours (12 worlds tried, the weather before it fair)");
+    }
+
+    /// <summary>
+    /// The clouds as they form, at thin cover and thicker: rounded heaps, never prisms. The coverage is a field
+    /// over the ground, and a cloud cut from it with a top that stood a fifth of the slab tall right at its edge
+    /// was a block with sheer walls (square-sided from the side), every wrinkle of the field drawn straight up
+    /// into a column (streaks under every cloud). So: 25 m in from its edge, a cloud stands no more than a tenth
+    /// of the slab tall, while the prism it was stood a fifth. And the noise has nothing in it at the scale of its
+    /// texels (the warp's default octaves scratched it there): its second differences stay small against its first.
+    /// </summary>
+    void CloudGrain()
+    {
+        const int size = 512;
+        FastNoiseLite now = PlanetSurface.Skies.SkyRig.CloudNoiseSource();
+        Image image = now.GetSeamlessImage(size, size, false, false, 0.1f, true);
+        var was = (FastNoiseLite)now.Duplicate();
+        was.DomainWarpFractalType = FastNoiseLite.DomainWarpFractalTypeEnum.Progressive; // the warp's default: five octaves, each six times the last
+        float rough = Roughness(image), scratched = Roughness(was.GetSeamlessImage(size, size, false, false, 0.1f, true));
+        Check(rough < 0.6f && scratched >= 0.6f,
+            $"the clouds' noise has no grain at its texels: second differences {rough:F2} of its first (the warp's default octaves scratched it to {scratched:F2})");
+
+        var clouds = PlanetSurface.Skies.CloudCoverage.Of(image);
+        var scale = new Vector2(8000f, 8000f);
+        const float cloudBase = 1600f, thick = 900f;
+        var random = new Random();
+        float worst = 0f, prism = 1f, worstCover = 0f;
+        int edges = 0;
+        foreach (float cover in new[] { 0.15f, 0.3f, 0.5f })
+        {
+            var heaps = new List<float>();
+            var walls = new List<float>();
+            for (int i = 0; i < 20000; i++)
+            {
+                // An edge along a line: clear here, cloud 40 m on, found to a few centimetres.
+                float x = random.NextSingle() * scale.X, z = random.NextSingle() * scale.Y;
+                if (clouds.Coverage(x, z, cover, Vector2.Zero, scale) > 0f || clouds.Coverage(x + 40f, z, cover, Vector2.Zero, scale) <= 0f) continue;
+                float lo = x, hi = x + 40f;
+                for (int k = 0; k < 20; k++)
+                {
+                    float mid = (lo + hi) * 0.5f;
+                    if (clouds.Coverage(mid, z, cover, Vector2.Zero, scale) <= 0f) lo = mid; else hi = mid;
+                }
+                float c = clouds.Coverage(hi + 25f, z, cover, Vector2.Zero, scale);
+                float heap = 0f, wall = 0f;
+                for (float h = 0.005f; h < 1.5f; h += 0.005f)
+                {
+                    if (clouds.Density(hi + 25f, cloudBase + h * thick, z, cover, cloudBase, thick, Vector2.Zero, scale) > 0.02f) heap = h;
+                    if (Prism(c, h) > 0.02f) wall = h;
+                }
+                heaps.Add(heap);
+                walls.Add(wall);
+            }
+            if (heaps.Count == 0) continue;
+            edges += heaps.Count;
+            heaps.Sort();
+            walls.Sort();
+            float median = heaps[heaps.Count / 2], before = walls[walls.Count / 2];
+            if (median >= worst) (worst, worstCover) = (median, cover);
+            prism = MathF.Min(prism, before);
+        }
+        Check(edges > 50 && worst <= 0.1f && prism > 0.1f,
+            $"forming clouds are heaps, not prisms: 25 m in from their edges they stand {worst * thick:F0} m at most (median, at cover {worstCover:F2}, {edges} edges), the old flat-topped prism {prism * thick:F0} m");
+    }
+
+    /// <summary>The share of a noise image's change that is at its texels: RMS second difference over RMS first difference, both ways.</summary>
+    static float Roughness(Image image)
+    {
+        int w = image.GetWidth(), h = image.GetHeight();
+        double one = 0, two = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float v = image.GetPixel(x, y).R;
+                float r = image.GetPixel((x + 1) % w, y).R, l = image.GetPixel((x + w - 1) % w, y).R;
+                float d = image.GetPixel(x, (y + 1) % h).R, u = image.GetPixel(x, (y + h - 1) % h).R;
+                one += (r - v) * (r - v) + (d - v) * (d - v);
+                two += (r - 2f * v + l) * (r - 2f * v + l) + (d - 2f * v + u) * (d - 2f * v + u);
+            }
+        return (float)Math.Sqrt(two / Math.Max(one, 1e-12));
+    }
+
+    /// <summary>The cloud shape before (proto/cloudgrain), kept to show the check above still tells it apart: a flat top a fifth of the slab tall right up to its edge.</summary>
+    static float Prism(float coverage, float h)
+    {
+        if (coverage <= 0f || h <= 0f || h >= 1f) return 0f;
+        float top = Math.Clamp(0.2f + coverage * 2.6f, 0.2f, 1f);
+        float profile = Smooth(0f, 0.07f, h) * (1f - Smooth(top * 0.55f, top, h));
+        return Math.Clamp(coverage * 3.2f * profile * 1.8f, 0f, 1f);
+    }
+
+    static float Smooth(float a, float b, float x)
+    {
+        float t = Math.Clamp((x - a) / (b - a), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     /// <summary>A rough name for a stretch of land, to tell regions apart.</summary>

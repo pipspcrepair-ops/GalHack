@@ -225,7 +225,7 @@ public partial class SkyRig : Node3D
         _noise = new NoiseTexture2D
         {
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,
-            Noise = new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
+            Noise = CloudNoiseSource(),
         };
         GalaxyShader.Register();
         _sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/sky.gdshader") };
@@ -333,6 +333,19 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("front_wave", wave);
         _sky.SetShaderParameter("front_kind", kind);
     }
+
+    /// <summary>
+    /// The noise the clouds are cut from: smooth simplex under one gentle warp, with nothing in it finer than
+    /// about sixteen texels (the 3D detail is the fine grain, and it varies with height). The warp is one octave:
+    /// FastNoiseLite's default is five, each six times the last, and the top three ran far past the texture's
+    /// own resolution and scratched it at every texel, wrinkles the sky drew straight up into columns.
+    /// </summary>
+    public static FastNoiseLite CloudNoiseSource() => new()
+    {
+        Seed = 11, Frequency = 0.008f, FractalOctaves = 4, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+        DomainWarpEnabled = true, DomainWarpType = FastNoiseLite.DomainWarpTypeEnum.SimplexReduced, DomainWarpAmplitude = 30f, DomainWarpFrequency = 0.012f,
+        DomainWarpFractalType = FastNoiseLite.DomainWarpFractalTypeEnum.None,
+    };
 
     /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>
     public void SetCumulus(Vector4[] cells, int count)
