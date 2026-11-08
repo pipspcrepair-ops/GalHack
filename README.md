@@ -8,31 +8,58 @@ So, thanks to Ralph, I now get to have Empyrion@Home, which has the things I lik
 
 Can Ralph do it? Only time will tell. This software is free, you can do whatever you want with it except sell it, I don't own it, it's vibe slop.
 
-A first-person space survival sandbox for one group of friends: wake from cryosleep in a buried bunker on a ruined world long after the collapse, build your way up from a hover rover to a capital ship, and explore a procedurally generated galaxy full of strange worlds, ruins and wrecks.
+---
+
+*Everything below this line is written by the AI agents that build GalHack.*
+
+GalHack is a first-person space survival sandbox for one group of friends. You wake from cryosleep in a buried bunker on a world that fell a century or two ago. You climb out with nothing, scavenge and build, and work your way up to ships and the stars.
 
 GalHack is free and never sold. Every asset is credited in [CREDITS.md](CREDITS.md).
 
-**GalHack is vibe coded.** One human sets the direction, playtests and makes the calls; AI agents (Claude Code) write the code, tests, design notes and procedural assets, working in parallel on branches that are reviewed and only merged when the full test suite passes.
+**GalHack is vibe coded.** One person sets the direction, playtests and makes the calls. AI agents (Claude Code) write the code, the tests, the design notes and the generated art and sound. They work on branches in parallel, and a branch only merges when the full test suite passes.
+
+## What's in the test build
+
+The playable part is the slice (`prototypes/slice`): one player, on a fresh random world every game. This is what the latest test build has. It runs a little ahead of `main`. Anything marked *partial* is still being built.
+
+- **A real galaxy.** Every star in the night sky is a real star system on the galaxy map, and the map shows them all from the start. Each system has its own worlds, moons and rings, in the same places from the ground and from orbit. *Partial:* you can't travel between systems yet, as the warp drive and hyperdrive aren't fitted.
+- **Worlds built from layers.** Each world rolls its type, its theme, how it fell and how advanced its people were, and the layers combine. Every world grows its own plants, and its creatures and people are built from generated parts. *Partial:* so far the layers mostly decide a world's places, cities and regions. Plants, wildlife and weather reading them comes next.
+- **Cities and ruins.** Some worlds have a city: districts of towers and terraces, civic buildings and a waterfront, fallen as far as the world did. Elsewhere there are ruined villages, farms, works, bunkers and fuel stations, and many places can be entered. Survivor towns have people in them. Nobody speaks: people talk with their bodies.
+- **The Husks.** The collapse's real face. Husks are people taken over by worm-like parasites that come out of every opening. They move like puppets and seize you by the head. Their dens are full of worm masses, deep inside the places they've taken.
+- **Weather.** Storms grow out of the cloud deck as real cells, with lightning and rain curtains hanging under them. Tornadoes touch down from the cloud base in several shapes. Rain stops where it lands.
+- **Roads.** Highways, roads and dirt tracks link the places, cracked and grown over with age. Junctions are rounded and curves are gentle. Power lines run on their own pylons. *Partial:* railways don't generate yet, and bridges are simple.
+- **The climb to orbit.** Fly a vessel straight up, with no loading screen or fade. At 1,060 m you're in orbit among the start system's wrecks. Step out, float across and board one.
+- **Building.** Every block is a crafted item. Set down a Big Core to found a Large structure, such as a base. A Small Core founds a small craft that switches between hover and flight on the CORE tab. *Partial:* a Large structure can switch to flight, but capital ships only fly on a basic model so far, with no fuel burn or clean lift-off.
+- **Everything generated.** Every model, texture, sound and piece of music is made in code. Apart from the engine and a few libraries, the only outside files are three open-licence fonts, credited in [CREDITS.md](CREDITS.md).
+
+Not in the slice yet: co-op (it works in its own prototype), saving and loading, live factions, and trading.
 
 ## Gallery
 
-Work in progress, rendered by the game itself on this branch. Click an image for full size.
+Fresh shots from the latest test build, rendered by the game itself. The city skyline comes from the planet view, which runs the same world code. Click an image for full size.
 
 <table>
-<tr><td width="33%"><a href="docs/gallery/night-sky.png"><img src="docs/gallery/night-sky.png" alt="A real galaxy in the night sky: every star and nebula is a place you can reach"></a><br><sub>A real galaxy in the night sky: every star and nebula is a place you can reach</sub></td><td width="33%"><a href="docs/gallery/galaxy-core.png"><img src="docs/gallery/galaxy-core.png" alt="The galactic core from orbit, seen from a rim world"></a><br><sub>The galactic core from orbit, seen from a rim world</sub></td><td width="33%"><a href="docs/gallery/ringed-world.png"><img src="docs/gallery/ringed-world.png" alt="A ringed world and a ringed giant in one real star system"></a><br><sub>A ringed world and a ringed giant in one real star system</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/moons.png"><img src="docs/gallery/moons.png" alt="Neighbouring worlds show their own surfaces from afar"></a><br><sub>Neighbouring worlds show their own surfaces from afar</sub></td><td width="33%"><a href="docs/gallery/system-map.png"><img src="docs/gallery/system-map.png" alt="The system map: worlds, moons and belts on real orbits"></a><br><sub>The system map: worlds, moons and belts on real orbits</sub></td><td width="33%"><a href="docs/gallery/high-orbit.png"><img src="docs/gallery/high-orbit.png" alt="High orbit: your world and its moons, turned by hand"></a><br><sub>High orbit: your world and its moons, turned by hand</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/factory.png"><img src="docs/gallery/factory.png" alt="An abandoned factory, wrecks parked by the road"></a><br><sub>An abandoned factory, wrecks parked by the road</sub></td><td width="33%"><a href="docs/gallery/hamlet.png"><img src="docs/gallery/hamlet.png" alt="A survivor hamlet on the hill, smoke rising"></a><br><sub>A survivor hamlet on the hill, smoke rising</sub></td><td width="33%"><a href="docs/gallery/galaxy-map.png"><img src="docs/gallery/galaxy-map.png" alt="The 3D galaxy map, with drop lines showing depth"></a><br><sub>The 3D galaxy map, with drop lines showing depth</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/valley.png"><img src="docs/gallery/valley.png" alt="On the jetpack over a green valley"></a><br><sub>On the jetpack over a green valley</sub></td><td width="33%"><a href="docs/gallery/core-tab.png"><img src="docs/gallery/core-tab.png" alt="The CORE tab: one Small Core, with a striped mode switch"></a><br><sub>The CORE tab: one Small Core, with a striped mode switch</sub></td><td width="33%"><a href="docs/gallery/tech-tree.png"><img src="docs/gallery/tech-tree.png" alt="The tech tree: Small & Hover"></a><br><sub>The tech tree: Small & Hover</sub></td></tr>
-<tr><td width="33%"><a href="docs/gallery/signs.png"><img src="docs/gallery/signs.png" alt="Signs: ideas carried by symbols, with no language"></a><br><sub>Signs: ideas carried by symbols, with no language</sub></td><td width="33%"><a href="docs/gallery/traveller-marks.png"><img src="docs/gallery/traveller-marks.png" alt="Traveller marks left by survivors for those who follow"></a><br><sub>Traveller marks left by survivors for those who follow</sub></td><td width="33%"><a href="docs/gallery/sigils.png"><img src="docs/gallery/sigils.png" alt="Faction sigils"></a><br><sub>Faction sigils</sub></td></tr>
+<tr><td width="33%"><a href="docs/gallery/city-river.png"><img src="docs/gallery/city-river.png" alt="A city skyline over its river"></a><br><sub>A city skyline over its river</sub></td><td width="33%"><a href="docs/gallery/ruined-village.png"><img src="docs/gallery/ruined-village.png" alt="A cracked road through a ruined village"></a><br><sub>A cracked road through a ruined village</sub></td><td width="33%"><a href="docs/gallery/meadow.png"><img src="docs/gallery/meadow.png" alt="A meadow world with its own trees and flowers"></a><br><sub>A meadow world with its own trees and flowers</sub></td></tr>
+<tr><td width="33%"><a href="docs/gallery/arid-world.png"><img src="docs/gallery/arid-world.png" alt="An arid world: dunes, mesas and blue lakes"></a><br><sub>An arid world: dunes, mesas and blue lakes</sub></td><td width="33%"><a href="docs/gallery/storm.png"><img src="docs/gallery/storm.png" alt="A storm cell with its rain curtain hanging below"></a><br><sub>A storm cell with its rain curtain hanging below</sub></td><td width="33%"><a href="docs/gallery/tornado.png"><img src="docs/gallery/tornado.png" alt="A tornado under its storm, down an old highway"></a><br><sub>A tornado under its storm, down an old highway</sub></td></tr>
+<tr><td width="33%"><a href="docs/gallery/husks.png"><img src="docs/gallery/husks.png" alt="Husks on a fuel station forecourt"></a><br><sub>Husks on a fuel station forecourt</sub></td><td width="33%"><a href="docs/gallery/husk-close.png"><img src="docs/gallery/husk-close.png" alt="A Husk, worms spilling from its mouth and eyes"></a><br><sub>A Husk, worms spilling from its mouth and eyes</sub></td><td width="33%"><a href="docs/gallery/highway.png"><img src="docs/gallery/highway.png" alt="An old highway, cracked and grown over"></a><br><sub>An old highway, cracked and grown over</sub></td></tr>
+<tr><td width="33%"><a href="docs/gallery/vharn-garrison.png"><img src="docs/gallery/vharn-garrison.png" alt="A ruined Vharn garrison beyond the baobabs"></a><br><sub>A ruined Vharn garrison beyond the baobabs</sub></td><td width="33%"><a href="docs/gallery/climb.png"><img src="docs/gallery/climb.png" alt="Climbing to orbit: the world curves away below"></a><br><sub>Climbing to orbit: the world curves away below</sub></td><td width="33%"><a href="docs/gallery/galaxy-orbit.png"><img src="docs/gallery/galaxy-orbit.png" alt="The galaxy from orbit, its core and a nebula"></a><br><sub>The galaxy from orbit, its core and a nebula</sub></td></tr>
+<tr><td width="33%"><a href="docs/gallery/galaxy-map.png"><img src="docs/gallery/galaxy-map.png" alt="The galaxy map: every star charted, lanes between them"></a><br><sub>The galaxy map: every star charted, lanes between them</sub></td><td width="33%"><a href="docs/gallery/tech-tree.png"><img src="docs/gallery/tech-tree.png" alt="The tech tree: Small & Hover"></a><br><sub>The tech tree: Small & Hover</sub></td><td width="33%"><a href="docs/gallery/core-tab.png"><img src="docs/gallery/core-tab.png" alt="The CORE tab: a Small Core and its striped mode switch"></a><br><sub>The CORE tab: a Small Core and its striped mode switch</sub></td></tr>
 </table>
 
 ## Licence
 
-GalHack's own code and data are licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): you may use, change, fork and share them for any noncommercial purpose, but not sell them or use them commercially. Third-party fonts and libraries keep their own licences, listed in [CREDITS.md](CREDITS.md).
+GalHack is free to do anything with except sell. Its own code and data are licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): you may use, change, fork and share them for any noncommercial purpose, but not sell them or use them commercially. Third-party fonts and libraries keep their own licences, listed in [CREDITS.md](CREDITS.md).
 
 ## Design
 
-The full game design document is [docs/DESIGN.md](docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes. [docs/world-themes.md](docs/world-themes.md) lists the world themes the generator will draw on.
+The full game design document is [docs/DESIGN.md](docs/DESIGN.md), a published copy of the living doc that's refreshed as it changes. Other design notes:
+
+- [docs/world-themes.md](docs/world-themes.md): the world themes the generator draws on
+- [docs/world-layers.md](docs/world-layers.md): the themes split into layers that combine
+- [docs/space-pois.md](docs/space-pois.md): places in space
+- [docs/alien-peoples.md](docs/alien-peoples.md): the alien peoples of the old civilisation
+- [docs/body-language-and-sound.md](docs/body-language-and-sound.md): how people talk without words
+- [docs/playtest-list.md](docs/playtest-list.md): the owner's playtest checklist, with what's done
 
 Guiding rule 1: **stable and smooth first.** Nothing a player builds, drops or stores ever disappears.
 
