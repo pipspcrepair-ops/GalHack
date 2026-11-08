@@ -34,9 +34,23 @@ public sealed partial class Staging
         float span = alongZ ? hi.Z - lo.Z : hi.X - lo.X;
         Vector3 along = alongZ ? Vector3.Back : Vector3.Right, side = alongZ ? Vector3.Right : Vector3.Back;
         Vector3 Ground(Vector3 v, float up) => v with { Y = _game.Zone.GroundAt(v.X, v.Z).Y + up };
-        // From the ground, a long walk off its flank, three-quarters on.
+        // From the ground, a long walk off its flank, three-quarters on: dry land with the hull in sight.
+        float sea = _game.Zone.Planet.Source.WaterLevel;
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
         Vector3 far = Ground(mid + side * span * 0.85f + along * span * 0.45f, 1.7f);
-        foreach (int x in Frame(far, mid + Vector3.Up * 4f, $"{dir}/{tag}-ground.png", 240)) yield return x;
+        float best = float.MinValue;
+        for (int k = 0; k < 24; k++)
+            foreach (float r in new[] { 0.7f, 0.9f, 1.1f })
+            {
+                float a = k * MathF.Tau / 24f;
+                Vector3 c = Ground(mid + (side * MathF.Cos(a) + along * MathF.Sin(a)) * span * r, 1.7f);
+                if (c.Y - 1.7f < sea + 0.5f) continue;
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(c, mid + Vector3.Up * 6f, PlanetSurface.World.Layers.Flora));
+                // Broadside reads best: more across than along, nothing in the way.
+                float score = MathF.Abs(MathF.Cos(a)) * 2f - MathF.Abs(MathF.Sin(a) - 0.5f) - (hit.Count > 0 ? 4f : 0f) - r;
+                if (score > best) { best = score; far = c; }
+            }
+        foreach (int x in Frame(far, mid + Vector3.Up * 6f, $"{dir}/{tag}-ground.png", 240)) yield return x;
         // From the air, over the other quarter.
         Vector3 air = mid - side * span * 0.55f - along * span * 0.5f + Vector3.Up * span * 0.42f;
         foreach (int x in Frame(air, mid, $"{dir}/{tag}-air.png", 180)) yield return x;
@@ -49,12 +63,14 @@ public sealed partial class Staging
             int floor = m.Cells.GroupBy(c => c.Y).OrderByDescending(g => g.Count()).First().Key;
             var cells = m.Cells.Where(c => c.Y == floor && !BlockInfo.Collides(inst.Blocks.Get(c).Type)).ToList();
             Vector3 c0 = new((float)cells.Average(c => c.X), floor, (float)cells.Average(c => c.Z));
-            // The cell farthest from the middle along the room's long way, and look back across it.
-            bool longZ = cells.Max(c => c.Z) - cells.Min(c => c.Z) >= cells.Max(c => c.X) - cells.Min(c => c.X);
-            Int3 end = purpose == "bridge"
-                ? cells.OrderByDescending(c => alongZ ? Math.Abs(c.Z - c0.Z) : Math.Abs(c.X - c0.X)).First()
-                : cells.OrderByDescending(c => longZ ? Math.Abs(c.Z - c0.Z) : Math.Abs(c.X - c0.X)).ThenBy(c => longZ ? Math.Abs(c.X - c0.X) : Math.Abs(c.Z - c0.Z)).First();
-            Vector3 eye = p.WorldOf(end, 1.65f), look = p.ToWorld(c0 + new Vector3(0.5f, purpose == "hold" ? 3f : 1.2f, 0.5f));
+            // Down the middle aisle from one end of the room to the other.
+            float midAcross = alongZ ? (lo.X + hi.X) * 0.5f : (lo.Z + hi.Z) * 0.5f;
+            float Across(Int3 c) => MathF.Abs((alongZ ? c.X : c.Z) - midAcross);
+            int Al(Int3 c) => alongZ ? c.Z : c.X;
+            var aisle = cells.Where(c => Across(c) <= 2f).ToList();
+            if (aisle.Count == 0) aisle = cells;
+            Int3 end = aisle.OrderBy(Al).First(), other = aisle.OrderBy(Al).Last();
+            Vector3 eye = p.WorldOf(end, 1.65f), look = p.WorldOf(other, purpose == "hold" ? 3f : 1.4f);
             if (purpose == "bridge")
             {
                 // From the back of the bridge toward its windows.

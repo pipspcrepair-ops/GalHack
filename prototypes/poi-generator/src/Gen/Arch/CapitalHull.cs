@@ -1413,12 +1413,7 @@ sealed class Hulk
         P.Yards(outside.Distinct().ToArray());
         for (int du = -4; du <= 4; du++) for (int dv = -4; dv <= 4; dv++) clear.Add((yardU + du, yardV + dv));
         P.C.VaultModule = primary[Vault];
-        // Each piece's weather box, for the years to work on.
-        foreach (Piece p in Pieces)
-        {
-            int lo = Math.Min(p.Dy(p.V0), p.Dy(p.V1 - 1)), hi = Math.Max(p.Dy(p.V0), p.Dy(p.V1 - 1));
-            P.Weathers(Div2(-Half - 4 + p.OffU), 0, Div2(p.V0 + p.OffV - 2), Div2(Half + 4 + p.OffU), Div2(Math.Max(2, TowerTop + hi + 14)), Div2(p.V1 + p.OffV + (p == Pieces[^1] ? Nac + 4 : 2)), Div2(Math.Max(2, HullTop + (lo + hi) / 2)));
-        }
+        // No weather box: a steel hull is no house whose roof the years bring in; the states' own decay takes it.
         Debris(clear);
     }
 
