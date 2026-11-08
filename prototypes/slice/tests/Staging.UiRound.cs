@@ -76,7 +76,7 @@ public sealed partial class Staging
         Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
         Call(_game.Visor, "Hurt", feet - side * 6f);
         foreach (int x in Frame("hud-alert")) yield return x;
-        // With the Tab menu open the same alerts sit in the header's strip, clear of the paperdoll and the slots.
+        // With the Tab menu open the same alerts stay on the toolbar's line at the far left, clear of the paperdoll and the slots.
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
         Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
         foreach (int x in Frame("menu-alert")) yield return x;
