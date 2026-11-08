@@ -99,6 +99,7 @@ public sealed partial class Staging
             "townnight" => TownNightView(),
             "checkpoint" => CheckpointView(),
             "wheel" => WheelView(),
+            "farfolk" => FarFolkView(),
             "fauna" => FaunaView(),
             "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
@@ -138,6 +139,7 @@ public sealed partial class Staging
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
             "blockdetail" => BlockDetailView(),
+            "placesurf" => PlaceSurfView(),
             "decorooms" => DecoRooms(),
             _ => ProofViews(view),
         };

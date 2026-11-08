@@ -67,6 +67,12 @@ public partial class Screenshot : Node
             return;
         }
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        if (_view == "placesurf")
+        {
+            // The place surfaces proof: a city to frame, and an alien place set down near the start.
+            PlanetSurface.Infra.CityPlan.Force = true;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = _args.GetValueOrDefault("force", "alien_cathedral");
+        }
         // A place of a family near the landing, and who is in it (--force-family or --force, --force-occupant=Keepers).
         if (_args.TryGetValue("force-family", out string ff) || _args.TryGetValue("force", out ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
         if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))

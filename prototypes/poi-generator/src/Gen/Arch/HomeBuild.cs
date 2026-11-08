@@ -439,39 +439,46 @@ public static partial class Homes
         };
     }
 
-    /// <summary>The outer walls' cladding: courses of board or logs, brick, coursed stone with lighter quoins, a timber frame, plain render; a stone ground floor under timber on some.</summary>
+    /// <summary>
+    /// The outer walls' cladding: brick, boards, logs, coursed stone, render, panels, a timber frame, a stone ground floor
+    /// under timber on some. Each wall one material in one colour, its face drawn by the place shader from the block's
+    /// finish (<see cref="Surfaces.HouseVariant"/>): no colour stripes or jitter cell by cell, which read as a mosaic.
+    /// Only what a builder sets apart stands out: board corner trims, log ends, stone quoins, a half-timbered frame, a
+    /// glass wall's bands.
+    /// </summary>
     static Func<int, int, int, Block> Cladding(HouseStyle s, Hut h, Stuff st, TechLevel tech)
     {
         var dark = new Rgb(0x3a, 0x2e, 0x26);
         int storeyH = h.Height + 1;
+        byte cover = Surfaces.HouseVariant(s.Cover), frameFinish = Surfaces.HouseVariant("frame"), infill = Surfaces.HouseVariant("render");
         return (u, y, v) =>
         {
             int storey = Math.Max(0, y) / storeyH, inStorey = Math.Max(0, y) % storeyH;
             string wall = storey == 0 && s.Ground.Length > 0 ? s.Ground : storey >= 1 && s.Upper.Length > 0 ? s.Upper : s.Wall;
             Rgb c = storey == 0 && s.Ground.Length > 0 ? s.GroundC : storey >= 1 && s.Upper.Length > 0 ? s.UpperC : s.WallC;
             // A mansard's top storey is roof, its windows dormers in it.
-            if (s.Roof == "mansard" && storey == h.Storeys - 1 && storey > 0) return new Block(BlockType.Cube, st.RoofM, st.Roof.Scale(0.92f), Role.Wall);
-            uint hash = Hash.Cell(new Int3(u, y, v), 0x5C1u);
-            float jit = 1f + ((int)(hash % 7) - 3) / 100f;
+            if (s.Roof == "mansard" && storey == h.Storeys - 1 && storey > 0) return new Block(BlockType.Cube, st.RoofM, st.Roof, Role.Wall, Dir.North, cover);
+            byte finish = Surfaces.HouseVariant(wall);
+            Block Clad(Material m, Rgb col) => new(BlockType.Cube, m, col, Role.Wall, Dir.North, finish);
             bool corner = !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v - 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v - 1))
                 || !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v + 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v + 1));
             switch (wall)
             {
-                case "brick": return new Block(BlockType.Cube, Material.Ceramic, (y == 0 ? c.Scale(0.8f) : c).Scale(jit), Role.Wall);
-                case "board": return new Block(BlockType.Cube, Material.Timber, y == 0 ? c.Scale(0.7f) : corner ? c.Scale(1.06f) : (y & 1) == 0 ? c : c.Scale(0.9f), Role.Wall);
-                case "timber": return new Block(BlockType.Cube, Material.Timber, (corner ? c.Scale(0.8f) : (y & 1) == 0 ? c : c.Scale(0.86f)).Scale(jit), Role.Wall);
-                case "stone": return new Block(BlockType.Cube, Material.Rock, (corner && ((y / 2) & 1) == 0 ? c.Scale(1.12f) : c).Scale(jit), Role.Wall);
+                case "brick": return Clad(Material.Ceramic, c);
+                case "board": return Clad(Material.Timber, corner ? c.Scale(1.06f) : c);
+                case "timber": return Clad(Material.Timber, corner ? c.Scale(0.85f) : c);
+                case "stone": return Clad(Material.Rock, corner && ((y / 2) & 1) == 0 ? c.Scale(1.1f) : c);
                 case "halftimber":
                 {
                     bool frame = y == 0 || inStorey == 0 || inStorey == storeyH - 1 || corner || (u + v) % 4 == 0 || ((u + v) % 4 + inStorey) % 4 == 0 && inStorey is 1 or 2 && (u + v) % 4 != 2;
-                    return frame ? new Block(BlockType.Cube, Material.Timber, dark, Role.Wall) : new Block(BlockType.Cube, Material.Concrete, s.WallC.Lerp(new Rgb(0xec, 0xe4, 0xcc), 0.6f), Role.Wall);
+                    return frame ? new Block(BlockType.Cube, Material.Timber, dark, Role.Wall, Dir.North, frameFinish) : new Block(BlockType.Cube, Material.Concrete, s.WallC.Lerp(new Rgb(0xec, 0xe4, 0xcc), 0.6f), Role.Wall, Dir.North, infill);
                 }
-                case "adobe": return new Block(BlockType.Cube, Material.Concrete, c.Scale(jit), Role.Wall);
-                case "panel": return new Block(BlockType.Cube, tech == TechLevel.High ? Material.Resin : Material.Concrete, (u + v) % 4 == 0 ? c.Scale(0.92f) : c, Role.Wall);
+                case "adobe": return Clad(Material.Concrete, c);
+                case "panel": return Clad(tech == TechLevel.High ? Material.Resin : Material.Concrete, c);
                 case "glass":
                     return inStorey == storeyH - 1 || inStorey == 0 ? new Block(BlockType.Cube, Material.Alloy, new Rgb(0x8c, 0x98, 0xa0), Role.Wall)
                         : new Block(BlockType.Pane, Material.Glass, new Rgb(0x6a, 0x84, 0x8c), Role.Window);
-                default: return new Block(BlockType.Cube, Material.Concrete, y == 0 ? c.Scale(0.78f) : c, Role.Wall);
+                default: return Clad(Material.Concrete, c);
             }
         };
     }
@@ -525,7 +532,7 @@ public static partial class Homes
         int toLot = front - frontV; // house v + toLot = lot v
         // The materials and the cladding.
         l.S = StuffOf(s, tech, r);
-        var h = new Hut(l, f) { Storeys = s.Storeys, Lift = lifted ? 4 : 0 };
+        var h = new Hut(l, f) { Storeys = s.Storeys, Lift = lifted ? 4 : 0, RoofFinish = Surfaces.HouseVariant(s.Cover) };
         h.Skin = Cladding(s, h, l.S, tech);
         if (plan.Round != null) foreach (var c in plan.Round) h.Foot.Add(c);
         h.Wings.AddRange(plan.Wings);
@@ -659,7 +666,7 @@ public static partial class Homes
         (int U, int V, Dir Out)? sideDoor = null;
         if (s.Garage is "attached" or "detached")
         {
-            g = new Hut(l, f) { Storeys = 1 };
+            g = new Hut(l, f) { Storeys = 1, RoofFinish = Surfaces.HouseVariant(s.Cover) };
             g.Skin = Cladding(s, g, l.S, tech);
             g.Wings.Add(new Wing(gu0, gv0, gu0 + gOuter - 1, gv0 + gd - 1, s.Roof is "hip" or "pagoda" || !s.GableFront));
             Room gr = g.Add("workshop", 0, gu0 + 1, gv0 + 1, gu0 + gOuter - 2, gv0 + gd - 2, ModuleKind.Hall);
@@ -786,7 +793,7 @@ public static partial class Homes
         var drive = tech switch { TechLevel.Low => new Rgb(0x7a, 0x70, 0x60), TechLevel.High => new Rgb(0x3e, 0x40, 0x44), _ => new Rgb(0x9a, 0x96, 0x8c) };
         if (built.DriveU0 is int d0 && built.DriveU1 is int d1)
             for (int v = -toLot; v < gDoorV + (s.Garage == "carport" ? gd : 0); v++)
-                for (int u = gDoorU; u < gDoorU + gWide; u++) l.Plate(f, u, v, drive.Scale(0.97f + (Hash.Cell(new Int3(u / 2, 0, v / 2), 7) % 6) / 100f), Role.Floor);
+                for (int u = gDoorU; u < gDoorU + gWide; u++) l.Plate(f, u, v, drive, Role.Floor);
         var pale = l.S.Base.Scale(1.15f);
         foreach (var (_, du) in fronts)
             for (int v = -toLot; v < (lifted ? plan.DoorV - 2 - h.Lift : plan.DoorV); v++)

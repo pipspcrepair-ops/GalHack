@@ -117,22 +117,24 @@ public static partial class Homes
         // Paints and blocks.
         Rgb body = s.FenceC, post = s.FencePostC;
         var iron = new Rgb(0x2c, 0x2e, 0x30);
+        // A wall's finish from its stuff (dry stone laid as rubble, brick, render), one colour all along: the shader draws
+        // the coursing, not a jitter cell by cell; only its coping course and its piers stand apart.
+        byte finish = Surfaces.HouseVariant(k.Stuff switch { Material.Rock => k.Body == "wall" && k.Post == "none" ? "rubble" : "stone", Material.Ceramic => "brick", Material.Concrete => "render", _ => "" });
         Block Post(int y) => k.Body switch
         {
-            "wall" or "railing" => new Block(BlockType.Cube, k.Stuff, body.Scale(0.86f), Role.Wall),
+            "wall" or "railing" => new Block(BlockType.Cube, k.Stuff, body.Scale(0.88f), Role.Wall, Dir.North, finish),
             "hedge" => new Block(BlockType.Cube, Material.Timber, post, Role.Decor),
             _ => new Block(BlockType.Cube, k.PostStuff, post, Role.Decor),
         };
-        float Jit(int u, int y, int v, int spread) => 1f + ((int)(Hash.Cell(f.At(u, y, v), 0xFE7u) % (uint)(2 * spread + 1)) - spread) / 100f;
         Block Body(int u, int y, int v, bool alongU) => k.Body switch
         {
-            "wall" => new Block(BlockType.Cube, k.Stuff, body.Scale(Jit(u, y, v, k.Stuff == Material.Rock ? 9 : 3) * (y == tall - 1 ? 0.9f : 1f)), Role.Wall),
-            "hedge" => new Block(BlockType.Cube, Material.Plant, body.Scale(Jit(u, y, v, 10)), Role.Decor),
-            "railing" => y == 0 ? new Block(BlockType.Cube, k.Stuff, body.Scale(Jit(u, y, v, 3)), Role.Wall)
+            "wall" => new Block(BlockType.Cube, k.Stuff, body.Scale(y == tall - 1 && tall > 1 ? 0.94f : 1f), Role.Wall, Dir.North, finish),
+            "hedge" => new Block(BlockType.Cube, Material.Plant, body.Scale(1f + ((int)(Hash.Cell(f.At(u, y, v), 0xFE7u) % 7) - 3) / 100f), Role.Decor),
+            "railing" => y == 0 ? new Block(BlockType.Cube, k.Stuff, body, Role.Wall, Dir.North, finish)
                 : new Block(BlockType.Ladder, Material.Steel, iron, Role.Decor, f.Turn(alongU ? Dir.North : Dir.East)),
-            "edging" => new Block(BlockType.Plate, k.Stuff, body.Scale(Jit(u, y, v, 4)), Role.Floor),
-            // Boards, sheet or screen: a corrugated sheet's ribs in alternate shades.
-            _ => new Block(BlockType.Pane, k.Stuff, k.Stuff == Material.Rust || k.Stuff == Material.Steel && body.R < 0xa0 ? body.Scale((u + v) % 2 == 0 ? 1f : 0.82f) : body.Scale(Jit(u, y, v, 3)), Role.Decor),
+            "edging" => new Block(BlockType.Plate, k.Stuff, body, Role.Floor),
+            // Boards, sheet or screen, one colour all along.
+            _ => new Block(BlockType.Pane, k.Stuff, body, Role.Decor),
         };
         foreach (var run in runs)
         {
@@ -279,7 +281,8 @@ public static partial class Homes
         Frame f = lot.Shift(side + margin, front + margin);
         var shaft = new Hut(l, f) { Storeys = storeys };
         var concrete = new Rgb(0x9c, 0x98, 0x90);
-        shaft.Skin = (u, y, v) => new Block(BlockType.Cube, Material.Concrete, concrete.Scale((y % 4 == 3 ? 0.88f : 1f) * (1f + (Hash.Cell(new Int3(u, y, v), 3) % 6) / 100f)), Role.Wall);
+        byte precast = Surfaces.HouseVariant("panel");
+        shaft.Skin = (u, y, v) => new Block(BlockType.Cube, Material.Concrete, concrete.Scale(y % 4 == 3 ? 0.9f : 1f), Role.Wall, Dir.North, precast);
         shaft.Wings.Add(new Wing(0, 0, tw - 1, tw - 1));
         var halls = new List<Room>();
         for (int st = 0; st < storeys; st++) halls.Add(shaft.Add(st == 0 ? "hall" : "storage", st, 1, 1, tw - 2, tw - 2, ModuleKind.Hall));
@@ -287,7 +290,7 @@ public static partial class Homes
         var flights = new List<int>();
         for (int st = 0; st + 1 < storeys; st++) flights.Add(shaft.Stair(st % 2 == 0 ? tw - 2 : 1, 2, st));
         // The house on top.
-        var house = new Hut(l, f) { Storeys = 1, Lift = shaft.Walk(storeys) };
+        var house = new Hut(l, f) { Storeys = 1, Lift = shaft.Walk(storeys), RoofFinish = Surfaces.HouseVariant(s.Cover) };
         house.Skin = Cladding(s, house, l.S, l.Tech);
         house.Wings.Add(new Wing(-off, -off, tw - 1 + off, tw - 1 + off, r.Chance(0.5f)));
         int last = storeys - 1, col = last % 2 == 0 ? tw - 2 : 1;

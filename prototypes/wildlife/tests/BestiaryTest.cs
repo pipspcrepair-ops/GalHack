@@ -1282,6 +1282,20 @@ public partial class BestiaryTest : Node
             if (f > 10) worst = Math.Max(worst, System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds);
         }
         Check(crowd.All(c => c.view.DrawnNear == 1), "each person is one drawn body close to, not a node per piece");
+        // From a distance the small parts drop out by size, and every rig piece keeps its body.
+        int pieces = 0, kept = 0;
+        long whole = 0, far = 0;
+        bool fewer = true;
+        foreach (var (rig, _) in crowd)
+        {
+            MeshBuilder.Prepared m = PersonView.Mesh(rig.Layout.Pieces);
+            fewer &= m.Lods.Length == 2 && m.Lods[0].Length < m.I.Length && m.Lods[1].Length < m.Lods[0].Length;
+            pieces += rig.Layout.Pieces.Count;
+            kept += m.Lods[^1].Select(i => m.Bones[i * 4]).Distinct().Count();
+            whole += m.I.Length / 3;
+            far += m.Lods[^1].Length / 3;
+        }
+        Check(fewer && kept == pieces, $"far off a body drops its small parts ({whole / crowd.Count} triangles a person to {far / crowd.Count}) and keeps every piece ({kept} of {pieces})");
         Check(worst < 1.5, $"twenty people walking and gesturing pose in {worst:F2} ms a frame at worst (budget 2 ms with drawing)");
         Check(bytes == 0, $"and allocate nothing doing it ({bytes} B)");
         holder.QueueFree();
