@@ -282,12 +282,15 @@ public partial class Globe : Node3D
             // The relief at the grid's own spacing there, or it stands up as spikes.
             float step_m = max(32.0, s * 0.0375);
             float lod = log2(step_m / 32.0);
-            float e = ground_at(offset, lod);
+            // Past the horizon the relief lies down: there the grid's few bearings would stand hills
+            // up over the horizon as a fence of posts, a bearing apart.
+            float beyond = 1.0 - smoothstep(0.0, 2000.0, s - flat_from - sqrt(2.0 * height / max(bend, 1e-9)));
+            float e = ground_at(offset, lod) * beyond;
             vec3 n;
             vec3 p = sheet_point(s, t, e, n);
             // The ground's slope, from the same map.
-            float ex = ground_at(offset + vec2(step_m, 0.0), lod);
-            float ez = ground_at(offset + vec2(0.0, step_m), lod);
+            float ex = ground_at(offset + vec2(step_m, 0.0), lod) * beyond;
+            float ez = ground_at(offset + vec2(0.0, step_m), lod) * beyond;
             vec3 slope = (eye_east * (ex - e) + eye_south * (ez - e)) / step_m;
             // Lit as the sheet lies low down, as the sphere it stands for high up: the night side comes in with the curve.
             float a = round_angle(s);
