@@ -57,7 +57,57 @@ public static class MadeGrounds
             patches.Add(Yard(t, CoverOf(t.Surface), t.Wear, 0));
             t.Painted = true;
         }
+        if (net != null) WaysIn(patches, net, w, h);
         return patches;
+    }
+
+    /// <summary>
+    /// A road that leads to a place runs all the way into its made ground: where its end at the gate lies short of the
+    /// yard, apron or car park, a way in of the yard's own surface runs on from under the road's end to well inside it,
+    /// so the two overlap and meet with no strip of grass between (the shader rounds the corners where they join).
+    /// </summary>
+    static void WaysIn(List<GroundPatch> patches, InfraNetwork net, double w, double h)
+    {
+        int laid = patches.Count;
+        foreach (InfraRoute r in net.Routes)
+            foreach (bool atStart in new[] { true, false })
+            {
+                if ((atStart ? r.From : r.To) == null || r.Count < 3 || r.Kind == RouteKind.Rail) continue;
+                int e = atStart ? 0 : r.Count - 1, back = atStart ? Math.Min(r.Count - 1, 2) : Math.Max(0, r.Count - 3);
+                double ex = r.X[e], ez = r.Z[e];
+                GroundPatch near = null;
+                float nearest = float.MaxValue;
+                for (int i = 0; i < laid; i++)
+                {
+                    GroundPatch g = patches[i];
+                    if (g.Cover == MadeCover.Lawn) continue;
+                    float d = g.Distance(ex, ez, w, h);
+                    if (d < nearest) { nearest = d; near = g; }
+                }
+                if (near == null || nearest > 40f || nearest < -PlanetSurface.Terrain.RoadField.MadeOverlap) continue;
+                // From a few metres back under the road's end, on toward the yard until well inside it.
+                double ox = r.X[back] - ex, oz = r.Z[back] - ez, ol = Math.Max(1e-6, Math.Sqrt(ox * ox + oz * oz));
+                double ax = ex + ox / ol * 3, az = ez + oz / ol * 3;
+                double tx = Mathx.WrapDelta(near.X - ex, w), tz = Mathx.WrapDelta(near.Z - ez, h), tl = Math.Max(1e-6, Math.Sqrt(tx * tx + tz * tz));
+                double bx = ex, bz = ez;
+                for (double s = 0; s < 60; s += 0.5)
+                {
+                    bx = ex + tx / tl * s;
+                    bz = ez + tz / tl * s;
+                    if (near.Distance(bx, bz, w, h) < -PlanetSurface.Terrain.RoadField.MadeOverlap - 1.5f) break;
+                }
+                // (In two pieces, through the road's end itself, so it lies under the end whichever way the yard is.)
+                foreach (var (fx, fz, gx, gz) in new[] { (ax, az, ex, ez), (ex, ez, bx, bz) })
+                {
+                    var way = GroundPatch.Strip(fx, fz, gx, gz, Math.Clamp(r.HalfWidth, 1.5f, 4f), near.Y, near.Cover, near.Wear, near.Layer);
+                    way.Slab = near.Slab;
+                    way.Kerb = near.Kerb;
+                    way.Give = Math.Max(near.Give, 1.5f);
+                    way.X = Mathx.WrapX(way.X, w);
+                    way.Z = Mathx.Wrap(way.Z, h);
+                    patches.Add(way);
+                }
+            }
     }
 
     /// <summary>What lies over a point as the terrain shader finds it (tests and proof frames): each patch within 3 m, its distance past the outline and how far off its height the ground at <paramref name="y"/> is.</summary>

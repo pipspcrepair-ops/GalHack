@@ -712,25 +712,87 @@ public partial class InfraLayer : Node3D
         }
     }
 
-    /// <summary>One 4 m stretch of a highway's median barrier: a concrete safety barrier, wide at its foot and narrowing up, on the deck.</summary>
+    /// <summary>
+    /// One 4 m stretch of a highway's median barrier, standing on the deck as the ground has it: on a high-tech world a
+    /// precast concrete safety barrier (the sloped-foot profile, each unit its own shade, joints between them, grime
+    /// and moss low down with age); on a mid-tech one a steel guardrail, a W-beam each side of posts, galvanised grey
+    /// rusting with age. On a road nobody kept, a unit knocked askew now and then, a rail sagging off its posts.
+    /// </summary>
     sealed class MedianBarrier : Piece
     {
         public InfraRoute Route;
         public int K;
 
+        static readonly DecoRgb Precast = DecoRgb.Hex("a4a29b"), Weathered = DecoRgb.Hex("7d7a72"), Grime = DecoRgb.Hex("55534c"), Moss = DecoRgb.Hex("56603f"),
+            Galvanised = DecoRgb.Hex("a3a8aa"), Rust = DecoRgb.Hex("7a4e33"), PostGrey = DecoRgb.Hex("858a8c");
+        static readonly float[] SectionOut = { 0.30f, 0.30f, 0.20f, 0.08f }, SectionUp = { 0f, 0.08f, 0.33f, 0.82f };
+
         public override void Emit(TileBuilder b)
         {
             InfraRoute r = Route;
-            NV a = b.Local(r.X[K], r.Y[K], r.Z[K]), c = b.Local(r.X[K + 1], r.Y[K + 1], r.Z[K + 1]);
+            // On the ground the deck really is (a worn deck heaves a little): both ends, so it never floats or sinks.
+            float ya = b.Ground(r.X[K], r.Z[K]), yc = b.Ground(r.X[K + 1], r.Z[K + 1]);
+            NV a = b.Local(r.X[K], ya, r.Z[K]), c = b.Local(r.X[K + 1], yc, r.Z[K + 1]);
             NV along = c - a;
             float len = along.Length();
             if (len < 1e-3f) return;
-            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X)), up = NV.Normalize(NV.Cross(side, dir));
-            if (up.Y < 0) up = -up;
-            NV mid = (a + c) * 0.5f;
-            DecoRgb col = r.Kept ? PylonConcrete : ConcreteDark;
-            b.Box(mid + up * 0.16f, dir * (len * 0.5f + 0.02f), up * 0.18f, side * 0.3f, col, DecoSurface.Matte, collide: true);
-            b.Box(mid + up * 0.6f, dir * (len * 0.5f + 0.02f), up * 0.27f, side * 0.13f, col, DecoSurface.Matte, collide: true);
+            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X)), up = NV.UnitY;
+            ulong h = PoiGenerator.Gen.Hash.Combine((ulong)r.Id * 7919UL, (ulong)K + 0xBA44UL);
+            float Roll(int salt) => (float)((PoiGenerator.Gen.Hash.Combine(h, (ulong)salt) >> 11) / (double)(1UL << 53));
+            float wear = r.Kept ? r.Wear * 0.3f : r.Wear;
+            // Knocked askew: a unit shoved sideways and turned a little, its foot still on the deck.
+            bool askew = !r.Kept && r.Wear > 0.5f && Roll(1) < 0.12f * r.Wear;
+            float shove = askew ? (Roll(2) - 0.5f) * 0.6f : 0f, turn = askew ? (Roll(3) - 0.5f) * 0.25f : 0f;
+            NV mid = (a + c) * 0.5f + side * shove;
+            NV d2 = NV.Normalize(dir + side * turn), s2 = NV.Normalize(new NV(-d2.Z, 0, d2.X));
+            float half = len * 0.5f - 0.03f;
+            if (r.Tech == PoiGenerator.Gen.TechLevel.High)
+            {
+                // The safety barrier's section, (out from its middle, up): a short upright lip, the steep sloped foot, the near-upright face.
+                float[] sx = SectionOut;
+                float[] sy = SectionUp;
+                DecoRgb body = Precast.Lerp(Weathered, wear).Scale(0.94f + 0.12f * Roll(4));
+                DecoRgb foot = body.Lerp(Roll(5) < 0.5f ? Grime : Moss, 0.25f + 0.5f * wear);
+                NV P(float u, int i, int sgn) => mid + d2 * (u * half) + s2 * (sx[i] * sgn) + up * sy[i];
+                // Each face along both sides, the lowest band in grime or moss.
+                for (int sgn = -1; sgn <= 1; sgn += 2)
+                    for (int i = 0; i + 1 < sx.Length; i++)
+                    {
+                        NV p0 = Foot(P(-1, i, sgn), -1), p1 = Foot(P(1, i, sgn), 1), p2 = Foot(P(1, i + 1, sgn), 1), p3 = Foot(P(-1, i + 1, sgn), -1);
+                        b.Quad(p0, p1, p2, p3, i == 0 ? foot : body, DecoSurface.Matte, 1f, mid + up * 0.4f, collide: true);
+                    }
+                b.Quad(Foot(P(-1, 3, -1), -1), Foot(P(1, 3, -1), 1), Foot(P(1, 3, 1), 1), Foot(P(-1, 3, 1), -1), body, DecoSurface.Matte, 1f, mid, collide: true);
+                // The unit's two ends: its section, closed.
+                foreach (int u in new[] { -1, 1 })
+                    for (int i = 0; i + 1 < sx.Length; i++)
+                        b.Quad(Foot(P(u, i, -1), u), Foot(P(u, i, 1), u), Foot(P(u, i + 1, 1), u), Foot(P(u, i + 1, -1), u), body.Scale(0.9f), DecoSurface.Matte, 1f, mid, collide: true);
+            }
+            else
+            {
+                // Steel: a post at each end of the stretch, a W-beam either side bolted to it, rust creeping over the zinc.
+                DecoRgb steel = Galvanised.Lerp(Rust, Math.Clamp(wear * wear * (0.6f + 0.6f * Roll(6)), 0f, 0.9f));
+                foreach (int u in new[] { -1, 1 })
+                {
+                    NV post = Foot(mid + d2 * (u * half), u);
+                    b.Box(post + up * 0.4f, d2 * 0.05f, up * 0.4f, s2 * 0.05f, PostGrey.Lerp(Rust, wear * 0.5f), DecoSurface.Metal, collide: true);
+                }
+                // A rail nobody kept may have come off its far post and sag to the deck.
+                bool sagging = !r.Kept && r.Wear > 0.6f && Roll(7) < 0.1f * r.Wear;
+                for (int sgn = -1; sgn <= 1; sgn += 2)
+                {
+                    NV n0 = Foot(mid - d2 * half, -1) + s2 * (0.1f * sgn) + up * 0.6f, n1 = Foot(mid + d2 * half, 1) + s2 * (0.1f * sgn) + up * (sagging && sgn > 0 ? 0.12f : 0.6f);
+                    // The W: two ridges and a groove, as three strips each a little in or out.
+                    for (int k = 0; k < 3; k++)
+                    {
+                        float lo = -0.16f + k * 0.107f, hi = lo + 0.107f, outward = k == 1 ? 0.03f : 0.06f;
+                        b.Quad(n0 + up * lo + s2 * (outward * sgn), n1 + up * lo + s2 * (outward * sgn), n1 + up * hi + s2 * (outward * sgn), n0 + up * hi + s2 * (outward * sgn),
+                            steel.Scale(k == 1 ? 0.85f : 1f), DecoSurface.Metal, 1f, mid + up * 0.6f - s2 * (sgn * 1f), collide: true);
+                    }
+                }
+            }
+
+            // A point of the barrier brought down onto the ground under it (its foot follows the deck end to end).
+            NV Foot(NV p, int u) => p + up * ((u < 0 ? ya : yc) - (ya + yc) * 0.5f);
         }
     }
 
@@ -741,7 +803,7 @@ public partial class InfraLayer : Node3D
 
         public override void Emit(TileBuilder b)
         {
-            float r = (float)InfraNetwork.RingRadius - 4f + 0.12f;
+            float r = (float)Junction.RingR - Junction.RingHw + 0.12f;
             const int N = 32;
             for (int k = 0; k < N; k++)
             {

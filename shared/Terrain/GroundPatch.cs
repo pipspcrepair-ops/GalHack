@@ -80,4 +80,19 @@ public sealed class GroundPatch
             Round = halfWidth, Y = y, Cover = cover, Pattern = GroundPattern.Plain, Wear = wear, Layer = layer, Slab = 0.9f,
         };
     }
+
+    /// <summary>
+    /// How far a world point lies past its outline, metres (negative inside), the short way round a planet of
+    /// <paramref name="width"/> by <paramref name="height"/>: the terrain shader's own measure, before its edge wanders.
+    /// </summary>
+    public float Distance(double x, double z, double width, double height)
+    {
+        double rx = x - X, rz = z - Z;
+        rx -= width * System.Math.Round(rx / width);
+        rz -= height * System.Math.Round(rz / height);
+        float u = (float)(rx * UX + rz * UZ), v = (float)(-rx * UZ + rz * UX);
+        float qx = System.MathF.Abs(u) - (HalfU - Round), qz = System.MathF.Abs(v) - (HalfV - Round);
+        float outside = System.MathF.Sqrt(System.MathF.Max(qx, 0f) * System.MathF.Max(qx, 0f) + System.MathF.Max(qz, 0f) * System.MathF.Max(qz, 0f));
+        return outside + System.MathF.Min(System.MathF.Max(qx, qz), 0f) - Round;
+    }
 }

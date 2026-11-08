@@ -304,7 +304,14 @@ public partial class TerrainStreamer : Node3D
         // the old world never painted its roads.
         ulong paint = World.Spec.Seed / 4;
         bool painted = World.Profile?.Before is not PoiGenerator.Gen.TechLevel.Low;
-        m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
+        // Its town footpaths: flags or asphalt on a mid-tech world, poured concrete or flags on a high-tech one.
+        int foot = World.Profile?.Before switch
+        {
+            PoiGenerator.Gen.TechLevel.High => (paint / 6) % 3 == 0 ? 0 : 2,
+            PoiGenerator.Gen.TechLevel.Mid => (paint / 6) % 5 < 2 ? 1 : 0,
+            _ => 0,
+        };
+        m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, foot));
         m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
         return m;
     }

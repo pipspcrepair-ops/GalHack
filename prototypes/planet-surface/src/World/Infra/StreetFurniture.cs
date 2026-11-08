@@ -104,7 +104,7 @@ public static class StreetFurniture
             foreach (JunctionArm a in j.Arms.Where(a => a.Route != j.Through || j.Form == JunctionForm.Roundabout))
             {
                 // On the right of the way coming in, a little short of the junction, facing whoever comes.
-                double back = j.Form == JunctionForm.Roundabout ? InfraNetwork.RingRadius + 12 : 9 + j.Through.HalfWidth;
+                double back = j.Form == JunctionForm.Roundabout ? j.RingR + 12 : 9 + j.Through.HalfWidth;
                 double tx = -a.DirX, tz = -a.DirZ, rx = -tz, rz = tx;
                 double x = j.X + a.DirX * back + rx * (a.Route.HalfWidth + 1.1), z = j.Z + a.DirZ * back + rz * (a.Route.HalfWidth + 1.1);
                 double cx = Mathx.WrapX(x, w), cz = Mathx.Wrap(z, h);

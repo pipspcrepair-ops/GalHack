@@ -89,8 +89,10 @@ public sealed class InfraJunction
     public readonly List<JunctionArm> Arms = new();
     public JunctionForm Form;
     public string Why = "";
-    /// <summary>A roundabout's ring (null for any other form).</summary>
+    /// <summary>A roundabout's ring (null for any other form), the radius of its centre line and its half width, m.</summary>
     public InfraRoute Ring;
+    public double RingR = InfraNetwork.RingRadius;
+    public float RingHw = 4f;
 }
 
 /// <summary>A flattened clearing a vessel can set down on, and the town it serves.</summary>
@@ -519,6 +521,11 @@ public sealed class InfraNetwork
         foreach (var run in runs)
         {
             if (run.To - run.From < 1 && run.JoinFrom >= 0 && run.JoinTo >= 0) continue;
+            // A gate that already has its way out (an earlier link left by it, and this one's search just stepped onto
+            // that): a second, short way out of the same gate would lie over the first, two decks meeting at nothing.
+            bool Served(PoiSite p, int gate) => Routes.Any(q => q.From == p && q.FromGate == gate || q.To == p && q.ToGate == gate);
+            if (run.From == 0 && run.JoinTo >= 0 && run.To - run.From < 12 && Served(a, ga.Index)
+                || run.To == cells.Count - 1 && run.JoinFrom >= 0 && run.To - run.From < 12 && Served(b, gb.Index)) { any = true; continue; }
             var pts = new List<(double X, double Z)>();
             var pins = new List<(int Index, float Y)>();
             if (run.From == 0)
@@ -535,6 +542,15 @@ public sealed class InfraNetwork
             Unwrap(pts);
             List<(double X, double Z)> path = Lay(router, pts, kind, run.From == 0 ? 2 : 0, run.To == cells.Count - 1 ? 2 : 0);
             if (path.Count < 2) continue;
+            // A stretch between two roads already laid that only runs along them (the search stepping off a road and
+            // back on, or from one to another lying beside it) adds nothing but a second deck over theirs: left out.
+            if (run.JoinFrom >= 0 && run.JoinTo >= 0 && path.All(q =>
+                    Snap(Routes[run.JoinFrom], q, out var qa, out _) && Math.Sqrt(Math.Pow(qa.X - q.X, 2) + Math.Pow(qa.Z - q.Z, 2)) < Routes[run.JoinFrom].HalfWidth + 6
+                    || Snap(Routes[run.JoinTo], q, out var qb, out _) && Math.Sqrt(Math.Pow(qb.X - q.X, 2) + Math.Pow(qb.Z - q.Z, 2)) < Routes[run.JoinTo].HalfWidth + 6))
+            {
+                any = true;
+                continue;
+            }
             // Junction ends land exactly on the route they join, at its deck height.
             // Where the link goes on along the road it meets, it merges into it in a sweeping curve; where it
             // only meets or crosses it, it meets it square.
@@ -544,35 +560,49 @@ public sealed class InfraNetwork
                 for (int k = from; k >= 0 && k < cells.Count && router.RouteAt(cells[k], kind) == join; k += step) n++;
                 return n;
             }
-            if (run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out var p0, out float y0, out var d0))
+            // (The line is eased first, its ends on the junctions, so the last stretch into each keeps the shape given it.)
+            (double X, double Z) p0 = default, d0 = default, p1 = default, d1 = default;
+            bool joinA = run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out p0, out _, out d0);
+            if (joinA) { path[0] = p0; ClearStart(path); }
+            bool joinB = run.JoinTo >= 0 && Snap(Routes[run.JoinTo], path[^1], out p1, out _, out d1);
+            if (joinB) { path[^1] = p1; ClearEnd(path); }
+            if (kind is RouteKind.Road or RouteKind.Highway) path = Ease(router, path, LeastRadius(kind), 2, 2, out _);
+            // Only a highway going on along a highway it meets leaves it by a slip road (merging in, a gore at the nose);
+            // every other way meets the one it joins near square, a T, however it came up to it.
+            if (joinA)
             {
-                path[0] = p0;
                 int along = ContinuesAlong(run.JoinFrom, run.From - 1, -1);
-                if (kind != RouteKind.Rail && kind != RouteKind.Track && along >= 3)
+                if (kind == RouteKind.Highway && Routes[run.JoinFrom].Kind == RouteKind.Highway && along >= 3)
                 {
                     var c = router.CellCentre(cells[Math.Max(0, run.From - Math.Min(along, 4))]);
                     double cx = p0.X + Mathx.WrapDelta(c.X - p0.X, _w), cz = p0.Z + Mathx.WrapDelta(c.Z - p0.Z, _h);
                     double sgn = Math.Sign(d0.X * (p0.X - cx) + d0.Z * (p0.Z - cz));
                     Merge(path, Routes[run.JoinFrom], (d0.X * sgn, d0.Z * sgn), LeastRadius(kind), true);
                 }
-                else if (kind != RouteKind.Rail) Square(path, Routes[run.JoinFrom], p0, d0, true);
+                else if (kind != RouteKind.Rail)
+                {
+                    if (Approach(path, Routes[run.JoinFrom], true, out var pA, out var dA)) { path[0] = pA; (p0, d0) = (pA, dA); }
+                    Square(path, Routes[run.JoinFrom], p0, d0, true, LeastRadius(kind));
+                }
                 ClearStart(path);
             }
-            if (run.JoinTo >= 0 && Snap(Routes[run.JoinTo], path[^1], out var p1, out float y1, out var d1))
+            if (joinB)
             {
-                path[^1] = p1;
                 int along = ContinuesAlong(run.JoinTo, run.To + 1, 1);
-                if (kind != RouteKind.Rail && kind != RouteKind.Track && along >= 3)
+                if (kind == RouteKind.Highway && Routes[run.JoinTo].Kind == RouteKind.Highway && along >= 3)
                 {
                     var c = router.CellCentre(cells[Math.Min(cells.Count - 1, run.To + Math.Min(along, 4))]);
                     double cx = p1.X + Mathx.WrapDelta(c.X - p1.X, _w), cz = p1.Z + Mathx.WrapDelta(c.Z - p1.Z, _h);
                     double sgn = Math.Sign(d1.X * (cx - p1.X) + d1.Z * (cz - p1.Z));
                     Merge(path, Routes[run.JoinTo], (d1.X * sgn, d1.Z * sgn), LeastRadius(kind), false);
                 }
-                else if (kind != RouteKind.Rail) Square(path, Routes[run.JoinTo], p1, d1, false);
+                else if (kind != RouteKind.Rail)
+                {
+                    if (Approach(path, Routes[run.JoinTo], false, out var pB, out var dB)) { path[^1] = pB; (p1, d1) = (pB, dB); }
+                    Square(path, Routes[run.JoinTo], p1, d1, false, LeastRadius(kind));
+                }
                 ClearEnd(path);
             }
-            if (kind is RouteKind.Road or RouteKind.Highway) path = Ease(router, path, LeastRadius(kind), 2, 2, out _);
             // Pinned once the ends are final: the junctions at the decks they meet.
             if (run.JoinFrom >= 0 && Snap(Routes[run.JoinFrom], path[0], out _, out float yj0)) pins.Add((0, yj0));
             if (run.JoinTo >= 0 && Snap(Routes[run.JoinTo], path[^1], out _, out float yj1)) pins.Add((path.Count - 1, yj1));
@@ -752,7 +782,9 @@ public sealed class InfraNetwork
         if (Snap(near, path[^1], out var p1, out float y1, out var d1))
         {
             path[^1] = p1;
-            if (kind != RouteKind.Rail) Square(path, near, p1, d1, false);
+            if (kind != RouteKind.Rail && Approach(path, near, false, out var pa, out var da)) { path[^1] = pa; (p1, d1) = (pa, da); }
+            if (Snap(near, path[^1], out _, out float ya)) y1 = ya;
+            if (kind != RouteKind.Rail) Square(path, near, p1, d1, false, LeastRadius(kind));
             ClearEnd(path);
             pins.Add((path.Count - 1, y1));
         }
@@ -1344,7 +1376,7 @@ public sealed class InfraNetwork
     /// clean T and not a long blunt wedge where one road slides into the other at a glancing angle. The
     /// curve (a cubic from the road's own heading to the normal) turns one way only: no wobble.
     /// </summary>
-    static void Square(List<(double X, double Z)> path, InfraRoute joined, (double X, double Z) at, (double X, double Z) dir, bool atStart)
+    static void Square(List<(double X, double Z)> path, InfraRoute joined, (double X, double Z) at, (double X, double Z) dir, bool atStart, double least = 0)
     {
         if (path.Count < 6) return;
         if (atStart) path.Reverse();
@@ -1354,7 +1386,21 @@ public sealed class InfraNetwork
         if ((inner.X - at.X) * nx + (inner.Z - at.Z) * nz < 0) { nx = -nx; nz = -nz; }
         // Keep the road up to where the curve begins, and its heading there.
         int k = path.Count - 1;
-        while (k > 1 && (path[k].X - at.X) * (path[k].X - at.X) + (path[k].Z - at.Z) * (path[k].Z - at.Z) < cut * cut) k--;
+        int Back(double c)
+        {
+            int i = path.Count - 1;
+            while (i > 1 && (path[i].X - at.X) * (path[i].X - at.X) + (path[i].Z - at.Z) * (path[i].Z - at.Z) < c * c) i--;
+            return i;
+        }
+        k = Back(cut);
+        // A paved road swings round no tighter than its class allows: the more it has to turn to come in square, the
+        // further back the curve begins (within reason: past that, as far back as the road runs).
+        if (least > 0 && k >= 1)
+        {
+            double hx = path[k].X - path[k - 1].X, hz = path[k].Z - path[k - 1].Z, hl = Math.Max(1e-6, Math.Sqrt(hx * hx + hz * hz));
+            double turn = Math.Acos(Math.Clamp(-(hx * nx + hz * nz) / hl, -1, 1));
+            k = Back(Math.Clamp(least * turn * 0.75, cut, 110));
+        }
         if (k < 1) { if (atStart) path.Reverse(); return; }
         var p0 = path[k];
         double tx = p0.X - path[k - 1].X, tz = p0.Z - path[k - 1].Z, tl = Math.Max(1e-6, Math.Sqrt(tx * tx + tz * tz));
@@ -1374,6 +1420,38 @@ public sealed class InfraNetwork
         if (atStart) even.Reverse();
         path.Clear();
         path.AddRange(even);
+    }
+
+    /// <summary>
+    /// A way that came up alongside the one it joins (cheap ground beside a road draws a search along it) leaves
+    /// that run out: it joins where it first came near, so it can turn in square from out in the open instead of
+    /// hooking in off a long thin wedge of grass. Drops the end of the path that lies within the other's deck and a
+    /// margin, and ends it on the other's line nearest where it came near. False where nothing was dropped.
+    /// </summary>
+    bool Approach(List<(double X, double Z)> path, InfraRoute joined, bool atStart, out (double X, double Z) at, out (double X, double Z) dir)
+    {
+        at = atStart ? path[0] : path[^1];
+        dir = (1, 0);
+        if (path.Count < 8) return false;
+        double margin = joined.HalfWidth + 14;
+        int n = path.Count;
+        (double X, double Z) P(int i) => atStart ? path[i] : path[n - 1 - i];
+        double Off(int i) => Snap(joined, P(i), out var q, out _) ? Math.Sqrt(Math.Pow(q.X - P(i).X, 2) + Math.Pow(q.Z - P(i).Z, 2)) : double.MaxValue;
+        int k = 1;
+        while (k < n - 6 && Off(k) < margin) k++;
+        // Nothing ran alongside: the end already comes in from the open.
+        if (k <= 3) return false;
+        var keep = P(k);
+        if (!Snap(joined, keep, out var foot, out _, out dir)) return false;
+        // Not across ground the way may not cross (a place's pad, a ruin's lot, water): there it keeps the line it found.
+        for (double t = 0.1; t < 1; t += 0.1)
+            if (_router != null && _router.Blocked(keep.X + (foot.X - keep.X) * t, keep.Z + (foot.Z - keep.Z) * t)) { dir = (1, 0); return false; }
+        if (atStart) path.RemoveRange(0, k); else path.RemoveRange(n - k, k);
+        var link = Resample(atStart ? new List<(double X, double Z)> { foot, keep } : new List<(double X, double Z)> { keep, foot }, Spacing);
+        if (atStart) { path.RemoveAt(0); path.InsertRange(0, link); }
+        else { path.RemoveAt(path.Count - 1); path.AddRange(link); }
+        at = foot;
+        return true;
     }
 
     /// <summary>
@@ -1735,6 +1813,20 @@ public sealed class InfraNetwork
     /// <summary>Proof frames and tests: build a roundabout wherever one could go.</summary>
     public static bool ForceRoundabouts;
 
+    /// <summary>The least angle a branch leaves the way it joins at, degrees: sharper leaves a knife edge of grass between the decks.</summary>
+    public const double LeastJoinAngle = 40;
+
+    /// <summary>
+    /// A slip road built as one: a paved way leaving a highway (or joining one) at a shallow angle, its lane
+    /// tapering off with a gore at the nose (widened, rounded, hatched with chevrons). Any other shallow join is
+    /// bent to meet square instead.
+    /// </summary>
+    public static bool GoreSlip(InfraJunction j) => j.Form is JunctionForm.Slip or JunctionForm.Tee or JunctionForm.Crossroads && j.Through.Kind == RouteKind.Highway && !j.Through.Soil
+        && j.Arms.All(a => !a.Route.Soil);
+
+    /// <summary>Why junctions that might have been roundabouts weren't (tests and proof frames).</summary>
+    public readonly Dictionary<string, int> RoundaboutMisses = new();
+
     /// <summary>
     /// The junctions, once every road, street and lane is laid: each end that joins another way, grouped where
     /// they meet, and given the form the roads that meet ask for (design doc "Infrastructure"). A way running
@@ -1757,15 +1849,30 @@ public sealed class InfraNetwork
                 if (atStart ? r.From != null : r.To != null) continue;
                 int e = atStart ? 0 : r.Count - 1;
                 double x = r.X[e], z = r.Z[e];
-                InfraRoute o = Nearest(Mathx.WrapX(x, _w), Mathx.Wrap(z, _h), 16, out int idx, out double d, new[] { r });
-                if (o == null || o.Kind == RouteKind.Rail || d > o.HalfWidth + 1.5)
+                // The way it joins: of the ways whose deck it reaches, one that runs on through the junction rather than
+                // ending there too, then the greatest class, then the nearest (another branch ending at the same spot is
+                // no through way: measured against it, a square T read as a knife edge).
+                var reached = new List<(InfraRoute R, int I, double D)>();
+                var skip = new List<InfraRoute> { r };
+                InfraRoute first = null;
+                for (int c = 0; c < 5; c++)
+                {
+                    InfraRoute q = Nearest(Mathx.WrapX(x, _w), Mathx.Wrap(z, _h), 16, out int qi, out double qd, skip.ToArray());
+                    if (q == null) break;
+                    first ??= q;
+                    skip.Add(q);
+                    if (q.Kind != RouteKind.Rail && qd <= q.HalfWidth + 1.5) reached.Add((q, qi, qd));
+                }
+                if (reached.Count == 0)
                 {
                     // A town street that just stops ends in a turning bulb (not a junction: no other way meets it there).
-                    if (o == null && r.Kind == RouteKind.Road && r.Laid.Length == 0 && !r.Ring && !low)
+                    if (first == null && r.Kind == RouteKind.Road && r.Laid.Length == 0 && !r.Ring && !low)
                         if (atStart) r.StartJoin = JunctionForm.DeadEnd; else r.EndJoin = JunctionForm.DeadEnd;
                     continue;
                 }
-                InfraJunction j = Joins.FirstOrDefault(q => Dist((q.X, q.Z), (x, z)) < 18 && q.Arms.Any(a => a.Route == o));
+                static int Rank(InfraRoute q) => q.Kind == RouteKind.Highway ? 3 : q.Kind == RouteKind.Road && !q.Soil ? 2 : q.Kind == RouteKind.Road ? 1 : 0;
+                var (o, idx, _) = reached.OrderByDescending(c => c.I >= 3 && c.I + 3 < c.R.Count ? 1 : 0).ThenByDescending(c => Rank(c.R)).ThenBy(c => c.D).First();
+                InfraJunction j = Joins.FirstOrDefault(q => Dist((q.X, q.Z), (x, z)) < 18 && q.Arms.Any(a => reached.Any(c => c.R == a.Route)));
                 if (j == null)
                 {
                     j = new InfraJunction { X = Mathx.WrapX(o.X[idx], _w), Z = Mathx.Wrap(o.Z[idx], _h), Y = o.Y[idx], Through = o };
@@ -1788,19 +1895,27 @@ public sealed class InfraNetwork
             else if (j.Arms.Count == 3) { j.Form = JunctionForm.Tee; j.Why = "three ways"; }
             else { j.Form = JunctionForm.Crossroads; j.Why = $"{j.Arms.Count} ways"; }
             if (!roundabouts || j.Form is not (JunctionForm.Tee or JunctionForm.Crossroads)) continue;
-            // A roundabout: roads alike (no highway, no track, no town's grid street), level open ground, room for the ring.
-            if (j.Arms.Any(a => a.Route.Kind != RouteKind.Road || a.Route.Laid.Length == 0 || a.Route.Graded)) continue;
-            double radius = RingRadius;
+            void Miss(string why) => RoundaboutMisses[why] = RoundaboutMisses.GetValueOrDefault(why) + 1;
+            // A roundabout: paved roads alike out of town (no track or lane, no dirt road, no town's grid street), level open
+            // ground, room for the ring.
+            bool hwArm = j.Arms.Any(a => a.Route.Kind == RouteKind.Highway);
+            // (A highway meets others on the level only on a mid-tech world, round a big ring; a high-tech one built interchanges.)
+            if (j.Arms.Any(a => a.Route.Kind is not (RouteKind.Road or RouteKind.Highway) || a.Route.Soil || a.Route.Ring || a.Route.HalfWidth < 3.5f || a.Route.Laid.Length == 0) || hwArm && Profile.Before != TechLevel.Mid) { Miss("not roads alike: " + string.Join("+", j.Arms.Select(a => a.Route.Graded ? "Graded" : a.Route.Laid.Length == 0 ? $"{a.Route.Kind}-street" : a.Route.Kind.ToString()).OrderBy(s => s))); continue; }
+            double radius = hwArm ? 19 : RingRadius;
             bool level = true;
             for (int k = 0; k < 16 && level; k++)
             {
                 double a = k * Math.Tau / 16, px = j.X + Math.Cos(a) * (radius + 6), pz = j.Z + Math.Sin(a) * (radius + 6);
-                level = Math.Abs(ground(px, pz) - j.Y) < 1.2f;
+                level = Math.Abs(ground(px, pz) - j.Y) < 3f;
             }
-            if (!level || !clear(j.X, j.Z, radius + 10) || !(ForceRoundabouts || rng.Chance(0.75f))) continue;
-            if (Joins.Any(q => q != j && q.Form == JunctionForm.Roundabout && Dist((q.X, q.Z), (j.X, j.Z)) < 200)) continue;
+            if (!level) { Miss("not level"); continue; }
+            if (!clear(j.X, j.Z, radius + 10)) { Miss("no room"); continue; }
+            if (!(ForceRoundabouts || rng.Chance(0.75f))) { Miss("chance"); continue; }
+            if (Joins.Any(q => q != j && q.Form == JunctionForm.Roundabout && Dist((q.X, q.Z), (j.X, j.Z)) < 200)) { Miss("another near"); continue; }
             j.Form = JunctionForm.Roundabout;
             j.Why = "roads alike meeting on level open ground";
+            j.RingR = radius;
+            j.RingHw = hwArm ? 6f : 4f;
             j.Ring = Ring(j);
         }
         foreach (InfraJunction j in Joins)
@@ -1853,6 +1968,15 @@ public sealed class InfraNetwork
         return barrier ? 2 : !r.Kept && r.Wear > 0.8f ? 3 : 1;
     }
 
+    /// <summary>
+    /// A town street with kerbs, a grass verge and footpaths (the shader's FOOT_IN to FOOT_OUT past the kerb): a paved
+    /// street of a town or city, not a lane, its bed laid level out past the footpath.
+    /// </summary>
+    public static bool Kerbed(InfraRoute r) => r.Laid.Length == 0 && r.Kind == RouteKind.Road && !r.Ring && r.HalfWidth >= 3.5f && !r.Soil;
+
+    /// <summary>How far past a kerbed street's kerb its footpath ends, m (the shader's FOOT_OUT).</summary>
+    public const float FootpathOut = 3.3f;
+
     /// <summary>A roundabout's ring: the radius of its centre line, m (its island's edge lies a road's half width inside).</summary>
     public const double RingRadius = 11.5;
 
@@ -1867,21 +1991,21 @@ public sealed class InfraNetwork
     /// <summary>A roundabout's ring: a closed street round the junction at its deck's height, its island on its left (the shader's inside).</summary>
     InfraRoute Ring(InfraJunction j)
     {
-        int n = (int)Math.Ceiling(Math.Tau * RingRadius / 3.0);
+        int n = (int)Math.Ceiling(Math.Tau * j.RingR / 3.0);
         var xs = new double[n + 1];
         var zs = new double[n + 1];
         for (int k = 0; k <= n; k++)
         {
             // Turning so the middle lies to the left of the way it runs: (dir x to) > 0 in the shader's sense.
             double a = -k * Math.Tau / n;
-            xs[k] = j.X + Math.Cos(a) * RingRadius;
-            zs[k] = j.Z + Math.Sin(a) * RingRadius;
+            xs[k] = j.X + Math.Cos(a) * j.RingR;
+            zs[k] = j.Z + Math.Sin(a) * j.RingR;
         }
         double tx = xs[1] - xs[0], tz = zs[1] - zs[0], cx = j.X - xs[0], cz = j.Z - zs[0];
         if (tx * cz - tz * cx < 0) { Array.Reverse(xs); Array.Reverse(zs); }
         var ring = new InfraRoute
         {
-            Id = Routes.Count, Kind = RouteKind.Road, Tech = Profile.Before, HalfWidth = 4f, Surface = j.Through.Surface,
+            Id = Routes.Count, Kind = RouteKind.Road, Tech = Profile.Before, HalfWidth = j.RingHw, Surface = j.Through.Surface,
             Kept = j.Through.Kept, Wear = j.Through.Wear, X = xs, Z = zs, Y = Enumerable.Repeat(j.Y, n + 1).ToArray(),
             Span = Enumerable.Repeat(RoadSpan.Ground, n).ToArray(), Laid = "", Ring = true,
         };
@@ -1913,6 +2037,7 @@ public sealed class InfraNetwork
                 list[^1].JoinStart = (int)r.StartJoin;
                 list[^1].JoinEnd = (int)r.EndJoin;
                 list[^1].Median = MedianOf(r);
+                list[^1].Verge = Kerbed(r) ? FootpathOut + 0.4f : 0f;
                 list[^1].MeetStartHw = r.StartMeetHw;
                 list[^1].MeetEndHw = r.EndMeetHw;
                 list[^1].MeetStartTaper = (float)SeamTaper(r.Soil, r.StartMeetSoil, r.HalfWidth, r.StartMeetHw);

@@ -64,6 +64,12 @@ public static class InfraViews
             InfraNetwork.ForceRoundabouts = what == "roundabout";
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionSeries);
         }
+        // A road running into a place's made ground, and the made ground's edges against the land.
+        if (what == "wayin")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: WayInSeries);
+        }
         // The grid: a substation and its lines, a house's drop close, and a street of drops from above.
         if (what == "power")
         {
@@ -542,12 +548,49 @@ public static class InfraViews
             Add($"{name}-high", j.X + arm.DirX * 45 + arm.DirZ * 20, j.Z + arm.DirZ * 45 - arm.DirX * 20, j.Y + 38f, j.X, j.Z, j.Y);
             Add($"{name}-close", j.X + arm.DirX * 26 - arm.DirZ * 2.5, j.Z + arm.DirZ * 26 + arm.DirX * 2.5, j.Y + 2.2f, j.X, j.Z, j.Y);
         }
+        // The sharpest meeting left anywhere near: the two ways out of a junction that open at the least angle.
+        var sharp = w.Infra.Joins.Where(q => q.Form is not (JunctionForm.RunOn or JunctionForm.Roundabout) && Away(q.X, q.Z) < 3000)
+            .SelectMany(q => q.Arms.SelectMany(a => q.Arms.Where(b => b.Route != a.Route).Select(b => (q, a, b, ang: SurfaceTest.ArmsAngle(w, q, a, b)))))
+            .OrderBy(t => t.ang).FirstOrDefault();
+        if (sharp.q != null)
+        {
+            GD.Print($"JUNC: sharpest {sharp.q.Form} at {sharp.q.X:F0},{sharp.q.Z:F0}: {sharp.ang:F0} degrees between a {sharp.a.Route.Kind} and a {sharp.b.Route.Kind}, gore {InfraNetwork.GoreSlip(sharp.q)}");
+            double bx = (sharp.a.DirX + sharp.b.DirX) * 0.5, bz = (sharp.a.DirZ + sharp.b.DirZ) * 0.5, bl = Math.Max(1e-6, Math.Sqrt(bx * bx + bz * bz));
+            Add("sharpest-high", sharp.q.X + bx / bl * 40 - bz / bl * 18, sharp.q.Z + bz / bl * 40 + bx / bl * 18, sharp.q.Y + 30f, sharp.q.X + bx / bl * 10, sharp.q.Z + bz / bl * 10, sharp.q.Y);
+        }
         // A town street's mid-block crossing: along the longest street, from its middle.
         InfraRoute street = w.Infra.Routes.Where(r => r.Laid.Length == 0 && r.Kind == RouteKind.Road && !r.Ring).OrderByDescending(r => r.Length).FirstOrDefault();
         if (street != null && street.Count > 20)
         {
             int i = street.Count / 2;
             Add("street-high", street.X[i] + 30, street.Z[i] + 30, street.Y[i] + 45f, street.X[i], street.Z[i], street.Y[i]);
+        }
+        return shots;
+    }
+
+    /// <summary>infra:wayin: the nearest paved road and the nearest track that end at a place (not a house), each from 30 m up and from the ground: the road running into the yard, and the yard's edges against the land.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> WayInSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        foreach (var (name, pick) in new (string, Func<InfraRoute, bool>)[] { ("paved", r => !r.Soil), ("soil", r => r.Soil) })
+        {
+            var ends = w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count > 12 && pick(r))
+                .SelectMany(r => new[] { (r, start: true, p: r.From), (r, start: false, p: r.To) }).Where(t => t.p != null && t.p.Siting != "city")
+                .OrderBy(t => Away(t.r.X[t.start ? 0 : t.r.Count - 1], t.r.Z[t.start ? 0 : t.r.Count - 1])).ToList();
+            if (ends.Count == 0) { GD.Print($"WAYIN: no {name} way to a place"); continue; }
+            var (r, start, p) = ends[0];
+            int e = start ? 0 : r.Count - 1, o = start ? 10 : r.Count - 11;
+            double dx = r.X[e] - r.X[o], dz = r.Z[e] - r.Z[o], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= l; dz /= l;
+            GD.Print($"WAYIN: {name} {r.Kind} to a {p.Family.Id} at {r.X[e]:F0},{r.Z[e]:F0}");
+            var (hp, hh, hpi) = Look(w, r.X[e] - dx * 34 + dz * 16, r.Z[e] - dz * 34 - dx * 16, r.Y[e] + 30f, r.X[e] + dx * 6, r.Z[e] + dz * 6, r.Y[e]);
+            shots.Add(new Screenshot.Shot($"wayin-{name}-high", hp, hh, hpi));
+            double gx = r.X[e] - dx * 22 + dz * 3, gz = r.Z[e] - dz * 22 - dx * 3;
+            var (gp, gh, gpi) = Look(w, gx, gz, G(gx, gz) + 1.7f, r.X[e] + dx * 6, r.Z[e] + dz * 6, r.Y[e] + 0.5f);
+            shots.Add(new Screenshot.Shot($"wayin-{name}-ground", gp, gh, gpi));
         }
         return shots;
     }
@@ -585,7 +628,40 @@ public static class InfraViews
             Add("drop", mx + dz / l * 16 - dx / l * 4, mz - dx / l * 16 - dz / l * 4, G(mx, mz) + 2.5f, mx, mz, drop.Fixing.Y);
             Add("drops-high", mx + dz / l * 45, mz - dx / l * 45, G(mx, mz) + 40f, mx, mz, G(mx, mz));
         }
+        // A strung drop to a pitched roof's corner (its insulator under the eave) and one to a flat roof's mast, each
+        // close from the street side of the house, looking at the fixing.
+        foreach (string kind in new[] { "eave", "mast" })
+        {
+            ServiceDrop d = power.Drops.Where(q => q.State == DropState.Strung && q.House.Layout.Extras.Service.Count > 0 && RoofFixing(q) == kind)
+                .OrderBy(q => Away(q.Fixing.X, q.Fixing.Z)).FirstOrDefault();
+            if (d == null) { GD.Print($"POWER: no strung drop to a {kind} fixing"); continue; }
+            PowerPole p = power.Poles[d.Pole];
+            double dx = d.Fixing.X - p.X, dz = d.Fixing.Z - p.Z, l = Math.Max(1, Math.Sqrt(dx * dx + dz * dz));
+            GD.Print($"POWER: {kind} drop to a {d.House.Family.Id}, {l:F0} m");
+            // From beside the pole's side of the span, a little back from the house, at the fixing's height less a few metres.
+            double vx = d.Fixing.X - dx / l * 9 + dz / l * 6, vz = d.Fixing.Z - dz / l * 9 - dx / l * 6;
+            Add($"drop-{kind}", vx, vz, Math.Max(G(vx, vz) + 1.7f, d.Fixing.Y - 2f), d.Fixing.X, d.Fixing.Z, d.Fixing.Y);
+        }
         return shots;
+    }
+
+    /// <summary>A drop's fixing as the house set it out: "eave" with roof over it (an insulator under a pitched roof's eave), else "mast" (up above a flat roof or through its edge).</summary>
+    static string RoofFixing(ServiceDrop d)
+    {
+        FlavourRuin h = d.House;
+        var g = h.Layout.Blocks;
+        var c = new PoiGenerator.Gen.Int3(d.Cell.X - h.OriginX, d.Cell.Y - h.OriginY, d.Cell.Z - h.OriginZ);
+        for (int y = c.Y + 1; y <= g.Max.Y; y++)
+            if (!g.Get(new PoiGenerator.Gen.Int3(c.X, y, c.Z)).IsAir) return "eave";
+        // Nothing over it: a mast; on a flat roof when most of the house's columns top out at the same height.
+        var tops = new System.Collections.Generic.Dictionary<(int, int), int>();
+        for (int x = g.Min.X; x <= g.Max.X; x++)
+            for (int z = g.Min.Z; z <= g.Max.Z; z++)
+                for (int y = g.Max.Y; y >= g.Min.Y; y--)
+                    if (!g.Get(new PoiGenerator.Gen.Int3(x, y, z)).IsAir) { tops[(x, z)] = y; break; }
+        if (tops.Count == 0) return "mast";
+        int most = tops.Values.GroupBy(v => v).OrderByDescending(k => k.Count()).First().Count();
+        return most > tops.Count * 0.5 ? "mast" : "edge";
     }
 
     static (Vector3, float, float) Look(World.PlanetWorld w, double x, double z, float y, double tx, double tz, float ty)

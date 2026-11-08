@@ -182,6 +182,8 @@ public sealed class TerrainStamp
     public int JoinEnd { get; set; }
     /// <summary>A highway's median (0 none, 1 grass, 2 a concrete barrier, 3 grown over): its carriageways are divided by it.</summary>
     public int Median { get; set; }
+    /// <summary>Road: how far past the deck its bed is laid level before the banks begin, m (a town street's kerb, verge and footpath).</summary>
+    public float Verge { get; set; }
     /// <summary>A road that runs on at its route's start or end into a way of another class: that way's half width (0 none) and the taper's length, m; its painted width eases to meet it.</summary>
     public float MeetStartHw { get; set; }
     public float MeetEndHw { get; set; }
@@ -236,7 +238,7 @@ public sealed class TerrainStamp
         StampShape.Terraces => Math.Max(_halfX, _halfZ) + Length * 2 + Width + 40,
         StampShape.Cut => Math.Max(_halfX, _halfZ) + Length * 2 + Width + 40,
         StampShape.Furrow => Math.Max(_halfX, _halfZ) + Length + Width + StripBlend,
-        StampShape.Road => Math.Max(_halfX, _halfZ) + HalfWidth + BankMax + StripBlend,
+        StampShape.Road => Math.Max(_halfX, _halfZ) + HalfWidth + Verge + BankMax + StripBlend,
         _ => 0,
     };
 
@@ -321,7 +323,7 @@ public sealed class TerrainStamp
                 // Near a tunnel the cutting opens out to the portal's width, its banks drawing in to the portal's
                 // walls, so they meet the slope over the bore without a cliff across it where the road stops
                 // changing the ground.
-                float bed = HalfWidth;
+                float bed = HalfWidth + Verge;
                 float ease = MathF.Min(BankMax, MathF.Max(StripBlend, MathF.Abs(target - height) * 2.2f));
                 if (mouth < MouthBox + MouthFade)
                 {
@@ -527,7 +529,7 @@ public sealed class TerrainStamp
         span = RoadSpan.Ground;
         if (_px == null || _px.Length < 2) return false;
         Offset(x, z, out double dxd, out double dzd);
-        float reach = HalfWidth + BankMax + StripBlend;
+        float reach = HalfWidth + Verge + BankMax + StripBlend;
         if (Math.Abs(dxd) > _halfX + reach || Math.Abs(dzd) > _halfZ + reach) return false;
         float dx = (float)dxd, dz = (float)dzd;
         float best = float.MaxValue;
@@ -561,7 +563,7 @@ public sealed class TerrainStamp
         mouth = float.MaxValue;
         if (_px == null || _px.Length < 2) return false;
         Offset(x, z, out double dxd, out double dzd);
-        float reach = HalfWidth + BankMax + StripBlend;
+        float reach = HalfWidth + Verge + BankMax + StripBlend;
         if (Math.Abs(dxd) > _halfX + reach || Math.Abs(dzd) > _halfZ + reach) return false;
         float dx = (float)dxd, dz = (float)dzd;
         float best = float.MaxValue, total = 0f, decks = 0f, mouths = 0f;

@@ -392,14 +392,15 @@ public sealed class PowerLines
                 if (aims.Count == 0) { Without(house, NoWall); continue; }
                 int end = -1;
                 string why = "";
-                foreach (var (aim, aimCell) in aims)
+                // (Each fixing first from a short drop's reach, then, where the land allows no spot that close, from a long one's.)
+                foreach (var (aim, aimCell, stop) in aims.Select(f => (f.At, f.Cell, (double)DropReach * 0.7)).Concat(aims.Select(f => (f.At, f.Cell, (double)DropLongest * 0.9))))
                 {
                     int pm = Poles.Count, wm = Wires.Count, lm = Links.Count;
-                    end = Spur(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, toHouse: true);
+                    end = Spur(from, aim.X, aim.Z, stop, net, source, ground, rng, wear, kept, toHouse: true);
                     if (end < 0)
                     {
                         Undo(pm, wm, lm);
-                        end = SpurWay(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, true);
+                        end = SpurWay(from, aim.X, aim.Z, stop, net, source, ground, rng, wear, kept, true);
                     }
                     if (end >= 0 && Poles[end].Role == PowerRole.Line && Vector3.Distance(Poles[end].DropAnchor(aim.X, aim.Z) with { Y = 0 }, aim with { Y = 0 }) <= DropLongest)
                     {
@@ -416,6 +417,8 @@ public sealed class PowerLines
                 pole = end;
             }            PowerPole pp = Poles[pole];
             Vector3 anchor = pp.DropAnchor(at.X, at.Z);
+            // (Its insulator gone from the house as it stands: nothing holds it there, so it hangs from the pole.)
+            if (!Held(house, cell, standing)) broken = true;
             DropState state = pp.Fallen ? (broken ? DropState.Lying : DropState.FromHouse)
                 : broken ? DropState.FromPole
                 : !kept && rng.Chance(0.15f * wear) ? (rng.Chance(0.5f) ? DropState.FromPole : DropState.FromHouse) : DropState.Strung;
@@ -700,21 +703,36 @@ public sealed class PowerLines
         cell = all.Count > 0 ? all[0].Cell : default;
         return all.Count > 0;
     }
+    /// <summary>
+    /// Where a drop ends on a house's own service fixing: the insulator's face toward the street (a 0.4 m post in the
+    /// middle of its cell, the house's <see cref="ServicePoint"/>), near its top.
+    /// </summary>
+    public static Vector3 ServiceAt(FlavourRuin house, ServicePoint sp)
+    {
+        PoiGenerator.Gen.Int3 o = sp.Facing.Vec();
+        return new Vector3(house.OriginX + sp.Cell.X + 0.5f + o.X * 0.2f, house.OriginY + sp.Cell.Y + 0.75f, house.OriginZ + sp.Cell.Z + 0.5f + o.Z * 0.2f);
+    }
+
+    /// <summary>Whether the house as it stands still holds the block a drop is fixed to (null: not looked at).</summary>
+    static bool Held(FlavourRuin house, (int X, int Y, int Z) cell, BlockGrid standing) =>
+        standing == null || !standing.Get(new PoiGenerator.Gen.Int3(cell.X - house.OriginX, cell.Y - house.OriginY, cell.Z - house.OriginZ)).IsAir;
+
     /// <summary>Every fixing a drop from (tx, tz) could take, one per face in <see cref="Fixing"/>'s order.</summary>
     public static List<(Vector3 At, (int X, int Y, int Z) Cell)> Fixings(FlavourRuin house, double tx, double tz, double w, double h, BlockGrid standing = null)
     {
         // A house that set out its own service fixings (a bracket on the street side of its roof, or a service pole in
         // its front garden) takes its drop there, the one nearest the line first, while it still stands.
+        // Only there: a house that set one out never takes its drop on a wall point of its own. (Where its insulator is
+        // gone from the house as it stands, the drop is still aimed there and hangs from the pole: see Held.)
         var service = new List<(Vector3, (int, int, int))>();
         foreach (ServicePoint sp in house.Layout.Extras.Service)
         {
-            if (standing != null && standing.Get(sp.Cell).IsAir) continue;
-            PoiGenerator.Gen.Int3 o = sp.Facing.Vec();
             var c = (house.OriginX + sp.Cell.X, house.OriginY + sp.Cell.Y, house.OriginZ + sp.Cell.Z);
-            service.Add((new Vector3(c.Item1 + 0.5f + o.X * 0.3f, c.Item2 + 0.6f, c.Item3 + 0.5f + o.Z * 0.3f), c));
+            service.Add((ServiceAt(house, sp), c));
         }
         if (service.Count > 0)
-            return service.OrderBy(f => Math.Pow(Mathx.WrapDelta(tx - f.Item1.X, w), 2) + Math.Pow(Mathx.WrapDelta(tz - f.Item1.Z, h), 2)).ToList();
+            return service.OrderBy(f => (standing != null && standing.Get(new PoiGenerator.Gen.Int3(f.Item2.Item1 - house.OriginX, f.Item2.Item2 - house.OriginY, f.Item2.Item3 - house.OriginZ)).IsAir ? 1e12 : 0)
+                + Math.Pow(Mathx.WrapDelta(tx - f.Item1.X, w), 2) + Math.Pow(Mathx.WrapDelta(tz - f.Item1.Z, h), 2)).ToList();
         var (cx, cz) = house.Center;
         double dx = Mathx.WrapDelta(tx - cx, w), dz = Mathx.WrapDelta(tz - cz, h);
         Dir toward = FlavourRuins.Facing(dx, dz);

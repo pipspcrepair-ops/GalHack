@@ -40,9 +40,19 @@ public sealed partial class PlanetWorld
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);
         // The junctions, every way laid: each given its form, a roundabout its ring, before the roads are stamped.
         double mw = map.WidthMeters, mh = map.HeightMeters;
+        // A roundabout needs room clear of every place's pad; a flavour ruin with no way of its own in the ring's way
+        // was never built (the ring runs where it would have stood), so it doesn't stop one.
+        static bool Over(TerrainStamp s, double x, double z, double r) => x + r > s.MinX && x - r < s.MaxX && z + r > s.MinZ && z - r < s.MaxZ;
+        var yielding = new HashSet<TerrainStamp>(infra.Ruins.Where(ru => !ru.Tracked).Select(ru => ru.Stamp));
         infra.PlanJunctions((x, z) => bare.Sampler.Sample(Mathx.WrapX(x, mw), Mathx.Wrap(z, mh), 2).Height,
-            (x, z, r) => !stamps.Any(s => s.Shape == StampShape.Pad && x + r > s.MinX && x - r < s.MaxX && z + r > s.MinZ && z - r < s.MaxZ),
+            (x, z, r) => !stamps.Any(s => s.Shape == StampShape.Pad && !yielding.Contains(s) && Over(s, x, z, r)),
             new PoiGenerator.Gen.Rng(Hash.Of(spec.Seed, 0x7C7A)));
+        foreach (FlavourRuin gone in infra.Ruins.Where(ru => yielding.Contains(ru.Stamp)
+            && infra.Joins.Any(j => j.Form == JunctionForm.Roundabout && Over(ru.Stamp, j.X, j.Z, j.RingR + 10))).ToList())
+        {
+            infra.Ruins.Remove(gone);
+            stamps.Remove(gone.Stamp);
+        }
         stamps.AddRange(infra.Stamps());
         foreach (FlavourRuin ruin in infra.Ruins) if (ruin.Drive != null) stamps.Add(ruin.Drive);
         // What runs under a town: its ways in on pads of their own, after the roads so they win there.

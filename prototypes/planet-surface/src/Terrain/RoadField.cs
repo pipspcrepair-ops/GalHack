@@ -101,6 +101,19 @@ public sealed class RoadField
             lastX = t.CenterX + t.PathPoint(t.PathCount - 1).X;
             lastZ = t.CenterZ + t.PathPoint(t.PathCount - 1).Z;
         }
+        // A roundabout's island, from its ring's own path (its middle and its radius less half its width): the ways
+        // through it stop at the ring, their decks not drawn over the island.
+        var islands = new List<(double X, double Z, float R)>();
+        foreach (TerrainStamp t in source.Stamps)
+        {
+            if (t.Shape != StampShape.Road || !t.Name.StartsWith("Ring") || t.PathCount < 8) continue;
+            double sx = 0, sz = 0;
+            for (int i = 0; i < t.PathCount; i++) { var (px, pz, _) = t.PathPoint(i); sx += px; sz += pz; }
+            sx /= t.PathCount; sz /= t.PathCount;
+            double rr = 0;
+            for (int i = 0; i < t.PathCount; i++) { var (px, pz, _) = t.PathPoint(i); rr += Math.Sqrt((px - sx) * (px - sx) + (pz - sz) * (pz - sz)); }
+            islands.Add((t.CenterX + sx, t.CenterZ + sz, (float)(rr / t.PathCount) - t.HalfWidth - 0.5f));
+        }
         // Each road's ends: one that runs onto a place's footprint is a lane into its lot, and near it the road is that lot's way in.
         var ends = new Dictionary<int, (bool Start, bool End, float Length)>();
         foreach (var (pts, _, _, rid) in runs)
@@ -121,6 +134,9 @@ public sealed class RoadField
                 // Where it runs on into a way of another class, its painted width eases to meet that way's over a taper.
                 var (paint, seam) = Seam(t, toStart, toEnd);
                 pts[i] = pts[i] with { PaintHw = paint, Seam = seam };
+                if (st % Town != Ring)
+                    foreach (var (ix, iz, ir) in islands)
+                        if (Math.Sqrt(Math.Pow(Mathx.WrapDelta(pts[i].X - ix, width), 2) + Math.Pow(Mathx.WrapDelta(pts[i].Z - iz, height), 2)) < ir) pts[i] = pts[i] with { Core = 1f };
             }
             n += Emit(segs, pts, t, st, rid, width, height);
         }
@@ -145,6 +161,9 @@ public sealed class RoadField
         }
         return (hw, seam);
     }
+
+    /// <summary>How far into a place's made ground a road that leads there runs before it gives way to it, m.</summary>
+    public const float MadeOverlap = 2.5f;
 
     /// <summary>How far from a junction a road carries its form (for its approach paint), m.</summary>
     const float JunctionReach = 80f;
@@ -180,6 +199,22 @@ public sealed class RoadField
             if (p.Shape != StampShape.Pad) continue;
             pad = MathF.Max(pad, p.Weight(cx, cz));
             if (p.OnFootprint(cx - 0.5, cz - 0.5)) core = 1f;
+        }
+        // A road that leads to a place runs on into its made ground: it stops only once it is well inside the yard,
+        // apron or car park laid at its end (which takes over there), never short of it on the pad's bare margin.
+        // A place with no made ground near its way in still stops the road at its footprint.
+        if (core > 0f && source.Grounds is { Count: > 0 } grounds)
+        {
+            float inside = float.MaxValue;
+            bool near = false;
+            foreach (GroundPatch g in grounds)
+            {
+                if (g.Cover == MadeCover.Lawn) continue;
+                float d = g.Distance(cx, cz, width, height);
+                if (d < 40f) near = true;
+                inside = MathF.Min(inside, d);
+            }
+            if (near && inside > -MadeOverlap) core = 0f;
         }
         float wide = pad;
         for (int k = -2; k <= 2; k++)
