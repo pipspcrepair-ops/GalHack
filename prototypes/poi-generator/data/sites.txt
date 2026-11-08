@@ -743,11 +743,44 @@ site faction_lab
   entrance 0 0 north
   part grand 0 0 what lab tech mid
 
+# Capital-ship hulks (src/Gen/Arch/CapitalHull.cs): one generator for every crashed capital vessel.
+#   part grand 0 0 what capital role <freighter|warship|liner|miner|carrier> size <medium|large|huge>
+#        crash <broken|nose|scattered|long>; the tech is the world's (or the part's), the livery the style kit's.
 site faction_hull
   name Crashed Freighter
   style meridian
   entrance 0 0 north
-  part grand 0 0 what hull tech mid
+  part grand 0 0 what capital role freighter size large crash broken tech mid
+
+site hulk_nose_down
+  name Crashed Freighter
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what capital role freighter size medium crash nose tech mid
+
+site hulk_scattered
+  name Crashed Freighter
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what capital role freighter size large crash scattered tech mid
+
+site hulk_long_hauler
+  name Crashed Freighter
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what capital role freighter size huge crash long tech mid
+
+site hulk_warship
+  name Crashed Warship
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what capital role warship size large crash nose tech high
+
+site hulk_liner
+  name Crashed Liner
+  style meridian
+  entrance 0 0 north
+  part grand 0 0 what capital role liner size large crash broken tech high
 
 site faction_hive
   name Vharn Garrison

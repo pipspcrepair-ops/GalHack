@@ -158,6 +158,26 @@ A world that was ever lived in is laid out in this order, all deterministic from
 
 `BlockGrid` keeps 16 m chunks only where something stands, so a 300 m works costs what's in it. The mass tests cover the small places; `PoiTest --only=Grand` builds every large variant on fresh seeds, turned every way.
 
+## Capital hulks
+
+`src/Gen/Arch/CapitalHull.cs` composes every crashed capital ship from rules: site part `what capital role <freighter|warship|liner|miner|carrier> size <medium|large|huge> crash <broken|nose|scattered|long>` (`data/sites.txt`), the world's tech, the style kit's livery. The `crashed_freighter` variants each name one crash.
+
+| | |
+| --- | --- |
+| Sizes | medium 36 m beam, 2 cargo bays (about 160 m); large 44 m, 3 (about 190 m); huge 52 m, 4 (about 210 m) |
+| Decks | 3 hull decks 6 m apart (a 2 m floor, 4 m clear) plus 2 tower decks; holds, hangar and engine room 2 decks tall with a catwalk through |
+| Bays | bow (tapered and raked), crew, cargo by role, hangar, power (reactor, core room behind it, fuel, generators), engine room against the stern |
+| Devices | `Thruster` banks on nacelles at the stern and manoeuvring pods; `Seat` command chairs and consoles behind the bridge's forward glass |
+| Ways in | a cargo ramp or cutting down from a hangar bay door, plus the crash's own: the broken back's tear, a flank torn open where the hull meets the ground, the open faces of a hull in pieces |
+| Pose | a shear of whole cells along the hull, a ramp wherever a floor steps: nose down 9 m deep at about 4 degrees, a broken back sagged 5 m in the middle, a scattered stern 34 to 44 m down the furrow, a long hauler buried 4 to 7 m |
+
+The route follows Empyrion's crashed vessels: walk round the hull for a way in, up its stairs deck by deck, the best loot deepest (the dead core's room, reached only through the reactor, and the bridge at the top), danger spawned along the halls and corridors. `data/orbit.txt` names the hull site each derelict capital ship takes (`hull`); the slice's orbit builder still draws its own small ships and has yet to use it. `PoiTest --only=Hulks` checks size, decks, stern engines, the bridge, walking and poses on fresh seeds; the slice's `--view=hulk --force=crashed_freighter` frames one.
+
+Empyrion references (read only, nothing copied):
+- Size: Steam discussion on capital vessel sizes and safe lengths, https://steamcommunity.com/app/383120/discussions/8/2645252442209113899 ; empyriononline "Would love to build this" (CV dimensions), https://empyriononline.com/posts/432226/
+- POI structure: empyriononline "POI's and you; a how-to" (entrances, the route, the core, loot by difficulty, depth), https://empyriononline.com/posts/387653/ ; "General Notes and Rules", https://empyriononline.com/threads/general-notes-and-rules.94100/
+- Crashed vessels in play: the local install's playfield yaml (Barren `playfield_static.yaml` crashed-ship groups, tilted and buried; MoonStarter `playfield_debug.yaml` crashed Titan in front, middle and back pieces 300 to 400 m apart)
+
 ## Authoring a kit module as data
 
 A kit is a palette plus modules. A palette line is `symbol type material colour[|colour...] role`; the first colour is the main one, and on walls, roofs and floors the others show as whole sheets, never cell by cell. A kit's `panels W H share` line sets those sheets (cells wide, cells tall, the share of them that differ); several colours on a decor cube paint regular stripes. Its `facade base coping door` line gives what `Facade` adds outside: the course at the ground and the top of the walls (colours), and whether a door to the outside is framed: `trim` frames it in the coping's colour, where the style calls for a frame, and `none` leaves it in its wall. A frame is never a colour of its own, and never hazard yellow: hazard stripes belong on a dangerous opening's own door (a blast door, an airlock), never round a person's door. A module is a stack of ASCII layers, **bottom first**; in each layer rows run north to south and columns west to east, framed by `|` so trailing spaces survive editors.
