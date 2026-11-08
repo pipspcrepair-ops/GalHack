@@ -504,13 +504,14 @@ internal sealed partial class Depths
                 }
             }
         }
-        // The missile: a tall body on the floor, its nose under the lid.
+        // The missile: a tall body on the floor, its nose under the lid. Structure, not a prop: a room's dressing
+        // clears the generator's props off its floor, and would leave the rest of it hanging.
         var body = new Stuff2(Material.Alloy, new Rgb(0xd8, 0xd6, 0xd0));
         int topJ = _span.Top - 2;
         for (int j = _span.J; j <= topJ; j++)
             for (int k = ck - 1; k <= ck; k++)
                 for (int i = ci - 1; i <= ci; i++)
-                    P.Fill(i, j, k, i, j, k, new Block(BlockType.Cube, body.M, (j - _span.J) % 6 == 5 ? new Rgb(0x2a, 0x2a, 0x2c) : body.C, Role.Prop));
+                    P.Fill(i, j, k, i, j, k, new Block(BlockType.Cube, body.M, (j - _span.J) % 6 == 5 ? new Rgb(0x2a, 0x2a, 0x2c) : body.C, Role.Decor));
         P.Cap(ci, ck, 1.0, topJ + 1, body);
         // The lid, flush with the ground: two halves with a hazard ring.
         for (int k = ck - r - 1; k <= ck + r + 1; k++)
