@@ -239,6 +239,8 @@ public static partial class Homes
             s.Units = Math.Max(1, (maxW - 1) / s.UnitW);
             s.D = Math.Min(s.D, lotD - 12);
             s.Storeys = Math.Clamp(lot.Storeys, 2, 3);
+            // No earth heaped against a city row either (a region whose people build into hillsides still has to fit the lot).
+            s.Berm = false;
         }
         else
         {
