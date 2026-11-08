@@ -80,6 +80,9 @@ public sealed class PlaceFauna
                 Wildlife.Rng.For(inst.SpawnSeed, "den-severity").Float()) * (turned ? 1f : 0.4f);
         }
         HoldersOf(inst, deep.Life, plan);
+        // What the world's dark holds, for the dark rooms; and now and then an armed group.
+        plan.Dark.AddRange(deep.Life.Dark);
+        plan.Armed = deep.Life.Armed;
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
         {
@@ -142,10 +145,14 @@ public sealed class PlaceFauna
         switch (main)
         {
             case Occupant.Prowlers:
+                // The world's twisted beasts, and its own changed where its fall left them (the Changed, ghouls, thralls).
                 plan.Holders.AddRange(life.Twisted);
+                plan.Holders.AddRange(life.Signature.Denning);
                 break;
             case Occupant.Machines or Occupant.Robots or Occupant.Guardians:
-                plan.Holders.AddRange(life.Machines);
+                // The world's own machines of its era where its story left some walking, else the old security's.
+                List<Species> own = life.Signature.Machines;
+                plan.Holders.AddRange(own.Count > 0 ? own : life.Machines);
                 break;
             case Occupant.Cyborgs:
                 plan.Holders.AddRange(life.Cyborgs);
@@ -403,7 +410,7 @@ public partial class Caves : Node3D
             return d >= rules.CaveClearance && !(look.Dot(to / d) > cone && SpaceMath.Clear(space, eye, p, 0f));
         }
         List<Creature> made;
-        lock (Deep.Lock) made = CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth, crawlers: 1, subsisters: (int)MathF.Round(3f * Deep.Livable), allow: Unseen);
+        lock (Deep.Lock) made = CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth, crawlers: 1, subsisters: (int)MathF.Round(3f * Deep.Livable), allow: Unseen, dark: Deep.Life.Dark);
         if (made.Count == 0) return (null, default); // nowhere out of your sight: the next search may do better
         return (cave, key);
     }

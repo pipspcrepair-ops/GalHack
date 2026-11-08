@@ -128,7 +128,7 @@ public partial class Game
     /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
     public string UsePrompt()
     {
-        if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  A/D steer  Shift boost  Space hop";
+        if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  Mouse or A/D steer  Alt look  Shift boost  Space hop";
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
         if (Spaceflight.UsePrompt() is string door) return door;
         if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride the hover bike  ·  E  Pick it up";

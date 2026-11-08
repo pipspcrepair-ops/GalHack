@@ -18,6 +18,18 @@ public sealed partial class PlanetWorld
     /// <summary>A start world's ruined town, where the start begins: the slice's start-site search starts from its <see cref="StartTown.Edge"/>.</summary>
     public StartTown StartTown => Infra.Town;
 
+    readonly object _dressGate = new();
+    WorldDress _dress;
+
+    /// <summary>What the world's layers left in its streets, squares, gardens and roads (planned on first need, on whatever thread asks).</summary>
+    public WorldDress Dress
+    {
+        get
+        {
+            lock (_dressGate) return _dress ??= WorldDress.Plan(this);
+        }
+    }
+
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps,
         PoiGenerator.Gen.WorldRoll roll, List<PoiGenerator.Gen.Strike> blasts, ref object around)
     {

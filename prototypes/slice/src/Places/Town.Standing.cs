@@ -115,7 +115,7 @@ public sealed partial class Town
             Vector3 d = player - p.Pos;
             p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 6f));
             p.Now = 0f;
-            if (!p.Holding && p.Figure.Prop == "rifle") { p.Holding = true; HoldAims++; }
+            if (!p.Holding && Weapons.Ranged(p.Figure.Prop)) { p.Holding = true; HoldAims++; }
             return true;
         }
         if (p.Path == null || p.Step >= p.Path.Count)

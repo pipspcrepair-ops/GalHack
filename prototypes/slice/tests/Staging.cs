@@ -93,6 +93,7 @@ public sealed partial class Staging
             "flora" => FloraProof(),
             "flora-trees" => FloraTrees(),
             "crouch" => CrouchView(),
+            "castaway" => CastawayView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),
             "peoples" => PeoplesView(),
@@ -139,6 +140,8 @@ public sealed partial class Staging
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
+            "own" => OwnView(),
+            "own-inside" => OwnInside(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
             "layers-land" => LayersLand(),
@@ -149,6 +152,8 @@ public sealed partial class Staging
             "blockdetail" => BlockDetailView(),
             "placesurf" => PlaceSurfView(),
             "decorooms" => DecoRooms(),
+            "dress" => DressView(),
+            "hulk" => HulkView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;

@@ -12,7 +12,7 @@ namespace Wildlife;
 /// </summary>
 public static class CaveFauna
 {
-    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4, Func<Vector3, bool> allow = null)
+    public static List<Creature> Populate(WildSim sim, ISolidSpace space, DeepFauna fauna, Vector3 center, float radius, ulong seed, int depth = 1, int crawlers = 2, int subsisters = 4, Func<Vector3, bool> allow = null, IReadOnlyList<Species> dark = null)
     {
         var rng = Rng.For(seed, "cave-fauna");
         var made = new List<Creature>();
@@ -87,6 +87,28 @@ public static class CaveFauna
             c.Hunger = rng.Range(0.3f, 0.8f);
             c.Ambush = new AmbushPoint { Kind = HideKind.Ceiling, Position = Crawl.Center(c), Normal = c.Facing.Y };
             made.Add(c);
+        }
+        // And most caves have something of the world's dark lying up in them: a pack, a big hunter, the changed, machines, Hollows.
+        if (dark is { Count: > 0 } && rng.Chance(0.7f))
+        {
+            Species kind = dark[rng.Int(0, dark.Count - 1)];
+            if (fauna.Indoor(fauna.Holding(kind, DeepRole.Lurker, PoiTheme.Natural)) is { } sized && fauna.Fitted(sized, 4f, 3.2f) is { } sp && (sp.Figure != null || sp.BodyHeight >= DeepFauna.IndoorMin - 0.05f))
+            {
+                var room = floors.FindAll(f => Roomy(space, SpaceMath.Center(f), sp));
+                if (room.Count > 0)
+                {
+                    Vector3I at = room[rng.Int(0, room.Count - 1)];
+                    int n = sp.Behaviour is Behaviour.PackHunter or Behaviour.Herd ? rng.Int(2, 3) : 1;
+                    for (int i = 0; i < n; i++)
+                    {
+                        Vector3I f = room[rng.Int(0, room.Count - 1)];
+                        if ((SpaceMath.Center(f) - SpaceMath.Center(at)).Length() > 6f) f = at;
+                        Creature c = sim.SpawnIn(sp, space, SpaceMath.Center(f) + new Vector3(i * 0.7f, 0.3f, 0f));
+                        c.Home = SpaceMath.Center(at);
+                        made.Add(c);
+                    }
+                }
+            }
         }
         return made;
     }

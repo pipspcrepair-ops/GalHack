@@ -376,7 +376,12 @@ public partial class CreaturesTest : Node
         for (ulong s = planet; s < planet + 60; s++)
         {
             Species c = new DeepFauna(_data, s, 0.5f).For(DeepRole.Crawler, PoiTheme.Natural, 1);
-            if (c.Form == "creeper") return c;
+            if (c.Form != "creeper") continue;
+            // The climbing and the drop are a climbing hunter's: a creeper made one (insects keep to themselves).
+            c = c.Copy();
+            c.Passive = false;
+            c.Stats.Hunts = true;
+            return c;
         }
         throw new InvalidOperationException("no creeper in 60 planets");
     }
@@ -717,8 +722,9 @@ public partial class CreaturesTest : Node
             total[state] = total.GetValueOrDefault(state) + 1;
             if (pop.Silent) silent[state] = silent.GetValueOrDefault(state) + 1;
             creatures[state] = creatures.GetValueOrDefault(state) + pop.Spawns.Count;
-            worstPlace = Math.Max(worstPlace, pop.Spawns.Count);
-            foreach (var room in pop.Spawns.GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
+            // The caps hold what comes at you; insects (passive) are the place's life and uncapped.
+            worstPlace = Math.Max(worstPlace, pop.Spawns.Count(s => !s.Species.Passive));
+            foreach (var room in pop.Spawns.Where(s => !s.Species.Passive).GroupBy(s => s.Room)) worstRoom = Math.Max(worstRoom, room.Count());
             int maxDepth = plan.Rooms.Max(r => r.Depth);
             foreach (PoiSpawn s in pop.Spawns)
             {
@@ -758,7 +764,7 @@ public partial class CreaturesTest : Node
         var roster = new DeepFauna(_data, 1, 0.5f);
         Check(MathF.Abs(strider.TurnCircle - 6.5f) < 0.3f && roster.Fitted(strider, 2f, 3f) == null && roster.Fitted(strider, 7f, 4f) == strider,
             $"a 5.5 m strider needs a {strider.TurnCircle:F1} m turning circle: not in a 2 m corridor under a 3 m ceiling, at home in a 7 by 4 m hall");
-        Check(nestsAll > 20 && nestsOk == nestsAll, $"nests are in the deepest levels (or a wreck's holds, or an infested place's lower levels): {nestsOk} of {nestsAll}");
+        Check(nestsAll == 0, $"no nest is built in any place (the owner: none anywhere): {nestsAll} found");
         Check(chainsPossible > 20 && chains == chainsPossible, $"every place with hunters and subsisters has a food chain ({chains} of {chainsPossible})");
         Check(derelictAll > 5 && derelictOk == derelictAll, $"derelict ships have their own nesters in holds, ducts and engine rooms ({derelictOk} of {derelictAll})");
         var expected = new[] { DeepRole.Lurker, DeepRole.Prowler, DeepRole.Ambusher, DeepRole.Nester, DeepRole.Subsister, DeepRole.DerelictNester };
@@ -782,13 +788,13 @@ public partial class CreaturesTest : Node
             {
                 plan.Seed = s;
                 PoiPopulation pop = PoiFauna.Populate(plan, fauna, _data.Deep);
-                if (!pop.Silent && pop.Nests.Count > 0) return pop.Spawns.Count(x => x.Nest >= 0);
+                if (!pop.Silent && pop.Count(DeepRole.Nester) > 0) return pop.Count(DeepRole.Nester);
             }
             return 0;
         }
         int g1 = Guards(1), g3 = Guards(3), g5 = Guards(5);
         Check(g1 < g3 && g3 < g5 && near.Body.Size < mid.Body.Size && mid.Body.Size < deep.Body.Size && near.Stats.MaxHealth < deep.Stats.MaxHealth && near.Name == deep.Name,
-            $"nests get worse with depth: {g1}, {g3} and {g5} guards at levels 1, 3 and 5; the same {near.Name} grows from {near.Body.Size:F2} to {mid.Body.Size:F2} to {deep.Body.Size:F2} m and {near.Stats.MaxHealth:F0} to {deep.Stats.MaxHealth:F0} health from level 3 to 5");
+            $"the deep's insects come in more numbers and bigger with depth: {g1}, {g3} and {g5} at levels 1, 3 and 5; the same {near.Name} grows from {near.Body.Size:F2} to {mid.Body.Size:F2} to {deep.Body.Size:F2} m and {near.Stats.MaxHealth:F0} to {deep.Stats.MaxHealth:F0} health from level 3 to 5");
     }
 
     // ---- Tells: frightening but fair -----------------------------------------------------
@@ -944,11 +950,19 @@ public partial class CreaturesTest : Node
     {
         var fauna = new DeepFauna(_data, 2024, 0.5f);
         var results = new List<string>();
-        bool allHit = true, allTold = true, allDodged = true;
+        bool allHit = true, allTold = true, allDodged = true, kept = true;
         float worst = float.MaxValue;
-        void Case(string label, Func<WildSim, BlockSpace, Creature> make, Vector3 from, Vector3 stand, Vector3? refuge = null, bool pursuer = false)
+        var keepers = new List<string>();
+        void Case(string label, Func<WildSim, BlockSpace, Creature> make, Vector3 from, Vector3 stand, Vector3? refuge = null, bool pursuer = false, bool insect = false)
         {
             var (hit, lead, tell, dodged) = Ambush(label, make, from, stand, refuge ?? new Vector3(3f, 9f, 3f), pursuer);
+            // Insects keep to themselves (the owner): one that bit would be wrong.
+            if (insect)
+            {
+                kept &= !hit;
+                keepers.Add($"{label}{(hit ? " BIT" : "")}");
+                return;
+            }
             allHit &= hit;
             allTold &= lead >= 1f;
             allDodged &= dodged;
@@ -962,7 +976,7 @@ public partial class CreaturesTest : Node
             Creature c = sim.SpawnIn(dropper, space, new Vector3(15.5f, 11.8f, 6f), Vector3.Down);
             c.Ambush = new AmbushPoint { Kind = HideKind.Ceiling, Position = Crawl.Center(c), Normal = c.Facing.Y };
             return c;
-        }, new Vector3(9f, 9f, 6f), new Vector3(15.5f, 9f, 6f));
+        }, new Vector3(9f, 9f, 6f), new Vector3(15.5f, 9f, 6f), insect: dropper.Passive);
         Case("a duct eel in the corridor vent", (sim, space) =>
         {
             var vent = new Crack { Id = 0, Kind = CrackKind.Vent, Position = new Vector3(16.5f, 11.5f, 5f), Normal = Vector3.Back, Network = 2 };
@@ -971,7 +985,7 @@ public partial class CreaturesTest : Node
             c.Ambush = new AmbushPoint { Kind = HideKind.Vent, Position = vent.Position, Hole = vent };
             Brain.EnterCrack(sim, c, vent, park: true);
             return c;
-        }, new Vector3(9f, 9f, 6f), new Vector3(16.5f, 9f, 6.2f));
+        }, new Vector3(9f, 9f, 6f), new Vector3(16.5f, 9f, 6.2f), insect: eel.Passive);
         Case("something behind the store's door", (sim, space) =>
         {
             var door = new Crack { Id = 0, Kind = CrackKind.Door, Position = new Vector3(22f, 9.2f, 7.5f), Normal = Vector3.Forward, Network = 3, Size = 1f };
@@ -980,7 +994,7 @@ public partial class CreaturesTest : Node
             c.Ambush = new AmbushPoint { Kind = HideKind.Door, Position = door.Position, Hole = door };
             Brain.EnterCrack(sim, c, door, park: true);
             return c;
-        }, new Vector3(13f, 9f, 6f), new Vector3(22f, 9f, 6f));
+        }, new Vector3(13f, 9f, 6f), new Vector3(22f, 9f, 6f), insect: eel.Passive);
         Species lurker = fauna.For(DeepRole.Lurker, PoiTheme.Industrial, 0);
         Case($"a lurker ({lurker.CommonName}) in the dark room", (sim, space) => sim.SpawnIn(lurker, space, new Vector3(34.5f, 9.2f, 9.5f)),
             new Vector3(29f, 9f, 3f), new Vector3(33f, 9f, 8f));
@@ -1000,7 +1014,8 @@ public partial class CreaturesTest : Node
             c.Nest = nest;
             nest.Guards.Add(c);
             return c;
-        }, new Vector3(11f, 1f, 22f), new Vector3(8f, 1f, 24f), new Vector3(22f, 5f, 27f));
+        }, new Vector3(11f, 1f, 22f), new Vector3(8f, 1f, 24f), new Vector3(22f, 5f, 27f), insect: nester.Passive);
+        Check(kept, $"insects keep to themselves, walked right up to: {string.Join("; ", keepers)}");
         Check(allHit && allTold, $"every ambush gives itself away at least a second before it lands (tightest {worst:F2} s): {string.Join("; ", results)}");
         Check(allDodged, "and every one can be escaped: run when you hear or see an ambush's tell and it never lands; step back when a hunter commits and its lunge misses");
     }
@@ -1162,37 +1177,28 @@ public partial class CreaturesTest : Node
         {
             hold = BlockPlace.Hold(seed);
             pop = PoiFauna.Populate(hold.Plan, fauna, Packed(_data));
-            if (!pop.Silent && pop.Nests.Count >= 2) break;
+            if (!pop.Silent && pop.Count(DeepRole.DerelictNester) >= 2) break;
         }
         WildSim sim = PlaceSim(hold);
         List<Creature> made = PoiFauna.Spawn(sim, pop, hold.Space);
-        float before = pop.Nests.Sum(n => n.Size);
-        for (float t = 0f; t < 150f; t += Dt) sim.Step(Dt);
-        float after = pop.Nests.Sum(n => n.Size);
-        var rooms = pop.Nests.Select(n => hold.Plan.Rooms.Find(r => n.Position.X >= r.Min.X - 0.1f && n.Position.X <= r.Max.X + 0.1f && n.Position.Z >= r.Min.Z - 0.1f && n.Position.Z <= r.Max.Z + 0.1f)?.Kind.ToString().ToLowerInvariant() ?? "?").ToList();
-        Check(made.Any(c => c.Species.Role == DeepRole.DerelictNester) && after > before + 0.1f,
-            $"wreck nesters ({made.First(c => c.Species.Role == DeepRole.DerelictNester).Species.CommonName}) build up their nests from the hold's scraps ({before:F2} to {after:F2} over 2.5 minutes, nests in the {string.Join(" and ", rooms)})");
-        // A salvager walks up to a nest: a hiss and a display, then the bite if they keep coming.
+        // A salvager walks through the hold: its insects keep to themselves and scatter, building nothing.
         var salvager = new DummyTarget { Name = "Salvager", Health = new Health(1e6f) };
         var f = new Fairness();
         f.Watch(sim, salvager);
-        Nest target = pop.Nests[0];
+        var bugs = made.Where(c => c.Species.Role == DeepRole.DerelictNester).ToList();
+        Vector3 at = bugs.Count > 0 ? bugs[0].Position : Vector3.Zero;
         salvager.Position = new Vector3(2.5f, 2f, 9f);
         sim.Targets.Add(salvager);
-        float warnedAt = -1f;
-        sim.Told += e => { if (e.Target == salvager && e.Kind == TellKind.Hiss && warnedAt < 0f) warnedAt = e.Time; };
-        float warnDistance = -1f;
         for (float t = 0f; t < 40f; t += Dt)
         {
-            Vector3 to = target.Position - salvager.Position;
+            Vector3 to = at - salvager.Position;
             to.Y = 0f;
             if (to.Length() > 0.8f) salvager.Position += to.Normalized() * 1.2f * Dt;
             salvager.Position = new Vector3(salvager.Position.X, FloorAt(hold.Space, salvager.Position), salvager.Position.Z);
-            if (warnedAt >= 0f && warnDistance < 0f) warnDistance = (target.Position - salvager.Position).Length();
             sim.Step(Dt);
         }
-        Check(warnedAt >= 0f && f.Hits > 0 && f.WorstLead >= 1f,
-            $"its guards warn an intruder off (a hiss at {warnDistance:F1} m from the nest) and bite only after (tightest {f.WorstLead:F2} s after the first tell, {f.Hits} hits)");
+        Check(bugs.Count >= 2 && bugs.All(c => c.Species.Passive) && pop.Nests.Count == 0 && sim.Nests.Count == 0 && f.Hits == 0,
+            $"a wreck's insects ({(bugs.Count > 0 ? bugs[0].Species.CommonName : "none")}, {bugs.Count}) keep to themselves in its holds: no nest built, {f.Hits} bites on a salvager walking among them");
     }
 
     // ---- Mutagenic worlds -------------------------------------------------------------------

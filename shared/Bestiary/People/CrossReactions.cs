@@ -29,7 +29,7 @@ public static class CrossReactions
     /// </summary>
     public static Response Respond(Species s, Figure person, Temper temper, float nerve, float distance)
     {
-        bool armed = person.Prop is "rifle" or "club";
+        bool armed = Weapons.Armed(person.Prop);
         bool keeper = person.Role is PersonRole.Guard or PersonRole.Lawman;
         bool child = person.Stage == LifeStage.Child;
         if (s.Husk)

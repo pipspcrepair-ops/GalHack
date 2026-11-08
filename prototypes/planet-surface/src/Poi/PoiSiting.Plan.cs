@@ -53,6 +53,8 @@ public static partial class PoiSiting
         double Away(PlannedPlace p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
         var jobs = new List<(PlannedPlace Place, FamilyDef Family, PoiState State, int Variant, ulong Spawn, OccupancyRoll Occ)>();
         int living = 0, cap = profile.LivingCap;
+        // Where people survive, a home standing whole is usually lived in.
+        bool peopled = OccupancyLayer.Peopled(roll, profile);
         foreach (PlannedPlace p in plan.Places)
         {
             FamilyDef f = lib.Family(p.Family);
@@ -67,7 +69,10 @@ public static partial class PoiSiting
                 for (int i = 0; i < w.Length; i++) if (i != (int)PoiState.Ruined) w[i] = 0f;
             if (w.All(v => v <= 0f)) continue;
             var state = (PoiState)Math.Max(0, rng.PickWeighted(w.ToList()));
-            if (WorldProfile.Living(f, state) && !WorldProfile.Unbuilt(f))
+            // A shanty town is where the survivors live: lived in wherever people survive, the few as much as the many.
+            bool shanty = p.Role == "shanty" && peopled && f.StateWeights[(int)PoiState.Active] > 0f;
+            if (shanty) state = PoiState.Active;
+            if (!shanty && WorldProfile.Living(f, state) && !WorldProfile.Unbuilt(f))
             {
                 if (living >= cap)
                 {
@@ -81,7 +86,7 @@ public static partial class PoiSiting
             ulong spawn = rng.NextU64();
             if (start && f.Tags.Contains("settlement") && Away(p) < 4000)
                 for (ulong k = 1; k < 32 && Dressing.MoodFor(spawn) == Mood.Hostile; k++) spawn = PoiGenerator.Gen.Hash.Combine(spawn, k);
-            OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, spawn) with { Tags = roll.Tags } : null;
+            OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, spawn, null, peopled && OccupancyLayer.Livable(f, state)) with { Tags = roll.Tags } : null;
             jobs.Add((p, f, state, variant, spawn, occ));
         }
         // Whole works take a moment each: they're built side by side, then seated in order.

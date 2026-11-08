@@ -53,13 +53,25 @@ public sealed class DeepFauna
     /// The species that fills a role in this kind of place at this depth. Nesters (and wreck
     /// nesters) grow with depth within a band: the same species, bigger and tougher further down.
     /// </summary>
+    /// <summary>
+    /// Which of a world's several kinds for each role a place draws (0 to 2, set by the place from its
+    /// seed): one world's places differ from each other, not one creature per job on the whole world.
+    /// </summary>
+    public int Variant;
+
+    /// <summary>Insects defend themselves and their own on this world (a swarm took it); elsewhere they keep to themselves.</summary>
+    public bool InsectsDefend;
+
+    /// <summary>The bodies a place's insects come in: they crawl its walls and keep to themselves.</summary>
+    public static bool Insect(string form) => form is "creeper" or "ducteel" or "mossgrub" or "scrapper" or "skitterer";
+
     public Species For(DeepRole role, PoiTheme theme, int depth, bool infested = false)
     {
         DepthRules dr = _data.Deep.Depth;
         depth = Math.Clamp(depth, 0, dr.MaxLevel);
         int band = Band(depth);
         bool scales = role is DeepRole.Nester or DeepRole.DerelictNester;
-        string key = $"{role}/{theme}/{band}/{(infested ? 1 : 0)}/{(scales ? depth : -1)}";
+        string key = $"{role}/{theme}/{band}/{(infested ? 1 : 0)}/{(scales ? depth : -1)}/{Variant}";
         if (_cache.TryGetValue(key, out Species cached)) return cached;
         int floor = BandFloor(band);
         Species s = scales && depth != floor ? Deeper(For(role, theme, floor, infested), depth) : Roll(role, theme, band, scales ? floor : depth, infested);
@@ -99,15 +111,26 @@ public sealed class DeepFauna
     public Species Holding(Species s, DeepRole role, PoiTheme theme)
     {
         if (_holding.TryGetValue((s.Id, role, theme), out Species found)) return found;
-        Species c = s.Copy();
-        string id = $"{s.Id}-holds-{role}";
-        int index = s.Index;
-        Prowling(c, role, theme, 0);
-        // A machine ticks and whirs where a body breathes.
-        if (c.Mechanical) c.Tells = new[] { TellKind.Click };
-        c.Id = id;
-        c.Index = index;
-        return _holding[(s.Id, role, theme)] = c;
+        Species One(Species x)
+        {
+            Species c = x.Copy();
+            string id = $"{x.Id}-holds-{role}";
+            int index = x.Index;
+            Prowling(c, role, theme, 0);
+            // A machine ticks and whirs where a body breathes.
+            if (c.Mechanical) c.Tells = new[] { TellKind.Click };
+            c.Id = id;
+            c.Index = index;
+            return c;
+        }
+        Species lead = One(s);
+        // A kind of several people (the Changed, ghouls) is each of them, each given the job.
+        if (s.Hosts is { Count: > 0 } hosts)
+        {
+            lead.Hosts = hosts.ConvertAll(One);
+            lead.Hosts[0] = lead;
+        }
+        return _holding[(s.Id, role, theme)] = lead;
     }
 
     /// <summary>A body from elsewhere, given a prowler's (or a lurker's) job in a place.</summary>
@@ -137,7 +160,7 @@ public sealed class DeepFauna
         DeepTables t = _data.Deep;
         DeepRoleDef rd = t.Role(role);
         ThemeDef td = t.Theme(theme);
-        ulong seed = Rng.Mix(_seed, Rng.Hash($"deep/{role}/{theme}/{band}/{(infested ? "bloom" : "")}"));
+        ulong seed = Rng.Mix(_seed, Rng.Hash($"deep/{role}/{theme}/{band}/{(infested ? "bloom" : "")}{(Variant > 0 ? "/" + Variant : "")}"));
         var rng = Rng.For(seed, "deep");
 
         var forms = new List<string>(rd.Forms.Keys);
@@ -181,8 +204,19 @@ public sealed class DeepFauna
 
         s.Name = _names.MakeUnique(rng, _taken);
         s.CommonName = Prefix(s, band) + _gen.NameFor(s);
-        s.Id = $"{_seed:x}-deep-{role}-{theme}-{band}";
+        s.Id = $"{_seed:x}-deep-{role}-{theme}-{band}{(Variant > 0 ? "-v" + Variant : "")}";
         s.Index = 100 + (int)role * 10 + (int)theme;
+        // Insects keep to themselves: on the walls and ceilings, scattering from you, biting only when hurt.
+        if (Insect(form) && !InsectsDefend)
+        {
+            s.Passive = true;
+            s.FleesIntoCracks = true;
+            s.HuntsPrey = false;
+            s.Stats.Hunts = false;
+            s.Stats.Retaliates = true;
+            s.Climbs = true;
+            s.Temperament = Temperament.Skittish;
+        }
         // Overrun by the Bloom: the same thing, darker, veined and angrier ("Hollow ..."; its id gains "-hollow").
         if (infested) _gen.CorruptSpecies(s, seed);
         return s;
@@ -224,6 +258,29 @@ public sealed class DeepFauna
         young.Stats.Damage = MathF.Round(s.Stats.Damage * k, 1);
         _fitted[key] = young;
         return young;
+    }
+
+    /// <summary>The height range of whatever comes at you indoors and underground: between a child's and a grown person's, m.</summary>
+    public const float IndoorMin = 1.1f, IndoorMax = 1.9f;
+    readonly Dictionary<string, Species> _indoor = new();
+
+    /// <summary>
+    /// A kind as it is met indoors and underground, when it comes at you: grown or shrunk (the same
+    /// body, in proportion) to stand between a child's height and a person's. People and machines
+    /// on two legs are as they are; insects, which keep to themselves, any size; a mite is no foe
+    /// (null). The kind outside keeps its own size.
+    /// </summary>
+    public Species Indoor(Species s)
+    {
+        if (s.Figure != null || s.Passive) return s;
+        float h = s.BodyHeight;
+        if (h >= IndoorMin && h <= IndoorMax) return s;
+        if (h < 0.3f) return null;
+        string key = s.Id + "/indoor";
+        if (_indoor.TryGetValue(key, out Species found)) return found;
+        Species c = s.Copy();
+        Size(c, Math.Clamp(h, IndoorMin, IndoorMax) / h);
+        return _indoor[key] = c;
     }
 
     /// <summary>Clear air over its back, m; and how small a young one can be and still read as its kind.</summary>

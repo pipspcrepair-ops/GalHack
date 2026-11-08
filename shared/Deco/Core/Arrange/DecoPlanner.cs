@@ -45,6 +45,23 @@ public sealed class DecoPlanner
         public string Role;
     }
 
+    /// <summary>
+    /// How many of one piece a room may hold: seats in rows and round tables a good few, things set on a
+    /// surface a few more, anything else four. A room is never one piece over and over.
+    /// </summary>
+    public static int CapOf(DecoPiece p) =>
+        p.Roles.Any(r => r is "seat-row" or "pew" or "bench-seat" or "airline-seat" or "seat" or "chair" or "stool") ? 16 : p.Mount == DecoMount.Top ? 5 : 3;
+
+    readonly Dictionary<string, int> _count = new();
+
+    bool Full(DecoPiece p) => _count.GetValueOrDefault(p.Id) >= CapOf(p);
+
+    /// <summary>Forgets a template's chosen pieces, so its next use picks afresh (a room isn't the same thing over and over).</summary>
+    void Repick(DecoTemplate t)
+    {
+        foreach (string k in _chosen.Keys.Where(k => k.StartsWith(t.Id + ":", StringComparison.Ordinal)).ToList()) _chosen.Remove(k);
+    }
+
     public DecoPlan Plan(DecoRoom room, DecoSetPlan mix = null)
     {
         _room = room;
@@ -53,6 +70,7 @@ public sealed class DecoPlanner
         _rng = new DecoRng(DecoHash.Combine(room.Seed, DecoHash.Fnv(room.Set ?? "")));
         _groups = 0;
         _chosen.Clear();
+        _count.Clear();
         string named = room.Recipe ?? room.RoomId;
         mix ??= (named != null && _arr.Recipes.TryGetValue(named, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
         Reserve();
@@ -80,17 +98,21 @@ public sealed class DecoPlanner
     {
         if (roles.Length == 0) return null;
         key ??= string.Join(",", roles);
-        if (_chosen.TryGetValue(key, out DecoPiece p) && (extra == null || extra(p))) return p;
-        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x))).ToList();
-        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x))).ToList();
+        if (_chosen.TryGetValue(key, out DecoPiece p) && (extra == null || extra(p)) && !Full(p)) return p;
+        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
+        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
         // Pieces that play the first-named role come first.
         var all = own.Concat(borrowed).ToList();
         if (all.Count == 0) return null;
-        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * (_room.Tech != null && x.Tech == _room.Tech ? 1.5f : 1f)).ToList();
+        // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
+        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x)).ToList();
         p = all[Math.Max(0, _rng.PickWeighted(weights))];
         _chosen[key] = p;
         return p;
     }
+
+    /// <summary>How much a piece suits the room's era: its own era four times over, one era older at par, two older a little.</summary>
+    float Era(DecoPiece x) => _room.Tech is not DecoTech t ? 1f : x.Tech == t ? 4f : (int)t - (int)x.Tech == 1 ? 1f : 0.3f;
 
     // ---- templates in their own frame ------------------------------------------------------------
 
@@ -128,7 +150,8 @@ public sealed class DecoPlanner
                     {
                         float along = -sides[s].len / 2 + sides[s].len / n[s] * (i + 0.5f);
                         Vector2 dir = sides[s].dir, tangent = new(-dir.Y, dir.X);
-                        m.Add(new Member { Piece = c, At = dir * sides[s].off + tangent * along, Yaw = sides[s].yaw, Role = c.Roles.First(t.Members.Contains) });
+                        // Chairs as they were left: a little out, a little turned.
+                        m.Add(new Member { Piece = c, At = dir * (sides[s].off + _rng.Range(0f, 0.1f)) + tangent * (along + _rng.Range(-0.04f, 0.04f)), Yaw = sides[s].yaw + _rng.Range(-8f, 8f), Role = c.Roles.First(t.Members.Contains) });
                         DecoPiece tray = t.Top.Length > 0 && a.Surface > 0 && s < 2 && _rng.Chance(t.TopChance) ? Pick(t.Top, t.Id + ":top") : null;
                         if (tray != null)
                             m.Add(new Member { Piece = tray, At = dir * (a.Depth / 2 - tray.Depth / 2 - 0.03f) + tangent * along, Yaw = sides[s].yaw, Y = a.Surface, Support = 0, Role = "tray" });
@@ -176,7 +199,8 @@ public sealed class DecoPlanner
                     DecoPiece stool = Pick(t.Front, t.Id + ":front");
                     if (stool != null)
                         for (float sx = -a.Width / 2 + 0.35f; sx < a.Width / 2 - 0.2f; sx += 0.7f)
-                            m.Add(new Member { Piece = stool, At = new Vector2(i * step + sx, -(a.Depth / 2 + 0.12f + stool.Depth / 2)), Yaw = 180, Role = "stool" });
+                            // Each stool as it was last pushed in or out, turned a little.
+                            m.Add(new Member { Piece = stool, At = new Vector2(i * step + sx + _rng.Range(-0.08f, 0.08f), -(a.Depth / 2 + 0.12f + stool.Depth / 2) - _rng.Range(0f, 0.12f)), Yaw = 180 + _rng.Range(-15f, 15f), Role = "stool" });
                     DecoPiece tray = a.Surface > 0 && _rng.Chance(t.TopChance) ? Pick(t.Top, t.Id + ":top") : null;
                     if (tray != null) m.Add(new Member { Piece = tray, At = new Vector2(i * step + _rng.Range(-0.4f, 0.4f) * a.Width, -a.Depth / 2 + tray.Depth / 2 + 0.05f), Y = a.Surface, Support = idx, Role = "tray" });
                 }
@@ -234,6 +258,9 @@ public sealed class DecoPlanner
     {
         int group = _groups;
         int first = _plan.Placements.Count;
+        // Never past a piece's cap in a room.
+        foreach (var g in members.GroupBy(m => m.Piece))
+            if (_count.GetValueOrDefault(g.Key.Id) + g.Count() > CapOf(g.Key)) return false;
         var added = new List<DecoPlacement>();
         foreach (Member mem in members)
         {
@@ -261,6 +288,7 @@ public sealed class DecoPlanner
             return false;
         }
         _plan.Placements.AddRange(added);
+        foreach (DecoPlacement pl in added) _count[pl.Piece] = _count.GetValueOrDefault(pl.Piece) + 1;
         _groups++;
         return true;
     }
@@ -309,6 +337,8 @@ public sealed class DecoPlanner
             DecoTemplate t = _arr.Templates[mix[pick].Template];
             // A template with a most uses (a galley, an altar) stops at it.
             if (t.Max > 0 && uses[pick] >= t.Max) { weights[pick] = 0; continue; }
+            // Each use picks its pieces afresh more often than not: a wall of desks isn't one desk again and again.
+            if (_rng.Chance(0.6f)) Repick(t);
             List<Member> inst = Instance(t);
             if (inst == null) { weights[pick] = 0; failures++; continue; }
             var (lo, hi) = Extent(inst);
@@ -316,10 +346,14 @@ public sealed class DecoPlanner
             foreach (DecoWall w in walls)
             {
                 float len = WallLength(w), half = (hi.X - lo.X) / 2;
-                for (float s = half + 0.05f; s <= len - half - 0.05f && !placed; s += Cell)
+                // Anywhere along the wall it fits, not packed from one end: the gaps between come out uneven.
+                var along = new List<float>();
+                for (float s = half + 0.05f; s <= len - half - 0.05f; s += Cell) along.Add(s);
+                _rng.Shuffle(along);
+                foreach (float s in along)
                 {
                     var (x, z) = WallOrigin(w, s - (lo.X + hi.X) / 2, hi.Y);
-                    placed = TryPlace(inst, x, z, WallYaw(w), t.Id);
+                    if (placed = TryPlace(inst, x, z, WallYaw(w), t.Id)) break;
                 }
                 if (placed) break;
             }
@@ -339,10 +373,14 @@ public sealed class DecoPlanner
             int pick = _rng.PickWeighted(weights);
             if (pick < 0) break;
             DecoTemplate t = _arr.Templates[mix[pick].Template];
+            Repick(t);
             List<Member> inst = Instance(t);
             if (inst == null) { weights[pick] = 0; failures++; continue; }
             var (lo, hi) = Extent(inst);
             Vector2 size = hi - lo, centre = (lo + hi) / 2;
+            // Off the lattice by a little, and turned a little, each one: not stamped out in ranks.
+            bool lineUp = t.Kind is "row" or "line" or "conveyor" or "rows";
+            float jitter = MathF.Min(0.3f, 0.28f), turn = lineUp ? 3f : 12f;
             bool across = size.X > size.Y != _room.Width > _room.Depth;
             float yaw = across ? 90 : 0;
             if (_rng.Chance(0.5f)) yaw += 180;
@@ -357,11 +395,17 @@ public sealed class DecoPlanner
             foreach (Vector2 spot in spots)
             {
                 if (t.Max > 0 && placed >= t.Max) break;
-                Vector2 origin = spot - DecoGeo.Yaw(centre, yaw);
-                if (TryPlace(inst, origin.X, origin.Y, yaw, t.Id))
+                float y1 = yaw + _rng.Range(-turn, turn);
+                Vector2 off = new(_rng.Range(-jitter, jitter), _rng.Range(-jitter, jitter));
+                Vector2 origin = spot + off - DecoGeo.Yaw(centre, y1);
+                if (TryPlace(inst, origin.X, origin.Y, y1, t.Id) || TryPlace(inst, spot.X - DecoGeo.Yaw(centre, yaw).X, spot.Y - DecoGeo.Yaw(centre, yaw).Y, yaw, t.Id))
                 {
                     placed++;
+                    // The next spot's pieces picked afresh: a different one where the set has it.
+                    Repick(t);
                     inst = Instance(t) ?? inst;
+                    (lo, hi) = Extent(inst);
+                    centre = (lo + hi) / 2;
                 }
             }
             // The lattice found room for fewer than two (the walkway runs through its middle): try spots off it, slid towards the walls.
@@ -407,14 +451,18 @@ public sealed class DecoPlanner
         }
         float aisle = t.Aisle, step = seat.Depth + 0.5f;
         int perSide = Math.Max(1, (int)((len / 2 - aisle / 2 - 0.5f) / (seat.Width + 0.05f)));
-        for (float d = start + seat.Depth / 2; d < depth - 2.2f; d += step)
+        for (float d = start + seat.Depth / 2; d < depth - 2.2f; d += step + _rng.Range(-0.05f, 0.15f))
         {
+            // Each seat a little out of true, as people left them; a gap where one went.
             var row = new List<Member>();
             for (int i = 0; i < perSide; i++)
                 foreach (float s in new[] { -1f, 1f })
-                    row.Add(new Member { Piece = seat, At = new Vector2(s * (aisle / 2 + seat.Width / 2 + i * (seat.Width + 0.05f)), 0), Role = "seat" });
+                {
+                    if (perSide > 1 && _rng.Chance(0.12f)) continue;
+                    row.Add(new Member { Piece = seat, At = new Vector2(s * (aisle / 2 + seat.Width / 2 + i * (seat.Width + 0.05f)) + _rng.Range(-0.02f, 0.02f), _rng.Range(-0.05f, 0.05f)), Yaw = _rng.Range(-2.5f, 2.5f), Role = "seat" });
+                }
             var (x, z) = WallOrigin(focusWall, len / 2, d);
-            TryPlace(row, x, z, WallYaw(focusWall), t.Id);
+            if (!TryPlace(row, x, z, WallYaw(focusWall), t.Id) && Pick(t.Anchor, t.Id + ":anchor") is { } other) seat = other;
         }
     }
 
@@ -434,7 +482,9 @@ public sealed class DecoPlanner
                 if (p == null || p.Mount == DecoMount.Ceiling || p.Mount == DecoMount.Top) continue;
                 var mem = new List<Member> { new() { Piece = p, Role = role } };
                 var (x, z) = WallOrigin(w, s + p.Width / 2, p.Depth / 2 + 0.02f);
-                if (TryPlace(mem, x, z, WallYaw(w), "fill")) s += p.Width;
+                // Set down a little out of true where there's room for it.
+                var (x2, z2) = WallOrigin(w, s + p.Width / 2, p.Depth / 2 + 0.08f);
+                if (TryPlace(mem, x2, z2, WallYaw(w) + _rng.Range(-6f, 6f), "fill") || TryPlace(mem, x, z, WallYaw(w), "fill")) s += p.Width + _rng.Range(0f, 0.4f);
             }
         }
     }

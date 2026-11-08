@@ -204,7 +204,7 @@ public static class Mesher
         var sum = new long[count.Length * 3];
         foreach (var (c, b) in g.Blocks())
         {
-            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
+            int weight = BlockInfo.IsFullCube(b.Type) || b.Type == BlockType.Thruster ? 2 : b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
             if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
             Int3 l = c - g.Min;
             int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
@@ -591,6 +591,7 @@ public static class Mesher
         {
             BlockType.Pillar or BlockType.Pane or BlockType.Door or BlockType.SealedDoor or BlockType.Tank => 1,
             BlockType.Rib or BlockType.Machine or BlockType.Pipe or BlockType.Barricade or BlockType.Statue or BlockType.Pump => 2,
+            BlockType.Thruster => 3,
             BlockType.Rail or BlockType.Lattice => 4,
             _ => 0,
         };
@@ -1139,6 +1140,9 @@ public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface,
 /// <summary>What each non-cube block looks like: a few boxes in cell-local units (0 to 1).</summary>
 public static class Shapes
 {
+    /// <summary>A floor plate's top over the floor it lies on, m.</summary>
+    public const float PlateTop = 0.02f;
+
     public static readonly Rgb ScreenOn = new(0x7c, 0xff, 0xb0);
     public static readonly Rgb ScreenDim = new(0x2a, 0x6a, 0x48);
 
@@ -1189,6 +1193,8 @@ public static class Shapes
         BlockType.Statue => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 1.65f, 0.9f)),
         BlockType.Bed => (new V3(0.1f, 0, 0.05f), new V3(0.9f, 0.65f, 0.95f)),
         BlockType.Pump => (new V3(0.2f, 0, 0.25f), new V3(0.8f, 1.7f, 0.75f)),
+        BlockType.Thruster => (new V3(0, 0, 0), new V3(2, 2, 2)),
+        BlockType.Seat => (new V3(0.15f, 0, 0.15f), new V3(0.85f, 1.2f, 0.85f)),
         BlockType.Pipe when b.Variant == 1 => PipeBounds(b, 0.08f, 1.92f),
         BlockType.Pipe => PipeBounds(b, 0.1f, 0.9f),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
@@ -1219,6 +1225,39 @@ public static class Shapes
         Add(d, a, f, e, 0, 1, c);
         Add(a, d, e, f, 0, 1, c);
         if (flange) Add(0, 0, k, k, 0.35f, 0.65f, c.Scale(0.7f));
+    }
+
+    /// <summary>
+    /// A large thruster: one 2 m block from its lowest corner cell, its nozzle on the Facing side (built facing
+    /// north, -z): a square bell of four plates round a dark throat, a burner plate at the back of it (glowing
+    /// only while lit, Lumen), the housing behind with a collar and a ribbed top.
+    /// </summary>
+    static void Thruster(List<ShapeBox> l, Block b, Rgb c)
+    {
+        const float k = 2f;
+        static V3 T(V3 v, Dir facing)
+        {
+            int q = facing switch { Dir.East => 1, Dir.South => 2, Dir.West => 3, _ => 0 };
+            for (int i = 0; i < q; i++) v = new V3(k - v.Z, v.Y, v.X);
+            return v;
+        }
+        void B(float x0, float y0, float z0, float x1, float y1, float z1, Rgb col, Surface s)
+        {
+            V3 a = T(new V3(x0, y0, z0), b.Facing), e = T(new V3(x1, y1, z1), b.Facing);
+            l.Add(new ShapeBox(new V3(MathF.Min(a.X, e.X), MathF.Min(a.Y, e.Y), MathF.Min(a.Z, e.Z)), new V3(MathF.Max(a.X, e.X), MathF.Max(a.Y, e.Y), MathF.Max(a.Z, e.Z)), col, s));
+        }
+        Rgb dark = c.Scale(0.45f), throat = new(0x14, 0x14, 0x16);
+        bool lit = b.Material == Material.Lumen;
+        // The housing and its collar: what the far drawing keeps first.
+        B(0.06f, 0.06f, 0.95f, 1.94f, 1.94f, 2f, c, Surface.Metal);
+        B(0.1f, 0.1f, 0.06f, 1.9f, 0.3f, 0.95f, dark, Surface.Metal);
+        B(0.1f, 1.7f, 0.06f, 1.9f, 1.9f, 0.95f, dark, Surface.Metal);
+        B(0.1f, 0.3f, 0.06f, 0.3f, 1.7f, 0.95f, dark, Surface.Metal);
+        B(1.7f, 0.3f, 0.06f, 1.9f, 1.7f, 0.95f, dark, Surface.Metal);
+        B(0.3f, 0.3f, 0.8f, 1.7f, 1.7f, 0.95f, throat, Surface.Matte);
+        B(0.55f, 0.55f, 0.76f, 1.45f, 1.45f, 0.8f, lit ? new Rgb(0xff, 0x9a, 0x40) : new Rgb(0x3a, 0x30, 0x2c), lit ? Surface.Glow : Surface.Matte);
+        B(0f, 0f, 0.9f, 2f, 2f, 1.02f, c.Scale(0.8f), Surface.Metal);
+        for (int i = 0; i < 4; i++) B(0.25f + i * 0.42f, 1.94f, 1.1f, 0.4f + i * 0.42f, 2f, 1.9f, dark, Surface.Metal);
     }
 
     /// <summary>Which ways a rail's line runs from its cell: toward each rail beside it (or a step up or down, as on a stair), on into a wall or post where the line ends, or across its Facing when it stands alone.</summary>
@@ -1408,7 +1447,8 @@ public static class Shapes
                 break;
             }
             case BlockType.Plate:
-                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte));
+                // Thin as a finish (it is walked through, never on): the floor it lies on meets a stair's step flush.
+                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, Shapes.PlateTop, 1), c, Surface.Matte));
                 break;
             case BlockType.Scorch:
                 l.Add(new ShapeBox(new V3(0.02f, 0, 0.02f), new V3(0.98f, 0.02f, 0.98f), c, Surface.Matte, true));
@@ -1495,12 +1535,13 @@ public static class Shapes
                 break;
             case BlockType.Ladder:
             {
-                // Rails and rungs against the wall behind the climber (the north side, turned by Facing).
+                // Rails and rungs flat against the wall behind Facing (Facing looks out from the wall, at the climber).
                 Rgb rail = c.Scale(0.85f);
-                l.Add(Box(0.18f, 0, 0.04f, 0.26f, 1, 0.14f, rail, Surface.Metal, b.Facing));
-                l.Add(Box(0.74f, 0, 0.04f, 0.82f, 1, 0.14f, rail, Surface.Metal, b.Facing));
+                Dir wall = b.Facing.Opposite();
+                l.Add(Box(0.18f, 0, 0.04f, 0.26f, 1, 0.14f, rail, Surface.Metal, wall));
+                l.Add(Box(0.74f, 0, 0.04f, 0.82f, 1, 0.14f, rail, Surface.Metal, wall));
                 for (int i = 0; i < 4; i++)
-                    l.Add(Box(0.26f, 0.12f + i * 0.25f, 0.06f, 0.74f, 0.16f + i * 0.25f, 0.12f, c, Surface.Metal, b.Facing));
+                    l.Add(Box(0.26f, 0.12f + i * 0.25f, 0.06f, 0.74f, 0.16f + i * 0.25f, 0.12f, c, Surface.Metal, wall));
                 break;
             }
             case BlockType.Rail:
@@ -1583,6 +1624,21 @@ public static class Shapes
             case BlockType.Pipe:
                 Pipe(l, b, p, c);
                 break;
+            case BlockType.Thruster:
+                Thruster(l, b, c);
+                break;
+            case BlockType.Seat:
+            {
+                // A command chair facing north (turned by Facing): a post, the seat, a high back, arms, a small screen on the right arm.
+                Rgb frame = new(0x2c, 0x30, 0x36);
+                l.Add(Box(0.42f, 0, 0.42f, 0.58f, 0.36f, 0.58f, frame, Surface.Metal, b.Facing));
+                l.Add(Box(0.16f, 0.36f, 0.14f, 0.84f, 0.5f, 0.8f, c, Surface.Matte, b.Facing));
+                l.Add(Box(0.16f, 0.5f, 0.7f, 0.84f, 1.28f, 0.84f, c, Surface.Matte, b.Facing));
+                l.Add(Box(0.08f, 0.5f, 0.2f, 0.16f, 0.72f, 0.78f, frame, Surface.Metal, b.Facing));
+                l.Add(Box(0.84f, 0.5f, 0.2f, 0.92f, 0.72f, 0.78f, frame, Surface.Metal, b.Facing));
+                l.Add(Box(0.84f, 0.72f, 0.16f, 0.98f, 0.76f, 0.46f, b.Material == Material.Lumen ? ScreenOn : ScreenDim, Surface.Glow, b.Facing));
+                break;
+            }
             case BlockType.Ramp:
             case BlockType.Spike:
             case BlockType.Corner:

@@ -79,7 +79,22 @@ public static class OccupancyLayer
         "KPR" => Occupant.Keepers, "SLP" => Occupant.Sleepers, "GRD" => Occupant.Guardians, "MIM" => Occupant.Mimics, _ => null,
     };
 
-    /// <summary>Whether a place takes the layer: the living and the Bloom keep who they have, wrecks and alien sites are their own stories.</summary>
+    /// <summary>Those who would make a place their home: squatters, scavengers, cultists, keepers, a gang, a faction, the copies.</summary>
+    public static readonly HashSet<string> Dwellers = new() { "SQT", "SCV", "CLT", "KPR", "GNG", "FAC", "MIM" };
+
+    /// <summary>
+    /// A home to whoever survives: standing whole (abandoned, not ruined), and the kind of place people
+    /// live in or work the land from (a farm, a house, a shop, a town's buildings, a settlement).
+    /// </summary>
+    public static bool Livable(FamilyDef f, PoiState state) =>
+        state == PoiState.Abandoned && (f.Tags.Contains("farm") || f.Tags.Contains("house") || f.Tags.Contains("farmstead") || f.Tags.Contains("civilian") || f.Tags.Contains("settlement")
+            || f.Tags.Contains("recovery") || f.Tags.Contains("frontier") || f.Tags.Contains("shop") || f.Tags.Contains("wayside") || f.Tags.Contains("city") && !f.Tags.Contains("industry"));
+
+    /// <summary>Whether people survive on a world, as its roll has it.</summary>
+    public static bool Peopled(WorldRoll? roll, WorldProfile? profile) =>
+        roll != null && roll.Fact("people") != "none" && profile is not { Current: PopulationNow.None };
+
+    /// <summary>Whether the layer applies to a place.</summary>
     public static bool Applies(FamilyDef f, PoiState state) =>
         state is PoiState.Abandoned or PoiState.Ruined && f.Faction == Faction.None && !f.Tags.Contains("settlement") && !WorldProfile.Unbuilt(f);
 
@@ -89,17 +104,22 @@ public static class OccupancyLayer
     /// <paramref name="lean"/> by what the place was (a police station to a gang, a school to
     /// squatters), shift the odds of who the world has, never bring in who it hasn't.
     /// </summary>
-    public static OccupancyRoll Roll(IReadOnlyDictionary<string, float> mix, FamilyDef family, ulong seed, IReadOnlyDictionary<string, float>? lean = null)
+    public static OccupancyRoll Roll(IReadOnlyDictionary<string, float> mix, FamilyDef family, ulong seed, IReadOnlyDictionary<string, float>? lean = null, bool lived = false)
     {
         var rng = new Rng(Hash.Combine(seed, 0x0CC0FAUL));
         var keys = mix.Keys.Where(k => Code(k) != null).OrderBy(k => k, StringComparer.Ordinal).ToList();
+        // A home on a world where people survive is someone's: the survivors move in, if the world names none of its own.
+        if (lived && !keys.Any(Dwellers.Contains)) keys = keys.Append("SQT").OrderBy(k => k, StringComparer.Ordinal).ToList();
         if (keys.Count == 0) return new OccupancyRoll(Occupant.Empty);
+        float total = keys.Sum(k => mix.GetValueOrDefault(k));
         var weights = keys.Select(k =>
         {
-            float w = mix[k];
+            float w = mix.TryGetValue(k, out float m) ? m : 0.5f * MathF.Max(1f, total);
             if (family.Tags.Contains("farm") && k == "SQT") w *= 2f;
             if (family.Tags.Contains("industry") && k == "MCH") w *= 1.5f;
             if (lean != null && lean.TryGetValue(k, out float by)) w *= by;
+            // Lived in, usually: those who'd make it a home far more often than nobody.
+            if (lived) w *= Dwellers.Contains(k) ? 3f : k == "EMP" ? 0.25f : 1f;
             return w;
         }).ToList();
         Occupant Next() => Code(keys[Math.Max(0, rng.PickWeighted(weights))])!.Value;
@@ -350,7 +370,8 @@ public static class OccupancyLayer
             break;
         }
         if (!full) return;
-        foreach (PlacedModule m in Settled(x, rooms, 1))
+        // In the first of the biggest rooms with floor enough for them.
+        foreach (PlacedModule m in Settled(x, rooms, 3))
             if (Patch(x, m, 4f) is { } p)
             {
                 People(x, p.Mid, Floor(x, m), m.Index, Mood.Peaceful, x.R.Between(3, 5), lookout: false);
@@ -358,6 +379,7 @@ public static class OccupancyLayer
                 {
                     x.Inst.Townsfolk.Copies = true;
                     x.Inst.Markers.Add(new Marker("copies", p.Mid));
+                    break;
                 }
             }
     }
@@ -386,14 +408,9 @@ public static class OccupancyLayer
         foreach (PlacedModule m in Settled(x, rooms, n))
         {
             if (Patch(x, m, first ? 7f : 4f) is not { } p) continue;
+            // No nest is built (the owner: none anywhere): what lives here leaves what it ate.
             foreach (Int3 c in p.Near)
-            {
-                float d = c.FlatDistance(p.Mid);
-                if (x.R.Chance(0.55f - d * 0.05f)) x.Put(c, BlockType.Rubble, Material.Resin, resin.Lerp(new Rgb(0x3e, 0x34, 0x24), x.R.Float()));
-                else if (x.R.Chance(first ? 0.35f : 0.18f)) x.Put(c, BlockType.Pod, Material.Chitin, egg.Scale(x.R.Float(0.8f, 1.1f)));
-                else if (x.R.Chance(0.1f)) x.Put(c, BlockType.Remains, Material.Bone, bone);
-            }
-            Webs(x, m, p.Near, resin.Lerp(bone, 0.5f));
+                if (x.R.Chance(0.1f)) x.Put(c, BlockType.Remains, Material.Bone, bone);
             if (full && fauna.Count > 0)
                 for (int e = 0, count = first ? x.R.Between(3, 6) : x.R.Between(1, 3); e < count && p.Near.Count > 0; e++)
                     x.Enemy(x.R.Pick(fauna), EnemyKind.Fauna, x.R.Pick(p.Near), m.Index, first ? 2 : 1);
@@ -463,6 +480,15 @@ public static class OccupancyLayer
             // Picking the place over, not holding it: they watch you and leave you be, unless you start it.
             People(x, p.Mid, p.Near, m.Index, Mood.Wary, x.R.Between(2, 4), lookout: true);
         }
+        // However cramped the rooms, a band is camped here: the first room with floor enough for them.
+        if (full && x.Inst.Townsfolk == null)
+            foreach (PlacedModule m in Settled(x, rooms, 6))
+            {
+                var floor = Floor(x, m);
+                if (floor.Count < 6) continue;
+                People(x, floor[floor.Count / 2], floor, m.Index, Mood.Wary, x.R.Between(2, 3), lookout: true);
+                if (x.Inst.Townsfolk != null) break;
+            }
         // They've been through the side rooms.
         foreach (LootCache c in x.Inst.Caches.Where(c => !c.InVault && !c.Secret))
             if (full && !c.PickedOver && c.Items.Count > 1) { c.PickedOver = true; c.Items.RemoveRange(1, c.Items.Count - 1); }

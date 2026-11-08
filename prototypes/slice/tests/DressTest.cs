@@ -90,6 +90,8 @@ public partial class DressTest : Node
         GD.Print($"rolling {Places} places from {seed}");
         var rolled = Roll(Places, seed).ToList();
         Resting(decor, rolled);
+        Repeats(decor, rolled);
+        Hovering(decor, rolled);
         // Mines and airfields every run, beside whatever the dice brought.
         rolled.AddRange(Roll(16, seed + 1, f => f.Tags.Contains("mine") || f.Tags.Contains("aviation")));
         Fitting(decor, rolled);
@@ -347,7 +349,7 @@ public partial class DressTest : Node
         Block here = inst.Blocks.Get(c), under = inst.Blocks.Get(c + PoiGenerator.Gen.Int3.Down);
         bool firm = under.IsAir ? inst.Nav().IsRock(c + PoiGenerator.Gen.Int3.Down) : BlockInfo.IsFullCube(under.Type) || under.Type == BlockType.Lattice;
         if (!firm) return null;
-        return here.Type == BlockType.Plate ? c.Y + 0.1f : c.Y;
+        return here.Type == BlockType.Plate ? c.Y + Shapes.PlateTop : c.Y;
     }
 
     /// <summary>Whether two faces' colours differ enough to show which one is drawn (one shade over another flickers; the same shade can't).</summary>

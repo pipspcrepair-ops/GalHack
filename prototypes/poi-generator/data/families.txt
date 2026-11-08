@@ -144,7 +144,7 @@ family crashed_freighter
   core none
   owner none
   tags wreck salvage ship grand
-  pitch A freighter came down hard. No one holds it now: strip it, or fit a core and fly it out.
+  pitch A capital freighter came down hard: holds, hangar, reactor and bridge, its engine banks dead. No one holds it now: strip it, or fit a core and fly it out.
   site faction_hull
   rarity common
   biomes desert ash ice rock steppe fungal
@@ -157,10 +157,13 @@ family crashed_freighter
     seed 5101
   variant Nose Down
     seed 5102
+    site hulk_nose_down
   variant Scattered Hold
     seed 5103
+    site hulk_scattered
   variant Long Hauler
     seed 5104
+    site hulk_long_hauler
 
 family kessari_spire
   tier outpost

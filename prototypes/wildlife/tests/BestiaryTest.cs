@@ -36,6 +36,16 @@ public partial class BestiaryTest : Node
         {
             _data = DataFiles.LoadWildlife();
             GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
+            if (OS.GetCmdlineUserArgs().Contains("--grips"))
+            {
+                // Only the weapon checks (a quick run while working on holds).
+                WeaponsAreHeldRight();
+                ArmsFollowTheEra();
+                BodiesAreWhole();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             SameWorldSameLife();
             BodiesFitTheClimate();
             VacuumHasNothingThatBreathes();
@@ -56,6 +66,9 @@ public partial class BestiaryTest : Node
             BreakersBreakWeakBlocks();
             NobodyReactsAtOnce();
             EveryBuildWorks();
+            WeaponsAreHeldRight();
+            ArmsFollowTheEra();
+            BodiesAreWhole();
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();
@@ -213,7 +226,7 @@ public partial class BestiaryTest : Node
     {
         var mild = Bestiary.Roll(_data, World(15f)).People;
         int Count(PersonRole r, Occupancy o, PeopleGenerator g, Func<Figure, bool> test) => Enumerable.Range(0, 40).Count(i => test(g.Person(Seed(), r, o).Figure));
-        Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && f.Prop == "rifle") > 30, "guards wear armour and carry rifles");
+        Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && Weapons.Armed(f.Prop)) > 30, "guards wear armour and carry weapons");
         Check(Count(PersonRole.Raider, Occupancy.Raider, mild, f => f.HairStyle == "mohawk" && f.Has("bandoleer") | f.Has("spike_pads")) > 30, "raiders have mohawks, spikes and bandoleers");
         Check(Count(PersonRole.Medic, Occupancy.Friendly, mild, f => f.Has("medic_band")) == 40, "medics carry their kit");
         Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe" | (f.Folk?.CrownRise ?? 0f) > 0.9f) > 30, "farmers have hats and hoes (or a crown no hat fits)");
@@ -1469,7 +1482,7 @@ public partial class BestiaryTest : Node
         Check(Of(PersonRole.Lawman).OutAt(0.93f) && Of(PersonRole.Guard).OutAt(0.02f) && !Of(PersonRole.Trader).OutAt(0.93f) && Of(PersonRole.Drunk).OutAt(0.9f) && !Of(PersonRole.Elder).OutAt(0.26f) && Of(PersonRole.Farmer).OutAt(0.25f),
             "the law and guards keep the night, traders shut up shop, a drunk stays out late, elders come out late and farmers early");
         int Count(PersonRole r, Func<Figure, bool> test) => Enumerable.Range(0, 30).Count(_ => test(Of(r)));
-        Check(Count(PersonRole.Lawman, f => f.Has("badge") && f.Prop == "rifle" && f.Has("vest")) == 30 && Count(PersonRole.Mechanic, f => f.Prop == "wrench" && f.Has("tool_belt")) > 15,
+        Check(Count(PersonRole.Lawman, f => f.Has("badge") && Weapons.Armed(f.Prop) && f.Has("vest")) == 30 && Count(PersonRole.Mechanic, f => f.Prop == "wrench" && f.Has("tool_belt")) > 15,
             "the law wears a badge and a vest and carries a rifle; mechanics carry a wrench on a tool belt");
     }
 

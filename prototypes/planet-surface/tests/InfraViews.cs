@@ -58,7 +58,7 @@ public static class InfraViews
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: PowerSeries);
         }
         if (what == "pylon") PylonBearing = a.Length > 4 ? float.Parse(a[4]) : 20f;
-        bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
+        bool town = what is "town" or "manhole" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
         Action<Main> torch = what is "sewer" or "drain" or "metro" or "gallery" ? Torch : null;
         return new(PlanetSpec.Roll(seed, arch, 0), m => Frame(m, what), 0.4, WeatherKind.Clear, BeforeCapture: torch);
@@ -192,6 +192,12 @@ public static class InfraViews
             {
                 // A corner of a junction chamber, looking across it.
                 return Look(w, room.Min.X + 1.5, room.Max.Z - 0.5, room.Min.Y + 2.6f, room.Max.X, room.Min.Z, room.Min.Y + 1f);
+            }
+            if (under != null && what == "manhole" && under.Scheme.Shafts.FirstOrDefault(k => k.Network == UnderKind.Sewer && k.ToSurface) is UnderShaft hole)
+            {
+                // From above and behind, over the footpath: the open manhole beside the street.
+                double hx = hole.Foot.X + 1, hz = hole.Foot.Z + 1;
+                return Look(w, hx - town.AlongX * 14 + town.AlongZ * 6, hz - town.AlongZ * 14 - town.AlongX * 6, hole.TopY + 14f, hx, hz, hole.TopY);
             }
             if (under != null && what == "drain" && under.Scheme.Runs.FirstOrDefault(r => r.Kind == UnderKind.Drain) is UnderRun run)
             {

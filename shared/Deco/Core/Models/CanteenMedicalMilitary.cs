@@ -70,7 +70,7 @@ public static partial class DecoModels
             b.Box(0.17f, 1.12f, -0.4f, 0.42f, 1.55f, -0.38f, Dark);
             b.Box(0.21f, 1.42f, -0.405f, 0.38f, 1.5f, -0.4f, Screen).Screen();
             Buttons(b, 0.2f, 1.16f, 0.39f, 1.38f, -0.4f, 3, 4, Plastic, Metal);
-            b.Box(0.26f, 1.0f, -0.405f, 0.33f, 1.06f, -0.4f, Chrome).Ghost();
+            b.Box(0.26f, 1.0f, -0.39f, 0.33f, 1.06f, -0.38f, Chrome).Ghost(); // on the face, not held off it
             b.Box(-0.38f, 0.22f, -0.41f, 0.08f, 0.45f, -0.38f, Dark).Loose();
             b.Box(-0.44f, 1.74f, -0.41f, 0.44f, 1.88f, -0.38f, Lamp).Lit();
             b.Light(0, 1.3f, -0.7f, Lamp);

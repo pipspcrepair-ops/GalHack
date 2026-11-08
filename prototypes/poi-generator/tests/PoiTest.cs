@@ -43,7 +43,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Performance", Performance),
         };
         try
         {
@@ -405,7 +405,7 @@ public partial class PoiTest : Node
             }
             int Of(Occupant who, BlockType t) => counts[who].GetValueOrDefault(t);
             Check(enemies[Occupant.Empty] == 0, $"{f.Id}: an empty place is empty");
-            Check(Of(Occupant.Nesters, BlockType.Pod) > Of(Occupant.Empty, BlockType.Pod) + 3 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters leave {Of(Occupant.Nesters, BlockType.Pod)} egg pods and {enemies[Occupant.Nesters]} creatures");
+            Check(Of(Occupant.Nesters, BlockType.Pod) == 0 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters build no nests and leave {enemies[Occupant.Nesters]} creatures");
             Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] == 0 && people[Occupant.Scavengers] is { Count: >= 2, Mood: Mood.Wary }, $"{f.Id}: scavengers leave a camp fire and are no one's enemies: {people[Occupant.Scavengers].Count} people, {people[Occupant.Scavengers].Mood}");
             Check(enemies[Occupant.Squatters] == 0 && people[Occupant.Squatters].Mood == Mood.Peaceful, $"{f.Id}: squatters are at home and at peace: {people[Occupant.Squatters].Count} people");
             Check(Of(Occupant.Gang, BlockType.Barricade) > Of(Occupant.Empty, BlockType.Barricade) + 3 && enemies[Occupant.Gang] > 0, $"{f.Id}: a gang leaves {Of(Occupant.Gang, BlockType.Barricade)} barricades and {enemies[Occupant.Gang]} of its own");
@@ -776,7 +776,7 @@ public partial class PoiTest : Node
     /// </summary>
     void UndergroundNet()
     {
-        int plans = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
+        int plans = 0, badHoles = 0, holes = 0, ways = 0, rooms = 0, columns = 0, unreached = 0, leaks = 0, wrongTech = 0, outfalls = 0, stations = 0, stubs = 0, spaces = 0, unlinked = 0;
         var notes = new List<string>();
         var grounds = new (string Name, Func<int, int, float> F)[]
         {
@@ -797,6 +797,21 @@ public partial class PoiTest : Node
                     // Brick sewers on a low-tech world: none of the higher levels' poured concrete or composite.
                     if (tech == TechLevel.Low && built.Blocks.Values.Any(b => b.Type == BlockType.Cube && b.Role == Role.Wall && b.Material is PoiGenerator.Gen.Material.Concrete or PoiGenerator.Gen.Material.Alloy)) { wrongTech++; notes.Add("concrete on " + where); }
                     stations += plan.Stations.Count;
+                    // A couple of manholes a town, all off the carriageway (a road's half width is 4 m).
+                    var mh = plan.Shafts.Where(k => k.Network == UnderKind.Sewer && k.ToSurface).ToList();
+                    holes += mh.Count;
+                    if (mh.Count is < 2 or > 3) { badHoles++; notes.Add($"{mh.Count} manholes on {where}"); }
+                    foreach (UnderShaft k in mh)
+                        for (int dx = -1; dx <= 2; dx++)
+                            for (int dz = -1; dz <= 2; dz++)
+                            {
+                                int rx = k.Foot.X + dx - site.X, rz = k.Foot.Z + dz - site.Z;
+                                int along = rx * ax + rz * az, across = -rx * az + rz * ax;
+                                bool inRoad = Math.Abs(across) <= 4 && Math.Abs(along) <= site.MainHalf + 4;
+                                for (int c = -1; c <= 1; c++) inRoad |= Math.Abs(along - c * site.Block) <= 4 && Math.Abs(across) <= site.Arm + 4;
+                                inRoad |= Math.Abs(across - back * site.Arm) <= 4 && Math.Abs(along) <= site.Block + 4;
+                                if (inRoad) { badHoles++; notes.Add($"manhole in the road at {k.Foot} on {where}"); dx = dz = 9; }
+                            }
                     outfalls += plan.Outfalls.Count;
                     if (plan.Outfalls.Count == 0) stubs++;
                     var view = new UnderView(built);
@@ -847,6 +862,7 @@ public partial class PoiTest : Node
             $"under {plans} towns: {ways} ways in, {rooms} chambers and {columns} sampled tunnel stretches all walked to from one way in ({unreached} not), {leaks} open cells against bare rock{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(4)) : "")}");
         Check(wrongTech == 0 && stations == plans * 2 / 3 && outfalls > 0,
             $"the networks fit their worlds: {stations} metro stations and none on a low-tech world ({wrongTech} wrong), {outfalls} outfall culverts, {stubs} drains ending in a fall of rock where the ground never drops");
+        Check(badHoles == 0, $"{holes} manholes under {plans} towns, two or three a town, none in a carriageway ({badHoles} wrong)");
         Check(spaces > 0 && unlinked == 0, $"{spaces} spaces for creatures, all dark, each linked to its neighbours ({unlinked} alone)");
     }
 

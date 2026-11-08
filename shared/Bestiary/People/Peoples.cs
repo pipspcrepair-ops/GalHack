@@ -160,7 +160,7 @@ public static class Peoples
     public static Folk RollVharn(Rng rng, WorldConditions w)
     {
         // They rode out the collapse on their own worlds: their bodies keep that climate, not this one's.
-        var home = new WorldConditions { Seed = w.Seed, Alienness = 0.75f, TempC = 32f, Oxygen = w.Oxygen };
+        var home = new WorldConditions { Seed = w.Seed, Alienness = 0.75f, TempC = 32f, Oxygen = w.Oxygen, Now = w.Now, Before = w.Before };
         var lean = new Dictionary<string, float>
         {
             ["chitin"] = 60f, ["mandibles"] = 40f, ["antennae"] = 40f, ["compound"] = 12f, ["band"] = 4f, ["plates"] = 8f, ["claws"] = 2.2f, ["glow"] = 3f, ["dark"] = 1f,

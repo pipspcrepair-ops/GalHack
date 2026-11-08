@@ -110,6 +110,7 @@ public partial class WildlifePatch
             if (PutAt(s, count, at, h.Radius, h.Radius + HauntReach, rng) is { Count: > 0 } group)
             {
                 foreach (Creature c in group) c.Home = at;
+                Keep(group);
                 Haunted += group.Count;
             }
         }
