@@ -106,7 +106,7 @@ public partial class SurfaceTest : Node
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         try { System.IO.Directory.Delete(saves, recursive: true); }
         catch (Exception) { } // already gone, or a file still held: it is this run's own folder, nothing else reads it
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     async Task Run(string name, Func<Task> check)

@@ -25,7 +25,7 @@ public partial class PoiTest : Node
         GetTree().CreateTimer(1800.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
         {
             GD.PrintErr("PoiTest timed out after 30 minutes");
-            GetTree().Quit(2);
+            GalHack.Testing.Backstop.Quit(this, 2);
         };
         string only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--only="))?["--only=".Length..];
         var checks = new (string Name, Action Run)[]
@@ -502,7 +502,7 @@ public partial class PoiTest : Node
     void Finish()
     {
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     /// <summary>The planned places the mass runs walk through in their hundreds. The large places are whole works and have their own check (<see cref="GrandPlaces"/>).</summary>

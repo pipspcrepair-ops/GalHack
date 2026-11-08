@@ -58,7 +58,7 @@ public partial class FloraTest : Node
             Check(false, $"test crashed: {e}");
         }
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     static (WorldMap map, SkySystem sky, PlanetFlora flora) Roll(ulong seed, Archetype a, int v)

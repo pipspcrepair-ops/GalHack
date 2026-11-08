@@ -133,7 +133,7 @@ public partial class Screenshot : Node
         if (stray > 0)
         {
             GD.Print($"could not save {_out}: stray geometry in the places shown");
-            GetTree().Quit(3);
+            GalHack.Testing.Backstop.Quit(this, 3);
             return;
         }
         Sheet(tiles, view == "interiors" ? "Interiors: one representative space each (a soft fill light at the eye in place of the head torch)" : $"POI families, sheet {view.Split(':')[1]} of {view.Split(':')[2]}: exteriors in daylight");
@@ -142,7 +142,7 @@ public partial class Screenshot : Node
         Image image = GetViewport().GetTexture().GetImage();
         Error result = image.SavePng(_out);
         GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);
     }
 
     int Check(ref string first)
@@ -547,13 +547,13 @@ public partial class Screenshot : Node
         if (stray > 0)
         {
             GD.Print($"could not save {_out}: stray geometry in the places shown");
-            GetTree().Quit(3);
+            GalHack.Testing.Backstop.Quit(this, 3);
             return;
         }
         Image image = GetViewport().GetTexture().GetImage();
         Error result = image.SavePng(_out);
         GD.Print(result == Error.Ok ? $"saved {_out}" : $"could not save {_out}: {result}");
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);
     }
 
     /// <summary>
