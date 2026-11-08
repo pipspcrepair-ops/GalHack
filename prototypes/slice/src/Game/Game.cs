@@ -436,13 +436,20 @@ public partial class Game : Node3D
         }
         // Seized by a Husk: the hold has the body until it ends.
         if (Held(c, (float)delta)) return;
-        if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
+        if (Survivor.OnBike is HoverBike bike) Ride(bike, c, (float)delta);
         else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
     }
 
-    /// <summary>On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The mouse looks.</summary>
-    void Ride(HoverBike bike, Controls c)
+    /// <summary>Looking around from the bike's seat (Alt held), or easing the view back onto its heading after.</summary>
+    bool _lookingAround;
+
+    /// <summary>
+    /// On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The
+    /// mouse steers: the bike comes round toward where you look. Alt held looks around without steering,
+    /// and on letting go the view eases back onto the bike's heading.
+    /// </summary>
+    void Ride(HoverBike bike, Controls c, float dt)
     {
         Survivor s = Survivor;
         s.Legs.Move = default;
@@ -450,6 +457,13 @@ public partial class Game : Node3D
         s.Legs.Vertical = 0f;
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         if (!Menu.IsOpen) Turn(s, c);
+        if (c.ModifierHeld(Key.Alt)) _lookingAround = true;
+        else if (_lookingAround)
+        {
+            s.Yaw = Mathf.LerpAngle(s.Yaw, bike.Yaw, 1f - MathF.Exp(-10f * dt));
+            if (MathF.Abs(Mathf.Wrap(bike.Yaw - s.Yaw, -MathF.PI, MathF.PI)) < 0.01f) _lookingAround = false;
+        }
+        bike.Aim = _lookingAround ? float.NaN : s.Yaw;
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             s.Dismount();

@@ -326,6 +326,7 @@ public sealed class Survivor
         OnBike = null;
         bike.Ridden = false;
         bike.Throttle = bike.Steer = 0f;
+        bike.Aim = float.NaN;
         bike.Boost = bike.Hop = false;
         Body.Asleep = false;
         Node.CollisionLayer = Layers.Player;

@@ -328,6 +328,23 @@ public partial class SliceTest : Node
         float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
         Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
+        // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
+        _game.Survivor.Yaw += MathF.PI / 2f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 120; i++) yield return 0;
+        var view = new Vector3(-MathF.Sin(_game.Survivor.Yaw), 0f, -MathF.Cos(_game.Survivor.Yaw));
+        float off = Mathf.RadToDeg(bike.Forward.AngleTo(view));
+        Check(off < 8f, $"the mouse steers: turned a quarter, the bike comes round to where the rider looks ({off:F0}° off after two seconds)");
+        _game.Controls.Modifiers.Add(Key.Alt);
+        float heading = bike.Yaw;
+        _game.Survivor.Yaw += MathF.PI / 2f;
+        for (int i = 0; i < 30; i++) yield return 0;
+        Check(MathF.Abs(Mathf.Wrap(bike.Yaw - heading, -MathF.PI, MathF.PI)) < 0.05f, "Alt held looks around without steering");
+        _game.Controls.Modifiers.Remove(Key.Alt);
+        for (int i = 0; i < 60; i++) yield return 0;
+        float apart = Mathf.RadToDeg(MathF.Abs(Mathf.Wrap(bike.Yaw - _game.Survivor.Yaw, -MathF.PI, MathF.PI)));
+        Check(apart < 3f, $"let go, the view eases back onto the bike's heading ({apart:F1}° apart)");
+        _game.Controls.Hold(Key.W, false);
         foreach (int x in _drive.Wait(90)) yield return x;
         float speedAtF = bike.Speed;
         foreach (int x in _drive.Tap(Key.F)) yield return x;

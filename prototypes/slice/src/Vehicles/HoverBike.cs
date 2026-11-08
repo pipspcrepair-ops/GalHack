@@ -26,6 +26,8 @@ public sealed class HoverBike
     /// <summary>How hard an empty bike stops, m/s²: a rider who steps off a moving bike finds it a step away, not gliding off down the hill.</summary>
     public const float ParkedBrake = 100f;
     public const float TurnRate = 1.7f; // rad/s at full lock
+    /// <summary>How fast a ridden bike turns toward where its rider looks, rad/s at speed (slower at a standstill, as the keys).</summary>
+    public const float AimRate = 3f;
     /// <summary>The seated eye, above the underside and a little back, m.</summary>
     public static readonly Vector3 EyeAt = new(0f, 1.3f, 0.15f);
 
@@ -55,6 +57,9 @@ public sealed class HoverBike
     /// <summary>The controls this tick (set by the game for a ridden bike; a parked bike gets none).</summary>
     public float Throttle, Steer;
     public bool Boost, Hop;
+
+    /// <summary>Where the rider looks (the view's yaw), or NaN while they look around: a ridden bike turns toward it, so the mouse steers.</summary>
+    public float Aim = float.NaN;
 
     /// <summary>The turn the last tick made, so the rider's view turns with the bike.</summary>
     public float LastTurn { get; private set; }
@@ -146,7 +151,14 @@ public sealed class HoverBike
         bool boost = Ridden && Boost, hop = Ridden && Hop;
 
         // Heading: a turn takes more lock the faster it goes (a hover bike barely turns at a standstill).
-        float turn = -steer * TurnRate * Mathf.Clamp(Speed / 7f, 0.4f, 1f) * dt;
+        // It comes round toward where the rider looks first; the keys' turn after it also turns the view, so it keeps the gap.
+        float grip = Mathf.Clamp(Speed / 7f, 0.4f, 1f);
+        if (Ridden && !float.IsNaN(Aim))
+        {
+            float gap = Mathf.Wrap(Aim - Yaw, -MathF.PI, MathF.PI), most = AimRate * grip * dt;
+            Yaw += Math.Clamp(gap, -most, most);
+        }
+        float turn = -steer * TurnRate * grip * dt;
         Yaw += turn;
         LastTurn = turn;
 
