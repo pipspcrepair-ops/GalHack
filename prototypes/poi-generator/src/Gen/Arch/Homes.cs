@@ -206,12 +206,12 @@ public static partial class Homes
             }
         }
 
-        /// <summary>The door in an outside wall: a real door in a 2 m opening, from the yard into a room.</summary>
-        public void FrontDoor(int u, int v, Room room)
+        /// <summary>The door in an outside wall: a real door in a 2 m wide opening (a house's the full storey tall), from the yard into a room.</summary>
+        public void FrontDoor(int u, int v, Room room, int tall = 2)
         {
             var cells = new List<Int3>();
             for (int k = 0; k < 2; k++)
-                for (int y = 0; y < 2; y++) cells.Add(P(u + k, y, v));
+                for (int y = 0; y < tall; y++) cells.Add(P(u + k, y, v));
             C.AddDoorway(cells, _f.Turn(Dir.North), room.Module, C.EntranceModule);
         }
 
@@ -591,7 +591,7 @@ public static partial class Homes
         switch (kind)
         {
             case "toolshed":
-                w = 8 + 2 * r.Range(0, 3); d = 6 + 2 * r.Range(0, 3); mouth = w / 2 / 2 * 2 - 2; wide = 2;
+                w = 8 + 2 * r.Range(0, 3); d = 6 + 2 * r.Range(0, 3); mouth = w / 2 / 2 * 2 - 2; wide = 4;
                 h.Wings.Add(new Wing(0, 0, w - 1, d - 1));
                 break;
             case "machineshed":
@@ -605,7 +605,8 @@ public static partial class Homes
         }
         Room room = h.Add("workshop", 0, 1, 1, w - 2, d - 2, ModuleKind.Hall);
         h.Raise();
-        h.Gap(mouth, 0, true, 0, wide, h.Height - 1);
+        // A shed's doors are a cart's or a machine's: full width, up to the wall's top course, never a low hatch.
+        h.Gap(mouth, 0, true, 0, wide, h.Height);
         h.Modules();
         h.Windows(0.5f);
         h.Roof();

@@ -1800,7 +1800,8 @@ public partial class PoiTest : Node
                         foreach (Doorway d in layout.Doorways)
                         {
                             Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
-                            if (hi.Y - lo.Y != 1) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
+                            // A house's doors run its storey's full height (3 m against a 1.8 m person); other buildings' are 2 m.
+                            if (hi.Y - lo.Y != (f.Id == "flavour_house" ? 2 : 1)) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
                         if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
                         // A house's roof is the form its family gave it: a flat one is flat, any other is slopes.

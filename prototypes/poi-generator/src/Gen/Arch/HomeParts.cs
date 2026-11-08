@@ -12,6 +12,16 @@ public static partial class Homes
     {
         public bool StairAt(int u, int v, int storey) => _stair.Contains((u, v, storey));
 
+        /// <summary>A door surround in a house's trim: the wall cells either side of its front door and the course over it.</summary>
+        public void Surround(int u, int v, Rgb trim)
+        {
+            foreach (var (cu, y) in Enumerable.Range(0, Height).SelectMany(y => new[] { (u - 1, y), (u + 2, y) }).Concat(Enumerable.Range(u - 1, 4).Select(x => (x, Height))))
+            {
+                Int3 p = P(cu, y, v);
+                if (C.Blocks.TryGetValue(p, out Block b) && b.Type == BlockType.Cube && b.Role == Role.Wall) { b.Color = trim; C.Blocks[p] = b; }
+            }
+        }
+
         /// <summary>Whether a chimney stack can go up these two cells: outer wall both, no door or window through either on any storey.</summary>
         public bool ChimneyFits(int u, int v, int du, int dv)
         {
@@ -52,6 +62,21 @@ public static partial class Homes
         bool Empty(int u, int y, int v) => !C.Blocks.ContainsKey(P(u, y, v));
 
         Block WallAt(int u, int y, int v) => Skin?.Invoke(u, y, v) ?? Cube(S.WallM, S.Wall, Role.Wall);
+
+        /// <summary>Paints the roof pieces of a column in the wall's own material and colour: a verge over a gable.</summary>
+        void Coping(int u, int v, int from, int to)
+        {
+            Block w = WallAt(u, Math.Max(0, from - 1), v);
+            if (w.Type != BlockType.Cube) w = Cube(S.WallM, S.Wall, Role.Wall);
+            for (int y = from; y <= to; y++)
+            {
+                Int3 p = P(u, y, v);
+                if (!C.Blocks.TryGetValue(p, out Block b) || b.Role != Role.Roof) continue;
+                b.Material = w.Material;
+                b.Color = w.Color.Scale(0.92f);
+                C.Blocks[p] = b;
+            }
+        }
 
         // ---- the roof surface: a height at every cell corner, laid in slopes ----------------------
 
@@ -110,8 +135,12 @@ public static partial class Homes
                 foreach (Hut x in huts)
                 {
                     if (!x.Foot.Contains((u, v))) continue;
-                    if (walls && x.Edge(u, v))
+                    if (walls && x.Edge(u, v) && bottom > x.TopEave + 1)
+                    {
                         for (int y = x.TopEave + 1; y < bottom; y++) x.Put(u, y, v, x.WallAt(u, y, v));
+                        // Over a gable wall the slope's end is the wall's own coping, so the gable reads as one clean line.
+                        x.Coping(u, v, bottom, top);
+                    }
                     x._top[(u, v)] = Math.Max(x._top.GetValueOrDefault((u, v), int.MinValue), top);
                 }
             }
@@ -277,6 +306,7 @@ public static partial class Homes
                         for (int y = 0; y < 40 && bottomY < 0; y++)
                             if (C.Get(P(u, y, v)).Role == Role.Roof) bottomY = y;
                         for (int y = 0; y < bottomY; y++) Put(u, y, v, WallAt(u, y, v));
+                        if (bottomY >= 0) Coping(u, v, bottomY, bottomY + 1);
                     }
         }
 
@@ -461,19 +491,17 @@ public static partial class Homes
         /// <summary>
         /// A garage door in an opening wide as the drive and three metres tall, its header the wall's top course:
         /// a sectional door in panels, a ribbed roller between dark guides, glazed sections over a solid one, boarded
-        /// timber, or a pair of side-hung leaves braced on the diagonal, one swung open now and then. Some stand
-        /// half up.
+        /// timber, or a pair of side-hung leaves braced on the diagonal, one swung open now and then: full height,
+        /// never a low hatch.
         /// </summary>
         public void GarageDoor(int u0, int v, int wide, string kind, Rgb paint, Rng r)
         {
             Material metal = _l.Tech == TechLevel.High ? Material.Alloy : _l.Tech == TechLevel.Low ? Material.Timber : Material.Steel;
-            bool halfUp = kind is "panel" or "ribbed" or "glazed" && r.Chance(0.2f);
             int half = wide / 2;
             bool swung = kind == "hinged" && r.Chance(0.35f);
             for (int k = 0; k < wide; k++)
                 for (int y = 0; y < 3; y++)
                 {
-                    if (halfUp && y < 2) continue;
                     Block b = kind switch
                     {
                         "ribbed" => new Block(BlockType.Cube, metal, (y & 1) == 0 ? paint : paint.Scale(0.74f), Role.Wall),
@@ -683,11 +711,15 @@ public static partial class Homes
                 var row = Foot.Where(c => c.V == fv).Select(c => c.U).ToList();
                 int pv = fv - 3, top = highest + 2;
                 int pu = int.MinValue;
-                foreach (int cand in new[] { row.Min() - 3, row.Max() + 3, row.Min() - 5, row.Max() + 5 }.OrderBy(x => Math.Abs(x - du)))
+                foreach (int back in new[] { 3, 5, 7 })
                 {
-                    Int3 at = _f.At(cand, 0, pv);
-                    bool offPath = Math.Abs(cand - du) > 2 && Math.Max(Math.Abs(at.X - C.EntranceCell.X), Math.Abs(at.Z - C.EntranceCell.Z)) > 2;
-                    if (offPath && Enumerable.Range(-Lift, top + Lift + 3).All(y => Empty(cand, y, pv)) && !NearDoor(cand, pv)) { pu = cand; break; }
+                    foreach (int cand in new[] { row.Min() - 3, row.Max() + 3, row.Min() - 1, row.Max() + 1, row.Min() + 2, row.Max() - 2 }.OrderBy(x => Math.Abs(x - du)))
+                    {
+                        Int3 at = _f.At(cand, 0, fv - back);
+                        bool offPath = Math.Abs(cand - du) > 2 && Math.Max(Math.Abs(at.X - C.EntranceCell.X), Math.Abs(at.Z - C.EntranceCell.Z)) > 2;
+                        if (offPath && Enumerable.Range(-Lift, top + Lift + 3).All(y => Empty(cand, y, fv - back)) && !NearDoor(cand, fv - back)) { pu = cand; pv = fv - back; break; }
+                    }
+                    if (pu != int.MinValue) break;
                 }
                 if (pu == int.MinValue) continue;
                 for (int y = -Lift; y <= top; y++) Put(pu, y, pv, new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x4c, 0x3e), Role.Decor));

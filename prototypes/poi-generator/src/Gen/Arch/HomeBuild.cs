@@ -327,7 +327,7 @@ public static partial class Homes
                     }
                 if (!ok) continue;
                 if (cut != null) cut(alongU ? t : wall, alongU ? wall : t, alongU);
-                else foreach (var (_, h) in rooms.Where(x => x.Room == a || x.Room == b).Take(1)) h.Gap(alongU ? t : wall, alongU ? wall : t, alongU, storey);
+                else foreach (var (_, h) in rooms.Where(x => x.Room == a || x.Room == b).Take(1)) h.Gap(alongU ? t : wall, alongU ? wall : t, alongU, storey, 2, h.Height);
                 foreach (var (_, h) in rooms.Where(x => x.Room == a || x.Room == b).Skip(1)) h.Mark(alongU ? t : wall, alongU ? wall : t, alongU, storey);
                 return true;
             }
@@ -578,13 +578,14 @@ public static partial class Homes
                 if (st > 0) on = on.Where(x => !x.x.Court).ToList();
                 Doors(r, on, plan.Hall, st, (u, v) => h.StairAt(u, v, stLocal), plan.Court != null && st == 0 ? (u, v, alongU) =>
                 {
-                    h.Gap(u, v, alongU, 0);
+                    h.Gap(u, v, alongU, 0, 2, h.Height);
                 } : null);
             }
         }
         // The front doors in the front wall.
         var fronts = plan.Units.Count > 0 ? plan.Units.Select(x => (Hall: x.Hall, DoorU: x.DoorU)).ToList() : new List<(PlanRoom Hall, int DoorU)> { (plan.Hall, plan.DoorU) };
-        foreach (var (_, du) in fronts) h.Gap(du, plan.DoorV, true);
+        // Every door a house has runs the storey's full height: a person walks through it upright, never stooping into a hatch.
+        foreach (var (_, du) in fronts) h.Gap(du, plan.DoorV, true, 0, 2, h.Height);
         // An integral garage's door, the width of its room.
         int garageModule = -1;
         Int3 garageDoorCell = default;
@@ -606,7 +607,7 @@ public static partial class Homes
             {
                 int bw = s.Family.Id == "chalet" ? over.P.U1 - over.P.U0 + 1 : 4;
                 int bu = over.P.U0 + Math.Max(0, (over.P.U1 - over.P.U0 + 1 - bw) / 2);
-                h.Gap(bu + bw / 2 - 1, over.P.V0 - 1, true, 1);
+                h.Gap(bu + bw / 2 - 1, over.P.V0 - 1, true, 1, 2, h.Height);
                 balcony = (bu, bw);
             }
         }
@@ -661,7 +662,7 @@ public static partial class Homes
                     if (Meet(pr, gp) is not var (wall, alongU, lo, hi) || alongU) continue;
                     int t = (lo + hi - 1) / 2;
                     if (h.StairAt(wall + 1, t, 0) || h.StairAt(wall - 1, t, 0) || h.StairAt(wall + 1, t + 1, 0) || h.StairAt(wall - 1, t + 1, 0)) continue;
-                    h.Gap(wall, t, false);
+                    h.Gap(wall, t, false, 0, 2, h.Height);
                     g.Mark(wall, t, false, 0);
                     inner = true;
                     g.Modules();
@@ -673,11 +674,11 @@ public static partial class Homes
             {
                 // In its outer side wall, away from the house.
                 int su = garageRight ? gu0 + gOuter - 1 : gu0, sv = gv0 + gd / 2 - 1;
-                g.Gap(su, sv, false);
+                g.Gap(su, sv, false, 0, 2, g.Height);
                 g.Modules();
                 var cells = new List<Int3>();
                 for (int k = 0; k < 2; k++)
-                    for (int y = 0; y < 2; y++) cells.Add(f.At(su, y, sv + k));
+                    for (int y = 0; y < g.Height; y++) cells.Add(f.At(su, y, sv + k));
                 l.C.AddDoorway(cells, f.Turn(garageRight ? Dir.East : Dir.West), gr.Module, l.C.EntranceModule);
                 l.C.Link(l.C.EntranceModule, gr.Module);
             }
@@ -738,10 +739,13 @@ public static partial class Homes
         int frontU = fronts[0].DoorU;
         l.Approach(f, frontU, stepV);
         if (lifted) h.Steps(frontU, plan.DoorV);
+        // A door surround in the house's own trim, where its walls call for one: render, brick, stone, board.
+        bool surround = s.Wall is "render" or "brick" or "stone" or "board" && r.Chance(0.5f);
         foreach (var (hall, du) in fronts)
         {
             Room hr = storeyRooms[0].First(x => x.P == hall).R;
-            h.FrontDoor(du, plan.DoorV, hr);
+            h.FrontDoor(du, plan.DoorV, hr, h.Height);
+            if (surround) h.Surround(du, plan.DoorV, s.TrimC);
             l.C.Link(l.C.EntranceModule, hr.Module);
         }
         if (garageModule >= 0) l.C.Link(l.C.EntranceModule, garageModule);

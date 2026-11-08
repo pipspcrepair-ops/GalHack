@@ -88,7 +88,7 @@ public static partial class Homes
         var culture = HomeCulture.Of(HomeBook.Current, home, p.Tech);
         int lotW = 2 * lot.W, lotD = 2 * lot.D;
         HouseStyle s;
-        int maxW = lotW - 4;
+        int maxW = lotW - 6;
         if (terrace)
         {
             s = HouseStyle.Roll(culture, p.R, "terrace");
@@ -105,6 +105,12 @@ public static partial class Homes
             for (int i = 0; i < 12 && (s.Family.Id == "terrace" || s.Plan == "court" && lotW < 30 || s.Plan == "tower"); i++) s = HouseStyle.Roll(culture, p.R);
             if (s.Family.Id == "terrace" || s.Plan is "court" or "tower" or "row") { s.Plan = "rect"; s.Units = 1; }
             s.D = Math.Min(s.D, lotD - 14);
+            // A city lot has no room round a house for earth heaped against it, nor for eaves wider than its side yard.
+            s.Berm = false;
+            s.Over = Math.Min(s.Over, 2);
+            if (s.Roof == "aframe") s.Roof = "gable";
+            if (s.Roof == "turf" && s.Plan is "round" or "oval") s.Plan = "rect";
+            if (s.Plan is "ell" or "tee") s.D = Math.Max(10, Math.Min(s.D, lotD - 26));
             // Fitted to the lot: a narrower house, a side wing folded back to an ell, the garage brought into the house or given up.
             if (s.Plan == "wing" && s.W + 8 > maxW) s.Plan = "ell";
             s.W = Math.Min(s.W, Ev(maxW));
@@ -117,7 +123,7 @@ public static partial class Homes
             }
         }
         int front = Math.Min(8 + 2 * p.R.Range(0, 2), lotD / 4);
-        Built b = Dwelling(l, frame, s, 2, front, maxW);
+        Built b = Dwelling(l, frame, s, 3, front, maxW);
         p.C.X.Gate = frame.At(b.DriveU0 is int d0 ? (d0 + b.DriveU1!.Value) / 2 : b.PathU, 0, 0);
         p.C.VaultModule = l.Loot;
         return (b.Paths.Append(b.PathU).Distinct().ToList(), b.DriveU0, b.DriveU1);
@@ -156,8 +162,8 @@ public static partial class Homes
         flights.Add(shaft.Stair(col, 2, last));
         for (int v = 2; v <= 5; v++) house.Mark(col, v, false, 0, 1);
         house.Reserve(col, 2, 4);
-        house.Gap(split, tw - 2 + r.Range(0, off), false);
-        shaft.Gap(tw / 2 - 1, 0, true);
+        house.Gap(split, tw - 2 + r.Range(0, off), false, 0, 2, house.Height);
+        shaft.Gap(tw / 2 - 1, 0, true, 0, 2, shaft.Height);
         shaft.Modules();
         house.Modules();
         for (int st = 0; st + 1 < storeys; st++)
@@ -184,9 +190,10 @@ public static partial class Homes
         shaft.Box();
         house.Box();
         l.Approach(f, tw / 2 - 1, -3);
-        shaft.FrontDoor(tw / 2 - 1, 0, halls[0]);
+        shaft.FrontDoor(tw / 2 - 1, 0, halls[0], shaft.Height);
         l.C.Link(l.C.EntranceModule, halls[0].Module);
-        house.Service(tw / 2 - 1, -off, null);
+        // The drop comes in on a bracket up the shaft, not to the house up top.
+        shaft.Service(tw / 2 - 1, 0, null);
         for (int v = -(front + margin); v < 0; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, tw / 2 - 1 + k, v, l.S.Base.Scale(1.15f), Role.Floor);
         l.C.X.Homes.Add(new HomeNote(s.Family.Id, $"tower/{storeys}/{top}/{s.Roof}/{s.Wall}", storeys + 1, s.Roof, "none", "", 0, 0, default, Dir.North, false));

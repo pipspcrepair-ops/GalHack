@@ -85,14 +85,14 @@ public partial class Screenshot
         var street = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(culture, Climate.Temperate, 0.6f)), 7);
         GD.Print($"street: {Says(street)}");
         float end = street[^1].X + 30;
-        await Shot("street", new Vector3(-6, 2.2f, -15), new Vector3(end * 0.35f, 3f, 8));
+        await Shot("street", new Vector3(end * 0.12f, 2.2f, -17), new Vector3(end * 0.5f, 3.5f, 6));
         await Shot("street-across", new Vector3(end * 0.3f, 8f, -34), new Vector3(end * 0.3f, 4f, 14));
 
         // Another culture, another climate: the same rules, a different place.
         int culture2 = rand.Next();
         var street2 = Row(_ => new LayoutHints(Dir.North, (TechLevel)rand.Next(3), null, new HomeHints(culture2, rand.Next(2) == 0 ? Climate.Hot : Climate.Wet, 0.5f)), 6);
         GD.Print($"street 2: {Says(street2)}");
-        await Shot("street-other", new Vector3(-6, 2.2f, -15), new Vector3((street2[^1].X + 30) * 0.35f, 3f, 8));
+        await Shot("street-other", new Vector3((street2[^1].X + 30) * 0.12f, 2.2f, -17), new Vector3((street2[^1].X + 30) * 0.5f, 3.5f, 6));
 
         // A row of terraces.
         var terrace = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.5f, "terrace")), 2);
@@ -134,6 +134,22 @@ public partial class Screenshot
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
             root.AddChild(person);
             await Shot($"garage-{kind}", door + new Vector3(-4f, 1.7f, -10f), door + new Vector3(0, 1.6f, 0));
+            person.QueueFree();
+        }
+
+        // Front doors close up, a 1.8 m figure beside each: a full storey tall, framed (where at all) in the house's own trim.
+        for (int n = 0; n < 2; n++)
+        {
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, n == 0 ? "suburban" : "cottage")), 1);
+            Doorway d = one[0].L.Doorways.FirstOrDefault(x => x.ModuleB == one[0].L.EntranceModule || x.ModuleA == one[0].L.EntranceModule);
+            if (d == null) continue;
+            Int3 lo = d.Cells.Aggregate(Int3.Min);
+            GD.Print($"door {n}: {Says(one)}, {d.Cells.Count} cells, {d.Cells.Max(c => c.Y) - lo.Y + 1} m tall");
+            Vector3 door = new Vector3(one[0].X + lo.X + 1f, 0, lo.Z);
+            var person = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = door + new Vector3(-2.2f, 0.9f, -1.0f),
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
+            root.AddChild(person);
+            await Shot($"door-{n}", door + new Vector3(-3f, 1.7f, -7.5f), door + new Vector3(0, 1.5f, 0));
             person.QueueFree();
         }
         GetTree().Quit(0);

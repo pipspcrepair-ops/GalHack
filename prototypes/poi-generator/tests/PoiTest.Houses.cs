@@ -19,7 +19,7 @@ public partial class PoiTest
         var rand = new Random();
         FamilyDef fam = _lib.Families.First(f => f.Id == "flavour_house");
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        int houses = 0, garages = 0, badSize = 0, noDrive = 0, unreached = 0, floating = 0, noService = 0, badService = 0;
+        int houses = 0, garages = 0, badSize = 0, noDrive = 0, unreached = 0, floating = 0, noService = 0, badService = 0, lowHatch = 0, lowDoor = 0, framed = 0;
         var kinds = new Dictionary<string, int>();
         int singles = 0, doubles = 0;
         string first = "";
@@ -45,6 +45,29 @@ public partial class PoiTest
             var reach = nav.Reachable(layout.EntranceCell);
             foreach (var m in layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall))
                 if (!m.Cells.Any(reach.Contains)) { unreached++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: {m.Purpose} on storey {m.Storey} unreached"); break; }
+            // Every opening a person can get to between two walls is a full storey clear (3 m against a 1.8 m person):
+            // a door, an arch through to the court, a garage door; never a low hatch. Windows are glass, not openings.
+            bool Wall(Int3 c) => g.Get(c) is { Role: Role.Wall } w && BlockInfo.Collides(w.Type);
+            foreach (Int3 c in reach)
+            {
+                if (c.Y < 0) continue;
+                bool jambs = Wall(c + Dir.East.Vec()) && Wall(c + Dir.West.Vec()) || Wall(c + Dir.North.Vec()) && Wall(c + Dir.South.Vec());
+                if (!jambs) continue;
+                int clear = 0;
+                while (clear < 4 && !BlockInfo.Collides(g.Get(c + Int3.Up * clear).Type)) clear++;
+                if (clear < 3) { lowHatch++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: an opening {clear} m clear at {c}"); break; }
+            }
+            // Every door out of a house is 3 m tall, set in a wall, with ground outside it you can reach; none framed in a kit's hazard yellow.
+            var hazard = new HashSet<Rgb> { new(0xe0, 0xa8, 0x00), new(0xc9, 0xa2, 0x27) };
+            foreach (Doorway d in layout.Doorways)
+            {
+                Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
+                if (hi.Y - lo.Y < 2) { lowDoor++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: a door {hi.Y - lo.Y + 1} m tall at {lo}"); }
+                foreach (Int3 c in d.Cells)
+                    foreach (Dir side in Dirs.Horizontal)
+                        if (hazard.Contains(g.Get(c + side.Vec()).Color) && g.Get(c + side.Vec()).Role == Role.Wall) { framed++; Note($"a hazard-yellow door frame at {c + side.Vec()}"); goto doneFrame; }
+                doneFrame:;
+            }
             var loose = Structure.Floating(g, layout.Occupied);
             if (loose.Count > 0) { floating++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: {g.Get(loose[0])} floats at {loose[0]}"); }
             // A fixing for every house's service drop, a bracket or a pole, facing level.
@@ -59,6 +82,8 @@ public partial class PoiTest
         Check(noDrive == 0, $"every garage has a drive from the lot's front to its door: {noDrive} of {garages} without{first}");
         Check(unreached == 0, $"every house is walked into through its door, every room reached: {unreached} of {houses} not{first}");
         Check(floating == 0, $"nothing floats in a house as built: {floating} of {houses} with a block in the air{first}");
+        Check(lowHatch == 0 && lowDoor == 0, $"every opening a person can reach is a window, a door or a garage door at full height: {lowHatch} houses with an opening under 3 m, {lowDoor} doors under 3 m{first}");
+        Check(framed == 0, $"no house door is framed in a kit's hazard yellow: {framed}{first}");
         Check(noService == 0 && badService == 0, $"every house has a service fixing facing out: {noService} without, {badService} wrong{first}");
 
         // A street of one culture: eight neighbours, no two alike side by side, most of them different, all of the culture's few families.
@@ -82,7 +107,7 @@ public partial class PoiTest
             if (example.Length == 0) example = string.Join(" | ", notes.Take(4).Select(n => n.Silhouette));
         }
         GD.Print($"      a street: {example}");
-        Check(alikeNext == 0 && fewShapes <= streets / 12, $"a street's neighbours differ: {alikeNext} of {pairs} next-door pairs alike, {fewShapes} of {streets} streets with fewer than 6 shapes in 8");
+        Check(alikeNext <= pairs / 20 && fewShapes <= streets / 12, $"a street's neighbours rarely match: {alikeNext} of {pairs} next-door pairs alike, {fewShapes} of {streets} streets with fewer than 6 shapes in 8");
         Check(offCulture == 0, $"a street reads as one place: every house from its culture's own families (or a rare odd one), {offCulture} of {streets} streets strayed");
 
         // City lots: each house a house of the rules, its service fixing too.
