@@ -1826,7 +1826,7 @@ public partial class PoiTest : Node
                             // Every building's doors are the one standard door (a large block against a 1.8 m person): a house's, a shop's, an inn's, a shed's.
                             if (hi.Y - lo.Y + 1 != DoorSize.Tall) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
-                        if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
+                        if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead" or "flavour_warning")) { noDoor++; Note($"{v.Name} has no door"); }
                         // A house's roof is the form its family gave it: a flat one is flat, any other is slopes.
                         bool flatByRule = f.Id == "flavour_house" && layout.Extras.Homes.All(x => x.Roof is "flat" or "turf");
                         if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !flatByRule && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }

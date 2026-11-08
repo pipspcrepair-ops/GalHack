@@ -131,6 +131,7 @@ public sealed partial class Staging
             "farland" => FarLandView(),
             "city" => CityView(),
             "strike" => StrikeView(),
+            "craters" => CraterViews(),
             "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),

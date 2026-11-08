@@ -574,6 +574,57 @@ public static partial class StateTransforms
         inst.Blasted = strength;
     }
 
+    /// <summary>
+    /// A big blast's grading of what stood round it, column by column, by how hard it came down there
+    /// (<paramref name="strength"/> at a local cell column, 0..1; <see cref="Strike.Strength"/>): by the rim
+    /// only foundations, slabs and the stumps and bases of former towers; then stumps a storey or two tall;
+    /// then gutted shells, their roofs, upper floors and windows gone; past that what the plain blast
+    /// leaves standing. Run before <see cref="Blast"/>, which strips and burns what is left.
+    /// </summary>
+    public static void Flattened(PoiInstance inst, Func<int, int, float> strength)
+    {
+        var g = inst.Blocks;
+        var gone = new List<Int3>();
+        var columns = new Dictionary<(int, int), (float S, int Cap)>();
+        foreach (var (p, b) in g.Blocks())
+        {
+            if (p.Y <= 0 || b.IsAir) continue;
+            if (!columns.TryGetValue((p.X, p.Z), out var col))
+            {
+                float s = strength(p.X, p.Z);
+                columns[(p.X, p.Z)] = col = (s, Cap(s, Hash.Cell(new Int3(p.X, 0, p.Z), 233)));
+            }
+            if (col.S < ShellFrom) continue;
+            if (p.Y > col.Cap) { gone.Add(p); continue; }
+            // A gutted shell: open to the sky, its upper floors fallen through, not a pane left.
+            uint h = Hash.Cell(p, 239);
+            if (b.Role is Role.Roof or Role.Window
+                || b.Role == Role.Floor && h % 100 < 100 * Math.Clamp((col.S - ShellFrom) / (StumpFrom - ShellFrom), 0f, 1f)) gone.Add(p);
+        }
+        foreach (Int3 p in gone) g.Set(p, Block.Air);
+        Structure.DropUntethered(g);
+    }
+
+    /// <summary>The strength from which a blast guts what it leaves standing, and from which it leaves only stumps.</summary>
+    public const float ShellFrom = 0.45f, StumpFrom = 0.6f;
+
+    /// <summary>The strength from which only slabs and the bases of towers are left: the ground by a big crater's rim.</summary>
+    public const float Rim = 0.85f;
+
+    /// <summary>
+    /// The tallest a column stands (cells above the ground floor) where a blast came down this hard: two
+    /// storeys or so where stumps begin, down to the slab by the rim; ragged column to column, and the odd
+    /// one a tower's base standing a little proud. No cap short of stumps.
+    /// </summary>
+    public static int Cap(float strength, uint hash)
+    {
+        if (strength < StumpFrom) return int.MaxValue;
+        float f = Math.Clamp((strength - StumpFrom) / (Rim - StumpFrom), 0f, 1f);
+        int cap = (int)MathF.Round(9f * (1f - f)) + (int)(hash % 2);
+        if (f >= 0.9f && hash % 100 < 12) cap += 2;
+        return cap;
+    }
+
     // ---- crash sites ------------------------------------------------------------------
 
     /// <summary>Baseline wreckage for crash sites: torn hull, scorch, and pieces strewn outside.</summary>

@@ -308,6 +308,7 @@ public static partial class PoiSiting
         {
             if (o.GroundZero != null) continue; // a blast site is its own crater
             float best = 0f, bx = 0f, bz = 0f;
+            Strike by = null;
             foreach (Strike b in blasts)
             {
                 double dx = Mathx.WrapDelta(o.Center.X - b.X, width), dz = Mathx.WrapDelta(o.Center.Z - b.Z, height);
@@ -315,8 +316,19 @@ public static partial class PoiSiting
                 if (strength <= best) continue;
                 // Right overhead (an airburst over the place's middle): it came down on the whole place at once.
                 (best, bx, bz) = d < 1f ? (strength, 0f, 1f) : (strength, (float)(-dx / d), (float)(-dz / d));
+                by = b;
             }
             if (best < 0.05f) continue;
+            // A big blast grades the place by each column's distance from ground zero: stumps on the near side, shells on the far.
+            if (by.Flatten)
+            {
+                double ox = o.Origin.X + 0.5, oz = o.Origin.Z + 0.5;
+                StateTransforms.Flattened(o.Instance, (x, z) =>
+                {
+                    double dx = Mathx.WrapDelta(ox + x - by.X, width), dz = Mathx.WrapDelta(oz + z - by.Z, height);
+                    return by.Strength((float)Math.Sqrt(dx * dx + dz * dz));
+                });
+            }
             StateTransforms.Blast(o.Instance, bx, bz, best, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
             o.Recarve?.Invoke();
         }

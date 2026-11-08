@@ -52,11 +52,11 @@ public sealed partial class PlanetWorld
         // known, each ground burst's crater beside its target (laid after the places' own, before the ruins'
         // pads and the roads, which keep off it), the bridges they hit dropped. The world's blasts are one list.
         List<PoiGenerator.Gen.Strike> strikes = StrikeSites.Plan(catalog?.Library.Strikes, roll, infra, map, bare, pois, profile, landing, ruins,
-            PlanetSurface.Poi.PoiSiting.StartWorld, Hash.Of(spec.Seed, 0x57B1));
+            PlanetSurface.Poi.PoiSiting.StartWorld, Hash.Of(spec.Seed, 0x57B1), stamps);
         blasts.AddRange(strikes);
         infra.Blasts.AddRange(blasts);
         stamps.AddRange(infra.Craters);
-        if (strikes.Count > 0) Godot.GD.Print($"strikes: {strikes.Count} ({strikes.Count(s => s.Bowl)} craters, {strikes.Count(s => s.Air && !s.Naval)} airbursts, {strikes.Count(s => s.Naval)} on the water, {strikes.Count(s => s.Miss)} missed, {strikes.Count(s => s.Wild)} over open country) on {infra.Targets.Count} targets");
+        if (strikes.Count > 0) Godot.GD.Print($"strikes: {strikes.Count} ({strikes.Count(s => s.Bowl)} craters, {strikes.Count(s => s.Air && !s.Naval)} airbursts, {strikes.Count(s => s.Naval)} on the water, {strikes.Count(s => s.Miss)} missed, {strikes.Count(s => s.Wild)} over open country, {strikes.Count(s => s.Within)} in the towns they hit, {strikes.Count(s => s.Field)} shell holes) on {infra.Targets.Count} targets in {infra.StrikeMs:F0} ms");
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);

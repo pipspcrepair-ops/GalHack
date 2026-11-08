@@ -92,7 +92,8 @@ public sealed class Suit : IDamageSink
         if (p.Y > _zone.Physics.Zone.Ceiling) oxygen = 0;
         // Head under water: nothing to breathe, the suit on its own oxygen (or held breath).
         if (_zone.Water.Under(new Godot.Vector3((float)p.X, (float)p.Y + Survivor.EyeHeight, (float)p.Z), out _)) oxygen = 0;
-        double radiation = _climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0;
+        // The world's background, and what a nuclear crater and its ring left in the ground here.
+        double radiation = (_climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double rad) ? rad : 0) + planet.RadiationAt(x, z);
         double temperature = baseline + weather + day + height;
         var rules = _zone.Data.Rules.ClimateNode;
         var here = new Godot.Vector3((float)p.X, (float)p.Y, (float)p.Z);

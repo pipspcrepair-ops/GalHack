@@ -92,6 +92,8 @@ public sealed class InfraNetwork
     public readonly List<InfraStructure> Structures = new();
     public WorldProfile Profile;
     public double PlanMs, SearchMs;
+    /// <summary>How long a war's strikes took to plan and punch, ms (<see cref="StrikeSites"/>).</summary>
+    public double StrikeMs;
     /// <summary>Railway links dropped because the land would have made them mostly viaduct and tunnel (tests).</summary>
     public int RailDropped;
     /// <summary>Why each was dropped (tests).</summary>
@@ -1227,6 +1229,84 @@ public sealed class InfraNetwork
     public void KeepOff(TerrainStamp pad) => _router?.Block(pad, 12);
 
     /// <summary>
+    /// A blast took every road within a radius of a point (a crater punched through a city's streets): each
+    /// route that ran through it is cut there, into the pieces either side (the first keeps the route itself,
+    /// the rest are routes of their own), its bridges and tunnels kept with the piece they lie on and lost
+    /// where they ran into the hole. Pieces shorter than two points go. Returns each new piece with the route it was cut from.
+    /// </summary>
+    public List<(InfraRoute From, InfraRoute Piece)> Sever(double x, double z, double radius)
+    {
+        var made = new List<(InfraRoute, InfraRoute)>();
+        int nextId = Routes.Count; // a route's id is its index in the list
+        foreach (InfraRoute r in Routes.ToList())
+        {
+            var keep = new bool[r.Count];
+            bool cut = false;
+            for (int i = 0; i < r.Count; i++)
+            {
+                double dx = Mathx.WrapDelta(r.X[i] - x, _w), dz = Mathx.WrapDelta(r.Z[i] - z, _h);
+                keep[i] = dx * dx + dz * dz > radius * radius;
+                cut |= !keep[i];
+            }
+            if (!cut) continue;
+            var pieces = new List<(int First, int Last)>();
+            for (int i = 0; i < r.Count;)
+            {
+                if (!keep[i]) { i++; continue; }
+                int s = i;
+                while (i < r.Count && keep[i]) i++;
+                if (i - s >= 2) pieces.Add((s, i - 1));
+            }
+            var structures = Structures.Where(s => s.Route == r).ToList();
+            foreach (InfraStructure s in structures) Structures.Remove(s);
+            // Wholly in the hole: nothing of it is left (it keeps its place in the list: a route's id is its index).
+            if (pieces.Count == 0)
+            {
+                (r.X, r.Z, r.Y, r.Span) = (Array.Empty<double>(), Array.Empty<double>(), Array.Empty<float>(), Array.Empty<RoadSpan>());
+                (r.From, r.FromGate, r.To, r.ToGate, r.Length) = (null, -1, null, -1, 0);
+                continue;
+            }
+            double[] X = r.X, Z = r.Z;
+            float[] Y = r.Y;
+            RoadSpan[] span = r.Span;
+            PoiSite to = r.To;
+            int toGate = r.ToGate, last = r.Count - 1;
+            for (int k = 0; k < pieces.Count; k++)
+            {
+                var (a, b) = pieces[k];
+                InfraRoute piece = k == 0 ? r : new InfraRoute
+                {
+                    Id = nextId++, Kind = r.Kind, Tech = r.Tech, HalfWidth = r.HalfWidth, Laid = r.Laid, Surface = r.Surface, Wear = r.Wear, Kept = r.Kept,
+                    Maglev = r.Maglev, Graded = r.Graded, WallSide = r.WallSide,
+                };
+                piece.X = X[a..(b + 1)];
+                piece.Z = Z[a..(b + 1)];
+                piece.Y = Y[a..(b + 1)];
+                piece.Span = span[a..b];
+                if (a > 0) { piece.From = null; piece.FromGate = -1; }
+                (piece.To, piece.ToGate) = b == last ? (to, toGate) : (null, -1);
+                piece.Length = (b - a) * Spacing;
+                if (k > 0) { Routes.Add(piece); made.Add((r, piece)); }
+                // Its bridges and tunnels, where they lie wholly on this piece.
+                foreach (InfraStructure s in structures.Where(s => s.First >= a && s.Last <= b))
+                {
+                    s.Route = piece;
+                    var fallen = s.Fallen.Select(m => m - a).ToList();
+                    s.First -= a;
+                    s.Last -= a;
+                    s.Fallen.Clear();
+                    s.Fallen.UnionWith(fallen);
+                    Structures.Add(s);
+                }
+            }
+        }
+        // Later routes no longer join what is gone: the hole's cells forget their roads, and each piece is marked as its own.
+        _router?.Forget(x, z, radius);
+        foreach (var (_, piece) in made) _router?.Mark(piece);
+        return made;
+    }
+
+    /// <summary>
     /// The land's way between two points as a track would take it (round water and places, up the easy side of a
     /// hill, along the roads where they go its way), continuous across the seams from <paramref name="from"/>; null
     /// on a world with no network or where there's no way. For what follows the land without being a road (a spur of poles).
@@ -1912,6 +1992,19 @@ public sealed class InfraNetwork
         public bool Sea(double x, double z) => WaterAt(Index(x, z)) == 3;
         /// <summary>Any water at a point.</summary>
         public bool Wet(double x, double z) => WaterAt(Index(x, z)) >= 2;
+
+        /// <summary>Forgets the routes through every cell within a radius of a point (a crater took them).</summary>
+        public void Forget(double x, double z, double radius)
+        {
+            for (double dz = -radius; dz <= radius; dz += Cell / 2)
+                for (double dx = -radius; dx <= radius; dx += Cell / 2)
+                {
+                    if (dx * dx + dz * dz > radius * radius) continue;
+                    int k = Index(x + dx, z + dz);
+                    _road[k] = 0;
+                    _rail[k] = 0;
+                }
+        }
 
         /// <summary>Marks the cells a laid route runs through, so later routes join it.</summary>
         public void Mark(InfraRoute r)

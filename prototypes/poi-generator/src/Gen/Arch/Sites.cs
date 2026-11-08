@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -60,6 +60,7 @@ public static class Sites
                 case "fence": Fence(x, part); break;
                 case "tower": LatticeTower(x, part); break;
                 case "crater": Crater(x, part); break;
+                case "warning": Warning(x, part); break;
                 case "rocket": Rocket(x, part); break;
                 case "poles": Poles(x, part); break;
                 case "trench": Trench(x, part); break;
@@ -476,6 +477,22 @@ public static class Sites
     /// A blast crater: a bowl punched into the ground, lined with fused glass, a raised rim of
     /// thrown rubble, and a radiation pocket at the bottom, warned by signs on the rim.
     /// </summary>
+    /// <summary>
+    /// A warning post on its own: a steel post with a hazard sign on it, facing the way you come (the site's
+    /// north, turned with the layout), the hazard it warns of (radiation by default) held in the extras.
+    /// What stands at the edge of a blast's hot ground.
+    /// </summary>
+    static void Warning(Ctx x, SitePart p)
+    {
+        Int3 post = new(p.X, 0, p.Z);
+        x.C.Blocks[post] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Hazard);
+        x.C.Blocks[post + Int3.Up] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x50, 0x50, 0x50), Role.Hazard);
+        x.C.Blocks[post + Int3.Up * 2] = new Block(BlockType.Sign, Material.Steel, Hazard, Role.Hazard, Dir.North, 1);
+        var hz = new Hazard { Kind = p.Arg("kind") is { Length: > 0 } k ? k : "radiation", Center = post, Radius = 0f };
+        hz.Signs.Add(post + Int3.Up * 2);
+        x.C.X.Hazards.Add(hz);
+    }
+
     static void Crater(Ctx x, SitePart p)
     {
         // Gaps in the thrown rim along the four axes: where the ramped paths come up out of the bowl.

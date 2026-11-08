@@ -82,4 +82,80 @@ public sealed partial class Staging
             Snap("map");
         }
     }
+
+    /// <summary>
+    /// A war's craters (--view=craters): --pick=gz a nuclear ground zero from the air with the ring of tower
+    /// stumps round it (start with --fall nuclear_war), --pick=field a bombardment's crater field from the air
+    /// (--fall orbital_bombardment), --pick=grown an old shell-hole field from the ground among its holes
+    /// (--fall invasion --layer age.long). The world's own terrain and weather; what was picked is printed.
+    /// </summary>
+    IEnumerable<int> CraterViews()
+    {
+        _game.Visor.Visible = false;
+        var world = _game.Surface.Planet;
+        string pick = _args.GetValueOrDefault("pick", "gz");
+        double W = world.Width, H = world.Height;
+        double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, W), 2) + Math.Pow(Mathx.WrapDelta(az - bz, H), 2));
+        Vector3 start = _game.Survivor.WorldFeet;
+        Strike centre;
+        float up, back;
+        if (pick == "gz")
+        {
+            // The ground zero with the most of its city standing round it, nearest the start.
+            centre = world.Blasts.Where(b => b.Bowl && b.Flatten)
+                .OrderByDescending(b => (b.Within ? 1000 : 0) + world.Pois.Count(p => Dist(p.Center.X, p.Center.Z, b.X, b.Z) < b.Crater + 600))
+                .ThenBy(b => Dist(b.X, b.Z, Mathx.WrapX(start.X, W), Mathx.Wrap(start.Z, H))).FirstOrDefault();
+            up = (float)Num("up", centre == null ? 0 : centre.Crater * 0.5 + 110);
+            back = (float)Num("back", centre == null ? 0 : centre.Crater + 420);
+        }
+        else
+        {
+            // The thickest stretch of the field: the hole with the most others round it.
+            var field = world.Blasts.Where(b => b.Field && b.Bowl).ToList();
+            // (from the ground, the most hole: their bowls' area round it)
+            centre = pick == "field" ? field.OrderByDescending(b => field.Count(o => Dist(o.X, o.Z, b.X, b.Z) < 90)).FirstOrDefault()
+                : field.OrderByDescending(b => field.Where(o => Dist(o.X, o.Z, b.X, b.Z) < 50).Sum(o => o.Crater * o.Crater)).FirstOrDefault();
+            up = (float)Num("up", pick == "field" ? 120 : 2.4);
+            back = (float)Num("back", pick == "field" ? 150 : 20);
+        }
+        if (centre == null)
+        {
+            GD.Print($"(craters: nothing to show for {pick} on this world)");
+            yield break;
+        }
+        foreach (Strike b in world.Blasts.Where(b => b.Within || b.Target is "city" or "capital" or "town" || b.Bowl && Dist(b.X, b.Z, centre.X, centre.Z) < 1500 && !b.Field)) GD.Print($"(craters: {b}{(b.Within ? ", in the town it hit" : "")})");
+        int round = world.Blasts.Count(b => b.Bowl && Dist(b.X, b.Z, centre.X, centre.Z) < 160);
+        GD.Print($"(craters {pick}: {centre}, {round} craters within 160 m, {world.Blasts.Count(b => b.Bowl)} on the world, age {world.Reading.Age:F2}, {world.Pois.Count(p => Dist(p.Center.X, p.Center.Z, centre.X, centre.Z) < centre.Crater + 700)} places within {centre.Crater + 700:F0} m)");
+        Vector3 gz = world.NearestCopy(new Vector3((float)centre.X, 0f, (float)centre.Z), start);
+        gz.Y = world.GroundHeight(Mathx.WrapX(gz.X, W), Mathx.Wrap(gz.Z, H));
+        // From the side the sun lights, so the bowls' far walls catch it; a ground zero from over its ring of ruins, toward the crater.
+        Vector3 toSun = new Vector3(_game.Zone.Sky.ToSun.X, 0f, _game.Zone.Sky.ToSun.Z);
+        Vector3 dir = toSun.LengthSquared() > 1e-4f ? -toSun.Normalized() : Vector3.Forward;
+        var ring = world.Pois.Where(p => Dist(p.Center.X, p.Center.Z, centre.X, centre.Z) < centre.Crater + 900).ToList();
+        if (pick == "gz" && ring.Count > 0)
+        {
+            double sx = ring.Average(p => Mathx.WrapDelta(p.Center.X - centre.X, W)), sz = ring.Average(p => Mathx.WrapDelta(p.Center.Z - centre.Z, H));
+            if (sx * sx + sz * sz > 1) dir = -new Vector3((float)sx, 0f, (float)sz).Normalized();
+            foreach (var t in world.Source.Stamps.Where(t => t.Shape != GalHack.Terrain.StampShape.Bowl && Dist(t.CenterX, t.CenterZ, centre.X, centre.Z) < centre.Crater * 1.5)) GD.Print($"(craters: a stamp left in the bowl: {t.Name} at {t.CenterX:F0},{t.CenterZ:F0})");
+        }
+        Vector3 feet = gz - dir * back;
+        feet.Y = world.GroundHeight(Mathx.WrapX(feet.X, W), Mathx.Wrap(feet.Z, H)) + 0.5f;
+        _game.Survivor.PlaceOutside(feet.ToNumerics());
+        Vector3 eye = feet + Vector3.Up * up;
+        // From the ground, over the nearest hole to the ones beyond it.
+        Vector3 look = pick == "grown" ? gz + dir * 14f : gz;
+        double day = _game.Zone.Sky.TimeOfDay;
+        for (int i = 0; i < 2400; i++)
+        {
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
+            if (i % 120 == 2) day = LocalDay();
+            _game.Zone.Sky.TimeOfDay = day;
+            yield return 0;
+            if (i > 200 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
+        }
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Snap(pick);
+        GD.Print($"(craters {pick}: eye {eye}, settled {_game.Zone.Streamer.Settled}, weather {_game.Zone.Weather.Sim.Current})");
+        _game.FixedCamera = null;
+    }
 }
