@@ -196,7 +196,9 @@ public sealed partial class Building
         foreach (var (x, z) in new[] { spot.a, spot.b })
         {
             plan.K[x, z] = DoorK; // a doorway from now on: never a jamb, never another room's corridor
-            for (int k = 0; k < 3; k++) cells.Add(L(x, plan.Y + k, z));
+            for (int k = 0; k < DoorSize.Tall; k++) cells.Add(L(x, plan.Y + k, z));
+            // The wall closes over the standard door, up to the storey's ceiling.
+            for (int k = DoorSize.Tall; k < Pitch - 1; k++) C.Set(L(x, plan.Y + k, z), InnerWall(L(x, plan.Y + k, z)));
         }
         return C.AddDoorway(cells, R(DirOf(spot.d)), from, to);
     }

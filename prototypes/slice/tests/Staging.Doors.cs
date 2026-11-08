@@ -20,7 +20,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// Proof frames of the one door, by day, a 1.8 m figure standing at it: "doorway" is a place's way in
-/// (--family=a,b,c, the nearest of the first the world has), "doorblock" the player's two-block door set
+/// (--family=a,b,c, the nearest of the first the world has), "doorblock" the player's one-block door set
 /// into the Outpost's wall by the building rules, shut (the view's --out) and open (the same name, -open).
 /// </summary>
 public partial class Staging
@@ -73,7 +73,15 @@ public partial class Staging
             float Away(PlanetSurface.Infra.FlavourRuin r) => planet.NearestCopy(new Vector3((float)r.Center.X, from.Y, (float)r.Center.Z), from).DistanceTo(from);
             static List<PoiGenerator.Gen.Int3> WayIn(PoiGenerator.Gen.Layout l) => l.ExitCells.Count > 0 ? l.ExitCells
                 : l.Doorways.Where(d => d.ModuleA == l.EntranceModule || d.ModuleB == l.EntranceModule).Select(d => d.Cells).FirstOrDefault() ?? new List<PoiGenerator.Gen.Int3>();
-            var ruin = what.Split(',').Select(t => planet.Infra.Ruins.Where(r => r.Blast < 0.05f && r.Family.Tags.Contains(t) && WayIn(r.Layout).Count > 0).OrderBy(Away).FirstOrDefault()).FirstOrDefault(r => r != null);
+            // --jammed=1: one whose way in has a door stuck part open (spawned here as its tile spawns it).
+            bool jammed = _args.GetValueOrDefault("jammed") == "1";
+            bool Stuck(PlanetSurface.Infra.FlavourRuin r)
+            {
+                if (!jammed) return true;
+                var inst = r.Spawn(planet.Profile, planet.Source);
+                return WayIn(r.Layout).Any(c => inst.Blocks.Get(c) is { Type: PoiGenerator.Gen.BlockType.Door } b && b.Variant == PoiGenerator.Gen.DoorState.Jammed);
+            }
+            var ruin = what.Split(',').Select(t => planet.Infra.Ruins.Where(r => r.Blast < 0.05f && r.Family.Tags.Contains(t) && WayIn(r.Layout).Count > 0).OrderBy(Away).Take(jammed ? 60 : 1).FirstOrDefault(Stuck)).FirstOrDefault(r => r != null);
             if (ruin == null) GD.Print($"(doorway: ruins here: {string.Join(", ", planet.Infra.Ruins.GroupBy(r => r.Family.Id).Select(g => $"{g.Key} {g.Count()}"))})");
             if (ruin == null) { GD.Print($"(doorway: no {what} ruin on this world)"); yield break; }
             var exit = WayIn(ruin.Layout);
@@ -112,7 +120,7 @@ public partial class Staging
 
     /// <summary>
     /// The Outpost set down through the Blueprints tab, then a door placed into its west wall by the building
-    /// rules: the two wall blocks taken out, the door put in (its top comes with it). Shut, then open.
+    /// rules: a wall block taken out, the door (one block, 2 m) put in. Shut, then open.
     /// </summary>
     IEnumerable<int> DoorBlock()
     {
@@ -141,14 +149,13 @@ public partial class Staging
         }
         if (v == null) { GD.Print("(the outpost would not go down)"); yield break; }
         Structure s = v.Structure;
-        // The west wall (x -3) is two blocks high: take a pair out and put the door in.
+        // The west wall (x -3): take a block out of its foot and put the door in.
         var foot = new Int3(-3, 0, -3);
-        Building.Remove(s, foot + Int3.UnitY, null);
         Building.Remove(s, foot, null);
         Orientations.TryParse("+y-x", out int rot);
         PlaceError placed = Building.Place(s, foot, Building.Make(s, s.Catalogue.Type("door"), null, rot));
         v.ApplyEdits();
-        GD.Print($"(door block: {placed}, {string.Join(" + ", Building.PieceCells(s, foot).Select(c => s.TypeOf(s.Get(c)).Id))})");
+        GD.Print($"(door block: {placed}, {s.TypeOf(s.Get(foot)).Id}, over it {(s.Has(foot + Int3.UnitY) ? s.TypeOf(s.Get(foot + Int3.UnitY)).Id : "nothing")})");
         foreach (int x in _drive.Wait(30)) yield return x;
         float size = s.Grid.CellSize;
         Vector3 bottom = v.ToWorld(StructureBridge.CellCenter(s, foot) - N.Vector3.UnitY * (size * 0.5f));
@@ -161,9 +168,9 @@ public partial class Staging
         Func<Vector3> feet = _game.Doors.Feet;
         Vector3 inDoor = v.ToWorld(StructureBridge.CellCenter(s, foot)) - Vector3.Up * 0.9f;
         _game.Doors.Feet = () => inDoor;
-        _game.Doors.Use(v, foot + Int3.UnitY); // opened from its top: the piece opens as one
+        _game.Doors.Use(v, foot);
         foreach (int x in _drive.Wait(120)) yield return x;
-        GD.Print($"(door block open: {s.Get(foot).Open} and its top {s.Get(foot + Int3.UnitY).Open})");
+        GD.Print($"(door block open: {s.Get(foot).Open})");
         foreach (int x in Shot(shut.Replace(".png", "-open.png"))) yield return x;
         _game.Doors.Feet = feet;
         foreach (int x in _drive.Wait(120)) yield return x;

@@ -915,7 +915,7 @@ public sealed partial class Building
             }
         var cells = new List<Int3>();
         for (int x = Cx + 2; x <= Cx + 3; x++)
-            for (int k = 0; k < 3; k++) cells.Add(L(x, y + k, Zs - 1));
+            for (int k = 0; k < DoorSize.Tall; k++) cells.Add(L(x, y + k, Zs - 1));
         _roofDoorCells = cells;
     }
 
@@ -1194,7 +1194,10 @@ public sealed partial class Building
             int y = WalkY(s);
             var door = new List<Int3>();
             for (int x = Lx; x <= Lx + 1; x++)
-                for (int k = 0; k < 3; k++) door.Add(L(x, y + k, Zs - 1));
+            {
+                for (int k = 0; k < DoorSize.Tall; k++) door.Add(L(x, y + k, Zs - 1));
+                for (int k = DoorSize.Tall; k < Pitch - 1; k++) C.Set(L(x, y + k, Zs - 1), InnerWall(L(x, y + k, Zs - 1)));
+            }
             int d = C.AddDoorway(door, R(Dir.North), _plans[s].Corridor, _liftModule);
             lift.StopDoors.Add(d);
         }

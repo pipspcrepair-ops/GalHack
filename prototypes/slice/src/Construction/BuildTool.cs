@@ -591,7 +591,7 @@ public sealed partial class BuildTool
         {
             Int3 p = queue.Dequeue();
             Block pb = Plan.Get(p);
-            if (!s.Has(p) && !Plan.TypeOf(pb).IsPieceTop) order.Add((p, pb)); // a door's top comes with its door
+            if (!s.Has(p)) order.Add((p, pb));
             foreach (Dir d in Dirs.All)
             {
                 Int3 q = p + d.Vec();
@@ -650,7 +650,6 @@ public sealed partial class BuildTool
         if (e != PlaceError.None) return e switch
         {
             PlaceError.Occupied => "Something is already there",
-            PlaceError.TopBlocked => "A door is two blocks tall: clear the block over it",
             PlaceError.NotAttached or PlaceError.NoSharedFace => "Blocks attach through a shared face",
             PlaceError.OneCoreOnly => "A structure has one core",
             _ => e.ToString(),
@@ -664,12 +663,8 @@ public sealed partial class BuildTool
             if (other != null) return $"{other.Name} is a {(small ? "large" : "small")}-grid block: this is a {(small ? "small" : "large")} grid";
             if (!Creative) return $"{type.Name} has no item: it can't be built in Survival";
         }
-        // Every cell it takes: a large door's top as well as its foot.
-        foreach (var (at, _) in Building.Piece(s, cell, block))
-        {
-            if (InSurvivor(v, at)) return "Step out of the way to build there";
-            if (!v.IsBase && InGround(v, at)) return "Ground in the way: only a base reaches into the ground";
-        }
+        if (InSurvivor(v, cell)) return "Step out of the way to build there";
+        if (!v.IsBase && InGround(v, cell)) return "Ground in the way: only a base reaches into the ground";
         return null;
     }
 
@@ -696,7 +691,7 @@ public sealed partial class BuildTool
         }
         Building.Place(s, cell, block);
         _placer.Sync(s, v.Storage, 0, 0, 0, spill: false); // placing only ever adds room
-        if (v.IsBase) foreach (Int3 at in Building.PieceCells(s, cell)) v.ClearGround(at);
+        if (v.IsBase) v.ClearGround(cell);
         v.ApplyEdits();
         if (v == Underway) v.Settle(); // a blueprint's vessel stands on the ground as it grows
         Placed++;
@@ -719,7 +714,6 @@ public sealed partial class BuildTool
     public void Remove(Vessel v, Int3 cell)
     {
         Structure s = v.Structure;
-        cell = Building.Root(s, cell); // a door's top comes down with its door, and gives the door back
         if (!s.TryGet(cell, out Block b)) return;
         // A base's blocks hold the ground off their faces: the ones that leave it let go.
         var before = v.IsBase ? s.Blocks().Select(x => x.pos).ToList() : null;

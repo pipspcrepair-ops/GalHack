@@ -509,7 +509,6 @@ public static class ChunkMesher
                         foreach (Part part in t.Parts)
                         {
                             if (part.ClosedOnly && b.Open) continue;
-                            if (part.Grid is GridSize pg && pg != s.Grid.Size) continue;
                             MeshBuffers target = part.Style == PartStyle.Glass ? data.Glass : data.Opaque;
                             foreach (Polygon poly in part.Polygons)
                                 AddPart(s, b, c, centre, size, poly, part, target);
@@ -724,7 +723,7 @@ public static class ChunkMesher
                     {
                         foreach (Part part in t.Parts)
                         {
-                            if (part.ClosedOnly || part.Grid is GridSize pg && pg != s.Grid.Size) continue;
+                            if (part.ClosedOnly) continue;
                             Vector3 p0 = basis * ToG(part.Min), p1 = basis * ToG(part.Max);
                             Vector3 min = p0.Min(p1), max = p0.Max(p1);
                             data.Boxes.Add(((centre + (min + max) * 0.5f) * size, (max - min) * size));

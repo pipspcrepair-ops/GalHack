@@ -640,7 +640,7 @@ public static class Sites
         int doorY = baseY + 1;
         Int3 door = new(p.X - r, doorY, p.Z);
         var doorCells = new List<Int3>();
-        for (int k = 0; k < 3; k++)
+        for (int k = 0; k < DoorSize.Tall; k++)
             for (int dz = 0; dz <= 1; dz++) doorCells.Add(new Int3(p.X - r, doorY + k, p.Z + dz));
         foreach (Int3 dc in doorCells) x.C.Clear(dc);
         // Steps up to the hatch from the pad: two stair blocks and their fill.
@@ -1103,14 +1103,14 @@ public static class Sites
                         // One sheet to a wall, a plinth of darker stuff, and a window each side of the door.
                         bool sheet = Hash.Cell(new Int3(k + p.X, j == 0 || j == d - 1 ? j : -1, i == 0 || i == w - 1 ? i : -1), 163) % 3 == 0;
                         if (y == 1 && j == 0 && !door && (i == 1 || i == w - 2)) x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x7a, 0x70, 0x60), Role.Window));
-                        else if (edge && !door) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, y == 0 ? col.Scale(0.62f) : col.Scale(sheet ? 1.08f : 0.9f), Role.Wall));
+                        else if (edge && !(door && y < DoorSize.Tall)) x.C.Set(c, new Block(BlockType.Cube, Material.Scrap, y == 0 ? col.Scale(0.62f) : col.Scale(sheet ? 1.08f : 0.9f), Role.Wall));
                         else { x.C.Clear(c); if (!edge) inside.Add(c); }
                     }
                     x.C.Set(W(i, 3, j), new Block(BlockType.Cube, Material.Rust, new Rgb(0x6a, 0x4a, 0x34), Role.Roof));
                 }
             int m = x.C.AddModule(ModuleKind.Room, "shack", 0, inside);
             x.C.Link(x.Yard, m);
-            x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+            x.C.Doorways.Add(new Doorway { Cells = Enumerable.Range(0, DoorSize.Tall).SelectMany(y => new[] { W(w / 2 - 1, y, 0), W(w / 2, y, 0) }).ToList(), Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
             x.C.X.Markers.Add(new Marker("home", W(1, 0, d - 2)));
             x.C.X.Lights.Add(new LightSpot { Cell = W(w / 2, 2, d / 2), Color = new Rgb(0xff, 0xc0, 0x70), Mode = LightMode.Steady, Energy = 0.9f, Range = 6f, Module = m });
             at += w + gap;
@@ -1485,7 +1485,7 @@ public static class Sites
                 for (int y = 0; y < h; y++)
                 {
                     Int3 c = W(i, y, j);
-                    if (edge && !(door && y < 3))
+                    if (edge && !(door && y < DoorSize.Tall))
                         x.C.Set(c, y == 0 || (i % 4 == 0 && (j == 0 || j == d - 1)) || hydro && y < 2
                             ? new Block(BlockType.Cube, hydro ? Material.Alloy : Material.Concrete, hydro ? new Rgb(0xb8, 0xbc, 0xc0) : new Rgb(0x8a, 0x86, 0x7e), Role.Wall)
                             : new Block(BlockType.Pane, Material.Glass, new Rgb(0x9a, 0xc8, 0xb0), Role.Window));
@@ -1506,7 +1506,7 @@ public static class Sites
             }
         int m = x.C.AddModule(ModuleKind.Room, hydro ? "hydroponic shed" : "greenhouse", 0, inside);
         x.C.Link(x.Yard, m);
-        x.C.Doorways.Add(new Doorway { Cells = new List<Int3> { W(w / 2 - 1, 0, 0), W(w / 2, 0, 0), W(w / 2 - 1, 1, 0), W(w / 2, 1, 0), W(w / 2 - 1, 2, 0), W(w / 2, 2, 0) }, Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
+        x.C.Doorways.Add(new Doorway { Cells = Enumerable.Range(0, DoorSize.Tall).SelectMany(y => new[] { W(w / 2 - 1, y, 0), W(w / 2, y, 0) }).ToList(), Facing = Dir.South, ModuleA = x.Yard, ModuleB = m });
         var floor = inside.Where(c => c.Y == 0 && !x.C.Blocks.ContainsKey(c)).OrderBy(c => Hash.Cell(c, 79)).ToList();
         if (floor.Count > 1) x.C.AddSlot(SlotKind.Loot, floor[0], m);
     }
