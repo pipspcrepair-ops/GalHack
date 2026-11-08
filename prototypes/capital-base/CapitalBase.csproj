@@ -40,6 +40,8 @@
     <Compile Include="..\planet-surface\src\World\RuinGrowth.cs" />
     <!-- Only for PlanetWorld's NearestCopy: this prototype draws a fixed patch, not a stream. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\RoadField.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\GroundField.cs" />
     <!-- The streamer's other half (solid flora colliders) and the rules it reads: compiled so the
          streamer compiles; with no flora-solids data loaded here, nothing is solid. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Solids.cs" />
