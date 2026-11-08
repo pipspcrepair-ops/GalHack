@@ -554,7 +554,9 @@ public partial class TerrainStreamer : Node3D
 
         long collisionStart = Stopwatch.GetTimestamp();
         UpdateCollision(fcx, fcz, start);
+        long solidsStart = Stopwatch.GetTimestamp();
         UpdateSolids(fcx, fcz, start);
+        SolidsTotalMs += Stopwatch.GetElapsedTime(solidsStart).TotalMilliseconds;
         _sections[4] = Stopwatch.GetElapsedTime(collisionStart).TotalMilliseconds;
         Unload(fcx, fcz);
         UpdateVisibility(fcx, fcz);

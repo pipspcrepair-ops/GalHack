@@ -115,6 +115,11 @@ public partial class SliceTest : Node
         foreach (int x in Arrival()) yield return x;
         foreach (int x in Locker()) yield return x;
         if (OS.GetCmdlineUserArgs().Contains("--locker-only")) yield break;
+        if (OS.GetCmdlineUserArgs().Contains("--bike-only"))
+        {
+            foreach (int x in HoverBike()) yield return x;
+            yield break;
+        }
         if (!OS.GetCmdlineUserArgs().Contains("--quick"))
         {
             foreach (int x in Gather()) yield return x;
@@ -130,6 +135,11 @@ public partial class SliceTest : Node
         _game.Progress.Creative = true;
         GD.Print($"  (systems test: handed over the Skiff's parts, {_game.Zone.Data.Items.Describe(_game.Builder.TotalCost(_game.StarterPlan), 6)}, and opened the tech tree)");
         foreach (int x in Build()) yield return x;
+        if (OS.GetCmdlineUserArgs().Contains("--fly-only"))
+        {
+            foreach (int x in Fly()) yield return x;
+            yield break;
+        }
         foreach (int x in BuildCreative()) yield return x;
         foreach (int x in Fly()) yield return x;
         foreach (int x in Replay()) yield return x;
@@ -319,11 +329,17 @@ public partial class SliceTest : Node
         Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
         foreach (int x in _drive.Wait(90)) yield return x;
+        float speedAtF = bike.Speed;
         foreach (int x in _drive.Tap(Key.F)) yield return x;
         Check(_game.Survivor.OnBike == null && _game.Survivor.WorldFeet.DistanceTo(bike.Position) < 4f && _game.Survivor.Body.Asleep == false, "F again gets off, beside the bike");
+        Vector3 seatAtLook = bike.Seat;
         foreach (int x in _drive.LookAt(bike.Seat, 6)) yield return x;
+        // Left at speed (the rider stepped off at {speedAtF}), an empty bike stops in a step or two instead of gliding off from under the crosshair.
+        float slid = seatAtLook.DistanceTo(bike.Seat);
+        Check(bike.Speed < 1f && slid < 0.8f, $"an empty bike stops where it is left: stepped off at {speedAtF:F1} m/s, {bike.Speed:F1} m/s a tenth of a second on, slid {slid:F2} m");
+        bool aimed = _game.Bikes.Aimed(_game.Survivor.WorldEye(), _game.Survivor.WorldLook(), Slice.Game.Game.UseReach) != null;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
-        Check(_game.Bikes.All.Count == 0 && _game.Pack["hover-bike"] == 1, "E at the bike picks it up again");
+        Check(_game.Bikes.All.Count == 0 && _game.Pack["hover-bike"] == 1, $"E at the bike picks it up again (bikes {_game.Bikes.All.Count}, pack {_game.Pack["hover-bike"]}; aimed before the press: {aimed})");
 
         // Over water: any lake or sea within reach, found in the terrain's own height field.
         var source = _game.Zone.Planet.Source;
@@ -336,6 +352,9 @@ public partial class SliceTest : Node
                 bool deep = true;
                 for (int d = 0; d < 8 && deep; d++)
                     deep = source.SurfaceHeight(wx + MathF.Cos(d * 0.785f) * 40f, wz + MathF.Sin(d * 0.785f) * 40f) < source.WaterLevel - 1f;
+                // The bike runs straight ahead (north) for most of 50 m: water all the way, not a shore a few metres short of it.
+                for (int d = 1; d <= 8 && deep; d++)
+                    deep = source.SurfaceHeight(wx, wz - d * 10f) < source.WaterLevel - 1f;
                 if (deep) lake = new Vector3(wx, source.WaterLevel, wz);
             }
         if (lake is not Vector3 water) { GD.Print("  (no lake within 750 m of the castaway on this world: the water ride is not tried)"); yield break; }
@@ -786,7 +805,8 @@ public partial class SliceTest : Node
         double harmBefore = BodyHarm();
         float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
-        Vector3 target = MildSpot(start, 2150f); // a planet has cold and hot country: this check is about flying
+        bool profiling = OS.GetCmdlineUserArgs().Contains("--profile"); // a longer flight, reading what each kind of node costs the frame
+        Vector3 target = MildSpot(start, profiling ? 6000f : 2150f); // a planet has cold and hot country: this check is about flying
         int lifts = _liftedOff, lands = _landed;
         _impacts.Clear();
 
@@ -797,10 +817,17 @@ public partial class SliceTest : Node
             $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 1.5 s");
 
         var probe = new FrameProbe(this);
+        var profiler = profiling ? new ProcessProfiler(probe, GetTree().Root, 40, this) : null;
         var windows = new List<double>();
-        double windowSum = 0;
+        var cpuWindows = new List<double>();
+        var gcWindows = new List<double>();
+        var clockWindows = new List<string>();
+        double windowSum = 0, cpuSum = 0;
+        TimeSpan gcMark = GC.GetTotalPauseDuration();
         int windowFrames = 0;
         float bestAgl = 0f, top = 0f, flown = 0f;
+        int mostSolids = 0, mostBodies = 0, framesFrom = 0, mostLit = 0, mostLitNear = 0;
+        double solidsFrom = 0;
         Vector3 was = start;
         // Cruise toward the target at height, steering with the mouse stick.
         int ticks = 0;
@@ -820,19 +847,41 @@ public partial class SliceTest : Node
             _game.Controls.Hold(Key.Ctrl, agl > 110f);
             top = MathF.Max(top, v.Body.Velocity.Length());
             bestAgl = MathF.Max(bestAgl, agl);
+            mostSolids = Math.Max(mostSolids, _game.Zone.Streamer.SolidColliders);
+            mostLit = Math.Max(mostLit, GalHack.Deco.Engine.DecoAnimator.Count);
+            mostLitNear = Math.Max(mostLitNear, GalHack.Deco.Engine.DecoAnimator.NearCount);
+            mostBodies = Math.Max(mostBodies, _game.Zone.Streamer.SolidBodies);
+            if (ticks == 241)
+            {
+                solidsFrom = _game.Zone.Streamer.SolidsTotalMs;
+                framesFrom = probe.Frames;
+            }
+            if (ticks > 240) profiler?.Step();
             if (ticks > 240)
             {
                 windowSum += probe.LastMs;
+                cpuSum += probe.LastCpuMs;
                 if (++windowFrames == 300)
                 {
                     windows.Add(windowSum / windowFrames);
-                    windowSum = 0;
+                    cpuWindows.Add(cpuSum / windowFrames);
+                    TimeSpan gcNow = GC.GetTotalPauseDuration();
+                    gcWindows.Add((gcNow - gcMark).TotalMilliseconds / windowFrames);
+                    gcMark = gcNow;
+                    clockWindows.Add(DateTime.Now.ToString("HH:mm:ss"));
+                    windowSum = cpuSum = 0;
                     windowFrames = 0;
                 }
             }
             yield return 0;
         }
         probe.Remove();
+        if (profiler != null)
+        {
+            profiler.Restore();
+            GD.Print($"  [profile] what each kind of node costs the main thread a frame ({(profiler.Done ? "all read" : "the flight ended first")}):");
+            foreach (string line in profiler.Report().Take(25)) GD.Print($"    {line}");
+        }
         _game.Controls.ReleaseAll();
 
         // Come down on the gear.
@@ -866,8 +915,19 @@ public partial class SliceTest : Node
         Check(BodyHarm() <= harmBefore, "the pilot came through unhurt");
         if (windows.Count > 0)
         {
-            double best = windows.Min();
-            Check(best < 8.0, $"flying, the game's main-thread cost per frame stays under 8 ms: best window {best:F2} ms (windows {string.Join(", ", windows.Select(w => w.ToString("F2")))}; worst frame {probe.WorstMs:F1} ms)");
+            // The game's own cost is the CPU its callbacks run on the main thread plus the collector's pauses. The wall clock
+            // adds every moment the machine kept the thread waiting for a core, and with other work on the machine (another
+            // test run, a build) a window of 2 to 4 ms of work reads 10 to 24 ms: shown beside, not judged. Without a cycle
+            // counter (not Windows) the wall clock is all there is.
+            bool haveCpu = cpuWindows.Any(c => c > 0);
+            List<double> cost = haveCpu ? cpuWindows.Select((c, i) => c + gcWindows[i]).ToList() : windows;
+            double best = cost.Min();
+            double solidsMs = (_game.Zone.Streamer.SolidsTotalMs - solidsFrom) / Math.Max(1, probe.Frames - framesFrom);
+            string detail = $"best window {best:F2} ms of {(haveCpu ? "work" : "wall clock")} (per window: CPU {string.Join(", ", cpuWindows.Select(w => w.ToString("F2")))} + GC pauses {string.Join(", ", gcWindows.Select(w => w.ToString("F2")))}; "
+                + $"wall clock {string.Join(", ", windows.Select(w => w.ToString("F2")))} at {string.Join(", ", clockWindows)}; worst frame {probe.WorstMs:F1} ms; "
+                + $"at most {mostSolids} plant colliders in {mostBodies} bodies, {solidsMs:F3} ms a frame on keeping them; at most {mostLit} animated decorations standing, {mostLitNear} of them near enough to move every frame)";
+            if (profiling) GD.Print($"  (profile run: {detail})");
+            else Check(best < 8.0, $"flying, the game's main-thread cost per frame stays under 8 ms: {detail}");
         }
         else Fail("the flight was too short to time");
     }
