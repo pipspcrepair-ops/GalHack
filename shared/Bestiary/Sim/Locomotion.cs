@@ -26,6 +26,11 @@ public static class Locomotion
             Tumble(w, c, dt);
             return;
         }
+        if (c.Downed > 0f && !c.Dead)
+        {
+            GetUp(c, dt);
+            return;
+        }
         if (c.Dead)
         {
             Fall(w, c, dt);
@@ -54,12 +59,17 @@ public static class Locomotion
         }
     }
 
-    /// <summary>Thrown: a plain ballistic arc to the ground, and the landing hurts by how fast it comes down.</summary>
+    /// <summary>
+    /// Thrown: a plain ballistic arc to the ground, turning end over end as it goes, and the landing hurts
+    /// by how fast it comes down. Landing hard and tipped over, it lies there on its side or back a while.
+    /// </summary>
     static void Tumble(WildSim w, Creature c, float dt)
     {
         Vector3 v = c.Velocity + Vector3.Down * Gravity * 0.6f * dt;
         Vector3 p = w.Terrain.Clamp(c.Position + v * dt, 4f);
         float ground = w.Terrain.Height(p.X, p.Z);
+        float turn = c.TumbleSpin.Length() * dt;
+        if (turn > 1e-6f) c.Tumble = (new Quaternion(c.TumbleSpin.Normalized(), turn) * c.Tumble).Normalized();
         if (p.Y <= ground && v.Y < 0f)
         {
             p.Y = ground;
@@ -67,9 +77,28 @@ public static class Locomotion
             float hard = v.Length() - 8f;
             v = Vector3.Zero;
             if (hard > 0f && !c.Dead) w.Damage(c, hard * 3f, null);
+            // Down on its side or its back if it came down tipped: it lies there a while; else on its feet.
+            float tipped = (c.Tumble * Vector3.Up).AngleTo(Vector3.Up);
+            if (tipped > 0.9f && hard > 0f)
+            {
+                c.Downed = 1.5f + MathF.Min(4f, hard * 0.25f);
+                Vector3 side = new Vector3(c.Forward.X, 0f, c.Forward.Z);
+                c.Tumble = new Quaternion(side.LengthSquared() > 1e-4f ? side.Normalized() : Vector3.Forward, tipped > 2.3f ? 2.6f : 1.45f);
+            }
+            else c.Tumble = Quaternion.Identity;
+            c.TumbleSpin = Vector3.Zero;
         }
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>Downed by a hard landing: it lies still, then rolls back onto its feet over its last moments.</summary>
+    static void GetUp(Creature c, float dt)
+    {
+        c.Downed = MathF.Max(0f, c.Downed - dt);
+        c.Velocity = Vector3.Zero;
+        if (c.Downed < 0.8f) c.Tumble = c.Tumble.Slerp(Quaternion.Identity, 1f - MathF.Exp(-5f * dt));
+        if (c.Downed <= 0f) c.Tumble = Quaternion.Identity;
     }
 
     static void Ground(WildSim w, Creature c, float dt)

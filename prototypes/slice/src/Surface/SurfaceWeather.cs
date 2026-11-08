@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 using Planets.Gen;
@@ -172,6 +173,20 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _lightning.CloudFlash(new Vector3(tower.X, CloudBaseY + 120f, tower.Y), _rng.RandfRange(0.25f, 0.6f));
     }
 
+    /// <summary>Tells the sky where the front is: the copy of its line nearest the camera, the way it advances, its shape.</summary>
+    void SyncFront(Vector3 camera)
+    {
+        Front f = Sim.Front;
+        if (f == null || f.Strength < 0.005f)
+        {
+            Zone.Sky.SetFront(Vector4.Zero, Vector4.Zero, Vector4.Zero, Vector4.Zero);
+            return;
+        }
+        Vector3 c = _planet.NearestCopy(_planet.Canonical(f.Centre), camera);
+        Zone.Sky.SetFront(new Vector4(c.X, c.Z, f.Heading.X, f.Heading.Y), new Vector4(f.Strength, f.Period, f.Spacing, f.Depth),
+            new Vector4(f.Shear, f.Bow, f.Bows, f.Bays), new Vector4(f.Kind == FrontKind.Storm ? 1f : 0f, f.Roll ? 1f : 0f, f.Seed, f.Severity));
+    }
+
     (MeshInstance3D, ShaderMaterial) AddShaft()
     {
         var draw = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/rainshaft.gdshader") };
@@ -338,20 +353,96 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _planet = planet;
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
+        World = WorldOf(data, planet);
         WeatherSim sim = null;
         for (ulong k = 0; k < 1024; k++)
         {
-            sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds);
+            sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds, World);
             sim.EnsureTimeline(CalmOpening);
             bool calm = true;
             foreach (Segment s in sim.Timeline)
                 if (s.Start < CalmOpening && data.State(s.Kind).Severe) calm = false;
             if (calm) break;
         }
-        sim.GroundHeight = (x, z) => planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
+        // The surface a strike or a whirl stands on: the water's where there is water over the ground.
+        sim.GroundHeight = (x, z) =>
+        {
+            float ground = planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
+            return planet.WaterSurfaceAt(new Vector3(x, 0f, z)) is float water && water > ground ? water : ground;
+        };
+        sim.WorldSize = new Vector2((float)planet.Width, (float)planet.Height);
+        sim.OpenWater = (x, z) => OpenWater(planet, x, z);
+        sim.Land = LandOf(planet, data.Regions);
+        sim.MeanWarmth = planet.Map.Temperature.Average();
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
+    }
+
+    /// <summary>The drawn funnel of a tornado (tests), or null.</summary>
+    public TornadoFx FunnelOf(int id) => _tornadoes.TryGetValue(id, out TornadoFx fx) ? fx : null;
+
+    /// <summary>The game's own shelter at a point (a place's roof, a hole deep enough): no weather reaches there.</summary>
+    public Func<Vector3, bool> Shelter = static _ => false;
+
+    public bool ShelteredAt(Vector3 at) => Shelter(at);
+
+    /// <summary>This world's own weather dials, rolled from its climate and weather layers.</summary>
+    public WorldWeather World { get; private set; }
+
+    /// <summary>A world's weather dials: its rolled facts (climate, water) and layers lean its type's weights.</summary>
+    public static WorldWeather WorldOf(WeatherData data, PlanetWorld planet)
+    {
+        var roll = planet.Roll;
+        var layers = new List<string>();
+        if (roll != null) foreach (var l in roll.Rolled) layers.Add(l.Id);
+        return WorldWeather.Roll(data.Worlds, roll?.Facts, layers, planet.Spec.Seed);
+    }
+
+    /// <summary>
+    /// The land and climate at a point as the weather reads it, off the world map: its height, slope,
+    /// humidity and warmth, its sea, and how wooded and how loose its ground is by biome (the weather
+    /// data's tables).
+    /// </summary>
+    public static Func<float, float, Ground> LandOf(PlanetWorld planet, RegionRules rules) => LandOf(planet.Map, rules);
+
+    public static Func<float, float, Ground> LandOf(WorldMap map, RegionRules rules)
+    {
+        var forest = new float[256];
+        var loose = new float[256];
+        foreach (Biome b in Enum.GetValues<Biome>())
+        {
+            forest[(int)b] = rules.Forest.TryGetValue(b.ToString(), out float f) ? f : 0f;
+            loose[(int)b] = rules.Loose.TryGetValue(b.ToString(), out float l) ? l : 0f;
+        }
+        var mountain = new float[256];
+        var rugged = new float[256];
+        foreach (Landform l in Enum.GetValues<Landform>())
+        {
+            mountain[(int)l] = rules.Mountains.Contains(l.ToString()) ? 1f : 0f;
+            rugged[(int)l] = LandformInfo.Openness(l) switch { Openness.Open => 0f, Openness.Rolling => 0.5f, _ => 1f };
+        }
+        return (x, z) =>
+        {
+            double px = Mathx.WrapX(x, map.WidthMeters), pz = Mathx.Wrap(z, map.HeightMeters);
+            int cell = map.CellAt(px, pz);
+            byte biome = map.Biome[cell], land = map.Landform[cell];
+            return new Ground(map.Sample(map.Elevation, px, pz), map.Sample(map.Slope, px, pz), forest[biome],
+                map.Sample(map.Humidity, px, pz), map.Sample(map.Temperature, px, pz), map.Has(cell, CellFlags.Water), loose[biome],
+                mountain[land], rugged[land]);
+        };
+    }
+
+    /// <summary>A sea or a lake at a point, not a stream: water a metre and a half deep there and 60 m round it.</summary>
+    static bool OpenWater(PlanetWorld planet, float x, float z)
+    {
+        for (int k = 0; k < 5; k++)
+        {
+            float px = x + (k == 1 ? 60f : k == 2 ? -60f : 0f), pz = z + (k == 3 ? 60f : k == 4 ? -60f : 0f);
+            if (planet.WaterSurfaceAt(new Vector3(px, 0f, pz)) is not float water) return false;
+            if (water - planet.GroundHeight(Mathx.WrapX(px, planet.Width), Mathx.Wrap(pz, planet.Height)) < 1.5f) return false;
+        }
+        return true;
     }
 
     /// <summary>The air right now, for the sky.</summary>
@@ -364,8 +455,16 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// </summary>
     Conditions AirHere()
     {
-        Conditions c = Sim.Current;
-        if (c.Cellular <= 0.01f || Camera == null) return c;
+        if (Camera == null) return Sim.Current;
+        Conditions c = Sim.LocalAt(Camera.GlobalPosition);
+        // Ahead of a storm's front the sky is still the fair one: its deck stands over there, dark against it.
+        if (Sim.Front is { Kind: FrontKind.Storm } f)
+        {
+            float clear = f.Clear(Camera.GlobalPosition);
+            c[Param.CloudCover] = Mathf.Lerp(c.CloudCover, MathF.Min(c.CloudCover, 0.4f), clear);
+            c[Param.CloudDarkness] = Mathf.Lerp(c.CloudDarkness, MathF.Min(c.CloudDarkness, 0.2f), clear);
+        }
+        if (c.Cellular <= 0.01f) return c;
         float open = c.Cellular * (1f - Sim.CellCover(Camera.GlobalPosition));
         c[Param.VisibilityLog] = Mathf.Lerp(c[Param.VisibilityLog], MathF.Max(c[Param.VisibilityLog], 3.95f), open);
         c[Param.GroundFog] *= 1f - open;
@@ -393,8 +492,10 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             _ravageTimer = 0.2f;
             foreach (Tornado t in Sim.Tornadoes)
-                if (t.Touchdown && t.Strength > 0.25f) Ravage(t);
+                if (t.Touchdown && t.Strength > 0.25f && t.Kind != TornadoKind.DustDevil) Ravage(t);
         }
+        Gust((float)delta);
+        if (Sim != null) WindFells(Observer(), (float)delta);
     }
 
     float _ravageTimer;
@@ -424,14 +525,102 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _torn.Add(solid);
             if (_torn.Count >= TornPerPass) break;
         }
-        foreach (FloraSolid s in _torn) TearUp(s, at);
+        foreach (FloraSolid s in _torn) TearUp(s, at, t);
         ThrowCreatures(t, at, reach);
         Zone.Dust?.Puff(at + Vector3.Up * 0.6f, new Color(_planet.Look.Dust, 1f), 3f);
     }
 
-    void TearUp(FloraSolid tree, Vector3 funnel)
+    /// <summary>Trees torn up whole and thrown, snapped (a stump left), and uprooted to fall (a root hole left) (tests).</summary>
+    public int TreesThrown { get; private set; }
+    public int TreesSnapped { get; private set; }
+    public int TreesUprooted { get; private set; }
+
+    /// <summary>The torn trees' effects: stumps, root holes, trunks falling, lying and flying (tests).</summary>
+    public TreeFx Trees => _trees;
+
+    /// <summary>The most trees in the air at once: the rest of what a funnel tears up falls where it stood.</summary>
+    public const int MostFlyingTrees = 6;
+
+    /// <summary>What a tree weighs, kg: its trunk's wood and its crown, by its real height as it stood.</summary>
+    public static float TreeMass(FloraSolid tree, float height)
     {
-        if (!_planet.Felled.Add(tree.Id)) return;
+        float r = MathF.Max(0.08f, tree.Extents.X), h = MathF.Max(1f, height);
+        return MathF.PI * r * r * h * 700f * 1.6f;
+    }
+
+    /// <summary>The last tree thrown: its size as it stood, and the size of the body it flew as (tests: the same tree, the same size).</summary>
+    public (Vector3 Standing, Vector3 Flying) LastThrown { get; private set; }
+
+    // The tree being felled: its own mesh and its standing transform (turn and scale), and its standing size.
+    Mesh _felledMesh;
+    Basis _felledTurn = Basis.Identity;
+    Vector3 _felledBounds;
+    Color _felledTint;
+
+    /// <summary>
+    /// A tree in a funnel's reach goes, by its weight against the tornado's pull, by the force module's own
+    /// rule for every body: one light enough for the updraft is pulled up whole, roots and all, and thrown
+    /// (a root hole left); a heavier one is snapped, a stump left and its trunk thrown down, or blown over
+    /// whole, its root plate torn out. Either way it is gone for good (the felled list).
+    /// </summary>
+    void TearUp(FloraSolid tree, Vector3 funnel, Tornado t)
+    {
+        if (!Fell(tree, funnel, out Vector3 root, out Vector3 away, out float height, out Color leaf)) return;
+        float mass = TreeMass(tree, height);
+        Vector3 radial = new Vector3(root.X - funnel.X, 0f, root.Z - funnel.Z);
+        radial = radial.LengthSquared() > 1e-4f ? radial.Normalized() : Vector3.Right;
+        var around = new Vector3(-radial.Z, 0f, radial.X);
+        Vector3 throwV = TornadoThrow(t.Rules, mass, t.Strength, around, radial);
+        if (throwV.Y > 6f && _trees.Flying < MostFlyingTrees)
+        {
+            TreesThrown++;
+            _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
+            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, _felledMesh, _felledTurn, _felledTint);
+            LastThrown = (_felledBounds, flung.Bounds);
+        }
+        else Topple(tree, root, away, height, leaf);
+        _trees.Leaves(root + Vector3.Up * height, leaf, 20, 2.2f);
+    }
+
+    /// <summary>A tree that goes over where it stands: a thin trunk snaps (a stump left), a thick one is torn out by its root plate (a hole left).</summary>
+    void Topple(FloraSolid tree, Vector3 root, Vector3 away, float height, Color leaf)
+    {
+        bool snaps = tree.Extents.X < 0.08f * height; // slender for its height: the trunk gives before the roots
+        if (snaps) TreesSnapped++;
+        else
+        {
+            TreesUprooted++;
+            _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
+        }
+        _trees.Fell(root, away, height, tree.Extents.X, leaf, crown: true, body: _felledMesh, turn: _felledTurn, stump: snaps, custom: _felledTint);
+    }
+
+    /// <summary>Takes a tree out of the world for good, and where it stood: false if it is already gone.</summary>
+    bool Fell(FloraSolid tree, Vector3 from, out Vector3 root, out Vector3 away, out float height, out Color leaf)
+    {
+        root = away = default;
+        height = 0f;
+        leaf = default;
+        if (_planet.Felled.Contains(tree.Id)) return false;
+        Vector3 c = _planet.NearestCopy(_planet.Canonical(tree.Center), from);
+        root = new(c.X, c.Y - tree.Extents.Y, c.Z);
+        // The plant as it stands, before it goes: its own mesh, its turn and scale, and so its real size.
+        _felledMesh = null;
+        _felledTurn = Basis.Identity;
+        _felledTint = default;
+        foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(root, 4f))
+            if (s.Id == tree.Id)
+            {
+                _felledMesh = Zone.Streamer.MeshOf(s);
+                _felledTurn = s.Turn;
+                _felledTint = s.Custom;
+                root = s.Root;
+                break;
+            }
+        Aabb stood = _felledMesh != null ? new Transform3D(_felledTurn, Vector3.Zero) * _felledMesh.GetAabb() : new Aabb(-tree.Extents, tree.Extents * 2f);
+        _felledBounds = stood.Size;
+        // Gone in the same tick its stand-in appears: never a gap, never two.
+        _planet.Felled.Add(tree.Id);
         Zone.Streamer.Fell(tree.Id);
         TreesTorn++;
         if (_trees == null)
@@ -439,14 +628,43 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _trees = new TreeFx();
             Zone.AddChild(_trees);
         }
-        Vector3 c = _planet.NearestCopy(_planet.Canonical(tree.Center), funnel);
-        Vector3 root = new(c.X, c.Y - tree.Extents.Y, c.Z);
-        Vector3 away = root - funnel;
+        away = root - from;
         away = new Vector3(-away.Z, 0f, away.X) + away * 0.4f; // round with the wind, and out
-        Color leaf = TreeFx.LeafColour(tree.Kind);
-        float height = MathF.Max(2f, tree.Extents.Y * 2f);
-        _trees.Fell(root, away.LengthSquared() > 0.01f ? away : Vector3.Right, height, tree.Extents.X, leaf, crown: true);
-        _trees.Leaves(root + Vector3.Up * height, leaf, 20, 2.2f);
+        if (away.LengthSquared() < 0.01f) away = Vector3.Right;
+        leaf = TreeFx.LeafColour(tree.Kind);
+        height = MathF.Max(2f, _felledMesh != null ? stood.End.Y : tree.Extents.Y * 2f);
+        return true;
+    }
+
+    float _treeGust;
+
+    /// <summary>
+    /// Wind strong enough snaps or blows over trees near the player, the weaker ones first: a tree goes
+    /// when the wind's push on its crown, by its size, beats what its trunk holds. A hurricane's gusts take
+    /// the odd tree round you; a gale none. One at a time, a few a minute at most.
+    /// </summary>
+    void WindFells(Vector3 near, float dt)
+    {
+        if ((_treeGust -= dt) > 0f) return;
+        _treeGust = 1.5f;
+        float wind = Sim.WindAt(near).Length();
+        if (wind < 30f || Bridge == null || Bridge.Calm) return;
+        foreach (var (solid, offset) in Zone.Streamer.SolidsNear(near, 70f))
+        {
+            if (!solid.Fellable) continue;
+            Vector3 at = solid.Center + offset;
+            float w = Sim.WindAt(at).Length();
+            float h = MathF.Max(1f, solid.Extents.Y * 2f), r = MathF.Max(0.08f, solid.Extents.X);
+            // The crown's drag over the trunk's strength: tall slender trees go first, stout ones hold.
+            float load = 0.5f * Weather.Forces.ForceModule.AirDensity * (h * h * 0.25f) * w * w * h * 0.6f;
+            float holds = 1.2e7f * r * r * r;
+            if (load < holds) continue;
+            if (!Fell(solid, at - new Vector3(Sim.WindAt(at).X, 0f, Sim.WindAt(at).Z), out Vector3 root, out Vector3 away, out float height, out Color leaf)) continue;
+            Vector3 downwind = Sim.WindAt(at);
+            Topple(solid, root, new Vector3(downwind.X, 0f, downwind.Z), height, leaf);
+            _trees.Leaves(root + Vector3.Up * height, leaf, 14, 2f);
+            return;
+        }
     }
 
     void ThrowCreatures(Tornado t, Vector3 at, float reach)
@@ -461,12 +679,63 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             float r = flat.Length();
             if (c.Thrown || r > reach) continue;
             Vector2 radial = r > 0.01f ? flat / r : Vector2.Right;
-            // A body's share of the pull, as for vehicles: giants barely lift.
-            float share = MathF.Min(1f, 2.2f / MathF.Max(0.4f, c.Species.Body.Size)) * t.Strength;
             var around = new Vector3(-radial.Y, 0f, radial.X);
             var outward = new Vector3(radial.X, 0f, radial.Y);
-            patch.Sim.Throw(c, (around * t.Rules.OrbitSpeed + outward * t.Rules.FlingSpeed * 0.5f + Vector3.Up * t.Rules.LiftSpeed * 1.4f) * share + t.Velocity);
+            patch.Sim.Throw(c, TornadoThrow(t.Rules, Wildlife.Heft.Mass(c.Species), t.Strength, around, outward) + t.Velocity);
         }
+    }
+
+    /// <summary>
+    /// How a tornado throws a creature or a person of this mass: by the force module's own rule for
+    /// players and vehicles. Its share of the pull falls past the tornado's mass limit (the same
+    /// <see cref="Weather.Forces.ForceModule.MassShare"/>); it is carried up only as far as that share
+    /// of the updraft beats its weight, to the release height at most, and flung out by its share of
+    /// the fling. A light body flies far; a heavy one is only dragged a little way round.
+    /// </summary>
+    public static Vector3 TornadoThrow(TornadoRules rules, float mass, float strength, Vector3 around, Vector3 outward)
+    {
+        const float g = 9.8f, tumbleG = 18f * 0.6f; // a thrown creature falls on the Bestiary's tumble (Locomotion)
+        float share = Weather.Forces.ForceModule.MassShare(mass, rules.LiftMassLimit) * strength;
+        float updraft = rules.Response * rules.LiftSpeed;
+        float climb = Math.Clamp((share * (updraft + g) - g) / updraft, 0f, 1f); // 1: carried all the way up
+        float up = MathF.Sqrt(2f * tumbleG * rules.ReleaseHeight * climb);
+        return (outward * rules.FlingSpeed + around * (rules.OrbitSpeed * 0.6f + rules.FlingSpeed * 0.6f)) * share + Vector3.Up * up;
+    }
+
+    float _gustTimer;
+
+    /// <summary>
+    /// Wind on creatures and people out in the open: the same drag and the same footing as a player's
+    /// (<see cref="GalHack.Physics.WalkController.Footing"/>). Where it pushes a body harder than its
+    /// feet hold, it is knocked off them and tumbles downwind; light ones in a gale, heavy ones never.
+    /// </summary>
+    void Gust(float dt)
+    {
+        _gustTimer -= dt;
+        if (_gustTimer > 0f) return;
+        _gustTimer = 0.5f;
+        WildlifePatch patch = Zone.Wildlife;
+        if (patch?.Sim == null || Bridge == null || Bridge.Calm) return;
+        foreach (Wildlife.Creature c in patch.Sim.Creatures)
+        {
+            if (c.Thrown || c.Dead || c.Space != null || c.Species.Flies) continue;
+            Vector3 world = c.Position + patch.Origin;
+            Vector3 wind = Sim.WindAt(world);
+            float push = CreaturePush(c.Species, wind.Length());
+            if (push <= Footing) continue;
+            float speed = wind.Length();
+            patch.Sim.Throw(c, wind / MathF.Max(speed, 0.1f) * (push - Footing) * 0.5f + Vector3.Up * 1.5f);
+        }
+    }
+
+    /// <summary>The feet's hold against a push, m/s²: a walker's (the shared walk rules), for creatures and people alike.</summary>
+    const float Footing = 5f;
+
+    /// <summary>What a wind of this speed does to a creature or a person standing in it, m/s²: drag by its side-on area over its mass.</summary>
+    public static float CreaturePush(Wildlife.Species s, float wind)
+    {
+        float area = MathF.Max(0.02f, s.BodyLength * s.BodyHeight * 0.7f) * 0.8f; // side on, a bluff body
+        return 0.5f * Weather.Forces.ForceModule.AirDensity * area * wind * wind / MathF.Max(0.1f, Wildlife.Heft.Mass(s));
     }
 
     void SyncTornadoes()
@@ -478,13 +747,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             alive.Add(t.Id);
             if (!_tornadoes.TryGetValue(t.Id, out TornadoFx fx))
             {
-                fx = new TornadoFx { Name = $"Tornado{t.Id}", Fx = this, Rules = t.Rules };
+                fx = new TornadoFx { Name = $"Tornado{t.Id}", Fx = this, Rules = t.Rules, Soil = _planet.Look.Dust };
                 AddChild(fx);
                 _tornadoes[t.Id] = fx;
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
-            fx.ReachTo(CloudBaseY - 150f - fx.GlobalPosition.Y); // up into the lumpy bulge of the storm's dark base, at any distance and as it lowers
+            // Up into the lumpy bulge of the storm's dark base, at any distance and as it lowers; a fair-weather
+            // spout into the flat base of its cumulus; a dust devil only as high as it whirls, into clear air.
+            fx.ReachTo(t.Kind == TornadoKind.DustDevil ? t.Height : CloudBaseY - (t.Storm ? 150f : 10f) - fx.GlobalPosition.Y);
             Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();
@@ -494,6 +765,24 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _tornadoes[id].QueueFree();
             _tornadoes.Remove(id);
         }
+        SyncCumulus(eye);
+    }
+
+    readonly Vector4[] _cumulus = new Vector4[2];
+
+    /// <summary>The growing cumulus a fair-weather waterspout hangs from: the sky swells a cloud with a flat dark base over each base of them.</summary>
+    void SyncCumulus(Vector3 eye)
+    {
+        int n = 0;
+        var seen = new HashSet<int>();
+        foreach (Tornado t in Sim.Tornadoes)
+        {
+            if (t.Kind != TornadoKind.Waterspout || t.Storm || n >= _cumulus.Length || !seen.Add(t.Group)) continue;
+            Vector3 at = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
+            float grown = Mathf.Clamp(0.4f + t.Age / 30f, 0f, 1f) * (t.Dissipating ? MathF.Max(t.Strength, 0.4f) : 1f);
+            _cumulus[n++] = new Vector4(at.X, at.Z, 520f, grown);
+        }
+        Zone.Sky.SetCumulus(_cumulus, n);
     }
 
     /// <summary>
@@ -517,8 +806,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         if (Sim == null || Camera == null) return;
         float dt = (float)delta;
-        Conditions c = Sim.Current;
         Vector3 camera = Camera.GlobalPosition;
+        Conditions c = Sim.LocalAt(camera); // the camera's region's weather, under its part of the front
         // Nothing of the sky reaches under the water or a sealed room. Everywhere else it falls until it hits something.
         float open = SkyAtEye;
         Vector3 wind = Sim.WindAt(camera);
@@ -533,6 +822,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _motes.Draw.AlbedoColor = new Color(dust.R * 1.1f, dust.G * 1.05f, dust.B, 0.55f);
         KeepStops(camera, dt);
         SyncCells(dt, camera);
+        SyncFront(camera);
         Rumble(dt, camera);
 
         Vector2 w = c.Wind;

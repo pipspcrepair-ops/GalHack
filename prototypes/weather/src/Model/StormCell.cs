@@ -25,6 +25,9 @@ public sealed class StormCell
     /// <summary>The funnel it has let down, or null.</summary>
     public Tornado Funnel { get; internal set; }
 
+    /// <summary>One of a front's cells: it rides the front, lined up along its leading edge.</summary>
+    public bool OnFront { get; internal set; }
+
     /// <summary>How much of it lies over a point, 0 to 1: all of it in the core, nothing past its edge.</summary>
     public float Cover(Vector3 p)
     {
@@ -51,4 +54,10 @@ public sealed class CellRules
     public float DriftShare { get; set; } = 0.7f;
     public float GrowSeconds { get; set; } = 30f;
     public float SpawnEvery { get; set; } = 12f;
+
+    /// <summary>A front comes into sight (and forms) when it is this far from arriving, metres: the sky draws about this far.</summary>
+    public float FrontSight { get; set; } = 15000f;
+
+    /// <summary>The spacing of a front's cells along its edge, metres.</summary>
+    public float FrontSpacing { get; set; } = 3400f;
 }

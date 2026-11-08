@@ -972,14 +972,17 @@ public partial class TerrainStreamer : Node3D
                     // The scatter cell it was rolled in: its offset in the chunk, a cell to a ScatterCell.
                     long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(buffer[o + 3] / FarBuilder.ScatterCell), (int)(buffer[o + 11] / FarBuilder.ScatterCell));
                     var turn = new Basis(new Vector3(buffer[o], buffer[o + 4], buffer[o + 8]), new Vector3(buffer[o + 1], buffer[o + 5], buffer[o + 9]), new Vector3(buffer[o + 2], buffer[o + 6], buffer[o + 10]));
-                    if (!World.Felled.Contains(id)) yield return new PlantSighting(b.Kind, root, buffer[o + 5], id, b.Plant, b.Variant, turn);
+                    if (!World.Felled.Contains(id)) yield return new PlantSighting(b.Kind, root, buffer[o + 5], id, b.Plant, b.Variant, turn, new Color(buffer[o + 12], buffer[o + 13], buffer[o + 14], buffer[o + 15]));
                 }
             }
         }
     }
 
-    /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, and its turn.</summary>
-    public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn)
+    /// <summary>The mesh a plant is drawn with standing: its species' variant, or its kind's where the herbarium has none.</summary>
+    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
+
+    /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
+    public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)
     {
         public void Deconstruct(out Flora kind, out Vector3 root, out float scale, out long id)
         {

@@ -7,8 +7,8 @@ namespace GalHack.Physics;
 /// players and creatures. Impact speed is always the closing speed along the contact normal,
 /// so scraping along a wall never counts, only running into it.
 ///
-/// Damage is never capped and never scaled down. The only floor anywhere is the tornado
-/// fling's, and that belongs to the weather code (it passes the floor to the body's health).
+/// Damage is never capped and never scaled down, and there is no floor anywhere: a tornado's
+/// fling lands by this rule like any other fall.
 /// </summary>
 public static class Impacts
 {

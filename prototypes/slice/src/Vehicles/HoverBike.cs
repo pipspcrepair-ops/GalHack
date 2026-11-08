@@ -29,6 +29,19 @@ public sealed class HoverBike
     /// <summary>The seated eye, above the underside and a little back, m.</summary>
     public static readonly Vector3 EyeAt = new(0f, 1.3f, 0.15f);
 
+    /// <summary>What it weighs, kg, and its drag area, m² (a rider adds theirs): the wind and a tornado take it by these.</summary>
+    public const float Weight = 220f, DragArea = 1.0f;
+
+    /// <summary>Left parked, it settles on its skids: it holds against a push up to this, m/s² (a gale), and slides past it.</summary>
+    public const float ParkedHold = 3f;
+
+    /// <summary>The weather's push this tick, m/s² (wind, a tornado's pull), and a fling's kick, m/s.</summary>
+    Vector3 _push, _kick;
+
+    /// <summary>The weather's force module it is registered with, if any (<see cref="HoverBikes.Tick"/>).</summary>
+    internal Weather.Forces.ForceModule Weather;
+    internal BikeBody Pushed;
+
     public readonly Node3D Node;
 
     /// <summary>The underside's centre in the zone's world.</summary>
@@ -75,7 +88,54 @@ public sealed class HoverBike
     void Place()
     {
         Node.GlobalTransform = new Transform3D(
-            new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll), Position);
+            _tumble * new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll), Position);
+    }
+
+    /// <summary>
+    /// How the weather has turned it, on top of its heading and lean: a toss tips, rolls and flips it.
+    /// Its plates right it only within their reach of the ground, and only so hard (<see cref="PlateLevel"/>).
+    /// </summary>
+    Basis _tumble = Basis.Identity;
+    Vector3 _spin;
+
+    /// <summary>The most angular acceleration its hover plates put against a tumble near the ground, rad/s².</summary>
+    public const float PlateLevel = 8f;
+
+    /// <summary>Came down on its side or its roof: it lies there, its plates useless, until someone rights it.</summary>
+    public bool Toppled { get; private set; }
+
+    /// <summary>How far it is tipped from upright, radians.</summary>
+    public float Tilt => _tumble.Y.AngleTo(Vector3.Up);
+
+    /// <summary>The rider sets it back on its plates.</summary>
+    public void SetUpright()
+    {
+        Toppled = false;
+        _tumble = Basis.Identity;
+        _spin = Vector3.Zero;
+        Place();
+    }
+
+    /// <summary>
+    /// The weather's turn on it: its push acts above its middle (stronger aloft, uneven), so a hard push
+    /// tips it, and a vortex turns it round with it; its plates right it within their reach of the
+    /// ground, up to their limit. A light bike in a tornado's grip tumbles.
+    /// </summary>
+    void Turn(Vector3 push, float above, float dt)
+    {
+        var flat = new Vector3(push.X, 0f, push.Z);
+        Vector3 alpha = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
+        if (above < Hover * 2.5f)
+        {
+            Vector3 axis = _tumble.Y.Cross(Vector3.Up);
+            float tilt = Tilt;
+            Vector3 level = (axis.LengthSquared() > 1e-8f ? axis.Normalized() * (20f * tilt) : Vector3.Zero) - _spin * 4f;
+            alpha += level.LimitLength(PlateLevel);
+        }
+        _spin = ((_spin + alpha * dt) * MathF.Exp(-0.3f * dt)).LimitLength(7f);
+        float turn = _spin.Length() * dt;
+        if (turn > 1e-6f) _tumble = new Basis(_spin.Normalized(), turn) * _tumble;
+        _tumble = _tumble.Orthonormalized();
     }
 
     /// <summary>One physics tick.</summary>
@@ -90,15 +150,42 @@ public sealed class HoverBike
         Yaw += turn;
         LastTurn = turn;
 
+        // The weather's push first: drag by its area over its weight, a tornado's pull and fling. Parked on
+        // its skids it holds against a gale; past that it slides, braking hard on them.
+        var flatPush = new Vector3(_push.X, 0f, _push.Z);
+        bool parked = !Ridden && Grounded;
+        if (parked && flatPush.Length() <= ParkedHold) flatPush = Vector3.Zero;
+        Velocity += flatPush * dt + new Vector3(_kick.X, 0f, _kick.Z);
+        if (parked) Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-6f * dt) + Vector3.Up * Velocity.Y;
+        _vy += _push.Y * dt + _kick.Y;
+        bool tossed = _push.Y > 12f || _kick.Y > 0.5f;
+        Vector3 pushed = _push;
+        _push = _kick = Vector3.Zero;
+        float above = Position.Y - _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
+        Turn(pushed, above, dt);
+        if (Toppled)
+        {
+            // On its side or its roof: no cushion, no drive. It lies on the ground, sliding to a stop.
+            float ground = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
+            Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-4f * dt);
+            Position += Velocity * dt;
+            Position.Y = ground + 0.35f;
+            _vy = 0f;
+            _spin = Vector3.Zero;
+            Place();
+            return;
+        }
+
         Vector3 fwd = Forward, right = Right;
         Vector3 flat = new(Velocity.X, 0f, Velocity.Z);
         float vf = flat.Dot(fwd), vs = flat.Dot(right);
         float max = boost ? BoostSpeed : MaxSpeed;
         if (throttle > 0f) vf = vf < max ? MathF.Min(max, vf + Accel * (boost ? 1.6f : 1f) * throttle * dt) : MathF.Max(max, vf - 12f * dt);
         else if (throttle < 0f) vf = MathF.Max(-ReverseSpeed, vf - (vf > 0f ? Brake : 10f) * -throttle * dt);
-        else if (!Ridden) vf = MathF.Abs(vf) <= ParkedBrake * dt ? 0f : vf - MathF.Sign(vf) * ParkedBrake * dt; // nobody on it: the pads drop and drag it to a stop
-        else vf *= MathF.Exp(-0.55f * dt);
-        vs *= MathF.Exp(-(Ridden ? 3.2f : 12f) * dt); // it drifts a little through a turn, then grips
+        // Only on its cushion do its pads drag: in the air it flies as thrown.
+        else if (Grounded && !Ridden) vf = MathF.Abs(vf) <= ParkedBrake * dt ? 0f : vf - MathF.Sign(vf) * ParkedBrake * dt; // nobody on it: the pads drop and drag it to a stop
+        else if (Grounded) vf *= MathF.Exp(-0.55f * dt);
+        if (Grounded) vs *= MathF.Exp(-(Ridden ? 3.2f : 12f) * dt); // it drifts a little through a turn, then grips
         Vector3 move = fwd * vf + right * vs;
 
         // Ahead: a wall, a cliff or a trunk stops it (it slides along nothing: it just loses the speed).
@@ -125,9 +212,12 @@ public sealed class HoverBike
         float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out bool water);
         OnWater = water;
         float target = surface + Hover;
-        if (Position.Y > target + 0.35f) { _vy -= 12f * dt; Grounded = false; }
+        bool wasAirborne = !Grounded;
+        if (Position.Y > target + 0.35f || tossed) { _vy -= 12f * dt; Grounded = false; }
         else
         {
+            // Back down: tipped past its plates' reach, it lands on its side or roof and stays there.
+            if (wasAirborne && Tilt > 1.05f) Toppled = true;
             _vy += (70f * (target - Position.Y) - 16f * _vy) * dt;
             Grounded = true;
         }
@@ -154,6 +244,15 @@ public sealed class HoverBike
             _owner.Puff?.Invoke(at, water ? new Color(0.82f, 0.92f, 1f, 0.55f) : new Color(0.56f, 0.5f, 0.42f, 0.45f), 0.7f + Speed * 0.03f);
         }
     }
+
+    /// <summary>The weather pushes it, N, for this tick (see <see cref="BikeBody"/>).</summary>
+    public void Push(Vector3 force) => _push += force / Mass;
+
+    /// <summary>An instant change of momentum, N·s: a tornado's fling.</summary>
+    public void Kick(Vector3 impulse) => _kick += impulse / Mass;
+
+    /// <summary>It and its rider, kg.</summary>
+    public float Mass => Weight + (Ridden ? Slice.Player.Survivor.Mass : 0f);
 
     /// <summary>Straight down onto the ground, as a parked bike settles (and where it starts).</summary>
     public void Settle()
@@ -197,13 +296,30 @@ public sealed partial class HoverBikes : Node3D
     public void Remove(HoverBike bike)
     {
         _bikes.Remove(bike);
+        bike.Weather?.Unregister(bike.Pushed);
         bike.Free();
     }
 
+    /// <summary>A tornado has caught a ridden bike: the rider is torn off it (and is caught on their own).</summary>
+    public Action<HoverBike> TornOff;
+
     public void Tick(float dt)
     {
+        // The weather reaches every bike as it does every other body: drag by mass, a tornado's grip and fling.
+        Weather.Forces.ForceModule forces = _zone.Weather?.Bridge?.Forces;
+        foreach (HoverBike b in _bikes)
+        {
+            if (b.Weather == forces) continue;
+            b.Weather?.Unregister(b.Pushed);
+            b.Pushed ??= new BikeBody(b, this);
+            b.Weather = forces;
+            forces?.Register(b.Pushed);
+        }
         foreach (HoverBike b in _bikes) b.Tick(dt);
     }
+
+    /// <summary>Is a point out of the weather (a place's roof, a deep hole): the zone's own shelter rule.</summary>
+    internal bool Sheltered(Vector3 at) => _zone.Weather?.ShelteredAt(at) ?? false;
 
     /// <summary>The nearest bike whose seat is within reach of a point, and how far.</summary>
     public HoverBike Nearest(Vector3 from, float reach, out float distance)
@@ -324,5 +440,40 @@ static class BikeModel
         }
         root.AddChild(new OmniLight3D { Position = new Vector3(0f, -0.25f, 0f), LightColor = new Color(0.3f, 0.9f, 1f), LightEnergy = 1.1f, OmniRange = 4.5f, ShadowEnabled = false });
         return root;
+    }
+}
+
+/// <summary>
+/// A hover bike as the weather's force module sees it: its weight (and its rider's), its drag area
+/// and where it is. The wind and a tornado push it by the same rules as every other body; out of the
+/// weather (a roof, a deep hole) nothing reaches it. A tornado that catches a ridden bike tears the
+/// rider off, and each is thrown by its own mass.
+/// </summary>
+internal sealed class BikeBody : Weather.Forces.IForceBody
+{
+    readonly HoverBike _bike;
+    readonly HoverBikes _owner;
+
+    public BikeBody(HoverBike bike, HoverBikes owner)
+    {
+        _bike = bike;
+        _owner = owner;
+    }
+
+    public float Mass => _bike.Mass;
+    public float DragArea => _owner.Sheltered(_bike.Position) ? 0f : HoverBike.DragArea + (_bike.Ridden ? 0.9f : 0f);
+    public Vector3 Position => _bike.Position + Vector3.Up * 0.5f;
+    public Vector3 Velocity => _bike.Velocity;
+
+    public void ApplyForce(Vector3 force)
+    {
+        if (_owner.Sheltered(_bike.Position)) return;
+        if (_bike.Ridden && _bike.Weather?.PhaseOf(this) == Weather.Forces.VortexPhase.Caught) _owner.TornOff?.Invoke(_bike);
+        _bike.Push(force);
+    }
+
+    public void ApplyImpulse(Vector3 impulse)
+    {
+        if (!_owner.Sheltered(_bike.Position)) _bike.Kick(impulse);
     }
 }

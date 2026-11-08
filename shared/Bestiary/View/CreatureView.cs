@@ -214,7 +214,15 @@ public partial class CreatureView : Node3D
         }
 
         Transform3D[] pose = c.Rig.Pose;
-        for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = pose[i];
+        if (c.Tumble.IsEqualApprox(Quaternion.Identity))
+            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = pose[i];
+        else
+        {
+            // Thrown or downed: the whole body turned about its middle, whatever its rig does.
+            Vector3 middle = c.Position + Vector3.Up * c.Species.Body.Height * 0.5f;
+            var turned = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle);
+            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = turned * pose[i];
+        }
 
         // Only touch the per-instance hurt flash when it changes.
         float hurt = MathF.Round(c.HurtFlash * 10f) / 10f;

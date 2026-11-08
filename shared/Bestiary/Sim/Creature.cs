@@ -61,6 +61,15 @@ public sealed class Creature
 
     /// <summary>Thrown by something bigger than itself (a tornado): in the air until it lands (<see cref="WildSim.Throw"/>).</summary>
     public bool Thrown;
+
+    /// <summary>How a throw has turned the whole body about its middle: it tumbles in the air, and lies as it landed.</summary>
+    public Quaternion Tumble = Quaternion.Identity;
+
+    /// <summary>How fast it is tumbling, rad/s (world axes).</summary>
+    public Vector3 TumbleSpin;
+
+    /// <summary>Seconds left lying where a hard landing put it, on its side or back, before it gets up.</summary>
+    public float Downed;
     public float Yaw;
     public float Age;
 
