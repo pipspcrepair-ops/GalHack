@@ -109,7 +109,12 @@ public partial class WildlifePatch : Node3D
         world.Bloom = planet.Roll?.Orbit.Contains("bloom") == true;
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
-        View.Shown = (c, d, shown) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, 1f);
+        View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
+        View.Fader = (n, shows) =>
+        {
+            if (shows >= 1f) PlanetSurface.Fx.Fade.Clear(n);
+            else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
+        };
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);

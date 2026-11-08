@@ -53,6 +53,9 @@ public partial class Place : Node3D
         public bool Modified;
         public Task<List<ChunkMesh>> Meshing;
         public int Next;
+        /// <summary>How far its full detail has dissolved in over the merged cube (0..1), and which way it is going (+1, -1, 0: still).</summary>
+        public float Blend;
+        public int Way;
         public readonly List<Door> Doors = new();
     }
 
@@ -152,6 +155,9 @@ public partial class Place : Node3D
         {
             mesh = new MeshInstance3D { Name = $"Chunk {chunk.Chunk}", Mesh = MeshBuild.ToMesh(chunk, _materials.BySurface) };
             AddChild(mesh);
+            // A cube still coming in shows nothing until all of it is in, and then dissolves in (ShowNear).
+            Group g = GroupAt(GroupOf(chunk.Chunk));
+            if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(mesh, 0f, g.Way != 0 ? g.Blend : 0f);
         }
         _chunks[chunk.Chunk] = (mesh, old.Shape);
     }
@@ -244,7 +250,8 @@ public partial class Place : Node3D
         foreach (Group g in _groups.Values)
         {
             if (g.Meshing != null || g.Modified) continue;
-            if (g.Near && (Dormant || Away(g.Key, eye) > rules.NearDrop)) DropNear(g);
+            if (Dormant && (g.Near || g.Way != 0)) DropNear(g, instant: true);
+            else if (g.Near && g.Way == 0 && Away(g.Key, eye) > rules.NearDrop) DropNear(g);
         }
         if (Dormant) return;
         while (_meshing < 4)
@@ -253,7 +260,7 @@ public partial class Place : Node3D
             float best = rules.NearRadius;
             foreach (Group g in _groups.Values)
             {
-                if (g.Near || g.Meshing != null) continue;
+                if (g.Near || g.Meshing != null || g.Way != 0) continue;
                 float d = g.Modified ? 0f : Away(g.Key, eye);
                 if (d < best) { best = d; next = g; }
             }
@@ -278,21 +285,75 @@ public partial class Place : Node3D
         if (g.Near) return;
         var built = Mesher.Build(new ChunkWindow(Inst.Blocks, key * GroupSize, GroupSize), Inst.Layout.Occupied, Options(key * GroupSize, collision: false));
         foreach (ChunkMesh c in built) SetChunkMesh(c);
-        ShowNear(g, true);
+        ShowNear(g, true, instant: true);
     }
 
-    void ShowNear(Group g, bool near)
+    /// <summary>How long a cube's full detail and the planet's merged cube take to dissolve one into the other, s.</summary>
+    const float NearBlendSeconds = 0.45f;
+
+    readonly List<Group> _fading = new();
+
+    /// <summary>
+    /// A cube's full detail comes in over the planet's merged cube, or gives way to it: the two
+    /// dissolve one into the other through the fade pattern (PlanetSurface.Fx.Fade), so detail never
+    /// swaps in hard; collision is the full detail's throughout. Instant for tests, the warm-up and a dormant place.
+    /// </summary>
+    void ShowNear(Group g, bool near, bool instant = false)
     {
-        if (g.Near != near) PlanetSurface.Fx.PopLog.Note("detail", near ? "full detail in" : "full detail out", Away(g.Key, FromWorld(Places.EyeAt())), GroupSize, 1f);
+        if (g.Near != near || g.Way != 0)
+            PlanetSurface.Fx.PopLog.Note("detail", near ? "full detail in" : "full detail out", Away(g.Key, FromWorld(Places.EyeAt())), GroupSize, instant ? 1f : 1f / (60f * NearBlendSeconds));
         g.Near = near;
-        Places.Zone.Pois.HideGroup(Site, g.Key, near);
-        foreach (Door d in g.Doors) d.Root.Visible = near;
+        if (instant)
+        {
+            g.Blend = near ? 1f : 0f;
+            EndBlend(g, near ? 1 : -1);
+            return;
+        }
+        g.Way = near ? 1 : -1;
+        Places.Zone.Pois.HideGroup(Site, g.Key, false);
+        foreach (Door d in g.Doors) d.Root.Visible = true;
+        Bands(g);
+        if (!_fading.Contains(g)) _fading.Add(g);
     }
 
-    void DropNear(Group g)
+    IEnumerable<MeshInstance3D> MeshesOf(Group g)
     {
-        ShowNear(g, false);
-        int k = GroupSize / ChunkSize;
+        foreach (var (ch, c) in _chunks)
+            if (c.Mesh != null && GroupOf(ch) == g.Key) yield return c.Mesh;
+    }
+
+    void Bands(Group g)
+    {
+        foreach (MeshInstance3D m in MeshesOf(g)) PlanetSurface.Fx.Fade.Set(m, 0f, g.Blend);
+        foreach (Door d in g.Doors) PlanetSurface.Fx.Fade.Set(d.Root, 0f, g.Blend);
+        Places.Zone.Pois.FadeGroup(Site, g.Key, g.Blend);
+    }
+
+    void StepFades(float dt)
+    {
+        if (_fading.Count == 0) return;
+        foreach (Group g in _fading)
+        {
+            g.Blend = Mathf.Clamp(g.Blend + g.Way * dt / NearBlendSeconds, 0f, 1f);
+            if (g.Way > 0 ? g.Blend >= 1f : g.Blend <= 0f) EndBlend(g, g.Way);
+            else Bands(g);
+        }
+        _fading.RemoveAll(g => g.Way == 0);
+    }
+
+    /// <summary>A cube's blend is over: in (the merged cube hidden) or out (its full-detail meshes gone).</summary>
+    void EndBlend(Group g, int way)
+    {
+        g.Way = 0;
+        foreach (MeshInstance3D m in MeshesOf(g)) PlanetSurface.Fx.Fade.Clear(m);
+        foreach (Door d in g.Doors)
+        {
+            PlanetSurface.Fx.Fade.Clear(d.Root);
+            d.Root.Visible = way > 0;
+        }
+        Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
+        Places.Zone.Pois.HideGroup(Site, g.Key, way > 0);
+        if (way > 0) return;
         foreach (Int3 ch in _chunks.Keys.ToList())
         {
             if (GroupOf(ch) != g.Key) continue;
@@ -302,10 +363,17 @@ public partial class Place : Node3D
         }
     }
 
+    void DropNear(Group g, bool instant = false) => ShowNear(g, false, instant);
+
     /// <summary>The place is going back to the planet's drawing: every cube of it shows there again.</summary>
     internal void GiveBack()
     {
-        foreach (Group g in _groups.Values) Places.Zone.Pois.HideGroup(Site, g.Key, false);
+        foreach (Group g in _groups.Values)
+        {
+            Places.Zone.Pois.FadeGroup(Site, g.Key, 0f, done: true);
+            Places.Zone.Pois.HideGroup(Site, g.Key, false);
+        }
+        PlanetSurface.Fx.Fade.Forget(this);
     }
 
     /// <summary>Cubes drawn in full now (tests).</summary>
@@ -349,6 +417,8 @@ public partial class Place : Node3D
     {
         if (!Ready) return;
         TickTiers();
+        StepFades((float)delta);
+        StepDressFades((float)delta);
         if (Dormant) return;
         TickLights((float)delta);
         TickDress();

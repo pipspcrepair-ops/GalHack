@@ -86,14 +86,18 @@ public partial class TerrainStreamer
             NoteCover(done);
         }
 
-        // Nearest missing cells first, a couple at a time: the workers are the far rings' too.
-        int asked = 0;
-        for (int r = 0; r <= CoverRadius && asked < 2 && _coverPending.Count < 4; r++)
-        for (int dz = -r; dz <= r && asked < 2; dz++)
-        for (int dx = -r; dx <= r && asked < 2; dx++)
+        // Nearest missing cells first, a couple at a time: the workers are the far rings' too. A moving
+        // focus asks round the point it will be at in a second and a half, so cover is in before it is in reach.
+        int asked = 0, most = Heading.LengthSquared() > 25f ? 3 : 2;
+        Vector3 lead = new Vector3(Heading.X, 0f, Heading.Z) * 1.5f;
+        lead = lead.LimitLength(CoverBuilder.FarReach * 0.75f);
+        int ax = fx + Mathf.RoundToInt(lead.X / CoverBuilder.CellSize), az = fz + Mathf.RoundToInt(lead.Z / CoverBuilder.CellSize);
+        for (int r = 0; r <= CoverRadius && asked < most && _coverPending.Count < most * 2; r++)
+        for (int dz = -r; dz <= r && asked < most; dz++)
+        for (int dx = -r; dx <= r && asked < most; dx++)
         {
             if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
-            var key = (Mod(fx + dx, width), Mod(fz + dz, height));
+            var key = (Mod(ax + dx, width), Mod(az + dz, height));
             if (_coverCells.ContainsKey(key) || !_coverPending.Add(key)) continue;
             asked++;
             int cx = key.Item1, cz = key.Item2, version = _coverVersion;
@@ -137,6 +141,8 @@ public partial class TerrainStreamer
         {
             if (!_coverCells.TryGetValue((Mod(fx + dx, width), Mod(fz + dz, height)), out CoverCell cell)) continue;
             float ox = dx * CoverBuilder.CellSize, oz = dz * CoverBuilder.CellSize;
+            // Grown in a while since: no longer marked (else the shader's 400 s clock would come round to it again).
+            if (cell.Born != 0 && Mathf.PosMod(CoverClock() - cell.Born, 4000) > 20) cell.Born = 0;
             float away = focus.DistanceTo(new Vector2(origin.X + ox + CoverBuilder.CellSize * 0.5f, origin.Z + oz + CoverBuilder.CellSize * 0.5f)) - CoverBuilder.CellSize * 0.75f;
             foreach (var (plant, buffer, count) in cell.Plants)
             {
@@ -150,7 +156,9 @@ public partial class TerrainStreamer
                 {
                     d.Buffer[to + i * 16 + 3] += ox;
                     d.Buffer[to + i * 16 + 11] += oz;
+                    d.Buffer[to + i * 16 + 15] += cell.Born;
                 }
+                if (cell.Born != 0) _coverDirty = true; // filled again once it has grown, unmarked
                 d.Filled += take;
             }
         }
@@ -191,26 +199,42 @@ public partial class TerrainStreamer
         return d;
     }
 
-    /// <summary>A cell of cover landed: for the pop-in log, how much of it shows at once where it stands (the shader shrinks each tuft in by its own reach).</summary>
+    /// <summary>
+    /// A cell of cover landed: if any of it is in sight already (the shader shrinks each tuft in by
+    /// its own reach), it grows in from now rather than appearing (<see cref="CoverCell.Born"/>).
+    /// </summary>
     void NoteCover(CoverCell cell)
     {
-        if (!Fx.PopLog.On) return;
         Vector3 eye = Eye();
         float x0 = (float)NearestCopy(cell.Cx * CoverBuilder.CellSize, CoverBuilder.CellSize, eye.X, World.Terrain.Width);
         float z0 = (float)NearestCopy(cell.Cz * CoverBuilder.CellSize, CoverBuilder.CellSize, eye.Z, World.Terrain.Height);
+        float ex = MathF.Max(0f, MathF.Max(x0 - eye.X, eye.X - x0 - CoverBuilder.CellSize)), ez = MathF.Max(0f, MathF.Max(z0 - eye.Z, eye.Z - z0 - CoverBuilder.CellSize));
+        if (ex * ex + ez * ez > CoverBuilder.FarReach * CoverBuilder.FarReach) return; // none of it within reach
         float most = 0f, nearest = float.MaxValue;
         foreach (var (_, buffer, count) in cell.Plants)
             for (int i = 0; i < count; i++)
             {
                 int o = i * 16;
-                float away = new Vector2(x0 + buffer[o + 3] - eye.X, z0 + buffer[o + 11] - eye.Z).Length();
+                float away = new Vector3(x0 + buffer[o + 3] - eye.X, buffer[o + 7] - eye.Y, z0 + buffer[o + 11] - eye.Z).Length();
                 float reach = CoverBuilder.ReachOf(buffer[o + 15]);
                 float keep = 1f - Mathf.SmoothStep(reach * 0.72f, reach, away);
                 if (keep <= 0f) continue;
                 most = MathF.Max(most, keep);
                 nearest = MathF.Min(nearest, away);
             }
-        if (most > 0f) Fx.PopLog.Note("cover", "cell lands", nearest, 0.6f, most);
+        if (most <= 0f) return;
+        cell.Born = CoverClock();
+        Fx.PopLog.Note("cover", "cell lands in sight, grows in", nearest, 0.6f, most / (60f * CoverGrowSeconds));
+    }
+
+    /// <summary>How long cover that lands in sight takes to grow in, s (flora_cover.gdshader's GROW).</summary>
+    const float CoverGrowSeconds = 0.6f;
+
+    /// <summary>The shaders' clock (TIME, which rolls over each hour) in tenths of a second round 400 s, from 1.</summary>
+    static int CoverClock()
+    {
+        int k = (int)(Time.GetTicksMsec() / 100 % 4000);
+        return k > 0 ? k : 1;
     }
 
     /// <summary>A far chunk's ground changed: its cover is laid out afresh.</summary>

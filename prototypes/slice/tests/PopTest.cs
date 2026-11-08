@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -35,6 +35,9 @@ public partial class PopTest : Node
     /// <summary>The most a change may move on screen in one frame, px (1080 lines).</summary>
     const float MostPixels = 4f;
 
+    /// <summary>A change of less than this share of a thing in one frame is a fade (it takes ten frames or more), not a pop, however big the thing.</summary>
+    const float Sudden = 0.1f;
+
     /// <summary>The most a far mesh may stand off its merged blocks: a share of its size, and of each colour channel.</summary>
     const float MostSizeGap = 0.12f, MostToneGap = 0.05f;
 
@@ -54,6 +57,7 @@ public partial class PopTest : Node
         }) { IsBackground = true };
         thread.Start();
         _report = OS.GetCmdlineUserArgs().Contains("--report=1");
+        PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world, for the flight over it
         ProcessPriority = 100;
         _run = Scenario().GetEnumerator();
     }
@@ -76,6 +80,7 @@ public partial class PopTest : Node
     }
 
     double _delta;
+    int _farBuilt;
 
     void Check(bool ok, string what)
     {
@@ -115,9 +120,12 @@ public partial class PopTest : Node
         foreach (int x in Route("fly", city ?? town ?? any, 90f, 70f, 2600f, -700f)) yield return x;
 
         GD.Print("-- far meshes against merged blocks --");
-        var gaps = places?.OrderBy(_ => rng.Next()).Take(40).Select(s => (Site: s, Gap: PoiLayer.StandInGap(s))).ToList() ?? new();
+        var sample = places?.OrderBy(_ => rng.Next()).Take(40).ToList() ?? new();
+        var gaps = sample.Select(s => (Site: s, Gap: PoiLayer.StandInGap(s))).ToList();
         if (gaps.Count > 0)
         {
+            var was = sample.Select(s => PoiLayer.StandInGap(s, AsItWas(s.Instance.Blocks, s.Instance.Layout.Occupied))).ToList();
+            GD.Print($"  (the far mesh as it was: {was.Average(g => g.Size):P0} off in size on average, at worst {was.Max(g => g.Size):P0}; {was.Average(g => g.Tone):F3} off in colour, at worst {was.Max(g => g.Tone):F3})");
             var worst = gaps.OrderByDescending(g => g.Gap.Size).First();
             var worstTone = gaps.OrderByDescending(g => g.Gap.Tone).First();
             Check(_report || worst.Gap.Size <= MostSizeGap, $"far meshes keep their merged blocks' size: {gaps.Average(g => g.Gap.Size):P0} off on average over {gaps.Count} places, at worst {worst.Gap.Size:P0} ({worst.Site.Name})");
@@ -167,6 +175,7 @@ public partial class PopTest : Node
         _game.Zone.Streamer.ResetStats();
         places.ResetWorst();
         var frames = new List<double>();
+        _farBuilt = _game.Zone.Streamer.FarBuilds.Sum();
         float length = from - to, gone = 0f;
         var run = Stopwatch.StartNew();
         while (gone < length && run.Elapsed.TotalSeconds < 120)
@@ -187,16 +196,70 @@ public partial class PopTest : Node
         Judge(name, site, speed, length, pops, frames);
     }
 
+    /// <summary>
+    /// The far mesh as it was before it kept to its merged blocks (4 m cells solid from 7 blocks in
+    /// 64, every block's colour averaged in, inner walls and floors too): what the measure compares with.
+    /// </summary>
+    static PoiGenerator.Gen.ChunkMesh AsItWas(PoiGenerator.Gen.BlockGrid g, PoiGenerator.Gen.CellMask occupied, int step = 4, int minimum = 7)
+    {
+        var size = new PoiGenerator.Gen.Int3((g.Size.X + step - 1) / step, (g.Size.Y + step - 1) / step, (g.Size.Z + step - 1) / step);
+        var count = new int[size.X * size.Y * size.Z];
+        var sum = new long[count.Length * 3];
+        var window = new PoiGenerator.Gen.Rgb(0x8e, 0x9a, 0xa6);
+        foreach (var (c, b) in g.Blocks())
+        {
+            int weight = PoiGenerator.Gen.BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is PoiGenerator.Gen.BlockType.Ramp or PoiGenerator.Gen.BlockType.Corner or PoiGenerator.Gen.BlockType.InvCorner
+                or PoiGenerator.Gen.BlockType.Stair or PoiGenerator.Gen.BlockType.Rib or PoiGenerator.Gen.BlockType.Pillar or PoiGenerator.Gen.BlockType.Pipe or PoiGenerator.Gen.BlockType.Tank or PoiGenerator.Gen.BlockType.Lattice ? 1 : 0;
+            if (weight == 0 || PoiGenerator.Gen.BlockInfo.IsTransparent(b.Material)) continue;
+            var l = c - g.Min;
+            int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
+            count[i] += weight;
+            var col = b.Role == PoiGenerator.Gen.Role.Window ? window : b.Color;
+            sum[i * 3] += col.R * weight;
+            sum[i * 3 + 1] += col.G * weight;
+            sum[i * 3 + 2] += col.B * weight;
+        }
+        var coarse = new PoiGenerator.Gen.BlockGrid(new PoiGenerator.Gen.Int3(0, 0, 0), size);
+        for (int y = 0, i = 0; y < size.Y; y++)
+            for (int z = 0; z < size.Z; z++)
+                for (int x = 0; x < size.X; x++, i++)
+                {
+                    int n = count[i];
+                    if (n < minimum * 2) continue;
+                    var color = new PoiGenerator.Gen.Rgb((byte)(sum[i * 3] / n), (byte)(sum[i * 3 + 1] / n), (byte)(sum[i * 3 + 2] / n));
+                    coarse.Set(new PoiGenerator.Gen.Int3(x, y, z), new PoiGenerator.Gen.Block(PoiGenerator.Gen.BlockType.Cube, PoiGenerator.Gen.Material.Concrete, color, PoiGenerator.Gen.Role.Wall));
+                }
+        var built = PoiGenerator.Gen.Mesher.Build(coarse, occupied, new PoiGenerator.Gen.MeshOptions { ChunkSize = Math.Max(size.X, Math.Max(size.Y, size.Z)) + 1, Rock = false, Collision = false, Detail = false, Doors = false, Merged = true });
+        var all = new PoiGenerator.Gen.ChunkMesh();
+        foreach (var m in built)
+            for (int k = 0; k < m.Surfaces.Length; k++)
+            {
+                var from = m.Surfaces[k];
+                var to = all.Surfaces[k];
+                int first = to.VertexCount;
+                for (int v = 0; v < from.VertexCount; v++)
+                {
+                    to.Positions.Add(from.Positions[v * 3] * step + g.Min.X);
+                    to.Positions.Add(from.Positions[v * 3 + 1] * step + g.Min.Y);
+                    to.Positions.Add(from.Positions[v * 3 + 2] * step + g.Min.Z);
+                }
+                to.Normals.AddRange(from.Normals);
+                to.Colors.AddRange(from.Colors);
+                foreach (int ix in from.Indices) to.Indices.Add(first + ix);
+            }
+        return all;
+    }
+
     void Judge(string name, PoiSite site, float speed, float length, List<PopLog.Pop> pops, List<double> frames)
     {
         float focal = 540f / MathF.Tan(Mathf.DegToRad(_game.Settings.Fov) * 0.5f);
         float Pixels(PopLog.Pop p) => p.Jump * p.Size / MathF.Max(p.Distance, 1f) * focal;
         bool Hard(PopLog.Pop p) => p.Jump >= 0.5f && p.Distance < Inside;
-        bool Seen(PopLog.Pop p) => Pixels(p) >= MostPixels;
+        bool Seen(PopLog.Pop p) => p.Jump >= Sudden && Pixels(p) >= MostPixels;
         var bad = pops.Where(p => Hard(p) || Seen(p)).ToList();
         frames.Sort();
         double p99 = frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0;
-        GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms");
+        GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms; far chunks built on the way {_game.Zone.Streamer.FarBuilds.Sum() - _farBuilt}, nearest ring behind at the end {_game.Zone.Streamer.FarBehindNearest}; worst streaming frame: {_game.Zone.Streamer.WorstBreakdown}; worst far node put in {_game.Zone.Streamer.WorstFarNodeMs:F1} ms");
         foreach (var g in pops.GroupBy(p => (p.Kind, p.What)).OrderBy(g => g.Key.Kind))
         {
             var seen = g.Where(p => Hard(p) || Seen(p)).ToList();

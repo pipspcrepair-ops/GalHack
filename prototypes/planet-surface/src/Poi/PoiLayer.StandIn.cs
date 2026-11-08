@@ -12,26 +12,30 @@ namespace PlanetSurface.Poi;
 /// </summary>
 public partial class PoiLayer
 {
-    public static (float Size, float Tone) StandInGap(PoiSite site)
+    /// <param name="far">the far mesh to judge (left out: the one the layer draws)</param>
+    public static (float Size, float Tone) StandInGap(PoiSite site, ChunkMesh far = null)
     {
         BlockGrid g = site.Instance.Blocks;
         CellMask occupied = site.Instance.Layout.Occupied;
-        var far = Outside(new List<ChunkMesh> { Mesher.Coarse(g, occupied) }, g);
-        var near = Outside(Mesher.Build(g, occupied, MidOptions(g)), g);
-        if (near.Area <= 0f || far.Area <= 0f) return (1f, 1f);
-        float size = 0f;
+        // The far mesh is a solid lump with its inner faces culled: all of it is outside.
+        var outside = Outside(new List<ChunkMesh> { far ?? Mesher.Coarse(g, occupied) }, g, lump: true);
+        var near = Outside(Mesher.Build(g, occupied, MidOptions(g)), g, lump: false);
+        if (near.Area <= 0f || outside.Area <= 0f) return (1f, 1f);
+        // Each way's change against the place's own size (its widest way): what the eye sees of it at the switch.
+        float size = 0f, widest = 1f;
+        for (int k = 0; k < 3; k++) widest = MathF.Max(widest, near.Hi[k] - near.Lo[k]);
         for (int k = 0; k < 3; k++)
         {
-            float a = near.Hi[k] - near.Lo[k], b = far.Hi[k] - far.Lo[k];
-            size = MathF.Max(size, MathF.Abs(b - a) / MathF.Max(a, 1f));
+            float a = near.Hi[k] - near.Lo[k], b = outside.Hi[k] - outside.Lo[k];
+            size = MathF.Max(size, MathF.Abs(b - a) / widest);
         }
         float tone = 0f;
-        for (int k = 0; k < 3; k++) tone += MathF.Abs(far.Colour[k] - near.Colour[k]) / 3f;
+        for (int k = 0; k < 3; k++) tone += MathF.Abs(outside.Colour[k] - near.Colour[k]) / 3f;
         return (size, tone);
     }
 
     /// <summary>The faces of a drawing that the outside sees (nothing solid of the place stands in front of them): their extent above ground, and their mean colour by area.</summary>
-    static (float[] Lo, float[] Hi, float[] Colour, float Area) Outside(List<ChunkMesh> meshes, BlockGrid g)
+    static (float[] Lo, float[] Hi, float[] Colour, float Area) Outside(List<ChunkMesh> meshes, BlockGrid g, bool lump)
     {
         float[] lo = { float.MaxValue, float.MaxValue, float.MaxValue }, hi = { float.MinValue, float.MinValue, float.MinValue }, colour = new float[3];
         float area = 0f;
@@ -53,8 +57,8 @@ public partial class PoiLayer
                     nx /= 2f * a; ny /= 2f * a; nz /= 2f * a;
                     if (ny < -0.5f) continue; // undersides: never seen from the ground or the air
                     float px = ax + (bx + cx) / 3f, py = ay + (by + cy) / 3f, pz = az + (bz + cz) / 3f;
-                    if (py < 0f) continue; // buried
-                    if (!Open(g, px + nx * 0.5f, py + ny * 0.5f, pz + nz * 0.5f, nx, ny, nz, min, max)) continue;
+                    if (py < 2f) continue; // buried, or the paving it stands on: flush with the ground, it is no part of the outline
+                    if (!lump && !Open(g, px + nx * 0.5f, py + ny * 0.5f, pz + nz * 0.5f, nx, ny, nz, min, max)) continue;
                     float r = 0f, gr = 0f, bl = 0f;
                     foreach (int i in new[] { i0, i1, i2 })
                     {
@@ -64,12 +68,13 @@ public partial class PoiLayer
                     }
                     colour[0] += r * a; colour[1] += gr * a; colour[2] += bl * a;
                     area += a;
-                    float[] p = { px, py, pz };
-                    for (int k = 0; k < 3; k++)
-                    {
-                        lo[k] = MathF.Min(lo[k], p[k]);
-                        hi[k] = MathF.Max(hi[k], p[k]);
-                    }
+                    foreach (int i in new[] { i0, i1, i2 })
+                        for (int k = 0; k < 3; k++)
+                        {
+                            float v = k == 1 ? MathF.Max(b.Positions[i * 3 + 1], 0f) : b.Positions[i * 3 + k];
+                            lo[k] = MathF.Min(lo[k], v);
+                            hi[k] = MathF.Max(hi[k], v);
+                        }
                 }
             }
         if (area > 0f) for (int k = 0; k < 3; k++) colour[k] /= area;

@@ -38,7 +38,7 @@ public partial class TerrainStreamer : Node3D
     public Vector3 Heading;
 
     /// <summary>How long ahead of a moving focus the far rings stand, s, and the most that comes to, m.</summary>
-    const float FarLeadSeconds = 1.5f, FarLeadMost = 128f, FarLeadFrom = 15f;
+    const float FarLeadSeconds = 2.5f, FarLeadMost = 256f, FarLeadFrom = 15f;
 
     /// <summary>How many 16 m columns of diggable voxels stream each way round the focus; past them, the far rings. It can change while streaming (a game's view-distance setting): the ring of wanted columns is laid out again.</summary>
     public int VoxelRadius
@@ -427,13 +427,15 @@ public partial class TerrainStreamer : Node3D
         TimeSpan pausedBefore = GC.GetTotalPauseDuration();
         _frameStart = start;
         Array.Clear(_sections);
+        PopMs = 0;
 
         StreamVoxels();
         _sections[0] = Stopwatch.GetElapsedTime(start).TotalMilliseconds - _sections[4];
         long t = Stopwatch.GetTimestamp();
         StreamFar();
+        StepSwaps((float)Math.Min(delta, 0.1));
         StreamCover();
-        _sections[1] = Stopwatch.GetElapsedTime(t).TotalMilliseconds - _sections[2];
+        _sections[1] = Stopwatch.GetElapsedTime(t).TotalMilliseconds - _sections[2] - PopMs;
         t = Stopwatch.GetTimestamp();
         if (++_evictTimer >= 30)
         {
@@ -444,7 +446,7 @@ public partial class TerrainStreamer : Node3D
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
         LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
-        LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs;
+        LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs - PopMs;
         if (LastFrameMs > WorstFrameMs)
         {
             WorstFrameMs = LastFrameMs;
@@ -769,13 +771,27 @@ public partial class TerrainStreamer : Node3D
 
         List<(int fx, int fz, int lod, int d, float rank)> wanted = _farWanted;
         wanted.Clear();
+        // Each level reaches as far round the focus itself as round the point ahead: what is left behind
+        // a moving focus keeps its detail until it is as far off as anything is (flora dissolves by its
+        // own distance, so a level dropping under it must be past its reach).
+        int bx = (int)Math.Floor(cx / FarBuilder.Size) - ffx, bz = (int)Math.Floor(cz / FarBuilder.Size) - ffz;
+        if (bx > nx / 2) bx -= nx; else if (bx < -nx / 2) bx += nx;
+        if (bz > nz / 2) bz -= nz; else if (bz < -nz / 2) bz += nz;
+        static int LodAt(int d) => d <= FarLod0Radius ? 0 : d <= FarLod1Radius ? 1 : 2;
         for (int dz = -FarRadius; dz <= FarRadius; dz++)
         for (int dx = -FarRadius; dx <= FarRadius; dx++)
         {
-            int d = Math.Max(Math.Abs(dx), Math.Abs(dz));
-            int lod = d <= FarLod0Radius ? 0 : d <= FarLod1Radius ? 1 : 2;
-            wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), lod, d, d - Ahead(dx, dz) * 0.5f));
+            int d = Math.Max(Math.Abs(dx), Math.Abs(dz)), back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
+            wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), Math.Min(LodAt(d), LodAt(back)), Math.Min(d, back), Math.Min(d, back) - Ahead(dx, dz) * 0.5f));
         }
+        if (bx != 0 || bz != 0)
+            for (int dz = bz - FarLod1Radius; dz <= bz + FarLod1Radius; dz++)
+            for (int dx = bx - FarLod1Radius; dx <= bx + FarLod1Radius; dx++)
+            {
+                if (Math.Max(Math.Abs(dx), Math.Abs(dz)) <= FarRadius) continue; // in the square ahead already
+                int back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
+                wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), LodAt(back), back, back));
+            }
         wanted.Sort(static (a, b) => a.rank.CompareTo(b.rank));
         HashSet<(int, int)> keep = _farKeep;
         keep.Clear();
@@ -832,7 +848,7 @@ public partial class TerrainStreamer : Node3D
             FarBuilds[job.Lod]++;
             if (job.Version != f.Version) continue; // flora went stale: it is requested again
             NotePops(f, job);
-            f.Node?.QueueFree();
+            Node3D old = f.Node;
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
             f.Flora = job.Flora;
@@ -848,6 +864,7 @@ public partial class TerrainStreamer : Node3D
             f.Solids = job.Solids;
             if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
             AddChild(f.Node);
+            BeginSwap(job.Fx, job.Fz, old, f.Node);
         }
 
         // Drop far chunks out of range; place the rest at their copy nearest the focus.
@@ -857,6 +874,7 @@ public partial class TerrainStreamer : Node3D
             if (!keep.Contains(key))
             {
                 NoteGone(f);
+                EndSwap(key);
                 f.Node?.QueueFree();
                 (gone ??= new List<(int, int)>()).Add(key);
                 continue;
@@ -938,6 +956,8 @@ public partial class TerrainStreamer : Node3D
             float z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, at.Z, h);
             if (at.X < x0 - radius || at.X > x0 + FarBuilder.Size + radius || at.Z < z0 - radius || at.Z > z0 + FarBuilder.Size + radius) continue;
             foreach (FloraBatch b in f.Flora)
+            {
+                if (b.Far && f.Lod == 0) continue; // the same plants as the near drawing's
                 for (int i = 0; i < b.Count; i++)
                 {
                     int o = i * 16;
@@ -949,6 +969,7 @@ public partial class TerrainStreamer : Node3D
                     var turn = new Basis(new Vector3(buffer[o], buffer[o + 4], buffer[o + 8]), new Vector3(buffer[o + 1], buffer[o + 5], buffer[o + 9]), new Vector3(buffer[o + 2], buffer[o + 6], buffer[o + 10]));
                     if (!World.Felled.Contains(id)) yield return new PlantSighting(b.Kind, root, buffer[o + 5], id, b.Plant, b.Variant, turn);
                 }
+            }
         }
     }
 
@@ -1008,14 +1029,16 @@ public partial class TerrainStreamer : Node3D
             var multimesh = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = PlantMesh(b.Plant, b.Variant) ?? _floraMeshes[b.Kind] };
             multimesh.InstanceCount = b.Count;
             multimesh.Buffer = b.Buffer;
-            node.AddChild(new MultiMeshInstance3D
+            // Each plant dissolves by its own distance in the shader (FloraShows); the whole batch is
+            // only dropped once the nearest of it is past all of its reach (a chunk's half-diagonal on).
+            var flora = new MultiMeshInstance3D
             {
                 Multimesh = multimesh, MaterialOverride = _floraMaterial,
-                CastShadow = job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                VisibilityRangeEnd = job.Lod == 0 ? 520f : 760f,
-                VisibilityRangeEndMargin = 60f,
-                VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self,
-            });
+                CastShadow = !b.Far ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                VisibilityRangeEnd = (b.Far ? FloraFarReach : FloraNearReach) + FarBuilder.Size * 0.75f,
+            };
+            flora.SetInstanceShaderParameter("flora_layer", b.Far ? 1f : 0f);
+            node.AddChild(flora);
         }
         return node;
     }
@@ -1152,6 +1175,7 @@ public partial class TerrainStreamer : Node3D
             c.Body?.QueueFree();
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
+        ClearSwaps();
         if (World != null) ClearSolids();
         ClearCover();
         _chunks.Clear();
