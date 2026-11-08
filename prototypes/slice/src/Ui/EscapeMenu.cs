@@ -191,7 +191,8 @@ public partial class EscapeRoot : MenuPanel
             var strip = new Rect2(area.Position, new Vector2(area.Size.X, 52));
             g.Fill(strip, new Color(C.Glass, 0.85f));
             g.Fill(new Rect2(strip.Position, new Vector2(8, strip.Size.Y)), C.Accent2);
-            g.TextIn("VIEWING THE WORLD     click anywhere or press Esc to go back to the options", strip.Grow(-20), C.Text, 18);
+            g.TextIn("VIEWING THE WORLD", strip.Grow(-20), C.Text, 18);
+            g.TextIn("CLICK OR ESC TO GO BACK", strip.Grow(-20), C.Dim, 16, HorizontalAlignment.Right);
             if (!g.Drawing && g.Pressed)
             {
                 Viewing = false;
@@ -214,7 +215,6 @@ public partial class EscapeRoot : MenuPanel
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
         g.Text(Page == EscapePage.Options ? "OPTIONS" : "PAUSED", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
-        g.Text("THE WORLD IS STOPPED", header.Position + new Vector2(270, 27), C.Glass, 18, UiTheme.Label);
         if (Game.World is WorldChoice w)
             g.TextIn($"{w.Name.ToUpperInvariant()}   SEED {w.Seed}", new Rect2(header.Position.X + 620, header.Position.Y + 20, 640, 34), C.Glass, 18, HorizontalAlignment.Right, UiTheme.Mono);
 
@@ -236,7 +236,6 @@ public partial class EscapeRoot : MenuPanel
             Options.EndCapture();
         }
         if (g.Button("esc:quit", Next(), "QUIT TO DESKTOP", C.Danger, size: 24)) Confirming = true;
-        g.Text("ESC  resume", new Vector2(x, y + 6), C.Dim, 16);
 
         var right = new Rect2(area.Position.X + 410, area.Position.Y + 96, area.Size.X - 430, area.Size.Y - 116);
         if (Page == EscapePage.Options) Options.Build(g, right);
@@ -250,7 +249,7 @@ public partial class EscapeRoot : MenuPanel
         g.TextIn("NOT YET", new Rect2(r.End.X - 110, r.Position.Y + 6, 100, 22), C.Warn, 14, HorizontalAlignment.Right);
     }
 
-    /// <summary>This world: what it is, how long you have been here, how to have it again with no saves, and the keys that matter most.</summary>
+    /// <summary>This world: what it is, how long you have been here, and the keys that matter most.</summary>
     void WorldCard(Gui g, Rect2 area)
     {
         g.Caption("THIS WORLD", area.Position, area.Size.X);
@@ -260,7 +259,7 @@ public partial class EscapeRoot : MenuPanel
             ("WORLD", w?.Name ?? "-"),
             ("SEED", w != null ? $"{w.Seed}" : "-"),
             ("MODE", Game.Mode == GalHack.Items.GameMode.Creative ? "Creative" : "Survival"),
-            ("TIME SINCE THE CRASH", TimeSpan.FromSeconds(Game.Stats.Seconds).ToString(@"h\:mm\:ss")),
+            ("TIME HERE", TimeSpan.FromSeconds(Game.Stats.Seconds).ToString(@"h\:mm\:ss")),
             ("LEVEL", Game.Progress != null ? $"{Game.Progress.Level}  ({Game.Progress.Xp} XP)" : "-"),
         };
         float y = area.Position.Y + 40;
@@ -272,12 +271,6 @@ public partial class EscapeRoot : MenuPanel
         }
 
         y += 24;
-        g.Caption("SAVES", new Vector2(area.Position.X, y), area.Size.X);
-        string seed = w != null ? $"{w.Seed}" : "its seed";
-        g.Text("Saving and loading are not in the game yet. Until they are, a world lasts as long as the game runs.", new Vector2(area.Position.X + 14, y + 40), C.Text, 18);
-        g.Text($"To have this planet again, start a new game and type its seed, {seed}, on the start screen.", new Vector2(area.Position.X + 14, y + 68), C.Text, 18);
-
-        y += 124;
         g.Caption("KEYS", new Vector2(area.Position.X, y), area.Size.X);
         KeyBindings keys = Game.Settings.Keys;
         string[] shown = { "terminal", "map", "use", "seat", "tool-mode", "torch", "helmet", "view", "debug" };
@@ -291,10 +284,9 @@ public partial class EscapeRoot : MenuPanel
             g.TextIn(KeyBindings.Name(keys[a.Id]), key, C.Accent2, 17, HorizontalAlignment.Center, UiTheme.Mono);
             g.Text(a.Name, at + new Vector2(124, 5), C.Text, 18);
         }
-        g.Text("Every key can be changed in OPTIONS, CONTROLS.", new Vector2(area.Position.X + 14, y + 166), C.Dim, 16);
     }
 
-    /// <summary>QUIT TO DESKTOP? With no saves, the answer loses the world: the question says so, and gives its seed.</summary>
+    /// <summary>QUIT TO DESKTOP? With no saves, the answer loses the world: the question marks that, with its seed.</summary>
     void Question(Gui g, Rect2 area)
     {
         g.Fill(area, new Color(C.Glass, 0.55f));
@@ -304,8 +296,8 @@ public partial class EscapeRoot : MenuPanel
         var inner = box.Grow(-36);
         g.Text("QUIT TO DESKTOP?", inner.Position + new Vector2(4, 6), C.Text, 30, UiTheme.Display);
         string seed = Game.World != null ? $"{Game.World.Seed}" : "-";
-        g.Text("There are no saves yet: this world ends when the game does.", inner.Position + new Vector2(4, 70), C.Text, 19);
-        g.Text($"Its seed is {seed}. Type it on the start screen for the same planet again.", inner.Position + new Vector2(4, 100), C.Dim, 18);
+        g.Text("NO SAVES YET", inner.Position + new Vector2(4, 72), C.Warn, 20);
+        g.Text($"SEED {seed}", inner.Position + new Vector2(4, 104), C.Text, 20, UiTheme.Mono);
         var buttons = new Rect2(inner.Position.X, inner.End.Y - 60, inner.Size.X, 60);
         if (g.Button("esc:quit-yes", new Rect2(buttons.Position, new Vector2(360, 60)), "QUIT", C.Danger, size: 24)) Menu.Quit();
         if (g.Button("esc:quit-no", new Rect2(buttons.End.X - 360, buttons.Position.Y, 360, 60), "STAY", C.Accent2, size: 24)) Confirming = false;
