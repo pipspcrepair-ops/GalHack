@@ -63,8 +63,10 @@ public partial class PoiTest
                     else if (open != DoorSize.Tall) { noHead++; Note(f.Id, $"{name}: a {(exit ? "way in" : "door")} {open} m clear under its head at {lo}"); }
                     // No person's door outlined in hazard yellow: not its jambs, not its head (a dangerous one wears stripes on its own door).
                     Int3 alongWall = facing.RotateCw(1).Vec();
-                    Int3? yellow = cells.SelectMany(c => new[] { c + alongWall, c - alongWall, c + Int3.Up }).Where(c => !cells.Contains(c)).Cast<Int3?>()
-                        .FirstOrDefault(c => g.Get(c!.Value) is { Role: Role.Wall } w && Facade.IsHazard(w.Color));
+                    // An outline is a colour the wall doesn't wear further off (a sandstone wall is no frame).
+                    Int3? yellow = cells.SelectMany(c => new[] { (c + alongWall, c + alongWall * 4), (c - alongWall, c - alongWall * 4), (c + Int3.Up, c + Int3.Up * 3) })
+                        .Where(x => !cells.Contains(x.Item1)).Cast<(Int3, Int3)?>()
+                        .FirstOrDefault(x => g.Get(x!.Value.Item1) is { Role: Role.Wall } w && Facade.IsHazard(w.Color) && g.Get(x.Value.Item2).Color != w.Color)?.Item1;
                     if (!danger && yellow is Int3 yc) { outlined++; Note(f.Id, $"{name}: a {(exit ? "way in" : "door")} outlined in {g.Get(yc).Color} at {yc}"); }
                     // Either side, past the wall's own thickness (the cells still under the door's head): nothing hangs lower than
                     // the head over the way, out of doors nothing lower than the head and a metre more. A wall or a machine standing
