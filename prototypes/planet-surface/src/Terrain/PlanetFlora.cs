@@ -45,9 +45,27 @@ public sealed class PlanetFlora
     /// <summary>Whether a world has no air to speak of: the Barren of the design doc, as far as the generator has one.</summary>
     public static bool Airless(PlanetSpec spec) => spec.Has(Modifier.Cratered) && spec.Archetype is Archetype.Arid or Archetype.Lava or Archetype.Ice;
 
-    /// <param name="vacuum">force no air at all, whatever the world says (a test's vacuum world)</param>
-    public static PlanetFlora For(WorldMap map, SkySystem sky, bool vacuum = false)
+    /// <summary>
+    /// How strange a world's plants are, 0 to 1: each type has its own range and every world rolls its
+    /// place in it, then its layers lean it (<paramref name="lean"/>, from the world's roll: a fall that
+    /// broke a terraforming, the core's nearness). Two worlds of one type differ.
+    /// </summary>
+    public static float StrangenessOf(PlanetSpec spec, float lean = 0f)
     {
+        (float lo, float hi) = spec.Archetype switch
+        {
+            Archetype.Alien => (0.62f, 1f), Archetype.Lava => (0.32f, 0.66f), Archetype.Ice => (0.04f, 0.28f), Archetype.Arid => (0.04f, 0.3f), _ => (0f, 0.16f),
+        };
+        float u = (Hash.Of(spec.Seed, 0x5354524E) >> 40) * (1f / (1 << 24));
+        return Math.Clamp(lo + (hi - lo) * u + lean, 0f, 1f);
+    }
+
+    /// <param name="vacuum">force no air at all, whatever the world says (a test's vacuum world)</param>
+    /// <param name="mood">what the world's history has done to its plants (its layers'; none by default)</param>
+    /// <param name="lean">how much stranger its layers make its plants than its type alone</param>
+    public static PlanetFlora For(WorldMap map, SkySystem sky, bool vacuum = false, FloraMood mood = null, float lean = 0f)
+    {
+        mood ??= FloraMood.None;
         PlanetSpec spec = map.Spec;
         // Each biome's own climate, from the land it covers.
         var warmth = new float[MaxBiomes];
@@ -80,6 +98,13 @@ public sealed class PlanetFlora
             if (mix.Reed > 0f) families.Add(PlantFamily.Reed);
             if (mix.Moss > 0f) families.Add(PlantFamily.Moss);
             if (mix.Pins > 0f) families.Add(PlantFamily.Pins);
+            // A fungal world's fungus comes up wherever anything else grows.
+            if (mood.Fungal > FungalAt && families.Count > 0)
+            {
+                if (!families.Contains(PlantFamily.Fungus)) families.Add(PlantFamily.Fungus);
+                if (!families.Contains(PlantFamily.GiantFungus)) families.Add(PlantFamily.GiantFungus);
+                if (!families.Contains(PlantFamily.Pins)) families.Add(PlantFamily.Pins);
+            }
             if (families.Count > 0) habitats.Add(new Habitat(b, warmth[b] / cells[b], wetness[b] / cells[b], cells[b] / (float)map.Count, families));
         }
         if (land > 0) { meanWarm /= land; meanWet /= land; }
@@ -93,32 +118,52 @@ public sealed class PlanetFlora
             Archetype.Ice => 0.4f,
             _ => 0.12f,
         };
-        float alien = spec.Archetype switch { Archetype.Alien => 0.9f, Archetype.Lava => 0.5f, Archetype.Ice => 0.14f, Archetype.Arid => 0.14f, _ => 0.03f };
+        float alien = StrangenessOf(spec, lean);
         Rgb light = sky.StarColor;
-        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(light.R, light.G, light.B), alien, life);
+        var climate = new FloraClimate(Hash.Of(spec.Seed, 0x466C7261, (long)spec.Archetype, spec.Variant), meanWarm, meanWet, air, new Tone(light.R, light.G, light.B), alien, life, mood);
         return new PlanetFlora(map, Herbarium.Roll(climate, habitats), meanWet);
     }
+
+    /// <summary>How fungal a world's layers must make it before fungus stands among everything else.</summary>
+    const float FungalAt = 0.25f;
 
     PlanetFlora(WorldMap map, Herbarium book, float wet)
     {
         _map = map;
         Book = book;
-        CoverDensity = Math.Clamp(0.38f + wet * 0.9f, 0.45f, 1f);
+        FloraMood mood = book.Climate.Moods;
+        // Overgrown country is thick underfoot; burned, dead-dry or sparse country thin.
+        float thin = (1f + 0.3f * mood.Overgrown) * (1f - 0.5f * mood.Sparse) * (1f - 0.4f * mood.Burnt);
+        CoverDensity = Math.Clamp((0.38f + wet * 0.9f) * thin, 0.2f, 1.2f);
         ulong seed = map.Spec.Seed;
         _region = new Fractal(Hash.Of(seed, 0x72656769), RegionWave, 2);
         _grove = new Fractal(Hash.Of(seed, 0x67726F76), 64, 2);
         _cover = new Fractal(Hash.Of(seed, 0x636F7672), 26, 2);
         _tone = new Fractal(Hash.Of(seed, 0x746F6E65), 900, 2);
         // The world's own density: lush worlds fill their forests in; dry and thin ones stay sparse.
-        float lush = Math.Clamp(0.65f + book.Climate.Life * (0.3f + wet * 0.7f), 0.6f, 1.2f);
+        // Its history thickens or thins that: forest through every ruin, or what came back after the burn.
+        float lush = Math.Clamp(0.65f + book.Climate.Life * (0.3f + wet * 0.7f), 0.6f, 1.2f)
+                     * (1f + 0.35f * mood.Overgrown) * (1f - 0.6f * mood.Sparse) * (1f - 0.5f * mood.Burnt);
         for (int b = 0; b < MaxBiomes; b++)
         {
             FloraRule[] rules = BiomeLook.FloraOf((Biome)b);
             var kept = new List<FloraRule>();
+            float trees = 0f;
             foreach (FloraRule r in rules)
             {
                 if (FamilyOf(r.Kind) is not PlantFamily family) kept.Add(r);
-                else if (!book.Barren) kept.Add(r with { Density = r.Density * (family is PlantFamily.Crystal or PlantFamily.Ice ? 1f : lush) });
+                else if (!book.Barren)
+                {
+                    kept.Add(r with { Density = r.Density * (family is PlantFamily.Crystal or PlantFamily.Ice ? 1f : lush) });
+                    if (family is not (PlantFamily.Crystal or PlantFamily.Ice)) trees += r.Density;
+                }
+            }
+            // Where the world is fungal, the fungus stands among the trees, a share of their number.
+            if (!book.Barren && mood.Fungal > FungalAt && trees > 0f && rules.All(r => r.Kind != Flora.GiantMushroom))
+            {
+                Rgb tint = rules.First(r => FamilyOf(r.Kind) != null).Color;
+                kept.Add(new FloraRule(Flora.GiantMushroom, trees * 0.35f * mood.Fungal, tint));
+                kept.Add(new FloraRule(Flora.Mushroom, trees * 0.6f * mood.Fungal, tint));
             }
             _rules[b] = kept.ToArray();
         }

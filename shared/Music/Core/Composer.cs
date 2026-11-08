@@ -39,6 +39,11 @@ public sealed record MusicWorld(DroneMood Type, ulong Seed)
 
     /// <summary>How far the Hollow Bloom has this whole world.</summary>
     public float Hollow { get; init; }
+
+    /// <summary>What its fall left in the air, from the world's layers: emptiness (a dead world, the walked-out), strife (war, a front, far guns) and living warmth (a frontier getting on with it).</summary>
+    public float Desolate { get; init; }
+    public float Strife { get; init; }
+    public float Living { get; init; }
 }
 
 /// <summary>Where on that world, and when. A change of scene is a slow crossfade, in the same key.</summary>
@@ -200,6 +205,7 @@ public static class Composer
             Ground(p, s.Ground);
             Climate(p, w);
             Theme(p, w);
+            Mood(p, w);
         }
         Star(p, w);
         Tech(p, w);
@@ -346,6 +352,47 @@ public static class Composer
                 p.Detune *= 1.4f;
                 p.Ring = MathF.Max(p.Ring, 0.08f);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The world's history in the bed and the drones: a dead world thins and slows and leaves only an
+    /// empty wind; a war-torn one keeps a low rumble under it, sagging and unsteady, with far groans;
+    /// a living one is warmer and truer, with more of a tune. Each in proportion, so they mix.
+    /// </summary>
+    static void Mood(MoodProfile p, MusicWorld w)
+    {
+        float dead = Math.Clamp(w.Desolate, 0f, 1f), war = Math.Clamp(w.Strife, 0f, 1f), life = Math.Clamp(w.Living, 0f, 1f);
+        if (dead > 0f)
+        {
+            p.PadGain *= 1f - 0.35f * dead;
+            p.PartialGain *= 1f - 0.3f * dead;
+            p.Bright *= 1f - 0.2f * dead;
+            p.MelodyMin *= 1f + 0.8f * dead;
+            p.MelodyMax *= 1f + 0.8f * dead;
+            if (dead > 0.45f && p.Bed is BedKind.Still or BedKind.Murk) p.Bed = BedKind.Wind;
+            p.BedGain *= 1f + 0.3f * dead;
+            p.BedHigh *= 1f + 0.3f * dead;
+        }
+        if (war > 0f)
+        {
+            if (war > 0.45f && p.Bed is BedKind.Still or BedKind.Wind) p.Bed = BedKind.Rumble;
+            p.BedLow *= 1f - 0.35f * war;
+            p.Sub += 0.12f * war;
+            p.Sag = MathF.Max(p.Sag, 5f * war);
+            p.Detune *= 1f + 0.25f * war;
+            if (war > 0.35f) p.Tones = Add(p.Tones, ToneKind.Groan);
+            p.ToneMin *= 1f - 0.3f * war;
+            p.ToneMax *= 1f - 0.3f * war;
+        }
+        if (life > 0f)
+        {
+            p.Bright *= 1f + 0.15f * life;
+            p.PadGain *= 1f + 0.2f * life;
+            p.MelodyGain *= 1f + 0.3f * life;
+            p.MelodyMin *= 1f - 0.35f * life;
+            p.MelodyMax *= 1f - 0.35f * life;
+            p.Detune *= 1f - 0.15f * life;
         }
     }
 

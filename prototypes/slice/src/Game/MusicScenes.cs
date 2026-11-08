@@ -72,16 +72,28 @@ public static class MusicScenes
         }
         var star = planet.StarSystem.Star.Color;
         WorldProfile profile = planet.Profile;
-        return new MusicWorld(MoodOf(planet.Spec), game.World.Seed)
+        WorldReading layers = planet.Reading;
+        return new MusicWorld(MoodOf(planet.Spec, bloom: layers.HollowWorld), game.World.Seed)
         {
             Heat = heat / Math.Max(1, count),
             Damp = damp / Math.Max(1, count),
             Star = Mathf.Clamp(0.5f + (star.B - star.R) * 0.8f, 0f, 1f),
             Tech = TechOf(profile.Before),
             Inhabited = profile.Inhabited,
-            Theme = profile.Exodus ? MusicTheme.Exodus : MusicTheme.None,
+            Theme = ThemeOf(profile, layers),
+            Desolate = layers.Desolate,
+            Strife = layers.Strife,
+            Living = layers.Living,
         };
     }
+
+    /// <summary>What became of the world, as its layers read: everyone gone, ash in the air, grown over, or twisted.</summary>
+    public static MusicTheme ThemeOf(WorldProfile profile, WorldReading layers) =>
+        profile.Exodus ? MusicTheme.Exodus
+        : layers.Ash > 0.6f ? MusicTheme.Nuclear
+        : MathF.Max(layers.Mutagen, layers.Swollen) > 0.5f ? MusicTheme.Mutagenic
+        : layers.Overgrown > 0.5f || layers.HollowWorld ? MusicTheme.Overgrown
+        : MusicTheme.None;
 
     /// <summary>Where on the surface the listener is now. Called about once a second, so it stays cheap.</summary>
     public static MusicScene Ground(Game g)

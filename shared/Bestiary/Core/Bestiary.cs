@@ -75,6 +75,7 @@ public sealed class WorldLife
                 if (species[i].Mate != null) species[i].Mate.Young = young;
             }
         }
+        Layered();
         if (rng.Chance(t.MachineWorld)) species.Add(Robots.Roll(World, rng.Int(0, 2)));
         // Now and then a world has something that breaks blocks.
         if (rng.Chance(t.BreakerWorld) && Breaker((BreakerKind)rng.Int(1, 4), rng) is { } breaker) species.Add(breaker);
@@ -85,6 +86,62 @@ public sealed class WorldLife
         // The Husks spread outward from the core: scarce on the rim, more of them coreward.
         HuskRules hr = Data.Husks;
         if (rng.Chance(hr.WorldChanceAt(World.Coreward))) species.Add(Husk(rng));
+    }
+
+    /// <summary>
+    /// What the world's history leaves alive, beside what its type would have: a dead world keeps only
+    /// its hardiest few kinds; stock and working beasts graze loose on a farmed world; pets and stock
+    /// have gone feral in packs where a city fell; predators come back twisted after a biohazard. Each
+    /// only as likely as the world's layers make it.
+    /// </summary>
+    void Layered()
+    {
+        var rng = Rng.For(Seed, "layers");
+        List<Species> species = Fauna.Species;
+        if (World.Density < 0.6f)
+        {
+            int keep = Math.Max(2, (int)MathF.Ceiling(species.Count * World.Density));
+            if (species.Count > keep) species.RemoveRange(keep, species.Count - keep);
+        }
+        if (rng.Chance(World.Stock)) species.Add(Loose(DomesticKind.Stock, 0, 0.5f + 0.5f * World.Stock, rng));
+        if (rng.Chance(World.Working)) species.Add(Loose(DomesticKind.Working, 1, 0.3f + 0.4f * World.Working, rng));
+        if (rng.Chance(World.Ferals))
+        {
+            Species pack = Loose(DomesticKind.Pet, 2, 0.4f + 0.6f * World.Ferals, rng);
+            pack.Behaviour = Behaviour.PackHunter;
+            pack.Temperament = Temperament.Aggressive;
+            pack.Stats.Hunts = true;
+            pack.Stats.Retaliates = true;
+            pack.Stats.Damage = MathF.Max(pack.Stats.Damage, 6f);
+            pack.CommonName = "feral " + pack.CommonName;
+            species.Add(pack);
+        }
+        if (rng.Chance(World.Predators))
+        {
+            ulong seed = Rng.Mix(Seed, 0x7EED);
+            Species s = _generator.RollOne(seed, "stalker", Behaviour.Predator, Alienness);
+            s.Index = 520;
+            s.Id = $"{Seed:x}-twisted";
+            s.Stats.Hunts = true;
+            s.Stats.Retaliates = true;
+            s.Temperament = Temperament.Aggressive;
+            Fit.Apply(Data.Fit, World, s, Rng.For(seed, "fit"));
+            s = _generator.Mutate(s, Math.Clamp(0.55f + 0.45f * World.Predators, 0f, 1f));
+            s.Scarcity = 0.4f + 0.5f * World.Predators;
+            species.Add(s);
+        }
+    }
+
+    /// <summary>A kept animal of this world gone loose: the same body its towns keep, living wild.</summary>
+    Species Loose(DomesticKind kind, int n, float scarcity, Rng rng)
+    {
+        Species s = Domestic(kind, 60 + n).Copy();
+        s.Domestic = DomesticKind.None;
+        s.Index = 500 + n;
+        s.Id = $"{Seed:x}-loose-{kind}";
+        s.Scarcity = scarcity;
+        Fit.Throat(s, rng);
+        return s;
     }
 
     /// <summary>One local animal kind with a few of its number taken by the fungus, beside the healthy ones (a world that isn't a Hollow world).</summary>

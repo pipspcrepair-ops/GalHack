@@ -177,6 +177,18 @@ public static partial class PoiSiting
         return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
     }
 
+    /// <summary>
+    /// Any world's roll, lived on or not: the same as <see cref="RollOf"/> where there is one, and for a
+    /// world nobody lived on, its wild layers (its flora, creatures, sky and sound read them). Null only without a library.
+    /// </summary>
+    public static WorldRoll LayersOf(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
+    {
+        if (lib == null || profile == null) return null;
+        if (profile.Inhabited) return RollOf(lib, map, profile, startWorld, depth);
+        PlanetSpec spec = map.Spec;
+        return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
+    }
+
     /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
     public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {

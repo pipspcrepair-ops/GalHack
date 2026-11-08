@@ -637,6 +637,13 @@ public sealed partial class Town
             p.Nerve = roll.Float();
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
         }
+        // A place of copies: everyone in it is the same person.
+        if (Data.Copies && People.Count > 1)
+            foreach (Person q in People.Skip(1))
+            {
+                q.Looks = People[0].Looks;
+                q.Rig = new HumanRig(q.Looks);
+            }
         // A few of them may not be what they seem: silent carriers, rolled as anyone is, nothing showing.
         HuskRules husks = life.Data.Husks;
         int carriers = Carriers.Roll(husks, life.Moving.Any(s => s.Husk), life.World.Coreward, People.Count, roll);

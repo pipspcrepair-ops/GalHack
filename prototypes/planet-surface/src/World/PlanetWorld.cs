@@ -48,6 +48,16 @@ public sealed partial class PlanetWorld
     /// <summary>What this world rolled, layer by layer (null for a world nobody ever lived on): its places are laid out from it.</summary>
     public PoiGenerator.Gen.WorldRoll Roll { get; private set; }
 
+    /// <summary>What this world rolled, lived on or not (null only where no layers are compiled in): the same roll as <see cref="Roll"/> where there is one.</summary>
+    public PoiGenerator.Gen.WorldRoll Layers { get; private set; }
+
+    /// <summary>
+    /// What the rest of the world reads off its layers: its plants, creatures, paint and sound, and
+    /// the hooks others read (<see cref="PoiGenerator.Gen.WorldReading.Age"/> and <see cref="PoiGenerator.Gen.WorldReading.Severity"/>
+    /// for decay, <see cref="PoiGenerator.Gen.WorldReading.Storm"/> and <see cref="PoiGenerator.Gen.WorldReading.Dry"/> for the weather).
+    /// </summary>
+    public readonly PoiGenerator.Gen.WorldReading Reading;
+
     /// <summary>
     /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
     /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
@@ -153,10 +163,11 @@ public sealed partial class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms, PoiGenerator.Gen.WorldReading reading)
     {
         Spec = spec;
         Profile = profile;
+        Reading = reading ?? PoiGenerator.Gen.WorldReading.Neutral;
         _around = around;
         Map = map;
         Landing = landing;
@@ -164,7 +175,9 @@ public sealed partial class PlanetWorld
         Source = source;
         Terrain = new PlanetTerrain(source);
         Sky = SkySystem.For(spec);
-        Flora = PlanetFlora.For(map, Sky);
+        // What grows here: the type's, as its layers have shaped it (overgrown, dead, swollen, fungal, burned, sparse, stranger).
+        var r = Reading;
+        Flora = PlanetFlora.For(map, Sky, mood: new GalHack.Plants.FloraMood(r.Overgrown, r.Dead, r.Swollen, r.Fungal, r.Burnt, r.Sparse), lean: r.Alien);
         Palette = new GroundPalette(map, Flora);
         // Blast sites' dead zones show in the ground's colour, fading back to the land's own.
         foreach (PoiSite p in pois)
@@ -173,6 +186,9 @@ public sealed partial class PlanetWorld
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
+        // Made things take the world's paint, faded by its years and its fall.
+        if (Reading.Paint is { } paint)
+            foreach (PoiSite p in pois) paint.Apply(p.Instance, p.Instance.SpawnSeed);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
     }
@@ -194,6 +210,7 @@ public sealed partial class PlanetWorld
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
         PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: rollDepth);
+        PoiGenerator.Gen.WorldRoll layers = roll ?? (catalog == null ? null : PoiSiting.LayersOf(catalog.Library, map, profile, depth: rollDepth));
         if (roll != null) profile = profile with { Barred = roll.Barred };
         List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: rollDepth);
         var stamps = new List<TerrainStamp>();
@@ -212,7 +229,7 @@ public sealed partial class PlanetWorld
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds) { Depth = depth, Roll = roll };
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers)) { Depth = depth, Roll = roll, Layers = layers };
         world.TakeChart(chart);
         world.ChartStars();
         return world;
