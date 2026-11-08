@@ -1013,7 +1013,7 @@ public partial class PlaceTest : Node
             // A creature blocks you too.
             {
                 var sim = game.Zone.Wildlife.Sim;
-                Wildlife.Species big = game.Zone.Wildlife.Life.Moving.FirstOrDefault(s => !s.Flies && s.Rig == Wildlife.RigKind.Legged && s.Figure == null && s.Body.Size > 1f && s.Body.Size < 3f);
+                Wildlife.Species big = game.Zone.Wildlife.Life.Moving.FirstOrDefault(s => !s.Flies && s.Rig == Wildlife.RigKind.Legged && s.Figure == null && s.Body.Size > 1f && s.Body.Size < 3f && s.BodyHeight < 1.3f); // (one you can't walk under)
                 if (sim != null && big != null)
                 {
                     game.Zone.Wildlife.Frozen = true;

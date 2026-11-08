@@ -47,7 +47,8 @@ public sealed partial class Town
             _bodies.Add(p);
         }
         if (_bodies.Count == 0) return;
-        // (You are met by their real capsules and the push rule: Town.Colliders.)
+        // You are a body they keep off too (giving nothing); walking into them is the push rule's (Town.Colliders).
+        if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius, Give = 0f });
         _space.Resolve(dt, Open, 4);
         WorstOverlap = MathF.Max(WorstOverlap, _space.WorstOverlap);
         for (int i = 0; i < _bodies.Count; i++)
