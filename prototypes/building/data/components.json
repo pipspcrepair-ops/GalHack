@@ -15,7 +15,11 @@
 //   extenderTier  cpu-extender only: the highest CPU tier it counts towards (default 2). Tiers 3
 //              and 4 take extenders built round lattice parts found in POIs (design 883)
 //   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
-//              glass; closedOnly parts belong to a door leaf
+//              glass; closedOnly parts belong to a door leaf. A part may also set its finish:
+//              color, accent, pattern (a paint pattern, fine-hazard or grille), texture, metal,
+//              symbol (shown on a glow part, stencilled on anything else), anim and speed (a glow
+//              that pulses or blinks). Bolts, vents, screens and trim come from DeviceDetail.cs,
+//              one rule per function, not from here
 {
   "schema": "galhack.components",
   "version": 1,
@@ -43,7 +47,7 @@
         { "box": [-0.3, -0.22, -0.15, 0.3, -0.08, 0.3], "style": "body" },
         { "box": [-0.3, -0.08, 0.2, 0.3, 0.42, 0.32], "style": "body" },
         { "box": [-0.42, -0.5, -0.5, 0.42, -0.08, -0.3], "style": "dark" },
-        { "box": [-0.34, -0.08, -0.47, 0.34, 0.14, -0.4], "style": "glow" }
+        { "box": [-0.34, -0.08, -0.47, 0.34, 0.14, -0.4], "style": "glow", "symbol": "chevron" }
       ]
     },
     {
@@ -55,8 +59,8 @@
       "cost": { "iron": 20, "tungsten": 6, "electronics": 4 }, "smallCost": { "iron": 4, "copper": 3 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body" },
-        { "cylinder": "z", "segments": 16, "box": [-0.45, -0.45, 0.2, 0.45, 0.45, 0.5], "style": "dark" },
-        { "cylinder": "z", "segments": 16, "box": [-0.32, -0.32, 0.3, 0.32, 0.32, 0.505], "style": "glow" }
+        { "cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark" },
+        { "cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow" }
       ]
     },
     {

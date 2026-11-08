@@ -189,7 +189,24 @@ public sealed partial class Vessel
     }
 
     /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
-    public bool Powered => PowerOn && Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+    public bool Powered => PowerOn && HasGenerator;
+
+    bool _hasGenerator;
+    int _generatorVersion = -1;
+
+    /// <summary>A generator aboard, looked for again only when the structure has changed (its view asks a few times a second).</summary>
+    bool HasGenerator
+    {
+        get
+        {
+            if (_generatorVersion != Structure.Version)
+            {
+                _generatorVersion = Structure.Version;
+                _hasGenerator = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+            }
+            return _hasGenerator;
+        }
+    }
 
     /// <summary>Runs its machines for a tick (when powered; the time scale is the tests' marked speed-up).</summary>
     public void TickMachines(double dt)
@@ -293,7 +310,7 @@ public sealed partial class Vessel
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
         if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((HullShapes, c));
         else HullShapes.Apply(colliders);
-        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush };
+        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush, PowerSource = () => Powered };
         owner.AddChild(View);
         View.Setup(Structure, drawLater);
         Fx = new VesselFx { Name = "Fx" };

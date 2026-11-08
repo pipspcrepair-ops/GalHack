@@ -37,8 +37,16 @@ public partial class Screenshot : Node
 
     public override void _Ready()
     {
-        // A wall-clock quit timer: whatever happens, the run ends itself.
-        new System.Threading.Thread(() => { System.Threading.Thread.Sleep(TimeSpan.FromMinutes(25)); Console.Error.WriteLine("screenshot: wall-clock timeout"); System.Diagnostics.Process.GetCurrentProcess().Kill(); }) { IsBackground = true }.Start();
+        // A backstop after that one: should Exit wait on a busy main thread, the process ends itself regardless.
+        new System.Threading.Thread(() => { System.Threading.Thread.Sleep(TimeSpan.FromSeconds(TimeoutSeconds + 360)); Console.Error.WriteLine("screenshot: wall-clock backstop"); System.Diagnostics.Process.GetCurrentProcess().Kill(); }) { IsBackground = true }.Start();
+        // A wall-clock limit as well: a hung run quits itself, even with the game's clock stopped.
+        var watchdog = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromSeconds(TimeoutSeconds + 300));
+            Console.Error.WriteLine($"screenshot '{_view}' took over {(TimeoutSeconds + 300) / 60:0} minutes of wall-clock time: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        watchdog.Start();
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
         ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())

@@ -12,6 +12,7 @@
   <ItemGroup>
     <!-- The bestiary: everything that moves, generated, built and run. This prototype is its showroom. -->
     <Compile Include="..\..\shared\Bestiary\**\*.cs" />
+    <Compile Include="..\..\shared\Testing\**\*.cs" />
     <!-- The sky seam check every prototype with a sky of its own runs (tests/SkySeamTest). -->
     <Compile Include="..\..\shared\Sky\**\*.cs" />
     <!-- Terrain-digging's engine-free voxel store and mesher, used in place: cave crawlers live

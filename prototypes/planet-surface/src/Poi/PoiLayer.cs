@@ -112,6 +112,7 @@ public partial class PoiLayer : Node3D
             node.AddChild(new MeshInstance3D { Mesh = MeshBuild.ToMesh(chunk, materials.BySurface), Name = $"Chunk {chunk.Chunk}" });
             if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
         }
+        if (MeshBuild.Flooding(inst) is { } water) node.AddChild(water);
         AddLights(node, inst);
         // A city fell long ago: nothing in it still burns (its smoke stood as bright threads over the skyline).
         if (site.Siting != "city") AddSmoke(node, inst);
