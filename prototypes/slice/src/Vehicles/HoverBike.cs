@@ -30,6 +30,9 @@ public sealed class HoverBike
     /// <summary>What it weighs, kg, and its drag area, m² (a rider adds theirs): the wind and a tornado take it by these.</summary>
     public const float Weight = 220f, DragArea = 1.0f;
 
+    /// <summary>Left parked, it settles on its skids: it holds against a push up to this, m/s² (a gale), and slides past it.</summary>
+    public const float ParkedHold = 3f;
+
     /// <summary>The weather's push this tick, m/s² (wind, a tornado's pull), and a fling's kick, m/s.</summary>
     Vector3 _push, _kick;
 
@@ -98,8 +101,13 @@ public sealed class HoverBike
         Yaw += turn;
         LastTurn = turn;
 
-        // The weather's push first: drag by its area over its weight, a tornado's pull and fling.
-        Velocity += new Vector3(_push.X, 0f, _push.Z) * dt + new Vector3(_kick.X, 0f, _kick.Z);
+        // The weather's push first: drag by its area over its weight, a tornado's pull and fling. Parked on
+        // its skids it holds against a gale; past that it slides, braking hard on them.
+        var flatPush = new Vector3(_push.X, 0f, _push.Z);
+        bool parked = !Ridden && Grounded;
+        if (parked && flatPush.Length() <= ParkedHold) flatPush = Vector3.Zero;
+        Velocity += flatPush * dt + new Vector3(_kick.X, 0f, _kick.Z);
+        if (parked) Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-6f * dt) + Vector3.Up * Velocity.Y;
         _vy += _push.Y * dt + _kick.Y;
         bool tossed = _push.Y > 12f || _kick.Y > 0.5f;
         _push = _kick = Vector3.Zero;

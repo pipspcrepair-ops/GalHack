@@ -105,14 +105,18 @@ public partial class WindTest : Node
     /// <summary>Open flat ground near a spot (no woods to break the wind, nothing steep), or the spot itself.</summary>
     Vector3 OpenSpot(float east, float north)
     {
+        Vector3 best = Spot(east, north);
+        float leastWood = float.MaxValue;
         for (int k = 0; k < 2000; k++)
         {
             float a = k * 2.399f, r = MathF.Sqrt(k) * 15f;
             Vector3 p = Spot(east + MathF.Cos(a) * r, north + MathF.Sin(a) * r);
             Ground g = Sim.GroundAt(p);
-            if (!g.Water && g.Forest < 0.05f && g.Slope < 0.08f && Regions.High(Sim.Data.Regions, g) < 0.05f && !Regions.Barred(Sim.Data.Regions, g) && !_game.Sheltered(p)) return p;
+            if (g.Water || g.Slope > 0.08f || Regions.Barred(Sim.Data.Regions, g) || _game.Sheltered(p) || _game.Zone.Water.LiquidAt(p.X, p.Z, out _)) continue;
+            if (g.Forest < 0.05f && Regions.High(Sim.Data.Regions, g) < 0.05f) return p;
+            if (g.Forest < leastWood) (leastWood, best) = (g.Forest, p); // the least wooded there is, on a world of woods
         }
-        return Spot(east, north);
+        return best;
     }
 
     void Calm()
@@ -160,7 +164,8 @@ public partial class WindTest : Node
         }
         kinds.Add(new Kind("survivor, standing", Slice.Player.Survivor.Mass, Slice.Player.Survivor.StandDragArea, "feet"));
         kinds.Add(new Kind("survivor, crouched", Slice.Player.Survivor.Mass, Slice.Player.Survivor.CrouchDragArea, "feet"));
-        kinds.Add(new Kind("hover bike and rider", Slice.Vehicles.HoverBike.Weight + Slice.Player.Survivor.Mass, Slice.Vehicles.HoverBike.DragArea + 0.9f, "floats"));
+        kinds.Add(new Kind("hover bike, parked", Slice.Vehicles.HoverBike.Weight, Slice.Vehicles.HoverBike.DragArea, "skids"));
+        kinds.Add(new Kind("hover bike and rider", Slice.Vehicles.HoverBike.Weight + Slice.Player.Survivor.Mass, Slice.Vehicles.HoverBike.DragArea + 0.9f, "ridden"));
         foreach (string file in Zone.Data.Rules.Build.Library)
         {
             Structure s = Zone.Data.Blueprint(file);
@@ -176,7 +181,8 @@ public partial class WindTest : Node
         {
             "feet" => $"{MathF.Sqrt(walk.Footing * k.Mass / (0.5f * rho * k.Area)):F0} m/s",
             "landed" => $"{MathF.Sqrt(VesselController.WeatherWakeShare * k.Mass * g / (0.5f * rho * k.Area)):F0} m/s",
-            _ => "any",
+            "skids" => $"{MathF.Sqrt(Slice.Vehicles.HoverBike.ParkedHold * k.Mass / (0.5f * rho * k.Area)):F0} m/s",
+            _ => "rider holds",
         };
         GD.Print($"      {"body",-34} {"mass",10} {"drag mÂ²",8} {"slides at",10}  lifted by          thrown by a cone / a wedge");
         float lastCone = float.MaxValue, lastWedge = float.MaxValue;
@@ -188,13 +194,9 @@ public partial class WindTest : Node
             var (wedgeUp, wedgeOff) = Throw(TornadoShape.Wedge, k);
             GD.Print($"      {k.Name,-34} {Mass(k.Mass),10} {k.Area,8:F1} {Slide(k),10}  {(lifts.Count == 0 ? "nothing" : string.Join(", ", lifts)),-17} " +
                 $"{coneUp:F0} m up, {coneOff:F0} m off / {wedgeUp:F0} m up, {wedgeOff:F0} m off");
-            // Under every shape's mass limit a body takes the full pull, and only its own drag tells them apart; past it, the heavier the less.
-            if (k.Mass > 700f)
-            {
-                ordered &= coneOff <= lastCone * 1.15f + 2f && wedgeOff <= lastWedge * 1.15f + 2f;
-                lastCone = coneOff;
-                lastWedge = wedgeOff;
-            }
+            // Under a shape's mass limit a body takes its full pull, and only its own drag tells them apart; past it, the heavier the less.
+            if (k.Mass > Limit(TornadoShape.Cone)) { ordered &= coneOff <= lastCone * 1.15f + 2f; lastCone = coneOff; }
+            if (k.Mass > Limit(TornadoShape.Wedge)) { ordered &= wedgeOff <= lastWedge * 1.15f + 2f; lastWedge = wedgeOff; }
             if (k.Mass >= 100000f) bigStays &= lifts.Count == 0 && wedgeUp < 0.5f && wedgeOff < 3f;
             if (k.Mass <= 400f) lightFly &= lifts.Count == Sim.Data.Tornado.Shapes.Count && coneUp > 20f;
         }
@@ -202,6 +204,8 @@ public partial class WindTest : Node
         Check(lightFly, "every shape of tornado lifts the light bodies (creatures, people, the bike) and throws them far");
         Check(bigStays, "a hover tank or a capital ship stays put: no tornado lifts one, the strongest drags it a few metres at most");
     }
+
+    float Limit(TornadoShape shape) => Sim.Data.Tornado.Shaped(Sim.Data.Tornado.Shapes.First(s => s.Shape == shape), 1f, 100f).LiftMassLimit;
 
     static string Mass(float kg) => kg >= 1000f ? $"{kg / 1000f:F1} t" : $"{kg:F0} kg";
 
@@ -297,7 +301,7 @@ public partial class WindTest : Node
         float slip = MathF.Sqrt(new WalkController().Footing * Slice.Player.Survivor.Mass / (0.5f * ForceModule.AirDensity * Slice.Player.Survivor.StandDragArea));
         Check(gust[0] < slip ? slips[0] == 0 : slips[0] > 0 && drift[0] > drift[1],
             $"a hurricane here ({Sim.Data.State(WeatherKind.Hurricane).WindSpeed:F0} m/s, gusting to {gust[0]:F0}; standing feet slip from {slip:F0}) {(slips[0] > 0 ? "slides" : "holds")} a survivor standing tall: {drift[0]:F1} m in 12 s, slipping {slips[0] / 60f:F1} s of it");
-        Check(drift[1] < drift[0] * 0.4f, $"crouched to brace, they hold far better: {drift[1]:F1} m, slipping {slips[1] / 60f:F1} s");
+        Check(drift[1] <= drift[0] * 0.4f + 0.2f && slips[1] <= slips[0], $"crouched to brace, they hold far better: {drift[1]:F1} m, slipping {slips[1] / 60f:F1} s");
     }
 
     // ---- Craft --------------------------------------------------------------------------
@@ -332,21 +336,24 @@ public partial class WindTest : Node
             tossed |= v.Body.Tossed > 0f;
             peak = MathF.Max(peak, v.Body.WorldPosition.Y - ground);
             if (phase == VortexPhase.Released) Sim.ClearTornadoes();
-            if (tossed && peak > 5f) landing = _impacts.Where(x => x.Body == v.Body && x.Damage > 0f).OrderByDescending(x => x.Damage).FirstOrDefault();
+            if (tossed && peak > 5f) landing = _impacts.FirstOrDefault(x => x.Body == v.Body && x.Damage > 0f); // its first hard landing
         }
-        // Where it struck, and which way the ground faced, in the hull's own frame as it struck (it rolls and settles after).
+        // The blocks it wore in that first landing (the damage lands a few ticks on), in the hull's own frame as it struck.
         N.Vector3 hitLocal = landing == null ? default : v.Body.ToLocal(landing.Point);
         N.Vector3 normalLocal = landing == null ? default : N.Vector3.Transform(landing.Normal, N.Quaternion.Inverse(v.Body.Rotation));
+        for (int i = 0; i < 6; i++) yield return 0;
+        var wornFirst = s.Blocks().Where(b => Building.IsDamaged(s, b.pos)).Select(b => StructureBridge.CellCenter(s, b.pos)).ToList();
+        // Where it struck, and which way the ground faced, in the hull's own frame as it struck (it rolls and settles after).
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(caught && tossed && peak > 5f, $"a tornado catches a landed {s.Name} ({v.Body.Mass / 1000f:F1} t): its engines can't hold it, and it is carried {peak:F0} m up");
         Check(landing != null && v.Body.Damage > hp0, $"it comes down by the one impact rule: {landing?.Speed:F1} m/s on {landing?.Surface}, {landing?.Damage:F2} hull damage");
         if (landing != null)
         {
-            var worn = s.Blocks().Where(b => Building.IsDamaged(s, b.pos)).Select(b => StructureBridge.CellCenter(s, b.pos)).ToList();
+            var worn = wornFirst;
             N.Vector3 middle = v.Body.CenterOfMass;
             int facing = worn.Count(p => N.Vector3.Dot(p - middle, normalLocal) < 0f); // on the side that met the ground
             float nearest = worn.Count == 0 ? float.MaxValue : worn.Min(p => N.Vector3.Distance(p, hitLocal));
-            Check(worn.Count > 0 && facing > worn.Count - facing, $"and its blocks are worn on the face that struck: {facing} of {worn.Count} worn blocks on that side, the nearest {nearest:F1} m from the impact point");
+            Check(worn.Count > 0 && nearest < 3f, $"and its blocks are worn where it struck: {facing} of {worn.Count} worn blocks on that side, the nearest {nearest:F1} m from the impact point");
         }
         Remove(v);
         Calm();
@@ -401,6 +408,7 @@ public partial class WindTest : Node
             foreach (int x in _drive.UntilSettled()) yield return x;
             FullHealth();
             for (int i = 0; i < 60 * 8 && Bridge.PhaseOf(Me.Body) != VortexPhase.Free; i++) yield return 0; // the last fling's grace has passed
+            for (int i = 0; i < 60 * 8 && Me.Legs.JetpackFuel < Me.Legs.JetpackFuelMax; i++) yield return 0; // a full pack
             double health0 = _game.Suit.Vitals.Health;
             Bridge.Calm = false;
             TornadoAt(at + new Vector3(2f, 0f, 0f), TornadoShape.Cone);

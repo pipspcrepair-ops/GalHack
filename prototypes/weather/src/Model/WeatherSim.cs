@@ -340,6 +340,7 @@ public sealed class WeatherSim
         };
         if (_segments.Count == 1 && _segments[0].Duration <= 0) _segments[0] = segment;
         else _segments.Add(segment);
+        if (_frontSegment != null && !_segments.Contains(_frontSegment)) _frontSegment = null; // its weather is gone from the timeline
         EnsureTimeline(Time + Horizon);
     }
 
@@ -387,7 +388,7 @@ public sealed class WeatherSim
         {
             // The front's own weather behind its edge, the one before it everywhere else.
             float under = _front.Strength * _front.Under(p);
-            c = Conditions.Lerp(_frontSegment.From, _frontSegment.To, under);
+            c = Conditions.Lerp(_frontSegment.Start > Time ? Current : _frontSegment.From, _frontSegment.To, under);
             (from, to, blend) = (_frontSegment.FromKind, _frontSegment.Kind, under);
         }
         if (Land == null) return c;
@@ -1227,7 +1228,7 @@ public sealed class WeatherSim
     {
         Vector2 mean = Current.Wind;
         if (_front != null && _frontSegment != null && (_frontSegment == SegmentAt(Time) || _frontSegment.Start > Time))
-            mean = _frontSegment.From.Wind.Lerp(_frontSegment.To.Wind, _front.Strength * _front.Under(p));
+            mean = (_frontSegment.Start > Time ? Current : _frontSegment.From).Wind.Lerp(_frontSegment.To.Wind, _front.Strength * _front.Under(p));
         if (Land == null) return mean;
         RegionRules r = Data.Regions;
         Ground g = Land(p.X, p.Z);
