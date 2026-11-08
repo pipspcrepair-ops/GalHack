@@ -672,6 +672,7 @@ public sealed class DecoForge
         foreach (var (at, rx, rz) in shape.Stains)
         {
             if (Clashes(low, at.X - rx, at.Z - rz, at.X + rx, at.Z + rz, at.Y + StainLift)) continue;
+            low.Add((at.X - rx, at.Z - rz, at.X + rx, at.Z + rz, at.Y + StainLift));
             var ring = new List<Vector3>();
             for (int i = 0; i < 10; i++)
             {
@@ -764,6 +765,7 @@ public sealed class DecoForge
                 float s = rng.Range(0.03f, 0.08f), a = rng.Range(0, MathF.Tau);
                 if (Overlaps(laid, x, z, s) || Clashes(low, x - s, z - s, x + s, z + s, ShardLift)) continue;
                 laid.Add((x, z, s));
+                low.Add((x - s, z - s, x + s, z + s, ShardLift));
                 var c = new Vector3(x, ShardLift, z);
                 var ring = new[] { c + new Vector3(MathF.Cos(a), 0, MathF.Sin(a)) * s, c + new Vector3(MathF.Cos(a + 2.2f), 0, MathF.Sin(a + 2.2f)) * s * 0.7f, c + new Vector3(MathF.Cos(a + 4f), 0, MathF.Sin(a + 4f)) * s * 0.9f };
                 FloorPoly(mesh, DecoSurface.Matte, c, ring, glass.Scale(1.1f));
@@ -806,13 +808,16 @@ public sealed class DecoForge
             // A fragment's longest reach from its middle (its scale is at most s by s by s, turned).
             float reach = s * 0.75f;
             if (max.X - min.X < 2 * s || max.Z - min.Z < 2 * s || !free(x, z, s * 0.6f) || Overlaps(laid, x, z, reach)) continue;
-            if (flat && Clashes(low, x - reach, z - reach, x + reach, z + reach, s * 0.18f)) continue;
+            // Its top off every mark and face already laid near the floor (a chunk's top is near level: it tips 12 degrees at most).
+            float sy = flat ? s * 0.18f : s * rng.Range(0.3f, 0.6f), top = flat ? sy : s * 0.3f + sy / 2f;
+            if (Clashes(low, x - reach, z - reach, x + reach, z + reach, top)) continue;
             laid.Add((x, z, reach));
+            low.Add((x - reach, z - reach, x + reach, z + reach, top));
             i++;
             var part = new DecoPart
             {
                 Kind = DecoPrim.Hex, Corners = DecoPart.UnitCube, Slot = DecoSlot.Debris,
-                M = Matrix4x4.CreateScale(s, flat ? s * 0.18f : s * rng.Range(0.3f, 0.6f), s * rng.Range(0.5f, 1f)) * DecoGeo.RotZ(flat ? 0 : rng.Range(-12, 12)) * DecoGeo.RotY(rng.Range(0, 180)),
+                M = Matrix4x4.CreateScale(s, sy, s * rng.Range(0.5f, 1f)) * DecoGeo.RotZ(flat ? 0 : rng.Range(-12, 12)) * DecoGeo.RotY(rng.Range(0, 180)),
             };
             float half = flat ? s * 0.09f : s * 0.3f;
             part.M *= DecoGeo.Move(x, half, z);
@@ -826,6 +831,7 @@ public sealed class DecoForge
         // At the first of a few heights that no face of the piece over it shares.
         float lift = new[] { ScorchLift, ScorchLift * 0.5f, ScorchLift * 1.6f }.FirstOrDefault(y => !Clashes(low, min.X, min.Z, max.X, max.Z, y), -1f);
         if (lift < 0) return;
+        low.Add((min.X, min.Z, max.X, max.Z, lift));
         var c = new Vector3((min.X + max.X) / 2, lift, (min.Z + max.Z) / 2);
         float rx = (max.X - min.X) / 2, rz = (max.Z - min.Z) / 2;
         var ring = new List<Vector3>();

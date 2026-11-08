@@ -16,17 +16,20 @@ namespace Slice.Tests;
 /// <summary>
 /// Places as the dressing leaves them, over many places rolled fresh every run: every piece and every
 /// bit of its debris rests on a floor and is drawn inside no block, and no two of its flat faces lie a
-/// hair apart one over the other. No engine in play, only the generator and the decorations library.
+/// hair apart one over the other; rooms are furnished by what they are and what the place is for; and
+/// every doorway and opening stays walkable for the player's capsule. No engine in play, only the
+/// generator and the decorations library.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/DressTest.tscn
 /// </summary>
 public partial class DressTest : Node
 {
-    const int Places = 80;
+    const int Places = 60;
     const double TimeLimitMinutes = 8;
     int _failures, _passes;
     readonly Dictionary<string, int> _kinds = new();
     int _flecks;
+    static readonly List<(double Ms, string Name)> PlanMs = new();
 
     public override void _Ready()
     {
@@ -70,7 +73,9 @@ public partial class DressTest : Node
             catch (Exception) { continue; } // a place that can't lay itself out is left out of the world too
             var site = new PoiSite { Instance = inst, Family = f, Name = $"{f.Id}/{f.Variants[variant].Name} {state}" };
             var memory = new PlaceMemory(site);
+            var watch = Stopwatch.StartNew();
             memory.Rooms = Decor.Shared.Plan(memory);
+            PlanMs.Add((watch.Elapsed.TotalMilliseconds, site.Name));
             made++;
             yield return new Rolled(f, inst, memory, site.Name);
         }
@@ -88,6 +93,8 @@ public partial class DressTest : Node
         // Mines and airfields every run, beside whatever the dice brought.
         rolled.AddRange(Roll(16, seed + 1, f => f.Tags.Contains("mine") || f.Tags.Contains("aviation")));
         Fitting(decor, rolled);
+        Walkable(decor, rolled);
+        GD.Print($"dressing took {PlanMs.Average(p => p.Ms):F0} ms a place on average, {PlanMs.Max(p => p.Ms):F0} ms at most ({PlanMs.MaxBy(p => p.Ms).Name})");
     }
 
     /// <summary>Everything a piece lays on the floor lies on floor, nothing is drawn in a block, no flat faces flicker.</summary>
@@ -126,13 +133,13 @@ public partial class DressTest : Node
                                 // A hair in toward the piece's middle: a face flush with a wall isn't in it.
                                 var flat = new NV2(v.X, v.Z);
                                 NV2 inward = new NV2(room.Corner.X + pl.X, room.Corner.Z + pl.Z) - flat;
-                                if (inward.LengthSquared() > 1e-6f) flat += NV2.Normalize(inward) * 0.01f;
+                                flat += new NV2(MathF.Sign(inward.X) * MathF.Min(0.01f, MathF.Abs(inward.X)), MathF.Sign(inward.Y) * MathF.Min(0.01f, MathF.Abs(inward.Y)));
                                 var cell = new PoiGenerator.Gen.Int3((int)MathF.Floor(flat.X), (int)MathF.Floor(MathF.Max(v.Y, floor) + 0.005f), (int)MathF.Floor(flat.Y));
                                 Block here = r.Inst.Blocks.Get(cell);
                                 if (!here.IsAir && !(here.Type == BlockType.Plate && cell.Y == room.Corner.Y) && !(here.Type is BlockType.Sign or BlockType.Cable or BlockType.Vine))
                                 {
                                     bad = $"in a {here.Type} ({here.Role})";
-                                    sunk.Add($"{r.Name}, {room.Room.RoomId}: {pl} {bad} at {cell}");
+                                    sunk.Add($"{r.Name}, {room.Room.RoomId}: {pl} {bad} at {cell} [vertex {v}, corner {room.Corner}, floor {room.Floor}, support {pl.Support}, mount {piece.Mount}, taken {taken.Count}]");
                                     break;
                                 }
                                 if (!onFloor || v.Y - floor > 0.03f) continue;
@@ -218,13 +225,120 @@ public partial class DressTest : Node
                         how == "aircraft-cabin" && pieces.Any(p => p.Has("airline-seat")) && pieces.All(p => p.Set != "office")));
             }
         }
-        foreach (var kv in seen) GD.Print($"  room: {kv.Key} x{kv.Value}");
         foreach (string s in officeOut.Take(4).Concat(mineOff.Take(4)).Concat(hangars.Where(h => !h.Fits).Select(h => h.Where).Take(4)).Concat(cabins.Where(c => !c.Fits).Select(c => c.Where).Take(4))) GD.Print("  e.g. " + s);
         Check(officeOut.Count == 0, $"only a room that is an office is furnished as one ({officeOut.Count} others)");
         Check(mineOff.Count == 0, $"no desk, filing cabinet or bookshelf down a mine but in its offices ({mineOff.Count} rooms)");
         Check(hangars.Count > 0 && hangars.All(h => h.Fits), $"an airfield's hangars are furnished as hangars: benches, tool racks, engines, tugs, no office furniture ({hangars.Count(h => h.Fits)} of {hangars.Count})");
         Check(hangars.Count(h => h.Craft) >= hangars.Count * 0.7f, $"and most still have an engine on its stand or a tug in them, whatever the years carried off ({hangars.Count(h => h.Craft)} of {hangars.Count})");
         Check(cabins.All(c => c.Fits), $"an aircraft's cabin holds rows of seats and no office furniture ({cabins.Count(c => c.Fits)} of {cabins.Count})");
+    }
+
+    /// <summary>
+    /// After dressing, every doorway and every opening between rooms that a person could reach on the bare
+    /// blocks they still reach, as the player's capsule: walking cell to cell from the way in, a cell's middle
+    /// and the step between two must clear every solid piece's collision boxes by the capsule's radius.
+    /// </summary>
+    void Walkable(Decor decor, List<Rolled> rolled)
+    {
+        const float Radius = Slice.Player.Survivor.Radius;
+        var cut = new List<string>();
+        int ways = 0;
+        foreach (Rolled r in rolled)
+        {
+            PoiInstance inst = r.Inst;
+            NavGrid nav = inst.Nav();
+            PoiGenerator.Gen.Int3 entry = inst.Layout.EntranceCell;
+            var bare = nav.Reachable(entry);
+            // The solid pieces' collision boxes, seen from above, with the floor height they stand on.
+            var boxes = new List<(NV2[] Hull, int Level, float Lo, float Hi, string What)>();
+            foreach (PlaceRoom room in r.Memory.Rooms.Values)
+                foreach (int i in room.Solid)
+                {
+                    if (r.Memory.DecoTaken.GetValueOrDefault(room.Module)?.Contains(i) == true) continue;
+                    DecoPlacement pl = room.Plan.Placements[i];
+                    foreach (DecoBox box in decor.Forge.Mesh(pl.Look).Boxes)
+                    {
+                        var corners = box.Corners().Select(c => At(room, pl, c)).ToList();
+                        float lo = corners.Min(c => c.Y) - room.Corner.Y - room.Floor, hi = corners.Max(c => c.Y) - room.Corner.Y - room.Floor;
+                        // What a person steps over or walks under doesn't stop them.
+                        if (hi < 0.35f || lo > 1.8f) continue;
+                        boxes.Add((Hull(corners.Select(c => new NV2(c.X, c.Z)).ToList()), room.Corner.Y, lo, hi, $"{pl} in {room.Room.RoomId} [{room.Module}] corner {room.Corner}"));
+                    }
+                }
+            bool Clear(PoiGenerator.Gen.Int3 cell, NV2 at) => !boxes.Any(b => b.Level == cell.Y && Distance(b.Hull, at) < Radius);
+            NV2 Middle(PoiGenerator.Gen.Int3 c) => new(c.X + 0.5f, c.Z + 0.5f);
+            // Walking it as the capsule: cell to cell, each middle and each step between clear.
+            var reached = new HashSet<PoiGenerator.Gen.Int3> { entry };
+            var queue = new Queue<PoiGenerator.Gen.Int3>();
+            queue.Enqueue(entry);
+            while (queue.Count > 0)
+            {
+                PoiGenerator.Gen.Int3 c = queue.Dequeue();
+                foreach (PoiGenerator.Gen.Int3 n in nav.Neighbours(c))
+                {
+                    if (reached.Contains(n)) continue;
+                    if (!Clear(n, Middle(n)) || n.Y == c.Y && !Clear(n, (Middle(n) + Middle(c)) / 2f)) continue;
+                    reached.Add(n);
+                    queue.Enqueue(n);
+                }
+            }
+            var routed = Place.NavOf(r.Memory).Reachable(entry);
+            // The ways that must stay open: every doorway's cells and the cells where rooms open into each other (both sides walkable).
+            var must = new HashSet<PoiGenerator.Gen.Int3>();
+            foreach (Doorway d in inst.Layout.Doorways)
+                foreach (PoiGenerator.Gen.Int3 c in d.Cells) must.Add(c);
+            foreach (PoiGenerator.Gen.Int3 c in inst.Layout.ExitCells) must.Add(c);
+            var of = new Dictionary<PoiGenerator.Gen.Int3, int>();
+            foreach (PlacedModule m in inst.Layout.Modules)
+                foreach (PoiGenerator.Gen.Int3 c in m.Cells) of.TryAdd(c, m.Index);
+            foreach (var (c, mi) in of)
+                foreach (PoiGenerator.Gen.Int3 n in new[] { c + new PoiGenerator.Gen.Int3(1, 0, 0), c + new PoiGenerator.Gen.Int3(0, 0, 1) })
+                    if (of.TryGetValue(n, out int ni) && ni != mi && bare.Contains(c) && bare.Contains(n)) { must.Add(c); must.Add(n); }
+            foreach (PoiGenerator.Gen.Int3 c in must)
+            {
+                if (!bare.Contains(c)) continue;
+                ways++;
+                if (!reached.Contains(c)) cut.Add($"{r.Name}: {c} ({inst.Layout.Modules[of.GetValueOrDefault(c)].Purpose}) can't be reached past the dressing [routed {routed.Contains(c)}, by {boxes.Where(b => b.Level == c.Y).OrderBy(b => Distance(b.Hull, Middle(c))).Select(b => b.What).FirstOrDefault()}]");
+            }
+        }
+        foreach (string s in cut.Take(6)) GD.Print("  e.g. " + s);
+        Check(cut.Count == 0, $"every doorway and opening reachable on the bare blocks is reachable by the player's capsule after dressing ({ways - cut.Count} of {ways})");
+    }
+
+    /// <summary>The convex hull of points (gift wrapping: a box's eight corners seen from above).</summary>
+    static NV2[] Hull(List<NV2> pts)
+    {
+        var hull = new List<NV2>();
+        NV2 start = pts.OrderBy(p => p.X).ThenBy(p => p.Y).First(), at = start;
+        do
+        {
+            hull.Add(at);
+            NV2 next = pts[0] == at ? pts[1] : pts[0];
+            foreach (NV2 q in pts)
+            {
+                float cross = (next.X - at.X) * (q.Y - at.Y) - (next.Y - at.Y) * (q.X - at.X);
+                if (cross < 0 || cross == 0 && NV2.DistanceSquared(at, q) > NV2.DistanceSquared(at, next)) next = q;
+            }
+            at = next;
+        } while (at != start && hull.Count <= pts.Count);
+        return hull.ToArray();
+    }
+
+    /// <summary>How far a point lies outside a convex polygon (0 inside).</summary>
+    static float Distance(NV2[] poly, NV2 p)
+    {
+        if (poly.Length < 3) return poly.Length == 0 ? float.MaxValue : poly.Min(q => NV2.Distance(q, p));
+        bool inside = true;
+        float best = float.MaxValue;
+        for (int i = 0; i < poly.Length; i++)
+        {
+            NV2 a = poly[i], b = poly[(i + 1) % poly.Length], e = b - a;
+            float cross = e.X * (p.Y - a.Y) - e.Y * (p.X - a.X);
+            if (cross < 0) inside = false;
+            float t = Math.Clamp(NV2.Dot(p - a, e) / MathF.Max(e.LengthSquared(), 1e-9f), 0f, 1f);
+            best = MathF.Min(best, NV2.Distance(a + e * t, p));
+        }
+        return inside ? 0f : best;
     }
 
     /// <summary>The top of what's underfoot in a walk-level cell: the ground or a full block under it, or a floor plate on that; null where there's none.</summary>

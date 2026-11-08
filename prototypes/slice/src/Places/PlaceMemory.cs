@@ -72,6 +72,8 @@ public sealed class PlaceRoom
     public DecoPlan Plan;
     /// <summary>Placements that block walking (collide), by index; the rest are scenery.</summary>
     public readonly HashSet<int> Solid = new();
-    /// <summary>The cells a blocking piece stands in (for walking routes).</summary>
+    /// <summary>The cells a blocking piece stands in (for walking routes): all of <see cref="Blocking"/>.</summary>
     public readonly HashSet<Int3> Cells = new();
+    /// <summary>Each blocking piece's cells: those it stands in, and those whose middle a person can't reach for it.</summary>
+    public readonly Dictionary<int, HashSet<Int3>> Blocking = new();
 }
