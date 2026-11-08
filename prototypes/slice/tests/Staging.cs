@@ -117,6 +117,7 @@ public sealed partial class Staging
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
             "husk-carrier" => HuskCarrier(),
+            "blockdetail" => BlockDetailView(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
