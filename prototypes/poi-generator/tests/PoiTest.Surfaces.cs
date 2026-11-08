@@ -38,13 +38,14 @@ public partial class PoiTest
         int faces = 0, plain = 0, mergedFaces = 0, mergedPlain = 0, farFaces = 0, farPlain = 0;
         var bare = new Dictionary<string, int>();
         var kinds = new HashSet<FinishKind>();
+        int uncoded = 0, lookless = 0;
         var families = _lib.Families.OrderBy(_ => rand.Next()).Take(28).ToList();
         foreach (FamilyDef f in families)
         {
             PoiInstance inst;
             try { inst = PoiFactory.Generate(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (PoiState)rand.Next(4), (ulong)rand.NextInt64()); }
             catch (InvalidOperationException) { continue; }
-            Check(inst.Blocks.Look != null, $"{f.Id}: a spawned place knows its look");
+            if (inst.Blocks.Look == null) lookless++;
             BlockGrid g = inst.Blocks;
             MeshOptions near = MeshOptions.OnPlanet(g.Min);
             near.Collision = false;
@@ -52,7 +53,7 @@ public partial class PoiTest
                 for (int s = 0; s < 2; s++)
                 {
                     MeshBuffer b = m.Surfaces[s];
-                    Check(b.Codes.Count == b.VertexCount * 2, $"{f.Id}: every vertex has its code");
+                    if (b.Codes.Count != b.VertexCount * 2) uncoded++;
                     for (int v = 0; v + 3 < b.VertexCount; v += 4)
                     {
                         faces++;
@@ -88,6 +89,7 @@ public partial class PoiTest
                     if (Gen.Surfaces.FinishOf(far.Surfaces[s].Codes[v * 2]) == FinishKind.Plain) farPlain++;
                 }
         }
+        Check(lookless == 0 && uncoded == 0, $"every spawned place knows its look ({lookless} not) and every vertex has its code ({uncoded} buffers without)");
         string worst = string.Join(", ", bare.OrderByDescending(kv => kv.Value).Take(5).Select(kv => $"{kv.Key} {kv.Value}"));
         Check(plain <= faces * 0.06, $"of {faces} opaque faces in {families.Count} fresh places, {100.0 * plain / Math.Max(1, faces):F1}% are bare colour (most: {worst})");
         Check(mergedPlain <= mergedFaces * 0.06, $"from further off, {100.0 * mergedPlain / Math.Max(1, mergedFaces):F1}% of {mergedFaces} merged faces are bare");

@@ -1065,7 +1065,8 @@ void fragment() {
             float flake = smoothstep(th, th + 0.012, m) * (painted ? 1.0 : 0.0) * vis(6.0, px);
             vec3 bare = kind == 3 ? mix(col, vec3(0.42, 0.41, 0.38), 0.75)
                 : kind == 4 || kind == 14 ? col * 0.35 + vec3(0.06, 0.05, 0.04)
-                : kind == 13 || kind == 26 || kind == 11 ? vec3(0.13, 0.08, 0.05)
+                : kind == 13 || kind == 11 ? vec3(0.13, 0.08, 0.05)
+                : kind == 26 ? vec3(0.3, 0.31, 0.32)
                 : mix(col, vec3(0.26, 0.255, 0.24), 0.75);
             col = mix(col, bare * (0.9 + 0.2 * mix(0.5, noise3(wp * 40.0), vis(40.0, px))), flake);
             col *= 1.0 - (1.0 - smoothstep(0.0, 0.01, abs(m - th))) * 0.3 * vis(60.0, px) * (painted ? 1.0 : 0.0);
@@ -1133,13 +1134,21 @@ void fragment() {
 
         // Cracks, the older the more and the wider; a broken corner under an opening.
         if (mineral && wear >= 2 && kind != 34) {
-            float cw = wear == 2 ? 0.015 : 0.028;
-            float c = cracks(uv * 0.9 + vec2(pseed * 3.0), pseed + 1.3, cw) * smoothstep(0.35, 0.65, fbm3(wp * 0.8 + 4.0));
-            col *= 1.0 - c * 0.6 * vis(4.0, px);
+            // A few cracks where the structure worked, not a crazed net over every face.
+            float cw = wear == 2 ? 0.01 : 0.018;
+            float c = cracks(uv * 0.75 + vec2(pseed * 3.0), pseed + 1.3, cw) * smoothstep(0.56, 0.7, fbm3(wp * 0.45 + 4.0));
+            col *= 1.0 - c * 0.5 * vis(4.0, px);
         }
 
-        // Rust: bare metal blooms orange-brown, worst at the laps and fixings, and runs down the wall.
-        if (metallic && wear >= 1 && kind != 33) {
+        // Alloy and armour don't rust: they dull in chalky patches and darken where water ran.
+        if ((kind == 26 || kind == 37) && wear >= 1) {
+            float ox = smoothstep(0.62 - 0.06 * float(wear), 0.8 - 0.06 * float(wear), fbm3(wp * 1.6 + pseed * 2.0));
+            col = mix(col, vec3(luma(col)) * 1.25 + vec3(0.02), ox * 0.35 * W);
+            S.y = mix(S.y, 0.75, ox * W);
+            S.z *= 1.0 - ox * 0.4 * W;
+        }
+        // Rust: bare steel blooms orange-brown, worst at the laps and fixings, and runs down the wall.
+        if (metallic && wear >= 1 && kind != 33 && kind != 26 && kind != 37) {
             float r = fbm3(wp * 3.5 + pseed * 3.0) + J.x * 0.3 + (1.0 - up) * 0.05 + (param == 1 && kind == 11 ? 0.25 : 0.0);
             float rust = smoothstep(0.85 - 0.14 * float(wear), 0.92 - 0.14 * float(wear), r);
             float run = wall ? smoothstep(0.6, 0.9, noise3(vec3(uv.x * 14.0, uv.y * 0.5, pseed + 2.0))) * W * vis(14.0, px) : 0.0;

@@ -1178,6 +1178,63 @@ public static class Shapes
         if (flange) Add(0, 0, k, k, 0.35f, 0.65f, c.Scale(0.7f));
     }
 
+    /// <summary>Which ways a rail's line runs from its cell: toward each rail beside it (or a step up or down, as on a stair), on into a wall or post where the line ends, or across its Facing when it stands alone.</summary>
+    public static (bool East, bool West, bool North, bool South, bool Alone) RailRun(Block b, Int3 p, IBlockStructure g)
+    {
+        static bool IsRail(Block n) => n.Type == BlockType.Rail;
+        bool Joins(Dir d) { Int3 n = p + d.Vec(); return IsRail(g.Get(n)) || IsRail(g.Get(n + Int3.Up)) || IsRail(g.Get(n + Int3.Down)); }
+        bool Solid(Dir d) { Block n = g.Get(p + d.Vec()); return BlockInfo.IsFullCube(n.Type) || n.Type is BlockType.Pillar or BlockType.Rib or BlockType.Lattice; }
+        bool e = Joins(Dir.East), w = Joins(Dir.West), n = Joins(Dir.North), so = Joins(Dir.South);
+        bool alongX = e || w, alongZ = n || so;
+        if (!alongX && !alongZ)
+        {
+            // Alone: between two walls it spans the gap; else it faces its Facing, as a sign does, and runs across it.
+            bool x = Solid(Dir.East) || Solid(Dir.West), z = Solid(Dir.North) || Solid(Dir.South);
+            bool runX = x != z ? x : b.Facing is Dir.North or Dir.South or Dir.Up or Dir.Down;
+            return runX ? (true, true, false, false, true) : (false, false, true, true, true);
+        }
+        // A line's end runs on into the wall or post it meets; it never turns into a wall beside it.
+        if (alongX && !alongZ) { e |= Solid(Dir.East); w |= Solid(Dir.West); }
+        if (alongZ && !alongX) { n |= Solid(Dir.North); so |= Solid(Dir.South); }
+        return (e, w, n, so, false);
+    }
+
+    /// <summary>
+    /// A railing or fence (bars, in the Wall role) drawn along the line it is part of (<see cref="RailRun"/>):
+    /// a top rail and a middle rail toward each way the line runs, a post at its ends, corners and junctions and
+    /// every other metre between; bars are upright bars across the run under a flat bar. Nothing runs off sideways.
+    /// </summary>
+    static void Rail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
+    {
+        var (e, w, n, so, _) = RailRun(b, p, g);
+        bool straight = e && w && !n && !so || n && so && !e && !w;
+        bool post = !straight || ((p.X + p.Z) & 1) == 0;
+        // A run along x from the middle to each side it goes, then one along z; a lone arm starts at the middle.
+        void Runs(float y0, float y1, float half, Rgb col)
+        {
+            if (e || w) l.Add(Box(w ? 0f : 0.5f - half, y0, 0.5f - half, e ? 1f : 0.5f + half, y1, 0.5f + half, col, s));
+            if (n || so) l.Add(Box(0.5f - half, y0, n ? 0f : 0.5f - half, 0.5f + half, y1, so ? 1f : 0.5f + half, col, s));
+        }
+        if (b.Role == Role.Wall)
+        {
+            // Bars: upright bars an eighth of a metre apart across the run, a flat bar over them where nothing stands above.
+            bool top = g.Get(p + Int3.Up).Type != BlockType.Rail;
+            if (top) Runs(0.92f, 1f, 0.04f, c);
+            bool x = e || w;
+            for (int i = 0; i < 8; i++)
+            {
+                float a = 0.0625f + i * 0.125f;
+                if (x && (a < 0.5f ? w : e) || !x && (a < 0.5f ? n : so) || Math.Abs(a - 0.5f) < 0.07f)
+                    l.Add(x ? Box(a - 0.015f, 0, 0.485f, a + 0.015f, top ? 0.92f : 1f, 0.515f, c, s) : Box(0.485f, 0, a - 0.015f, 0.515f, top ? 0.92f : 1f, a + 0.015f, c, s));
+            }
+            return;
+        }
+        Runs(0.95f, 1.05f, 0.05f, c);
+        // The post caps where runs meet, so no two rails' faces lie on one another.
+        if (post) l.Add(Box(0.44f, 0, 0.44f, 0.56f, 1.07f, 0.56f, c, s));
+        Runs(0.48f, 0.54f, 0.03f, c.Scale(0.8f));
+    }
+
     public static List<ShapeBox> For(Block b, Int3 p, IBlockStructure g)
     {
         var l = new List<ShapeBox>(6);
@@ -1404,10 +1461,7 @@ public static class Shapes
                 break;
             }
             case BlockType.Rail:
-                l.Add(Box(0.45f, 0, 0.45f, 0.55f, 1.0f, 0.55f, c, Surface.Metal));
-                l.Add(Box(0, 0.95f, 0.44f, 1, 1.05f, 0.56f, c, Surface.Metal));
-                l.Add(Box(0.44f, 0.95f, 0, 0.56f, 1.05f, 1, c, Surface.Metal));
-                l.Add(Box(0, 0.5f, 0.46f, 1, 0.56f, 0.54f, c.Scale(0.8f), Surface.Metal));
+                Rail(l, b, p, g, c, s);
                 break;
             case BlockType.Sign:
             {

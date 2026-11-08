@@ -153,6 +153,39 @@ public sealed partial class Staging
                 }
             }
         }
+        if (Want("fence"))
+        {
+            // A city lot's fence or railing at its foot, from 5 m off across the line, at eye height.
+            PoiSite site = planet.Pois.Where(s => s.Siting == "city" && s.Instance.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Rail && b.Cell.Y is >= 0 and <= 1) >= 12).OrderBy(Away).FirstOrDefault();
+            if (site == null) GD.Print("placesurf: no city lot with a fence on this world");
+            else
+            {
+                GD.Print($"placesurf: fence of {site.Family.Id} '{site.Name}' {site.Instance.State}");
+                foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
+                Place p = _game.Places.PlaceOf(site);
+                var g = site.Instance.Blocks;
+                bool Rail(Int3 c) => g.Get(c).Type == BlockType.Rail;
+                // A rail in a straight run with open ground on one side of it.
+                (Int3 Cell, Int3 Out)? pick = null;
+                foreach (var (c, b) in g.Blocks())
+                {
+                    if (b.Type != BlockType.Rail || c.Y is < 0 or > 1) continue;
+                    Int3 along = Rail(c + new Int3(1, 0, 0)) && Rail(c - new Int3(1, 0, 0)) ? new Int3(1, 0, 0) : Rail(c + new Int3(0, 0, 1)) && Rail(c - new Int3(0, 0, 1)) ? new Int3(0, 0, 1) : default;
+                    if (along == default) continue;
+                    Int3 across = new(along.Z, 0, along.X);
+                    foreach (Int3 side in new[] { across, across * -1 })
+                        if (Enumerable.Range(1, 5).All(k => g.Get(c + side * k).IsAir)) { pick = (c, side); break; }
+                    if (pick != null) break;
+                }
+                if (p != null && pick is { } f)
+                {
+                    Vector3 at = p.WorldOf(f.Cell, 0.6f);
+                    Vector3 eye = at + new Vector3(f.Out.X, 0f, f.Out.Z) * 5f + new Vector3(f.Out.Z, 0f, f.Out.X) * 1.5f;
+                    eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.6f;
+                    foreach (int x in Frame(eye, at, Name("fence"))) yield return x;
+                }
+            }
+        }
         _game.FixedCamera = null;
         _game.Visor.Visible = true;
     }
