@@ -9,7 +9,7 @@ namespace Slice.Surface;
 
 /// <summary>
 /// The suit's ore scanner: the nearest deposit of each ore within 600 m (the planet generator
-/// promises each common one within about 280 m of any walkable spot, and scatters the uncommon
+/// promises each common one within about 400 m of any walkable spot, and scatters the uncommon
 /// ones so a walk finds them), at its ore body's centre, of
 /// those the survival tool can reach (dry, and near the surface). A
 /// deposit dug out is no longer shown: its label leaves the compass and the next nearest takes its

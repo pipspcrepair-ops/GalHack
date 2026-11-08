@@ -21,9 +21,10 @@ public enum DepositKind : byte
 public readonly record struct Deposit(double X, double Y, DepositKind Kind, float Amount, float Depth);
 
 /// <summary>
-/// Resource deposits laid out so the early game stays short. The planet is cut into 200 m cells and
+/// Resource deposits laid out so the early game stays short. The planet is cut into 283 m cells (two
+/// 200 m cells' ground: half as many deposits as the first worlds had, which crowded the scanner) and
 /// every cell with usable land gets one deposit of each common material, so from any walkable spot
-/// the nearest of each is at most a cell diagonal (about 280 m) away, on every archetype. The
+/// the nearest of each is at most a cell diagonal (about 400 m) away, on every archetype. The
 /// uncommon ores are smaller and fewer but never absent (design 626): one deposit to each block of
 /// a few cells, so they are spread evenly and a walk finds them. Each archetype also scatters its
 /// signature resource, in full-sized deposits, without that promise.
@@ -31,7 +32,8 @@ public readonly record struct Deposit(double X, double Y, DepositKind Kind, floa
 public sealed class DepositField
 {
     public const int CommonKinds = 6;
-    public const double CellSize = 200;
+    /// <summary>How much ground each cell's deposits serve: the deposit frequency (halved from 200 m cells).</summary>
+    public const double CellSize = 283;
     public const float MaxShallowDepth = 3f;
 
     /// <summary>A signature resource that is a common material: these cells hold more of it.</summary>

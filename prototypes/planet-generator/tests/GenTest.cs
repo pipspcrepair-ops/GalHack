@@ -353,7 +353,7 @@ public partial class GenTest : Node
     /// </summary>
     void StarterMaterials()
     {
-        const double Reach = 300;
+        const double Reach = 400; // a 283 m cell's diagonal
         foreach (var (a, v) in Variants())
         {
             double worst = 0, worstLanding = 0;
