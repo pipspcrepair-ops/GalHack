@@ -1419,12 +1419,14 @@ public partial class CreaturesTest : Node
         // A wild hunter in their midst (it got in; the guards haven't come yet): they scatter inside the pen.
         Species hunter = _gen.Generate(4242, 0.4f, false).Species.Find(s => s.IsHunter && !s.Flies);
         Creature wolf = sim.Spawn(hunter, pen + new Vector3(0f, 0f, 1f));
-        int fled = 0;
+        // Any that ran at some point in those four seconds: one look at a single instant misses those already over it or not yet started.
+        var ran = new HashSet<Creature>();
         for (int i = 0; i < 60 * 4; i++)
         {
             sim.Step(Dt);
-            if (i == 60 * 2) fled = animals.Count(c => c.State == CState.Flee);
+            foreach (Creature c in animals) if (c.State == CState.Flee) ran.Add(c);
         }
+        int fled = ran.Count;
         foreach (Creature c in animals) worstOut = MathF.Max(worstOut, WildSim.Flat(c.Position - pen).Length() - 5f);
         Check(worstOut < 1f && pupFar < 9f && fled >= 3 && domesticAttacks == 0,
             $"they keep to their pens and stations over 2 minutes (at most {MathF.Max(0f, worstOut):F1} m over), a pet keeps up with its owner (never more than {pupFar:F1} m behind), and a wild hunter among the stock scatters them inside the pen ({fled} of 4 running), none fighting back");
