@@ -171,8 +171,8 @@ public static class GalaxyShader
                     }
                 }
                 // The thin ring of light that has circled the hole, at the shadow's edge.
-                float ring = exp(-pow((b - s.x * 1.04) / max(px * 0.8, s.x * 0.035), 2.0));
-                light += galaxy_heat(0.9) * ring * 1.6 * (1.0 - hidden);
+                float photon_ring = exp(-pow((b - s.x * 1.04) / max(px * 0.8, s.x * 0.035), 2.0));
+                light += galaxy_heat(0.9) * photon_ring * 1.6 * (1.0 - hidden);
                 hidden += shadow * (1.0 - hidden);
                 light *= 1.0 - tiny;
                 hidden *= 1.0 - tiny;
@@ -233,10 +233,10 @@ public static class GalaxyShader
             bool touched;
             vec4 heart = galaxy_heart(d, touched);
             vec3 glow = textureLod(galaxy_glow, d, 0.0).rgb;
-            vec3 stars = points ? galaxy_points(d) : vec3(0.0);
-            if (!touched) return glow + stars;
+            vec3 star_light = points ? galaxy_points(d) : vec3(0.0);
+            if (!touched) return glow + star_light;
             float front = galaxy_hole_size.w;
-            return glow * front + (glow * (1.0 - front) + stars) * (1.0 - heart.a) + heart.rgb;
+            return glow * front + (glow * (1.0 - front) + star_light) * (1.0 - heart.a) + heart.rgb;
         }
         """;
 
