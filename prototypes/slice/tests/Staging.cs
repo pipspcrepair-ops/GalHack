@@ -113,6 +113,7 @@ public sealed partial class Staging
             "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
+            "popin" => PopInView(),
             "husk-grab" => HuskGrab(),
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),

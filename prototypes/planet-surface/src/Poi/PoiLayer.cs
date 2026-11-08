@@ -30,6 +30,12 @@ public partial class PoiLayer : Node3D
         public bool Whole;
         public readonly Dictionary<Int3, MeshInstance3D> Cells = new();
         public readonly HashSet<Int3> Hidden = new();
+        /// <summary>How far its far mesh has dissolved into its merged blocks (0..1), and which way it is going now (+1, -1, 0: still).</summary>
+        public float Blend;
+        public int Way;
+
+        /// <summary>How big it stands, m: the wider way across its grid (the pop-in log's measure).</summary>
+        public float Size => System.Math.Max(Site.Instance.Blocks.Size.X, Site.Instance.Blocks.Size.Z);
     }
 
     readonly List<Place> _places = new();
@@ -54,6 +60,12 @@ public partial class PoiLayer : Node3D
         Clear();
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
+        // Every place state's block materials, and their fade copies, made now rather than at a first fade.
+        foreach (float glow in new[] { 2.4f, 2.0f, 1.6f })
+        {
+            if (!Shared.TryGetValue(glow, out BlockMaterials m)) Shared[glow] = m = new BlockMaterials(glow);
+            Fx.Fade.Warm(m.BySurface);
+        }
         if (Tiered)
         {
             BuildTiered(world);
@@ -334,6 +346,8 @@ public partial class PoiLayer : Node3D
         _animated.Clear();
         _styled.Clear();
         _midJob = null;
+        _blending.Clear();
+        _tilesBlending.Clear();
         _world = null;
     }
 }

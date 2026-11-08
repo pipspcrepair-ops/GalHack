@@ -2,6 +2,14 @@
 // (canopies, caps), and their vertex colour shades it: 0.8 is the tint as it is, more is sunlit, less
 // is shade. Trunks and flowers keep their own colour. Tall plants sway in the weather's wind, more
 // toward the top and more in gusty weather; rocks and crystals don't move.
+//
+// By distance (the far rings' scatter, TerrainStreamer): each plant has a near drawing (its own mesh)
+// and, a large one, a far drawing too (its far mesh), and they dissolve one into the other over a
+// band of distance through a fixed screen pattern, the near drawing keeping the pixels under its
+// share and the far one the rest, so nothing swaps or doubles. Small growth dissolves away at the
+// near reach, large past the far reach; a thinning share of the large (instance alpha past 1) goes
+// sooner, so a wood thins into the distance rather than ending in a line. Each plant's reach is a
+// little its own. Keep in step with TerrainStreamer.FloraShows.
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
 
@@ -10,23 +18,64 @@ render_mode cull_disabled, diffuse_burley;
 global uniform vec4 weather_wind;    // direction x, z, speed m/s, distance travelled (gust phase)
 global uniform vec4 weather_ground;  // wetness, snow, dust, solar
 
+// 0: the near drawing; 1: the far; 2 (anything else that draws with this): whole at every distance.
+instance uniform float flora_layer = 2.0;
+// A chunk's new drawing dissolving in over its old one (TerrainStreamer.StepSwaps): the part of a
+// second screen pattern, independent of the first, each draws, the new [0, t) and the old [t, 1).
+// What both draw alike looks the same throughout; what is new or gone fades.
+instance uniform vec2 flora_swap = vec2(0.0, 1.0);
+
+const float NEAR_REACH = 120.0;
+const float NEAR_BAND = 26.0;
+const float FAR_REACH = 370.0;
+const float FAR_BAND = 60.0;
+const float THIN_REACH = 200.0;
+const float THIN_BAND = 40.0;
+
 varying vec3 tint;
 varying float glow;
+varying flat vec2 band;
+
+float shown(float reach, float width, float away) {
+	return 1.0 - smoothstep(reach - width, reach, away);
+}
 
 void vertex() {
 	tint = INSTANCE_CUSTOM.rgb;
-	glow = INSTANCE_CUSTOM.a;
-	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float sway = clamp(VERTEX.y / 12.0, 0.0, 1.0);
-	sway *= sway;
-	float gust = sin(dot(world.xz, weather_wind.xy) * 0.08 - weather_wind.w * 0.08) * 0.5 + 0.5;
-	float strength = min(weather_wind.z, 30.0) * 0.012 * (0.4 + 0.6 * gust);
-	float flutter = sin(TIME * 2.3 + world.x * 0.3 + world.z * 0.2) * 0.04;
-	vec3 push = vec3(weather_wind.x, 0.0, weather_wind.y) * (strength + flutter) * sway * max(COLOR.a, 0.8) * 3.0;
-	VERTEX += (inverse(MODEL_MATRIX) * vec4(push, 0.0)).xyz;
+	bool thin = INSTANCE_CUSTOM.a >= 1.5;
+	glow = INSTANCE_CUSTOM.a - (thin ? 2.0 : 0.0);
+	band = vec2(0.0, 1.0);
+	if (flora_layer < 1.5) {
+		vec3 root = MODEL_MATRIX[3].xyz;
+		float away = distance(root.xz, MAIN_CAM_INV_VIEW_MATRIX[3].xz);
+		float own = 0.9 + 0.1 * fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
+		float near = shown(NEAR_REACH * own, NEAR_BAND, away);
+		float far = thin ? shown(THIN_REACH * own, THIN_BAND, away) : shown(FAR_REACH * own, FAR_BAND, away);
+		band = flora_layer < 0.5 ? vec2(0.0, near) : vec2(near, max(far, near));
+	}
+	if (band.y <= band.x) {
+		VERTEX = vec3(0.0); // none of it shows: nothing to draw
+	} else {
+		vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float sway = clamp(VERTEX.y / 12.0, 0.0, 1.0);
+		sway *= sway;
+		float gust = sin(dot(world.xz, weather_wind.xy) * 0.08 - weather_wind.w * 0.08) * 0.5 + 0.5;
+		float strength = min(weather_wind.z, 30.0) * 0.012 * (0.4 + 0.6 * gust);
+		float flutter = sin(TIME * 2.3 + world.x * 0.3 + world.z * 0.2) * 0.04;
+		vec3 push = vec3(weather_wind.x, 0.0, weather_wind.y) * (strength + flutter) * sway * max(COLOR.a, 0.8) * 3.0;
+		VERTEX += (inverse(MODEL_MATRIX) * vec4(push, 0.0)).xyz;
+	}
 }
 
 void fragment() {
+	if (band.x > 0.0 || band.y < 1.0) {
+		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+		if (n < band.x || n >= band.y) discard;
+	}
+	if (flora_swap.x > 0.0 || flora_swap.y < 1.0) {
+		float m = fract(sin(dot(floor(FRAGCOORD.xy), vec2(12.9898, 78.233))) * 43758.5453);
+		if (m < flora_swap.x || m >= flora_swap.y) discard;
+	}
 	vec3 own = srgb_to_linear(COLOR.rgb);
 	vec3 c = mix(own, srgb_to_linear(min(tint * COLOR.rgb * 1.25, vec3(1.0))), COLOR.a);
 	// A dusting of snow on top faces; wet bark goes dark.
