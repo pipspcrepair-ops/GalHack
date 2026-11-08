@@ -187,12 +187,15 @@ public sealed partial class PlanetWorld
         object chart = null;
         float depth = -1f;
         Chart(spec, force.Depth, ref chart, ref depth);
+        // Only a start world (or one a depth was asked for) has its real place yet: any other is found
+        // a rim star for its sky, so its zone is still rolled by the odds rather than read off that star.
+        float rollDepth = PoiSiting.StartWorld || force.Depth != null ? depth : -1f;
         WorldMap map = PlanetGenerator.Generate(spec);
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
-        PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: depth);
+        PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: rollDepth);
         if (roll != null) profile = profile with { Barred = roll.Barred };
-        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: depth);
+        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: rollDepth);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
