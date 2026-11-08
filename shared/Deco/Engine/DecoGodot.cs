@@ -7,52 +7,41 @@ using NVector3 = System.Numerics.Vector3;
 namespace GalHack.Deco.Engine;
 
 /// <summary>
-/// The six deco materials. Colour lives in the vertices, so every piece in a place shares them.
-/// Glow is unshaded and pushed past 1 so the environment's glow catches it; a per-instance
-/// <c>energy</c> lets one screen flicker while the others hold. Leaf is double-sided for vines.
+/// The six deco materials. Colour lives in the vertices, so every piece in a place shares them;
+/// what each part is made of rides in the vertices too, and matte and metal draw it (grain, weave,
+/// seams, glaze, brushing, wear: <see cref="DecoShaders"/>). Glow is unshaded and pushed past 1 so
+/// the environment's glow catches it; a per-instance <c>energy</c> lets one screen flicker while
+/// the others hold. Leaf is double-sided for vines.
 /// </summary>
 public sealed class DecoMaterials
 {
     public readonly Material[] BySurface;
 
-    const string GlowShader = @"
-shader_type spatial;
-render_mode unshaded, cull_back;
-instance uniform float energy = 1.0;
-uniform float base_energy = 2.0;
-void fragment() {
-    vec3 c = COLOR.rgb;
-    c = c * c;
-    ALBEDO = c * base_energy * energy;
-}";
-
-    const string FleshShader = @"
-shader_type spatial;
-render_mode cull_back;
-void fragment() {
-    vec3 c = COLOR.rgb * COLOR.rgb;
-    ALBEDO = c;
-    EMISSION = c * 0.35;
-    ROUGHNESS = 0.35;
-    SPECULAR = 0.7;
-}";
+    static Shader _surface, _glow, _glass, _flesh;
 
     static DecoMaterials _shared;
     public static DecoMaterials Shared => _shared ??= new DecoMaterials();
 
     public DecoMaterials(float glowEnergy = 2.0f)
     {
-        var matte = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.9f };
-        var metal = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.5f, Metallic = 0.45f };
-        var glow = new ShaderMaterial { Shader = new Shader { Code = GlowShader } };
-        glow.SetShaderParameter("base_energy", glowEnergy);
-        var glass = new StandardMaterial3D
+        _surface ??= new Shader { Code = DecoShaders.Surface };
+        _glow ??= new Shader { Code = DecoShaders.Glow };
+        _glass ??= new Shader { Code = DecoShaders.Glass };
+        _flesh ??= new Shader { Code = DecoShaders.Flesh };
+        ShaderMaterial Surface(float metalScale, float flatRough, float flatMetal)
         {
-            VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha, Roughness = 0.08f, Metallic = 0.2f,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-        };
-        var flesh = new ShaderMaterial { Shader = new Shader { Code = FleshShader } };
+            var m = new ShaderMaterial { Shader = _surface };
+            m.SetShaderParameter("metal_scale", metalScale);
+            m.SetShaderParameter("flat_rough", flatRough);
+            m.SetShaderParameter("flat_metal", flatMetal);
+            return m;
+        }
+        var matte = Surface(0.3f, 0.9f, 0f);
+        var metal = Surface(1f, 0.5f, 0.45f);
+        var glow = new ShaderMaterial { Shader = _glow };
+        glow.SetShaderParameter("base_energy", glowEnergy);
+        var glass = new ShaderMaterial { Shader = _glass };
+        var flesh = new ShaderMaterial { Shader = _flesh };
         var leaf = new StandardMaterial3D { VertexColorUseAsAlbedo = true, VertexColorIsSrgb = true, Roughness = 0.85f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
         BySurface = new Material[] { matte, metal, glow, glass, flesh, leaf };
     }
@@ -77,6 +66,9 @@ public static class DecoGodot
             var verts = new Vector3[n];
             var normals = new Vector3[n];
             var colors = new Color[n];
+            // Where each vertex lies on its face (UV) and the face's extent (UV2), for the surface detail.
+            var uvs = new Vector2[n];
+            var extents = new Vector2[n];
             // Godot's front faces are clockwise: swap the second and third vertex of each triangle.
             for (int i = 0; i < n; i += 3)
             {
@@ -87,6 +79,9 @@ public static class DecoGodot
                     normals[i + k] = V(buf.Normals[src]);
                     var c = buf.Colors[src];
                     colors[i + k] = new Color(c.X, c.Y, c.Z, c.W);
+                    var f = buf.FaceAt(src);
+                    uvs[i + k] = new Vector2(f.X, f.Y);
+                    extents[i + k] = new Vector2(f.Z, f.W);
                 }
             }
             var arrays = new Godot.Collections.Array();
@@ -94,6 +89,8 @@ public static class DecoGodot
             arrays[(int)Mesh.ArrayType.Vertex] = verts;
             arrays[(int)Mesh.ArrayType.Normal] = normals;
             arrays[(int)Mesh.ArrayType.Color] = colors;
+            arrays[(int)Mesh.ArrayType.TexUV] = uvs;
+            arrays[(int)Mesh.ArrayType.TexUV2] = extents;
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, materials.BySurface[s]);
         }

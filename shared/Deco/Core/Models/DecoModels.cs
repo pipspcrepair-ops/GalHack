@@ -53,10 +53,10 @@ public static partial class DecoModels
             {
                 // One leaning over.
                 using (b.Turn(new System.Numerics.Vector3(x, y, 0), 0, 0, -35))
-                    b.Box(x, y, z0 + 0.02f, x + w, y + h, z1 - 0.02f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost();
+                    b.Box(x, y, z0 + 0.02f, x + w, y + h, z1 - 0.02f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost().As(DecoFinish.Paper);
                 break;
             }
-            b.Box(x, y, z0 + b.Rng.Range(0f, 0.04f), x + w, y + h, z1 - 0.01f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost();
+            b.Box(x, y, z0 + b.Rng.Range(0f, 0.04f), x + w, y + h, z1 - 0.01f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost().As(DecoFinish.Paper);
             x += w + 0.004f;
             if (b.Rng.Chance(0.08f)) x += 0.08f;
         }

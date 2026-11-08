@@ -65,8 +65,8 @@ public partial class Screenshot : Node
             return;
         }
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
-        // A place of a family near the landing, and who is in it (--force-family, --force-occupant=Keepers).
-        if (_args.TryGetValue("force-family", out string ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
+        // A place of a family near the landing, and who is in it (--force-family or --force, --force-occupant=Keepers).
+        if (_args.TryGetValue("force-family", out string ff) || _args.TryGetValue("force", out ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
         if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))
         {
             PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);

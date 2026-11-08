@@ -20,7 +20,7 @@ public static partial class DecoModels
             }
             b.Box(-0.98f, 0.45f, -0.385f, 0.98f, 0.52f, -0.33f, Trim).Ghost();
             b.Box(-0.95f, 0.1f, -0.39f, 0.95f, 0.13f, -0.37f, Lamp).Lit().Ghost();
-            b.Box(-0.99f, 1.0f, -0.45f, 0.99f, 1.06f, 0.45f, Body);
+            b.Box(-0.99f, 1.0f, -0.45f, 0.99f, 1.06f, 0.45f, Body).As(DecoFinish.Stone);
             b.Tube(-0.95f, 0.2f, -0.44f, 0.95f, 0.2f, -0.44f, 0.022f, Chrome);
             b.Box(0.5f, 1.06f, 0.15f, 0.6f, 1.35f, 0.25f, Chrome);
             for (int i = 0; i < 3; i++) b.Box(0.47f + i * 0.04f, 1.25f, 0.08f, 0.49f + i * 0.04f, 1.32f, 0.15f, Dark).Ghost();
@@ -39,7 +39,7 @@ public static partial class DecoModels
             b.Cyl(0, 0, 0, 0.2f, 0.03f, Chrome, 10);
             b.Cyl(0, 0.03f, 0, 0.025f, 0.7f, Chrome, 6);
             Ring(b, new Vector3(0, 0.3f, 0), 0.15f, 8, 0.015f, Chrome);
-            b.Cyl(0, 0.72f, 0, 0.19f, 0.09f, Fabric, 10).Soft();
+            b.Cyl(0, 0.72f, 0, 0.19f, 0.09f, Fabric, 10).Soft().As(DecoFinish.Leather);
             b.Cyl(0, 0.72f, 0, 0.195f, 0.02f, Chrome, 10).Ghost();
         };
 

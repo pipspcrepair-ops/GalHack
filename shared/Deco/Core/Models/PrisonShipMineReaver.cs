@@ -137,7 +137,7 @@ public static partial class DecoModels
             using (b.Turn(new Vector3(0, 0.45f, 0.1f), -10))
             {
                 b.Box(-0.42f, 0.4f, -0.6f, 0.42f, 0.55f, 0.15f, Body);
-                b.Box(-0.36f, 0.55f, -0.55f, 0.36f, 0.64f, 0.12f, Fabric).Soft();
+                b.Box(-0.36f, 0.55f, -0.55f, 0.36f, 0.64f, 0.12f, Fabric).Soft().As(DecoFinish.Leather);
                 b.Box(-0.42f, 0.55f, -0.55f, -0.36f, 0.75f, 0.12f, Body);
                 b.Box(0.36f, 0.55f, -0.55f, 0.42f, 0.75f, 0.12f, Body);
             }
