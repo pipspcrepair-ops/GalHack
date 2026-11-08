@@ -468,10 +468,14 @@ public partial class PoiPlaces : Node3D
     /// What holds the survivor up at their feet: a ladder in the cell at their feet or just below
     /// (so the top rung carries them over), or a lift shaft; and the place and lift.
     /// </summary>
-    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift)
+    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift) => ClimbAt(feet, out place, out lift, out _);
+
+    /// <summary>As <see cref="ClimbAt(Vector3, out Place, out int)"/>, and on a ladder, the ladder as the climber holds it (in the world).</summary>
+    public ClimbMode ClimbAt(Vector3 feet, out Place place, out int lift, out LadderHold ladder)
     {
         place = null;
         lift = -1;
+        ladder = default;
         foreach (Place p in Standing)
         {
             if (p.Dormant) continue;
@@ -486,9 +490,22 @@ public partial class PoiPlaces : Node3D
                 lift = shaft;
                 return ClimbMode.Shaft;
             }
-            if (p.Inst.Blocks.Get(up).Type == BlockType.Ladder || p.Inst.Blocks.Get(below).Type == BlockType.Ladder)
+            Block at = p.Inst.Blocks.Get(up), under = p.Inst.Blocks.Get(below);
+            if (at.Type == BlockType.Ladder || under.Type == BlockType.Ladder)
             {
                 place = p;
+                Int3 cell = at.Type == BlockType.Ladder ? up : below;
+                Int3 o = p.Inst.Blocks.Get(cell).Facing.Vec();
+                Block back = p.Inst.Blocks.Get(cell - o);
+                Vector3 mid = p.WorldOf(cell, 0f);
+                ladder = new LadderHold
+                {
+                    Out = new System.Numerics.Vector3(o.X, 0f, o.Z),
+                    Centre = new System.Numerics.Vector3(mid.X, mid.Y, mid.Z),
+                    Backed = back.IsAir ? !p.Inst.Extras.InSpace && (cell - o).Y <= Assembler.GroundY && !p.Inst.Layout.Occupied[cell - o] : BlockInfo.Collides(back.Type) && back.Type != BlockType.Door,
+                    Below = p.Inst.Blocks.Get(up with { Y = Mathf.FloorToInt(local.Y - 0.1f) }).Type == BlockType.Ladder,
+                    Top = at.Type != BlockType.Ladder,
+                };
                 return ClimbMode.Ladder;
             }
         }

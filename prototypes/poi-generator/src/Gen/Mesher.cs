@@ -1139,6 +1139,9 @@ public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface,
 /// <summary>What each non-cube block looks like: a few boxes in cell-local units (0 to 1).</summary>
 public static class Shapes
 {
+    /// <summary>A floor plate's top over the floor it lies on, m.</summary>
+    public const float PlateTop = 0.02f;
+
     public static readonly Rgb ScreenOn = new(0x7c, 0xff, 0xb0);
     public static readonly Rgb ScreenDim = new(0x2a, 0x6a, 0x48);
 
@@ -1408,7 +1411,8 @@ public static class Shapes
                 break;
             }
             case BlockType.Plate:
-                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.1f, 1), c, Surface.Matte));
+                // Thin as a finish (it is walked through, never on): the floor it lies on meets a stair's step flush.
+                l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, Shapes.PlateTop, 1), c, Surface.Matte));
                 break;
             case BlockType.Scorch:
                 l.Add(new ShapeBox(new V3(0.02f, 0, 0.02f), new V3(0.98f, 0.02f, 0.98f), c, Surface.Matte, true));
@@ -1495,12 +1499,13 @@ public static class Shapes
                 break;
             case BlockType.Ladder:
             {
-                // Rails and rungs against the wall behind the climber (the north side, turned by Facing).
+                // Rails and rungs flat against the wall behind Facing (Facing looks out from the wall, at the climber).
                 Rgb rail = c.Scale(0.85f);
-                l.Add(Box(0.18f, 0, 0.04f, 0.26f, 1, 0.14f, rail, Surface.Metal, b.Facing));
-                l.Add(Box(0.74f, 0, 0.04f, 0.82f, 1, 0.14f, rail, Surface.Metal, b.Facing));
+                Dir wall = b.Facing.Opposite();
+                l.Add(Box(0.18f, 0, 0.04f, 0.26f, 1, 0.14f, rail, Surface.Metal, wall));
+                l.Add(Box(0.74f, 0, 0.04f, 0.82f, 1, 0.14f, rail, Surface.Metal, wall));
                 for (int i = 0; i < 4; i++)
-                    l.Add(Box(0.26f, 0.12f + i * 0.25f, 0.06f, 0.74f, 0.16f + i * 0.25f, 0.12f, c, Surface.Metal, b.Facing));
+                    l.Add(Box(0.26f, 0.12f + i * 0.25f, 0.06f, 0.74f, 0.16f + i * 0.25f, 0.12f, c, Surface.Metal, wall));
                 break;
             }
             case BlockType.Rail:

@@ -45,7 +45,7 @@ public enum BlockType : byte
     Crystal,
     // Added with the architect: vertical traversal, breakable walls and more props.
     Stair,      // walked like a ramp (rising toward Facing), drawn as steps
-    Ladder,     // climbable and never blocks; the rungs sit against the wall behind Facing
+    Ladder,     // climbable and never blocks; the rungs lie flat against the wall behind Facing (Facing looks out at the climber)
     Rail,       // a waist-high guard rail: collides, never stood on
     Breakable,  // a weak wall section hiding something; drawn as a wall with cracks
     Sign,       // a plate on a wall (warnings, directories); never blocks
