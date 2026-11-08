@@ -312,9 +312,10 @@ public static class DeviceDetail
         {
             (0.3f, 0.35f, 0.26f, 0.34f, 0xd9b25a), (0.35f, 0.405f, 0.34f, 0.42f, 0x8a64b8), (0.405f, 0.46f, 0.42f, 0.5f, 0x5577aa),
         };
+        // The bell and its mouth open on the nozzle's face (+Z): with that face against a block they are hidden with it.
         foreach (var b in bands)
-            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 1, Texture = FaceTexture.Smooth }, segments: 16, caps: false);
-        k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16);
+            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 1, Texture = FaceTexture.Smooth }, segments: 16, caps: false).Mount = Dir.PosZ;
+        k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16).Mount = Dir.PosZ;
         Band(k, 2, 0.05f, 0.16f, 0.014f, Hazard);
         // Vents along the body from its nose to the band (on the flanks u runs along Z, on top and bottom v does).
         k.Face(Dir.PosX, 0.0f, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
