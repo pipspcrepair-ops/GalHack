@@ -138,6 +138,7 @@ public sealed partial class Staging
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
             "blockdetail" => BlockDetailView(),
+            "placesurf" => PlaceSurfView(),
             "decorooms" => DecoRooms(),
             _ => ProofViews(view),
         };
