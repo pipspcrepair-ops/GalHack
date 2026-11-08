@@ -36,7 +36,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {
@@ -1791,18 +1791,22 @@ public partial class PoiTest : Node
                     {
                         var layout = PoiFactory.BuildLayout(_lib, f, v.Index, Rarity.Common, (ulong)rand.NextInt64(), new LayoutHints(front, tech));
                         if (layout.Blocks.Blocks().Any(b => b.Cell.Y < 0)) { belowGround++; Note($"{v.Name} goes below ground"); }
+                        // A house's buildings, its garage among them, at house size: a terrace row runs long.
                         foreach (PlainBox b in layout.Extras.Plain.Where(_ => f.Id == "flavour_house"))
                         {
                             int across = Math.Min(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3, along = Math.Max(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z) - 3;
-                            if (across < 10 || along > 20 || (b.Eave + 1) % 4 != 0) { wrongSize++; Note($"{v.Name}: {across} by {along} m, eaves {b.Eave}"); }
+                            if (across < 6 || along > 64 || (b.Eave + 1) % 4 != 0) { wrongSize++; Note($"{v.Name}: {across} by {along} m, eaves {b.Eave}"); }
                         }
                         foreach (Doorway d in layout.Doorways)
                         {
                             Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
-                            if (hi.Y - lo.Y != 1) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
+                            // A house's doors run its storey's full height (3 m against a 1.8 m person), a farmhouse's too; other buildings' are 2 m.
+                            if (f.Id == "flavour_house" ? hi.Y - lo.Y != 2 : hi.Y - lo.Y is not (1 or 2)) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
                         if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
-                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
+                        // A house's roof is the form its family gave it: a flat one is flat, any other is slopes.
+                        bool flatByRule = f.Id == "flavour_house" && layout.Extras.Homes.All(x => x.Roof is "flat" or "turf");
+                        if (f.Id is "flavour_house" or "flavour_farmstead" or "flavour_shed" && v.Tech != "high" && !flatByRule && !layout.Blocks.Blocks().Any(b => b.Block.Type == BlockType.Ramp && b.Block.Role == Role.Roof)) { flatRoofs++; Note($"{v.Name} has no sloped roof"); }
                         foreach (PoiState state in new[] { PoiState.Ruined, PoiState.Abandoned })
                         {
                             PoiInstance p = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
