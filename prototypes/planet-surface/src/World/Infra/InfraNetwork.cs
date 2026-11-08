@@ -44,6 +44,8 @@ public sealed class InfraRoute
     public double Length;
     /// <summary>A maglev: the whole line rides an elevated guideway.</summary>
     public bool Maglev;
+    /// <summary>A waterfront road: the side its seawall stands on (+1 left of its way, -1 right, 0 none); the ground past the wall drops to the water.</summary>
+    public int WallSide;
 
     public int Count => X.Length;
 }
@@ -1541,7 +1543,7 @@ public sealed class InfraNetwork
                     new ArraySegment<float>(r.Y, s, e - s + 1), spans, r.HalfWidth, r.Surface, r.Wear, _w, _h,
                     boreHalfWidth: r.HalfWidth + 1.2f, boreHeight: r.Kind == RouteKind.Rail ? 7f : 6.5f,
                     buckle: r.Kept || r.Kind == RouteKind.Rail || r.Surface is StampSurface.Dirt or StampSurface.Gravel ? 0f : 0.22f * r.Wear,
-                    mouth: new ArraySegment<float>(mouth, s, e - s + 1)));
+                    mouth: new ArraySegment<float>(mouth, s, e - s + 1), wallSide: r.WallSide));
             }
         }
         return list;

@@ -490,7 +490,13 @@ public static class CityBlocks
         int W = Math.Max(14, lot.W), D = Math.Max(14, lot.D), h = 4;
         int i0 = 1, i1 = W - 2, k0 = 5, k1 = D - 2;
         int hall = p.Hall("works floor", ModuleKind.Hall, 0, i0, k0, i1, k1, 0, h, f.Wall, f.Roof);
-        for (int i = i0 + 3; i + 2 < i1 - 1; i += 5)
+        // A store walled off in the back corner, its door onto the floor: what's worth taking was kept there.
+        p.Fill(i0 + 4, 0, k1 - 4, i0 + 4, h - 1, k1 - 1, Solid(f.Panel));
+        p.Fill(i0 + 1, 0, k1 - 4, i0 + 3, h - 1, k1 - 4, Solid(f.Panel));
+        int store = p.Room(ModuleKind.Room, "storage", 0, i0 + 1, 0, k1 - 3, i0 + 3, h - 1, k1 - 1);
+        p.Door(i0 + 2, 0, k1 - 4, true, hall, store);
+        p.Cache(2 * (i0 + 2) + 1, 0, 2 * (k1 - 2), store);
+        for (int i = i0 + 7; i + 2 < i1 - 1; i += 5)
             p.Machine(i, 0, k1 - 4, i + 2, k1 - 2, 2, i % 2 == 0 ? f.Steel : f.Panel); // along the back wall, the floor open
         for (int i = i0 + 2; i < i1 - 1; i += 4)
         {
@@ -504,7 +510,7 @@ public static class CityBlocks
         p.Mouth(mid - 2, 0, k0, mid + 1, 2, k0, p.Yard, hall);
         p.FloorStripes(2 * (mid - 2), 2 * k0 - 2, 2 * (mid + 1) + 1, 2 * k0 - 1);
         p.Pave(0, 0, W - 1, k0 - 1, new Stuff2(Material.Concrete, f.Floor.C.Scale(0.95f)));
-        p.C.VaultModule = hall;
+        p.C.VaultModule = store;
         p.Gable(i0, k0, i1, k1, h, D - k0 > W, f.Roof, f.Wall);
         Edges(p, lot, u => u >= 2 * (mid - 4) && u <= 2 * (mid + 3) + 1, false);
         Broken(p, lot, i0, k0, i1, k1, h);
@@ -534,6 +540,7 @@ public static class CityBlocks
         p.Pave(i0 - 2, 0, i1 + 2, K0 - 1, stone.Scale(0.85f));
         p.Mouth(mid - 1, 0, K0, mid, 1, K0, p.Yard, porch);
         p.Mouth(mid - 1, 0, K0 + 3, mid, 2, K0 + 3, porch, hall);
+        p.Cache(2 * (i0 + 3), 0, 2 * (k1 - 3), hall);
         p.C.VaultModule = hall;
         p.Weathers(i0 - 1, 0, K0 - 1, i1 + 1, h + 4 + (int)r, k1 + 1, h);
     }
@@ -582,6 +589,7 @@ public static class CityBlocks
                 for (int u = 2 * (mid - 1); u <= 2 * mid + 1; u++) p.Put(u, 0, 2 * pk0, new Block(BlockType.Ramp, f.Plinth.M, f.Plinth.C, Role.Floor, Dir.South));
             }
         }
+        p.Cache(2 * (i0 + 3), 0, 2 * (k0 + 3), hall);
         p.C.VaultModule = hall;
         Edges(p, lot, u => u >= 2 && u <= 2 * W - 3, false);
         p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, h + 12, k1 + 1, h);

@@ -74,6 +74,8 @@ public sealed class CityPlan
     /// <summary>The grid's pitch, centre line to centre line, and how far a lot's line stands back from a street's centre line, metres.</summary>
     public const double Block = 84, Inset = 8;
     public const float Avenue = 5.5f, Side = 4f;
+    /// <summary>How far back from the water a lot keeps, metres: no building at the very edge.</summary>
+    public const double Setback = 12;
     public readonly List<InfraRoute> Streets = new();
     /// <summary>The highway along the bank (null where the city has no bank to run along).</summary>
     public InfraRoute Bank;
@@ -176,11 +178,13 @@ public sealed class CityPlan
         bool Free(double ax, double az, double bx, double bz)
         {
             float lo = float.MaxValue, hi = float.MinValue;
+            // Streets keep back from the water: the waterfront road on its wall runs between them and it.
+            double len = Math.Max(1e-6, Math.Sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az))), px = -(bz - az) / len * 22, pz = (bx - ax) / len * 22;
             for (double t = 0; t <= 1.0001; t += 0.125)
             {
                 double x = ax + (bx - ax) * t, z = az + (bz - az) * t;
                 GroundSample g = G(x, z);
-                if (Wet(g) || !In(x, z)) return false;
+                if (Wet(g) || !In(x, z) || WetAt(x + px, z + pz) || WetAt(x - px, z - pz)) return false;
                 lo = Math.Min(lo, g.Height);
                 hi = Math.Max(hi, g.Height);
             }
@@ -222,11 +226,11 @@ public sealed class CityPlan
         }
         if (city.Streets.Count == 0) { city.Why = "no street would lie"; return city; }
 
-        // ---- the highway along the bank, parks between it and the water; joined to the network at its ends.
-        city.Bank = BankHighway(city, net, cx, cz, radius, WetAt, Dist, w, h);
+        // ---- the waterfronts: a highway along the main bank and promenades along the rest, each on a wall over the water.
+        Waterfronts(city, net, cx, cz, radius, WetAt, (x, z) => G(x, z).Height, Dist, w, h, profile.Before, seed);
         // The city joined to the old network: from the far ends of its two longest avenues out to the nearest road.
         var own = new HashSet<InfraRoute>(city.Streets);
-        if (city.Bank != null) own.Add(city.Bank);
+        foreach (Seawall s in city.Waterfront) own.Add(s.Road);
         foreach (InfraRoute a in city.Streets.Where(s => s.HalfWidth >= Avenue).OrderByDescending(s => s.Count).Take(2))
         {
             int far = Dist(a.X[0], a.Z[0], cx, cz) > Dist(a.X[^1], a.Z[^1], cx, cz) ? 0 : a.Count - 1;
@@ -276,6 +280,13 @@ public sealed class CityPlan
                 cz + Mathx.WrapDelta(bridge.AZ - cz, h) - (bridge.BZ - bridge.AZ) / Math.Max(1, Dist(bridge.AX, bridge.AZ, bridge.BX, bridge.BZ)) * k * 12, 14));
         bool Clear(double x0, double z0, double x1, double z1)
         {
+            // Nothing stands at the water's edge: a lot keeps back from it, behind the waterfront's wall.
+            for (double x = x0 - Setback; x <= x1 + Setback + 0.01; x += 8)
+                foreach (double z in new[] { z0 - Setback, (z0 + z1) / 2, z1 + Setback })
+                    if (WetAt(x, z)) return false;
+            for (double z = z0 - Setback; z <= z1 + Setback + 0.01; z += 8)
+                foreach (double x in new[] { x0 - Setback, x1 + Setback })
+                    if (WetAt(x, z)) return false;
             foreach (var (x, z, reach) in other)
                 if (x > x0 - reach && x < x1 + reach && z > z0 - reach && z < z1 + reach) return false;
             foreach (PoiSite p in pois)
@@ -333,7 +344,8 @@ public sealed class CityPlan
             // A city cuts and fills its blocks level, up to a point; houses step up steeper ground lot by lot.
             if (rise > (homes ? 26 : 12)) continue;
             // The block's ground as one pad, but where houses step up a slope lot by lot: paved downtown, grass in the parks.
-            if (!homes)
+            // (A park by the water keeps the land's own shape down to the waterfront's wall.)
+            if (!homes && blk.District != "park")
                 city.Stamps.Add(new TerrainStamp($"city {district}", (int)(x0 + Inset), (int)(z0 + Inset), (int)(x1 - Inset), (int)(z1 - Inset), blockPad, 2f, 10f, w, h)
                 {
                     Surface = district is "park" ? StampSurface.Lawn : district is "works" or "station" ? StampSurface.Gravel : StampSurface.Concrete,
@@ -614,12 +626,33 @@ public sealed class CityPlan
     }
 
     /// <summary>
-    /// The highway along the bank: from the middle out, the first water in each direction marks the bank, and
-    /// the longest unbroken stretch of it, pulled 34 m inland and smoothed, is laid as a highway, joined to the
-    /// network at both ends. Null where the city has no bank long enough.
+    /// A waterfront: a road along the water on top of a wall (the owner's rule: where the city meets the water it
+    /// meets it with a retaining wall, never sloping shore or an overhang). The road's terrain stamp keeps no bank
+    /// on the wall's side (<see cref="InfraRoute.WallSide"/>), so past the wall's line the land drops to the water;
+    /// the infrastructure layer draws the wall from the road's line: a seawall with a parapet, a quay with
+    /// bollards, a boulder revetment where the drop is tall, timber piling on a low-tech world; stairs down at
+    /// intervals; cracked, slumped and breached on a fallen world, weed at the waterline.
     /// </summary>
-    static InfraRoute BankHighway(CityPlan city, InfraNetwork net, double cx, double cz, double radius, Func<double, double, bool> wet,
-        Func<double, double, double, double, double> dist, double w, double h)
+    public sealed class Seawall
+    {
+        public InfraRoute Road;
+        public TechLevel Tech;
+        public float Fall;
+        public ulong Seed;
+        /// <summary>A quay where boats tied up (bollards along it), not a plain seawall: the main bank, near the middle.</summary>
+        public bool Quay;
+    }
+
+    /// <summary>The city's waterfronts, the main bank's first (it carries <see cref="Bank"/>).</summary>
+    public readonly List<Seawall> Waterfront = new();
+
+    /// <summary>
+    /// The waterfronts: from the middle out, the first water in each direction marks the bank; every unbroken
+    /// stretch of it long enough, smoothed, is laid as a road a few metres back from the water on a wall, the
+    /// longest a highway joined to the network at both ends, the rest promenades.
+    /// </summary>
+    static void Waterfronts(CityPlan city, InfraNetwork net, double cx, double cz, double radius, Func<double, double, bool> wet, Func<double, double, float> height,
+        Func<double, double, double, double, double> dist, double w, double h, TechLevel tech, ulong seed)
     {
         const int Rays = 180;
         var bank = new double[Rays];
@@ -627,45 +660,81 @@ public sealed class CityPlan
         {
             double ang = a * Math.Tau / Rays, c = Math.Cos(ang), s = Math.Sin(ang);
             bank[a] = double.NaN;
-            for (double r = radius * 0.35; r <= radius * 1.15; r += 6)
-                if (wet(cx + c * r, cz + s * r)) { bank[a] = r - 34; break; }
+            for (double r = radius * 0.35; r <= radius * 1.15; r += 4)
+                if (wet(cx + c * r, cz + s * r)) { bank[a] = r; break; }
         }
-        // The longest run of rays that found the bank, round the circle.
-        int bestStart = -1, bestLen = 0;
+        // The runs of rays that found one bank, round the circle, longest first: a jump between neighbours is another shore (an inlet, a far coast).
+        bool Joined(int a)
+        {
+            int p = (a + Rays - 1) % Rays;
+            return !double.IsNaN(bank[a]) && !double.IsNaN(bank[p]) && Math.Abs(bank[a] - bank[p]) <= 30;
+        }
+        var runs = new List<(int Start, int Len)>();
         for (int a = 0; a < Rays; a++)
         {
-            if (double.IsNaN(bank[a]) || !double.IsNaN(bank[(a + Rays - 1) % Rays])) continue;
-            int len = 0;
-            while (len < Rays && !double.IsNaN(bank[(a + len) % Rays])) len++;
-            if (len > bestLen) (bestStart, bestLen) = (a, len);
+            if (double.IsNaN(bank[a]) || Joined(a)) continue;
+            int len = 1;
+            while (len < Rays && Joined((a + len) % Rays)) len++;
+            if (len >= 10) runs.Add((a, len));
         }
-        if (bestLen < 14 || bestLen >= Rays) return null;
-        var pts = new List<(double X, double Z)>();
-        for (int k = 2; k < bestLen - 2; k++)
+        if (runs.Count == 0 && Enumerable.Range(0, Rays).All(Joined)) runs.Add((0, Rays - 1)); // water all round: a ring broken at one point
+        foreach (var (start, length) in runs.OrderByDescending(r => r.Len))
         {
-            // The bank's distance eased over its neighbours, so a creek mouth doesn't kink the road.
-            double sum = 0;
-            int n = 0;
-            for (int j = -3; j <= 3; j++)
+            bool main = city.Waterfront.Count == 0;
+            RouteKind kind = main ? RouteKind.Highway : RouteKind.Road;
+            float half = main ? InfraNetwork.HalfWidthOf(RouteKind.Highway) : Side;
+            // The road's middle so far back from the first water that the wall's line stands a few metres short of it.
+            double back = half + TerrainStamp.WallStep + 4;
+            var pts = new List<(double X, double Z)>();
+            for (int k = 2; k < length - 2; k++)
             {
-                int i = k + j;
-                if (i < 0 || i >= bestLen) continue;
-                sum += bank[(bestStart + i) % Rays];
-                n++;
+                // The bank's distance eased over its neighbours, so a creek mouth doesn't kink the road.
+                double sum = 0;
+                int n = 0;
+                for (int j = -3; j <= 3; j++)
+                {
+                    int i = k + j;
+                    if (i < 0 || i >= length) continue;
+                    sum += bank[(start + i) % Rays];
+                    n++;
+                }
+                double r = sum / n - back, ang = (start + k) % Rays * Math.Tau / Rays;
+                double x = cx + Math.Cos(ang) * r, z = cz + Math.Sin(ang) * r;
+                if (wet(x, z) || wet(x + Math.Cos(ang) * (half + 1), z + Math.Sin(ang) * (half + 1))) { if (pts.Count >= 4) break; pts.Clear(); continue; }
+                if (pts.Count > 0 && dist(pts[^1].X, pts[^1].Z, x, z) < 24) continue;
+                pts.Add((x, z));
             }
-            double r = sum / n, ang = (bestStart + k) % Rays * Math.Tau / Rays;
-            double x = cx + Math.Cos(ang) * r, z = cz + Math.Sin(ang) * r;
-            if (wet(x, z)) { if (pts.Count >= 4) break; pts.Clear(); continue; }
-            if (pts.Count > 0 && dist(pts[^1].X, pts[^1].Z, x, z) < 28) continue;
-            pts.Add((x, z));
+            if (pts.Count < 4) continue;
+            InfraRoute road = net.Street(pts.Select(p => (Mathx.WrapX(p.X, w), Mathx.Wrap(p.Z, h))).ToList(), kind, round: InfraNetwork.TownRadius(kind));
+            if (road == null || road.Count < 6) continue;
+            road.HalfWidth = half;
+            road.Wear = 0.2f + city.Fall * 0.5f;
+            // The wall on the side away from the middle, where the water is.
+            int m = road.Count / 2;
+            double dx = road.X[m + 1] - road.X[m - 1], dz = road.Z[m + 1] - road.Z[m - 1];
+            double ox = Mathx.WrapDelta(road.X[m] - cx, w), oz = Mathx.WrapDelta(road.Z[m] - cz, h);
+            road.WallSide = -dz * ox + dx * oz >= 0 ? 1 : -1;
+            // The top stands over the land in front of the wall everywhere, filled behind, the grade held: the land drops away in front.
+            float step = InfraNetwork.MaxGrade(kind) * InfraNetwork.Spacing;
+            for (int i = 0; i < road.Count; i++)
+            {
+                int i0 = Math.Max(0, i - 1), i1 = Math.Min(road.Count - 1, i + 1);
+                double ex = road.X[i1] - road.X[i0], ez = road.Z[i1] - road.Z[i0], el = Math.Max(1e-6, Math.Sqrt(ex * ex + ez * ez));
+                double nx = -ez / el * road.WallSide, nz = ex / el * road.WallSide, reach = half + TerrainStamp.WallStep;
+                float front = Math.Max(height(road.X[i] + nx * reach, road.Z[i] + nz * reach), height(road.X[i] + nx * (reach + 3), road.Z[i] + nz * (reach + 3)));
+                road.Y[i] = Math.Max(road.Y[i], front + 0.8f);
+            }
+            for (int i = 1; i < road.Count; i++) road.Y[i] = Math.Max(road.Y[i], road.Y[i - 1] - step);
+            for (int i = road.Count - 2; i >= 0; i--) road.Y[i] = Math.Max(road.Y[i], road.Y[i + 1] - step);
+            city.Waterfront.Add(new Seawall { Road = road, Tech = tech, Fall = city.Fall, Seed = PoiGenerator.Gen.Hash.Combine(seed, (ulong)road.Id), Quay = main && tech != TechLevel.Low });
+            if (main)
+            {
+                city.Bank = road;
+                var own = new HashSet<InfraRoute>(city.Streets) { road };
+                net.Spur(pts[0], RouteKind.Highway, 2500, own);
+                net.Spur(pts[^1], RouteKind.Highway, 2500, own);
+            }
+            if (city.Waterfront.Count >= 4) break;
         }
-        if (pts.Count < 4) return null;
-        InfraRoute road = net.Street(pts.Select(p => (Mathx.WrapX(p.X, w), Mathx.Wrap(p.Z, h))).ToList(), RouteKind.Highway, round: InfraNetwork.TownRadius(RouteKind.Highway));
-        if (road == null) return null;
-        road.Wear = 0.2f + city.Fall * 0.5f;
-        var own = new HashSet<InfraRoute>(city.Streets) { road };
-        net.Spur(pts[0], RouteKind.Highway, 2500, own);
-        net.Spur(pts[^1], RouteKind.Highway, 2500, own);
-        return road;
     }
 }

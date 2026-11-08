@@ -27,7 +27,7 @@ public partial class SurfaceTest
         var rand = new Random();
         bool was = CityPlan.Force;
         int cities = 0, lots = 0, elbows = 0, streets = 0, noStreet = 0, offLine = 0, offStreet = 0, offPad = 0, onRoad = 0, worlds = 0, wrongWorld = 0;
-        int tallest = 0, towers = 0, kinds = 0;
+        int tallest = 0, towers = 0, kinds = 0, shore = 0, wetStreets = 0, walls = 0, wrongWalls = 0;
         double slowest = 0, worstTurn = 0;
         string first = "", firstWorld = "";
         void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
@@ -64,6 +64,39 @@ public partial class SurfaceTest
                         Note($"a street turns {turn:F0} degrees at {r.X[i]:F0},{r.Z[i]:F0}");
                         i += 4;
                     }
+                }
+                // Nothing at the water's edge but a waterfront's wall: no lot over the water or on the shore beside it,
+                // no street over it; each waterfront's wall faces the water with the land dropping away in front of it.
+                bool Wet(double x, double z) => w.Source.Sampler.Sample(Mathx.WrapX(x, width), Mathx.Wrap(z, height), 2) is var g && (g.InRiver || g.Height < 2.5f);
+                foreach (CityLotPlan lot in built)
+                {
+                    bool wet = false;
+                    for (double x = lot.X0 - 4; x <= lot.X1 + 4 && !wet; x += 4)
+                        for (double z = lot.Z0 - 4; z <= lot.Z1 + 4 && !wet; z += 4) wet = Wet(x, z);
+                    if (wet) { shore++; Note($"a {lot.Kind} stands at the water's edge"); }
+                }
+                foreach (InfraRoute r in city.Streets)
+                    for (int i = 1; i + 1 < r.Count; i++)
+                    {
+                        double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz)), px = -dz / l * (r.HalfWidth + 1), pz = dx / l * (r.HalfWidth + 1);
+                        if (r.Span[Math.Min(i, r.Span.Length - 1)] == GalHack.Terrain.RoadSpan.Ground && (Wet(r.X[i], r.Z[i]) || Wet(r.X[i] + px, r.Z[i] + pz) || Wet(r.X[i] - px, r.Z[i] - pz)))
+                        { wetStreets++; Note($"a street runs at the water's edge at {r.X[i]:F0},{r.Z[i]:F0}"); break; }
+                    }
+                foreach (CityPlan.Seawall s in city.Waterfront)
+                {
+                    walls++;
+                    InfraRoute r = s.Road;
+                    int facing = 0, dropping = 0, points = 0;
+                    for (int i = 2; i + 2 < r.Count; i += 3)
+                    {
+                        double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+                        double ox = -dz / l * r.WallSide, oz = dx / l * r.WallSide, reach = r.HalfWidth + GalHack.Terrain.TerrainStamp.WallStep;
+                        points++;
+                        if (Enumerable.Range(1, 12).Any(t => Wet(r.X[i] + ox * (reach + t * 3), r.Z[i] + oz * (reach + t * 3)))) facing++;
+                        if (w.GroundHeight(Mathx.WrapX(r.X[i] + ox * (reach + 2.5), width), Mathx.Wrap(r.Z[i] + oz * (reach + 2.5), height)) < r.Y[i] - 0.3f) dropping++;
+                    }
+                    if (points > 0 && facing < points * 0.7) { wrongWalls++; Note($"a waterfront's wall faces the water at only {facing} of {points} points"); }
+                    if (points > 0 && dropping < points * 0.7) { wrongWalls++; Note($"the land drops in front of a waterfront's wall at only {dropping} of {points} points"); }
                 }
                 // The other roads: the network's own, which nothing of the city's may stand on.
                 var others = w.Infra.Routes.Where(r => !city.Streets.Contains(r)).ToList();
@@ -119,6 +152,8 @@ public partial class SurfaceTest
         Check(noStreet == 0 && offLine == 0 && offStreet == 0, $"every lot fronts a street, its gate on its lot line and its crossover on the street's centre line: {lots} lots, {noStreet} with no street, {offLine} gates off the line, {offStreet} crossovers off the street{first}");
         Check(offPad == 0, $"every lot stands on its own pad ({offPad} of {lots} off it){first}");
         Check(onRoad == 0, $"nothing a city builds stands on a road not its own ({onRoad} of {lots}){first}");
+        Check(shore == 0 && wetStreets == 0, $"no city building or street sits on the shore or over the water: {lots} lots, {shore} at the water's edge, {wetStreets} streets running along it{first}");
+        Check(walls >= 1 && wrongWalls == 0, $"where a city meets the water it meets it with a wall: {walls} waterfronts, each facing the water with the land dropping in front ({wrongWalls} wrong){first}");
         Check(slowest < 4000, $"a city plans in under 4 s (slowest {slowest:F0} ms)");
         Check(wrongWorld == 0, $"only worlds whose layers call for a city get one: {worlds} fresh worlds, {wrongWorld} wrong{firstWorld}");
     }

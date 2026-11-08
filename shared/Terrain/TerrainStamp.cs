@@ -318,6 +318,9 @@ public sealed class TerrainStamp
                     bed = CuttingHalf(far);
                 }
                 if (s <= bed) return target;
+                // A waterfront road: on its wall's side the top runs on to the wall's line, and past it the
+                // land is its own, dropping to the water in front of the wall (InfraLayer draws the wall's face).
+                if (WallSide != 0 && SideOf(x, z) == WallSide) return s <= bed + WallStep ? target : height;
                 if (s >= bed + ease) return height;
                 // A place's ground blending out over a road's banks: the banks give way to it as it comes in,
                 // so a pad above or below the road meets it in a slope, not a step along the pad's edge.
@@ -356,6 +359,28 @@ public sealed class TerrainStamp
     public float BankMax { get; init; } = 28f;
     /// <summary>Road: how far its deck heaves up and down (a neglected road's buckling), metres.</summary>
     public float Buckle { get; init; }
+    /// <summary>Road: a waterfront road's seawall side (+1 left of its way, -1 right, 0 none): no bank there, the ground left to drop away past the wall's line, <see cref="WallStep"/> beyond the deck.</summary>
+    public int WallSide { get; init; }
+    /// <summary>How far past a waterfront road's deck its wall's line stands (the walk along the top), metres.</summary>
+    public const float WallStep = 1.5f;
+
+    /// <summary>Which side of the path a point lies (+1 left of its way, -1 right), by the nearest stretch.</summary>
+    int SideOf(double x, double z)
+    {
+        Offset(x, z, out double dxd, out double dzd);
+        float dx = (float)dxd, dz = (float)dzd, best = float.MaxValue;
+        int side = 0;
+        for (int i = 0; i + 1 < _px.Length; i++)
+        {
+            float ax = _px[i], az = _pz[i], ex = _px[i + 1] - ax, ez = _pz[i + 1] - az, len2 = ex * ex + ez * ez;
+            float u = len2 > 1e-6f ? Math.Clamp(((dx - ax) * ex + (dz - az) * ez) / len2, 0f, 1f) : 0f;
+            float qx = ax + ex * u - dx, qz = az + ez * u - dz, d2 = qx * qx + qz * qz;
+            if (d2 >= best) continue;
+            best = d2;
+            side = ex * (dz - az) - ez * (dx - ax) >= 0 ? 1 : -1;
+        }
+        return side;
+    }
 
     /// <summary>Smooth noise in [0, 1] on an 8 m lattice that repeats exactly round the planet (so a road heaves the same on both sides of a seam).</summary>
     float Heave(double x, double z)
@@ -433,7 +458,7 @@ public sealed class TerrainStamp
     public static TerrainStamp Road(string name, System.Collections.Generic.IReadOnlyList<double> xs, System.Collections.Generic.IReadOnlyList<double> zs,
         System.Collections.Generic.IReadOnlyList<float> ys, System.Collections.Generic.IReadOnlyList<RoadSpan> spans,
         float halfWidth, StampSurface surface, float wear, double planetWidth, double planetHeight, float boreHalfWidth = 4f, float boreHeight = 6f, float buckle = 0f,
-        System.Collections.Generic.IReadOnlyList<float> mouth = null)
+        System.Collections.Generic.IReadOnlyList<float> mouth = null, int wallSide = 0)
     {
         double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
         for (int i = 0; i < xs.Count; i++)
@@ -448,7 +473,7 @@ public sealed class TerrainStamp
         foreach (float y in ys) lowest = Math.Min(lowest, y);
         var t = new TerrainStamp(name, minX, minZ, maxX, maxZ, (int)MathF.Floor(lowest), 0f, 0f, planetWidth, planetHeight)
         {
-            Shape = StampShape.Road, HalfWidth = halfWidth, Surface = surface, Wear = wear, BoreHalfWidth = boreHalfWidth, BoreHeight = boreHeight, Buckle = buckle,
+            Shape = StampShape.Road, HalfWidth = halfWidth, Surface = surface, Wear = wear, BoreHalfWidth = boreHalfWidth, BoreHeight = boreHeight, Buckle = buckle, WallSide = wallSide,
         };
         int n = xs.Count;
         t._px = new float[n];

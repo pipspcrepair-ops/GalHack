@@ -174,6 +174,18 @@ public partial class Screenshot : Node
             Vector2 side = new Vector2(-toWater.Y, toWater.X);
             shots.Add(Toward("fallen", new Vector3(at.X + side.X * 140, fallen.Pad + 40, at.Z + side.Y * 140), at));
         }
+        // The waterfront from the water: its wall, the road on top, the city behind.
+        if (city.Waterfront.FirstOrDefault() is { } front && front.Road.Count > 8)
+        {
+            var r = front.Road;
+            int i = r.Count / 2;
+            double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            float ox = (float)(-dz / l * r.WallSide), oz = (float)(dx / l * r.WallSide), reach = r.HalfWidth + 1.5f;
+            var top = new Vector3((float)r.X[i] + ox * reach, r.Y[i], (float)r.Z[i] + oz * reach);
+            var eye = top + new Vector3(ox, 0, oz) * 45f + new Vector3((float)(dx / l), 0, (float)(dz / l)) * 25f;
+            eye.Y = Mathf.Max(top.Y + 4f, m.World.GroundHeight(eye.X, eye.Z) + 6f);
+            shots.Add(Level("waterfront", eye, top - new Vector3(0, 1.5f, 0)));
+        }
         // Down an avenue toward the middle: from its point about 120 m out, 1.7 m over its deck.
         var avenue = city.Streets.Where(s => s.HalfWidth >= PlanetSurface.Infra.CityPlan.Avenue).OrderBy(s => Enumerable.Range(0, s.Count).Min(i => Dist(s, i, city))).FirstOrDefault();
         if (avenue != null)

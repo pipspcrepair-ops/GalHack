@@ -84,6 +84,15 @@ public static class Wrecks
                 for (int i = 4; i + 8 < main.Count && !laid; i += 2)
                     if (TryOnRoute(main, i, kind, source, net, rng, profile.Before, out WreckSite jam, steep: 0.12f, town: true)) { sites.Add(jam); laid = true; }
         }
+        // A city's avenues: traffic stalled down the widest of them where it was left.
+        if (net.City is { } city)
+            foreach (InfraRoute avenue in city.Streets.Where(s => s.HalfWidth >= CityPlan.Avenue).OrderByDescending(s => s.Count).Take(4))
+            {
+                bool laid = false;
+                foreach (string kind in new[] { "evacuation-jam", "pile-up" })
+                    for (int i = 6; i + 10 < avenue.Count && !laid; i += 3)
+                        if (TryOnRoute(avenue, i, kind, source, net, rng, profile.Before, out WreckSite jam, steep: 0.12f, town: true) && !Overlaps(sites, jam, net)) { sites.Add(jam); laid = true; }
+            }
         // An exodus: every road to a port jammed, thicker the nearer the port.
         if (profile.Exodus || net.RegionPlan?.Roll.Road == "jammed") ExodusJams(net, source, sites, rng);
         foreach (InfraRoute r in net.Routes)
