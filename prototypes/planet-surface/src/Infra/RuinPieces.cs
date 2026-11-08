@@ -23,7 +23,8 @@ public partial class InfraLayer
     public static List<ChunkMesh> RuinMesh(PoiInstance inst)
     {
         BlockGrid g = inst.Blocks;
-        MeshOptions options = MeshOptions.OnPlanet(g.Min);
+        // No door leaves: a ruin has no doors to open, and a leaf drawn there would be a panel you walk through.
+        MeshOptions options = WalkableMesh.On(g.Min);
         options.Mottle = 0.2f;
         return Mesher.Build(g, inst.Layout.Occupied, options);
     }

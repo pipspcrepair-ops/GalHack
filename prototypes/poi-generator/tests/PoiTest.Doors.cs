@@ -124,4 +124,80 @@ public partial class PoiTest
         Check(inWay == 0, $"nothing comes lower than a door's head for {DoorSize.Approach} m either side of it, nor lower than {DoorSize.Headroom} m out of doors: {inWay} in the way{first}");
         Check(low == 0, $"every opening a person can reach between two walls is {DoorSize.Tall} m clear: {low} places with a lower one{first}");
     }
+
+    /// <summary>
+    /// Nothing hangs in an opening without collision. Every family, on fresh seeds in the states you find it in, meshed
+    /// as you walk into it (<see cref="WalkableMesh"/>): whatever is drawn in a doorway above its sill, its collision
+    /// holds there too. A door block never collides, so a leaf the mesher drew there (a shut door, or the top of a
+    /// jammed one hanging into the opening) was a panel you walked straight through; the plain planet options still
+    /// draw them, and are counted to show it.
+    /// </summary>
+    void DoorwaySolids()
+    {
+        var rand = new Random();
+        int places = 0, doorways = 0, loose = 0, old = 0;
+        string first = "";
+        var kinds = new Dictionary<string, int>();
+        // Drawn triangles inside a doorway cell above its sill, with no collision triangle inside that cell.
+        int Loose(PoiInstance inst, MeshOptions o, ref string note)
+        {
+            var doors = new Dictionary<Int3, int>();
+            foreach (var cells in inst.Layout.Doorways.Select(d => d.Cells).Append(inst.Layout.ExitCells).Where(c => c.Count > 0))
+            {
+                int sill = cells.Min(c => c.Y);
+                foreach (Int3 c in cells) doors[c] = sill;
+            }
+            if (doors.Count == 0) return 0;
+            static (Int3 Cell, float X, float Y, float Z) At(List<float> p, int a, int b, int c)
+            {
+                float x = (p[a * 3] + p[b * 3] + p[c * 3]) / 3f, y = (p[a * 3 + 1] + p[b * 3 + 1] + p[c * 3 + 1]) / 3f, z = (p[a * 3 + 2] + p[b * 3 + 2] + p[c * 3 + 2]) / 3f;
+                var cell = new Int3((int)MathF.Floor(x), (int)MathF.Floor(y), (int)MathF.Floor(z));
+                return (cell, x - cell.X, y - cell.Y, z - cell.Z);
+            }
+            static bool Inside(float fx, float fy, float fz, float m) => fx > m && fx < 1 - m && fy > m && fy < 1 - m && fz > m && fz < 1 - m;
+            var solid = new HashSet<Int3>();
+            var drawn = new Dictionary<Int3, int>();
+            foreach (ChunkMesh ch in Mesher.Build(inst.Blocks, inst.Layout.Occupied, o))
+            {
+                for (int t = 0; t + 8 < ch.Collision.Count; t += 9)
+                {
+                    float x = (ch.Collision[t] + ch.Collision[t + 3] + ch.Collision[t + 6]) / 3f, y = (ch.Collision[t + 1] + ch.Collision[t + 4] + ch.Collision[t + 7]) / 3f, z = (ch.Collision[t + 2] + ch.Collision[t + 5] + ch.Collision[t + 8]) / 3f;
+                    var cell = new Int3((int)MathF.Floor(x), (int)MathF.Floor(y), (int)MathF.Floor(z));
+                    if (doors.ContainsKey(cell) && Inside(x - cell.X, y - cell.Y, z - cell.Z, 0.02f)) solid.Add(cell);
+                }
+                foreach (MeshBuffer buf in ch.Surfaces)
+                    for (int t = 0; t + 2 < buf.Indices.Count; t += 3)
+                    {
+                        var (cell, fx, fy, fz) = At(buf.Positions, buf.Indices[t], buf.Indices[t + 1], buf.Indices[t + 2]);
+                        // Whole in the doorway's cell: a neighbour's broken edge reaching over isn't drawn there.
+                        bool whole = Enumerable.Range(0, 3).All(e => { int v = buf.Indices[t + e] * 3; return buf.Positions[v] >= cell.X - 0.01f && buf.Positions[v] <= cell.X + 1.01f && buf.Positions[v + 1] >= cell.Y - 0.01f && buf.Positions[v + 1] <= cell.Y + 1.01f && buf.Positions[v + 2] >= cell.Z - 0.01f && buf.Positions[v + 2] <= cell.Z + 1.01f; });
+                        if (!whole) continue;
+                        if (!doors.TryGetValue(cell, out int sill) || !Inside(fx, fy, fz, 0.05f) || cell.Y + fy - sill < 0.3f) continue;
+                        // Weeds and litter growing up from the sill are ground, walked through like grass; only what hangs counts.
+                        if (cell.Y == sill && inst.Blocks.Get(cell).Type is BlockType.Plant or BlockType.Scatter or BlockType.Ash or BlockType.Puddle or BlockType.Plate or BlockType.Remains) continue;
+                        drawn[cell] = drawn.GetValueOrDefault(cell) + 1;
+                    }
+            }
+            var bad = drawn.Keys.Where(c => !solid.Contains(c)).ToList();
+            if (o.Doors == false) foreach (Int3 c in bad) kinds[$"{inst.Blocks.Get(c).Type}/{inst.Blocks.Get(c).Role}"] = kinds.GetValueOrDefault($"{inst.Blocks.Get(c).Type}/{inst.Blocks.Get(c).Role}") + 1;
+            if (bad.Count > 0 && note.Length == 0) note = $" (first: {inst.Layout.Name} {inst.State}: {drawn[bad[0]]} triangles drawn at {bad[0]}, {inst.Blocks.Get(bad[0])}, no collision there)";
+            return bad.Count;
+        }
+        string oldNote = "";
+        foreach (FamilyDef f in _lib.Families)
+            foreach (PoiState state in new[] { PoiState.Abandoned, PoiState.Ruined })
+            {
+                Layout layout;
+                try { layout = PoiFactory.BuildLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), new LayoutHints(Dirs.Horizontal[rand.Next(4)], (TechLevel)rand.Next(3))); }
+                catch { continue; }
+                PoiInstance inst = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                places++;
+                doorways += layout.Doorways.Count;
+                loose += Loose(inst, WalkableMesh.On(inst.Blocks.Min), ref first);
+                old += Loose(inst, MeshOptions.OnPlanet(inst.Blocks.Min), ref oldNote);
+            }
+        GD.Print($"      with door leaves drawn (the plain planet options), {old} doorway cells would hang a panel with no collision{oldNote}");
+        if (kinds.Count > 0) GD.Print($"      drawn with nothing solid: {string.Join(", ", kinds.Select(k => $"{k.Key} {k.Value}"))}");
+        Check(loose == 0 && places > 100, $"nothing hangs in a doorway without collision: {places} places, {doorways} doorways meshed as you walk into them, {loose} cells drawn with nothing solid{first}");
+    }
 }
