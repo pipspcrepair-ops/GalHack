@@ -554,7 +554,7 @@ public static class BrutalComplex
         // Packing rotted down to a heap of grey in the bottom.
         for (int v = 2 * (ck - 12); v < 2 * (ck + 12); v++)
             for (int u = 2 * (ci - 12); u < 2 * (ci + 12); u++)
-                if (Hash.Cell(new Int3(u, 0, v), 407) % 100 < 16 && Plot.In(ci, ck, 11, u >> 1, v >> 1)) p.Lay(u, 0, v, new Block(BlockType.Puddle, Material.Water, new Rgb(0x3c, 0x44, 0x40), Role.Decor));
+                if (Hash.Cell(new Int3(u, 0, v), 407) % 100 < 16 && Plot.In(ci, ck, 11, u >> 1, v >> 1)) p.Lay(u, 0, v, new Block(BlockType.Ash, Material.Ash, new Rgb(0x5c, 0x60, 0x5c), Role.Decor));
         return room;
     }
 

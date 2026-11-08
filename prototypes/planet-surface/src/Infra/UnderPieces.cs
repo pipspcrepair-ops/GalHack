@@ -80,6 +80,25 @@ public partial class InfraLayer
             var place = new Vector3(at.X, at.Y, at.Z);
             b.Blocks($"{name} dark", place, dark, () => DarkMaterials);
             b.Blocks($"{name} lit", place, lit, () => Materials.BySurface);
+            // The water standing in its runs: a surface over the floor, never a block. Wet and dark down here,
+            // the game's water where the daylight reaches it.
+            var wetDark = new List<PInt3>();
+            var wetLit = new List<PInt3>();
+            foreach (PInt3 c in built.Water)
+            {
+                if ((int)Math.Floor(c.X / (double)UnderTown.MeshTile) != TileX || (int)Math.Floor(c.Z / (double)UnderTown.MeshTile) != TileZ) continue;
+                PInt3 cell = new(c.X, c.Y - shift, c.Z);
+                (Outdoors(cell) ? wetLit : wetDark).Add(cell);
+            }
+            foreach (var (wet, down) in new[] { (wetDark, true), (wetLit, false) })
+                if (wet.Count > 0)
+                    b.Extra.Add(() =>
+                    {
+                        MeshInstance3D water = MeshBuild.Water(wet, down ? DarkMaterials[3] : MeshBuild.StillWater());
+                        water.Name = $"{name} water{(down ? "" : " lit")}";
+                        water.Position = place;
+                        return water;
+                    });
         }
     }
 

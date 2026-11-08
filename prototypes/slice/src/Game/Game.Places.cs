@@ -159,17 +159,68 @@ public partial class Game
 
     // ---- Climbing ---------------------------------------------------------------------------------
 
-    /// <summary>What holds the survivor up this tick: a ladder (W climbs), a lift shaft (Space and Ctrl ride it, easing level with a stop when let go).</summary>
+    /// <summary>What holds the survivor up this tick: a ladder (W or Space climbs, S or Ctrl goes down), a lift shaft (Space and Ctrl ride it, easing level with a stop when let go).</summary>
     void Climb(Controls c)
     {
         Survivor s = Survivor;
+        // A ladder someone built (a base's, a vessel's) is climbed like a place's, inside its cabin or out.
+        if (BuiltLadderAt(s, out LadderHold built))
+        {
+            s.Legs.Climb = ClimbMode.Ladder;
+            s.Legs.Ladder = built;
+            if (Places != null && s.Body.Frame == null) foreach (Place p in Places.Standing) p.Ride(-1, 0f);
+            return;
+        }
+        s.Legs.Ladder = default;
         if (Places == null || s.Body.Frame != null) { s.Legs.Climb = ClimbMode.None; return; }
-        ClimbMode mode = Places.ClimbAt(s.WorldFeet, out Place place, out int lift);
+        ClimbMode mode = Places.ClimbAt(s.WorldFeet, out Place place, out int lift, out LadderHold ladder);
         s.Legs.Climb = mode;
+        s.Legs.Ladder = ladder;
         foreach (Place p in Places.Standing) p.Ride(p == place && mode == ClimbMode.Shaft ? lift : -1, place == p ? p.FromWorld(s.WorldFeet).Y : 0f);
         if (mode != ClimbMode.Shaft || s.Legs.Vertical != 0f) return;
         float y = place.FromWorld(s.WorldFeet).Y, stop = place.NearestStop(lift, y);
         s.Legs.Vertical = Mathf.Clamp((stop + 0.05f - y) * 1.5f, -0.5f, 0.5f);
+    }
+
+    /// <summary>
+    /// A ladder block of a built structure in the cell at the survivor's feet or just below (so its
+    /// top rung carries them over), as the climber holds it: it looks out from the face it is mounted
+    /// on, in the survivor's own world (the cabin's when they ride the structure, the zone's when they
+    /// don't).
+    /// </summary>
+    bool BuiltLadderAt(Survivor s, out LadderHold ladder)
+    {
+        ladder = default;
+        System.Numerics.Vector3 world = s.Body.WorldPosition;
+        foreach (Vessel v in Zone.Vessels)
+        {
+            GalHack.Structures.Structure st = v.Structure;
+            float cell = st.Grid.CellSize;
+            bool riding = s.Body.Frame == v.Body;
+            System.Numerics.Vector3 local = riding ? s.Body.Position : v.Body.ToLocal(world);
+            GalHack.Structures.Int3 CellAt(float dy) => GalHack.Structures.Int3.Round((local + System.Numerics.Vector3.UnitY * dy) / cell);
+            bool Ladder(GalHack.Structures.Int3 c, out GalHack.Structures.Block b) => st.TryGet(c, out b) && st.TypeOf(b).IsLadder;
+            foreach (float dy in new[] { 0.1f, -0.45f })
+            {
+                GalHack.Structures.Int3 at = CellAt(dy);
+                if (!Ladder(at, out GalHack.Structures.Block b)) continue;
+                // Mounted by its +z face: it looks out the other way.
+                GalHack.Structures.Int3 mount = GalHack.Structures.Dirs.Vec(GalHack.Structures.Orientations.ToWorld(b.Rot, GalHack.Structures.Dir.PosZ));
+                var o = new System.Numerics.Vector3(-mount.X, -mount.Y, -mount.Z);
+                var mid = new System.Numerics.Vector3(at.X, at.Y, at.Z) * cell;
+                var behind = new GalHack.Structures.Int3(at.X + mount.X, at.Y + mount.Y, at.Z + mount.Z);
+                ladder = new LadderHold
+                {
+                    Out = riding ? o : System.Numerics.Vector3.Transform(o, v.Body.Rotation),
+                    Centre = riding ? mid : v.Body.ToParent(mid),
+                    Backed = st.TryGet(behind, out GalHack.Structures.Block wall) && !st.TypeOf(wall).IsLadder,
+                    Below = Ladder(CellAt(-0.1f), out _),
+                    Top = dy < 0f,
+                };
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---- E ------------------------------------------------------------------------------------------

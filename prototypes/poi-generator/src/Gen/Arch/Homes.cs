@@ -95,7 +95,7 @@ public static partial class Homes
         public void Plate(Frame f, int u, int v, Rgb c, Role role = Role.Debris)
         {
             Int3 p = f.At(u, 0, v);
-            if (!C.Blocks.ContainsKey(p)) C.Blocks[p] = new Block(BlockType.Plate, Material.Concrete, c, role);
+            C.Blocks.Pave(p, new Block(BlockType.Plate, Material.Concrete, c, role));
         }
 
         /// <summary>The patch of ground at the way in: every lot's walk begins here.</summary>
@@ -203,6 +203,8 @@ public static partial class Homes
                 int gu = alongU ? u + k : u, gv = alongU ? v : v + k;
                 _door.Add((gu, gv, storey));
                 for (int y = Walk(storey); y < Walk(storey) + tall; y++) C.Clear(P(gu, y, gv));
+                // The floor's finish runs through the opening: a threshold is never a hole in the tiles.
+                if (storey == 0 && Lift == 0) _l.Plate(_f, gu, gv, S.Floor, Role.Floor);
             }
         }
 

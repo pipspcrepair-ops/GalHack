@@ -129,6 +129,8 @@ public sealed class UnderBuilt
     public readonly List<UnderSpace> Spaces = new();
     /// <summary>Cells to stand on at the surface end of each way in, for walk tests: outside the tunnels, in the open.</summary>
     public readonly List<Int3> WaysIn = new();
+    /// <summary>Open cells with water standing over their floor (a sewer's run, a flooded drain): drawn as a surface, never a block.</summary>
+    public readonly HashSet<Int3> Water = new();
     public Int3 Min, Max;
 
     public UnderBuilt(UnderPlan plan) => Plan = plan;
@@ -658,11 +660,10 @@ public static class Underground
         }
     }
 
-    static Rgb WaterColor(UnderKind k) => k == UnderKind.Sewer ? new Rgb(0x3e, 0x3e, 0x26) : new Rgb(0x2c, 0x3a, 0x3c);
-
+    /// <summary>Water standing in a channel's floor: a surface over the cell (<see cref="UnderBuilt.Water"/>), never a block.</summary>
     static void Water(UnderBuilt u, Int3 p, UnderKind k)
     {
-        if (!u.Blocks.ContainsKey(p)) u.Blocks[p] = new Block(BlockType.Puddle, Material.Water, WaterColor(k), Role.Decor);
+        if (!u.Blocks.ContainsKey(p)) u.Water.Add(p);
     }
 
     static void DressRun(B b, UnderRun r)

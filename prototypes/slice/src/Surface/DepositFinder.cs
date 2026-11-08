@@ -29,6 +29,9 @@ public sealed class DepositFinder
     ulong _lastFrame;
     static readonly Dictionary<(int, int, int), (int edits, int left)> Remaining = new();
 
+    /// <summary>The ground <see cref="Remaining"/> was counted in: another world's (a NEW GAME, a test's next world) starts it afresh, and it never holds the last one.</summary>
+    static readonly System.WeakReference<object> CountedIn = new(null);
+
     public IReadOnlyList<(string kind, Vector3 at)> Near(SurfaceZone zone, Vector3 from)
     {
         ulong frame = Engine.GetPhysicsFrames();
@@ -71,6 +74,11 @@ public sealed class DepositFinder
     public static bool Depleted(SurfaceZone zone, DepositKind kind, double ox, double oy, double oz)
     {
         var store = zone.Planet.Terrain.Store;
+        if (!CountedIn.TryGetTarget(out object counted) || !ReferenceEquals(counted, store))
+        {
+            Remaining.Clear();
+            CountedIn.SetTarget(store);
+        }
         int cx = (int)System.Math.Floor(ox), cy = (int)System.Math.Floor(oy), cz = (int)System.Math.Floor(oz);
         var key = (cx, cy, cz);
         int edits = store.RemovedCount;

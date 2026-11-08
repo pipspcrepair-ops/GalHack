@@ -19,13 +19,14 @@ namespace Slice.Tests;
 /// key and not the old, a clash is found, Esc cancels a prompt, and the binding comes back from the
 /// settings file. Sensitivity scales mouse look and invert flips it. Graphics changes reach the
 /// camera, the viewport, the frame cap, the sun's shadows, the ground's streaming and the gamma,
-/// are read back from the file, and RESET puts them all back.
+/// are read back from the file, and RESET puts them all back. NEW GAME asks first, then tears the
+/// world down for the start screen as at launch, twice, with nothing left running or held between.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/EscapeMenuTest.tscn
 /// </summary>
 public partial class EscapeMenuTest : Node
 {
-    const int WatchdogMinutes = 10;
+    const int WatchdogMinutes = 16;
     const string SettingsFile = "user://escape-menu-test.cfg";
     IEnumerator<int> _run;
     int _failures, _passes;
@@ -136,8 +137,157 @@ public partial class EscapeMenuTest : Node
         bool tabOpen = _game.Menu.IsOpen;
         foreach (int x in Tap(Key.Escape)) yield return x;
         Check(tabOpen && !_game.Menu.IsOpen && !Esc.IsOpen && !GetTree().Paused, "with the Tab menu open, Esc closes it and nothing else");
+        foreach (int x in NewGames()) yield return x;
         _game.QueueFree();
         foreach (int x in Wait(10)) yield return x;
+    }
+
+    /// <summary>
+    /// What is left running, counted on the start screen: nodes (and of them orphans, and those beside the test under the
+    /// root: the shared deco animator, made once the first deco piece shows), sound players, the music's and thrusters'
+    /// workers, threads, memory.
+    /// </summary>
+    readonly record struct Left(long Nodes, long Orphans, int Beside, string BesideNames, int Players, int Workers, int Threads, int PoolThreads, long ManagedMb, long StaticMb)
+    {
+        public long Own => Nodes - Beside;
+        public override string ToString() => $"{Nodes} nodes ({Orphans} orphans, {Beside} beside the test{(Beside > 0 ? $": {BesideNames}" : "")}), {Players} sound players, {Workers} sound workers, {Threads} threads ({PoolThreads} pooled), {ManagedMb} MB managed, {StaticMb} MB engine";
+    }
+
+    /// <summary>The nodes that may stand beside the test under the root: made once, shared by every game.</summary>
+    static readonly string[] SharedNodes = { "DecoAnimator" };
+
+    Left Count()
+    {
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect();
+        int players = GetTree().Root.FindChildren("*", "", true, false).Count(n => n is AudioStreamPlayer or AudioStreamPlayer2D or AudioStreamPlayer3D);
+        var beside = GetTree().Root.GetChildren().Where(n => n != this).ToList();
+        using var process = Process.GetCurrentProcess();
+        return new Left((long)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount), (long)Performance.GetMonitor(Performance.Monitor.ObjectOrphanNodeCount),
+            beside.Sum(n => 1 + n.FindChildren("*", "", true, false).Count), string.Join(", ", beside.Select(n => n.Name.ToString())), players,
+            SliceMusic.Workers + ThrusterPlayer.Workers, process.Threads.Count, System.Threading.ThreadPool.ThreadCount, GC.GetTotalMemory(false) >> 20, (long)(OS.GetStaticMemoryUsage() >> 20));
+    }
+
+    /// <summary>Weak handles on a game, its zone and its planet, so the test itself holds none of them.</summary>
+    static (WeakReference Game, WeakReference Zone, WeakReference Planet) Weakly(Game.Game g) => (new WeakReference(g), new WeakReference(g.Zone), new WeakReference(g.Zone.Planet));
+
+    static bool Gone(WeakReference w) => w.Target is not GodotObject o || !GodotObject.IsInstanceValid(o);
+
+    /// <summary>
+    /// NEW GAME, three times in a row, through the menu's own mouse: it asks first (NO and Esc keep you); YES writes
+    /// the settings, tears this world down whole and puts up the start screen as at launch; a preset and WAKE UP land
+    /// in a fresh world that plays. Each time the start screen is reached the same nodes are left, no sound and no
+    /// workers run, and nothing holds the last world; from the second on (the engine's own caches warm in the first
+    /// two worlds) no memory builds up.
+    /// </summary>
+    IEnumerable<int> NewGames()
+    {
+        GD.Print("-- NEW GAME, three times --");
+        var seeds = new List<ulong> { _game.World.Seed };
+        var screens = new List<Left>();
+        (string Id, float Depth)[] presets = { ("mid", 0.5f), ("core", 0.9f) };
+        // -- --newgames=N: that many in a row (a soak for what builds up); three in a plain run.
+        int cycles = 3;
+        foreach (string a in OS.GetCmdlineUserArgs())
+            if (a.StartsWith("--newgames=")) int.TryParse(a["--newgames=".Length..], out cycles);
+        for (int k = 0; k < cycles; k++)
+        {
+            var preset = presets[k % presets.Length];
+            foreach (int x in Tap(Key.Escape)) yield return x;
+            if (k == 0)
+            {
+                foreach (int x in Click("esc:new")) yield return x;
+                bool asks = Esc.Root.Asking == EscapeQuestion.NewGame && Esc.RectOf("esc:new-yes") != null && Esc.RectOf("esc:new-no") != null;
+                foreach (int x in Click("esc:options")) yield return x;
+                bool blocked = Esc.Root.Page == EscapePage.World;
+                foreach (int x in Click("esc:new-no")) yield return x;
+                bool no = Esc.IsOpen && Esc.Root.Asking == EscapeQuestion.None && _game.Next == null;
+                foreach (int x in Click("esc:new")) yield return x;
+                foreach (int x in Tap(Key.Escape)) yield return x;
+                Check(asks && blocked && no && Esc.IsOpen && Esc.Root.Asking == EscapeQuestion.None && _game.Next == null,
+                    "NEW GAME asks first: YES or NO, nothing under it clickable; NO and Esc keep this world, the menu still open");
+                // A setting changed a moment before (not yet written): NEW GAME writes it before the world goes.
+                foreach (int x in Click("esc:options")) yield return x;
+                foreach (int x in Click("opt:graphics")) yield return x;
+                foreach (int x in Click("opt:fov", Along(90f, GameSettings.MinFov, GameSettings.MaxFov))) yield return x;
+                foreach (int x in Click("esc:options")) yield return x;
+            }
+            var held = Weakly(_game);
+            string name = _game.Name;
+            foreach (int x in Click("esc:new")) yield return x;
+            foreach (int x in Click("esc:new-yes")) yield return x;
+            Game.Game next = _game.Next;
+            if (next == null)
+            {
+                Fail("YES started no new game");
+                yield break;
+            }
+            _game = next;
+            _drive = new Driver(next);
+
+            // The start screen, and the last world let go of: freed, and (after a collection) held by nothing.
+            var watch = Stopwatch.StartNew();
+            while (watch.Elapsed.TotalSeconds < 30 && (next.StartScreen?.Root == null || !next.Settled || held.Game.IsAlive || held.Zone.IsAlive || held.Planet.IsAlive))
+            {
+                if (next.Settled && Engine.GetPhysicsFrames() % 30 == 0) GC.Collect();
+                yield return 0;
+            }
+            StartRoot start = next.StartScreen?.Root;
+            Check(start != null && next.Zone == null && next.IsInsideTree() && (name.Contains('@') || next.Name == name) && Gone(held.Game) && Gone(held.Zone)
+                  && start.Pickers.Count == 9 && start.CurrentPreset == "default" && start.Seed == "" && GetChildren().OfType<Game.Game>().Count() == 1,
+                $"NEW GAME {k + 1}, YES: the world torn down and freed, and in its place the start screen as at launch (preset {start?.CurrentPreset}, {start?.Pickers.Count} options and the seed)");
+            Check(!held.Game.IsAlive && !held.Zone.IsAlive && !held.Planet.IsAlive,
+                $"NEW GAME {k + 1}: nothing holds the last game, its zone or its planet after a collection (game {held.Game.IsAlive}, zone {held.Zone.IsAlive}, planet {held.Planet.IsAlive}; {watch.Elapsed.TotalSeconds:F1} s)");
+            Check(next.Settings.Fov == 90f, $"NEW GAME {k + 1}: the settings were written first and read again (field of view {next.Settings.Fov:F0})");
+            // A few seconds on the start screen, as a player takes to choose: the last world's work still on worker threads ends.
+            while (watch.Elapsed.TotalSeconds < 4) yield return 0;
+            GC.Collect(); // what was dropped is finalized on its own thread, then collected again as it is counted
+            foreach (int x in Wait(20)) yield return x;
+            Left left = Count();
+            screens.Add(left);
+            GD.Print($"      (start screen {k + 1}: {left})");
+            Check(left.Players == 0 && left.Workers == 0, $"NEW GAME {k + 1}: no sound left playing and no sound worker running ({left.Players} players, {left.Workers} workers)");
+            if (start == null) yield break;
+
+            // A preset and WAKE UP: a fresh world, as from launch.
+            start.Click($"start:preset-{preset.Id}");
+            bool picked = start.CurrentPreset == preset.Id;
+            start.Click("start:wake");
+            foreach (int x in _drive.UntilPlaying()) yield return x;
+            float depth = _game.Zone.Planet?.Depth ?? -1f;
+            Check(picked && _game.StartScreen == null && !seeds.Contains(_game.World.Seed) && MathF.Abs(depth - preset.Depth) < 0.051f,
+                $"NEW GAME {k + 1}: {preset.Id.ToUpperInvariant()} and WAKE UP land in a fresh world: {_game.World}, depth {depth:0.00}");
+            seeds.Add(_game.World.Seed);
+            _game.Zone.Weather.Bridge.Calm = true;
+            _game.Zone.Wildlife.Frozen = true;
+
+            // It plays: the clock runs, the keys reach it, its menus open, its sound runs.
+            double clock = _game.Stats.Seconds;
+            bool lit = _game.Torch.Visible;
+            _game.Press(Key.L);
+            foreach (int x in Wait(30)) yield return x;
+            bool torch = _game.Torch.Visible != lit;
+            _game.Press(Key.L);
+            foreach (int x in Tap(Key.Escape)) yield return x;
+            bool opens = Esc.IsOpen;
+            foreach (int x in Tap(Key.Escape)) yield return x;
+            Check(_game.Stats.Seconds > clock + 0.4 && torch && opens && !Esc.IsOpen && _game.Camera.Fov == 90f && SliceMusic.Workers + ThrusterPlayer.Workers > 0,
+                $"NEW GAME {k + 1}: it plays: the clock runs, the torch key works, Esc opens and closes the menu, the view keeps the setting ({_game.Camera.Fov:F0}), {SliceMusic.Workers + ThrusterPlayer.Workers} sound workers running");
+        }
+        if (screens.Count >= 2)
+        {
+            Left a = screens[0], b = screens[^1];
+            bool sharedOnly = screens.All(s => s.Beside == 0 || s.BesideNames.Split(", ").All(SharedNodes.Contains));
+            Check(b.Own == a.Own && sharedOnly && b.Orphans == a.Orphans && b.Threads - b.PoolThreads <= a.Threads - a.PoolThreads + 2,
+                $"{screens.Count} NEW GAMEs in a row leave the same: {a.Own} then {b.Own} nodes of the game and the test (beside them only {string.Join(", ", SharedNodes)}), {a.Orphans} then {b.Orphans} orphans, {a.Threads - a.PoolThreads} then {b.Threads - b.PoolThreads} threads outside the pool");
+        }
+        if (screens.Count >= 3)
+        {
+            // A world kept in the shared caches was 45 MB or more of managed memory a game: none builds up once warm.
+            Left a = screens[1], b = screens[^1];
+            Check(b.ManagedMb <= a.ManagedMb + 16 && b.StaticMb <= a.StaticMb + 24,
+                $"and from the second on no memory builds up: managed {string.Join(", ", screens.Select(s => s.ManagedMb))} MB, engine {string.Join(", ", screens.Select(s => s.StaticMb))} MB");
+        }
     }
 
     /// <summary>Esc: open, the world running on behind it; Esc again: closed.</summary>

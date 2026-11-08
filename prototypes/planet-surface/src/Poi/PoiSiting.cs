@@ -256,11 +256,7 @@ public static partial class PoiSiting
         if (plan is { Places.Count: >= 4 })
         {
             SetDown(lib, plan, roll, map, bare, landing, profile, start, sites);
-            if (sites.Count > 0)
-            {
-                Blasts(sites, map);
-                return sites;
-            }
+            if (sites.Count > 0) return sites;
         }
         foreach (PlacedPoi p in order)
         {
@@ -277,7 +273,9 @@ public static partial class PoiSiting
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), p.State, spawnSeed, world: profile);
+            // Who is in it follows the world's theme and fall here as on a planned world.
+            OccupancyRoll occ = roll != null && OccupancyLayer.Applies(p.Family, p.State) ? OccupancyLayer.Roll(roll.Occupancy, p.Family, spawnSeed) with { Tags = roll.Tags } : null;
+            PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed)), p.State, spawnSeed, profile, occ);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
             int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
@@ -290,29 +288,37 @@ public static partial class PoiSiting
             site.Primary = p.Primary;
             sites.Add(site);
         }
-        Blasts(sites, map);
         return sites;
     }
 
+    /// <summary>Each blast site's own blast, at world scale: its crater is the place, its reach the land round it.</summary>
+    public static List<Strike> SiteBlasts(IEnumerable<PoiSite> sites) =>
+        sites.Where(s => s.GroundZero != null).Select(s => Strike.FromSite(s.GroundZero!.Value.X, s.GroundZero.Value.Z, s.Instance.Layout.Extras.Blast!, s.Family.Id)).ToList();
+
     /// <summary>
-    /// Places inside a blast's radius take the blasted decay: roofs gone, the walls that faced
-    /// ground zero stripped, interiors burnt, by how close they stand.
+    /// Places inside a blast's reach take the blasted decay: roofs gone, the walls that faced ground
+    /// zero stripped, interiors burnt, by how close they stand. Every blast is one record
+    /// (<see cref="Strike"/>), so the decay, the dead ground and the map's craters agree. Where two
+    /// reach a place, the nearer and harder one did it.
     /// </summary>
-    static void Blasts(List<PoiSite> sites, WorldMap map)
+    public static void Blast(IReadOnlyList<PoiSite> sites, IReadOnlyList<Strike> blasts, double width, double height)
     {
-        foreach (PoiSite b in sites.Where(s => s.GroundZero != null).ToList())
+        if (blasts.Count == 0) return;
+        foreach (PoiSite o in sites)
         {
-            var (gx, gz) = b.GroundZero!.Value;
-            BlastZone zone = b.Instance.Layout.Extras.Blast!;
-            foreach (PoiSite o in sites)
+            if (o.GroundZero != null) continue; // a blast site is its own crater
+            float best = 0f, bx = 0f, bz = 0f;
+            foreach (Strike b in blasts)
             {
-                if (o == b) continue;
-                double dx = Mathx.WrapDelta(o.Center.X - gx, map.WidthMeters), dz = Mathx.WrapDelta(o.Center.Z - gz, map.HeightMeters);
-                float d = (float)Math.Sqrt(dx * dx + dz * dz), strength = zone.Strength(d);
-                if (strength < 0.05f || d < 1f) continue;
-                StateTransforms.Blast(o.Instance, (float)(-dx / d), (float)(-dz / d), strength, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
-                o.Recarve?.Invoke();
+                double dx = Mathx.WrapDelta(o.Center.X - b.X, width), dz = Mathx.WrapDelta(o.Center.Z - b.Z, height);
+                float d = (float)Math.Sqrt(dx * dx + dz * dz), strength = b.Strength(d);
+                if (strength <= best) continue;
+                // Right overhead (an airburst over the place's middle): it came down on the whole place at once.
+                (best, bx, bz) = d < 1f ? (strength, 0f, 1f) : (strength, (float)(-dx / d), (float)(-dz / d));
             }
+            if (best < 0.05f) continue;
+            StateTransforms.Blast(o.Instance, bx, bz, best, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
+            o.Recarve?.Invoke();
         }
     }
 

@@ -295,14 +295,17 @@ public partial class Screenshot : Node
             Frame(a[5]);
             return;
         }
-        // place:<family>:<state>:<out|in|inN|pool> spawns a family fresh and frames it as a lot is framed; pool stands
-        // at the edge of its biggest flooded room.
+        // place:<family>:<state>:<out|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
+        // is framed; low stands in a corner of the biggest room on its lowest storey. The optional fifth part is the
+        // world's fall as decay reads it, as the lot view's seventh.
         if (view.StartsWith("place:"))
         {
             string[] a = view.Split(':');
             FamilyDef f = m.Library.Families.First(x => x.Id == a[1]);
             var rng = new Rng(_seed);
-            m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64()));
+            float[] w = a.Length > 4 ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
+            var world = w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
+            m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world: world));
             m.HideHud(true);
             Frame(a[3]);
             return;
@@ -397,28 +400,19 @@ public partial class Screenshot : Node
     /// <summary>
     /// Frames the place on stage: "out", three-quarters on from the front and above, close enough to see into
     /// what is open; "in", standing in a corner of its biggest ground-floor room looking across it; "inN", the
-    /// same on storey N.
+    /// same on storey N; "low", the same on its lowest storey (a basement, a bunker's deepest level).
     /// </summary>
     void Frame(string shot)
     {
         var m = _main;
         PoiInstance poi = m.Stage.Poi;
-        if (shot.StartsWith("in") || shot == "pool")
+        if (shot.StartsWith("in") || shot == "low")
         {
             PlacedModule room;
             float lift = 1.55f;
-            if (shot == "pool" && poi.Water.Count > 0)
             {
-                // A pool under a ceiling, so the frame is a room and not a trench.
-                bool Roofed(WaterPool w) => Enumerable.Range(1, 8).Any(k => BlockInfo.Collides(poi.Blocks.Get(new Int3(poi.Layout.Modules[w.Module].Min.X + 1, poi.Layout.Modules[w.Module].Max.Y + k, poi.Layout.Modules[w.Module].Min.Z + 1)).Type));
-                WaterPool pool = poi.Water.OrderByDescending(Roofed).ThenByDescending(w => w.Cells.Count).First();
-                room = poi.Layout.Modules[pool.Module];
-                lift = pool.Level - room.Min.Y + 1.3f;
-                GD.Print($"pool: {pool.Cells.Count} cells, {pool.Level - room.Min.Y:0.00} m deep in {room.Purpose}");
-            }
-            else
-            {
-                int storey = shot.Length > 2 && shot.StartsWith("in") ? int.Parse(shot[2..]) : 0;
+                int storey = shot == "low" ? poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall).Min(x => x.Storey)
+                    : shot.Length > 2 ? int.Parse(shot[2..]) : 0;
                 var rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall && x.Storey == storey).ToList();
                 if (rooms.Count == 0) rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall).ToList();
                 room = rooms.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
@@ -699,7 +693,7 @@ public partial class Screenshot : Node
             Mesher.Build(shown.Blocks, shown.Layout.Occupied, new MeshOptions { Rock = false });
             double mesh = watch.Elapsed.TotalMilliseconds;
             GD.Print($"frame cost: {_frameSum / System.Math.Max(1, _frames):0.00} ms a frame over {_frames} frames, {RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls, " +
-                     $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame)} primitives; {piles} rubble piles and {bars} cells of bars, {debrisTris} triangles of them; whole place meshed in {mesh:0} ms, {shown.Blocks.CountBlocks()} blocks, {shown.Water.Count} pools; {shown.Ruin}");
+                     $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame)} primitives; {piles} rubble piles and {bars} cells of bars, {debrisTris} triangles of them; whole place meshed in {mesh:0} ms, {shown.Blocks.CountBlocks()} blocks, {shown.Layout.Extras.Water.Count} cells under water; {shown.Ruin}");
         }
         // The places in the shot get PoiTest's Geometry check on the meshes actually drawn: a stroke
         // thrown out of its cell (a "wire" across the frame) refuses the shot rather than ship it.

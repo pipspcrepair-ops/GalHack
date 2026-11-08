@@ -150,8 +150,12 @@ public sealed class LayoutExtras
     /// <summary>A layout the planner made wrong on purpose (a strange spawn).</summary>
     public bool Wrong;
     public bool InSpace;
-    /// <summary>Under water (sunken places): everything below WaterY is flooded unless sealed.</summary>
-    public int? WaterY;
+    /// <summary>
+    /// Standing water a place holds by design (a settling channel, a filter bed, a clarifier): the cells whose floor
+    /// lies under it. Never a block: drawn as a water surface a hand deep over the floor (MeshBuild.Water), with
+    /// no collision, hiding nothing; whatever stands in it stands up out of it.
+    /// </summary>
+    public HashSet<Int3> Water = new();
     /// <summary>The plain buildings of a roadside ruin (see <see cref="Homes"/>): where each stands, for its believable decay. Empty on every other place.</summary>
     public List<PlainBox> Plain = new();
     /// <summary>Masonry that outlasts the rest of a plain building: its chimneys.</summary>

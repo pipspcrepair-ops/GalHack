@@ -83,8 +83,13 @@ public static class OccupancyLayer
     public static bool Applies(FamilyDef f, PoiState state) =>
         state is PoiState.Abandoned or PoiState.Ruined && f.Faction == Faction.None && !f.Tags.Contains("settlement") && !WorldProfile.Unbuilt(f);
 
-    /// <summary>Rolls a place's occupancy from a world's mix. Pairs that can't share a map never come up; a family's own leanings shift the odds.</summary>
-    public static OccupancyRoll Roll(IReadOnlyDictionary<string, float> mix, FamilyDef family, ulong seed)
+    /// <summary>
+    /// Rolls a place's occupancy from a world's mix (its theme's and fall's weights, and the rest of
+    /// its layers'). Pairs that can't share a map never come up; a family's own leanings, and a
+    /// <paramref name="lean"/> by what the place was (a police station to a gang, a school to
+    /// squatters), shift the odds of who the world has, never bring in who it hasn't.
+    /// </summary>
+    public static OccupancyRoll Roll(IReadOnlyDictionary<string, float> mix, FamilyDef family, ulong seed, IReadOnlyDictionary<string, float>? lean = null)
     {
         var rng = new Rng(Hash.Combine(seed, 0x0CC0FAUL));
         var keys = mix.Keys.Where(k => Code(k) != null).OrderBy(k => k, StringComparer.Ordinal).ToList();
@@ -94,6 +99,7 @@ public static class OccupancyLayer
             float w = mix[k];
             if (family.Tags.Contains("farm") && k == "SQT") w *= 2f;
             if (family.Tags.Contains("industry") && k == "MCH") w *= 1.5f;
+            if (lean != null && lean.TryGetValue(k, out float by)) w *= by;
             return w;
         }).ToList();
         Occupant Next() => Code(keys[Math.Max(0, rng.PickWeighted(weights))])!.Value;
@@ -474,7 +480,7 @@ public static class OccupancyLayer
         if (free.Count < 3) return;
         Survivors.Settle(x.Inst, free, module, count, lookout);
         if (mood > x.Inst.Mood) x.Inst.Mood = mood;
-        x.Inst.Friendly = true;
+        x.Inst.Friendly = x.Inst.Mood != Mood.Hostile;
     }
 
     /// <summary>A place someone lives in: bunks in a row, a stove and its pipe, water barrels, a garden in troughs. Nobody's hostile.</summary>
@@ -528,6 +534,7 @@ public static class OccupancyLayer
             if (full && guards.Count > 0)
                 for (int e = 0, n = x.R.Between(2, 4); e < n; e++)
                     x.Enemy(x.R.Pick(guards), EnemyKind.Guard, x.R.Pick(floor), m.Index, 2);
+            if (full) Raiders(x, mid, floor, m.Index, x.R.Between(2, 4));
         }
         if (full && gang.FirstOrDefault(e => e.Kind == EnemyKind.Boss) is { } boss)
         {
@@ -535,6 +542,21 @@ public static class OccupancyLayer
             var floor = Floor(x, vault);
             if (floor.Count > 0) x.Enemy(boss, EnemyKind.Boss, x.R.Pick(floor), vault.Index, 3);
         }
+    }
+
+    /// <summary>
+    /// Those holding a place, as people (the game's townsfolk, as the gang's fighters are its
+    /// enemies): most of them on watch with a gun, the rest about their camp. Nobody here is
+    /// anyone's friend: the place is hostile, and its watch shoots.
+    /// </summary>
+    static void Raiders(Ctx x, Int3 mid, List<Int3> floor, int module, int count)
+    {
+        int before = x.Inst.Townsfolk?.People.Count ?? 0;
+        People(x, mid, floor, module, Mood.Hostile, count, lookout: true);
+        if (x.Inst.Townsfolk is not { } town) return;
+        for (int i = before; i < town.People.Count; i++)
+            if ((i - before) % 3 != 2) town.People[i] = town.People[i] with { Role = "guard", Gait = "patrol" };
+        x.Inst.Friendly = false;
     }
 
     /// <summary>The old security still walking its rounds: sentries, the floors swept where they pass, a few lights still on.</summary>

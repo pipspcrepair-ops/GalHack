@@ -9,7 +9,10 @@
 // only four levels: clouds' edges banded into blocks. So the alpha never goes through ALPHA: the
 // half-resolution pass stores the clouds already laid over the plain sky gradient (colour only),
 // and the quarter-resolution pass marches density alone for how much of what is behind them
-// (stars, moons, the giant, the sun) the clouds hide.
+// (stars, the galaxy, the black hole, moons, the giant and rings, the sun and its corona) the
+// clouds hide: one transmittance, the cloud's own, multiplied into everything behind it. The haze
+// that fades far clouds into the sky's colour fades their look, never how much they hide: a deck
+// at the horizon is still a deck, and no star shows through it.
 shader_type sky;
 render_mode use_half_res_pass, use_quarter_res_pass;
 
@@ -73,6 +76,14 @@ uniform float cirrus = 0.0;      // thin high streaks
 uniform int tower_count = 0;      // storm towers: their deck is thick and dark, whatever the sky around them
 uniform vec4 tower[4];           // x, z, radius, strength
 uniform vec2 storm_wind = vec2(1.0, 0.0);  // which way the anvils spread
+// The night's own light on the clouds (SkyRig: the light the ground has at night): the brightest moon's
+// way, or the giant's, or the stars' from overhead, and how much it gives.
+uniform vec4 night_light = vec4(0.0, 1.0, 0.0, 0.0);
+uniform vec3 night_color : source_color = vec3(0.62, 0.7, 0.95);
+// Lit places under the clouds: their lamps light the cloud base over them (x, z, reach, strength) in their colour.
+uniform int glow_count = 0;
+uniform vec4 ground_glow[4];
+uniform vec3 ground_glow_color[4] : source_color;
 uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
 
 // How much of the sun's light gets through the air, by its height: all of it from about 17° up,
@@ -451,16 +462,56 @@ float march_jitter(vec2 pixel) {
 	return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
-// The clouds along a view ray: their light over the given sky colour, and their opacity. With
-// lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
-vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
+// How much the lit places under it light the cloud here (their lamps, in their colour).
+vec3 place_glow(vec2 xz) {
+	vec3 g = vec3(0.0);
+	for (int i = 0; i < glow_count; i++) {
+		float f = smoothstep(ground_glow[i].z, 0.0, length(xz - ground_glow[i].xy));
+		g += ground_glow_color[i] * ground_glow[i].w * f * f;
+	}
+	return g;
+}
+
+// The round world's sink of far clouds (the march's own, below): 1 / 300 km past 2,000 m.
+const float CLOUD_SINK = 1.667e-6;
+
+// Past the march's reach the layer goes on to the horizon: on a round world every ray climbing from
+// under it meets it within about 20 km. Its look has long faded into the haze there, but it still hides
+// what is behind it: seen edge-on a broken layer is cloud nearly all the way along, and a storm's or a
+// front's deck is as solid there as overhead. Large-scale only, never the far clouds' own grain (which,
+// squeezed against the horizon, drew steps along it).
+float far_cover(vec3 ro, vec3 rd) {
+	if (ro.y >= cloud_base) return 0.0;
+	float h = cloud_base + cloud_thick * 0.2;
+	float rise = h - ro.y;
+	// Where the ray, rising over a ground that falls away, meets that height: t * y + (t - 2000)^2 * sink = rise.
+	float a = CLOUD_SINK, b = rd.y - 4000.0 * CLOUD_SINK, c = 4.0e6 * CLOUD_SINK - rise;
+	float t = rd.y > 0.0 && rise < rd.y * 2000.0 ? rise / rd.y // within its first 2 km the ground is flat
+		: (-b + sqrt(max(b * b - 4.0 * a * c, 0.0))) / (2.0 * a);
+	vec3 p = ro + rd * t;
+	p.y = h;
+	float cover = smoothstep(0.05, 0.4, cloud_cover);
+	if (tower_count > 0) cover = max(cover, storm_at(p).x);
+	if (front_shape.x > 0.001) cover = max(cover, front_sides(front_at(p.xz)).x);
+	return cover;
+}
+
+// The clouds along a view ray: their light over the given sky colour, and their opacity as laid over
+// that colour (faded into the haze far off). `hide` is how much of what is behind them they hide: the
+// march's own transmittance, all of it, and the deck past its reach. With lit false only the opacity is
+// marched (no light samples): the cheap pass for occlusion.
+vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, out float hide) {
+	hide = 0.0;
 	bool fronted = front_shape.x > 0.001;
 	bool stormy = tower_count > 0 || fronted;
 	if (cloud_cover < 0.02 && !fronted) return vec4(sky, 0.0);
 	float base = cloud_base - (fronted ? 330.0 : tower_count > 0 ? 280.0 : 0.0), top = cloud_base + cloud_thick * (stormy ? 4.0 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
-		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
+		if (ro.y < base || ro.y > top) {
+			if (!lit) hide = far_cover(ro, rd);
+			return vec4(sky, 0.0);
+		}
 		t0 = 0.0;
 		t1 = 2400.0;
 	} else {
@@ -469,7 +520,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 		t1 = max(ta, tb);
 	}
 	// The layer sits low, so its far reach is scaled to its height: about 16 km and 2 km of path.
-	if (t1 <= 0.0 || t0 > 16000.0) return vec4(sky, 0.0);
+	if (t1 <= 0.0 || t0 > 16000.0) {
+		if (!lit) hide = far_cover(ro, rd);
+		return vec4(sky, 0.0);
+	}
 	// A storm is long to look through at a low angle: cutting its path short drew a hard straight underside.
 	t1 = min(t1, t0 + (stormy ? 9000.0 : 2000.0));
 	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
@@ -482,7 +536,18 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float day = smoothstep(-0.15, 0.1, sun.y) * (0.04 + 0.96 * sun_lit);
 	vec3 sun_tint = mix(vec3(1.0), star_color, 0.4);
 	vec3 sun_light = mix(sunset, sun_tint, smoothstep(0.0, 0.3, sun.y)) * day * sun_energy * 1.1;
-	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day);
+	// By night the clouds are lit as the ground is: by the brightest moon (or the giant, or the stars
+	// from overhead), in its colour, brighter toward it (the cloud round a moon is silvered); the light
+	// is sampled toward whichever lights them, eased over from the sun through the twilight.
+	float by_night = smoothstep(-0.06, -0.14, sun.y);
+	vec3 key = sun;
+	if (by_night > 0.0) {
+		vec3 k = mix(sun, night_light.xyz, by_night);
+		key = dot(k, k) > 0.04 ? normalize(k) : night_light.xyz;
+	}
+	vec3 night_lit = night_color * night_light.w * by_night * (0.75 + 1.4 * pow(max(dot(rd, night_light.xyz), 0.0), 6.0));
+	// The sky's own light on them, by night the moonlit (or starlit) sky's: dark, never black.
+	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day) + cloud_shade * night_color * night_light.w * by_night * 0.55;
 	// A strike lights the cloud round it most, and the rest of the sky a little.
 	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
 	float fronts = 0.0; // how much of what this ray met was the front's: its shelf and deck stand out low over the horizon
@@ -516,19 +581,19 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 			float ext = d * step_t * 0.016 * clamp(700.0 / cloud_thick, 1.0, 2.0);
 			if (fronted && trans > 0.5) fronts = max(fronts, max(front_sides(fr).x, step(p.y, cloud_base) * fr.z));
 			if (lit) {
-				// Light reaching this point from the sun, through two cheaper samples of cloud.
+				// Light reaching this point from the sun (or the moon), through two cheaper samples of cloud.
 				float reach = clamp(cloud_thick / 900.0, 0.3, 1.0);
-				float toward = cloud_density(p + sun * 80.0 * reach, true) + cloud_density(p + sun * 240.0 * reach, true) * 0.8;
+				float toward = cloud_density(p + key * 80.0 * reach, true) + cloud_density(p + key * 240.0 * reach, true) * 0.8;
 				float beer = exp(-toward * 1.6);
-				// Under a front's deck the sun is shut out from above: the shelf and the low cloud there are in its shadow,
-				// unless a low sun reaches in under it from the open side.
+				// Under a front's deck the sun (or the moon) is shut out from above: the shelf and the low cloud there are
+				// in its shadow, unless a low sun reaches in under it from the open side.
 				if (fronted && p.y < cloud_base + cloud_thick * 1.5) {
-					vec3 q = p + sun * ((cloud_base + cloud_thick * 1.8 - p.y) / max(sun.y, 0.08));
+					vec3 q = p + key * ((cloud_base + cloud_thick * 1.8 - p.y) / max(key.y, 0.08));
 					beer *= 1.0 - 0.85 * front_sides(front_at(q.xz)).x;
 				}
 				float powder = 1.0 - exp(-d * 3.0);
 				float hgt = clamp((p.y - cloud_base) / cloud_thick, 0.0, 1.0);
-				vec3 lum = ambient * (0.4 + 0.6 * hgt) + cloud_lit * sun_light * beer * mix(0.55, 1.0, powder);
+				vec3 lum = ambient * (0.4 + 0.6 * hgt) + cloud_lit * (sun_light + night_lit) * beer * mix(0.55, 1.0, powder);
 				float dark = cloud_dark;
 				float flank = 0.0;
 				if (tower_count > 0) { vec4 sd = storm_at(p); flank = (1.0 - smoothstep(0.12, 0.65, sd.x)) * smoothstep(0.0, 0.12, sd.x); dark = max(dark, max(mix(0.4, 0.92, sd.x) * smoothstep(0.0, 0.3, sd.x), sd.w * 0.35)) * (1.0 - 0.5 * flank); }
@@ -540,14 +605,18 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 					float shelf = step(p.y, cloud_base) * fr.z;
 					dark = max(dark * (1.0 - 0.6 * sides.y), sides.x * 0.95);
 					if (shelf > 0.0) dark = max(dark * 0.7, 0.62 * fr.z);
-					lum -= cloud_lit * sun_light * beer * mix(0.55, 1.0, powder) * 0.6 * max(sides.x, shelf);
+					lum -= cloud_lit * (sun_light + night_lit) * beer * mix(0.55, 1.0, powder) * 0.6 * max(sides.x, shelf);
 					rim = shelf * smoothstep(-260.0, -20.0, fr.y) * beer * front_kind.x;
 				}
 				if (cumulus_count > 0) dark = max(dark, 0.55 * cumulus_at(p.xz, 0.5) * (1.0 - hgt)); // its flat base, dark over the water
 				lum *= 1.0 - dark * 0.78 * (1.0 - hgt * 0.4);
 				lum += cloud_lit * sun_light * rim * 0.9;
 				lum += cloud_lit * sun_light * flank * (0.25 + 0.4 * hgt); // lit flanks: lighter toward the edges
-				lum += cloud_underglow * (1.0 - hgt) * (1.0 - hgt);
+				// Light from below: lava under ash, the lamps of a town, and by night the moonlit ground's own,
+				// so a storm's base is dark cloud, never a hole in the sky.
+				vec3 under = cloud_underglow + night_color * night_light.w * by_night * 0.12 * (1.0 - 0.5 * cloud_dark);
+				if (glow_count > 0) under += place_glow(p.xz);
+				lum += under * (1.0 - hgt) * (1.0 - hgt);
 				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
 				light += trans * lum * (1.0 - exp(-ext));
 			}
@@ -556,9 +625,17 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 		}
 		t += step_t;
 	}
-	float alpha = 1.0 - trans;
-	// Distant clouds thin into the haze along the horizon: they fade in opacity, so whatever is
-	// behind them (a moon, a giant) shows through properly; their colour leans toward the sky's.
+	// The march stops once all but 3% of the light is gone: that last little is gone too, or a star many
+	// times the sky's brightness still shone through the thickest storm.
+	float alpha = clamp((1.0 - trans) / 0.97, 0.0, 1.0);
+	// What is behind them, they hide by all of their opacity; toward the march's reach the layer's far
+	// cover takes over from what it found, so nothing steps where its reach ends.
+	if (!lit) {
+		float past = smoothstep(8000.0, 16000.0, t0);
+		hide = 1.0 - (1.0 - alpha * (1.0 - past)) * (1.0 - far_cover(ro, rd) * past);
+	}
+	// Distant clouds thin into the haze along the horizon: their look fades into the sky's colour (an
+	// opacity, laid over the sky gradient, and their colour leaning toward it).
 	float fade = exp(-t0 / (6500.0 * density)) * (1.0 - smoothstep(9000.0, 16000.0, t0));
 	// The low layer's far clouds would close to thin streaks along the horizon: they thin out first.
 	// A storm stands out through the haze: its far parts keep their body.
@@ -599,13 +676,17 @@ void sky() {
 	vec3 col = sky_color(dir, sun);
 
 	if (AT_QUARTER_RES_PASS) {
-		// How much the clouds hide, marched without light: cheap, and in a channel with ten bits.
-		COLOR = vec3(march_clouds(POSITION, dir, sun, col, false, march_jitter(FRAGCOORD.xy)).a);
+		// How much the clouds hide of what is behind them, marched without light: cheap, and in a
+		// channel with ten bits; and in the next, their opacity as laid over the sky (the way out reads it).
+		float hide;
+		float laid = march_clouds(POSITION, dir, sun, col, false, march_jitter(FRAGCOORD.xy), hide).a;
+		COLOR = vec3(hide, laid, 0.0);
 	} else if (AT_HALF_RES_PASS) {
 		// The clouds laid over the plain sky, at half resolution: the costly part. Stored on a
 		// square-root curve, scaled down for headroom: the buffer clamps at one and dark storm or
 		// ash clouds would band without the extra precision near black.
-		vec4 c = march_clouds(POSITION, dir, sun, col, true, march_jitter(FRAGCOORD.xy));
+		float hide;
+		vec4 c = march_clouds(POSITION, dir, sun, col, true, march_jitter(FRAGCOORD.xy), hide);
 		COLOR = sqrt(max(c.rgb, vec3(0.0)) * 0.25);
 	} else {
 		float day = smoothstep(-0.2, 0.15, sun.y) * (0.04 + 0.96 * sun_lit); // an eclipse's totality: deep dusk, the stars out
@@ -616,7 +697,15 @@ void sky() {
 		// They stand in front of the stars, so no star shows through a world or a ring.
 		vec4 solid = bodies(dir, sun);
 		vec4 b = solid * (1.0 - overcast * 0.9);
-		if (starlight > 0.0) col += night_sky(dir, !AT_CUBEMAP_PASS) * starlight * (1.0 - solid.a);
+		// The stars' points apart from the soft light round them: a thin veil of cloud dims the
+		// points faster, so it blurs the night into its glow before it hides it.
+		vec3 points = vec3(0.0);
+		if (starlight > 0.0) {
+			vec3 soft = night_sky(dir, false);
+			vec3 full = AT_CUBEMAP_PASS ? soft : night_sky(dir, true);
+			points = (full - soft) * starlight * (1.0 - solid.a);
+			col += full * starlight * (1.0 - solid.a);
+		}
 		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
 
 		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
@@ -635,19 +724,26 @@ void sky() {
 		float disc_energy = mix(1.5, 18.0, smoothstep(0.02, 0.4, sun.y));
 		col += disc_color * disc * sun_energy * disc_energy * (1.0 - overcast) * smoothstep(-0.03, 0.0, dir.y);
 
-		float cover;
+		// The clouds over the plain sky (`clouded`, laid over it by `laid`), and whatever else is up there
+		// (stars, galaxy, hole, bodies, the sun) where they let it through: all of it behind them, all
+		// of it hidden by the one transmittance (`cover` is how much they hide).
+		float cover, laid;
+		vec3 clouded;
 		if (AT_CUBEMAP_PASS) {
 			// Reflections, ambient light and the fog's aerial perspective: just the overall cover, no
-			// march, eased in over the horizon (a hard step there showed in fogged distance and water).
-			cover = cloud_cover * 0.6 * smoothstep(-0.02, 0.12, dir.y);
-			col = mix(col, mix(cloud_shade, cloud_lit, 0.5) * (0.2 + 0.8 * day), cover);
+			// march, eased in over the horizon (a hard step there showed in fogged distance and water);
+			// and a cheap look at the layer along the way for what it hides (no stars in the sea under a storm).
+			laid = cloud_cover * 0.6 * smoothstep(-0.02, 0.12, dir.y);
+			clouded = mix(plain, mix(cloud_shade, cloud_lit, 0.5) * (0.2 + 0.8 * day), laid);
+			cover = (cloud_cover < 0.02 && front_shape.x <= 0.001) ? laid : 1.0 - (1.0 - laid) * (1.0 - far_cover(POSITION, dir));
 		} else {
-			// The clouds over the plain sky, plus whatever else is up there where they let it through.
-			vec3 clouded = HALF_RES_COLOR.rgb;
+			clouded = HALF_RES_COLOR.rgb;
 			clouded = clouded * clouded * 4.0;
 			cover = clamp(QUARTER_RES_COLOR.r, 0.0, 1.0);
-			col = clouded + (col - plain) * (1.0 - cover);
+			laid = clamp(QUARTER_RES_COLOR.g, 0.0, 1.0);
 		}
+		float through_clouds = 1.0 - cover;
+		col = clouded + (col - plain) * through_clouds - points * (through_clouds - through_clouds * through_clouds);
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
 		if (cirrus > 0.01 && tower_count == 0 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
@@ -665,13 +761,23 @@ void sky() {
 		if (debug_view == 1) col = vec3(cover);
 		if (debug_view == 3) col = night_sky(dir, true) * 6.0;
 		if (debug_view == 2) col = HALF_RES_COLOR.rgb * HALF_RES_COLOR.rgb * 4.0;
-		col = mix(col, overcast_color * (0.15 + 0.85 * day), overcast * smoothstep(-0.1, 0.25, dir.y) * 0.85);
+		// Overcast greys the whole sky. By night its flat grey is the night light's and takes less of it, so the
+		// deck's own shape, lit as it is (the moon over it, the ground and the lamps under it, a strike), still
+		// shows. (Not in the reflection cube: its cloud is a flat guess, and the night's ambient light stays as dark.)
+		vec3 flat_grey = overcast_color * (0.15 + 0.85 * day) + night_color * night_light.w * 0.03 * (1.0 - day);
+		float flat_share = AT_CUBEMAP_PASS ? 0.85 : mix(0.85, 0.45, 1.0 - day);
+		col = mix(col, flat_grey, overcast * smoothstep(-0.1, 0.25, dir.y) * flat_share);
 		// The air under the level goes first: nothing is left there to light but the world's own rim.
 		if (space_fade > 0.0) {
 			float gone = mix(space_fade, sqrt(space_fade), smoothstep(0.3, -0.25, dir.y));
 			float dark = smoothstep(0.78, 1.0, space_fade);
-			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars.
-			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb, gone);
+			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars;
+			// and any cloud still over you stays in front of all of it: the backdrop's dark where they
+			// are laid over the air, the rest of the backdrop only as far as they let it through.
+			vec3 night = vec3(0.003, 0.003, 0.006);
+			vec3 behind = space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb;
+			vec3 spaced = max(clouded - (plain - night) * (1.0 - laid), vec3(0.0)) + (behind - night) * through_clouds;
+			col = mix(col, spaced, gone);
 		}
 		COLOR = col;
 	}

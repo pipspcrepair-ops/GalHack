@@ -1197,8 +1197,6 @@ public static class Sites
     {
         int n = p.Int("count", 3), r = p.Int("r", 7), h = p.Int("h", 2), gap = p.Int("gap", 4);
         bool alongX = p.Arg("axis", "x") == "x";
-        bool foul = p.Arg("water", "clean") == "foul";
-        var water = foul ? new Rgb(0x4a, 0x48, 0x2a) : new Rgb(0x3a, 0x5a, 0x62);
         var rim = new Rgb(0x8a, 0x88, 0x82);
         for (int i = 0; i < n; i++)
         {
@@ -1212,12 +1210,7 @@ public static class Sites
                     x.C.Set(floor, new Block(BlockType.Cube, Material.Concrete, rim.Scale(0.7f), Role.Floor));
                     if (d > r - 0.6f)
                         for (int y = 0; y < h; y++) x.C.Set(floor + Int3.Up * (y + 1), new Block(BlockType.Cube, Material.Concrete, rim.Scale(y == h - 1 ? 1f : 0.9f), Role.Wall));
-                    else
-                    {
-                        // Standing water, and on a foul one a crust of scum in patches.
-                        uint hsh = Hash.Cell(floor, 91);
-                        x.C.Set(floor + Int3.Up, new Block(BlockType.Puddle, Material.Water, foul && hsh % 5 == 0 ? water.Scale(1.25f) : water, Role.Decor));
-                    }
+                    else x.C.Wet(floor + Int3.Up); // standing water
                 }
             // The clarifier's walkway bridge across the middle, rails both sides, a gearbox at its centre.
             for (int t = -r; t <= r; t++)

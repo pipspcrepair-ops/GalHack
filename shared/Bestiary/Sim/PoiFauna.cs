@@ -35,12 +35,40 @@ public sealed class PoiRoom
     public float Width => MathF.Min(Size.X, Size.Z);
 }
 
+/// <summary>
+/// Who holds a place, as far as its creatures care: the game takes it from the place's rolled
+/// occupant (who the world's theme and fall put there). Wild is a place nobody's roll speaks for
+/// (a living place, a wreck): its state alone decides.
+/// </summary>
+public enum PlaceHolder
+{
+    Wild,
+    /// <summary>Nobody: vermin at most.</summary>
+    Empty,
+    /// <summary>Nesters: nests room after room, and the bugs that keep them.</summary>
+    Nesters,
+    /// <summary>Twisted beasts denned in it (and the fall's own changed kinds, where it has them).</summary>
+    Beasts,
+    /// <summary>The Hollow growth's: its beasts, fungus-taken, through the rooms.</summary>
+    Hollows,
+    /// <summary>The Husks' den (with <see cref="PoiPlan.Husks"/>).</summary>
+    Husks,
+    /// <summary>People hold it (the game's townsfolk): they keep it clear, vermin at most down in the dark.</summary>
+    People,
+    /// <summary>Machines on their rounds: no wildlife lives where they walk, vermin at most.</summary>
+    Machines,
+}
+
 /// <summary>Everything the population function needs to know about a place.</summary>
 public sealed class PoiPlan
 {
     public ulong Seed;
     public PoiTheme Theme;
     public PlaceState State = PlaceState.Abandoned;
+    /// <summary>Who holds it, from its occupant; <see cref="PlaceHolder.Wild"/> where nothing was rolled.</summary>
+    public PlaceHolder Holder = PlaceHolder.Wild;
+    /// <summary>The holder's own kinds, as the world rolled them: its machines, its twisted beasts, its Hollows, its changed people. Those walk the place.</summary>
+    public readonly List<Species> Holders = new();
     /// <summary>A wrecked ship (crashed or drifting): its holds, ducts and engine rooms get nesters.</summary>
     public bool Derelict;
     /// <summary>How livable its world is, 0..1: a harsh world's places hold less (an overrun place holds what the Bloom brought).</summary>
@@ -180,15 +208,23 @@ public static class PoiFauna
         var pop = new PoiPopulation { Seed = poi.Seed };
         var rng = Rng.For(poi.Seed, "poi-fauna");
         PopulationRules pr = rules.Population;
-        string state = poi.State.ToString();
-        if (!poi.Husks && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f)))
+        PlaceHolder holder = poi.Holder;
+        // Whoever holds a place is there: only a place nobody holds (or nobody but people) may be empty and silent.
+        bool held = holder is PlaceHolder.Nesters or PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines;
+        string state = holder is PlaceHolder.People or PlaceHolder.Machines ? nameof(PlaceState.Active) : poi.State.ToString();
+        if (!poi.Husks && !held && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f)))
         {
             pop.Silent = true;
             pop.Note = "empty and silent";
             return pop;
         }
-        bool infested = poi.State == PlaceState.Infested, active = poi.State == PlaceState.Active;
-        float density = pr.Density.GetValueOrDefault(state, 1f) * (infested ? 1f : Mathf.Lerp(0.4f, 1f, poi.Livable));
+        // People and machines keep their place clear as a garrison does; the growth's places are overrun.
+        bool infested = poi.State == PlaceState.Infested || holder == PlaceHolder.Hollows;
+        bool active = poi.State == PlaceState.Active || holder is PlaceHolder.People or PlaceHolder.Machines;
+        bool nesters = holder == PlaceHolder.Nesters, empty = holder == PlaceHolder.Empty;
+        // Twisted beasts and the growth's take the hunting in their place: its own lurkers and prowlers are theirs.
+        bool owned = holder is PlaceHolder.Beasts or PlaceHolder.Hollows && poi.Holders.Count > 0;
+        float density = pr.Density.GetValueOrDefault(state, 1f) * (infested || nesters ? 1f : Mathf.Lerp(0.4f, 1f, poi.Livable));
         PoiTheme theme = poi.Derelict ? PoiTheme.Derelict : poi.Theme;
         int maxDepth = 0;
         foreach (PoiRoom r in poi.Rooms) maxDepth = Math.Max(maxDepth, r.Depth);
@@ -208,6 +244,14 @@ public static class PoiFauna
         }
 
         var corridors = new List<PoiRoom>();
+        if (empty)
+        {
+            // Nobody holds it: only what lives in any place's walls, and nothing that hunts.
+            foreach (PoiRoom room in poi.Rooms)
+                if (room.Kind is not (RoomKind.Vent or RoomKind.Duct) && (room.Dark || room.Depth >= 1 || rng.Chance(0.35f)))
+                    Subsisters(pop, fauna, theme, room, rng, false, density * 0.7f, pr);
+        }
+        else
         foreach (PoiRoom room in poi.Rooms)
         {
             int d = room.Depth;
@@ -247,11 +291,16 @@ public static class PoiFauna
                     bool dark = room.Dark || d >= 1;
                     // Husks don't breed in nests: a den the Turned hold alone has no eggs anywhere (it spreads only by the worms getting into someone).
                     bool nests = !poi.Husks || poi.Shared;
-                    if (nests && deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
+                    bool roomy = room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent;
+                    if (nests && deep && roomy)
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, poi.Derelict ? DeepRole.DerelictNester : DeepRole.Nester, poi.Derelict);
                     else if (nests && infested && d >= 1 && rng.Chance(0.3f))
                         NestIn(pop, fauna, theme, room, rng, true, density, rules, DeepRole.Nester, false);
-                    if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density))) Lurker(pop, fauna, theme, room, rng, infested);
+                    // A nesters' place has its nests room after room, in the dark and in the big rooms, not only deepest down.
+                    else if (nesters && roomy && room.Kind != RoomKind.Entrance && (dark || room.Kind != RoomKind.Room) && rng.Chance(0.55f))
+                        NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.Nester, false);
+                    if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density) * (owned ? 1.5f : 1f)))
+                        Lurker(pop, fauna, theme, room, rng, infested, owned ? Own(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) : null);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
                     foreach (var (at, n) in room.Vents)
                         if (rng.Chance(pr.Ambusher * density)) Hidden(pop, fauna, theme, room, rng, infested, HideKind.Vent, at, n);
@@ -259,6 +308,14 @@ public static class PoiFauna
                         if (room.Kind != RoomKind.Entrance && rng.Chance(pr.Ambusher * density * 0.4f)) Hidden(pop, fauna, theme, room, rng, infested, HideKind.Door, at, n);
                     break;
             }
+        }
+        // However small, a nesters' place has its nest: in its biggest room.
+        if (nesters && pop.Nests.Count == 0)
+        {
+            PoiRoom biggest = null;
+            foreach (PoiRoom r in poi.Rooms)
+                if (r.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent or RoomKind.Cave && (biggest == null || r.Size.X * r.Size.Z > biggest.Size.X * biggest.Size.Z)) biggest = r;
+            if (biggest != null) NestIn(pop, fauna, theme, biggest, rng, infested, density, rules, DeepRole.Nester, false);
         }
 
         // Prowlers walk beats through the corridors, between the rooms at either end.
@@ -269,7 +326,7 @@ public static class PoiFauna
             {
                 PoiRoom start = corridors[rng.Int(0, corridors.Count - 1)];
                 List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
-                Species sp = fauna.Fitted(fauna.For(DeepRole.Prowler, theme, start.Depth, infested), width, height);
+                Species sp = (owned ? Own(poi, fauna, theme, DeepRole.Prowler, width, height, rng) : null) ?? fauna.Fitted(fauna.For(DeepRole.Prowler, theme, start.Depth, infested), width, height);
                 if (sp == null) continue; // the way is too tight for its kind
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
             }
@@ -278,6 +335,8 @@ public static class PoiFauna
         Cap(poi, pop, rng, pr, state);
         // A Husk den: theirs come after the cap, as a den is theirs before it is anything's.
         if (poi.Husks) Den(poi, pop, fauna, theme, rng);
+        // Whoever holds it, after the cap too: the place is theirs before it is anything else's.
+        if (poi.Holders.Count > 0 && holder is PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines) Held(poi, pop, fauna, theme, rng, holder);
 
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
@@ -371,6 +430,11 @@ public static class PoiFauna
             if (hop <= 1 || far[room.Index] < 1f - sev * 1.05f) continue;
             Fill(room, MathF.Max(0.35f, sev), sev);
         }
+        // A place too small to hide one deeper in still has its Husk: in its furthest room, whatever that is.
+        if (furthest == null)
+            foreach (PoiRoom room in poi.Rooms)
+                if (room.Kind is not (RoomKind.Vent or RoomKind.Duct) && room.Size.Y >= 1.8f && (furthest == null || far.GetValueOrDefault(room.Index) > far.GetValueOrDefault(furthest.Index) || room.Size.X * room.Size.Z > furthest.Size.X * furthest.Size.Z && far.GetValueOrDefault(room.Index) == far.GetValueOrDefault(furthest.Index)))
+                    furthest = room;
         if (furthest == null) return;
         // However light, the furthest room has its Husk and the faintest sign of them: a vein in a corner.
         if (!pop.Spawns.Exists(s => s.Room == furthest.Index && s.Species.Husk) && lurker != null)
@@ -481,9 +545,9 @@ public static class PoiFauna
         pop.Spawns.Add(new PoiSpawn { Role = role, Species = sp, Position = p, Up = Vector3.Down, Room = room.Index, Hide = HideKind.Ceiling });
     }
 
-    static void Lurker(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested)
+    static void Lurker(PoiPopulation pop, DeepFauna fauna, PoiTheme theme, PoiRoom room, Rng rng, bool infested, Species own = null)
     {
-        if (Fits(fauna, DeepRole.Lurker, theme, room, infested) is not { } sp) return;
+        if ((own ?? Fits(fauna, DeepRole.Lurker, theme, room, infested)) is not { } sp) return;
         // The far corner from the way in, where the light doesn't reach.
         Vector3 door = room.Doors.Count > 0 ? room.Doors[0].at : room.Min;
         Vector3 best = room.FloorCenter;
@@ -534,6 +598,75 @@ public static class PoiFauna
             existing = hole.Id;
         }
         pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Ambusher, Species = sp, Position = p + n * 0.3f, Up = n, Room = room.Index, Hide = hide, Hole = existing });
+    }
+
+    /// <summary>One of the holder's own kinds given a job here, as it fits a space this wide and high; nothing if none of them can turn round in it.</summary>
+    static Species Own(PoiPlan poi, DeepFauna fauna, PoiTheme theme, DeepRole role, float width, float height, Rng rng)
+    {
+        if (poi.Holders.Count == 0) return null;
+        int first = rng.Int(0, poi.Holders.Count - 1);
+        for (int i = 0; i < poi.Holders.Count; i++)
+            if (fauna.Fitted(fauna.Holding(poi.Holders[(first + i) % poi.Holders.Count], role, theme), width, height) is { } fit) return fit;
+        return null;
+    }
+
+    /// <summary>
+    /// Whoever holds the place, in it: machines walking their rounds through its corridors and
+    /// rooms; twisted beasts denned in its biggest room deepest in, more of them about; the growth's
+    /// beasts through room after room. More in a bigger place.
+    /// </summary>
+    static void Held(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, PlaceHolder holder)
+    {
+        var walkable = poi.Rooms.FindAll(r => r.Kind is not (RoomKind.Vent or RoomKind.Duct) && r.Size.Y >= 2f);
+        if (walkable.Count == 0) return;
+        int n = Math.Clamp(walkable.Count / 3 + 1, 2, 6);
+        var from = walkable.FindAll(r => r.Kind == RoomKind.Corridor);
+        if (from.Count == 0) from = walkable;
+        if (holder == PlaceHolder.Machines)
+        {
+            // On their rounds: each its own beat, through the rooms either side.
+            for (int i = 0; i < n; i++)
+            {
+                PoiRoom start = i % 2 == 0 ? from[rng.Int(0, from.Count - 1)] : walkable[rng.Int(0, walkable.Count - 1)];
+                List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
+                if (Own(poi, fauna, theme, DeepRole.Prowler, width, height, rng) is not { } sp) continue;
+                pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
+            }
+            return;
+        }
+        if (holder == PlaceHolder.Beasts)
+        {
+            // Their den: the biggest room deepest in, with its bones, and some of them always there.
+            PoiRoom den = null;
+            foreach (PoiRoom r in walkable)
+                if (r.Kind is not (RoomKind.Entrance or RoomKind.Corridor) && (den == null || r.Depth > den.Depth || r.Depth == den.Depth && r.Size.X * r.Size.Z > den.Size.X * den.Size.Z)) den = r;
+            if (den != null && Own(poi, fauna, theme, DeepRole.Nester, den.Width, den.Size.Y, rng) is { } keeper)
+            {
+                var nest = new Nest { Position = FloorPoint(den, rng, MathF.Min(1.6f, den.Width * 0.3f)), Depth = den.Depth, Radius = 1.6f, Size = 1f };
+                pop.Nests.Add(nest);
+                for (int i = 0, guards = rng.Int(2, 3); i < guards; i++)
+                {
+                    float a = i * MathF.Tau / guards + rng.Range(-0.3f, 0.3f);
+                    pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Nester, Species = keeper, Position = Clamp(den, nest.Position + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * (nest.Radius + 0.8f), 0.5f), Room = den.Index, Nest = pop.Nests.Count - 1 });
+                }
+            }
+            n = Math.Max(1, n / 2);
+        }
+        // About the place: lying up in the dark rooms and walking between them.
+        for (int i = 0; i < n; i++)
+        {
+            PoiRoom room = walkable[rng.Int(0, walkable.Count - 1)];
+            if (i % 2 == 1 && from.Count > 0)
+            {
+                PoiRoom start = from[rng.Int(0, from.Count - 1)];
+                List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
+                if (Own(poi, fauna, theme, DeepRole.Prowler, width, height, rng) is { } walker)
+                    pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = walker, Position = route[0], Room = start.Index, Route = route });
+                continue;
+            }
+            if (room.Kind == RoomKind.Entrance && walkable.Count > 1) continue;
+            if (Own(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) is { } lurk) Lurker(pop, fauna, theme, room, rng, true, lurk);
+        }
     }
 
     /// <summary>A nest and its guards: more and bigger the deeper it is; overrun places have more.</summary>

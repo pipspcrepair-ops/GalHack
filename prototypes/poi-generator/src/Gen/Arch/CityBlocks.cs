@@ -508,7 +508,11 @@ public static class CityBlocks
         int tower = p.Hall("drill tower", ModuleKind.Hall, 0, ti, t0, ti + 2, t0 + 2, 0, 12, f.Wall, f.Roof);
         for (int j = 2; j < 11; j += 2) p.Dig(ti + 1, j, t0, ti + 1, j, t0);
         p.Mouth(ti + 2, 0, t0 + 1, ti + 2, 1, t0 + 1, p.Yard, tower);
-        p.Ladder(2 * (ti + 1), 1, 22, 2 * (t0 + 1) + 1, Dir.South);
+        // From the floor to a grating near the top, with headroom over it: on at the foot, off at the top.
+        p.Ladder(2 * (ti + 1), 0, 20, 2 * (t0 + 1) + 1, Dir.South);
+        for (int v = 2 * (t0 + 1); v <= 2 * (t0 + 1) + 1; v++)
+            for (int u = 2 * (ti + 1); u <= 2 * (ti + 1) + 1; u++)
+                if (p.Get(u, 20, v).Type != BlockType.Ladder) p.Put(u, 20, v, new Block(BlockType.Lattice, f.Grating.M, f.Grating.C, Role.Floor));
         p.Pave(ti + 3, k1 + 1, W - 1, D - 2, new Stuff2(Material.Concrete, f.Floor.C.Scale(0.9f)));
         p.Pave(W - Drive, 0, W - 1, k1, new Stuff2(Material.Concrete, Tarmac));
         Edges(p, lot, u => u <= 2 * i1 + 1 || u >= 2 * (W - Drive), false);
