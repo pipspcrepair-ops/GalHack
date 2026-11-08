@@ -116,7 +116,8 @@ public partial class WildlifePatch : Node3D
         world.Predators = layers.Predators;
         world.Density = layers.Density;
         world.Mutagen = Math.Max(world.Mutagen, layers.Mutagen);
-        Livable *= layers.Density;
+        // The layers nudge the numbers (a dead world quieter, a rich one busier); they never empty a world.
+        Livable *= Mathf.Lerp(1f, layers.Density, rules.LayerWeight);
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
@@ -229,6 +230,7 @@ public partial class WildlifePatch : Node3D
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
         }
         Sim = sim;
+        if (old != null) _refilledFrom += oldOrigin - origin; // where the last group came back, in the new patch's frame
         Origin = origin;
         Position = origin;
         Audio.Origin = origin;
@@ -248,15 +250,15 @@ public partial class WildlifePatch : Node3D
         float edge = Sim.Terrain.HalfSize - 30f;
         // A patch that took creatures over from the last one only fills its far side.
         float inner = carriedOver ? Sim.Terrain.HalfSize * 0.55f : 0f;
-        // Half what a species could hold, less on a harsher world; and a far side is only part of a patch.
-        float density = Sim.Data.Spawning.Density * Livable * (carriedOver ? 0.6f : 1f);
-        int most = (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
+        // What each species could hold, less on a harsher world; and a far side is only part of a patch.
+        float density = Zone.Data.Rules.Wildlife.Density * Livable * (carriedOver ? 0.6f : 1f);
+        int most = Most;
         foreach (Species s in Fauna.Species)
         {
             int groups = SpawnRules.Groups((s.Plan == BodyPlan.Giant ? 1 : 2) * density * s.Scarcity, rng);
             for (int g = 0; g < groups && Sim.Creatures.Count < most; g++)
             {
-                int count = Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Livable)));
+                int count = GroupSize(s, rng);
                 float spread = Sim.GroupRadius(s, count);
                 float min = (s.Behaviour is Behaviour.Predator or Behaviour.PackHunter || s.Plan == BodyPlan.Giant ? safe * 2.5f : safe) + spread;
                 Vector3 at = default;
@@ -266,13 +268,119 @@ public partial class WildlifePatch : Node3D
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
                     // A patch taking over from another is seen arriving: only where nobody is near or looking.
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && !Sim.InBaseZone(at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread));
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && Open(s, at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread));
                 }
                 if (!found) continue;
                 Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
             }
         }
     }
+
+    /// <summary>The most wild creatures this patch holds: the data's most, by how livable the world is.</summary>
+    public int Most => (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
+
+    /// <summary>How many go about together: the species' own group, smaller on a harsher world.</summary>
+    int GroupSize(Species s, Rng rng) => Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Math.Min(1f, Livable))));
+
+    /// <summary>A spot a group may start at (patch frame): out of a base's zone, and for anything that walks, on dry land.</summary>
+    bool Open(Species s, Vector3 at, float spread) => !Sim.InBaseZone(at, spread) && (s.Flies || !Sim.Nav.Blocked(at));
+
+    /// <summary>Wild creatures alive in the patch (not a town's own animals), and those within <paramref name="reach"/> of a point (patch frame).</summary>
+    public int WildAlive(Vector3? near = null, float reach = float.MaxValue)
+    {
+        int n = 0;
+        foreach (Creature c in Sim.Creatures)
+            if (Wild(c) && (near is not Vector3 p || WildSim.Flat(c.Position - p).Length() <= reach)) n++;
+        return n;
+    }
+
+    static bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None;
+
+    /// <summary>How far round you the land is kept lively, m (patch frame, flat).</summary>
+    public const float AroundYou = 250f;
+
+    /// <summary>Groups brought back by <see cref="Refill"/>, and creatures let go far behind to make room (tests).</summary>
+    public int Refilled { get; private set; }
+    public int Retired { get; private set; }
+
+    float _refillClock;
+    Vector3 _refilledFrom;
+    long _refills;
+
+    /// <summary>
+    /// Keeps the land lively as you go, by the bestiary's spawner's rules: every few seconds, once
+    /// you have moved on since the last time, if fewer wild creatures than the data's share of the
+    /// patch's most live within <see cref="AroundYou"/> of you, groups of the world's kinds (by how
+    /// common each is) come back away from you and out of your sight, never in a base's zone or,
+    /// for a walker, in the water. To make room, what is far behind you and out of sight is let go.
+    /// Someone standing still sees nothing appear round them.
+    /// </summary>
+    void Refill(float dt)
+    {
+        if (_frozen || Player == null || Fauna == null || Fauna.Species.Count == 0) return;
+        SpawnRules spawning = Sim.Data.Spawning;
+        if ((_refillClock += dt) < spawning.CheckSeconds) return;
+        _refillClock = 0f;
+        Vector3 you = Player.Position;
+        if (new Vector2(you.X - _refilledFrom.X, you.Z - _refilledFrom.Z).Length() < spawning.StayPutRadius) return;
+        int want = (int)MathF.Ceiling(Most * Zone.Data.Rules.Wildlife.NearShare);
+        float total = 0f;
+        foreach (Species k in Fauna.Species) total += Weight(k);
+        if (total <= 0f) return;
+        // A few groups a check at most: the land fills in over the next stretch, not all at once.
+        for (int g = 0; g < 3 && WildAlive(you, AroundYou) < want; g++)
+        {
+            if (WildAlive() >= Most && !RetireFarthest(you)) return;
+            var rng = Rng.For(Fauna.Seed, "refill", ++_refills);
+            float pick = rng.Range(0f, total);
+            Species s = Fauna.Species[^1];
+            foreach (Species k in Fauna.Species)
+                if ((pick -= Weight(k)) <= 0f) { s = k; break; }
+            if (!BringBack(s, GroupSize(s, rng), you, rng)) return;
+            Refilled++;
+            _refilledFrom = you;
+        }
+    }
+
+    /// <summary>A group of a kind put down round you (patch frame): out of your way and sight, inside the patch, on open ground.</summary>
+    bool BringBack(Species s, int count, Vector3 you, Rng rng)
+    {
+        SpawnRules spawning = Sim.Data.Spawning;
+        float spread = Sim.GroupRadius(s, count), edge = Sim.Terrain.HalfSize - 30f;
+        for (int attempt = 0; attempt < 16; attempt++)
+        {
+            float a = rng.Range(0f, MathF.Tau), r = rng.Range(spawning.MinPlayerDistance + spread, MathF.Max(spawning.MinPlayerDistance + spread + 20f, AroundYou - spread));
+            var at = new Vector3(you.X + MathF.Cos(a) * r, 0f, you.Z + MathF.Sin(a) * r);
+            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Sim.ClearOfPlayers(at, spread)) continue;
+            Vector3 spot = Sim.FreeSpot(at, rng);
+            if (!s.Flies && Sim.Nav.Blocked(spot)) continue;
+            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f));
+            if (group.Count == 0) continue;
+            Sim.AssignRest(group);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Lets go the wild creature farthest from you, if it is well behind you and out of sight (beyond what the view draws). False if none is.</summary>
+    bool RetireFarthest(Vector3 you)
+    {
+        Creature far = null;
+        float best = MathF.Max(AroundYou, View.FarDistance) + 20f;
+        foreach (Creature c in Sim.Creatures)
+        {
+            if (!Wild(c) || c.Species.Plan == BodyPlan.Giant) continue;
+            float d = WildSim.Flat(c.Position - you).Length();
+            if (d > best) { best = d; far = c; }
+        }
+        if (far == null) return false;
+        Sim.Remove(far);
+        Retired++;
+        return true;
+    }
+
+    /// <summary>How likely a kind is to be the one that comes back: how common it is, giants half as often.</summary>
+    static float Weight(Species s) => s.Domestic != DomesticKind.None ? 0f : s.Scarcity * (s.Plan == BodyPlan.Giant ? 0.5f : 1f);
 
     /// <summary>
     /// Tells the sim where the bases stand, so nothing spawns within the data's clearance of one,
@@ -483,6 +591,7 @@ public partial class WildlifePatch : Node3D
             _baseSync = 0f;
             SyncBases();
         }
+        Refill((float)delta);
         Sim.Step((float)delta);
     }
 

@@ -303,13 +303,28 @@ public sealed class SliceRules
         public bool BreakBases { get; set; } = true;
 
         /// <summary>The most wild creatures a patch holds on the most livable world.</summary>
-        public int MostPerPatch { get; set; } = 40;
+        public int MostPerPatch { get; set; } = 70;
+
+        /// <summary>Groups of each species a patch holds on the most livable world, against its natural number (giants 1, the rest 2).</summary>
+        public float Density { get; set; } = 1f;
+
+        /// <summary>
+        /// How much the world's layers (a dead or barren world, a rich one) move its numbers: 0 not at
+        /// all, 1 fully. Half: a dead world is quieter, never empty.
+        /// </summary>
+        public float LayerWeight { get; set; } = 0.5f;
+
+        /// <summary>
+        /// Topping up as you go: every few seconds, once you have moved on, a group comes back out of
+        /// sight while fewer than this share of the patch's most live within 250 m of you.
+        /// </summary>
+        public float NearShare { get; set; } = 0.6f;
 
         /// <summary>How livable a world of each archetype is, 0..1: lush worlds busiest, lava all but dead.</summary>
         public Dictionary<string, float> Livable { get; set; } = new() { ["Temperate"] = 1f, ["Alien"] = 0.6f, ["Arid"] = 0.35f, ["Ice"] = 0.3f, ["Lava"] = 0.08f };
 
         /// <summary>A cratered world, airless rock for the most part, holds this share of that.</summary>
-        public float Cratered { get; set; } = 0.4f;
+        public float Cratered { get; set; } = 0.7f;
 
         public float LivableOn(Planets.Gen.PlanetSpec spec) =>
             Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Has(Planets.Gen.Modifier.Cratered) ? Cratered : 1f);
