@@ -20,6 +20,9 @@ public enum DecoTech { Low, Mid, High }
 /// <summary>Where a decoration goes: on the floor, on a wall, hanging from the ceiling, or on top of another piece (a monitor on a desk).</summary>
 public enum DecoMount { Floor, Wall, Ceiling, Top }
 
+/// <summary>A hazard's explosion: how far it reaches (m) and its damage at the heart.</summary>
+public sealed record DecoBlast(float Radius, float Damage);
+
 /// <summary>Which way a knocked-over piece falls, in its own frame (its front faces -Z).</summary>
 public enum DecoFall { None, Back, Front, Left, Right, Over }
 
@@ -109,6 +112,8 @@ public sealed class DecoPiece
     public DecoTech Tech { get; init; } = DecoTech.Mid;
     /// <summary>Vehicles and wrecks: salvageable for scrap, with a rough yield class (light, medium, heavy, huge), or null.</summary>
     public string Salvage { get; init; }
+    /// <summary>A hazard's explosion (a blasting crate, a fuel drum, gas): null for anything that doesn't go up.</summary>
+    public DecoBlast Blast { get; init; }
     public bool Outdoor { get; init; }
     /// <summary>Its palette, if not its set's (the alien looks).</summary>
     public string Palette { get; init; }
@@ -333,6 +338,7 @@ public sealed class DecoCatalogue
                 Tech = ParseTech(DataJson.Str(j, "tech", set.Tech.ToString()), where),
                 Salvage = DataJson.Str(j, "salvage", null),
                 Outdoor = DataJson.Bool(j, "outdoor", set.Outdoor),
+                Blast = j.TryGetProperty("blast", out JsonElement bl) ? new DecoBlast((float)DataJson.Num(bl, "radius", 3), (float)DataJson.Num(bl, "damage", 200)) : null,
                 Palette = DataJson.Str(j, "palette", set.Palette),
                 Hp = DataJson.Int(j, "hp", 80 + 10 * size[0] * size[1] * size[2] / 4),
                 MassKg = (float)DataJson.Num(j, "mass", 6 * size[0] * size[1] * size[2]),

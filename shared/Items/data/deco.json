@@ -29,6 +29,9 @@
 //                       (blinks while powered, sparks when broken)
 //   palette             a piece's own palette (the alien looks)
 //   outdoor             false: an indoor piece of an outdoor set (a hangar's engine stand among the airliners)
+//   blast               a hazard: damaged through its hit points it goes up, radius (m) and damage at its
+//                       heart (falling off to a quarter at the edge); blocks, creatures, the survivor and
+//                       structures round it take it, and the hazards within reach go up a moment later
 //   uniqueOnly          needs a unique find (precursor alloy): salvage only
 {
   "schema": "galhack.deco",
@@ -163,10 +166,10 @@
     { "id": "pipe-run", "name": "Pipe run", "set": "industrial", "roles": ["pipes"], "size": [4, 2, 1], "fixed": true, "also": ["cryo", "ship"], "bill": { "iron-bar": 3 } },
     { "id": "valve-assembly", "name": "Valve assembly", "set": "industrial", "roles": ["valve", "pipes", "machine"], "size": [2, 3, 1], "fixed": true, "also": ["mine"], "bill": { "iron-bar": 2, "copper-bar": 1 } },
     { "id": "control-panel", "name": "Control panel", "set": "industrial", "roles": ["panel", "machine", "console"], "size": [2, 3, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "spark", "fall": ["front", "back"], "also": ["lab", "ship", "military"], "bill": { "circuit-board": 2, "hull-plate": 1, "copper-wire": 2 } },
-    { "id": "oil-barrel", "name": "Oil barrel", "set": "industrial", "roles": ["barrel", "tank", "crate"], "size": [1, 2, 1], "fall": ["side", "front"], "also": ["mine", "reaver", "military", "aviation"], "bill": { "iron-bar": 1 } },
+    { "id": "oil-barrel", "name": "Oil barrel", "set": "industrial", "hp": 60, "blast": { "radius": 3.5, "damage": 260 }, "roles": ["barrel", "tank", "crate"], "size": [1, 2, 1], "fall": ["side", "front"], "also": ["mine", "reaver", "military", "aviation"], "bill": { "iron-bar": 1 } },
     { "id": "workbench", "name": "Workbench", "set": "industrial", "roles": ["bench", "table"], "size": [4, 2, 2], "surface": 0.9, "fall": ["back", "front"], "also": ["mine", "reaver", "ship", "aviation"], "bill": { "iron-bar": 3, "hull-plate": 1 } },
     { "id": "tool-rack", "name": "Tool rack", "set": "industrial", "roles": ["toolrack", "rack", "shelf"], "size": [3, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "also": ["mine", "ship", "aviation"], "bill": { "iron-bar": 2 } },
-    { "id": "gas-cylinders", "name": "Gas cylinders", "set": "industrial", "roles": ["cylinders", "tank"], "size": [2, 3, 1], "fall": ["front", "side"], "also": ["medical", "lab", "aviation"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
+    { "id": "gas-cylinders", "name": "Gas cylinders", "set": "industrial", "hp": 50, "blast": { "radius": 3, "damage": 220 }, "roles": ["cylinders", "tank"], "size": [2, 3, 1], "fall": ["front", "side"], "also": ["medical", "lab", "aviation"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
     { "id": "cargo-crate", "name": "Cargo crate", "set": "industrial", "roles": ["crate", "chest"], "size": [2, 2, 2], "fall": ["side", "over"], "also": ["spaceport", "ship", "mine", "military", "aviation"], "bill": { "hull-plate": 2 } },
     { "id": "junction-box", "name": "Junction box", "set": "industrial", "roles": ["junction", "panel"], "size": [1, 2, 1], "mount": "wall", "mountY": 1.0, "light": { "range": 1.2, "energy": 0.3 }, "anim": "spark", "fall": ["front"], "also": ["ship", "prison", "mine"], "bill": { "copper-wire": 2, "circuit-board": 1 } },
     { "id": "ceiling-light", "name": "Ceiling light", "set": "industrial", "roles": ["ceiling-light"], "size": [2, 1, 2], "mount": "ceiling", "grids": ["large", "small"], "light": { "range": 7, "energy": 1.3 }, "also": ["office", "lab", "medical", "military", "residential", "canteen", "prison", "spaceport", "cryo", "ship", "mine", "resort"], "bill": { "glass": 1, "copper-wire": 1, "iron-bar": 1 } },
@@ -256,7 +259,7 @@
     { "id": "rock-drill", "name": "Rock drill", "set": "mine", "roles": ["drill", "machine"], "size": [2, 3, 3], "fall": ["side", "back"], "bill": { "iron-bar": 2, "servo": 1, "hull-plate": 1 } },
     { "id": "mine-lamp", "name": "Cage lamp post", "set": "mine", "roles": ["lamp"], "size": [1, 4, 1], "light": { "range": 4, "energy": 0.9 }, "anim": "flicker", "fall": ["side", "back", "front"], "also": ["reaver", "military"], "bill": { "iron-bar": 1, "glass": 1, "copper-wire": 1 } },
     { "id": "timber-prop", "name": "Timber prop", "set": "mine", "roles": ["support", "pillar"], "size": [4, 5, 1], "fixed": true, "bill": { "biomass": 4 } },
-    { "id": "blasting-crate", "name": "Blasting crate", "set": "mine", "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["military"], "bill": { "biomass": 1, "iron-bar": 1 } },
+    { "id": "blasting-crate", "name": "Blasting crate", "set": "mine", "hp": 40, "blast": { "radius": 5, "damage": 450 }, "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["military"], "bill": { "biomass": 1, "iron-bar": 1 } },
     { "id": "cable-winch", "name": "Cable winch", "set": "mine", "roles": ["winch", "machine"], "size": [2, 2, 2], "fall": ["side"], "also": ["industrial"], "bill": { "iron-bar": 2, "winding": 1 } },
     { "id": "rock-pile", "name": "Rock pile", "set": "mine", "roles": ["rock", "spoil"], "size": [3, 2, 3], "fixed": true, "states": ["overgrown"], "bill": { "stone": 3 } },
 
