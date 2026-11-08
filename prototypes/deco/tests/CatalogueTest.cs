@@ -32,6 +32,7 @@ public partial class CatalogueTest : TestBase
         Run("Every cable is attached", TestCables);
         Run("Godot meshes and shapes", TestGodot);
         Run("Every part has a surface", TestSurfaces);
+        Run("Nothing leans on air", TestLeaning);
         Run("Names are GalHack's own", TestNames);
     }
 
@@ -313,6 +314,119 @@ public partial class CatalogueTest : TestBase
                     Check(DecoFinishes.Decode(a) == (f, w, flag), $"{f} worn {w} flag {flag} survives 8-bit colour");
                 }
         Check(DecoFinishes.Decode(1f) == null, "an alpha of 1 (other code's triangles) reads as no finish");
+    }
+
+    /// <summary>
+    /// Nothing leans on air: every part of a model that stands tilted (10 to 80 degrees off upright) on
+    /// a foot touches a support well away from that foot: the next book, the case's side, a wall, a
+    /// bench, a chunk it is propped on. A hard part set into another (a handle in its socket, horns in
+    /// a skull) is fixed there; a soft one (a book, cloth) never is. The owner's case, a book turned
+    /// over on a shelf with nothing beside it, must be caught.
+    /// </summary>
+    void TestLeaning()
+    {
+        // The owner's case: books on a shelf, the last tipped over on its foot with nothing beside it.
+        var air = new DecoBuilder(1, 1, 0.4f, 1);
+        air.Box(-0.5f, 0, -0.2f, 0.5f, 0.03f, 0.2f, DecoSlot.Wood);
+        air.Box(-0.5f, 0.03f, -0.18f, -0.46f, 0.3f, 0.18f, DecoSlot.Fabric).Soft();
+        using (air.Turn(new Vector3(-0.3f, 0.03f, 0), 0, 0, -35))
+            air.Box(-0.3f, 0.03f, -0.18f, -0.26f, 0.3f, 0.18f, DecoSlot.Fabric).Soft();
+        var caught = LeansOnAir(air.Model.Parts);
+        Check(caught.Count == 1, $"a book tipped over on its foot with nothing beside it is caught ({caught.Count}: {string.Join("; ", caught)})");
+
+        int tilted = 0, failed = 0;
+        // Every model as built, then shelves of books filled afresh many times over (a fresh roll each run).
+        var models = _cat.Pieces.Select(p => (p.Id, _forge.Model(p.Id))).ToList();
+        DecoPiece shelf = _cat.Piece("bookshelf");
+        for (int i = 0; i < 300; i++)
+        {
+            var builder = new DecoBuilder(shelf.Width, shelf.Height, shelf.Depth, (ulong)Random.Shared.NextInt64());
+            DecoModels.All[shelf.Id](builder);
+            models.Add(($"{shelf.Id} (filled afresh)", builder.Model));
+        }
+        foreach (var (id, model) in models)
+            foreach (string problem in LeansOnAir(model.Parts, n => tilted += n))
+                if (failed++ < 20) Check(false, $"{id}: {problem}");
+        Check(failed == 0, $"nothing leans on air ({failed} parts do)");
+        Note($"{tilted} tilted parts checked in {models.Count} models");
+    }
+
+    /// <summary>The tilted parts among <paramref name="parts"/> that stand on a foot with nothing holding them up.</summary>
+    static List<string> LeansOnAir(IList<DecoPart> parts, Action<int> counted = null)
+    {
+        var problems = new List<string>();
+        int tilted = 0;
+        foreach (DecoPart part in parts)
+        {
+            if (part.Kind is DecoPrim.Sphere or DecoPrim.Dome) continue;
+            Vector3 up = Vector3.Normalize(new Vector3(part.M.M21, part.M.M22, part.M.M23));
+            float tilt = MathF.Acos(Math.Clamp(MathF.Abs(up.Y), 0f, 1f)) / DecoGeo.Deg;
+            if (!float.IsFinite(tilt) || tilt < 10 || tilt > 80) continue;
+            List<Vector3> pts = SurfacePoints(part);
+            var others = parts.Where(o => o != part).Select(o => Matrix4x4.Invert(o.M, out Matrix4x4 inv) ? (inv, Scale(o)) : default).Where(o => o.Item2 != default).ToList();
+            bool Within(Vector3 v, float tol) => others.Any(o => InBox(v, o.Item1, o.Item2, tol));
+            // A hard part set into another is fixed there, not leaning; a soft one (a book, cloth) is never fixed.
+            if (!part.Is(PartFlags.Soft) && pts.Any(v => Within(v, -0.004f))) continue;
+            tilted++;
+            float lo = pts.Min(v => v.Y);
+            bool Touches(Vector3 v) => v.Y < 0.01f || Within(v, 0.008f);
+            bool foot = pts.Any(v => v.Y < lo + 0.01f && Touches(v));
+            if (!foot) continue;
+            // Held: touching something well away from its foot, not beside it. Distances are taken across the
+            // line it tips about (along that line a support is only beside the foot).
+            Vector3 low = pts.OrderBy(v => v.Y).First(), hinge = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, up));
+            float Off(Vector3 v) { Vector3 d = v - low; return (d - Vector3.Dot(d, hinge) * hinge).Length(); }
+            float reach = pts.Max(Off);
+            bool Far(Vector3 v) => Off(v) > reach * 0.4f;
+            bool held = pts.Any(v => Far(v) && Touches(v));
+            // Or another part's edge against this one's face (a panel resting on a chunk's top edge).
+            if (!held && Matrix4x4.Invert(part.M, out Matrix4x4 pinv))
+            {
+                Vector3 ps = Scale(part);
+                held = parts.Where(o => o != part && o.Kind == DecoPrim.Hex).SelectMany(SurfacePoints).Any(v => Far(v) && InBox(v, pinv, ps, 0.008f));
+            }
+            if (!held) problems.Add($"a {part.Slot} part tilted {tilt:F0} degrees stands on its foot with nothing holding it");
+        }
+        counted?.Invoke(tilted);
+        return problems;
+    }
+
+    static Vector3 Scale(DecoPart p) => new(new Vector3(p.M.M11, p.M.M12, p.M.M13).Length(), new Vector3(p.M.M21, p.M.M22, p.M.M23).Length(), new Vector3(p.M.M31, p.M.M32, p.M.M33).Length());
+
+    /// <summary>Whether a point is inside a part's box (given its inverse and scale), grown by <paramref name="tol"/> metres (shrunk if negative).</summary>
+    static bool InBox(Vector3 v, Matrix4x4 inv, Vector3 s, float tol)
+    {
+        Vector3 q = Vector3.Transform(v, inv);
+        return MathF.Abs(q.X) <= 0.5f + tol / MathF.Max(s.X, 1e-4f) && MathF.Abs(q.Y) <= 0.5f + tol / MathF.Max(s.Y, 1e-4f) && MathF.Abs(q.Z) <= 0.5f + tol / MathF.Max(s.Z, 1e-4f);
+    }
+
+    /// <summary>A part's corners and points along its edges (a contact along a face shows at its edges).</summary>
+    static List<Vector3> SurfacePoints(DecoPart p)
+    {
+        var pts = new List<Vector3>(DecoEmit.Vertices(p));
+        if (p.Kind != DecoPrim.Hex) return pts;
+        for (int i = 0; i < 8; i++)
+            for (int axis = 0; axis < 3; axis++)
+            {
+                if ((i & (1 << axis)) != 0) continue;
+                Vector3 a = p.Corners[i], c = p.Corners[i | (1 << axis)];
+                // Every centimetre or so: a support may touch a leaning edge at a single point.
+                Vector3 wa = Vector3.Transform(a, p.M), wc = Vector3.Transform(c, p.M);
+                int n = Math.Clamp((int)(Vector3.Distance(wa, wc) / 0.008f), 4, 400);
+                for (int k = 1; k < n; k++) pts.Add(Vector3.Lerp(wa, wc, k / (float)n));
+            }
+        // And a grid over each face of a box: a support may touch the middle of a face (a panel propped on a chunk).
+        if (!ReferenceEquals(p.Corners, DecoPart.UnitCube)) return pts;
+        for (int axis = 0; axis < 3; axis++)
+            foreach (float side in new[] { -0.5f, 0.5f })
+                for (int i = 1; i < 8; i++)
+                    for (int j = 1; j < 8; j++)
+                    {
+                        float u = i / 8f - 0.5f, v = j / 8f - 0.5f;
+                        var q = axis == 0 ? new Vector3(side, u, v) : axis == 1 ? new Vector3(u, side, v) : new Vector3(u, v, side);
+                        pts.Add(Vector3.Transform(q, p.M));
+                    }
+        return pts;
     }
 
     void TestNames()
