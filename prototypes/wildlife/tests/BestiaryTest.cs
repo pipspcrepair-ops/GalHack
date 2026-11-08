@@ -589,10 +589,12 @@ public partial class BestiaryTest : Node
             if (parent >= 0) { room.Links.Add(parent); plan.Rooms[parent].Links.Add(r); }
             plan.Rooms.Add(room);
         }
+        // Some rooms' real space runs past the box the place gives for them (as an odd-shaped room's does).
+        var past = plan.Rooms.Select(_ => _fresh.Chance(0.35f) ? 3f : 0f).ToArray();
         bool Solid(int x, int y, int z)
         {
             foreach (PoiRoom r in plan.Rooms)
-                if (x >= r.Min.X && x < r.Max.X && y >= r.Min.Y && y < r.Max.Y && z >= r.Min.Z && z < r.Max.Z) return false;
+                if (x >= r.Min.X && x < r.Max.X + past[r.Index] && y >= r.Min.Y && y < r.Max.Y && z >= r.Min.Z && z < r.Max.Z) return false;
             return true;
         }
         space = new BlockSpace(Solid, new Vector3I(-2, -16, -2), new Vector3I(72, 6, 44));
@@ -610,7 +612,9 @@ public partial class BestiaryTest : Node
         w.Coreward = 1f;
         DeepFauna fauna = Bestiary.Roll(_data, w).Deep();
         int dens = 0, front = 0, lightMasses = 0, severeMasses = 0, lightVeins = 0, severeVeins = 0, lightDens = 0, severeDens = 0, lightNear = 0, lightHusks = 0, severeRooms = 0, severeFilled = 0;
-        bool veinsOnSurfaces = true, veinsInRooms = true;
+        bool veinsOnSurfaces = true, veinsInRooms = true, facing = true;
+        int walls = 0, floors = 0;
+        float widest = 0f;
         for (int i = 0; i < 60; i++)
         {
             bool light = i % 2 == 0;
@@ -624,6 +628,13 @@ public partial class BestiaryTest : Node
                      + pop.VeinRoots.Count(v => plan.Rooms.Where(r => Front(r.Index)).Any(r => Inside(r, v.At)));
             var sim = new WildSim(_data, new Terrain((x, z) => 0f, 80f), new NavGrid(80f, 3f));
             PoiFauna.Spawn(sim, pop, space);
+            foreach (WormMass m in sim.Masses)
+            {
+                facing &= PoiFauna.Faces(space, m);
+                if (m.Normal.Y > 0.9f) floors++;
+                else if (MathF.Abs(m.Normal.Y) < 0.4f) walls++;
+            }
+            foreach (Vein v in sim.Veins) widest = MathF.Max(widest, v.Width);
             foreach (Vein v in sim.Veins)
                 foreach (Vector3 p in v.Points)
                 {
@@ -652,6 +663,12 @@ public partial class BestiaryTest : Node
         }
         Check(front == 0, $"{dens} dens: nothing in the way in or the rooms off it ({front} Husks, masses or veins there)");
         Check(veinsOnSurfaces && veinsInRooms, "every vein lies on a floor, a wall or a ceiling, and none reaches the way in");
+        Check(facing && walls > 0 && floors > 0, $"every mass is rooted in its surface, its open side away from it ({floors} on floors, {walls} on walls, some rooms running past their boxes)");
+        Check(widest <= Veins.Widest + 1e-4f, $"no vein thicker than {Veins.Widest * 100f:F1} cm at its root ({widest * 100f:F1} cm the thickest)");
+        // A mass's open side is its +Y: its worms stand out past its lobes.
+        var probe = WormMasses.Build(new WormMass { Size = 1f, Seed = Seed() });
+        float wormsUp = probe.Prims.Where(p => p.Material == Mat.Worm).Average(p => p.Local.Origin.Y), lobesUp = probe.Prims.Where(p => p.Material != Mat.Worm).Average(p => p.Local.Origin.Y);
+        Check(wormsUp > lobesUp + 0.1f, $"and a mass's worms stand out on its open side ({wormsUp:F2} m out, its lobes {lobesUp:F2})");
         Check(lightHusks >= lightDens && lightNear <= lightDens * 2, $"light dens: {lightHusks} Husks in {lightDens}, in {lightNear} rooms between them (the furthest few)");
         Check(lightMasses <= lightDens / 2 && lightVeins >= lightDens / 2 && lightVeins <= lightDens * 4, $"and hardly a mass ({lightMasses}), a faint vein or two ({lightVeins})");
         Check(severeFilled >= severeRooms * 0.7f && severeMasses > lightMasses * 4 + severeDens * 2, $"severe dens: masses in {severeFilled} of {severeRooms} inner rooms ({severeMasses} in {severeDens} dens)");

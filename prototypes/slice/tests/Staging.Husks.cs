@@ -84,7 +84,7 @@ public sealed partial class Staging
         string tag = severe ? "" : "-light";
         Vector3 from = _game.Survivor.WorldFeet;
         PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance != null && s != _game.Bunker.Poi && _game.Places.PlaceOf(s) == null && s.Instance.Townsfolk == null
-                && s.Instance.Layout.Modules.Count(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor) >= (int)Num("rooms", 9))
+                && s.Instance.Layout.Modules.Count(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor) >= (int)Num("rooms", 9) && !s.Family.Tags.Contains("camp"))
             .OrderBy(s => _game.Places.DistanceTo(s, from)).First(s => _game.Places.DistanceTo(s, from) > 250f && !_game.Places.MemoryOf(s).Prepared);
         site.Instance.Occupancy = severe ? new OccupancyRoll(Occupant.Turned) : new OccupancyRoll(Occupant.Empty, null, Sharing.Layers, Occupant.Turned);
         GD.Print($"(STAGING: {site.Name} [{site.Family.Id}], {_game.Places.DistanceTo(site, from):F0} m off, held by the Turned {(severe ? "alone" : "as a trace")})");
@@ -113,6 +113,14 @@ public sealed partial class Staging
             WormMass big = sim.Masses.Where(m => !m.Dead).OrderByDescending(m => sim.Veins.Count(v => v.Points[0].DistanceTo(m.Position) < 2f) + m.Size * 4f).First();
             foreach (int x in DenView(p, deep, big.Middle, 3.2f, 1.5f)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, "severe.png"))) yield return x;
+            // One on a wall: rooted in it, its open side out into the room.
+            WormMass wall = sim.Masses.Where(m => !m.Dead && MathF.Abs(m.Normal.Y) < 0.4f).OrderByDescending(m => m.Size).FirstOrDefault();
+            if (wall != null)
+            {
+                GD.Print($"(a mass on a wall: facing {wall.Normal.X:F2}, {wall.Normal.Y:F2}, {wall.Normal.Z:F2}; {sim.Masses.Count(m => MathF.Abs(m.Normal.Y) < 0.4f)} of {sim.Masses.Count} are on walls)");
+                foreach (int x in DenView(p, deep, wall.Middle, 2.6f, 0.3f)) yield return x;
+                foreach (int x in Shot(Path.Combine(dir, "wall.png"))) yield return x;
+            }
             WormMass made = sim.Masses.Where(m => !m.Dead && m.Host != null && m.Normal.Y > 0.5f).OrderBy(m => WormMasses.RemnantKind(m) == 0 ? 0 : 1).ThenByDescending(m => m.Size).FirstOrDefault();
             if (made != null)
             {
