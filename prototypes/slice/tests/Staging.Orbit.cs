@@ -37,6 +37,7 @@ public sealed partial class Staging
         "ascent" => ClimbView(),
         "rings" => RingsView(),
         "bodies" => BodiesView(),
+        "orbitweather" => OrbitWeatherView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
         "map-system" => MapView(Slice.Ui.MapLevel.System),
         "map-stars" => MapView(Slice.Ui.MapLevel.Galaxy),

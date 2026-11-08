@@ -453,19 +453,21 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// The weather where the camera is: out from under a cell the air is clear and the sun comes
     /// through, with the storm standing in plain sight over there; under it, the weather in full.
     /// </summary>
-    Conditions AirHere()
+    Conditions AirHere() => Camera == null ? Sim.Current : AirAt(Sim, Camera.GlobalPosition);
+
+    /// <summary>The weather the sky over a point shows, as <see cref="AirHere"/> has it for the camera: the globe reads it for every place on the map.</summary>
+    public static Conditions AirAt(WeatherSim sim, Vector3 p)
     {
-        if (Camera == null) return Sim.Current;
-        Conditions c = Sim.LocalAt(Camera.GlobalPosition);
+        Conditions c = sim.LocalAt(p);
         // Ahead of a storm's front the sky is still the fair one: its deck stands over there, dark against it.
-        if (Sim.Front is { Kind: FrontKind.Storm } f)
+        if (sim.Front is { Kind: FrontKind.Storm } f)
         {
-            float clear = f.Clear(Camera.GlobalPosition);
+            float clear = f.Clear(p);
             c[Param.CloudCover] = Mathf.Lerp(c.CloudCover, MathF.Min(c.CloudCover, 0.4f), clear);
             c[Param.CloudDarkness] = Mathf.Lerp(c.CloudDarkness, MathF.Min(c.CloudDarkness, 0.2f), clear);
         }
         if (c.Cellular <= 0.01f) return c;
-        float open = c.Cellular * (1f - Sim.CellCover(Camera.GlobalPosition));
+        float open = c.Cellular * (1f - sim.CellCover(p));
         c[Param.VisibilityLog] = Mathf.Lerp(c[Param.VisibilityLog], MathF.Max(c[Param.VisibilityLog], 3.95f), open);
         c[Param.GroundFog] *= 1f - open;
         c[Param.Solar] = Mathf.Lerp(c.Solar, MathF.Max(c.Solar, 0.75f), open);
