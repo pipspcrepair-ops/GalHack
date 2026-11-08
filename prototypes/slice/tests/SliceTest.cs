@@ -368,8 +368,11 @@ public partial class SliceTest : Node
         float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
         Check(astride < 10f, $"third person, the castaway sits the bike facing its heading ({astride:F1}° off)");
         // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
+        // Tried from a standstill, so the ride stays short and the bike is on its cushion for getting off after.
+        _game.Controls.Hold(Key.S);
+        for (int i = 0; i < 50; i++) yield return 0;
+        _game.Controls.Hold(Key.S, false);
         _game.Survivor.Yaw += MathF.PI / 2f;
-        _game.Controls.Hold(Key.W);
         for (int i = 0; i < 120; i++) yield return 0;
         var view = new Vector3(-MathF.Sin(_game.Survivor.Yaw), 0f, -MathF.Cos(_game.Survivor.Yaw));
         float off = Mathf.RadToDeg(bike.Forward.AngleTo(view));
@@ -383,6 +386,8 @@ public partial class SliceTest : Node
         for (int i = 0; i < 60; i++) yield return 0;
         float apart = Mathf.RadToDeg(MathF.Abs(Mathf.Wrap(bike.Yaw - _game.Survivor.Yaw, -MathF.PI, MathF.PI)));
         Check(apart < 3f, $"let go, the view eases back onto the bike's heading ({apart:F1}° apart)");
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 60; i++) yield return 0;
         _game.Controls.Hold(Key.W, false);
         foreach (int x in _drive.Wait(90)) yield return x;
         float speedAtF = bike.Speed;
