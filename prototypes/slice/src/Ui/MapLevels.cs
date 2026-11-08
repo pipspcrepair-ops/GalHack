@@ -130,8 +130,8 @@ public sealed class MapLevels
     {
         Game.Controls c = _game.Controls;
         int w = g.Over(panel) ? (_game.Interactive ? -g.Wheel : c.Wheel) : 0;
-        if (c.WasPressed(Key.Equal) || c.WasPressed(Key.KpAdd)) w--;
-        if (c.WasPressed(Key.Minus) || c.WasPressed(Key.KpSubtract)) w++;
+        if (c.KeyWasPressed(Key.Equal) || c.KeyWasPressed(Key.KpAdd)) w--;
+        if (c.KeyWasPressed(Key.Minus) || c.KeyWasPressed(Key.KpSubtract)) w++;
         return w;
     }
 

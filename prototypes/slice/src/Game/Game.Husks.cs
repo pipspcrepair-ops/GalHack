@@ -127,8 +127,7 @@ public partial class Game
             return true;
         }
         // Sealed: it can't get in, but it has you. Fight the pull of its hands to wrench the view away, or mash Space.
-        Survivor.Yaw -= c.Look.X * 0.0025f;
-        Survivor.Pitch = Mathf.Clamp(Survivor.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
+        Turn(Survivor, c);
         float drag = 1f - MathF.Exp(-2.2f * dt);
         Survivor.Yaw = Mathf.LerpAngle(Survivor.Yaw, yawTo, drag);
         Survivor.Pitch = Mathf.Lerp(Survivor.Pitch, pitchTo, drag);
@@ -149,7 +148,7 @@ public partial class Game
     /// <summary>The camera pulled in to its face: a narrower view, and a tremor.</summary>
     Transform3D CloseUpView(Transform3D eye)
     {
-        Camera.Fov = 75f - 30f * CloseUp;
+        Camera.Fov = Settings.Fov * (1f - 0.4f * CloseUp); // 75 degrees comes in to 45
         if (CloseUp <= 0.01f) return eye;
         float t = (float)Time.GetTicksMsec() / 1000f;
         var shake = new Vector3(MathF.Sin(t * 37f), MathF.Sin(t * 29f + 1.3f), 0f) * 0.006f * CloseUp;

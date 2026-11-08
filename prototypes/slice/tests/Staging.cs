@@ -53,6 +53,7 @@ public sealed partial class Staging
             "cockpit" => Cockpit(),
             "menu" => Menu(),
             "settings" => SettingsView(),
+            "escmenu" => EscapeMenuShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),

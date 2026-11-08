@@ -40,7 +40,18 @@ public partial class TerrainStreamer : Node3D
     /// <summary>How long ahead of a moving focus the far rings stand, s, and the most that comes to, m.</summary>
     const float FarLeadSeconds = 1.5f, FarLeadMost = 128f, FarLeadFrom = 15f;
 
-    public int VoxelRadius = 5;
+    /// <summary>How many 16 m columns of diggable voxels stream each way round the focus; past them, the far rings. It can change while streaming (a game's view-distance setting): the ring of wanted columns is laid out again.</summary>
+    public int VoxelRadius
+    {
+        get => _voxelRadius;
+        set
+        {
+            if (value == _voxelRadius) return;
+            _voxelRadius = value;
+            _ring.Clear();
+        }
+    }
+    int _voxelRadius = 5;
     public int CollisionRadius = 2;
     public bool CollisionEnabled = true;
     public double UploadBudgetMs = 3.0;

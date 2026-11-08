@@ -489,21 +489,24 @@ public partial class Visor : CanvasLayer
         }
     }
 
-    /// <summary>The key hints, all on one quiet line.</summary>
+    /// <summary>The key hints, all on one quiet line, each the key it is bound to now.</summary>
     public string HintLine()
     {
         HandKind hand = Game.Pack.Hand;
         string keys = hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
-            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
-            HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   " : $"{Bound("tool-mode")} MODE   ",
+            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
+            HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
-        string bar = Game.Pack.OnRemoteBar ? "[Y] YOUR TOOLBAR   " : "[Y] REMOTE TOOLBAR   ";
+        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} YOUR TOOLBAR   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
-        return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
+        return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
     }
+
+    /// <summary>A hint's key, as bound now: "[Q]", or "[R/T]" for two.</summary>
+    string Bound(params string[] actions) => $"[{string.Join("/", actions.Select(a => KeyBindings.Name(Game.Settings.Keys[a])))}]";
 
     /// <summary>The toolbar, the selected item's line, the key hints and, with a block family in hand, the shape strip.</summary>
     void DrawHand()
@@ -547,7 +550,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -583,7 +586,7 @@ public partial class Visor : CanvasLayer
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
         _hud.Block(chip, new Color(C.Holo, 0.85f));
-        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), $"THEME {Bound("style")}", C.Glass, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {

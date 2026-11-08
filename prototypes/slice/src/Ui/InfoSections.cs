@@ -55,6 +55,7 @@ public sealed class StatsSection : IMenuSection
             g.Text($"{value * 100f:F0}%", new Vector2(area.Position.X + 300, y + 2), C.Text, 19, UiTheme.Mono);
             if (g.Slider($"options:volume-{key}", new Rect2(area.Position.X + 420, y, 760, 32), ref value, C.Accent2)) _game.Audio.SetVolume(key, value);
         }
+        g.Text("Graphics, keys and the mouse: Esc, OPTIONS.", new Vector2(area.Position.X + 12, area.Position.Y + 20 + 4 * 64), C.Dim, 16);
     }
 
     /// <summary>Everyone whose work is in the game, generated music included. The wheel scrolls it.</summary>
