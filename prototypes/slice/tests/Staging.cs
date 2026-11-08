@@ -56,6 +56,7 @@ public sealed partial class Staging
             "escmenu" => EscapeMenuShots(),
             "blueprints" => BlueprintShots(),
             "uiround" => UiRoundShots(),
+            "fabicons" => FabIconShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),

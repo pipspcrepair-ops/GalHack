@@ -118,6 +118,13 @@ public sealed class Gui
     public void Fill(Rect2 r, Color c) { if (Drawing) Canvas.Block(r, c); else if (Measure) _fills.Add(r); }
     public void Outline(Rect2 r, Color c, float w = 2f) { if (Drawing) Canvas.Frame(r, c, w); }
 
+    /// <summary>A texture (an item's icon) in a box, measured as a panel (tests: nothing may sit on the alerts' row).</summary>
+    public void Image(Texture2D texture, Rect2 r, Color modulate)
+    {
+        if (Drawing) { if (texture != null) Canvas.DrawTextureRect(texture, r, false, modulate); }
+        else if (Measure) _fills.Add(r);
+    }
+
     public void Text(string text, Vector2 at, Color colour, int size = 18, Font font = null)
     {
         if (Drawing) Canvas.Text(font ?? UiTheme.Label, size, at, text, colour);
