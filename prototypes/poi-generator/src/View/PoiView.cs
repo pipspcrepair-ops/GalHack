@@ -181,7 +181,8 @@ public partial class PoiView : Node3D
                 Mesh = new BoxMesh { Size = size },
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = color, Roughness = 0.5f, Metallic = 0.4f },
             });
-            // A hazard band across the middle, and a dark seam down it.
+            // A hazard band across the middle (not on a house's plain timber door), and a dark seam down it.
+            if (b0.Material != PoiGenerator.Gen.Material.Timber)
             body.AddChild(new MeshInstance3D
             {
                 Mesh = new BoxMesh { Size = new Vector3(alongX ? size.X : thick + 0.04f, blast ? 0.5f : 0.22f, alongX ? thick + 0.04f : size.Z) },
