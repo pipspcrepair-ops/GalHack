@@ -209,15 +209,18 @@ public partial class WildlifePatch
         {
             // Out in the open, ahead of you beyond what you can make out, and on their way somewhere across
             // the way you are going: travellers, a pack out ranging, a clump drifting. You meet on the way.
+            // Off to one side ahead, out of your eye's reach, heading for a point on your way: you cross paths.
             if (_heading != Vector3.Zero)
-                for (int attempt = 0; attempt < 8 && group == null; attempt++)
+                for (int attempt = 0; attempt < 10 && group == null; attempt++)
                 {
-                    Vector3 d = _heading.Rotated(Vector3.Up, rng.Range(-0.7f, 0.7f));
-                    group = PutAt(s, count, you + d * rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f), 0f, 4f, rng);
+                    float side = rng.Chance(0.5f) ? 1f : -1f;
+                    Vector3 d = attempt < 6 ? _heading.Rotated(Vector3.Up, side * rng.Range(1.25f, 1.55f)) : _heading.Rotated(Vector3.Up, rng.Range(-0.7f, 0.7f));
+                    float r = attempt < 6 ? rng.Range(110f, 170f) : rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f);
+                    group = PutAt(s, count, you + d * r, 0f, 4f, rng);
                 }
             if (group is { Count: > 0 } && _heading != Vector3.Zero)
             {
-                Vector3 bound = you + _heading.Rotated(Vector3.Up, rng.Range(-0.5f, 0.5f)) * rng.Range(70f, 120f);
+                Vector3 bound = you + _heading.Rotated(Vector3.Up, rng.Range(-0.3f, 0.3f)) * rng.Range(60f, 100f);
                 if (Open(s, bound, 0f)) Toward(group, bound);
             }
             group ??= BringBackGroup(s, count, you, rng);
@@ -225,12 +228,16 @@ public partial class WildlifePatch
         else if (NearestAnchor(where, youZone, rng, false) is { } anchor)
         {
             Vector3 at = PatchLocal(_planet.NearestCopy(anchor.At, youZone));
-            group = where == "road" ? PutAt(s, count, at, 0f, 8f, rng) : PutAt(s, count, at, anchor.Radius + 4f, anchor.Radius + 28f, rng);
+            // Round a living place, outside its streets (the wild keeps out of a town's ground); round a ruin, close in.
+            group = where == "road" ? PutAt(s, count, at, 0f, 8f, rng)
+                : where == "town" ? PutAt(s, count, at, anchor.Radius + 40f, anchor.Radius + 75f, rng)
+                : PutAt(s, count, at, anchor.Radius + 4f, anchor.Radius + 28f, rng);
             if (group != null && where == "road" && anchor.Road != null && group.Count > 0 && group[0].Herd is { } herd)
                 _patrols.Add(new Patrol { Herd = herd, Road = anchor.Road, At = anchor.Index, Step = rng.Chance(0.5f) ? 3 : -3 });
         }
         if (group == null || group.Count == 0) return;
-        Sim.AssignRest(group);
+        // Out and about now; only those with hours of their own go to rest at theirs.
+        if (s.Activity != Activity.Cathemeral) Sim.AssignRest(group);
         Keep(group);
         OwnBrought[where] = OwnBrought.GetValueOrDefault(where) + 1;
     }

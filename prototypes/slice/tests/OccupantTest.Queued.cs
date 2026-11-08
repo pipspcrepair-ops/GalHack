@@ -52,8 +52,23 @@ public partial class OccupantTest
         }
         Check(cast == worlds && withPeople == 3 && beasts > 0 && smallOk == beasts, $"every world has ruin roamers ({cast} of {worlds}): people where they survive ({withPeople} of 3), small pack animals anywhere ({smallOk} of {beasts} small, in groups)");
 
-        // Shanty towns, on real planets.
-        int Shanties(string fall, out int lived)
+        // Shanty towns: the rule over many fresh rolls, each world judged against its own; then real planets hold to it.
+        float wantUprooted = 0f, wantQuiet = 0f;
+        int nUprooted = 0, nQuiet = 0, nobodyWants = 0, nobody = 0;
+        for (int i = 0; i < 400; i++)
+        {
+            ulong seed = Seed();
+            string fall = new[] { "tide_of_refugees", "great_migration", "exodus", "supply_cutoff", "slow_fade", "neglect" }[i % 6];
+            WorldProfile profile = WorldProfile.Roll(seed, "Temperate", false);
+            WorldRoll roll = WorldRoll.Roll(_lib, seed, "Temperate", profile, false, new WorldRoll.Given().Set(LayerKind.Fall, fall), -1f);
+            if (roll == null) continue;
+            int want = RegionPlan.ShantiesWanted(roll, profile);
+            if (!profile.Inhabited || roll.Fact("people") == "none" || profile.Current == PopulationNow.None) { nobody++; if (want == 0) nobodyWants++; continue; }
+            if (i % 6 < 3) { wantUprooted += want; nUprooted++; } else { wantQuiet += want; nQuiet++; }
+        }
+        Check(nUprooted > 50 && nQuiet > 50 && wantUprooted / nUprooted > wantQuiet / nQuiet + 1f && nobodyWants == nobody,
+            $"shanty towns by the rule: {wantUprooted / Math.Max(1, nUprooted):F1} a world of refugees, {wantQuiet / Math.Max(1, nQuiet):F1} a quieter one, none where nobody survives ({nobodyWants} of {nobody})");
+        int Shanties(string fall, out int lived, out int wanted)
         {
             lived = 0;
             WorldForce.Current = new WorldForce { Fall = fall };
@@ -62,15 +77,16 @@ public partial class OccupantTest
             WorldProfile profile = WorldForce.Current.Apply(WorldProfile.Roll(spec.Seed, "Temperate", false) with { Inhabited = true });
             LandingSite landing = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
             List<PoiSite> sites = PoiSiting.Place(SurfaceZone.PoiCatalog, map, new PlanetTerrainSource(map), landing, profile: profile);
+            wanted = PoiSiting.RollOf(_lib, map, profile) is { } r ? RegionPlan.ShantiesWanted(r, profile) : 0;
             WorldForce.Current = new WorldForce();
             var shacks = sites.Where(s => s.Planned?.Role == "shanty").ToList();
             lived = shacks.Count(s => s.Instance?.Townsfolk?.People.Count > 0);
             return shacks.Count;
         }
-        int uprooted = Shanties("tide_of_refugees", out int livedA) + Shanties("great_migration", out int livedB);
-        int plain = Shanties("supply_cutoff", out int livedC) + Shanties("slow_fade", out int livedD);
-        Check(uprooted > plain && uprooted >= 3 && livedA + livedB + livedC + livedD >= (uprooted + plain) / 2,
-            $"shanty towns where survivors gather: {uprooted} on two worlds of refugees, {plain} on two quieter ones; {livedA + livedB + livedC + livedD} of them lived in");
+        int seatedA = Shanties("tide_of_refugees", out int livedA, out int wantA), seatedB = Shanties("slow_fade", out int livedB, out int wantB);
+        // Each against its own rule: no more than it wants, most of what it wants seated (level ground allowing), and lived in.
+        Check(seatedA <= wantA && seatedB <= wantB && (wantA + wantB < 3 || seatedA + seatedB >= 1) && livedA + livedB >= (seatedA + seatedB + 1) / 2,
+            $"on real planets: {seatedA} of {wantA} wanted on a world of refugees, {seatedB} of {wantB} on a quieter one; {livedA + livedB} of them lived in");
 
         // Fish.
         int cleanOk = 0, taintOk = 0;

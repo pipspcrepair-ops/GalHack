@@ -88,6 +88,21 @@ public sealed class RegionPlan
     /// <summary>Half the width of the ground a family takes.</summary>
     public static double HalfOf(FamilyDef f) => f.Tags.Contains("grand") ? (f.Id == "works_complex" ? 200 : 165) : f.Tier >= PoiTier.Spaceport ? 240 : 70;
 
+    /// <summary>Values of a world's roll that leave many with nothing: refugees on the roads, rationing, a people walking away.</summary>
+    static readonly HashSet<string> Uprooted = new() { "road_camps", "soup_kitchens", "ration_shelves", "luggage", "queue_slips" };
+    static readonly HashSet<string> Poor = new() { "subsistence", "famine", "economic_collapse", "slide", "supply_cutoff", "drought", "tide_of_refugees" };
+
+    /// <summary>
+    /// How many shanty towns a world wants: one where people survive, two more where its fall left many
+    /// with nothing, one more where it is poor; none where nobody survives (tests read the rule too).
+    /// </summary>
+    public static int ShantiesWanted(WorldRoll roll, WorldProfile profile)
+    {
+        if (!profile.Inhabited || roll.Fact("people") == "none" || profile.Current == PopulationNow.None) return 0;
+        bool uprooted = roll.Tags.Any(Uprooted.Contains), poor = profile.Current is PopulationNow.Survivors or PopulationNow.Outposts || roll.Rolled.Any(l => Poor.Contains(l.Id));
+        return 1 + (uprooted ? 2 : 0) + (poor ? 1 : 0);
+    }
+
     public static RegionPlan Make(PoiLibrary lib, ILand land, WorldRoll roll, WorldProfile profile, ulong seed, (double X, double Z) landing, bool start)
     {
         var plan = new RegionPlan { Roll = roll, _w = land.Width, _h = land.Depth };
@@ -236,10 +251,6 @@ public sealed class RegionPlan
                     Add(id, s.X, s.Z, home, "landmark", "what the old town by the landing lived on");
         }
 
-        /// <summary>Values of a world's roll that leave many with nothing: refugees on the roads, rationing, a people walking away.</summary>
-        static readonly HashSet<string> Uprooted = new() { "road_camps", "soup_kitchens", "ration_shelves", "luggage", "queue_slips" };
-        static readonly HashSet<string> Poor = new() { "subsistence", "famine", "economic_collapse", "slide", "supply_cutoff", "drought", "tide_of_refugees" };
-
         /// <summary>
         /// Shanty towns: survivors' shacks of salvage (the survivor hamlet's kit, laid out by the architect)
         /// where survivors would gather: round an old town's edge, by water, on the way in. One on a world
@@ -249,9 +260,8 @@ public sealed class RegionPlan
         void Shanties(List<(Region Region, PlannedPlace Hub)> towns)
         {
             const string shack = "survivor_hamlet";
-            if (!_profile.Inhabited || _roll.Fact("people") == "none" || _profile.Current == PopulationNow.None || !_lib.Families.Any(f => f.Id == shack) || !Stands(shack)) return;
-            bool uprooted = _roll.Tags.Any(Uprooted.Contains), poor = _profile.Current is PopulationNow.Survivors or PopulationNow.Outposts || _roll.Rolled.Any(l => Poor.Contains(l.Id));
-            int n = 1 + (uprooted ? 2 : 0) + (poor ? 1 : 0);
+            int n = ShantiesWanted(_roll, _profile);
+            if (n == 0 || !_lib.Families.Any(f => f.Id == shack) || !Stands(shack)) return;
             var near = towns.Select(t => (t.Region.X, t.Region.Z)).ToList();
             if (near.Count == 0) near.Add(_landing);
             // Water near: the lowest, wettest ground round a spot is where people draw it.
