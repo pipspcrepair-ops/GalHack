@@ -46,7 +46,7 @@ public static partial class DecoModels
             b.Box(-0.45f, 0, -0.45f, 0.45f, 0.4f, 0.45f, Stone);
             b.Box(-0.48f, 0.36f, -0.48f, 0.48f, 0.42f, 0.48f, Stone).Ghost();
             b.Taper(-0.32f, 0.42f, -0.26f, 0.32f, 1.75f, 0.26f, 0.62f, 0.7f, Stone);
-            for (int i = 0; i < 4; i++) b.Taper(-0.26f + i * 0.17f, 0.42f, -0.27f, -0.22f + i * 0.17f, 1.4f, -0.24f, 0.6f, 1f, Body).Ghost();
+            for (int i = 0; i < 4; i++) b.Taper(-0.26f + i * 0.17f, 0.42f, -0.27f, -0.22f + i * 0.17f, 1.4f, -0.24f, 0.6f, 1f, Body).Ghost().As(DecoFinish.Stone);
             b.Ball(0, 1.72f, -0.05f, 0.22f, 0.12f, 0.18f, Stone, 8);
             b.Ball(0, 1.3f, -0.2f, 0.1f, 0.08f, 0.08f, Stone, 6).Ghost();
             DecoPart head = b.Ball(0, 1.95f, 0.02f, 0.2f, 0.25f, 0.2f, Stone, 8).Loose();
@@ -146,7 +146,7 @@ public static partial class DecoModels
         {
             b.Box(-0.48f, 0, -0.48f, 0.48f, 0.2f, 0.48f, Stone);
             b.Cyl(0, 0.2f, 0, 0.34f, 0.08f, Stone, 12).Ghost();
-            b.Cyl(0, 0.2f, 0, 0.31f, 2.1f, Body, 12, 0.92f);
+            b.Cyl(0, 0.2f, 0, 0.31f, 2.1f, Body, 12, 0.92f).As(DecoFinish.Stone);
             b.Taper(-0.36f, 2.3f, -0.36f, 0.36f, 2.5f, 0.36f, 1.33f, 1.33f, Stone);
         };
     }

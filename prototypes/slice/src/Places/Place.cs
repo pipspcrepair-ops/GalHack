@@ -391,6 +391,7 @@ public partial class Place : Node3D
         yield return 0;
         BuildKeys();
         BuildTells();
+        BuildFittings();
         yield return 0;
         BuildLights();
         yield return 0;

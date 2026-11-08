@@ -138,6 +138,7 @@ void fragment() {
         {
             case BoxMesh b: half = b.Size * 0.5f; break;
             case CylinderMesh c: shape = 1; half = new Vector3(c.TopRadius, c.Height * 0.5f, c.TopRadius); break;
+            case SphereMesh s: shape = 1; half = new Vector3(s.Radius, s.Height * 0.5f, s.Radius); break;
         }
         var m = new ShaderMaterial { Shader = _emitterShader };
         m.SetShaderParameter("tint", tint);
@@ -160,6 +161,10 @@ void fragment() {
                 float r = Mathf.Max(c.TopRadius, c.BottomRadius);
                 half = new Vector3(r, c.Height * 0.5f, r);
                 break;
+            // Rounder shapes (a gun's shrouds, a living gun's sacs and ribs) wear like a cylinder round their axis.
+            case SphereMesh s: shape = 1; half = new Vector3(s.Radius, s.Height * 0.5f, s.Radius); break;
+            case CapsuleMesh k: shape = 1; half = new Vector3(k.Radius, k.Height * 0.5f, k.Radius); break;
+            case TorusMesh t: shape = 1; half = new Vector3(t.OuterRadius, (t.OuterRadius - t.InnerRadius) * 0.5f, t.OuterRadius); break;
         }
         var m = new ShaderMaterial { Shader = _shader };
         m.SetShaderParameter("base_color", baseColor);

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Slice.Game;
+using Slice.Items;
 using Slice.Ui;
 using Slice.Vessels;
 using GalHack.Items;
@@ -129,6 +130,103 @@ public sealed partial class Staging
         _game.Menu.OpenMap(MapLevel.Galaxy);
         foreach (int x in _drive.Wait(20)) yield return x;
         foreach (int x in Frame("galaxy")) yield return x;
+        _game.Menu.Close();
+    }
+
+    /// <summary>
+    /// Recipes' inputs as icons and counts: <c>--view=fabicons --dir=folder</c> writes fabicons-you (the You page's
+    /// fabricator, some inputs short), fabicons-short (pointing at a short input of a recipe the bag can't pay for),
+    /// fabicons-blocks (the blocks list), fabicons-screen (a placed survival constructor's own screen) and
+    /// fabicons-core (the same constructor on the core page).
+    /// </summary>
+    IEnumerable<int> FabIconShots()
+    {
+        string dir = _args.GetValueOrDefault("dir", "user://");
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Zone.Wildlife.Frozen = true;
+        Hand(("iron-ore", 60), ("copper-ore", 30), ("carbon-ore", 20), ("silicon-ore", 6), ("stone", 8), ("ice", 2));
+        _game.Progress.Earn(900, "staging");
+        IEnumerable<int> Frame(string name, Vector2? mouse = null)
+        {
+            _game.Controls.Mouse = mouse ?? new Vector2(-100, -100);
+            foreach (int x in _drive.Wait(8)) yield return x;
+            foreach (int x in Shot($"{dir}/fabicons-{name}.png")) yield return x;
+        }
+
+        // A survival constructor made and set down outside, with some ore in its hopper and an order on.
+        foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
+        foreach (int x in Play.Order("fab", "survival-constructor", 1)) yield return x;
+        foreach (int x in Play.CloseMenu()) yield return x;
+        _game.CraftTimeScale = 200;
+        foreach (int x in Play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 20)) yield return x;
+        _game.CraftTimeScale = 1;
+        foreach (int x in Play.ToToolbar("survival-constructor", 2)) yield return x;
+        foreach (int x in Play.CloseMenu()) yield return x;
+        foreach (int x in _drive.WalkTo(_game.Bunker.Ahead(5f), 1f, 20f)) yield return x;
+        Vector3 spot = _game.Zone.GroundAt(_game.Bunker.Ahead(9f, 2f).X, _game.Bunker.Ahead(9f, 2f).Z);
+        foreach (int x in Play.PlaceOnGround(2, spot)) yield return x;
+        Device fab = _game.Zone.Devices.FirstOrDefault();
+        if (fab != null)
+        {
+            fab.Storage.AddAll(new Bill().Add("iron-ore", 24).Add("carbon-ore", 10).Add("copper-ore", 6));
+            fab.Constructor.Order("hull-plate", 2);
+            fab.Tick(1);
+        }
+
+        // Its own screen, from in front of it.
+        _game.MachineScreens?.Sync();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        var mounted = fab == null ? null : _game.MachineScreens?.Screens.Values.FirstOrDefault(m => m.Holder.GetParent() == fab);
+        if (mounted != null)
+        {
+            Vector3 face = mounted.Holder.GlobalPosition;
+            Vector3 front = -fab.GlobalBasis.Z;
+            front = new Vector3(front.X, 0f, front.Z).Normalized();
+            foreach (int x in StandAndLook(new Vector3(face.X, 0f, face.Z) + front * 1.3f, face, 20)) yield return x;
+            GD.Print($"(the constructor at {fab.GlobalPosition}, its screen at {face}, facing {front}; standing at {_game.Survivor.WorldFeet})");
+            foreach (int x in _drive.Wait(150)) yield return x; // its icons render a few a frame, and it redraws as they come
+            foreach (int x in Frame("screen")) yield return x;
+        }
+
+        // The You page's fabricator, every recipe: what the bag covers in plain, what it doesn't in amber (the fabricator makes it) or red.
+        foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
+        _game.Menu.Root.You.ShowBlocks = false;
+        ItemViews.Get("recipes:fab").Show = ItemGroup.None;
+        foreach (int x in _drive.Wait(120)) yield return x;
+        foreach (int x in Frame("you")) yield return x;
+
+        // A recipe the bag can't pay for, pointing at its first short input (the name and stock on hover).
+        Gui.Measure = true;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Gui.Measure = false;
+        var texts = _game.Menu.Root.Gui.Texts;
+        Vector2? at = null;
+        foreach (var name in texts)
+        {
+            ItemDef made = _game.Zone.Data.Items.Items.FirstOrDefault(i => i.Recipe != null && _game.Fabricator.Knows(i) && name.Text.StartsWith(i.Name, System.StringComparison.Ordinal));
+            int k = made == null ? -1 : made.Recipe.Inputs.ToList().FindIndex(i => _game.Pack[i.Item.Id] < i.Count);
+            if (k < 0) continue;
+            float y = name.Box.GetCenter().Y;
+            var counts = texts.Where(t => t.Box.Position.X > name.Box.End.X && System.Math.Abs(t.Box.GetCenter().Y - y) < 3f && t.Text.All(char.IsDigit))
+                .OrderBy(t => t.Box.Position.X).ToList();
+            if (k >= counts.Count) continue;
+            at = new Vector2(counts[k].Box.Position.X - 16f, y);
+            GD.Print($"(pointing at {made.Recipe.Inputs[k].Item.Name}, {made.Recipe.Inputs[k].Count} of it for {made.Name})");
+            break;
+        }
+        foreach (int x in Frame("short", at)) yield return x;
+
+        // The blocks list: each block's inputs the same way.
+        _game.Menu.Root.You.ShowBlocks = true;
+        foreach (int x in _drive.Wait(120)) yield return x;
+        foreach (int x in Frame("blocks")) yield return x;
+        _game.Menu.Root.You.ShowBlocks = false;
+
+        // The placed constructor on the core page.
+        foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
+        foreach (int x in _drive.Wait(60)) yield return x;
+        foreach (int x in Frame("core")) yield return x;
         _game.Menu.Close();
     }
 }

@@ -22,6 +22,8 @@
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Items\Production\**\*.cs" />
     <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
+    <!-- Weapons as data and their parts: engine-free, so enemies can fire the same rows. -->
+    <Compile Include="..\..\shared\Arms\Core\**\*.cs" />
     <!-- The bestiary: everything that moves. -->
     <Compile Include="..\..\shared\Bestiary\**\*.cs" />
     <!-- The backstop that ends a run which was told to quit and did not. -->

@@ -182,7 +182,7 @@ public sealed class Suit : IDamageSink
     {
         if (Dead || _zone.Weather.Sim is not { } weather) return;
         IceWater(dt, survivor, report);
-        float exposure = weather.Current.Exposure;
+        float exposure = weather.Here.Exposure; // the region's: a blizzard that falls as rain down here does not freeze you
         if (exposure < _climate.StormWarnFrom || InSealedRoom) return;
         if (_zone.Water?.Under(survivor.WorldEye(), out _) == true || (UnderCover?.Invoke() ?? false)) return;
         bool heat = weather.Data.State(weather.Dominant).ExposureLabel == "heat";

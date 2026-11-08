@@ -78,7 +78,7 @@ public static partial class DecoModels
 
         r["serving-counter"] = b =>
         {
-            b.Box(-0.98f, 0.08f, -0.32f, 0.98f, 0.86f, 0.45f, Body);
+            b.Box(-0.98f, 0.08f, -0.32f, 0.98f, 0.86f, 0.45f, Body).As(DecoFinish.Ceramic);
             b.Box(-0.96f, 0, -0.3f, 0.96f, 0.08f, 0.43f, Dark);
             b.Box(-0.99f, 0.86f, -0.4f, 0.99f, 0.9f, 0.47f, Metal);
             b.Box(-0.99f, 0.76f, -0.5f, 0.99f, 0.79f, -0.36f, Chrome);

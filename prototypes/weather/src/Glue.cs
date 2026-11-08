@@ -42,7 +42,6 @@ public static class Glue
             MaxCarrySeconds = r.MaxCarrySeconds,
             FlingSpeed = r.FlingSpeed,
             ReleaseImmunity = r.ReleaseImmunity,
-            FlingHealthFloor = r.FlingHealthFloor,
             LiftMassLimit = r.LiftMassLimit,
             Response = r.Response,
         };

@@ -503,7 +503,7 @@ public sealed class DecoForge
         bool powered = (look.Powered && !damaged) || set.SelfLit;
         bool selfLitDim = set.SelfLit && damaged;
         ulong salt = DecoHash.Combine(DecoHash.Fnv(look.Piece), (ulong)look.State + 1);
-        var mesh = new DecoMeshData { SelfLit = set.SelfLit };
+        var mesh = new DecoMeshData { SelfLit = set.SelfLit, Wear = DecoFinishes.WearOf(look.State, look.Age, look.Exposed, piece.Outdoor) };
         var rng = new DecoRng(salt);
 
         // The box the piece must stay inside when it stands (its declared footprint).

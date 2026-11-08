@@ -77,4 +77,28 @@ public sealed class DecoPalette
     };
 
     public static bool Glows(DecoSlot s) => SurfaceOf(s) == DecoSurface.Glow;
+
+    /// <summary>
+    /// What a part in a slot is made of when its model doesn't say: the body and trim are painted,
+    /// dark parts are moulded plastic, metal is brushed and chrome, bronze and gold polished, cloth
+    /// is woven, stone, soil and rubble are stone, growths are organic. Lights have no surface.
+    /// </summary>
+    public static DecoFinish FinishOf(DecoSlot s) => s switch
+    {
+        DecoSlot.Body or DecoSlot.Trim or DecoSlot.Hazard or DecoSlot.Alert => DecoFinish.Paint,
+        DecoSlot.Dark or DecoSlot.Plastic => DecoFinish.Plastic,
+        DecoSlot.Metal => DecoFinish.Steel,
+        DecoSlot.Chrome or DecoSlot.Bronze or DecoSlot.Gold => DecoFinish.Polished,
+        DecoSlot.Wood => DecoFinish.Wood,
+        DecoSlot.Fabric or DecoSlot.Linen or DecoSlot.Canvas => DecoFinish.Fabric,
+        DecoSlot.Paper => DecoFinish.Paper,
+        DecoSlot.Rubber => DecoFinish.Rubber,
+        DecoSlot.Glass => DecoFinish.Glass,
+        DecoSlot.Screen or DecoSlot.Dead => DecoFinish.Screen,
+        DecoSlot.Stone or DecoSlot.Soil or DecoSlot.Rust or DecoSlot.Debris or DecoSlot.Sand or DecoSlot.Snow or DecoSlot.Frost
+            or DecoSlot.Ash or DecoSlot.Char or DecoSlot.Grime => DecoFinish.Stone,
+        DecoSlot.Plant or DecoSlot.Moss or DecoSlot.Leaf or DecoSlot.Vine or DecoSlot.Chitin or DecoSlot.Bone or DecoSlot.Lattice
+            or DecoSlot.Flesh or DecoSlot.Bloom or DecoSlot.BloomVein or DecoSlot.Resin => DecoFinish.Organic,
+        _ => DecoFinish.Plain,
+    };
 }

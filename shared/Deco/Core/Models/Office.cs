@@ -110,7 +110,7 @@ public static partial class DecoModels
 
         r["potted-plant"] = b =>
         {
-            b.Cyl(0, 0, 0, 0.17f, 0.34f, Trim, 8, 1.2f);
+            b.Cyl(0, 0, 0, 0.17f, 0.34f, Trim, 8, 1.2f).As(DecoFinish.Ceramic);
             b.Cyl(0, 0.3f, 0, 0.19f, 0.03f, Soil, 8).Ghost();
             b.Tube(0, 0.3f, 0, 0.03f, 0.85f, 0.02f, 0.025f, Wood);
             Foliage(b, 0.02f, 1.05f, 0.01f, 0.2f, 5);

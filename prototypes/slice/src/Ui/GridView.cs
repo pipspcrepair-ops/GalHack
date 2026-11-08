@@ -289,6 +289,75 @@ public static class Slots
 }
 
 /// <summary>
+/// A recipe's inputs along a row: each its item's icon (the one the bag shows) with the count one run takes
+/// beside it, the name and the stock on hover. Every slot is one width, so the inputs line up in columns down
+/// a list. A count that can't be covered now is amber, red when nothing there makes it either; with more
+/// inputs than the room holds, the last slot shows how many more.
+/// </summary>
+public static class Ingredients
+{
+    static Palette C => UiTheme.Colors;
+
+    /// <summary>The counts' type size, and the gap after each slot.</summary>
+    public const int CountSize = 13;
+    public const float Gap = 8;
+
+    /// <summary>An icon's side in a row of this height.</summary>
+    public static float Side(float rowH) => rowH - 4;
+
+    /// <summary>One slot's width in rows of this height: room for the longest count any of these recipes takes.</summary>
+    public static float Slot(float rowH, IEnumerable<ItemDef> made)
+    {
+        int digits = 1;
+        foreach (ItemDef i in made)
+            if (i.Recipe != null)
+                foreach (var (_, n) in i.Recipe.Inputs) digits = Math.Max(digits, n.ToString().Length);
+        return Side(rowH) + 3 + CountW(digits) + Gap;
+    }
+
+    static float CountW(int digits) => Paint.TextWidth(UiTheme.Mono, CountSize, new string('8', digits)) + 1;
+
+    /// <summary>The room a row of the most inputs any of these recipes takes needs.</summary>
+    public static float Room(float slot, IEnumerable<ItemDef> made) =>
+        Math.Max(1, made.Select(i => i.Recipe?.Inputs.Count ?? 0).DefaultIfEmpty(0).Max()) * slot - Gap;
+
+    /// <summary>
+    /// The inputs in <paramref name="r"/>, from its left: <paramref name="have"/> is how many are there to use,
+    /// <paramref name="made"/> (if given) whether what is short is made there too.
+    /// </summary>
+    public static void Draw(Gui g, Game.Game game, Rect2 r, IReadOnlyList<(ItemDef Item, int Count)> inputs, float slot, Func<ItemDef, int> have, Func<ItemDef, bool> made = null, float alpha = 1f)
+    {
+        if (inputs == null || inputs.Count == 0) return;
+        float side = Side(r.Size.Y);
+        int fit = Math.Max(0, (int)((r.Size.X + Gap) / slot));
+        int shown = inputs.Count <= fit ? inputs.Count : Math.Max(0, fit - 1);
+        Color Tone(ItemDef item, int need) => have(item) >= need ? C.Text : made == null || made(item) ? C.Warn : C.Danger;
+        for (int k = 0; k < shown; k++)
+        {
+            var (item, need) = inputs[k];
+            float x = r.Position.X + k * slot;
+            var box = new Rect2(x, r.Position.Y + (r.Size.Y - side) / 2f, side, side);
+            if (ItemIcons.Shared?.Get(item) is Texture2D icon) g.Image(icon, box, new Color(1, 1, 1, alpha));
+            else g.Fill(box, new Color(new Color(Rarities.Color(item.Rarity) << 8 | 0xff), 0.3f * alpha)); // not rendered yet, or a headless run
+            Color tone = Tone(item, need);
+            g.TextIn($"{need}", new Rect2(box.End.X + 3, r.Position.Y, slot - side - 3 - Gap, r.Size.Y), new Color(tone, alpha), CountSize, HorizontalAlignment.Left, UiTheme.Mono);
+            g.SetTip(new Rect2(x, r.Position.Y, slot - Gap / 2, r.Size.Y), () =>
+            {
+                List<(string Text, Color Colour)> tip = Tooltips.For(game, item, 0);
+                tip.Insert(1, ($"HAVE {have(item)} · NEED {need}", have(item) >= need ? C.Good : tone));
+                return tip;
+            });
+        }
+        if (shown == inputs.Count || fit == 0) return;
+        float rx = r.Position.X + shown * slot;
+        var rest = new Rect2(rx, r.Position.Y, r.End.X - rx, r.Size.Y);
+        bool short_ = inputs.Skip(shown).Any(i => have(i.Item) < i.Count);
+        g.TextIn($"+{inputs.Count - shown}", rest, new Color(short_ ? C.Warn : C.Dim, alpha), CountSize, HorizontalAlignment.Left, UiTheme.Mono);
+        g.SetTip(rest, () => inputs.Skip(shown).Select(i => ($"{i.Count} {i.Item.Name}  (HAVE {have(i.Item)})", Tone(i.Item, i.Count))).ToList());
+    }
+}
+
+/// <summary>
 /// The filter bar every grid and recipe list has: a live text box (click it, or press / on the
 /// menu; Escape clears it, then closes the menu), quick category toggles and a sort button. On an
 /// in-world screen, which has no keyboard, the text shows read-only.

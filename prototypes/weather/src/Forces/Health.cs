@@ -3,8 +3,8 @@ using System;
 namespace Weather.Forces;
 
 /// <summary>
-/// Fall damage. Damage is never reduced: no per-hit cap, no last stand. The one exception
-/// belongs to tornadoes, whose fling has its own health floor (see <see cref="ForceModule.FlingFloor"/>).
+/// Fall damage. Damage is never reduced: no per-hit cap, no last stand, and none for a tornado's
+/// fling either. Its landing hurts like any other fall; the jetpack is what saves you.
 /// </summary>
 public static class DamageRules
 {
@@ -39,14 +39,11 @@ public sealed class Health
 
     public float Fraction => Current / Max;
 
-    /// <summary>
-    /// Takes a hit at full strength and returns the damage dealt. <paramref name="floor"/> is the
-    /// least health this hit may leave: only a tornado fling passes one.
-    /// </summary>
-    public float Hit(float raw, float floor = 0f)
+    /// <summary>Takes a hit at full strength and returns the damage dealt.</summary>
+    public float Hit(float raw)
     {
         if (raw <= 0f || Dead) return 0f;
-        float damage = MathF.Min(raw, MathF.Max(0f, Current - floor));
+        float damage = MathF.Min(raw, Current);
         Current -= damage;
         SinceHit = 0f;
         return damage;

@@ -287,6 +287,27 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("tower_count", count);
     }
 
+    /// <summary>
+    /// The front to draw (zeros for none): <paramref name="line"/> a point of its edge's straight line (x, z, the copy
+    /// nearest the eye) and the way it advances; <paramref name="shape"/> its strength, period along the line, spacing
+    /// of its copies and depth; <paramref name="wave"/> the next copy's shift along, its bows' depth, bows and bays;
+    /// <paramref name="kind"/> a shelf cloud along it (1), a roll cloud ahead (1), its seed and severity.
+    /// </summary>
+    public void SetFront(Vector4 line, Vector4 shape, Vector4 wave, Vector4 kind)
+    {
+        _sky.SetShaderParameter("front_line", line);
+        _sky.SetShaderParameter("front_shape", shape);
+        _sky.SetShaderParameter("front_wave", wave);
+        _sky.SetShaderParameter("front_kind", kind);
+    }
+
+    /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>
+    public void SetCumulus(Vector4[] cells, int count)
+    {
+        _sky.SetShaderParameter("cumulus", cells);
+        _sky.SetShaderParameter("cumulus_count", count);
+    }
+
     /// <summary>Hands a rain shaft the sky's own cloud-base inputs, so its top meets the underside the sky draws.</summary>
     public void ShareCloudBase(ShaderMaterial m)
     {

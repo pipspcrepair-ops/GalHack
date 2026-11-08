@@ -47,15 +47,62 @@ public enum WeatherEventKind { LightningStrike, DebrisImpact, TornadoForming, To
 public readonly record struct WeatherEvent(
     WeatherEventKind Kind, int Id, Vector3 Position, StrikePoint Target, float Damage, float DamageRadius);
 
+/// <summary>What kind of whirl a <see cref="Tornado"/> is.</summary>
+public enum TornadoKind
+{
+    /// <summary>A land tornado out of a storm cell.</summary>
+    Tornado,
+    /// <summary>A thin pale rope over open water, out of growing cumulus or a storm's cell.</summary>
+    Waterspout,
+    /// <summary>A fair-weather whirl of dust off hot dry ground: never joined to a cloud.</summary>
+    DustDevil,
+}
+
 /// <summary>
 /// A tornado: a vortex that forms under the cloud base, touches down, wanders across the
 /// plain (steering toward whoever it is homing on) and dissipates. Its lift profile comes
-/// from <see cref="TornadoRules"/>; the force module turns it into pushes and lifts.
+/// from <see cref="TornadoRules"/>; the force module turns it into pushes and lifts. Waterspouts
+/// and dust devils are whirls of the same kind, weaker (<see cref="Kind"/>).
 /// </summary>
 public sealed class Tornado
 {
     public int Id { get; }
-    public TornadoRules Rules { get; }
+    public TornadoRules Rules { get; internal set; }
+
+    public TornadoKind Kind { get; internal set; }
+
+    /// <summary>How far down its funnel ever reaches, 0..1: a waterspout may stop short of the water while its whirl still spins there.</summary>
+    public float Reach { get; init; } = 1f;
+
+    /// <summary>The whirls that hang from one base share this (0 for a lone one).</summary>
+    public int Group { get; init; }
+
+    /// <summary>Out of a storm's cell (a waterspout or a tornado), not a fair-weather cloud.</summary>
+    public bool Storm { get; init; } = true;
+
+    /// <summary>A waterspout that has come ashore has decided its fate (dies, or goes on as a tornado).</summary>
+    internal bool Ashore { get; set; }
+
+    /// <summary>A dust devil's height, metres (whirls that never reach a cloud).</summary>
+    public float Height { get; init; }
+
+    /// <summary>Its shape (rope, pipe, cone, wedge), rolled from its speed: fast ones lean to ropes and cones, slow ones to wedges.</summary>
+    public TornadoShape Shape { get; internal set; } = TornadoShape.Cone;
+
+    /// <summary>Its funnel's look, 0 thin rope .. 1 wide wedge (funnel.gdshader's shape); below 0 the view rolls its own.</summary>
+    public float Look { get; internal set; } = -1f;
+
+    /// <summary>A smooth pale funnel rather than a ragged one.</summary>
+    public bool Smooth { get; internal set; }
+
+    /// <summary>Its ground speed, m/s.</summary>
+    public float GroundSpeed => Rules.Speed;
+
+    /// <summary>How long it lives from first forming, seconds (its storm or the ground can cut it short).</summary>
+    public float Lifetime => _lifetime;
+
+    /// <summary>Starts it this many seconds later (whirls from one base come down at different times).</summary>
+    public void Delay(float seconds) => Age -= seconds;
 
     /// <summary>Base of the funnel, on the ground.</summary>
     public Vector3 Position { get; private set; }
@@ -67,6 +114,9 @@ public sealed class Tornado
 
     /// <summary>Steers toward the observer until it has passed them, then keeps going.</summary>
     public bool Homing { get; set; }
+
+    /// <summary>Tests and screenshots: neither its storm going nor the ground under it takes it away (it still lives out its life).</summary>
+    public bool Kept { get; set; }
 
     /// <summary>A natural tornado does not hunt anyone: its heading drifts slowly at random (radians/s at most).</summary>
     public float WanderRate { get; set; }
@@ -91,12 +141,12 @@ public sealed class Tornado
     public bool Touchdown => Age >= Rules.FormSeconds;
 
     /// <summary>0..1 as the funnel lowers from the cloud base: the visible build-up before touchdown.</summary>
-    public float Formation => Math.Clamp(Age / Rules.FormSeconds, 0f, 1f);
+    public float Formation => Math.Clamp(Age / Rules.FormSeconds, 0f, Reach);
 
     /// <summary>How hard it pulls, 0..1: nothing until touchdown, fading as it dissipates.</summary>
     public float Strength => Touchdown ? 1f - SmoothStep(_lifetime - Rules.DissipateSeconds, _lifetime, Age) : 0f;
 
-    public bool Dissipating => Age > _lifetime - Rules.DissipateSeconds;
+    public bool Dissipating => Age >= _lifetime - Rules.DissipateSeconds;
     public bool Done => Age >= _lifetime;
 
     public Vector3 Velocity

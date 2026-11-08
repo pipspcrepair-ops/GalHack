@@ -58,11 +58,25 @@ public sealed class WalkController : IBodyController, IForceReactor
     public float WalkSpeed = 5.5f, SprintSpeed = 9f, GroundAccel = 45f, AirAccel = 10f, JumpSpeed = 4.8f;
     public float JetpackAccel = 18f, JetpackFuelMax = 3f, ZeroGSpeed = 5f, ZeroGAccel = 7f;
 
-    /// <summary>
-    /// How hard feet can hold against outside forces, m/s² of the body's mass. Enough to stand
-    /// in a gale; a tornado's pull is stronger and drags you.
-    /// </summary>
+    /// <summary>How hard the legs can push, m/s² of the body's mass: walking, and holding against outside forces.</summary>
     public float Grip = 60f;
+
+    /// <summary>
+    /// How hard an outside push along the ground the feet can stand against before they lose their
+    /// footing, m/s² of the body's mass (about the friction of boots on rough ground). Enough to stand
+    /// in a gale; hurricane-force wind on a body standing tall slides it (crouching halves the push),
+    /// and a tornado's pull drags you. Past it the feet slip: they hold back only a share of it.
+    /// </summary>
+    public float Footing = 5f, SlipHold = 0.5f;
+
+    /// <summary>The feet lost their footing this tick: an outside push was too strong to stand against.</summary>
+    public bool Slipping { get; private set; }
+
+    /// <summary>
+    /// The jetpack also pushes along the way the body is steered in the air, this share of its thrust:
+    /// enough to fight clear of the edge of a weak tornado, never out of a strong core.
+    /// </summary>
+    public float JetpackSide = 0.6f;
 
     public float JetpackFuel { get; internal set; } = 3f;
 
@@ -96,6 +110,7 @@ public sealed class WalkController : IBodyController, IForceReactor
     {
         Jumped = false;
         JetpackFiring = false;
+        Slipping = false;
         if (body.Asleep) return;
         Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
@@ -166,7 +181,9 @@ public sealed class WalkController : IBodyController, IForceReactor
             Vector3 next = MathX.Rotate(frame, nextF);
             Vector3 outside = body.PendingTotalForce - up * Vector3.Dot(body.PendingTotalForce, up);
             Vector3 legs = m * (next - h) / dt - outside;
-            world.AddForce(body, MathX.LimitLength(legs, m * Grip), ForceKind.Walk);
+            // Pushed harder than the feet can stand: they slip, holding back only part of it.
+            Slipping = outside.Length() > m * Footing;
+            world.AddForce(body, MathX.LimitLength(legs, Slipping ? m * Footing * SlipHold : m * Grip), ForceKind.Walk);
         }
         else if (move != Vector2.Zero)
         {
@@ -181,12 +198,20 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed * (Crouch ? CrouchJumpShare : 1f) - Vector3.Dot(v, up)), ForceKind.Walk);
             Jumped = true;
         }
-        else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f && Vector3.Dot(v, up) < 8f)
+        else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f)
         {
-            world.AddForce(body, up * m * JetpackAccel, ForceKind.Walk);
-            JetpackFiring = true;
-            JetpackFuel = MathF.Max(0f, JetpackFuel - dt);
-            if (JetpackFuel <= 0f) JetpackSpent = true;
+            // Up (until climbing fast), and along the way it is steered: whatever else has hold of the
+            // body (a tornado's pull, a fall), the pack fires as a force on the one path, so it brakes a
+            // fall and can fight a pull. Nothing locks it out.
+            Vector3 thrust = Vector3.Dot(v, up) < 8f ? up * JetpackAccel : Vector3.Zero;
+            if (move != Vector2.Zero) thrust += Vector3.Normalize(wishDir) * JetpackAccel * JetpackSide;
+            if (thrust != Vector3.Zero)
+            {
+                world.AddForce(body, thrust * m, ForceKind.Walk);
+                JetpackFiring = true;
+                JetpackFuel = MathF.Max(0f, JetpackFuel - dt);
+                if (JetpackFuel <= 0f) JetpackSpent = true;
+            }
         }
     }
 

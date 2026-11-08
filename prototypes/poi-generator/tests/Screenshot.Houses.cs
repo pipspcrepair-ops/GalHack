@@ -189,31 +189,28 @@ public partial class Screenshot
             else GD.Print("no cross-gabled house with a carport came up");
         }
 
-        // The service fixing at the roof's corner on the street side, seen from the street off that corner: a pitched roof
-        // (a mast up through the roof's edge, or an insulator under the eave's corner) and a flat roof (on the parapet's corner).
-        bool OnPole(Layout l, ServicePoint p)
-        {
-            Int3 c = p.Cell - Int3.Up;
-            if (l.Blocks.Get(c).Type != BlockType.Pillar) return false;
-            while (l.Blocks.Get(c - Int3.Up).Type == BlockType.Pillar) c -= Int3.Up;
-            return !BlockInfo.Collides(l.Blocks.Get(c - Int3.Up).Type);
-        }
+        // The service fitting at the roof's corner on the street side, close up from the street off that corner, the figure
+        // standing at the corner and the meter box on the side wall: a pitched roof (under the eave's corner) and a flat roof
+        // (on the parapet's corner).
         foreach (var (name, flat) in new[] { ("corner-pitched", false), ("corner-flat", true) })
         {
             if (!Want(name)) continue;
             bool flatLocal = flat;
+            ServiceMount want = flat ? ServiceMount.Parapet : ServiceMount.Eave;
             var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), flatLocal ? Climate.Hot : Climate.Temperate, 0.6f, flatLocal ? (rand.Next(2) == 0 ? "modern" : "courtyard") : rand.Next(2) == 0 ? "suburban" : "bungalow")), 1,
-                l => l.Extras.Homes.FirstOrDefault() is { } h && (flatLocal ? h.Roof == "flat" : h.Roof is "gable" or "hip" or "cross") && l.Extras.Service.Any(p => !OnPole(l, p)), 1200);
+                l => l.Extras.Homes.FirstOrDefault() is { } h && (flatLocal ? h.Roof == "flat" : h.Roof is "gable" or "hip" or "cross") && l.Extras.Service.Any(p => p.Mount == want), 1200);
             if (one.Count == 0) { GD.Print($"no {name} came up"); continue; }
-            ServicePoint p = one[0].L.Extras.Service.First(x => !OnPole(one[0].L, x));
-            GD.Print($"{name}: fixing at {p.Cell} on {one[0].L.Blocks.Get(p.Cell - Int3.Up)} under {one[0].L.Blocks.Get(p.Cell + Int3.Up)}: {Says(one)}");
+            ServicePoint p = one[0].L.Extras.Service.First(x => x.Mount == want);
+            GD.Print($"{name}: fitting at {p.Point} ({p.Mount}), held by {one[0].L.Blocks.Get(p.Anchor)}: {Says(one)}");
             PlainBox box = one[0].L.Extras.Plain.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
-            var at = new Vector3(one[0].X + p.Cell.X + 0.5f, p.Cell.Y, p.Cell.Z + 0.5f);
-            float sx = Math.Sign(p.Cell.X + 0.5f - (box.Min.X + box.Max.X + 1) * 0.5f);
+            var at = new Vector3(one[0].X + p.Point.X, p.Point.Y, p.Point.Z);
+            float sx = Math.Sign(at.X - one[0].X - (box.Min.X + box.Max.X + 1) * 0.5f);
             if (sx == 0) sx = 1;
-            var person = Door(one[0]) is var (mid, dout, _) ? Figure(mid + dout * 1.1f) : null;
-            await Shot(name, at + new Vector3(sx * 8f, -2.5f, -12f), at + new Vector3(-sx * 2.5f, -2.8f, 3f));
-            person?.QueueFree();
+            // The figure by the front wall just in from the corner, clear of the fitting and the box; the eye a little lower than the fitting, five or six metres out.
+            var person = Figure(new Vector3(at.X - sx * 1.6f, 0, at.Z - 0.9f));
+            float up = Math.Max(1.6f, at.Y - 1.2f);
+            await Shot(name, new Vector3(at.X + sx * 4.5f, up, at.Z - 5.5f), new Vector3(at.X - sx * 0.6f, at.Y * 0.55f, at.Z + 1.2f));
+            person.QueueFree();
         }
 
         // A row of terraces.

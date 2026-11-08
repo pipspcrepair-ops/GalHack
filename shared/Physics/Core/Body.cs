@@ -99,8 +99,7 @@ public interface IBodyController
 }
 
 /// <summary>
-/// Takes damage for a body that keeps its health somewhere else (a player's health with the
-/// tornado's fling floor). Returns what was actually dealt. The default just adds it up.
+/// Takes damage for a body that keeps its health somewhere else (a player's health). Returns what was actually dealt. The default just adds it up.
 /// </summary>
 public interface IDamageSink
 {
@@ -198,6 +197,13 @@ public sealed class Body
 
     /// <summary>Not simulated this tick: a landed vessel or a sleeping rigid body. Costs nothing.</summary>
     public bool Asleep { get; set; }
+
+    /// <summary>
+    /// Seconds left that a vessel is at the weather's mercy: a tornado has hold of it or has just
+    /// thrown it, and its engines can't hold it (<see cref="VesselController"/>). It flies as thrown,
+    /// falls, and lands by the same impact rule as everything else.
+    /// </summary>
+    public float Tossed { get; set; }
 
     public StuckShape Shape { get; set; }
 

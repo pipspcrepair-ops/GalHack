@@ -61,6 +61,15 @@ public sealed class Creature
 
     /// <summary>Thrown by something bigger than itself (a tornado): in the air until it lands (<see cref="WildSim.Throw"/>).</summary>
     public bool Thrown;
+
+    /// <summary>How a throw has turned the whole body about its middle: it tumbles in the air, and lies as it landed.</summary>
+    public Quaternion Tumble = Quaternion.Identity;
+
+    /// <summary>How fast it is tumbling, rad/s (world axes).</summary>
+    public Vector3 TumbleSpin;
+
+    /// <summary>Seconds left lying where a hard landing put it, on its side or back, before it gets up.</summary>
+    public float Downed;
     public float Yaw;
     public float Age;
 
@@ -113,6 +122,10 @@ public sealed class Creature
     // pawing the ground.
     public float WantCrouch, WantHidden, WantGraze, Rear, Lunge, Alert, Brace;
     public Vector3? LookAt;
+
+    /// <summary>Scared off by something it can't fight (a flame): until this sim time it runs from <see cref="ScaredFrom"/>, whatever its temper.</summary>
+    public float ScaredUntil = -999f;
+    public Vector3 ScaredFrom;
 
     // Fliers and floaters: target height above ground. 0 means land.
     public float Altitude;

@@ -82,7 +82,26 @@ public sealed class GameData
             Weather = WeatherData.Parse(File.ReadAllText(Proto("weather", "data", "weather.json"))),
             Wildlife = WildlifeData.FromJson(File.ReadAllText(Proto("..", "shared", "Bestiary", "data", "wildlife.json"))),
             Rules = SliceRules.Parse(File.ReadAllText(Own("data/slice.json"))),
+            Arms = LoadArms(items),
         };
+    }
+
+    /// <summary>shared/Arms' weapon rows, each checked against the items: the weapon is a weapon item, and its ammo is an item.</summary>
+    public GalHack.Arms.Armoury Arms { get; private init; }
+
+    static GalHack.Arms.Armoury LoadArms(GalHack.Items.ItemCatalogue items)
+    {
+        var arms = GalHack.Arms.Armoury.LoadFile(SharedPath("Arms", "data", "weapons.json"));
+        foreach (GalHack.Arms.WeaponDef w in arms.All)
+        {
+            if (!items.TryGet(w.Item, out var item) || item.Category != GalHack.Items.ItemCategory.Weapon)
+                throw new InvalidDataException($"weapon '{w.Id}': '{w.Item}' is not a weapon item");
+            foreach (GalHack.Arms.WeaponDef m in w.Modes)
+                if (!items.TryGet(m.Ammo, out _)) throw new InvalidDataException($"weapon '{w.Id}': no ammo item '{m.Ammo}'");
+        }
+        foreach (var item in items.InCategory(GalHack.Items.ItemCategory.Weapon))
+            if (arms.OfItem(item.Id) == null) throw new InvalidDataException($"weapon item '{item.Id}' has no row in shared/Arms/data/weapons.json");
+        return arms;
     }
 
     /// <summary>

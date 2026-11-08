@@ -56,6 +56,7 @@ public sealed partial class Staging
             "escmenu" => EscapeMenuShots(),
             "blueprints" => BlueprintShots(),
             "uiround" => UiRoundShots(),
+            "fabicons" => FabIconShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),
@@ -100,6 +101,12 @@ public sealed partial class Staging
             "funnel" => FunnelShot(),
             "cirruslog" => CirrusLog(),
             "storm" => StormShot(),
+            "front" => FrontShot(),
+            "spout" => SpoutShot(),
+            "regionfront" => RegionFront(),
+            "plainstornado" => PlainsTornado(),
+            "windbodies" => WindBodies(),
+            "treepath" => TreePath(),
             "skylevel" => SkyLevel(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),
@@ -126,6 +133,7 @@ public sealed partial class Staging
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
             "blockdetail" => BlockDetailView(),
+            "decorooms" => DecoRooms(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

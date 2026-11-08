@@ -1,0 +1,164 @@
+// GalHack's weapons as data (docs/weapon-ideas.md: section 2 for the parts, section 8 for these
+// twelve). A weapon is a row that combines shared parts; there is no code for any one gun. The
+// item, its recipe and its tech-tree node live with the items (prototypes/slice/data/items.json).
+//
+//   trigger    semi, auto, burst (burst = rounds), pump (pump = seconds of action after a shot),
+//              charge, hold
+//   delivery   bolt, pellets, lob, cone, arc, swarm, placed
+//   class      kin, exp, en: the design's damage classes, for armour and resistance
+//   tags       fire, bio, shock, gas, rad, force (fire, gas and rad go past a personal shield)
+//   damage     per bolt, pellet, sting or cone tick. Never scaled down by range or target.
+//   rpm, magazine, reload (seconds; reloadEach: one round per reload), speed (m/s: every shot
+//   travels at a speed you can see), life (seconds), spread and spreadMoving (degrees), recoil
+//   (degrees of camera kick), noise (metres creatures hear it), blocks (multiplier on blocks:
+//   0 leaves them unharmed), gravity (share of the planet's: lobbed shots arc)
+//   ammo       { item, perItem }: rounds one item gives (else the ammo item's own count). Ammo
+//              comes from the player first, then the gun's origin, then the nearest container.
+//   parts      charge, pierce, bounce, pellets, arc, stick, dot, homing, swarm, cone, placed,
+//              plus blast and backblast. Each is optional; see shared/Arms/Core/WeaponDef.cs.
+//   modes      fire modes or shell types: each lays its fields over the row. Q steps through them.
+//   feel       the GunFeel row (muzzle flash and kick); tracer: colour, width, length, body, light
+//   look       what the generated model is made of: band (low crude and welded, mid utilitarian,
+//              high sleek with emitters, living grown), calibre 0..1, barrel and body lengths (m),
+//              stock, mag (box, tube, cell, tank, sac), sight, emitter, vents, fins, accent colour.
+//              Sounds come from the same parts: calibre, energy, organic or not.
+{
+  "schema": "galhack.weapons",
+  "version": 1,
+  "rules": {
+    // Owner's decisions: self-harm on, friendly fire a server setting (off by default), effects
+    // on a player last seconds and always end.
+    "selfHarm": true,
+    "friendlyFire": false,
+    "playerEffectSeconds": 4,
+    // A cube of voxel ground stands a little proud of the drawn surface: how far above and below a
+    // voxel hit a shot looks for the drawn ground's collider (if one is there, the collider decides).
+    "groundGraze": 1.5
+  },
+  "weapons": [
+    // ---- SA2: the first crafted gun. Proves hand weapons, magazine and reload. ----
+    { "id": "tack-pistol", "code": "SA2", "name": "Tack Pistol",
+      "trigger": "semi", "delivery": "bolt", "class": "kin",
+      "damage": 22, "rpm": 320, "magazine": 12, "reload": 1.2, "speed": 220, "life": 1.4,
+      "spread": 0.35, "spreadMoving": 1.1, "recoil": 0.9, "noise": 35, "blocks": 1.0,
+      "ammo": { "item": "pistol-rounds" },
+      "feel": "pistol", "tracer": { "colour": "ffd98a", "width": 0.011, "length": 1.0, "body": "tracer" },
+      "look": { "band": "low", "calibre": 0.3, "barrel": 0.11, "body": 0.15, "stock": "none", "mag": "box", "sight": "post", "accent": "6b4a2e" } },
+
+    // ---- RF2: the yardstick. Fire modes. ----
+    { "id": "line-rifle", "code": "RF2", "name": "Line Rifle",
+      "trigger": "auto", "delivery": "bolt", "class": "kin",
+      "damage": 26, "rpm": 600, "magazine": 30, "reload": 1.8, "speed": 300, "life": 1.5,
+      "spread": 0.25, "spreadMoving": 1.4, "recoil": 0.6, "noise": 55, "blocks": 1.0,
+      "ammo": { "item": "rifle-rounds" },
+      "modes": [ { "name": "AUTO", "trigger": "auto" }, { "name": "BURST", "trigger": "burst", "burst": 3, "rpm": 780 }, { "name": "SINGLE", "trigger": "semi", "spread": 0.15 } ],
+      "feel": "rifle", "tracer": { "colour": "ffe2a0", "width": 0.012, "length": 1.6, "body": "tracer" },
+      "look": { "band": "mid", "calibre": 0.42, "barrel": 0.26, "body": 0.3, "stock": "solid", "mag": "box", "sight": "rail", "vents": 2, "accent": "5d6448" } },
+
+    // ---- SG2: the staple. Pellets, and shell types as data. ----
+    { "id": "pump-scattergun", "code": "SG2", "name": "Pump Scattergun",
+      "trigger": "pump", "pump": 0.55, "delivery": "pellets", "class": "kin",
+      "damage": 9, "rpm": 70, "magazine": 6, "reload": 0.45, "reloadEach": true, "speed": 200, "life": 0.5,
+      "spread": 0.5, "spreadMoving": 1.5, "recoil": 3.2, "noise": 60, "blocks": 0.6,
+      "ammo": { "item": "buck-shells" }, "pellets": { "count": 8, "spread": 4.5 },
+      "modes": [
+        { "name": "BUCKSHOT" },
+        { "name": "SLUG", "ammo": { "item": "slug-shells" }, "pellets": { "count": 1, "spread": 0.3 }, "damage": 64, "life": 1.0, "blocks": 1.2 }
+      ],
+      "feel": "shotgun", "tracer": { "colour": "ffd070", "width": 0.008, "length": 0.7, "body": "tracer" },
+      "look": { "band": "mid", "calibre": 0.6, "barrel": 0.3, "body": 0.24, "stock": "solid", "mag": "tube", "sight": "post", "accent": "6a5a44" } },
+
+    // ---- GL2: the explosive launcher. Gravity and bounce, a blast on hit. ----
+    { "id": "break-launcher", "code": "GL2", "name": "Break Launcher",
+      "trigger": "semi", "delivery": "lob", "class": "exp",
+      "damage": 30, "rpm": 60, "magazine": 1, "reload": 1.6, "speed": 30, "life": 6, "gravity": 1,
+      "spread": 0.4, "spreadMoving": 1.2, "recoil": 2.6, "noise": 70, "blocks": 1.0,
+      "ammo": { "item": "launcher-grenades" }, "blast": { "radius": 4, "damage": 95, "blocks": 4 },
+      "modes": [ { "name": "IMPACT" }, { "name": "BOUNCE", "bounce": { "count": 5, "keep": 0.55, "fuse": 2.6 } } ],
+      "feel": "launcher", "tracer": { "colour": "3d4a3a", "width": 0.04, "length": 0.0, "body": "ball" },
+      "look": { "band": "mid", "calibre": 0.78, "barrel": 0.22, "body": 0.2, "stock": "skeleton", "mag": "none", "sight": "side", "accent": "4a5a3a" } },
+
+    // ---- RK3: the anti-armour staple. Backblast, a slow rocket with smoke. ----
+    { "id": "shoulder-tube", "code": "RK3", "name": "Shoulder Tube",
+      "trigger": "semi", "delivery": "bolt", "class": "exp",
+      "damage": 60, "rpm": 30, "magazine": 1, "reload": 2.4, "speed": 60, "life": 5, "gravity": 0.08,
+      "spread": 0.3, "spreadMoving": 1.0, "recoil": 3.0, "noise": 90, "blocks": 1.0,
+      "ammo": { "item": "rocket" }, "blast": { "radius": 3.5, "damage": 180, "blocks": 6 },
+      "backblast": { "length": 4.5, "angle": 28, "damage": 30 },
+      "feel": "rocket", "tracer": { "colour": "ffb04a", "width": 0.05, "length": 0.0, "body": "rocket", "light": true },
+      "look": { "band": "mid", "calibre": 1.0, "barrel": 0.55, "body": 0.24, "stock": "none", "mag": "none", "sight": "side", "vents": 0, "fins": 0, "accent": "56603f" } },
+
+    // ---- MN13: the mine. Thrown, sticks to what it lands on, arms, trips in its radius. ----
+    { "id": "prox-mine", "code": "MN13", "name": "Prox Mine",
+      "trigger": "semi", "delivery": "placed", "class": "exp",
+      "damage": 0, "rpm": 60, "magazine": 1, "reload": 0.6, "speed": 9, "life": 30, "gravity": 1,
+      "spread": 0, "spreadMoving": 0, "recoil": 0.2, "noise": 5, "blocks": 1.0,
+      "ammo": { "item": "prox-mine" }, "placed": { "arm": 3, "radius": 2, "limit": 20 },
+      "blast": { "radius": 4, "damage": 150, "blocks": 5 },
+      "feel": "throw", "tracer": { "colour": "ff2a1a", "width": 0.06, "length": 0.0, "body": "puck" },
+      "look": { "band": "mid", "calibre": 0.5, "barrel": 0, "body": 0.1, "stock": "none", "mag": "none", "sight": "none", "accent": "4a4f55" } },
+
+    // ---- AC3: the accelerator. Charge stages, each adding speed and pierce. ----
+    { "id": "stage-rifle", "code": "AC3", "name": "Stage Rifle",
+      "trigger": "charge", "delivery": "bolt", "class": "kin",
+      "damage": 20, "rpm": 90, "magazine": 8, "reload": 2.0, "speed": 160, "life": 2,
+      "spread": 0.1, "spreadMoving": 0.8, "recoil": 1.6, "noise": 45, "blocks": 1.4,
+      "ammo": { "item": "rail-slugs" }, "pierce": { "count": 0 },
+      "charge": { "stages": 4, "seconds": 0.35, "speed": 90, "pierce": 1, "damage": 16 },
+      "feel": "rail", "tracer": { "colour": "8fe6ff", "width": 0.016, "length": 2.4, "body": "slug", "light": true },
+      "look": { "band": "high", "calibre": 0.38, "barrel": 0.42, "body": 0.3, "stock": "skeleton", "mag": "cell", "sight": "scope", "emitter": "rings", "vents": 3, "accent": "5ad8ff" } },
+
+    // ---- LT3: the owner's lightning. Arc: a target search and a lightning look. ----
+    { "id": "fork-gun", "code": "LT3", "name": "Fork Gun",
+      "trigger": "semi", "delivery": "arc", "class": "en", "tags": [ "shock" ],
+      "damage": 20, "rpm": 150, "magazine": 16, "reload": 1.6, "speed": 300, "life": 0.4,
+      "spread": 0.2, "spreadMoving": 0.8, "recoil": 0.8, "noise": 50, "blocks": 1.2,
+      "ammo": { "item": "energy-cell", "perItem": 8 },
+      "arc": { "jumps": 3, "range": 7, "damage": 14, "wetReach": 0.6 },
+      "feel": "arc", "tracer": { "colour": "b8d8ff", "width": 0.02, "length": 1.4, "body": "spark", "light": true },
+      "look": { "band": "high", "calibre": 0.45, "barrel": 0.14, "body": 0.24, "stock": "none", "mag": "cell", "sight": "none", "emitter": "prongs", "vents": 2, "accent": "8ab8ff" } },
+
+    // ---- LV2: the owner's hornets. Swarm: short-lived homing stings that wander. Biomass is meat. ----
+    { "id": "hornet-hive", "code": "LV2", "name": "Hornet Hive",
+      "trigger": "auto", "delivery": "swarm", "class": "kin", "tags": [ "bio" ],
+      "damage": 6, "rpm": 480, "magazine": 8, "reload": 3.0, "speed": 13, "life": 12,
+      "spread": 18, "spreadMoving": 22, "recoil": 0.1, "noise": 25, "blocks": 0,
+      "ammo": { "item": "biomass", "perItem": 4 },
+      "swarm": { "count": 1, "wander": 2.4 },
+      "homing": { "seek": "flesh", "cone": 180, "turnPerMetre": 0.35, "range": 30 },
+      "bounce": { "count": 8, "keep": 0.85, "fuse": 0 },
+      "feel": "hive", "tracer": { "colour": "e8b030", "width": 0.02, "length": 0.0, "body": "hornet" },
+      "look": { "band": "living", "calibre": 0.5, "barrel": 0.1, "body": 0.24, "mag": "sac", "accent": "ffb347" } },
+
+    // ---- LV6: the owner's worms. Stick, then damage over time on a creature or a block. ----
+    { "id": "wormspitter", "code": "LV6", "name": "Wormspitter",
+      "trigger": "semi", "delivery": "bolt", "class": "kin", "tags": [ "bio" ],
+      "damage": 12, "rpm": 70, "magazine": 3, "reload": 2.2, "speed": 34, "life": 3, "gravity": 0.6,
+      "spread": 0.6, "spreadMoving": 1.4, "recoil": 1.2, "noise": 20, "blocks": 1.0,
+      "ammo": { "item": "biomass", "perItem": 1 },
+      "stick": { "seconds": 6 }, "dot": { "perSecond": 12, "seconds": 6 },
+      "feel": "worm", "tracer": { "colour": "c9806a", "width": 0.03, "length": 0.0, "body": "worm" },
+      "look": { "band": "living", "calibre": 0.6, "barrel": 0.3, "body": 0.3, "mag": "sac", "accent": "9adf6a" } },
+
+    // ---- SK1: the owner's homing bullets. Homing on a plain gun. ----
+    { "id": "bend-rounds", "code": "SK1", "name": "Bend Rounds",
+      "trigger": "auto", "delivery": "bolt", "class": "kin",
+      "damage": 15, "rpm": 540, "magazine": 24, "reload": 1.7, "speed": 140, "life": 1.6,
+      "spread": 0.6, "spreadMoving": 1.4, "recoil": 0.5, "noise": 40, "blocks": 0.8,
+      "ammo": { "item": "smart-rounds" },
+      "homing": { "seek": "aim", "cone": 14, "turnPerMetre": 0.03, "range": 70 },
+      "feel": "smart", "tracer": { "colour": "c8ffb0", "width": 0.012, "length": 1.4, "body": "tracer" },
+      "look": { "band": "high", "calibre": 0.33, "barrel": 0.2, "body": 0.26, "stock": "skeleton", "mag": "box", "sight": "sensor", "vents": 2, "accent": "9cff7a" } },
+
+    // ---- FL5: the owner's flame. A short cone, a burn timer, and creatures run from it. ----
+    { "id": "pressure-thrower", "code": "FL5", "name": "Pressure Thrower",
+      "trigger": "hold", "delivery": "cone", "class": "en", "tags": [ "fire" ],
+      "damage": 4, "rpm": 600, "magazine": 100, "reload": 2.5, "speed": 14, "life": 0.45,
+      "spread": 0, "spreadMoving": 0, "recoil": 0.05, "noise": 30, "blocks": 0,
+      "ammo": { "item": "fuel-pack", "perItem": 100 },
+      "cone": { "range": 6, "angle": 16, "ticks": 12 },
+      "dot": { "perSecond": 6, "seconds": 3, "flee": 6 },
+      "feel": "flame", "tracer": { "colour": "ff8a2a", "width": 0.25, "length": 0.0, "body": "flame" },
+      "look": { "band": "low", "calibre": 0.5, "barrel": 0.32, "body": 0.22, "stock": "none", "mag": "tank", "sight": "none", "emitter": "pilot", "accent": "7a5a3a" } }
+  ]
+}

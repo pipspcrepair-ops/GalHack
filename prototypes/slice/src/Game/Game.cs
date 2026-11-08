@@ -233,6 +233,8 @@ public partial class Game : Node3D
         Shots = new ShotFx { Name = "Shots" };
         Zone.AddChild(Shots);
         Tool = new SurvivalTool(Zone, Survivor, Suit, Pack) { Sfx = Zone.Sfx, Fx = Shots };
+        Arms = new Slice.Arms.ArmsHost { Name = "Arms", Game = this };
+        Zone.AddChild(Arms);
         var debris = new PlanetSurface.Fx.Debris
         {
             Name = "Debris", Collector = () => Survivor.WorldEye() + Vector3.Down * 0.5f,
@@ -243,6 +245,7 @@ public partial class Game : Node3D
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
         Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
+        Bikes.TornOff = bike => { if (Survivor.OnBike == bike) Survivor.Dismount(); };
         Zone.AddChild(Bikes);
         Survivor.Bikes = Bikes;
         Tool.Said += Say;
@@ -268,6 +271,7 @@ public partial class Game : Node3D
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
         Zone.Weather.Happened += OnWeather;
@@ -303,6 +307,9 @@ public partial class Game : Node3D
 
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }
+
+    /// <summary>Hand weapons: the guns in your hands and every shot in flight, stuck or set down.</summary>
+    public Slice.Arms.ArmsHost Arms { get; private set; }
 
     /// <summary>The hover bikes standing in the world.</summary>
     public HoverBikes Bikes { get; private set; }
@@ -439,6 +446,11 @@ public partial class Game : Node3D
         if (c.WasPressed(Key.B)) Report(Suit.Sim.DeployOrPack(FeetPos()));
         if (c.WasPressed(Key.H)) Report(Suit.Sim.ToggleHelmet());
         HandKind hand = Pack.Hand;
+        if (hand == HandKind.Weapon)
+        {
+            if (c.WasPressed(Key.Q)) Arms.NextMode();   // fire mode or shell type
+            if (c.WasPressed(Key.R)) Arms.Reload();
+        }
         if (hand == HandKind.Tool && c.WasPressed(Key.Q))
         {
             Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, _ => ToolMode.Gather };
@@ -615,6 +627,7 @@ public partial class Game : Node3D
                 Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
         }
         else if (hands && hand == HandKind.Tool) { Tool.ItemId = Pack.HandItem; Tool.Tick(dt, primary); }
+        else if (hands && hand == HandKind.Weapon) Arms.Hold(dt, Pack.HandItem, primary, pressed);
         else if (hands && building)
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
@@ -622,6 +635,7 @@ public partial class Game : Node3D
         else if (hands && hand == HandKind.Scanner && pressed) Scan();
         TickPings();
         if (!hands || !(building || deconstruct)) Builder.Hide();
+        if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
         TickMachines(dt);
         CheckDeath();
         Stats.Tick(this, dt);
@@ -641,6 +655,9 @@ public partial class Game : Node3D
         Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
         Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
     }
+
+    /// <summary>A weapon's hit on a creature: the same smack and blood as the tool's.</summary>
+    public void CreatureStruck(Creature c, Vector3 point, Vector3 dir) => OnCreatureStruck(c, point, dir);
 
     /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
     void OnCreatureStruck(Creature c, Vector3 point, Vector3 dir)

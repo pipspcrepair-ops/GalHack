@@ -370,21 +370,33 @@ public sealed class YouSection : IMenuSection
         int perPage = 13;
         _paletteScroll = Math.Clamp(_paletteScroll, 0, Math.Max(0, (entries.Count - 1) / perPage));
         float top = r.Position.Y + FilterBar.Height + 24;
+        // A row: the block's icon and name, its lock, what one is made of (icons and counts, in columns), how many you and the linked structure hold.
+        const float RowH = 34, NameW = 250, LockW = 64, CountW = 110;
+        float slot = Ingredients.Slot(RowH, entries);
         for (int i = 0; i < perPage; i++)
         {
             int k = _paletteScroll * perPage + i;
             if (k >= entries.Count) break;
             ItemDef item = entries[k];
             bool allowed = p.ItemAllowed(item);
-            var row = new Rect2(r.Position.X, top + i * 40, r.Size.X, 34);
+            var row = new Rect2(r.Position.X, top + i * 40, r.Size.X, RowH);
             g.Fill(row, new Color(allowed ? C.Glass : C.Panel, 0.85f));
             g.Fill(new Rect2(row.Position, new Vector2(5, row.Size.Y)), allowed ? (item.SmallGrid ? C.Accent2 : C.Accent) : C.Dim);
-            g.Text(item.Name, row.Position + new Vector2(12, 2), allowed || creative ? C.Text : C.Dim, 14);
-            string detail = creative ? "free" : $"made from {items.Describe(item.Recipe?.InputsFor(1), 2)}{(allowed ? "" : $" · {p.LockReason(item.Id)}")}";
-            g.Text(detail, row.Position + new Vector2(12, 19), allowed ? C.Dim : C.Warn, 11);
+            float side = Ingredients.Side(RowH);
+            if (ItemIcons.Shared?.Get(item) is Texture2D icon)
+                g.Image(icon, new Rect2(row.Position + new Vector2(10, 2), new Vector2(side, side)), new Color(1, 1, 1, allowed || creative ? 1f : 0.45f));
+            float x = row.Position.X + 10 + side + 8;
+            g.TextIn(HudLayout.Fit(UiTheme.Label, 14, item.Name, NameW), new Rect2(x, row.Position.Y, NameW, RowH), allowed || creative ? C.Text : C.Dim, 14);
+            x += NameW + 8;
+            if (!allowed && p.Node(item.Id) is TechNode node)
+                g.TextIn(p.StateOf(node) == UnlockState.NeedsLevel ? $"LV {node.Level}" : "LOCKED", new Rect2(x, row.Position.Y, LockW, RowH), C.Warn, 12);
+            x += LockW;
+            var made = new Rect2(x, row.Position.Y, row.End.X - CountW - 8 - x, RowH);
+            g.SetTip(row, () => Tooltips.For(_game, item, 0)); // first: an input's own tooltip, over its icon, wins
+            if (creative) g.TextIn("FREE", made, C.Dim, 12);
+            else Ingredients.Draw(g, _game, made, item.Recipe?.Inputs, slot, input => pack[input.Id] + (pack.Linked?.Count(input.Id) ?? 0), alpha: allowed ? 1f : 0.55f);
             if (!creative)
-                g.TextIn($"{pack[item.Id]}{(pack.Linked != null ? $" + {pack.Linked.Count(item.Id)}" : "")}", new Rect2(row.End.X - 110, row.Position.Y + 6, 104, 22), C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);
-            g.SetTip(row, () => Tooltips.For(_game, item, 0));
+                g.TextIn($"{pack[item.Id]}{(pack.Linked != null ? $" + {pack.Linked.Count(item.Id)}" : "")}", new Rect2(row.End.X - CountW, row.Position.Y + 6, CountW - 6, 22), C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);
             if (creative || pack.Linked != null)
                 g.Draggable($"palette:{item.Id}", row, new BlockRef(item.Id), item.ShortName, item.SmallGrid ? C.Accent2 : C.Accent);
         }

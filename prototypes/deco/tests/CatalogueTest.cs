@@ -31,6 +31,7 @@ public partial class CatalogueTest : TestBase
         Run("Knocked over rests on the floor", TestKnocked);
         Run("Every cable is attached", TestCables);
         Run("Godot meshes and shapes", TestGodot);
+        Run("Every part has a surface", TestSurfaces);
         Run("Names are GalHack's own", TestNames);
     }
 
@@ -227,6 +228,91 @@ public partial class CatalogueTest : TestBase
                 Check(mesh.GetSurfaceCount() > 0, $"{p.Id} {s}: an ArrayMesh with surfaces");
             }
         Note($"{cache.Count} Godot meshes, {surfaces} surfaces, {shapes} collision boxes");
+    }
+
+    /// <summary>
+    /// What each part is made of reaches the shader: every part of every model resolves to a finish,
+    /// every triangle of a piece carries it and its wear, every vertex lies on its face, and no colour is
+    /// missing from a palette. Notes the finishes in use and the pieces still mostly plain paint or plastic
+    /// in a grey or white (the audit's list).
+    /// </summary>
+    void TestSurfaces()
+    {
+        var census = new Dictionary<DecoFinish, int>();
+        var greyish = new List<string>();
+        int checkedTris = 0;
+        foreach (DecoPiece p in _cat.Pieces)
+        {
+            foreach (DecoPart part in _forge.Model(p.Id).Parts)
+            {
+                DecoFinish f = DecoFinishes.Of(part);
+                census[f] = census.GetValueOrDefault(f) + 1;
+                Check(f != DecoFinish.Auto, $"{p.Id}: a {part.Slot} part resolves to a finish");
+                if (!DecoPalette.Glows(part.Slot)) Check(f != DecoFinish.Plain, $"{p.Id}: a {part.Slot} part has a surface, not plain");
+            }
+            foreach (var (state, age, exposed) in new[] { (DecoState.Intact, DecoAge.Fresh, false), (DecoState.Intact, DecoAge.OldWorld, p.Outdoor), (p.Has(DecoState.Rusted) ? DecoState.Rusted : DecoState.Broken, DecoAge.Fresh, false) })
+            {
+                if (!p.Has(state)) continue;
+                DecoMeshData m = _forge.Mesh(new DecoLook(p.Id, state, DecoFall.None, true, DecoCover.Vines, p.Palette, false, age, exposed));
+                int wear = DecoFinishes.WearOf(state, age, exposed, p.Outdoor);
+                Check(m.Wear == wear, $"{p.Id} {state} {age}: worn {wear}");
+                int uncoded = 0, offFace = 0, wrongWear = 0, magenta = 0;
+                for (int si = 0; si < m.Surfaces.Length; si++)
+                {
+                    DecoSurfaceData s = m.Surfaces[si];
+                    Check(s.Faces.Count == s.Positions.Count, $"{p.Id} {state} {(DecoSurface)si}: a face for every vertex");
+                    for (int i = 0; i < s.Positions.Count; i++)
+                    {
+                        Vector4 c = s.Colors[i];
+                        if (MathF.Abs(c.X - 1f) < 0.01f && c.Y < 0.01f && MathF.Abs(c.Z - 1f) < 0.01f) magenta++;
+                        Vector4 face = s.FaceAt(i);
+                        if (face.Z > 0 && (face.X < -1e-3f || face.X > face.Z + 1e-3f)) offFace++;
+                        if (face.W > 0 && (face.Y < -1e-3f || face.Y > face.W + 1e-3f)) offFace++;
+                        if (face.Z < 0 && face.W == 0 && new Vector2(face.X, face.Y).Length() > -face.Z + 1e-3f) offFace++;
+                        if ((DecoSurface)si is not (DecoSurface.Matte or DecoSurface.Metal) || i % 3 != 0) continue;
+                        checkedTris++;
+                        var code = DecoFinishes.Decode(c.W);
+                        if (code == null) uncoded++;
+                        else if (code.Value.Wear != wear) wrongWear++;
+                    }
+                }
+                // Marks laid over a piece (a cracked screen's cracks, stains, shards) are drawn plain: none on a piece in use.
+                if (state == DecoState.Intact && age == DecoAge.Fresh) Check(uncoded == 0, $"{p.Id} {age}: every triangle carries its finish ({uncoded} do not)");
+                Check(offFace == 0, $"{p.Id} {state} {age}: every vertex lies on its face ({offFace} do not)");
+                Check(wrongWear == 0, $"{p.Id} {state} {age}: every triangle carries the piece's wear ({wrongWear} do not)");
+                Check(magenta == 0, $"{p.Id} {state} {age}: no colour missing from its palette");
+            }
+            // The audit: a piece whose opaque area is mostly plain paint or plastic in a grey or white.
+            DecoMeshData intact = _forge.Mesh(p.Id);
+            double plain = 0, all = 0;
+            for (int si = 0; si < 2; si++)
+            {
+                DecoSurfaceData s = intact.Surfaces[si];
+                for (int i = 0; i + 2 < s.Positions.Count; i += 3)
+                {
+                    double area = Vector3.Cross(s.Positions[i + 1] - s.Positions[i], s.Positions[i + 2] - s.Positions[i]).Length() * 0.5;
+                    all += area;
+                    Vector4 c = s.Colors[i];
+                    float hi = MathF.Max(c.X, MathF.Max(c.Y, c.Z)), lo = MathF.Min(c.X, MathF.Min(c.Y, c.Z));
+                    var code = DecoFinishes.Decode(c.W);
+                    if (code is { Finish: DecoFinish.Paint or DecoFinish.Plastic } && hi - lo < 0.08f && hi > 0.55f) plain += area;
+                }
+            }
+            if (all > 0 && plain / all > 0.6) greyish.Add(p.Id);
+        }
+        Note($"{checkedTris:N0} triangles checked; finishes in use: {string.Join(", ", census.OrderByDescending(k => k.Value).Select(k => $"{k.Key} {k.Value}"))}");
+        Note($"mostly plain grey or white paint or plastic ({greyish.Count}): {string.Join(", ", greyish)}");
+        var bare = _cat.Pieces.Where(p => _forge.Model(p.Id).Parts.Count < 4).Select(p => p.Id).ToList();
+        Note($"pieces of under four parts ({bare.Count}): {string.Join(", ", bare)}");
+        // Glass alpha and finish codes survive the trip into Godot's 8-bit vertex colours.
+        foreach (DecoFinish f in Enum.GetValues<DecoFinish>())
+            for (int w = 0; w < 4; w++)
+                foreach (bool flag in new[] { false, true })
+                {
+                    float a = MathF.Round(DecoFinishes.Code(f, w, flag) * 255f) / 255f;
+                    Check(DecoFinishes.Decode(a) == (f, w, flag), $"{f} worn {w} flag {flag} survives 8-bit colour");
+                }
+        Check(DecoFinishes.Decode(1f) == null, "an alpha of 1 (other code's triangles) reads as no finish");
     }
 
     void TestNames()

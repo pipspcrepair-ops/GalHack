@@ -43,6 +43,7 @@ public static class ItemModels
         // The hand tools are one model in three liveries (by rarity); the survival tool is the plainest.
         Register(i => Array.IndexOf(PlayerInventory.ToolItems, i.Id) >= 0, HeldTool.Build, ModelSource.Held);
         Register("scanner", HeldScanner.Build, ModelSource.Held);
+        Register(i => i.Category == ItemCategory.Weapon, Slice.Arms.GunModel.Held, ModelSource.Held);
         Register("hover-bike", _ => new ItemModel { Root = BikeModel.Build() }, ModelSource.Vehicle);
         // Devices are the model they have once set down (the survival constructor stands for every carried machine).
         Register("survival-constructor", _ => Device.Model(climate: false), ModelSource.Placed);

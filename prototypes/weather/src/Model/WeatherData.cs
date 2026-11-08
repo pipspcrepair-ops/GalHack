@@ -137,11 +137,83 @@ public sealed class TornadoRules
     public float FlingSpeed { get; set; }
     public float ReleaseImmunity { get; set; }
 
-    /// <summary>A fling and its landing never take a player below this share of max health.</summary>
-    public float FlingHealthFloor { get; set; }
+    /// <summary>Bodies heavier than this feel proportionally less of its pull, kg.</summary>
     public float LiftMassLimit { get; set; }
     public float Response { get; set; }
     public float VisualHeight { get; set; }
+
+    /// <summary>
+    /// Ground speed, rolled from the storm for each tornado: the slowest and the cap, m/s (60 km/h).
+    /// Its life falls as its speed rises: <see cref="LifeSlow"/> seconds at the slowest, <see cref="LifeFast"/>
+    /// at the cap, give or take <see cref="LifeJitter"/> of it.
+    /// </summary>
+    public float SpeedMin { get; set; } = 1.5f;
+    public float SpeedMax { get; set; } = 16.7f;
+    public float LifeSlow { get; set; } = 320f;
+    public float LifeFast { get; set; } = 45f;
+    public float LifeJitter { get; set; } = 0.2f;
+
+    /// <summary>How much of the storm's own wind a tornado's ground speed is rolled from, least and most.</summary>
+    public float SteerMin { get; set; } = 0.15f;
+    public float SteerMax { get; set; } = 1.1f;
+
+    /// <summary>The shapes it can take, each leaning to a speed: fast ones ropes and cones, slow ones wide wedges.</summary>
+    public List<TornadoShapeRules> Shapes { get; set; } = new();
+
+    /// <summary>A copy to scale for a weaker kind of whirl (a waterspout, a dust devil).</summary>
+    public TornadoRules Copy() => (TornadoRules)MemberwiseClone();
+
+    /// <summary>
+    /// The same whirl scaled to a weaker kind: its pulls by <paramref name="pull"/>, its lift by
+    /// <paramref name="lift"/>, its reach by <paramref name="reach"/>, its life as given, seconds.
+    /// </summary>
+    public TornadoRules Scaled(float pull, float lift, float reach, float form, float life, float dissipate)
+    {
+        TornadoRules r = Copy();
+        r.OrbitSpeed *= pull; r.InflowSpeed *= pull; r.FlingSpeed *= pull;
+        r.LiftSpeed *= lift; r.LiftMassLimit *= lift; r.ReleaseHeight *= lift;
+        r.CoreRadius *= reach; r.CaptureRadius *= reach; r.InfluenceRadius *= reach; r.OrbitRadius *= reach;
+        r.FormSeconds = form; r.Lifetime = life; r.DissipateSeconds = dissipate;
+        return r;
+    }
+
+    /// <summary>This tornado in one of its shapes, moving at <paramref name="speed"/> and living <paramref name="life"/> seconds.</summary>
+    public TornadoRules Shaped(TornadoShapeRules s, float speed, float life)
+    {
+        TornadoRules r = Copy();
+        r.OrbitSpeed *= s.Pull; r.InflowSpeed *= s.Pull; r.FlingSpeed *= s.Pull;
+        r.LiftSpeed *= s.Lift; r.LiftMassLimit *= s.MassLimit;
+        r.CoreRadius *= s.Width; r.CaptureRadius *= s.Width; r.InfluenceRadius *= s.Width; r.OrbitRadius *= s.Width;
+        r.Speed = speed;
+        r.Lifetime = life;
+        return r;
+    }
+}
+
+public enum TornadoShape { Rope, Pipe, Cone, Wedge }
+
+/// <summary>One shape a tornado can take (data/weather.json, tornado.shapes).</summary>
+public sealed class TornadoShapeRules
+{
+    public TornadoShape Shape { get; set; }
+
+    /// <summary>The share of the speed range (0 slowest, 1 the cap) it is likeliest at, and how widely either side.</summary>
+    public float Speed { get; set; }
+    public float Spread { get; set; } = 0.3f;
+    public float Weight { get; set; } = 1f;
+
+    /// <summary>How it scales the base tornado: its swirl and fling, its lift and the mass it can lift, its width.</summary>
+    public float Pull { get; set; } = 1f;
+    public float Lift { get; set; } = 1f;
+    public float MassLimit { get; set; } = 1f;
+    public float Width { get; set; } = 1f;
+
+    /// <summary>The funnel's look, 0 thin rope .. 0.3 stovepipe .. 0.55 cone .. 1 wide wedge: rolled between these.</summary>
+    public float LookMin { get; set; }
+    public float LookMax { get; set; }
+
+    /// <summary>The odds it is a smooth pale funnel rather than a ragged one.</summary>
+    public float Smooth { get; set; }
 }
 
 /// <summary>Everything in data/weather.json.</summary>
@@ -153,6 +225,8 @@ public sealed class WeatherData
     public StrikeRules Debris { get; set; } = new();
     public TornadoRules Tornado { get; set; } = new();
     public CellRules Cells { get; set; } = new();
+    public RegionRules Regions { get; set; } = new();
+    public WorldRules Worlds { get; set; } = new();
     public List<WeatherState> States { get; set; } = new();
     public List<Archetype> Archetypes { get; set; } = new();
 
@@ -207,6 +281,13 @@ public sealed class WeatherData
 
         foreach (var archetype in Archetypes)
             if (archetype.Weights.Count < 2) throw new FormatException($"archetype {archetype.Id} needs at least two weathers");
+
+        if (Tornado.Shapes.Count == 0) throw new FormatException("tornado.shapes needs at least one shape");
+        if (Tornado.SpeedMax > 60f / 3.6f + 1e-3f || Tornado.SpeedMin <= 0f || Tornado.SpeedMin >= Tornado.SpeedMax)
+            throw new FormatException("tornado: 0 < speedMin < speedMax <= 16.7 m/s (60 km/h)");
+        if (Tornado.LifeFast >= Tornado.LifeSlow || Tornado.LifeFast * (1f - Tornado.LifeJitter) <= Tornado.FormSeconds + Tornado.DissipateSeconds)
+            throw new FormatException("tornado: a fast one must live less than a slow one, and long enough to form and dissipate");
+        foreach (var (dial, _) in Worlds.Dials) WorldWeather.Neutral.Dial(dial); // throws on a misspelt dial
     }
 
     /// <summary>The longest any forecast or warning can lead its weather by.</summary>

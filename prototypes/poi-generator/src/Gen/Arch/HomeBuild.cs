@@ -773,7 +773,7 @@ public static partial class Homes
         }
         if (garageModule >= 0) l.C.Link(l.C.EntranceModule, garageModule);
         // The service drop's fixing at the roof's corner on the street side, a meter box below it.
-        h.Service(frontU, plan.DoorV, fronts.Count > 1 ? fronts.Select(x => x.DoorU).ToList() : null, s.EaveBracket, s.UnitW);
+        h.Service(frontU, plan.DoorV, fronts.Count > 1 ? fronts.Select(x => x.DoorU).ToList() : null, s.UnitW);
         // The plot round it.
         var built = new Built
         {

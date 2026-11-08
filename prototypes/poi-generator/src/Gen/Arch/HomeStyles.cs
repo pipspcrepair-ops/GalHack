@@ -24,8 +24,35 @@ public sealed record HomeHints(int Culture, Climate Climate = Climate.Temperate,
         : Climate.Temperate;
 }
 
-/// <summary>Where a power line's service drop fixes to a house: the bracket's cell (outside the wall or up a mast), the way it faces (toward the street).</summary>
-public readonly record struct ServicePoint(Int3 Cell, Dir Facing);
+/// <summary>What a service fitting is fixed to: the underside of the eave's corner, the top of a parapet's corner, the top of a garden pole.</summary>
+public enum ServiceMount : byte { Eave, Parapet, Pole }
+
+/// <summary>
+/// Where a power line's service drop fixes to a house: no block, a small fitting (a ceramic insulator on a short bracket,
+/// about 0.3 m in all) drawn the way a place's small fittings are. Cell: the open cell it stands in; Facing: toward the
+/// street, where the line comes from; Point: the insulator's eye in the place's own cells (metres), where the drop ends.
+/// Hung under the eave's corner, it reaches up to the roof over its cell; on a parapet or a pole, down to the block under it.
+/// </summary>
+public readonly record struct ServicePoint(Int3 Cell, Dir Facing)
+{
+    public ServiceMount Mount { get; init; }
+    public (float X, float Y, float Z) Point { get; init; }
+    public Rgb Insulator { get; init; }
+    public Rgb Bracket { get; init; }
+
+    /// <summary>The block the fitting is fixed to: over its cell under an eave, under it on a parapet or a pole.</summary>
+    public Int3 Anchor => Mount == ServiceMount.Eave ? Cell + Int3.Up : Cell - Int3.Up;
+
+    /// <summary>The fitting's parts round its point (centre, size, round or square, colour): the bracket to what holds it, the insulator's three sheds.</summary>
+    public IEnumerable<(float X, float Y, float Z, float W, float H, float D, bool Round, Rgb Color)> Parts()
+    {
+        var (x, y, z) = Point;
+        float a = Mount == ServiceMount.Eave ? y + 0.03f : Cell.Y, b = Mount == ServiceMount.Eave ? Cell.Y + 1f : y - 0.03f;
+        yield return (x, (a + b) / 2f, z, 0.035f, b - a, 0.035f, false, Bracket);
+        for (int i = -1; i <= 1; i++)
+            yield return (x, y + i * 0.04f, z, i == 0 ? 0.13f : 0.1f, 0.028f, i == 0 ? 0.13f : 0.1f, true, Insulator);
+    }
+}
 
 /// <summary>What one generated house turned out as, for the tests: its family, the shape you see from the street, and its garage door.</summary>
 public sealed record HomeNote(string Family, string Silhouette, int Storeys, string Roof, string Garage, string GarageDoor, int DoorWide, int DoorTall, Int3 DoorCell, Dir DoorFacing, bool Driveway)
@@ -244,8 +271,6 @@ public sealed class HomeCulture
     public readonly List<(FenceKind Kind, float Weight)> Fences = new();
     public readonly List<FenceKind> FenceOdd = new();
     public float Bare = 0.3f;
-    /// <summary>How its houses take the service drop: an insulator bracket under the eave's corner, or a short mast up through the roof's edge.</summary>
-    public bool EaveBracket;
 
     static readonly Dictionary<(int, Climate, TechLevel, int), HomeCulture> Cache = new();
 
@@ -300,8 +325,6 @@ public sealed class HomeCulture
             for (int i = 0; i < kinds; i++) c.Fences.Add((first[i].Kind, i == 0 ? 3f : 1.5f));
         }
         c.FenceOdd.AddRange(fitting.Where(x => c.Fences.All(y => y.Kind != x.Kind) && x.W >= 0.25f).Select(x => x.Kind));
-        // The service drop: an older, lower-tech street hangs it under the eave; a newer one stands a mast through the roof.
-        c.EaveBracket = rf.Chance(tech switch { TechLevel.Low => 0.75f, TechLevel.Mid => 0.3f + 0.3f * age, _ => 0.1f });
         // The materials it favours, among what its families build in.
         foreach (string key in new[] { "wall", "cover", "door", "window" })
         {
@@ -341,7 +364,6 @@ public sealed class HouseStyle
     public string Plan = "rect", Roof = "gable", Cover = "tile", Wall = "render", Ground = "", Upper = "", Window = "plain";
     public string Garage = "none", GarageDoor = "panel", Fence = "none";
     public FenceKind? FenceKind;
-    public bool EaveBracket;
     public int Storeys = 1, W = 12, D = 10, Over = 2, Units = 1, UnitW = 8;
     public bool GableFront, Bay, Dormer, Porch, Verandah, Chimney, Balcony, Double, Hoist, Vigas, Lift, Berm, Flare, Shutters;
     public float Wealth = 0.5f;
@@ -406,7 +428,6 @@ public sealed class HouseStyle
                 s.FenceKind = book.Fence(f.Pick("fence", r, "none"));
         }
         s.Fence = s.FenceKind?.Id ?? "none";
-        s.EaveBracket = c.EaveBracket;
         var (w0, w1) = f.Size("width", (12, 16));
         var (d0, d1) = f.Size("depth", (10, 14));
         float rich = Math.Clamp(s.Wealth + r.Float(-0.3f, 0.3f), 0f, 1f);
