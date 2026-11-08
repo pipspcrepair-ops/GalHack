@@ -313,6 +313,7 @@ void f_render(vec3 wp, float px, float seed, bool painted, inout vec3 col, inout
     // Trowelled: soft swirls of the float, then the sand in it.
     float t = fbm3(wp * 3.2 + seed);
     col *= 1.0 + (t - 0.5) * 0.12 + (noise3(wp * 150.0) - 0.5) * 0.14 * vis(150.0, px);
+    col *= 1.0 + (fbm3(wp * 0.35 + seed * 2.0) - 0.5) * 0.16;
     slope += (vec2(noise3(wp * 55.0 + 3.0), noise3(wp * 55.0 + 9.0)) - 0.5) * 0.7 * vis(55.0, px);
     S.y = painted ? 0.8 : 0.93;
 }
@@ -416,7 +417,7 @@ void f_poured(vec2 uv, vec3 wp, int kind, float px, float seed, inout vec3 col, 
     if (kind == 0) {
         // Board-formed: the print of each form board, its grain, the lines where boards met.
         float b = uv.y / 0.1; float fb = fract(b); float idb = floor(b);
-        col *= 1.0 - (1.0 - aastep(0.004, min(fb, 1.0 - fb) * 0.1)) * 0.22 * vis(10.0, px);
+        col *= 1.0 - (1.0 - aastep(0.003, min(fb, 1.0 - fb) * 0.1)) * 0.12 * vis(10.0, px);
         col *= 1.0 + (hash3(vec3(idb, seed, 2.0)) - 0.5) * 0.1 * vis(10.0, px);
         col *= 1.0 + (noise3(vec3(uv.x * 4.0, uv.y * 90.0, seed + idb)) - 0.5) * 0.12 * vis(90.0, px);
     } else {
@@ -794,12 +795,12 @@ void f_resin(vec2 uv, vec3 wp, float px, float seed, inout vec3 col, inout vec4 
 
 void f_bone(vec2 uv, vec3 wp, float px, float seed, inout vec3 col, inout vec4 S, inout vec2 slope, inout vec2 J) {
     // Grown bone: ridges that wander round the wall, pores, yellowed in the hollows.
-    float rid = sin((uv.y + fbm3(vec3(uv * 1.6, seed)) * 0.6) * 22.0);
+    float rid = sin((uv.y + fbm3(vec3(uv * 1.6, seed)) * 1.1) * 14.0);
     float v = vis(3.5, px);
-    col *= 1.0 + rid * 0.1 * v;
-    slope.y += cos((uv.y + fbm3(vec3(uv * 1.6, seed)) * 0.6) * 22.0) * 0.5 * v;
-    vec3 p = worley(uv * 30.0, seed + 1.0);
-    float pore = (1.0 - aastep(0.16, p.x)) * vis(30.0, px);
+    col *= 1.0 + rid * 0.06 * v;
+    slope.y += cos((uv.y + fbm3(vec3(uv * 1.6, seed)) * 1.1) * 14.0) * 0.35 * v;
+    vec3 p = worley(uv * 18.0, seed + 1.0);
+    float pore = (1.0 - aastep(0.12, p.x)) * step(0.72, p.z) * vis(18.0, px);
     col = mix(col, col * vec3(0.55, 0.45, 0.3), pore * 0.8);
     float hollow = smoothstep(0.3, -0.6, rid);
     col = mix(col, col * vec3(0.92, 0.82, 0.62), hollow * 0.5 * v);
@@ -1150,7 +1151,7 @@ void fragment() {
         // Rust: bare steel blooms orange-brown, worst at the laps and fixings, and runs down the wall.
         if (metallic && wear >= 1 && kind != 33 && kind != 26 && kind != 37) {
             float r = fbm3(wp * 3.5 + pseed * 3.0) + J.x * 0.3 + (1.0 - up) * 0.05 + (param == 1 && kind == 11 ? 0.25 : 0.0);
-            float rust = smoothstep(0.85 - 0.14 * float(wear), 0.92 - 0.14 * float(wear), r);
+            float rust = smoothstep(0.9 - 0.08 * float(wear), 0.97 - 0.08 * float(wear), r);
             float run = wall ? smoothstep(0.6, 0.9, noise3(vec3(uv.x * 14.0, uv.y * 0.5, pseed + 2.0))) * W * vis(14.0, px) : 0.0;
             vec3 rc = mix(vec3(0.16, 0.05, 0.016), vec3(0.32, 0.12, 0.035), mix(0.5, noise3(vec3(uv * 50.0, pseed)), vis(50.0, px)));
             col = mix(col, rc, clamp(rust + run * 0.5, 0.0, 1.0));

@@ -91,7 +91,9 @@ public sealed partial class Staging
         {
             string[] offices = { "office", "archive", "security", "control", "command", "lobby" };
             bool Lit(PoiSite s, PlacedModule m) => s.Instance.Lights.Any(l => l.Module == m.Index);
-            PoiSite site = planet.Pois.Where(s => s.Instance.State != PoiState.Ruined && s.Instance.Layout.Modules.Any(m => offices.Contains(m.Purpose) && m.Min.Y >= 0 && Lit(s, m))).OrderBy(Away).FirstOrDefault()
+            bool Human(PoiSite s) => !s.Instance.Kit.Alien && s.Instance.Kit.Faction is Faction.None or Faction.Freeholders or Faction.Exchange or Faction.Meridian;
+            PoiSite site = planet.Pois.Where(s => Human(s) && s.Instance.Layout.Modules.Any(m => m.Purpose == "office" && m.Min.Y >= 0)).OrderBy(s => s.Instance.State == PoiState.Ruined ? 1 : 0).ThenBy(Away).FirstOrDefault()
+                ?? planet.Pois.Where(s => Human(s) && s.Instance.State != PoiState.Ruined && s.Instance.Layout.Modules.Any(m => offices.Contains(m.Purpose) && m.Min.Y >= 0 && Lit(s, m))).OrderBy(Away).FirstOrDefault()
                 ?? planet.Pois.Where(s => s.Instance.Layout.Modules.Any(m => offices.Contains(m.Purpose) && m.Min.Y >= 0)).OrderBy(Away).FirstOrDefault();
             if (site == null) GD.Print("placesurf: no office on this world");
             else
@@ -211,7 +213,8 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = LocalDay();
         stand = _game.Survivor.WorldFeet;
         int ahead = Math.Clamp(near + 6, 0, road.Count - 1);
-        Vector3 look = planet.NearestCopy(new Vector3((float)road.X[ahead], road.Y[ahead] + 2.5f, (float)road.Z[ahead]), stand);
+        Vector3 look = planet.NearestCopy(new Vector3((float)road.X[ahead], road.Y[ahead] + 2.5f, (float)road.Z[ahead]), stand)
+            .Lerp(planet.NearestCopy(new Vector3((float)ruin.Center.X, ruin.OriginY + 3f, (float)ruin.Center.Z), stand), 0.6f);
         GD.Print($"placesurf: street of {ruin.Layout.Name} ({ruin.State}), {ruins.Count} to choose from");
         foreach (int x in _drive.LookAt(look, 20)) yield return x;
         foreach (int x in _drive.Wait(60)) yield return x;
@@ -279,7 +282,7 @@ public sealed partial class Staging
         float r = Math.Max(30f, Math.Max(hi.X - lo.X, hi.Z - lo.Z) * 0.6f);
         Vector3 sun = _game.Zone.Sky.ToSun with { Y = 0f };
         Vector3 back = sun.LengthSquared() > 0.01f ? sun.Normalized() : Vector3.Back;
-        Vector3 eye = mid + back * r + Vector3.Up * (r * 0.9f + 20f);
+        Vector3 eye = mid + back * (r + 45f) + Vector3.Up * (r + 55f);
         foreach (int x in Frame(eye, mid + Vector3.Up * 4f, file, settle: 240)) yield return x;
     }
 
