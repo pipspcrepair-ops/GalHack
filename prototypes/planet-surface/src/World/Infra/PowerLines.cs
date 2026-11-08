@@ -686,7 +686,8 @@ public sealed class PowerLines
     public const string NoWall = "no wall standing to fix to";
 
     /// <summary>
-    /// The wall fixing for a house's drop from a pole at (tx, tz): on the face the house gives (<see cref="FlavourRuin.FixingSide"/>),
+    /// The fixing for a house's drop from a pole at (tx, tz): the house's own service fixing nearest the pole where it set
+    /// any out (<see cref="LayoutExtras.Service"/>); else on the face the house gives (<see cref="FlavourRuin.FixingSide"/>),
     /// else the face toward the pole, else the face beside it nearer the pole, then the other beside it (never the far face: the
     /// wire would cross the roof); on each, the outer wall nearest the face's middle, at the house's fixing height above the
     /// wall's foot. A whole wall in the house as built and, given <paramref name="standing"/>, still in the house as it stands.
@@ -694,24 +695,26 @@ public sealed class PowerLines
     /// </summary>
     public static bool Fixing(FlavourRuin house, double tx, double tz, double w, double h, out Vector3 at, out (int X, int Y, int Z) cell, BlockGrid standing = null)
     {
-        var (cx, cz) = house.Center;
-        double dx = Mathx.WrapDelta(tx - cx, w), dz = Mathx.WrapDelta(tz - cz, h);
-        Dir toward = FlavourRuins.Facing(dx, dz);
-        Dir[] beside = toward is Dir.North or Dir.South ? (dx >= 0 ? new[] { Dir.East, Dir.West } : new[] { Dir.West, Dir.East })
-            : (dz >= 0 ? new[] { Dir.South, Dir.North } : new[] { Dir.North, Dir.South });
-        var order = new List<Dir>(4);
-        if (house.FixingSide is Dir given) order.Add(given);
-        foreach (Dir d in new[] { toward, beside[0], beside[1] }) if (!order.Contains(d)) order.Add(d);
-        foreach (Dir side in order)
-            if (FixingOn(house, side, standing, out at, out cell)) return true;
-        at = default;
-        cell = default;
-        return false;
+        var all = Fixings(house, tx, tz, w, h, standing);
+        at = all.Count > 0 ? all[0].At : default;
+        cell = all.Count > 0 ? all[0].Cell : default;
+        return all.Count > 0;
     }
-
     /// <summary>Every fixing a drop from (tx, tz) could take, one per face in <see cref="Fixing"/>'s order.</summary>
     public static List<(Vector3 At, (int X, int Y, int Z) Cell)> Fixings(FlavourRuin house, double tx, double tz, double w, double h, BlockGrid standing = null)
     {
+        // A house that set out its own service fixings (a bracket on the street side of its roof, or a service pole in
+        // its front garden) takes its drop there, the one nearest the line first, while it still stands.
+        var service = new List<(Vector3, (int, int, int))>();
+        foreach (ServicePoint sp in house.Layout.Extras.Service)
+        {
+            if (standing != null && standing.Get(sp.Cell).IsAir) continue;
+            PoiGenerator.Gen.Int3 o = sp.Facing.Vec();
+            var c = (house.OriginX + sp.Cell.X, house.OriginY + sp.Cell.Y, house.OriginZ + sp.Cell.Z);
+            service.Add((new Vector3(c.Item1 + 0.5f + o.X * 0.3f, c.Item2 + 0.6f, c.Item3 + 0.5f + o.Z * 0.3f), c));
+        }
+        if (service.Count > 0)
+            return service.OrderBy(f => Math.Pow(Mathx.WrapDelta(tx - f.Item1.X, w), 2) + Math.Pow(Mathx.WrapDelta(tz - f.Item1.Z, h), 2)).ToList();
         var (cx, cz) = house.Center;
         double dx = Mathx.WrapDelta(tx - cx, w), dz = Mathx.WrapDelta(tz - cz, h);
         Dir toward = FlavourRuins.Facing(dx, dz);

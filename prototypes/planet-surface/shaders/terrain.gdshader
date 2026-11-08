@@ -88,10 +88,13 @@ struct Road {
 	float median;   // a highway's median: 0 none, 1 grass, 2 a concrete barrier, 3 grown over
 	float seam;     // 1 where it runs on into a way of another class, easing to 0 over the taper (its width eases too)
 	float other_soil; // 1 if the other road is a way of the land's own ground (a track, a dirt road)
+	float cap;      // how far past the end of the way a point lies, m (in its rounded end cap; 0 beside it)
+	float other_cap; // and the same for the other road: a junction's curved corners fade out past its end
 };
 
 // Fills a road's own fields from one of its segments (the base texel b), at a point `rel` from its start, u along it.
-void take_road(inout Road r, ivec2 b, vec2 rel, float u, float d, float edge, float off, float id) {
+void take_road(inout Road r, ivec2 b, vec2 rel, float u, float d, float edge, float off, float id, float cap) {
+	r.cap = cap;
 	vec4 t0 = texelFetch(road_segments, b, 0);
 	vec4 t1 = texelFetch(road_segments, b + ivec2(1, 0), 0);
 	vec4 t2 = texelFetch(road_segments, b + ivec2(2, 0), 0);
@@ -145,6 +148,8 @@ Road nearest_road(vec2 at, float y) {	Road r;
 	r.median = 0.0;
 	r.seam = 0.0;
 	r.other_soil = 0.0;
+	r.cap = 0.0;
+	r.other_cap = 0.0;
 	if (road_grid.w < 0.5) return r;
 	vec2 c = mod(at, planet_size);
 	ivec2 cell = ivec2(min(floor(c / road_grid.x), road_grid.yz - 1.0));
@@ -152,7 +157,7 @@ Road nearest_road(vec2 at, float y) {	Road r;
 	int first = int(list.x), count = min(int(list.y), 64);
 	float best_id = -1.0;
 	bool best_grounded = false;
-	float hard_edge = 1e9, hard_u = 0.0, hard_d = 0.0, hard_off = 0.0, hard_id = -1.0;
+	float hard_edge = 1e9, hard_u = 0.0, hard_d = 0.0, hard_off = 0.0, hard_id = -1.0, hard_cap = 0.0;
 	ivec2 hard_b = ivec2(0);
 	vec2 hard_rel = vec2(0.0);
 	r.along = 0.0;
@@ -163,7 +168,9 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		vec4 t0 = texelFetch(road_segments, b, 0);
 		vec2 rel = c - t0.xy;
 		rel -= planet_size * round(rel / planet_size);
-		float u = clamp(dot(rel, t0.zw) / max(dot(t0.zw, t0.zw), 1e-6), 0.0, 1.0);
+		float ur = dot(rel, t0.zw) / max(dot(t0.zw, t0.zw), 1e-6);
+		float u = clamp(ur, 0.0, 1.0);
+		float cap = max(max(-ur, ur - 1.0), 0.0) * length(t0.zw);
 		float d = length(rel - t0.zw * u);
 		vec4 t2 = texelFetch(road_segments, b + ivec2(2, 0), 0);
 		vec4 t6 = texelFetch(road_segments, b + ivec2(6, 0), 0);
@@ -197,8 +204,8 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		bool apart = id != best_id || abs(along - r.along) > 2.0 * t2.x + 6.0;
 		if (edge < r.edge) {
 			// (A stretch on a place's footprint isn't drawn, so it makes no junction: no kerbs, no crossing.)
-			if (apart && r.edge < r.other && r.core_end < 0.5 && best_grounded) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; r.other_dir = r.dir; r.other_core = r.core; r.other_lot = r.lot; r.other_soil = r.surface > 2.5 ? 1.0 : 0.0; }
-			take_road(r, b, rel, u, d, edge, off, id);
+			if (apart && r.edge < r.other && r.core_end < 0.5 && best_grounded) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; r.other_dir = r.dir; r.other_core = r.core; r.other_lot = r.lot; r.other_soil = r.surface > 2.5 ? 1.0 : 0.0; r.other_cap = r.cap; }
+			take_road(r, b, rel, u, d, edge, off, id, cap);
 			best_id = id;
 			r.id = id;
 			best_grounded = grounded;
@@ -213,17 +220,18 @@ Road nearest_road(vec2 at, float y) {	Road r;
 				r.other_id = id;
 				r.other_dir = t0.zw / max(length(t0.zw), 1e-4);
 				r.other_soil = t2.z > 2.5 ? 1.0 : 0.0;
+				r.other_cap = cap;
 			}
 		}
 		// The paved road nearest whose deck this is, whichever way is nearest.
-		if (t2.z < 2.5 && grounded && edge < hard_edge) { hard_edge = edge; hard_b = b; hard_rel = rel; hard_u = u; hard_d = d; hard_off = off; hard_id = id; }
+		if (t2.z < 2.5 && grounded && edge < hard_edge) { hard_edge = edge; hard_b = b; hard_rel = rel; hard_u = u; hard_d = d; hard_off = off; hard_id = id; hard_cap = cap; }
 	}
 	// A track or dirt road gives way on a paved road's deck: the paved road is drawn there, whole to its edge, and
 	// the way that meets it is its other (its mouth's apron and the dirt it carries on are painted from that).
 	if (r.surface > 2.5 && abs(r.style - 3.0) > 0.5 && hard_edge < 0.0 && hard_id != r.id) {
-		float se = r.edge, shw = r.half_width, sid = r.id, score = r.core, slot = r.lot;
+		float se = r.edge, shw = r.half_width, sid = r.id, score = r.core, slot = r.lot, scap = r.cap;
 		vec2 sdir = r.dir;
-		take_road(r, hard_b, hard_rel, hard_u, hard_d, hard_edge, hard_off, hard_id);
+		take_road(r, hard_b, hard_rel, hard_u, hard_d, hard_edge, hard_off, hard_id, hard_cap);
 		r.other = se;
 		r.other_hw = shw;
 		r.other_id = sid;
@@ -231,6 +239,7 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		r.other_core = score;
 		r.other_lot = slot;
 		r.other_soil = 1.0;
+		r.other_cap = scap;
 	}
 	return r;
 }
@@ -496,10 +505,14 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	float onto = max(smoothstep(0.0, 0.4, r.other_core), step(0.5, r.core_end));
 	// A lane into a place's lot leaves the street by a crossover, its kerb dropped and barely rounded: flared
 	// like a street corner, its short stub up to the lot line read as a tooth cut in the street's edge.
-	float drive_r = abs(r.style - 4.0) < 0.5 || max(r.lot, r.other_lot) > 0.5 ? 1.8 : turn_r;
-	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto), 0.5) : 3.0;
-	// A way of bare ground meeting a paved road flares into a short worn apron at its edge.
+	// A dirt way meeting a paved road: the paved road's edge stays whole, and the dirt way's own corners are a short
+	// worn apron (below), not a sweeping kerb.
 	bool dirt_way = r.surface > 2.5 && !rail;
+	float drive_r = abs(r.style - 4.0) < 0.5 || max(r.lot, r.other_lot) > 0.5 ? 1.8
+		: !dirt_way && r.other_soil > 0.5 ? 0.3 : dirt_way && r.other_soil < 0.5 ? 2.5 : turn_r;
+	// (Only beside the other way, never past its end: a branch that stops at a road's middle rounds no corners on its far side.)
+	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto) * (1.0 - smoothstep(0.0, 2.0 + r.other_hw, r.other_cap)), 0.5) : 3.0;
+	// A way of bare ground meeting a paved road flares into a short worn apron at its edge.
 	float apron = dirt_way && r.other_soil < 0.5 && r.other_hw > 0.0 ? 1.0 - smoothstep(0.0, 9.0, max(r.other, 0.0)) : 0.0;
 	r.edge -= 1.8 * apron * apron;
 	float h_k = max(kerb - abs(r.edge - r.other), 0.0) / kerb;
