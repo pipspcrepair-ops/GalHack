@@ -124,6 +124,9 @@ public sealed partial class Town
         town._nav = Place.NavOf(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = data.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
+        // A place with no quarters of its own still has rooms with a roof: its people go in there for the night.
+        if (town._homes.Length == 0)
+            town._homes = data.Spots.Select((s, i) => (s, i)).Where(t => t.s.Module >= 0 && t.s.Module < m.Inst.Layout.Modules.Count && m.Inst.Layout.Modules[t.s.Module].Kind == ModuleKind.Room).Select(t => t.i).ToArray();
         return town;
     }
 
@@ -358,10 +361,11 @@ public sealed partial class Town
             bool hide = !guard && (night || mood == Mood.Hostile);
             if (hide && !p.Indoors)
             {
-                if (p.Path == null || p.Step >= p.Path.Count || !p.Fleeing && !night) GoTo(p, p.Home);
+                // Home, wherever they were going: only reaching their own door takes them in.
+                if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
                 p.Fleeing = mood == Mood.Hostile;
                 p.Speed = p.Fleeing ? 3.4f : p.Speed;
-                if (Move(p, dt)) { p.Indoors = _homes.Length > 0; }
+                if (Move(p, dt) && p.Spot == p.Home) p.Indoors = _homes.Length > 0;
                 Pose(p, who);
                 continue;
             }
