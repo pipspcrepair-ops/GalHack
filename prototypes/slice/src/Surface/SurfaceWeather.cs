@@ -62,8 +62,9 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         get
         {
-            if (Zone.Underwater.CameraUnder || Enclosed()) return 0f;
-            return Mathf.Clamp((Zone.Light.EyeOpen - 0.01f) * 14f, 0f, 1f); // the eye's openness only ever eases towards nothing
+            // The orbit's zone has no water and no sky light of its own: open space.
+            if (Zone.Underwater?.CameraUnder == true || Enclosed()) return 0f;
+            return Mathf.Clamp(((Zone.Light?.EyeOpen ?? 1f) - 0.01f) * 14f, 0f, 1f); // the eye's openness only ever eases towards nothing
         }
     }
 

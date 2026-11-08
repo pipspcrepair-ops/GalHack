@@ -297,7 +297,7 @@ public partial class WildlifeView : Node3D
     /// once built and out over the last <see cref="FadeBand"/> metres before the far distance.
     /// </summary>
     public System.Action<Node, float> Fader;
-    const float ArriveSeconds = 0.6f, FadeBand = 30f;
+    const float ArriveSeconds = 0.6f, FadeBand = 30f, MostFadeStep = 0.08f;
     double _lastSync = -1;
 
     /// <summary>Takes up a new sim. Creatures carried into it from the last (old to new) keep their bodies.</summary>
@@ -359,6 +359,9 @@ public partial class WildlifeView : Node3D
                 if (fresh) view.Arrived = visible ? 0f : 1f;
                 else if (view.Arrived < 1f) view.Arrived = Math.Min(1f, view.Arrived + dt / ArriveSeconds);
                 shows = Math.Min(Math.Clamp((far - d) / FadeBand, 0f, 1f), view.Arrived);
+                // Never more than a step of the dissolve a frame, however long the frame or fast the eye
+                // (a flyer crosses the fade band in a few frames): it always takes a dozen frames or so.
+                if (!fresh) shows = Math.Clamp(shows, was - MostFadeStep, was + MostFadeStep);
                 visible = shows > 0f;
                 if (visible && (shows != view.Shows || fresh)) Fader(view, shows);
                 view.Shows = shows;

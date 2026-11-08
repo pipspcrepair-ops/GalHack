@@ -143,6 +143,11 @@ public partial class ClimateTest : Node
     IEnumerable<int> Cells()
     {
         Weather.Model.WeatherSim sky = Zone.Weather.Sim;
+        // Loose cells, the weather's own: a thunderstorm otherwise comes on a front (its deck and its
+        // line of cells are checked in GlobeTest and the weather prototype), and a front left from the
+        // storms before would hold its weather kilometres off.
+        sky.FrontsOff = true;
+        sky.ClearFront();
         sky.ClearCells();
         sky.Snap(WeatherKind.Thunderstorm);
         foreach (int x in _drive.Wait(10)) yield return x;
@@ -189,6 +194,7 @@ public partial class ClimateTest : Node
         Check(still && Zone.Weather.ThunderComing <= coming, $"and arrives about three seconds later (still on its way at 2 s: {still}; {coming} before it, {Zone.Weather.ThunderComing} left at 4 s)");
         sky.Snap(WeatherKind.Clear);
         sky.ClearCells();
+        sky.FrontsOff = false;
     }
 
     /// <summary>The climate node: bench-made, in the hand it sets down like a device, and only burning does it hold the air.</summary>
@@ -319,6 +325,10 @@ public partial class ClimateTest : Node
         Weather.Model.WeatherSim sky = Zone.Weather.Sim;
         double max = _game.Suit.Sim.Data.Vitals.Health.Max;
 
+        // The weather itself, not the region's take on it: on warm low ground a blizzard falls as rain
+        // and wind and freezes no one (RegionTest checks that rule).
+        var land = sky.Land;
+        sky.Land = null;
         foreach (var (kind, alert, name) in new[] { (WeatherKind.Blizzard, Alert.Cold, "blizzard"), (WeatherKind.FireStorm, Alert.Heat, "fire storm") })
         {
             _game.Suit.Vitals.Health = max;
@@ -332,6 +342,7 @@ public partial class ClimateTest : Node
             sky.Snap(WeatherKind.Clear);
             foreach (int x in _drive.Wait(5)) yield return x;
         }
+        sky.Land = land;
 
         // A hole dug deep enough: a shaft down through the ground, by the planet's own edits.
         Vector3 top = Me.WorldFeet;

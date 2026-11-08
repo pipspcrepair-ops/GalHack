@@ -38,9 +38,6 @@ public partial class PopTest : Node
     /// <summary>A change of less than this share of a thing in one frame is a fade (it takes ten frames or more), not a pop, however big the thing.</summary>
     const float Sudden = 0.1f;
 
-    /// <summary>The most a far mesh may stand off its merged blocks: a share of its size, and of each colour channel.</summary>
-    const float MostSizeGap = 0.12f, MostToneGap = 0.05f;
-
     Game.Game _game;
     IEnumerator<int> _run;
     int _failures, _passes;
@@ -128,8 +125,10 @@ public partial class PopTest : Node
             GD.Print($"  (the far mesh as it was: {was.Average(g => g.Size):P0} off in size on average, at worst {was.Max(g => g.Size):P0}; {was.Average(g => g.Tone):F3} off in colour, at worst {was.Max(g => g.Tone):F3})");
             var worst = gaps.OrderByDescending(g => g.Gap.Size).First();
             var worstTone = gaps.OrderByDescending(g => g.Gap.Tone).First();
-            Check(_report || worst.Gap.Size <= MostSizeGap, $"far meshes keep their merged blocks' size: {gaps.Average(g => g.Gap.Size):P0} off on average over {gaps.Count} places, at worst {worst.Gap.Size:P0} ({worst.Site.Name})");
-            Check(_report || worstTone.Gap.Tone <= MostToneGap, $"far meshes keep their colour: {gaps.Average(g => g.Gap.Tone):F3} off on average a channel, at worst {worstTone.Gap.Tone:F3} ({worstTone.Site.Name})");
+            // A measurement since a3e86f8: the far mesh went back to its old outline and colour rule (the
+            // stricter one measured no closer), and the far mesh and the merged blocks dissolve into each
+            // other instead; the routes above judge that switch.
+            GD.Print($"  (far meshes against their merged blocks: {gaps.Average(g => g.Gap.Size):P0} off in size on average over {gaps.Count} places, at worst {worst.Gap.Size:P0} ({worst.Site.Name}); {gaps.Average(g => g.Gap.Tone):F3} off in colour a channel, at worst {worstTone.Gap.Tone:F3} ({worstTone.Site.Name}))");
         }
         _game.FixedCamera = null;
     }

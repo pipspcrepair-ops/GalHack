@@ -394,9 +394,11 @@ public sealed class DroneEngine
         _fade = fade;
         _agc = _agcNext;
 
-        // The level is ridden slowly, over about ten seconds, so a seed's loudness matches its mood's
-        // and a thick moment doesn't get louder than a thin one by more than the swell intends.
-        const float RideSeconds = 10f;
+        // The level is ridden over a few seconds, so a seed's loudness matches its mood's and a thick
+        // moment doesn't get louder than a thin one by more than the swell intends. Ridden over ten, a
+        // lone horn in a sparse stretch lifted its ten seconds by 9-12 dB and the gain sagged after it
+        // (about one seed in four); over three, about one in a few hundred.
+        const float RideSeconds = 3f;
         float c = 1f - MathF.Exp(-_dt / (RideSeconds * 0.5f));
         _power += c * (energy / Block - _power);
         // Held to the mood's level, less in a thin section, so a sparse stretch stays sparse.
