@@ -15,7 +15,7 @@ public static class Bestiary
 }
 
 /// <summary>Everything alive (and everything that only moves) on one world.</summary>
-public sealed class WorldLife
+public sealed partial class WorldLife
 {
     public ulong Seed => World.Seed;
     public float Alienness => World.Alienness;

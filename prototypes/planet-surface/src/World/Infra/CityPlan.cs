@@ -482,14 +482,16 @@ public sealed class CityPlan
             double ang = Math.Atan2((lot.Z0 + lot.Z1) / 2 - cz, (lot.X0 + lot.X1) / 2 - cx);
             bool lit = anyLit && lot.District is "midrise" or "downtown" && Math.Abs(Math.IEEERemainder(ang - litAngle, Math.Tau)) < (lived ? 1.2 : 0.7);
             PoiState state = lit ? PoiState.Active : lot.Lot.Fall > 0.55f ? PoiState.Ruined : PoiState.Abandoned;
-            // On a fallen world its services tell how it went: a police station barricaded or stripped, a school a shelter, a campus taken over.
-            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : (lot.Kind switch
+            // On a fallen world its services lean how it went (a police station to a gang or the stripped, a
+            // school to a shelter, a campus to a cult), but only among who the world's theme and fall have.
+            Dictionary<string, float> lean = lot.Kind switch
             {
-                "police" => s % 2 == 0 ? new OccupancyRoll(Occupant.Gang) : new OccupancyRoll(Occupant.Empty, null, Sharing.Layers, Occupant.Scavengers),
-                "school" => new OccupancyRoll(Occupant.Squatters),
-                "university" => new OccupancyRoll(s % 3 == 0 ? Occupant.Cult : Occupant.Gang),
-                _ => OccupancyLayer.Roll(roll.Occupancy, f, s + 1),
-            }) with { Tags = roll.Tags };
+                "police" => new() { ["GNG"] = 3f, ["FAC"] = 2f, ["SCV"] = 2f },
+                "school" => new() { ["SQT"] = 3f },
+                "university" => new() { ["CLT"] = 3f, ["GNG"] = 1.5f },
+                _ => null,
+            };
+            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean) with { Tags = roll.Tags };
             made[i] = PoiFactory.Spawn(lib, layout, state, s + 1, profile, occ);
             fams[i] = f;
         });

@@ -282,8 +282,8 @@ public partial class WildlifePatch : Node3D
     /// <summary>How many go about together: the species' own group, smaller on a harsher world.</summary>
     int GroupSize(Species s, Rng rng) => Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Math.Min(1f, Livable))));
 
-    /// <summary>A spot a group may start at (patch frame): out of a base's zone, and for anything that walks, on dry land.</summary>
-    bool Open(Species s, Vector3 at, float spread) => !Sim.InBaseZone(at, spread) && (s.Flies || !Sim.Nav.Blocked(at));
+    /// <summary>A spot a group may start at (patch frame): out of a base's zone, and for anything that walks, on dry land and off any place's ground (never inside its walls).</summary>
+    bool Open(Species s, Vector3 at, float spread) => !Sim.InBaseZone(at, spread) && (s.Flies || !Sim.Nav.Blocked(at) && !OnPlace(at, 3f));
 
     /// <summary>Wild creatures alive in the patch (not a town's own animals), and those within <paramref name="reach"/> of a point (patch frame).</summary>
     public int WildAlive(Vector3? near = null, float reach = float.MaxValue)
@@ -592,6 +592,7 @@ public partial class WildlifePatch : Node3D
             SyncBases();
         }
         Refill((float)delta);
+        Haunting((float)delta);
         Sim.Step((float)delta);
     }
 
