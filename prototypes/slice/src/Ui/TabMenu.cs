@@ -171,7 +171,6 @@ public partial class MenuRoot : MenuPanel
             case MenuTab.Core: Core.Build(g, body); break;
             case MenuTab.Map: Map.Build(g, body); break;
         }
-        g.TextIn("TAB close · ESC close · the world keeps running", new Rect2(area.Position + new Vector2(20, area.Size.Y - 24), new Vector2(area.Size.X - 40, 20)), C.Dim, 14, HorizontalAlignment.Right);
         // Something dragged out of the window is set down on the ground in front of you.
         if (g.DroppedOutside(body.Grow(4), out object dropped) && dropped is SlotRef s) Game.Drop(s.Grid, s.Index);
     }

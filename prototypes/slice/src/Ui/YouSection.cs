@@ -255,11 +255,11 @@ public sealed class YouSection : IMenuSection
                 {
                     case SlotRef sr when sr.Grid[sr.Index].Item is string sid:
                         Vessel core = CoreOf(sr.Grid);
-                        if (core == null) _game.Say("Only a core's storage can feed the remote toolbar", Tones.Caution);
+                        if (core == null) _game.Say("Core storage only", Tones.Caution);
                         else
                         {
                             pack.SetRemote(i, core.Storage, core.Name, sid);
-                            _game.Say($"{items.Item(sid).Name} from {core.Name} is on remote slot {i + 1}: it stays in the storage", Tones.Good);
+                            // the slot shows it, in its core's colour
                         }
                         break;
                     case BlockRef br when pack.Linked != null:
@@ -328,15 +328,14 @@ public sealed class YouSection : IMenuSection
         {
             var only = view.Filtering ? new HashSet<int>(shown) : null;
             Bill moved = ItemGrid.MoveAll(grid, _game.Pack.Grid, true, only == null ? null : only.Contains);
-            if (!moved.IsEmpty) _game.Say($"Took {_game.Zone.Data.Items.Describe(moved, 4)}{FilterBar.Shown(view, only?.Count ?? 0)}", Tones.Good);
-            else _game.Say(grid.Storage.IsEmpty ? "It's empty" : view.Filtering && shown.Count == 0 ? "Nothing shown to take" : "No room in your bag", Tones.Caution);
+            if (moved.IsEmpty && !grid.Storage.IsEmpty && !(view.Filtering && shown.Count == 0)) _game.Say("No room in your bag", Tones.Caution);
         }
         if (g.Button("box:store-all", new Rect2(r.Position.X + 240, y, 220, 44), bagView.Filtering ? "STORE SHOWN" : "STORE ALL", C.Accent2))
         {
             IReadOnlyList<int> bagShown = bagView.Visible(_game.Pack.Grid, PlayerInventory.ToolbarSlots);
             var only = bagView.Filtering ? new HashSet<int>(bagShown) : null;
             Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false, only == null ? null : only.Contains);
-            _game.Say(moved.IsEmpty ? "Nothing in your bag to store (the toolbar stays with you)" : $"Stored {_game.Zone.Data.Items.Describe(moved, 4)}{FilterBar.Shown(bagView, only?.Count ?? 0)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
         }
         if (g.Button("box:close", new Rect2(r.Position.X, y + 56, 120, 34), "CLOSE", C.Danger))
         {

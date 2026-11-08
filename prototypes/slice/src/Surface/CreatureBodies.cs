@@ -271,6 +271,5 @@ public partial class CreatureBodies : Node3D
         Game.Zone.Physics.AddImpulse(v.Body, -(dir * mu * closing * 0.5f).ToNumerics(), ForceKind.Contact);
         sim.Damage(c, MathF.Max(share * c.Species.Stats.MaxHealth, closing * 0.5f), null);
         VesselHits++;
-        Game.Say($"Struck a {c.Species.CommonName} at {closing:F0} m/s", Tones.Caution);
     }
 }

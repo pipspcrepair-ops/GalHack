@@ -399,8 +399,8 @@ public partial class Visor : CanvasLayer
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
-            HandKind.Consumable => "click to use",
-            HandKind.Vehicle => "click to set it down",
+            HandKind.Consumable => "[LMB] USE",
+            HandKind.Vehicle => "[LMB] SET DOWN",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
@@ -434,7 +434,7 @@ public partial class Visor : CanvasLayer
         if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
         string bar = pack.OnRemoteBar ? $"REMOTE · {pack.HandRemote?.Origin.ToUpperInvariant()} · " : "";
-        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE: step back into the core's area to use it";
+        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE";
         HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
@@ -447,7 +447,7 @@ public partial class Visor : CanvasLayer
                     _ => $"{toolName} · GATHER",
                 };
             case HandKind.Vehicle:
-                return "HOVER BIKE · click to set it down";
+                return "HOVER BIKE";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
@@ -455,10 +455,10 @@ public partial class Visor : CanvasLayer
                     : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
                     : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
-            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down";
-            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}: click to use";
+            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT · SKIFF";
+            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }
     }
@@ -564,7 +564,7 @@ public partial class Visor : CanvasLayer
         _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {
-            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "NONE UNLOCKED", C.Dim, HorizontalAlignment.Center);
             return;
         }
         float cw = 46 * s, gap = 3 * s;
@@ -604,7 +604,7 @@ public partial class Visor : CanvasLayer
         var band = new Rect2(flight.Position, new Vector2(flight.Size.X, 34 * s));
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "UNANCHORED: ENGINES OFF" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
             _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(flight.Position.X, band.End.Y + 8 * s, flight.Size.X, 26 * s), HudLayout.Fit(UiTheme.Label, (int)(20 * s), message, flight.Size.X), C.Warn, HorizontalAlignment.Center);
     }

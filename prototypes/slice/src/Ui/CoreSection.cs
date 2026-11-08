@@ -181,7 +181,7 @@ public sealed class CoreSection : IMenuSection
         if (g.Button("storage:store-all", new Rect2(r.Position.X + half + 8, y, half, 34), "STORE ALL MY BAG", C.Accent2, size: 14))
         {
             Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false);
-            _game.Say(moved.IsEmpty ? "Nothing in your bag to store (or no room; the toolbar stays with you)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
         }
         if (g.Button("storage:store-raw", new Rect2(r.Position.X, y, half, 34), "STORE ORE, MATERIALS", C.Accent2, size: 14))
         {
@@ -197,7 +197,7 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(pack.Grid, i, grid);
                 if (n > 0) moved.Add(id, n);
             }
-            _game.Say(moved.IsEmpty ? "No ore or materials in your bag (or no room)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
         }
         if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE BLOCKS, CORES, DEVICES AND SUPPLIES", C.Good, size: 14))
         {
@@ -212,7 +212,7 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(grid, i, _game.Pack.Grid);
                 if (n > 0) moved.Add(id, n);
             }
-            _game.Say(moved.IsEmpty ? "Nothing made here to take yet" : $"Took {s.Catalogue.Describe(moved, 4)}{FilterBar.Shown(view, only?.Count ?? 0)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing taken", Tones.Caution);
         }
         if (g.Button($"storage:open", new Rect2(r.Position.X, y + 84, r.Size.X, 34), "OPEN BESIDE MY BAG", C.Accent)) open();
     }
@@ -274,8 +274,8 @@ public sealed class StructureSection : IMenuSection
     {
         v.SwitchMode(mode);
         string warning = v.ModeWarning;
-        string said = v.Unanchored ? $"{v.Name}: {ModeFit.Name(mode)}. ENGINES OFF: IT FALLS UNTIL IT LANDS, THEN ANCHORS" : warning ?? $"{v.Name}: {ModeFit.Name(mode)}";
-        _game.Say(said, warning != null || v.Unanchored ? Tones.Caution : Tones.Text);
+        // The panel shows the mode; only a problem with it is said.
+        if (warning != null) _game.Say(warning, Tones.Caution);
     }
 
     /// <summary>Colour, mode and speed for the structure's lights: the one picked with Shift+E, else all of them. Quiet: three short rows.</summary>
@@ -356,7 +356,6 @@ public sealed class StructureSection : IMenuSection
             bool now = !v.Home;
             foreach (Vessel other in _game.Zone.Vessels) other.Home = false; // one Home at a time
             v.Home = now;
-            if (now) _game.Say($"{v.Name} is Home: vessels with auto-transmit send their haul here", Tones.Good);
         }
         if (!large && Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
 

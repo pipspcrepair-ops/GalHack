@@ -61,7 +61,7 @@ public partial class Spaceflight
                 return true;
             case HandKind.Block or HandKind.Device or HandKind.Blueprint:
                 Halt();
-                if (pressed) Game.Say("Building in orbit comes later: claim a wreck with a core, salvage, and build on the ground", Tones.Caution);
+                if (pressed) Game.Say("No building in orbit", Tones.Caution);
                 return true;
             default:
                 Halt();
@@ -153,7 +153,7 @@ public partial class Spaceflight
         Salvaged++;
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, look.Point, 0.8f, -4f);
         Game.Progress.Earn(3, "salvage");
-        Game.Say(back.IsEmpty ? $"Salvaged a {type.Name}: nothing worth keeping" : $"Salvaged a {type.Name}: +{items.Describe(back, 3)}", Tones.Good);
+        if (!back.IsEmpty) Game.Say($"+{items.Describe(back, 3)}", Tones.Good);
         Halt();
     }
 
@@ -243,7 +243,7 @@ public partial class Spaceflight
         v.Claimed(Game.Surface.Physics.Zone.Strength);
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
         Game.Progress.Earn(40, "wreck claimed");
-        Game.Say($"Claimed: the {v.Name} is yours. Its core's gravity holds you to its floor", Tones.Good);
+        Game.Say($"Claimed: {v.Name}", Tones.Good);
         Claimed?.Invoke(v);
     }
 
@@ -260,7 +260,6 @@ public partial class Spaceflight
         v.ApplyEdits();
         bool open = v.Structure.Get(cell).Open;
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), open ? 0.6f : 0.5f, -3f);
-        Game.Say(open ? "Forced the door open by hand: the wreck has no power" : "Forced the door shut", Tones.Text);
         DoorCycled?.Invoke(v, cell, open);
         return true;
     }
