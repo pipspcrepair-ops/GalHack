@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -218,10 +218,24 @@ public static class Underground
     /// <summary>Lots the town must leave free, as along and across ranges in street-grid metres: the station's stairs and its service passage come up through them.</summary>
     public static IEnumerable<(int A0, int A1, int U0, int U1)> Reserved(UnderSite s)
     {
+        foreach (var (a, hs) in Manholes(s))
+            yield return (a - 5, a + 5, Math.Min(hs * 5, hs * (ManholeAcross + 5)), Math.Max(hs * 5, hs * (ManholeAcross + 5)));
         if (!UnderPlan.Metro(s.Tech)) yield break;
         int side = -s.BackSide;
         yield return (-s.Block - 1, -s.Block + 41, Math.Min(side * 6, side * 16), Math.Max(side * 6, side * 16));
         yield return (-3, 11, 9, 17);
+    }
+
+    /// <summary>How far off the street's centre a manhole comes up: past the carriageway, on the footpath.</summary>
+    public const int ManholeAcross = 8;
+
+    /// <summary>The sewer's ways up, as along and side: one near each end of the main sewer, a third mid-block in a big town.</summary>
+    public static IEnumerable<(int Along, int Side)> Manholes(UnderSite s)
+    {
+        int front = -s.BackSide;
+        yield return (-(s.MainHalf - 12), front);
+        yield return (s.MainHalf - 12, s.BackSide);
+        if (s.MainHalf >= 120) yield return (s.Block / 2, front);
     }
 
     public static UnderPlan Plan(UnderSite s)
@@ -258,13 +272,18 @@ public static class Underground
                 tips[(c, side)] = arm[^1];
             }
             AddJunction(plan, s, along, 0, jy, UnderSpaceKind.Junction, UnderKind.Sewer, JunctionHalf, JunctionHeight, false);
-            // A manhole in a corner of the chamber: its rungs on the corner's wall, up to the kerb at the crossing.
-            var (jx, jz) = s.At(along, 0);
-            int mx = jx - JunctionHalf, mz = jz - JunctionHalf;
-            float top = s.Ground(mx, mz);
-            // Only where the ground round it is level enough to step off onto, or where this would be the only one.
-            if (Math.Abs(s.Ground(mx - 1, mz) - top) <= 1f || (c == 1 && !plan.Shafts.Any()))
-                plan.Shafts.Add(new UnderShaft { Network = UnderKind.Sewer, Foot = new Int3(mx, jy, mz), TopY = (int)MathF.Round(top), Facing = Dir.East });
+        }
+
+        // A couple of manholes, off the carriageway on the footpath, each up a short side passage from the main sewer.
+        foreach (var (along, side) in Manholes(s))
+        {
+            int y = Main(along);
+            var from = s.At(along, 0);
+            var level = new int[ManholeAcross + 2];
+            Array.Fill(level, y);
+            plan.Runs.Add(new UnderRun { Kind = UnderKind.Sewer, X = from.X, Z = from.Z, DirX = -s.AlongZ * side, DirZ = s.AlongX * side, Floors = level, HalfWidth = 1, Height = 3 });
+            var (mx, mz) = s.At(along, side * ManholeAcross);
+            plan.Shafts.Add(new UnderShaft { Network = UnderKind.Sewer, Foot = new Int3(mx, y, mz), TopY = (int)MathF.Round(s.Ground(mx, mz)), Facing = Dir.East });
         }
 
         // The storm drain under the back street, level where it joins the arms' tips.
