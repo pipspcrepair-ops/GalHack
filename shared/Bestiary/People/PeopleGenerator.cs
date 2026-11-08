@@ -20,6 +20,8 @@ public sealed class PeopleTables
     public ClimateDress BadAir { get; set; } = new();
     /// <summary>No air at all: a suit outdoors.</summary>
     public ClimateDress Vacuum { get; set; } = new();
+    /// <summary>What a rainy region adds to anyone's wear, whatever the band.</summary>
+    public ClimateDress Rain { get; set; } = new();
     /// <summary>Breathable but poisoned (radiation, a mutagen): a hazard suit with a filter mask.</summary>
     public ClimateDress Hazard { get; set; } = new();
     /// <summary>How warm each garment keeps you (clo-like units); a dress's own base counts too.</summary>
@@ -28,6 +30,19 @@ public sealed class PeopleTables
     public Dictionary<string, RoleLook> Roles { get; set; } = new();
     /// <summary>Gone wild: what is left of their clothes.</summary>
     public RoleLook Feral { get; set; } = new();
+}
+
+/// <summary>
+/// A place's own spot on its world: the temperature and humidity of its region (the world map's),
+/// which dress its people. Two regions of one world dress differently; a visitor keeps their own.
+/// </summary>
+public sealed class Locale
+{
+    /// <summary>Below this humidity a region is dry, above the next humid, above the last rainy (0 to 1, the map's).</summary>
+    public const float Dry = 0.33f, Humid = 0.62f, Rainy = 0.78f;
+    public float TempC = 15f, Humidity = 0.5f;
+
+    public ClimateBand Band => new WorldConditions { TempC = TempC }.Climate;
 }
 
 /// <summary>What a climate (or a hazard) dresses everyone in.</summary>
@@ -42,6 +57,9 @@ public sealed class ClimateDress
     /// <summary>How warm they need to be here, and the layers they put on to get there, innermost first: base, insulation, wind, shell.</summary>
     public float Warmth { get; set; }
     public Dictionary<string, string[]> Layers { get; set; } = new();
+    /// <summary>The same band in a humid region and in a dry one: their own dress, wear and colours over the band's.</summary>
+    public ClimateDress Humid { get; set; }
+    public ClimateDress Dry { get; set; }
 }
 
 /// <summary>What a role wears on top of the climate's clothes, carries and looks like.</summary>
@@ -90,6 +108,8 @@ public sealed class Founders
     /// <summary>The folk who founded the place, and in a mixed place another folk and its share.</summary>
     public Folk Folk, Second;
     public float SecondShare;
+    /// <summary>Where on its world the place stands: the region that dresses its people (null: the world's mean).</summary>
+    public Locale Locale;
 }
 
 /// <summary>
@@ -180,9 +200,40 @@ public sealed partial class PeopleGenerator
 
     static Color Hex(string s) => new("#" + s.TrimStart('#'));
 
-    /// <summary>What the weather dresses them in; a suit where there is no air; and where the air is bad but the weather mild, a sealed coverall.</summary>
-    ClimateDress Dress => _w.Vacuum ? _t.Vacuum : _w.BadAir && _w.Climate == ClimateBand.Mild ? _t.BadAir
-        : _t.Climates.TryGetValue(_w.Climate.ToString(), out ClimateDress d) ? d : new ClimateDress();
+    /// <summary>
+    /// What the weather where they live dresses them in: their region's temperature band, then its
+    /// humidity (dry, or humid; very wet regions add the rain's wear on top); a suit where there is
+    /// no air, and where the air is bad but the weather mild, a sealed coverall. With no region,
+    /// the world's own mean.
+    /// </summary>
+    ClimateDress DressFor(Locale region)
+    {
+        ClimateBand band = region?.Band ?? _w.Climate;
+        if (_w.Vacuum) return _t.Vacuum;
+        if (_w.BadAir && band == ClimateBand.Mild) return _t.BadAir;
+        ClimateDress d = _t.Climates.TryGetValue(band.ToString(), out ClimateDress c) ? c : new ClimateDress();
+        float wet = region?.Humidity ?? 0.5f;
+        ClimateDress over = wet < Locale.Dry ? d.Dry : wet > Locale.Humid ? d.Humid : null;
+        bool rain = wet > Locale.Rainy && band is not ClimateBand.Frozen;
+        if (over == null && !rain) return d;
+        // The region's own on top of the band's: its dress, its wear first (a slot it fills stays), its colours, its warmth.
+        var m = new ClimateDress
+        {
+            Dress = over?.Dress is { Length: > 0 } dd ? dd : d.Dress,
+            Padding = over != null && over.Padding != 1f ? over.Padding : d.Padding,
+            Build = d.Build,
+            Colours = over?.Colours is { Length: > 0 } cc ? cc : d.Colours,
+            Warmth = d.Warmth + (over?.Warmth ?? 0f),
+            Layers = over?.Layers is { Count: > 0 } ll ? ll : d.Layers,
+        };
+        if (rain) foreach (var (id, p) in _t.Rain.Wear) m.Wear[id] = p;
+        if (over != null) foreach (var (id, p) in over.Wear) m.Wear.TryAdd(id, p);
+        foreach (var (id, p) in d.Wear) m.Wear.TryAdd(id, p);
+        return m;
+    }
+
+    /// <summary>A few places' regions across the world: where an outsider comes from (a game with a map sets them; else the world's mean).</summary>
+    public List<Locale> Regions = new();
 
     /// <summary>
     /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this
@@ -273,7 +324,10 @@ public sealed partial class PeopleGenerator
         f.ShoulderK = Around(founders?.Shoulder ?? 0f, 0.09f);
         if (local) f.Build = Math.Clamp(f.Build + founders.Build, 0f, 1f);
         if (f.Stage == LifeStage.Elder || f.Age > 50f && rng.Chance(0.5f)) f.Hair = new Color(0.62f, 0.6f, 0.58f).Lerp(f.Hair, 0.2f);
-        ClimateDress dress = Dress;
+        // Dressed for where they live: the place's region, or for a visitor their own region's.
+        Locale region = local || founders == null ? founders?.Locale : Regions.Count > 0 ? Regions[(int)(Rng.For(seed, "from").Float() * Regions.Count) % Regions.Count] : founders.Locale;
+        f.Home = region;
+        ClimateDress dress = DressFor(region);
         f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress;
         f.Padding = occupancy == Occupancy.Feral ? 1f : dress.Padding;
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
@@ -304,7 +358,7 @@ public sealed partial class PeopleGenerator
             {
                 var hz = Rng.For(seed, "hazard");
                 Put(f, hz, _t.Hazard.Wear);
-                if (_w.Climate is ClimateBand.Mild or ClimateBand.Hot && _t.Hazard.Dress.Length > 0) f.Dress = _t.Hazard.Dress;
+                if ((region?.Band ?? _w.Climate) is ClimateBand.Mild or ClimateBand.Hot && _t.Hazard.Dress.Length > 0) f.Dress = _t.Hazard.Dress;
             }
             Put(f, rng, look.Wear);
             if (!_w.Vacuum) Put(f, rng, dress.Wear);
@@ -314,6 +368,8 @@ public sealed partial class PeopleGenerator
         Age(f, occupancy, Rng.For(seed, "worn"));
         FitParts(f);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
+        // In a rainy region, a free hand holds an umbrella now and then.
+        if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";
         f.Routine = look;
         f.Approach = Enum.TryParse(look.Approach, out BodyAct approach) ? approach : BodyAct.Greet;
         f.Aimed = Enum.TryParse(look.Aimed, out BodyAct aimed) ? aimed : BodyAct.HandsUp;

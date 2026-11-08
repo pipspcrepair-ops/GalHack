@@ -161,6 +161,31 @@ public sealed partial class Staging
         Look(spot + new Vector3(2.6f, 1.45f, 4f), spot + new Vector3(2.6f, 1.1f, 0f));
         foreach (int x in _drive.Wait(5)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "hot-close.png"))) yield return x;
+        // Humidity is regional: two regions of one world side by side, in the same heat, then the same cold.
+        var one = new PeopleGenerator(life.Data.People, new WorldConditions { Seed = rng.NextU64(), Alienness = 0f, TempC = 15f, Backdrop = life.World.Backdrop });
+        foreach (var (name, temp) in new[] { ("hot", 34f), ("cold", 0f) })
+        {
+            foreach (Node n in stage.GetChildren()) n.QueueFree();
+            var pair = new List<Species>();
+            foreach (float wet in new[] { 0.72f, 0.12f })
+            {
+                Founders f = one.FoundersOf(rng.NextU64());
+                f.Folk = one.Folk;
+                f.Second = null;
+                f.Outsiders = 0f;
+                f.Locale = new Locale { TempC = temp, Humidity = wet };
+                foreach (PersonRole r in new[] { PersonRole.Worker, PersonRole.Farmer, PersonRole.Trader })
+                {
+                    Species s = one.Person(rng.NextU64(), r, founders: f);
+                    pair.Add(s);
+                    GD.Print($"  {name}, humidity {wet:F2}, {r}: {s.Figure.Dress} [{string.Join(", ", s.Figure.Wear)}] layers [{string.Join(", ", s.Figure.Layered)}] {s.Figure.Prop}");
+                }
+            }
+            Row(stage, pair, spot, 1.15f);
+            Look(spot + new Vector3(0f, 1.4f, 6.4f), spot + Vector3.Up * 0.95f);
+            foreach (int x in _drive.Wait(10)) yield return x;
+            foreach (int x in Shot(Path.Combine(dir, $"regions-{name}.png"))) yield return x;
+        }
     }
 
     /// <summary>The nearest town with people, walked to; its place once it stands.</summary>

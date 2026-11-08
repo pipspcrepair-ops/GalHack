@@ -67,6 +67,7 @@ public partial class BestiaryTest : Node
             TwentyAliensAreCheap();
             JobsKeepTheirOwnDay();
             PeopleAndAnimalsReadEachOther();
+            RegionsDressTheirOwn();
             HusksSpreadFromTheCore();
             HusksAreTheirOwnPeople();
             SeizedPeopleTurn();
@@ -1488,6 +1489,46 @@ public partial class BestiaryTest : Node
         var c = new Host(new Vector3(40f, 0f, 0f), husk);
         var all = new List<ITarget> { a, b, c };
         Check(!CrossReactions.Alone(all, a, 9f) && CrossReactions.Alone(all, c, 9f), "a hunter's straggler is whoever is alone");
+    }
+
+    /// <summary>
+    /// The owner (8 Nov 2026): humidity changes what settlers wear, and it is regional. Two places
+    /// of one world, one humid and one dry, dress differently in the same heat or the same cold;
+    /// rain adds ponchos and umbrellas; a visitor keeps their own region's clothes.
+    /// </summary>
+    void RegionsDressTheirOwn()
+    {
+        PeopleGenerator g = Folks(World(15f, alien: 0f));
+        List<Figure> At(float tempC, float wet, int n = 40)
+        {
+            Founders f = g.FoundersOf(Seed());
+            f.Folk = g.Folks.First(x => x.Folk.Human).Folk;
+            f.Second = null;
+            f.Outsiders = 0f;
+            f.Locale = new Locale { TempC = tempC, Humidity = wet };
+            return Enumerable.Range(0, n).Select(_ => g.Person(Seed(), PersonRole.Worker, founders: f).Figure).ToList();
+        }
+        var humidHot = At(34f, 0.7f);
+        var dryHot = At(34f, 0.12f);
+        var wetCold = At(0f, 0.7f);
+        var dryCold = At(0f, 0.12f);
+        var rainy = At(16f, 0.9f);
+        Check(humidHot.Count(f => f.Dress == "light") > 30 && humidHot.Count(f => f.Has("sandals")) > 20 && humidHot.Count(f => f.Has("wide_hat") | f.Has("net_hat")) > 15,
+            $"humid heat: loose light clothes, bare arms and legs, sandals, wide hats and netting ({humidHot.Count(f => f.Dress == "light")} light, {humidHot.Count(f => f.Has("sandals"))} in sandals)");
+        Check(dryHot.Count(f => f.Has("robe")) > 25 && dryHot.Count(f => f.Has("head_wrap")) > 15 && dryHot.Count(f => f.Wear.Any(w => HumanBody.Slot(w) == "head")) > 34 && dryHot.Count(f => f.Has("face_wrap")) > 20 && !dryHot.Any(f => f.Dress == "light"),
+            $"dry heat: full robes, head wraps and face wraps against the dust ({dryHot.Count(f => f.Has("robe"))} robes, {dryHot.Count(f => f.Has("face_wrap"))} face wraps)");
+        Check(wetCold.Count(f => f.Has("oilskin")) > 20 && wetCold.Count(f => f.Has("rubber_boots")) > 20 && wetCold.Count(f => f.Layered.Contains("sweater")) > 10,
+            $"wet cold: waxed shells, wool and rubber boots ({wetCold.Count(f => f.Has("oilskin"))} oilskins, {wetCold.Count(f => f.Has("rubber_boots"))} boots)");
+        Check(dryCold.Count(f => f.Dress == "furs") == 40 && dryCold.Average(f => f.Layered.Count) > wetCold.Average(f => f.Layered.Count) - 0.01f, $"dry cold: furs and layers ({dryCold.Average(f => f.Layered.Count):F1} layers on average)");
+        Check(rainy.Count(f => f.Has("poncho") | f.Prop == "umbrella" | f.Has("rain_cape")) > 20, $"in a rainy region, ponchos and umbrellas ({rainy.Count(f => f.Has("poncho"))} ponchos, {rainy.Count(f => f.Prop == "umbrella")} umbrellas)");
+        // A visitor from a dry, cold region in a humid hot town keeps their furs.
+        g.Regions.Clear();
+        g.Regions.Add(new Locale { TempC = 0f, Humidity = 0.12f });
+        Founders town = g.FoundersOf(Seed());
+        town.Locale = new Locale { TempC = 34f, Humidity = 0.7f };
+        town.Outsiders = 1f;
+        var visitors = Enumerable.Range(0, 20).Select(_ => g.Person(Seed(), PersonRole.Trader, founders: town).Figure).ToList();
+        Check(visitors.All(f => f.Dress == "furs"), "a visitor keeps their own region's clothes");
     }
 
     sealed class Host : IHost

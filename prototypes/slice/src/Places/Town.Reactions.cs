@@ -31,6 +31,10 @@ public sealed partial class Town
     /// <summary>One of the town's people fires at something that isn't you (from, to): only the shot is drawn.</summary>
     public event System.Action<Vector3, Vector3> ShotAway;
 
+    /// <summary>How many times the town has looked round it, and how many creatures it saw last (tests).</summary>
+    public int Senses { get; private set; }
+    public int Sensed { get; private set; }
+
     const float SenseEvery = 0.4f, FightAim = 1.2f;
 
     void Sense(float dt)
@@ -55,6 +59,8 @@ public sealed partial class Town
         _round.Clear();
         foreach (Creature c in sim.Creatures)
             if (!c.Removed && !c.Dead && WildSim.Flat(c.Position - centre).Length() < reach) _round.Add(c);
+        Sensed = _round.Count;
+        Senses++;
         if (_round.Count == 0) return;
         foreach (Person p in People)
         {

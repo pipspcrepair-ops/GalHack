@@ -75,6 +75,8 @@ public sealed class Figure
     public float Warmth;
     /// <summary>How worn their clothes are, 0 new to 1 patched and faded.</summary>
     public float Worn;
+    /// <summary>The region they're dressed for (where they live, or a visitor's own).</summary>
+    public Locale Home;
     /// <summary>What they carry: "", rifle, club, hoe, cane, bottle.</summary>
     public string Prop = "";
     /// <summary>A Husk: taken by the worms, which come out of the mouth, the nose, the eyes and the ears. Gaunt and slack, moved like a puppet.</summary>

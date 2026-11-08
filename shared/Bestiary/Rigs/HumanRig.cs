@@ -270,6 +270,7 @@ public sealed class HumanRig : Rig
                 Vector3 up = neck + down * 0.16f + ahead * (i == 1 ? 0.14f : 0.42f) * f.Height / 1.72f + torso.X * (i == 1 ? 0.13f : 0.02f);
                 hand = low.Lerp(up, g.Aim);
             }
+            if (f.Prop == "umbrella" && i == 1) hand = chest + ahead * 0.24f + torso.X * 0.12f + Vector3.Up * 0.02f;
             if (f.Prop == "cane" && i == 1)
                 hand = chest + down * 0.5f + ahead * (0.26f + moving * 0.08f * MathF.Sin(cycle)) + torso.X * 0.18f;
             if (f.Prop == "bottle" && i == 1)

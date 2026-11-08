@@ -802,7 +802,13 @@ public sealed partial class Town
         var roll = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "townsfolk");
         // The place's founders: most here share a look; trade hubs and spaceports mix more.
         var tags = Memory.Inst.Family.Tags;
-        Founders founders = life.People.FoundersOf(Memory.Inst.SpawnSeed, tags.Contains("spaceport") || tags.Contains("trade") || tags.Contains("market"));
+        Founders founders = life.People.FoundersOf(Memory.Inst.SpawnSeed, tags.Contains("spaceport") || tags.Contains("trade") || tags.Contains("market"), Memory.Inst.Family.Faction == Faction.Vharn);
+        // Dressed for their own region of the world: its temperature and its humidity, off the world map.
+        var map = _places.Zone.Planet.Map;
+        founders.Locale = RegionAt(map, Memory.Site.Entrance.X + 0.5, Memory.Site.Entrance.Z + 0.5);
+        lock (life.People.Regions)
+            if (life.People.Regions.Count == 0)
+                for (int i = 0; i < 32; i++) life.People.Regions.Add(RegionAt(map, (i * 0.618034 % 1.0) * map.WidthMeters, ((i * 0.381966 + 0.13) % 1.0) * map.HeightMeters));
         // How this group takes to outsiders: from its tech and its world, and then its own roll.
         _temper = Temper.Roll(_tech, Math.Clamp(life.World.Mutagen + life.World.Radiation * 0.15f, 0f, 1f), Memory.Inst.SpawnSeed);
         float hardened = life.People.HardenedChance(raiders, People.Count(q => q.Role != "wanderer"));
@@ -829,6 +835,15 @@ public sealed partial class Town
         foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
         CarriersAtStart = People.Count(q => q.Carrier);
         foreach (Person q in People) _carried.Add(new Carried());
+    }
+
+    /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>
+    public static Locale RegionAt(Planets.Gen.WorldMap map, double x, double z)
+    {
+        double wx = ((x % map.WidthMeters) + map.WidthMeters) % map.WidthMeters, wz = ((z % map.HeightMeters) + map.HeightMeters) % map.HeightMeters;
+        int cx = (int)Math.Floor(wx / map.CellSize) % map.Width, cz = (int)Math.Floor(wz / map.CellSize) % map.Height;
+        int k = Math.Clamp(cz, 0, map.Height - 1) * map.Width + Math.Clamp(cx, 0, map.Width - 1);
+        return new Locale { TempC = Mathf.Lerp(-45f, 65f, map.Temperature[k]), Humidity = map.Humidity[k] };
     }
 
     // ---- The worms among them ----------------------------------------------------------------------

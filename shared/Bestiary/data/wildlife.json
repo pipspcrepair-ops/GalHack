@@ -508,28 +508,38 @@
         "dress": "furs", "padding": 1.3, "build": 0.1,
         "wear": { "fur_hood": 0.85, "scarf": 0.7, "goggles": 0.3, "balaclava": 0.45, "mukluks": 0.85 },
         "warmth": 5.2, "layers": { "base": ["thermals"], "insulation": ["fleece", "sweater"], "wind": ["anorak"], "shell": ["parka"] },
+        "dry": { "warmth": 0.6, "wear": { "fur_hood": 0.95, "goggles": 0.5 } },
+        "humid": { "wear": { "oilskin": 0.4, "rubber_boots": 0.3 } },
         "colours": ["6b5a48", "5a4a3a", "7a6a55", "8a7a62", "4f4538"]
       },
       "Cold": {
         "dress": "coat", "padding": 1.16, "build": 0.05,
         "wear": { "hood": 0.45, "cap": 0.5, "scarf": 0.6, "coat": 0.4, "mukluks": 0.2, "balaclava": 0.1 },
         "warmth": 3.0, "layers": { "base": ["thermals", "undershirt"], "insulation": ["sweater", "fleece"], "wind": ["anorak", "smock"], "shell": ["parka", "coat"] },
+        "dry": { "dress": "furs", "warmth": 0.8, "layers": { "base": ["thermals"], "insulation": ["fleece"], "wind": ["anorak"], "shell": ["parka"] }, "wear": { "fur_hood": 0.5, "goggles": 0.3 } },
+        "humid": { "layers": { "base": ["undershirt"], "insulation": ["sweater"], "shell": ["oilskin"] }, "wear": { "oilskin": 0.75, "hood": 0.7, "rubber_boots": 0.75, "scarf": 0.4 }, "colours": ["4a4c3a", "3f4a44", "54503a", "3c4048"] },
         "colours": ["4f5a54", "5a5044", "46505c", "6a5a48", "5c4a3c"]
       },
       "Mild": {
         "dress": "shirt", "padding": 1.0,
         "wear": { "cap": 0.2 },
         "warmth": 0.5, "layers": { "base": ["undershirt"], "wind": ["smock"] },
+        "dry": { "wear": { "wide_hat": 0.3, "scarf": 0.3 } },
+        "humid": { "wear": { "rain_cape": 0.3, "rubber_boots": 0.3, "cap": 0.3 } },
         "colours": ["6e6a5c", "7a6a50", "4f5e66", "6a4e3e", "5a6450", "8a8270"]
       },
       "Hot": {
         "dress": "wraps", "padding": 1.04, "build": -0.04,
         "wear": { "head_wrap": 0.7, "wide_hat": 0.3, "shades": 0.45, "robe": 0.45, "face_wrap": 0.35 },
+        "dry": { "wear": { "robe": 0.85, "head_wrap": 0.9, "face_wrap": 0.7, "goggles": 0.5 } },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "wide_hat": 0.55, "net_hat": 0.3, "sandals": 0.75, "rain_cape": 0.25 }, "colours": ["d8d0b8", "c8d0c0", "e0d8c4", "b8c4b0", "d4c4a4"] },
         "colours": ["c2b08c", "b8a074", "a89476", "9c8c6c", "cbbd9d"]
       },
       "Scorching": {
         "dress": "wraps", "padding": 1.08, "build": -0.08,
         "wear": { "head_wrap": 0.95, "shades": 0.85, "robe": 0.75, "face_wrap": 0.7, "scarf": 0.3 },
+        "dry": { "wear": { "robe": 0.95, "head_wrap": 0.98, "face_wrap": 0.85, "goggles": 0.6 } },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "net_hat": 0.45, "wide_hat": 0.5, "sandals": 0.85 }, "colours": ["e0d8c4", "d8d0b8", "cfd6c6"] },
         "colours": ["d0c0a0", "c2b08c", "bcae94", "cfc2a6"]
       }
     },
@@ -538,6 +548,9 @@
       "wear": { "respirator": 1.0, "hood": 0.6, "goggles": 0.8, "air_tank": 0.3 },
       "colours": ["6e6a48", "5e6a58", "7a6440", "54605c"]
     },
+    "rain": {
+      "wear": { "poncho": 0.55, "rain_cape": 0.25, "rubber_boots": 0.35 }
+    },
     "hazard": {
       "dress": "hazard",
       "wear": { "filter_mask": 1.0, "hazard_hood": 0.8, "air_tank": 0.15 }
@@ -545,7 +558,7 @@
     "garments": {
       "thermals": 0.6, "undershirt": 0.2, "sweater": 0.8, "fleece": 1.0, "anorak": 0.7, "smock": 0.4,
       "parka": 1.8, "coat": 1.0, "poncho": 0.5, "shawl": 0.3, "robe": 0.2, "coveralls": 0.4,
-      "fur_hood": 0.5, "hood": 0.25, "balaclava": 0.35, "scarf": 0.2, "mukluks": 0.4, "cap": 0.1, "hazard_hood": 0.2
+      "fur_hood": 0.5, "hood": 0.25, "oilskin": 1.1, "rain_cape": 0.3, "rubber_boots": 0.2, "net_hat": 0.05, "balaclava": 0.35, "scarf": 0.2, "mukluks": 0.4, "cap": 0.1, "hazard_hood": 0.2
     },
     "vacuum": {
       "dress": "suit", "padding": 1.26,

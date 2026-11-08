@@ -977,7 +977,7 @@ public partial class PlaceTest : Node
             Vector3 stand = at - toward.Normalized() * 3f;
             foreach (int x in drive.WalkTo(stand, 0.6f, 25f, sprint: false, dig: false, hop: false)) yield return x;
             foreach (int x in drive.Wait(200)) yield return x;
-            Check(town.Halts > halts && town.HoldAims > holds && town.GuardShots == shots, $"at the post a guard warns you off, then holds you at gunpoint as you come on ({town.Halts - halts} warnings, {town.HoldAims - holds} guns up, {town.GuardShots - shots} shots, {game.Survivor.WorldFeet.DistanceTo(at):F1} m off)");
+            Check(town.Halts > halts && town.HoldAims > holds && town.GuardShots == shots, $"at the post a guard warns you off, then holds you at gunpoint as you come on ({town.Halts - halts} warnings, {town.HoldAims - holds} guns up, {town.GuardShots - shots} shots, {game.Survivor.WorldFeet.DistanceTo(at):F1} m off; the guard {post.Job} {post.Pos.DistanceTo(new Vector3(town.Data.Spots[post.Spawn.Spot].Cell.X + 0.5f, town.Data.Spots[post.Spawn.Spot].Cell.Y, town.Data.Spots[post.Spawn.Spot].Cell.Z + 0.5f)):F1} m from post, halt {post.Halt:F1}, unwelcome {town.Unwelcome}, facing {post.Facing:F1}, threat {post.Threat?.Species.CommonName}, pursue {post.Pursue:F0}, act {post.Act})");
             foreach (int x in drive.WalkTo(at - toward.Normalized() * 11f, 0.8f, 25f, sprint: false, dig: false, hop: false)) yield return x;
             foreach (int x in drive.Wait(90)) yield return x;
             Check(!post.Holding, "back off and the gun goes down");
@@ -996,7 +996,7 @@ public partial class PlaceTest : Node
                 int answered = town.Fought + town.FledFrom + town.Barricades;
                 foreach (int x in drive.Wait(150)) yield return x;
                 int sighting = town.People.Count(q => q.Facing > 0f);
-                Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades");
+                Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades; looked round {town.Senses} times, {town.Sensed} creatures last)");
                 if (!h.Removed) sim.Remove(h);
                 game.Zone.Wildlife.Frozen = false;
                 foreach (int x in drive.Wait(720)) yield return x; // until the scare has passed

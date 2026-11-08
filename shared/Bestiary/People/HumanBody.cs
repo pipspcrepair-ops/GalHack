@@ -15,14 +15,14 @@ public static class HumanBody
     /// <summary>Only one thing fits on each of these. "" for what can go with anything.</summary>
     public static string Slot(string id) => id switch
     {
-        "helmet" or "cap" or "wide_hat" or "straw_hat" or "hood" or "fur_hood" or "head_wrap" or "suit_helmet" or "hazard_hood" => "head",
+        "helmet" or "cap" or "wide_hat" or "straw_hat" or "hood" or "fur_hood" or "head_wrap" or "suit_helmet" or "hazard_hood" or "net_hat" => "head",
         "respirator" or "filter_mask" or "balaclava" or "face_wrap" => "mouth",
         "shades" or "goggles" or "eyepatch" => "eyes",
         "backpack" or "air_tank" or "trader_pack" => "back",
         "apron" or "vest" or "hivis" => "front",
         "satchel" or "tool_belt" or "pouches" => "side",
-        "coat" or "poncho" or "shawl" or "parka" or "robe" => "over",
-        "mukluks" => "feet",
+        "coat" or "poncho" or "shawl" or "parka" or "robe" or "rain_cape" or "oilskin" => "over",
+        "mukluks" or "sandals" or "rubber_boots" => "feet",
         "coveralls" => "body",
         "thermals" or "undershirt" => "base",
         "sweater" or "fleece" => "insulation",
@@ -87,11 +87,13 @@ public static class HumanBody
         float u = Scale(f);
         float pad = f.Padding;
         Color sleeve = f.Dress switch { "suit" or "hazard" => f.Cloth, "furs" or "coat" => Outer(f), "wraps" => f.Cloth.Lightened(0.08f), "rags" => f.Skin, _ => Outer(f) };
-        Color forearm = f.Dress is "shirt" or "rags" or "wraps" && !Sleeved(f) ? f.Skin : sleeve;
+        Color forearm = f.Dress is "shirt" or "rags" or "wraps" or "light" && !Sleeved(f) ? f.Skin : sleeve;
         Color hand = f.Dress is "suit" or "hazard" or "furs" ? f.Leather : FolkBody.Pointed(f, f.Skin);
         float skinMat = FolkBody.SkinMat(f);
         Color trouser = f.Has("coveralls") ? LayerColour(f, "coveralls") : f.Dress switch { "suit" or "hazard" => f.Cloth, "furs" => f.Cloth.Darkened(0.15f), "rags" => f.Cloth, "wraps" => f.Cloth.Darkened(0.12f), _ => f.Trim.Darkened(0.1f).Lerp(new Color(0.2f, 0.2f, 0.22f), 0.5f) };
-        Color shin = f.Dress == "rags" ? f.Skin : trouser;
+        // Loose light clothes in the humid heat: shorts, the legs bare below.
+        if (f.Dress == "light") trouser = f.Cloth.Lightened(0.12f);
+        Color shin = f.Dress is "rags" or "light" ? f.Skin : trouser;
         float b = 0.85f + 0.5f * f.Build;
         for (int side = 0; side < 2; side++)
         {
@@ -115,14 +117,21 @@ public static class HumanBody
                 ll.Taper(Vector3.Up * f.LowerLeg * 0.42f, Vector3.Up * f.LowerLeg, 0.06f * u * pad, 0.058f * u * pad, hide, 0f, 0f, Mat.Skin, 8);
                 ll.Add(Shape.Cylinder, new Vector3(0.15f, 0.05f, 0.15f) * u * pad, Vector3.Up * f.LowerLeg * 0.42f, new Color(0.78f, 0.72f, 0.62f), 0f, 0f, null, 8);
             }
-            else if (f.Dress is not "rags" and not "wraps") ll.Taper(Vector3.Up * f.LowerLeg * 0.6f, Vector3.Up * f.LowerLeg, 0.05f * u * pad, 0.046f * u * pad, f.Leather, 0f, 0f, Mat.Skin, 8); // boot tops
+            else if (f.Has("rubber_boots"))
+            {
+                // Rubber boots to below the knee, dark and glossy.
+                Color rubber = new Color(0.16f, 0.2f, 0.15f).Lerp(f.Trim, 0.15f);
+                ll.Taper(Vector3.Up * f.LowerLeg * 0.4f, Vector3.Up * f.LowerLeg, 0.062f * u * pad, 0.058f * u * pad, rubber, 0f, 0f, Mat.Carapace, 8);
+            }
+            else if (f.Dress is not "rags" and not "wraps" and not "light" && !f.Has("sandals")) ll.Taper(Vector3.Up * f.LowerLeg * 0.6f, Vector3.Up * f.LowerLeg, 0.05f * u * pad, 0.046f * u * pad, f.Leather, 0f, 0f, Mat.Skin, 8); // boot tops
             if (f.Worn > 0.5f && side == 1) Patches(lu, f, f.UpperLeg * 0.3f, f.UpperLeg * 0.7f, 0.07f * u * b * pad, 0.07f * u * b * pad, 7);
             // The inner layer shows at the cuff.
             if (f.Layered.Count > 0 && Sleeved(f)) al.Add(Shape.Cylinder, new Vector3(0.065f, 0.03f, 0.065f) * u * pad, Vector3.Up * fore * 0.84f, LayerColour(f, f.Layered[0]), 0f, 0f, null, 7);
             var ft = new Piece($"leg{side}f");
-            Color boot = f.Dress == "rags" ? f.Skin.Darkened(0.2f) : f.Dress == "wraps" ? f.Leather.Lightened(0.15f) : f.Leather.Darkened(0.2f);
+            Color boot = f.Has("sandals") ? FolkBody.Pointed(f, f.Skin) : f.Has("rubber_boots") ? new Color(0.16f, 0.2f, 0.15f) : f.Dress == "rags" ? f.Skin.Darkened(0.2f) : f.Dress == "wraps" ? f.Leather.Lightened(0.15f) : f.Leather.Darkened(0.2f);
             ft.Add(Shape.Sphere, new Vector3(0.1f * f.FootK, f.Ankle * 1.5f / u, 0.27f * f.FootK) * u, new Vector3(0f, -f.Ankle * 0.45f, -0.055f * u * f.FootK), boot, 0f, 0f, null, 8);
             ft.Add(Shape.Box, new Vector3(0.095f * f.FootK, 0.02f, 0.26f * f.FootK) * u, new Vector3(0f, -f.Ankle + 0.01f, -0.055f * u * f.FootK), boot.Darkened(0.4f));
+            if (f.Has("sandals")) ft.Add(Shape.Box, new Vector3(0.1f * f.FootK, 0.012f, 0.06f) * u, new Vector3(0f, -f.Ankle * 0.4f, -0.09f * u * f.FootK), f.Leather, 0f, 0f, null, 0); // the strap
             ft.Shadow = false;
             if (side == 0 && f.Has("medic_band")) Band(au, f);
             // The one saturated mark: a band on the arm, where nothing else is.
@@ -342,6 +351,16 @@ public static class HumanBody
                     p.Add(Shape.Box, new Vector3(0.07f, 0.09f, 0.05f) * u, new Vector3(MathF.Sin(a) * f.WaistW * 1.15f * pad, T * 0.34f, -MathF.Cos(a) * d * 1.02f), f.Leather.Lightened(0.05f * i));
                 }
                 break;
+            case "rain_cape":
+            case "oilskin":
+            {
+                // A rain cape to the hips, or a waxed shell to the knee: both shed water, both shine.
+                bool cape = id == "rain_cape";
+                Color wax = cape ? f.Cloth.Lerp(new Color(0.36f, 0.42f, 0.3f), 0.55f) : new Color(0.42f, 0.36f, 0.2f).Lerp(f.Trim, 0.25f);
+                var shell = LoftProfile.Smooth((cape ? 0.1f : -0.5f) * T, 1.0f * T, new[] { (0f, f.HipW * (cape ? 1.6f : 1.38f) * pad, d * 1.3f, 0f), (0.5f, W * (cape ? 1.3f : 1.08f), d * 1.22f, 0f), (1f, W * 0.75f, d * 0.9f, 0f) }, 8, 0.04f);
+                p.Loft(shell, wax, wax.Darkened(0.2f), 0f, 0f, Mat.Carapace, null, upright, 11);
+                break;
+            }
             case "badge":
                 // The law's mark: a bright disc on the chest, plain metal, nothing written on it.
                 p.Add(Shape.Cylinder, new Vector3(0.07f, 0.012f, 0.07f) * u, new Vector3(-W * 0.45f, T * 0.74f, -d * 1.18f), new Color(0.82f, 0.68f, 0.3f), 0f, 0.05f, new Basis(Vector3.Right, MathF.PI * 0.5f), 8, Mat.Carapace);
@@ -600,6 +619,12 @@ public static class HumanBody
                 p.Add(Shape.Sphere, new Vector3(R * 0.54f, R * 0.5f, R * 0.14f), c + new Vector3(R * 0.36f, R * 0.14f, -R * 0.92f), new Color(0.07f, 0.06f, 0.06f), 0f, 0f, null, 7);
                 p.Add(Shape.Box, new Vector3(R * 1.74f, R * 0.06f, R * 1.1f), c + new Vector3(0f, R * 0.3f, -R * 0.36f), new Color(0.07f, 0.06f, 0.06f));
                 break;
+            case "net_hat":
+                // A wide hat with insect netting hanging from the brim (lifted off the face of a Husk).
+                p.Add(Shape.Cylinder, new Vector3(R * 4.0f, R * 0.09f, R * 3.8f), c + new Vector3(0f, R * 0.5f, 0f), new Color(0.7f, 0.62f, 0.4f), 0f, 0f, null, 12);
+                p.Add(Shape.Cylinder, new Vector3(R * 2.0f, R * 0.8f, R * 1.7f), c + new Vector3(0f, R * 0.88f, 0f), new Color(0.64f, 0.56f, 0.36f), 0f, 0f, null, 10);
+                if (!f.Husk) p.Add(Shape.Cylinder, new Vector3(R * 3.7f, R * 1.7f, R * 3.6f), c + new Vector3(0f, -R * 0.38f, 0f), new Color(0.12f, 0.13f, 0.12f), 0f, 0f, null, 12, Mat.Membrane);
+                break;
             case "balaclava":
                 // Knit over the head and face, the eyes left open.
                 if (f.Husk) break;
@@ -683,6 +708,11 @@ public static class HumanBody
             case "wrench":
                 p.Taper(new Vector3(0f, -0.04f, 0f) * u, new Vector3(0f, 0.3f, 0f) * u, 0.014f * u, 0.012f * u, steel.Lightened(0.25f), 0f, 0f, Mat.Carapace, 6);
                 p.Add(Shape.Box, new Vector3(0.07f, 0.05f, 0.025f) * u, new Vector3(0.015f * u, 0.32f * u, 0f), steel.Lightened(0.3f), 0f, 0f, null, 0, Mat.Carapace);
+                break;
+            case "umbrella":
+                // Held up: the shaft through the hand, the canopy over the head.
+                p.Taper(new Vector3(0f, -0.1f, 0f) * u, new Vector3(0f, 0.95f, 0f) * u, 0.01f * u, 0.008f * u, steel, 0f, 0f, Mat.Carapace, 5);
+                p.Add(Shape.Cone, new Vector3(1.0f, 0.24f, 0f) * u, new Vector3(0f, 0.86f, 0f) * u, f.Accent.Lerp(f.Cloth, 0.5f).Darkened(0.2f), 0f, 0f, null, 9, Mat.Membrane);
                 break;
             case "bottle":
                 p.Add(Shape.Cylinder, new Vector3(0.07f, 0.17f, 0.07f) * u, new Vector3(0f, 0.04f * u, 0f), new Color(0.2f, 0.32f, 0.16f), 0f, 0f, null, 7, Mat.Eye);
