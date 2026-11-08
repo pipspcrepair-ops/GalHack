@@ -95,6 +95,39 @@ public partial class WindTest : Node
         foreach (int x in TumblingCraft()) yield return x;
         foreach (int x in Flyer()) yield return x;
         foreach (int x in Trees()) yield return x;
+        foreach (int x in FunnelOnBase()) yield return x;
+    }
+
+    /// <summary>
+    /// The drawn funnel's foot, where the force pulls from and where its debris whirls: one point, every
+    /// tick, for a fast tornado crossing uneven ground. The funnel bends up from it to the cloud.
+    /// </summary>
+    IEnumerable<int> FunnelOnBase()
+    {
+        Calm();
+        Vector3 at = Spot(0f, 120f);
+        Me.PlaceOutside((at + new Vector3(0f, 0f, 120f) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Bridge.Calm = false;
+        Tornado t = TornadoAt(at - new Vector3(80f, 0f, 0f), TornadoShape.Rope);
+        t.Rules.Speed = Sim.Data.Tornado.SpeedMax;
+        float worst = 0f, worstY = 0f, rise = 0f, low = float.MaxValue;
+        int ticks = 0;
+        for (int i = 0; i < 60 * 10; i++)
+        {
+            yield return 0;
+            PlanetSurface.WeatherView.TornadoFx fx = Zone.Weather.FunnelOf(t.Id);
+            if (fx == null) continue;
+            Vector3 centre = Zone.Planet.NearestCopy(Zone.Planet.Canonical(Weather.Glue.ToVortex(t).Base), fx.GlobalPosition);
+            Vector3 foot = fx.Foot;
+            worst = MathF.Max(worst, new Vector2(foot.X - centre.X, foot.Z - centre.Z).Length());
+            worstY = MathF.Max(worstY, MathF.Abs(foot.Y - Zone.GroundAt(foot.X, foot.Z).Y));
+            rise = MathF.Max(rise, centre.Y);
+            low = MathF.Min(low, centre.Y);
+            ticks++;
+        }
+        Check(ticks > 500 && worst < 1.5f && worstY < 2f, $"a {t.Rules.Speed * 3.6f:F0} km/h tornado's drawn foot stays on its force's centre every tick ({ticks} ticks over {rise - low:F0} m of rise and fall): {worst:F2} m apart at worst, {worstY:F2} m off the ground");
+        Calm();
     }
 
     Vector3 _home;
@@ -644,15 +677,13 @@ public partial class WindTest : Node
         // The nearest stand of trees on open ground.
         Vector3 stand = Vector3.Zero;
         int most = 0;
-        for (int k = 0; k < 400; k++)
+        for (int k = 0; k < 120; k++)
         {
-            float a = k * 2.399f, r = 40f + k * 5f;
+            float a = k * 2.399f, r = 40f + k * 8f;
             Vector3 p = Spot(MathF.Cos(a) * r, MathF.Sin(a) * r);
-            Me.PlaceOutside((p + Vector3.Up * 0.1f).ToNumerics());
-            int n = Zone.Streamer.SolidsNear(p, 25f).Count(s => s.solid.Fellable);
+            int n = Zone.Streamer.FloraNear(p, 25f).Count(s => s.Kind is Planets.Look.Flora.Conifer or Planets.Look.Flora.Broadleaf or Planets.Look.Flora.JungleTree or Planets.Look.Flora.Palm); // the scatter, near or far
             if (n > most) (most, stand) = (n, p);
-            if (most >= 8) break;
-            if (k % 20 == 19) foreach (int x in _drive.Wait(10)) yield return x; // let the ground stream in round the new spots
+            if (most >= 10) break;
         }
         Me.PlaceOutside((stand + new Vector3(0f, 0f, 70f) + Vector3.Up * 0.1f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
@@ -665,7 +696,7 @@ public partial class WindTest : Node
         SurfaceWeather fx = Zone.Weather;
         int torn0 = fx.TreesTorn, thrown0 = fx.TreesThrown, snapped0 = fx.TreesSnapped, uprooted0 = fx.TreesUprooted;
         Bridge.Calm = false;
-        Tornado t = TornadoAt(stand - new Vector3(40f, 0f, 0f), TornadoShape.Cone);
+        Tornado t = TornadoAt(stand - new Vector3(40f, 0f, 0f), TornadoShape.Wedge); // the strongest: the most trees light enough to throw
         t.Rules.Speed = 3f;
         int mostFlying = 0;
         for (int i = 0; i < 60 * 30; i++)

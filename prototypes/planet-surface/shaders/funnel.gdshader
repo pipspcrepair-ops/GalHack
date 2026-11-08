@@ -37,10 +37,12 @@ void vertex() {
 	prof *= 1.0 + (0.18 * sin(h * 11.0 + seed) + 0.1 * sin(h * 23.0 + seed * 2.0)) * smoothstep(0.1, 0.4, shape + 0.15);
 	VERTEX.xz *= prof / base;
 	local = VERTEX;
-	float bowed = sin(3.14159 * h) + s_bend * sin(6.2832 * h + TIME * 0.2 + seed);
+	// Every bend is measured from the ground: the funnel's foot stays on the point the model says it
+	// touches (TornadoFx.CentreLine, the same sums), and it bends up from there to the cloud.
+	float bowed = sin(3.14159 * h) + s_bend * (sin(6.2832 * h + TIME * 0.2 + seed) - sin(TIME * 0.2 + seed));
 	VERTEX.xz += bow * bowed * (1.0 + 3.0 * decay);
-	VERTEX.xz += vec2(cos(seed), sin(seed)) * decay * 50.0 * sin(h * 14.0 + TIME * 0.8) * (1.0 - h);
-	float snake = sin(TIME * 0.7 + h * 5.0) * 3.5 * (1.0 - h) + sin(TIME * 0.31 + h * 2.0) * 6.0 * h;
+	VERTEX.xz += vec2(cos(seed), sin(seed)) * decay * 50.0 * (sin(h * 14.0 + TIME * 0.8) - sin(TIME * 0.8)) * (1.0 - h);
+	float snake = (sin(TIME * 0.7 + h * 5.0) - sin(TIME * 0.7)) * 3.5 * (1.0 - h) + sin(TIME * 0.31 + h * 2.0) * 6.0 * h;
 	VERTEX.xz += lean * h * h + vec2(snake, snake * 0.6);
 }
 

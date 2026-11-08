@@ -105,6 +105,7 @@ public sealed partial class Staging
             "regionfront" => RegionFront(),
             "plainstornado" => PlainsTornado(),
             "windbodies" => WindBodies(),
+            "treepath" => TreePath(),
             "skylevel" => SkyLevel(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),

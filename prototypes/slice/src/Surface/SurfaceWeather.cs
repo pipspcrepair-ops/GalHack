@@ -379,6 +379,9 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         Zone.Physics.ForceProviders.Add(Bridge);
     }
 
+    /// <summary>The drawn funnel of a tornado (tests), or null.</summary>
+    public TornadoFx FunnelOf(int id) => _tornadoes.TryGetValue(id, out TornadoFx fx) ? fx : null;
+
     /// <summary>The game's own shelter at a point (a place's roof, a hole deep enough): no weather reaches there.</summary>
     public Func<Vector3, bool> Shelter = static _ => false;
 
@@ -552,6 +555,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     Mesh _felledMesh;
     Basis _felledTurn = Basis.Identity;
     Vector3 _felledBounds;
+    Color _felledTint;
 
     /// <summary>
     /// A tree in a funnel's reach goes, by its weight against the tornado's pull, by the force module's own
@@ -571,7 +575,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             TreesThrown++;
             _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
-            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, _felledMesh, _felledTurn);
+            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, _felledMesh, _felledTurn, _felledTint);
             LastThrown = (_felledBounds, flung.Bounds);
         }
         else Topple(tree, root, away, height, leaf);
@@ -588,7 +592,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             TreesUprooted++;
             _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
         }
-        _trees.Fell(root, away, height, tree.Extents.X, leaf, crown: true, body: _felledMesh, turn: _felledTurn, stump: snaps);
+        _trees.Fell(root, away, height, tree.Extents.X, leaf, crown: true, body: _felledMesh, turn: _felledTurn, stump: snaps, custom: _felledTint);
     }
 
     /// <summary>Takes a tree out of the world for good, and where it stood: false if it is already gone.</summary>
@@ -603,11 +607,13 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         // The plant as it stands, before it goes: its own mesh, its turn and scale, and so its real size.
         _felledMesh = null;
         _felledTurn = Basis.Identity;
+        _felledTint = default;
         foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(root, 4f))
             if (s.Id == tree.Id)
             {
-                _felledMesh = Zone.Streamer.PlantMesh(s.Plant, s.Variant);
+                _felledMesh = Zone.Streamer.MeshOf(s);
                 _felledTurn = s.Turn;
+                _felledTint = s.Custom;
                 root = s.Root;
                 break;
             }

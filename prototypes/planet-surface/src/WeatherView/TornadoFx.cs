@@ -128,6 +128,27 @@ public partial class TornadoFx : Node3D
     static float Fract(float x) => x - MathF.Floor(x);
 
     /// <summary>
+    /// Where funnel.gdshader puts the centre of its line at height share <paramref name="h"/> (0 the ground,
+    /// 1 the cloud), off the node, in the funnel's own metres: the same sums, so tests can hold the drawn
+    /// foot to the force's centre. At the ground it is always nothing.
+    /// </summary>
+    public static Vector2 CentreLine(float h, float time, float seed, float sBend, Vector2 bow, Vector2 lean, float decay)
+    {
+        float bowed = MathF.Sin(MathF.PI * h) + sBend * (MathF.Sin(MathF.Tau * h + time * 0.2f + seed) - MathF.Sin(time * 0.2f + seed));
+        Vector2 at = bow * bowed * (1f + 3f * decay);
+        at += new Vector2(MathF.Cos(seed), MathF.Sin(seed)) * decay * 50f * (MathF.Sin(h * 14f + time * 0.8f) - MathF.Sin(time * 0.8f)) * (1f - h);
+        float snake = (MathF.Sin(time * 0.7f + h * 5f) - MathF.Sin(time * 0.7f)) * 3.5f * (1f - h) + MathF.Sin(time * 0.31f + h * 2f) * 6f * h;
+        return at + lean * h * h + new Vector2(snake, snake * 0.6f);
+    }
+
+    /// <summary>The drawn foot of the funnel in the world: the node, plus the shader's line at the ground (always nothing).</summary>
+    public Vector3 Foot => GlobalPosition + new Vector3(CentreLine(0f, (float)Time.GetTicksMsec() / 1000f, _seed, _sBend, _bow, _lean, _decay).X, 0f,
+        CentreLine(0f, (float)Time.GetTicksMsec() / 1000f, _seed, _sBend, _bow, _lean, _decay).Y);
+
+    float _seed, _sBend = 0.4f, _decay;
+    Vector2 _bow;
+
+    /// <summary>
     /// Its looks by kind: a tornado dark with dust and debris; a waterspout a pale rope over a white ring of
     /// spray (there even where the funnel stops short); a dust devil the soil's own colour, a whirling skirt
     /// at its foot and the column thinning out into clear air.
@@ -149,7 +170,7 @@ public partial class TornadoFx : Node3D
         _inner.SetShaderParameter("color_high", looks.Item4);
         foreach (ShaderMaterial m in new[] { _outer, _inner })
         {
-            m.SetShaderParameter("s_bend", kind == TornadoKind.Tornado ? 0.4f : kind == TornadoKind.Waterspout ? 1.1f : 0.7f);
+            m.SetShaderParameter("s_bend", _sBend = kind == TornadoKind.Tornado ? 0.4f : kind == TornadoKind.Waterspout ? 1.1f : 0.7f);
             m.SetShaderParameter("top_fade", kind == TornadoKind.DustDevil ? 1f : 0f);
         }
         switch (kind)
@@ -210,6 +231,7 @@ public partial class TornadoFx : Node3D
             m.SetShaderParameter("shape", shape);
             m.SetShaderParameter("clean", clean * (1f - decay));
             m.SetShaderParameter("seed", seed);
+            (_seed, _bow, _decay) = (seed, bow, decay);
             m.SetShaderParameter("decay", decay);
             m.SetShaderParameter("bow", bow);
             m.SetShaderParameter("formation", Mathf.Lerp(0.15f, 1f, formation));

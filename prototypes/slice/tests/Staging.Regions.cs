@@ -4,6 +4,7 @@ using System.Linq;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
+using PlanetSurface.Terrain;
 using Slice.Surface;
 using Slice.Vessels;
 using Weather.Forces;
@@ -228,6 +229,65 @@ public partial class Staging
             for (int i = 0; i < every; i++) yield return 0;
             if (f % 10 == 0)
                 GD.Print($"(frame {f}: tornado at {t.Position.X - row.X:F0} m; hovercraft {small.Body.WorldPosition.Y - At(10f).Y:F1} m up, tilt {Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, small.Body.Rotation).ToGodot().AngleTo(Vector3.Up)):F0}°, damage {small.Body.Damage:F2}; flyer tilt {Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, flyer.Body.Rotation).ToGodot().AngleTo(Vector3.Up)):F0}°; tank moved {N.Vector3.Distance(tank.Body.WorldPosition, (At(50f) + Vector3.Up * 4f).ToNumerics()):F1} m; survivor {_game.Survivor.WorldFeet.Y - At(-15f).Y:F1} m up; trees torn {_game.Zone.Weather.TreesTorn})");
+        }
+    }
+
+    /// <summary>
+    /// A tornado through a stand of trees, from above the canopy --dist metres (90) off: trees pulled up whole
+    /// and thrown as themselves, others snapped or blown over, stumps and root holes left along its path.
+    /// A frame every --every ticks (12) for --seconds (20), as --out with the frame's number.
+    /// </summary>
+    IEnumerable<int> TreePath()
+    {
+        Midday();
+        WeatherSim sim = WeatherNow;
+        sim.FrontsOff = true;
+        sim.Snap(WeatherKind.Thunderstorm);
+        sim.ClearTornadoes();
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 start = _game.Survivor.WorldFeet, stand = start;
+        int most = 0;
+        for (int k = 0; k < 300 && most < 12; k++)
+        {
+            float a = k * 2.399f, r = 40f + k * 6f;
+            Vector3 p = _game.Zone.GroundAt(start.X + MathF.Cos(a) * r, start.Z + MathF.Sin(a) * r);
+            if (_game.Zone.Water.LiquidAt(p.X, p.Z, out _) || _game.Places?.PlaceAt(p) != null) continue;
+            int n = _game.Zone.Streamer.FloraNear(p, 25f).Count(s => s.Kind is Planets.Look.Flora.Conifer or Planets.Look.Flora.Broadleaf or Planets.Look.Flora.JungleTree or Planets.Look.Flora.Palm); // the scatter, near or far: no need to go there to look
+            if (n > most) (most, stand) = (n, p);
+        }
+        _game.Survivor.PlaceOutside((stand + new Vector3(0f, 0f, 60f) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        GD.Print($"(tree path: {most} trees within 25 m of the stand)");
+        float dist = (float)Num("dist", 130);
+        Vector3 eye = stand + new Vector3(0f, 0f, dist);
+        // Clear over the canopy: above the tallest plant between it and the stand, and then some.
+        float canopy = 0f;
+        foreach (TerrainStreamer.PlantSighting s in _game.Zone.Streamer.FloraNear(stand + new Vector3(0f, 0f, dist * 0.5f), dist * 0.6f))
+            canopy = MathF.Max(canopy, s.Root.Y + (new Transform3D(s.Turn, Vector3.Zero) * (_game.Zone.Streamer.MeshOf(s)?.GetAabb() ?? new Aabb())).End.Y);
+        eye.Y = MathF.Max(MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y), canopy) + (float)Num("up", 25);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((stand + Vector3.Up * 10f - eye).Normalized(), Vector3.Up), eye);
+        if (Num("still", 0) == 1)
+        {
+            // The stand as it is, no tornado: what the trees look like untouched.
+            foreach (int x in _drive.Wait(60)) yield return x;
+            yield break;
+        }
+        _game.Zone.Weather.Bridge.Calm = false;
+        TornadoShapeRules cone = sim.Data.Tornado.Shapes.First(s => s.Shape == Enum.Parse<TornadoShape>(_args.GetValueOrDefault("shape", "Wedge")));
+        Tornado t = sim.SpawnTornado(stand - new Vector3(45f, 0f, 0f), stand + new Vector3(500f, 0f, 0f), sim.Data.Tornado.Shaped(cone, (float)Num("speed", 4), 300f));
+        t.Homing = false;
+        t.Kept = true;
+        t.SetHeading(0f);
+        t.SkipFormation();
+        int every = (int)Num("every", 12), frames = (int)(Num("seconds", 20) * 60 / every);
+        string pattern = _args.GetValueOrDefault("out", "trees.png").Replace(".png", "-{0:D3}.png");
+        SurfaceWeather fx = _game.Zone.Weather;
+        for (int f = 0; f < frames; f++)
+        {
+            foreach (int x in Shot(string.Format(pattern, f))) yield return x;
+            for (int i = 0; i < every; i++) yield return 0;
+            if (f % 10 == 0)
+                GD.Print($"(frame {f}: tornado at {t.Position.X - stand.X:F0} m; torn {fx.TreesTorn}: {fx.TreesThrown} thrown, {fx.TreesSnapped} snapped, {fx.TreesUprooted} blown over; flying {fx.Trees?.Flying ?? 0}; last thrown stood {fx.LastThrown.Standing} flew {fx.LastThrown.Flying})");
         }
     }
 }

@@ -73,7 +73,7 @@ public sealed partial class TreeFx : Node3D
     /// A tree felled: the trunk and crown topple away along <paramref name="away"/>, lie, and fade;
     /// a stump stays.
     /// </summary>
-    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true)
+    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true, Color custom = default)
     {
         away.Y = 0f;
         away = away.LengthSquared() < 1e-4f ? Vector3.Forward : away.Normalized();
@@ -85,7 +85,7 @@ public sealed partial class TreeFx : Node3D
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f },
                 Position = root + Vector3.Up * 0.2f,
             });
-        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f));
+        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f, custom));
     }
 
     /// <summary>Root holes left where trees were torn out whole (tests).</summary>
@@ -119,9 +119,9 @@ public sealed partial class TreeFx : Node3D
     /// lands. <paramref name="body"/> and <paramref name="turn"/> are the plant's own mesh and its standing
     /// turn and scale, so it flies as itself, full size.
     /// </summary>
-    public FlungTree Throw(Vector3 root, Vector3 velocity, float height, float radius, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default)
+    public FlungTree Throw(Vector3 root, Vector3 velocity, float height, float radius, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default, Color custom = default)
     {
-        var tree = new FlungTree(root, velocity, height, radius, new Color(0.36f, 0.25f, 0.16f), leaf, ground, body, turn);
+        var tree = new FlungTree(root, velocity, height, radius, new Color(0.36f, 0.25f, 0.16f), leaf, ground, body, turn, custom);
         AddChild(tree);
         return tree;
     }
@@ -130,13 +130,26 @@ public sealed partial class TreeFx : Node3D
 /// <summary>A felled tree toppling over, lying a good while along the path it was torn from, and fading away.</summary>
 public sealed partial class FallingTree : Node3D
 {
+    /// <summary>
+    /// The standing plant's own look for one that is down: the scatter's colours with the instance's own tint
+    /// and glow (<paramref name="custom"/>; the leaf colour only where that isn't known), still, lit as it lies.
+    /// </summary>
+    public static ShaderMaterial FallMaterial(Color leaf, Color custom)
+    {
+        var m = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
+        bool known = custom.R + custom.G + custom.B > 0f;
+        m.SetShaderParameter("tint", known ? new Vector3(custom.R, custom.G, custom.B) : new Vector3(leaf.R, leaf.G, leaf.B));
+        m.SetShaderParameter("glow", known ? custom.A : 0f);
+        return m;
+    }
+
     const float FallTime = 1.5f, LieTime = 90f, FadeTime = 4f;
     readonly Vector3 _axis;
     readonly StandardMaterial3D _bark, _leaf;
     readonly ShaderMaterial _body;
     float _t;
 
-    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f)
+    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f, Color custom = default)
     {
         Position = root;
         _axis = Vector3.Up.Cross(away).Normalized();
@@ -149,8 +162,7 @@ public sealed partial class FallingTree : Node3D
         if (body != null)
         {
             // The tree itself goes over, its own shape and colours.
-            _body = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
-            _body.SetShaderParameter("tint", new Vector3(leaf.R, leaf.G, leaf.B));
+            _body = FallMaterial(leaf, custom);
             AddChild(new MeshInstance3D { Mesh = body, MaterialOverride = _body, Basis = turn });
             return;
         }
@@ -209,7 +221,7 @@ public sealed partial class FlungTree : Node3D
     /// <summary>The size it flies at, as drawn: its own mesh at its own scale.</summary>
     public Vector3 Bounds { get; }
 
-    public FlungTree(Vector3 root, Vector3 velocity, float height, float radius, Color bark, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default)
+    public FlungTree(Vector3 root, Vector3 velocity, float height, float radius, Color bark, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default, Color custom = default)
     {
         Position = root + Vector3.Up * (height * 0.5f);
         _velocity = velocity;
@@ -224,8 +236,7 @@ public sealed partial class FlungTree : Node3D
         // stood), or a trunk and crown where the world's herbarium has no mesh for it; its root plate below.
         if (body != null)
         {
-            _body = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
-            _body.SetShaderParameter("tint", new Vector3(leaf.R, leaf.G, leaf.B));
+            _body = FallingTree.FallMaterial(leaf, custom);
             var standing = new Transform3D(turn, Vector3.Down * (height * 0.5f));
             AddChild(new MeshInstance3D { Mesh = body, MaterialOverride = _body, Transform = standing });
             Bounds = (new Transform3D(turn, Vector3.Zero) * body.GetAabb()).Size;
