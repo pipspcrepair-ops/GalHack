@@ -133,6 +133,48 @@ public sealed partial class WorldLife
         return list;
     }
 
+    List<Species> _dark;
+    Species _armed;
+    bool _armedMade;
+
+    /// <summary>
+    /// What the dark holds on this world beside the deep's own kinds, drawn from the whole of its life:
+    /// its hunters (packs, ambushers, the biggest of its predators), its twisted beasts where something
+    /// twisted them, the changed its fall made, its machines where they rose, its Hollows where the
+    /// growth is. The darkest, deepest rooms of any place and the caves get the most of these.
+    /// </summary>
+    public IReadOnlyList<Species> Dark => _dark ??= MakeDark();
+
+    static int DarkFirst(Species s) => s.Behaviour is Behaviour.PackHunter or Behaviour.Ambusher ? 1 : 0;
+
+    List<Species> MakeDark()
+    {
+        var list = new List<Species>();
+        var hunters = Fauna.Species.FindAll(x => Walks(x) && !x.Corrupted && x.Behaviour is Behaviour.PackHunter or Behaviour.Ambusher or Behaviour.Predator);
+        // The packs and the ambushers first, then the biggest: what you least want to meet in the dark.
+        hunters.Sort((a, b) => DarkFirst(b) != DarkFirst(a) ? DarkFirst(b).CompareTo(DarkFirst(a)) : b.Body.Size.CompareTo(a.Body.Size));
+        for (int i = 0; i < hunters.Count && i < 3; i++) list.Add(hunters[i]);
+        if (World.Mutagen > 0.2f || World.Predators > 0.3f) list.AddRange(Twisted);
+        list.AddRange(Signature.Denning);
+        list.AddRange(Signature.Machines);
+        if (World.Bloom) list.AddRange(Hollows);
+        return list;
+    }
+
+    /// <summary>An armed group for the dark now and then: the world's own armed people (soldiers, militia, raiders), else raiders of its people; none where nobody survives.</summary>
+    public Species Armed
+    {
+        get
+        {
+            if (_armedMade) return _armed;
+            _armedMade = true;
+            foreach (var k in Signature.Kinds)
+                if (k.Kind.Armed && k.Kind.Hunts) return _armed = k.Species;
+            if (World.Peopled && Data.Signature.Kinds.TryGetValue("raiders", out SignatureKind raiders)) _armed = MakeKind("raiders", raiders, 8);
+            return _armed;
+        }
+    }
+
     static void Aggressive(Species s, float damage)
     {
         s.Behaviour = s.Behaviour is Behaviour.PackHunter or Behaviour.Ambusher ? s.Behaviour : Behaviour.Predator;

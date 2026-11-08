@@ -408,14 +408,9 @@ public static class OccupancyLayer
         foreach (PlacedModule m in Settled(x, rooms, n))
         {
             if (Patch(x, m, first ? 7f : 4f) is not { } p) continue;
+            // No nest is built (the owner: none anywhere): what lives here leaves what it ate.
             foreach (Int3 c in p.Near)
-            {
-                float d = c.FlatDistance(p.Mid);
-                if (x.R.Chance(0.55f - d * 0.05f)) x.Put(c, BlockType.Rubble, Material.Resin, resin.Lerp(new Rgb(0x3e, 0x34, 0x24), x.R.Float()));
-                else if (x.R.Chance(first ? 0.35f : 0.18f)) x.Put(c, BlockType.Pod, Material.Chitin, egg.Scale(x.R.Float(0.8f, 1.1f)));
-                else if (x.R.Chance(0.1f)) x.Put(c, BlockType.Remains, Material.Bone, bone);
-            }
-            Webs(x, m, p.Near, resin.Lerp(bone, 0.5f));
+                if (x.R.Chance(0.1f)) x.Put(c, BlockType.Remains, Material.Bone, bone);
             if (full && fauna.Count > 0)
                 for (int e = 0, count = first ? x.R.Between(3, 6) : x.R.Between(1, 3); e < count && p.Near.Count > 0; e++)
                     x.Enemy(x.R.Pick(fauna), EnemyKind.Fauna, x.R.Pick(p.Near), m.Index, first ? 2 : 1);

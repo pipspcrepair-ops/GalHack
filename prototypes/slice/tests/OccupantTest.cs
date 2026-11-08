@@ -46,15 +46,16 @@ public partial class OccupantTest : Node
             _lib = WorldChoice.Library;
             _data = DataFiles.LoadWildlife();
             // -- --own: only the world's own kinds (the quick part).
-            bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0;
-            if (!own)
+            bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
+            if (!own && !dark)
             {
                 Mix();
                 Falls();
                 Sited();
                 Spawns();
             }
-            Signatures();
+            if (!dark) Signatures();
+            if (!own) DarkPlaces();
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
@@ -269,6 +270,8 @@ public partial class OccupantTest : Node
         Check(haunts == hollowPlaces && hauntsOk == haunts, $"and they keep to the ground round it outside: {hauntsOk} of {hollowPlaces} have Hollows haunting their ground");
     }
 
+    static bool UnderRoom(PoiInstance inst, int module) => inst.Layout.Modules.FirstOrDefault(m => m.Index == module) is { Storey: < 0 };
+
     /// <summary>Why a place doesn't hold what its occupant says (null when it does), and a note of what it holds.</summary>
     static string Judge(Occupant o, PoiInstance inst, PlaceFauna.Deep deep, WorldLife life, out string note)
     {
@@ -277,7 +280,7 @@ public partial class OccupantTest : Node
         int people = inst.Townsfolk?.People.Count ?? 0;
         bool hostile = inst.Mood == Mood.Hostile;
         var spawns = pop.Silent ? new List<PoiSpawn>() : pop.Spawns;
-        int vermin = spawns.Count(s => s.Species.Role == DeepRole.Subsister);
+        int vermin = spawns.Count(s => s.Species.Role == DeepRole.Subsister || s.Species.Passive);
         int hunters = spawns.Count - vermin;
         int nests = pop.Nests.Count, machines = spawns.Count(s => s.Species.Mechanical), husks = spawns.Count(s => s.Species.Husk) + pop.Masses.Count;
         int twisted = spawns.Count(s => s.Species.Figure == null && s.Species.Mutation > 0.3f && !s.Species.Mechanical);
@@ -286,9 +289,10 @@ public partial class OccupantTest : Node
         switch (o)
         {
             case Occupant.Empty or Occupant.Sleepers:
-                return hunters > 0 || nests > 0 || people > 0 ? "more than vermin" : null;
+                // Nobody's above; below ground the dark has its own all the same (the owner's rule for dark places).
+                return spawns.Any(s => !s.Species.Passive && s.Species.Role != DeepRole.Subsister && !UnderRoom(inst, s.Room)) || nests > 0 || people > 0 ? "more than vermin above ground" : null;
             case Occupant.Nesters:
-                return nests < 1 || spawns.Count(s => s.Nest >= 0) < 1 ? "no nests" : people > 0 ? "people" : null;
+                return nests > 0 ? "a nest built" : spawns.Count(s => s.Species.Role is DeepRole.Nester or DeepRole.DerelictNester) < 2 ? "no nesters" : people > 0 ? "people" : null;
             case Occupant.Prowlers:
                 return twisted < 2 ? "no twisted beasts" : people > 0 ? "people" : null;
             case Occupant.Turned or Occupant.Warped:

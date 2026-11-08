@@ -69,6 +69,8 @@ public sealed class Species
     public float WarnRadius, DefendRadius;
     /// <summary>Hunts the place's subsisters; flees into cracks; what it eats.</summary>
     public bool HuntsPrey, FleesIntoCracks;
+    /// <summary>Keeps to itself (a place's insects): crawls its walls, floors and ceilings and scatters from you; bites only when hurt.</summary>
+    public bool Passive;
     public Diet Diet;
     public bool IsDeep => Role != DeepRole.None;
     /// <summary>How twisted it is by a mutagenic world (fallout, a biolab agent, the Bloom's touch): 0 not at all, 1 fully.</summary>

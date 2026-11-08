@@ -47,6 +47,12 @@ public static partial class Brain
             c.NoticedAt = w.Time;
         }
 
+        // Those that keep to themselves (a place's insects) go about it and scatter, unless just hurt.
+        if (s.Passive && !(c.ProvokedBy != null && w.Time - c.ProvokedAt < 12f && c.ProvokedBy.Attackable))
+        {
+            Subsist(w, c, dt);
+            return;
+        }
         switch (s.Role)
         {
             case DeepRole.Subsister: Subsist(w, c, dt); break;
