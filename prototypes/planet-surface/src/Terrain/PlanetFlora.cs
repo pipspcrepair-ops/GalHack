@@ -57,7 +57,9 @@ public sealed class PlanetFlora
             Archetype.Alien => (0.62f, 1f), Archetype.Lava => (0.32f, 0.66f), Archetype.Ice => (0.04f, 0.28f), Archetype.Arid => (0.04f, 0.3f), _ => (0f, 0.16f),
         };
         float u = (Hash.Of(spec.Seed, 0x5354524E) >> 40) * (1f / (1 << 24));
-        return Math.Clamp(lo + (hi - lo) * u + lean, 0f, 1f);
+        // A lean toward the strange takes a share of the headroom left, so a world already strange still differs from the next.
+        float strange = lo + (hi - lo) * u;
+        return Math.Clamp(lean >= 0f ? strange + lean * (1f - strange) : strange + lean, 0f, 1f);
     }
 
     /// <param name="vacuum">force no air at all, whatever the world says (a test's vacuum world)</param>

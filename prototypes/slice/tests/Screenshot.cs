@@ -37,6 +37,14 @@ public partial class Screenshot : Node
 
     public override void _Ready()
     {
+        // A wall-clock limit too: the game clock above can crawl on a loaded machine, and a run must always end itself.
+        var watchdog = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(25));
+            Console.Error.WriteLine("screenshot: over 25 minutes of real time, quitting");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        watchdog.Start();
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
         ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())
@@ -47,6 +55,13 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        // A place of a family near the landing, and who is in it (--force-family, --force-occupant=Keepers).
+        if (_args.TryGetValue("force-family", out string ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
+        if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))
+        {
+            PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);
+            PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Abandoned;
+        }
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

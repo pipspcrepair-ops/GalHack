@@ -27,7 +27,7 @@ public sealed class WorldReading
 
     // ---- Flora ----
 
-    /// <summary>How much stranger than its type the world's plants are, -0.2 to 0.6: added to the type's own range.</summary>
+    /// <summary>How much stranger than its type the world's plants are, -0.2 to 0.45: added to the type's own range.</summary>
     public float Alien { get; private init; }
     public float Overgrown { get; private init; }
     public float Dead { get; private init; }
@@ -87,7 +87,7 @@ public sealed class WorldReading
             Severity = severity,
             Storm = U(0.3f + L("storm")),
             Dry = U(L("dry")),
-            Alien = Math.Clamp(L("alien") + 0.15f * MathF.Max(0f, roll.Depth), -0.2f, 0.6f),
+            Alien = Math.Clamp(L("alien") + 0.1f * MathF.Max(0f, roll.Depth), -0.2f, 0.45f),
             Overgrown = U(L("overgrown")),
             Dead = dead,
             Swollen = U(L("swollen")),
