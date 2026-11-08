@@ -130,11 +130,18 @@ public sealed class Galaxy
         return best;
     }
 
+    /// <summary>How far a place lies across from the nearest spiral arm, as a share of the arm's width: 0 on its centre line, past 1 in the gap.</summary>
+    public float ArmShare(Vector3 p) => GalaxyGen.ArmShare(this, p);
+
+    /// <summary>A home's most share of an arm's width off its centre line: well inside the arm, never the gap beside it.</summary>
+    public const float TipShare = 0.6f;
+
     /// <summary>
-    /// The player's home: a real star of the world's own class out on the rim (design: every game
-    /// begins on a border world), with neighbours in jump reach. <paramref name="key"/> picks among
-    /// the candidates; a world whose sky holds a nebula gets a star inside one you can see, and
-    /// the rest get one in the open. Each step down gives a little up, so there is always a home.
+    /// The player's home: a real star of the world's own class at the outer tip of a spiral arm, out on
+    /// the rim (design: every game begins on a border world) and inside the arm, never in the gap between
+    /// two or in toward the core, with neighbours in jump reach. <paramref name="key"/> picks among the
+    /// candidates; a world whose sky holds a nebula gets a star inside one you can see, and the rest get
+    /// one in the open. Each step down gives a little up, so there is always a home.
     /// </summary>
     public int Home(StarKind kind, ulong key, bool inNebula)
     {
@@ -152,7 +159,13 @@ public sealed class Galaxy
         bool Seen(int id) => Stars[id].Nebula >= 0 && Nebulae[Stars[id].Nebula].Kind != NebulaKind.Dark;
         // Out in the open the crowded spots are skipped: the rim is meant to be lonely. A nebula's stars crowd by nature.
         bool Lonely(int id) => Neighbours(id).Count <= 70;
-        var fits = rim.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
+        var tips = rim.FindAll(id => ArmShare(Stars[id].Position) <= TipShare);
+        var fits = tips.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
+        if (fits.Count == 0) fits = tips.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0));
+        // A nebula world would rather its nebula on the rim than an arm's tip without one.
+        if (fits.Count == 0 && inNebula) fits = rim.FindAll(id => Reach(id, 4) && Seen(id));
+        if (fits.Count == 0) fits = tips.FindAll(id => Reach(id, 1));
+        if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
         if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 4) && Stars[id].Nebula < 0);
         if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 1));
         if (fits.Count == 0) fits = wider.FindAll(id => Reach(id, 1));
