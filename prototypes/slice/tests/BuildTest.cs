@@ -904,16 +904,16 @@ public partial class BuildTest : Node
     /// <summary>The tech tree's tabs (Base &amp; Capital, Small &amp; Hover, tools, weapons, deco, misc) and the hover gate, on a fresh character.</summary>
     void TechTabs()
     {
-        GD.Print("-- the tech tree: one tab for base and capital, one for small and hover --");
+        GD.Print("-- the tech tree: one tab for Large (Big Core), one for Small (Small Core) --");
         var data = _game.Zone.Data;
         var fresh = new Progress(data.Progress, data.Items, data.Catalogue);
-        Check(Progress.Tabs.SequenceEqual(new[] { "base", "small", "tools", "weapons", "deco", "misc" }), $"six tabs: {string.Join(", ", Progress.Tabs)}");
+        Check(Progress.Tabs.SequenceEqual(new[] { "large", "small", "tools", "weapons", "misc" }), $"five tabs: {string.Join(", ", Progress.Tabs)}");
         var stray = fresh.Nodes.Where(n => !Progress.Tabs.Contains(n.Tab)).Select(n => $"{n.Id}:{n.Tab}").ToList();
         Check(stray.Count == 0, $"every node sits on one of them{(stray.Count > 0 ? ": " + string.Join(", ", stray) : "")}");
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice (a block shared by a base and a capital vessel is one node)");
-        Check(fresh.Node("thruster@large").Tab == "base" && fresh.Node("big-core").Tab == "base" && fresh.Node("thruster@large").Unlock.Parent == "big-core", "the Big Core heads the Base & Capital tab, the large thruster under it");
-        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("small-core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "small-core", "the Small Core heads the Small & Hover tab, the hover plate under it");
-        Check(fresh.Node("thruster@small").Unlock.Parent == "hover@small", "hover plates are the thruster's prerequisite on Small & Hover");
+        Check(fresh.Node("thruster@large").Tab == "large" && fresh.Node("big-core").Tab == "large" && fresh.Node("thruster@large").Unlock.Parent == "big-core", "the Big Core heads the Large tab, the large thruster under it");
+        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("small-core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "small-core", "the Small Core heads the Small tab, the hover plate under it");
+        Check(fresh.Node("thruster@small").Unlock.Parent == "hover@small", "hover plates are the thruster's prerequisite on Small");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.Unlock("small-core") && fresh.Unlock("hover@small") && fresh.Points == 1, "the Small Core and the hover plate both open at level 1, with a point to spare");
         Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.NeedsLevel, "and the thruster behind them waits for its level");

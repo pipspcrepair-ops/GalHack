@@ -22,6 +22,44 @@ public partial class BuildTest
         foreach (int x in ScannerChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
         HudBoxChecks();
+        foreach (int x in TechFitChecks()) yield return x;
+    }
+
+    /// <summary>Every tech tab, every deco set: each node a tile inside the screen, none on another, none scrolled away, and tall enough to read at 1080p.</summary>
+    IEnumerable<int> TechFitChecks()
+    {
+        TechSection tech = _game.Menu.Root.Tech;
+        _game.Menu.Open(MenuTab.Tech);
+        var screen = new Rect2(0, 0, Gui.Width, Gui.Height);
+        const float Px = 1080f / Gui.Height; // design units to 1080p pixels
+        foreach (string tab in Slice.Items.Progress.Tabs)
+        {
+            tech.Tab = tab;
+            tech.Group = null;
+            foreach (int x in _drive.Wait(3)) yield return x;
+            var groups = _game.Progress.Nodes.Where(n => n.Tab == tab && n.Group != null).Select(n => n.Group).Distinct().ToList();
+            foreach (string grp in groups.Count == 0 ? new string[] { null } : groups.ToArray())
+            {
+                if (grp != null) { tech.Group = grp; foreach (int x in _drive.Wait(3)) yield return x; }
+                var want = _game.Progress.Nodes.Where(n => n.Tab == tab && (n.Group == null || n.Group == grp)).Select(n => n.Id).ToList();
+                var tiles = tech.Placed;
+                var missing = want.Where(id => !tiles.ContainsKey(id)).ToList();
+                var outside = tiles.Where(kv => !screen.Encloses(kv.Value) || !tech.GridArea.Encloses(kv.Value)).Select(kv => kv.Key).ToList();
+                var list = tiles.ToList();
+                int overlaps = 0;
+                for (int i = 0; i < list.Count; i++)
+                    for (int k = i + 1; k < list.Count; k++)
+                        if (list[i].Value.Intersects(list[k].Value)) overlaps++;
+                float minH = tiles.Count == 0 ? 0 : tiles.Values.Min(r => r.Size.Y), minW = tiles.Count == 0 ? 0 : tiles.Values.Min(r => r.Size.X);
+                string name = grp == null ? tab : $"{tab}, deco set {grp}";
+                if (grp == null || grp == groups[0] || missing.Count + outside.Count + overlaps > 0 || minH < TechSection.MinTileH)
+                    Check(missing.Count == 0 && outside.Count == 0 && overlaps == 0 && minH >= TechSection.MinTileH,
+                        $"tech {name}: all {want.Count} nodes on one 1080p screen, tiles {minW * Px:F0} x {minH * Px:F0} px or larger, none overlapping{(missing.Count + outside.Count + overlaps == 0 ? "" : $": missing {missing.Count}, outside {outside.Count}, overlaps {overlaps}")}");
+            }
+        }
+        Check(_game.Progress.Nodes.Where(n => n.Tab == "large").Select(n => TechSection.LaneOf(new TechLayout(_game.Progress.Nodes.Where(m => m.Tab == "large")).ById[n.Id])).Distinct().Count() == 3,
+            "the Large tab has its core lane and hover and flight as parallel lanes");
+        _game.Menu.Close();
     }
 
     /// <summary>The visor's labels at 1080p and 1440p, measured from their boxes: none on another, none off the glass.</summary>

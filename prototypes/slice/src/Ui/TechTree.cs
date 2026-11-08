@@ -111,62 +111,58 @@ public sealed class TechLayout
 }
 
 /// <summary>
-/// TECH: the tech tree, one tab per kind of thing (base and capital vessel, small and hover vessel,
-/// tools, weapons, deco, misc), built from the unlock on every item and block. See
-/// <see cref="TechLayout"/>: nodes stand in columns by the level they open at and every branch has
-/// its own row, joined to its parent by a right-angle wire. Pointing at a node lights its path back
-/// to the root and everything it opens, and dims the rest. A tree wider or taller than the window
-/// scrolls (the wheel, shift and the wheel, or the arrows). Unlocked nodes are lit; locked ones say
-/// what they need (a level, points, their parent); one you can afford unlocks on a click. The deco
-/// tab holds a family per theme set: pick a set, then its pieces show.
+/// TECH: the tech tree on one screen, one tab per kind of thing (Large, Small, tools, weapons, misc),
+/// built from the unlock on every item and block. Each tab is a compact grid: a column per level, a
+/// tile per node with its item's icon, name, cost and state. Large and Small are split into lanes:
+/// the core and what every mode shares, then hover tech and flight tech side by side as parallel
+/// branches. Misc keeps the deco sets below its own nodes: pick a set, its pieces show. Pointing at
+/// a tile lights what it needs and what it opens and dims the rest; one you can afford unlocks on a
+/// click. Nothing scrolls: the tiles shrink to fit the screen.
 /// </summary>
 public sealed class TechSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
-    public string Tab = "base";
-    /// <summary>The deco set shown on a tab with groups.</summary>
+    public string Tab = "large";
+    /// <summary>The deco set shown on the misc tab.</summary>
     public string Group;
-    /// <summary>How far the tree is scrolled, in columns and rows.</summary>
+    /// <summary>Kept for scripts that scrolled the old tree; nothing scrolls now.</summary>
     public int ColOff, RowOff;
 
-    const float BoxW = 204, BoxH = 48, ColW = 244, RowH = 58;
-    int _visCols = 6, _visRows = 10;
-    string _key, _layoutKey;
+    /// <summary>Tile sizes: the largest a tile grows to, the smallest it may shrink to, the gaps, and the lane label's width.</summary>
+    public const float MaxTileW = 230, MaxTileH = 46, MinTileH = 26, Gap = 4, LaneW = 74;
+
+    string _layoutKey;
     TechLayout _layout;
+
+    /// <summary>Every tile laid out in the last input pass, by node (tests measure them).</summary>
+    public readonly Dictionary<string, Rect2> Placed = new();
+    /// <summary>The grid's area in the last input pass (tests).</summary>
+    public Rect2 GridArea;
 
     public TechSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
 
-    /// <summary>What the section's picture depends on besides the pointer, so scrolling redraws.</summary>
-    public string Signature => $"{Tab}|{Group}|{ColOff}|{RowOff}";
+    /// <summary>What the section's picture depends on besides the pointer.</summary>
+    public string Signature => $"{Tab}|{Group}";
 
-    static string KeyOf(string tab, string group) => group == null ? tab : tab + "/" + group;
-
-    TechLayout LayoutFor(string tab, string group)
+    TechLayout LayoutFor(string tab)
     {
-        string key = KeyOf(tab, group);
-        if (_layout == null || _layoutKey != key)
+        if (_layout == null || _layoutKey != tab)
         {
-            _layout = new TechLayout(_game.Progress.Nodes.Where(n => n.Tab == tab && (group == null || n.Group == group)));
-            _layoutKey = key;
+            _layout = new TechLayout(_game.Progress.Nodes.Where(n => n.Tab == tab));
+            _layoutKey = tab;
         }
         return _layout;
     }
 
-    /// <summary>Scrolls to a node (switching to its tab and set), so a script can click it.</summary>
+    /// <summary>Shows a node's tab (and set), so a script can click it.</summary>
     public void Reveal(string id)
     {
         TechNode n = _game.Progress.Node(id);
         if (n == null) return;
         Tab = n.Tab;
         if (n.Group != null) Group = n.Group;
-        TechLayout l = LayoutFor(Tab, n.Group);
-        _key = KeyOf(Tab, n.Group);
-        ColOff = RowOff = 0;
-        if (!l.ById.TryGetValue(id, out TechLayout.Cell c)) return;
-        if (c.Col >= _visCols) ColOff = c.Col - _visCols + 1;
-        if (c.Row >= _visRows) RowOff = c.Row - _visRows + 1;
     }
 
     /// <summary>"Steel block (large)" to "Steel block" and its grid: L, S, or none.</summary>
@@ -186,6 +182,37 @@ public sealed class TechSection : IMenuSection
         return (text.TrimEnd() + "…", s);
     }
 
+    /// <summary>Which lane a node of Large or Small sits in: hover tech, flight tech, or the core and what every mode shares. The nearest hover plate or thruster up its line decides.</summary>
+    public static string LaneOf(TechLayout.Cell c)
+    {
+        for (TechLayout.Cell x = c; x != null; x = x.Parent)
+        {
+            string block = x.Node.BlockId ?? x.Node.ItemId ?? "";
+            if (block.StartsWith("hover", StringComparison.Ordinal)) return "HOVER";
+            if (block.StartsWith("thruster", StringComparison.Ordinal)) return "FLIGHT";
+        }
+        return "CORE";
+    }
+
+    /// <summary>The lanes of a tab, top to bottom, with their nodes.</summary>
+    List<(string Name, List<TechLayout.Cell> Cells)> Lanes(TechLayout lay, string group)
+    {
+        var lanes = new List<(string, List<TechLayout.Cell>)>();
+        if (Tab is "large" or "small")
+            foreach (string lane in new[] { "CORE", "HOVER", "FLIGHT" })
+            {
+                var cells = lay.Cells.Where(c => LaneOf(c) == lane).ToList();
+                if (cells.Count > 0) lanes.Add((lane, cells));
+            }
+        else
+        {
+            var own = lay.Cells.Where(c => c.Node.Group == null).ToList();
+            if (own.Count > 0) lanes.Add((Progress.TabName(Tab), own));
+            if (group != null) lanes.Add(("DECO", lay.Cells.Where(c => c.Node.Group == group).ToList()));
+        }
+        return lanes;
+    }
+
     public void Build(Gui g, Rect2 area)
     {
         Progress p = _game.Progress;
@@ -196,148 +223,92 @@ public sealed class TechSection : IMenuSection
             string t = Progress.Tabs[i];
             if (g.Tab($"tech:tab:{t}", new Rect2(o + new Vector2(i * (tabW + 8), 0), new Vector2(tabW, 36)), Progress.TabName(t), Tab == t, C.Accent2)) Tab = t;
         }
-        g.Text($"LEVEL {p.Level}   {p.Points} UNLOCK POINTS   {p.Xp} XP{(p.Creative ? "   (CREATIVE: everything unlocked)" : "")}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
-        var onTab = p.Nodes.Where(n => n.Tab == Tab).ToList();
-        if (onTab.Count == 0) return;
-        // Tabs with groups (deco): a row of sets, then one set's pieces. Up to 12 sets a row, two rows.
-        var groups = onTab.Select(n => n.Group).Where(x => x != null).Distinct().ToList();
-        float top = 0;
+        g.Text($"LEVEL {p.Level}", o + new Vector2(0, 46), C.Accent2, 17, UiTheme.Display);
+        g.Text($"{p.Points} PTS", o + new Vector2(170, 48), C.Accent2, 16, UiTheme.Mono);
+        g.Text($"{p.Xp} XP", o + new Vector2(290, 48), C.Text, 16, UiTheme.Mono);
+        if (p.Creative) g.Text("CREATIVE", o + new Vector2(440, 48), C.Holo, 16, UiTheme.Label);
+        Placed.Clear();
+        TechLayout lay = LayoutFor(Tab);
+        if (lay.Cells.Count == 0) return;
+
+        // Misc: its deco sets, a row of buttons; one set's pieces form the last lane.
+        float top = o.Y + 76;
+        var groups = lay.Cells.Select(c => c.Node.Group).Where(x => x != null).Distinct().ToList();
         string group = null;
         if (groups.Count > 0)
         {
             if (Group == null || !groups.Contains(Group)) Group = groups[0];
             group = Group;
-            float gw = (area.Size.X - 10) / 12;
+            const int PerRow = 12;
+            float gw = (area.Size.X - LaneW) / PerRow;
+            g.TextIn("DECO", new Rect2(o.X, top, LaneW - 8, 26), C.Holo, 13, HorizontalAlignment.Left, UiTheme.Display);
             for (int i = 0; i < groups.Count; i++)
             {
-                var r = new Rect2(o.X + i % 12 * gw, o.Y + 76 + i / 12 * 30, gw - 4, 26);
+                var r = new Rect2(o.X + LaneW + i % PerRow * gw, top + i / PerRow * 30, gw - 4, 26);
                 if (g.Button($"tech:group:{groups[i]}", r, groups[i].ToUpperInvariant(), C.Holo, lit: groups[i] == Group, size: 11)) { Group = groups[i]; group = Group; }
             }
-            top = (groups.Count + 11) / 12 * 30 + 4;
+            top += (groups.Count + PerRow - 1) / PerRow * 30 + 6;
         }
-        string key = KeyOf(Tab, group);
-        if (key != _key)
-        {
-            _key = key;
-            ColOff = RowOff = 0;
-        }
-        TechLayout lay = LayoutFor(Tab, group);
 
-        // The window on the tree: whole columns and rows only, so no box is ever cut.
-        float headY = o.Y + 80 + top, treeY = o.Y + 106 + top;
-        float viewH = area.End.Y - 24 - treeY;
-        _visCols = Math.Max(1, (int)((area.Size.X + (ColW - BoxW)) / ColW));
-        _visRows = Math.Max(1, (int)(viewH / RowH));
-        var view = new Rect2(o.X, treeY, area.Size.X, _visRows * RowH);
-        int maxCol = Math.Max(0, lay.Columns.Count - _visCols), maxRow = Math.Max(0, lay.Rows - _visRows);
-        if (!g.Drawing && g.Over(new Rect2(o.X, headY, area.Size.X, view.End.Y - headY)) && _game.Controls.Wheel != 0)
+        var lanes = Lanes(lay, group);
+        var shown = lanes.SelectMany(l => l.Cells).ToList();
+        // Columns by level; a crowded level spreads over several columns. The split that gives the
+        // most readable tiles wins (tall enough for two lines, wide enough for a name).
+        var levels = shown.Select(c => c.Node.Level).Distinct().OrderBy(x => x).ToList();
+        int Count(int lane, int level) => lanes[lane].Cells.Count(c => c.Node.Level == level);
+        float headH = 22, laneGap = 10;
+        GridArea = new Rect2(o.X, top, area.Size.X, area.End.Y - top);
+        float rowsH = GridArea.Size.Y - headH - laneGap * (lanes.Count - 1);
+        int most = Enumerable.Range(0, lanes.Count).SelectMany(li => levels.Select(l => Count(li, l))).Max();
+        Dictionary<int, int> span = null;
+        List<int> laneRows = null;
+        float tileW = 0, tileH = 0, best = -1;
+        for (int rows = 1; rows <= most; rows++)
         {
-            int step = Math.Sign(_game.Controls.Wheel);
-            if (g.Shift) ColOff += step; else RowOff += step * 2;
+            var k = levels.ToDictionary(l => l, l => Enumerable.Range(0, lanes.Count).Max(li => (Count(li, l) + rows - 1) / rows));
+            var lr = Enumerable.Range(0, lanes.Count).Select(li => Math.Max(1, levels.Max(l => (Count(li, l) + k[l] - 1) / k[l]))).ToList();
+            float w = Math.Min(MaxTileW, (area.Size.X - LaneW) / k.Values.Sum() - Gap), h = Math.Min(MaxTileH, rowsH / lr.Sum() - Gap);
+            float score = Math.Min(h / 40f, w / 170f);
+            if (score > best) { best = score; span = k; laneRows = lr; tileW = w; tileH = h; }
         }
-        if (maxCol > 0 || maxRow > 0)
-        {
-            float bx = area.End.X - 4 * 44;
-            if (g.Button("tech:scroll:left", new Rect2(bx, o.Y + 42, 40, 28), "<", C.Accent2, enabled: ColOff > 0, size: 16)) ColOff--;
-            if (g.Button("tech:scroll:right", new Rect2(bx + 44, o.Y + 42, 40, 28), ">", C.Accent2, enabled: ColOff < maxCol, size: 16)) ColOff++;
-            if (g.Button("tech:scroll:up", new Rect2(bx + 88, o.Y + 42, 40, 28), "^", C.Accent2, enabled: RowOff > 0, size: 16)) RowOff = Math.Max(0, RowOff - 3);
-            if (g.Button("tech:scroll:down", new Rect2(bx + 132, o.Y + 42, 40, 28), "v", C.Accent2, enabled: RowOff < maxRow, size: 16)) RowOff = Math.Min(maxRow, RowOff + 3);
-            g.TextIn("wheel: up and down · shift + wheel: sideways", new Rect2(area.End.X - 460, area.End.Y - 20, 460, 18), C.Dim, 13, HorizontalAlignment.Right);
-        }
-        ColOff = Math.Clamp(ColOff, 0, maxCol);
-        RowOff = Math.Clamp(RowOff, 0, maxRow);
+        var colOf = new Dictionary<int, int>();
+        int next = 0;
+        foreach (int l in levels) { colOf[l] = next; next += span[l]; }
+        float ColX(int col) => o.X + LaneW + col * (tileW + Gap);
 
-        Vector2 Origin(TechLayout.Cell c) => new(o.X + (c.Col - ColOff) * ColW, treeY + (c.Row - RowOff) * RowH);
-        bool Shown(TechLayout.Cell c) => c.Col >= ColOff && c.Col < ColOff + _visCols && c.Row >= RowOff && c.Row < RowOff + _visRows;
-        Rect2 BoxOf(TechLayout.Cell c) => new(Origin(c), new Vector2(BoxW, BoxH));
+        // The level headers, over each level's first column.
+        foreach (int level in levels)
+            g.TextIn($"LV {level}", new Rect2(ColX(colOf[level]), top, tileW, headH - 4), p.Level >= level ? C.Good : C.Dim, 13, HorizontalAlignment.Left, UiTheme.Mono);
 
-        // Which node the pointer is on; its path and what it opens stay lit.
+        // Pointing at a tile: what it needs and what it opens stay lit.
         TechLayout.Cell hover = null;
-        foreach (TechLayout.Cell c in lay.Cells)
-            if (Shown(c) && g.Over(BoxOf(c))) hover = c;
-        HashSet<TechLayout.Cell> path = hover == null ? null : lay.PathTo(hover), opens = hover == null ? null : lay.Opens(hover);
+        var at = new Dictionary<TechLayout.Cell, Rect2>();
+        float y = top + headH;
+        for (int li = 0; li < lanes.Count; li++)
+        {
+            var (name, cells) = lanes[li];
+            float laneH = laneRows[li] * (tileH + Gap) - Gap;
+            Color laneTone = name switch { "HOVER" => C.Holo, "FLIGHT" => C.Accent, "DECO" => C.Holo, _ => C.Accent2 };
+            g.Fill(new Rect2(o.X, y, 4, laneH), laneTone);
+            var (laneText, laneSize) = Fit(name == "DECO" ? group?.ToUpperInvariant() ?? name : name, 12, 8, LaneW - 12, UiTheme.Display);
+            g.TextIn(laneText, new Rect2(o.X + 8, y, LaneW - 12, Math.Min(laneH, 22)), laneTone, laneSize, HorizontalAlignment.Left, UiTheme.Display);
+            foreach (var byLevel in cells.GroupBy(c => c.Node.Level))
+            {
+                int k = 0, rowsHere = laneRows[li];
+                foreach (TechLayout.Cell c in byLevel.OrderBy(c => c.Node.Name, StringComparer.Ordinal))
+                {
+                    var r = new Rect2(ColX(colOf[c.Node.Level] + k / rowsHere), y + k % rowsHere * (tileH + Gap), tileW, tileH);
+                    k++;
+                    at[c] = r;
+                    Placed[c.Node.Id] = r;
+                    if (g.Over(r)) hover = c;
+                }
+            }
+            y += laneH + laneGap;
+        }        HashSet<TechLayout.Cell> path = hover == null ? null : lay.PathTo(hover), opens = hover == null ? null : lay.Opens(hover);
         bool Lit(TechLayout.Cell c) => hover == null || path.Contains(c) || opens.Contains(c);
 
-        // Level headers over the columns.
-        for (int ci = ColOff; ci < Math.Min(lay.Columns.Count, ColOff + _visCols); ci++)
-        {
-            var (level, sub) = lay.Columns[ci];
-            if (sub == 0) g.TextIn($"LEVEL {level}", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), p.Level >= level ? C.Good : C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono);
-            else g.TextIn($"LEVEL {level} ›", new Rect2(o.X + (ci - ColOff) * ColW, headY, BoxW, 20), C.Dim, 14, HorizontalAlignment.Center, UiTheme.Mono); // a step on, for what a node of this level opens
-        }
-
-        // Wires: out of a parent's right side, along the gutter, then into the child along its own row.
-        if (g.Drawing)
-        {
-            void Seg(Vector2 a, Vector2 b, Color col, float w)
-            {
-                if (a.X == b.X) // vertical
-                {
-                    if (a.X < view.Position.X || a.X > view.End.X) return;
-                    float y0 = Math.Max(Math.Min(a.Y, b.Y), view.Position.Y), y1 = Math.Min(Math.Max(a.Y, b.Y), view.End.Y);
-                    if (y0 <= y1) g.Canvas.DrawLine(new Vector2(a.X, y0), new Vector2(a.X, y1), col, w);
-                }
-                else
-                {
-                    if (a.Y < view.Position.Y || a.Y > view.End.Y) return;
-                    float x0 = Math.Max(Math.Min(a.X, b.X), view.Position.X), x1 = Math.Min(Math.Max(a.X, b.X), view.End.X);
-                    if (x0 <= x1) g.Canvas.DrawLine(new Vector2(x0, a.Y), new Vector2(x1, a.Y), col, w);
-                }
-            }
-            void Wire(TechLayout.Cell parent, TechLayout.Cell kid, bool lit)
-            {
-                Vector2 pa = Origin(parent) + new Vector2(BoxW, BoxH / 2), ka = Origin(kid) + new Vector2(0, BoxH / 2);
-                float tx = pa.X + (ColW - BoxW) / 2;
-                bool done = p.IsUnlocked(kid.Node.Id);
-                bool on = hover != null && lit;
-                Color col = on ? C.Accent : done ? C.Good : C.Rule;
-                if (hover != null && !on) col = new Color(col, 0.2f);
-                float w = on ? 3.5f : 2f;
-                Seg(pa, new Vector2(tx, pa.Y), col, w);
-                Seg(new Vector2(tx, pa.Y), new Vector2(tx, ka.Y), col, w);
-                Seg(new Vector2(tx, ka.Y), ka, col, w);
-                if (Shown(kid) && ka.X - 8 >= view.Position.X)
-                    g.Canvas.DrawColoredPolygon(new[] { ka, ka + new Vector2(-8, -5), ka + new Vector2(-8, 5) }, col);
-            }
-            // The lit wires last, so they run over the rest.
-            bool EdgeLit(TechLayout.Cell c) => hover != null && (path.Contains(c) && path.Contains(c.Parent) || opens.Contains(c) && (opens.Contains(c.Parent) || c.Parent == hover));
-            foreach (TechLayout.Cell c in lay.Cells)
-                if (c.Parent != null && !EdgeLit(c)) Wire(c.Parent, c, false);
-            foreach (TechLayout.Cell c in lay.Cells)
-                if (c.Parent != null && EdgeLit(c)) Wire(c.Parent, c, true);
-        }
-
-        foreach (TechLayout.Cell c in lay.Cells)
-        {
-            if (!Shown(c)) continue;
-            TechNode n = c.Node;
-            Rect2 r = BoxOf(c);
-            UnlockState state = p.StateOf(n);
-            Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, _ => C.Dim };
-            if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false))
-            {
-                if (p.Unlock(n.Id)) g.Sound = "unlock";
-            }
-            if (!g.Drawing) continue;
-            float fade = Lit(c) ? 1f : 0.3f;
-            Color F(Color col) => new Color(col, col.A * fade);
-            string name = Plain(n, out string tag);
-            float tagW = tag == null ? 0 : 22;
-            g.Fill(r, F(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.95f)));
-            g.Fill(new Rect2(r.Position, new Vector2(6, r.Size.Y)), F(tone));
-            g.Outline(r, F(c == hover ? C.Accent : tone), c == hover ? 3.5f : state == UnlockState.Affordable ? 3f : 1.5f);
-            var (nt, ns) = Fit(name, 14, 11, BoxW - 18 - tagW, UiTheme.Label);
-            g.Text(nt, r.Position + new Vector2(12, 4 + (14 - ns) / 2f), F(state == UnlockState.Unlocked ? C.Text : C.Dim), ns);
-            string status = state == UnlockState.Unlocked ? $"UNLOCKED · {n.Cost} PT" : Regex.Replace(p.Needs(n), @"\s*\((large|small)\)", "", RegexOptions.IgnoreCase);
-            var (st, ss) = Fit(status, 12, 9, BoxW - 18, UiTheme.Label);
-            g.Text(st, r.Position + new Vector2(12, 27 + (12 - ss) / 2f), F(state == UnlockState.Affordable ? C.Accent : state == UnlockState.Unlocked ? C.Good : C.Warn), ss);
-            if (tag != null)
-            {
-                var badge = new Rect2(r.End.X - 22, r.Position.Y + 3, 18, 18);
-                g.Fill(badge, F(tag == "L" ? C.Accent2 : C.Holo));
-                g.TextIn(tag, badge, F(C.Glass), 13, HorizontalAlignment.Center, UiTheme.Display);
-            }
-        }
+        foreach (var (c, r) in at) Tile(g, p, c, r, Lit(c), c == hover);
 
         if (hover != null)
         {
@@ -346,13 +317,67 @@ public sealed class TechSection : IMenuSection
             string plain = Plain(n, out string tg);
             var lines = new List<(string, Color)>
             {
-                (plain + (tg == "L" ? "  (large grid)" : tg == "S" ? "  (small grid)" : ""), C.Accent),
-                ($"Opens at level {n.Level} · {n.Cost} unlock point{(n.Cost == 1 ? "" : "s")}", C.Text),
-                (state == UnlockState.Unlocked ? "Unlocked" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
+                (plain + (tg == "L" ? "  (large)" : tg == "S" ? "  (small)" : ""), C.Accent),
+                ($"LEVEL {n.Level} · {n.Cost} PT", C.Text),
+                (state == UnlockState.Unlocked ? "UNLOCKED" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
             };
-            if (hover.Parent != null) lines.Add(($"Needs: {Plain(hover.Parent.Node, out _)}", C.Dim));
-            if (hover.Kids.Count > 0) lines.Add(($"Opens {lay.Opens(hover).Count} more: {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
-            g.SetTip(BoxOf(hover), () => lines);
+            if (hover.Parent != null) lines.Add(($"Needs {Plain(hover.Parent.Node, out _)}", C.Dim));
+            if (hover.Kids.Count > 0) lines.Add(($"Opens {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
+            g.SetTip(at[hover], () => lines);
+        }
+    }
+
+    /// <summary>One tile: the state's colour down its edge, the item's icon, its name, and its cost or what it waits for.</summary>
+    void Tile(Gui g, Progress p, TechLayout.Cell c, Rect2 r, bool lit, bool hot)
+    {
+        TechNode n = c.Node;
+        UnlockState state = p.StateOf(n);
+        Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, UnlockState.NeedsPoints => C.Accent2, _ => C.Dim };
+        if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false) && p.Unlock(n.Id)) g.Sound = "unlock";
+        string name = Plain(n, out string tag);
+        float icon = r.Size.Y - 6;
+        float textX = r.Position.X + 10 + icon + 4, badgeW = 30;
+        float textW = r.End.X - badgeW - 4 - textX;
+        var (nt, ns) = Fit(name, 13, 10, textW, UiTheme.Label);
+        bool twoLines = r.Size.Y >= 38;
+        // Text is laid out in both passes, so the tests can measure it.
+        float nameY = twoLines ? r.Position.Y + 3 : r.Position.Y + (r.Size.Y - ns) / 2f - 1;
+        string status = state switch
+        {
+            UnlockState.Unlocked => "",
+            UnlockState.Affordable => "UNLOCK",
+            UnlockState.NeedsLevel => $"LV {n.Level}",
+            UnlockState.NeedsParent => "NEEDS " + (c.Parent != null ? Plain(c.Parent.Node, out _).ToUpperInvariant() : "PARENT"),
+            _ => "POINTS",
+        };
+        string cost = state == UnlockState.Unlocked ? "" : $"{n.Cost}";
+        if (!g.Drawing)
+        {
+            g.Text(nt, new Vector2(textX, nameY), C.Text, ns);
+            if (twoLines && status != "") { var (sx, sz) = Fit(status, 10, 8, textW, UiTheme.Label); g.TextIn(sx, new Rect2(textX, r.Position.Y + 21, textW, 14), C.Dim, sz); }
+            if (cost != "") g.TextIn(cost, new Rect2(r.End.X - badgeW - 2, r.Position.Y + 2, badgeW, Math.Min(18, r.Size.Y - 4)), C.Text, 12, HorizontalAlignment.Center, UiTheme.Mono);
+            return;
+        }
+        float fade = lit ? 1f : 0.28f;
+        Color F(Color col) => new(col, col.A * fade);
+        g.Fill(r, F(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.9f)));
+        g.Fill(new Rect2(r.Position, new Vector2(5, r.Size.Y)), F(tone));
+        if (hot || state == UnlockState.Affordable) g.Outline(r, F(hot ? C.Text : tone), hot ? 3f : 2f);
+        Texture2D tex = ItemIcons.Shared?.Get(n.ItemId);
+        var iconBox = new Rect2(r.Position.X + 9, r.Position.Y + 3, icon, icon);
+        if (tex != null) g.Canvas.DrawTextureRect(tex, iconBox, false, new Color(1, 1, 1, (state == UnlockState.Unlocked || state == UnlockState.Affordable ? 1f : 0.45f) * fade));
+        else g.Fill(iconBox, F(new Color(tone, 0.25f)));
+        g.Text(nt, new Vector2(textX, nameY), F(state == UnlockState.Unlocked ? C.Text : state == UnlockState.Affordable ? C.Text : C.Dim), ns);
+        if (twoLines && status != "") { var (sx, sz) = Fit(status, 10, 8, textW, UiTheme.Label); g.TextIn(sx, new Rect2(textX, r.Position.Y + 21, textW, 14), F(state == UnlockState.Affordable ? C.Accent : C.Warn), sz); }
+        // The cost on its badge, or a tick once unlocked.
+        var badge = new Rect2(r.End.X - badgeW - 2, r.Position.Y + 2, badgeW, Math.Min(18, r.Size.Y - 4));
+        g.Fill(badge, F(new Color(state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Rule, 0.85f)));
+        if (cost != "") g.TextIn(cost, badge, F(C.Glass), 12, HorizontalAlignment.Center, UiTheme.Mono);
+        else
+        {
+            // Unlocked: a tick.
+            Vector2 m = badge.GetCenter();
+            g.Canvas.DrawPolyline(new[] { m + new Vector2(-6, 0), m + new Vector2(-2, 4), m + new Vector2(6, -5) }, F(C.Glass), 2.5f);
         }
     }
 }
